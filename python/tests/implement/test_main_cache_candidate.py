@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -15,20 +16,25 @@ from larch.implement import main_cache_candidate as candidate
 
 
 _CACHE_CLASS = "coverage-target"
-_CACHE_KEY = "coverage-target-deps-v1-Linux-X64-identity"
+_CACHE_KEY = "coverage-target-deps-v2-Linux-X64-identity"
 _ARTIFACT_NAME = "main-cache-coverage-target-candidate"
 _PRODUCER_REF = "refs/heads/gh-readonly-queue/main/pr-8362-0123456789abcdef"
 _SOURCE_SHA = "0123456789abcdef0123456789abcdef01234567"
+_SOURCE_MTIME_NS = 1_700_000_000_123_456_789
+_TRANSPORT_MTIME_NS = 1_700_000_100_987_654_321
 
 
 def _request(tmp_path: Path, *, candidate_dir: Path | None = None) -> candidate.CandidateRequest:
     source = tmp_path / "source"
     source.mkdir(exist_ok=True)
     (source / ".fingerprint").mkdir(exist_ok=True)
-    _ = (source / ".fingerprint" / "dependency.json").write_text("dependency\n", encoding="utf-8")
+    dependency = source / ".fingerprint" / "dependency.json"
+    _ = dependency.write_text("dependency\n", encoding="utf-8")
+    os.utime(dependency, ns=(_SOURCE_MTIME_NS, _SOURCE_MTIME_NS))
     executable = source / "larch"
     _ = executable.write_bytes(b"#!/bin/sh\nprintf larch\n")
     executable.chmod(0o755)
+    os.utime(executable, ns=(_SOURCE_MTIME_NS + 1, _SOURCE_MTIME_NS + 1))
     return candidate.CandidateRequest(
         artifact_name=_ARTIFACT_NAME,
         cache_class=_CACHE_CLASS,
@@ -106,6 +112,7 @@ def test_stage_and_promote_main_cache_candidate_rechecks_every_member(tmp_path: 
     manifest = _read_manifest(request.candidate_dir / "manifest.json")
     assert manifest["cache_key"] == _CACHE_KEY
     assert manifest["artifact_name"] == _ARTIFACT_NAME
+    assert manifest["schema_version"] == 2
     artifact_sha256 = manifest["artifact_sha256"]
     assert isinstance(artifact_sha256, str)
     assert len(artifact_sha256) == 64
@@ -117,6 +124,18 @@ def test_stage_and_promote_main_cache_candidate_rechecks_every_member(tmp_path: 
         "cargo-llvm-cov": "cargo-llvm-cov 0.8.7",
         "rustc": "rustc test",
     }
+    staged_dependency = (
+        request.candidate_dir
+        / "payload"
+        / "llvm-cov-target"
+        / ".fingerprint"
+        / "dependency.json"
+    )
+    staged_executable = request.candidate_dir / "payload" / "llvm-cov-target" / "larch"
+    assert staged_dependency.stat().st_mtime_ns == _SOURCE_MTIME_NS
+    os.utime(staged_dependency, ns=(_TRANSPORT_MTIME_NS, _TRANSPORT_MTIME_NS))
+    os.utime(staged_executable, ns=(_TRANSPORT_MTIME_NS, _TRANSPORT_MTIME_NS))
+    staged_executable.chmod(0o644)
 
     output = tmp_path / "promoted"
     promoted = candidate.promote_candidate(
@@ -129,6 +148,12 @@ def test_stage_and_promote_main_cache_candidate_rechecks_every_member(tmp_path: 
     assert (output / "llvm-cov-target" / ".fingerprint" / "dependency.json").read_text(
         encoding="utf-8"
     ) == "dependency\n"
+    assert (
+        output / "llvm-cov-target" / ".fingerprint" / "dependency.json"
+    ).stat().st_mtime_ns == _SOURCE_MTIME_NS
+    assert (
+        output / "llvm-cov-target" / "larch"
+    ).stat().st_mtime_ns == _SOURCE_MTIME_NS + 1
     assert (output / "llvm-cov-target" / "larch").stat().st_mode & 0o111
 
 
@@ -151,7 +176,7 @@ def test_stage_and_promote_cargo_inputs_accepts_safe_cargo_path_punctuation(
     request = candidate.CandidateRequest(
         artifact_name="main-cache-cargo-inputs-candidate",
         cache_class="cargo-inputs",
-        cache_key="cargo-inputs-v1-Linux-X64-identity",
+        cache_key="cargo-inputs-v2-Linux-X64-identity",
         candidate_dir=tmp_path / "candidate",
         maximum_bytes=1024 * 1024,
         producer_event="merge_group",
@@ -191,7 +216,7 @@ def test_empty_cargo_git_directory_is_optional_after_artifact_transport(
     request = candidate.CandidateRequest(
         artifact_name="main-cache-cargo-inputs-candidate",
         cache_class="cargo-inputs",
-        cache_key="cargo-inputs-v1-Linux-X64-identity",
+        cache_key="cargo-inputs-v2-Linux-X64-identity",
         candidate_dir=tmp_path / "candidate",
         maximum_bytes=1024 * 1024,
         producer_event="merge_group",
@@ -235,7 +260,7 @@ def test_candidate_members_are_lexically_sorted_across_files_and_directories(
     request = candidate.CandidateRequest(
         artifact_name="main-cache-cargo-inputs-candidate",
         cache_class="cargo-inputs",
-        cache_key="cargo-inputs-v1-Linux-X64-identity",
+        cache_key="cargo-inputs-v2-Linux-X64-identity",
         candidate_dir=tmp_path / "candidate",
         maximum_bytes=1024 * 1024,
         producer_event="merge_group",
@@ -335,7 +360,7 @@ def test_stage_main_cache_candidate_rejects_symlinked_source(tmp_path: Path) -> 
     request = candidate.CandidateRequest(
         artifact_name="main-cache-cargo-inputs-candidate",
         cache_class="cargo-inputs",
-        cache_key="cargo-inputs-v1-Linux-X64-identity",
+        cache_key="cargo-inputs-v2-Linux-X64-identity",
         candidate_dir=tmp_path / "candidate",
         maximum_bytes=0,
         producer_event="merge_group",
@@ -354,7 +379,7 @@ def test_stage_main_cache_candidate_rejects_symlinked_source(tmp_path: Path) -> 
     ("attribute", "value", "expected"),
     [
         ("artifact_name", "main-cache-rust-policy-candidate", "artifact name"),
-        ("cache_key", "coverage-target-deps-v1-Linux-X64-other", "cache key identity"),
+        ("cache_key", "coverage-target-deps-v2-Linux-X64-other", "cache key identity"),
         ("source_sha", "fedcba9876543210fedcba9876543210fedcba98", "source SHA"),
     ],
 )
@@ -407,6 +432,125 @@ def test_promote_main_cache_candidate_rejects_digest_tampering(
             output_dir=tmp_path / "promoted",
             contract=_contract(request),
         )
+
+
+def test_promote_main_cache_candidate_binds_mtime_to_artifact_digest(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    _ = candidate.stage_candidate(request)
+    manifest_path = request.candidate_dir / "manifest.json"
+    manifest = _read_manifest(manifest_path)
+    raw_members_value = manifest["members"]
+    assert isinstance(raw_members_value, list)
+    raw_members = cast("list[object]", raw_members_value)
+    raw_member = raw_members[0]
+    assert isinstance(raw_member, dict)
+    member = cast("dict[str, object]", raw_member)
+    mtime_ns = member["mtime_ns"]
+    assert isinstance(mtime_ns, int)
+    member["mtime_ns"] = mtime_ns + 1
+    _ = manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+
+    with pytest.raises(candidate.CandidateError, match="artifact digest"):
+        _ = candidate.promote_candidate(
+            candidate_dir=request.candidate_dir,
+            output_dir=tmp_path / "promoted",
+            contract=_contract(request),
+        )
+
+
+@pytest.mark.parametrize(
+    "mtime_ns",
+    [None, "1700000000123456789", True, -1, (1 << 63)],
+)
+def test_promote_main_cache_candidate_rejects_unsafe_mtime(
+    tmp_path: Path,
+    mtime_ns: object,
+) -> None:
+    request = _request(tmp_path)
+    _ = candidate.stage_candidate(request)
+    manifest_path = request.candidate_dir / "manifest.json"
+    manifest = _read_manifest(manifest_path)
+    raw_members_value = manifest["members"]
+    assert isinstance(raw_members_value, list)
+    raw_members = cast("list[object]", raw_members_value)
+    raw_member = raw_members[0]
+    assert isinstance(raw_member, dict)
+    member = cast("dict[str, object]", raw_member)
+    member["mtime_ns"] = mtime_ns
+    _ = manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+
+    with pytest.raises(candidate.CandidateError, match="mtime_ns is invalid"):
+        _ = candidate.promote_candidate(
+            candidate_dir=request.candidate_dir,
+            output_dir=tmp_path / "promoted",
+            contract=_contract(request),
+        )
+
+
+def test_promote_main_cache_candidate_rejects_legacy_manifest_schema(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path)
+    _ = candidate.stage_candidate(request)
+    manifest_path = request.candidate_dir / "manifest.json"
+    manifest = _read_manifest(manifest_path)
+    manifest["schema_version"] = 1
+    _ = manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+
+    with pytest.raises(candidate.CandidateError, match="unsupported schema version"):
+        _ = candidate.promote_candidate(
+            candidate_dir=request.candidate_dir,
+            output_dir=tmp_path / "promoted",
+            contract=_contract(request),
+        )
+
+
+def test_promote_main_cache_candidate_does_not_follow_replaced_member(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    _ = candidate.stage_candidate(request)
+    outside = tmp_path / "outside"
+    _ = outside.write_text("outside\n", encoding="utf-8")
+    outside.chmod(0o600)
+    os.utime(outside, ns=(_SOURCE_MTIME_NS, _SOURCE_MTIME_NS))
+    outside_status = outside.stat()
+    member = tmp_path / "promoted" / "llvm-cov-target" / "larch"
+    open_file = os.open
+    replaced = False
+
+    def open_and_replace_member(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal replaced
+        raw_path = os.fspath(path)
+        if not replaced and isinstance(raw_path, str) and Path(raw_path) == member:
+            member.unlink()
+            member.symlink_to(outside)
+            replaced = True
+        return open_file(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(candidate.os, "open", open_and_replace_member)
+
+    with pytest.raises(candidate.CandidateError, match=r"metadata|changed while opening"):
+        _ = candidate.promote_candidate(
+            candidate_dir=request.candidate_dir,
+            output_dir=tmp_path / "promoted",
+            contract=_contract(request),
+        )
+
+    assert replaced
+    restored_outside_status = outside.stat()
+    assert outside.read_text(encoding="utf-8") == "outside\n"
+    assert restored_outside_status.st_mode == outside_status.st_mode
+    assert restored_outside_status.st_mtime_ns == outside_status.st_mtime_ns
 
 
 def test_promote_main_cache_candidate_rejects_wrong_tool_versions(tmp_path: Path) -> None:

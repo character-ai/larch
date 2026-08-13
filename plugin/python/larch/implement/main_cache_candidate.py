@@ -10,6 +10,7 @@ import re
 import shutil
 import stat
 import sys
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, cast
@@ -34,13 +35,16 @@ _SOURCE_NAME_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _SOURCE_SHA_RE: Final = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _MANIFEST_FILENAME: Final = "manifest.json"
 _PAYLOAD_DIRECTORY: Final = "payload"
-_SCHEMA_VERSION: Final = 1
+_SCHEMA_VERSION: Final = 2
 _HASH_CHUNK_BYTES: Final = 1024 * 1024
 # Cargo's registry cache produces a manifest above 4 MiB on a clean, full
 # Rust lane. Keep the untrusted-artifact parser bounded while allowing the
 # reviewed registry inventory and its per-file integrity records.
 _MAX_MANIFEST_BYTES: Final = 32 * 1024 * 1024
 _MAX_FILE_MODE: Final = 0o777
+# Keep untrusted timestamps inside the signed nanosecond range accepted by
+# common runner filesystems and Python's descriptor-based os.utime boundary.
+_MAX_MTIME_NS: Final = (1 << 63) - 1
 
 
 class CandidateError(ValueError):
@@ -60,6 +64,7 @@ class CandidateMember:
     """A content-addressed regular file inside a staged payload."""
 
     mode: int
+    mtime_ns: int
     path: str
     sha256: str
     size: int
@@ -141,6 +146,7 @@ def stage_candidate(request: CandidateRequest) -> VerifiedCandidate:
         "members": [
             {
                 "mode": member.mode,
+                "mtime_ns": member.mtime_ns,
                 "path": member.path,
                 "sha256": member.sha256,
                 "size": member.size,
@@ -207,7 +213,8 @@ def promote_candidate(
     )
     _create_empty_directory(output_dir, label="publication directory")
     _copy_payload_contents(candidate_dir / _PAYLOAD_DIRECTORY, output_dir)
-    _restore_member_modes(output_dir, verified.members)
+    _reject_tree_symlinks(output_dir)
+    _restore_member_metadata(output_dir, verified.members)
     _reject_tree_symlinks(output_dir)
     return verified
 
@@ -445,9 +452,11 @@ def _collect_members(payload: Path) -> tuple[CandidateMember, ...]:
         if _MEMBER_PATH_RE.fullmatch(relative) is None:
             raise CandidateError("candidate payload path is invalid")
         status = _lstat(path, label="candidate payload member")
+        mtime_ns = _validated_mtime_ns(status.st_mtime_ns)
         members.append(
             CandidateMember(
                 mode=stat.S_IMODE(status.st_mode),
+                mtime_ns=mtime_ns,
                 path=relative,
                 sha256=_sha256_file(path),
                 size=status.st_size,
@@ -632,12 +641,14 @@ def _parse_members(manifest: dict[str, object]) -> tuple[CandidateMember, ...]:
         raw_member = cast("dict[str, object]", raw_member_value)
         if set(raw_member) != {
             "mode",
+            "mtime_ns",
             "path",
             "sha256",
             "size",
         }:
             raise CandidateError("candidate manifest member has an unexpected schema")
         mode = raw_member.get("mode")
+        mtime_ns = raw_member.get("mtime_ns")
         path = raw_member.get("path")
         sha256 = raw_member.get("sha256")
         size = raw_member.get("size")
@@ -650,7 +661,15 @@ def _parse_members(manifest: dict[str, object]) -> tuple[CandidateMember, ...]:
         _require_sha256(sha256, label="candidate member checksum")
         if not isinstance(size, int) or isinstance(size, bool) or size < 0:
             raise CandidateError("candidate manifest member size is invalid")
-        members.append(CandidateMember(mode=mode, path=path, sha256=sha256, size=size))
+        members.append(
+            CandidateMember(
+                mode=mode,
+                mtime_ns=_validated_mtime_ns(mtime_ns),
+                path=path,
+                sha256=sha256,
+                size=size,
+            )
+        )
     paths = tuple(member.path for member in members)
     if tuple(sorted(paths)) != paths or len(set(paths)) != len(paths):
         raise CandidateError("candidate manifest member paths are not unique and sorted")
@@ -660,20 +679,73 @@ def _parse_members(manifest: dict[str, object]) -> tuple[CandidateMember, ...]:
 def _members_match_content(
     actual_members: tuple[CandidateMember, ...], expected_members: tuple[CandidateMember, ...]
 ) -> bool:
+    # Artifact transport may rewrite modes and mtimes. The manifest digest binds
+    # their declared values; promotion restores them after content verification.
     return tuple(
         (member.path, member.sha256, member.size) for member in actual_members
     ) == tuple((member.path, member.sha256, member.size) for member in expected_members)
 
 
-def _restore_member_modes(output_dir: Path, members: tuple[CandidateMember, ...]) -> None:
+def _validated_mtime_ns(value: object) -> int:
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or value < 0
+        or value > _MAX_MTIME_NS
+    ):
+        raise CandidateError("candidate manifest member mtime_ns is invalid")
+    return value
+
+
+def _restore_member_metadata(output_dir: Path, members: tuple[CandidateMember, ...]) -> None:
     for member in members:
         relative = Path(member.path).relative_to(_PAYLOAD_DIRECTORY)
         path = output_dir / relative
-        _ = _require_regular_file(path, label="promoted candidate member")
+        before = _lstat(path, label="promoted candidate member")
+        if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+            raise CandidateError("promoted candidate member is not a regular file")
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
         try:
-            path.chmod(member.mode)
-        except OSError as exc:
-            raise CandidateError("could not restore candidate member mode") from exc
+            with ExitStack() as stack:
+                descriptor = os.open(path, flags)
+                _ = stack.callback(os.close, descriptor)
+                opened = os.fstat(descriptor)
+                current = _lstat(path, label="promoted candidate member")
+                if (
+                    not stat.S_ISREG(opened.st_mode)
+                    or stat.S_ISLNK(current.st_mode)
+                    or not stat.S_ISREG(current.st_mode)
+                    or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
+                    or (current.st_dev, current.st_ino)
+                    != (opened.st_dev, opened.st_ino)
+                ):
+                    raise CandidateError(
+                        "promoted candidate member changed while opening"
+                    )
+                os.fchmod(descriptor, member.mode)
+                os.utime(
+                    descriptor,
+                    ns=(opened.st_atime_ns, member.mtime_ns),
+                )
+                restored = os.fstat(descriptor)
+                visible = _lstat(path, label="promoted candidate member")
+                if (
+                    stat.S_IMODE(restored.st_mode) != member.mode
+                    or restored.st_mtime_ns != member.mtime_ns
+                    or stat.S_ISLNK(visible.st_mode)
+                    or not stat.S_ISREG(visible.st_mode)
+                    or (visible.st_dev, visible.st_ino)
+                    != (restored.st_dev, restored.st_ino)
+                    or stat.S_IMODE(visible.st_mode) != member.mode
+                    or visible.st_mtime_ns != member.mtime_ns
+                ):
+                    raise CandidateError(
+                        "candidate member metadata was not restored exactly"
+                    )
+        except (OSError, OverflowError) as exc:
+            raise CandidateError("could not restore candidate member metadata") from exc
 
 
 def _parse_manifest_tool_versions(manifest: dict[str, object]) -> dict[str, str]:
@@ -704,13 +776,6 @@ def _require_regular_directory(path: Path, *, label: str) -> Path:
     return path
 
 
-def _require_regular_file(path: Path, *, label: str) -> Path:
-    status = _lstat(path, label=label)
-    if stat.S_ISLNK(status.st_mode) or not stat.S_ISREG(status.st_mode):
-        raise CandidateError(f"{label} is not a regular file")
-    return path
-
-
 def _lstat(path: Path, *, label: str) -> os.stat_result:
     try:
         return path.lstat()
@@ -738,6 +803,7 @@ def _artifact_sha256(members: tuple[CandidateMember, ...]) -> str:
     payload = [
         {
             "mode": member.mode,
+            "mtime_ns": member.mtime_ns,
             "path": member.path,
             "sha256": member.sha256,
             "size": member.size,

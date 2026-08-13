@@ -111,7 +111,7 @@
     {
       "id": "cargo-inputs",
       "key_output": "cargo-inputs",
-      "key_inputs": ["runner OS", "runner architecture", "Cargo.lock", "Cargo.toml", "crates/**/Cargo.toml", "rust-toolchain.toml"],
+      "key_inputs": ["freshness metadata schema", "runner OS", "runner architecture", "Cargo.lock", "Cargo.toml", "crates/**/Cargo.toml", "rust-toolchain.toml"],
       "producer": "main-cache-rust-promotion",
       "validation": "exact successful merge-group artifact manifest",
       "maximum_bytes": null,
@@ -120,7 +120,7 @@
     {
       "id": "rust-lint-deps",
       "key_output": "rust-lint-deps",
-      "key_inputs": ["runner OS", "runner architecture", "Cargo.lock", "Cargo.toml", "crates/**/Cargo.toml", "rust-toolchain.toml"],
+      "key_inputs": ["freshness metadata schema", "runner OS", "runner architecture", "Cargo.lock", "Cargo.toml", "crates/**/Cargo.toml", "rust-toolchain.toml"],
       "producer": "main-cache-rust-promotion",
       "validation": "pruned exact successful merge-group artifact manifest",
       "maximum_bytes": null,
