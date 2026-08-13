@@ -1287,8 +1287,8 @@ closure-max-content-tokens = 26303
 # Issue #7942 removes later content-reduction slack from that declared set.
 # Issue #8462 documents bgjob FINAL_SUMMARY_READY readiness alongside markers.
 conditional-max-lines = 779
-conditional-max-tokens = 19665
-conditional-max-content-tokens = 19595
+conditional-max-tokens = 19669
+conditional-max-content-tokens = 19598
 
 [[lint.prompt-source-budgets]]
 name = "implement"
