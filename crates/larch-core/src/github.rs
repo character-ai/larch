@@ -323,6 +323,20 @@ pub enum GitHubIssueListMode {
     BoundedPartial,
 }
 
+/// Whether an issue-list consumer needs issue-body content.
+///
+/// GitHub's REST list endpoint includes bodies even when a consumer only needs
+/// metadata. [`GitHubIssueBodyMode::Omit`] keeps those unused fields out of the
+/// returned domain value and out of per-string validation, while retaining the
+/// response-wide transport bounds.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GitHubIssueBodyMode {
+    /// Preserve and validate issue-body fields for a consumer that reads them.
+    Include,
+    /// Discard issue-body fields before conversion because the consumer needs metadata only.
+    Omit,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GitHubIssueList {
     pub repo: GitHubRepositoryRef,
@@ -330,6 +344,7 @@ pub struct GitHubIssueList {
     pub labels: Vec<String>,
     pub limit: usize,
     pub mode: GitHubIssueListMode,
+    pub body_mode: GitHubIssueBodyMode,
 }
 
 /// The typed outcome of a bounded issue list.

@@ -17,10 +17,10 @@ use std::{
 
 use larch_adapters::github::{DependencyEdge, DependencyRef, IssueMutationOwner};
 use larch_core::{
-    GitHubCloseReason, GitHubIssue, GitHubIssueList, GitHubIssueListMode, GitHubIssueState,
-    GitHubRepositoryRef, GitHubService as _, IssueCreateRequest, deps_compact_json,
-    deps_flat_error, json_positive_integer, parse_prose_blockers, parse_prose_blocks,
-    positive_integer,
+    GitHubCloseReason, GitHubIssue, GitHubIssueBodyMode, GitHubIssueList, GitHubIssueListMode,
+    GitHubIssueState, GitHubRepositoryRef, GitHubService as _, IssueCreateRequest,
+    deps_compact_json, deps_flat_error, json_positive_integer, parse_prose_blockers,
+    parse_prose_blocks, positive_integer,
 };
 use serde_json::{Map, Value, json};
 use tempfile::NamedTempFile;
@@ -435,6 +435,7 @@ fn fetch(arguments: &[OsString]) -> ExitCode {
             // The combine candidate list is bounded to 200 by design, so a
             // transport-bound tail is an acceptable partial snapshot.
             mode: GitHubIssueListMode::BoundedPartial,
+            body_mode: GitHubIssueBodyMode::Include,
         };
         service
             .list_issues(&request, cancellation)
@@ -584,6 +585,7 @@ fn list_open(arguments: &[OsString]) -> ExitCode {
             // A bounded open-issue view feeds the report; a transport-bound tail
             // is an acceptable partial snapshot rather than a failure.
             mode: GitHubIssueListMode::BoundedPartial,
+            body_mode: GitHubIssueBodyMode::Include,
         };
         service
             .list_issues(&request, cancellation)

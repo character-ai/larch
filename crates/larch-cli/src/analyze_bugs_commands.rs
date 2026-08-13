@@ -22,10 +22,10 @@ use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 use chrono::Utc;
 use larch_adapters::{GixRepository, unified_blob_diff};
 use larch_core::{
-    ChangeKind, Commit, ExternalProgram, GitHubIssue, GitHubIssueList, GitHubIssueListMode,
-    GitHubIssueState, GitHubService, GitPath, HostUtilityProgram, PLAN_MARKER, ProcessErrorKind,
-    RepositoryRead, Revision, bug_title_match, emit_kv, epoch_now, private_atomic_write,
-    require_enabled_storage, strip_named_block,
+    ChangeKind, Commit, ExternalProgram, GitHubIssue, GitHubIssueBodyMode, GitHubIssueList,
+    GitHubIssueListMode, GitHubIssueState, GitHubService, GitPath, HostUtilityProgram, PLAN_MARKER,
+    ProcessErrorKind, RepositoryRead, Revision, bug_title_match, emit_kv, epoch_now,
+    private_atomic_write, require_enabled_storage, strip_named_block,
 };
 use serde_json::{Map, Value, json};
 use sha2::{Digest as _, Sha256};
@@ -233,6 +233,7 @@ fn prefetch_with_evidence(
             // transport-bound tail is an acceptable partial rather than a
             // failure.
             mode: GitHubIssueListMode::BoundedPartial,
+            body_mode: GitHubIssueBodyMode::Include,
         };
         let listed = service
             .list_issues(&request, cancellation)

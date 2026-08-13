@@ -30,10 +30,10 @@ use crate::{
 use chrono::{Days, NaiveDate, Utc};
 use larch_adapters::{PathIntent, TemporaryRoot, atomic_write_utf8, ensure_directory_chain};
 use larch_core::{
-    GitHubComment, GitHubIssue, GitHubIssueList, GitHubIssueListMode, GitHubIssueListResult,
-    GitHubIssueState, GitHubOperationErrorKind, GitHubRepositoryRef, GitHubService,
-    GitHubTransportPolicy, ParsedItem, allocate_candidates as allocate, emit_kv, parse_issue_input,
-    title_is_archival, unsigned_integer,
+    GitHubComment, GitHubIssue, GitHubIssueBodyMode, GitHubIssueList, GitHubIssueListMode,
+    GitHubIssueListResult, GitHubIssueState, GitHubOperationErrorKind, GitHubRepositoryRef,
+    GitHubService, GitHubTransportPolicy, ParsedItem, allocate_candidates as allocate, emit_kv,
+    parse_issue_input, title_is_archival, unsigned_integer,
 };
 use std::{
     collections::HashSet,
@@ -420,15 +420,22 @@ fn snapshot_rows(repo: &str, closed_window: u64) -> Result<Vec<String>, String> 
     let closed = if closed_window == 0 || remaining == 0 {
         None
     } else {
-        Some(
-            list_snapshot(
-                &reference,
-                GitHubIssueState::Closed,
-                remaining,
-                GitHubIssueListMode::BoundedPartial,
-            )
-            .map_err(|failure| failure.warning(repo))?,
-        )
+        match list_snapshot(
+            &reference,
+            GitHubIssueState::Closed,
+            remaining,
+            GitHubIssueListMode::BoundedPartial,
+        ) {
+            Ok(result) => Some(result),
+            Err(failure) if failure.is_transport_limit() => {
+                eprintln!(
+                    "WARN: {}; recent-closed issue rows were omitted from deduplication",
+                    failure.warning(repo)
+                );
+                None
+            }
+            Err(failure) => return Err(failure.warning(repo)),
+        }
     };
 
     if closed.as_ref().is_some_and(|result| result.truncated) {
@@ -479,6 +486,7 @@ fn list_snapshot(
             labels: Vec::new(),
             limit,
             mode,
+            body_mode: GitHubIssueBodyMode::Omit,
         };
         Ok(service
             .list_issues(&request, cancellation)
@@ -504,6 +512,11 @@ enum SnapshotFailure {
 }
 
 impl SnapshotFailure {
+    /// Whether a bounded-partial closed scan can degrade without losing open coverage.
+    const fn is_transport_limit(&self) -> bool {
+        matches!(self, Self::Kind(GitHubOperationErrorKind::LimitExceeded))
+    }
+
     /// A stable, secret-free warning line for this class.
     fn warning(&self, repo: &str) -> String {
         use GitHubOperationErrorKind as Kind;
@@ -511,9 +524,9 @@ impl SnapshotFailure {
             Self::Setup => {
                 format!("GitHub client unavailable for repo {repo} (credential or setup)")
             }
-            Self::Kind(Kind::LimitExceeded) => format!(
-                "issue snapshot for repo {repo} exceeded the reviewed transport page and item bound"
-            ),
+            Self::Kind(Kind::LimitExceeded) => {
+                format!("issue snapshot for repo {repo} exceeded a reviewed GitHub transport limit")
+            }
             Self::Kind(Kind::Authentication) => {
                 format!("GitHub authentication failed for repo {repo}")
             }
@@ -857,12 +870,20 @@ fn kv_text(path: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AllocateArguments, FETCH_USAGE, FetchRequest, PARSE_INPUT_USAGE, closed_window_cutoff,
-        materialize_items, parse_allocate_arguments, parse_fetch_arguments, parse_input_arguments,
-        parse_list_arguments, render_issue_block, snapshot_row, truncate_body, truncate_comment,
+        AllocateArguments, FETCH_USAGE, FetchRequest, PARSE_INPUT_USAGE, SnapshotFailure,
+        closed_window_cutoff, materialize_items, parse_allocate_arguments, parse_fetch_arguments,
+        parse_input_arguments, parse_list_arguments, render_issue_block, snapshot_row,
+        snapshot_rows, truncate_body, truncate_comment,
     };
-    use larch_core::{GitHubComment, GitHubIssue, GitHubIssueState};
-    use std::{ffi::OsString, fs, os::unix::fs::PermissionsExt as _, path::PathBuf};
+    use crate::github_service::with_test_github_service;
+    use larch_adapters::github::OctocrabGitHubService;
+    use larch_core::{
+        GitHubComment, GitHubIssue, GitHubIssueState, GitHubOperationErrorKind,
+        GitHubTransportPolicy,
+    };
+    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
+    use serde_json::{Value, json};
+    use std::{ffi::OsString, fs, os::unix::fs::PermissionsExt as _, path::PathBuf, sync::Arc};
 
     fn arguments(values: &[&str]) -> Vec<OsString> {
         values.iter().map(OsString::from).collect()
@@ -906,6 +927,24 @@ mod tests {
             max_comments,
             max_body_chars,
         }
+    }
+
+    fn remote_issue(number: u64, title: &str, body: &str, state: &str) -> Value {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../larch-adapters/fixtures/github_issue.json"
+        ))
+        .expect("valid issue fixture");
+        value["id"] = json!(number);
+        value["number"] = json!(number);
+        value["title"] = json!(title);
+        value["body"] = json!(body);
+        value["html_url"] = json!(format!("https://github.com/o/r/issues/{number}"));
+        value["state"] = json!(state);
+        value["updated_at"] = json!("2999-01-01T00:00:00Z");
+        if state == "closed" {
+            value["closed_at"] = json!("2999-01-01T00:00:00Z");
+        }
+        value
     }
 
     #[test]
@@ -1062,6 +1101,83 @@ mod tests {
         assert_eq!(
             parse_list_arguments(&arguments(&["--closed-window-days", "x"])),
             Err("--closed-window-days must be a non-negative integer, got: x".to_owned())
+        );
+    }
+
+    #[test]
+    fn snapshot_omits_oversized_closed_bodies_before_transport_string_validation() {
+        let oversized_body =
+            "x".repeat(GitHubTransportPolicy::github_com().limits().string_bytes() + 1);
+        let server = IssueServiceStub::start([
+            IssueServiceExchange::any_json(
+                200,
+                json!([remote_issue(1, "Open", "", "open")]).to_string(),
+            )
+            .expect("open issue response"),
+            IssueServiceExchange::any_json(
+                200,
+                json!([remote_issue(2, "Closed", &oversized_body, "closed")]).to_string(),
+            )
+            .expect("closed issue response"),
+        ])
+        .expect("start issue service stub");
+        let base_url = server.base_url().to_owned();
+        let service: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+            Arc::new(move || OctocrabGitHubService::with_test_base(&base_url));
+
+        let rows = with_test_github_service(service, || {
+            snapshot_rows("o/r", 90).expect("metadata snapshot")
+        });
+
+        assert_eq!(
+            rows,
+            vec![
+                "2\tClosed\tclosed\thttps://github.com/o/r/issues/2".to_owned(),
+                "1\tOpen\topen\thttps://github.com/o/r/issues/1".to_owned(),
+            ]
+        );
+        assert_eq!(server.finish().expect("requests").len(), 2);
+    }
+
+    #[test]
+    fn snapshot_keeps_open_rows_when_closed_metadata_exceeds_transport_limit() {
+        let oversized_title =
+            "x".repeat(GitHubTransportPolicy::github_com().limits().string_bytes() + 1);
+        let server = IssueServiceStub::start([
+            IssueServiceExchange::any_json(
+                200,
+                json!([remote_issue(1, "Open", "", "open")]).to_string(),
+            )
+            .expect("open issue response"),
+            IssueServiceExchange::any_json(
+                200,
+                json!([remote_issue(2, &oversized_title, "", "closed")]).to_string(),
+            )
+            .expect("closed issue response"),
+        ])
+        .expect("start issue service stub");
+        let base_url = server.base_url().to_owned();
+        let service: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+            Arc::new(move || OctocrabGitHubService::with_test_base(&base_url));
+
+        let rows = with_test_github_service(service, || {
+            snapshot_rows("o/r", 90).expect("degraded metadata snapshot")
+        });
+
+        assert_eq!(
+            rows,
+            vec!["1\tOpen\topen\thttps://github.com/o/r/issues/1".to_owned()]
+        );
+        assert_eq!(server.finish().expect("requests").len(), 2);
+    }
+
+    #[test]
+    fn snapshot_limit_warning_names_the_typed_transport_class() {
+        let failure = SnapshotFailure::Kind(GitHubOperationErrorKind::LimitExceeded);
+        assert!(failure.is_transport_limit());
+        assert_eq!(
+            failure.warning("o/r"),
+            "issue snapshot for repo o/r exceeded a reviewed GitHub transport limit"
         );
     }
 

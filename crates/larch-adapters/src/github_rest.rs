@@ -4,12 +4,12 @@ use crate::github::{
     GitHubCompletionError, OctocrabGitHubService, github_utc_timestamp, octocrab_status,
 };
 use larch_core::{
-    GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue, GitHubIssueCreate,
-    GitHubIssueEdit, GitHubIssueList, GitHubIssueListMode, GitHubIssueListResult,
-    GitHubIssueListTimeoutScope, GitHubIssueScan, GitHubIssueSearch, GitHubIssueState, GitHubLabel,
-    GitHubLabelCreate, GitHubListOutcome, GitHubListStop, GitHubOperationError,
-    GitHubOperationErrorKind, GitHubRepository, GitHubRepositoryRef, GitHubService,
-    GitHubTransportPolicy, ProcessCancellation, resolve_issue_list,
+    GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue, GitHubIssueBodyMode,
+    GitHubIssueCreate, GitHubIssueEdit, GitHubIssueList, GitHubIssueListMode,
+    GitHubIssueListResult, GitHubIssueListTimeoutScope, GitHubIssueScan, GitHubIssueSearch,
+    GitHubIssueState, GitHubLabel, GitHubLabelCreate, GitHubListOutcome, GitHubListStop,
+    GitHubOperationError, GitHubOperationErrorKind, GitHubRepository, GitHubRepositoryRef,
+    GitHubService, GitHubTransportPolicy, ProcessCancellation, resolve_issue_list,
 };
 use octocrab::{Page, models, params};
 use serde::Serialize;
@@ -26,6 +26,14 @@ const READ_ATTEMPTS: usize = 3;
 enum RateBucket {
     Core,
     Search,
+}
+
+/// List behavior the shared page collector applies after the first request.
+#[derive(Clone, Copy)]
+struct IssueListCollectionOptions {
+    limit: usize,
+    mode: GitHubIssueListMode,
+    body_mode: GitHubIssueBodyMode,
 }
 
 #[allow(
@@ -100,8 +108,11 @@ impl GitHubService for OctocrabGitHubService {
                 self.collect_issues(
                     &request.repo,
                     first,
-                    request.limit,
-                    request.mode,
+                    IssueListCollectionOptions {
+                        limit: request.limit,
+                        mode: request.mode,
+                        body_mode: request.body_mode,
+                    },
                     RateBucket::Core,
                     cancellation,
                 )
@@ -140,8 +151,11 @@ impl GitHubService for OctocrabGitHubService {
                 self.collect_issues(
                     &request.repo,
                     first,
-                    request.limit,
-                    GitHubIssueListMode::Exhaustive,
+                    IssueListCollectionOptions {
+                        limit: request.limit,
+                        mode: GitHubIssueListMode::Exhaustive,
+                        body_mode: GitHubIssueBodyMode::Include,
+                    },
                     RateBucket::Search,
                     cancellation,
                 )
@@ -630,13 +644,12 @@ impl OctocrabGitHubService {
         &self,
         repository: &GitHubRepositoryRef,
         mut page: Page<models::issues::Issue>,
-        limit: usize,
-        mode: GitHubIssueListMode,
+        options: IssueListCollectionOptions,
         rate_bucket: RateBucket,
         cancellation: &dyn ProcessCancellation,
     ) -> Result<GitHubIssueListResult, GitHubOperationError> {
         let mut output = Vec::new();
-        let mut scan = GitHubIssueScan::new(limit, self.policy);
+        let mut scan = GitHubIssueScan::new(options.limit, self.policy);
         let expected_repository_url = format!(
             "https://api.github.com/repos/{}/{}",
             repository.owner(),
@@ -653,11 +666,21 @@ impl OctocrabGitHubService {
                 let retain = value.pull_request.is_none()
                     && value.repository_url.as_str() == expected_repository_url;
                 if scan.count_row(retain) {
-                    output.push(issue_from_model(value, self.policy)?);
+                    output.push(issue_from_list_model(
+                        value,
+                        self.policy,
+                        options.body_mode,
+                    )?);
                 }
                 if let Some(stop) = scan.stop() {
                     let continuation = index + 1 < count || page.next.is_some();
-                    return finish_list(output, scan.raw_scanned(), stop, continuation, mode);
+                    return finish_list(
+                        output,
+                        scan.raw_scanned(),
+                        stop,
+                        continuation,
+                        options.mode,
+                    );
                 }
             }
             let Some(next) = page.next.clone() else {
@@ -666,7 +689,7 @@ impl OctocrabGitHubService {
                     scan.raw_scanned(),
                     GitHubListStop::Exhausted,
                     false,
-                    mode,
+                    options.mode,
                 );
             };
             if page_index + 1 == scan.pages_limit() {
@@ -675,7 +698,7 @@ impl OctocrabGitHubService {
                     scan.raw_scanned(),
                     GitHubListStop::PageLimit,
                     true,
-                    mode,
+                    options.mode,
                 );
             }
             validate_next(&next.to_string())?;
@@ -690,7 +713,7 @@ impl OctocrabGitHubService {
             scan.raw_scanned(),
             GitHubListStop::Exhausted,
             false,
-            mode,
+            options.mode,
         )
     }
 
@@ -875,6 +898,23 @@ fn issue_from_model(
     value: models::issues::Issue,
     policy: GitHubTransportPolicy,
 ) -> Result<GitHubIssue, GitHubOperationError> {
+    issue_from_list_model(value, policy, GitHubIssueBodyMode::Include)
+}
+
+/// Convert one REST list row while retaining only the fields its caller needs.
+fn issue_from_list_model(
+    mut value: models::issues::Issue,
+    policy: GitHubTransportPolicy,
+    body_mode: GitHubIssueBodyMode,
+) -> Result<GitHubIssue, GitHubOperationError> {
+    if matches!(body_mode, GitHubIssueBodyMode::Omit) {
+        // REST list responses include all three body representations even for
+        // metadata-only snapshots. They are untrusted and unused on this path,
+        // so discard them before the per-string transport validation below.
+        value.body = None;
+        value.body_text = None;
+        value.body_html = None;
+    }
     validate_json(&value, policy)?;
     let body = value.body.unwrap_or_default();
     let state = match value.state {
@@ -1317,6 +1357,7 @@ mod tests {
             labels: vec![String::from("bug")],
             limit: 1,
             mode: GitHubIssueListMode::Exhaustive,
+            body_mode: GitHubIssueBodyMode::Include,
         };
         let search = GitHubIssueSearch {
             repo: repo.clone(),
@@ -1396,6 +1437,7 @@ mod tests {
                 labels: Vec::new(),
                 limit: 1,
                 mode: GitHubIssueListMode::BoundedPartial,
+                body_mode: GitHubIssueBodyMode::Include,
             };
             succeeds!(service.list_issues(&list, &cancellation));
         }
@@ -1459,6 +1501,7 @@ mod tests {
             labels: Vec::new(),
             limit: 50,
             mode: GitHubIssueListMode::BoundedPartial,
+            body_mode: GitHubIssueBodyMode::Include,
         };
         let result = service
             .list_issues(&request, &cancellation)

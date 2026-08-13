@@ -45,10 +45,11 @@ use larch_adapters::{
     runtime::Cancellation,
 };
 use larch_core::{
-    AssessmentKind, BUG_PREFIX, CompletenessOutcome, GitHubCloseReason, GitHubIssueList,
-    GitHubIssueListMode, GitHubIssueSearch, GitHubIssueState, GitHubOperationErrorKind,
-    GitHubService, Head, ReachabilityContext, RepositoryRead, Revision, RunLogCorpus,
-    bug_title_match, glob_matches, scan_required_files, single_line, validate_ship_outcome_record,
+    AssessmentKind, BUG_PREFIX, CompletenessOutcome, GitHubCloseReason, GitHubIssueBodyMode,
+    GitHubIssueList, GitHubIssueListMode, GitHubIssueSearch, GitHubIssueState,
+    GitHubOperationErrorKind, GitHubService, Head, ReachabilityContext, RepositoryRead, Revision,
+    RunLogCorpus, bug_title_match, glob_matches, scan_required_files, single_line,
+    validate_ship_outcome_record,
 };
 use regex::Regex;
 use serde_json::{Value, json};
@@ -573,6 +574,7 @@ async fn close_priors_remote(
                 // Closing every prior report is fail-closed, so an over-bound
                 // corpus refuses rather than leaving priors open.
                 mode: GitHubIssueListMode::Exhaustive,
+                body_mode: GitHubIssueBodyMode::Include,
             },
             cancellation,
         )
@@ -866,6 +868,7 @@ pub fn preflight(arguments: &[OsString]) -> ExitCode {
                         // The probe degrades to an empty set on failure, so a
                         // bounded partial snapshot is the intended contract.
                         mode: GitHubIssueListMode::BoundedPartial,
+                        body_mode: GitHubIssueBodyMode::Include,
                     },
                     cancellation,
                 )
@@ -1069,6 +1072,7 @@ async fn resolve_prs_remote<S: AuditRunsService + GitHubService + ?Sized>(
                     // Resolving the newest prior report must see every prior, so
                     // an over-bound corpus fails closed rather than mis-ordering.
                     mode: GitHubIssueListMode::Exhaustive,
+                    body_mode: GitHubIssueBodyMode::Include,
                 },
                 cancellation,
             )
