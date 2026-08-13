@@ -102,6 +102,8 @@ grep -Fq 'caller-named source already in the orchestrator context window' "$shar
 grep -Fq '`/implement` binds captured foreground Bash wrapper stdout, not asynchronous notification output.' "$shared_final_summary" || fail 'shared final-summary emit must distinguish implement source from async notifications'
 # shellcheck disable=SC2016
 grep -Fq 'Only when steps 1–2 yield no valid marker body and the caller Read fallback policy is `allowed`, Read/cache the caller-named fallback path when non-empty.' "$shared_final_summary" || fail 'shared final-summary emit must gate Read fallback on absent/invalid markers and caller policy'
+grep -Fq 'Confirm readiness from the same DONE stdout or matching result env: either whole-line `LARCH_FINAL_SUMMARY_BEGIN` and `LARCH_FINAL_SUMMARY_END` markers (marker body expected empty), or `FINAL_SUMMARY_READY=true`' "$shared_final_summary" || fail 'shared final-summary emit must accept marker or FINAL_SUMMARY_READY readiness'
+grep -Fq 'Bgjob merge/result envs surface the KV form because contract-stream marker lines are not merged into DONE stdout.' "$shared_final_summary" || fail 'shared final-summary emit must explain bgjob FINAL_SUMMARY_READY KV form'
 grep -Fq 'Do not extract or emit summary bodies from marker pairs on `/design` paths.' "$shared_final_summary" || fail 'shared final-summary emit must forbid /design marker-body extraction'
 grep -Fq 'When the caller Read fallback policy is `forbidden`, skip Read fallback entirely.' "$shared_final_summary" || fail 'shared final-summary emit must define forbidden Read fallback'
 grep -Fq 'Only when the caller sidecar policy is `allowed`' "$shared_final_summary" || fail 'shared final-summary emit must gate sidecar follow-on on caller policy'

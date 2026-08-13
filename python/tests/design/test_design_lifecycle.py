@@ -4215,7 +4215,9 @@ def test_step_final_summary_success_writes_result_env(tmp_path: Path, monkeypatc
     result_env = tmp_path / ".design-step-final-summary-result.env"
     assert rc == 0
     assert result_env.is_file()
-    assert f"FINAL_SUMMARY_PATH={tmp_path / 'final-summary.md'}" in result_env.read_text(encoding="utf-8")
+    result_text = result_env.read_text(encoding="utf-8")
+    assert f"FINAL_SUMMARY_PATH={tmp_path / 'final-summary.md'}" in result_text
+    assert "FINAL_SUMMARY_READY=true" in result_text
 
 
 def test_step_final_summary_render_exception_skips_result_env_and_marked_emit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4731,6 +4733,11 @@ def test_step5c_core_assembles_publish_argv_and_writes_merge_status(
     status_text = (design / ".design-step5c-status.env").read_text(encoding="utf-8")
     assert "PUBLISH_RC=0" in status_text
     assert "FINAL_SUMMARY_PATH=" in status_text
+    assert "FINAL_SUMMARY_READY=true" in status_text
+    assert f"FINAL_SUMMARY_PATH={design / 'final-summary.md'}" in status_text
+    final_summary_merge = (design / ".design-step-final-summary-result.env").read_text(encoding="utf-8")
+    assert "FINAL_SUMMARY_READY=true" in final_summary_merge
+    assert f"FINAL_SUMMARY_PATH={design / 'final-summary.md'}" in final_summary_merge
     assert True
     assert (design / ".completed" / "step-5c").is_file()
     assert (design / ".design-step5c-status.env").is_file()
@@ -5246,6 +5253,7 @@ def test_step5c_core_publish_tail_abort_stages_renders_and_writes_terminal(
     assert (design / ".design-step5c-status.env").is_file()
     assert f"FINAL_SUMMARY_PATH={design / 'final-summary.md'}" in contract
     assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
+    assert "FINAL_SUMMARY_READY=true" in (design / ".design-step5c-status.env").read_text(encoding="utf-8")
     assert "abort summary" not in contract
     assert "REPORT_GATE_SIDECARS_FILE=" in contract
 
@@ -5506,6 +5514,7 @@ def test_step5c_core_publish_tail_abort_rc5_stages_and_writes_terminal(
     assert (design / ".design-step5c-status.env").is_file()
     assert f"FINAL_SUMMARY_PATH={design / 'final-summary.md'}" in contract
     assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
+    assert "FINAL_SUMMARY_READY=true" in (design / ".design-step5c-status.env").read_text(encoding="utf-8")
     assert "abort summary" not in contract
 
 
@@ -5537,6 +5546,9 @@ def test_step5c_core_success_without_final_summary_skips_markers(
     )
     assert rc == 0
     assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
+    status_text = (design / ".design-step5c-status.env").read_text(encoding="utf-8")
+    assert "FINAL_SUMMARY_READY=" not in status_text
+    assert not (design / ".design-step-final-summary-result.env").exists()
 
 
 def test_step5c_core_success_clears_bound_stale_summary_before_render(
@@ -5570,6 +5582,9 @@ def test_step5c_core_success_clears_bound_stale_summary_before_render(
     assert not summary.exists()
     assert "stale success summary" not in contract
     assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
+    status_text = (design / ".design-step5c-status.env").read_text(encoding="utf-8")
+    assert "FINAL_SUMMARY_READY=" not in status_text
+    assert not (design / ".design-step-final-summary-result.env").exists()
 
 
 def test_step5c_core_render_failure_skips_stale_summary_markers(
@@ -5598,6 +5613,9 @@ def test_step5c_core_render_failure_skips_stale_summary_markers(
     )
     assert rc == 0
     assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
+    status_text = (design / ".design-step5c-status.env").read_text(encoding="utf-8")
+    assert "FINAL_SUMMARY_READY=" not in status_text
+    assert not (design / ".design-step-final-summary-result.env").exists()
 
 
 def test_step5c_core_captures_subprocess_stdout_from_publish_tail(
