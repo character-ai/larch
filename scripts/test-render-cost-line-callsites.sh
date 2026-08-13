@@ -123,10 +123,8 @@ grep -Fq 'Skip marker extraction entirely; do not scan prior tool output for mar
 # shellcheck disable=SC2016
 grep -Fq 'The `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` reads/caches' "$design_skill" || fail 'design SKILL anti-halt must point to shared Read-always readiness profile'
 grep -Fq 'when `_publish_rc` is 0, 1, or 3, including `_publish_rc`=1 after plan-block-write failure' "$design_skill" || fail 'design SKILL must pin post-driver full-body cache gate with rc 4 carve-out'
-# shellcheck disable=SC2016
-grep -Fq 'follow the file-only profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`' "$design_skill" || fail 'design SKILL must pin Step 0b file-only profile'
-# shellcheck disable=SC2016
-grep -Fq 'when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`' "$design_skill" || fail 'design SKILL must pin non-empty FINAL_SUMMARY_PATH emit gate'
+grep -Fq 'For `cancel-title-filter` / `cancel-reentry-guard`, set `SUMMARY_OUTCOME=cancelled-title-filter` / `cancelled-reentry-guard`, run the **Final summary block** through its Read/cache path' "$design_skill" || fail 'design SKILL must pin Step 0b cancellation terminalization'
+grep -Fq 'These routes must reach the shared cancellation terminalizer before they exit.' "$design_skill" || fail 'design SKILL must forbid title cancellation lifecycle bypass'
 # shellcheck disable=SC2016
 grep -Fq 'Regardless of `PLAN_WRITE_OK`' "$design_skill" || fail 'design SKILL must pin full-body Read/cache regardless of PLAN_WRITE_OK'
 grep -Fq 'MANDATORY: emit from byte 1 of the cached file. When it begins with `## Review Phase Detail`, include that section and its Gantt charts; do not start at the later `## /design run ...` heading.' "$design_skill" || fail 'design Final summary block must require Review Phase Detail terminal output'

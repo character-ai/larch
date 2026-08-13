@@ -438,7 +438,10 @@ def _read_result_pairs(*, primary: Path, fallback: Path | None, allow: Iterable[
     return dict(pairs)
 
 
-def _recover_resume_route_state_values(env: Mapping[str, str], design_tmpdir: Path) -> dict[str, str]:
+_TERMINAL_CANCEL_ROUTES = frozenset({"cancel-title-filter", "cancel-reentry-guard"})
+
+
+def _recover_route_state_values(env: Mapping[str, str], design_tmpdir: Path) -> dict[str, str]:
     merged: dict[str, str] = {key: value for key in ROUTE_STATE_KEYS if (value := env.get(key, ""))}
     try:
         route_state = dict(phase_driver_read_result_env(path=design_tmpdir / ".design-step0-route-state.env", allow_keys=ROUTE_STATE_KEYS))
@@ -450,8 +453,8 @@ def _recover_resume_route_state_values(env: Mapping[str, str], design_tmpdir: Pa
     return merged
 
 
-def _gap_fill_resume_route_state_values(env: dict[str, str], design_tmpdir: Path) -> None:
-    recovered = _recover_resume_route_state_values(env, design_tmpdir)
+def _gap_fill_route_state_values(env: dict[str, str], design_tmpdir: Path) -> None:
+    recovered = _recover_route_state_values(env, design_tmpdir)
     for key, value in recovered.items():
         if value and not env.get(key):
             env[key] = value
@@ -475,7 +478,7 @@ def _bind_step0_route_issue_env(*, env: dict[str, str], design_tmpdir: Path, iss
         print("**⚠ Step 0b: POSITIONAL_KIND=verbal requires ISSUE_NUMBER from /larch:issue before routing; aborting /design**", file=sys.stderr)
         return 1
     if not env.get("ISSUE_NUMBER"):
-        _gap_fill_resume_route_state_values(env, design_tmpdir)
+        _gap_fill_route_state_values(env, design_tmpdir)
     if kind not in {"issue", "none", "verbal"}:
         print(f"**⚠ Step 0b: invalid POSITIONAL_KIND={kind or '<empty>'}; aborting /design**", file=sys.stderr)
         return 1
@@ -591,15 +594,15 @@ class Step0RouteFinishContext:
     claude_pid: str
 
 
-def _refresh_resume_source_env(ctx: Step0RouteFinishContext) -> int:
-    recovered = _recover_resume_route_state_values(ctx.env, ctx.design_tmpdir)
+def _refresh_route_source_env(ctx: Step0RouteFinishContext) -> int:
+    recovered = _recover_route_state_values(ctx.env, ctx.design_tmpdir)
     session_id = ctx.env.get("SESSION_ID", "")
     issue_number = recovered.get("ISSUE_NUMBER", "")
     if not session_id:
-        print("**⚠ Step 0b: resume route missing SESSION_ID; aborting /design**", file=sys.stderr)
+        print("**⚠ Step 0b: route missing SESSION_ID; aborting /design**", file=sys.stderr)
         return 1
     if not issue_number or not issue_number.isdigit():
-        print("**⚠ Step 0b: resume route could not recover numeric ISSUE_NUMBER; aborting /design**", file=sys.stderr)
+        print("**⚠ Step 0b: route could not recover numeric ISSUE_NUMBER; aborting /design**", file=sys.stderr)
         return 1
     command = [
         str(repo_roots.larch_entrypoint(ctx.plugin_root)),
@@ -626,7 +629,7 @@ def _refresh_resume_source_env(ctx: Step0RouteFinishContext) -> int:
         return 0
     if result.stderr:
         print(result.stderr, end="" if result.stderr.endswith("\n") else "\n", file=sys.stderr)
-    print(f"**⚠ Step 0b: session write-design-env failed during resume refresh (exit {result.returncode}); aborting /design**", file=sys.stderr)
+    print(f"**⚠ Step 0b: session write-design-env failed during route refresh (exit {result.returncode}); aborting /design**", file=sys.stderr)
     return 1
 
 
@@ -658,8 +661,8 @@ def _finish_step0_route(ctx: Step0RouteFinishContext) -> int:
         _emit_step0_route_rows(route=ctx.route, resume_step=ctx.resume_step, route_env=ctx.route_env, env=ctx.env)
         _emit_step0_init_rows(init_result)
         return 0
-    if ctx.route.startswith("resume@"):
-        refresh_rc = _refresh_resume_source_env(ctx)
+    if ctx.route.startswith("resume@") or ctx.route in _TERMINAL_CANCEL_ROUTES:
+        refresh_rc = _refresh_route_source_env(ctx)
         if refresh_rc != 0:
             return refresh_rc
     _emit_step0_route_rows(route=ctx.route, resume_step=ctx.resume_step, route_env=ctx.route_env, env=ctx.env)

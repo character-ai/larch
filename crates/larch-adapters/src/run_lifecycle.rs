@@ -708,6 +708,13 @@ pub async fn finish(
         ));
     }
     let finished_at = write_terminal_artifacts(&started.context, request.outcome, &manifest)?;
+    if started.resolution.mode() == RunLogStorageMode::Enabled {
+        verify_run_completeness(
+            &started.context.run_dir,
+            &started.context.skill,
+            request.repo_root,
+        )?;
+    }
     update_manifest(
         &started.context,
         &[
@@ -737,11 +744,6 @@ pub async fn finish(
             breadcrumb_warning: None,
         });
     }
-    verify_run_completeness(
-        &started.context.run_dir,
-        &started.context.skill,
-        request.repo_root,
-    )?;
     let storage = started
         .resolution
         .storage()
@@ -1200,17 +1202,30 @@ fn write_terminal_artifacts(
             outcome.as_str()
         )));
     }
-    let report = format!(
-        "# Skill run final report\n\n- Skill: `{}`\n- Run ID: `{}`\n- Outcome: `{}`\n",
-        context.skill,
-        context.run_id,
-        outcome.as_str(),
-    );
+    let report = terminal_report(context, outcome);
+    let terminal_outcome_committed = manifest
+        .get("terminal_outcome")
+        .is_some_and(|value| !value.is_null());
     let report_path = context.run_dir.join(UNIVERSAL_FINAL_REPORT);
-    if report_path.is_file() && fs::read_to_string(&report_path).unwrap_or_default() != report {
-        return Err(LifecycleError::new(
-            "existing universal final report does not match terminal outcome",
-        ));
+    if report_path.is_file() {
+        let existing_report = fs::read_to_string(&report_path).unwrap_or_default();
+        let is_provisional_terminal_report = [
+            LifecycleOutcome::Success,
+            LifecycleOutcome::Failure,
+            LifecycleOutcome::Cancelled,
+            LifecycleOutcome::EarlyReturn,
+        ]
+        .iter()
+        .any(|candidate| existing_report == terminal_report(context, *candidate));
+        // Completeness can fail after this owner writes a report but before the
+        // manifest transition. Only that exact provisional report is retryable.
+        if existing_report != report
+            && (terminal_outcome_committed || !is_provisional_terminal_report)
+        {
+            return Err(LifecycleError::new(
+                "existing universal final report does not match terminal outcome",
+            ));
+        }
     }
     atomic_write(&report_path, report.as_bytes(), 0o600)?;
     if !context.run_dir.join(UNIVERSAL_SESSION_TRANSCRIPT).is_file() {
@@ -1239,6 +1254,15 @@ fn write_terminal_artifacts(
             "lifecycle manifest finished_at is invalid",
         )),
     }
+}
+
+fn terminal_report(context: &LifecycleContext, outcome: LifecycleOutcome) -> String {
+    format!(
+        "# Skill run final report\n\n- Skill: `{}`\n- Run ID: `{}`\n- Outcome: `{}`\n",
+        context.skill,
+        context.run_id,
+        outcome.as_str(),
+    )
 }
 
 struct RequiredArtifact {

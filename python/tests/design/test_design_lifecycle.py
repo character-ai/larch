@@ -2278,6 +2278,63 @@ def test_step0_route_resume_rehydrates_source_env_from_ctx_env(tmp_path: Path, m
     assert "REPO=owner/repo" in captured.out
 
 
+@pytest.mark.parametrize("route", ["cancel-title-filter", "cancel-reentry-guard"])
+def test_step0_route_cancel_rehydrates_source_env_for_terminal_summary(
+    route: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text(
+        "POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=42\n", encoding="utf-8"
+    )
+    env_path = _write_session_env(design, design, monkeypatch)
+    refresh_commands: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd[2:4] == ["design", "route"]:
+            (design / ".design-route-result.env").write_text(
+                f"ROUTE={route}\n", encoding="utf-8"
+            )
+            return subprocess.CompletedProcess(cmd, 0, f"ROUTE={route}\n", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> proc_module.CommandResult:
+        args = list(cmd)
+        refresh_commands.append(args)
+        env_value = kwargs.get("env")
+        with monkeypatch.context() as patch:
+            if isinstance(env_value, Mapping):
+                env_mapping = cast("Mapping[object, object]", env_value)
+                for key, value in env_mapping.items():
+                    patch.setenv(str(key), str(value))
+            rc = _write_design_env_stand_in(
+                args[args.index("write-design-env") + 1 :]
+            )
+        return proc_module.CommandResult(tuple(args), rc, "", "", 0.0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_step0.proc, "run", fake_proc_run)
+    monkeypatch.setattr(design_step0, "_read_json_issue", _fake_read_json_issue_title)
+    monkeypatch.setattr(design_step0, "resolve_repo", lambda: "owner/repo")
+
+    assert design_step0.step0_route_main(_step0_wrapper_args(env_path)) == 0
+    refreshed = env_path.read_text(encoding="utf-8")
+    assert "export ISSUE_NUMBER=42" in refreshed
+    assert "export REPO=owner/repo" in refreshed
+    assert len(refresh_commands) == 1
+    refresh = refresh_commands[0]
+    assert _cmd_arg(refresh, "--run-id") == "run-1"
+    assert _cmd_arg(refresh, "--issue-number") == "42"
+    assert _cmd_arg(refresh, "--repo") == "owner/repo"
+    assert f"ROUTE={route}" in capsys.readouterr().out
+
+
 def test_step0_route_explicit_issue_ignores_stale_route_state_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path / "design"
     design.mkdir()
@@ -4390,6 +4447,58 @@ def test_step_final_summary_central_publish_failures_skip_completion(
     assert rc == 1
     assert not (tmp_path / ".design-step-final-summary-result.env").exists()
     assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
+
+
+def test_step_final_summary_central_publish_failure_emits_redacted_contract_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env_path = _write_session_env(
+        tmp_path,
+        tmp_path,
+        monkeypatch,
+        ISSUE_NUMBER="42",
+        SESSION_ID="run-1",
+        SUMMARY_OUTCOME="cancelled-outline",
+    )
+    secret = "ghp_" + "a" * 20
+
+    def fake_publish(**_kwargs: str) -> tuple[int, bool]:
+        (tmp_path / "design-log-publish.terminal.stderr.log").write_text(
+            f"archive publication failed: {secret}\n", encoding="utf-8"
+        )
+        return 1, False
+
+    monkeypatch.setattr(design_terminal, "_publish_terminal_final_summary", fake_publish)
+    rc, contract, _ = _capture_core_contract(
+        design_terminal.step_final_summary_core,
+        [
+            "--session-env-path",
+            str(env_path),
+            "--claude-pid",
+            "123",
+            "--outcome",
+            "cancelled-outline",
+        ],
+        tmp_path,
+        monkeypatch,
+    )
+
+    assert rc == 1
+    assert "ERROR=design log publish failed for terminal summary (exit 1)" in contract
+    assert secret not in contract
+    assert config.REDACTED_TOKEN in contract
+
+
+def test_terminal_publish_error_detail_fails_closed_for_oversized_stderr(tmp_path: Path) -> None:
+    secret = "ghp_" + "a" * 20
+    (tmp_path / "design-log-publish.terminal.stderr.log").write_text(
+        "x" * 4096 + secret, encoding="utf-8"
+    )
+
+    detail = design_terminal._terminal_publish_error_detail(tmp_path)  # pyright: ignore[reportPrivateUsage]  # bounded redaction is the regression boundary.
+
+    assert detail == "terminal publish diagnostic unavailable because stderr exceeds the bounded scan"
+    assert secret not in detail
 
 
 def test_step_final_summary_cli_subprocess_emits_markers_on_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
