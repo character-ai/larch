@@ -190,7 +190,7 @@ impl ProductionReleaseServices {
 
 impl PostMergeReleaseServices for ProductionReleaseServices {
     fn origin_repo(&self) -> Result<String, String> {
-        ProductionReleaseServices::origin_repo(self)
+        Self::origin_repo(self)
     }
 
     fn fetch_main(&self) -> Result<(), String> {
@@ -202,7 +202,7 @@ impl PostMergeReleaseServices for ProductionReleaseServices {
         repo: &RepoSlug,
         number: u64,
     ) -> Result<ReleaseCandidatePullRequest, String> {
-        ProductionReleaseServices::pull_request(self, repo, number)
+        Self::pull_request(self, repo, number)
     }
 
     fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, String> {
