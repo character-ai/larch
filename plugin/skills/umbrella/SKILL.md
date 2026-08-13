@@ -41,6 +41,22 @@ Create one flat `[UMBRELLA]` issue from one open issue number or a verbal task. 
 
 Create `$UMBRELLA_TMPDIR` with `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session setup --prefix claude-umbrella --skip-preflight --skip-branch-check --skip-repo-check`, then activate a fresh `umbrella-$PPID` sentinel under the deny-edit-write activation directory. Write all artifacts only below `$UMBRELLA_TMPDIR`.
 
+```bash
+if [[ -z "${XDG_CACHE_HOME:-}" && -z "${HOME:-}" ]]; then
+  printf '%s\n' "**⚠ /umbrella: failed to activate the scratch-only Write hook. Aborting.**"
+  exit 1
+fi
+UMBRELLA_DENY_ACTIVE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/larch/deny-edit-write-active"
+UMBRELLA_DENY_ACTIVE_SENTINEL="$UMBRELLA_DENY_ACTIVE_DIR/umbrella-$PPID"
+if ! mkdir -p "$UMBRELLA_DENY_ACTIVE_DIR" || ! : > "$UMBRELLA_DENY_ACTIVE_SENTINEL"; then
+  printf '%s\n' "**⚠ /umbrella: failed to activate the scratch-only Write hook. Aborting.**"
+  exit 1
+fi
+printf 'UMBRELLA_DENY_ACTIVE_SENTINEL=%s\n' "$UMBRELLA_DENY_ACTIVE_SENTINEL"
+```
+
+Retain the printed sentinel path for terminal cleanup.
+
 For an issue number, use `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella prepare --repo "$REPO" --issue "$N" --output "$UMBRELLA_TMPDIR/snapshot.json"`. In prepared-partition mode, add `--managed-partition true`; this is the narrow helper-side carve-out for an exact `[DESIGNING]` or `[IMPLEMENTING]` source and an existing plan block. A snapshot with `"source": "adopted-umbrella"` starts a fresh proposal from the snapshot body and retains the exact existing `[UMBRELLA]` title. Treat a compatible record-bearing `[UMBRELLA]` snapshot as a committed managed conversion: resume exclusively from its protected proposal record, require every recorded leaf to be resolved, use that record as the proposal source, and skip the managed mutation. A pending or in-flight leaf after managed conversion is inconsistent and fails closed. For verbal input, invoke `/issue` via the Skill tool normally unless `--no-dedup` was explicit, then validate the returned target with the same preparation command before conversion.
 
 For a still-managed source in prepared-partition mode, validate that the three input paths and the completion-sentinel parent are contained by `PREPARED_ROOT`, then persist the exact parent-approved batch and edge set through the canonical umbrella proposal owner:
@@ -67,6 +83,8 @@ Outside prepared-partition mode, draft a bounded `proposal.json`: common context
   --proposal "$UMBRELLA_TMPDIR/proposal.json" --output "$UMBRELLA_TMPDIR/proposal.json"
 ```
 
+After persistence, serialize the record's dependency_edges field to `$UMBRELLA_TMPDIR/drafted-deps.tsv`. Map each edge identity to its 1-based position in the exact leaf order used by the `/issue --input-file` batch, then write one `<blocker-index>\t<blocked-index>` row per edge. Use an empty file for no edges; do not invent, omit, or re-order edges outside the persisted record.
+
 ## Step 2 — Approval
 
 Show one `AskUserQuestion` containing the proposed umbrella and leaf titles. On rejection, clean scratch state and stop before GitHub mutation. With `--skip-approve` / `-s`, record approval and proceed directly to Step 3 through the identical path. In prepared-partition mode, the parent already approved the exact persisted proposal, so proceed without another question.
@@ -80,7 +98,7 @@ For each missing identity, persist `in-flight` before calling `/issue`:
   --proposal "$UMBRELLA_TMPDIR/proposal.json" --identity "$IDENTITY"
 ```
 
-Invoke `/issue` via the Skill tool once for all missing leaves, with `--input-file`, `--title-prefix "[LEAF OF $UMBRELLA]"`, `--sentinel-file "$UMBRELLA_TMPDIR/issue.sentinel"`, and an umbrella exclusion. For a still-managed prepared-partition source, use `$UMBRELLA_TMPDIR/issue-input.txt`, pass `--intra-batch-deps-file "$UMBRELLA_TMPDIR/prepared-deps.tsv"` when the copied file is non-empty, and pass `--no-dep-llm`; the exact persisted parent-approved edges are authoritative while normal duplicate detection remains enabled. Use the copied TSV as the only filing-time edge source. A compatible managed resume has no missing leaves and skips this child call. In dependency-only mode pass the internal dependency-only flag and require a complete validated analysis result before creation or sentinel completion.
+Invoke `/issue` via the Skill tool once for all missing leaves, with `--input-file`, `--title-prefix "[LEAF OF $UMBRELLA]"`, `--sentinel-file "$UMBRELLA_TMPDIR/issue.sentinel"`, and an umbrella exclusion. For a standard or adopted source, pass `--intra-batch-deps-file "$UMBRELLA_TMPDIR/drafted-deps.tsv"` when that file is non-empty, and pass `--no-dep-llm`; the persisted edges are authoritative while normal duplicate detection remains enabled. For a still-managed prepared-partition source, use `$UMBRELLA_TMPDIR/issue-input.txt`, pass `--intra-batch-deps-file "$UMBRELLA_TMPDIR/prepared-deps.tsv"` when the copied file is non-empty, and pass `--no-dep-llm`; the exact persisted parent-approved edges are authoritative while normal duplicate detection remains enabled. Use the copied or drafted TSV as the only filing-time edge source. A compatible managed resume has no missing leaves and skips this child call. In dependency-only mode pass the internal dependency-only flag and require a complete validated analysis result before creation or sentinel completion.
 
 > **Continue after child returns.** Parse the child machine output and execute this skill's next step; do not stop on the child summary. → shared/subskill-invocation.md#anti-halt
 
@@ -92,8 +110,32 @@ Mechanically require `ISSUES_FAILED=0`, all expected per-item records, and `VERI
 
 Persist every successful leaf URL with `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella record-resolved` before native graph mutation. Keep each leaf bound to its exact `/issue` per-item result. A deduplicated result is reusable only when final title/body verification matches the recorded leaf; never substitute an unrelated duplicate.
 
+If `/issue` reports a dependency-analysis degradation, including `LIST_STATUS=failed`, but creates the resolved leaves, do not treat the persisted edges as applied. Before Step 4 verification, map every dependency_edges identity to its resolved issue number and apply every recorded edge directly with `issue add-blocked-by`: the `blocked` leaf is `--client-issue` and the `blocker` leaf is `--blocker-issue`. Use the same authorized graph-mutation route and require each read-back; if any edge cannot be proven, preserve the record and stop.
+
 ## Step 4 — Wire and finalize
 
-For every resolved leaf, call `issue add-sub-issue` and reuse `issue add-blocked-by` to make the umbrella blocked by the leaf. Both operations must be authorization-checked, idempotent, and verified by read-back. Finalize the umbrella title/body through `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella mutate`, retaining the protected proposal record, then require `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella verify` to prove leaf title/body contracts and the complete flat graph. For a snapshot whose `"source"` is `"adopted-umbrella"`, retain the original body byte-for-byte inside the final common-context section, keep the exact existing `[UMBRELLA]` title, and pass `--adopted-umbrella true`. These mutually exclusive modes invoke the canonical issue-mutation owner's atomic, shape-restricted conversion or adoption transition. A compatible resumed `[UMBRELLA]` skips that already-committed mutation. Also pass `--sentinel-file "$COMPLETION_SENTINEL" --sentinel-root "$PREPARED_ROOT" --prepared-input "$PREPARED_INPUT_FILE" --prepared-deps "$PREPARED_DEPS_FILE"` to the final verify call. The helper compares the live prepared-artifact hashes and deterministic leaf/edge shape to the persisted proposal, then writes the repository-, issue-, artifact-, and graph-bound parent completion sentinel atomically only after verification succeeds.
+For every resolved leaf, call `issue add-sub-issue` and reuse `issue add-blocked-by` to make the umbrella blocked by the leaf. Both operations must be authorization-checked, idempotent, and verified by read-back. Finalize the umbrella title/body through `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella mutate`, retaining the protected proposal record, then require `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella verify` to prove leaf title/body contracts and the complete flat graph. Build `$UMBRELLA_TMPDIR/leaves.json` from a fresh read-back of the resolved leaves as a JSON array of `number`, `title`, and `body` rows. For a snapshot whose `"source"` is `"adopted-umbrella"`, retain the original body byte-for-byte inside the final common-context section, keep the exact existing `[UMBRELLA]` title, and pass `--adopted-umbrella true`. These mutually exclusive modes invoke the canonical issue-mutation owner's atomic, shape-restricted conversion or adoption transition. A compatible resumed `[UMBRELLA]` skips that already-committed mutation.
 
-On a partial filing, relation failure, stale state, missing `/issue` verification, incomplete dependency analysis, or graph failure, leave the recorded state intact, report the exact surviving URLs, and stop without claiming success. Clean `$UMBRELLA_TMPDIR` only after a verified terminal outcome.
+For standard and adopted sources, invoke final verification only with the persisted proposal and fresh leaves:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella verify \
+  --proposal "$UMBRELLA_TMPDIR/proposal.json" \
+  --leaves "$UMBRELLA_TMPDIR/leaves.json"
+```
+
+Only for a still-managed prepared-partition source, pass the complete completion-sentinel group to that same final verify call:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella verify \
+  --proposal "$UMBRELLA_TMPDIR/proposal.json" \
+  --leaves "$UMBRELLA_TMPDIR/leaves.json" \
+  --sentinel-file "$COMPLETION_SENTINEL" \
+  --sentinel-root "$PREPARED_ROOT" \
+  --prepared-input "$PREPARED_INPUT_FILE" \
+  --prepared-deps "$PREPARED_DEPS_FILE"
+```
+
+The prepared-partition helper compares the live prepared-artifact hashes and deterministic leaf/edge shape to the persisted proposal, then writes the repository-, issue-, artifact-, and graph-bound parent completion sentinel atomically only after verification succeeds.
+
+On every terminal path, remove `$UMBRELLA_DENY_ACTIVE_SENTINEL` after the last required scratch write; a missing sentinel is already cleaned. On a partial filing, relation failure, stale state, missing `/issue` verification, incomplete dependency analysis, or graph failure, leave the recorded state intact, report the exact surviving URLs, and stop without claiming success. Clean `$UMBRELLA_TMPDIR` only after a verified terminal outcome.
