@@ -21,7 +21,7 @@ inputs:
   coverage-target-cache-schema:
     description: Schema version for production coverage dependency caches.
     required: false
-    default: v1
+    default: v2
   coverage-target-key-prefix:
     description: Prefix for the requested coverage dependency cache space.
     required: false
@@ -151,7 +151,7 @@ runs:
         {
           printf 'agent-lint=agent-lint-bin-%s-%s\n' "$RUNNER_OS" "$AGENT_LINT_VERSION"
           printf 'agnix=agnix-bin-%s-%s\n' "$RUNNER_OS" "$AGNIX_VERSION"
-          printf 'cargo-inputs=cargo-inputs-v1-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$CARGO_INPUTS_HASH"
+          printf 'cargo-inputs=cargo-inputs-v2-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$CARGO_INPUTS_HASH"
           printf 'cargo-llvm-cov=cargo-llvm-cov-bin-v1-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${{ inputs.cargo-llvm-cov-version }}"
           printf 'cargo-nextest=cargo-nextest-bin-v1-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "${{ inputs.cargo-nextest-version }}"
           printf 'coverage-target=%s-%s-%s-%s-%s-%s-opt%s-test-debug%s-incremental%s-features%s-linker%s-%s\n' \
@@ -176,7 +176,7 @@ runs:
           printf 'pip-test-harnesses=pip-test-harnesses-v1-%s-%s-py311-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$PIP_TEST_HARNESSES_HASH"
           printf 'pre-commit=pre-commit-%s\n' "$PRE_COMMIT_HASH"
           printf 'python-version=3.11\n'
-          printf 'rust-lint-deps=rust-lint-deps-v1-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$CARGO_INPUTS_HASH"
+          printf 'rust-lint-deps=rust-lint-deps-v2-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$CARGO_INPUTS_HASH"
           printf 'rust-policy=trusted-main-rust-policy-v1-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$RUST_POLICY_HASH"
           printf 'site-python-test=%s-%s-pip-site-py311-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$PIP_PYTHON_TEST_HASH"
           printf 'site-test-harnesses=ubuntu-24.04-pip-site-py311-%s\n' "$PIP_TEST_HARNESSES_HASH"

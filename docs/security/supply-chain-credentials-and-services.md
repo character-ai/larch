@@ -77,8 +77,13 @@ that run. Before a candidate reaches an Actions cache, the publisher checks its
 schema, cache class, canonical key, and key-input digest (the SHA-256 of that
 full canonical key), source SHA, producer job, merge-queue ref, artifact name
 and deterministic payload digest, declared tool versions, maximum byte bound,
-manifest member paths, regular-file shape, checksums, and mode metadata;
-symlinks and unexpected tree entries fail closed.
+manifest member paths, regular-file shape, checksums, modes, and bounded
+nanosecond modification times. The versioned manifest binds each timestamp into
+the payload digest. Promotion restores modes and exact modification times
+through pinned regular-file descriptors, then verifies both values. Symlinks,
+unsafe timestamps, and unexpected tree entries fail closed. Cargo inputs, Rust
+lint dependencies, and coverage dependencies use freshness-versioned cache keys
+so a cache created before timestamp restoration cannot satisfy an exact hit.
 Candidate artifact uploads explicitly retain hidden files: the manifest binds
 every regular payload member, including dot-prefixed Cargo cache entries, so a
 transport that silently omits one cannot publish a partial cache payload.

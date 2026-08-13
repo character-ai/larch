@@ -4045,7 +4045,13 @@ def test_main_cache_inventory_and_publication_contract() -> None:
     assert "candidate producer ref is not a merge-queue ref" in candidate_helper
     assert "candidate payload members do not match its manifest" in candidate_helper
     assert "candidate tool versions do not match the publisher contract" in candidate_helper
+    assert "_SCHEMA_VERSION: Final = 2" in candidate_helper
+    assert '"mtime_ns": member.mtime_ns' in candidate_helper
+    assert "os.utime(" in candidate_helper
     assert "_reject_tree_symlinks" in candidate_helper
+    assert "default: v2" in key_action
+    assert "cargo-inputs=cargo-inputs-v2-" in key_action
+    assert "rust-lint-deps=rust-lint-deps-v2-" in key_action
     assert (
         '--tool-version "cargo-nextest=cargo-nextest ${CARGO_NEXTEST_VERSION}"'
         in coverage_action
@@ -4355,12 +4361,13 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
         if "run: |" in coverage_step:
             assert "github.event_name == 'push'" not in coverage_step
     for coverage_job in (rust_full_job, rust_coverage_benchmark):
-        assert 'COVERAGE_TARGET_CACHE_SCHEMA: "v1"' in coverage_job
+        assert 'COVERAGE_TARGET_CACHE_SCHEMA: "v2"' in coverage_job
         assert 'COVERAGE_TARGET_CACHE_KEY_PREFIX: "coverage-target-deps"' in coverage_job
         assert 'COVERAGE_TARGET_CACHE_PUBLICATION: "main-cache-candidate"' in coverage_job
         assert 'RUST_COVERAGE_TARGET_TRIPLE: "x86_64-unknown-linux-gnu"' in coverage_job
         assert 'RUST_COVERAGE_FEATURE_MODE: "all-features"' in coverage_job
         assert 'RUST_COVERAGE_LINKER: "runner-default"' in coverage_job
+    assert 'COVERAGE_TARGET_CACHE_SCHEMA: "v1"' not in workflow
     assert 'COVERAGE_TARGET_CACHE_MAX_BYTES: "1400000000"' in rust_full_job
     assert 'COVERAGE_TARGET_CACHE_ENABLED: "false"' in rust_coverage_benchmark
     assert 'COVERAGE_TARGET_CACHE_MAX_BYTES: "0"' in rust_coverage_benchmark

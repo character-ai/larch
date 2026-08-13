@@ -463,9 +463,12 @@ For an expensive Rust cache miss, the publisher treats a merge-group artifact
 as untrusted input. It requires exactly one successful `CI` merge-group run for
 the final `main` SHA and successful named producer jobs, then verifies the
 candidate manifest, source SHA, canonical key and key-input digest, byte bound,
-regular-file tree, checksums, modes, artifact identity, and declared tool
-versions before saving. Cargo cache payload names may include ordinary package
-build metadata and generated punctuation, but every member must still be below
+regular-file tree, checksums, modes, bounded nanosecond modification times,
+artifact identity, and declared tool versions before saving. It restores and
+verifies member modes and modification times through pinned regular-file
+descriptors before the payload reaches an Actions cache. Cargo cache payload
+names may include ordinary package build metadata and generated punctuation,
+but every member must still be below
 the payload root with nonempty components that are neither `.` nor `..`, and
 must exclude path separators, control characters, and portable
 Windows-reserved filename characters. Symlinks, stale source identity,
