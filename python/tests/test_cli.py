@@ -56,6 +56,16 @@ def test_dispatch_ship_pr_calls_ship_main() -> None:
     assert rc == 0
 
 
+def test_dispatch_plan_receipt_refresh_calls_governance_owner() -> None:
+    mock_main = MagicMock(return_value=0)
+    module = MagicMock(plan_receipt_refresh_main=mock_main)
+    with patch.dict("sys.modules", {"larch.issue.migration_governance": module}):
+        rc = cli.main(["plan-receipt", "refresh", "--issue", "7"])
+    mock_main.assert_called_once_with(["--issue", "7"])
+    assert rc == 0
+    assert ("plan-receipt", "refresh") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+
+
 def test_dispatch_ship_pre_driver_calls_implement_dispatch() -> None:
     mock_main = MagicMock(return_value=0)
     with patch.dict("sys.modules", {"larch.implement.implement_dispatch": MagicMock(ship_pre_driver_main=mock_main)}):

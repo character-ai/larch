@@ -611,6 +611,13 @@ def test_diff_and_rebase_helpers() -> None:
                 "",
                 0.01,
             ),
+            ("git", "diff", "--no-ext-diff", "--name-status", "base", "HEAD", "--", "README.md"): CommandResult(
+                ("git", "diff", "--no-ext-diff", "--name-status", "base", "HEAD", "--", "README.md"),
+                0,
+                "M\tREADME.md\n",
+                "",
+                0.01,
+            ),
             ("git", "rebase", "--onto", "HEAD~2", "HEAD~1"): CommandResult(
                 ("git", "rebase", "--onto", "HEAD~2", "HEAD~1"), 0, "", "", 0.01
             ),
@@ -626,6 +633,14 @@ def test_diff_and_rebase_helpers() -> None:
         find_renames=True,
     )
     assert "SKILL.md" in status.stdout
+    safe_status = git.diff_name_status(
+        runner,
+        "base",
+        "HEAD",
+        paths=("README.md",),
+        no_ext_diff=True,
+    )
+    assert safe_status.stdout == "M\tREADME.md\n"
     assert git.rebase_onto(runner, "HEAD~2", "HEAD~1").returncode == 0
 
 

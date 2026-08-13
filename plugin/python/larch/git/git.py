@@ -587,9 +587,12 @@ def diff_name_status(
     *,
     paths: Sequence[str] = (),
     find_renames: bool = False,
+    no_ext_diff: bool = False,
     cwd: str | None = None,
 ) -> CommandResult:
     argv = ["git", "diff"]
+    if no_ext_diff:
+        argv.append("--no-ext-diff")
     if find_renames:
         argv.append("-M")
     argv.extend(["--name-status", base, head, "--", *paths])

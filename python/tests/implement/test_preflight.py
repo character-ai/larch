@@ -132,9 +132,83 @@ def test_migration_governance_status_uses_base_target(
         forked_target=forked_target,
     )
 
-    assert status is None
+    assert status == preflight._GovernancePreflightStatus()  # pyright: ignore[reportPrivateUsage]
     assert resolved_refs == [expected_ref]
     assert evaluated_heads == ["b" * 40]
+
+
+def test_migration_governance_scope_drift_warns_and_continues(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def report_only_scope(
+        *_args: Any, **_kwargs: Any
+    ) -> migration_governance.GovernanceGateVerdict:
+        return migration_governance.GovernanceGateVerdict(
+            parity=migration_governance.ParityVerdict(reasons=()),
+            freshness=migration_governance.FreshnessVerdict(
+                reasons=(migration_governance.REASON_STALE_PLAN_BASE_SCOPE,)
+            ),
+        )
+
+    monkeypatch.setattr(
+        migration_governance, "evaluate_governance_gate", report_only_scope
+    )
+    receipt = migration_governance.PlanReceipt(
+        plan_sha256="a" * 64,
+        base_sha="a" * 40,
+        blockers_sha256="b" * 64,
+        owners_sha256="c" * 64,
+    )
+    status = preflight._migration_governance_status(
+        issue="3",
+        repo="o/r",
+        issue_body=migration_governance.upsert_receipt(
+            body=issue_wire.compose_named_block(marker="plan", inner="Plan\n"),
+            receipt=receipt,
+        ),
+        repo_root=tmp_path,
+        forked_target=False,
+    )
+    assert status == preflight._GovernancePreflightStatus(  # pyright: ignore[reportPrivateUsage]
+        scope_revalidation=True,
+        previous_base_sha="a" * 40,
+        target_base_sha="a" * 40,
+    )
+    assert "stale-plan-base-scope" in capsys.readouterr().out
+
+
+def test_migration_governance_stale_plan_body_explains_design_remediation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def stale_plan(
+        *_args: Any, **_kwargs: Any
+    ) -> migration_governance.GovernanceGateVerdict:
+        return migration_governance.GovernanceGateVerdict(
+            parity=migration_governance.ParityVerdict(reasons=()),
+            freshness=migration_governance.FreshnessVerdict(
+                reasons=(migration_governance.REASON_STALE_PLAN_BODY,)
+            ),
+        )
+
+    monkeypatch.setattr(migration_governance, "evaluate_governance_gate", stale_plan)
+    assert (
+        preflight._migration_governance_status(
+            issue="3",
+            repo="o/r",
+            issue_body="body",
+            repo_root=tmp_path,
+            forked_target=False,
+        )
+        == 2
+    )
+    output = capsys.readouterr().out
+    assert "stale-plan-body" in output
+    assert "`/design 3`" in output
+    assert "[DESIGNED]" in output
 
 
 def _fake_completed(argv: list[str], returncode: int = 0) -> subprocess.CompletedProcess[str]:
@@ -176,6 +250,9 @@ def _valid_success_rows(tmp_path: Path) -> list[tuple[str, str]]:
         ("PLAN_PATH", str(plan)),
         ("ISSUE_JSON_PATH", str(issue_json)),
         ("BYPASS_COUNT", "0"),
+        ("PLAN_RECEIPT_SCOPE_REVALIDATION", "false"),
+        ("PLAN_RECEIPT_PREVIOUS_BASE_SHA", ""),
+        ("PLAN_RECEIPT_TARGET_BASE_SHA", ""),
         ("DESIGN_DIFFICULTY", ""),
         ("MAIN_CI_STATUS", "pass"),
         ("MAIN_FAILED_RUN_ID", ""),

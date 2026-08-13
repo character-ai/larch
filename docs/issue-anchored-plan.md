@@ -375,11 +375,29 @@ Native blocker fields are exactly `Native blocker:` / `Native blockers:`
 - `blocker-read-unavailable` (fail-closed; never an empty set)
 
 Receipt tokens: `stale-plan-body`, `stale-plan-base-scope`,
-`stale-blocker-snapshot`, `stale-owner-snapshot`.
+`stale-blocker-snapshot`, `stale-owner-snapshot`, and
+`plan-base-scope-unavailable`. A valid plan with no receipt is advisory: a
+deleted stamp does not by itself block implementation. A malformed or
+ambiguous receipt remains `stale-plan-body` and blocks.
+
+At `/implement` Preflight only, a sole `stale-plan-base-scope` finding routes
+to the bounded semantic-materiality probe. If the cited paths and symbols
+still resolve and no staleness is found, Preflight refreshes the receipt against
+the current base target through `python/cli.py plan-receipt refresh`; the
+mutation is read-verified. The refresh binds the exact preflight plan hash,
+prior receipt, and preflight target SHA before mutation, then replaces the
+preflight issue snapshot with its exact read-back for Step 0's CAS. It also
+writes a bounded, JSON-quoted, path-only scope-drift record; Step 0 validates
+and appends that record once to the run `Warnings` ledger. Any other receipt
+defect, a moving base, or unavailable base-scope evidence remains a hard stop.
+This assessment is independent of receipt metadata, so a stale receipt cannot
+approve its own refresh.
 
 The same verifier runs at `/implement` Preflight (before lifecycle adoption),
 Step 2 dispatch (before coder launch), after ship rebase, and before PR
-creation. Owner module: `python/larch/issue/migration_governance.py`.
+creation. Outside Preflight, `stale-plan-base-scope` remains a hard gate; a
+later base advance must not bypass semantic materiality. Owner module:
+`python/larch/issue/migration_governance.py`.
 
 Force mode is intentionally narrow: `/implement --force` skips the
 Preflight plan-adequacy audit entirely (no `AUDIT=refuse` result exists on that

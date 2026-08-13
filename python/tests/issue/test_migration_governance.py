@@ -11,7 +11,8 @@ from pathlib import Path
 import pytest
 
 from larch.core.proc import CommandResult
-from larch.issue import issue_block, migration_governance as mg
+from larch.errors import ShipError
+from larch.issue import issue_block, issue_mutation, migration_governance as mg
 from larch.issue.open_rows import OpenIssueRow
 from larch.issue.issue_wire import compose_named_block
 
@@ -132,6 +133,736 @@ def test_receipt_parse_render_upsert_roundtrip() -> None:
     assert replaced.count("larch:plan-receipt") == 1
     assert mg.parse_receipt(body=replaced) is not None
     assert mg.parse_receipt(body=replaced).base_sha == "b" * 40  # type: ignore[union-attr]
+
+
+def test_missing_receipt_is_advisory_but_a_malformed_receipt_still_blocks(
+    tmp_path: Path,
+) -> None:
+    body = compose_named_block(marker="plan", inner=_plan_inner())
+    missing = mg.validate_receipt_freshness(
+        object(),  # type: ignore[arg-type]
+        body=body,
+        repo_root=tmp_path,
+        blocker_rows=(),
+    )
+    assert missing.ok
+    assert missing.reasons == ()
+
+    malformed = mg.validate_receipt_freshness(
+        object(),  # type: ignore[arg-type]
+        body=body + "\n<!-- larch:plan-receipt -->\n",
+        repo_root=tmp_path,
+        blocker_rows=(),
+    )
+    assert malformed.reasons == (mg.REASON_STALE_PLAN_BODY,)
+
+    valid = mg.upsert_receipt(
+        body=body,
+        receipt=mg.PlanReceipt(
+            plan_sha256=mg.hash_plan_block(plan_inner=_plan_inner()),
+            base_sha="a" * 40,
+            blockers_sha256=mg.hash_blocker_rows(rows=()),
+            owners_sha256=mg.hash_owner_rows(rows=()),
+        ),
+    )
+    assert mg.parse_receipt(body=valid + "<!-- larch:plan-receipt -->\n") is None
+
+
+def test_scope_drift_requires_preflight_semantic_revalidation() -> None:
+    scope_only = mg.FreshnessVerdict(
+        reasons=(mg.REASON_STALE_PLAN_BASE_SCOPE,)
+    )
+    assert not scope_only.ok
+    assert scope_only.hard_reasons == ()
+    assert scope_only.semantic_revalidation_reasons == (
+        mg.REASON_STALE_PLAN_BASE_SCOPE,
+    )
+    assert scope_only.scope_revalidation_only
+
+    mixed = mg.FreshnessVerdict(
+        reasons=(mg.REASON_STALE_PLAN_BASE_SCOPE, mg.REASON_STALE_PLAN_BODY)
+    )
+    assert not mixed.ok
+    assert mixed.hard_reasons == (mg.REASON_STALE_PLAN_BODY,)
+    assert not mixed.scope_revalidation_only
+
+
+def test_plan_receipt_refresh_cli_persists_the_checked_base_sha(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    preflight_tmpdir = tmp_path / "preflight"
+    preflight_tmpdir.mkdir()
+    plan_inner = _plan_inner()
+    _ = (preflight_tmpdir / "plan-from-issue.txt").write_text(
+        plan_inner, encoding="utf-8"
+    )
+    prior_receipt = mg.PlanReceipt(
+        plan_sha256=mg.hash_plan_block(plan_inner=plan_inner),
+        base_sha="a" * 40,
+        blockers_sha256="c" * 64,
+        owners_sha256="d" * 64,
+    )
+    preflight_body = mg.upsert_receipt(
+        body=compose_named_block(marker="plan", inner=plan_inner),
+        receipt=prior_receipt,
+    )
+    _ = (preflight_tmpdir / "issue.json").write_text(
+        json.dumps({"number": 7, "body": preflight_body}), encoding="utf-8"
+    )
+    receipt = mg.PlanReceipt(
+        plan_sha256=mg.hash_plan_block(plan_inner=plan_inner),
+        base_sha="b" * 40,
+        blockers_sha256="c" * 64,
+        owners_sha256="d" * 64,
+    )
+    captured: dict[str, object] = {}
+
+    def persist(
+        _runner: object,
+        *,
+        issue: str,
+        repo: str,
+        repo_root: Path,
+        base_sha: str | None = None,
+        expected_plan_sha256: str | None = None,
+        expected_prior_receipt: mg.PlanReceipt | None = None,
+        cwd: str | None = None,
+    ) -> mg.PlanReceipt:
+        captured.update(
+            issue=issue,
+            repo=repo,
+            repo_root=repo_root,
+            base_sha=base_sha,
+            expected_plan_sha256=expected_plan_sha256,
+            expected_prior_receipt=expected_prior_receipt,
+            cwd=cwd,
+        )
+        return receipt
+
+    refreshed_body = mg.upsert_receipt(
+        body=compose_named_block(marker="plan", inner=plan_inner), receipt=receipt
+    )
+
+    def read_snapshot(
+        _runner: object, *, repository: str, issue: str, cwd: str | None = None
+    ) -> issue_mutation.IssueSnapshot:
+        assert (repository, issue, cwd) == ("owner/repo", "7", str(tmp_path))
+        return issue_mutation.IssueSnapshot(
+            repository=repository,
+            issue=issue,
+            title="[DESIGNED] Work",
+            body=refreshed_body,
+            labels=frozenset({"ready"}),
+            state="OPEN",
+            updated_at="2026-08-13T00:00:00Z",
+        )
+
+    def rev_parse(_runner: object, ref: str, *, cwd: str | None = None) -> str:
+        assert (ref, cwd) == ("origin/main", str(tmp_path))
+        return "b" * 40
+
+    def render_scope_drift(
+        _runner: object,
+        *,
+        previous_base_sha: str,
+        target_base_sha: str,
+        plan_inner: str,
+        cwd: str,
+    ) -> str:
+        assert (previous_base_sha, target_base_sha, plan_inner, cwd) == (
+            "a" * 40,
+            "b" * 40,
+            _plan_inner(),
+            str(tmp_path),
+        )
+        return "- receipt scope drift\n"
+
+    monkeypatch.setattr(mg, "persist_plan_receipt", persist)
+    monkeypatch.setattr(issue_mutation, "read_snapshot", read_snapshot)
+    monkeypatch.setattr(mg.git, "rev_parse", rev_parse)
+    monkeypatch.setattr(mg, "_render_preflight_scope_drift", render_scope_drift)
+    assert mg.plan_receipt_refresh_main(
+        [
+            "--issue",
+            "7",
+            "--repo",
+            "owner/repo",
+            "--repo-root",
+            str(tmp_path),
+            "--preflight-tmpdir",
+            str(preflight_tmpdir),
+            "--base-ref",
+            "origin/main",
+            "--previous-base-sha",
+            "a" * 40,
+            "--base-sha",
+            "b" * 40,
+        ]
+    ) == 0
+    assert captured == {
+        "issue": "7",
+        "repo": "owner/repo",
+        "repo_root": tmp_path,
+        "base_sha": "b" * 40,
+        "expected_plan_sha256": mg.hash_plan_block(plan_inner=plan_inner),
+        "expected_prior_receipt": prior_receipt,
+        "cwd": str(tmp_path),
+    }
+    assert capsys.readouterr().out == (
+        "PLAN_RECEIPT_REFRESHED=true\n"
+        f"PLAN_RECEIPT_BASE_SHA={'b' * 40}\n"
+        "PLAN_RECEIPT_SNAPSHOT_UPDATED=true\n"
+        "PLAN_RECEIPT_SCOPE_DRIFT_LOGGED=true\n"
+    )
+    snapshot = json.loads((preflight_tmpdir / "issue.json").read_text(encoding="utf-8"))
+    assert snapshot == {
+        "body": refreshed_body,
+        "labels": [{"name": "ready"}],
+        "number": 7,
+        "state": "OPEN",
+        "title": "[DESIGNED] Work",
+        "updatedAt": "2026-08-13T00:00:00Z",
+    }
+    assert (preflight_tmpdir / "receipt-scope-drift.md").read_text(
+        encoding="utf-8"
+    ) == "- receipt scope drift\n"
+
+
+def test_plan_receipt_refresh_cli_resolves_the_local_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preflight_tmpdir = tmp_path / "preflight"
+    preflight_tmpdir.mkdir()
+    plan_inner = _plan_inner()
+    _ = (preflight_tmpdir / "plan-from-issue.txt").write_text(
+        plan_inner, encoding="utf-8"
+    )
+    prior_receipt = mg.PlanReceipt(
+        plan_sha256=mg.hash_plan_block(plan_inner=plan_inner),
+        base_sha="a" * 40,
+        blockers_sha256="c" * 64,
+        owners_sha256="d" * 64,
+    )
+    _ = (preflight_tmpdir / "issue.json").write_text(
+        json.dumps(
+            {
+                "number": 7,
+                "body": mg.upsert_receipt(
+                    body=compose_named_block(marker="plan", inner=plan_inner),
+                    receipt=prior_receipt,
+                ),
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt = mg.PlanReceipt(
+        plan_sha256=mg.hash_plan_block(plan_inner=plan_inner),
+        base_sha="b" * 40,
+        blockers_sha256="c" * 64,
+        owners_sha256="d" * 64,
+    )
+    repositories: list[str] = []
+
+    def persist(
+        _runner: object,
+        *,
+        issue: str,
+        repo: str,
+        repo_root: Path,
+        base_sha: str | None = None,
+        expected_plan_sha256: str | None = None,
+        expected_prior_receipt: mg.PlanReceipt | None = None,
+        cwd: str | None = None,
+    ) -> mg.PlanReceipt:
+        _ = (
+            issue,
+            repo_root,
+            base_sha,
+            expected_plan_sha256,
+            expected_prior_receipt,
+            cwd,
+        )
+        repositories.append(repo)
+        return receipt
+
+    def resolve_repo(_runner: object, *, cwd: str | None = None) -> str:
+        assert cwd == str(tmp_path)
+        return "owner/repo"
+
+    def write_snapshot(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    def rev_parse(_runner: object, ref: str, *, cwd: str | None = None) -> str:
+        assert (ref, cwd) == ("origin/main", str(tmp_path))
+        return "b" * 40
+
+    def render_scope_drift(*_args: object, **_kwargs: object) -> str:
+        return "- receipt scope drift\n"
+
+    monkeypatch.setattr(mg, "persist_plan_receipt", persist)
+    monkeypatch.setattr(mg.gh, "resolve_repo", resolve_repo)
+    monkeypatch.setattr(mg, "_write_refreshed_preflight_snapshot", write_snapshot)
+    monkeypatch.setattr(mg.git, "rev_parse", rev_parse)
+    monkeypatch.setattr(mg, "_render_preflight_scope_drift", render_scope_drift)
+    assert mg.plan_receipt_refresh_main(
+        [
+            "--issue",
+            "7",
+            "--repo-root",
+            str(tmp_path),
+            "--preflight-tmpdir",
+            str(preflight_tmpdir),
+            "--base-ref",
+            "origin/main",
+            "--previous-base-sha",
+            "a" * 40,
+            "--base-sha",
+            "b" * 40,
+        ]
+    ) == 0
+    assert repositories == ["owner/repo"]
+
+
+def test_plan_receipt_refresh_cli_rejects_an_invalid_resolved_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    preflight_tmpdir = tmp_path / "preflight"
+    preflight_tmpdir.mkdir()
+    _ = (preflight_tmpdir / "plan-from-issue.txt").write_text(
+        _plan_inner(), encoding="utf-8"
+    )
+
+    def persist(*_args: object, **_kwargs: object) -> mg.PlanReceipt:
+        pytest.fail("receipt persistence must not run for an invalid repository")
+
+    def resolve_repo(_runner: object, *, cwd: str | None = None) -> str:
+        _ = cwd
+        return "owner/repo/extra"
+
+    monkeypatch.setattr(mg, "persist_plan_receipt", persist)
+    monkeypatch.setattr(mg.gh, "resolve_repo", resolve_repo)
+    assert mg.plan_receipt_refresh_main(
+        [
+            "--issue",
+            "7",
+            "--repo-root",
+            str(tmp_path),
+            "--preflight-tmpdir",
+            str(preflight_tmpdir),
+            "--base-ref",
+            "origin/main",
+            "--previous-base-sha",
+            "a" * 40,
+            "--base-sha",
+            "b" * 40,
+        ]
+    ) == 2
+    output = capsys.readouterr()
+    assert output.out == "PLAN_RECEIPT_REFRESHED=false\n"
+    assert "--repo must be exactly owner/name" in output.err
+
+
+def test_plan_receipt_refresh_cli_refuses_when_the_reviewed_base_moved(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    preflight_tmpdir = tmp_path / "preflight"
+    preflight_tmpdir.mkdir()
+    _ = (preflight_tmpdir / "plan-from-issue.txt").write_text(
+        _plan_inner(), encoding="utf-8"
+    )
+
+    def persist(*_args: object, **_kwargs: object) -> mg.PlanReceipt:
+        pytest.fail("receipt persistence must not run after base movement")
+
+    monkeypatch.setattr(mg, "persist_plan_receipt", persist)
+    monkeypatch.setattr(
+        mg.git,
+        "rev_parse",
+        lambda *_args, **_kwargs: "a" * 40,
+    )
+    assert mg.plan_receipt_refresh_main(
+        [
+            "--issue",
+            "7",
+            "--repo",
+            "owner/repo",
+            "--repo-root",
+            str(tmp_path),
+            "--preflight-tmpdir",
+            str(preflight_tmpdir),
+            "--base-ref",
+            "origin/main",
+            "--previous-base-sha",
+            "a" * 40,
+            "--base-sha",
+            "b" * 40,
+        ]
+    ) == 2
+    output = capsys.readouterr()
+    assert output.out == "PLAN_RECEIPT_REFRESHED=false\n"
+    assert "plan-receipt-refresh-base-moved" in output.err
+
+
+def test_plan_receipt_refresh_cli_rechecks_base_before_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    preflight_tmpdir = tmp_path / "preflight"
+    preflight_tmpdir.mkdir()
+    plan_inner = _plan_inner()
+    _ = (preflight_tmpdir / "plan-from-issue.txt").write_text(
+        plan_inner, encoding="utf-8"
+    )
+    prior_receipt = mg.PlanReceipt(
+        plan_sha256=mg.hash_plan_block(plan_inner=plan_inner),
+        base_sha="a" * 40,
+        blockers_sha256="c" * 64,
+        owners_sha256="d" * 64,
+    )
+    _ = (preflight_tmpdir / "issue.json").write_text(
+        json.dumps(
+            {
+                "number": 7,
+                "body": mg.upsert_receipt(
+                    body=compose_named_block(marker="plan", inner=plan_inner),
+                    receipt=prior_receipt,
+                ),
+            }
+        ),
+        encoding="utf-8",
+    )
+    revisions = iter(("b" * 40, "c" * 40))
+
+    def rev_parse(_runner: object, _ref: str, *, cwd: str | None = None) -> str:
+        assert cwd == str(tmp_path)
+        return next(revisions)
+
+    def persist(*_args: object, **_kwargs: object) -> mg.PlanReceipt:
+        pytest.fail("receipt persistence must not run after base movement")
+
+    def render_scope_drift(*_args: object, **_kwargs: object) -> str:
+        return "drift\n"
+
+    monkeypatch.setattr(mg.git, "rev_parse", rev_parse)
+    monkeypatch.setattr(mg, "persist_plan_receipt", persist)
+    monkeypatch.setattr(mg, "_render_preflight_scope_drift", render_scope_drift)
+    assert mg.plan_receipt_refresh_main(
+        [
+            "--issue",
+            "7",
+            "--repo",
+            "owner/repo",
+            "--repo-root",
+            str(tmp_path),
+            "--preflight-tmpdir",
+            str(preflight_tmpdir),
+            "--base-ref",
+            "origin/main",
+            "--previous-base-sha",
+            "a" * 40,
+            "--base-sha",
+            "b" * 40,
+        ]
+    ) == 2
+    output = capsys.readouterr()
+    assert output.out == "PLAN_RECEIPT_REFRESHED=false\n"
+    assert "plan-receipt-refresh-base-moved" in output.err
+
+
+def test_plan_receipt_refresh_cli_refuses_a_changed_preflight_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    preflight_tmpdir = tmp_path / "preflight"
+    preflight_tmpdir.mkdir()
+    plan_inner = _plan_inner()
+    _ = (preflight_tmpdir / "plan-from-issue.txt").write_text(
+        plan_inner, encoding="utf-8"
+    )
+    mismatched_receipt = mg.PlanReceipt(
+        plan_sha256=mg.hash_plan_block(plan_inner=plan_inner),
+        base_sha="c" * 40,
+        blockers_sha256="d" * 64,
+        owners_sha256="e" * 64,
+    )
+    _ = (preflight_tmpdir / "issue.json").write_text(
+        json.dumps(
+            {
+                "number": 7,
+                "body": mg.upsert_receipt(
+                    body=compose_named_block(marker="plan", inner=plan_inner),
+                    receipt=mismatched_receipt,
+                ),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def persist(*_args: object, **_kwargs: object) -> mg.PlanReceipt:
+        pytest.fail("receipt persistence must not run with an unreviewed receipt")
+
+    monkeypatch.setattr(mg, "persist_plan_receipt", persist)
+    monkeypatch.setattr(
+        mg.git, "rev_parse", lambda *_args, **_kwargs: "b" * 40
+    )
+    assert mg.plan_receipt_refresh_main(
+        [
+            "--issue",
+            "7",
+            "--repo",
+            "owner/repo",
+            "--repo-root",
+            str(tmp_path),
+            "--preflight-tmpdir",
+            str(preflight_tmpdir),
+            "--base-ref",
+            "origin/main",
+            "--previous-base-sha",
+            "a" * 40,
+            "--base-sha",
+            "b" * 40,
+        ]
+    ) == 2
+    output = capsys.readouterr()
+    assert output.out == "PLAN_RECEIPT_REFRESHED=false\n"
+    assert "preflight receipt base does not match scope revalidation" in output.err
+
+
+def test_persist_plan_receipt_refuses_a_changed_preflight_plan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = compose_named_block(marker="plan", inner=_plan_inner())
+    snapshot = issue_mutation.IssueSnapshot(
+        repository="owner/repo",
+        issue="7",
+        title="[DESIGNED] Work",
+        body=body,
+        labels=frozenset(),
+        state="OPEN",
+        updated_at="2026-08-13T00:00:00Z",
+    )
+    receipt = mg.PlanReceipt(
+        plan_sha256="a" * 64,
+        base_sha="b" * 40,
+        blockers_sha256="c" * 64,
+        owners_sha256="d" * 64,
+    )
+
+    monkeypatch.setattr(issue_mutation, "read_snapshot", lambda *_args, **_kwargs: snapshot)
+    monkeypatch.setattr(
+        mg,
+        "build_receipt_for_body",
+        lambda *_args, **_kwargs: (receipt, mg.ParityVerdict(reasons=())),
+    )
+    with pytest.raises(ShipError, match="plan-receipt-refresh-plan-mismatch"):
+        _ = mg.persist_plan_receipt(
+            object(),  # type: ignore[arg-type]
+            issue="7",
+            repo="owner/repo",
+            repo_root=tmp_path,
+            base_sha="b" * 40,
+            expected_plan_sha256="e" * 64,
+        )
+
+
+def test_persist_plan_receipt_refuses_changed_governance_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan_inner = _plan_inner()
+    prior_receipt = mg.PlanReceipt(
+        plan_sha256=mg.hash_plan_block(plan_inner=plan_inner),
+        base_sha="a" * 40,
+        blockers_sha256="c" * 64,
+        owners_sha256="d" * 64,
+    )
+    snapshot = issue_mutation.IssueSnapshot(
+        repository="owner/repo",
+        issue="7",
+        title="[DESIGNED] Work",
+        body=mg.upsert_receipt(
+            body=compose_named_block(marker="plan", inner=plan_inner),
+            receipt=prior_receipt,
+        ),
+        labels=frozenset(),
+        state="OPEN",
+        updated_at="2026-08-13T00:00:00Z",
+    )
+    changed_receipt = mg.PlanReceipt(
+        plan_sha256=prior_receipt.plan_sha256,
+        base_sha="b" * 40,
+        blockers_sha256="e" * 64,
+        owners_sha256=prior_receipt.owners_sha256,
+    )
+
+    monkeypatch.setattr(
+        issue_mutation, "read_snapshot", lambda *_args, **_kwargs: snapshot
+    )
+    monkeypatch.setattr(
+        mg,
+        "build_receipt_for_body",
+        lambda *_args, **_kwargs: (changed_receipt, mg.ParityVerdict(reasons=())),
+    )
+    with pytest.raises(
+        ShipError, match="plan-receipt-refresh-governance-input-mismatch"
+    ):
+        _ = mg.persist_plan_receipt(
+            object(),  # type: ignore[arg-type]
+            issue="7",
+            repo="owner/repo",
+            repo_root=tmp_path,
+            base_sha="b" * 40,
+            expected_plan_sha256=prior_receipt.plan_sha256,
+            expected_prior_receipt=prior_receipt,
+        )
+
+
+def test_preflight_bound_receipt_refresh_never_falls_back_to_whole_body_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan_inner = _plan_inner()
+    prior_receipt = mg.PlanReceipt(
+        plan_sha256=mg.hash_plan_block(plan_inner=plan_inner),
+        base_sha="a" * 40,
+        blockers_sha256="c" * 64,
+        owners_sha256="d" * 64,
+    )
+    body = mg.upsert_receipt(
+        body=compose_named_block(marker="plan", inner=plan_inner),
+        receipt=prior_receipt,
+    )
+    snapshot = issue_mutation.IssueSnapshot(
+        repository="owner/repo",
+        issue="7",
+        title="[DESIGNED] Work",
+        body=body,
+        labels=frozenset(),
+        state="OPEN",
+        updated_at="2026-08-13T00:00:00Z",
+    )
+    refreshed_receipt = mg.PlanReceipt(
+        plan_sha256=prior_receipt.plan_sha256,
+        base_sha="b" * 40,
+        blockers_sha256=prior_receipt.blockers_sha256,
+        owners_sha256=prior_receipt.owners_sha256,
+    )
+
+    monkeypatch.setattr(
+        issue_mutation, "read_snapshot", lambda *_args, **_kwargs: snapshot
+    )
+    monkeypatch.setattr(
+        mg,
+        "build_receipt_for_body",
+        lambda *_args, **_kwargs: (refreshed_receipt, mg.ParityVerdict(reasons=())),
+    )
+
+    def named_block_conflict(*_args: object, **_kwargs: object) -> None:
+        raise issue_mutation.ProtectedIssueMutation("stale-identity")
+
+    def whole_body_fallback(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("preflight-bound receipt refresh must not overwrite whole bodies")
+
+    monkeypatch.setattr(issue_mutation, "update_named_block", named_block_conflict)
+    monkeypatch.setattr(issue_mutation, "update_body", whole_body_fallback)
+    with pytest.raises(issue_mutation.ProtectedIssueMutation, match="stale-identity"):
+        _ = mg.persist_plan_receipt(
+            object(),  # type: ignore[arg-type]
+            issue="7",
+            repo="owner/repo",
+            repo_root=tmp_path,
+            base_sha="b" * 40,
+            expected_plan_sha256=prior_receipt.plan_sha256,
+            expected_prior_receipt=prior_receipt,
+        )
+
+
+def test_scope_drift_record_is_json_quoted_bounded_and_disables_external_diff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    tracked_shas: list[str] = []
+
+    def tracked_paths(
+        _runner: object, *, sha: str, cwd: str
+    ) -> frozenset[str]:
+        assert cwd == "/repo"
+        tracked_shas.append(sha)
+        return (
+            frozenset({"removed.md"})
+            if sha == "a" * 40
+            else frozenset({"README.md"})
+        )
+
+    monkeypatch.setattr(mg, "_tracked_paths_at_sha", tracked_paths)
+
+    def diff_name_status(
+        _runner: object,
+        base: str,
+        head: str,
+        *,
+        paths: tuple[str, ...],
+        no_ext_diff: bool,
+        cwd: str,
+    ) -> CommandResult:
+        captured.update(
+            base=base,
+            head=head,
+            paths=paths,
+            no_ext_diff=no_ext_diff,
+            cwd=cwd,
+        )
+        return CommandResult(
+            ("git", "diff"),
+            0,
+            "".join(f"M\tpath-{index}\n" for index in range(129)),
+            "",
+            0.01,
+        )
+
+    monkeypatch.setattr(mg.git, "diff_name_status", diff_name_status)
+    rendered = mg._render_preflight_scope_drift(  # pyright: ignore[reportPrivateUsage]
+        object(),  # type: ignore[arg-type]
+        previous_base_sha="a" * 40,
+        target_base_sha="b" * 40,
+        plan_inner=_plan_inner().replace("README.md", "*.md"),
+        cwd="/repo",
+    )
+
+    assert captured == {
+        "base": "a" * 40,
+        "head": "b" * 40,
+        "paths": ("README.md", "removed.md"),
+        "no_ext_diff": True,
+        "cwd": "/repo",
+    }
+    assert tracked_shas == ["a" * 40, "b" * 40]
+    lines = rendered.splitlines()
+    assert lines[:5] == [
+        "- **Preflight plan-receipt scope refresh**: semantic materiality passed.",
+        f"  - Receipt base: `{'a' * 40}`",
+        f"  - Reviewed target: `{'b' * 40}`",
+        "  - Scope diff (JSON-quoted name-status rows):",
+        "    ```text",
+    ]
+    rows = lines[5:-1]
+    assert len(rows) == 128
+    assert all(row.startswith("    ") for row in rows)
+    assert [json.loads(row[4:]) for row in rows[-2:]] == [
+        "M\tpath-126",
+        "[truncated: additional scope-diff rows omitted]",
+    ]
+    assert lines[-1] == "    ```"
 
 
 def test_load_blocker_snapshot_fail_closed_on_api_error(
@@ -284,6 +1015,8 @@ def test_freshness_detects_plan_owner_blocker_and_base_scope_drift(
         head_sha=head_sha,
     )
     assert mg.REASON_STALE_PLAN_BASE_SCOPE in stale_scope.reasons
+    assert not stale_scope.ok
+    assert stale_scope.scope_revalidation_only
 
     # Unrelated main movement: add out-of-scope file, keep README at base content via...
     # Re-create a branch where README matches base but an unrelated file advanced HEAD.
@@ -439,7 +1172,7 @@ def test_active_create_conflicts_with_active_or_pending_reuse(
     )
 
 
-def test_reuse_source_requires_native_edge_and_owner_snapshot(
+def test_reuse_source_requires_native_edge_and_valid_owner_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source_owners = _owner_block(
@@ -480,6 +1213,11 @@ def test_reuse_source_requires_native_edge_and_owner_snapshot(
         "reuse-missing-native-blocker owner=shared-owner issue=#6",
     )
     source_body = compose_named_block(marker="plan", inner=source_plan) + source_owners
+    reasons = mg._validate_reuse_sources(  # pyright: ignore[reportPrivateUsage]
+        RecordingRunner(responses=[]), block=parsed.block, body="Native blocker: #6.\n", repo="o/r", cwd=None
+    )
+    assert reasons == ()
+    source_body += "\n<!-- larch:plan-receipt -->\n"
     reasons = mg._validate_reuse_sources(  # pyright: ignore[reportPrivateUsage]
         RecordingRunner(responses=[]), block=parsed.block, body="Native blocker: #6.\n", repo="o/r", cwd=None
     )

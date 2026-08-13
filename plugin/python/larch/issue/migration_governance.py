@@ -14,7 +14,7 @@ import json
 import re
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, cast
@@ -39,6 +39,9 @@ _RECEIPT_RE: Final = re.compile(
     r"base_sha=([0-9a-f]{40})[ \t]+"
     r"blockers_sha256=([0-9a-f]{64})[ \t]+"
     r"owners_sha256=([0-9a-f]{64})[ \t]+-->[ \t]*\r?$"
+)
+_RECEIPT_MARKER_RE: Final = re.compile(
+    r"^[ \t]*<!--[ \t]+larch:plan-receipt(?:[ \t]|-->|$)"
 )
 _SHA256_HEX_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _SHA1_HEX_RE: Final = re.compile(r"^[0-9a-f]{40}$")
@@ -83,6 +86,8 @@ _NEGATED_CREATION_PREFIX_RE: Final = re.compile(
 _IMPLEMENTING_PREFIX: Final = config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"]
 _LEASE_STALE_HOURS: Final = 12
 _REPOSITORY_RE: Final = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
+_PLAN_RECEIPT_REFRESH_BASE_REFS: Final = frozenset({"origin/main", "upstream/main"})
+_PLAN_RECEIPT_SCOPE_DIFF_MAX_LINES: Final = 128
 
 RUST_LINE_BUDGET_DEVIATION_HEADING: Final = "## Rust line budget deviation"
 RUST_LINE_BUDGET_SPLIT_DECISION: Final = "retain this leaf as one PR"
@@ -93,6 +98,7 @@ REASON_CLOSED_RETAINED: Final = "closed-blocker-edge-retained"
 REASON_BLOCKER_READ_UNAVAILABLE: Final = "blocker-read-unavailable"
 REASON_STALE_PLAN_BODY: Final = "stale-plan-body"
 REASON_STALE_PLAN_BASE_SCOPE: Final = "stale-plan-base-scope"
+REASON_PLAN_BASE_SCOPE_UNAVAILABLE: Final = "plan-base-scope-unavailable"
 REASON_STALE_BLOCKER_SNAPSHOT: Final = "stale-blocker-snapshot"
 REASON_STALE_OWNER_SNAPSHOT: Final = "stale-owner-snapshot"
 REASON_MISSING_OWNER_BLOCK: Final = "missing-owner-block"
@@ -113,6 +119,9 @@ RECEIPT_STALE_REASONS: Final = frozenset(
         REASON_STALE_BLOCKER_SNAPSHOT,
         REASON_STALE_OWNER_SNAPSHOT,
     }
+)
+RECEIPT_SEMANTIC_REVALIDATION_REASONS: Final = frozenset(
+    {REASON_STALE_PLAN_BASE_SCOPE}
 )
 
 
@@ -149,6 +158,19 @@ class PlanReceipt:
 
 
 @dataclass(frozen=True)
+class PlanReceiptRefreshRequest:
+    """Validated identity binding one receipt refresh to its Preflight inputs."""
+
+    issue: str
+    repository: str
+    repo_root: Path
+    preflight_tmpdir: Path
+    base_ref: str
+    previous_base_sha: str
+    base_sha: str
+
+
+@dataclass(frozen=True)
 class ParityVerdict:
     """Native blocker parity result. ``closed-*-retained`` is report-only."""
 
@@ -176,9 +198,32 @@ class FreshnessVerdict:
     reasons: tuple[str, ...]
 
     @property
+    def hard_reasons(self) -> tuple[str, ...]:
+        """Reasons that cannot pass through Preflight semantic materiality."""
+        return tuple(
+            reason
+            for reason in self.reasons
+            if reason not in RECEIPT_SEMANTIC_REVALIDATION_REASONS
+        )
+
+    @property
+    def semantic_revalidation_reasons(self) -> tuple[str, ...]:
+        """Drift that only Preflight may revalidate before a receipt refresh."""
+        return tuple(
+            reason
+            for reason in self.reasons
+            if reason in RECEIPT_SEMANTIC_REVALIDATION_REASONS
+        )
+
+    @property
     def ok(self) -> bool:
-        """True when the receipt matches live inputs."""
+        """True when the receipt matches every required live input."""
         return not self.reasons
+
+    @property
+    def scope_revalidation_only(self) -> bool:
+        """True only for the bounded Preflight stale-scope handoff."""
+        return self.reasons == (REASON_STALE_PLAN_BASE_SCOPE,)
 
 
 @dataclass(frozen=True)
@@ -243,6 +288,15 @@ class GovernanceGateVerdict:
         blocking.extend(self.freshness.reasons)
         blocking.extend(self.owners.reasons)
         return tuple(blocking)
+
+    @property
+    def permits_preflight_semantic_revalidation(self) -> bool:
+        """Whether only scope drift remains for Preflight's bounded probe."""
+        return (
+            not self.parity.blocking
+            and self.owners.ok
+            and self.freshness.scope_revalidation_only
+        )
 
 
 class GovernanceGateError(ShipError):
@@ -340,6 +394,8 @@ def parse_receipt(*, body: str) -> PlanReceipt | None:
     for idx, line in enumerate(lines):
         if idx in fenced:
             continue
+        if _RECEIPT_MARKER_RE.match(line) is not None and _RECEIPT_RE.match(line) is None:
+            return None
         match = _RECEIPT_RE.match(line)
         if match is None:
             continue
@@ -354,6 +410,16 @@ def parse_receipt(*, body: str) -> PlanReceipt | None:
     if len(found) != 1:
         return None
     return found[0]
+
+
+def _receipt_marker_present(*, body: str) -> bool:
+    """Return whether an unfenced receipt marker exists, even if malformed."""
+    lines = (body or "").splitlines()
+    fenced = plan_grammar.balanced_fence_line_indices(list(lines))
+    return any(
+        idx not in fenced and _RECEIPT_MARKER_RE.match(line) is not None
+        for idx, line in enumerate(lines)
+    )
 
 
 def strip_adjacent_plan_receipts(*, body: str) -> str:
@@ -655,12 +721,16 @@ def validate_receipt_freshness(
     head_sha: str | None = None,
 ) -> FreshnessVerdict:
     """Validate the persisted receipt against live inputs (I-Stale-1)."""
-    receipt = parse_receipt(body=body)
-    if receipt is None:
-        return FreshnessVerdict(reasons=(REASON_STALE_PLAN_BODY,))
     plan_inner, malformed = parse_named_block(body=body, marker="plan")
     if malformed or plan_inner is None:
         return FreshnessVerdict(reasons=(REASON_STALE_PLAN_BODY,))
+    receipt = parse_receipt(body=body)
+    if receipt is None:
+        if _receipt_marker_present(body=body):
+            return FreshnessVerdict(reasons=(REASON_STALE_PLAN_BODY,))
+        # A deleted receipt is not evidence of stale plan input. The current
+        # plan is still independently checked by semantic materiality.
+        return FreshnessVerdict(reasons=())
     reasons: list[str] = []
     if hash_plan_block(plan_inner=plan_inner) != receipt.plan_sha256:
         reasons.append(REASON_STALE_PLAN_BODY)
@@ -687,7 +757,7 @@ def validate_receipt_freshness(
             cwd=cwd,
         )
     except (ShipError, OSError):
-        reasons.append(REASON_STALE_PLAN_BASE_SCOPE)
+        reasons.append(REASON_PLAN_BASE_SCOPE_UNAVAILABLE)
     else:
         if base_fp != head_fp:
             reasons.append(REASON_STALE_PLAN_BASE_SCOPE)
@@ -787,12 +857,23 @@ def _validate_reuse_sources(
         source_body, source_state = source
         parsed = issue_wire.parse_owner_block(body=source_body)
         receipt = parse_receipt(body=source_body)
+        source_plan, source_plan_malformed = issue_wire.parse_named_block(
+            body=source_body, marker="plan"
+        )
+        source_has_valid_plan = source_plan is not None and not source_plan_malformed
+        receipt_missing = (
+            receipt is None
+            and not _receipt_marker_present(body=source_body)
+            and source_has_valid_plan
+        )
         creates: set[str] = set()
         if parsed.block is not None:
             creates = {row.owner_key for row in parsed.block.owners if row.kind == "CREATE"}
         snapshot_ok = (
-            receipt is not None
-            and receipt.owners_sha256 == hash_owner_rows(rows=parsed.raw_rows)
+            (receipt_missing or (
+                receipt is not None
+                and receipt.owners_sha256 == hash_owner_rows(rows=parsed.raw_rows)
+            ))
             and owner.owner_key in creates
         )
         if not snapshot_ok:
@@ -1027,19 +1108,75 @@ def build_receipt_for_body(  # noqa: PLR0913 - receipt identity inputs are delib
     return receipt, parity
 
 
-def persist_plan_receipt(
+def _validate_receipt_refresh_expectations(
+    *,
+    expected_plan_sha256: str | None,
+    expected_prior_receipt: PlanReceipt | None,
+) -> None:
+    if (
+        expected_plan_sha256 is not None
+        and _SHA256_HEX_RE.fullmatch(expected_plan_sha256) is None
+    ):
+        raise ShipError("invalid-expected-plan-sha256")
+    if expected_prior_receipt is None:
+        return
+    _ = render_receipt(receipt=expected_prior_receipt)
+    if expected_plan_sha256 != expected_prior_receipt.plan_sha256:
+        raise ShipError("plan-receipt-refresh-source-plan-mismatch")
+
+
+def _verify_receipt_refresh_source(
+    *, body: str, expected_prior_receipt: PlanReceipt | None
+) -> None:
+    parsed = parse_receipt(body=body)
+    if _receipt_marker_present(body=body) and parsed is None:
+        raise ShipError("plan-receipt-invalid")
+    if expected_prior_receipt is not None and parsed != expected_prior_receipt:
+        raise ShipError("plan-receipt-refresh-source-receipt-mismatch")
+
+
+def _verify_receipt_refresh_result(
+    *,
+    receipt: PlanReceipt,
+    expected_plan_sha256: str | None,
+    expected_prior_receipt: PlanReceipt | None,
+) -> None:
+    if (
+        expected_plan_sha256 is not None
+        and receipt.plan_sha256 != expected_plan_sha256
+    ):
+        raise ShipError("plan-receipt-refresh-plan-mismatch")
+    if expected_prior_receipt is not None and (
+        receipt.plan_sha256 != expected_prior_receipt.plan_sha256
+        or receipt.blockers_sha256 != expected_prior_receipt.blockers_sha256
+        or receipt.owners_sha256 != expected_prior_receipt.owners_sha256
+    ):
+        raise ShipError("plan-receipt-refresh-governance-input-mismatch")
+
+
+def persist_plan_receipt(  # noqa: PLR0913 - receipt refresh identity stays explicit.
     runner: Runner,
     *,
     issue: str,
     repo: str,
     repo_root: Path,
+    base_sha: str | None = None,
+    expected_plan_sha256: str | None = None,
+    expected_prior_receipt: PlanReceipt | None = None,
     cwd: str | None = None,
 ) -> PlanReceipt:
     """Write and read-verify the receipt immediately after plan publication."""
     from larch.issue import issue_mutation  # noqa: PLC0415 - lazy: avoid cycle with issue_mutation plan-receipt strip
 
+    _validate_receipt_refresh_expectations(
+        expected_plan_sha256=expected_plan_sha256,
+        expected_prior_receipt=expected_prior_receipt,
+    )
     snapshot = issue_mutation.read_snapshot(
         runner, repository=repo, issue=issue, cwd=cwd
+    )
+    _verify_receipt_refresh_source(
+        body=snapshot.body, expected_prior_receipt=expected_prior_receipt
     )
     receipt, parity = build_receipt_for_body(
         runner,
@@ -1047,7 +1184,13 @@ def persist_plan_receipt(
         repo=repo,
         body=snapshot.body,
         repo_root=repo_root,
+        base_sha=base_sha,
         cwd=cwd,
+    )
+    _verify_receipt_refresh_result(
+        receipt=receipt,
+        expected_plan_sha256=expected_plan_sha256,
+        expected_prior_receipt=expected_prior_receipt,
     )
     _ = parity  # closed retained edges stay report-only at publish time
     updated_body = upsert_receipt(body=snapshot.body, receipt=receipt)
@@ -1057,7 +1200,9 @@ def persist_plan_receipt(
             raise ShipError("plan-receipt-readback-mismatch")
         return receipt
     # Prefer named-block mutation so [DESIGNING] issues can refresh the adjacent
-    # receipt with the plan marker lease; fall back to body mutation otherwise.
+    # receipt with the plan marker lease. A preflight-bound refresh must not
+    # fall back to a whole-body write: that could overwrite an unrelated edit
+    # that made the named-block CAS fail after its semantic probe.
     try:
         verified_mutation = issue_mutation.update_named_block(
             runner,
@@ -1069,6 +1214,8 @@ def persist_plan_receipt(
             cwd=cwd,
         )
     except issue_mutation.ProtectedIssueMutation:
+        if expected_prior_receipt is not None:
+            raise
         verified_mutation = issue_mutation.update_body(
             runner,
             repository=repo,
@@ -1234,6 +1381,254 @@ def governance_gate_main(argv: list[str]) -> int:
     return config.EXIT_INTERNAL_ERROR
 
 
+def _read_preflight_refresh_receipt(
+    *,
+    request: PlanReceiptRefreshRequest,
+    expected_plan_sha256: str,
+) -> PlanReceipt:
+    """Load the semantic identity that the successful Preflight checked."""
+    try:
+        payload: object = json.loads(
+            larch_io.read_trusted_text(
+                request.preflight_tmpdir / "issue.json", root=request.preflight_tmpdir
+            )
+        )
+    except json.JSONDecodeError as exc:
+        raise GovernanceGateError("preflight issue snapshot is invalid") from exc
+    if not isinstance(payload, Mapping):
+        raise GovernanceGateError("preflight issue snapshot is invalid")
+    data = cast("Mapping[str, object]", payload)
+    number = data.get("number")
+    body = data.get("body")
+    if (
+        isinstance(number, bool)
+        or str(number) != request.issue
+        or not isinstance(body, str)
+    ):
+        raise GovernanceGateError("preflight issue snapshot is invalid")
+    receipt = parse_receipt(body=body)
+    if receipt is None:
+        raise GovernanceGateError("preflight receipt identity is unavailable")
+    if receipt.base_sha != request.previous_base_sha:
+        raise GovernanceGateError("preflight receipt base does not match scope revalidation")
+    if receipt.plan_sha256 != expected_plan_sha256:
+        raise GovernanceGateError("preflight receipt plan does not match checked plan")
+    return receipt
+
+
+def _write_refreshed_preflight_snapshot(
+    runner: Runner,
+    *,
+    request: PlanReceiptRefreshRequest,
+    receipt: PlanReceipt,
+    scope_drift: str,
+    cwd: str,
+) -> None:
+    """Refresh Step 0's CAS snapshot after a read-verified receipt mutation."""
+    from larch.issue import issue_mutation  # noqa: PLC0415 - mutation owner stays lazy to avoid the receipt cycle
+
+    snapshot = issue_mutation.read_snapshot(
+        runner, repository=request.repository, issue=request.issue, cwd=cwd
+    )
+    if parse_receipt(body=snapshot.body) != receipt:
+        raise GovernanceGateError("plan-receipt-refresh-snapshot-mismatch")
+    if git.rev_parse(runner, request.base_ref, cwd=cwd) != request.base_sha:
+        raise GovernanceGateError("plan-receipt-refresh-base-moved")
+    payload = {
+        "number": int(request.issue),
+        "title": snapshot.title,
+        "body": snapshot.body,
+        "state": snapshot.state,
+        "updatedAt": snapshot.updated_at,
+        "labels": [{"name": label} for label in sorted(snapshot.labels)],
+    }
+    larch_io.trusted_atomic_write(
+        request.preflight_tmpdir / "issue.json",
+        json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
+        root=request.preflight_tmpdir,
+    )
+    larch_io.trusted_atomic_write(
+        request.preflight_tmpdir / "receipt-scope-drift.md",
+        scope_drift,
+        root=request.preflight_tmpdir,
+    )
+
+
+def _render_preflight_scope_drift(
+    runner: Runner,
+    *,
+    previous_base_sha: str,
+    target_base_sha: str,
+    plan_inner: str,
+    cwd: str,
+) -> str:
+    """Render a bounded, path-only record for a reviewed scope refresh."""
+    if _SHA1_HEX_RE.fullmatch(previous_base_sha) is None:
+        raise GovernanceGateError("--previous-base-sha must be a 40-character hexadecimal SHA")
+    previous_tracked = _tracked_paths_at_sha(
+        runner, sha=previous_base_sha, cwd=cwd
+    )
+    target_tracked = _tracked_paths_at_sha(runner, sha=target_base_sha, cwd=cwd)
+    scope_paths = declared_scope_paths(
+        plan_inner=plan_inner,
+        tracked=frozenset((*previous_tracked, *target_tracked)),
+    )
+    if scope_paths:
+        result = git.diff_name_status(
+            runner,
+            previous_base_sha,
+            target_base_sha,
+            paths=scope_paths,
+            no_ext_diff=True,
+            cwd=cwd,
+        )
+        if result.returncode != 0:
+            raise ShipError("plan-receipt-scope-diff-failed")
+        diff_lines = result.stdout.splitlines()
+    else:
+        diff_lines = ["(no declared file paths resolved; scope drift was owner-key-only)"]
+    if len(diff_lines) > _PLAN_RECEIPT_SCOPE_DIFF_MAX_LINES:
+        diff_lines = [
+            *diff_lines[: _PLAN_RECEIPT_SCOPE_DIFF_MAX_LINES - 1],
+            "[truncated: additional scope-diff rows omitted]",
+        ]
+    try:
+        rendered_diff = redact.redact_secrets_only(
+            "\n".join(json.dumps(line, ensure_ascii=False) for line in diff_lines)
+        )
+        rendered_rows = rendered_diff.splitlines()
+        if not rendered_rows:
+            rendered_rows = [json.dumps("(no declared path changed)")]
+        if any(
+            not isinstance(json.loads(row), str) for row in rendered_rows
+        ):
+            raise ValueError("scope diff rows are not JSON strings")
+    except (TypeError, ValueError) as exc:
+        raise ShipError("plan-receipt-scope-diff-redaction-failed") from exc
+    indented_rows = "".join(f"    {row}\n" for row in rendered_rows)
+    return (
+        "- **Preflight plan-receipt scope refresh**: semantic materiality passed.\n"
+        f"  - Receipt base: `{previous_base_sha}`\n"
+        f"  - Reviewed target: `{target_base_sha}`\n"
+        "  - Scope diff (JSON-quoted name-status rows):\n"
+        "    ```text\n"
+        f"{indented_rows}"
+        "    ```\n"
+    )
+
+
+def _parse_plan_receipt_refresh_request(
+    argv: list[str],
+) -> PlanReceiptRefreshRequest:
+    """Parse and validate the immutable request identity before any mutation."""
+    parser = argparse.ArgumentParser(prog="larch plan-receipt refresh")
+    _ = parser.add_argument("--issue", required=True)
+    _ = parser.add_argument("--repo", default="")
+    _ = parser.add_argument("--repo-root", required=True)
+    _ = parser.add_argument("--preflight-tmpdir", required=True)
+    _ = parser.add_argument("--base-ref", required=True)
+    _ = parser.add_argument("--previous-base-sha", required=True)
+    _ = parser.add_argument("--base-sha", required=True)
+    args = parser.parse_args(argv)
+    issue = str(args.issue)
+    repository = str(args.repo)
+    base_ref = str(args.base_ref)
+    previous_base_sha = str(args.previous_base_sha)
+    base_sha = str(args.base_sha)
+    if not issue.isdigit() or int(issue) <= 0:
+        raise GovernanceGateError("--issue must be a positive issue number")
+    if repository and _REPOSITORY_RE.fullmatch(repository) is None:
+        raise GovernanceGateError("--repo must be exactly owner/name")
+    if base_ref not in _PLAN_RECEIPT_REFRESH_BASE_REFS:
+        raise GovernanceGateError("--base-ref must be origin/main or upstream/main")
+    if _SHA1_HEX_RE.fullmatch(previous_base_sha) is None:
+        raise GovernanceGateError("--previous-base-sha must be a 40-character hexadecimal SHA")
+    if _SHA1_HEX_RE.fullmatch(base_sha) is None:
+        raise GovernanceGateError("--base-sha must be a 40-character hexadecimal SHA")
+    return PlanReceiptRefreshRequest(
+        issue=issue,
+        repository=repository,
+        repo_root=larch_io.validate_trusted_directory(Path(str(args.repo_root))),
+        preflight_tmpdir=larch_io.validate_trusted_directory(
+            Path(str(args.preflight_tmpdir))
+        ),
+        base_ref=base_ref,
+        previous_base_sha=previous_base_sha,
+        base_sha=base_sha,
+    )
+
+
+def plan_receipt_refresh_main(argv: list[str]) -> int:
+    """Refresh one receipt against the exact plan and base Preflight reviewed."""
+    try:
+        request = _parse_plan_receipt_refresh_request(argv)
+        expected_plan = larch_io.read_trusted_text(
+            request.preflight_tmpdir / "plan-from-issue.txt",
+            root=request.preflight_tmpdir,
+        )
+        if not expected_plan:
+            raise GovernanceGateError("preflight plan is empty")
+        expected_plan_sha256 = hash_plan_block(plan_inner=expected_plan)
+        repository = request.repository or gh.resolve_repo(
+            proc, cwd=str(request.repo_root)
+        ) or ""
+        if not repository:
+            raise GovernanceGateError("repository slug required to refresh plan receipt")
+        if _REPOSITORY_RE.fullmatch(repository) is None:
+            raise GovernanceGateError("--repo must be exactly owner/name")
+        request = replace(request, repository=repository)
+        if (
+            git.rev_parse(proc, request.base_ref, cwd=str(request.repo_root))
+            != request.base_sha
+        ):
+            raise GovernanceGateError("plan-receipt-refresh-base-moved")
+        expected_prior_receipt = _read_preflight_refresh_receipt(
+            request=request,
+            expected_plan_sha256=expected_plan_sha256,
+        )
+        scope_drift = _render_preflight_scope_drift(
+            proc,
+            previous_base_sha=request.previous_base_sha,
+            target_base_sha=request.base_sha,
+            plan_inner=expected_plan,
+            cwd=str(request.repo_root),
+        )
+        if (
+            git.rev_parse(proc, request.base_ref, cwd=str(request.repo_root))
+            != request.base_sha
+        ):
+            raise GovernanceGateError("plan-receipt-refresh-base-moved")
+        receipt = persist_plan_receipt(
+            proc,
+            issue=request.issue,
+            repo=repository,
+            repo_root=request.repo_root,
+            base_sha=request.base_sha,
+            expected_plan_sha256=expected_plan_sha256,
+            expected_prior_receipt=expected_prior_receipt,
+            cwd=str(request.repo_root),
+        )
+        if receipt.base_sha != request.base_sha:
+            raise GovernanceGateError("plan-receipt-refresh-base-mismatch")
+        _write_refreshed_preflight_snapshot(
+            proc,
+            request=request,
+            receipt=receipt,
+            scope_drift=scope_drift,
+            cwd=str(request.repo_root),
+        )
+    except (GovernanceGateError, ShipError, OSError, ValueError) as exc:
+        detail = redact.redact_secrets_only(str(exc)).replace("\n", " ").strip()
+        print("PLAN_RECEIPT_REFRESHED=false")
+        print(f"ERROR: plan-receipt refresh: {detail[:500]}", file=sys.stderr)
+        return config.EXIT_USAGE
+    print("PLAN_RECEIPT_REFRESHED=true")
+    print(f"PLAN_RECEIPT_BASE_SHA={receipt.base_sha}")
+    print("PLAN_RECEIPT_SNAPSHOT_UPDATED=true")
+    print("PLAN_RECEIPT_SCOPE_DRIFT_LOGGED=true")
+    return config.EXIT_OK
+
+
 # Re-export CommandResult for typed test doubles without importing proc at call sites.
 __all__ = [
     "BLOCKING_PARITY_REASONS",
@@ -1242,12 +1637,14 @@ __all__ = [
     "REASON_MISSING_NATIVE",
     "REASON_MISSING_OWNER_BLOCK",
     "REASON_OWNER_SCAN_UNAVAILABLE",
+    "REASON_PLAN_BASE_SCOPE_UNAVAILABLE",
     "REASON_REUSE_SOURCE_UNAVAILABLE",
     "REASON_STALE_BLOCKER_SNAPSHOT",
     "REASON_STALE_OWNER_SNAPSHOT",
     "REASON_STALE_PLAN_BASE_SCOPE",
     "REASON_STALE_PLAN_BODY",
     "REASON_UNDOCUMENTED_NATIVE",
+    "RECEIPT_SEMANTIC_REVALIDATION_REASONS",
     "RECEIPT_STALE_REASONS",
     "RUST_LINE_BUDGET_DEVIATION_HEADING",
     "RUST_LINE_BUDGET_SPLIT_DECISION",
@@ -1283,6 +1680,7 @@ __all__ = [
     "parse_receipt",
     "parse_rust_line_budget_deviation",
     "persist_plan_receipt",
+    "plan_receipt_refresh_main",
     "read_issue_body",
     "render_receipt",
     "strip_adjacent_plan_receipts",

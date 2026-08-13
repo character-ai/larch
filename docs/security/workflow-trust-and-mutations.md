@@ -253,7 +253,15 @@ base, and lease evidence. `/implement` evaluates receipt base-scope freshness
 between the receipt base and the current base target (`origin/main`, or
 `upstream/main` for a fork run), never the implementation-branch `HEAD`.
 Plan, owner, and blocker hashes remain live checks, and in-scope base-target
-drift fails closed. Unavailable or stale evidence fails closed.
+drift fails closed outside Preflight. A sole Preflight
+`stale-plan-base-scope` finding reaches a bounded independent
+semantic-materiality probe; only a current result may invoke
+`plan-receipt refresh`, which binds the current base SHA and read-verifies the
+protected issue-body mutation. It also binds the checked plan and prior
+receipt before writing the exact read-back snapshot that Step 0 compares and a
+bounded JSON-quoted path-only drift record. Plan, owner, blocker,
+malformed-receipt, and unavailable-evidence defects still fail closed, and
+later base drift is never silently carried past Step 0.
 
 `crates/larch-adapters/src/github/issue_mutation.rs` is the single Rust owner
 for issue title, body, label, comment, and close writes. Tracking comment

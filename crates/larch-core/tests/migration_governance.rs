@@ -119,16 +119,14 @@ fn freshness_is_snapshot_only_and_detects_each_drift() {
         owners_sha256: hash_owner_rows(&parse_owner_block(&draft).raw_rows),
     };
     let body = upsert_receipt(&draft, &receipt).unwrap();
-    assert_eq!(
-        freshness(
-            &draft,
-            vec![],
-            scope('a', "one", "old"),
-            scope('b', "one", "new")
-        )
-        .reasons,
-        vec![REASON_STALE_PLAN_BODY.to_owned()]
+    let missing_receipt = freshness(
+        &draft,
+        vec![],
+        scope('a', "one", "old"),
+        scope('b', "one", "new"),
     );
+    assert!(missing_receipt.ok());
+    assert!(missing_receipt.reasons.is_empty());
     assert!(
         freshness(
             &body,
@@ -268,6 +266,52 @@ fn ownership_admission_handles_reuse_conflicts_and_stale_leases() {
             .contains(&"reuse-source-unavailable owner=reuse-owner issue=#6".to_owned())
     );
 }
+
+#[test]
+fn owner_reuse_accepts_missing_receipts_only_for_valid_source_plans() {
+    let source_plan = plan("None.");
+    let source_draft = format!(
+        "{}{}",
+        compose_named_block("plan", &source_plan),
+        owners(&["COMMAND\tissue\tsource", "CREATE\treuse-owner\tREADME.md"])
+    );
+    let source = GovernanceIssueSnapshot {
+        number: 6,
+        title: "source".to_owned(),
+        state: "closed".to_owned(),
+        body: source_draft.clone(),
+    };
+    let request = OwnerAdmissionRequest {
+        issue: 7,
+        body: format!(
+            "{}{}",
+            compose_named_block("plan", &plan("None.")),
+            owners(&[
+                "COMMAND\tissue\tmigration-audit",
+                "REUSE\treuse-owner\t#6\tREADME.md",
+            ])
+        ),
+        reuse_sources: vec![source.clone()],
+        active_issues: Some(vec![]),
+        open_pr_branches: Some(vec![]),
+        now: Utc.with_ymd_and_hms(2026, 7, 19, 13, 0, 0).unwrap(),
+        repository: RepositoryName::parse("owner/repo").unwrap(),
+    };
+    assert!(evaluate_owner_admission(&request).reasons.is_empty());
+    let malformed_receipt = OwnerAdmissionRequest {
+        reuse_sources: vec![GovernanceIssueSnapshot {
+            body: format!("{source_draft}\n<!-- larch:plan-receipt -->\n"),
+            ..source
+        }],
+        ..request
+    };
+    assert!(
+        evaluate_owner_admission(&malformed_receipt)
+            .reasons
+            .contains(&"reuse-owner-snapshot-invalid owner=reuse-owner issue=#6".to_owned())
+    );
+}
+
 #[test]
 fn migration_classifier_and_gate_output_are_stable() {
     for text in [
@@ -506,6 +550,10 @@ fn assert_scope_gate_and_freshness_fail_closed() {
     };
     assert!(!clean_parity.blocking());
     assert!(clean_freshness.ok());
+    let scope_only = FreshnessVerdict {
+        reasons: vec![REASON_STALE_PLAN_BASE_SCOPE.to_owned()],
+    };
+    assert!(!scope_only.ok());
     assert!(
         evaluate_governance_gate(
             clean_parity.clone(),

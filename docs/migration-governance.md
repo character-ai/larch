@@ -116,7 +116,20 @@ Blocker and receipt findings use `missing-native-blocker-edge issue=#N`,
 `undocumented-native-blocker-edge issue=#N`,
 `closed-blocker-edge-retained issue=#N`, `stale-plan-body`,
 `stale-plan-base-scope`, `stale-blocker-snapshot`, and
-`stale-owner-snapshot`.
+`stale-owner-snapshot`, plus `plan-base-scope-unavailable` when live scope
+evidence cannot be read.
+
+A valid plan without `larch:plan-receipt` is not an audit defect. Receipt
+scope drift remains visible to audit; `/implement` may refresh it only at
+Preflight after an independent bounded semantic-materiality check. Malformed
+receipts, stale plan bodies, snapshots, and unavailable base-scope evidence
+remain fail-closed.
+
+`python/cli.py plan-receipt refresh` accepts only the exact Preflight plan,
+prior receipt base, and current target SHA. It rejects a moving base or any
+changed plan, receipt, blocker, or owner input before mutation. A successful
+read-back replaces Preflight's issue snapshot and produces one bounded,
+JSON-quoted path-only drift record for Step 0 to append once under `Warnings`.
 
 Owner and lease findings use `missing-owner-block`,
 `owner-block-invalid defect=TOKEN`,

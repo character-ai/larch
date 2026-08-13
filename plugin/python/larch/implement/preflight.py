@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn, cast
 
@@ -33,6 +34,9 @@ SUCCESS_ENVELOPE_KEYS = (
     "PLAN_PATH",
     "ISSUE_JSON_PATH",
     "BYPASS_COUNT",
+    "PLAN_RECEIPT_SCOPE_REVALIDATION",
+    "PLAN_RECEIPT_PREVIOUS_BASE_SHA",
+    "PLAN_RECEIPT_TARGET_BASE_SHA",
     "DESIGN_DIFFICULTY",
     "MAIN_CI_STATUS",
     "MAIN_FAILED_RUN_ID",
@@ -48,6 +52,16 @@ MAIN_HEALTH_KEYS = (
 _RECOGNIZED_TRAILER_PREFIX_RE = re.compile(
     r"^(?:" + "|".join(plan_grammar.TRAILER_KEYS) + r"):"
 )
+_SHA1_HEX_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+@dataclass(frozen=True)
+class _GovernancePreflightStatus:
+    """Machine facts needed to bind a conditional receipt refresh to Preflight."""
+
+    scope_revalidation: bool = False
+    previous_base_sha: str = ""
+    target_base_sha: str = ""
 
 
 def _usage() -> str:
@@ -203,6 +217,22 @@ def _validate_success_envelope(
         error = _success_readability_error(data)
     if not error and not data["BYPASS_COUNT"].isdigit():
         error = "BYPASS_COUNT must be numeric"
+    if (
+        not error
+        and data["PLAN_RECEIPT_SCOPE_REVALIDATION"] not in {"true", "false"}
+    ):
+        error = "PLAN_RECEIPT_SCOPE_REVALIDATION must be true or false"
+    if not error:
+        scope_revalidation = data["PLAN_RECEIPT_SCOPE_REVALIDATION"] == "true"
+        previous_base_sha = data["PLAN_RECEIPT_PREVIOUS_BASE_SHA"]
+        target_base_sha = data["PLAN_RECEIPT_TARGET_BASE_SHA"]
+        if scope_revalidation and (
+            _SHA1_HEX_RE.fullmatch(previous_base_sha) is None
+            or _SHA1_HEX_RE.fullmatch(target_base_sha) is None
+        ):
+            error = "receipt scope revalidation requires two SHA values"
+        elif not scope_revalidation and (previous_base_sha or target_base_sha):
+            error = "receipt scope SHA values require revalidation"
     if not error and data["MAIN_CI_STATUS"] not in main_health.MAIN_HEALTH_STATUSES:
         error = f"MAIN_CI_STATUS must be {_main_health_status_display()}"
     if not error:
@@ -470,8 +500,24 @@ def _refuse_unreviewed_plan(*, plan_path: Path, issue: str) -> None:
             raise SystemExit(2)
 
 
-def _refuse_governance_gate(*, site: str, verdict: migration_governance.GovernanceGateVerdict) -> int:
+def _refuse_governance_gate(
+    *,
+    site: str,
+    issue: str,
+    verdict: migration_governance.GovernanceGateVerdict,
+) -> int:
     print(migration_governance.format_gate_refusal(site=site, verdict=verdict))
+    reasons = set(verdict.blocking_reasons)
+    if migration_governance.REASON_STALE_PLAN_BODY in reasons:
+        print(
+            f"**→ Remediation: re-run `/design {issue}` to repair or replace the plan. "
+            "A `[DESIGNED]` issue with a plan enters the replace flow directly.**"
+        )
+    elif migration_governance.REASON_PLAN_BASE_SCOPE_UNAVAILABLE in reasons:
+        print(
+            "**→ Remediation: retry `/implement` when the declared base scope is "
+            "readable; do not refresh the receipt manually.**"
+        )
     return 2
 
 
@@ -482,7 +528,7 @@ def _migration_governance_status(
     issue_body: str,
     repo_root: Path,
     forked_target: bool,
-) -> int | None:
+) -> _GovernancePreflightStatus | int:
     gate_repo = repo or (gh.resolve_repo(proc) or "")
     if not gate_repo:
         print("**❌ /implement preflight: repository slug required for migration governance.**")
@@ -503,11 +549,29 @@ def _migration_governance_status(
     except ShipError as exc:
         print(f"**❌ /implement preflight: migration governance read failed: {exc}.**")
         return 2
-    if not gate.ok:
-        return _refuse_governance_gate(site="/implement preflight", verdict=gate)
+    if not gate.ok and not gate.permits_preflight_semantic_revalidation:
+        return _refuse_governance_gate(
+            site="/implement preflight", issue=issue, verdict=gate
+        )
+    scope_status = _GovernancePreflightStatus()
+    for token in gate.freshness.semantic_revalidation_reasons:
+        print(
+            "**⚠ /implement preflight: "
+            f"`{token}`; semantic materiality must revalidate plan-cited paths "
+            "and symbols before refreshing the receipt.**"
+        )
+        receipt = migration_governance.parse_receipt(body=issue_body)
+        if receipt is None:
+            print("**❌ /implement preflight: receipt identity unavailable for semantic revalidation.**")
+            return 2
+        scope_status = _GovernancePreflightStatus(
+            scope_revalidation=True,
+            previous_base_sha=receipt.base_sha,
+            target_base_sha=base_target_sha,
+        )
     for token, command in zip(gate.owners.report_only, gate.owners.cleanup_commands, strict=True):
         print(f"**⚠ /implement preflight: `{token}`. Cleanup: `{command}`.**")
-    return None
+    return scope_status
 
 
 def preflight_main(argv: list[str] | None = None) -> int:
@@ -618,7 +682,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
         repo_root=repo_root,
         forked_target=bool(repo),
     )
-    if governance_status is not None:
+    if isinstance(governance_status, int):
         return governance_status
 
     design_difficulty = ""
@@ -638,6 +702,11 @@ def preflight_main(argv: list[str] | None = None) -> int:
         "PLAN_PATH": str(plan_path),
         "ISSUE_JSON_PATH": str(issue_json_path),
         "BYPASS_COUNT": str(_bypass_count(preflight_tmpdir)),
+        "PLAN_RECEIPT_SCOPE_REVALIDATION": str(
+            governance_status.scope_revalidation
+        ).lower(),
+        "PLAN_RECEIPT_PREVIOUS_BASE_SHA": governance_status.previous_base_sha,
+        "PLAN_RECEIPT_TARGET_BASE_SHA": governance_status.target_base_sha,
         "DESIGN_DIFFICULTY": design_difficulty,
         **_materialize_main_health_rows(cli_path, env, repo, preflight_tmpdir),
     })

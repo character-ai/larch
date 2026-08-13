@@ -131,6 +131,16 @@ contains "$SKILL" 'On the force audit-skip branch, do **not** read' "missing ite
 contains "$SKILL" 'do **not** create or overwrite `$PREFLIGHT_TMPDIR/audit.txt`, and do **not** append to `$PREFLIGHT_TMPDIR/force-bypass.log`' "missing item 4 force no-audit-file / no-bypass-log contract"
 contains "$SKILL" 'the audit skip is not a downgraded gate and writes no bypass-log entry' "missing item 4 force skip-not-a-gate contract"
 contains "$SKILL" 'On `AUDIT=pass` or the force audit skip — semantic materiality' "missing item 6 reachable-from-force-skip heading"
+contains "$SKILL" 'plan-receipt refresh' "missing semantic-materiality receipt refresh"
+contains "$SKILL" 'PLAN_RECEIPT_SCOPE_REVALIDATION=true' "missing receipt scope-revalidation gate"
+contains "$SKILL" 'PLAN_RECEIPT_REFRESHED=true' "missing receipt refresh readback contract"
+contains "$SKILL" 'PLAN_RECEIPT_SNAPSHOT_UPDATED=true' "missing receipt snapshot readback contract"
+contains "$SKILL" 'PLAN_RECEIPT_SCOPE_DRIFT_LOGGED=true' "missing receipt scope-drift log contract"
+contains "$SKILL" '--preflight-tmpdir "$PREFLIGHT_TMPDIR"' "missing receipt refresh preflight binding"
+ordered_before "$SKILL" \
+  'semantic materiality (read-only bounded probe' \
+  'plan-receipt refresh --issue' \
+  "receipt refresh must follow semantic materiality"
 
 # Anti-halt continuation: the force skip breadcrumb is a Preflight continuation
 # signal; the orchestrator continues through items 6-7 then Step 0 without waiting

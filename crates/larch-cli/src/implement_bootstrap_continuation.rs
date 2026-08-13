@@ -35,6 +35,8 @@ use std::{
 };
 
 const CONTRACT_FAILURE: u8 = 2;
+const RECEIPT_SCOPE_DRIFT_MAX_BYTES: usize = 64 * 1024;
+const RECEIPT_SCOPE_DRIFT_MAX_ROWS: usize = 128;
 
 /// Complete the public bootstrap command after its session infrastructure is ready.
 pub fn run(mut state: BootstrapState, options: &BootstrapOptions) -> ExitCode {
@@ -644,6 +646,12 @@ fn phase_plan(
     } else if !materialize_initial_plan(state, options, &feature_file)? {
         return Ok(());
     }
+    if !append_receipt_scope_drift(state, options) {
+        return Err(ContinuationFailure::new(
+            "receipt-scope-drift-log",
+            "could not preserve receipt scope-drift evidence",
+        ));
+    }
     if dirty_or_unknown()? {
         "dirty-tree".clone_into(&mut state.implement_bail_reason);
         return Ok(());
@@ -834,6 +842,92 @@ fn append_force_bypass(state: &BootstrapState, options: &BootstrapOptions) -> bo
         }
     }
     write_session_file(&state.implement_tmpdir, ".force-bypass-log-consumed", "").is_ok()
+}
+
+fn append_receipt_scope_drift(state: &BootstrapState, options: &BootstrapOptions) -> bool {
+    if options.preflight_tmpdir.is_empty() {
+        return true;
+    }
+    let source = Path::new(&options.preflight_tmpdir).join("receipt-scope-drift.md");
+    let sentinel = Path::new(&state.implement_tmpdir).join(".receipt-scope-drift-consumed");
+    let Ok(source_present) = safe_regular_file_present(&source) else {
+        return false;
+    };
+    let Ok(sentinel_present) = safe_regular_file_present(&sentinel) else {
+        return false;
+    };
+    if !source_present || sentinel_present {
+        return true;
+    }
+    let Ok(metadata) = fs::metadata(&source) else {
+        return false;
+    };
+    if metadata.len() > RECEIPT_SCOPE_DRIFT_MAX_BYTES as u64 {
+        return false;
+    }
+    let Ok(entry) = read_regular_text(&source) else {
+        return false;
+    };
+    if !valid_receipt_scope_drift(&entry) {
+        return false;
+    }
+    if write_session_file(&state.implement_tmpdir, "receipt-scope-drift.md", &entry).is_err() {
+        return false;
+    }
+    let output = run_verified_larch(&[
+        OsString::from("run-log"),
+        OsString::from("append-entry"),
+        OsString::from("--log"),
+        Path::new(&state.implement_tmpdir)
+            .join("execution-issues.md")
+            .into_os_string(),
+        OsString::from("--category"),
+        OsString::from("Warnings"),
+        OsString::from("--entry-file"),
+        Path::new(&state.implement_tmpdir)
+            .join("receipt-scope-drift.md")
+            .into_os_string(),
+    ]);
+    if !output.is_ok_and(|result| {
+        result.status().success()
+            && output_values(&result)
+                .get("APPENDED")
+                .is_some_and(|value| value == "true")
+    }) {
+        return false;
+    }
+    write_session_file(&state.implement_tmpdir, ".receipt-scope-drift-consumed", "").is_ok()
+}
+
+fn valid_receipt_scope_drift(entry: &str) -> bool {
+    let lines: Vec<&str> = entry.lines().collect();
+    if lines.len() < 7
+        || lines.len() > RECEIPT_SCOPE_DRIFT_MAX_ROWS + 6
+        || lines[0] != "- **Preflight plan-receipt scope refresh**: semantic materiality passed."
+        || !receipt_scope_sha_line(lines[1], "  - Receipt base: `")
+        || !receipt_scope_sha_line(lines[2], "  - Reviewed target: `")
+        || lines[3] != "  - Scope diff (JSON-quoted name-status rows):"
+        || lines[4] != "    ```text"
+        || lines.last() != Some(&"    ```")
+    {
+        return false;
+    }
+    lines[5..lines.len() - 1].iter().all(|line| {
+        line.strip_prefix("    ")
+            .and_then(|row| serde_json::from_str::<String>(row).ok())
+            .is_some()
+    })
+}
+
+fn receipt_scope_sha_line(line: &str, prefix: &str) -> bool {
+    line.strip_prefix(prefix)
+        .and_then(|value| value.strip_suffix('`'))
+        .is_some_and(|sha| {
+            sha.len() == 40
+                && sha
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
 }
 
 fn append_failure_with_entry_fallback(
@@ -2164,6 +2258,9 @@ fn emit_failure(failure: &ContinuationFailure, tmpdir: &str) -> ExitCode {
         "force-bypass-log" => {
             "**⚠ /implement Step 0: force bypass log handling failed. Aborting.**"
         }
+        "receipt-scope-drift-log" => {
+            "**⚠ /implement Step 0: receipt scope-drift evidence handling failed. Aborting.**"
+        }
         _ => "",
     };
     if matches!(failure.step.as_str(), "copy-plan" | "gh-issue-view") && !tmpdir.is_empty() {
@@ -2345,7 +2442,7 @@ mod tests {
     use super::{
         ContinuationFailure, append_force_bypass, bootstrap_next, coder_order_for_tier,
         emit_failure, normalize_1r_probe_output, phase_coder, read_regular_text,
-        strip_plan_provenance_headers,
+        strip_plan_provenance_headers, valid_receipt_scope_drift,
     };
     use crate::bootstrap_commands::{BootstrapOptions, BootstrapState, InvokeMode};
     use std::{collections::BTreeMap, fs, process::ExitCode};
@@ -2496,6 +2593,25 @@ mod tests {
     }
 
     #[test]
+    fn receipt_scope_drift_requires_bounded_generated_json_rows() {
+        let row = serde_json::to_string("M\tREADME.md").expect("serialize JSON row");
+        let valid = format!(
+            "- **Preflight plan-receipt scope refresh**: semantic materiality passed.\n  - Receipt base: `{}`\n  - Reviewed target: `{}`\n  - Scope diff (JSON-quoted name-status rows):\n    ```text\n    {row}\n    ```\n",
+            "a".repeat(40),
+            "b".repeat(40),
+        );
+        assert!(valid_receipt_scope_drift(&valid));
+        assert!(!valid_receipt_scope_drift(&valid.replace(&row, "```")));
+        assert!(!valid_receipt_scope_drift(&valid.replacen('a', "A", 1)));
+        let too_many_rows = valid.replacen(
+            "    ```\n",
+            &format!("{}    ```\n", format!("    {row}\n").repeat(128)),
+            1,
+        );
+        assert!(!valid_receipt_scope_drift(&too_many_rows));
+    }
+
+    #[test]
     fn failure_steps_preserve_the_contract_exit_code() {
         for step in [
             "session-entry-gate",
@@ -2509,6 +2625,7 @@ mod tests {
             "write-session-env",
             "degraded-both-down-hard-fail",
             "force-bypass-log",
+            "receipt-scope-drift-log",
             "unknown-step",
         ] {
             assert_eq!(

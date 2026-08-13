@@ -4795,6 +4795,18 @@ migration_issue = 8171
 clean_install_test = "clean-install-plan-block-write"
 
 [[commands]]
+domain = "plan-receipt"
+verb = "refresh"
+python_module = "larch.issue.migration_governance"
+python_function = "plan_receipt_refresh_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7681
+
+[[commands]]
 domain = "plan-review"
 verb = "await-loop-identity"
 python_module = "larch.core.process_identity"
@@ -9404,7 +9416,7 @@ rust = []
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["architectural-assessment materialize", "architectural-assessment submit", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue", "voting write-tally"]
+python = ["architectural-assessment materialize", "architectural-assessment submit", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue", "voting write-tally"]
 rust = ["admission fork-env", "admission gate", "bgjob wait", "bootstrap invoke", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary"]
 
 [[callers]]
