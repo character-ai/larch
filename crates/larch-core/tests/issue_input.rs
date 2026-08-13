@@ -220,6 +220,27 @@ const PARSE_CASES: &[ParseCase] = &[
             ),
         ],
     ),
+    (
+        // #8455: generic boundaries own one blank separator line, so inner
+        // and EOF-final items preserve the same body bytes.
+        "generic-boundaries-own-one-separator-newline",
+        "### First generic item\nshared body\n\n### Inner generic item\nshared body\n\n### Final generic item\nshared body",
+        &[
+            ("First generic item", "shared body", "", "", "", false),
+            ("Inner generic item", "shared body", "", "", "", false),
+            ("Final generic item", "shared body", "", "", "", false),
+        ],
+    ),
+    (
+        // #8455: do not trim all trailing blank lines when one belongs to the
+        // generic boundary.
+        "generic-boundaries-retain-extra-blank-lines",
+        "### First generic item\nshared body\n\n\n### Final generic item\nshared body",
+        &[
+            ("First generic item", "shared body\n", "", "", "", false),
+            ("Final generic item", "shared body", "", "", "", false),
+        ],
+    ),
 ];
 
 fn expect(entry: &(&str, &str, &str, &str, &str, bool)) -> ParsedItem {

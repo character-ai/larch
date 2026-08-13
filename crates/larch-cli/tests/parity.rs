@@ -4834,6 +4834,19 @@ const BATCH_INPUT: &str = concat!(
     "### title only\n",
 );
 
+// #8455: two inner generic boundaries and one EOF-final item must materialize
+// byte-identical bodies.
+const GENERIC_BOUNDARY_INPUT: &str = concat!(
+    "### First generic item\n",
+    "shared body\n",
+    "\n",
+    "### Inner generic item\n",
+    "shared body\n",
+    "\n",
+    "### Final generic item\n",
+    "shared body",
+);
+
 const ISSUE_INPUT_CASES: &[IssueInputFixture] = &[
     IssueInputFixture {
         name: "issue-parse-input-batch-file",
@@ -4847,6 +4860,19 @@ const ISSUE_INPUT_CASES: &[IssueInputFixture] = &[
         ],
         stdin: "",
         seeds: &[("batch.md", BATCH_INPUT)],
+    },
+    IssueInputFixture {
+        name: "issue-parse-input-generic-boundaries",
+        reference: "issue-parse-input",
+        selector: &["issue", "parse-input"],
+        arguments: &[
+            "--input-file",
+            "{sandbox}/generic-boundaries.md",
+            "--output-dir",
+            "{sandbox}/bodies",
+        ],
+        stdin: "",
+        seeds: &[("generic-boundaries.md", GENERIC_BOUNDARY_INPUT)],
     },
     IssueInputFixture {
         name: "issue-parse-input-empty-file",
