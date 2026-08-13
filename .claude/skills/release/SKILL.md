@@ -384,12 +384,13 @@ If metadata names a newer install than the active `CLAUDE_PLUGIN_ROOT`, still ru
 
 This is the final step. It runs after Step 6 publishes/promotes the release and after Step 7 attempts `/upgrade-larch`, regardless of whether Step 7 succeeded. It is unreachable on `--dry-run` because that flow exits at Step 4 before any branch exists. If Step 5 merge or Step 6 publish/promote fails, stop before this step so `release/v${NEW_VERSION}` remains available for debugging.
 
-GitHub auto-deletes the remote head branch on merge (`delete_branch_on_merge=true`), so only the local release branch needs removal. Invoke the repo-root helper and capture its exit status non-fatally so `errexit` cannot abort `/release` on usage or safety failures:
+GitHub auto-deletes the remote head branch on merge (`delete_branch_on_merge=true`), so only the local release branch needs removal. Invoke the verified working-tree driver and capture its exit status non-fatally so `errexit` cannot abort `/release` on usage or safety failures:
 
 ```bash
 set +e
 # lint-consecutive-bash: ok parse-only fence documents cleanup stdout contract separately
-cleanup_out=$(python3 python/cli.py session local-cleanup --branch "release/v${NEW_VERSION}")
+WORKTREE_LARCH="$PWD/target/release/larch"
+cleanup_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" session local-cleanup --branch "release/v${NEW_VERSION}")
 cleanup_rc=$?
 set -e
 ```
@@ -456,7 +457,7 @@ Repo-root helpers referenced from steps above:
 
 - `git fetch origin main` + `git merge --ff-only origin/main` — Step 1 sync fast-forwards local `main` only when strictly behind `origin/main`; unpublished or divergent local `main` commits are not rebased
 - `scripts/larch.sh gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `python/cli.py ci wait`, `python/cli.py merge pr --method merge --release-queue-bypass`, and `scripts/larch.sh bgjob {start,wait}`
-- `python/cli.py session local-cleanup` (contract: `python/session_env.py (session local-cleanup)`) — post-merge local teardown
+- `scripts/larch.sh session local-cleanup` (Rust `session local-cleanup` contract) — post-merge local teardown
 
 Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):
 
