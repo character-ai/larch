@@ -19,7 +19,7 @@ Write one risk-minimizing proposal to `$DESIGN_TMPDIR/decompose/inline-partition
 
 ### Piece 1: <title>
 - Scope: <paths and behavior>
-- Firm-headings: <complete parent plan headings owned by this piece>
+- Firm-headings: <bare parent-plan paths, comma-separated; no `###` or backticks>
 - Acceptance: <concrete checks>
 - Dependencies: none | blocked-by Piece N[, Piece M]
 - Size estimate: <lines or effort>

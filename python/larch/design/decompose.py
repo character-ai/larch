@@ -22,6 +22,7 @@ from larch.core import proc
 from larch.core.repo_roots import larch_entrypoint
 from larch.core import retry
 from larch.core import rust_runtime
+from larch.design import plan_grammar
 from larch.design.design_step0_env import ROUTE_STATE_PATH
 from larch.design.design_terminal import phase_driver_read_result_env
 from larch.git import gh
@@ -191,10 +192,19 @@ def _piece_field(body: str, field: str) -> str:
     return ""
 
 
-def _split_csvish(value: str) -> list[str]:
+def _normalize_firm_heading(value: str) -> str:
+    """Return the bare path from a partition's parent-plan heading token."""
+    candidate = value.strip().strip("`").strip()
+    heading = plan_grammar.match_heading(candidate)
+    if heading is not None:
+        candidate = heading.path
+    return candidate.strip().strip("`").strip()
+
+
+def _split_firm_headings(value: str) -> list[str]:
     items: list[str] = []
     for raw in re.split(r",|\n", value):
-        item = raw.strip().strip("`")
+        item = _normalize_firm_heading(raw)
         if item:
             items.append(item)
     return items
@@ -285,7 +295,7 @@ def _piece_metadata(
     parent_paths: list[str],
 ) -> tuple[str, list[str], str] | None:
     scope = _piece_field(body, "scope")
-    firm = _split_csvish(_piece_field(body, "firm-headings"))
+    firm = _split_firm_headings(_piece_field(body, "firm-headings"))
     if not firm:
         firm = _derive_firm_headings(parent_paths=parent_paths, scope=scope)
     acceptance = _piece_field(body, "acceptance")
@@ -344,7 +354,7 @@ def _collect_piece_data(
         parent_firm_headings = list(dict.fromkeys(parent_paths))
         child_firm_headings = list(dict.fromkeys(path for firm in firm_heading_lines for path in firm))
         if set(parent_firm_headings) != set(child_firm_headings):
-            return "missing-piece-metadata", [], [], [], [], []
+            return "firm-heading-coverage-mismatch", [], [], [], [], []
     return "", dep_lines, scopes, firm_heading_lines, acceptance_lines, panel_edges
 
 
@@ -1095,7 +1105,7 @@ def aggregate_partition(*, design_tmpdir: Path, panel_outputs_file: Path, codex_
         "## Pieces (only when Recommendation is split)\n\n"
         "### Piece 1: <short title>\n"
         "- Scope: <files / behaviors covered>\n"
-        "- Firm-headings: <comma-separated parent plan heading paths covered by this piece>\n"
+        "- Firm-headings: <bare parent-plan paths, comma-separated; no `###` or backticks>\n"
         "- Acceptance: <one or more implementable criteria for this piece>\n"
         "- Dependencies: none | blocked-by Piece N[, Piece M ...]\n"
         "- Diff_lines estimate: <integer>\n"
