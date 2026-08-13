@@ -613,8 +613,8 @@ resolve_plugin_root_from_script() {
     local scripts_dir=""
     local candidate=""
     script_path="${BASH_SOURCE[0]:-$0}"
-    scripts_dir="$(CDPATH= cd -- "$(dirname -- "$script_path")" && pwd -P)" || die "unable to resolve scripts directory from bootstrap script path"
-    candidate="$(CDPATH= cd -- "$scripts_dir/.." && pwd -P)" || die "unable to derive CLAUDE_PLUGIN_ROOT from script location"
+    scripts_dir="$(CDPATH='' cd -- "$(dirname -- "$script_path")" && pwd -P)" || die "unable to resolve scripts directory from bootstrap script path"
+    candidate="$(CDPATH='' cd -- "$scripts_dir/.." && pwd -P)" || die "unable to derive CLAUDE_PLUGIN_ROOT from script location"
     printf '%s\n' "$candidate"
 }
 
