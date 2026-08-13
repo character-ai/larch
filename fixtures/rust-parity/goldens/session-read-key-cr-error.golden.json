@@ -2,7 +2,7 @@
   "exit_code": 1,
   "files": {
     "session.env": {
-      "text": "KEY=value\r\n"
+      "text": "KEY=value\n"
     }
   },
   "side_effects": {},

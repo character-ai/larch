@@ -3,7 +3,7 @@
   "files": {},
   "side_effects": {},
   "stderr": {
-    "text": "usage: session write-run-params [--output OUTPUT]\n                                [--partition-requested PARTITION_REQUESTED]\n                                [--brainstorm-requested BRAINSTORM_REQUESTED]\n                                [--approve-requested APPROVE_REQUESTED]\n                                [--skip-approve-requested SKIP_APPROVE_REQUESTED]\n                                [--difficulty DIFFICULTY]\nsession write-run-params: error: unrecognized arguments: --bogus\n"
+    "text": "usage: session write-run-params [--output OUTPUT] [--partition-requested PARTITION_REQUESTED] [--brainstorm-requested BRAINSTORM_REQUESTED] [--approve-requested APPROVE_REQUESTED] [--skip-approve-requested SKIP_APPROVE_REQUESTED] [--difficulty DIFFICULTY]\nsession write-run-params: error: unrecognized arguments: --bogus\n"
   },
   "stdout": {
     "text": ""

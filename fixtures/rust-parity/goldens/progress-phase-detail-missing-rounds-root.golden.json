@@ -3,7 +3,7 @@
   "files": {},
   "side_effects": {},
   "stderr": {
-    "text": "usage: cli.py progress render-phase-detail [-h] --rounds-root ROUNDS_ROOT\n                                           [--findings-file FINDINGS_FILE]\n                                           [--timing-ledger TIMING_LEDGER]\n                                           [--token-ledger TOKEN_LEDGER]\n                                           [--skill {implement,design}]\n                                           [--top-n TOP_N] [--no-gantt]\n                                           [--output OUTPUT]\ncli.py progress render-phase-detail: error: the following arguments are required: --rounds-root\n"
+    "text": "usage: cli.py progress render-phase-detail [-h] --rounds-root ROUNDS_ROOT [--findings-file FINDINGS_FILE] [--timing-ledger TIMING_LEDGER] [--token-ledger TOKEN_LEDGER] [--skill {implement,design}] [--top-n TOP_N] [--no-gantt] [--output OUTPUT]\ncli.py progress render-phase-detail: error: the following arguments are required: --rounds-root\n"
   },
   "stdout": {
     "text": ""

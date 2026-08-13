@@ -6,6 +6,6 @@
     "text": ""
   },
   "stdout": {
-    "text": "usage: cli.py gantt render [-h] --window-start-s WINDOW_START_S --window-end-s\n                           WINDOW_END_S --rows-tsv ROWS_TSV [--width WIDTH]\n\noptions:\n  -h, --help            show this help message and exit\n  --window-start-s WINDOW_START_S\n  --window-end-s WINDOW_END_S\n  --rows-tsv ROWS_TSV\n  --width WIDTH\n"
+    "text": "usage: cli.py gantt render [-h] --window-start-s WINDOW_START_S --window-end-s WINDOW_END_S --rows-tsv ROWS_TSV [--width WIDTH]\n\noptions:\n  -h, --help            show this help message and exit\n  --window-start-s WINDOW_START_S\n  --window-end-s WINDOW_END_S\n  --rows-tsv ROWS_TSV\n  --width WIDTH\n"
   }
 }

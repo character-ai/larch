@@ -2,7 +2,7 @@
   "exit_code": 0,
   "files": {
     "values.env": {
-      "text": "KEY=first\r\nKEY=\rvalue\r\r\n"
+      "text": "KEY=first\nKEY=\rvalue\r\n"
     }
   },
   "side_effects": {},

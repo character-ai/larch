@@ -32,6 +32,7 @@ const STALL_RECOVERY_ATTEMPT_LOCK_NAME: &str = ".stall-recovery-attempts.lock";
 static RFC3339_UTC: OnceLock<Regex> = OnceLock::new();
 static PROCESS_IDENTITY: OnceLock<Regex> = OnceLock::new();
 static STATUSLINE_STAMP: OnceLock<Regex> = OnceLock::new();
+static CHOOSE_FROM: OnceLock<Regex> = OnceLock::new();
 const BLOCKED_ENVIRONMENT_KEYS: &[&str] = &[
     "ALL_PROXY",
     "AWS_ACCESS_KEY_ID",
@@ -492,6 +493,73 @@ fn normalize_content(
     }
 }
 
+/// Collapse an `argparse` usage block and its indented continuation lines into
+/// one logical line.
+///
+/// `argparse` wraps the `usage:` line to the terminal width, and the wrapping
+/// algorithm changed across Python versions: 3.13 keeps an option and its
+/// metavar together where earlier versions split them. The Rust CLI mimics one
+/// fixed width. The wrapping is therefore presentation that varies with the
+/// live Python on the runner, not a behavioral difference, so the parity oracle
+/// joins each block into a single line before comparing. This runs
+/// unconditionally because usage wrapping is never a meaningful parity signal.
+fn collapse_usage_wrapping(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut lines = text.lines().peekable();
+    let mut first = true;
+    while let Some(line) = lines.next() {
+        if !first {
+            out.push('\n');
+        }
+        first = false;
+        if let Some(rest) = line.strip_prefix("usage:") {
+            out.push_str("usage:");
+            out.push_str(rest.trim_end());
+            // argparse always separates the usage block from the rest of the
+            // message with a blank or unindented line, so consume only indented
+            // non-empty continuations.
+            while let Some(next) = lines.peek() {
+                if next.starts_with(char::is_whitespace) && !next.trim().is_empty() {
+                    let continuation = lines.next().unwrap_or_default();
+                    out.push(' ');
+                    out.push_str(continuation.trim());
+                } else {
+                    break;
+                }
+            }
+        } else {
+            out.push_str(line);
+        }
+    }
+    if text.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
+/// Strip the per-choice quoting inside an `argparse` `(choose from ...)` clause.
+///
+/// Python 3.13 renders an invalid-choice error as `(choose from a, b)` while
+/// earlier versions quote each choice as `(choose from 'a', 'b')`. The Rust CLI
+/// mimics the quoted form. Like usage wrapping, this is argparse presentation
+/// that varies with the live Python on the runner, so the oracle drops the
+/// per-choice quotes before comparing. Only the choice list is rewritten; the
+/// quoted invalid value that precedes the clause is left untouched.
+fn normalize_choose_from(text: &str) -> String {
+    choose_from_pattern()
+        .replace_all(text, |captures: &regex::Captures| {
+            format!("(choose from {})", captures[1].replace('\'', ""))
+        })
+        .into_owned()
+}
+
+fn choose_from_pattern() -> &'static Regex {
+    CHOOSE_FROM.get_or_init(|| {
+        Regex::new(r"\(choose from ([^)]*)\)")
+            .expect("choose-from normalization regex should compile")
+    })
+}
+
 fn normalize_text(text: &str, sandbox_root: &Path, rules: &[NormalizationRule]) -> String {
     let mut normalized = text.to_owned();
     for rule in rules {
@@ -519,7 +587,7 @@ fn normalize_text(text: &str, sandbox_root: &Path, rules: &[NormalizationRule]) 
                 .into_owned(),
         };
     }
-    normalized
+    normalize_choose_from(&collapse_usage_wrapping(&normalized))
 }
 
 fn statusline_stamp_pattern() -> &'static Regex {

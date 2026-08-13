@@ -7,7 +7,7 @@
   },
   "side_effects": {},
   "stderr": {
-    "text": "usage: cli.py gantt render [-h] --window-start-s WINDOW_START_S --window-end-s\n                           WINDOW_END_S --rows-tsv ROWS_TSV [--width WIDTH]\ncli.py gantt render: error: unrecognized arguments: surplus\n"
+    "text": "usage: cli.py gantt render [-h] --window-start-s WINDOW_START_S --window-end-s WINDOW_END_S --rows-tsv ROWS_TSV [--width WIDTH]\ncli.py gantt render: error: unrecognized arguments: surplus\n"
   },
   "stdout": {
     "text": ""
