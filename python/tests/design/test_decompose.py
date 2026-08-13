@@ -261,6 +261,81 @@ def test_prepare_preserves_only_declared_dependency(tmp_path: Path) -> None:
     assert deps.splitlines() == ["3\t2"]
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("`python/larch/design/decompose.py`", "python/larch/design/decompose.py"),
+        ("### NEW: `python/larch/design/decompose.py`", "python/larch/design/decompose.py"),
+        ("`### UPDATED: skills/design/references/decompose-panel.md`", "skills/design/references/decompose-panel.md"),
+        ("### UPDATED: `skills/design/references/decompose-panel.md`", "skills/design/references/decompose-panel.md"),
+        ("### REWRITTEN: `docs/issue-anchored-plan.md`", "docs/issue-anchored-plan.md"),
+        ("### MAY_UPDATE: `docs/optional.md`", "docs/optional.md"),
+    ],
+)
+def test_normalize_firm_heading_accepts_parent_plan_heading_forms(value: str, expected: str) -> None:
+    assert decompose._normalize_firm_heading(value) == expected  # pyright: ignore[reportPrivateUsage]  # direct parser regression coverage
+
+
+def test_prepare_normalizes_parent_plan_heading_tokens(tmp_path: Path) -> None:
+    d = _design_tmp(tmp_path)
+    (d / "plan.txt").write_text(
+        "## Files to modify/create\n\n"
+        "### NEW: `python/larch/design/decompose.py`\n"
+        "### UPDATED: `skills/design/references/decompose-panel.md`\n"
+        "### REWRITTEN: `docs/issue-anchored-plan.md`\n"
+        "### MAY_UPDATE: `docs/optional.md`\n"
+        "diff_lines: 10\n",
+        encoding="utf-8",
+    )
+    partition = d / "partition.md"
+    partition.write_text(
+        "## Pieces\n\n"
+        "### Piece 1: Parser\n"
+        "- Firm-headings: `### NEW: python/larch/design/decompose.py`, `### UPDATED: skills/design/references/decompose-panel.md`\n"
+        "- Acceptance: cover parser and template\n"
+        "- Dependencies: none\n\n"
+        "### Piece 2: Documentation\n"
+        "- Firm-headings: `### REWRITTEN: docs/issue-anchored-plan.md`\n"
+        "- Acceptance: cover documentation\n"
+        "- Dependencies: none\n",
+        encoding="utf-8",
+    )
+
+    status, witness = decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition)
+
+    assert (status, witness) == ("ok", "")
+    batch = (d / "decompose" / "partition-input.txt").read_text(encoding="utf-8")
+    assert "**Firm headings**: python/larch/design/decompose.py, skills/design/references/decompose-panel.md" in batch
+    assert "**Firm headings**: docs/issue-anchored-plan.md" in batch
+    assert "### NEW: `python/larch/design/decompose.py`" not in batch
+
+
+def test_prepare_reports_firm_heading_coverage_mismatch(tmp_path: Path) -> None:
+    d = _design_tmp(tmp_path)
+    (d / "plan.txt").write_text(
+        "## Files to modify/create\n\n"
+        "### UPDATED: `python/larch/design/a.py`\n"
+        "### UPDATED: `python/larch/design/b.py`\n"
+        "diff_lines: 10\n",
+        encoding="utf-8",
+    )
+    partition = d / "partition.md"
+    partition.write_text(
+        "## Pieces\n\n"
+        "### Piece 1: A\n"
+        "- Firm-headings: python/larch/design/a.py\n"
+        "- Acceptance: cover a\n"
+        "- Dependencies: none\n\n"
+        "### Piece 2: B\n"
+        "- Firm-headings: python/larch/design/a.py\n"
+        "- Acceptance: cover b\n"
+        "- Dependencies: none\n",
+        encoding="utf-8",
+    )
+
+    assert decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition)[0] == "firm-heading-coverage-mismatch"
+
+
 def test_prepare_derives_piece_metadata_without_synthetic_edges(tmp_path: Path) -> None:
     d = _design_tmp(tmp_path)
     (d / "plan.txt").write_text(
