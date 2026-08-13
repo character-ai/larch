@@ -1042,7 +1042,7 @@ REPORT_TOKENS_TITLE_BY_SKILL: Final[dict[str, str]] = {
 }
 
 # Version bump classification helpers (dev/CI; release owns live versioning)
-BUMP_COMMIT_SUBJECT_TEMPLATE: Final = "Bump version to {version}"
+BUMP_COMMIT_SUBJECT_TEMPLATE: Final = "Release v{version}"
 SEMVER_RE: Final = r"^[0-9]+\.[0-9]+\.[0-9]+$"
 PLUGIN_JSON_PATH: Final = ".claude-plugin/plugin.json"
 IDEMPOTENCY_DEPTH: Final = 3

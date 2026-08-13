@@ -32,7 +32,9 @@ class MergeResult:
     error: str = ""
 
 
-_BUMP_SUBJECT_RE = re.compile(r"^Bump version to ([0-9]+\.[0-9]+\.[0-9]+)$")
+_BUMP_SUBJECT_RE = re.compile(
+    r"^(?:Release v|Bump version to )([0-9]+\.[0-9]+\.[0-9]+)$"
+)
 _SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 _MERGE_CONFLICT_SIGNALS = (
     "merge conflicts",

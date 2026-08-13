@@ -259,7 +259,14 @@ mod release_prepare_tests {
         }
         assert_eq!(pr_suffix("Feature (#42)"), Some(42));
         assert_eq!(pr_suffix("Feature #42"), None);
+    }
+
+    #[test]
+    fn bump_subject_parser_accepts_canonical_and_legacy_shapes() {
+        assert!(is_bump_subject("Release v1.2.3"));
         assert!(is_bump_subject("Bump version to 1.2.3"));
+        assert!(!is_bump_subject("Release v1.2.3 (#42)"));
+        assert!(!is_bump_subject("Release vbad"));
         assert!(!is_bump_subject("Bump version to bad"));
     }
 

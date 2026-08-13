@@ -975,7 +975,8 @@ fn is_release_subject(subject: &str) -> bool {
 
 fn is_bump_subject(subject: &str) -> bool {
     subject
-        .strip_prefix("Bump version to ")
+        .strip_prefix("Release v")
+        .or_else(|| subject.strip_prefix("Bump version to "))
         .is_some_and(|version| semver(version).is_some())
 }
 
