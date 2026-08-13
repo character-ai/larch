@@ -2,16 +2,12 @@
 
 use std::process::ExitCode;
 
-use larch_adapters::{
-    FetchRequest, GitRefspec, GitRemote, GixRepository,
-    github::{
-        AttestationOperations, OctocrabAttestationTransport, ReleaseCandidatePullRequest,
-        ReleaseCandidatePullRequestState, RepoSlug,
-    },
+use larch_adapters::github::{
+    AttestationOperations, OctocrabAttestationTransport, ReleaseCandidatePullRequest, RepoSlug,
 };
 use larch_core::{
     ImmutableReleaseAttestationRequest, ReleaseAssetSubject, ReleaseSourceCommit, ReleaseState,
-    ReleaseTag, RepositoryRead, Revision, emit_kv,
+    ReleaseTag, emit_kv,
 };
 
 use crate::{release_common, release_stage};
@@ -131,13 +127,7 @@ impl Services for ProductionServices {
     }
 
     fn fetch_main(&self) -> Result<(), String> {
-        self.runtime
-            .block_on(
-                self.git_cli()
-                    .fetch(main_fetch_request()?, &self.cancellation),
-            )
-            .map(|_| ())
-            .map_err(|error| error.to_string())
+        Self::fetch_origin_main(self)
     }
 
     fn pull_request(
@@ -149,7 +139,7 @@ impl Services for ProductionServices {
     }
 
     fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, String> {
-        is_ancestor(&self.repository, ancestor, descendant)
+        Self::commit_is_ancestor(self, ancestor, descendant)
     }
 
     fn plugin_version_at(&self, revision: &str) -> Result<String, String> {
@@ -271,31 +261,6 @@ fn sole_remote_commit(output: &str, reference: &str) -> Result<Option<String>, S
         .transpose()
 }
 
-fn main_fetch_request() -> Result<FetchRequest, String> {
-    Ok(FetchRequest {
-        remote: GitRemote::new("origin").map_err(|error| error.to_string())?,
-        refspec: Some(GitRefspec::new("main").map_err(|error| error.to_string())?),
-        quiet: true,
-        no_tags: false,
-    })
-}
-
-fn is_ancestor(
-    repository: &GixRepository,
-    ancestor: &str,
-    descendant: &str,
-) -> Result<bool, String> {
-    let ancestor = repository
-        .resolve_revision(&Revision::new(ancestor.as_bytes()))
-        .map_err(|error| error.to_string())?;
-    let descendant = repository
-        .resolve_revision(&Revision::new(descendant.as_bytes()))
-        .map_err(|error| error.to_string())?;
-    repository
-        .is_ancestor(&ancestor, &descendant)
-        .map_err(|error| error.to_string())
-}
-
 fn immutable_release_request(
     release: &ReleaseState,
     source_commit: &str,
@@ -329,9 +294,7 @@ fn finish_with(
     }
     services.fetch_main()?;
     let pull_request = services.pull_request(&slug, pr_number)?;
-    if pull_request.state != ReleaseCandidatePullRequestState::Merged
-        || pull_request.head_oid != source_commit
-    {
+    if release_common::merged_release_commit(&pull_request)? != source_commit {
         return Err("release candidate PR is not merged at the tagged commit".to_owned());
     }
     if !services.is_ancestor(source_commit, ORIGIN_MAIN)? {
@@ -533,10 +496,12 @@ const fn boolean(value: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use larch_adapters::{GixRepository, github::ReleaseCandidatePullRequestState};
     use larch_core::RemoteAsset;
     use std::cell::RefCell;
 
     const SOURCE: &str = "1111111111111111111111111111111111111111";
+    const OTHER: &str = "2222222222222222222222222222222222222222";
     const DIGEST: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
     const PRIOR_PIN: &str = "3333333333333333333333333333333333333333";
 
@@ -562,7 +527,8 @@ mod tests {
                 origin: "character-ai/larch".to_owned(),
                 pr: ReleaseCandidatePullRequest {
                     state: ReleaseCandidatePullRequestState::Merged,
-                    head_oid: SOURCE.to_owned(),
+                    head_oid: OTHER.to_owned(),
+                    merge_commit_oid: Some(SOURCE.to_owned()),
                 },
                 ancestor: true,
                 source_version: "1.2.3".to_owned(),
@@ -624,7 +590,7 @@ mod tests {
             }
             let release = self.release.borrow().clone();
             if require_draft && !release.is_mutable_draft() {
-                return Err("release must remain a mutable draft before merge".to_owned());
+                return Err("release must remain a mutable draft before publication".to_owned());
             }
             if !require_draft && (release.is_draft() || !release.is_immutable()) {
                 return Err("published release must be immutable".to_owned());
@@ -960,6 +926,7 @@ mod tests {
             pr: ReleaseCandidatePullRequest {
                 state: ReleaseCandidatePullRequestState::Open,
                 head_oid: SOURCE.to_owned(),
+                merge_commit_oid: None,
             },
             ..FakeServices::default()
         };
@@ -1071,12 +1038,22 @@ mod tests {
 
     #[test]
     fn production_request_inputs_are_fixed_and_locally_verifiable() {
-        let request = main_fetch_request().expect("fixed fetch request");
+        let request = release_common::main_fetch_request().expect("fixed fetch request");
         assert!(request.quiet);
+        assert_eq!(
+            request
+                .refspec
+                .as_ref()
+                .and_then(|refspec| refspec.as_os_str().to_str()),
+            Some("refs/heads/main:refs/remotes/origin/main")
+        );
         let repository = GixRepository::discover(std::env::current_dir().expect("cwd"))
             .expect("test runs in repository");
-        assert_eq!(is_ancestor(&repository, "HEAD", "HEAD"), Ok(true));
-        assert!(is_ancestor(&repository, "missing", "HEAD").is_err());
+        assert_eq!(
+            release_common::is_ancestor(&repository, "HEAD", "HEAD"),
+            Ok(true)
+        );
+        assert!(release_common::is_ancestor(&repository, "missing", "HEAD").is_err());
         let release = state(7, false, true, false, "v1.2.3");
         assert!(immutable_release_request(&release, SOURCE).is_ok());
         assert!(immutable_release_request(&release, "bad").is_err());

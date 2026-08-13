@@ -758,11 +758,9 @@ state records queue acceptance only after bounded GraphQL read-back observes a
 queue entry, auto-merge request, or completed merge. It distinguishes that
 acceptance from completion, and post-merge work waits for an observed `MERGED`
 state. A policy-read failure stops before mutation. Direct admin merge remains
-the no-queue fallback. The development-only
-release command has a narrow queue bypass that requires both merge-commit mode
-and a version-bump commit so the already-tagged candidate remains an ancestor
-of `main`. If that direct admin merge is rejected on a queue-enabled branch,
-the release stops without a plain merge or queue fallback.
+the no-queue fallback. The development-only release command follows the normal
+queue path, then resolves and tags GitHub's recorded post-merge commit. It does
+not request an admin merge, a queue bypass, or a repository or ruleset change.
 
 ## Security Findings in OOS Workflows
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import math
 import re
 import tempfile
 import time
@@ -983,6 +984,37 @@ def confirm_pr_merge_queue_submission(
         if attempt + 1 < config.MERGE_QUEUE_SUBMISSION_VERIFY_ATTEMPTS:
             sleeper(float(config.MERGE_QUEUE_SUBMISSION_VERIFY_INTERVAL_SEC))
     raise ShipError("merge queue submission did not appear in PR read-back")
+
+
+def wait_for_pr_merge(
+    runner: Runner,
+    *,
+    pr: int,
+    repo: str,
+    timeout: float = config.MERGE_QUEUE_WAIT_TIMEOUT_SEC,
+    poll_interval: float = config.MERGE_QUEUE_WAIT_POLL_INTERVAL_SEC,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    on_open: Callable[[float], None] | None = None,
+    cwd: str | None = None,
+) -> PullRequest:
+    """Wait until a previously accepted merge-queue entry is observably merged."""
+    if timeout <= 0 or poll_interval <= 0:
+        raise ShipError("merge queue wait requires positive timeout and poll interval")
+    max_polls = max(1, math.ceil(timeout / poll_interval))
+    for poll_index in range(max_polls):
+        pull_request = pr_view(runner, pr, repo=repo, cwd=cwd)
+        state = pull_request.state.upper()
+        if state == "MERGED" or pull_request.merged_at:
+            return pull_request
+        if state != "OPEN":
+            raise ShipError(
+                f"queued PR entered state {state or '<empty>'} without merging",
+            )
+        if poll_index + 1 < max_polls:
+            if on_open is not None:
+                on_open(poll_interval)
+            sleep_fn(poll_interval)
+    raise ShipError("queued PR did not merge within the merge queue wait timeout")
 
 
 def pr_merge_state_read(

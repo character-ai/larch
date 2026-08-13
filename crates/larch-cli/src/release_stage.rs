@@ -7,8 +7,7 @@ use larch_adapters::{
     clock::TokioClock,
     github::{
         AttestationOperations, DraftReleaseInput, OctocrabAttestationTransport,
-        OctocrabReleaseTransport, ReleaseCandidatePullRequest, ReleaseCandidatePullRequestState,
-        ReleaseOperations, RepoSlug,
+        OctocrabReleaseTransport, ReleaseCandidatePullRequest, ReleaseOperations, RepoSlug,
     },
     runtime::Cancellation,
 };
@@ -26,13 +25,13 @@ const ASSET_RUN_REGISTRATION_TIMEOUT: Duration = Duration::from_secs(60);
 const ASSET_RUN_POLL_INTERVAL: Duration = Duration::from_secs(5);
 const ASSET_RUN_NOT_REGISTERED: &str = "tag-triggered asset workflow run is not registered";
 const ASSET_RUN_WAIT_CANCELLED: &str = "asset workflow run registration wait cancelled";
+const ORIGIN_MAIN: &str = "origin/main";
 
 pub fn ensure_policy(repo: &str) -> ExitCode {
     release_common::command(
         ProductionServices::new(),
         |services| ensure_policy_with(services, repo),
         |()| {
-            emit_kv("MERGE_COMMITS_ENABLED", "true");
             emit_kv("IMMUTABLE_RELEASES_ENABLED", "true");
         },
     )
@@ -92,11 +91,13 @@ trait Services {
     fn origin_repo(&self) -> Result<String, String>;
     fn ensure_policy(&self, repo: &RepoSlug) -> Result<(), String>;
     fn verify_policy(&self, repo: &RepoSlug) -> Result<(), String>;
+    fn fetch_main(&self) -> Result<(), String>;
     fn pull_request(
         &self,
         repo: &RepoSlug,
         number: u64,
     ) -> Result<ReleaseCandidatePullRequest, String>;
+    fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, String>;
     fn plugin_version_at(&self, oid: &str) -> Result<String, String>;
     fn candidate_license(&self, oid: &str) -> Result<Vec<u8>, String>;
     fn remote_tag(&self, repo: &RepoSlug, tag: &str) -> Result<Option<String>, String>;
@@ -139,24 +140,23 @@ impl Services for ProductionServices {
 
     fn ensure_policy(&self, repo: &RepoSlug) -> Result<(), String> {
         let transport = OctocrabReleaseTransport::new(&self.github, &self.cancellation);
-        self.runtime
-            .block_on(ReleaseOperations::new(&transport).ensure_repository_policy(repo))
-            .map_err(|error| error.to_string())
+        let enabled = self
+            .runtime
+            .block_on(ReleaseOperations::new(&transport).verify_repository_policy(repo))
+            .map_err(|error| error.to_string())?;
+        if enabled {
+            Ok(())
+        } else {
+            Err("immutable releases are not enabled".to_owned())
+        }
     }
 
     fn verify_policy(&self, repo: &RepoSlug) -> Result<(), String> {
-        let transport = OctocrabReleaseTransport::new(&self.github, &self.cancellation);
-        let (merge_commits, immutable_releases) = self
-            .runtime
-            .block_on(ReleaseOperations::new(&transport).repository_policy(repo))
-            .map_err(|error| error.to_string())?;
-        if !merge_commits {
-            return Err("repository merge commits are not enabled".to_owned());
-        }
-        if !immutable_releases {
-            return Err("immutable releases are not enabled".to_owned());
-        }
-        Ok(())
+        self.ensure_policy(repo)
+    }
+
+    fn fetch_main(&self) -> Result<(), String> {
+        Self::fetch_origin_main(self)
     }
 
     fn pull_request(
@@ -169,6 +169,10 @@ impl Services for ProductionServices {
 
     fn plugin_version_at(&self, oid: &str) -> Result<String, String> {
         plugin_version_at(&self.repository, oid)
+    }
+
+    fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, String> {
+        Self::commit_is_ancestor(self, ancestor, descendant)
     }
 
     fn candidate_license(&self, oid: &str) -> Result<Vec<u8>, String> {
@@ -329,8 +333,7 @@ pub fn plugin_version_at(repository: &GixRepository, oid: &str) -> Result<String
 fn ensure_policy_with(services: &dyn Services, repo: &str) -> Result<(), String> {
     let (repository, slug) = repositories(repo)?;
     require_origin(services, &repository)?;
-    services.ensure_policy(&slug)?;
-    services.verify_policy(&slug)
+    services.ensure_policy(&slug)
 }
 
 fn stage_with(
@@ -347,10 +350,11 @@ fn stage_with(
     require_origin(services, &repository)?;
     require_policy(services, &slug)?;
     let pull_request = services.pull_request(&slug, pr)?;
-    if pull_request.state != ReleaseCandidatePullRequestState::Open {
-        return Err("release candidate PR must be open while staging".to_owned());
+    let source_commit = release_common::merged_release_commit(&pull_request)?.to_owned();
+    services.fetch_main()?;
+    if !services.is_ancestor(&source_commit, ORIGIN_MAIN)? {
+        return Err("merged release commit is not an ancestor of origin/main".to_owned());
     }
-    let source_commit = pull_request.head_oid;
     if services.plugin_version_at(&source_commit)? != version {
         return Err(
             "release candidate plugin version does not match the requested version".to_owned(),
@@ -473,8 +477,10 @@ fn validate_candidate_with(
     let (repository, slug) = repositories(repo)?;
     require_origin(services, &repository)?;
     require_policy(services, &slug)?;
-    if services.pull_request(&slug, pr)?.head_oid != source_commit {
-        return Err("release candidate PR head changed after the tag was created".to_owned());
+    if release_common::merged_release_commit(&services.pull_request(&slug, pr)?)? != source_commit {
+        return Err(
+            "release candidate PR merge commit changed after the tag was created".to_owned(),
+        );
     }
     if services.remote_tag(&slug, &tag)?.as_deref() != Some(source_commit) {
         return Err("release tag no longer names the candidate commit".to_owned());
@@ -483,7 +489,7 @@ fn validate_candidate_with(
         .release(&slug, &tag)?
         .ok_or_else(|| format!("release {tag} was not found"))?;
     if require_draft && !release.is_mutable_draft() {
-        return Err("release must remain a mutable draft before merge".to_owned());
+        return Err("release must remain a mutable draft before publication".to_owned());
     }
     if !require_draft && (release.is_draft() || !release.is_immutable()) {
         return Err("published release must be immutable".to_owned());
@@ -605,7 +611,7 @@ fn require_safe_file(path: &Path, message: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use larch_adapters::runtime::LarchRuntime;
+    use larch_adapters::{github::ReleaseCandidatePullRequestState, runtime::LarchRuntime};
     use larch_core::{MonotonicClock, RemoteAsset};
     use larch_test_support::TestClock;
     use std::{
@@ -622,6 +628,8 @@ mod tests {
     struct FakeServices {
         origin: String,
         policy: Result<(), String>,
+        fetch_result: Result<(), String>,
+        ancestor: bool,
         pr: ReleaseCandidatePullRequest,
         plugin_version: String,
         remote_tag: RefCell<Option<String>>,
@@ -629,6 +637,8 @@ mod tests {
         releases: RefCell<Vec<Option<ReleaseState>>>,
         created: RefCell<usize>,
         updated: RefCell<usize>,
+        fetches: Cell<usize>,
+        tag_pushes: Cell<usize>,
         runs: RefCell<VecDeque<Vec<WorkflowRun>>>,
         workflow_run_queries: Cell<usize>,
         clock: TestClock,
@@ -641,9 +651,12 @@ mod tests {
             Self {
                 origin: "character-ai/larch".to_owned(),
                 policy: Ok(()),
+                fetch_result: Ok(()),
+                ancestor: true,
                 pr: ReleaseCandidatePullRequest {
-                    state: ReleaseCandidatePullRequestState::Open,
-                    head_oid: SOURCE.to_owned(),
+                    state: ReleaseCandidatePullRequestState::Merged,
+                    head_oid: OTHER.to_owned(),
+                    merge_commit_oid: Some(SOURCE.to_owned()),
                 },
                 plugin_version: "1.2.3".to_owned(),
                 remote_tag: RefCell::new(Some(SOURCE.to_owned())),
@@ -651,6 +664,8 @@ mod tests {
                 releases: RefCell::new(Vec::new()),
                 created: RefCell::new(0),
                 updated: RefCell::new(0),
+                fetches: Cell::new(0),
+                tag_pushes: Cell::new(0),
                 runs: RefCell::new(VecDeque::from([Vec::new()])),
                 workflow_run_queries: Cell::new(0),
                 clock: TestClock::new(SystemTime::UNIX_EPOCH),
@@ -665,10 +680,14 @@ mod tests {
             Ok(self.origin.clone())
         }
         fn ensure_policy(&self, _repo: &RepoSlug) -> Result<(), String> {
-            Ok(())
+            self.policy.clone()
         }
         fn verify_policy(&self, _repo: &RepoSlug) -> Result<(), String> {
             self.policy.clone()
+        }
+        fn fetch_main(&self) -> Result<(), String> {
+            self.fetches.set(self.fetches.get() + 1);
+            self.fetch_result.clone()
         }
         fn pull_request(
             &self,
@@ -676,6 +695,9 @@ mod tests {
             _number: u64,
         ) -> Result<ReleaseCandidatePullRequest, String> {
             Ok(self.pr.clone())
+        }
+        fn is_ancestor(&self, _ancestor: &str, _descendant: &str) -> Result<bool, String> {
+            Ok(self.ancestor)
         }
         fn plugin_version_at(&self, _oid: &str) -> Result<String, String> {
             Ok(self.plugin_version.clone())
@@ -693,6 +715,7 @@ mod tests {
             Ok(())
         }
         fn push_tag(&self, _tag: &str) -> Result<(), String> {
+            self.tag_pushes.set(self.tag_pushes.get() + 1);
             *self.remote_tag.borrow_mut() = Some(SOURCE.to_owned());
             Ok(())
         }
@@ -859,6 +882,7 @@ mod tests {
             Ok(SOURCE.to_owned())
         );
         assert_eq!(*create.created.borrow(), 1);
+        assert_eq!(create.fetches.get(), 1);
 
         let resume = FakeServices {
             releases: RefCell::new(vec![Some(draft(Vec::new()))]),
@@ -895,6 +919,52 @@ mod tests {
             ),
             Err("staged release is not a mutable draft".to_owned())
         );
+    }
+
+    #[test]
+    fn stage_requires_the_merged_pr_commit_before_creating_a_tag() {
+        let notes = notes();
+        let missing_merge_commit = FakeServices {
+            pr: ReleaseCandidatePullRequest {
+                state: ReleaseCandidatePullRequestState::Merged,
+                head_oid: SOURCE.to_owned(),
+                merge_commit_oid: None,
+            },
+            remote_tag: RefCell::new(None),
+            ..FakeServices::default()
+        };
+
+        assert!(
+            stage_with(
+                &missing_merge_commit,
+                "1.2.3",
+                notes.path(),
+                "character-ai/larch",
+                "7"
+            )
+            .unwrap_err()
+            .contains("has no merge commit")
+        );
+        assert_eq!(*missing_merge_commit.created.borrow(), 0);
+    }
+
+    #[test]
+    fn stage_fetches_and_rejects_a_merged_commit_that_is_not_on_main() {
+        let notes = notes();
+        let stale = FakeServices {
+            ancestor: false,
+            remote_tag: RefCell::new(None),
+            ..FakeServices::default()
+        };
+
+        assert!(
+            stage_with(&stale, "1.2.3", notes.path(), "character-ai/larch", "7")
+                .unwrap_err()
+                .contains("not an ancestor")
+        );
+        assert_eq!(stale.fetches.get(), 1);
+        assert_eq!(stale.tag_pushes.get(), 0);
+        assert_eq!(*stale.created.borrow(), 0);
     }
 
     #[test]
@@ -982,18 +1052,19 @@ mod tests {
     }
 
     #[test]
-    fn validate_draft_rejects_head_drift_incomplete_assets_and_digest_failure() {
+    fn validate_draft_rejects_merge_commit_drift_incomplete_assets_and_digest_failure() {
         let drift = FakeServices {
             pr: ReleaseCandidatePullRequest {
-                state: ReleaseCandidatePullRequestState::Open,
+                state: ReleaseCandidatePullRequestState::Merged,
                 head_oid: OTHER.to_owned(),
+                merge_commit_oid: Some(OTHER.to_owned()),
             },
             ..FakeServices::default()
         };
         assert!(
             validate_candidate_with(&drift, "1.2.3", "character-ai/larch", "7", SOURCE, true)
                 .unwrap_err()
-                .contains("PR head changed")
+                .contains("merge commit changed")
         );
 
         let incomplete = FakeServices {
@@ -1084,13 +1155,14 @@ mod tests {
             pr: ReleaseCandidatePullRequest {
                 state: ReleaseCandidatePullRequestState::Closed,
                 head_oid: SOURCE.to_owned(),
+                merge_commit_oid: None,
             },
             ..FakeServices::default()
         };
         assert!(
             stage_with(&closed, "1.2.3", notes.path(), "character-ai/larch", "7")
                 .expect_err("closed PR")
-                .contains("must be open")
+                .contains("not merged")
         );
 
         let wrong_version = FakeServices {

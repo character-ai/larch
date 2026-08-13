@@ -292,7 +292,7 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
       <td><a href="docs/skills.md#release"><code>/release</code></a></td>
       <td><code>[--dry-run] [--skip-approve|-s] [--bump major|minor|patch] [--repo OWNER/REPO]</code></td>
     </tr>
-    <tr><td colspan="2">Operator-run release cut (model cannot auto-invoke): gather merged PRs, create a version candidate, tag that exact commit, validate the complete attested asset set on a draft GitHub Release, merge the candidate with a merge commit, publish it as an immutable release, verify it, promote it to Latest, then run <code>/upgrade-larch</code>.</td></tr>
+    <tr><td colspan="2">Operator-run release cut (model cannot auto-invoke): gather merged PRs, create a version candidate, merge it through the normal queue, tag the resulting <code>main</code> commit, validate the complete attested asset set on a draft GitHub Release, publish it as an immutable release, verify it, promote it to Latest, then run <code>/upgrade-larch</code>.</td></tr>
   </tbody>
 </table>
 

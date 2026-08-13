@@ -923,26 +923,22 @@ def wait_for_pr_merge(
     cwd: str | None = None,
 ) -> gh.PullRequest:
     """Wait until a queued pull request is observably merged."""
-    if timeout <= 0 or poll_interval <= 0:
-        raise ShipError("merge queue wait requires positive timeout and poll interval")
-    max_polls = max(1, math.ceil(timeout / poll_interval))
-    for poll_index in range(max_polls):
-        pull_request = gh.pr_view(runner, pr, repo=repo, cwd=cwd)
-        state = pull_request.state.upper()
-        if state == "MERGED" or pull_request.merged_at:
-            return pull_request
-        if state != "OPEN":
-            raise ShipError(
-                f"queued PR entered state {state or '<empty>'} without merging",
-            )
-        if poll_index + 1 >= max_polls:
-            break
+    def queued_progress(delay: float) -> None:
         _warn_stderr(
             f"ci_monitor: queued PR #{pr} is still open; "
-            f"waiting {poll_interval:.0f}s for merge",
+            f"waiting {delay:.0f}s for merge",
         )
-        sleep_fn(poll_interval)
-    raise ShipError("queued PR did not merge within the merge queue wait timeout")
+
+    return gh.wait_for_pr_merge(
+        runner,
+        pr=pr,
+        repo=repo,
+        timeout=timeout,
+        poll_interval=poll_interval,
+        sleep_fn=sleep_fn,
+        on_open=queued_progress,
+        cwd=cwd,
+    )
 
 
 def _parse_job_name_shard(raw_name: str) -> tuple[str, str, bool]:

@@ -239,7 +239,7 @@ def test_affected_registry_targets_resolve_to_domain_modules() -> None:
             module = importlib.import_module(module_name)
             assert getattr(module, func_name) is not None
             checked += 1
-    assert checked == 14
+    assert checked == 15
 
 
 def test_all_registry_targets_resolve_to_callable_mains() -> None:

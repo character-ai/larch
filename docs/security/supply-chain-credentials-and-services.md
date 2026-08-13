@@ -244,11 +244,12 @@ content do not enter diagnostics. Release publication consumes this service
 directly in Rust. It has no Python or `gh` fallback.
 
 GitHub provenance ties bytes to a commit and workflow, not source or
-infrastructure trust. Checksums index integrity, not trust. `/release` uploads
-only the validated three-file set to a mutable draft, gates merge on its digests
-and attestations, and preserves the tagged candidate through a merge commit. It
-rechecks ancestry and versions, publishes without Latest, verifies every
-immutable asset, then promotes. Failures resume the same draft or release.
+infrastructure trust. Checksums index integrity, not trust. `/release` merges
+the version candidate through the normal queue, resolves GitHub's recorded
+post-merge commit, then tags it and uploads only the validated three-file set
+to a mutable draft. It rechecks merge identity, ancestry, and versions,
+publishes without Latest, verifies every immutable asset, then promotes.
+Failures resume the same draft or release.
 Published tags and assets never change. Installation verifies separately.
 
 ### Release content pin
@@ -658,14 +659,10 @@ then promotes it. Ambiguous promotion reads back Latest before a retry. The
 final Latest state is verified. The release commands expose no raw Git, `gh`,
 URL, GraphQL, or Python fallback.
 
-Repository-policy setup reads the merge-commit and immutable-release settings
-before it writes. It mutates only a setting that is disabled, so an already
-compliant repository requires Administration read but not Administration write
-on the active `gh` credential. Repairing a disabled setting requires
-Administration write. Missing permission returns a fixed, secret-free policy
-diagnostic. A
-required mutation remains fail-closed, and every successful setup performs a
-final read-back of both owning policy surfaces.
+Release policy verification reads only the immutable-release setting. It does
+not enable merge commits or immutable releases, and it never writes repository
+settings, rulesets, or bypass configuration. A disabled or unreadable required
+setting fails closed with a fixed, secret-free diagnostic.
 
 The dev-only release skill builds the current checkout before its first
 Rust-backed release command and rebuilds immediately after the candidate
