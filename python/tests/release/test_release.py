@@ -77,3 +77,20 @@ def test_release_skill_step7_upgrade_run_sets_the_driver_env_contract() -> None:
         'LARCH_BINARY="$WORKTREE_LARCH" '
         '"$PWD/scripts/larch.sh" upgrade-larch run' in skill
     )
+
+
+def test_release_skill_step8_uses_rust_local_cleanup() -> None:
+    skill = (ROOT / ".claude/skills/release/SKILL.md").read_text(encoding="utf-8")
+    step_start = skill.index("## Step 8 — Local cleanup (post-merge teardown)")
+    step_end = skill.index("## Script index", step_start)
+    step = skill[step_start:step_end]
+
+    assert (
+        'CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" '
+        '"$PWD/scripts/larch.sh" session local-cleanup '
+        '--branch "release/v${NEW_VERSION}"' in step
+    )
+    for key in ("CLEANUP_SUCCESS", "CURRENT_BRANCH", "BRANCH_DELETED"):
+        assert f"--key {key} --match first" in step
+    assert "python/cli.py session local-cleanup" not in skill
+    assert "`scripts/larch.sh session local-cleanup`" in skill
