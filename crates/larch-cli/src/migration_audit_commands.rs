@@ -953,10 +953,10 @@ mod tests {
                 "fixture audit must call its injected findings provider"
             );
         }
-        match outcome {
-            Ok(has_findings) => ExitCode::from(u8::from(has_findings)),
-            Err(_) => ExitCode::from(2),
-        }
+        outcome.map_or_else(
+            |_| ExitCode::from(2),
+            |has_findings| ExitCode::from(u8::from(has_findings)),
+        )
     }
 
     #[test]
