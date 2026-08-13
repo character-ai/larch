@@ -38,6 +38,7 @@ use crate::argparse_compat::{ParsedCommandLine, parse_with_flags};
 use crate::run_log_commands::{emit_log_envelope, resolve_log_root};
 
 const REQUIRED_FILES_TSV: &str = "docs/run-logs-required-files.tsv";
+const TEST_PLUGIN_VERSION: &str = "LARCH_TEST_PLUGIN_VERSION";
 const APPEND_LOCK_ATTEMPTS: usize = 100;
 const APPEND_LOCK_SLEEP: Duration = Duration::from_millis(50);
 const ARCHETYPE_DIGEST_LEN: usize = 12;
@@ -1431,6 +1432,16 @@ fn resolve_required_files_manifest() -> Result<PathBuf, String> {
 }
 
 pub fn plugin_version() -> String {
+    if cfg!(debug_assertions)
+        && let Ok(value) = env::var(TEST_PLUGIN_VERSION)
+        && !value.trim().is_empty()
+    {
+        return value.trim().to_owned();
+    }
+    installed_plugin_version()
+}
+
+fn installed_plugin_version() -> String {
     let path = plugin_root().join(".claude-plugin").join("plugin.json");
     let Ok(text) = fs::read_to_string(path) else {
         return "unknown".to_owned();

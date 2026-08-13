@@ -72,7 +72,8 @@ impl Fixture {
             // The live session root is cache-backed, not below TMPDIR. Keep the
             // fixture roots separate so delegated renderers exercise that path.
             .env("TMPDIR", process_tmp)
-            .env("LARCH_TEST_TIMING_NOW", "20");
+            .env("LARCH_TEST_TIMING_NOW", "20")
+            .env("LARCH_TEST_PLUGIN_VERSION", "test-version");
         command
     }
 
@@ -354,6 +355,7 @@ fn terminal_flush_is_complete_atomic_and_idempotent() {
         fs::read_to_string(fixture.run_dir().join("vendor-failure-diagnostics.txt")).unwrap(),
         "first\nsecond\n"
     );
+    assert_terminal_version(&fixture);
     let names = [
         "execution-issues.ndjson",
         "final-summary.md",
@@ -396,15 +398,9 @@ fn terminal_flush_is_complete_atomic_and_idempotent() {
     }
     assert_eq!(
         format!("{:x}", golden.finalize()),
-        "4d331e3b45bf4ebf5fba930449c5e53066d65b009e3ac0b1699172164ed1ade6",
-        // Re-pinned for the v56.3.0 release: `final-summary.md` and
-        // `execution-issues.ndjson` embed the live plugin version through
-        // `plugin_version()`, so this golden drifts on every version bump. The
-        // fixture points `plugin_root` at the real repo, so the pinned bytes
-        // track the current `.claude-plugin/plugin.json` version and must be
-        // re-pinned when it changes. Tracked for a version-independent fixture
-        // (a LARCH_TEST_PLUGIN_VERSION override mirroring LARCH_TEST_TIMING_NOW).
-        // The prior 18fb26c1... digest pinned the retired v56.2.2 bytes.
+        "63ed4f3c6290c510fe37e72b5b6b8c8c353d566f1127a816558c3599b2201294",
+        // Fixture-controlled timing and version inputs keep this snapshot
+        // independent of release metadata.
         "terminal snapshot bytes drifted from the Rust final-report owner",
     );
     let second = fixture.terminal();
@@ -424,6 +420,15 @@ fn terminal_flush_is_complete_atomic_and_idempotent() {
         .collect();
     assert_eq!(after, before);
     assert_eq!(fs::read(manifest_path).unwrap(), manifest_before);
+}
+
+fn assert_terminal_version(fixture: &Fixture) {
+    assert_eq!(fixture.manifest()["larch_version"], "test-version");
+    assert!(
+        fs::read_to_string(fixture.run_dir().join("final-summary.md"))
+            .unwrap()
+            .contains("- **Larch version**: test-version\n")
+    );
 }
 
 #[cfg(unix)]
