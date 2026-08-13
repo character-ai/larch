@@ -6,15 +6,19 @@ use std::{
     fmt::Write as _,
     fs,
     fs::OpenOptions,
+    future::Future,
     io::Write as _,
     path::{Path, PathBuf},
     process::ExitCode,
+    time::Duration,
 };
 
 use larch_adapters::{
     GixRepository, PathIntent, RepositoryRoot, TemporaryRoot, TokioProcessRunner,
     atomic_write_utf8,
-    github::{OctocrabGitHubService, ReleasePlanningService, ReleasePullRequest},
+    github::{
+        GitHubOperationError, OctocrabGitHubService, ReleasePlanningService, ReleasePullRequest,
+    },
     runtime::{Cancellation, LarchRuntime},
 };
 
@@ -31,6 +35,51 @@ const TRANSPARENT_LOG_PREFIX: &str = "chore(larch-logs): ";
 const TRANSPARENT_CHANGELOG_PREFIX: &str = "Update CHANGELOG for ";
 const MAX_RELEASE_COMMITS: usize = 10_000;
 const IDEMPOTENCY_DEPTH: usize = 3;
+
+/// Attempts a single read-only GitHub call makes across transient failures.
+const TRANSIENT_READ_ATTEMPTS: u32 = 4;
+
+/// Pre-retry backoff before the 2nd, 3rd, and later attempts.
+const fn transient_read_backoff(attempt: u32) -> Duration {
+    let seconds = match attempt {
+        1 => 1,
+        2 => 2,
+        _ => 5,
+    };
+    Duration::from_secs(seconds)
+}
+
+/// Retry a read-only GitHub call across transient transport and rate-limit
+/// failures.
+///
+/// Release preparation issues one call per commit across a window that can hold
+/// hundreds of commits, so a single transient transport blip must not abort the
+/// whole read-only preparation. Each closure invocation builds a fresh request
+/// future, and every wrapped call is an idempotent read, so retrying converges
+/// without side effects. Non-transient failures return immediately.
+async fn retry_transient<F, Fut, T>(mut call: F) -> Result<T, GitHubOperationError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, GitHubOperationError>>,
+{
+    let mut attempt: u32 = 1;
+    loop {
+        match call().await {
+            Ok(value) => return Ok(value),
+            Err(error) => {
+                let transient = matches!(
+                    error,
+                    GitHubOperationError::Transport(_) | GitHubOperationError::RateLimited
+                );
+                if !transient || attempt >= TRANSIENT_READ_ATTEMPTS {
+                    return Err(error);
+                }
+                tokio::time::sleep(transient_read_backoff(attempt)).await;
+                attempt += 1;
+            }
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BumpType {
@@ -206,8 +255,7 @@ async fn prepare_with_service<S: ReleasePlanningService + ?Sized>(
 ) -> Result<(), PrepareError> {
     let owner = arguments.repository.owner();
     let name = arguments.repository.name();
-    let baseline = service
-        .latest_release_tag(cancellation, owner, name)
+    let baseline = retry_transient(|| service.latest_release_tag(cancellation, owner, name))
         .await
         .map_err(|error| PrepareError::new("gh-release-list-failed", error.to_string()))?
         .ok_or_else(|| {
@@ -238,8 +286,7 @@ async fn prepare_with_service<S: ReleasePlanningService + ?Sized>(
         ));
     }
 
-    let open = service
-        .list_open_pull_requests(cancellation, owner, name)
+    let open = retry_transient(|| service.list_open_pull_requests(cancellation, owner, name))
         .await
         .map_err(|error| PrepareError::new("release-pr-list-failed", error.to_string()))?;
     if open.iter().any(|pull_request| {
@@ -347,10 +394,7 @@ async fn select_pull_requests<S: ReleasePlanningService + ?Sized>(
     let mut release_pull_requests = BTreeSet::new();
     let mut unresolved = BTreeSet::new();
     for number in suffix_numbers {
-        match service
-            .pull_request(cancellation, owner, name, number)
-            .await
-        {
+        match retry_transient(|| service.pull_request(cancellation, owner, name, number)).await {
             Ok(pull_request) if is_release_subject(&pull_request.title) => {
                 release_pull_requests.insert(pull_request.number);
             }
@@ -374,15 +418,15 @@ async fn select_pull_requests<S: ReleasePlanningService + ?Sized>(
             continue;
         }
         let sha = commit.id.to_hex();
-        let pulls = service
-            .commit_pull_requests(cancellation, owner, name, &sha)
-            .await
-            .map_err(|error| {
-                PrepareError::new(
-                    "pr-metadata-incomplete",
-                    format!("commits-to-pulls lookup failed for {sha}: {error}"),
-                )
-            })?;
+        let pulls =
+            retry_transient(|| service.commit_pull_requests(cancellation, owner, name, &sha))
+                .await
+                .map_err(|error| {
+                    PrepareError::new(
+                        "pr-metadata-incomplete",
+                        format!("commits-to-pulls lookup failed for {sha}: {error}"),
+                    )
+                })?;
         let Some(pull_request) = pulls.into_iter().next() else {
             eprintln!(
                 "WARN: commit {sha} has no associated pull request: {}",
@@ -796,8 +840,7 @@ async fn companion_title<S: ReleasePlanningService + ?Sized>(
     else {
         return pull_request.title.clone();
     };
-    service
-        .issue_title(cancellation, owner, repo, number)
+    retry_transient(|| service.issue_title(cancellation, owner, repo, number))
         .await
         .ok()
         .filter(|title| !title.trim().is_empty())
