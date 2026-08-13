@@ -86,7 +86,7 @@ fn classify_bump_preserves_noop_idempotency() {
         r#"{"version":"1.2.4"}"#,
     )
     .expect("version bump");
-    commit_all(no_op.path(), "Bump version to 1.2.4");
+    commit_all(no_op.path(), "Release v1.2.4");
     larch()
         .current_dir(no_op.path())
         .args(["release", "classify-bump"])

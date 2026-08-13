@@ -365,6 +365,7 @@ def test_release_queue_bypass_requires_candidate_and_uses_admin_merge(
     runner = RecordingRunner(
         responses=[
             *_open_pr_responses(),
+            CommandResult(("git", "log"), 0, "Release v56.3.0\n", "", 0.01),
             CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
         ],
     )
@@ -376,12 +377,6 @@ def test_release_queue_bypass_requires_candidate_and_uses_admin_merge(
         "default_branch_merge_queue_enabled",
         lambda *_args, **_kwargs: True,
     )
-    monkeypatch.setattr(
-        merge_module,
-        "_bump_subject",
-        lambda *_args, **_kwargs: "Bump version to 1.2.3",
-    )
-
     out = merge_module.merge_pr(
         runner=runner,
         ctx=_ctx(tmpdir=str(tmp_path), merge_method="merge"),
@@ -391,6 +386,26 @@ def test_release_queue_bypass_requires_candidate_and_uses_admin_merge(
 
     assert out.result == config.MERGE_RESULT_ADMIN_MERGED
     assert runner.calls[-1][-2:] == ["--merge", "--admin"]
+
+
+@pytest.mark.parametrize(
+    ("subject", "expected"),
+    [
+        ("Release v56.3.0", "Release v56.3.0"),
+        ("Bump version to 56.3.0", "Bump version to 56.3.0"),
+        ("Release v56.3.0 (#8427)", ""),
+        ("Release v56.3", ""),
+    ],
+)
+def test_bump_subject_accepts_canonical_and_legacy_release_commits(
+    subject: str,
+    expected: str,
+) -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("git", "log"), 0, f"{subject}\n", "", 0.01)],
+    )
+
+    assert merge_module._bump_subject(runner, cwd=None) == expected  # pyright: ignore[reportPrivateUsage]
 
 
 @pytest.mark.parametrize(

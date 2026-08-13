@@ -38,6 +38,10 @@ def test_retry_backoff_immutable() -> None:
     assert config.TRANSIENT_RETRY_BACKOFF_SEC == (2, 4)
 
 
+def test_release_commit_subject_template_is_canonical() -> None:
+    assert config.BUMP_COMMIT_SUBJECT_TEMPLATE == "Release v{version}"
+
+
 def test_post_fix_empty_checks_grace_is_bounded() -> None:
     # Must be > 0 so a missing post-fix CI run surfaces as NO_CHECKS instead of
     # polling "pending" for the full budget (issue #4867), and shorter than the
