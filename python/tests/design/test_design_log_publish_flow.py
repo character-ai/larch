@@ -27,6 +27,24 @@ from test_support import write_gh_pr_stub as _write_gh_stub
 RUN_ID = "ABCDEF01-2345-6789-ABCD-EF0123456789"
 
 
+@pytest.mark.parametrize(
+    ("reason", "outcome", "expected"),
+    [
+        ("final", "cancelled-title-filter", "cancelled"),
+        ("final", "cancelled-reentry-guard", "cancelled"),
+        ("final", "approved", "success"),
+        ("pause", "approved", "early-return"),
+    ],
+)
+def test_lifecycle_outcome_selects_the_cancellation_terminal(
+    reason: str, outcome: str, expected: str
+) -> None:
+    assert (
+        design_log_publish_flow._lifecycle_outcome(reason=reason, outcome=outcome)  # pyright: ignore[reportPrivateUsage]  # terminal mapping is the regression boundary.
+        == expected
+    )
+
+
 def _git(*argv: str, cwd: Path) -> None:
     _ = subprocess.run(["git", *argv], cwd=cwd, check=True, capture_output=True)
 

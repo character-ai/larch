@@ -471,7 +471,10 @@ checks, and secret scrub before publishing
 `run-logs/<skill>/<run-id>.tar.gz`. A failure returns nonzero and retains a
 content-pinned pending archive; retry publishes that exact content even if the
 live staging tree changed. Enabled success requires both the immutable remote
-object and the verified unpacked cache.
+object and the verified unpacked cache. A completeness failure leaves the
+manifest non-terminal, so a corrected terminal outcome can replace only the
+owner-generated provisional final report. Terminal-summary wrappers retain raw
+child stderr locally and expose at most one bounded, redacted diagnostic.
 
 Disabled storage skips provider construction, archive creation, upload,
 verification, cache promotion, and pending state. Local staging and

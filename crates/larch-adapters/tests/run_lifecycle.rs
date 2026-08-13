@@ -1092,6 +1092,64 @@ async fn required_specialized_artifact_must_exist_or_have_a_durable_waiver() {
 }
 
 #[tokio::test]
+async fn failed_design_completeness_keeps_terminal_outcome_retryable_for_cancellation() {
+    let harness = Harness::new();
+    let store = MemoryStore::default();
+    let started = harness.start(&harness.enabled, "design", "cancel-after-failure", None);
+    fs::write(
+        harness.repo.join("ARCHITECTURAL_INVARIANTS.md"),
+        "# I-Test-1: Contract\n",
+    )
+    .unwrap();
+    fs::write(
+        harness.repo.join("ARCHITECTURAL_GUIDELINES.md"),
+        "# Guidelines\n",
+    )
+    .unwrap();
+    let summary = started.context.run_dir.join("final-summary.md");
+    fs::write(&summary, "## /design run 1: approved\n").unwrap();
+    let success = FinishRequest {
+        repo_root: &harness.repo,
+        active_resolution: &harness.enabled,
+        local_resolution: &harness.local,
+        homes: &harness.homes,
+        environment: &harness.environment,
+        skill: "design",
+        run_id: "cancel-after-failure",
+        outcome: LifecycleOutcome::Success,
+        pre_scrub_violations: 0,
+    };
+
+    let error = finish(&success, Some(&store)).await.unwrap_err();
+    assert!(error.to_string().contains("invariant-assessment"));
+    assert!(error.to_string().contains("guideline-assessment"));
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(started.context.run_dir.join("manifest.json")).unwrap())
+            .unwrap();
+    assert_eq!(manifest["status"], "in-progress");
+    assert!(manifest["terminal_outcome"].is_null());
+    assert!(
+        fs::read_to_string(started.context.run_dir.join("final-report.md"))
+            .unwrap()
+            .contains("Outcome: `success`")
+    );
+
+    fs::write(&summary, "## /design run 1: cancelled-title-filter\n").unwrap();
+    let cancelled = FinishRequest {
+        outcome: LifecycleOutcome::Cancelled,
+        ..success
+    };
+    let result = finish(&cancelled, Some(&store)).await.unwrap();
+    assert_eq!(result.outcome, LifecycleOutcome::Cancelled);
+    let cache_dir = result.publication.unwrap().cache_dir;
+    assert!(
+        fs::read_to_string(cache_dir.join("final-report.md"))
+            .unwrap()
+            .contains("Outcome: `cancelled`")
+    );
+}
+
+#[tokio::test]
 async fn secrets_are_scrubbed_before_archive_and_cache_publication() {
     let harness = Harness::new();
     let store = MemoryStore::default();

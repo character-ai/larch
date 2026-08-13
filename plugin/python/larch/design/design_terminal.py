@@ -18,7 +18,7 @@ from pathlib import Path
 from collections.abc import Iterable, Mapping, Sequence
 
 from larch import io as larch_io
-from larch.core import config, logging_util, proc, rust_runtime
+from larch.core import config, logging_util, proc, redact, rust_runtime
 from larch.core.repo_roots import larch_entrypoint, repo_root_probe
 from larch.git import gh
 from larch.core.ctx import Ctx
@@ -1141,6 +1141,47 @@ def _is_terminal_publish_outcome(outcome: str) -> bool:
     return outcome.startswith("cancelled-") and outcome != "cancelled-clarify"
 
 
+_TERMINAL_PUBLISH_DIAGNOSTIC_BYTE_CAP = 4096
+_TERMINAL_PUBLISH_DIAGNOSTIC_CHAR_CAP = 500
+
+
+def _safe_terminal_publish_detail(text: str) -> str:
+    """Return one bounded, redacted child diagnostic for the wrapper contract."""
+    try:
+        redacted = redact.redact_outbound(text)
+    except Exception:  # Diagnostic egress must fail closed if redaction is unavailable.
+        return "terminal publish diagnostic redaction failed"
+    if "[content truncated" in redacted:
+        return "terminal publish diagnostic redaction unavailable"
+    flattened = logging_util.sanitize_diagnostic_line(
+        redacted.replace("\r", " ").replace("\n", " ")
+    ).strip()
+    return flattened[:_TERMINAL_PUBLISH_DIAGNOSTIC_CHAR_CAP]
+
+
+def _terminal_publish_error_detail(design_tmpdir: Path) -> str:
+    """Read one fully redacted, bounded child stderr diagnostic."""
+    stderr_log = design_tmpdir / "design-log-publish.terminal.stderr.log"
+    if stderr_log.is_symlink() or not stderr_log.is_file():
+        return ""
+    try:
+        with stderr_log.open("rb") as source:
+            size = source.seek(0, os.SEEK_END)
+            if size > _TERMINAL_PUBLISH_DIAGNOSTIC_BYTE_CAP:
+                return "terminal publish diagnostic unavailable because stderr exceeds the bounded scan"
+            source.seek(0)
+            raw = source.read()
+    except OSError:
+        return ""
+    return _safe_terminal_publish_detail(raw.decode("utf-8", errors="replace"))
+
+
+def _record_terminal_summary_error(*, design_tmpdir: Path, message: str) -> int:
+    logging_util.emit_kv(key="ERROR", value=message)
+    _append_execution_issue(design_tmpdir=design_tmpdir, message=f"Warning: {message}")
+    return 1
+
+
 def _parse_contract_value(text: str, key: str) -> str:
     return larch_io.kv_value(text=text, key=key, duplicate_policy="last")
 
@@ -1227,11 +1268,10 @@ def _publish_terminal_final_summary(
 
 def _run_terminal_publish_final_summary(*, design_tmpdir: Path, ctx: Ctx, final_summary_path: Path) -> int:
     if not ctx.session_id:
-        _append_execution_issue(
+        return _record_terminal_summary_error(
             design_tmpdir=design_tmpdir,
-            message="Warning: design log publish skipped for terminal summary because SESSION_ID is missing",
+            message="design log publish skipped for terminal summary because SESSION_ID is missing",
         )
-        return 1
     try:
         publish_rc, publish_ok = _publish_terminal_final_summary(
             design_tmpdir=design_tmpdir,
@@ -1241,14 +1281,19 @@ def _run_terminal_publish_final_summary(*, design_tmpdir: Path, ctx: Ctx, final_
             repo=ctx.repo,
         )
     except OSError as exc:
-        _append_execution_issue(design_tmpdir=design_tmpdir, message=f"Warning: design log publish failed for terminal summary: {exc}")
-        return 1
-    if not publish_ok:
-        _append_execution_issue(
+        detail = _safe_terminal_publish_detail(str(exc))
+        suffix = f": {detail}" if detail else ""
+        return _record_terminal_summary_error(
             design_tmpdir=design_tmpdir,
-            message=f"Warning: design log publish failed for terminal summary (exit {publish_rc})",
+            message=f"design log publish failed for terminal summary{suffix}",
         )
-        return 1
+    if not publish_ok:
+        detail = _terminal_publish_error_detail(design_tmpdir)
+        suffix = f": {detail}" if detail else ""
+        return _record_terminal_summary_error(
+            design_tmpdir=design_tmpdir,
+            message=f"design log publish failed for terminal summary (exit {publish_rc}){suffix}",
+        )
     from larch.design.design_summary import upsert_final_summary_from_disk  # noqa: PLC0415
 
     repo_args = ["--repo", ctx.repo] if ctx.repo else []
@@ -1259,11 +1304,10 @@ def _run_terminal_publish_final_summary(*, design_tmpdir: Path, ctx: Ctx, final_
         repo_args=repo_args,
         final_summary_path=final_summary_path,
     ):
-        _append_execution_issue(
+        return _record_terminal_summary_error(
             design_tmpdir=design_tmpdir,
-            message="Warning: tracking-issue upsert-summary failed for terminal final summary",
+            message="tracking-issue upsert-summary failed for terminal final summary",
         )
-        return 1
     return _emit_and_complete_final_summary(design_tmpdir=design_tmpdir, final_summary_path=str(final_summary_path))
 
 
