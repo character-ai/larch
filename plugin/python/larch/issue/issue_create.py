@@ -194,6 +194,10 @@ def parse_issue_input(text: str) -> tuple[list[ParsedItem], str]:
                 else:
                     state.pending_body = line
             else:
+                # A following generic heading owns exactly one preceding blank
+                # separator line. Keep earlier blank lines in the body.
+                if state.current_mode == "generic" and state.current_body.endswith("\n"):
+                    state.current_body = state.current_body[:-1]
                 state.emit_current()
                 state.current_title = match.group(1)
                 state.in_body = True

@@ -1,0 +1,24 @@
+{
+  "exit_code": 0,
+  "files": {
+    "bodies/item-1-body.txt": {
+      "text": "shared body"
+    },
+    "bodies/item-2-body.txt": {
+      "text": "shared body"
+    },
+    "bodies/item-3-body.txt": {
+      "text": "shared body"
+    },
+    "generic-boundaries.md": {
+      "text": "### First generic item\nshared body\n\n### Inner generic item\nshared body\n\n### Final generic item\nshared body"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "▶ parse-input: 3 items parsed (mode=generic): 1=First generic item, 2=Inner generic item, 3=Final generic item\n"
+  },
+  "stdout": {
+    "text": "ITEM_1_TITLE=First generic item\nITEM_1_BODY_FILE=<SANDBOX>/bodies/item-1-body.txt\nITEM_2_TITLE=Inner generic item\nITEM_2_BODY_FILE=<SANDBOX>/bodies/item-2-body.txt\nITEM_3_TITLE=Final generic item\nITEM_3_BODY_FILE=<SANDBOX>/bodies/item-3-body.txt\nITEMS_TOTAL=3\n"
+  }
+}

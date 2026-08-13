@@ -3,7 +3,11 @@
 //! Ports Python `larch.issue.issue_create.parse_issue_input`. One file yields an
 //! ordered item list: an OOS block introduced by `### OOS_<n>: <title>` with its
 //! `- **Description**:` / `- **Concern**:` body and metadata fields, or the
-//! generic `### <title>` fallback whose body is every following line.
+//! generic `### <title>` fallback whose body is every following line. At a
+//! generic heading boundary, the final separator newline belongs to the
+//! boundary rather than the preceding body; additional blank lines remain body
+//! content. Equivalent inner and final generic items therefore materialize
+//! byte-identical bodies.
 //!
 //! Two rules make the grammar ambiguous on purpose, and both are load bearing.
 //! A `### <heading>` inside an OOS body is held pending until the next line
@@ -195,10 +199,19 @@ impl ParseState {
             self.hold_pending(line);
             return;
         }
+        self.drop_generic_boundary_separator();
         self.emit_current();
         title.clone_into(&mut self.current.title);
         self.in_body = true;
         self.current_mode = ItemMode::Generic;
+    }
+
+    /// Remove exactly the separator newline that a following generic heading
+    /// owns. Any earlier blank lines remain part of the preceding body.
+    fn drop_generic_boundary_separator(&mut self) {
+        if self.current_mode == ItemMode::Generic && self.current.body.ends_with('\n') {
+            self.current.body.pop();
+        }
     }
 
     /// Append one body line, routing it into the pending block when a heading

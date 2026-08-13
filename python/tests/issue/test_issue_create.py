@@ -147,6 +147,28 @@ PINNED_PARSE_CASES: list[tuple[str, str, list[tuple[str, str, str, str, str, boo
             ("Second item must remain a boundary", "Second body.\n```", "", "", "", False),
         ],
     ),
+    # #8455: generic boundaries own one blank separator line, so inner and
+    # EOF-final items preserve the same body bytes.
+    (
+        "generic-boundaries-own-one-separator-newline",
+        "### First generic item\nshared body\n\n### Inner generic item\nshared body\n\n"
+        "### Final generic item\nshared body",
+        [
+            ("First generic item", "shared body", "", "", "", False),
+            ("Inner generic item", "shared body", "", "", "", False),
+            ("Final generic item", "shared body", "", "", "", False),
+        ],
+    ),
+    # #8455: do not trim all trailing blank lines when one belongs to the
+    # generic boundary.
+    (
+        "generic-boundaries-retain-extra-blank-lines",
+        "### First generic item\nshared body\n\n\n### Final generic item\nshared body",
+        [
+            ("First generic item", "shared body\n", "", "", "", False),
+            ("Final generic item", "shared body", "", "", "", False),
+        ],
+    ),
 ]
 
 

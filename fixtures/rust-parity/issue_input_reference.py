@@ -1,4 +1,8 @@
-"""Frozen Python behavior for the issue #8168 issue-input cutover.
+"""Frozen Python behavior for the issue-input command parity contract.
+
+Issue #8168 established this reference for the Rust cutover. Issue #8455
+deliberately updates the generic-boundary behavior: one blank separator before
+a following generic heading belongs to that boundary, not the preceding body.
 
 This reproduces the `issue parse-input`, `issue allocate-candidates`,
 `issue list-issues`, and `issue fetch-issue-details` entrypoints in
@@ -252,6 +256,10 @@ def parse_issue_input(text: str) -> tuple[list[ParsedItem], str]:
                 else:
                     state.pending_body = line
             else:
+                # A following generic heading owns exactly one preceding blank
+                # separator line. Keep earlier blank lines in the body.
+                if state.current_mode == "generic" and state.current_body.endswith("\n"):
+                    state.current_body = state.current_body[:-1]
                 state.emit_current()
                 state.current_title = match.group(1)
                 state.in_body = True
