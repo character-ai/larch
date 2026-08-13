@@ -7,7 +7,9 @@
 //!
 //! * `prepare` reads the source issue once and refuses everything the flow
 //!   cannot convert — a closed issue, a pull request, an issue already carrying
-//!   a plan block, and an `[UMBRELLA]` without a durable record. The one
+//!   a plan block, and an ambiguous record-less `[UMBRELLA]`. A record-less
+//!   umbrella is adopted only after its graph has no ambiguous larch-owned
+//!   state. The one
 //!   protected-title carve-out is the prepared-partition path, and it is only
 //!   reachable with `--managed-partition true`.
 //! * `persist-proposal` publishes the record before any leaf is filed, either
@@ -43,12 +45,12 @@ use larch_adapters::{
 };
 use larch_core::{
     CandidateIssue, CompletionSentinel, GitHubIssueState, GitHubService, IssueMutationField,
-    IssueMutationRequest, ProposalRecord, RemoteLeaf, ResolvedLeaf, UmbrellaSnapshot,
-    check_leaf_cap, classify_umbrella_source, completion_sentinel_for_record, emit_kv,
-    expected_completion_sentinel, is_managed_partition_title, is_positive_decimal,
-    mark_leaf_in_flight, parse_proposal, prepare_proposal_from_batch, reconcile_in_flight,
-    record_leaf_resolved, render_proposal, render_snapshot, validate_final_umbrella,
-    verify_graph_state,
+    IssueMutationRequest, ProposalRecord, RemoteLeaf, ResolvedLeaf, UMBRELLA_PROPOSAL_TOKEN,
+    UmbrellaSnapshot, check_leaf_cap, classify_umbrella_source, completion_sentinel_for_record,
+    emit_kv, expected_completion_sentinel, is_managed_partition_title, is_positive_decimal,
+    is_umbrella_leaf_title, is_umbrella_title, mark_leaf_in_flight, parse_proposal,
+    prepare_proposal_from_batch, reconcile_in_flight, record_leaf_resolved, render_proposal,
+    render_snapshot, validate_final_umbrella, verify_graph_state,
 };
 use serde_json::Value;
 use std::{
@@ -97,16 +99,23 @@ fn has_required(values: &BTreeMap<String, String>, required: &[&str]) -> bool {
     required.iter().all(|flag| values.contains_key(*flag))
 }
 
-/// Read the optional `--managed-partition` boolean, refusing any other word.
-fn managed_partition(values: &BTreeMap<String, String>) -> Option<bool> {
-    match values
-        .get("--managed-partition")
-        .map_or("false", String::as_str)
-    {
+/// Read one optional boolean flag, refusing any word other than `true` or `false`.
+fn optional_boolean(values: &BTreeMap<String, String>, flag: &str) -> Option<bool> {
+    match values.get(flag).map_or("false", String::as_str) {
         "true" => Some(true),
         "false" => Some(false),
         _ => None,
     }
+}
+
+/// Read the optional `--managed-partition` boolean.
+fn managed_partition(values: &BTreeMap<String, String>) -> Option<bool> {
+    optional_boolean(values, "--managed-partition")
+}
+
+/// Read the optional `--adopted-umbrella` boolean.
+fn adopted_umbrella(values: &BTreeMap<String, String>) -> Option<bool> {
+    optional_boolean(values, "--adopted-umbrella")
 }
 
 /// Resolve one command-line path against the working directory.
@@ -174,43 +183,69 @@ fn persist_record(path: &str, record: &ProposalRecord) -> Result<(), &'static st
 /// Preparation is a judgement about a source issue: which titles and bodies may
 /// become an umbrella, which may resume one, and which may not be touched at
 /// all. That judgement is only testable if the read is replaceable, so it goes
-/// through this trait and the live implementation makes no decision of its own.
+/// through this trait and the live implementation provides only graph evidence.
+struct SnapshotRead {
+    snapshot: UmbrellaSnapshot,
+    adoption_safe: bool,
+}
+
 trait SnapshotSource {
     /// Read one bounded source snapshot, or name the refusal reason.
-    fn read(&self, repository: &str, issue: &str) -> Result<UmbrellaSnapshot, &'static str>;
+    fn read(&self, repository: &str, issue: &str) -> Result<SnapshotRead, &'static str>;
 }
 
 /// The live source: one typed issue read through the hardened GitHub client.
 struct LiveSnapshotSource;
 
 impl SnapshotSource for LiveSnapshotSource {
-    fn read(&self, repository: &str, issue: &str) -> Result<UmbrellaSnapshot, &'static str> {
+    fn read(&self, repository: &str, issue: &str) -> Result<SnapshotRead, &'static str> {
         if !validate_repo_slug(repository) || !is_positive_decimal(issue) {
             return Err("invalid-identity");
         }
         let reference = crate::github_repository_resolution::repository_ref(repository)
             .map_err(|()| "invalid-identity")?;
         let number: u64 = issue.parse().map_err(|_| "invalid-identity")?;
-        let subject = match with_github_service(async |service, cancellation| {
-            read_issue(service, cancellation, &reference, number).await
+        let source = match with_github_service(async |service, cancellation| {
+            read_source_snapshot(service, cancellation, &reference, repository, issue, number).await
         }) {
-            Ok(subject) => subject,
+            Ok(source) => source,
+            Err(ServiceFailure::Operation(reason)) if reason == "invalid-read-back" => {
+                return Err("invalid-read-back");
+            }
             Err(ServiceFailure::Setup(_) | ServiceFailure::Operation(_)) => {
                 return Err("read-failed");
             }
         };
-        // `gh issue view` refused a pull request number outright, so the
-        // observable Python outcome for one was the transport refusal below.
-        if subject.is_pull_request || subject.number != number {
-            return Err("read-failed");
-        }
-        // The freshness field is republished as a contract row, so a value that
-        // could forge a second row is refused the way Python refused one whose
-        // shape was not an exact UTC timestamp.
-        if subject.updated_at.is_empty() || subject.updated_at.contains(['\r', '\n']) {
-            return Err("invalid-read-back");
-        }
-        Ok(UmbrellaSnapshot {
+        Ok(source)
+    }
+}
+
+async fn read_source_snapshot(
+    service: &OctocrabGitHubService,
+    cancellation: &Cancellation,
+    reference: &larch_core::GitHubRepositoryRef,
+    repository: &str,
+    issue: &str,
+    number: u64,
+) -> Result<SnapshotRead, String> {
+    let subject = read_issue(service, cancellation, reference, number).await?;
+    // `gh issue view` refused a pull request number outright, so the
+    // observable Python outcome for one was the transport refusal below.
+    if subject.is_pull_request || subject.number != number {
+        return Err("read-failed".to_owned());
+    }
+    // The freshness field is republished as a contract row, so a value that
+    // could forge a second row is refused the way Python refused one whose
+    // shape was not an exact UTC timestamp.
+    if subject.updated_at.is_empty() || subject.updated_at.contains(['\r', '\n']) {
+        return Err("invalid-read-back".to_owned());
+    }
+    let adoption_safe = subject.state == GitHubIssueState::Open
+        && is_umbrella_title(&subject.title)
+        && !subject.body.contains(UMBRELLA_PROPOSAL_TOKEN)
+        && adoption_graph_is_unambiguous(service, cancellation, reference, number).await?;
+    Ok(SnapshotRead {
+        snapshot: UmbrellaSnapshot {
             repository: repository.to_owned(),
             number: issue.to_owned(),
             title: subject.title,
@@ -221,8 +256,46 @@ impl SnapshotSource for LiveSnapshotSource {
             }
             .to_owned(),
             updated_at: subject.updated_at,
-        })
+            adopted_umbrella: false,
+        },
+        adoption_safe,
+    })
+}
+
+/// Prove a record-less umbrella has no larch-owned graph state that makes
+/// adoption ambiguous. Ordinary prerequisite blockers are preserved: they are
+/// not evidence of a prior `/umbrella` run.
+async fn adoption_graph_is_unambiguous(
+    service: &OctocrabGitHubService,
+    cancellation: &Cancellation,
+    reference: &larch_core::GitHubRepositoryRef,
+    umbrella: u64,
+) -> Result<bool, String> {
+    let direct_children = service
+        .list_sub_issues(cancellation, reference.owner(), reference.name(), umbrella)
+        .await
+        .map_err(|error| error.to_string())?;
+    if !direct_children.is_empty() {
+        return Ok(false);
     }
+    let blockers = service
+        .list_blocked_by(cancellation, reference.owner(), reference.name(), umbrella)
+        .await
+        .map_err(|error| error.to_string())?;
+    let umbrella = umbrella.to_string();
+    for blocker in blockers {
+        let issue = read_issue(service, cancellation, reference, blocker.issue_number()).await?;
+        if issue.is_pull_request
+            || issue.number != blocker.issue_number()
+            || issue.id != blocker.issue_id()
+        {
+            return Ok(false);
+        }
+        if is_umbrella_leaf_title(&issue.title, &umbrella) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 async fn read_issue(
@@ -275,11 +348,22 @@ fn prepare_with(
     output: &str,
     managed: bool,
 ) -> Result<String, &'static str> {
-    let snapshot = source.read(repository, issue)?;
-    classify_umbrella_source(&snapshot.title, &snapshot.body, &snapshot.state, managed)
-        .map_err(larch_core::UmbrellaRefusal::reason)?;
-    publish(output, &render_snapshot(&snapshot), "snapshot-failed")?;
-    Ok(snapshot.updated_at)
+    let mut source = source.read(repository, issue)?;
+    let classification = classify_umbrella_source(
+        &source.snapshot.title,
+        &source.snapshot.body,
+        &source.snapshot.state,
+        managed,
+        source.adoption_safe,
+    )
+    .map_err(larch_core::UmbrellaRefusal::reason)?;
+    source.snapshot.adopted_umbrella = classification.is_adopted();
+    publish(
+        output,
+        &render_snapshot(&source.snapshot),
+        "snapshot-failed",
+    )?;
+    Ok(source.snapshot.updated_at)
 }
 
 /// Publish the durable record, from a drafted record or a parent partition.
@@ -683,6 +767,7 @@ pub fn mutate(arguments: &[OsString]) -> ExitCode {
             "--title",
             "--body-file",
             "--managed-partition",
+            "--adopted-umbrella",
         ],
     ) else {
         return refuse("usage");
@@ -693,19 +778,45 @@ pub fn mutate(arguments: &[OsString]) -> ExitCode {
     let Some(managed) = managed_partition(&values) else {
         return refuse("usage");
     };
+    let Some(adopted) = adopted_umbrella(&values) else {
+        return refuse("usage");
+    };
+    let Some(mode) = UmbrellaMutationMode::from_flags(managed, adopted) else {
+        return refuse("usage");
+    };
     match mutate_with(
         &LiveUmbrellaMutation,
         &values["--repo"],
         &values["--issue"],
         &values["--title"],
         &values["--body-file"],
-        managed,
+        mode,
     ) {
         Ok(()) => {
             emit_kv("UMBRELLA_MUTATED", "true");
             ExitCode::SUCCESS
         }
         Err(reason) => refuse(reason),
+    }
+}
+
+/// The source contract the final umbrella mutation must preserve.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum UmbrellaMutationMode {
+    Standard,
+    ManagedPartition,
+    AdoptedUmbrella,
+}
+
+impl UmbrellaMutationMode {
+    /// Reject the mutually exclusive managed-partition and adoption paths.
+    const fn from_flags(managed_partition: bool, adopted_umbrella: bool) -> Option<Self> {
+        match (managed_partition, adopted_umbrella) {
+            (false, false) => Some(Self::Standard),
+            (true, false) => Some(Self::ManagedPartition),
+            (false, true) => Some(Self::AdoptedUmbrella),
+            (true, true) => None,
+        }
     }
 }
 
@@ -722,7 +833,7 @@ trait UmbrellaMutation {
         issue: &str,
         title: &str,
         body: &str,
-        managed: bool,
+        mode: UmbrellaMutationMode,
     ) -> Result<(), &'static str>;
 }
 
@@ -737,11 +848,11 @@ fn mutate_with(
     issue: &str,
     title: &str,
     body_file: &str,
-    managed: bool,
+    mode: UmbrellaMutationMode,
 ) -> Result<(), &'static str> {
     let body = fs::read_to_string(body_file).map_err(|_| "mutation-failed")?;
     validate_final_umbrella(title, &body).map_err(larch_core::UmbrellaRefusal::reason)?;
-    sink.finalize(repository, issue, title, &body, managed)
+    sink.finalize(repository, issue, title, &body, mode)
 }
 
 /// The live write: one compare-and-swap through the shared mutation owner.
@@ -754,7 +865,7 @@ impl UmbrellaMutation for LiveUmbrellaMutation {
         issue: &str,
         title: &str,
         body: &str,
-        managed: bool,
+        mode: UmbrellaMutationMode,
     ) -> Result<(), &'static str> {
         if !validate_repo_slug(repository) || !is_positive_decimal(issue) {
             return Err("invalid-identity");
@@ -768,7 +879,7 @@ impl UmbrellaMutation for LiveUmbrellaMutation {
                 cancellation,
                 &reference,
                 number,
-                (title, body, managed),
+                (title, body, mode),
             )
             .await)
         });
@@ -789,16 +900,22 @@ async fn finalize_umbrella(
     cancellation: &Cancellation,
     reference: &larch_core::GitHubRepositoryRef,
     issue: u64,
-    contract: (&str, &str, bool),
+    contract: (&str, &str, UmbrellaMutationMode),
 ) -> Result<(), &'static str> {
-    let (title, body, managed) = contract;
+    let (title, body, mode) = contract;
     let before = owner
         .read_snapshot(reference, issue, cancellation)
         .await
         .map_err(larch_core::IssueMutationError::reason)?;
     let mut fields = BTreeSet::from([IssueMutationField::Title, IssueMutationField::Body]);
-    if managed {
-        let _ = fields.insert(IssueMutationField::UmbrellaConversion);
+    match mode {
+        UmbrellaMutationMode::Standard => {}
+        UmbrellaMutationMode::ManagedPartition => {
+            let _ = fields.insert(IssueMutationField::UmbrellaConversion);
+        }
+        UmbrellaMutationMode::AdoptedUmbrella => {
+            let _ = fields.insert(IssueMutationField::UmbrellaAdoption);
+        }
     }
     let request = IssueMutationRequest {
         repository: reference.clone(),
@@ -977,17 +1094,21 @@ fn check_completion(
 #[cfg(test)]
 mod tests {
     use super::{
-        CompletionPaths, SnapshotSource, UmbrellaMutation, absolute, candidate_issue,
-        check_completion, load_record, mark_in_flight, mutate, mutate_with, parse_values,
-        persist_prepared_proposal, persist_proposal, prepare, prepare_with, reconcile,
-        reconcile_in_flight_command, record_resolved, resolve_into, row_number, verify,
-        verify_completion, verify_graph,
+        CompletionPaths, SnapshotRead, SnapshotSource, UmbrellaMutation, UmbrellaMutationMode,
+        absolute, candidate_issue, check_completion, load_record, mark_in_flight, mutate,
+        mutate_with, parse_values, persist_prepared_proposal, persist_proposal, prepare,
+        prepare_with, reconcile, reconcile_in_flight_command, record_resolved, resolve_into,
+        row_number, verify, verify_completion, verify_graph,
     };
+    use crate::github_service::with_test_github_service;
+    use larch_adapters::github::OctocrabGitHubService;
     use larch_core::{
         ExpectedLeaf, LeafState, MANAGED_PARTITION_PREFIXES, ProposalRecord, ResolvedLeaf,
         UmbrellaSnapshot, leaf_identity, mark_leaf_in_flight, prepare_proposal_from_batch,
         render_proposal, umbrella_leaf_opening_text,
     };
+    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
+    use serde_json::{Value, json};
     use std::{
         cell::RefCell,
         collections::BTreeMap,
@@ -995,6 +1116,7 @@ mod tests {
         fs,
         path::{Path, PathBuf},
         process::ExitCode,
+        sync::Arc,
     };
     use tempfile::TempDir;
 
@@ -1024,11 +1146,14 @@ mod tests {
         )
     }
 
-    struct FixedSource(Result<UmbrellaSnapshot, &'static str>);
+    struct FixedSource(Result<UmbrellaSnapshot, &'static str>, bool);
 
     impl SnapshotSource for FixedSource {
-        fn read(&self, _repository: &str, _issue: &str) -> Result<UmbrellaSnapshot, &'static str> {
-            self.0.clone()
+        fn read(&self, _repository: &str, _issue: &str) -> Result<SnapshotRead, &'static str> {
+            Ok(SnapshotRead {
+                snapshot: self.0.clone()?,
+                adoption_safe: self.1,
+            })
         }
     }
 
@@ -1044,7 +1169,67 @@ mod tests {
             body: body.to_owned(),
             state: state.to_owned(),
             updated_at: "2026-08-03T00:00:00Z".to_owned(),
+            adopted_umbrella: false,
         }
+    }
+
+    /// Build one complete typed issue response for the loopback GitHub service.
+    fn issue_response(number: u64, id: u64, title: &str, body: &str) -> Value {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../larch-adapters/fixtures/github_issue.json"
+        ))
+        .expect("valid issue fixture");
+        value["id"] = json!(id);
+        value["number"] = json!(number);
+        value["title"] = json!(title);
+        value["body"] = json!(body);
+        value["state"] = json!("open");
+        value["url"] = json!(format!(
+            "https://example.test/repos/owner/repo/issues/{number}"
+        ));
+        value["repository_url"] = json!("https://example.test/repos/owner/repo");
+        value["html_url"] = json!(format!("https://github.com/owner/repo/issues/{number}"));
+        value["labels"] = json!([]);
+        value["updated_at"] = json!("2026-08-03T00:00:00Z");
+        value
+    }
+
+    /// Start one loopback-only typed GitHub service for a command unit test.
+    fn service(
+        exchanges: impl IntoIterator<Item = IssueServiceExchange>,
+    ) -> (
+        Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync>,
+        IssueServiceStub,
+    ) {
+        let server = IssueServiceStub::start(exchanges).expect("start issue service stub");
+        let base_url = server.base_url().to_owned();
+        let factory: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+            Arc::new(move || OctocrabGitHubService::with_test_base(&base_url));
+        (factory, server)
+    }
+
+    /// Exercise preparation through the injected live GitHub service.
+    fn prepare_live(
+        github: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync>,
+        output: &str,
+    ) -> ExitCode {
+        with_test_github_service(github, || {
+            prepare(&arguments(&[
+                "--repo",
+                "owner/repo",
+                "--issue",
+                "12",
+                "--output",
+                output,
+            ]))
+        })
+    }
+
+    /// Allocate one durable output path for a preparation test.
+    fn snapshot_output() -> (TempDir, String) {
+        let directory = TempDir::new().expect("temporary directory");
+        let output = text_path(&root(&directory).join("snapshot.json"));
+        (directory, output)
     }
 
     fn record() -> ProposalRecord {
@@ -1095,10 +1280,10 @@ mod tests {
     }
 
     #[test]
-    fn preparation_publishes_only_a_convertible_source() {
+    fn preparation_publishes_only_an_eligible_source() {
         let directory = TempDir::new().expect("temporary directory");
         let output = text_path(&root(&directory).join("snapshot.json"));
-        let source = FixedSource(Ok(snapshot("Regular issue", "Body.", "OPEN")));
+        let source = FixedSource(Ok(snapshot("Regular issue", "Body.", "OPEN")), false);
         assert_eq!(
             prepare_with(&source, "owner/repo", "12", &output, false),
             Ok("2026-08-03T00:00:00Z".to_owned())
@@ -1137,7 +1322,7 @@ mod tests {
         ] {
             assert_eq!(
                 prepare_with(
-                    &FixedSource(Ok(source)),
+                    &FixedSource(Ok(source), false),
                     "owner/repo",
                     "12",
                     &output,
@@ -1148,7 +1333,7 @@ mod tests {
         }
         assert_eq!(
             prepare_with(
-                &FixedSource(Err("read-failed")),
+                &FixedSource(Err("read-failed"), false),
                 "owner/repo",
                 "12",
                 &output,
@@ -1158,11 +1343,14 @@ mod tests {
         );
         assert_eq!(
             prepare_with(
-                &FixedSource(Ok(snapshot(
-                    &managed_title("Work"),
-                    "<!-- larch:plan -->",
-                    "OPEN"
-                ))),
+                &FixedSource(
+                    Ok(snapshot(
+                        &managed_title("Work"),
+                        "<!-- larch:plan -->",
+                        "OPEN"
+                    )),
+                    false
+                ),
                 "owner/repo",
                 "12",
                 "/larch-umbrella-missing-root/snapshot.json",
@@ -1170,6 +1358,131 @@ mod tests {
             ),
             Err("snapshot-failed")
         );
+
+        let adopted = FixedSource(
+            Ok(snapshot(
+                "[UMBRELLA] External split",
+                "External context.",
+                "OPEN",
+            )),
+            true,
+        );
+        assert_eq!(
+            prepare_with(&adopted, "owner/repo", "12", &output, false),
+            Ok("2026-08-03T00:00:00Z".to_owned())
+        );
+        assert_eq!(
+            fs::read_to_string(&output).expect("adoption snapshot published"),
+            "{\"body\": \"External context.\", \"number\": \"12\", \"repository\": \"owner/repo\", \"source\": \"adopted-umbrella\", \"state\": \"OPEN\", \"title\": \"[UMBRELLA] External split\", \"updated_at\": \"2026-08-03T00:00:00Z\"}\n"
+        );
+    }
+
+    #[test]
+    fn live_preparation_adopts_only_a_recordless_umbrella_with_an_unambiguous_graph() {
+        let (_directory, output) = snapshot_output();
+        let source = issue_response(12, 120, "[UMBRELLA] External split", "External context.");
+
+        let (github, server) = service([
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/12",
+                200,
+                source.to_string(),
+            )
+            .expect("source response"),
+            IssueServiceExchange::json("GET", "/repos/owner/repo/issues/12/sub_issues", 200, "[]")
+                .expect("empty children response"),
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/12/dependencies/blocked_by",
+                200,
+                "[]",
+            )
+            .expect("empty blockers response"),
+        ]);
+        assert_eq!(prepare_live(github, &output), ExitCode::SUCCESS);
+        assert!(
+            fs::read_to_string(&output)
+                .expect("adoption snapshot")
+                .contains("\"source\": \"adopted-umbrella\"")
+        );
+        server.join().expect("empty graph was fully read");
+
+        let ordinary_blocker =
+            issue_response(34, 340, "[UMBRELLA] Existing prerequisite", "Context.");
+        let (github, server) = service([
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/12",
+                200,
+                source.to_string(),
+            )
+            .expect("source response"),
+            IssueServiceExchange::json("GET", "/repos/owner/repo/issues/12/sub_issues", 200, "[]")
+                .expect("empty children response"),
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/12/dependencies/blocked_by",
+                200,
+                "[{\"number\":34,\"id\":340,\"state\":\"open\"}]",
+            )
+            .expect("ordinary blocker response"),
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/34",
+                200,
+                ordinary_blocker.to_string(),
+            )
+            .expect("ordinary blocker read"),
+        ]);
+        assert_eq!(prepare_live(github, &output), ExitCode::SUCCESS);
+        server
+            .join()
+            .expect("ordinary prerequisite blocker stays compatible");
+
+        let direct_child = serde_json::json!([{ "number": 34, "id": 340, "state": "open" }]);
+        let (github, server) = service([
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/12",
+                200,
+                source.to_string(),
+            )
+            .expect("source response"),
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/12/sub_issues",
+                200,
+                direct_child.to_string(),
+            )
+            .expect("direct child response"),
+        ]);
+        assert_eq!(prepare_live(github, &output), ExitCode::from(2));
+        server.join().expect("direct child was fully read");
+
+        let leaf = issue_response(34, 340, "[LEAF OF 12] Existing leaf", "Leaf context.");
+        let (github, server) = service([
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/12",
+                200,
+                source.to_string(),
+            )
+            .expect("source response"),
+            IssueServiceExchange::json("GET", "/repos/owner/repo/issues/12/sub_issues", 200, "[]")
+                .expect("empty children response"),
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/12/dependencies/blocked_by",
+                200,
+                "[{\"number\":34,\"id\":340,\"state\":\"open\"}]",
+            )
+            .expect("blocker response"),
+            IssueServiceExchange::json("GET", "/repos/owner/repo/issues/34", 200, leaf.to_string())
+                .expect("leaf response"),
+        ]);
+        assert_eq!(prepare_live(github, &output), ExitCode::from(2));
+        server.join().expect("leaf blocker was fully read");
     }
 
     #[test]
@@ -1596,6 +1909,7 @@ mod tests {
             body: "Shared.".to_owned(),
             state: "OPEN".to_owned(),
             updated_at: "2026-08-03T00:00:00Z".to_owned(),
+            adopted_umbrella: false,
         };
         let (mut record, _issue_input) =
             prepare_proposal_from_batch(&source, PREPARED_BATCH, "1\t2\n")
@@ -1636,11 +1950,11 @@ mod tests {
             issue: &str,
             title: &str,
             body: &str,
-            managed: bool,
+            mode: UmbrellaMutationMode,
         ) -> Result<(), &'static str> {
             self.0
                 .borrow_mut()
-                .push(format!("{repository} {issue} {title} {body} {managed}"));
+                .push(format!("{repository} {issue} {title} {body} {mode:?}"));
             Ok(())
         }
     }
@@ -1655,7 +1969,7 @@ mod tests {
             _issue: &str,
             _title: &str,
             _body: &str,
-            _managed: bool,
+            _mode: UmbrellaMutationMode,
         ) -> Result<(), &'static str> {
             Err("stale-identity")
         }
@@ -1674,12 +1988,21 @@ mod tests {
         let sink = RecordingMutation(RefCell::new(Vec::new()));
 
         assert_eq!(
-            mutate_with(&sink, "owner/repo", "12", "[UMBRELLA] Split", &body, true),
+            mutate_with(
+                &sink,
+                "owner/repo",
+                "12",
+                "[UMBRELLA] Split",
+                &body,
+                UmbrellaMutationMode::ManagedPartition,
+            ),
             Ok(())
         );
         assert_eq!(
             sink.0.borrow().as_slice(),
-            ["owner/repo 12 [UMBRELLA] Split Context\n<!-- larch:umbrella-proposal -->\n true"]
+            [
+                "owner/repo 12 [UMBRELLA] Split Context\n<!-- larch:umbrella-proposal -->\n ManagedPartition"
+            ]
         );
         assert_eq!(
             mutate_with(
@@ -1688,12 +2011,19 @@ mod tests {
                 "12",
                 &managed_title("Split"),
                 &body,
-                false
+                UmbrellaMutationMode::Standard
             ),
             Err("invalid-final-umbrella")
         );
         assert_eq!(
-            mutate_with(&sink, "owner/repo", "12", "[UMBRELLA] Split", &bare, false),
+            mutate_with(
+                &sink,
+                "owner/repo",
+                "12",
+                "[UMBRELLA] Split",
+                &bare,
+                UmbrellaMutationMode::Standard,
+            ),
             Err("invalid-final-umbrella")
         );
         assert_eq!(
@@ -1703,7 +2033,7 @@ mod tests {
                 "12",
                 "[UMBRELLA] Split",
                 "/larch-umbrella-absent-body.md",
-                false
+                UmbrellaMutationMode::Standard
             ),
             Err("mutation-failed")
         );
@@ -1714,7 +2044,7 @@ mod tests {
                 "12",
                 "[UMBRELLA] Split",
                 &body,
-                false
+                UmbrellaMutationMode::Standard
             ),
             Err("stale-identity")
         );
@@ -1945,6 +2275,43 @@ mod tests {
         assert_eq!(
             verify_completion(&fixture.completion_arguments()),
             ExitCode::SUCCESS
+        );
+    }
+
+    #[test]
+    fn mutate_rejects_invalid_or_conflicting_mode_flags() {
+        let refused = ExitCode::from(2);
+        assert_eq!(
+            mutate(&arguments(&[
+                "--repo",
+                "owner/repo",
+                "--issue",
+                "12",
+                "--title",
+                "[UMBRELLA] Split",
+                "--body-file",
+                "/larch-umbrella-body.md",
+                "--adopted-umbrella",
+                "maybe",
+            ])),
+            refused
+        );
+        assert_eq!(
+            mutate(&arguments(&[
+                "--repo",
+                "owner/repo",
+                "--issue",
+                "12",
+                "--title",
+                "[UMBRELLA] Split",
+                "--body-file",
+                "/larch-umbrella-body.md",
+                "--managed-partition",
+                "true",
+                "--adopted-umbrella",
+                "true",
+            ])),
+            refused
         );
     }
 

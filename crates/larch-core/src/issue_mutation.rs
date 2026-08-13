@@ -49,6 +49,7 @@ pub enum IssueMutationField {
     NamedBlock,
     ImplementationLease,
     UmbrellaConversion,
+    UmbrellaAdoption,
 }
 
 /// The run binding attached to a protected named-block or lease mutation.
@@ -161,6 +162,18 @@ fn validate_special_shape(request: &IssueMutationRequest) -> Result<(), IssueMut
             return Err(IssueMutationError::new(
                 "invalid-umbrella-conversion-request",
             ));
+        }
+    } else if request
+        .fields
+        .contains(&IssueMutationField::UmbrellaAdoption)
+    {
+        let expected = BTreeSet::from([
+            IssueMutationField::Title,
+            IssueMutationField::Body,
+            IssueMutationField::UmbrellaAdoption,
+        ]);
+        if request.fields != expected || request.title.is_none() || request.body.is_none() {
+            return Err(IssueMutationError::new("invalid-umbrella-adoption-request"));
         }
     } else if request.fields.contains(&IssueMutationField::NamedBlock) {
         if request.fields != BTreeSet::from([IssueMutationField::NamedBlock])
@@ -368,6 +381,11 @@ pub fn verify_authorized_body_change(
         validate_umbrella_conversion(request, redacted, before, body)?;
     } else if request
         .fields
+        .contains(&IssueMutationField::UmbrellaAdoption)
+    {
+        validate_umbrella_adoption(request, redacted, before, body)?;
+    } else if request
+        .fields
         .contains(&IssueMutationField::ImplementationLease)
     {
         validate_lease_change(request, before, body)?;
@@ -399,6 +417,30 @@ fn validate_umbrella_conversion(
         || (!before.body.is_empty() && !body.contains(&before.body))
     {
         return Err(IssueMutationError::new("invalid-umbrella-conversion"));
+    }
+    Ok(())
+}
+
+fn validate_umbrella_adoption(
+    request: &IssueMutationRequest,
+    redacted: &IssueMutationRequest,
+    before: &IssueMutationSnapshot,
+    body: &str,
+) -> Result<(), IssueMutationError> {
+    let requested_title = request.title.as_deref();
+    let redacted_title = redacted.title.as_deref();
+    let Some(source_title) = before.title.strip_prefix(UMBRELLA_PREFIX) else {
+        return Err(IssueMutationError::new("invalid-umbrella-adoption"));
+    };
+    if before.state != GitHubIssueState::Open
+        || source_title.trim().is_empty()
+        || before.body.contains(UMBRELLA_PROPOSAL_MARKER)
+        || requested_title != Some(before.title.as_str())
+        || redacted_title != requested_title
+        || !body.contains(UMBRELLA_PROPOSAL_MARKER)
+        || (!before.body.is_empty() && !body.contains(&before.body))
+    {
+        return Err(IssueMutationError::new("invalid-umbrella-adoption"));
     }
     Ok(())
 }
@@ -829,6 +871,51 @@ mod tests {
             verify_authorized_body_change(&request, &redacted, &before)
                 .expect("only the live named block changed"),
             request.body
+        );
+    }
+
+    #[test]
+    fn umbrella_adoption_keeps_the_recordless_source_title_and_context() {
+        let mut before = snapshot();
+        before.title = String::from("[UMBRELLA] External split");
+        before.body = String::from("External context\n");
+        let mut request = title_request();
+        request.fields = BTreeSet::from([
+            IssueMutationField::Title,
+            IssueMutationField::Body,
+            IssueMutationField::UmbrellaAdoption,
+        ]);
+        request.title = Some(before.title.clone());
+        request.body = Some(format!(
+            "{}<!-- larch:umbrella-proposal v1 -->\n",
+            before.body
+        ));
+        let redacted = request.clone();
+
+        assert!(validate_issue_mutation_request(&request).is_ok());
+        assert_eq!(
+            verify_authorized_body_change(&request, &redacted, &before)
+                .expect("the guarded adoption is valid"),
+            request.body
+        );
+
+        request.title = Some(String::from("[UMBRELLA] Renamed split"));
+        assert_eq!(
+            verify_authorized_body_change(&request, &redacted, &before)
+                .expect_err("adoption must preserve the external title")
+                .reason(),
+            "invalid-umbrella-adoption"
+        );
+
+        let mut existing_record = before;
+        existing_record
+            .body
+            .push_str("<!-- larch:umbrella-proposal v1 -->\n");
+        assert_eq!(
+            verify_authorized_body_change(&redacted, &redacted, &existing_record)
+                .expect_err("a recorded umbrella resumes instead of adopting")
+                .reason(),
+            "invalid-umbrella-adoption"
         );
     }
 

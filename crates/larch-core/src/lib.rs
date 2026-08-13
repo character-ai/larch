@@ -186,6 +186,24 @@ pub use issue::{
     serialize_accepted_oos, topological_create_order, validate_issue_cap_input,
 };
 pub use issue::{
+    ADOPTED_UMBRELLA_SOURCE, AMBIGUOUS_IN_FLIGHT_RECOVERY, CLOSED_INPUT,
+    COMPLETION_SENTINEL_VERSION, CandidateIssue, CompletionSentinel, DependencyEdge, ExpectedLeaf,
+    INCOMPATIBLE_INPUT, INCOMPATIBLE_MANAGED_PARTITION, INCOMPATIBLE_UMBRELLA,
+    INCOMPLETE_GRAPH_STATE, INVALID_COMPLETION_SENTINEL, INVALID_FINAL_UMBRELLA,
+    INVALID_LEAF_NUMBER, INVALID_PREPARED_DEPENDENCIES, INVALID_PREPARED_PARTITION,
+    INVALID_PROPOSAL_RECORD, INVALID_RESOLVED_LEAF, INVALID_UMBRELLA_NUMBER, LEAF_ALREADY_RESOLVED,
+    LEAF_CAP_EXCEEDED, LeafState, MANAGED_PARTITION_PREFIXES, MAX_PREPARED_DEPS_BYTES,
+    MAX_PREPARED_INPUT_BYTES, MAX_UMBRELLA_LEAVES, MIN_PREPARED_LEAVES, PREPARED_DEPENDENCY_CYCLE,
+    PREPARED_PARTITION_TOO_LARGE, ProposalRecord, RemoteLeaf, ResolvedLeaf,
+    STALE_COMPLETION_SENTINEL, STALE_PREPARED_PARTITION, UMBRELLA_PROPOSAL_TOKEN,
+    UNKNOWN_LEAF_IDENTITY, UmbrellaRefusal, UmbrellaSnapshot, UmbrellaSourceKind, check_leaf_cap,
+    classify_umbrella_source, completion_sentinel_for_record, expected_completion_sentinel,
+    is_managed_partition_title, is_umbrella_leaf_title, is_umbrella_title, leaf_identity,
+    mark_leaf_in_flight, parse_proposal, prepare_proposal_from_batch, reconcile_in_flight,
+    record_leaf_resolved, render_proposal, render_snapshot, umbrella_leaf_opening_text,
+    validate_final_umbrella, verify_graph_state,
+};
+pub use issue::{
     ALLOWED_NAMED_BLOCK_MARKERS, ARCHIVAL_JQ_FILTER, BUG_PREFIX, BUG_TITLE_LIFECYCLE_PREFIXES,
     DESIGN_PAUSE_MARKER, DONE_PREFIX, IMPLEMENTING_PREFIX, LIFECYCLE_PREFIXES, MISSING_PLAN_BLOCK,
     MULTIPLE_PLAN_BLOCKS, NamedBlockDefect, NamedBlockError, NamedBlockSpan, NamedBlockWrite,
@@ -198,23 +216,6 @@ pub use issue::{
     strip_named_block, title_has_archival_report_prefix, title_is_archival,
     title_lifecycle_reject_marker, title_starts_with_brainstorm, untrusted_content_block,
     xml_escape_attr,
-};
-pub use issue::{
-    AMBIGUOUS_IN_FLIGHT_RECOVERY, CLOSED_INPUT, COMPLETION_SENTINEL_VERSION, CandidateIssue,
-    CompletionSentinel, DependencyEdge, ExpectedLeaf, INCOMPATIBLE_INPUT,
-    INCOMPATIBLE_MANAGED_PARTITION, INCOMPATIBLE_UMBRELLA, INCOMPLETE_GRAPH_STATE,
-    INVALID_COMPLETION_SENTINEL, INVALID_FINAL_UMBRELLA, INVALID_LEAF_NUMBER,
-    INVALID_PREPARED_DEPENDENCIES, INVALID_PREPARED_PARTITION, INVALID_PROPOSAL_RECORD,
-    INVALID_RESOLVED_LEAF, INVALID_UMBRELLA_NUMBER, LEAF_ALREADY_RESOLVED, LEAF_CAP_EXCEEDED,
-    LeafState, MANAGED_PARTITION_PREFIXES, MAX_PREPARED_DEPS_BYTES, MAX_PREPARED_INPUT_BYTES,
-    MAX_UMBRELLA_LEAVES, MIN_PREPARED_LEAVES, PREPARED_DEPENDENCY_CYCLE,
-    PREPARED_PARTITION_TOO_LARGE, ProposalRecord, RemoteLeaf, ResolvedLeaf,
-    STALE_COMPLETION_SENTINEL, STALE_PREPARED_PARTITION, UMBRELLA_PROPOSAL_TOKEN,
-    UNKNOWN_LEAF_IDENTITY, UmbrellaRefusal, UmbrellaSnapshot, check_leaf_cap,
-    classify_umbrella_source, completion_sentinel_for_record, expected_completion_sentinel,
-    is_managed_partition_title, leaf_identity, mark_leaf_in_flight, parse_proposal,
-    prepare_proposal_from_batch, reconcile_in_flight, record_leaf_resolved, render_proposal,
-    render_snapshot, umbrella_leaf_opening_text, validate_final_umbrella, verify_graph_state,
 };
 pub use issue::{
     AcceptedBlock, AcceptedSource, FiledIssue, LEGACY_PRIMARY_OOS_SOURCE, bare_oos_item_suffix,
