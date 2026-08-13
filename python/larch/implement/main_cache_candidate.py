@@ -710,7 +710,7 @@ def _restore_member_metadata(output_dir: Path, members: tuple[CandidateMember, .
         try:
             with ExitStack() as stack:
                 descriptor = os.open(path, flags)
-                stack.callback(os.close, descriptor)
+                _ = stack.callback(os.close, descriptor)
                 opened = os.fstat(descriptor)
                 current = _lstat(path, label="promoted candidate member")
                 if (
@@ -773,13 +773,6 @@ def _require_regular_directory(path: Path, *, label: str) -> Path:
     status = _lstat(path, label=label)
     if stat.S_ISLNK(status.st_mode) or not stat.S_ISDIR(status.st_mode):
         raise CandidateError(f"{label} is not a regular directory")
-    return path
-
-
-def _require_regular_file(path: Path, *, label: str) -> Path:
-    status = _lstat(path, label=label)
-    if stat.S_ISLNK(status.st_mode) or not stat.S_ISREG(status.st_mode):
-        raise CandidateError(f"{label} is not a regular file")
     return path
 
 

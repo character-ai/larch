@@ -441,8 +441,9 @@ def test_promote_main_cache_candidate_binds_mtime_to_artifact_digest(
     _ = candidate.stage_candidate(request)
     manifest_path = request.candidate_dir / "manifest.json"
     manifest = _read_manifest(manifest_path)
-    raw_members = manifest["members"]
-    assert isinstance(raw_members, list)
+    raw_members_value = manifest["members"]
+    assert isinstance(raw_members_value, list)
+    raw_members = cast("list[object]", raw_members_value)
     raw_member = raw_members[0]
     assert isinstance(raw_member, dict)
     member = cast("dict[str, object]", raw_member)
@@ -471,8 +472,9 @@ def test_promote_main_cache_candidate_rejects_unsafe_mtime(
     _ = candidate.stage_candidate(request)
     manifest_path = request.candidate_dir / "manifest.json"
     manifest = _read_manifest(manifest_path)
-    raw_members = manifest["members"]
-    assert isinstance(raw_members, list)
+    raw_members_value = manifest["members"]
+    assert isinstance(raw_members_value, list)
+    raw_members = cast("list[object]", raw_members_value)
     raw_member = raw_members[0]
     assert isinstance(raw_member, dict)
     member = cast("dict[str, object]", raw_member)
