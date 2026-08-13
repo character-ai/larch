@@ -2,7 +2,7 @@
   "exit_code": 2,
   "files": {
     "complete.sentinel": {
-      "text": "UMBRELLA_SENTINEL_VERSION=2\r\nGRAPH_VERIFIED=true\n"
+      "text": "UMBRELLA_SENTINEL_VERSION=2\nGRAPH_VERIFIED=true\n"
     },
     "deps.tsv": {
       "text": "1\t2\n"

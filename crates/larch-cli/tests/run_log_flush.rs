@@ -396,12 +396,15 @@ fn terminal_flush_is_complete_atomic_and_idempotent() {
     }
     assert_eq!(
         format!("{:x}", golden.finalize()),
-        "18fb26c1f237f8887839815f3fee0d650faf07ff2133bdd7291c10970a4b08d8",
-        // Re-pinned for issue 8090: the terminal report is Rust-owned, so the
-        // review-phase prefix renders in process instead of through a child
-        // that this sandbox cannot launch, and the priced cost degrades to
-        // `N/A` because the still-Python `token report` verb is unreachable
-        // here. Every other byte is unchanged from the retired Python owner.
+        "4d331e3b45bf4ebf5fba930449c5e53066d65b009e3ac0b1699172164ed1ade6",
+        // Re-pinned for the v56.3.0 release: `final-summary.md` and
+        // `execution-issues.ndjson` embed the live plugin version through
+        // `plugin_version()`, so this golden drifts on every version bump. The
+        // fixture points `plugin_root` at the real repo, so the pinned bytes
+        // track the current `.claude-plugin/plugin.json` version and must be
+        // re-pinned when it changes. Tracked for a version-independent fixture
+        // (a LARCH_TEST_PLUGIN_VERSION override mirroring LARCH_TEST_TIMING_NOW).
+        // The prior 18fb26c1... digest pinned the retired v56.2.2 bytes.
         "terminal snapshot bytes drifted from the Rust final-report owner",
     );
     let second = fixture.terminal();

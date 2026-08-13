@@ -3,7 +3,7 @@
   "files": {},
   "side_effects": {},
   "stderr": {
-    "text": "usage: triage apply [-h] --repo REPO --verdict\n                    {valid,already-fixed,duplicate,invalid,inconclusive}\n                    --expected-updated-at EXPECTED_UPDATED_AT --triage-root\n                    TRIAGE_ROOT [--body-file BODY_FILE]\n                    [--comment-file COMMENT_FILE]\n                    [--canonical-duplicate CANONICAL_DUPLICATE]\n                    [--operator-invoked]\n                    issue\ntriage apply: error: the following arguments are required: issue, --verdict, --expected-updated-at, --triage-root\n"
+    "text": "usage: triage apply [-h] --repo REPO --verdict {valid,already-fixed,duplicate,invalid,inconclusive} --expected-updated-at EXPECTED_UPDATED_AT --triage-root TRIAGE_ROOT [--body-file BODY_FILE] [--comment-file COMMENT_FILE] [--canonical-duplicate CANONICAL_DUPLICATE] [--operator-invoked] issue\ntriage apply: error: the following arguments are required: issue, --verdict, --expected-updated-at, --triage-root\n"
   },
   "stdout": {
     "text": ""
