@@ -1116,16 +1116,76 @@ def _final_summary_stream():
     return logging_util.contract_stream()
 
 
-def _emit_final_summary_marked_from_disk(*, design_tmpdir: Path, final_summary_path: str) -> None:
-    del design_tmpdir
+def _final_summary_ready_rows(*, final_summary_path: Path) -> list[tuple[str, str]]:
+    return [
+        (config.ENV_FINAL_SUMMARY_PATH, str(final_summary_path)),
+        (config.ENV_FINAL_SUMMARY_READY, "true"),
+    ]
+
+
+def _upsert_final_summary_ready_into_merge_env(
+    *,
+    design_tmpdir: Path,
+    merge_env: Path,
+    final_summary_path: Path,
+) -> None:
+    """Merge FINAL_SUMMARY_PATH/READY into a caller-owned merge env for bgjob DONE."""
+    if merge_env.is_symlink() or not merge_env.is_file():
+        return
+    existing = larch_io.read_kvs(merge_env, duplicate_policy="last", reject_symlink=True)
+    merged: list[tuple[str, str]] = []
+    for key, value in existing.items():
+        if key in {config.ENV_FINAL_SUMMARY_PATH, config.ENV_FINAL_SUMMARY_READY}:
+            continue
+        merged.append((key, value))
+    merged.extend(_final_summary_ready_rows(final_summary_path=final_summary_path))
+    design_write_merge_env(path=merge_env, design_tmpdir=design_tmpdir, rows=merged)
+
+
+def _persist_final_summary_readiness(
+    *,
+    design_tmpdir: Path,
+    final_summary_path: str,
+    merge_env: Path | None = None,
+) -> None:
+    """Write readiness KVs into merge envs that bgjob wait promotes into DONE/result.env."""
+    summary_path = Path(final_summary_path)
+    if not _has_nonempty_final_summary(summary_path):
+        return
+    design_write_merge_env(
+        path=design_tmpdir / ".design-step-final-summary-result.env",
+        design_tmpdir=design_tmpdir,
+        rows=_final_summary_ready_rows(final_summary_path=summary_path),
+    )
+    if merge_env is not None:
+        _upsert_final_summary_ready_into_merge_env(
+            design_tmpdir=design_tmpdir,
+            merge_env=merge_env,
+            final_summary_path=summary_path,
+        )
+
+
+def _emit_final_summary_marked_from_disk(
+    *,
+    design_tmpdir: Path,
+    final_summary_path: str,
+    merge_env: Path | None = None,
+) -> None:
     summary_path = Path(final_summary_path)
     if not summary_path.is_file() or summary_path.stat().st_size == 0:
         return
     stream = _final_summary_stream()
     logging_util.emit_kv(key=config.ENV_FINAL_SUMMARY_PATH, value=str(summary_path))
-    stream.write("LARCH_FINAL_SUMMARY_BEGIN\n")
-    stream.write("LARCH_FINAL_SUMMARY_END\n")
+    stream.write(f"{config.LARCH_FINAL_SUMMARY_BEGIN_MARKER}\n")
+    stream.write(f"{config.LARCH_FINAL_SUMMARY_END_MARKER}\n")
     stream.flush()
+    # Contract-stream markers are not merged into bgjob DONE/result.env (#8462).
+    # Persist an equivalent readiness KV into the step merge envs that are.
+    _persist_final_summary_readiness(
+        design_tmpdir=design_tmpdir,
+        final_summary_path=str(summary_path),
+        merge_env=merge_env,
+    )
 
 
 def _emit_report_gate_sidecars_from_disk(design_tmpdir: Path) -> None:
@@ -1154,14 +1214,7 @@ def _touch_final_summary_complete(design_tmpdir: Path) -> None:
 
 
 def _write_final_summary_result_env(*, design_tmpdir: Path, final_summary_path: str) -> None:
-    summary_path = Path(final_summary_path)
-    if not _has_nonempty_final_summary(summary_path):
-        return
-    design_write_merge_env(
-        path=design_tmpdir / ".design-step-final-summary-result.env",
-        design_tmpdir=design_tmpdir,
-        rows=[("FINAL_SUMMARY_PATH", str(summary_path))],
-    )
+    _persist_final_summary_readiness(design_tmpdir=design_tmpdir, final_summary_path=final_summary_path)
 
 
 def _complete_final_summary(*, design_tmpdir: Path, final_summary_path: str) -> None:
@@ -1179,7 +1232,7 @@ def _emit_and_complete_final_summary(*, design_tmpdir: Path, final_summary_path:
     try:
         _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=final_summary_path)
         _emit_report_gate_sidecars_from_disk(design_tmpdir)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         _append_execution_issue(design_tmpdir=design_tmpdir, message=f"Warning: final summary emit failed: {exc}")
         return 1
     _flush_final_summary_outputs()

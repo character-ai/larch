@@ -48,7 +48,7 @@ If a user message interrupts after finalize returns but before terminal emission
 Use this profile for `/design` final `bgjob wait` `DONE` stdout and the matching bgjob result env.
 
 1. Parse `FINAL_SUMMARY_PATH=<path>` from final `bgjob wait` `DONE` stdout already in the orchestrator context window, or from the matching `$DESIGN_TMPDIR/bgjob/<step>.result.env` after `BGJOB_RC=0` and required-KV validation.
-2. Confirm whole-line `LARCH_FINAL_SUMMARY_BEGIN` and `LARCH_FINAL_SUMMARY_END` markers are present as a readiness signal only. The marker body is expected to be empty.
+2. Confirm readiness from the same DONE stdout or matching result env: either whole-line `LARCH_FINAL_SUMMARY_BEGIN` and `LARCH_FINAL_SUMMARY_END` markers (marker body expected empty), or `FINAL_SUMMARY_READY=true`. Treat either form as a readiness signal only. Bgjob merge/result envs surface the KV form because contract-stream marker lines are not merged into DONE stdout.
 3. Do not extract or emit summary bodies from marker pairs on `/design` paths.
 4. When `FINAL_SUMMARY_PATH` is non-empty and the path names a non-empty file, use the Read tool on that path and cache the full file body verbatim, including all subsections such as `### Round N reviewer timing` ASCII bar charts and the `**Top reviewers**` list. If the file begins with `## Review Phase Detail`, retain that heading and every following byte through the later `## /design run ...` block. Do NOT collapse, wrap in `<details>`, omit any part of the file body, or start terminal emission at the later run-summary heading.
 5. The Read/cache may happen before cleanup, Step 6, cancellation routing, partition routing, warning replay, or footer text. Plain-chat emission must wait until the terminal placement point after those required actions.
@@ -72,7 +72,7 @@ Use this profile when the caller names a source that can emit markers with a non
 
 | Call site | Markers | Source | In-context-only | Read fallback | Sidecar follow-on | After-action |
 | --- | --- | --- | --- | --- | --- | --- |
-| `/design` Read-always readiness | `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` readiness only; marker body expected empty | final `bgjob wait` `DONE` stdout plus matching `$DESIGN_TMPDIR/bgjob/<step>.result.env` after `BGJOB_RC=0` and required-KV validation | `true` after the caller's required result-env read | required Read/cache of parsed `FINAL_SUMMARY_PATH=<path>` when non-empty | `allowed` via `REPORT_GATE_SIDECARS_FILE`; Read/cache before cleanup | caller-specific continuation, then terminal emit |
+| `/design` Read-always readiness | `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` readiness only (empty body), or `FINAL_SUMMARY_READY=true` in DONE/result env | final `bgjob wait` `DONE` stdout plus matching `$DESIGN_TMPDIR/bgjob/<step>.result.env` after `BGJOB_RC=0` and required-KV validation | `true` after the caller's required result-env read | required Read/cache of parsed `FINAL_SUMMARY_PATH=<path>` when non-empty | `allowed` via `REPORT_GATE_SIDECARS_FILE`; Read/cache before cleanup | caller-specific continuation, then terminal emit |
 | `/implement` Step 17 marker-first | `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` | captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout | `true` | `forbidden` | `forbidden` | cache marker body; wrapper writes `.step17-emitted` via `--step17-emitted true` before teardown when a body is pending |
 | `/implement` Step 18b marker-first | `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---` | green path: captured foreground `python/cli.py implement step-18-gate-logs-flush` stdout when `NEXT_ACTION=logs-flush-done`; non-green path: captured foreground `step-18.sh --phase logs-flush` stdout on stall-recovery and escalation-filing branches | `true` | `forbidden` | `forbidden` | cache through Step 19; do not write `.step17-emitted` after logs-flush returns |
 
@@ -97,4 +97,4 @@ Use this profile when the caller has no source path.
 
 ## Update Triggers
 
-Update this file when final-summary marker names, bgjob `DONE` stdout or result-env source bindings, Read fallback policy, sidecar policy, preamble wording, post-emit recap/no-cost paraphrase rules, orchestrator-text emit rules, or terminal-emit precedence changes.
+Update this file when final-summary marker names, `FINAL_SUMMARY_READY` readiness KVs, bgjob `DONE` stdout or result-env source bindings, Read fallback policy, sidecar policy, preamble wording, post-emit recap/no-cost paraphrase rules, orchestrator-text emit rules, or terminal-emit precedence changes.

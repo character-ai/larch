@@ -729,7 +729,11 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     publish_stdout_file=publish_stdout_file,
                 )
                 if central_publish_ok or _step5c_render_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, outcome="failed-publish-tail", final_summary_path=failed_tail_summary_path):
-                    _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=failed_tail_summary_path)
+                    _emit_final_summary_marked_from_disk(
+                        design_tmpdir=design_tmpdir,
+                        final_summary_path=failed_tail_summary_path,
+                        merge_env=design_tmpdir / ".design-step5c-status.env",
+                    )
                 _emit_report_gate_sidecars_from_disk(design_tmpdir)
                 if publish_rc == 2:
                     _core_diagnostic("**⚠ Step 5c: design-publish.sh configuration error (exit 2); aborting /design**")
@@ -786,7 +790,9 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     final_summary_path=failed_tail_summary_path,
                 ):
                     _emit_final_summary_marked_from_disk(
-                        design_tmpdir=design_tmpdir, final_summary_path=failed_tail_summary_path
+                        design_tmpdir=design_tmpdir,
+                        final_summary_path=failed_tail_summary_path,
+                        merge_env=design_tmpdir / ".design-step5c-status.env",
                     )
                 _emit_report_gate_sidecars_from_disk(design_tmpdir)
                 _core_diagnostic("**⚠ Step 5c: design-publish.sh failed (exit 5); aborting /design**")
@@ -863,7 +869,11 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 _touch(design_tmpdir / ".completed" / "step-5c")
             outcome = "approved" if plan_write_ok == "true" else "failed-plan-write"
             if _step5c_render_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, outcome=outcome, final_summary_path=summary_emit_path, plan_write_ok=plan_write_ok):
-                _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=summary_emit_path)
+                _emit_final_summary_marked_from_disk(
+                    design_tmpdir=design_tmpdir,
+                    final_summary_path=summary_emit_path,
+                    merge_env=design_tmpdir / ".design-step5c-status.env",
+                )
             _emit_report_gate_sidecars_from_disk(design_tmpdir)
             return 0, []
         finally:
