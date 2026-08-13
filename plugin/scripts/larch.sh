@@ -604,6 +604,20 @@ run_binary() {
     die "verified larch executable could not be started"
 }
 
+# When callers invoke this shim by absolute path without exporting
+# CLAUDE_PLUGIN_ROOT (direct /design fences), derive the plugin root as the
+# parent of this script's resolved scripts/ directory. Explicit CLAUDE_PLUGIN_ROOT
+# still wins.
+resolve_plugin_root_from_script() {
+    local script_path=""
+    local scripts_dir=""
+    local candidate=""
+    script_path="${BASH_SOURCE[0]:-$0}"
+    scripts_dir="$(CDPATH= cd -- "$(dirname -- "$script_path")" && pwd -P)" || die "unable to resolve scripts directory from bootstrap script path"
+    candidate="$(CDPATH= cd -- "$scripts_dir/.." && pwd -P)" || die "unable to derive CLAUDE_PLUGIN_ROOT from script location"
+    printf '%s\n' "$candidate"
+}
+
 main() {
     local version=""
     local target=""
@@ -621,12 +635,17 @@ main() {
     fi
 
     plugin_root="${CLAUDE_PLUGIN_ROOT:-}"
-    [ -n "$plugin_root" ] || die "CLAUDE_PLUGIN_ROOT is required"
+    if [ -z "$plugin_root" ]; then
+        plugin_root="$(resolve_plugin_root_from_script)"
+    fi
     while [ "$plugin_root" != "/" ] && [ "${plugin_root%/}" != "$plugin_root" ]; do
         plugin_root="${plugin_root%/}"
     done
     validate_absolute_path "CLAUDE_PLUGIN_ROOT" "$plugin_root"
     [ -d "$plugin_root" ] && [ ! -L "$plugin_root" ] || die "CLAUDE_PLUGIN_ROOT is not a real directory"
+    # Export the validated root so the exec'd binary and children see the same
+    # value when the shim derived it (or stripped trailing slashes).
+    export CLAUDE_PLUGIN_ROOT="$plugin_root"
     version="$(read_plugin_version "$plugin_root/.claude-plugin/plugin.json")"
     target="$(resolve_target)"
 

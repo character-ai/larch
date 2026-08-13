@@ -323,6 +323,64 @@ def test_clean_install_maps_every_supported_target_and_executes(
     )
 
 
+@pytest.mark.parametrize(
+    "plugin_root_value",
+    [
+        pytest.param(None, id="unset"),
+        pytest.param("", id="empty"),
+    ],
+)
+def test_missing_claude_plugin_root_derives_from_script_location(
+    plugin_root_value: str | None, tmp_path: Path
+) -> None:
+    """Direct absolute-path fences may omit CLAUDE_PLUGIN_ROOT; derive it."""
+    fixture = _fixture(tmp_path)
+    scripts_dir = fixture.root / "scripts"
+    scripts_dir.mkdir()
+    shim = scripts_dir / "larch.sh"
+    _ = shutil.copy(SCRIPT, shim)
+    shim.chmod(0o755)
+
+    # Prove the derived root is exported to the exec'd binary (Rust consumers
+    # read CLAUDE_PLUGIN_ROOT from the environment after the shim execs).
+    override = tmp_path / "export-probe-larch"
+    _ = override.write_text(
+        f"""#!/bin/sh
+case "$1" in
+  --version) printf 'larch {VERSION}\\n' ;;
+  bootstrap)
+    [ "${{2:-}}" = self-check ] || exit 2
+    printf '%s\\n' '{{"schema_version":1,"version":"{VERSION}","target":"{fixture.target}"}}'
+    ;;
+  *)
+    printf 'ROOT=%s\\n' "$CLAUDE_PLUGIN_ROOT"
+    ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    override.chmod(0o755)
+
+    environment = _environment(fixture, LARCH_BINARY=str(override))
+    if plugin_root_value is None:
+        del environment["CLAUDE_PLUGIN_ROOT"]
+    else:
+        environment["CLAUDE_PLUGIN_ROOT"] = plugin_root_value
+
+    result = subprocess.run(
+        ["/bin/bash", str(shim), "example", "echo", "derived"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"ROOT={fixture.root.resolve()}\n"
+    assert not (fixture.root / "bin").exists()
+
+
 def test_release_preflight_verifies_without_touching_plugin_cache_root(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
     marker = fixture.root / "prior-root-marker"
