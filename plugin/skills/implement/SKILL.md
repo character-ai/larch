@@ -79,7 +79,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 20. **NEVER copy diagram failure captures into published implement run logs.** **Why**: generator or sanitizer captures may contain partial Mermaid. **How to apply**: do not copy or flush `code-flow-diagram.failure.log`, code-flow diagram body files, or generator/sanitizer stdout containing Mermaid into `larch-logs/implement/<RUN_ID>/`; durable diagnostics are bounded `execution-issues.md` warnings only.
 
-21. **NEVER make Edit, Write, or repo-mutating Bash calls on git-tracked paths between Preflight item 6 and `BOOTSTRAP_NEXT=step2`.** **Why**: before `step-0-bootstrap.sh` returns `BOOTSTRAP_NEXT=step2`, repo edits can land on the pre-branch checkout and bypass the dirty-tree checkpoint, as in issue #5341. Partial exits (`dirty-recovery`, `degraded-prompt`) also keep edits forbidden until resume yields `BOOTSTRAP_NEXT=step2`. **How to apply**: Preflight item 6 is a **read-only bounded probe** for git-tracked paths (`test -f`, `test -e`, targeted `rg`/`grep`) except `$PREFLIGHT_TMPDIR/**` writes, the stale-notice `gh issue comment`, and a `plan-receipt refresh` issued only after that probe clears a sole `stale-plan-base-scope` finding. Deeper investigation waits for `BOOTSTRAP_NEXT=step2`. Do not call Edit, Write, or repo-mutating Bash on git-tracked paths until bootstrap returns exit 0 and `BOOTSTRAP_NEXT=step2`. **Carve-out — rebase-routing**: after Step 0 returns exit 0 with `BOOTSTRAP_NEXT=rebase-routing`, follow `rebase-checkpoint-routing.md` and `conflict-resolution.md` (spawn `larch:ci-fixer` `MODE=conflict` for feature-branch conflict edits; the main agent must never Read conflicted hunks or edit them inline). Repeat this gate before every `step-0-bootstrap.sh` fence until `BOOTSTRAP_NEXT=step2`.
+21. **NEVER make Edit, Write, or repo-mutating Bash calls on git-tracked paths between Preflight item 6 and `BOOTSTRAP_NEXT=step2`.** **Why**: pre-bootstrap edits bypass the dirty-tree checkpoint; partial exits remain gated. **How to apply**: item 6 is a **read-only bounded probe** (`test -f`, `test -e`, targeted `rg`/`grep`) except `$PREFLIGHT_TMPDIR/**`, the stale-notice comment, and `plan-receipt refresh` after a sole `stale-plan-base-scope` finding clears. Deeper work and tracked edits wait for exit 0 plus `BOOTSTRAP_NEXT=step2`. **Carve-out — rebase-routing**: on `BOOTSTRAP_NEXT=rebase-routing`, follow `rebase-checkpoint-routing.md` and `conflict-resolution.md`; only `larch:ci-fixer` `MODE=conflict` edits feature-branch conflicts. Repeat the gate before every `step-0-bootstrap.sh` fence.
 
 **Single-runner assumption**: run one `/implement` per repository at a time. Concurrent sessions can interleave working-tree mutations, corrupt dirty-tree probes, or attribute one runner's edits to another. The inverse hazard — mistaking one of your OWN spawned subprocesses' edits (the `checks repair-loop` lint-fix tiers, the Step 3 pre-commit ruff autofix) for a concurrent runner — is guarded by the self-edit attribution log at `$IMPLEMENT_TMPDIR/self-edit-log.tsv`; consult it (see `references/checks-repair-loop.md` §6) before halting on a suspected parallel session. Dirty-tree guards reduce blast radius but do not serialize writes. Between Step 0 and documented checkpoint probes, `/implement` and child skills write only to session tmpdirs (`$IMPLEMENT_TMPDIR`, `$DESIGN_TMPDIR`, `$REVIEW_TMPDIR`) until implementation intentionally edits the repo.
 
@@ -222,42 +222,8 @@ Run **before Step 0** after `TARGET_ISSUE_NUMBER` is known and flag mutex checks
    **When `force_requested=false` (only)** — **MANDATORY: READ ENTIRE FILE** at Preflight item 4: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/preflight-plan-audit.md`. Read issue title/body from `$PREFLIGHT_TMPDIR/issue.json` and plan text from `$PLAN_TMP`. Do not fetch the issue live or rerun plan-block extraction. On `AUDIT=pass`, return the pass envelope in chat only and do not write `$PREFLIGHT_TMPDIR/audit.txt`. On `AUDIT=refuse`, write that file. Do **not** delegate to a subagent or external audit CLI.
 
 5. **On `AUDIT=refuse`** — read `audit.txt` only on refuse. This non-force-only path follows `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/preflight-plan-audit.md` for clarify state, comment, and label flow, then exits **3** before Step 0.
-
-6. **On `AUDIT=pass` or the force audit skip — semantic materiality (read-only bounded probe — see NEVER #21)** — run one batched read-only Bash probe over plan-cited paths and symbols (`test -f` / `test -e`, plus targeted `rg` for named functions, flags, markers, or step anchors). Do not mutate git-tracked paths before `BOOTSTRAP_NEXT=step2`. `$PREFLIGHT_TMPDIR/**` writes, the stale-notice `gh issue comment`, and the conditional receipt refresh below are the only carve-outs. If the bounded probe clearly shows the issue is stale (superseded design, removed surface, or no migration path), redact a short explanation into `$PREFLIGHT_TMPDIR/stale-notice.md`, post one `gh issue comment <N> --body-file "$PREFLIGHT_TMPDIR/stale-notice.md"` (with `--repo "$UPSTREAM_REPO"` when forked), and exit **2**. Retry the same comment once on failure; if both fail, say the stale-notice comment was **not** posted and exit **2**. Do not close or rename the issue.
-
-   When `PLAN_RECEIPT_SCOPE_REVALIDATION=true`, resolve the current base target (`origin/main`, or `upstream/main` when `$UPSTREAM_REPO` is set) **before** the bounded probe. Require its SHA to equal `PLAN_RECEIPT_TARGET_BASE_SHA`; otherwise stop and restart Preflight. For this branch, prove cited paths and symbols against that exact Git object (for example `git cat-file -e <sha>:<path>` and `git grep <sha>`), never only against the ambient checkout. Re-resolve the ref after the probe and require the same SHA before refresh. This keeps semantic materiality independent of both the old receipt and a moving base.
-
-   Only after that probe confirms that the plan remains materially current, refresh the receipt before Step 0 with exactly one of these branches:
-
-   ```bash
-   receipt_base_ref=origin/main
-   if [ -n "${UPSTREAM_REPO:-}" ]; then
-     receipt_base_ref=upstream/main
-   fi
-   receipt_base_sha="$(git rev-parse "$receipt_base_ref")" || exit 2
-   if [ "$receipt_base_sha" != "$PLAN_RECEIPT_TARGET_BASE_SHA" ]; then
-     echo "**❌ /implement preflight: base moved before semantic materiality; restart Preflight.**"
-     exit 2
-   fi
-   # Run the bounded path/symbol probe against $receipt_base_sha here.
-   if [ "$(git rev-parse "$receipt_base_ref")" != "$receipt_base_sha" ]; then
-     echo "**❌ /implement preflight: base moved during semantic materiality; restart Preflight.**"
-     exit 2
-   fi
-   receipt_refresh_rc=0
-   if [ -n "${UPSTREAM_REPO:-}" ]; then
-     receipt_refresh_output="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-receipt refresh --issue "$TARGET_ISSUE_NUMBER" --repo "$UPSTREAM_REPO" --repo-root "$PWD" --preflight-tmpdir "$PREFLIGHT_TMPDIR" --base-ref "$receipt_base_ref" --previous-base-sha "$PLAN_RECEIPT_PREVIOUS_BASE_SHA" --base-sha "$receipt_base_sha")" || receipt_refresh_rc=$?
-   else
-     receipt_refresh_output="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-receipt refresh --issue "$TARGET_ISSUE_NUMBER" --repo-root "$PWD" --preflight-tmpdir "$PREFLIGHT_TMPDIR" --base-ref "$receipt_base_ref" --previous-base-sha "$PLAN_RECEIPT_PREVIOUS_BASE_SHA" --base-sha "$receipt_base_sha")" || receipt_refresh_rc=$?
-   fi
-   printf '%s\n' "$receipt_refresh_output"
-   if [ "$receipt_refresh_rc" -ne 0 ] || ! printf '%s\n' "$receipt_refresh_output" | grep -qx 'PLAN_RECEIPT_REFRESHED=true' || ! printf '%s\n' "$receipt_refresh_output" | grep -qx "PLAN_RECEIPT_BASE_SHA=$receipt_base_sha" || ! printf '%s\n' "$receipt_refresh_output" | grep -qx 'PLAN_RECEIPT_SNAPSHOT_UPDATED=true' || ! printf '%s\n' "$receipt_refresh_output" | grep -qx 'PLAN_RECEIPT_SCOPE_DRIFT_LOGGED=true'; then
-     echo "**❌ /implement preflight: receipt refresh failed after semantic materiality; do not enter Step 0.**"
-     exit 2
-   fi
-   ```
-
-   The refresh command owns issue mutation, read-back verification, replacement of `$PREFLIGHT_TMPDIR/issue.json` for Step 0's CAS, and a bounded path-only scope-drift record. Bootstrap appends that record to the run's `Warnings` ledger exactly once; do not write the receipt or a duplicate log entry directly. If `PLAN_RECEIPT_SCOPE_REVALIDATION=false`, or after a successful refresh, continue to Step 0 without broader investigation.
+6. **On `AUDIT=pass` or the force audit skip — semantic materiality (read-only bounded probe — see NEVER #21)** — run one bounded read-only probe of cited paths and symbols; before `BOOTSTRAP_NEXT=step2`, only `$PREFLIGHT_TMPDIR/**`, the stale notice, and conditional refresh may write. On clear staleness, write and post `$PREFLIGHT_TMPDIR/stale-notice.md` (retry once; add `--repo "$UPSTREAM_REPO"` when forked), exit **2**, and never close or rename. For `PLAN_RECEIPT_SCOPE_REVALIDATION=true`, resolve `origin/main` (or `upstream/main`) before and after probing its exact object; both SHAs must equal `PLAN_RECEIPT_TARGET_BASE_SHA`.
+   If current, invoke `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-receipt refresh --issue "$TARGET_ISSUE_NUMBER"` (add `--repo "$UPSTREAM_REPO"` when set) with `--repo-root "$CLAUDE_PROJECT_DIR" --preflight-tmpdir "$PREFLIGHT_TMPDIR" --base-ref <resolved-ref> --previous-base-sha "$PLAN_RECEIPT_PREVIOUS_BASE_SHA" --base-sha "$PLAN_RECEIPT_TARGET_BASE_SHA"`; require `PLAN_RECEIPT_REFRESHED=true`, matching `PLAN_RECEIPT_BASE_SHA`, `PLAN_RECEIPT_SNAPSHOT_UPDATED=true`, and `PLAN_RECEIPT_SCOPE_DRIFT_LOGGED=true`, else exit **2**. The command alone renews and reads back the issue snapshot and writes one scope-drift `Warnings` record; otherwise continue to Step 0.
 
 7. **Preflight pass gate**: retain `PREFLIGHT_TMPDIR` and `plan-from-issue.txt`; proceed to Step 0.
 

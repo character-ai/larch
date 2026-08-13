@@ -137,6 +137,7 @@ contains "$SKILL" 'PLAN_RECEIPT_REFRESHED=true' "missing receipt refresh readbac
 contains "$SKILL" 'PLAN_RECEIPT_SNAPSHOT_UPDATED=true' "missing receipt snapshot readback contract"
 contains "$SKILL" 'PLAN_RECEIPT_SCOPE_DRIFT_LOGGED=true' "missing receipt scope-drift log contract"
 contains "$SKILL" '--preflight-tmpdir "$PREFLIGHT_TMPDIR"' "missing receipt refresh preflight binding"
+contains "$SKILL" '--repo-root "$CLAUDE_PROJECT_DIR"' "missing receipt refresh project-root binding"
 ordered_before "$SKILL" \
   'semantic materiality (read-only bounded probe' \
   'plan-receipt refresh --issue' \

@@ -481,12 +481,11 @@ def test_plan_receipt_refresh_cli_refuses_when_the_reviewed_base_moved(
     def persist(*_args: object, **_kwargs: object) -> mg.PlanReceipt:
         pytest.fail("receipt persistence must not run after base movement")
 
+    def moved_rev_parse(*_args: object, **_kwargs: object) -> str:
+        return "a" * 40
+
     monkeypatch.setattr(mg, "persist_plan_receipt", persist)
-    monkeypatch.setattr(
-        mg.git,
-        "rev_parse",
-        lambda *_args, **_kwargs: "a" * 40,
-    )
+    monkeypatch.setattr(mg.git, "rev_parse", moved_rev_parse)
     assert mg.plan_receipt_refresh_main(
         [
             "--issue",
@@ -610,10 +609,11 @@ def test_plan_receipt_refresh_cli_refuses_a_changed_preflight_receipt(
     def persist(*_args: object, **_kwargs: object) -> mg.PlanReceipt:
         pytest.fail("receipt persistence must not run with an unreviewed receipt")
 
+    def current_rev_parse(*_args: object, **_kwargs: object) -> str:
+        return "b" * 40
+
     monkeypatch.setattr(mg, "persist_plan_receipt", persist)
-    monkeypatch.setattr(
-        mg.git, "rev_parse", lambda *_args, **_kwargs: "b" * 40
-    )
+    monkeypatch.setattr(mg.git, "rev_parse", current_rev_parse)
     assert mg.plan_receipt_refresh_main(
         [
             "--issue",
@@ -658,11 +658,19 @@ def test_persist_plan_receipt_refuses_a_changed_preflight_plan(
         owners_sha256="d" * 64,
     )
 
-    monkeypatch.setattr(issue_mutation, "read_snapshot", lambda *_args, **_kwargs: snapshot)
+    def read_snapshot(*_args: object, **_kwargs: object) -> issue_mutation.IssueSnapshot:
+        return snapshot
+
+    def build_receipt(*_args: object, **_kwargs: object) -> tuple[
+        mg.PlanReceipt, mg.ParityVerdict
+    ]:
+        return receipt, mg.ParityVerdict(reasons=())
+
+    monkeypatch.setattr(issue_mutation, "read_snapshot", read_snapshot)
     monkeypatch.setattr(
         mg,
         "build_receipt_for_body",
-        lambda *_args, **_kwargs: (receipt, mg.ParityVerdict(reasons=())),
+        build_receipt,
     )
     with pytest.raises(ShipError, match="plan-receipt-refresh-plan-mismatch"):
         _ = mg.persist_plan_receipt(
@@ -705,13 +713,19 @@ def test_persist_plan_receipt_refuses_changed_governance_inputs(
         owners_sha256=prior_receipt.owners_sha256,
     )
 
-    monkeypatch.setattr(
-        issue_mutation, "read_snapshot", lambda *_args, **_kwargs: snapshot
-    )
+    def read_snapshot(*_args: object, **_kwargs: object) -> issue_mutation.IssueSnapshot:
+        return snapshot
+
+    def build_receipt(*_args: object, **_kwargs: object) -> tuple[
+        mg.PlanReceipt, mg.ParityVerdict
+    ]:
+        return changed_receipt, mg.ParityVerdict(reasons=())
+
+    monkeypatch.setattr(issue_mutation, "read_snapshot", read_snapshot)
     monkeypatch.setattr(
         mg,
         "build_receipt_for_body",
-        lambda *_args, **_kwargs: (changed_receipt, mg.ParityVerdict(reasons=())),
+        build_receipt,
     )
     with pytest.raises(
         ShipError, match="plan-receipt-refresh-governance-input-mismatch"
@@ -758,13 +772,19 @@ def test_preflight_bound_receipt_refresh_never_falls_back_to_whole_body_write(
         owners_sha256=prior_receipt.owners_sha256,
     )
 
-    monkeypatch.setattr(
-        issue_mutation, "read_snapshot", lambda *_args, **_kwargs: snapshot
-    )
+    def read_snapshot(*_args: object, **_kwargs: object) -> issue_mutation.IssueSnapshot:
+        return snapshot
+
+    def build_receipt(*_args: object, **_kwargs: object) -> tuple[
+        mg.PlanReceipt, mg.ParityVerdict
+    ]:
+        return refreshed_receipt, mg.ParityVerdict(reasons=())
+
+    monkeypatch.setattr(issue_mutation, "read_snapshot", read_snapshot)
     monkeypatch.setattr(
         mg,
         "build_receipt_for_body",
-        lambda *_args, **_kwargs: (refreshed_receipt, mg.ParityVerdict(reasons=())),
+        build_receipt,
     )
 
     def named_block_conflict(*_args: object, **_kwargs: object) -> None:
