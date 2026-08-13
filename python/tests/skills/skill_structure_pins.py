@@ -61,9 +61,25 @@ RESEARCH_PINS: Final[tuple[StructurePin, ...]] = ()
 REVIEW_PINS: Final[tuple[StructurePin, ...]] = ()
 UMBRELLA_PINS: Final[tuple[StructurePin, ...]] = (
     StructurePin(skill="umbrella", label="prepared handoff must require parent lifecycle context", path="skills/umbrella/SKILL.md", kind="contains", needle="Accept that group only with a leading `--lifecycle-parent-context`, `--skip-approve`, and one numeric issue."),
+    StructurePin(skill="umbrella", label="umbrella must activate its token-scoped Write sentinel", path="skills/umbrella/SKILL.md", kind="contains", needle='UMBRELLA_DENY_ACTIVE_SENTINEL="$UMBRELLA_DENY_ACTIVE_DIR/umbrella-$PPID"'),
     StructurePin(skill="umbrella", label="prepared handoff must persist dependency copy through umbrella owner", path="skills/umbrella/SKILL.md", kind="contains", needle='--deps-output "$UMBRELLA_TMPDIR/prepared-deps.tsv"'),
+    StructurePin(skill="umbrella", label="standard and adopted filing must pass drafted dependency edges", path="skills/umbrella/SKILL.md", kind="contains", needle='--intra-batch-deps-file "$UMBRELLA_TMPDIR/drafted-deps.tsv"'),
+    StructurePin(skill="umbrella", label="degraded issue filing must recover every persisted dependency edge", path="skills/umbrella/SKILL.md", kind="contains", needle="apply every recorded edge directly with `issue add-blocked-by`"),
     StructurePin(skill="umbrella", label="prepared handoff must retain normal dedup", path="skills/umbrella/SKILL.md", kind="contains", needle="the exact persisted parent-approved edges are authoritative while normal duplicate detection remains enabled"),
-    StructurePin(skill="umbrella", label="prepared completion sentinel must bind live inputs", path="skills/umbrella/SKILL.md", kind="contains", needle='--sentinel-file "$COMPLETION_SENTINEL" --sentinel-root "$PREPARED_ROOT" --prepared-input "$PREPARED_INPUT_FILE" --prepared-deps "$PREPARED_DEPS_FILE"'),
+    StructurePin(skill="umbrella", label="standard and adopted final verify must use only proposal and leaves", path="skills/umbrella/SKILL.md", kind="contains", needle="For standard and adopted sources, invoke final verification only with the persisted proposal and fresh leaves:"),
+    StructurePin(skill="umbrella", label="final verify must compose fresh read-back leaves", path="skills/umbrella/SKILL.md", kind="contains", needle="as a JSON array of `number`, `title`, and `body` rows"),
+    StructurePin(
+        skill="umbrella",
+        label="prepared completion sentinel must bind live inputs",
+        path="skills/umbrella/SKILL.md",
+        kind="contains",
+        needle=(
+            '--sentinel-file "$COMPLETION_SENTINEL" \\\n'
+            '  --sentinel-root "$PREPARED_ROOT" \\\n'
+            '  --prepared-input "$PREPARED_INPUT_FILE" \\\n'
+            '  --prepared-deps "$PREPARED_DEPS_FILE"'
+        ),
+    ),
 )
 
 DESIGN_PINS: Final[tuple[StructurePin, ...]] = (
