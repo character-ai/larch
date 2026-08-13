@@ -38,8 +38,10 @@ use serde_json::{Map, Value};
 
 use crate::{
     argparse_compat::{parse_with_flags, write_stdout},
-    python_verb::{plugin_root_directory, publish_session_environment, run_python_verb},
-    run_log_entry_commands::{append_execution_issue, stage_append_batch, write_run_log_file},
+    python_verb::{publish_session_environment, run_python_verb},
+    run_log_entry_commands::{
+        append_execution_issue, plugin_version, stage_append_batch, write_run_log_file,
+    },
 };
 
 /// Timeout for one delegated Python helper verb.
@@ -442,18 +444,6 @@ fn resolve_identity(implement_tmpdir: &Path, manifest: &Path) -> RunSummaryIdent
         },
         effort,
     }
-}
-
-/// Read the installed plugin version, or empty when it is unavailable.
-fn plugin_version() -> String {
-    let Some(root) = plugin_root_directory() else {
-        return String::new();
-    };
-    report::json_object(&root.join(".claude-plugin").join("plugin.json"))
-        .get("version")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_owned()
 }
 
 /// Recover the main-agent model from the live session transcript.

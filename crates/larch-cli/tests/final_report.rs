@@ -61,7 +61,8 @@ impl Run {
             // cover the Rust composition and its documented degraded sections.
             .env_remove("CLAUDE_PLUGIN_ROOT")
             .env_remove("CLAUDE_CODE_EFFORT_LEVEL")
-            .env_remove("CLAUDE_EFFORT");
+            .env_remove("CLAUDE_EFFORT")
+            .env_remove("LARCH_TEST_PLUGIN_VERSION");
         command
     }
 }
@@ -222,6 +223,27 @@ fn write_degrades_missing_timing_token_and_findings_inputs() {
     assert!(body.contains("- **OOS filed**: 0\n"));
     assert!(!body.contains("- **Difficulty**:"));
     assert!(!body.contains("- **PR**:"));
+}
+
+#[test]
+fn write_uses_the_fixed_test_version_without_a_manifest() {
+    let run = Run::create();
+    run.write(
+        "parent-issue.md",
+        &format!("ISSUE_NUMBER=0\nRUN_ID={RUN_ID}\n"),
+    );
+    run.write("session-env.sh", "REPO_UNAVAILABLE=true\n");
+    let output = run
+        .command("write")
+        .env("LARCH_TEST_PLUGIN_VERSION", "test-version")
+        .arg("--skip-tracking-upsert")
+        .output()
+        .expect("final-report write");
+    assert!(output.status.success());
+    assert!(
+        summary(&run.tmpdir.join("summary-final.md"))
+            .contains("- **Larch version**: test-version\n")
+    );
 }
 
 #[test]
