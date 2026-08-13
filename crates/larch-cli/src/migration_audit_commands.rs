@@ -241,7 +241,21 @@ fn validate_option_values(parsed: &ParsedCommandLine) -> Result<(), ()> {
 
 fn run_audit(arguments: &Arguments) -> Result<bool, String> {
     let current_dir = env::current_dir().map_err(|_| "repository root unavailable".to_owned())?;
-    let repository = GixRepository::discover(&current_dir)
+    run_audit_from_root(arguments, &current_dir, collect_repository_findings)
+}
+
+// Production supplies the current directory and canonical lint collector. Tests
+// supply a bounded Git fixture and an injected findings provider so they cannot
+// accidentally inventory the checkout that runs the test binary.
+fn run_audit_from_root<F>(
+    arguments: &Arguments,
+    current_dir: &Path,
+    collect_findings: F,
+) -> Result<bool, String>
+where
+    F: FnOnce(&Path, &MigrationAuditSnapshot) -> Result<Vec<RepositoryAuditFinding>, String>,
+{
+    let repository = GixRepository::discover(current_dir)
         .map_err(|_| "repository root unavailable".to_owned())?;
     let repo_root = worktree_root(&repository)?;
     let head = repository
@@ -279,7 +293,7 @@ fn run_audit(arguments: &Arguments) -> Result<bool, String> {
         closed_issues: remote.closed_issues,
     };
     let plans = collect_plan_evidence(&snapshot, &repo_root, &repository, &tracked_paths, &head)?;
-    let repository_findings = collect_repository_findings(&repo_root, &snapshot)?;
+    let repository_findings = collect_findings(&repo_root, &snapshot)?;
     let report = build_migration_audit_report(&MigrationAuditRequest {
         snapshot,
         plans,
@@ -833,7 +847,10 @@ mod tests {
         fs,
         path::{Path, PathBuf},
         process::ExitCode,
-        sync::Arc,
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
         time::Duration,
     };
 
@@ -848,9 +865,10 @@ mod tests {
     use larch_adapters::{GixRepository, github::OctocrabGitHubService, runtime::Cancellation};
     use larch_core::{
         GitHubIssue, GitHubIssueState, GitHubRepositoryRef, GitPath, MigrationAuditSnapshot,
-        MigrationIssueSnapshot, PlanReceipt, RepositoryRead, compose_named_block, render_receipt,
+        MigrationIssueSnapshot, PlanReceipt, RepositoryAuditFinding, RepositoryFindingSource,
+        RepositoryRead, compose_named_block, render_receipt,
     };
-    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
+    use larch_test_support::{GitFixture, GitRepository, IssueServiceExchange, IssueServiceStub};
     use serde_json::{Value, json};
 
     fn fixture_issue(number: u64, title: &str, body: &str) -> Value {
@@ -878,11 +896,67 @@ mod tests {
         )
     }
 
-    fn current_repository() -> (GixRepository, PathBuf) {
-        let cwd = std::env::current_dir().expect("test current directory");
-        let repository = GixRepository::discover(cwd).expect("test runs in a repository");
-        let root = worktree_root(&repository).expect("repository worktree root");
-        (repository, root)
+    fn fixture_repository() -> GitRepository {
+        let repository = GitRepository::builder(GitFixture::Refs)
+            .build()
+            .expect("build isolated Git fixture");
+        repository
+            .write("README.md", b"# Migration audit fixture\n")
+            .expect("write fixture README");
+        repository
+            .write(".migration-audit-test-fixture", b"bounded fixture root\n")
+            .expect("write fixture marker");
+        let stage = repository
+            .git(["add", "--", "README.md", ".migration-audit-test-fixture"])
+            .expect("stage fixture files");
+        assert!(stage.success(), "stage fixture files: {stage:?}");
+        let commit = repository
+            .git(["commit", "--quiet", "-m", "migration audit fixture"])
+            .expect("commit fixture files");
+        assert!(commit.success(), "commit fixture files: {commit:?}");
+        repository
+    }
+
+    fn run_fixture_audit(
+        arguments: &[OsString],
+        fixture: &GitRepository,
+        expect_findings_provider: bool,
+    ) -> ExitCode {
+        run_fixture_audit_with_findings(arguments, fixture, Vec::new(), expect_findings_provider)
+    }
+
+    fn run_fixture_audit_with_findings(
+        arguments: &[OsString],
+        fixture: &GitRepository,
+        findings: Vec<RepositoryAuditFinding>,
+        expect_findings_provider: bool,
+    ) -> ExitCode {
+        let arguments = parse_arguments(arguments)
+            .expect("valid fixture arguments")
+            .expect("fixture audit is not a help request");
+        let expected_root = fixture
+            .root()
+            .canonicalize()
+            .expect("canonical fixture root");
+        let findings_provider_called = Arc::new(AtomicBool::new(false));
+        let provider_called = Arc::clone(&findings_provider_called);
+        let outcome =
+            super::run_audit_from_root(&arguments, fixture.root(), move |repo_root, _| {
+                assert_eq!(repo_root, expected_root);
+                assert!(repo_root.join(".migration-audit-test-fixture").is_file());
+                provider_called.store(true, Ordering::SeqCst);
+                Ok(findings)
+            });
+        if expect_findings_provider {
+            assert!(
+                findings_provider_called.load(Ordering::SeqCst),
+                "fixture audit must call its injected findings provider"
+            );
+        }
+        outcome.map_or_else(
+            |_| ExitCode::from(2),
+            |has_findings| ExitCode::from(u8::from(has_findings)),
+        )
     }
 
     #[test]
@@ -1330,7 +1404,9 @@ mod tests {
 
     #[test]
     fn plan_evidence_uses_the_same_head_snapshot_for_base_and_current_scope() {
-        let (repository, root) = current_repository();
+        let fixture = fixture_repository();
+        let repository = GixRepository::discover(fixture.root()).expect("open fixture repository");
+        let root = worktree_root(&repository).expect("fixture worktree root");
         let head = repository
             .resolve_revision(&larch_core::Revision::new("HEAD"))
             .expect("resolve test head");
@@ -1419,7 +1495,8 @@ mod tests {
     }
 
     #[test]
-    fn audit_runs_end_to_end_through_the_hardened_test_service() {
+    fn audit_runs_end_to_end_through_the_hardened_test_service_and_bounded_fixture() {
+        let fixture = fixture_repository();
         let issue = fixture_issue(71, "ordinary open issue", "no Chief umbrella reference");
         let server = IssueServiceStub::start([
             IssueServiceExchange::any_json(200, json!([issue]).to_string())
@@ -1441,7 +1518,8 @@ mod tests {
             OsString::from("none"),
         ];
 
-        let outcome = with_test_github_service(service, || super::run(&arguments));
+        let outcome =
+            with_test_github_service(service, || run_fixture_audit(&arguments, &fixture, true));
 
         assert_eq!(outcome, ExitCode::SUCCESS);
         let report: Value = serde_json::from_str(&fs::read_to_string(output).expect("report"))
@@ -1453,8 +1531,51 @@ mod tests {
     }
 
     #[test]
+    fn audit_preserves_repository_finding_exit_code_through_the_bounded_fixture() {
+        let fixture = fixture_repository();
+        let issue = fixture_issue(71, "ordinary open issue", "no Chief umbrella reference");
+        let server = IssueServiceStub::start([
+            IssueServiceExchange::any_json(200, json!([issue]).to_string())
+                .expect("issue-list exchange"),
+            IssueServiceExchange::any_json(200, "[]").expect("pull-request exchange"),
+        ])
+        .expect("start loopback service");
+        let service = service_factory(&server);
+        let directory = tempfile::tempdir().expect("report directory");
+        let output = directory.path().join("migration-audit.json");
+        let arguments = vec![
+            OsString::from("--repo"),
+            OsString::from("owner/repo"),
+            OsString::from("--chief"),
+            OsString::from("7687"),
+            OsString::from("--output"),
+            output.clone().into_os_string(),
+            OsString::from("--table-output"),
+            OsString::from("none"),
+        ];
+        let findings = vec![RepositoryAuditFinding {
+            source: RepositoryFindingSource::CommandRegistry,
+            reason: "fixture registry finding".to_owned(),
+        }];
+
+        let outcome = with_test_github_service(service, || {
+            run_fixture_audit_with_findings(&arguments, &fixture, findings, true)
+        });
+
+        assert_eq!(outcome, ExitCode::from(1));
+        let report: Value = serde_json::from_str(&fs::read_to_string(output).expect("report"))
+            .expect("schema-v2 JSON report");
+        assert_eq!(report["findings"][0]["reason"], "fixture registry finding");
+        assert_eq!(
+            server.finish().expect("completed loopback requests").len(),
+            2
+        );
+    }
+
+    #[test]
     fn audit_preserves_json_and_table_stream_routing_contracts() {
         for table_output in ["stderr", "stdout"] {
+            let fixture = fixture_repository();
             let issue = fixture_issue(71, "ordinary open issue", "no Chief umbrella reference");
             let server = IssueServiceStub::start([
                 IssueServiceExchange::any_json(200, json!([issue]).to_string())
@@ -1477,7 +1598,9 @@ mod tests {
             ];
 
             assert_eq!(
-                with_test_github_service(service, || super::run(&arguments)),
+                with_test_github_service(service, || {
+                    run_fixture_audit(&arguments, &fixture, true)
+                }),
                 ExitCode::SUCCESS
             );
             assert!(
@@ -1494,6 +1617,7 @@ mod tests {
 
     #[test]
     fn audit_reports_remote_evidence_failures_without_exposing_transport_details() {
+        let fixture = fixture_repository();
         let issue = fixture_issue(71, "ordinary open issue", "no Chief umbrella reference");
         let pull_request = json!([{
             "number": 1,
@@ -1521,7 +1645,8 @@ mod tests {
             OsString::from("none"),
         ];
 
-        let outcome = with_test_github_service(service, || super::run(&arguments));
+        let outcome =
+            with_test_github_service(service, || run_fixture_audit(&arguments, &fixture, false));
 
         assert_eq!(outcome, ExitCode::from(2));
         let requests = server.finish().expect("completed loopback requests");
@@ -1541,32 +1666,6 @@ mod tests {
         assert_eq!(
             safe_finding("-----BEGIN RSA PRIVATE KEY-----").unwrap_err(),
             "repository audit: evidence redaction failed"
-        );
-        let (repository, root) = current_repository();
-        let snapshot = MigrationAuditSnapshot {
-            repository: "owner/repo".to_owned(),
-            chief_issue: 7687,
-            snapshot_timestamp: "2026-01-01T00:00:00Z".to_owned(),
-            head_sha: repository
-                .resolve_revision(&larch_core::Revision::new("HEAD"))
-                .expect("resolve head")
-                .to_hex(),
-            open_issues: vec![MigrationIssueSnapshot {
-                number: 71,
-                title: "ordinary issue".to_owned(),
-                state: "open".to_owned(),
-                body: String::new(),
-                updated_at: "2026-01-01T00:00:00Z".to_owned(),
-            }],
-            referenced_issues: Vec::new(),
-            dependencies: Vec::new(),
-            open_pr_branches: Vec::new(),
-            closed_issues: Vec::new(),
-        };
-        assert!(
-            super::collect_repository_findings(&root, &snapshot)
-                .expect("canonical in-process repository audit")
-                .is_empty()
         );
     }
 }
