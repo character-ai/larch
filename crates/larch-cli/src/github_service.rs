@@ -11,8 +11,8 @@ use larch_adapters::{
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
-    GitHubIssue, GitHubIssueList, GitHubIssueListMode, GitHubIssueState, GitHubRepositoryRef,
-    GitHubService, GitHubTransportPolicy,
+    GitHubIssue, GitHubIssueBodyMode, GitHubIssueList, GitHubIssueListMode, GitHubIssueState,
+    GitHubRepositoryRef, GitHubService, GitHubTransportPolicy,
 };
 use std::env;
 
@@ -74,6 +74,7 @@ pub async fn list_exhaustive_issues(
                 labels: Vec::new(),
                 limit: service.transport_policy().limits().items(),
                 mode: GitHubIssueListMode::Exhaustive,
+                body_mode: GitHubIssueBodyMode::Include,
             },
             cancellation,
         )

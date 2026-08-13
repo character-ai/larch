@@ -26,9 +26,9 @@ use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use larch_core::{
-    BlockBoundary, CorpusFilter, DONE_PREFIX, GitHubComment, GitHubIssue, GitHubIssueList,
-    GitHubIssueListMode, GitHubIssueState, GitHubService, GroundTruthCorpusScan, GroundTruthMode,
-    GroundTruthRow, GroundTruthVoter, IncentiveEra, IssueLifecycle, IssueSummary,
+    BlockBoundary, CorpusFilter, DONE_PREFIX, GitHubComment, GitHubIssue, GitHubIssueBodyMode,
+    GitHubIssueList, GitHubIssueListMode, GitHubIssueState, GitHubService, GroundTruthCorpusScan,
+    GroundTruthMode, GroundTruthRow, GroundTruthVoter, IncentiveEra, IssueLifecycle, IssueSummary,
     OOS_CORRECTNESS_LABEL, PanelVerdict, RunLogCorpus, RunLogCorpusEvent, RunLogSelection,
     STALLED_PREFIX, VerdictGateInputs, VoterBallot, analyze_ground_truth, apply_verdict_gate,
     categorize, category_breakdown, coverage_stats, issue_number_from_url, ndjson_filed_evidence,
@@ -268,6 +268,7 @@ pub fn fetch(arguments: &[OsString]) -> ExitCode {
             labels: Vec::new(),
             limit: limit.min(service.transport_policy().limits().items()),
             mode: GitHubIssueListMode::BoundedPartial,
+            body_mode: GitHubIssueBodyMode::Include,
         };
         let issues = service
             .list_issues(&request, cancellation)
