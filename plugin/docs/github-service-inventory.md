@@ -66,9 +66,9 @@ issue-mutation owner and the reader drives the typed issue read, so the
 GitHub service at all, so they left the `comments`, `issues`, and `labels` rows
 without joining another. The `umbrella-conversion` row records the #8174
 cutover of `umbrella mutate`, the one live write `/umbrella` performs: it
-drives the shared issue-mutation owner's field-scoped compare-and-swap, and the
-managed-to-umbrella carve-out is the conversion field that owner already
-validates. The same leaf moved `umbrella verify` and
+drives the shared issue-mutation owner's field-scoped compare-and-swap. Its
+managed conversion and record-less umbrella adoption modes each have a
+shape-restricted field that the owner validates. The same leaf moved `umbrella verify` and
 `umbrella verify-completion` to Rust; both prove a completed run entirely from
 recorded artifacts and reach no GitHub service, so neither joins a row.
 

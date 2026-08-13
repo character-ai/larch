@@ -39,6 +39,8 @@ use std::{
 
 /// Marker that proves a body carries a durable umbrella proposal record.
 pub const UMBRELLA_PROPOSAL_TOKEN: &str = "larch:umbrella-proposal";
+/// Snapshot source value for an external umbrella accepted for first adoption.
+pub const ADOPTED_UMBRELLA_SOURCE: &str = "adopted-umbrella";
 /// Marker that proves a body carries an implementation plan block.
 const PLAN_BLOCK_TOKEN: &str = "<!-- larch:plan";
 /// Title prefix reserved for a pull request the umbrella flow cannot convert.
@@ -106,7 +108,8 @@ pub const PREPARED_DEPENDENCY_CYCLE: UmbrellaRefusal = UmbrellaRefusal("prepared
 pub const CLOSED_INPUT: UmbrellaRefusal = UmbrellaRefusal("closed-input");
 /// The source issue is a pull request or already carries a plan block.
 pub const INCOMPATIBLE_INPUT: UmbrellaRefusal = UmbrellaRefusal("incompatible-input");
-/// The source is an `[UMBRELLA]` without a durable proposal record.
+/// The source is an `[UMBRELLA]` without a durable proposal record and cannot
+/// be safely adopted.
 pub const INCOMPATIBLE_UMBRELLA: UmbrellaRefusal = UmbrellaRefusal("incompatible-umbrella");
 /// The prepared-partition carve-out was requested for an ineligible source.
 pub const INCOMPATIBLE_MANAGED_PARTITION: UmbrellaRefusal =
@@ -132,6 +135,27 @@ pub struct UmbrellaSnapshot {
     pub body: String,
     pub state: String,
     pub updated_at: String,
+    /// Whether preparation proved this record-less umbrella is safe to adopt.
+    pub adopted_umbrella: bool,
+}
+
+/// The path preparation selected for one source issue.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UmbrellaSourceKind {
+    /// A regular issue or approved managed partition that still needs conversion.
+    Convertible,
+    /// A managed umbrella that already carries its durable proposal record.
+    Resumable,
+    /// An external record-less umbrella whose empty graph makes adoption safe.
+    AdoptedUmbrella,
+}
+
+impl UmbrellaSourceKind {
+    /// Report whether this source needs the guarded external-adoption mutation.
+    #[must_use]
+    pub const fn is_adopted(self) -> bool {
+        matches!(self, Self::AdoptedUmbrella)
+    }
 }
 
 /// Where one recorded leaf stands between proposal and native graph wiring.
@@ -374,6 +398,25 @@ pub fn is_managed_partition_title(title: &str) -> bool {
         .any(|prefix| title.starts_with(prefix))
 }
 
+/// Report whether `title` carries the umbrella identity prefix.
+#[must_use]
+pub fn is_umbrella_title(title: &str) -> bool {
+    title.starts_with(UMBRELLA_PREFIX.trim_end())
+}
+
+/// Report whether `title` has a non-empty title after the exact umbrella prefix.
+fn is_adoptable_umbrella_title(title: &str) -> bool {
+    title
+        .strip_prefix(UMBRELLA_PREFIX)
+        .is_some_and(|suffix| !suffix.trim().is_empty())
+}
+
+/// Report whether `title` names a leaf owned by one umbrella number.
+#[must_use]
+pub fn is_umbrella_leaf_title(title: &str, umbrella: &str) -> bool {
+    title.starts_with(&format!("[LEAF OF {umbrella}]"))
+}
+
 /// Decide whether one source issue may become or resume an umbrella.
 ///
 /// The prepared-partition path is the sole protected-title carve-out: an exact
@@ -382,19 +425,20 @@ pub fn is_managed_partition_title(title: &str) -> bool {
 ///
 /// # Errors
 /// Returns the refusal token for a closed, pull-request, plan-bearing, or
-/// record-less umbrella source.
+/// unsafe record-less umbrella source. `adoption_safe` must be independently
+/// established from the live issue graph before a record-less umbrella is
+/// accepted.
 pub fn classify_umbrella_source(
     title: &str,
     body: &str,
     state: &str,
     managed_partition: bool,
-) -> Result<(), UmbrellaRefusal> {
+    adoption_safe: bool,
+) -> Result<UmbrellaSourceKind, UmbrellaRefusal> {
     if !state.eq_ignore_ascii_case("open") {
         return Err(CLOSED_INPUT);
     }
-    let umbrella_tag = UMBRELLA_PREFIX.trim_end();
-    let compatible_umbrella =
-        title.starts_with(umbrella_tag) && body.contains(UMBRELLA_PROPOSAL_TOKEN);
+    let compatible_umbrella = is_umbrella_title(title) && body.contains(UMBRELLA_PROPOSAL_TOKEN);
     if managed_partition && !is_managed_partition_title(title) && !compatible_umbrella {
         return Err(INCOMPATIBLE_MANAGED_PARTITION);
     }
@@ -403,15 +447,22 @@ pub fn classify_umbrella_source(
     {
         return Err(INCOMPATIBLE_INPUT);
     }
-    if title.starts_with(umbrella_tag) && !body.contains(UMBRELLA_PROPOSAL_TOKEN) {
+    if is_umbrella_title(title) && !body.contains(UMBRELLA_PROPOSAL_TOKEN) {
+        if adoption_safe && !managed_partition && is_adoptable_umbrella_title(title) {
+            return Ok(UmbrellaSourceKind::AdoptedUmbrella);
+        }
         return Err(INCOMPATIBLE_UMBRELLA);
     }
-    Ok(())
+    if compatible_umbrella {
+        Ok(UmbrellaSourceKind::Resumable)
+    } else {
+        Ok(UmbrellaSourceKind::Convertible)
+    }
 }
 
 /// Report whether one recorded leaf still carries the fixed umbrella contract.
 fn leaf_keeps_contract(leaf: &ExpectedLeaf, umbrella: &str) -> bool {
-    leaf.title.starts_with(&format!("[LEAF OF {umbrella}]"))
+    is_umbrella_leaf_title(&leaf.title, umbrella)
         && leaf.body.starts_with(&umbrella_leaf_opening_text(umbrella))
 }
 
@@ -671,26 +722,36 @@ pub fn render_proposal(record: &ProposalRecord) -> String {
 /// Render one source snapshot the way `json.dumps(..., sort_keys=True)` did.
 ///
 /// The snapshot handoff kept Python's default separators, so this renderer does
-/// too; only the record above is compact.
+/// too; only the record above is compact. The adoption-only `source` field is
+/// additive, so every pre-existing source shape remains byte-compatible.
 #[must_use]
 pub fn render_snapshot(snapshot: &UmbrellaSnapshot) -> String {
     let mut text = String::new();
     text.push('{');
-    for (index, (key, value)) in [
-        ("body", &snapshot.body),
-        ("number", &snapshot.number),
-        ("repository", &snapshot.repository),
-        ("state", &snapshot.state),
-        ("title", &snapshot.title),
-        ("updated_at", &snapshot.updated_at),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        if index > 0 {
+    let mut field_count = 0;
+    let mut push_field = |key: &str, value: &str| {
+        if field_count > 0 {
             text.push_str(", ");
         }
         push_pair(&mut text, key, value, false);
+        field_count += 1;
+    };
+    for (key, value) in [
+        ("body", &snapshot.body),
+        ("number", &snapshot.number),
+        ("repository", &snapshot.repository),
+    ] {
+        push_field(key, value);
+    }
+    if snapshot.adopted_umbrella {
+        push_field("source", ADOPTED_UMBRELLA_SOURCE);
+    }
+    for (key, value) in [
+        ("state", &snapshot.state),
+        ("title", &snapshot.title),
+        ("updated_at", &snapshot.updated_at),
+    ] {
+        push_field(key, value);
     }
     text.push_str("}\n");
     text
@@ -1080,6 +1141,7 @@ pub fn completion_sentinel_for_record(
         body: record.common_context.clone(),
         state: String::from("OPEN"),
         updated_at: record.expected_updated_at.clone(),
+        adopted_umbrella: false,
     };
     let (expected, _issue_input) = prepare_proposal_from_batch(&snapshot, input_text, deps_text)?;
     if record.prepared_input_sha256.is_empty()
@@ -1138,18 +1200,18 @@ pub const fn check_leaf_cap(record: &ProposalRecord) -> Result<(), UmbrellaRefus
 #[cfg(test)]
 mod tests {
     use super::{
-        AMBIGUOUS_IN_FLIGHT_RECOVERY, CLOSED_INPUT, COMPLETION_SENTINEL_VERSION, CandidateIssue,
-        CompletionSentinel, DependencyEdge, ExpectedLeaf, INCOMPATIBLE_INPUT,
-        INCOMPATIBLE_MANAGED_PARTITION, INCOMPATIBLE_UMBRELLA, INCOMPLETE_GRAPH_STATE,
-        INVALID_COMPLETION_SENTINEL, INVALID_FINAL_UMBRELLA, INVALID_PREPARED_DEPENDENCIES,
-        INVALID_PREPARED_PARTITION, INVALID_PROPOSAL_RECORD, INVALID_UMBRELLA_NUMBER,
-        LEAF_ALREADY_RESOLVED, LeafState, MANAGED_PARTITION_PREFIXES, PREPARED_DEPENDENCY_CYCLE,
-        PREPARED_PARTITION_TOO_LARGE, ProposalRecord, RemoteLeaf, ResolvedLeaf,
-        STALE_PREPARED_PARTITION, UNKNOWN_LEAF_IDENTITY, UmbrellaSnapshot,
-        classify_umbrella_source, completion_sentinel_for_record, expected_completion_sentinel,
-        leaf_identity, mark_leaf_in_flight, parse_proposal, prepare_proposal_from_batch,
-        reconcile_in_flight, record_leaf_resolved, render_proposal, render_snapshot,
-        umbrella_leaf_opening_text, validate_final_umbrella, verify_graph_state,
+        ADOPTED_UMBRELLA_SOURCE, AMBIGUOUS_IN_FLIGHT_RECOVERY, CLOSED_INPUT,
+        COMPLETION_SENTINEL_VERSION, CandidateIssue, CompletionSentinel, DependencyEdge,
+        ExpectedLeaf, INCOMPATIBLE_INPUT, INCOMPATIBLE_MANAGED_PARTITION, INCOMPATIBLE_UMBRELLA,
+        INCOMPLETE_GRAPH_STATE, INVALID_COMPLETION_SENTINEL, INVALID_FINAL_UMBRELLA,
+        INVALID_PREPARED_DEPENDENCIES, INVALID_PREPARED_PARTITION, INVALID_PROPOSAL_RECORD,
+        INVALID_UMBRELLA_NUMBER, LEAF_ALREADY_RESOLVED, LeafState, MANAGED_PARTITION_PREFIXES,
+        PREPARED_DEPENDENCY_CYCLE, PREPARED_PARTITION_TOO_LARGE, ProposalRecord, RemoteLeaf,
+        ResolvedLeaf, STALE_PREPARED_PARTITION, UNKNOWN_LEAF_IDENTITY, UmbrellaSnapshot,
+        UmbrellaSourceKind, classify_umbrella_source, completion_sentinel_for_record,
+        expected_completion_sentinel, leaf_identity, mark_leaf_in_flight, parse_proposal,
+        prepare_proposal_from_batch, reconcile_in_flight, record_leaf_resolved, render_proposal,
+        render_snapshot, umbrella_leaf_opening_text, validate_final_umbrella, verify_graph_state,
     };
 
     fn snapshot() -> UmbrellaSnapshot {
@@ -1160,6 +1222,7 @@ mod tests {
             body: "Shared context.".to_owned(),
             state: "OPEN".to_owned(),
             updated_at: "2026-08-03T00:00:00Z".to_owned(),
+            adopted_umbrella: false,
         }
     }
 
@@ -1218,6 +1281,17 @@ mod tests {
             format!(
                 "{{\"body\": \"Shared context.\", \"number\": \"12\", \"repository\": \"owner/repo\", \"state\": \"OPEN\", \"title\": \"{}Split this work\", \"updated_at\": \"2026-08-03T00:00:00Z\"}}\n",
                 MANAGED_PARTITION_PREFIXES[0]
+            )
+        );
+        let adopted = UmbrellaSnapshot {
+            adopted_umbrella: true,
+            ..snapshot()
+        };
+        assert_eq!(
+            render_snapshot(&adopted),
+            format!(
+                "{{\"body\": \"Shared context.\", \"number\": \"12\", \"repository\": \"owner/repo\", \"source\": \"{}\", \"state\": \"OPEN\", \"title\": \"{}Split this work\", \"updated_at\": \"2026-08-03T00:00:00Z\"}}\n",
+                ADOPTED_UMBRELLA_SOURCE, MANAGED_PARTITION_PREFIXES[0]
             )
         );
     }
@@ -1370,6 +1444,20 @@ mod tests {
         assert_eq!(record.common_context, "Shared context.");
         assert!(!record.prepared_input_sha256.is_empty());
         assert!(issue_input.starts_with("### [BUG] split-12-1 First\n"));
+
+        let adopted = UmbrellaSnapshot {
+            title: String::from("[UMBRELLA] External split"),
+            body: String::from("External context."),
+            adopted_umbrella: true,
+            ..snapshot()
+        };
+        let (record, _) = prepare_proposal_from_batch(
+            &adopted,
+            "### First\n\nFirst body.\n\n### Second\n\nSecond body.\n",
+            "",
+        )
+        .expect("prepares an adopted umbrella");
+        assert_eq!(record.common_context, "External context.");
     }
 
     #[test]
@@ -1570,42 +1658,55 @@ mod tests {
     #[test]
     fn a_source_issue_is_accepted_only_on_its_declared_path() {
         assert_eq!(
-            classify_umbrella_source("Regular", "body", "OPEN", false),
-            Ok(())
+            classify_umbrella_source("Regular", "body", "OPEN", false, false),
+            Ok(UmbrellaSourceKind::Convertible)
         );
         assert_eq!(
-            classify_umbrella_source("Regular", "body", "CLOSED", false),
+            classify_umbrella_source("Regular", "body", "CLOSED", false, false),
             Err(CLOSED_INPUT)
         );
         assert_eq!(
-            classify_umbrella_source("[PR] Something", "body", "OPEN", false),
+            classify_umbrella_source("[PR] Something", "body", "OPEN", false, false),
             Err(INCOMPATIBLE_INPUT)
         );
         let managed = format!("{}Work", MANAGED_PARTITION_PREFIXES[0]);
         assert_eq!(
-            classify_umbrella_source(&managed, "<!-- larch:plan -->", "OPEN", false),
+            classify_umbrella_source(&managed, "<!-- larch:plan -->", "OPEN", false, false),
             Err(INCOMPATIBLE_INPUT)
         );
         assert_eq!(
-            classify_umbrella_source(&managed, "<!-- larch:plan -->", "OPEN", true),
-            Ok(())
+            classify_umbrella_source(&managed, "<!-- larch:plan -->", "OPEN", true, false),
+            Ok(UmbrellaSourceKind::Convertible)
         );
         assert_eq!(
-            classify_umbrella_source("Regular", "body", "OPEN", true),
+            classify_umbrella_source("Regular", "body", "OPEN", true, false),
             Err(INCOMPATIBLE_MANAGED_PARTITION)
         );
         assert_eq!(
-            classify_umbrella_source("[UMBRELLA] Work", "body", "OPEN", false),
+            classify_umbrella_source("[UMBRELLA] Work", "body", "OPEN", false, false),
             Err(INCOMPATIBLE_UMBRELLA)
+        );
+        assert_eq!(
+            classify_umbrella_source("[UMBRELLA] Work", "body", "OPEN", false, true),
+            Ok(UmbrellaSourceKind::AdoptedUmbrella)
+        );
+        assert_eq!(
+            classify_umbrella_source("[UMBRELLA]", "body", "OPEN", false, true),
+            Err(INCOMPATIBLE_UMBRELLA)
+        );
+        assert_eq!(
+            classify_umbrella_source("[UMBRELLA] Work", "body", "OPEN", true, true),
+            Err(INCOMPATIBLE_MANAGED_PARTITION)
         );
         assert_eq!(
             classify_umbrella_source(
                 "[UMBRELLA] Work",
                 "<!-- larch:umbrella-proposal -->",
                 "open",
-                true
+                true,
+                false
             ),
-            Ok(())
+            Ok(UmbrellaSourceKind::Resumable)
         );
     }
 }

@@ -1006,6 +1006,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn recordless_umbrella_adoption_is_atomic_and_keeps_the_external_title() {
+        let original = "External context\n";
+        let adopted = "External context\n<!-- larch:umbrella-proposal -->\n";
+        let title = "[UMBRELLA] External split";
+        let (service, server) = service(vec![
+            issue_response(title, original, &[], "2026-07-19T00:00:00Z"),
+            issue_response(title, original, &[], "2026-07-19T00:00:00Z"),
+            issue_response(title, adopted, &[], "2026-07-19T00:00:01Z"),
+            issue_response(title, adopted, &[], "2026-07-19T00:00:01Z"),
+        ]);
+        let owner = IssueMutationOwner::new(&service);
+        let cancellation = Cancellation::new();
+        let before = snapshot(&owner, &cancellation).await;
+        let request = mutation_request(
+            &before,
+            BTreeSet::from([
+                IssueMutationField::Title,
+                IssueMutationField::Body,
+                IssueMutationField::UmbrellaAdoption,
+            ]),
+            Some(title),
+            Some(adopted),
+            None,
+        );
+
+        let result = owner
+            .apply(&cancellation, &operator_authorization(), &request)
+            .await
+            .expect("adoption succeeds");
+        let requests = server.finish().expect("stub finished");
+        let edit: Value = serde_json::from_slice(&requests[2].body.bytes).expect("edit JSON");
+
+        assert_eq!(result.after.title, title);
+        assert_eq!(result.after.body, adopted);
+        assert_eq!(edit["title"], title);
+        assert_eq!(edit["body"], adopted);
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|request| request.method == "PATCH")
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
     async fn initial_lease_and_implementing_title_land_in_one_verified_patch() {
         let original = format!(
             "<!-- larch:plan-receipt v1 plan_sha256={} base_sha={} blockers_sha256={} owners_sha256={} -->\n",
