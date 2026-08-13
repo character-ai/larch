@@ -298,7 +298,7 @@ pub use migration_governance::{
     declared_scope_paths, evaluate_governance_gate, evaluate_owner_admission, format_gate_refusal,
     hash_blocker_rows, hash_owner_rows, hash_plan_block, migration_requires_owner_block,
     normalize_state, owner_keys_from_rows, parse_native_blocker_refs, parse_owner_block,
-    parse_receipt, plan_scope_declarations, render_receipt, upsert_receipt,
+    parse_receipt, plan_scope_declarations, receipt_marker_present, render_receipt, upsert_receipt,
     validate_receipt_freshness,
 };
 pub use object_store::{

@@ -105,6 +105,8 @@ def route_main(argv: Sequence[str]) -> int:
             if pause.returncode != 0:
                 error_lines.append("design-pause-load-failed")
     else:
+        has_clarify = required["--has-clarify-label"] == "true"
+        has_plan = issue_wire.parse_named_block(body=body, marker="plan")[0] is not None
         title_cmd = [
             str(repo_roots.larch_entrypoint(Path(__file__).resolve().parents[3])),
             "issue",
@@ -117,17 +119,19 @@ def route_main(argv: Sequence[str]) -> int:
             route = "cancel-title-filter"
             title_filter_reason = "error"
         elif title_kv.get("LIFECYCLE_REJECT", ["false"])[-1] == "true":
-            route = "cancel-title-filter"
-            title_filter_reason = "lifecycle"
             title_filter_marker = title_kv.get("LIFECYCLE_MARKER", [""])[-1]
+            if title_filter_marker == "[DESIGNED]" and has_plan:
+                route = "clarify" if has_clarify else "already-planned"
+                title_filter_marker = ""
+            else:
+                route = "cancel-title-filter"
+                title_filter_reason = "lifecycle"
         elif title_kv.get("ARCHIVAL_REPORT", ["false"])[-1] == "true":
             route = "cancel-title-filter"
             title_filter_reason = "archival"
         else:
             if title_kv.get("BRAINSTORM", ["false"])[-1] == "true":
                 brainstorm_prefix = "true"
-            has_clarify = required["--has-clarify-label"] == "true"
-            has_plan = issue_wire.parse_named_block(body=body, marker="plan")[0] is not None
             if has_clarify:
                 route = "clarify"
             elif has_plan:

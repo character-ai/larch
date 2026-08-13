@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
+
+import pytest
+
 from larch import io as larch_io
 from larch.design import design_router
+from larch.issue.issue_wire import compose_named_block
 
 
 def test_router_stdout_codec_preserves_ordered_duplicates() -> None:
@@ -39,3 +45,99 @@ def test_parse_stdout_kv_skips_lines_without_equals() -> None:
 def test_parse_stdout_kv_handles_embedded_equals() -> None:
     result = design_router._parse_stdout_kv("URL=https://example.com/?a=1\n")  # pyright: ignore[reportPrivateUsage]
     assert result["URL"] == ["https://example.com/?a=1"]
+
+
+def test_designed_issue_with_plan_routes_to_already_planned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    issue_body = design_tmpdir / "issue.md"
+    _ = issue_body.write_text(
+        compose_named_block(marker="plan", inner="Plan\n"), encoding="utf-8"
+    )
+
+    def title_eligibility(
+        argv: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            "LIFECYCLE_REJECT=true\nLIFECYCLE_MARKER=[DESIGNED]\n",
+            "",
+        )
+
+    monkeypatch.setattr(design_router.subprocess, "run", title_eligibility)
+    assert design_router.route_main(
+        [
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--issue",
+            "7",
+            "--issue-title",
+            "[DESIGNED] Work",
+            "--issue-body-file",
+            str(issue_body),
+            "--has-clarify-label",
+            "false",
+            "--claude-pid",
+            "1",
+            "--session-id",
+            "session",
+        ]
+    ) == 0
+    assert "ROUTE=already-planned\n" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [("[IMPLEMENTING]",), ("[DONE]",), ("[DEBATING]",)],
+)
+def test_non_designed_lifecycle_markers_remain_rejected(
+    marker: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    issue_body = design_tmpdir / "issue.md"
+    _ = issue_body.write_text(
+        compose_named_block(marker="plan", inner="Plan\n"), encoding="utf-8"
+    )
+
+    def title_eligibility(
+        argv: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            f"LIFECYCLE_REJECT=true\nLIFECYCLE_MARKER={marker}\n",
+            "",
+        )
+
+    monkeypatch.setattr(design_router.subprocess, "run", title_eligibility)
+    assert design_router.route_main(
+        [
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--issue",
+            "7",
+            "--issue-title",
+            f"{marker} Work",
+            "--issue-body-file",
+            str(issue_body),
+            "--has-clarify-label",
+            "false",
+            "--claude-pid",
+            "1",
+            "--session-id",
+            "session",
+        ]
+    ) == 0
+    output = capsys.readouterr().out
+    assert "ROUTE=cancel-title-filter\n" in output
+    assert "TITLE_FILTER_REASON=lifecycle\n" in output
+    assert f"TITLE_FILTER_MARKER={marker}\n" in output

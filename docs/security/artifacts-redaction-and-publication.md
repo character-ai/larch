@@ -216,7 +216,13 @@ evidence through the typed GitHub, Git, filesystem, and lint boundaries and has
 no issue mutation owner. The narrow Python `issue governance-gate` machine
 envelope remains a #7681 policy consumer only: it validates its caller-supplied
 repository root and body-file boundary before evaluating the canonical
-governance policy.
+governance policy. Python `plan-receipt refresh` validates its issue, repository
+root, preflight plan/snapshot, prior receipt, and base SHA; it uses the
+protected issue-mutation owner and accepts a refresh only after exact receipt
+read-back. Its bounded path-only scope-drift artifact JSON-quotes every
+name-status row before redaction, and Step 0 validates then appends it once to
+the `Warnings` ledger. The `/implement` caller may invoke that mutation only
+after its bounded semantic-materiality probe clears sole scope drift.
 
 External CLI credentials may enter a child process environment. A live
 `OPENAI_API_KEY` stays out of larch-owned argv and copied config, but same-user

@@ -280,6 +280,11 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         "governance_gate_main",
         True,
     ),
+    ("plan-receipt", "refresh"): (
+        "larch.issue.migration_governance",
+        "plan_receipt_refresh_main",
+        True,
+    ),
     ("forked-repo", "setup"): ("larch.core.forked_repo", "setup_main", False),
     ("design", "parse-flags"): ("larch.design.design_argv", "parse_flags_main", True),
     ("design", "step0-parse"): ("larch.design.design_step0_env", "step0_parse_main", True),

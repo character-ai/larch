@@ -36,9 +36,10 @@ use larch_adapters::{
 use larch_core::{
     GitHubService, IMPLEMENTING_PREFIX, ImplementationLease, IssueCreateRequest,
     IssueMutationField, IssueMutationLease, IssueMutationRequest, IssueMutationSnapshot,
-    LIFECYCLE_PREFIXES, cleanup_cache_sessions_root, detect_lifecycle_prefix, emit_kv,
-    insert_signal_marker, parse_implementation_lease, parse_plan_receipt_identity,
-    redact_run_log_payload, strip_lifecycle_prefix, upsert_implementation_lease,
+    LIFECYCLE_PREFIXES, PLAN_MARKER, cleanup_cache_sessions_root, detect_lifecycle_prefix, emit_kv,
+    insert_signal_marker, parse_implementation_lease, parse_named_block, parse_receipt,
+    receipt_marker_present, redact_run_log_payload, strip_lifecycle_prefix,
+    upsert_implementation_lease,
 };
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -826,11 +827,7 @@ fn initial_lease_mutation(
     {
         return Err("stale-identity".to_owned());
     }
-    let receipt = parse_plan_receipt_identity(&before.body)
-        .ok_or_else(|| "implementation-lease-plan-receipt-missing".to_owned())?;
-    if receipt.base_sha != request.head_sha {
-        return Err("implementation-lease-base-mismatch".to_owned());
-    }
+    let (base, plan) = initial_lease_identity(&before.body, request.head_sha)?;
     if let Some(existing) = parse_implementation_lease(&before.body)
         && existing.run_id != request.run_id
     {
@@ -839,8 +836,8 @@ fn initial_lease_mutation(
     let lease = ImplementationLease {
         run_id: request.run_id.to_owned(),
         branch: request.branch.to_owned(),
-        base: receipt.base_sha,
-        plan: receipt.plan_sha256,
+        base,
+        plan,
         updated_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
     };
     let body = upsert_implementation_lease(&before.body, &lease)
@@ -862,6 +859,22 @@ fn initial_lease_mutation(
         Some(&title),
     );
     Ok((mutation, lease, title))
+}
+
+fn initial_lease_identity(body: &str, head_sha: &str) -> Result<(String, String), String> {
+    if let Some(receipt) = parse_receipt(body) {
+        if receipt.base_sha != head_sha {
+            return Err("implementation-lease-base-mismatch".to_owned());
+        }
+        return Ok((receipt.base_sha, receipt.plan_sha256));
+    }
+    if receipt_marker_present(body) {
+        return Err("implementation-lease-plan-receipt-invalid".to_owned());
+    }
+    let plan = parse_named_block(body, PLAN_MARKER)
+        .map_err(|_| "implementation-lease-plan-missing".to_owned())?
+        .ok_or_else(|| "implementation-lease-plan-missing".to_owned())?;
+    Ok((head_sha.to_owned(), sha256_text(&plan)))
 }
 
 /// Hash one preflight-owned issue field for a later freshness comparison.
@@ -2643,6 +2656,42 @@ mod tests {
             initial_lease_mutation(&before, &reference, 7, &future),
             Err("stale-identity".to_owned())
         );
+    }
+
+    #[test]
+    fn initial_lease_accepts_a_valid_plan_without_a_receipt() {
+        let reference =
+            larch_core::GitHubRepositoryRef::new("owner", "repo").expect("valid repository");
+        let before = larch_core::IssueMutationSnapshot {
+            repository: reference.clone(),
+            issue: 7,
+            title: "[DESIGNED] Work".to_owned(),
+            body: "<!-- larch:plan:start -->\nPlan\n<!-- larch:plan:end -->\n".to_owned(),
+            labels: std::collections::BTreeSet::new(),
+            state: larch_core::GitHubIssueState::Open,
+            updated_at: "2026-08-10T00:00:01Z".to_owned(),
+        };
+        let expected_body_sha256 = sha256_text(&before.body);
+        let expected_title_sha256 = sha256_text(&before.title);
+        let expected_labels_sha256 = super::sha256_labels(&before.labels);
+        let head_sha = "a".repeat(40);
+        let request = LeaseInitializationRequest {
+            repository: "owner/repo",
+            issue: "7",
+            run_id: "run-7",
+            branch: "feature/work",
+            head_sha: &head_sha,
+            expected_updated_at: "2026-08-10T00:00:00Z",
+            expected_body_sha256: &expected_body_sha256,
+            expected_title_sha256: &expected_title_sha256,
+            expected_labels_sha256: &expected_labels_sha256,
+        };
+
+        let (_mutation, lease, _title) =
+            initial_lease_mutation(&before, &reference, 7, &request).expect("admitted");
+
+        assert_eq!(lease.base, "a".repeat(40));
+        assert_eq!(lease.plan, sha256_text("Plan\n"));
     }
 
     #[test]

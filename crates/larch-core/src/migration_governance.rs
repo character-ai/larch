@@ -44,6 +44,10 @@ static RECEIPT_RE: LazyLock<Regex> = LazyLock::new(|| {
     )
     .expect("receipt expression is valid")
 });
+static RECEIPT_MARKER_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^[ \t]*<!--[ \t]+larch:plan-receipt(?:[ \t]|-->|$)")
+        .expect("receipt marker expression is valid")
+});
 static OWNER_KEY_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[a-z0-9]+(?:-[a-z0-9]+)*$").expect("owner key expression is valid")
 });
@@ -371,13 +375,23 @@ pub fn render_receipt(receipt: &PlanReceipt) -> Result<String, ReceiptDefect> {
 pub fn parse_receipt(body: &str) -> Option<PlanReceipt> {
     let lines = split_text_lines(body);
     let fenced = balanced_fence_line_indices(&lines);
-    let mut receipts = lines
+    let mut receipts = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        if fenced.contains(&index) || !RECEIPT_MARKER_RE.is_match(line) {
+            continue;
+        }
+        receipts.push(receipt_from_line(line)?);
+    }
+    (receipts.len() == 1).then(|| receipts.pop()).flatten()
+}
+#[must_use]
+pub fn receipt_marker_present(body: &str) -> bool {
+    let lines = split_text_lines(body);
+    let fenced = balanced_fence_line_indices(&lines);
+    lines
         .iter()
         .enumerate()
-        .filter(|(index, _)| !fenced.contains(index))
-        .filter_map(|(_, line)| receipt_from_line(line));
-    let receipt = receipts.next()?;
-    receipts.next().is_none().then_some(receipt)
+        .any(|(index, line)| !fenced.contains(&index) && RECEIPT_MARKER_RE.is_match(line))
 }
 /// # Errors
 ///
@@ -606,12 +620,17 @@ pub fn compute_scope_fingerprint(
 }
 #[must_use]
 pub fn validate_receipt_freshness(request: &ReceiptFreshnessRequest) -> FreshnessVerdict {
-    let Some(receipt) = parse_receipt(&request.body) else {
+    let Ok(Some(plan_inner)) = parse_named_block(&request.body, PLAN_MARKER) else {
         return FreshnessVerdict {
             reasons: vec![REASON_STALE_PLAN_BODY.to_owned()],
         };
     };
-    let Ok(Some(plan_inner)) = parse_named_block(&request.body, PLAN_MARKER) else {
+    let Some(receipt) = parse_receipt(&request.body) else {
+        if !receipt_marker_present(&request.body) {
+            return FreshnessVerdict {
+                reasons: Vec::new(),
+            };
+        }
         return FreshnessVerdict {
             reasons: vec![REASON_STALE_PLAN_BODY.to_owned()],
         };
@@ -1146,10 +1165,16 @@ fn reuse_source_reasons(
             .map(|row| row.owner_key.as_str())
             .collect()
     });
-    let snapshot_ok = parse_receipt(&source.body).is_some_and(|receipt| {
-        receipt.owners_sha256 == hash_owner_rows(&parsed.raw_rows)
-            && creates.contains(owner.owner_key.as_str())
-    });
+    let receipt = parse_receipt(&source.body);
+    let source_has_plan = parse_named_block(&source.body, PLAN_MARKER)
+        .ok()
+        .flatten()
+        .is_some();
+    let receipt_ok = receipt
+        .as_ref()
+        .is_some_and(|receipt| receipt.owners_sha256 == hash_owner_rows(&parsed.raw_rows))
+        || (receipt.is_none() && !receipt_marker_present(&source.body) && source_has_plan);
+    let snapshot_ok = receipt_ok && creates.contains(owner.owner_key.as_str());
     let mut reasons = Vec::new();
     if !snapshot_ok {
         reasons.push(format!(
