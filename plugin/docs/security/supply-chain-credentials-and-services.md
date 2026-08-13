@@ -277,7 +277,11 @@ preflight closed on every other host, and verifies the exact immutable
 release, tag commit, asset allowlist, build attestations, strict manifest and
 checksums, sizes, digests, platform identity, and raw USTAR layout. It rejects symlinks, special files,
 traversal, extra members, malformed archives, and trailing data before
-extracting only `larch`.
+extracting only `larch`. When `CLAUDE_PLUGIN_ROOT` is unset or empty, the shim
+derives it as the parent of its own resolved `scripts/` directory and exports
+that validated absolute path before any further bootstrap work; an explicit
+`CLAUDE_PLUGIN_ROOT` still wins and remains subject to the same absolute-path,
+non-symlink directory checks.
 
 The staged binary must pass `--version` and compact-JSON
 `larch bootstrap self-check`. A same-directory rename installs it atomically.
