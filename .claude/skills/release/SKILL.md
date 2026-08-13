@@ -1,7 +1,7 @@
 ---
 # larch-run-lifecycle: shared-v1 skill=release
 name: release
-description: "Use when cutting a larch release: create and tag a version candidate, validate its draft assets, merge it, publish immutable, and promote Latest."
+description: "Use when cutting a larch release: merge a version candidate, tag its post-merge commit, validate draft assets, publish immutable, and promote Latest."
 argument-hint: "[--dry-run] [--skip-approve|-s] [--bump major|minor|patch] [--repo OWNER/REPO]"
 allowed-tools: AskUserQuestion, Bash
 disable-model-invocation: true
@@ -17,7 +17,7 @@ the lifecycle start remains the first command.
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
 
-Operator-run release cut for `character-ai/larch`. It gates candidate merge on the validated draft asset set, then gates Latest promotion on immutable release verification. This dev-only skill lives under `.claude/skills/release/` and is not exported in the plugin package. All runtime script paths use `$PWD/.claude/skills/release/scripts/...` from the larch repo root.
+Operator-run release cut for `character-ai/larch`. It merges the candidate through the normal queue, then gates publication and Latest promotion on the complete asset and immutable-release verification for the resulting `main` commit. This dev-only skill lives under `.claude/skills/release/` and is not exported in the plugin package. All runtime script paths use `$PWD/.claude/skills/release/scripts/...` from the larch repo root.
 
 ## Flags
 
@@ -165,13 +165,16 @@ The `AskUserQuestion` includes `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, and a pre
 - **Change bump (major/minor/patch)** — re-run prepare with the chosen override, then re-confirm
 - **Cancel** — stop (default when `PR_COUNT=0` unless the operator explicitly overrides)
 
-## Step 5 — Validate the candidate draft, then merge
+## Step 5 — Merge the candidate, then validate its post-merge draft
 
 Set Bash `timeout: 420000` (7 minutes) on this fence. The release build and
 `git commit` pre-commit checks can exceed the orchestrator default.
 
+`release ensure-policy` is a read-only immutable-release policy check. It must
+not change repository settings, rulesets, merge methods, or bypass actors.
+
 ```bash
-# lint-consecutive-bash: ok PR creation must finish before candidate staging
+# lint-consecutive-bash: ok PR creation must finish before queue submission
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 WORKTREE_LARCH="$PWD/target/release/larch"
@@ -184,10 +187,55 @@ git commit -m "Release v${NEW_VERSION}"
 python3 "$PWD/python/cli.py" pr create --title "Release v${NEW_VERSION}" --body-file "$REDACTED_NOTES_FILE" --repo "$REPO"
 ```
 
-Record `PR_NUMBER` from `python/cli.py pr create` stdout. Then:
+Record `PR_NUMBER` from `python/cli.py pr create` stdout. First wait for the
+candidate's ordinary PR checks. Then submit it through the normal merge queue;
+never pass `--admin`, a merge strategy, or a queue-bypass option.
 
 ```bash
 python3 "$PWD/python/cli.py" ci wait --pr "$PR_NUMBER" --repo "$REPO"
+python3 "$PWD/python/cli.py" merge pr \
+  --pr "$PR_NUMBER" \
+  --repo "$REPO" \
+  --no-admin-fallback
+```
+
+Parse `MERGE_RESULT` from the final command. On `merged`, continue below.
+Only on `queued`, start this long wait through a bgjob. On any other result,
+stop before tagging or creating a draft Release:
+
+```bash
+NOTES_DIR="$(dirname "$PR_LIST_FILE")"
+WORKTREE_LARCH="$PWD/target/release/larch"
+CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" bgjob start \
+  --step release-merge-queue \
+  --tmpdir "$NOTES_DIR" \
+  --budget-s 90000 \
+  -- \
+  python3 "$PWD/python/cli.py" merge wait --pr "$PR_NUMBER" --repo "$REPO"
+```
+
+Continue only when the bgjob launch prints `BGJOB_STATUS=STARTED STEP=release-merge-queue`.
+Wait for an accepted queue entry only through this command, with Bash `timeout: 330000`:
+
+```bash
+NOTES_DIR="$(dirname "$PR_LIST_FILE")"
+WORKTREE_LARCH="$PWD/target/release/larch"
+CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" bgjob wait \
+  --step release-merge-queue \
+  --tmpdir "$NOTES_DIR" \
+  --max-wait-s 270
+```
+
+On `BGJOB_STATUS=WAIT`, repeat the identical wait immediately. Emit no prose
+and call no other tool between waits. On `BGJOB_STATUS=DONE`, read the full KV
+block and `$NOTES_DIR/bgjob/release-merge-queue.result.env`. Continue only when
+`BGJOB_RC=0`; `merge wait` returns zero only after an observed `MERGED` state.
+
+After the PR is observably merged, stage the tag and draft from GitHub's exact
+merged commit. `release stage` verifies that commit's `plugin.json` version and
+emits it as `SOURCE_COMMIT`:
+
+```bash
 WORKTREE_LARCH="$PWD/target/release/larch"
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
@@ -217,7 +265,7 @@ done <<EOF
 $asset_run_out
 EOF
 test -n "$ASSET_RUN_ID"
-"$PWD/scripts/larch.sh" bgjob start \
+CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" bgjob start \
   --step release-assets \
   --tmpdir "$NOTES_DIR" \
   --budget-s 7200 \
@@ -225,13 +273,15 @@ test -n "$ASSET_RUN_ID"
   gh run watch "$ASSET_RUN_ID" --repo "$REPO" --compact --exit-status --interval 30
 ```
 
-Invoke `python/cli.py ci wait` synchronously. Set Bash `timeout: 1860000` (31 minutes) on that call so candidate CI is not cut off by the orchestrator default. Continue only when the bgjob launch prints `BGJOB_STATUS=STARTED STEP=release-assets`.
+Continue only when the asset bgjob launch prints
+`BGJOB_STATUS=STARTED STEP=release-assets`.
 
 Wait for the tag-triggered asset workflow only through this command, with Bash `timeout: 330000`:
 
 ```bash
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
-"$PWD/scripts/larch.sh" bgjob wait \
+WORKTREE_LARCH="$PWD/target/release/larch"
+CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" bgjob wait \
   --step release-assets \
   --tmpdir "$NOTES_DIR" \
   --max-wait-s 270
@@ -239,7 +289,8 @@ NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 
 On `BGJOB_STATUS=WAIT`, repeat the identical wait immediately. Emit no prose and call no other tool between waits. On `BGJOB_STATUS=DONE`, read the full KV block and `$NOTES_DIR/bgjob/release-assets.result.env`. Continue only when `BGJOB_RC=0`.
 
-After the workflow succeeds, validate the uploaded draft against the exact candidate and merge with a merge commit:
+After the workflow succeeds, validate the uploaded draft against the exact
+post-merge commit:
 
 ```bash
 SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
@@ -249,16 +300,18 @@ CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh"
   --repo "$REPO" \
   --pr "$PR_NUMBER" \
   --source-commit "$SOURCE_COMMIT"
-python3 "$PWD/python/cli.py" merge pr \
-  --pr "$PR_NUMBER" \
-  --repo "$REPO" \
-  --method merge \
-  --release-queue-bypass
 ```
 
-The merge helper must report a merged result. The release-only queue bypass requires the merge-commit method and a version-bump commit. It preserves the tagged candidate commit as an ancestor of `main` when the repository queue is configured to squash; ordinary larch PR callers use the queue when enabled and the default squash method otherwise.
+The authoritative tag and assets now name the commit the queue placed on
+`main`, so `release finish` can prove it is an ancestor of `origin/main`
+without bypassing a squash-only queue.
 
-On candidate CI, asset workflow, draft validation, or merge failure, stop before publication. Keep the candidate branch, tag, and mutable draft for repair. A failed asset workflow may be rerun for the same tag and draft; never cut a second version. Repeat `release stage`, the asset workflow wait, and `release validate-draft` for recovery. Asset replacement is allowed only while the Release remains a draft.
+On candidate CI or merge failure, stop before staging a tag or draft. If the
+asset workflow or draft validation fails after merge, keep the merged PR, tag,
+and mutable draft for repair. A failed asset workflow may be rerun for the same
+tag and draft; never cut a second version. Repeat `release stage`, the asset
+workflow wait, and `release validate-draft` for recovery. Asset replacement is
+allowed only while the Release remains a draft.
 
 ## Step 6 — Publish the immutable Release, promote Latest, and advance the content pin
 
@@ -281,6 +334,7 @@ If Step 6 fails after Step 5 merged the release PR, do **not** re-run full `/rel
 ```bash
 WORKTREE_LARCH="$PWD/target/release/larch"
 cargo build --quiet --locked --release --package larch-cli
+SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")
 CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release finish \
   --version "$NEW_VERSION" \
   --repo "$REPO" \
@@ -443,10 +497,10 @@ Runtime helpers:
 
 - `"$PWD/scripts/larch.sh" release prepare`: baseline, PR list (larch-logs housekeeping PRs excluded; count reported as `IGNORED_LARCHLOG_PR_COUNT`), aggregate bump KV
 - `"$PWD/scripts/larch.sh" release set-version`: synchronized plugin, Cargo workspace, internal path dependency, and lockfile version write
-- `"$PWD/scripts/larch.sh" release ensure-policy`: enable and re-read merge-commit and immutable-release policy
-- `"$PWD/scripts/larch.sh" release stage`: tag the candidate and create or verify its draft Release
+- `"$PWD/scripts/larch.sh" release ensure-policy`: read and verify immutable-release policy without mutating repository configuration
+- `"$PWD/scripts/larch.sh" release stage`: resolve the merged PR commit, tag it, and create or verify its draft Release
 - `"$PWD/scripts/larch.sh" release asset-run`: resolve the exact tag-triggered asset workflow run
-- `"$PWD/scripts/larch.sh" release validate-draft`: verify the candidate-bound draft and complete asset set before merge
+- `"$PWD/scripts/larch.sh" release validate-draft`: verify the merged-commit-bound draft and complete asset set before publication
 - `"$PWD/scripts/larch.sh" release finish`: revalidate, publish immutable, verify release attestations, promote Latest, and fast-forward the marketplace-pinned `stable` branch to the tagged commit
 - `"$PWD/scripts/larch.sh" release promote`: promote a specific release after `finish`, or during promote-only recovery
 - `"$PWD/scripts/larch.sh" release promote-latest`: one-off Latest promotion for the most recently published non-draft release
@@ -456,7 +510,7 @@ Runtime helpers:
 Repo-root helpers referenced from steps above:
 
 - `git fetch origin main` + `git merge --ff-only origin/main` — Step 1 sync fast-forwards local `main` only when strictly behind `origin/main`; unpublished or divergent local `main` commits are not rebased
-- `scripts/larch.sh gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `python/cli.py ci wait`, `python/cli.py merge pr --method merge --release-queue-bypass`, and `scripts/larch.sh bgjob {start,wait}`
+- `scripts/larch.sh gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `python/cli.py ci wait`, `python/cli.py merge {pr,wait}`, and `scripts/larch.sh bgjob {start,wait}`
 - `scripts/larch.sh session local-cleanup` (Rust `session local-cleanup` contract) — post-merge local teardown
 
 Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):

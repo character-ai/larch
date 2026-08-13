@@ -872,19 +872,18 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
         self.transport.immutable_releases_enabled(repo).await
     }
 
-    /// Verify both repository settings required by the release state machine.
+    /// Verify the immutable-release setting required by the release state machine.
     ///
     /// # Errors
-    /// Fails unless merge commits and immutable releases are both enabled.
+    /// Fails when the owning immutable-release read fails.
     pub async fn verify_repository_policy(
         &self,
         repo: &RepoSlug,
     ) -> Result<bool, ReleaseServiceError> {
-        let (merge_commits, immutable_releases) = self.repository_policy(repo).await?;
-        Ok(merge_commits && immutable_releases)
+        self.immutable_releases_enabled(repo).await
     }
 
-    /// Read both repository settings required by release staging.
+    /// Read the repository's merge-commit and immutable-release settings.
     ///
     /// # Errors
     /// Fails when either owning read surface fails.
@@ -898,32 +897,14 @@ impl<'a, T: ReleaseTransport> ReleaseOperations<'a, T> {
         ))
     }
 
-    /// Enable both required settings and verify them on the owning read surfaces.
+    /// Verify the required immutable-release setting without mutating repository configuration.
     ///
     /// # Errors
-    /// Fails on a definite mutation error or when read-back does not show both
-    /// settings enabled. Ambiguous writes are reconciled by the same read-back.
+    /// Fails when immutable releases are disabled or the owning read fails.
     pub async fn ensure_repository_policy(
         &self,
         repo: &RepoSlug,
     ) -> Result<(), ReleaseServiceError> {
-        let (merge_commits, immutable_releases) = self.repository_policy(repo).await?;
-        if !merge_commits {
-            let merge = self.transport.enable_merge_commits(repo).await;
-            if let Err(error) = &merge
-                && !is_ambiguous_write(error)
-            {
-                return merge;
-            }
-        }
-        if !immutable_releases {
-            let immutable = self.transport.enable_immutable_releases(repo).await;
-            if let Err(error) = &immutable
-                && !is_ambiguous_write(error)
-            {
-                return immutable;
-            }
-        }
         if self.verify_repository_policy(repo).await? {
             Ok(())
         } else {
@@ -1822,7 +1803,7 @@ mod release_tests {
     }
 
     #[test]
-    fn policy_enablement_and_draft_update_verify_owning_surfaces() {
+    fn policy_verification_and_draft_update_verify_owning_surfaces() {
         let staged = release(7, "v1", true, false, Vec::new());
         let transport = FakeTransport {
             releases: vec![staged.clone()],
@@ -1891,91 +1872,45 @@ mod release_tests {
     }
 
     #[test]
-    fn policy_enablement_mutates_only_disabled_settings() {
-        let merge_transport = FakeTransport {
+    fn policy_verification_is_read_only_and_does_not_require_merge_commits() {
+        let queue_compatible_transport = FakeTransport {
             immutable: true,
-            merge_commit_reads: Mutex::new([Ok(false), Ok(true)].into()),
+            merge_commits: false,
             ..FakeTransport::default()
         };
         assert!(
-            run(ReleaseOperations::new(&merge_transport).ensure_repository_policy(&repo())).is_ok()
+            run(ReleaseOperations::new(&queue_compatible_transport)
+                .ensure_repository_policy(&repo()))
+            .is_ok()
         );
         assert_eq!(
-            *merge_transport
-                .merge_commit_enable_calls
-                .lock()
-                .expect("counter"),
-            1
-        );
-        assert_eq!(
-            *merge_transport
-                .immutable_enable_calls
-                .lock()
-                .expect("counter"),
-            0
-        );
-
-        let immutable_transport = FakeTransport {
-            merge_commits: true,
-            immutable_reads: Mutex::new([Ok(false), Ok(true)].into()),
-            ..FakeTransport::default()
-        };
-        assert!(
-            run(ReleaseOperations::new(&immutable_transport).ensure_repository_policy(&repo()))
-                .is_ok()
-        );
-        assert_eq!(
-            *immutable_transport
+            *queue_compatible_transport
                 .merge_commit_enable_calls
                 .lock()
                 .expect("counter"),
             0
         );
         assert_eq!(
-            *immutable_transport
+            *queue_compatible_transport
                 .immutable_enable_calls
                 .lock()
                 .expect("counter"),
-            1
+            0
         );
-    }
 
-    #[test]
-    fn policy_enablement_reconciles_ambiguous_missing_setting() {
-        let transport = FakeTransport {
-            immutable: true,
-            merge_commit_reads: Mutex::new([Ok(false), Ok(true)].into()),
-            merge_commit_enables: Mutex::new([Err(ReleaseServiceError::AmbiguousMutation)].into()),
+        let disabled = FakeTransport {
+            immutable: false,
             ..FakeTransport::default()
         };
-
-        assert!(run(ReleaseOperations::new(&transport).ensure_repository_policy(&repo())).is_ok());
         assert_eq!(
-            *transport.merge_commit_enable_calls.lock().expect("counter"),
-            1
-        );
-    }
-
-    #[test]
-    fn policy_enablement_fails_closed_on_definite_missing_setting_error() {
-        let transport = FakeTransport {
-            immutable: true,
-            merge_commit_enables: Mutex::new([Err(ReleaseServiceError::MutationLost)].into()),
-            ..FakeTransport::default()
-        };
-
-        assert_eq!(
-            run(ReleaseOperations::new(&transport).ensure_repository_policy(&repo())),
+            run(ReleaseOperations::new(&disabled).ensure_repository_policy(&repo())),
             Err(ReleaseServiceError::MutationLost)
         );
         assert_eq!(
-            *transport.merge_commit_enable_calls.lock().expect("counter"),
-            1
-        );
-        assert_eq!(
-            *transport.immutable_enable_calls.lock().expect("counter"),
+            *disabled.merge_commit_enable_calls.lock().expect("counter"),
             0
         );
+        assert_eq!(*disabled.immutable_enable_calls.lock().expect("counter"), 0);
     }
 
     #[test]
@@ -2353,15 +2288,6 @@ mod transport_tests {
         }
     }
 
-    fn empty_reply_expecting(status: u16, expected_request: &'static str) -> Reply {
-        Reply {
-            status,
-            headers: Vec::new(),
-            body: Vec::new(),
-            expected_requests: vec![expected_request],
-        }
-    }
-
     fn redirect_reply(location: &str) -> Reply {
         Reply {
             status: 302,
@@ -2519,13 +2445,7 @@ mod transport_tests {
         );
         server.join().expect("omitted-field stub");
 
-        let (service, _base, server) = stub(vec![
-            json_reply(200, &json!({"allow_merge_commit": true})),
-            json_reply(200, &json!({"enabled": false})),
-            empty_reply_expecting(204, "PUT /repos/o/r/immutable-releases"),
-            json_reply(200, &json!({"allow_merge_commit": true})),
-            json_reply(200, &json!({"enabled": true})),
-        ]);
+        let (service, _base, server) = stub(vec![json_reply(200, &json!({"enabled": true}))]);
         let cancellation = Cancellation::new();
         let transport = OctocrabReleaseTransport::new(&service, &cancellation);
         assert!(

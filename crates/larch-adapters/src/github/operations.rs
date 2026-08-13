@@ -227,11 +227,16 @@ pub struct ReleasePullRequest {
     pub head_ref: String,
 }
 
-/// Candidate state and exact head object id used by release staging.
+/// Candidate lifecycle and commit identities used by release staging.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReleaseCandidatePullRequest {
     pub state: ReleaseCandidatePullRequestState,
     pub head_oid: String,
+    /// The commit GitHub created when the pull request merged.
+    ///
+    /// This is absent before merge. Release staging uses it instead of the
+    /// branch head because a squash queue creates a distinct main commit.
+    pub merge_commit_oid: Option<String>,
 }
 
 /// Bounded pull-request fields consumed by the run-audit reader.
@@ -2582,9 +2587,19 @@ fn parse_release_candidate_pull_request(
         .ok_or(GitHubOperationError::Malformed(
             "release pull request head oid",
         ))?;
+    let merge_commit_oid = match object.get("merge_commit_sha") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(oid)) if is_git_object_id(oid) => Some(oid.to_owned()),
+        _ => {
+            return Err(GitHubOperationError::Malformed(
+                "release pull request merge commit oid",
+            ));
+        }
+    };
     Ok(ReleaseCandidatePullRequest {
         state,
         head_oid: head_oid.to_owned(),
+        merge_commit_oid,
     })
 }
 
@@ -3001,11 +3016,12 @@ mod tests {
     }
 
     #[test]
-    fn release_candidate_requires_exact_head_identity_and_tracks_merge_state() {
+    fn release_candidate_requires_exact_identities_and_tracks_merge_state() {
         let value = json!({
             "state": "closed",
             "merged": true,
-            "head": {"sha": "1111111111111111111111111111111111111111"}
+            "head": {"sha": "1111111111111111111111111111111111111111"},
+            "merge_commit_sha": "2222222222222222222222222222222222222222"
         });
         let parsed = parse_release_candidate_pull_request(&value).expect("candidate");
         assert_eq!(
@@ -3014,11 +3030,26 @@ mod tests {
         );
         assert_eq!(parsed.head_oid.len(), 40);
         assert_eq!(
+            parsed.merge_commit_oid.as_deref(),
+            Some("2222222222222222222222222222222222222222")
+        );
+        assert_eq!(
             parse_release_candidate_pull_request(&json!({
                 "state": "open", "head": {"sha": "short"}
             })),
             Err(GitHubOperationError::Malformed(
                 "release pull request head oid"
+            ))
+        );
+        assert_eq!(
+            parse_release_candidate_pull_request(&json!({
+                "state": "closed",
+                "merged": true,
+                "head": {"sha": "1111111111111111111111111111111111111111"},
+                "merge_commit_sha": "not-an-oid"
+            })),
+            Err(GitHubOperationError::Malformed(
+                "release pull request merge commit oid"
             ))
         );
     }

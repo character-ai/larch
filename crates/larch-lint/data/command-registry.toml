@@ -4447,6 +4447,18 @@ python_removal = "pending"
 planning_issue = 7681
 
 [[commands]]
+domain = "merge"
+verb = "wait"
+python_module = "larch.git.merge"
+python_function = "wait_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7681
+
+[[commands]]
 domain = "mermaid"
 verb = "sanitize"
 python_module = "larch.rendering.rendering"

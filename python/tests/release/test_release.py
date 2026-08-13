@@ -44,7 +44,7 @@ def test_release_skill_rebuilds_worktree_driver_across_version_change() -> None:
 
 def test_release_skill_step5_candidate_fence_has_timeout_override() -> None:
     skill = (ROOT / ".claude/skills/release/SKILL.md").read_text(encoding="utf-8")
-    step = skill.index("## Step 5 — Validate the candidate draft, then merge")
+    step = skill.index("## Step 5 — Merge the candidate, then validate its post-merge draft")
     timeout = skill.index(
         "Set Bash `timeout: 420000` (7 minutes) on this fence.", step
     )
@@ -53,6 +53,32 @@ def test_release_skill_step5_candidate_fence_has_timeout_override() -> None:
     fence_end = skill.index("```", fence + len("```bash"))
 
     assert step < timeout < fence < commit < fence_end
+
+
+def test_release_skill_stages_only_after_the_normal_queue_merge() -> None:
+    skill = (ROOT / ".claude/skills/release/SKILL.md").read_text(encoding="utf-8")
+    queue_submit = skill.index('python3 "$PWD/python/cli.py" merge pr')
+    queue_wait = skill.index('python3 "$PWD/python/cli.py" merge wait')
+    stage = skill.index('"$PWD/scripts/larch.sh" release stage')
+    validate = skill.index('"$PWD/scripts/larch.sh" release validate-draft')
+
+    assert queue_submit < queue_wait < stage < validate
+    assert "--release-queue-bypass" not in skill
+    queue_fence_end = skill.index(chr(96) * 3, queue_submit)
+    queue_command = skill[queue_submit:queue_fence_end]
+    assert "--no-admin-fallback" in queue_command
+    assert "\n  --admin" not in queue_command
+    assert 'SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")' in skill
+    asset_start = skill.index("  --step release-assets")
+    assert (
+        skill.rfind('"$PWD/scripts/larch.sh" bgjob start', 0, asset_start)
+        >= 0
+    )
+    asset_wait = skill.index("  --step release-assets", asset_start + 1)
+    assert (
+        skill.rfind('"$PWD/scripts/larch.sh" bgjob wait', 0, asset_wait)
+        >= 0
+    )
 
 
 def test_release_skill_step7_upgrade_run_sets_the_driver_env_contract() -> None:

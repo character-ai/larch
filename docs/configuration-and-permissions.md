@@ -192,7 +192,7 @@ These checks are verified immediately before any merge attempt — the script do
 
 **Audit trail when `--admin` fires.** When the `--admin` attempt succeeds, `/implement` Step 12b posts a best-effort comment on the merged PR explaining that branch protection was overridden after CI passed and merge state was re-verified. The comment is informational; if posting it fails (e.g., token cannot comment), the failure is logged to `Tool Failures` and the merge stays merged. The existing stderr `**⚠ Merged with --admin (review overridden).**` warning in the run output is also retained.
 
-**Release exception.** The development-only release workflow validates a tagged version-bump candidate and requires a merge commit so that candidate remains an ancestor of `main`. It passes the narrow `--release-queue-bypass` option after draft validation. This is the only queue bypass; ordinary PR workflows enqueue. On a queue-enabled branch, a rejected release admin merge stops without a plain merge or queue fallback.
+**Release flow.** The development-only release workflow first submits its version-bump PR through the same normal queue path as ordinary PRs. After GitHub reports it merged, release staging resolves the PR's recorded merge commit, verifies its version, and tags that commit. The workflow never requests an admin merge, a merge-queue bypass, a merge strategy for a queued PR, or a repository/ruleset configuration change.
 
 **Opt out: `--no-admin-fallback`.** Pass `--no-admin-fallback` to `/implement` (or to `/im`, which forwards it) to require branch-protection policies to actually deny a direct merge. With this flag set and no queue enabled, `python/cli.py merge pr` skips the `--admin` attempt once the admin-eligible gate is reached, tries only a plain squash merge, returns `MERGE_RESULT=policy_denied` if that plain merge fails, and `/implement` bails to Step 12d with `FINAL_BAIL_REASON="branch protection denied merge; --no-admin-fallback set"`. The flag does not alter queue submission, which never uses `--admin`. See `python/larch/git/merge.py` for the script-level contract.
 
@@ -317,8 +317,9 @@ environments. The initial transport supports only GitHub.com over HTTPS;
 GitHub Enterprise needs a separate reviewed host policy.
 
 `/release` requires repository Administration read permission on the active
-`gh` credential to verify merge-commit and immutable-release policy. It needs
-Administration write only when either setting is disabled and must be enabled.
+`gh` credential to verify immutable-release policy. It never changes
+repository policy, so it does not require Administration write; a disabled or
+unreadable immutable-release setting fails the release before mutation.
 
 The Rust process allowlist permits `gh` only for the fixed
 `auth token --hostname github.com` operation. GitHub API operations use the

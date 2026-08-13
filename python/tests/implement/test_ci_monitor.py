@@ -1437,7 +1437,9 @@ def test_monitor_already_merged_short_circuit_ok() -> None:
     assert result.goto_rebase is False
 
 
-def test_wait_for_pr_merge_observes_open_then_merged() -> None:
+def test_wait_for_pr_merge_observes_open_then_merged(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     key = (
         "gh",
         "pr",
@@ -1481,6 +1483,7 @@ def test_wait_for_pr_merge_observes_open_then_merged() -> None:
 
     assert merged.state == "MERGED"
     assert sleeps == [1]
+    assert "queued PR #1 is still open; waiting 1s for merge" in capsys.readouterr().err
 
 
 def test_wait_for_pr_merge_times_out_without_claiming_completion() -> None:
