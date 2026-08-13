@@ -3,11 +3,11 @@
 use std::{collections::BTreeSet, env, fs, path::Path, process::ExitCode, time::Duration};
 
 use larch_adapters::{
-    GitRef, GixRepository, SecureTempDir, TagMutationRequest, TemporaryRoot,
+    GitRef, SecureTempDir, TagMutationRequest, TemporaryRoot,
     clock::TokioClock,
     github::{
         AttestationOperations, DraftReleaseInput, OctocrabAttestationTransport,
-        OctocrabReleaseTransport, ReleaseCandidatePullRequest, ReleaseOperations, RepoSlug,
+        OctocrabReleaseTransport, ReleaseOperations, RepoSlug,
     },
     runtime::Cancellation,
 };
@@ -87,18 +87,9 @@ pub fn validate_candidate_assets(
     })
 }
 
-trait Services {
-    fn origin_repo(&self) -> Result<String, String>;
+trait Services: release_common::PostMergeReleaseServices {
     fn ensure_policy(&self, repo: &RepoSlug) -> Result<(), String>;
     fn verify_policy(&self, repo: &RepoSlug) -> Result<(), String>;
-    fn fetch_main(&self) -> Result<(), String>;
-    fn pull_request(
-        &self,
-        repo: &RepoSlug,
-        number: u64,
-    ) -> Result<ReleaseCandidatePullRequest, String>;
-    fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, String>;
-    fn plugin_version_at(&self, oid: &str) -> Result<String, String>;
     fn candidate_license(&self, oid: &str) -> Result<Vec<u8>, String>;
     fn remote_tag(&self, repo: &RepoSlug, tag: &str) -> Result<Option<String>, String>;
     fn local_tag(&self, tag: &str) -> Result<Option<String>, String>;
@@ -134,10 +125,6 @@ trait Services {
 type ProductionServices = release_common::ProductionReleaseServices;
 
 impl Services for ProductionServices {
-    fn origin_repo(&self) -> Result<String, String> {
-        self.origin_repo()
-    }
-
     fn ensure_policy(&self, repo: &RepoSlug) -> Result<(), String> {
         let transport = OctocrabReleaseTransport::new(&self.github, &self.cancellation);
         let enabled = self
@@ -153,26 +140,6 @@ impl Services for ProductionServices {
 
     fn verify_policy(&self, repo: &RepoSlug) -> Result<(), String> {
         self.ensure_policy(repo)
-    }
-
-    fn fetch_main(&self) -> Result<(), String> {
-        Self::fetch_origin_main(self)
-    }
-
-    fn pull_request(
-        &self,
-        repo: &RepoSlug,
-        number: u64,
-    ) -> Result<ReleaseCandidatePullRequest, String> {
-        self.pull_request(repo, number)
-    }
-
-    fn plugin_version_at(&self, oid: &str) -> Result<String, String> {
-        plugin_version_at(&self.repository, oid)
-    }
-
-    fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, String> {
-        Self::commit_is_ancestor(self, ancestor, descendant)
     }
 
     fn candidate_license(&self, oid: &str) -> Result<Vec<u8>, String> {
@@ -311,23 +278,6 @@ impl Services for ProductionServices {
             .map(|_| ())
             .map_err(|error| error.to_string())
     }
-}
-
-pub fn plugin_version_at(repository: &GixRepository, oid: &str) -> Result<String, String> {
-    let id = repository
-        .resolve_revision(&Revision::new(oid.as_bytes()))
-        .map_err(|error| error.to_string())?;
-    let bytes = repository
-        .blob_at_commit(&id, &GitPath::new(b".claude-plugin/plugin.json".to_vec()))
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| format!("plugin.json read at {oid} failed: file is missing"))?;
-    let value: serde_json::Value = serde_json::from_slice(&bytes)
-        .map_err(|_| format!("plugin.json at {oid} is invalid JSON"))?;
-    value
-        .get("version")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_owned)
-        .ok_or_else(|| format!("plugin.json at {oid} has no version"))
 }
 
 fn ensure_policy_with(services: &dyn Services, repo: &str) -> Result<(), String> {
@@ -611,7 +561,10 @@ fn require_safe_file(path: &Path, message: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use larch_adapters::{github::ReleaseCandidatePullRequestState, runtime::LarchRuntime};
+    use larch_adapters::{
+        github::{ReleaseCandidatePullRequest, ReleaseCandidatePullRequestState},
+        runtime::LarchRuntime,
+    };
     use larch_core::{MonotonicClock, RemoteAsset};
     use larch_test_support::TestClock;
     use std::{
@@ -675,15 +628,9 @@ mod tests {
         }
     }
 
-    impl Services for FakeServices {
+    impl release_common::PostMergeReleaseServices for FakeServices {
         fn origin_repo(&self) -> Result<String, String> {
             Ok(self.origin.clone())
-        }
-        fn ensure_policy(&self, _repo: &RepoSlug) -> Result<(), String> {
-            self.policy.clone()
-        }
-        fn verify_policy(&self, _repo: &RepoSlug) -> Result<(), String> {
-            self.policy.clone()
         }
         fn fetch_main(&self) -> Result<(), String> {
             self.fetches.set(self.fetches.get() + 1);
@@ -701,6 +648,15 @@ mod tests {
         }
         fn plugin_version_at(&self, _oid: &str) -> Result<String, String> {
             Ok(self.plugin_version.clone())
+        }
+    }
+
+    impl Services for FakeServices {
+        fn ensure_policy(&self, _repo: &RepoSlug) -> Result<(), String> {
+            self.policy.clone()
+        }
+        fn verify_policy(&self, _repo: &RepoSlug) -> Result<(), String> {
+            self.policy.clone()
         }
         fn candidate_license(&self, _oid: &str) -> Result<Vec<u8>, String> {
             Ok(b"license".to_vec())

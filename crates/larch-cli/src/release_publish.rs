@@ -2,9 +2,7 @@
 
 use std::process::ExitCode;
 
-use larch_adapters::github::{
-    AttestationOperations, OctocrabAttestationTransport, ReleaseCandidatePullRequest, RepoSlug,
-};
+use larch_adapters::github::{AttestationOperations, OctocrabAttestationTransport, RepoSlug};
 use larch_core::{
     ImmutableReleaseAttestationRequest, ReleaseAssetSubject, ReleaseSourceCommit, ReleaseState,
     ReleaseTag, emit_kv,
@@ -91,16 +89,7 @@ fn exit(result: Result<(), String>) -> ExitCode {
     release_common::exit(result)
 }
 
-trait Services {
-    fn origin_repo(&self) -> Result<String, String>;
-    fn fetch_main(&self) -> Result<(), String>;
-    fn pull_request(
-        &self,
-        repo: &RepoSlug,
-        number: u64,
-    ) -> Result<ReleaseCandidatePullRequest, String>;
-    fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, String>;
-    fn plugin_version_at(&self, revision: &str) -> Result<String, String>;
+trait Services: release_common::PostMergeReleaseServices {
     fn release(&self, repo: &RepoSlug, tag: &str) -> Result<Option<ReleaseState>, String>;
     fn validate_assets(
         &self,
@@ -122,30 +111,6 @@ trait Services {
 type ProductionServices = release_common::ProductionReleaseServices;
 
 impl Services for ProductionServices {
-    fn origin_repo(&self) -> Result<String, String> {
-        self.origin_repo()
-    }
-
-    fn fetch_main(&self) -> Result<(), String> {
-        Self::fetch_origin_main(self)
-    }
-
-    fn pull_request(
-        &self,
-        repo: &RepoSlug,
-        number: u64,
-    ) -> Result<ReleaseCandidatePullRequest, String> {
-        self.pull_request(repo, number)
-    }
-
-    fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, String> {
-        Self::commit_is_ancestor(self, ancestor, descendant)
-    }
-
-    fn plugin_version_at(&self, revision: &str) -> Result<String, String> {
-        release_stage::plugin_version_at(&self.repository, revision)
-    }
-
     fn release(&self, repo: &RepoSlug, tag: &str) -> Result<Option<ReleaseState>, String> {
         self.release_operations(
             |operations, repo| {
@@ -496,7 +461,10 @@ const fn boolean(value: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use larch_adapters::{GixRepository, github::ReleaseCandidatePullRequestState};
+    use larch_adapters::{
+        GixRepository,
+        github::{ReleaseCandidatePullRequest, ReleaseCandidatePullRequestState},
+    };
     use larch_core::RemoteAsset;
     use std::cell::RefCell;
 
@@ -544,7 +512,7 @@ mod tests {
         }
     }
 
-    impl Services for FakeServices {
+    impl release_common::PostMergeReleaseServices for FakeServices {
         fn origin_repo(&self) -> Result<String, String> {
             Ok(self.origin.clone())
         }
@@ -569,6 +537,9 @@ mod tests {
                 self.source_version.clone()
             })
         }
+    }
+
+    impl Services for FakeServices {
         fn release(&self, _repo: &RepoSlug, _tag: &str) -> Result<Option<ReleaseState>, String> {
             Ok((!self.release_missing).then(|| self.release.borrow().clone()))
         }

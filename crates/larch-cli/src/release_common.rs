@@ -9,7 +9,7 @@ use larch_adapters::{
     },
     runtime::{Cancellation, LarchRuntime},
 };
-use larch_core::{ObjectId, ReleaseTag, RepositoryRead, Revision, SafeText};
+use larch_core::{GitPath, ObjectId, ReleaseTag, RepositoryRead, Revision, SafeText};
 
 use crate::{git_command_runtime::GitCommandRuntime, github_repository_resolution};
 
@@ -35,6 +35,22 @@ pub fn merged_release_commit(pull_request: &ReleaseCandidatePullRequest) -> Resu
         .merge_commit_oid
         .as_deref()
         .ok_or_else(|| "merged release candidate PR has no merge commit".to_owned())
+}
+
+/// Common read-only operations required to verify a post-merge release commit.
+///
+/// Both staging and publication must prove their candidate against the same
+/// GitHub merge record and freshly fetched default branch.
+pub trait PostMergeReleaseServices {
+    fn origin_repo(&self) -> Result<String, String>;
+    fn fetch_main(&self) -> Result<(), String>;
+    fn pull_request(
+        &self,
+        repo: &RepoSlug,
+        number: u64,
+    ) -> Result<ReleaseCandidatePullRequest, String>;
+    fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, String>;
+    fn plugin_version_at(&self, revision: &str) -> Result<String, String>;
 }
 
 impl ProductionReleaseServices {
@@ -172,6 +188,32 @@ impl ProductionReleaseServices {
     }
 }
 
+impl PostMergeReleaseServices for ProductionReleaseServices {
+    fn origin_repo(&self) -> Result<String, String> {
+        ProductionReleaseServices::origin_repo(self)
+    }
+
+    fn fetch_main(&self) -> Result<(), String> {
+        self.fetch_origin_main()
+    }
+
+    fn pull_request(
+        &self,
+        repo: &RepoSlug,
+        number: u64,
+    ) -> Result<ReleaseCandidatePullRequest, String> {
+        ProductionReleaseServices::pull_request(self, repo, number)
+    }
+
+    fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool, String> {
+        self.commit_is_ancestor(ancestor, descendant)
+    }
+
+    fn plugin_version_at(&self, revision: &str) -> Result<String, String> {
+        plugin_version_at(&self.repository, revision)
+    }
+}
+
 fn origin() -> Result<GitRemote, String> {
     GitRemote::new("origin").map_err(|error| error.to_string())
 }
@@ -202,6 +244,23 @@ pub fn is_ancestor(
     repository
         .is_ancestor(&ancestor, &descendant)
         .map_err(|error| error.to_string())
+}
+
+pub fn plugin_version_at(repository: &GixRepository, oid: &str) -> Result<String, String> {
+    let id = repository
+        .resolve_revision(&Revision::new(oid.as_bytes()))
+        .map_err(|error| error.to_string())?;
+    let bytes = repository
+        .blob_at_commit(&id, &GitPath::new(b".claude-plugin/plugin.json".to_vec()))
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("plugin.json read at {oid} failed: file is missing"))?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|_| format!("plugin.json at {oid} is invalid JSON"))?;
+    value
+        .get("version")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| format!("plugin.json at {oid} has no version"))
 }
 
 pub fn command<S, T>(
