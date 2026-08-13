@@ -7,7 +7,7 @@
   },
   "side_effects": {},
   "stderr": {
-    "text": ""
+    "text": "Usage: umbrella record-resolved --proposal PATH --identity SHA256 --number N --url URL [--issue-id ID]\n"
   },
   "stdout": {
     "text": "UMBRELLA_FAILED=true\nREASON=usage\n"

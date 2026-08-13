@@ -7,7 +7,7 @@
   },
   "side_effects": {},
   "stderr": {
-    "text": ""
+    "text": "Usage: umbrella mutate --repo OWNER/REPO --issue N --title TITLE --body-file PATH [--managed-partition true|false] [--adopted-umbrella true|false]\n"
   },
   "stdout": {
     "text": "UMBRELLA_FAILED=true\nREASON=usage\n"

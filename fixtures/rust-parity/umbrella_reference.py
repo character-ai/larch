@@ -4,7 +4,9 @@ This reproduces all eight `/umbrella` verbs from
 `python/larch/issue/umbrella.py` as they behaved at cutover, restricted to the
 paths a hermetic sandbox can reach. The five record verbs moved to Rust in
 #8173; `mutate`, `verify`, and `verify-completion` followed in #8174, and the
-whole Python module was removed with them.
+whole Python module was removed with them. The reviewed #8454 Rust-only usage
+presentation is modeled below so the parity cases continue to pin the current
+CLI contract.
 
 Six of the eight verbs never leave the filesystem, so their cases cover the
 whole command: the strict `--flag value` scanner, the durable record's exact
@@ -28,7 +30,7 @@ Deliberate omissions, none of them part of a command contract:
   aliases such as the macOS `/tmp` and `/var`. Every case here names the
   canonicalized parity sandbox, so no exempted alias is on any path.
 
-Five differences are intentional and documented in the pull request:
+Seven differences are intentional and documented in the pull request:
 
 * Trusted roots. Python re-derived containment lexically on every read and
   write; Rust resolves each declared root once through the shared
@@ -51,9 +53,12 @@ Five differences are intentional and documented in the pull request:
 * A pull request. `gh issue view` refused a pull-request number outright, so
   Python reported the transport refusal; Rust discriminates the typed read and
   reports the same token.
+* Usage text. Python emitted only the machine-readable refusal rows. Rust
+  prints a per-verb stderr usage string for `REASON=usage`; this reference
+  models that reviewed post-cutover contract.
 """
-# ruff: noqa: FBT001, FBT003, PLR0911, PLR0912, PLR0913, C901 - the frozen readers
-# return and branch exactly as they shipped.
+# ruff: noqa: FBT001, FBT003, PLR0911, PLR0912, PLR0913, C901 - the frozen
+# readers and reviewed presentation model preserve their original branch shape.
 
 from __future__ import annotations
 
@@ -83,6 +88,18 @@ MANAGED_PARTITION_PREFIXES = ("[DESIGNING] ", "[IMPLEMENTING] ")
 LEAF_STATES = ("pending", "in-flight", "resolved")
 REPO_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 
+PREPARE_USAGE = "Usage: umbrella prepare --repo OWNER/REPO --issue N --output PATH [--managed-partition true|false]"
+PERSIST_PROPOSAL_USAGE = (
+    "Usage: umbrella persist-proposal (--proposal PATH --output PATH | --snapshot PATH --prepared-root PATH --prepared-input PATH --prepared-deps PATH --completion-sentinel PATH --output-root PATH --output PATH --issue-input-output PATH --deps-output PATH)"
+    "\n--proposal must name a ProposalRecord JSON object with umbrella, repository, expected_updated_at, common_context, and non-empty leaves; see larch_core::issue::umbrella::ProposalRecord."
+)
+MARK_IN_FLIGHT_USAGE = "Usage: umbrella mark-in-flight --proposal PATH --identity SHA256"
+RECORD_RESOLVED_USAGE = "Usage: umbrella record-resolved --proposal PATH --identity SHA256 --number N --url URL [--issue-id ID]"
+RECONCILE_IN_FLIGHT_USAGE = "Usage: umbrella reconcile-in-flight --proposal PATH --identity SHA256 --candidates PATH"
+MUTATE_USAGE = "Usage: umbrella mutate --repo OWNER/REPO --issue N --title TITLE --body-file PATH [--managed-partition true|false] [--adopted-umbrella true|false]"
+VERIFY_USAGE = "Usage: umbrella verify --proposal PATH --leaves PATH [--sentinel-file PATH --sentinel-root PATH --prepared-input PATH --prepared-deps PATH]"
+VERIFY_COMPLETION_USAGE = "Usage: umbrella verify-completion --repo OWNER/REPO --issue N --sentinel-file PATH --sentinel-root PATH --prepared-input PATH --prepared-deps PATH"
+
 
 class UmbrellaError(Exception):
     def __init__(self, reason: str) -> None:
@@ -100,6 +117,11 @@ def emit_error(reason: str) -> int:
     emit_kv("UMBRELLA_FAILED", True)
     emit_kv("REASON", reason)
     return 2
+
+
+def usage_error(usage: str) -> int:
+    sys.stderr.write(f"{usage}\n")
+    return emit_error("usage")
 
 
 def validate_repo_slug(value: str) -> bool:
@@ -647,10 +669,10 @@ def completion_paths(values: dict[str, str]) -> tuple[str, str, str, str] | None
 def prepare_main(argv: list[str]) -> int:
     values = parse_values(argv, {"--repo", "--issue", "--output", "--managed-partition"})
     if values is None or not {"--repo", "--issue", "--output"} <= values.keys():
-        return emit_error("usage")
+        return usage_error(PREPARE_USAGE)
     managed = values.get("--managed-partition", "false")
     if managed not in {"true", "false"}:
-        return emit_error("usage")
+        return usage_error(PREPARE_USAGE)
     if not validate_repo_slug(values["--repo"]) or not values["--issue"].isdecimal() or values["--issue"] == "0":
         return emit_error("invalid-identity")
     msg = "the sandbox cannot reach the GitHub read this case would perform"
@@ -672,18 +694,18 @@ def persist_proposal_main(argv: list[str]) -> int:
     }
     values = parse_values(argv, permitted)
     if values is None:
-        return emit_error("usage")
+        return usage_error(PERSIST_PROPOSAL_USAGE)
     prepared_mode = "--proposal" not in values
     try:
         if "--proposal" in values:
             if set(values) != {"--proposal", "--output"}:
-                return emit_error("usage")
+                return usage_error(PERSIST_PROPOSAL_USAGE)
             proposal = load_proposal(Path(values["--proposal"]))
             persist_proposal(Path(values["--output"]), proposal)
         else:
             required = permitted - {"--proposal"}
             if set(values) != required:
-                return emit_error("usage")
+                return usage_error(PERSIST_PROPOSAL_USAGE)
             proposal = persist_prepared_proposal(values)
     except UmbrellaError as exc:
         return emit_error(exc.reason)
@@ -698,7 +720,7 @@ def persist_proposal_main(argv: list[str]) -> int:
 def mark_in_flight_main(argv: list[str]) -> int:
     values = parse_values(argv, {"--proposal", "--identity"})
     if values is None or not {"--proposal", "--identity"} <= values.keys():
-        return emit_error("usage")
+        return usage_error(MARK_IN_FLIGHT_USAGE)
     try:
         _ = mark_in_flight(Path(values["--proposal"]), values["--identity"])
     except UmbrellaError as exc:
@@ -710,7 +732,7 @@ def mark_in_flight_main(argv: list[str]) -> int:
 def record_resolved_main(argv: list[str]) -> int:
     values = parse_values(argv, {"--proposal", "--identity", "--number", "--url", "--issue-id"})
     if values is None or not {"--proposal", "--identity", "--number", "--url"} <= values.keys():
-        return emit_error("usage")
+        return usage_error(RECORD_RESOLVED_USAGE)
     try:
         _ = record_resolved(
             Path(values["--proposal"]),
@@ -728,7 +750,7 @@ def record_resolved_main(argv: list[str]) -> int:
 def reconcile_in_flight_main(argv: list[str]) -> int:
     values = parse_values(argv, {"--proposal", "--identity", "--candidates"})
     if values is None or not {"--proposal", "--identity", "--candidates"} <= values.keys():
-        return emit_error("usage")
+        return usage_error(RECONCILE_IN_FLIGHT_USAGE)
     try:
         candidate_value = load_json(Path(values["--candidates"]))
         if not isinstance(candidate_value, list) or not all(isinstance(item, dict) for item in candidate_value):
@@ -756,10 +778,10 @@ def reconcile_in_flight_main(argv: list[str]) -> int:
 def mutate_main(argv: list[str]) -> int:
     values = parse_values(argv, {"--repo", "--issue", "--title", "--body-file", "--managed-partition"})
     if values is None or not {"--repo", "--issue", "--title", "--body-file"} <= values.keys():
-        return emit_error("usage")
+        return usage_error(MUTATE_USAGE)
     managed = values.get("--managed-partition", "false")
     if managed not in {"true", "false"}:
-        return emit_error("usage")
+        return usage_error(MUTATE_USAGE)
     try:
         body = Path(values["--body-file"]).read_text(encoding="utf-8")
     except OSError:
@@ -776,10 +798,10 @@ def verify_main(argv: list[str]) -> int:
         {"--proposal", "--leaves", "--sentinel-file", "--sentinel-root", "--prepared-input", "--prepared-deps"},
     )
     if values is None or not {"--proposal", "--leaves"} <= values.keys():
-        return emit_error("usage")
+        return usage_error(VERIFY_USAGE)
     paths = completion_paths(values)
     if paths is None:
-        return emit_error("usage")
+        return usage_error(VERIFY_USAGE)
     sentinel_file, sentinel_root, prepared_input, prepared_deps = paths
     try:
         proposal = load_proposal(Path(values["--proposal"]))
@@ -806,7 +828,7 @@ def verify_completion_main(argv: list[str]) -> int:
     required = {"--sentinel-file", "--sentinel-root", "--prepared-input", "--prepared-deps", "--repo", "--issue"}
     values = parse_values(argv, required)
     if values is None or set(values) != required:
-        return emit_error("usage")
+        return usage_error(VERIFY_COMPLETION_USAGE)
     try:
         require_positive(values["--issue"], "umbrella")
         if not validate_repo_slug(values["--repo"]):
