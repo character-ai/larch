@@ -274,7 +274,7 @@ run_post_phase() {
     mkdir -p "$DESIGN_TMPDIR/plan-review/round-${artifact_round}"
     retally_stdout="$(mktemp "${TMPDIR:-/tmp}/larch-step3-mav-retally.XXXXXX")" || exit 1
     if [ ! -r "$DESIGN_TMPDIR/voter-main-agent.txt" ]; then
-        python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" voting findings-classification-header \
+        "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" voting findings-classification-header \
             >"$DESIGN_TMPDIR/plan-review/round-${artifact_round}/findings-classification.tsv"
         {
             printf '%s\n' 'TALLY_PLAN_REVIEW_STATUS=tally-error'

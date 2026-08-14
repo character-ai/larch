@@ -38,6 +38,9 @@ pub use types::{
     parse_findings_text, read_finding_text, render_wire_values,
 };
 pub use voting::{
-    accepted_finding_points_from_severities, classify_oos_result, classify_result,
-    neutral_high_severity_rescue_to_oos, oos_fileable_from_votes,
+    FINDINGS_CLASSIFICATION_HEADER, ParsedJudgeVote, accept_finding,
+    accepted_finding_points_from_severities, alias_ballot_id, ballot_blocks, ballot_parse_text,
+    classify_oos_result, classify_result, classify_unbounded_result, false_positive_match,
+    neutral_high_severity_rescue_to_oos, oos_fileable_from_votes, panel_tier,
+    parse_judge_vote_text, reviewer_for_block_text, vote_for_id_text,
 };

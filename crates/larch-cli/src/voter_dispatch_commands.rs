@@ -10,11 +10,9 @@
 //! external vendor is present, so a both-external-down panel shrinks to the
 //! single Claude anchor instead of spawning redundant same-model judges.
 //!
-//! This command owns no spawn of its own. `agent dispatch-waterfall` runs
-//! through the verified bootstrap entrypoint, and the sibling verbs Python
-//! still owns — `render voter`, `voter-calibration snapshot`,
-//! `voting parse-rate-retry`, and `timing record-vendor-task` — run through the
-//! shared delegated-verb seam.
+//! This command owns no external spawn of its own. Parse-rate checks call their
+//! Rust owner in process. `agent dispatch-waterfall` uses the verified bootstrap,
+//! while Python-owned render, calibration, and timing verbs use the delegated seam.
 
 use std::{
     collections::BTreeMap,
@@ -1146,8 +1144,6 @@ fn run_parse_rate_checks(options: &Options, context: &Context, states: &mut [Vot
             continue;
         }
         let mut arguments: Vec<OsString> = vec![
-            OsString::from("voting"),
-            OsString::from("parse-rate-retry"),
             OsString::from("--ballot-file"),
             OsString::from(&options.ballot_file),
             OsString::from("--id-grammar"),
@@ -1168,28 +1164,9 @@ fn run_parse_rate_checks(options: &Options, context: &Context, states: &mut [Vot
             OsString::from("--voter-tool"),
             OsString::from(&state.tool),
         ]);
-        state.parse_rate_status = parse_rate_status(arguments);
-    }
-}
-
-/// Fail closed on every malformed parse-rate result.
-fn parse_rate_status(arguments: Vec<OsString>) -> String {
-    let Ok(output) = run_python_verb(arguments, VERB_TIMEOUT) else {
-        return "NOT_SUBSTANTIVE".to_owned();
-    };
-    if !output.status().success() {
-        return "NOT_SUBSTANTIVE".to_owned();
-    }
-    let text = String::from_utf8_lossy(output.stdout()).into_owned();
-    let last = text
-        .lines()
-        .map(str::trim)
-        .rfind(|line| !line.is_empty())
-        .unwrap_or_default();
-    if last == "OK" {
-        "OK".to_owned()
-    } else {
-        "NOT_SUBSTANTIVE".to_owned()
+        crate::voting_commands::parse_rate_retry_status(&arguments)
+            .unwrap_or("NOT_SUBSTANTIVE")
+            .clone_into(&mut state.parse_rate_status);
     }
 }
 

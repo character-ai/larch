@@ -8347,11 +8347,12 @@ verb = "accept-finding"
 python_module = "larch.review.voting"
 python_function = "accept_finding_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
 
 [[commands]]
 domain = "voting"
@@ -8359,11 +8360,12 @@ verb = "ballot-parse"
 python_module = "larch.review.voting"
 python_function = "ballot_parse_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
 
 [[commands]]
 domain = "voting"
@@ -8371,11 +8373,12 @@ verb = "classify-result"
 python_module = "larch.review.voting"
 python_function = "classify_result_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
 
 [[commands]]
 domain = "voting"
@@ -8383,11 +8386,13 @@ verb = "code-review-classification-header"
 python_module = "larch.review.voting"
 python_function = "code_review_classification_header_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
+clean_install_test = "clean-install-voting-code-review-classification-header"
 
 [[commands]]
 domain = "voting"
@@ -8431,11 +8436,12 @@ verb = "false-positive-match"
 python_module = "larch.review.voting"
 python_function = "false_positive_match_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
 
 [[commands]]
 domain = "voting"
@@ -8443,11 +8449,12 @@ verb = "file-line-regex"
 python_module = "larch.review.voting"
 python_function = "file_line_regex_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
 
 [[commands]]
 domain = "voting"
@@ -8455,11 +8462,13 @@ verb = "findings-classification-header"
 python_module = "larch.review.voting"
 python_function = "findings_classification_header_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
+clean_install_test = "clean-install-voting-findings-classification-header"
 
 [[commands]]
 domain = "voting"
@@ -8467,11 +8476,12 @@ verb = "is-security-block"
 python_module = "larch.review.voting"
 python_function = "is_security_block_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
 
 [[commands]]
 domain = "voting"
@@ -8479,11 +8489,12 @@ verb = "panel-tier"
 python_module = "larch.review.voting"
 python_function = "panel_tier_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
 
 [[commands]]
 domain = "voting"
@@ -8491,11 +8502,12 @@ verb = "parse-judge-vote"
 python_module = "larch.review.voting"
 python_function = "parse_judge_vote_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
 
 [[commands]]
 domain = "voting"
@@ -8503,11 +8515,13 @@ verb = "parse-rate-check"
 python_module = "larch.review.voting"
 python_function = "parse_rate_check_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
+clean_install_test = "clean-install-voting-parse-rate-check"
 
 [[commands]]
 domain = "voting"
@@ -8515,11 +8529,12 @@ verb = "parse-rate-diag-matches"
 python_module = "larch.review.voting"
 python_function = "parse_rate_diag_matches_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
 
 [[commands]]
 domain = "voting"
@@ -8527,11 +8542,13 @@ verb = "parse-rate-retry"
 python_module = "larch.review.voting"
 python_function = "parse_rate_retry_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
+clean_install_test = "clean-install-voting-parse-rate-retry"
 
 [[commands]]
 domain = "voting"
@@ -8539,11 +8556,12 @@ verb = "reviewer-for-block"
 python_module = "larch.review.voting"
 python_function = "reviewer_for_block_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
 
 [[commands]]
 domain = "voting"
@@ -8563,11 +8581,12 @@ verb = "split-ballot"
 python_module = "larch.review.voting"
 python_function = "split_ballot_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
 
 [[commands]]
 domain = "voting"
@@ -8587,11 +8606,12 @@ verb = "vote-for-id"
 python_module = "larch.review.voting"
 python_function = "vote_for_id_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8437
 
 [[commands]]
 domain = "voting"
@@ -8987,7 +9007,7 @@ rust = ["stall-recovery record-escalation"]
 path = "python/larch/review/plan_review_panel.py"
 kind = "python-runtime"
 python = []
-rust = ["agent dispatch-waterfall", "agent launch-claude-review"]
+rust = ["agent dispatch-waterfall", "agent launch-claude-review", "voting parse-rate-retry"]
 
 [[callers]]
 path = "python/larch/review/plan_review_round.py"
@@ -9023,7 +9043,7 @@ rust = ["agent classify-diff"]
 path = "python/larch/review/review_tally.py"
 kind = "python-runtime"
 python = []
-rust = ["run-log append", "run-log append-entry", "run-log write"]
+rust = ["run-log append", "run-log append-entry", "run-log write", "voting parse-rate-check"]
 
 [[callers]]
 path = "python/larch/review/round_runner.py"
@@ -9340,8 +9360,8 @@ rust = []
 [[callers]]
 path = "skills/design/scripts/design-step3-mav.sh"
 kind = "skill"
-python = ["design pause-save", "plan-review persist-retally-env", "render scope-anchor", "voting findings-classification-header"]
-rust = ["kv get", "run-log append-failure", "session require-plugin-root", "session validate-design-tmpdir", "timing record-round"]
+python = ["design pause-save", "plan-review persist-retally-env", "render scope-anchor"]
+rust = ["kv get", "run-log append-failure", "session require-plugin-root", "session validate-design-tmpdir", "timing record-round", "voting findings-classification-header"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-review.md"
@@ -10030,8 +10050,8 @@ rust = []
 [[callers]]
 path = "skills/shared/voting-protocol.md"
 kind = "skill"
-python = ["plan-review tally", "plan-review voter-dispatch", "render voter", "review tally-code-votes", "voting code-review-classification-header", "voting findings-classification-header"]
-rust = ["agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review", "oos file"]
+python = ["plan-review tally", "plan-review voter-dispatch", "render voter", "review tally-code-votes"]
+rust = ["agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review", "oos file", "voting code-review-classification-header", "voting findings-classification-header"]
 
 [[callers]]
 path = "skills/status/SKILL.md"

@@ -701,8 +701,7 @@ def _make_voter_prompt(
 def _parse_rate_retry(*, design: Path, ballot: Path, slot: str, voter_file: Path, voter_tool: str, prompt_file: Path) -> str:
     return validate_parse_rate_result(
         [
-            sys.executable,
-            str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
+            str(larch_entrypoint(_REPO_ROOT)),
             "voting",
             "parse-rate-retry",
             "--ballot-file",

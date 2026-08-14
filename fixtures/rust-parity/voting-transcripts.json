@@ -1,0 +1,426 @@
+[
+  {
+    "name": "findings-classification-header",
+    "arguments": ["findings-classification-header"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\tscope\n",
+    "stderr": ""
+  },
+  {
+    "name": "code-review-classification-header",
+    "arguments": ["code-review-classification-header"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tscope\n",
+    "stderr": ""
+  },
+  {
+    "name": "vote-for-id-last-match",
+    "arguments": ["vote-for-id", "FINDING_1", "{sandbox}/voter.txt"],
+    "seeds": {"voter.txt": "FINDING_1: YES\nFINDING_10: YES\nfinding_1: exonerate -- old token\n"},
+    "exit_code": 0,
+    "stdout": "NO\n",
+    "stderr": ""
+  },
+  {
+    "name": "vote-for-id-unicode-case-and-python-whitespace",
+    "arguments": ["vote-for-id", "FINDING_1", "{sandbox}/voter.txt"],
+    "seeds": {"voter.txt": "FİNDING_1: yeſ\u001fignored\n"},
+    "exit_code": 0,
+    "stdout": "YES\n",
+    "stderr": ""
+  },
+  {
+    "name": "reviewer-for-block",
+    "arguments": ["reviewer-for-block", "{sandbox}/block.md"],
+    "seeds": {"block.md": "### FINDING_1: one\n- **Reviewer(s)**: **Structure**  \n"},
+    "exit_code": 0,
+    "stdout": "Structure",
+    "stderr": ""
+  },
+  {
+    "name": "reviewer-for-block-python-whitespace",
+    "arguments": ["reviewer-for-block", "{sandbox}/block.md"],
+    "seeds": {"block.md": "\u001fReviewer:\u001fStructure\u001f\n"},
+    "exit_code": 0,
+    "stdout": "Structure",
+    "stderr": ""
+  },
+  {
+    "name": "is-security-block",
+    "arguments": ["is-security-block", "{sandbox}/block.md"],
+    "seeds": {"block.md": "### FINDING_1: one\n- **Focus area**: security\n"},
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "is-security-block-escapes-io-path",
+    "arguments": ["is-security-block", "{sandbox}/bad'\n\\path"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "is_security_block: [Errno 2] No such file or directory: \"{sandbox}/bad'\\n\\\\path\"\n"
+  },
+  {
+    "name": "accept-finding",
+    "arguments": ["accept-finding", "2", "1", "0", "3"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "classify-result",
+    "arguments": ["classify-result", "1", "2", "0", "3"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "neutral",
+    "stderr": ""
+  },
+  {
+    "name": "panel-tier",
+    "arguments": ["panel-tier", "2"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "unanimous-2",
+    "stderr": ""
+  },
+  {
+    "name": "split-ballot",
+    "arguments": ["split-ballot", "{sandbox}/ballot.md", "{sandbox}/blocks"],
+    "seeds": {"ballot.md": "intro\n### FINDING_1: one\nbody one\n### OOS_2: two\nbody two\n"},
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "",
+    "files": {
+      "blocks/FINDING_1.md": "### FINDING_1: one\nbody one\n",
+      "blocks/OOS_2.md": "### OOS_2: two\nbody two\n"
+    }
+  },
+  {
+    "name": "parse-judge-vote",
+    "arguments": ["parse-judge-vote", "{sandbox}/voter.txt", "FINDING_1"],
+    "seeds": {"voter.txt": "noise\nFINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- reason\n"},
+    "exit_code": 0,
+    "stdout": "PARSED_VOTE=YES\nPARSED_CORRECTNESS=true\nPARSED_SEVERITY=major\nPARSED_QUALITY=good\nPARSED_UNCERTAIN=false\n",
+    "stderr": ""
+  },
+  {
+    "name": "parse-judge-vote-unicode-case-and-python-whitespace",
+    "arguments": ["parse-judge-vote", "{sandbox}/voter.txt", "FINDING_1"],
+    "seeds": {"voter.txt": "FıNDING_1: yeſ\u001fCORRECTNESS=true\u001fSEVERITY=major\u001fQUALITY=good\u001fUNCERTAIN=false\n"},
+    "exit_code": 0,
+    "stdout": "PARSED_VOTE=YES\nPARSED_CORRECTNESS=true\nPARSED_SEVERITY=major\nPARSED_QUALITY=good\nPARSED_UNCERTAIN=false\n",
+    "stderr": ""
+  },
+  {
+    "name": "parse-table-vote-python-whitespace-axes",
+    "arguments": ["parse-judge-vote", "{sandbox}/voter.txt", "FINDING_1"],
+    "seeds": {"voter.txt": "| FINDING_1 | yeſ | CORRECTNESS=true\u001fSEVERITY=major\u001fQUALITY=good\u001fUNCERTAIN=false |\n"},
+    "exit_code": 0,
+    "stdout": "PARSED_VOTE=YES\nPARSED_CORRECTNESS=true\nPARSED_SEVERITY=major\nPARSED_QUALITY=good\nPARSED_UNCERTAIN=false\n",
+    "stderr": ""
+  },
+  {
+    "name": "parse-table-vote-python-word-boundary",
+    "arguments": ["parse-judge-vote", "{sandbox}/voter.txt", "FINDING_1"],
+    "seeds": {"voter.txt": "| FINDING_1 | YESͅ | CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false |\n"},
+    "exit_code": 0,
+    "stdout": "PARSED_VOTE=YES\nPARSED_CORRECTNESS=true\nPARSED_SEVERITY=major\nPARSED_QUALITY=good\nPARSED_UNCERTAIN=false\n",
+    "stderr": ""
+  },
+  {
+    "name": "parse-rate-check",
+    "arguments": ["parse-rate-check", "--voter-file", "{sandbox}/voter.txt", "--voter-tool", "claude", "--ballot-file", "{sandbox}/ballot.md", "--id-grammar", "finding-only", "--review-tmpdir", "{sandbox}", "--log-mode", "quiet"],
+    "seeds": {
+      "ballot.md": "### FINDING_1: one\n",
+      "voter.txt": "FINDING_1: YES\n"
+    },
+    "exit_code": 0,
+    "stdout": "PARSE_RATE_STATUS=OK\n",
+    "stderr": ""
+  },
+  {
+    "name": "parse-rate-stale-diagnostic-removal-error",
+    "arguments": ["parse-rate-check", "--voter-file", "{sandbox}/voter.txt", "--voter-tool", "claude", "--ballot-file", "{sandbox}/ballot.md", "--id-grammar", "finding-only", "--review-tmpdir", "{sandbox}", "--log-mode", "quiet"],
+    "directories": ["voter-parse-rate-diag.txt"],
+    "seeds": {"ballot.md": "### FINDING_1: one\n", "voter.txt": "FINDING_1: YES\n"},
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": "{remove-dir-error}\n"
+  },
+  {
+    "name": "parse-rate-ballot-id-python-whitespace",
+    "arguments": ["parse-rate-check", "--voter-file", "{sandbox}/voter.txt", "--voter-tool", "claude", "--ballot-file", "{sandbox}/ballot.md", "--id-grammar", "finding-only", "--review-tmpdir", "{sandbox}", "--log-mode="],
+    "seeds": {"ballot.md": "###\u001fFINDING_1: one\n", "voter.txt": "narrative\n"},
+    "exit_code": 0,
+    "stdout": "PARSE_RATE_STATUS=NOT_SUBSTANTIVE\n",
+    "stderr": ""
+  },
+  {
+    "name": "parse-threshold-normalizes-python-float-and-empty-log-mode-stays-empty",
+    "arguments": ["parse-rate-check", "--voter-file", "{sandbox}/voter.txt", "--voter-tool", "cursor", "--ballot-file", "{sandbox}/ballot.md", "--id-grammar", "finding-only", "--review-tmpdir", "{sandbox}", "--log-mode="],
+    "seeds": {"ballot.md": "### FINDING_1: one\n### FINDING_2: two\n", "voter.txt": "FINDING_1: YES\nnarrative\n"},
+    "environment": {"LARCH_VOTER_JUDGE_ERROR_PARSE_THRESHOLD": " ٠.٥_٠ "},
+    "exit_code": 0,
+    "stdout": "PARSE_RATE_STATUS=NOT_SUBSTANTIVE\n",
+    "stderr": "",
+    "absent_files": ["execution-issues.md"]
+  },
+  {
+    "name": "parse-threshold-preserves-python-nan-behavior",
+    "arguments": ["parse-rate-check", "--voter-file", "{sandbox}/voter.txt", "--voter-tool", "cursor", "--ballot-file", "{sandbox}/ballot.md", "--id-grammar", "finding-only", "--review-tmpdir", "{sandbox}", "--log-mode="],
+    "seeds": {"ballot.md": "### FINDING_1: one\n### FINDING_2: two\n", "voter.txt": "FINDING_1: YES\nnarrative\n"},
+    "environment": {"LARCH_VOTER_JUDGE_ERROR_PARSE_THRESHOLD": "nan"},
+    "exit_code": 0,
+    "stdout": "PARSE_RATE_STATUS=OK\n",
+    "stderr": "",
+    "absent_files": ["voter-parse-rate-diag.txt", "execution-issues.md"]
+  },
+  {
+    "name": "empty-routing-environment-values-fall-through",
+    "arguments": ["parse-rate-check", "--voter-file", "{sandbox}/voter.txt", "--voter-tool", "cursor", "--ballot-file", "{sandbox}/ballot.md", "--id-grammar", "finding-only", "--review-tmpdir", "{sandbox}", "--dispatch-label="],
+    "seeds": {"ballot.md": "### FINDING_1: one\n", "voter.txt": "narrative\n"},
+    "environment": {"LARCH_EXECUTION_ISSUES_LOG": "", "SESSION_ENV_PATH": "", "IMPLEMENT_TMPDIR": "", "LARCH_QUIET_ACTIVE": "1", "LARCH_QUIET_PID": ""},
+    "exit_code": 0,
+    "stdout": "PARSE_RATE_STATUS=NOT_SUBSTANTIVE\n",
+    "stderr": "**⚠ Voter cursor: 1/1 ballot items returned JUDGE_ERROR: voter likely produced prose without FINDING_N:/OOS_N: VOTE lines. Check voter output at {sandbox}/voter.txt.**\n",
+    "file_contains": {"execution-issues.md": ["Step  cursor:"]}
+  },
+  {
+    "name": "parse-rate-retry",
+    "arguments": ["parse-rate-retry", "--ctx=--diff-file", "--ctx", "-leading.diff", "--voter-file", "{sandbox}/voter.txt", "--voter-tool", "claude", "--ballot-file", "{sandbox}/ballot.md", "--id-grammar", "finding-oos", "--review-tmpdir", "{sandbox}"],
+    "seeds": {
+      "ballot.md": "### OOS_1: one\n",
+      "voter.txt": "OOS_1: YES\n"
+    },
+    "exit_code": 0,
+    "stdout": "OK\n",
+    "stderr": ""
+  },
+  {
+    "name": "parse-rate-diag-matches",
+    "arguments": ["parse-rate-diag-matches", "--voter-file", "{sandbox}/voter.txt"],
+    "seeds": {
+      "voter.txt": "FINDING_1: YES\n",
+      "voter-parse-rate-diag.txt": "voter_file={sandbox}/voter.txt\nvoter_sha256=1afaf1164a178e842145a5b16146ef5e3b7c604f738758c54e426664a302eb6f\n"
+    },
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "parse-rate-diag-matches-lexically-normalized-path",
+    "arguments": ["parse-rate-diag-matches", "--voter-file", "{sandbox}/voter.txt"],
+    "seeds": {
+      "voter.txt": "FINDING_1: YES\n",
+      "voter-parse-rate-diag.txt": "voter_file={sandbox}//voter.txt\nvoter_sha256=1afaf1164a178e842145a5b16146ef5e3b7c604f738758c54e426664a302eb6f\n"
+    },
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "false-positive-match",
+    "arguments": ["false-positive-match", "Closed as duplicate of #123"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "false-positive-match-python-unicode-case-fold",
+    "arguments": ["false-positive-match", "wontfİx"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "false-positive-match-python-whitespace",
+    "arguments": ["false-positive-match", "duplicate\u001fof #1"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "false-positive-negation-python-unicode-case-fold",
+    "arguments": ["false-positive-match", "not a falſe-positive"],
+    "seeds": {},
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "file-line-regex",
+    "arguments": ["file-line-regex", "--name", "extensionless-re"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "(^|[^A-Za-z0-9_])(Makefile|Dockerfile|GNUmakefile)(:[0-9]+(-[0-9]+)?)?\n",
+    "stderr": ""
+  },
+  {
+    "name": "ballot-parse",
+    "arguments": ["ballot-parse", "--ballot-file", "{sandbox}/ballot.md"],
+    "seeds": {"ballot.md": "### FINDING_7: Bug\n- **Concern**: first line\ncontinued\n### FINDING_8: [OOS] Drift\n- **Concern**: oos\n"},
+    "exit_code": 0,
+    "stdout": "FINDING_1_TITLE=Bug\nFINDING_1_CONCERN=first line continued\nFINDING_1_OOS=false\nFINDING_2_TITLE=[OOS] Drift\nFINDING_2_CONCERN=oos\nFINDING_2_OOS=true\nFINDING_COUNT=2\n",
+    "stderr": ""
+  },
+  {
+    "name": "ballot-parse-python-whitespace",
+    "arguments": ["ballot-parse", "--ballot-file", "{sandbox}/ballot.md"],
+    "seeds": {"ballot.md": "### FINDING_1:\u001fTitle\n- **Concern**:\u001fConcern\u001f\n"},
+    "exit_code": 0,
+    "stdout": "FINDING_1_TITLE=Title\nFINDING_1_CONCERN=Concern\nFINDING_1_OOS=false\nFINDING_COUNT=1\n",
+    "stderr": ""
+  },
+  {
+    "name": "duplicate-ballot-refusal",
+    "arguments": ["split-ballot", "{sandbox}/duplicate.md", "{sandbox}/blocks"],
+    "seeds": {"duplicate.md": "### FINDING_1: one\n### \tFINDING_1: duplicate\n"},
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": "duplicate ballot heading FINDING_1\n"
+  },
+  {
+    "name": "malformed-vote-is-structured",
+    "arguments": ["parse-judge-vote", "{sandbox}/voter.txt", "FINDING_1"],
+    "seeds": {"voter.txt": "FINDING_1: MAYBE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"},
+    "exit_code": 0,
+    "stdout": "PARSED_VOTE=\nPARSED_CORRECTNESS=true\nPARSED_SEVERITY=major\nPARSED_QUALITY=good\nPARSED_UNCERTAIN=false\n",
+    "stderr": ""
+  },
+  {
+    "name": "later-malformed-axis-clears-earlier-value",
+    "arguments": ["parse-judge-vote", "{sandbox}/voter.txt", "FINDING_1"],
+    "seeds": {"voter.txt": "FINDING_1: YES CORRECTNESS=true CORRECTNESS=bogus SEVERITY=major QUALITY=good UNCERTAIN=false\n"},
+    "exit_code": 0,
+    "stdout": "PARSED_VOTE=YES\nPARSED_CORRECTNESS=\nPARSED_SEVERITY=major\nPARSED_QUALITY=good\nPARSED_UNCERTAIN=true\n",
+    "stderr": ""
+  },
+  {
+    "name": "missing-vote-arguments-refusal",
+    "arguments": ["parse-judge-vote"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: parse-judge-vote <voter_file> <ballot_id>\n"
+  },
+  {
+    "name": "missing-voter-path-redacts-token",
+    "arguments": ["parse-judge-vote", "{sandbox}/ghp_aaaaaaaaaaaaaaaaaaaa", "FINDING_1"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "parse-judge-vote: voter file is missing or unreadable: {sandbox}/<REDACTED-TOKEN>\n"
+  },
+  {
+    "name": "non-file-voter-path-refusal",
+    "arguments": ["parse-judge-vote", "{sandbox}/voter-dir", "FINDING_1"],
+    "directories": ["voter-dir"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "parse-judge-vote: voter file is missing or unreadable: {sandbox}/voter-dir\n"
+  },
+  {
+    "name": "missing-ballot-option-refusal",
+    "arguments": ["ballot-parse"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: ballot-parse [-h] --ballot-file BALLOT_FILE\nballot-parse: error: the following arguments are required: --ballot-file\n"
+  },
+  {
+    "name": "missing-ballot-option-precedes-unknown-refusal",
+    "arguments": ["ballot-parse", "--unknown"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: ballot-parse [-h] --ballot-file BALLOT_FILE\nballot-parse: error: the following arguments are required: --ballot-file\n"
+  },
+  {
+    "name": "bare-dash-is-an-option-value",
+    "arguments": ["ballot-parse", "--ballot-file", "-"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "ballot-parse: --ballot-file must name a file\n"
+  },
+  {
+    "name": "ambiguous-option-refusal",
+    "arguments": ["parse-rate-check", "--voter", "x"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: parse-rate-check [-h] --voter-file VOTER_FILE --voter-tool VOTER_TOOL\n                        --ballot-file BALLOT_FILE --id-grammar\n                        {finding-only,finding-oos} --review-tmpdir\n                        REVIEW_TMPDIR [--slot SLOT] [--log-mode LOG_MODE]\n                        [--plugin-root PLUGIN_ROOT]\n                        [--dispatch-label DISPATCH_LABEL]\nparse-rate-check: error: ambiguous option: --voter could match --voter-file, --voter-tool\n"
+  },
+  {
+    "name": "option-terminator-is-not-stripped",
+    "arguments": ["file-line-regex", "--", "--name", "extensionless-re"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: file-line-regex [-h] --name\n                       {any-re,extensionless-re,long-exts,long-re,short-exts,short-line-re,short-path-re}\nfile-line-regex: error: the following arguments are required: --name\n"
+  },
+  {
+    "name": "invalid-file-regex-choice-precedes-help",
+    "arguments": ["file-line-regex", "--name", "bogus", "--help"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: file-line-regex [-h] --name\n                       {any-re,extensionless-re,long-exts,long-re,short-exts,short-line-re,short-path-re}\nfile-line-regex: error: argument --name: invalid choice: 'bogus' (choose from 'any-re', 'extensionless-re', 'long-exts', 'long-re', 'short-exts', 'short-line-re', 'short-path-re')\n"
+  },
+  {
+    "name": "invalid-choice-repr-escapes-diagnostic-boundaries",
+    "arguments": ["file-line-regex", "--name", "badͅ'\n\\value\u202e"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: file-line-regex [-h] --name\n                       {any-re,extensionless-re,long-exts,long-re,short-exts,short-line-re,short-path-re}\nfile-line-regex: error: argument --name: invalid choice: \"badͅ'\\n\\\\value\\u202e\" (choose from 'any-re', 'extensionless-re', 'long-exts', 'long-re', 'short-exts', 'short-line-re', 'short-path-re')\n"
+  },
+  {
+    "name": "invalid-id-grammar-precedes-required-options",
+    "arguments": ["parse-rate-check", "--id-grammar", "bogus"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: parse-rate-check [-h] --voter-file VOTER_FILE --voter-tool VOTER_TOOL\n                        --ballot-file BALLOT_FILE --id-grammar\n                        {finding-only,finding-oos} --review-tmpdir\n                        REVIEW_TMPDIR [--slot SLOT] [--log-mode LOG_MODE]\n                        [--plugin-root PLUGIN_ROOT]\n                        [--dispatch-label DISPATCH_LABEL]\nparse-rate-check: error: argument --id-grammar: invalid choice: 'bogus' (choose from 'finding-only', 'finding-oos')\n"
+  },
+  {
+    "name": "empty-retry-prefix-is-an-invalid-choice",
+    "arguments": ["parse-rate-retry", "--retry-prefix-kind="],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: parse-rate-retry [-h] --voter-file VOTER_FILE --voter-tool VOTER_TOOL\n                        --ballot-file BALLOT_FILE --id-grammar\n                        {finding-only,finding-oos} --review-tmpdir\n                        REVIEW_TMPDIR [--slot SLOT] [--log-mode LOG_MODE]\n                        [--plugin-root PLUGIN_ROOT]\n                        [--dispatch-label DISPATCH_LABEL]\n                        [--prompt-file PROMPT_FILE]\n                        [--retry-prefix-kind {code,plan}]\n                        [--launch-mode LAUNCH_MODE]\nparse-rate-retry: error: argument --retry-prefix-kind: invalid choice: '' (choose from 'code', 'plan')\n"
+  },
+  {
+    "name": "unbounded-panel-tier",
+    "arguments": ["panel-tier", "9223372036854775808"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "full-3",
+    "stderr": ""
+  },
+  {
+    "name": "unicode-decimal-panel-tier",
+    "arguments": ["panel-tier", "٢"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "unanimous-2",
+    "stderr": ""
+  },
+  {
+    "name": "unbounded-classification",
+    "arguments": ["classify-result", "9223372036854775808", "0", "0", "3"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "accepted",
+    "stderr": ""
+  }
+]

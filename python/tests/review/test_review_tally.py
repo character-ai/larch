@@ -771,6 +771,7 @@ def test_tally_excludes_narrative_only_voter_parse_rate_check(tmp_path: Path) ->
         str(case / "claude-vote-output.txt"),
         "--review-tmpdir",
         str(case),
+        env={"LARCH_TEST_VOTING_PARSE_RATE_JSON": '{"claude-vote-output.txt":"NOT_SUBSTANTIVE"}'},
     )
 
     assert result.returncode == 0, result.stderr
@@ -1307,6 +1308,7 @@ def test_tally_all_narrative_voters_emits_parse_failed_count_on_zero_effective(t
         str(case / "claude-vote-output.txt"),
         "--review-tmpdir",
         str(case),
+        env={"LARCH_TEST_VOTING_PARSE_RATE_JSON": '{"*":"NOT_SUBSTANTIVE"}'},
     )
 
     assert result.returncode == 0, result.stderr
@@ -1346,17 +1348,12 @@ def test_tally_empty_ballot_skips_vote_without_degraded_warning(tmp_path: Path) 
     assert "narrative-only output" not in tally
 
 
-def test_tally_security_classifier_failure_fails_closed(tmp_path: Path) -> None:
+def test_tally_security_classifier_failure_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     case = tmp_path / "security-classifier-fail"
     case.mkdir()
-    bin_dir = case / "bin"
-    bin_dir.mkdir()
-    rts.write_executable(
-        path=bin_dir / "python3",
-        body="""#!/usr/bin/env bash
-exit 1
-"""
-    )
     _ = (case / "ballot.md").write_text(
         """### FINDING_1: [OUT_OF_SCOPE] security follow-up
 - **Reviewer**: Cursor-Security
@@ -1368,8 +1365,11 @@ exit 1
     _ = (case / "cursor-vote-output.txt").write_text("FINDING_1: YES\n", encoding="utf-8")
     _ = (case / "codex-vote-output.txt").write_text("FINDING_1: YES\n", encoding="utf-8")
 
-    result = run_review(
-        "tally-code-votes",
+    def fail_security_classifier(_block: Path) -> bool:
+        raise RuntimeError("security classifier failed")
+
+    monkeypatch.setattr(review_tally, "_security_block", fail_security_classifier)
+    result = review_tally.tally_code_votes_main([
         "--ballot-file",
         str(case / "ballot.md"),
         "--voter-files",
@@ -1377,10 +1377,9 @@ exit 1
         str(case / "codex-vote-output.txt"),
         "--review-tmpdir",
         str(case),
-        env={"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"},
-    )
+    ])
 
-    assert result.returncode == 2
+    assert result == 2
     assert not (case / "oos-accepted-review.md").read_text(encoding="utf-8").strip()
 
 
@@ -1876,14 +1875,9 @@ def test_findings_classification_parser_vote_for_id_parity(tmp_path: Path) -> No
         encoding="utf-8",
     )
     for finding_id in ("FINDING_1", "OOS_1"):
-        parsed = _run_cli("voting", "parse-judge-vote", str(votes), finding_id)
-        assert parsed.returncode == 0, parsed.stderr
-        parser_vote = rts.kv_get(stdout=parsed.stdout, key="PARSED_VOTE")
-        lib = _run_cli("voting", "vote-for-id", finding_id, str(votes))
-        assert lib.returncode == 0, lib.stderr
-        assert parser_vote == lib.stdout.strip()
-    missing = _run_cli("voting", "parse-judge-vote", str(votes), "FINDING_2")
-    assert rts.kv_get(stdout=missing.stdout, key="PARSED_VOTE") == ""
+        parser_vote = voting.parse_judge_vote(voter_file=votes, ballot_id=finding_id)[0]
+        assert parser_vote == voting.vote_for_id(ballot_id=finding_id, voter_file=votes)
+    assert voting.parse_judge_vote(voter_file=votes, ballot_id="FINDING_2")[0] == ""
 
 
 def test_findings_classification_judge_error_in_tsv(tmp_path: Path) -> None:

@@ -398,8 +398,7 @@ def _parse_rate_ok(*, voter_file: str, ballot_file: Path, review_tmpdir: Path, t
     if not voter_file or not Path(voter_file).is_file() or Path(voter_file).stat().st_size == 0:
         return False
     cmd = [
-        "python3",
-        str(_PLUGIN_ROOT / "python" / "cli.py"),
+        str(larch_entrypoint(_PLUGIN_ROOT)),
         "voting",
         "parse-rate-check",
         "--voter-file",
