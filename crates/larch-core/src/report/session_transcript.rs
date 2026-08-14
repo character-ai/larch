@@ -49,7 +49,7 @@ pub const MAX_INPUT_BYTES: u64 = 512 * 1024 * 1024;
 pub const MAX_RECORD_BYTES: usize = 8 * 1024 * 1024;
 
 /// Placeholder a redacted operator repository path collapses to.
-const REDACTED_OPERATOR_REPO: &str = "<OPERATOR_REPO_PATH>";
+pub(super) const REDACTED_OPERATOR_REPO: &str = "<OPERATOR_REPO_PATH>";
 
 /// Record `type` values the harness uses for housekeeping, never for content.
 const HOUSEKEEPING_TYPES: [&str; 6] = [

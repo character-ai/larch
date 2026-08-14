@@ -24,7 +24,7 @@ aws-runtime = { version = "=1.9.1", default-features = false }
 aws-sdk-s3 = { version = "=1.140.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-smithy-runtime-api = { version = "=1.14.0", default-features = false, features = ["client", "http-1x"] }
 bytes = { version = "1.12.1", default-features = false, features = ["std"] }
-chrono = { version = "0.4.44", default-features = false, features = ["serde", "std"] }
+chrono = { version = "0.4.44", default-features = false, features = ["clock", "serde", "std"] }
 csv = { version = "1.4.0", default-features = false }
 cargo_metadata = { version = "0.23.1", default-features = false }
 clap = { version = "4.6.2", default-features = false, features = ["derive", "help", "std", "usage"] }
@@ -63,6 +63,7 @@ sigstore-verify = { version = "=0.11.0", default-features = false }
 snap = { version = "=1.1.2", default-features = false }
 syn = { version = "2.0.119", default-features = false, features = ["full", "parsing", "printing", "visit"] }
 tempfile = { version = "3.27.0", default-features = false }
+tiktoken-rs = { version = "0.12.0", default-features = false }
 tar = { version = "0.4.44", default-features = false }
 tokio = { version = "1.53.0", default-features = false, features = ["fs", "io-util", "macros", "process", "rt-multi-thread", "signal", "sync", "test-util", "time"] }
 tokio-util = { version = "0.7.18", default-features = false, features = ["rt"] }

@@ -7806,11 +7806,13 @@ verb = "measure-cache-efficiency"
 python_module = "larch.report.tokens"
 python_function = "measure_cache_efficiency_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8508
+clean_install_test = "clean-install-token-measure-cache-efficiency"
 
 [[commands]]
 domain = "token"
@@ -7818,11 +7820,13 @@ verb = "measure-checks-digest-savings"
 python_module = "larch.report.tokens"
 python_function = "measure_checks_digest_savings_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8508
+clean_install_test = "clean-install-token-measure-checks-digest-savings"
 
 [[commands]]
 domain = "token"
@@ -7830,11 +7834,13 @@ verb = "measure-md-cost"
 python_module = "larch.report.tokens"
 python_function = "measure_md_cost_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8508
+clean_install_test = "clean-install-token-measure-md-cost"
 
 [[commands]]
 domain = "token"
@@ -7842,11 +7848,13 @@ verb = "measure-ngram-duplication"
 python_module = "larch.report.tokens"
 python_function = "measure_ngram_duplication_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8508
+clean_install_test = "clean-install-token-measure-ngram-duplication"
 
 [[commands]]
 domain = "token"
@@ -7854,11 +7862,13 @@ verb = "measure-panel-cost"
 python_module = "larch.report.tokens"
 python_function = "measure_panel_cost_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8508
+clean_install_test = "clean-install-token-measure-panel-cost"
 
 [[commands]]
 domain = "token"
@@ -7866,11 +7876,13 @@ verb = "measure-realized-cost"
 python_module = "larch.report.tokens"
 python_function = "measure_realized_cost_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8508
+clean_install_test = "clean-install-token-measure-realized-cost"
 
 [[commands]]
 domain = "token"
@@ -7878,11 +7890,13 @@ verb = "measure-references-heatmap"
 python_module = "larch.report.tokens"
 python_function = "measure_references_heatmap_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8508
+clean_install_test = "clean-install-token-measure-references-heatmap"
 
 [[commands]]
 domain = "token"

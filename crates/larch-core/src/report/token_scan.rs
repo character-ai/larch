@@ -2,9 +2,8 @@
 //!
 //! Library parity for Python `larch.report.report_tokens_scan`,
 //! `larch.report.report_tokens_models`, and the extraction half of
-//! `larch.report.tokens`. No command changes owner here: the analyzer leaf
-//! switches `report-tokens analyze`, so Python stays the production owner
-//! until then.
+//! `larch.report.tokens`. The Rust report analyzer and token measurement
+//! commands share this extraction owner.
 //!
 //! # Memory bound
 //!

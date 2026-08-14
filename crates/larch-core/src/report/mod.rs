@@ -22,6 +22,7 @@ mod session_transcript;
 pub mod timing;
 mod token_cost;
 mod token_ledger;
+mod token_measurements;
 mod token_report;
 mod token_scan;
 
@@ -81,6 +82,10 @@ pub use token_ledger::{
     lane_sidecar_body, lane_sidecar_name, mark_line, parse_token_record_sidecar,
     render_lane_report, resolve_under_roots, safe_lane_slug, sha256_hex, sidecar_ndjson_line,
     validate_lane_phase, validate_total_tokens, vendor_line,
+};
+pub use token_measurements::{
+    checks_digest_savings, markdown_cost, ngram_duplication, panel_cost, realized_cost,
+    reference_heatmap, token_cache_efficiency, token_cache_efficiency_with_diagnostics,
 };
 pub use token_report::{
     ALL_RUNS, CACHE_BASENAME, EMPTY_REPORT_BODY, IssueBodyError, PricedRun, REPORT_HEADING,

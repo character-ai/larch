@@ -268,7 +268,7 @@ domain module (lazy import).
 
 For `report-tokens analyze` and `final-report`, cost calculations use
 `larch_core::report::RATE_TABLE`. The Python `report_tokens_cost.py` helper
-remains only for the #7680 compatibility payload and #7684 token/analytics
+remains only for the #7680 compatibility payload and #7684 token pricing
 commands. Both paths accept the rate-override environment variables documented
 in `docs/configuration-and-permissions.md`.
 

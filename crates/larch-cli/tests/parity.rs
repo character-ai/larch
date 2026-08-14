@@ -72,6 +72,11 @@ impl CleanInstallCase {
             | "clean-install-audit-runs-pacific-timestamp"
             | "clean-install-session-local-cleanup" => 1,
             "clean-install-admission-preflight" => 3,
+            "clean-install-token-measure-cache-efficiency"
+            | "clean-install-token-measure-checks-digest-savings"
+            | "clean-install-token-measure-panel-cost"
+            | "clean-install-token-measure-realized-cost"
+            | "clean-install-token-measure-references-heatmap" => 4,
             "clean-install-session-check-live-mutation-auth" => 5,
             // Neither `/block-issue` verb has a `--help` action either, so the
             // clean-install token reads as an unknown flag and each refuses
@@ -1271,6 +1276,41 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-token-lane-report", "token", "lane-report"),
     CleanInstallCase::new("clean-install-token-lane-write", "token", "lane-write"),
     CleanInstallCase::new("clean-install-token-mark", "token", "mark"),
+    CleanInstallCase::new(
+        "clean-install-token-measure-cache-efficiency",
+        "token",
+        "measure-cache-efficiency",
+    ),
+    CleanInstallCase::new(
+        "clean-install-token-measure-checks-digest-savings",
+        "token",
+        "measure-checks-digest-savings",
+    ),
+    CleanInstallCase::new(
+        "clean-install-token-measure-md-cost",
+        "token",
+        "measure-md-cost",
+    ),
+    CleanInstallCase::new(
+        "clean-install-token-measure-ngram-duplication",
+        "token",
+        "measure-ngram-duplication",
+    ),
+    CleanInstallCase::new(
+        "clean-install-token-measure-panel-cost",
+        "token",
+        "measure-panel-cost",
+    ),
+    CleanInstallCase::new(
+        "clean-install-token-measure-realized-cost",
+        "token",
+        "measure-realized-cost",
+    ),
+    CleanInstallCase::new(
+        "clean-install-token-measure-references-heatmap",
+        "token",
+        "measure-references-heatmap",
+    ),
     CleanInstallCase::new("clean-install-token-record-vendor", "token", "record-vendor"),
     CleanInstallCase::new(
         "clean-install-token-record-vendor-sidecar",
