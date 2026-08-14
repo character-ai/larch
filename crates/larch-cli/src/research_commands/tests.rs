@@ -1,5 +1,7 @@
 //! Offline unit coverage for the four `/research` Rust commands.
 
+use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::path::Path;
 
 use tempfile::tempdir;
@@ -262,4 +264,428 @@ fn findings_batch_reports_presence_and_absence() {
     assert!(!missing);
     assert!(payload.contains("### First problem here"), "{payload}");
     assert!(payload.contains("**Risk**: High"), "{payload}");
+}
+
+// ---------------------------------------------------------------------------
+// CLI entrypoints
+// ---------------------------------------------------------------------------
+
+#[test]
+fn banner_entrypoint_covers_help_missing_and_emit() {
+    let _help = super::banner(&[OsString::from("--help")]);
+    let _missing = super::banner(&[]);
+    let dir = tempdir().expect("tempdir");
+    let status = dir.path().join("lane.txt");
+    std::fs::write(&status, "RESEARCH_A_STATUS=fallback_claude\n").expect("write");
+    let _emitted = super::banner(&[status.into_os_string()]);
+}
+
+#[test]
+fn run_planner_entrypoint_writes_output_and_reports_reasons() {
+    let dir = tempdir().expect("tempdir");
+    let _help = super::run_planner(&[OsString::from("--help")]);
+
+    let raw = dir.path().join("raw.txt");
+    std::fs::write(&raw, "- One?\n* Two?\nnot a question\n").expect("write");
+
+    // Missing --output surfaces the missing_arg refusal.
+    let _missing = super::run_planner(&[OsString::from("--raw"), raw.clone().into_os_string()]);
+
+    let output = dir.path().join("plan.txt");
+    let ok_args = vec![
+        OsString::from("--raw"),
+        raw.into_os_string(),
+        OsString::from("--output"),
+        output.clone().into_os_string(),
+    ];
+    let _ok = super::run_planner(&ok_args);
+    assert_eq!(
+        std::fs::read_to_string(&output).expect("read"),
+        "One?\nTwo?\n"
+    );
+
+    // An empty raw file surfaces a REASON refusal instead of writing output.
+    let empty = dir.path().join("empty.txt");
+    std::fs::write(&empty, "").expect("write");
+    let reason_args = vec![
+        OsString::from("--raw"),
+        empty.into_os_string(),
+        OsString::from("--output"),
+        dir.path().join("unused.txt").into_os_string(),
+    ];
+    let _reason = super::run_planner(&reason_args);
+    assert!(!dir.path().join("unused.txt").exists());
+}
+
+fn findings_batch_args(report: &Path, output: &Path, question: &Path) -> Vec<OsString> {
+    vec![
+        OsString::from("--report"),
+        report.as_os_str().to_owned(),
+        OsString::from("--output"),
+        output.as_os_str().to_owned(),
+        OsString::from("--research-question-file"),
+        question.as_os_str().to_owned(),
+        OsString::from("--branch"),
+        OsString::from("main"),
+        OsString::from("--commit"),
+        OsString::from("abc123"),
+    ]
+}
+
+#[test]
+fn render_findings_batch_entrypoint_covers_every_exit() {
+    let dir = tempdir().expect("tempdir");
+    let _help = super::render_findings_batch(&[OsString::from("--help")]);
+    // A missing required option surfaces the usage diagnostic.
+    let _bad = super::render_findings_batch(&[OsString::from("--report"), OsString::from("/x")]);
+
+    let question = dir.path().join("question.txt");
+    std::fs::write(&question, "\n\nWhat is the answer?\n").expect("write");
+
+    // Success path: findings present, output written, COUNT emitted.
+    let report = dir.path().join("report.md");
+    std::fs::write(
+        &report,
+        "### Findings Summary\n\n1. Alpha finding here.\n2. Beta finding here.\n\n### Risk Assessment\n- Low\n",
+    )
+    .expect("write");
+    let output = dir.path().join("batch.md");
+    let _ok = super::render_findings_batch(&findings_batch_args(&report, &output, &question));
+    let payload = std::fs::read_to_string(&output).expect("read");
+    assert!(payload.contains("### Alpha finding here"), "{payload}");
+
+    // Report file not found returns the not-found diagnostic.
+    let _missing = super::render_findings_batch(&findings_batch_args(
+        &dir.path().join("nope.md"),
+        &output,
+        &question,
+    ));
+
+    // Empty Findings Summary section: zero findings, empty-section warning.
+    let empty_report = dir.path().join("empty.md");
+    std::fs::write(
+        &empty_report,
+        "### Findings Summary\n\n### Risk Assessment\n",
+    )
+    .expect("write");
+    let empty_output = dir.path().join("empty-batch.md");
+    let _empty = super::render_findings_batch(&findings_batch_args(
+        &empty_report,
+        &empty_output,
+        &dir.path().join("absent-question.txt"),
+    ));
+
+    // Absent Findings Summary section: zero findings, section-absent warning.
+    let absent_report = dir.path().join("absent.md");
+    std::fs::write(&absent_report, "## Report\n\nNo findings section.\n").expect("write");
+    let absent_output = dir.path().join("absent-batch.md");
+    let _absent = super::render_findings_batch(&findings_batch_args(
+        &absent_report,
+        &absent_output,
+        &question,
+    ));
+}
+
+#[test]
+fn validate_citations_command_covers_run_paths() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path().canonicalize().expect("canonicalize");
+    let _help = super::validate_citations_command(&[OsString::from("--help")]);
+    // Missing --tmpdir surfaces the usage refusal.
+    let _missing = super::validate_citations_command(&[
+        OsString::from("--report"),
+        OsString::from("/x"),
+        OsString::from("--output"),
+        OsString::from("/y"),
+    ]);
+
+    let report = root.join("report.md");
+    std::fs::write(&report, "See Cargo.toml:1 for the manifest.\n").expect("write");
+    let output = root.join("sidecar.md");
+    let tmp = root.join("tmp");
+
+    // Invalid limit writes a degraded sidecar and refuses.
+    let bad_limit = vec![
+        OsString::from("--report"),
+        report.as_os_str().to_owned(),
+        OsString::from("--output"),
+        output.as_os_str().to_owned(),
+        OsString::from("--tmpdir"),
+        tmp.as_os_str().to_owned(),
+        OsString::from("--budget-seconds"),
+        OsString::from("0"),
+    ];
+    let _bad = super::validate_citations_command(&bad_limit);
+    assert!(
+        std::fs::read_to_string(&output)
+            .expect("read")
+            .contains("invalid argument"),
+    );
+
+    // Success path with only a file-line claim needs no network.
+    let ok_args = vec![
+        OsString::from("--report"),
+        report.as_os_str().to_owned(),
+        OsString::from("--output"),
+        output.as_os_str().to_owned(),
+        OsString::from("--tmpdir"),
+        tmp.as_os_str().to_owned(),
+    ];
+    let _ok = super::validate_citations_command(&ok_args);
+    assert!(
+        std::fs::read_to_string(&output)
+            .expect("read")
+            .contains("Citation Validation"),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// citations ledger, credibility, and degraded sidecars
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_citations_reports_degraded_for_unreadable_reports() {
+    let dir = tempdir().expect("tempdir");
+    let tmp = dir.path().join("tmp");
+
+    let missing_output = dir.path().join("missing.md");
+    let missing = ValidateRequest {
+        report: &dir.path().join("nope.md"),
+        output: &missing_output,
+        tmpdir: &tmp,
+        budget_seconds: 5,
+        per_fetch_timeout: 1,
+        max_claims: 200,
+    };
+    assert_eq!(validate_citations(&missing, None, None), (0, 0, 0, 0));
+    assert!(
+        std::fs::read_to_string(&missing_output)
+            .expect("read")
+            .contains("input report not readable"),
+    );
+
+    let subdir = dir.path().join("as-dir");
+    std::fs::create_dir(&subdir).expect("mkdir");
+    let dir_output = dir.path().join("dir.md");
+    let as_dir = ValidateRequest {
+        report: &subdir,
+        output: &dir_output,
+        tmpdir: &tmp,
+        budget_seconds: 5,
+        per_fetch_timeout: 1,
+        max_claims: 200,
+    };
+    assert_eq!(validate_citations(&as_dir, None, None), (0, 0, 0, 0));
+}
+
+#[test]
+fn validate_citations_classifies_hosts_dois_and_credibility_tiers() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path().canonicalize().expect("canonicalize");
+    std::fs::write(root.join("README.md"), "line one\n").expect("write");
+    let report = root.join("report.md");
+    std::fs::write(
+        &report,
+        "Refs: https://github.com/a/b and https://en.wikipedia.org/wiki/T and https://example.com/p and 10.5555/aaa and 10.6666/bbb and README.md:1\n",
+    )
+    .expect("write");
+    let output = root.join("sidecar.md");
+    let request = ValidateRequest {
+        report: &report,
+        output: &output,
+        tmpdir: &root.join("tmp"),
+        budget_seconds: 5,
+        per_fetch_timeout: 1,
+        max_claims: 200,
+    };
+    let fetcher = |target: &str| {
+        if target.contains("10.5555") {
+            FetchResult::new("UNKNOWN", "redirect-not-followed")
+        } else if target.contains("doi.org") {
+            FetchResult::new("FAIL", "head-not-found")
+        } else {
+            FetchResult::pass()
+        }
+    };
+    let (_pass, _fail, _unknown, total) = validate_citations(&request, Some(&fetcher), Some(&root));
+    assert!(total >= 6, "total was {total}");
+    let sidecar = std::fs::read_to_string(&output).expect("read");
+    assert!(sidecar.contains("well-known reputable origin"), "{sidecar}");
+    assert!(sidecar.contains("no allow-list entry"), "{sidecar}");
+    assert!(
+        sidecar.contains("| `README.md:1` | file-line | PASS |"),
+        "{sidecar}"
+    );
+}
+
+#[test]
+fn validate_citations_truncates_and_clips_long_claims() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path().canonicalize().expect("canonicalize");
+    let long_path: String = "a".repeat(100);
+    let report = root.join("report.md");
+    std::fs::write(
+        &report,
+        format!("Link https://example.com/{long_path} and 10.5555/keep\n"),
+    )
+    .expect("write");
+    let output = root.join("sidecar.md");
+    let request = ValidateRequest {
+        report: &report,
+        output: &output,
+        tmpdir: &root.join("tmp"),
+        budget_seconds: 5,
+        per_fetch_timeout: 1,
+        max_claims: 1,
+    };
+    let fetcher = |_target: &str| FetchResult::pass();
+    let _counts = validate_citations(&request, Some(&fetcher), Some(&root));
+    let sidecar = std::fs::read_to_string(&output).expect("read");
+    assert!(sidecar.contains("..."), "{sidecar}");
+    assert!(sidecar.contains("max-claims"), "{sidecar}");
+}
+
+// ---------------------------------------------------------------------------
+// render splitter, titles, escaping, and metadata
+// ---------------------------------------------------------------------------
+
+fn render_context() -> FindingsContext<'static> {
+    FindingsContext {
+        research_question: "Q?",
+        branch: "main",
+        commit: "abc123",
+        timestamp: "2026-08-14T00:00:00Z",
+    }
+}
+
+#[test]
+fn render_findings_covers_fences_subquestions_and_open_questions() {
+    let report = r"### Findings Summary
+
+1. First finding sentence. Second sentence ignored.
+   more detail on first
+2. Second finding here.
+
+```text
+inside fence line
+```
+
+#### Subquestion 2
+
+- Bullet finding one
+- Bullet finding two
+
+### Risk Assessment
+- High
+> quoted risk note
+
+### Open Questions
+- What about scaling?
+";
+    let (count, payload, section_absent) = render_findings_issue_batch(report, &render_context());
+    assert!(count >= 1, "count was {count}");
+    assert!(!section_absent);
+    assert!(payload.contains("### First finding sentence"), "{payload}");
+    assert!(payload.contains("**Risk**: High"), "{payload}");
+    assert!(payload.contains("**Open questions**"), "{payload}");
+}
+
+#[test]
+fn render_findings_covers_titles_and_heading_escapes() {
+    let report = r"### Findings Summary
+
+1. ...............
+2. This finding has an extremely long descriptive title that certainly exceeds eighty characters for truncation coverage indeed yes absolutely.
+### fake heading
+```
+fenced body
+```
+";
+    let (count, payload, _absent) = render_findings_issue_batch(report, &render_context());
+    assert!(count >= 1, "count was {count}");
+    assert!(payload.contains("### Finding 1"), "{payload}");
+    assert!(
+        payload.contains("### This finding has an extremely long descriptive title"),
+        "{payload}"
+    );
+    assert!(payload.contains("\\### fake heading"), "{payload}");
+}
+
+#[test]
+fn render_findings_covers_paragraph_mode() {
+    let report = "### Findings Summary\n\nSome prose finding paragraph.\nContinued line.\n\nAnother paragraph after blank.\n";
+    let (count, _payload, _absent) = render_findings_issue_batch(report, &render_context());
+    assert!(count >= 1, "count was {count}");
+}
+
+// ---------------------------------------------------------------------------
+// SSRF, URL parsing, status taxonomy, and file-line internals
+// ---------------------------------------------------------------------------
+
+#[test]
+fn classify_status_covers_client_server_and_unrecognized() {
+    assert_eq!(
+        super::classify_status(418).token(),
+        "FAIL(head-client-error-418)"
+    );
+    assert_eq!(
+        super::classify_status(503).token(),
+        "FAIL(head-server-error-503)"
+    );
+    assert_eq!(
+        super::classify_status(600).token(),
+        "UNKNOWN(unrecognized-status-600)"
+    );
+}
+
+#[test]
+fn url_parts_parse_covers_ipv6_userinfo_and_bad_ports() {
+    let v6 = super::UrlParts::parse("https://[::1]:8443/path").expect("v6");
+    assert_eq!(v6.host, "::1");
+    assert_eq!(v6.port, 8443);
+    let userinfo = super::UrlParts::parse("https://user@Example.COM/x").expect("userinfo");
+    assert_eq!(userinfo.host, "example.com");
+    assert_eq!(userinfo.port, 443);
+    assert!(super::UrlParts::parse("https://host:999999/").is_none());
+    assert!(super::UrlParts::parse("http://plain/").is_none());
+}
+
+#[test]
+fn resolve_public_ips_refuses_localhost_via_the_real_resolver() {
+    let (addresses, refusal) = super::resolve_public_ips("localhost", 443, 2, None);
+    assert!(addresses.is_empty());
+    assert_eq!(refusal, Some("ssrf-private-resolved"));
+}
+
+#[test]
+fn parallel_fetch_results_handles_empty_and_missing_reports() {
+    let empty: BTreeMap<String, String> = BTreeMap::new();
+    let never = |_target: &str| FetchResult::pass();
+    assert!(super::parallel_fetch_results(&empty, 1, 1, &never).is_empty());
+
+    let mut slow_targets: BTreeMap<String, String> = BTreeMap::new();
+    slow_targets.insert("k".to_owned(), "https://example.com/".to_owned());
+    let slow = |_target: &str| {
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+        FetchResult::pass()
+    };
+    let results = super::parallel_fetch_results(&slow_targets, 1, 1, &slow);
+    assert_eq!(
+        results.get("k").expect("filled").token(),
+        "UNKNOWN(timeout)"
+    );
+}
+
+#[test]
+fn check_fileline_covers_directories_and_git_root_probe() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path().canonicalize().expect("canonicalize");
+    std::fs::create_dir(root.join("sub")).expect("mkdir");
+    assert_eq!(
+        check_fileline("sub", Some(&root)),
+        FetchResult::new("FAIL", "path-is-directory")
+    );
+
+    // A `None` root probes the surrounding git checkout for the manifest.
+    assert_eq!(check_fileline("Cargo.toml", None), FetchResult::pass());
 }
