@@ -179,7 +179,7 @@ impl RetainedModule {
 
 /// Every command cut over by a #7682 executable leaf. Some rows intentionally
 /// name #7680 because the design workflow owns their remaining consumers.
-const EXPECTED_COMMANDS: [ExpectedCommand; 96] = [
+const EXPECTED_COMMANDS: [ExpectedCommand; 98] = [
     ExpectedCommand::new("analyze-bugs", "ledger", 8184, 7682, "larch.issue.analyze_bugs", "ledger_main"),
     ExpectedCommand::new("analyze-bugs", "prefetch", 8184, 7682, "larch.issue.analyze_bugs", "prefetch_main"),
     ExpectedCommand::new("analyze-bugs", "report", 8185, 7682, "larch.issue.analyze_bugs", "report_main"),
@@ -255,6 +255,8 @@ const EXPECTED_COMMANDS: [ExpectedCommand; 96] = [
     ExpectedCommand::new("plan-block", "read", 8171, 7680, "larch.issue.issue_wire", "plan_block_read_main"),
     ExpectedCommand::new("plan-block", "strip-body", 8171, 7680, "larch.issue.issue_wire", "plan_block_strip_body_main"),
     ExpectedCommand::new("plan-block", "write", 8171, 7680, "larch.issue.issue_wire", "plan_block_write_main"),
+    ExpectedCommand::new("rejected-analysis", "ingest-verdict", 8503, 7684, "larch.issue.rejected_analysis", "ingest_verdict_main"),
+    ExpectedCommand::new("rejected-analysis", "prepare", 8503, 7684, "larch.issue.rejected_analysis", "prepare_main"),
     ExpectedCommand::new("tracking-issue", "append-comment", 8346, 7682, "larch.issue.tracking_issue", "append_comment_main"),
     ExpectedCommand::new("tracking-issue", "create-issue", 8346, 7682, "larch.issue.tracking_issue", "create_issue_main"),
     ExpectedCommand::new("tracking-issue", "mark-false-positive", 8346, 7682, "larch.issue.tracking_issue", "mark_false_positive_main"),
@@ -279,7 +281,7 @@ const EXPECTED_COMMANDS: [ExpectedCommand; 96] = [
 ];
 
 /// Commands that are deliberately outside #7682's closed boundary.
-const HANDOFF_COMMANDS: [HandoffCommand; 16] = [
+const HANDOFF_COMMANDS: [HandoffCommand; 14] = [
     HandoffCommand::new("analyze-issues", "render-chart", 7683),
     HandoffCommand::new("clarify", "comment-fetch", 7680),
     HandoffCommand::new("clarify", "comment-post", 7680),
@@ -289,8 +291,6 @@ const HANDOFF_COMMANDS: [HandoffCommand; 16] = [
     HandoffCommand::new("oos", "normalize-header", 7679),
     HandoffCommand::new("oos", "serialize", 7679),
     HandoffCommand::new("rejected-analysis", "finalize", 7684),
-    HandoffCommand::new("rejected-analysis", "ingest-verdict", 7684),
-    HandoffCommand::new("rejected-analysis", "prepare", 7684),
     HandoffCommand::new("rejected-analysis", "record", 7684),
     HandoffCommand::new("render", "run-summary", 7680),
     HandoffCommand::new("token", "cost", 7684),

@@ -79,6 +79,7 @@ mod push_rebase;
 mod python_verb;
 mod rebalance_tests;
 mod rebalance_tests_workflow;
+mod rejected_analysis_commands;
 mod release_assets;
 mod release_common;
 mod release_plugin_runtime;
@@ -277,6 +278,9 @@ enum Domain {
     /// Bounded filed-bug evidence and verification commands.
     #[command(subcommand, name = "analyze-bugs")]
     AnalyzeBugs(AnalyzeBugsCommand),
+    /// Recover verified rejected code-review findings from run logs.
+    #[command(subcommand, name = "rejected-analysis")]
+    RejectedAnalysis(RejectedAnalysisCommand),
     /// Prepare compact bug-learning evidence and maintain its durable marker.
     #[command(subcommand, name = "learn-from-bugs")]
     LearnFromBugs(LearnFromBugsCommand),
@@ -700,6 +704,16 @@ enum AnalyzeBugsCommand {
     /// Render the report-only bug-verification result and optional follow-up body.
     #[command(disable_help_flag = true)]
     Report(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum RejectedAnalysisCommand {
+    /// Select rejected findings and write read-only verifier prompts.
+    #[command(disable_help_flag = true)]
+    Prepare(RawCompatibilityArguments),
+    /// Validate one launcher artifact and append its durable verdict status.
+    #[command(name = "ingest-verdict", disable_help_flag = true)]
+    IngestVerdict(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2054,6 +2068,14 @@ fn run(
             }
             AnalyzeBugsCommand::Report(arguments) => {
                 analyze_bugs_commands::report(&arguments.arguments)
+            }
+        }),
+        Domain::RejectedAnalysis(command) => Ok(match command {
+            RejectedAnalysisCommand::Prepare(arguments) => {
+                rejected_analysis_commands::prepare(&arguments.arguments)
+            }
+            RejectedAnalysisCommand::IngestVerdict(arguments) => {
+                rejected_analysis_commands::ingest_verdict(&arguments.arguments)
             }
         }),
         Domain::LearnFromBugs(command) => Ok(match command {

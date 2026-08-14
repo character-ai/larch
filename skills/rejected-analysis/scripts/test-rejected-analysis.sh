@@ -9,7 +9,8 @@ ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 SKILL="$ROOT/skills/rejected-analysis/SKILL.md"
 WRAPPER="$ROOT/skills/rejected-analysis/scripts/rejected-analysis.sh"
 CLI="$ROOT/python/larch/cli.py"
-CORE="$ROOT/python/larch/issue/rejected_analysis.py"
+PYTHON_CORE="$ROOT/python/larch/issue/rejected_analysis.py"
+RUST_CORE="$ROOT/crates/larch-core/src/rejected_analysis.rs"
 
 PASS=0
 FAIL=0
@@ -71,14 +72,17 @@ not_contains_file "$SKILL" '--implement-tmpdir' 'dirty-tree sidecar does not use
 
 printf '== wrapper and cli ==\n'
 contains_file "$WRAPPER" 'args+=(--days "$2")' 'wrapper translates --n to --days'
-contains_file "$WRAPPER" 'exec python3 "$CLI" rejected-analysis prepare' 'wrapper delegates prepare to cli'
-contains_file "$WRAPPER" 'exec python3 "$CLI" rejected-analysis "$cmd" "$@"' 'wrapper delegates other verbs to cli'
-contains_file "$CLI" '("rejected-analysis", "prepare")' 'prepare registered'
-contains_file "$CLI" '("rejected-analysis", "ingest-verdict")' 'ingest registered'
+contains_file "$WRAPPER" 'exec "$ROOT/scripts/larch.sh" rejected-analysis prepare' 'wrapper delegates prepare to Rust'
+contains_file "$WRAPPER" 'exec "$ROOT/scripts/larch.sh" rejected-analysis ingest-verdict' 'wrapper delegates ingest to Rust'
+not_contains_file "$CLI" '("rejected-analysis", "prepare")' 'prepare removed from Python registration'
+not_contains_file "$CLI" '("rejected-analysis", "ingest-verdict")' 'ingest removed from Python registration'
 contains_file "$CLI" '("rejected-analysis", "finalize")' 'finalize registered'
 contains_file "$CLI" '("rejected-analysis", "record")' 'record registered'
-contains_file "$CORE" 'FINDING_HASH_FIELDS = ("file_path", "concern")' 'hash fields frozen in core'
-contains_file "$CORE" 'repo_root is accepted for API symmetry' 'extractor documents repo_root non-use'
+contains_file "$RUST_CORE" 'fn finding_hash' 'Rust core owns the frozen finding hash'
+contains_file "$RUST_CORE" 'pub fn prepare_artifacts' 'Rust core owns preparation artifacts'
+contains_file "$RUST_CORE" 'pub fn ingest_artifact' 'Rust core owns verdict ingestion'
+not_contains_file "$PYTHON_CORE" 'def prepare(' 'prepare implementation removed from Python'
+not_contains_file "$PYTHON_CORE" 'def ingest_verdict(' 'ingest implementation removed from Python'
 
 printf '== wrapper behavior ==\n'
 if "$WRAPPER" prepare --days 1 >/tmp/rejected-analysis-wrapper.out 2>/tmp/rejected-analysis-wrapper.err; then

@@ -732,10 +732,14 @@ reduce prompt-injection risk but do not create a parser-enforced sandbox.
 ### Rejected analysis
 
 `/rejected-analysis` treats published findings and run-log prose as untrusted.
-Verifier prompts wrap the candidate, pin the expected file location, and demand
-the closed verdict format. Launchers use their read-only posture and dirty-tree
-backstop. Replies must bind to the candidate path. Ledger, sidecar, and issue
-batch fields are TSV-sanitized before persistence.
+Preparation reads the exhaustive open-issue snapshot through the typed GitHub
+service; a truncated or unavailable snapshot fails closed rather than silently
+narrowing overlap checks. It reads only contained regular run-log files and
+bounds each input before parsing. Verifier prompts wrap the candidate, pin the
+expected file location, and demand the closed verdict format. Launchers use
+their read-only posture and dirty-tree backstop. Replies must bind to the
+candidate path. Ledger, sidecar, and issue batch fields are TSV-sanitized
+before persistence.
 
 Confirmed non-security findings are filed only through `/issue`, preserving
 redaction, deduplication, and dependency handling. Finalization reruns the

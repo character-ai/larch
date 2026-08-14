@@ -33,6 +33,8 @@ mod process_identity;
 mod progress;
 mod rebalance_tests;
 mod redaction;
+/// Rejected-finding corpus and verdict-wire domain contract shared by migration leaves.
+pub mod rejected_analysis;
 mod repo_size;
 pub mod report;
 mod retry;

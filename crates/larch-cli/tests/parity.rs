@@ -514,6 +514,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "runtime",
     ),
     CleanInstallCase::new(
+        "clean-install-rejected-analysis-ingest-verdict",
+        "rejected-analysis",
+        "ingest-verdict",
+    ),
+    CleanInstallCase::new(
+        "clean-install-rejected-analysis-prepare",
+        "rejected-analysis",
+        "prepare",
+    ),
+    CleanInstallCase::new(
         "clean-install-learn-from-bugs-check-proposals",
         "learn-from-bugs",
         "check-proposals",
@@ -7681,6 +7691,273 @@ fn session_lifecycle_commands_have_reviewed_parity() {
     for fixture in SESSION_LIFECYCLE_CASES {
         let case = fixture.build(&python, &python_fixture, &rust);
         let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
+const REJECTED_ANALYSIS_CANDIDATES: &str = r#"[
+  {
+    "candidate_id": "C1",
+    "finding_hash": "finding-hash",
+    "concern_hash": "concern-hash",
+    "prompt_path": "work/verify-C1.md",
+    "finding": {
+      "finding_hash": "finding-hash",
+      "concern_hash": "concern-hash",
+      "source_skill": "implement",
+      "run_id": "RUN-1",
+      "round_num": "1",
+      "canonical_finding_id": "FINDING_1",
+      "synthetic_id": "REJ_CR1_1",
+      "reviewer_slots": ["cursor-specialist"],
+      "dissenting_slots": ["cursor"],
+      "file_path": "python/foo.py",
+      "line_hint": "12",
+      "concern": "Missing required check",
+      "prose_body": "Finding one",
+      "classification_row": {},
+      "vote_split": {
+        "yes_votes": 1,
+        "no_votes": 2,
+        "yes_slots": ["cursor"],
+        "no_slots": ["codex", "claude"],
+        "high_severity": true
+      },
+      "started_at": "2026-08-14T12:00:00Z",
+      "demoted_later_touched": false
+    }
+  }
+]"#;
+
+struct RejectedAnalysisIngestFixture {
+    name: &'static str,
+    candidate_id: &'static str,
+    launcher_exit: &'static str,
+    output: Option<&'static str>,
+    dirty_sidecar: Option<&'static str>,
+}
+
+impl RejectedAnalysisIngestFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        let arguments = [
+            "--work-dir",
+            "{sandbox}/work",
+            "--candidate-id",
+            self.candidate_id,
+            "--output",
+            "{sandbox}/work/verdict.txt",
+            "--launcher-exit",
+            self.launcher_exit,
+        ];
+        let mut seeds = vec![SeedFile::text(
+            "work/candidates.json",
+            REJECTED_ANALYSIS_CANDIDATES,
+        )];
+        if let Some(output) = self.output {
+            seeds.push(SeedFile::text("work/verdict.txt", output));
+        }
+        if let Some(dirty_sidecar) = self.dirty_sidecar {
+            seeds.push(SeedFile::text("work/verdict.txt.dirty-tree", dirty_sidecar));
+        }
+        ParityCase {
+            name: self.name,
+            python: Program::new(python).args(
+                std::iter::once(path_text(fixture).to_owned())
+                    .chain(std::iter::once("ingest-verdict".to_owned()))
+                    .chain(arguments.into_iter().map(str::to_owned)),
+            ),
+            rust: Program::new(rust).args(
+                ["rejected-analysis", "ingest-verdict"]
+                    .into_iter()
+                    .map(str::to_owned)
+                    .chain(arguments.into_iter().map(str::to_owned)),
+            ),
+            seed_files: seeds,
+            side_effect_records: Vec::new(),
+            normalization: vec![NormalizationRule::SandboxRoot],
+        }
+    }
+}
+
+const REJECTED_ANALYSIS_INGEST_CASES: &[RejectedAnalysisIngestFixture] = &[
+    RejectedAnalysisIngestFixture {
+        name: "rejected-analysis-ingest-confirmed",
+        candidate_id: "C1",
+        launcher_exit: "0",
+        output: Some(
+            "{\"status\": \"confirmed\", \"current_location\": \"python/foo.py:13\", \"evidence\": \"Current code still omits the check.\"}",
+        ),
+        dirty_sidecar: Some("STATUS=clean\n"),
+    },
+    RejectedAnalysisIngestFixture {
+        name: "rejected-analysis-ingest-launch-failed",
+        candidate_id: "C1",
+        launcher_exit: "1",
+        output: None,
+        dirty_sidecar: None,
+    },
+    RejectedAnalysisIngestFixture {
+        name: "rejected-analysis-ingest-dirty-tree",
+        candidate_id: "C1",
+        launcher_exit: "0",
+        output: Some("{}"),
+        dirty_sidecar: Some("STATUS=dirty\n"),
+    },
+    RejectedAnalysisIngestFixture {
+        name: "rejected-analysis-ingest-unknown-candidate",
+        candidate_id: "C2",
+        launcher_exit: "1",
+        output: None,
+        dirty_sidecar: None,
+    },
+];
+
+#[test]
+fn rejected_analysis_ingestion_has_reviewed_black_box_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("rejected_analysis_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in REJECTED_ANALYSIS_INGEST_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", fixture.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
+struct RejectedAnalysisPrepareFixture {
+    name: &'static str,
+    arguments: &'static [&'static str],
+}
+
+impl RejectedAnalysisPrepareFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        ParityCase {
+            name: self.name,
+            python: Program::new(python).args(
+                std::iter::once(path_text(fixture).to_owned())
+                    .chain(std::iter::once("prepare".to_owned()))
+                    .chain(self.arguments.iter().map(|argument| (*argument).to_owned())),
+            ),
+            rust: Program::new(rust).args(
+                ["rejected-analysis", "prepare"]
+                    .into_iter()
+                    .map(str::to_owned)
+                    .chain(self.arguments.iter().map(|argument| (*argument).to_owned())),
+            ),
+            seed_files: Vec::new(),
+            side_effect_records: Vec::new(),
+            normalization: vec![NormalizationRule::SandboxRoot],
+        }
+    }
+}
+
+const REJECTED_ANALYSIS_PREPARE_CASES: &[RejectedAnalysisPrepareFixture] = &[
+    RejectedAnalysisPrepareFixture {
+        name: "rejected-analysis-prepare-missing-days",
+        arguments: &[],
+    },
+    RejectedAnalysisPrepareFixture {
+        name: "rejected-analysis-prepare-missing-days-value",
+        arguments: &["--days"],
+    },
+    RejectedAnalysisPrepareFixture {
+        name: "rejected-analysis-prepare-help",
+        arguments: &["--help"],
+    },
+    RejectedAnalysisPrepareFixture {
+        name: "rejected-analysis-prepare-invalid-days",
+        arguments: &["--days", "nope"],
+    },
+    RejectedAnalysisPrepareFixture {
+        name: "rejected-analysis-prepare-repository-preflight",
+        arguments: &["--days", "7", "--log-root", "{sandbox}/logs"],
+    },
+    RejectedAnalysisPrepareFixture {
+        name: "rejected-analysis-prepare-preflight-precedes-bounds",
+        arguments: &[
+            "--days",
+            "0",
+            "--verify-cap",
+            "-1",
+            "--log-root",
+            "{sandbox}/logs",
+        ],
+    },
+];
+
+struct RejectedAnalysisDiagnosticFixture {
+    name: &'static str,
+    command: &'static str,
+    arguments: &'static [&'static str],
+}
+
+impl RejectedAnalysisDiagnosticFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        ParityCase {
+            name: self.name,
+            python: Program::new(python).args(
+                std::iter::once(path_text(fixture).to_owned())
+                    .chain(std::iter::once(self.command.to_owned()))
+                    .chain(self.arguments.iter().map(|argument| (*argument).to_owned())),
+            ),
+            rust: Program::new(rust).args(
+                ["rejected-analysis", self.command]
+                    .into_iter()
+                    .map(str::to_owned)
+                    .chain(self.arguments.iter().map(|argument| (*argument).to_owned())),
+            ),
+            seed_files: Vec::new(),
+            side_effect_records: Vec::new(),
+            normalization: vec![NormalizationRule::SandboxRoot],
+        }
+    }
+}
+
+const REJECTED_ANALYSIS_DIAGNOSTIC_CASES: &[RejectedAnalysisDiagnosticFixture] =
+    &[RejectedAnalysisDiagnosticFixture {
+        name: "rejected-analysis-ingest-invalid-launcher-exit",
+        command: "ingest-verdict",
+        arguments: &[
+            "--work-dir",
+            "x",
+            "--candidate-id",
+            "C1",
+            "--output",
+            "verdict.json",
+            "--launcher-exit",
+            "nope",
+        ],
+    }];
+
+#[test]
+fn rejected_analysis_preparation_has_reviewed_black_box_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("rejected_analysis_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in REJECTED_ANALYSIS_PREPARE_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", fixture.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
+#[test]
+fn rejected_analysis_diagnostics_have_reviewed_black_box_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("rejected_analysis_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in REJECTED_ANALYSIS_DIAGNOSTIC_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", fixture.name));
         assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
     }
 }

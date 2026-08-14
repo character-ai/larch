@@ -55,6 +55,7 @@ crates/larch-cli/src/release_prepare.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/release_publish.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/release_stage.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/rebalance_tests_workflow.rs	git-cli	#7671	typed-cli,typed-read
+crates/larch-cli/src/rejected_analysis_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/rendering_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/repo_size_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/research_commands.rs	gix-read	#7671	typed-read
@@ -93,7 +94,6 @@ python/larch/implement/dispatch_step2.py	later-domain	#7681	rev-parse
 python/larch/implement/rust_clippy.py	later-domain	#7681	diff,ls-files,rev-parse
 python/larch/implement/scope_disposition.py	later-domain	#7681	dynamic
 python/larch/implement/step_7a.py	later-domain	#7681	diff,merge-base
-python/larch/issue/rejected_analysis.py	later-domain	#7684	dynamic
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base
 python/larch/report/storage_config.py	later-domain	#7683	dynamic
 python/larch/report/tokens.py	later-domain	#7683	dynamic

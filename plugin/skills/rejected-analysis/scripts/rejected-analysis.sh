@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Thin larch wrapper for /rejected-analysis. Logic lives in python/cli.py.
+# Thin larch wrapper for /rejected-analysis. Preparation and ingestion live in Rust.
 set -euo pipefail
 
 resolve_root() {
@@ -52,7 +52,7 @@ case "$cmd" in
                     ;;
             esac
         done
-        exec python3 "$CLI" rejected-analysis prepare "${args[@]}"
+        exec "$ROOT/scripts/larch.sh" rejected-analysis prepare "${args[@]}"
         ;;
     ingest-verdict)
         args=()
@@ -89,10 +89,10 @@ case "$cmd" in
                     ;;
             esac
         done
-        exec python3 "$CLI" rejected-analysis "$cmd" "${args[@]}"
+        exec "$ROOT/scripts/larch.sh" rejected-analysis ingest-verdict "${args[@]}"
         ;;
     finalize)
-        exec python3 "$CLI" rejected-analysis "$cmd" "$@"
+        exec python3 "$CLI" rejected-analysis finalize "$@"
         ;;
     record)
         args=()
