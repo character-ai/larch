@@ -108,8 +108,8 @@ separate processes never interleave a record.
 `capture-transcript` are Rust-owned. Every production caller enters through
 `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`. Rust controls flush ordering, batch
 aggregation, and manifest reconciliation. Its only retained Python payload
-dependencies are `token report`, `token mark`, and `difficulty write-record`,
-all owned by #7684; `final-report write` additionally reads the #7679 model
+dependencies are `token report` and `difficulty write-record`,
+all owned by #7684 (`token mark` is Rust-owned in-process; #8506); `final-report write` additionally reads the #7679 model
 fallback and assessment payloads and the #7681 plan and PR payloads. Those
 Python payload commands never write a manifest, timing ledger, transcript,
 archive, or run-log batch directly.

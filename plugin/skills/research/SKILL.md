@@ -43,7 +43,7 @@ After flag parsing completes, validate that `RESEARCH_QUESTION` is non-empty AND
 
 ## Token telemetry (observability)
 
-Step 4 always renders a `## Token Spend` section (immediately before `cleanup-tmpdir.sh`) summarizing per-phase Claude subagent token totals. The renderer (`python3 python/cli.py token lane-write/lane-report report`) globs per-lane sidecar files written by the orchestrator after each `Agent`-tool return. Sidecar schema: `PHASE=research|validation`, `LANE=<stable slot name>`, `TOOL=claude`, `TOTAL_TOKENS=<integer or "unknown">`. See `${CLAUDE_PLUGIN_ROOT}/python/larch/report/tokens.py research lane docs` for the helper contract. Telemetry is observability-only: there is no budget enforcement.
+Step 4 always renders a `## Token Spend` section (immediately before `cleanup-tmpdir.sh`) summarizing per-phase Claude subagent token totals. The renderer (`scripts/larch.sh token lane-write/lane-report report`) globs per-lane sidecar files written by the orchestrator after each `Agent`-tool return. Sidecar schema: `PHASE=research|validation`, `LANE=<stable slot name>`, `TOOL=claude`, `TOTAL_TOKENS=<integer or "unknown">`. See `${CLAUDE_PLUGIN_ROOT}/python/larch/report/tokens.py research lane docs` for the helper contract. Telemetry is observability-only: there is no budget enforcement.
 
 ### Cost column (optional)
 
@@ -341,11 +341,11 @@ Automatically create a GitHub issue containing the research question, full repor
 
 ### Compose issue body
 
-Capture token spend by running `python3 python/cli.py token lane-write/lane-report report` with the same arguments as Step 4:
+Capture token spend by running `scripts/larch.sh token lane-write/lane-report report` with the same arguments as Step 4:
 
 ```bash
 # lint-consecutive-bash: ok token snapshot feeds deferred issue-body composition refactor
-TOKEN_SPEND=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-report \
+TOKEN_SPEND=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" token lane-report \
   --dir "$RESEARCH_TMPDIR" 2>/dev/null || echo "_(token telemetry unavailable)_")
 ```
 
@@ -412,7 +412,7 @@ Print: `> **🔶 /research 4: cleanup**`
 Render the `## Token Spend` section before `cleanup-tmpdir.sh` so sidecars under `$RESEARCH_TMPDIR` are still readable. The script owns the full section (header + body): SKILL.md just executes it and prints the stdout:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-report --dir "$RESEARCH_TMPDIR"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" token lane-report --dir "$RESEARCH_TMPDIR"
 ```
 
 The script is a no-op-safe call: when no sidecars exist, it prints a `_(no measurements available)_` placeholder; if `$RESEARCH_TMPDIR` was already removed, it prints `_(token telemetry unavailable)_`. Either path exits 0. See `${CLAUDE_PLUGIN_ROOT}/python/larch/report/tokens.py research lane docs` for the full contract.

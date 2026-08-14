@@ -491,8 +491,9 @@ def _append_codex_token_sidecars(*, design_tmpdir: Path, plugin_root: Path) -> N
     token_record = design_tmpdir / "step2b-drafter-status.txt.token-record"
     if not token_record.is_file() or token_record.stat().st_size == 0:
         return
+    entrypoint = str(larch_entrypoint(plugin_root))
     append = subprocess.run(
-        [sys.executable, str(plugin_root / "python" / "cli.py"), "token", "append-record", "--input", str(token_record), "--tmpdir", str(design_tmpdir)],
+        [entrypoint, "token", "append-record", "--input", str(token_record), "--tmpdir", str(design_tmpdir)],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         check=False,
@@ -504,7 +505,7 @@ def _append_codex_token_sidecars(*, design_tmpdir: Path, plugin_root: Path) -> N
         env.pop(key, None)
     env["DESIGN_TMPDIR"] = str(design_tmpdir)
     sidecar = subprocess.run(
-        [sys.executable, str(plugin_root / "python" / "cli.py"), "token", "record-vendor-sidecar", "--input", str(token_record)],
+        [entrypoint, "token", "record-vendor-sidecar", "--input", str(token_record)],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         env=env,

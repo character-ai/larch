@@ -37,7 +37,6 @@ use crate::{
         run_vendor_launch_execution, scan_flag_arguments, valid_model_token, vendor_on_path,
         vendor_workdir, write_preflight_bundle,
     },
-    python_verb::run_python_verb_best_effort,
     valid_meta_path,
 };
 
@@ -810,9 +809,7 @@ fn record_cursor_usage(
             buckets.total(),
         ),
     );
-    run_python_verb_best_effort([
-        OsString::from("token"),
-        OsString::from("record-vendor-sidecar"),
+    crate::token_commands::record_vendor_sidecar_best_effort([
         OsString::from("--input"),
         token_record.as_os_str().to_owned(),
     ]);

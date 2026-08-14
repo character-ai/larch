@@ -323,7 +323,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
     design_path = Path(design_tmpdir)
     (design_path / ".design-step0-parsed.env").write_bytes(cache.read_bytes())
     env: dict[str, str] = {**os.environ, "DESIGN_TMPDIR": design_tmpdir, "IMPLEMENT_TMPDIR": os.environ.get("IMPLEMENT_TMPDIR", "")}
-    _run_best_effort(command=_cli_cmd(plugin_root, "token", "mark", "design Step 0: session setup"), env=env)
+    _run_best_effort(command=[str(repo_roots.larch_entrypoint(plugin_root)), "token", "mark", "design Step 0: session setup"], env=env)
     codex_binary = kv.get("CODEX_BINARY_FOUND", [""])[-1]
     cursor_binary = kv.get("CURSOR_BINARY_FOUND", [""])[-1]
     active_run_id = parsed.get("run_id", "") or session_id

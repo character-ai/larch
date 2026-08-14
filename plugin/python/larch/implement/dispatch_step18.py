@@ -466,7 +466,7 @@ def _step18_logs_flush(*, implement_tmpdir: Path, step17_emitted: str) -> int:
         "LARCH_TIMING_SKILL": "implement",
     }
     _ = _run_larch_capture(["timing", "report", "--since-last-mark", "--terse"], env=timing_env)
-    _ = _invoke_cli(["token", "mark", "Step 18 — logs flush"])
+    _ = _run_larch_capture(["token", "mark", "Step 18 — logs flush"], env=timing_env)
     _ = _run_larch_capture(["timing", "mark", "Step 18 — logs flush"], env=timing_env)
 
     run_id = os.environ.get("RUN_ID") or _read_session_key_default(implement_tmpdir=implement_tmpdir, key="LARCH_RUN_ID", default="")

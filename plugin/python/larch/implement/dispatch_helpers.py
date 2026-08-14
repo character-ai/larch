@@ -310,7 +310,7 @@ def _maybe_mark_step2_telemetry(
         codex_binary_found=codex_binary_found,
         cursor_binary_found=cursor_binary_found,
     ):
-        token_result = _invoke_cli(["token", "mark", config.IMPLEMENT_STEP2_LABEL])
+        token_result = _invoke_larch(["token", "mark", config.IMPLEMENT_STEP2_LABEL])
         if token_result.returncode != 0:
             return False
     timing_result = _run(

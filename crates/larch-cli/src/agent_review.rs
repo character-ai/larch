@@ -2062,7 +2062,7 @@ fn emit_launcher_result(artifacts: &ReviewArtifacts, tool: ReviewTool, exit_code
     emit_kv("OUTPUT", &artifacts.output_raw);
 }
 
-fn record_codex_usage(artifacts: &ReviewArtifacts, session: &ReviewSession, model: &str) {
+fn record_codex_usage(artifacts: &ReviewArtifacts, _session: &ReviewSession, model: &str) {
     let events = artifacts.path(LauncherArtifactKind::Events);
     let sidecar = artifacts.path(LauncherArtifactKind::Sidecar);
     let totals = match parse_codex_usage_file(&events) {
@@ -2091,15 +2091,10 @@ fn record_codex_usage(artifacts: &ReviewArtifacts, session: &ReviewSession, mode
     };
     let path = artifacts.path(LauncherArtifactKind::TokenRecord);
     artifacts.write(&path, &token_record);
-    let _ignored = run_python(
-        session,
-        [
-            OsString::from("token"),
-            OsString::from("record-vendor-sidecar"),
-            OsString::from("--input"),
-            path.as_os_str().to_owned(),
-        ],
-    );
+    crate::token_commands::record_vendor_sidecar_best_effort([
+        OsString::from("--input"),
+        path.as_os_str().to_owned(),
+    ]);
 }
 
 fn postprocess_cursor(
@@ -2180,7 +2175,7 @@ impl ResearchOutputValidator for PythonResearchValidator<'_> {
 
 fn record_cursor_usage(
     artifacts: &ReviewArtifacts,
-    session: &ReviewSession,
+    _session: &ReviewSession,
     value: &serde_json::Value,
     model: &str,
 ) {
@@ -2219,15 +2214,10 @@ fn record_cursor_usage(
     }
     let record = artifacts.path(LauncherArtifactKind::TokenRecord);
     artifacts.write(&record, &text);
-    let _ignored = run_python(
-        session,
-        [
-            OsString::from("token"),
-            OsString::from("record-vendor-sidecar"),
-            OsString::from("--input"),
-            record.as_os_str().to_owned(),
-        ],
-    );
+    crate::token_commands::record_vendor_sidecar_best_effort([
+        OsString::from("--input"),
+        record.as_os_str().to_owned(),
+    ]);
 }
 
 fn extracted_model(args: &[String]) -> &str {

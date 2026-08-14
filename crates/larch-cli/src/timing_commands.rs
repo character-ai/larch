@@ -24,7 +24,7 @@ use larch_adapters::{
     resolve_allow_missing,
 };
 use larch_core::{
-    BlockMarkers, BusinessClock, ChildEnvironment, python_json_dumps, replace_markdown_block,
+    BlockMarkers, BusinessClock, python_json_dumps, replace_markdown_block,
     report::timing::{
         self, DEFAULT_OUTLIER_THRESHOLD_S, LedgerRows, REPORT_UNAVAILABLE,
         TIMING_TASK_KINDS_ALLOWED,
@@ -34,8 +34,6 @@ use larch_core::{
 
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt as _;
-
-use crate::python_verb::{plugin_root_directory, run_python_verb_best_effort};
 
 /// Seconds an append waits for the ledger lock before it gives up.
 const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
@@ -420,34 +418,35 @@ pub fn telemetry_mark(arguments: &[OsString]) -> ExitCode {
     environment.set("IMPLEMENT_TMPDIR", raw);
     let session = tmpdir.join("session-env.sh");
     let session_text = read_text(&session);
-    let mut published = vec![(ChildEnvironment::ImplementTmpdir, OsString::from(raw))];
-    for (key, child) in [
-        (
-            "LARCH_TOKEN_SESSION_ID",
-            ChildEnvironment::LarchTokenSessionId,
-        ),
-        (
-            "LARCH_CLAUDE_SOURCE_FILE",
-            ChildEnvironment::LarchClaudeSourceFile,
-        ),
-        ("LARCH_TIMING_LEDGER", ChildEnvironment::LarchTimingLedger),
+    let mut overrides = vec![("IMPLEMENT_TMPDIR".to_owned(), raw.to_owned())];
+    for key in [
+        "LARCH_TOKEN_SESSION_ID",
+        "LARCH_CLAUDE_SOURCE_FILE",
+        "LARCH_TIMING_LEDGER",
+        "LARCH_TOKEN_LEDGER",
     ] {
         let value = session_value(&session_text, key);
         if !value.is_empty() {
             environment.set(key, &value);
-            published.push((child, OsString::from(value)));
+            overrides.push((key.to_owned(), value));
         }
     }
-    if plugin_root_directory().is_some() {
-        crate::python_verb::publish_session_environment(published);
-        run_python_verb_best_effort([
-            OsString::from("token"),
-            OsString::from("mark"),
+    let override_refs: Vec<(&str, String)> = overrides
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.clone()))
+        .collect();
+    let mut mark_args = vec![OsString::from(label)];
+    if let Some((_, ledger)) = overrides
+        .iter()
+        .find(|(key, _)| key == "LARCH_TOKEN_LEDGER")
+    {
+        mark_args = vec![
+            OsString::from("--ledger"),
+            OsString::from(ledger),
             OsString::from(label),
-        ]);
-    } else {
-        eprintln!("timing telemetry-mark: token mark skipped: cannot resolve the plugin root");
+        ];
     }
+    let _ignored = crate::token_commands::mark_with_env(&mark_args, &override_refs);
     environment.set("DESIGN_TMPDIR", "");
     environment.set("LARCH_TIMING_SKILL", "implement");
     match resolve_ledger_path(None, &environment) {

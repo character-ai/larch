@@ -33,7 +33,6 @@ from larch.agents._types import (
     _QUOTA_RE,
     _AUTH_RE,
     _TOML_CLOSED_STRING_DELIMITER_COUNT,
-    _PY_CLI,
     _SESSION_CAPTURE_FAILED_RC,
     ExternalAgentFailureReason,
     LauncherPaths,
@@ -729,8 +728,7 @@ def _record_usage_from_events(*, events: Path, sidecar: Path, label: str, token_
         )
         return
     argv = [
-        sys.executable,
-        str(_PY_CLI),
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
         "token",
         "record-vendor",
         "codex",
@@ -742,7 +740,7 @@ def _record_usage_from_events(*, events: Path, sidecar: Path, label: str, token_
     ]
     if model:
         argv.append(f"model={model}")
-    proc.run(argv)
+    proc.run(argv, env=larch_entrypoint_env(Path(__file__).resolve().parents[3]))
 
 
 def _mirror_codex_quota_from_events(*, events: Path, sidecar: Path) -> None:
@@ -1362,8 +1360,9 @@ def _record_cursor_usage_from_output(*, output: Path, label: str, model: str = "
         text += f"MODEL={model}\n"
     _write(path=token_record, text=text)
     proc.run(
-        [sys.executable, str(_PY_CLI), "token", "record-vendor-sidecar", "--input", str(token_record)],
+        [str(larch_entrypoint(Path(__file__).resolve().parents[3])), "token", "record-vendor-sidecar", "--input", str(token_record)],
         check=False,
+        env=larch_entrypoint_env(Path(__file__).resolve().parents[3]),
     )
 
 

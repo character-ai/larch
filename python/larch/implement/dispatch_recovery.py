@@ -20,7 +20,6 @@ from larch.implement.dispatch_helpers import (
     _current_cli_path,
     _emit_kv,
     _err,
-    _invoke_cli,
     _parse_porcelain_z,
     _run,
     resolve_tmpdir_path,
@@ -201,8 +200,8 @@ def _rehydrate_commit_session_from_tmpdir() -> None:
 
 
 def _mark_commit_timing() -> None:
-    _invoke_cli(["token", "mark", "Step 4 — commit implementation"])
     env = larch_entrypoint_env(_current_cli_path().parents[1])
+    subprocess.run([str(larch_entrypoint(_current_cli_path().parents[1])), "token", "mark", "Step 4 — commit implementation"], env=env, check=False)
     env["LARCH_TIMING_SKILL"] = "implement"
     subprocess.run([str(larch_entrypoint(_current_cli_path().parents[1])), "timing", "mark", "Step 4 — commit implementation"], env=env, check=False)
 

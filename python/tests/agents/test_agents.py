@@ -195,7 +195,7 @@ def test_ingest_launcher_token_sidecar_uses_stdout_token_record(
         cwd=str(tmp_path),
     )
 
-    assert [call[2:4] for call in runner.calls] == [("token", "append-record"), ("token", "record-vendor-sidecar")]
+    assert [call[1:3] for call in runner.calls] == [("token", "append-record"), ("token", "record-vendor-sidecar")]
     assert seen == {str(token_record)}
     active_env = runner.envs[-1]
     assert active_env is not None
@@ -271,8 +271,8 @@ def test_ingest_launcher_token_sidecar_dedups_append_but_records_each_time(tmp_p
             seen=seen,
         )
 
-    append_calls = [call for call in runner.calls if call[2:4] == ("token", "append-record")]
-    active_calls = [call for call in runner.calls if call[2:4] == ("token", "record-vendor-sidecar")]
+    append_calls = [call for call in runner.calls if call[1:3] == ("token", "append-record")]
+    active_calls = [call for call in runner.calls if call[1:3] == ("token", "record-vendor-sidecar")]
     assert len(append_calls) == 1
     assert len(active_calls) == 2
 
@@ -293,7 +293,7 @@ def test_ingest_launcher_token_sidecar_none_effective_tmpdir_first_call(tmp_path
         implement_tmpdir=None,
         seen=seen,
     )
-    assert not [call for call in runner.calls if call[2:4] == ("token", "append-record")]
+    assert not [call for call in runner.calls if call[1:3] == ("token", "append-record")]
     assert seen == set()
 
     # Second call: tmpdir now available; append-record must run (not silently missed).
@@ -305,8 +305,8 @@ def test_ingest_launcher_token_sidecar_none_effective_tmpdir_first_call(tmp_path
         seen=seen,
     )
 
-    append_calls = [call for call in runner.calls if call[2:4] == ("token", "append-record")]
-    active_calls = [call for call in runner.calls if call[2:4] == ("token", "record-vendor-sidecar")]
+    append_calls = [call for call in runner.calls if call[1:3] == ("token", "append-record")]
+    active_calls = [call for call in runner.calls if call[1:3] == ("token", "record-vendor-sidecar")]
     assert len(append_calls) == 1
     assert append_calls[0][-1] == str(token_record)
     assert seen == {str(token_record)}

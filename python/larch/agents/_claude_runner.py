@@ -8,7 +8,6 @@ import html
 import os
 import re
 import subprocess
-import sys
 import tempfile
 import time
 from collections.abc import Callable, Sequence
@@ -29,7 +28,6 @@ from larch.agents._types import (
     _CLAUDE_STDERR_SCAN_TAIL_BYTES,
     _MAX_CONTEXT_FILES,
     _CTRL_RE,
-    _PY_CLI,
     WaterfallResult,
     TierAttempt,
     _append,
@@ -202,10 +200,10 @@ def _record_claude_sub_usage(*, obj: dict[str, object], raw: str, model: str) ->
     except ValueError:
         return
     total = input_tokens + output_tokens + cache_read + cache_create
+    entrypoint = str(larch_entrypoint(Path(__file__).resolve().parents[3]))
     proc.run(
         [
-            sys.executable,
-            str(_PY_CLI),
+            entrypoint,
             "token",
             "record-vendor",
             "claude_sub",
@@ -218,6 +216,7 @@ def _record_claude_sub_usage(*, obj: dict[str, object], raw: str, model: str) ->
             f"model={model}",
         ],
         check=False,
+        env=larch_entrypoint_env(Path(__file__).resolve().parents[3]),
     )
 
 
@@ -239,10 +238,10 @@ def _record_claude_ci_usage(*, obj: dict[str, object], output: Path, raw: str, m
         path=output.with_suffix(output.suffix + ".token-record"),
         text=f"TOOL=claude\nMODEL={model}\nINPUT={input_tokens}\nOUTPUT={output_tokens}\nCACHE_READ={cache_read}\nCACHE_CREATE={cache_create}\nTOTAL={total}\nRAW={raw}\n"
     )
+    entrypoint = str(larch_entrypoint(Path(__file__).resolve().parents[3]))
     proc.run(
         [
-            sys.executable,
-            str(_PY_CLI),
+            entrypoint,
             "token",
             "record-vendor",
             "claude_sub",
@@ -255,6 +254,7 @@ def _record_claude_ci_usage(*, obj: dict[str, object], output: Path, raw: str, m
             f"model={model}",
         ],
         check=False,
+        env=larch_entrypoint_env(Path(__file__).resolve().parents[3]),
     )
 
 
@@ -431,18 +431,24 @@ def ingest_launcher_token_sidecar(
         if not token_record:
             return False
     effective_tmpdir = tmpdir if tmpdir is not None else implement_tmpdir
+    plugin = Path(__file__).resolve().parents[3]
+    entrypoint = str(larch_entrypoint(plugin))
     if token_record not in seen and effective_tmpdir:
         seen.add(token_record)
         runner.run(
-            [sys.executable, str(_PY_CLI), "token", "append-record",
+            [entrypoint, "token", "append-record",
              "--tmpdir", effective_tmpdir, "--input", token_record],
             cwd=cwd,
+            env=larch_entrypoint_env(plugin),
         )
     runner.run(
-        [sys.executable, str(_PY_CLI), "token", "record-vendor-sidecar",
+        [entrypoint, "token", "record-vendor-sidecar",
          "--input", token_record],
         cwd=cwd,
-        env=token_sidecar_ingest_env(implement_tmpdir=implement_tmpdir, tmpdir=tmpdir),
+        env=larch_entrypoint_env(
+            plugin,
+            base=token_sidecar_ingest_env(implement_tmpdir=implement_tmpdir, tmpdir=tmpdir),
+        ),
     )
     return True
 

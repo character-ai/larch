@@ -12,7 +12,7 @@
 
 Launch all 3 lanes in parallel in a single message. **Spawn order matters for parallelism**: start Cursor first, then Codex, then the always-on Claude Code Reviewer subagent. Cursor and Codex use foreground `bgjob start` launches with unique per-lane step slugs. The Claude Code lane keeps the Agent-tool path. Each reviewer receives the research report and the original question. Each must **only report findings**; never edit files.
 
-**Token telemetry (validation lanes)**: Every Claude Code Reviewer subagent invocation in this phase is a measurable Agent-tool call — including (a) the always-on `Code` lane, (b) any Cursor/Codex pre-launch fallback subagents, AND (c) any Cursor/Codex runtime-timeout replacement subagents. After each Agent-tool return, parse `total_tokens` from the `<usage>` block and write a per-lane sidecar via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-write --phase validation --lane <slot> --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`. Stable slot names: `Code`, `Cursor`, `Codex` — `Cursor` and `Codex` slot names are used for both pre-launch and runtime-timeout fallback subagents. See `${CLAUDE_PLUGIN_ROOT}/python/larch/report/tokens.py research lane docs`.
+**Token telemetry (validation lanes)**: Every Claude Code Reviewer subagent invocation in this phase is a measurable Agent-tool call — including (a) the always-on `Code` lane, (b) any Cursor/Codex pre-launch fallback subagents, AND (c) any Cursor/Codex runtime-timeout replacement subagents. After each Agent-tool return, parse `total_tokens` from the `<usage>` block and write a per-lane sidecar via `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" token lane-write --phase validation --lane <slot> --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`. Stable slot names: `Code`, `Cursor`, `Codex` — `Cursor` and `Codex` slot names are used for both pre-launch and runtime-timeout fallback subagents. See `${CLAUDE_PLUGIN_ROOT}/python/larch/report/tokens.py research lane docs`.
 
 ## Step 2 entry — Propagate research-phase fallbacks to VALIDATION_* keys
 
@@ -249,7 +249,7 @@ Use `timeout: 1860000` on the foreground Bash tool call. The harness auto-backgr
    ```bash
    _append_err="$(mktemp)"
    set +e
-   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token append-record --input "$SIDECAR" --tmpdir "$RESEARCH_TMPDIR" 2>"$_append_err"
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" token append-record --input "$SIDECAR" --tmpdir "$RESEARCH_TMPDIR" 2>"$_append_err"
    _append_rc=$?
    set -e
    if (( _append_rc != 0 )); then
@@ -262,7 +262,7 @@ Use `timeout: 1860000` on the foreground Bash tool call. The harness auto-backgr
    rm -f "$_append_err"
    _active_err="$(mktemp)"
    set +e
-   env -u LARCH_TOKEN_LEDGER -u LARCH_TOKEN_SESSION_ID -u IMPLEMENT_TMPDIR -u DESIGN_TMPDIR -u SESSION_ENV_PATH RESEARCH_TMPDIR="$RESEARCH_TMPDIR" python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token record-vendor-sidecar --input "$SIDECAR" 2>"$_active_err"
+   env -u LARCH_TOKEN_LEDGER -u LARCH_TOKEN_SESSION_ID -u IMPLEMENT_TMPDIR -u DESIGN_TMPDIR -u SESSION_ENV_PATH RESEARCH_TMPDIR="$RESEARCH_TMPDIR" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" token record-vendor-sidecar --input "$SIDECAR" 2>"$_active_err"
    _active_rc=$?
    set -e
    if (( _active_rc != 0 )); then
@@ -316,7 +316,7 @@ If any findings were accepted (from Claude subagents, Codex, or Cursor):
 
 2. **Route the synthesis-revision step to a separate Claude Agent subagent** — the orchestrator that drove acceptance/rejection negotiation must not also be the synthesizer that revises the synthesis-of-record.
 
-   **Token telemetry (revision subagent)**: parse `total_tokens` from the revision subagent's `<usage>` block and write `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-write --phase validation --lane Revision --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`.
+   **Token telemetry (revision subagent)**: parse `total_tokens` from the revision subagent's `<usage>` block and write `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" token lane-write --phase validation --lane Revision --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`.
 
    **Compute the banner BEFORE invoking the revision subagent** by forking `scripts/larch.sh research banner` to recompute `$BANNER` (the revision phase preserves the same banner the synthesis phase emitted; the lane-status state is unchanged between phases for `RESEARCH_*` keys):
 

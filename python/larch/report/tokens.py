@@ -2871,84 +2871,6 @@ def token_mark(
     return TokenMarkResult(ledger_path=path, marked=marked)
 
 
-def token_mark_main(argv: list[str] | None = None) -> int:
-    args, ledger_override = _pop_ledger(list(argv if argv is not None else sys.argv[1:]))
-    if not args:
-        print("token mark requires <step>", file=sys.stderr)
-        return 1
-    try:
-        _ = token_mark(step=args[0], ledger=ledger_override)
-    except (OSError, ValueError) as exc:
-        if isinstance(exc, ValueError):
-            print(f"token mark: {exc}", file=sys.stderr)
-            return 1
-        print(f"token mark: write skipped: {exc}", file=sys.stderr)
-    return 0
-
-
-def token_record_vendor_main(argv: list[str] | None = None) -> int:
-    args, ledger_override = _pop_ledger(list(argv if argv is not None else sys.argv[1:]))
-    if not args:
-        print("token record-vendor requires <vendor>", file=sys.stderr)
-        return 1
-    vendor = args[0]
-    vals: dict[str, Any] = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0, "total": 0, "raw": "", "model": ""}
-    for kv in args[1:]:
-        key, sep, value = kv.partition("=")
-        if not sep or key not in vals:
-            print(f"token record-vendor: unknown argument: {kv}", file=sys.stderr)
-            return 1
-        if key in {"raw", "model"}:
-            vals[key] = value
-        elif _UINT_RE.fullmatch(value):
-            vals[key] = int(value)
-        else:
-            print(f"token record-vendor: {key} must be a non-negative integer", file=sys.stderr)
-            return 1
-    try:
-        ledger = resolve_token_ledger_path(ledger=ledger_override)
-    except ValueError as exc:
-        print(f"token record-vendor: {exc}", file=sys.stderr)
-        return 1
-    if ledger is None:
-        return 0
-    try:
-        TokenLedger(ledger).record_vendor(vendor, **vals)
-    except (OSError, ValueError) as exc:
-        if isinstance(exc, ValueError):
-            print(f"token record-vendor: {exc}", file=sys.stderr)
-            return 1
-        print(f"token record-vendor: write skipped: {exc}", file=sys.stderr)
-    return 0
-
-
-def token_record_vendor_sidecar_main(argv: list[str] | None = None) -> int:
-    args, ledger_override = _pop_ledger(list(argv if argv is not None else sys.argv[1:]))
-    opts = _flag_map(args)
-    try:
-        input_path = Path(opts["--input"]) if opts.get("--input") else None
-        record_vendor_from_sidecar(input_path=input_path, ledger=ledger_override)
-    except (KeyError, ValueError) as exc:
-        print(f"token record-vendor-sidecar: {exc}", file=sys.stderr)
-        return 2
-    return 0
-
-
-def token_dump_main(argv: list[str] | None = None) -> int:
-    _, ledger_override = _pop_ledger(list(argv if argv is not None else sys.argv[1:]))
-    try:
-        ledger = resolve_token_ledger_path(ledger=ledger_override)
-    except ValueError as exc:
-        print(f"token dump: {exc}", file=sys.stderr)
-        return 1
-    if ledger is None:
-        return 0
-    print(ledger)
-    if ledger.is_file() and ledger.stat().st_size > 0:
-        _ = sys.stdout.write(ledger.read_text(encoding="utf-8"))
-    return 0
-
-
 def token_report_main(argv: list[str] | None = None) -> int:
     args = list(argv if argv is not None else sys.argv[1:])
     mode = ""
@@ -3117,39 +3039,6 @@ def token_claude_source_main(argv: list[str] | None = None) -> int:
     print("STATUS=unavailable")
     print(f"REASON={result.reason}")
     return 1
-
-
-def token_lane_write_main(argv: list[str] | None = None) -> int:
-    args = list(argv if argv is not None else sys.argv[1:])
-    opts = _flag_map(args)
-    try:
-        ResearchLaneTally(Path(opts["--dir"])).write(phase=opts["--phase"], lane=opts["--lane"], tool=opts["--tool"], total_tokens=opts["--total-tokens"])
-    except (KeyError, ValueError) as exc:
-        print(f"token lane-write: {exc}", file=sys.stderr)
-        return 1
-    return 0
-
-
-def token_lane_report_main(argv: list[str] | None = None) -> int:
-    opts = _flag_map(list(argv if argv is not None else sys.argv[1:]))
-    try:
-        print(ResearchLaneTally(Path(opts["--dir"])).report())
-    except (KeyError, ValueError) as exc:
-        print(f"token lane-report: {exc}", file=sys.stderr)
-        return 1
-    return 0
-
-
-def token_append_record_main(argv: list[str] | None = None) -> int:
-    opts = _flag_map(list(argv if argv is not None else sys.argv[1:]))
-    try:
-        tmpdir = Path(opts["--tmpdir"])
-        input_path = Path(opts["--input"]) if opts.get("--input") else None
-        append_token_record_from_sidecar(input_path=input_path, tmpdir=tmpdir)
-    except (KeyError, ValueError) as exc:
-        print(f"token append-record: {exc}", file=sys.stderr)
-        return 2
-    return 0
 
 
 def token_cost_main(argv: list[str] | None = None) -> int:

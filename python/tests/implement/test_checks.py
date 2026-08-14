@@ -1938,12 +1938,12 @@ def test_run_codex_ingests_token_record_on_success_and_failure(tmp_path: Path, m
         assert len(active_calls) == 1
         append_argv = list(append_calls[0][0])
         token_record = run_dir / "codex.log.token-record"
-        assert append_argv[:3] == ["python3", str(_clf._agent_cli()), "token"]  # pyright: ignore[reportPrivateUsage]
-        assert append_argv[1] != "python/cli.py"
+        assert append_argv[0].endswith("larch.sh") or "larch" in append_argv[0]
+        assert append_argv[1:3] == ["token", "append-record"]
         assert append_argv[append_argv.index("--input") + 1] == str(token_record)
         assert append_argv[append_argv.index("--tmpdir") + 1] == str(implement_tmpdir)
         active_argv = list(active_calls[0][0])
-        assert active_argv[:3] == ["python3", str(_clf._agent_cli()), "token"]  # pyright: ignore[reportPrivateUsage]
+        assert active_argv[1:3] == ["token", "record-vendor-sidecar"]
         assert active_argv[active_argv.index("--input") + 1] == str(token_record)
         active_env = active_calls[0][1]["env"]
         assert isinstance(active_env, Mapping)

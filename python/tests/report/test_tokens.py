@@ -792,9 +792,8 @@ def test_token_report_scrape_mode_confines_outputs(
 
 
 def test_token_cli_rejects_invalid_ledger(capsys: pytest.CaptureFixture[str]) -> None:
-    rc = tokens.token_dump_main(["--ledger", "/etc/passwd"])
-    assert rc == 1
-    assert "token dump:" in capsys.readouterr().err
+    pytest.skip("token dump CLI cut over to Rust (#8506); covered by crates/larch-cli/tests/token_commands.rs")
+    _ = capsys
 
 
 def test_validate_under_tmp_empty_tmpdir_uses_system_tmp(
