@@ -68,6 +68,7 @@ Commands:
   residual-bash      List retained Bash paths from the residual manifest
   final-report       Terminal `/implement` final-report composition and publication
   report-tokens      Token-cost analysis over the synchronized run-log corpus
+  research           The `/research` preparation commands: banner, planner, findings, citations
   rebalance-tests    CI test-rebalance planning, verification, and checked orchestration
   session            Session state compatibility commands
   slack              Slack announcement helpers
