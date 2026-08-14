@@ -48,6 +48,8 @@ pub struct CanonicalHeading {
     pub kind: OosItemKind,
     /// The heading's ordinal. Saturates rather than wrapping.
     pub number: u64,
+    /// Exact ordinal digits, retained for consumers that need an unbounded value.
+    pub ordinal_digits: String,
     /// The title text after the colon, whitespace trimmed.
     pub title: String,
 }
@@ -64,6 +66,10 @@ pub enum BlockBoundary {
     ItemHeading,
     /// Only an `### OOS_<n>:` heading closes the block.
     OosHeading,
+    /// Only a `### FINDING_<n>:` heading closes the block.
+    FindingHeading,
+    /// Every level-three Markdown heading closes the block.
+    LevelThreeHeading,
 }
 
 /// One canonical block with the exact source slice it owns.
@@ -190,6 +196,7 @@ pub fn parse_canonical_heading(line: &str) -> Option<CanonicalHeading> {
         item_id: format!("{}_{}", kind.as_str(), &captures[2]),
         kind,
         number: captures[2].parse::<u64>().unwrap_or(u64::MAX),
+        ordinal_digits: captures[2].to_owned(),
         title: trim_python_whitespace(&captures[3]).to_owned(),
     })
 }
@@ -205,6 +212,7 @@ pub fn is_canonical_heading(line: &str, kind: Option<OosItemKind>) -> bool {
 struct LineRecord {
     start: usize,
     heading: Option<CanonicalHeading>,
+    level_three: bool,
 }
 
 /// Track fence state across one line and report whether that line is fenced.
@@ -249,17 +257,25 @@ fn line_records(text: &str) -> Vec<LineRecord> {
             } else {
                 parse_canonical_heading(line)
             },
+            level_three: !fenced && is_level_three_heading(line),
         });
         offset += raw.len();
     }
     records
 }
 
+fn is_level_three_heading(line: &str) -> bool {
+    let rest = line.strip_prefix("###");
+    rest.is_some_and(|tail| tail.is_empty() || tail.starts_with([' ', '\t']))
+}
+
 fn closes_block(boundary: BlockBoundary, record: &LineRecord) -> bool {
     match (boundary, record.heading.as_ref()) {
+        (BlockBoundary::LevelThreeHeading, _) => record.level_three,
         (_, None) => false,
         (BlockBoundary::ItemHeading, Some(_)) => true,
         (BlockBoundary::OosHeading, Some(heading)) => heading.kind == OosItemKind::Oos,
+        (BlockBoundary::FindingHeading, Some(heading)) => heading.kind == OosItemKind::Finding,
     }
 }
 

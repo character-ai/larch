@@ -36,6 +36,8 @@ mod redaction;
 mod repo_size;
 pub mod report;
 mod retry;
+/// Dormant review-domain parity APIs. Python remains the production owner.
+pub mod review;
 mod review_dispatch;
 mod run_log;
 mod session_env;
