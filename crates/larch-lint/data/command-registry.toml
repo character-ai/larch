@@ -1397,6 +1397,20 @@ planning_issue = 7681
 
 [[commands]]
 domain = "ci"
+verb = "gitleaks-base"
+python_module = "larch.implement.ci"
+python_function = "gitleaks_base_main"
+machine_stdout = true
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 8216
+migration_issue = 8344
+clean_install_test = "clean-install-ci-gitleaks-base"
+
+[[commands]]
+domain = "ci"
 verb = "main-health"
 python_module = "larch.implement.ci"
 python_function = "main_health_main"
@@ -1421,6 +1435,18 @@ planning_issue = 8319
 
 [[commands]]
 domain = "ci"
+verb = "promote-rust-policy-candidate"
+python_module = "larch.implement.rust_policy_candidate"
+python_function = "promote_policy_candidate_main"
+machine_stdout = false
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8362
+
+[[commands]]
+domain = "ci"
 verb = "rerun-failed"
 python_module = "larch.implement.ci"
 python_function = "rerun_failed_main"
@@ -1430,20 +1456,6 @@ implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
 planning_issue = 7681
-
-[[commands]]
-domain = "ci"
-verb = "gitleaks-base"
-python_module = "larch.implement.ci"
-python_function = "gitleaks_base_main"
-machine_stdout = true
-owner = "rust"
-implementation_parity = "complete"
-consumer_cutover = "complete"
-python_removal = "complete"
-planning_issue = 8216
-migration_issue = 8344
-clean_install_test = "clean-install-ci-gitleaks-base"
 
 [[commands]]
 domain = "ci"
@@ -1475,30 +1487,6 @@ clean_install_test = "clean-install-ci-rust-select-summary"
 
 [[commands]]
 domain = "ci"
-verb = "stage-rust-policy-candidate"
-python_module = "larch.implement.rust_policy_candidate"
-python_function = "stage_policy_candidate_main"
-machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 8319
-
-[[commands]]
-domain = "ci"
-verb = "promote-rust-policy-candidate"
-python_module = "larch.implement.rust_policy_candidate"
-python_function = "promote_policy_candidate_main"
-machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 8362
-
-[[commands]]
-domain = "ci"
 verb = "stage-main-cache-candidate"
 python_module = "larch.implement.main_cache_candidate"
 python_function = "stage_main_cache_candidate_main"
@@ -1511,15 +1499,15 @@ planning_issue = 8362
 
 [[commands]]
 domain = "ci"
-verb = "verify-main-cache-candidate"
-python_module = "larch.implement.main_cache_candidate"
-python_function = "verify_main_cache_candidate_main"
-machine_stdout = true
+verb = "stage-rust-policy-candidate"
+python_module = "larch.implement.rust_policy_candidate"
+python_function = "stage_policy_candidate_main"
+machine_stdout = false
 owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 8362
+planning_issue = 8319
 
 [[commands]]
 domain = "ci"
@@ -1532,6 +1520,18 @@ implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
 planning_issue = 7681
+
+[[commands]]
+domain = "ci"
+verb = "verify-main-cache-candidate"
+python_module = "larch.implement.main_cache_candidate"
+python_function = "verify_main_cache_candidate_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8362
 
 [[commands]]
 domain = "ci"
@@ -4136,6 +4136,18 @@ clean_install_test = "clean-install-issue-fetch-issue-details"
 
 [[commands]]
 domain = "issue"
+verb = "governance-gate"
+python_module = "larch.issue.migration_governance"
+python_function = "governance_gate_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7681
+
+[[commands]]
+domain = "issue"
 verb = "info"
 python_module = "larch.issue.issue_query"
 python_function = "issue_info_main"
@@ -4175,18 +4187,6 @@ python_removal = "complete"
 planning_issue = 7682
 migration_issue = 8168
 clean_install_test = "clean-install-issue-list-issues"
-
-[[commands]]
-domain = "issue"
-verb = "governance-gate"
-python_module = "larch.issue.migration_governance"
-python_function = "governance_gate_main"
-machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
-planning_issue = 7681
 
 [[commands]]
 domain = "issue"
@@ -8364,8 +8364,6 @@ owner = "retired"
 implementation_parity = "not-applicable"
 consumer_cutover = "complete"
 python_removal = "complete"
-# #8387 retired this selector after its caller audit found no live consumer.
-# It is provenance for that retirement, not an incomplete #7685 Rust command.
 planning_issue = 8387
 migration_issue = 8387
 
@@ -8467,7 +8465,6 @@ clean_install_test = "clean-install-voting-compose-tally-record"
 [[commands]]
 domain = "voting"
 verb = "degraded-warning"
-# Rust normalizes the legacy uncaught traceback to its stable terminal ValueError line.
 python_module = "larch.review.voting"
 python_function = "degraded_warning_main"
 machine_stdout = false
@@ -8955,6 +8952,12 @@ python = []
 rust = ["git commit", "git rebase-abort", "git stage", "push rebase"]
 
 [[callers]]
+path = "python/larch/implement/complete_umbrella_ship.py"
+kind = "python-runtime"
+python = []
+rust = ["push rebase"]
+
+[[callers]]
 path = "python/larch/implement/dispatch_commit_route.py"
 kind = "python-runtime"
 python = ["implement commit", "review-and-fix commit-fixes"]
@@ -9165,6 +9168,12 @@ python = ["checks run-relevant"]
 rust = ["alias generate", "alias resolve-target", "verify skill-called"]
 
 [[callers]]
+path = "skills/audit-umbrella/SKILL.md"
+kind = "skill"
+python = []
+rust = ["gh resolve-repo", "run-log lifecycle-start", "session setup"]
+
+[[callers]]
 path = "skills/block-issue/SKILL.md"
 kind = "skill"
 python = []
@@ -9189,12 +9198,6 @@ python = []
 rust = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues close-eligible", "combine-issues close-sources", "combine-issues close-stale", "combine-issues fetch", "combine-issues fetch-deps", "combine-issues list-open", "combine-issues plan-audit", "combine-issues plan-inherited", "combine-issues prose-audit", "gh resolve-repo", "issue add-blocked-by"]
 
 [[callers]]
-path = "skills/audit-umbrella/SKILL.md"
-kind = "skill"
-python = []
-rust = ["gh resolve-repo", "run-log lifecycle-start", "session setup"]
-
-[[callers]]
 path = "skills/complete-umbrella/SKILL.md"
 kind = "skill"
 python = ["complete-umbrella ship-leaf"]
@@ -9205,6 +9208,12 @@ path = "skills/complete-umbrella/references/adversarial-review.md"
 kind = "skill"
 python = ["complete-umbrella ship-leaf"]
 rust = ["named-block write"]
+
+[[callers]]
+path = "skills/complete-umbrella/references/conflict-fix.md"
+kind = "skill"
+python = []
+rust = ["git rebase-abort"]
 
 [[callers]]
 path = "skills/complete-umbrella/references/recon-design.md"

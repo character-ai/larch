@@ -775,14 +775,27 @@ def _stub_happy_ship(
     *,
     wait: leaf_ship.CiWaitOutcome,
     distill: Callable[..., Path] | None = None,
+    merge_state_status: str = "CLEAN",
 ) -> None:
     monkeypatch.setattr(
         leaf_ship,
+        "_reconcile_onto_main",
+        lambda *_args, **_kwargs: leaf_ship.ReconcileOutcome(
+            status="clean", head_sha=_HEAD, rebased=False
+        ),
+    )
+    monkeypatch.setattr(
+        leaf_ship,
         "_push_branch",
-        lambda *_args: ("complete-umbrella/leaf-42", _HEAD),
+        lambda *_args, **_kwargs: ("complete-umbrella/leaf-42", _HEAD),
     )
     monkeypatch.setattr(leaf_ship, "_ensure_pr", lambda *_args, **_kwargs: _pr())
     monkeypatch.setattr(leaf_ship, "_wait_for_ci", lambda *_args, **_kwargs: wait)
+    monkeypatch.setattr(
+        leaf_ship,
+        "_require_pr_head",
+        lambda *_args, **_kwargs: gh.MergeState(merge_state_status, _HEAD),
+    )
     if distill is not None:
         monkeypatch.setattr(leaf_ship, "_distill_ci_failure", distill)
 
@@ -1268,9 +1281,12 @@ def test_ci_failed_reentry_requires_a_new_head_and_enforces_fix_cap(
     leaf_ship._write_state(request, state)
     monkeypatch.setattr(leaf_ship.gh, "pr_view", lambda *_args, **_kwargs: _pr())
     monkeypatch.setattr(
-        leaf_ship,
-        "_push_branch",
-        lambda *_args, **_kwargs: ("complete-umbrella/leaf-42", "b" * 40),
+        leaf_ship.git,
+        "current_branch",
+        lambda *_args, **_kwargs: "complete-umbrella/leaf-42",
+    )
+    monkeypatch.setattr(
+        leaf_ship.git, "rev_parse", lambda *_args, **_kwargs: "b" * 40
     )
 
     with pytest.raises(leaf_ship.ShipError, match="fix attempt cap reached"):
@@ -1280,11 +1296,190 @@ def test_ci_failed_reentry_requires_a_new_head_and_enforces_fix_cap(
 
     leaf_ship._write_state(request, replace(state, ci_fix_attempts=0))
     monkeypatch.setattr(
-        leaf_ship,
-        "_push_branch",
-        lambda *_args, **_kwargs: ("complete-umbrella/leaf-42", "a" * 40),
+        leaf_ship.git, "rev_parse", lambda *_args, **_kwargs: "a" * 40
     )
     with pytest.raises(leaf_ship.ShipError, match="no fixer commit changed"):
+        _ = leaf_ship.ship_leaf(
+            RecordingRunner(), request, sleep_fn=lambda _delay: None
+        )
+
+
+def test_dirty_merge_state_hands_off_conflict_fix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    leaf_ship._write_state(
+        request,
+        leaf_ship.LeafShipState(repository="owner/repo", umbrella=40, leaf=42),
+    )
+    reconciles = iter(
+        [
+            leaf_ship.ReconcileOutcome(
+                status="clean", head_sha=_HEAD, rebased=False
+            ),
+            leaf_ship.ReconcileOutcome(
+                status="conflict",
+                conflict_files="crates/larch-cli/tests/cli.rs",
+                rebased=True,
+            ),
+        ]
+    )
+    _stub_happy_ship(
+        monkeypatch,
+        wait=leaf_ship.CiWaitOutcome(status="pass"),
+        merge_state_status="DIRTY",
+    )
+    monkeypatch.setattr(
+        leaf_ship,
+        "_reconcile_onto_main",
+        lambda *_args, **_kwargs: next(reconciles),
+    )
+    monkeypatch.setattr(
+        leaf_ship,
+        "_merge_pr",
+        lambda *_args, **_kwargs: pytest.fail("merge must not run while DIRTY"),
+    )
+
+    outcome = leaf_ship.ship_leaf(
+        RecordingRunner(), request, sleep_fn=lambda _delay: None
+    )
+
+    assert outcome.status == "needs_conflict_fix"
+    assert outcome.conflict_files == "crates/larch-cli/tests/cli.rs"
+    persisted = leaf_ship._read_state(request)
+    assert persisted is not None
+    assert persisted.status == "needs_conflict_fix"
+    assert persisted.conflict_files == "crates/larch-cli/tests/cli.rs"
+
+
+def test_dirty_merge_state_clean_rebase_force_pushes_and_remonitors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    leaf_ship._write_state(
+        request,
+        leaf_ship.LeafShipState(repository="owner/repo", umbrella=40, leaf=42),
+    )
+    heads = iter([_HEAD, "b" * 40])
+    merge_states = iter(
+        [
+            gh.MergeState("DIRTY", _HEAD),
+            gh.MergeState("CLEAN", "b" * 40),
+        ]
+    )
+    waits = iter(
+        [
+            leaf_ship.CiWaitOutcome(status="pass"),
+            leaf_ship.CiWaitOutcome(status="pass"),
+        ]
+    )
+    reconciles = iter(
+        [
+            leaf_ship.ReconcileOutcome(
+                status="clean", head_sha=_HEAD, rebased=False
+            ),
+            leaf_ship.ReconcileOutcome(
+                status="clean", head_sha="b" * 40, rebased=True
+            ),
+            leaf_ship.ReconcileOutcome(
+                status="clean", head_sha="b" * 40, rebased=False
+            ),
+        ]
+    )
+    events: list[str] = []
+
+    monkeypatch.setattr(
+        leaf_ship,
+        "_reconcile_onto_main",
+        lambda *_args, **_kwargs: next(reconciles),
+    )
+    monkeypatch.setattr(
+        leaf_ship,
+        "_push_branch",
+        lambda *_args, **_kwargs: ("complete-umbrella/leaf-42", next(heads)),
+    )
+    monkeypatch.setattr(leaf_ship, "_ensure_pr", lambda *_args, **_kwargs: _pr())
+    monkeypatch.setattr(
+        leaf_ship, "_wait_for_ci", lambda *_args, **_kwargs: next(waits)
+    )
+    monkeypatch.setattr(
+        leaf_ship,
+        "_require_pr_head",
+        lambda *_args, **_kwargs: next(merge_states),
+    )
+    monkeypatch.setattr(
+        leaf_ship,
+        "_force_push_reconciled_head",
+        lambda *_args, **_kwargs: events.append("force-push") or "b" * 40,
+    )
+    monkeypatch.setattr(
+        leaf_ship,
+        "_merge_pr",
+        lambda *_args, **_kwargs: events.append("merge")
+        or leaf_ship.MergePrOutcome(pull_request=_pr(state="MERGED")),
+    )
+    monkeypatch.setattr(leaf_ship, "_finish_leaf_issue", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        leaf_ship, "_sync_main_and_delete_branch", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(leaf_ship, "_verify_complete", lambda *_args, **_kwargs: None)
+
+    outcome = leaf_ship.ship_leaf(
+        RecordingRunner(), request, sleep_fn=lambda _delay: None
+    )
+
+    assert outcome.status == "complete"
+    assert events == ["force-push", "merge"]
+    persisted = leaf_ship._read_state(request)
+    assert persisted is not None
+    assert persisted.status == "complete"
+    assert persisted.main_reconcile_attempts == 1
+    assert persisted.head_sha == "b" * 40
+
+
+def test_conflict_fix_reentry_requires_a_new_head_and_enforces_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request(tmp_path)
+    state = leaf_ship.LeafShipState(
+        repository="owner/repo",
+        umbrella=40,
+        leaf=42,
+        branch="complete-umbrella/leaf-42",
+        head_sha="a" * 40,
+        pr_number=77,
+        pr_url=_pr().url,
+        status="needs_conflict_fix",
+        conflict_files="crates/larch-cli/tests/cli.rs",
+        conflict_fix_attempts=config.COMPLETE_UMBRELLA_CONFLICT_FIX_ATTEMPTS,
+    )
+    leaf_ship._write_state(request, state)
+    monkeypatch.setattr(leaf_ship.gh, "pr_view", lambda *_args, **_kwargs: _pr())
+    monkeypatch.setattr(
+        leaf_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: False
+    )
+    monkeypatch.setattr(
+        leaf_ship.git,
+        "current_branch",
+        lambda *_args, **_kwargs: "complete-umbrella/leaf-42",
+    )
+    monkeypatch.setattr(
+        leaf_ship.git, "rev_parse", lambda *_args, **_kwargs: "b" * 40
+    )
+
+    with pytest.raises(leaf_ship.ShipError, match="conflict fix attempt cap reached"):
+        _ = leaf_ship.ship_leaf(
+            RecordingRunner(), request, sleep_fn=lambda _delay: None
+        )
+
+    leaf_ship._write_state(request, replace(state, conflict_fix_attempts=0))
+    monkeypatch.setattr(
+        leaf_ship.git, "rev_parse", lambda *_args, **_kwargs: "a" * 40
+    )
+    with pytest.raises(leaf_ship.ShipError, match="did not change the branch head"):
         _ = leaf_ship.ship_leaf(
             RecordingRunner(), request, sleep_fn=lambda _delay: None
         )
