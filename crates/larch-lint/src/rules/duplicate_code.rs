@@ -15,7 +15,9 @@ use syn::spanned::Spanned;
 use syn::{Attribute, Item};
 
 use crate::syntax::RustSyntax;
-use crate::{Finding, LintError, Repository, Rule, RuleMetadata, RuleOutput};
+use crate::{
+    Finding, LintError, Repository, Rule, RuleDispatchPriority, RuleMetadata, RuleOutput,
+};
 
 use super::path_discovery;
 
@@ -43,6 +45,10 @@ impl Rule for DuplicateCodeRule {
 
     fn description(&self) -> &'static str {
         DESCRIPTION
+    }
+
+    fn dispatch_priority(&self) -> RuleDispatchPriority {
+        RuleDispatchPriority::Early
     }
 
     fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {

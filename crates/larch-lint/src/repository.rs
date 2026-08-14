@@ -9,9 +9,43 @@ use std::{
 use globset::{Glob, GlobSet, GlobSetBuilder};
 
 use crate::{
+    command_registry::CommandRegistryAnalysis,
     runner::LintError,
     syntax::{parse_bash, parse_python},
 };
+
+/// A lazily materialized immutable fact set for one repository snapshot.
+///
+/// Both successful values and deterministic failures are retained so parallel
+/// policy rules share one analysis attempt instead of racing to repeat it.
+#[derive(Debug)]
+pub struct AnalysisCache<T> {
+    value: OnceLock<Result<Arc<T>, LintError>>,
+}
+
+impl<T> AnalysisCache<T> {
+    pub(crate) const fn new() -> Self {
+        Self {
+            value: OnceLock::new(),
+        }
+    }
+
+    pub(crate) fn get_or_init(
+        &self,
+        initialize: impl FnOnce() -> Result<T, LintError>,
+    ) -> Result<Arc<T>, LintError> {
+        match self.value.get_or_init(|| initialize().map(Arc::new)) {
+            Ok(value) => Ok(Arc::clone(value)),
+            Err(error) => Err(error.clone()),
+        }
+    }
+}
+
+impl<T> Default for AnalysisCache<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// A validated, UTF-8 repository-relative path.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -239,6 +273,7 @@ pub struct Repository {
     sources: BTreeMap<RepoPath, SourceFile>,
     bash_syntax: BTreeMap<RepoPath, OnceLock<Result<Arc<tree_sitter::Tree>, String>>>,
     python_syntax: BTreeMap<RepoPath, OnceLock<Result<Arc<tree_sitter::Tree>, String>>>,
+    command_registry_analysis: OnceLock<Arc<CommandRegistryAnalysis>>,
 }
 
 impl Repository {
@@ -301,6 +336,7 @@ impl Repository {
             sources,
             bash_syntax,
             python_syntax,
+            command_registry_analysis: OnceLock::new(),
         })
     }
 
@@ -389,6 +425,15 @@ impl Repository {
     /// Returns an error when `path` is not tracked or its source cannot be parsed.
     pub fn python_syntax(&self, path: &RepoPath) -> Result<Arc<tree_sitter::Tree>, LintError> {
         self.cached_syntax(path, &self.python_syntax, parse_python)
+    }
+
+    /// Return the shared command-registry facts for this immutable snapshot.
+    #[must_use]
+    pub(crate) fn command_registry_analysis(&self) -> Arc<CommandRegistryAnalysis> {
+        Arc::clone(
+            self.command_registry_analysis
+                .get_or_init(|| Arc::new(CommandRegistryAnalysis::new())),
+        )
     }
 
     fn cached_syntax(
@@ -486,12 +531,15 @@ fn compile_globs(patterns: &[&str]) -> Result<GlobSet, LintError> {
 mod tests {
     use std::{
         path::{Path, PathBuf},
-        sync::Arc,
+        sync::{
+            Arc, Barrier,
+            atomic::{AtomicUsize, Ordering},
+        },
     };
 
     use super::{
-        Git, LintError, PathSelector, RepoPath, Repository, materialized_tracked_paths,
-        parse_tracked_paths,
+        AnalysisCache, Git, LintError, PathSelector, RepoPath, Repository,
+        materialized_tracked_paths, parse_tracked_paths,
     };
     use crate::{Finding, Rule, RuleOutput, run};
 
@@ -622,6 +670,64 @@ mod tests {
         let first_bash = repository.bash_syntax(&shell).expect("parse Bash");
         let second_bash = repository.bash_syntax(&shell).expect("reuse Bash parse");
         assert!(Arc::ptr_eq(&first_bash, &second_bash));
+    }
+
+    #[test]
+    fn analysis_cache_shares_concurrent_successes_and_failures() {
+        let success = Arc::new(AnalysisCache::<usize>::new());
+        let success_calls = AtomicUsize::new(0);
+        let success_start = Arc::new(Barrier::new(8));
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                let cache = Arc::clone(&success);
+                let start = Arc::clone(&success_start);
+                let calls = &success_calls;
+                scope.spawn(move || {
+                    start.wait();
+                    let value = cache
+                        .get_or_init(|| {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            Ok(42)
+                        })
+                        .expect("shared successful analysis");
+                    assert_eq!(*value, 42);
+                });
+            }
+        });
+        assert_eq!(success_calls.load(Ordering::SeqCst), 1);
+        let first = success
+            .get_or_init(|| panic!("successful analysis must stay cached"))
+            .expect("cached successful analysis");
+        let second = success
+            .get_or_init(|| panic!("successful analysis must stay cached"))
+            .expect("cached successful analysis");
+        assert!(Arc::ptr_eq(&first, &second));
+
+        let failure = Arc::new(AnalysisCache::<usize>::new());
+        let failure_calls = AtomicUsize::new(0);
+        let failure_start = Arc::new(Barrier::new(8));
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                let cache = Arc::clone(&failure);
+                let start = Arc::clone(&failure_start);
+                let calls = &failure_calls;
+                scope.spawn(move || {
+                    start.wait();
+                    let error = cache
+                        .get_or_init(|| {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            Err(LintError::new("fixture analysis failure"))
+                        })
+                        .expect_err("shared failed analysis");
+                    assert_eq!(error.to_string(), "fixture analysis failure");
+                });
+            }
+        });
+        assert_eq!(failure_calls.load(Ordering::SeqCst), 1);
+        let error = failure
+            .get_or_init(|| panic!("failed analysis must stay cached"))
+            .expect_err("cached failed analysis");
+        assert_eq!(error.to_string(), "fixture analysis failure");
     }
 
     #[test]

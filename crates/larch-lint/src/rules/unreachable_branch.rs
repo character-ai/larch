@@ -17,7 +17,8 @@ use syn::{
 };
 
 use crate::{
-    Finding, LintError, PathSelector, Repository, Rule, RuleMetadata, RuleOutput,
+    Finding, LintError, PathSelector, Repository, Rule, RuleDispatchPriority, RuleMetadata,
+    RuleOutput,
     suppression::reason as suppression_reason,
     syntax::RustSyntax,
 };
@@ -45,6 +46,10 @@ impl Rule for UnreachableBranchRule {
 
     fn description(&self) -> &'static str {
         DESCRIPTION
+    }
+
+    fn dispatch_priority(&self) -> RuleDispatchPriority {
+        RuleDispatchPriority::Early
     }
 
     fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {

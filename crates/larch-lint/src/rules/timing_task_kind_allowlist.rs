@@ -29,7 +29,10 @@ use syn::{
 };
 use tree_sitter::Node;
 
-use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput, syntax::RustSyntax};
+use crate::{
+    Finding, LintError, RepoPath, Repository, Rule, RuleDispatchPriority, RuleMetadata,
+    RuleOutput, syntax::RustSyntax,
+};
 
 use super::command_arguments::{Argument, BuilderCommand, Constants, array_arguments, record_builder_from_method};
 
@@ -68,6 +71,10 @@ impl Rule for TimingTaskKindAllowlistRule {
 
     fn description(&self) -> &'static str {
         DESCRIPTION
+    }
+
+    fn dispatch_priority(&self) -> RuleDispatchPriority {
+        RuleDispatchPriority::Early
     }
 
     fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
