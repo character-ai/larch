@@ -194,8 +194,8 @@ fn seeded_generated_review_invariants_hold() {
         state = state
             .wrapping_mul(6_364_136_223_846_793_005)
             .wrapping_add(1);
-        let eligible = (state as usize) % 6;
-        let yes = ((state >> 16) as usize) % 7;
+        let eligible = (state % 6) as usize;
+        let yes = ((state >> 16) % 7) as usize;
         let result = classify_result(yes, eligible);
         assert!(matches!(result, "accepted" | "neutral" | "rejected"));
         let malformed =
@@ -287,9 +287,8 @@ fn fileable_accepted_oos_strict_majority_scores_accepted() {
 #[test]
 fn review_taxonomy_exports_match_python_wire_projections() {
     use larch_core::review::{
-        FOCUS_AREA_VALUES, FINDING_SCOPE_VALUES, focus_area_set, finding_scope_set,
-        FocusArea, FindingScope, CompatibilityBoundary, parse_findings_text,
-        is_canonical_heading, ItemKind,
+        CompatibilityBoundary, FINDING_SCOPE_VALUES, FOCUS_AREA_VALUES, FindingScope, FocusArea,
+        ItemKind, finding_scope_set, focus_area_set, is_canonical_heading, parse_findings_text,
     };
     assert_eq!(
         FocusArea::all()
@@ -300,17 +299,26 @@ fn review_taxonomy_exports_match_python_wire_projections() {
     );
     assert_eq!(focus_area_set().len(), FOCUS_AREA_VALUES.len());
     assert_eq!(
-        [FindingScope::InScope.as_str(), FindingScope::OutOfScope.as_str()],
+        [
+            FindingScope::InScope.as_str(),
+            FindingScope::OutOfScope.as_str()
+        ],
         FINDING_SCOPE_VALUES
     );
     assert_eq!(finding_scope_set().len(), FINDING_SCOPE_VALUES.len());
-    assert!(is_canonical_heading("### OOS_2: title", Some(ItemKind::Oos)));
+    assert!(is_canonical_heading(
+        "### OOS_2: title",
+        Some(ItemKind::Oos)
+    ));
     let findings = parse_findings_text(
         "### FINDING_1: f\nbody\n### Notes\nnotes\n### FINDING_2: g\nbody2\n",
         CompatibilityBoundary::AnyHeading,
     );
     assert_eq!(
-        findings.iter().map(|row| row.finding_id.as_str()).collect::<Vec<_>>(),
+        findings
+            .iter()
+            .map(|row| row.finding_id.as_str())
+            .collect::<Vec<_>>(),
         ["FINDING_1", "FINDING_2"]
     );
 }

@@ -16,7 +16,7 @@ pub enum FocusArea {
 }
 
 /// Stable prompt-rendering order for [`FocusArea`].
-pub const FOCUS_AREA_VALUES: [&'static str; 5] = [
+pub const FOCUS_AREA_VALUES: [&str; 5] = [
     "code-quality",
     "risk-integration",
     "correctness",
@@ -31,7 +31,7 @@ pub fn focus_area_set() -> std::collections::BTreeSet<&'static str> {
 }
 
 /// Stable prompt-rendering order for [`FindingScope`].
-pub const FINDING_SCOPE_VALUES: [&'static str; 2] = ["in_scope", "out_of_scope"];
+pub const FINDING_SCOPE_VALUES: [&str; 2] = ["in_scope", "out_of_scope"];
 
 /// Stable membership projection for parsing reviewer scope input.
 #[must_use]
@@ -359,18 +359,13 @@ pub fn parse_blocks(text: &str, boundary: BoundaryMode) -> Vec<ParsedBlock> {
 }
 
 /// Legacy finding-parser boundary selection.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum CompatibilityBoundary {
     /// Split only on `### FINDING_` headings.
     FindingHeading,
     /// Split on every level-three heading.
+    #[default]
     AnyHeading,
-}
-
-impl Default for CompatibilityBoundary {
-    fn default() -> Self {
-        Self::AnyHeading
-    }
 }
 
 /// Parser boundary compatibility modes.

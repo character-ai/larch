@@ -1,3 +1,9 @@
 # larch-logs/ contains runtime data artifacts extracted from historical sources.
 # Content is not authoring-quality markdown and should not be linted.
 larch-logs/
+
+# fixtures/rust-review/finding-blocks.golden.md is a byte-exact wire-contract
+# golden with deliberately malformed markdown (bare-CR line endings, unicode
+# offset cases). It is not authoring-quality markdown and must not be edited to
+# satisfy lint rules.
+fixtures/rust-review/finding-blocks.golden.md

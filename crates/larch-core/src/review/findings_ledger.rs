@@ -281,7 +281,7 @@ pub fn replace_round(
         .into_iter()
         .filter(|row| row.round != round)
         .chain(entries.into_iter().map(|mut row| {
-            row.round = round.clone();
+            row.round.clone_from(&round);
             row
         }))
         .collect()
@@ -333,7 +333,7 @@ pub fn prompt_section(root: &Path, role: &str) -> Result<String, LedgerError> {
         if size + line.len() + 1 > PROMPT_MAX_BYTES && kept.len() > 1 {
             break;
         }
-        if size + line.len() + 1 <= PROMPT_MAX_BYTES {
+        if size + line.len() < PROMPT_MAX_BYTES {
             kept.push(line);
             size += line.len() + 1;
         }

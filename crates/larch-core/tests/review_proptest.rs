@@ -1,9 +1,9 @@
 //! Property tests for dormant review parity invariants.
 
 use larch_core::review::{
-    accepted_finding_points_from_severities, classify_oos_result, classify_result,
-    finding_dedup_key, neutral_high_severity_rescue_to_oos, oos_fileable_from_votes,
-    parse_ledger, render_ledger, replace_round, LedgerRow,
+    LedgerRow, accepted_finding_points_from_severities, classify_oos_result, classify_result,
+    finding_dedup_key, neutral_high_severity_rescue_to_oos, oos_fileable_from_votes, parse_ledger,
+    render_ledger, replace_round,
 };
 use proptest::prelude::*;
 
@@ -57,7 +57,7 @@ proptest! {
             .map(|major| if *major { "major" } else { "minor" }.to_owned())
             .collect::<Vec<_>>();
         let result = classify_oos_result(
-            vote_values.iter().filter(|vote| vote == "YES").count(),
+            vote_values.iter().filter(|vote| vote.as_str() == "YES").count(),
             vote_values.len(),
         );
         let fileable = oos_fileable_from_votes(result, &vote_values, &severities);
@@ -80,7 +80,7 @@ proptest! {
             .map(|major| if *major { "major" } else { "minor" }.to_owned())
             .collect::<Vec<_>>();
         let result = classify_result(
-            vote_values.iter().filter(|vote| vote == "YES").count(),
+            vote_values.iter().filter(|vote| vote.as_str() == "YES").count(),
             vote_values.len(),
         );
         let rescued = neutral_high_severity_rescue_to_oos(result, &vote_values, &severities);
@@ -99,8 +99,8 @@ proptest! {
         let rendered = render_ledger(&[row]).expect("render");
         let parsed = parse_ledger(&rendered).expect("parse");
         prop_assert_eq!(parsed.len(), 1);
-        prop_assert_eq!(parsed[0].finding_id, finding_id);
-        prop_assert_eq!(parsed[0].title, title);
+        prop_assert_eq!(&parsed[0].finding_id, &finding_id);
+        prop_assert_eq!(&parsed[0].title, &title);
     }
 
     #[test]
@@ -113,9 +113,9 @@ proptest! {
         let replacement = LedgerRow::new(99, &label, "new", "", "neutral", "", "");
         let merged = replace_round(existing, new_round, vec![replacement]);
         prop_assert_eq!(merged.len(), 2);
-        prop_assert_eq!(merged[0].round, old_round.to_string());
-        prop_assert_eq!(merged[1].round, new_round.to_string());
-        prop_assert_eq!(merged[1].finding_id, label);
+        prop_assert_eq!(&merged[0].round, &old_round.to_string());
+        prop_assert_eq!(&merged[1].round, &new_round.to_string());
+        prop_assert_eq!(&merged[1].finding_id, &label);
     }
 
     #[test]
