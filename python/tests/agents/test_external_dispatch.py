@@ -11,7 +11,6 @@ if TYPE_CHECKING:
     import pytest
 
 from larch.agents import agents
-from larch.calibration import difficulty
 from larch.implement import checks
 from larch.implement import checks_lint_fix as _clf
 from larch.implement import ci_monitor
@@ -24,7 +23,6 @@ from larch.git import rebase
 from larch.review import review_aggregate
 from larch.review import review_and_fix
 from larch.review import coder_runner, snapshot
-from larch.review import review_dispatch_panel
 from larch.core import config
 
 
@@ -340,35 +338,6 @@ def test_plan_scout_uses_dynamic_and_plan_role_ids(tmp_path: Path, monkeypatch: 
     assert scout_commands[-1][scout_commands[-1].index("--role-id") + 1] == "design.plan_archetype_scout"
 
 
-def test_review_pipeline_panel_helpers_use_review_panel_role(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    slots = (
-        config.SlotDefault(slot="sentinel", tool="cursor", agent="agents/reviewer-testing.md", output="sentinel.out", archetype="testing"),
-        config.SlotDefault(slot="generalist", tool="codex", agent="agents/code-reviewer.md", output="generic.out", focus_area="focus", weight=7, model_role="review", archetype="generic"),
-    )
-    seen_slots: list[str] = []
-    seen_policy: list[str] = []
-
-    def fake_slot_defaults(role_id: str, *_args: object, **_kwargs: object) -> tuple[config.SlotDefault, ...]:
-        seen_slots.append(role_id)
-        assert role_id == "review.panel"
-        return slots
-
-    def fake_panel_policy(role_id: str) -> config.PanelDispatchPolicy:
-        seen_policy.append(role_id)
-        assert role_id == "review.panel"
-        return config.PanelDispatchPolicy()
-
-    monkeypatch.setattr(external_defaults, "slot_defaults", fake_slot_defaults)
-    monkeypatch.setattr(external_defaults, "panel_dispatch_policy", fake_panel_policy)
-
-    manifest = tmp_path / "manifest.ndjson"
-    review_dispatch_panel._append_static_specialist_rows(manifest=manifest, review_tmpdir=tmp_path, codex_slots_available=False, cursor_slots_available=True, tier=difficulty.MODERATE)
-    review_dispatch_panel._append_round_generic_codex_row(manifest=manifest, review_tmpdir=tmp_path, round_num=4, codex_slots_available=True, tier=difficulty.MODERATE)
-
-    rows = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()]
-    assert [row["slot"] for row in rows] == ["sentinel"]
-    assert seen_slots == ["review.panel"]
-    assert seen_policy == ["review.panel"]
 
 
 def test_plan_review_panel_static_and_voter_roles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -685,4 +654,3 @@ def test_debate_roles_do_not_alter_existing_panels() -> None:
     # Existing panels remain unchanged in size/shape after debate registration.
     assert len(review_slots) == 6
     assert external_defaults.tool_order("implement.step2_coder") == ("codex", "cursor", "claude")
-

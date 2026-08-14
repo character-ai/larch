@@ -995,6 +995,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "gather-context",
     ),
     CleanInstallCase::new(
+        "clean-install-review-dispatch-panel",
+        "review",
+        "dispatch-panel",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-parse-codex-usage",
         "agent",
         "parse-codex-usage",

@@ -6099,11 +6099,13 @@ verb = "dispatch-panel"
 python_module = "larch.review.review_dispatch_panel"
 python_function = "dispatch_panel_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8441
+clean_install_test = "clean-install-review-dispatch-panel"
 
 [[commands]]
 domain = "review"
@@ -9034,12 +9036,6 @@ python = []
 rust = ["agent wait-reviewers"]
 
 [[callers]]
-path = "python/larch/review/review_dispatch_panel.py"
-kind = "python-runtime"
-python = []
-rust = ["agent classify-diff"]
-
-[[callers]]
 path = "python/larch/review/review_tally.py"
 kind = "python-runtime"
 python = []
@@ -9949,7 +9945,7 @@ rust = ["timing record-round"]
 path = "skills/review/SKILL.md"
 kind = "skill"
 python = ["checks run-relevant", "render specialist", "render voter", "review core", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "scout dynamic-archetypes", "token claude-source"]
-rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review gather-context", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir", "session setup"]
+rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review dispatch-panel", "review gather-context", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir", "session setup"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"

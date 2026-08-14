@@ -11,7 +11,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "python" / "cli.py"
 GIT = shutil.which("git") or "git"
-RUST_AGENT_STUB = ROOT / "python" / "tests" / "support" / "rust_agent_stub.py"
 
 
 def run_review(
@@ -27,8 +26,6 @@ def run_review(
         merged["LARCH_QUIET_DISABLE"] = "1"
     else:
         _ = merged.pop("LARCH_QUIET_DISABLE", None)
-    if args and args[0] == "dispatch-panel":
-        merged["LARCH_BINARY"] = str(RUST_AGENT_STUB)
     if env:
         merged.update(env)
     return subprocess.run(

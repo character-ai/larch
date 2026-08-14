@@ -48,18 +48,23 @@ def run(repo_root: Path) -> list[str]:
         failures.append(f"(1) skills/review/SKILL.md must stay <= 200 lines after script extraction (found {len(lines)})")
 
     review_verbs = (
-        "core", "dispatch-panel", "collect-findings",
+        "core", "collect-findings",
         "tally-code-votes", "emit-tally", "log-phase",
         "check-reviewer-failure-threshold", "reviewer-prune",
     )
-    if len(review_verbs) != 8:
-        failures.append("(1) internal harness error: expected review verb list must contain 8 entries")
+    if len(review_verbs) != 7:
+        failures.append("(1) internal harness error: expected review verb list must contain 7 entries")
     for verb in review_verbs:
         require(cli, f'("review", "{verb}")', "(1) missing python/cli.py review " + verb + " registry entry")
     require(
         file("crates/larch-cli/src/review_commands.rs"),
         '#[command(name = "gather-context"',
         "(1) missing Rust review gather-context command",
+    )
+    require(
+        file("crates/larch-cli/src/review_commands.rs"),
+        '#[command(name = "dispatch-panel"',
+        "(1) missing Rust review dispatch-panel command",
     )
 
     review_and_fix = file("skills/review-and-fix")
