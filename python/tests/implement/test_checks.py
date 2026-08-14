@@ -6108,6 +6108,36 @@ def test_checks_repair_loop_bgjob_launch_site_qualifies_step6_slug(
     assert calls[0][4] == "implement-step6-repair"
 
 
+def test_checks_repair_loop_bgjob_launch_propagates_transport_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+
+    def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(argv), 23, "BGJOB_STATUS=FAILED\n", "launch failed\n", 0.0)
+
+    monkeypatch.setattr(_clf.proc, "run", fake_proc_run)
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step3",
+        "--checks-log",
+        str(checks_log),
+        "--bgjob-launch",
+        "true",
+    ])
+
+    assert rc == 23
+    captured = capsys.readouterr()
+    assert captured.out == "BGJOB_STATUS=FAILED\n"
+    assert captured.err == "launch failed\n"
+
+
 def test_checks_repair_loop_merge_result_env_captures_terminal_kvs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
