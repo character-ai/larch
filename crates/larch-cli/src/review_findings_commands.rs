@@ -22,7 +22,7 @@ use larch_adapters::atomic_write_utf8_in;
 use larch_core::{
     emit_kv,
     review::{
-        BoundaryMode, CompatibilityBoundary, accepted_finding_points_from_severities,
+        BoundaryMode, CompatibilityBoundary, accepted_finding_points_from_classification_fields,
         is_canonical_heading, is_security_block_text, parse_blocks, parse_findings_text,
         split_classification_attribution,
     },
@@ -37,7 +37,7 @@ use crate::{
     launcher_support::confined_target,
     python_verb::plugin_root_directory,
     runtime_entrypoint::{plugin_root, run_verified_larch},
-    waterfall_commands::{dispatch_for_review, render_dispatch_report},
+    waterfall_commands::{dispatch_for_review, parse_dispatch_kv, render_dispatch_report},
 };
 
 const AGGREGATE_USAGE: &str = "usage: aggregate-findings [-h] --findings-file FINDINGS_FILE --review-tmpdir REVIEW_TMPDIR --codex-present {true,false} --cursor-present {true,false} --mode {diff,description} [--session-env-path SESSION_ENV_PATH] [--diff-file DIFF_FILE] [--plan-file PLAN_FILE] [--input-mode {plan,code}] [--scope-anchor-file SCOPE_ANCHOR_FILE] [--allow-findings-outside-tmpdir {true,false}] [--round-dir ROUND_DIR] [--round-num ROUND_NUM] [--site SITE]";
@@ -174,9 +174,8 @@ fn append_text(path: &Path, text: &str) -> Result<(), String> {
 }
 
 fn file_text(path: &Path) -> Result<String, String> {
-    fs::read(path)
-        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-        .map_err(|error| error.to_string())
+    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn finding_blocks(text: &str) -> Vec<String> {
@@ -257,13 +256,6 @@ fn aggregate_result(
     if let Some(path) = failure_log {
         emit_kv("FAILURE_LOG", &path.display().to_string());
     }
-}
-
-fn parse_kv(text: &str) -> BTreeMap<String, String> {
-    text.lines()
-        .filter_map(|line| line.split_once('='))
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
-        .collect()
 }
 
 fn execution_issues_log(review_tmpdir: &Path, session_env_path: &str) -> PathBuf {
@@ -1134,18 +1126,27 @@ fn agent_template() -> Result<PathBuf, String> {
 }
 
 fn strip_frontmatter(text: &str) -> String {
-    let lines: Vec<&str> = text.lines().collect();
-    if lines.first().is_some_and(|line| line.trim() == "---")
-        && let Some(index) = lines.iter().skip(1).position(|line| line.trim() == "---")
-    {
-        let remaining = &lines[index + 2..];
-        return if remaining.is_empty() {
-            String::new()
-        } else {
-            format!("{}\n", remaining.join("\n"))
-        };
+    let mut lines = text.lines();
+    if lines.next().is_none_or(|line| line.trim() != "---") {
+        return text.to_owned();
     }
-    text.to_owned()
+    let mut body = Vec::new();
+    let mut closed = false;
+    for line in lines {
+        if !closed && line.trim() == "---" {
+            closed = true;
+        } else if closed {
+            body.push(line);
+        }
+    }
+    if !closed {
+        return text.to_owned();
+    }
+    if body.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", body.join("\n"))
+    }
 }
 
 fn validated_scope_anchor(path: &str, review_tmpdir: &Path) -> Option<String> {
@@ -1715,7 +1716,7 @@ fn dispatch_aggregate(
         let panel_round_num = (context.round_num > 0)
             .then_some(context.round_num)
             .or_else(|| panel_round_dir.and_then(round_number_from_path));
-        let mut command = Command::new(override_path);
+        let mut command = Command::new(override_path); // lint-subprocess-via-runner: ok retained deterministic-harness compatibility override has no typed executable owner
         command
             .args(arguments)
             .env("LARCH_PANEL_ARTIFACT_DIR", context.artifact_dir)
@@ -1740,7 +1741,7 @@ fn dispatch_aggregate(
         let output = command.output().map_err(|error| error.to_string())?;
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
         return Ok((
-            parse_kv(&stdout),
+            parse_dispatch_kv(&stdout),
             stdout,
             String::from_utf8_lossy(&output.stderr).into_owned(),
             output.status.success(),
@@ -1755,7 +1756,7 @@ fn dispatch_aggregate(
     ]);
     let outcome = dispatch_for_review(&native_arguments)?;
     let stdout = render_dispatch_report(&outcome);
-    Ok((parse_kv(&stdout), stdout, String::new(), true))
+    Ok((parse_dispatch_kv(&stdout), stdout, String::new(), true))
 }
 
 #[allow(clippy::too_many_lines)] // Audit append and findings replacement are one compatibility transaction.
@@ -2119,21 +2120,9 @@ fn accepted_points(row: &HashMap<String, String>, header: &[String]) -> u64 {
     {
         return 1;
     }
-    let votes: Vec<String> = (1..=3)
-        .map(|index| {
-            row.get(&format!("v{index}_vote"))
-                .cloned()
-                .unwrap_or_default()
-        })
-        .collect();
-    let severities: Vec<String> = (1..=3)
-        .map(|index| {
-            row.get(&format!("v{index}_severity"))
-                .cloned()
-                .unwrap_or_default()
-        })
-        .collect();
-    u64::from(accepted_finding_points_from_severities(&votes, &severities))
+    u64::from(accepted_finding_points_from_classification_fields(
+        |field| row.get(field).cloned(),
+    ))
 }
 
 fn classification_counts(

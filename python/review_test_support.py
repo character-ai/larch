@@ -30,7 +30,7 @@ def run_review(
         merged.update(env)
     migrated = {"aggregate-findings", "prune-nit-findings", "reviewer-prune"}
     if args and args[0] in migrated:
-        merged.setdefault("CLAUDE_PLUGIN_ROOT", str(ROOT))
+        _ = merged.setdefault("CLAUDE_PLUGIN_ROOT", str(ROOT))
         return subprocess.run(
             [str(ROOT / "scripts" / "larch.sh"), "review", *args],
             cwd=cwd or ROOT,

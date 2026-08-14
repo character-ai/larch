@@ -33,8 +33,8 @@ use larch_adapters::{
     vendor_diagnostics::write_failure_diag,
 };
 use larch_core::{
-    ChildEnvironment, ExternalProgram, LarchProgram, LauncherArtifactKind, ProcessRequest,
-    SafeText, emit_kv,
+    ChildEnvironment, DuplicatePolicy, ExternalProgram, KvDocument, LarchProgram,
+    LauncherArtifactKind, ParseOptions, ProcessRequest, SafeText, emit_kv,
 };
 use regex::Regex;
 use serde_json::{Map, Value};
@@ -50,6 +50,17 @@ use crate::launcher_support::{
     validate_site, write_confined,
 };
 use crate::python_verb::plugin_root_directory;
+
+/// Decode a legacy `KEY=value` dispatch envelope with last-key-wins semantics.
+///
+/// Review command boundaries consume waterfall stdout directly, so they share
+/// this codec instead of reimplementing the wire grammar.
+pub fn parse_dispatch_kv(text: &str) -> BTreeMap<String, String> {
+    KvDocument::parse(text, ParseOptions::legacy()).map_or_else(
+        |_| BTreeMap::new(),
+        |document| document.select(DuplicatePolicy::Last),
+    )
+}
 
 /// Program name every diagnostic and drop record still carries.
 const PROG: &str = "dispatch-with-waterfall.sh";
