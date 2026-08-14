@@ -12,7 +12,7 @@ use larch_core::review::{
     validate_repair_snapshot,
 };
 
-const BATCH_GOLDEN: &str = include_str!("fixtures/review/repair_batch_report.golden.md");
+const BATCH_GOLDEN: &str = include_str!("fixtures/review/repair_batch_report.golden.txt");
 
 fn full_snapshot() -> RepairSnapshotLayout {
     RepairSnapshotLayout {
