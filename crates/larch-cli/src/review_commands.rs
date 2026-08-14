@@ -10,9 +10,7 @@ use std::{
 };
 
 use clap::Subcommand;
-use larch_adapters::{
-    GixRepository, PathIntent, TemporaryRoot, atomic_write_utf8, ensure_directory_chain,
-};
+use larch_adapters::{GixRepository, atomic_write_utf8_in, ensure_directory_chain};
 use larch_core::{
     GitPath, RepositoryRead, StatusOptions, emit_kv,
     review::{
@@ -22,7 +20,7 @@ use larch_core::{
     },
 };
 
-use crate::agent_commands::AgentRawArguments;
+use crate::{agent_commands::AgentRawArguments, argparse_compat::absolute_path};
 
 /// Review-domain commands now owned by Rust.
 #[derive(Subcommand)]
@@ -111,7 +109,6 @@ fn output_directory(value: &str) -> PathBuf {
 
 fn gather_diff_context(output_dir: &Path) -> ExitCode {
     let result = crate::agent_commands::gather_branch_context_for_review(output_dir);
-    let success = result.is_ok();
     let rows = result
         .as_ref()
         .map_or_else(|_| Vec::new(), crate::agent_commands::branch_context_rows);
@@ -119,19 +116,19 @@ fn gather_diff_context(output_dir: &Path) -> ExitCode {
         eprintln!("review gather-context: cannot write branch context: {error}");
         return ExitCode::from(1);
     }
-    if let Err(error) = result {
-        eprintln!("gather-branch-context.sh: {error}");
-    }
+    let exit_code = match &result {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("gather-branch-context.sh: {error}");
+            ExitCode::from(1)
+        }
+    };
     for (key, value) in rows {
         emit_kv(&key, &value);
     }
     emit_kv("SCOPE_FILES_COUNT", "0");
     emit_kv("MODE", "diff");
-    if success {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::from(1)
-    }
+    exit_code
 }
 
 fn gather_description_context(arguments: &GatherContextArguments, output_dir: &Path) -> ExitCode {
@@ -160,7 +157,7 @@ fn gather_description_context(arguments: &GatherContextArguments, output_dir: &P
 
 fn description_scope_matches(description: &str) -> Result<Vec<String>, String> {
     let cwd = env::current_dir().map_err(|error| error.to_string())?;
-    let repository = GixRepository::discover(&cwd).map_err(|error| error.to_string())?;
+    let repository = GixRepository::discover(cwd.as_path()).map_err(|error| error.to_string())?;
     let repository_root = repository
         .location()
         .work_dir
@@ -266,30 +263,11 @@ fn eligible_review_file(cwd: &Path, path: &str) -> bool {
         .is_ok_and(|metadata| metadata.file_type().is_file() && !metadata.file_type().is_symlink())
 }
 
-fn absolute_path(path: &Path) -> Result<PathBuf, String> {
-    if path.is_absolute() {
-        Ok(path.to_path_buf())
-    } else {
-        env::current_dir()
-            .map(|cwd| cwd.join(path))
-            .map_err(|error| error.to_string())
-    }
-}
-
 fn write_scope_file(path: &Path, content: &str) -> Result<(), String> {
-    let absolute = absolute_path(path)?;
-    let parent = absolute
-        .parent()
-        .ok_or_else(|| "scope-files path has no parent directory".to_owned())?;
-    let file_name = absolute
-        .file_name()
-        .ok_or_else(|| "scope-files path must name a file".to_owned())?;
-    ensure_directory_chain(parent).map_err(|error| error.to_string())?;
-    let root = TemporaryRoot::resolve(Some(parent)).map_err(|error| error.to_string())?;
-    let target = root
-        .confine(file_name, PathIntent::Write)
-        .map_err(|error| error.to_string())?;
-    atomic_write_utf8(&target, content, 0o600).map_err(|error| error.to_string())
+    let absolute = absolute_path(path).map_err(|error| error.to_string())?;
+    let (root, target) = crate::launcher_support::confined_target(&absolute)
+        .ok_or_else(|| "scope-files path is not a confinable file".to_owned())?;
+    atomic_write_utf8_in(&root, &target, content, true, 0o600).map_err(|error| error.to_string())
 }
 
 fn write_rows(output_dir: &Path, rows: &[(String, String)]) -> Result<(), String> {
@@ -299,14 +277,13 @@ fn write_rows(output_dir: &Path, rows: &[(String, String)]) -> Result<(), String
     {
         return Err("branch context contains a newline or carriage return".to_owned());
     }
-    let absolute_output = absolute_path(output_dir)?;
-    let root = TemporaryRoot::resolve(Some(&absolute_output)).map_err(|error| error.to_string())?;
-    let target = root
-        .confine("gather-branch-context.env", PathIntent::Write)
-        .map_err(|error| error.to_string())?;
+    let absolute_output = absolute_path(output_dir).map_err(|error| error.to_string())?;
+    let path = absolute_output.join("gather-branch-context.env");
+    let (root, target) = crate::launcher_support::confined_target(&path)
+        .ok_or_else(|| "branch-context path is not confinable".to_owned())?;
     let mut content = String::new();
     for (key, value) in rows {
         writeln!(&mut content, "{key}={value}").expect("writing to String cannot fail");
     }
-    atomic_write_utf8(&target, &content, 0o600).map_err(|error| error.to_string())
+    atomic_write_utf8_in(&root, &target, &content, true, 0o600).map_err(|error| error.to_string())
 }

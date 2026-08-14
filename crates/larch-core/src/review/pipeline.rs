@@ -5,6 +5,8 @@ use std::{
     path::Path,
 };
 
+use crate::{KvDocument, ParseOptions};
+
 /// Stable help text for `review gather-context`.
 pub const GATHER_CONTEXT_USAGE: &str = "Usage: review gather-context --mode diff|description --output-dir DIR [--description-text TEXT --scope-files FILE]";
 
@@ -199,7 +201,10 @@ pub fn parse_collector_records(text: &str) -> Vec<BTreeMap<String, String>> {
     let mut records = Vec::new();
     let mut current: Option<BTreeMap<String, String>> = None;
     for line in text.lines() {
-        let Some((key, value)) = line.split_once('=') else {
+        let Ok(document) = KvDocument::parse(line, ParseOptions::legacy()) else {
+            continue;
+        };
+        let Some(row) = document.rows().first() else {
             if line.trim().is_empty()
                 && let Some(record) = current.take()
             {
@@ -207,6 +212,8 @@ pub fn parse_collector_records(text: &str) -> Vec<BTreeMap<String, String>> {
             }
             continue;
         };
+        let key = row.key();
+        let value = row.value();
         if key == "REVIEWER_FILE" {
             if let Some(record) =
                 current.replace(BTreeMap::from([(key.to_owned(), value.to_owned())]))
