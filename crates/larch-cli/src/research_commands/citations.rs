@@ -34,7 +34,7 @@ const CREDIBILITY_SUFFIXES: &[&str] = &[
     ".rust-lang.org",
     ".doi.org",
     ".github.com",
-    ".githubusercontent.com",
+    ".githubusercontent.com", // lint-service-ownership: ok advisory credibility allow-list suffix, not a service request
     ".anthropic.com",
 ];
 
