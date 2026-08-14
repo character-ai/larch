@@ -21,7 +21,8 @@ use syn::{
 };
 
 use crate::{
-    Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
+    Finding, LintError, PathSelector, RepoPath, Repository, Rule, RuleDispatchPriority,
+    RuleMetadata, RuleOutput,
 };
 
 use super::path_discovery;
@@ -83,6 +84,10 @@ impl Rule for KvCodecRule {
 
     fn description(&self) -> &'static str {
         DESCRIPTION
+    }
+
+    fn dispatch_priority(&self) -> RuleDispatchPriority {
+        RuleDispatchPriority::Early
     }
 
     fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {

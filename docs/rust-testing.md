@@ -342,6 +342,13 @@ before uploading it for Python integration tests. The separate doctest command
 stays required even when the workspace currently has no doctests. Nextest's
 slow-test status and final status output remain visible in the job log.
 
+Repository-policy execution has a fixed four-worker bound. Measured
+whole-repository scans may start before ordinary rules to avoid a worker-tail,
+but that dispatch preference cannot change selected rules, their ownership, or
+the stable findings, warnings, and name-sorted timing rows. A priority change
+requires current-tree and triggering-fixture output equivalence plus comparable
+full-policy timing evidence.
+
 ### Pull-request Rust selection
 
 `rust-selection` runs only for pull requests. The checkout action supplies the

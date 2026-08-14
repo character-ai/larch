@@ -14,7 +14,10 @@ use regex::Regex;
 use serde::Deserialize;
 use tree_sitter::{Node, Tree};
 
-use crate::{Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput, syntax};
+use crate::{
+    Finding, LintError, RepoPath, Repository, Rule, RuleDispatchPriority, RuleMetadata, RuleOutput,
+    repository::AnalysisCache, syntax,
+};
 
 const NAME: &str = "command-registry";
 const DESCRIPTION: &str =
@@ -97,14 +100,17 @@ impl Rule for CommandRegistryRule {
         DESCRIPTION
     }
 
+    fn dispatch_priority(&self) -> RuleDispatchPriority {
+        RuleDispatchPriority::Early
+    }
+
     fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
-        let ledger = read_ledger(repository)?;
-        let python = read_python_registry(repository)?;
-        let known = ledger.commands.iter().map(CommandRecord::key).collect();
-        let retirement_records = completed_python_retirement_records(&ledger);
-        let python_sources = read_python_sources(repository, &retirement_records, true)?;
-        let callers = discover_callers(repository, &known, Some(&python_sources))?;
-        let clean_install_cases = read_clean_install_cases(repository)?;
+        let analysis = repository.command_registry_analysis();
+        let ledger = analysis.ledger(repository)?;
+        let python = analysis.python_registry(repository)?;
+        let python_sources = analysis.all_python_sources(repository)?;
+        let callers = analysis.callers(repository)?;
+        let clean_install_cases = analysis.clean_install_cases(repository)?;
         validate_ledger(
             &ledger,
             &python,
@@ -123,15 +129,15 @@ pub fn python_retirement_findings_for_issues(
     repository: &Repository,
     migration_issues: &[u64],
 ) -> Result<Vec<Finding>, LintError> {
-    let ledger = read_ledger(repository)?;
-    let python = read_python_registry(repository)?;
+    let analysis = repository.command_registry_analysis();
+    let ledger = analysis.ledger(repository)?;
+    let python = analysis.python_registry(repository)?;
     let retirement_checks = retirement_checks(ledger.commands.iter().filter(|record| {
         record
             .migration_issue
             .is_some_and(|issue| migration_issues.contains(&issue))
     }));
-    let source_retirement_records = completed_python_retirement_records(&ledger);
-    let python_sources = read_python_sources(repository, &source_retirement_records, true)?;
+    let python_sources = analysis.all_python_sources(repository)?;
     let mut findings = Vec::new();
     validate_python_retirements(&retirement_checks, &python, &python_sources, &mut findings);
     Ok(findings)
@@ -149,7 +155,7 @@ pub fn python_retirement_findings_for_issues(
 pub fn command_audit_selectors(
     repository: &Repository,
 ) -> Result<Vec<CommandAuditSelector>, LintError> {
-    let ledger = read_ledger(repository)?;
+    let ledger = repository.command_registry_analysis().ledger(repository)?;
     let commands = command_map(&ledger)?;
     Ok(commands
         .keys()
@@ -342,6 +348,103 @@ struct PythonCommand {
     machine_stdout: bool,
 }
 
+/// Shared immutable command-registry facts for one [`Repository`] snapshot.
+///
+/// Each rule retains its own validation and ownership responsibility. The
+/// owner shares only the authoritative imports, production-Python catalog, and
+/// caller inventory that those independent projections have in common.
+pub struct CommandRegistryAnalysis {
+    ledger: AnalysisCache<Ledger>,
+    python_registry: AnalysisCache<BTreeMap<CommandKey, PythonCommand>>,
+    clean_install_cases: AnalysisCache<BTreeMap<String, CommandKey>>,
+    python_source_catalog: AnalysisCache<PythonSourceCatalog>,
+    all_python_sources: AnalysisCache<Vec<PythonSource>>,
+    caller_inventory: AnalysisCache<Vec<CallerRecord>>,
+}
+
+impl CommandRegistryAnalysis {
+    pub(crate) const fn new() -> Self {
+        Self {
+            ledger: AnalysisCache::new(),
+            python_registry: AnalysisCache::new(),
+            clean_install_cases: AnalysisCache::new(),
+            python_source_catalog: AnalysisCache::new(),
+            all_python_sources: AnalysisCache::new(),
+            caller_inventory: AnalysisCache::new(),
+        }
+    }
+
+    fn ledger(&self, repository: &Repository) -> Result<Arc<Ledger>, LintError> {
+        self.ledger.get_or_init(|| read_ledger(repository))
+    }
+
+    fn python_registry(
+        &self,
+        repository: &Repository,
+    ) -> Result<Arc<BTreeMap<CommandKey, PythonCommand>>, LintError> {
+        self.python_registry
+            .get_or_init(|| read_python_registry(repository))
+    }
+
+    fn clean_install_cases(
+        &self,
+        repository: &Repository,
+    ) -> Result<Arc<BTreeMap<String, CommandKey>>, LintError> {
+        self.clean_install_cases
+            .get_or_init(|| read_clean_install_cases(repository))
+    }
+
+    fn catalog(&self, repository: &Repository) -> Result<Arc<PythonSourceCatalog>, LintError> {
+        self.python_source_catalog
+            .get_or_init(|| PythonSourceCatalog::discover(repository))
+    }
+
+    fn all_python_sources(
+        &self,
+        repository: &Repository,
+    ) -> Result<Arc<Vec<PythonSource>>, LintError> {
+        let ledger = self.ledger(repository)?;
+        let retirement_records = completed_python_retirement_records(&ledger);
+        let catalog = self.catalog(repository)?;
+        self.all_python_sources
+            .get_or_init(|| catalog.select(repository, &retirement_records, true))
+    }
+
+    fn python_sources_for(
+        &self,
+        repository: &Repository,
+        source_retirement_records: &[&CommandRecord],
+    ) -> Result<Vec<PythonSource>, LintError> {
+        self.catalog(repository)?
+            .select(repository, source_retirement_records, true)
+    }
+
+    fn callers(&self, repository: &Repository) -> Result<Arc<Vec<CallerRecord>>, LintError> {
+        let ledger = self.ledger(repository)?;
+        let known = ledger.commands.iter().map(CommandRecord::key).collect();
+        let catalog = self.catalog(repository)?;
+        self.caller_inventory
+            .get_or_init(|| discover_callers(repository, &known, Some(catalog.as_ref())))
+    }
+
+    fn callers_for_records(
+        &self,
+        repository: &Repository,
+        records: &[&CommandRecord],
+    ) -> Result<Vec<CallerRecord>, LintError> {
+        if records
+            .iter()
+            .all(|record| record.python_removal == Completion::Complete)
+        {
+            return Ok(self.callers(repository)?.as_ref().clone());
+        }
+        let ledger = self.ledger(repository)?;
+        let known = ledger.commands.iter().map(CommandRecord::key).collect();
+        let catalog = self.catalog(repository)?;
+        discover_callers(repository, &known, Some(catalog.as_ref()))
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct MigrationIssueAuditInput {
@@ -454,11 +557,13 @@ fn read_clean_install_cases(
 pub fn registered_python_lint_verbs(
     repository: &Repository,
 ) -> Result<BTreeSet<String>, LintError> {
-    let python = read_python_registry(repository)?;
+    let python = repository
+        .command_registry_analysis()
+        .python_registry(repository)?;
     Ok(python
-        .into_keys()
+        .keys()
         .filter(|key| key.domain == "lint")
-        .map(|key| key.verb)
+        .map(|key| key.verb.clone())
         .collect())
 }
 
@@ -467,7 +572,7 @@ pub fn registered_python_lint_verbs(
 /// Shared with developer-tooling migration guards so caller drift detection
 /// cannot diverge from the ownership ledger importer.
 pub fn rust_owned_selectors(repository: &Repository) -> Result<BTreeSet<String>, LintError> {
-    let ledger = read_ledger(repository)?;
+    let ledger = repository.command_registry_analysis().ledger(repository)?;
     Ok(ledger
         .commands
         .iter()
@@ -489,7 +594,8 @@ pub fn planning_issue_closure_findings(
     repository: &Repository,
     planning_issue: u64,
 ) -> Result<Vec<Finding>, LintError> {
-    let ledger = read_ledger(repository)?;
+    let analysis = repository.command_registry_analysis();
+    let ledger = analysis.ledger(repository)?;
     let records = ledger
         .commands
         .iter()
@@ -528,13 +634,15 @@ pub fn planning_issue_closure_findings(
         }
     }
 
-    let known = ledger.commands.iter().map(CommandRecord::key).collect();
-    let python = read_python_registry(repository)?;
-    let python_sources = read_python_sources(repository, &records, true)?;
+    // Start the independent caller inventory before this rule's narrow
+    // retirement projection, allowing the existing rule workers to reuse both
+    // facts without expanding the worker bound.
+    let caller_inventory = analysis.callers_for_records(repository, &records)?;
+    let python_sources = analysis.python_sources_for(repository, &records)?;
+    let python = analysis.python_registry(repository)?;
     let retirement_checks = retirement_checks(records.iter().copied());
     validate_python_retirements(&retirement_checks, &python, &python_sources, &mut findings);
-    let callers = discover_callers(repository, &known, Some(&python_sources))?;
-    let callers = caller_map(&callers)?;
+    let callers = caller_map(&caller_inventory)?;
     for record in &records {
         let key = record.key();
         for caller in matching_callers(&key, &callers, Runtime::Python) {
@@ -1003,14 +1111,9 @@ fn finding(message: String) -> Finding {
 fn discover_callers(
     repository: &Repository,
     known: &BTreeSet<CommandKey>,
-    python_sources: Option<&[PythonSource]>,
+    python_source_catalog: Option<&PythonSourceCatalog>,
 ) -> Result<Vec<CallerRecord>, LintError> {
     let hook_paths = discover_hook_paths(repository)?;
-    let parsed_python: BTreeMap<&str, &PythonSource> = python_sources
-        .unwrap_or_default()
-        .iter()
-        .map(|document| (document.path.as_str(), document))
-        .collect();
     let mut callers = Vec::new();
     for path in repository.paths() {
         let Some(kind) = classify_caller(path.as_str(), &hook_paths) else {
@@ -1018,10 +1121,24 @@ fn discover_callers(
         };
         let content = repository.read_utf8(path)?;
         let mut python = filter_selectors(extract_selectors(&content, "python/cli.py"), known);
-        if is_production_issue_python_path(path.as_str())
-            && issue_python_boundary_candidate(path.as_str(), &content)
-        {
-            let selectors = if let Some(document) = parsed_python.get(path.as_str()) {
+        let issue_boundary_candidate = is_production_issue_python_path(path.as_str())
+            && issue_python_boundary_candidate(path.as_str(), &content);
+        let python_entrypoint_caller = Path::new(path.as_str())
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
+            && (content.contains("larch_entrypoint") || content.contains("scripts/larch.sh"));
+        let runtime_candidate = (kind == CallerKind::PythonRuntime || python_entrypoint_caller)
+            && (content.contains("larch_entrypoint") || content.contains("scripts/larch.sh"));
+        let python_document = if issue_boundary_candidate || runtime_candidate {
+            python_source_catalog
+                .map(|catalog| catalog.document(repository, path))
+                .transpose()?
+                .flatten()
+        } else {
+            None
+        };
+        if issue_boundary_candidate {
+            let selectors = if let Some(document) = &python_document {
                 extract_issue_in_process_selectors_from_document(document)
             } else {
                 extract_issue_in_process_selectors(path.as_str(), &content)?
@@ -1033,19 +1150,14 @@ fn discover_callers(
             }
             python.sort();
         }
-        let python_entrypoint_caller = Path::new(path.as_str())
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
-            && (content.contains("larch_entrypoint") || content.contains("scripts/larch.sh"));
         let mut rust = if kind == CallerKind::PythonRuntime || python_entrypoint_caller {
-            let selectors =
-                if !content.contains("larch_entrypoint") && !content.contains("scripts/larch.sh") {
-                    Vec::new()
-                } else if let Some(document) = parsed_python.get(path.as_str()) {
-                    extract_python_rust_selectors_from_tree(document.tree.root_node(), &content)
-                } else {
-                    extract_python_rust_selectors(path.as_str(), &content)?
-                };
+            let selectors = if !runtime_candidate {
+                Vec::new()
+            } else if let Some(document) = &python_document {
+                extract_python_rust_selectors_from_tree(document.tree.root_node(), &content)
+            } else {
+                extract_python_rust_selectors(path.as_str(), &content)?
+            };
             filter_selectors(selectors, known)
         } else {
             filter_selectors(extract_selectors(&content, "bin/larch"), known)
@@ -1143,13 +1255,114 @@ fn classify_caller(path: &str, hook_paths: &BTreeSet<String>) -> Option<CallerKi
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct PythonSource {
     path: String,
     module: String,
     package: String,
     source: Arc<str>,
     tree: Arc<Tree>,
+}
+
+/// Immutable production-Python source metadata shared by command-registry
+/// consumers. Parsed trees remain owned by [`Repository`], which already
+/// caches their success or failure per path.
+#[derive(Debug)]
+struct PythonSourceCatalog {
+    documents: BTreeMap<RepoPath, PythonSourceMetadata>,
+}
+
+#[derive(Debug)]
+struct PythonSourceMetadata {
+    path: String,
+    module: String,
+    package: String,
+    source: Arc<str>,
+}
+
+impl PythonSourceCatalog {
+    fn discover(repository: &Repository) -> Result<Self, LintError> {
+        let mut documents = BTreeMap::new();
+        for path in repository.paths() {
+            let path_text = path.as_str();
+            if !syntax::is_production_python_path(path_text) {
+                continue;
+            }
+            let source = repository.read_utf8(path)?;
+            let (module, package) = python_module_and_package(path_text);
+            let previous = documents.insert(
+                path.clone(),
+                PythonSourceMetadata {
+                    path: path_text.to_owned(),
+                    module,
+                    package,
+                    source,
+                },
+            );
+            debug_assert!(previous.is_none(), "repository paths are unique");
+        }
+        Ok(Self { documents })
+    }
+
+    fn select(
+        &self,
+        repository: &Repository,
+        source_retirement_records: &[&CommandRecord],
+        include_runtime_candidates: bool,
+    ) -> Result<Vec<PythonSource>, LintError> {
+        let mut sources = Vec::new();
+        for (path, document) in &self.documents {
+            let runtime_candidate = include_runtime_candidates
+                && (document.source.contains("larch_entrypoint")
+                    || document.source.contains("scripts/larch.sh"));
+            let source_retirement_candidate = source_matches_python_retirement(
+                &document.module,
+                &document.source,
+                source_retirement_records,
+            );
+            let issue_boundary_candidate =
+                issue_python_boundary_candidate(&document.path, &document.source);
+            if !runtime_candidate && !source_retirement_candidate && !issue_boundary_candidate {
+                continue;
+            }
+            sources.push(document.to_source(repository, path)?);
+        }
+        Ok(sources)
+    }
+
+    fn document(
+        &self,
+        repository: &Repository,
+        path: &RepoPath,
+    ) -> Result<Option<PythonSource>, LintError> {
+        self.documents
+            .get(path)
+            .map(|document| document.to_source(repository, path))
+            .transpose()
+    }
+}
+
+impl PythonSourceMetadata {
+    fn to_source(
+        &self,
+        repository: &Repository,
+        path: &RepoPath,
+    ) -> Result<PythonSource, LintError> {
+        let tree = repository.python_syntax(path)?;
+        if tree.root_node().has_error() {
+            return Err(LintError::new(format!(
+                "{}: invalid Python syntax",
+                self.path
+            )));
+        }
+        Ok(PythonSource {
+            path: self.path.clone(),
+            module: self.module.clone(),
+            package: self.package.clone(),
+            source: Arc::clone(&self.source),
+            tree,
+        })
+    }
 }
 
 struct RetirementCheck<'record> {
@@ -1218,6 +1431,16 @@ fn is_production_issue_python_path(path: &str) -> bool {
 
 fn extract_issue_in_process_selectors(path: &str, source: &str) -> Result<Vec<String>, LintError> {
     let tree = parse_python(path, source)?;
+    let (module, package) = python_module_and_package(path);
+    Ok(extract_issue_in_process_selectors_from_tree(
+        tree.root_node(),
+        source,
+        &module,
+        &package,
+    ))
+}
+
+fn python_module_and_package(path: &str) -> (String, String) {
     let module = path
         .strip_prefix("python/")
         .and_then(|value| value.strip_suffix(".py"))
@@ -1232,12 +1455,7 @@ fn extract_issue_in_process_selectors(path: &str, source: &str) -> Result<Vec<St
             .rsplit_once('.')
             .map_or_else(String::new, |(parent, _)| parent.to_owned())
     };
-    Ok(extract_issue_in_process_selectors_from_tree(
-        tree.root_node(),
-        source,
-        &module,
-        &package,
-    ))
+    (module, package)
 }
 
 fn extract_issue_in_process_selectors_from_document(document: &PythonSource) -> Vec<String> {
@@ -1436,57 +1654,6 @@ fn parse_python(path: &str, source: &str) -> Result<Tree, LintError> {
         return Err(LintError::new(format!("{path}: invalid Python syntax")));
     }
     Ok(tree)
-}
-
-fn read_python_sources(
-    repository: &Repository,
-    source_retirement_records: &[&CommandRecord],
-    include_runtime_candidates: bool,
-) -> Result<Vec<PythonSource>, LintError> {
-    let mut sources = Vec::new();
-    for path in repository.paths() {
-        let path_text = path.as_str();
-        if !syntax::is_production_python_path(path_text) {
-            continue;
-        }
-        let source = repository.read_utf8(path)?;
-        let module = path_text
-            .strip_prefix("python/")
-            .and_then(|value| value.strip_suffix(".py"))
-            .unwrap_or_default()
-            .replace('/', ".")
-            .trim_end_matches(".__init__")
-            .to_owned();
-        let package = if path_text.ends_with("/__init__.py") {
-            module.clone()
-        } else {
-            module
-                .rsplit_once('.')
-                .map_or_else(String::new, |(parent, _)| parent.to_owned())
-        };
-        let runtime_candidate = include_runtime_candidates
-            && (source.contains("larch_entrypoint") || source.contains("scripts/larch.sh"));
-        let source_retirement_candidate =
-            source_matches_python_retirement(&module, &source, source_retirement_records);
-        let issue_boundary_candidate = issue_python_boundary_candidate(path_text, &source);
-        if !runtime_candidate && !source_retirement_candidate && !issue_boundary_candidate {
-            continue;
-        }
-        let tree = repository.python_syntax(path)?;
-        if tree.root_node().has_error() {
-            return Err(LintError::new(format!(
-                "{path_text}: invalid Python syntax"
-            )));
-        }
-        sources.push(PythonSource {
-            path: path_text.to_owned(),
-            module,
-            package,
-            source,
-            tree,
-        });
-    }
-    Ok(sources)
 }
 
 fn source_matches_python_retirement(
@@ -2040,6 +2207,9 @@ struct VariableBinding {
 }
 
 fn extract_selectors(content: &str, marker: &str) -> Vec<String> {
+    if !content.contains(marker) {
+        return Vec::new();
+    }
     let normalized = content.replace("\\\r\n", " ").replace("\\\n", " ");
     let mut selectors = BTreeSet::new();
     let mut bindings = Vec::new();
@@ -2387,7 +2557,7 @@ pub fn audit_migration_issue_commands_content(
             input.schema_version
         )));
     }
-    let ledger = read_ledger(repository)?;
+    let ledger = repository.command_registry_analysis().ledger(repository)?;
     let commands = command_map(&ledger)?;
     let mut issues = BTreeMap::new();
     for issue in &input.issues {
@@ -2457,13 +2627,12 @@ fn migration_issue_drift(issue: u64, key: &CommandKey) -> Finding {
 ///
 /// Returns an error when the canonical ledger is absent or invalid.
 pub fn render_command_progress(repository: &Repository) -> Result<String, LintError> {
-    let ledger = read_ledger(repository)?;
-    let python = read_python_registry(repository)?;
-    let known = ledger.commands.iter().map(CommandRecord::key).collect();
-    let retirement_records = completed_python_retirement_records(&ledger);
-    let python_sources = read_python_sources(repository, &retirement_records, true)?;
-    let live_callers = discover_callers(repository, &known, Some(&python_sources))?;
-    let clean_install_cases = read_clean_install_cases(repository)?;
+    let analysis = repository.command_registry_analysis();
+    let ledger = analysis.ledger(repository)?;
+    let python = analysis.python_registry(repository)?;
+    let python_sources = analysis.all_python_sources(repository)?;
+    let live_callers = analysis.callers(repository)?;
+    let clean_install_cases = analysis.clean_install_cases(repository)?;
     let validation = validate_ledger(
         &ledger,
         &python,
@@ -2528,9 +2697,28 @@ pub fn render_command_progress(repository: &Repository) -> Result<String, LintEr
 
 #[cfg(test)]
 mod tests {
-    use super::{planning_issue_closure_findings, python_cli_selectors};
-    use crate::{GitCli, Repository};
-    use std::path::PathBuf;
+    use super::{CommandRegistryRule, planning_issue_closure_findings, python_cli_selectors};
+    use crate::{Git, GitCli, LintError, Repository, Rule};
+    use std::{
+        path::{Path, PathBuf},
+        sync::{Arc, Barrier},
+    };
+
+    #[derive(Debug)]
+    struct FixtureGit {
+        root: PathBuf,
+        tracked_paths: Vec<u8>,
+    }
+
+    impl Git for FixtureGit {
+        fn repository_root(&self, _cwd: &Path) -> Result<PathBuf, LintError> {
+            Ok(self.root.clone())
+        }
+
+        fn tracked_paths(&self, _root: &Path) -> Result<Vec<u8>, LintError> {
+            Ok(self.tracked_paths.clone())
+        }
+    }
 
     fn workspace_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -2538,6 +2726,25 @@ mod tests {
             .nth(2)
             .expect("workspace root")
             .to_path_buf()
+    }
+
+    fn repository_with_invalid_ledger() -> (tempfile::TempDir, Repository) {
+        let temporary = tempfile::tempdir().expect("temporary repository");
+        let ledger = temporary
+            .path()
+            .join("crates/larch-lint/data/command-registry.toml");
+        std::fs::create_dir_all(ledger.parent().expect("ledger parent"))
+            .expect("create ledger parent");
+        std::fs::write(&ledger, "[commands\n").expect("write invalid ledger");
+        let repository = Repository::discover(
+            &FixtureGit {
+                root: temporary.path().to_path_buf(),
+                tracked_paths: b"crates/larch-lint/data/command-registry.toml\0".to_vec(),
+            },
+            temporary.path(),
+        )
+        .expect("discover temporary repository");
+        (temporary, repository)
     }
 
     #[test]
@@ -2548,14 +2755,81 @@ mod tests {
     }
 
     #[test]
-    fn planning_issue_7685_closure_is_proven_by_the_live_registry_and_callers() {
+    fn shared_analysis_is_concurrent_and_keeps_rule_output_deterministic() {
         let root = workspace_root();
         let repository = Repository::discover(&GitCli, &root).expect("repository");
+        let start = Arc::new(Barrier::new(4));
+        let repository_ref = &repository;
+        let source_sets = std::thread::scope(|scope| {
+            let mut workers = Vec::new();
+            for _ in 0..4 {
+                let start = Arc::clone(&start);
+                workers.push(scope.spawn(move || {
+                    start.wait();
+                    repository_ref
+                        .command_registry_analysis()
+                        .all_python_sources(repository_ref)
+                        .expect("shared Python sources")
+                }));
+            }
+            workers
+                .into_iter()
+                .map(|worker| worker.join().expect("analysis worker"))
+                .collect::<Vec<_>>()
+        });
+        assert!(
+            source_sets
+                .iter()
+                .skip(1)
+                .all(|candidate| Arc::ptr_eq(&source_sets[0], candidate))
+        );
+
+        let first = CommandRegistryRule
+            .check(&repository)
+            .expect("first command-registry output");
+        let second = CommandRegistryRule
+            .check(&repository)
+            .expect("reused command-registry output");
+        assert_eq!(first, second);
 
         assert!(
             planning_issue_closure_findings(&repository, 7685)
                 .expect("closure proof")
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn shared_analysis_reuses_ledger_failures_deterministically() {
+        let (_temporary, repository) = repository_with_invalid_ledger();
+        let start = Arc::new(Barrier::new(4));
+        let repository_ref = &repository;
+        let errors = std::thread::scope(|scope| {
+            let mut workers = Vec::new();
+            for _ in 0..4 {
+                let start = Arc::clone(&start);
+                workers.push(scope.spawn(move || {
+                    start.wait();
+                    repository_ref
+                        .command_registry_analysis()
+                        .ledger(repository_ref)
+                        .expect_err("invalid ledger must fail")
+                        .to_string()
+                }));
+            }
+            workers
+                .into_iter()
+                .map(|worker| worker.join().expect("analysis worker"))
+                .collect::<Vec<_>>()
+        });
+        assert!(errors.iter().skip(1).all(|error| error == &errors[0]));
+        let analysis = repository.command_registry_analysis();
+        assert_eq!(
+            analysis
+                .ledger(&repository)
+                .expect_err("cached invalid ledger must fail")
+                .to_string(),
+            errors[0]
         );
     }
 }

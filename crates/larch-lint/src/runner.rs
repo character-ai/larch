@@ -201,6 +201,18 @@ impl fmt::Display for LintError {
 
 impl std::error::Error for LintError {}
 
+/// Dispatch preference for work inside the fixed repository-policy pool.
+///
+/// This affects only when a rule starts. Findings, warnings, rule timings, and
+/// direct rule selection retain their stable name-indexed order.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum RuleDispatchPriority {
+    /// Preserve ordinary stable dispatch order.
+    Normal,
+    /// Start a measured whole-repository scan before ordinary work.
+    Early,
+}
+
 /// A larch policy rule.
 pub trait Rule: Sync {
     /// Return the unique command-line rule name.
@@ -208,6 +220,11 @@ pub trait Rule: Sync {
 
     /// Return a concise user-facing description.
     fn description(&self) -> &'static str;
+
+    /// Return the fixed-pool dispatch preference for this rule.
+    fn dispatch_priority(&self) -> RuleDispatchPriority {
+        RuleDispatchPriority::Normal
+    }
 
     /// Check one validated repository snapshot.
     ///
@@ -321,13 +338,17 @@ fn run_rules(repository: &Repository, rules: &[&dyn Rule]) -> Vec<CompletedRule>
     if worker_count == 0 {
         return Vec::new();
     }
+    let schedule = schedule_rule_indices(rules);
     let next = AtomicUsize::new(0);
     let completed = Mutex::new(Vec::with_capacity(rules.len()));
     std::thread::scope(|scope| {
         for _ in 0..worker_count {
             scope.spawn(|| {
                 loop {
-                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let scheduled = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(index) = schedule.get(scheduled).copied() else {
+                        break;
+                    };
                     let Some(rule) = rules.get(index).copied() else {
                         break;
                     };
@@ -352,6 +373,14 @@ fn run_rules(repository: &Repository, rules: &[&dyn Rule]) -> Vec<CompletedRule>
         .expect("rule completion lock is not poisoned");
     completed.sort_by_key(|completed_rule| completed_rule.index);
     completed
+}
+
+fn schedule_rule_indices(rules: &[&dyn Rule]) -> Vec<usize> {
+    // Start measured whole-repository scans early, without creating workers or
+    // changing the original rule index used for report rendering.
+    let mut schedule: Vec<usize> = (0..rules.len()).collect();
+    schedule.sort_by_key(|index| std::cmp::Reverse(rules[*index].dispatch_priority()));
+    schedule
 }
 
 /// Return the process outcome associated with a completed rule run.
@@ -426,7 +455,7 @@ pub fn render_error(error: &LintError, output: &mut impl std::io::Write) -> Exit
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use super::{Finding, LintError, Rule, RuleOutput, RuleRegistry};
+    use super::{Finding, LintError, Rule, RuleDispatchPriority, RuleOutput, RuleRegistry};
     use crate::repository::{Git, Repository};
 
     #[derive(Debug)]
@@ -452,6 +481,7 @@ mod tests {
     #[derive(Debug)]
     struct NamedFixtureRule {
         name: &'static str,
+        priority: RuleDispatchPriority,
     }
 
     impl Rule for NamedFixtureRule {
@@ -461,6 +491,10 @@ mod tests {
 
         fn description(&self) -> &'static str {
             "named fixture rule"
+        }
+
+        fn dispatch_priority(&self) -> RuleDispatchPriority {
+            self.priority
         }
 
         fn check(&self, _repository: &Repository) -> Result<RuleOutput, LintError> {
@@ -514,14 +548,24 @@ mod tests {
     }
 
     #[test]
-    fn parallel_rule_completion_keeps_report_order_deterministic() {
+    fn early_dispatch_keeps_report_order_deterministic() {
         let repository = fixture_repository();
-        let zulu = NamedFixtureRule { name: "zulu" };
-        let alpha = NamedFixtureRule { name: "alpha" };
-        let middle = NamedFixtureRule { name: "middle" };
+        let zulu = NamedFixtureRule {
+            name: "zulu",
+            priority: RuleDispatchPriority::Normal,
+        };
+        let alpha = NamedFixtureRule {
+            name: "alpha",
+            priority: RuleDispatchPriority::Normal,
+        };
+        let middle = NamedFixtureRule {
+            name: "middle",
+            priority: RuleDispatchPriority::Early,
+        };
+        let rules: [&dyn Rule; 3] = [&zulu, &alpha, &middle];
+        assert_eq!(super::schedule_rule_indices(&rules), [2, 0, 1]);
 
-        let report = super::run(&repository, [&zulu as &dyn Rule, &alpha, &middle])
-            .expect("run fixture rules");
+        let report = super::run(&repository, rules).expect("run fixture rules");
         let findings: Vec<String> = report.findings().iter().map(ToString::to_string).collect();
         assert_eq!(
             findings,

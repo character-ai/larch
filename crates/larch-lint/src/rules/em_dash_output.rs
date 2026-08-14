@@ -13,7 +13,8 @@ use syn::visit::{self, Visit};
 use tree_sitter::Node;
 
 use crate::{
-    Finding, LintError, PathSelector, Repository, Rule, RuleMetadata, RuleOutput,
+    Finding, LintError, PathSelector, Repository, Rule, RuleDispatchPriority, RuleMetadata,
+    RuleOutput,
     suppression,
     syntax::{FenceState, MarkdownDocument, is_production_python_path},
 };
@@ -62,6 +63,10 @@ impl Rule for EmDashOutputRule {
 
     fn description(&self) -> &'static str {
         DESCRIPTION
+    }
+
+    fn dispatch_priority(&self) -> RuleDispatchPriority {
+        RuleDispatchPriority::Early
     }
 
     fn check(&self, repository: &Repository) -> Result<RuleOutput, LintError> {
