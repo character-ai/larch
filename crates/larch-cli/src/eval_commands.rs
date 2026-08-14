@@ -686,7 +686,7 @@ fn validate_research_output(
         if FINDING_LINE_RE.is_match(&text) {
             return 0;
         }
-        if !validate_structured_tsv(&text, &mut Output::default()).is_empty() {
+        if !validate_structured_tsv(&text, output).is_empty() {
             return 0;
         }
         if validation_mode_reviewer_no_findings_prose(&lines) {
