@@ -1,8 +1,51 @@
 # End-to-end CI latency and runner-cost evidence
 
-This is the evidence record for [#8330](https://github.com/character-ai/larch/issues/8330), the final leaf of [#8324](https://github.com/character-ai/larch/issues/8324). It preserves raw GitHub Actions timestamps, cache observations, and cohort rules rather than rounded workflow-UI durations.
+This is the evidence record for [#8330](https://github.com/character-ai/larch/issues/8330), the final leaf of [#8324](https://github.com/character-ai/larch/issues/8324), and the later [#8484](https://github.com/character-ai/larch/issues/8484) merge-group cohort. It preserves raw GitHub Actions timestamps, cache observations, and cohort rules rather than rounded workflow-UI durations.
 
-Snapshot time: 2026-08-10. The observations were collected after the last prerequisite merged at `282d0ca8bad0379ee44b8f95bb2e5b7ec45515d8`.
+The retained #8330 snapshot time is 2026-08-10. Its observations were collected after the last prerequisite merged at `282d0ca8bad0379ee44b8f95bb2e5b7ec45515d8`.
+
+## Post-#8482 warm merge-group cohort
+
+Measurement date: 2026-08-14. [PR #8482](https://github.com/character-ai/larch/pull/8482) merged through cold run [31760348131](https://github.com/character-ai/larch/actions/runs/31760348131); its trusted-main publisher, [31760751229](https://github.com/character-ai/larch/actions/runs/31760751229), then completed successfully. The next target-cache miss is retained below as an exclusion. The next three successful direct-hit `merge_group` runs are the eligible cohort: no manual dispatch is included.
+
+All three eligible runs used `CI`, attempt 1, and 41 successful actual runner jobs. An actual runner job has a non-empty `runner_name`; skipped declarations do not enter duration sums. Queue delay is the earliest actual start minus `created_at`; trigger-to-last-required is the latest required completion minus `created_at`; active DAG span is the difference between those two actual timestamps; and summed runner time is the sum of all actual runner durations. `python-tests-gate` was the latest required completion in every sample.
+
+| Run | SHA | Event | Created (UTC) | Attempt | Queue | Cache evidence | Result |
+| --- | --- | --- | --- | ---: | ---: | --- | --- |
+| [31773677023](https://github.com/character-ai/larch/actions/runs/31773677023) | `39275b6` | `merge_group` | 2026-08-14T05:39:08Z | 1 | 4 s | direct coverage-target hit, 1,398,468,608 B in 9 s; Cargo inputs, nextest, and LLVM-Cov hits | success |
+| [31776106272](https://github.com/character-ai/larch/actions/runs/31776106272) | `2663e36` | `merge_group` | 2026-08-14T06:23:20Z | 1 | 4 s | direct coverage-target hit, 1,398,472,704 B in 8 s; Cargo inputs, nextest, and LLVM-Cov hits | success |
+| [31778104389](https://github.com/character-ai/larch/actions/runs/31778104389) | `4f0a39c` | `merge_group` | 2026-08-14T06:57:12Z | 1 | 4 s | direct coverage-target hit, 1,398,472,704 B in 7 s; Cargo inputs, nextest, and LLVM-Cov hits | success |
+
+Every raw value used by the job-level medians is in seconds.
+
+“Python matrix sum” is the sum of the 20 `python-tests (3.11, N)` runner durations. “Harness” is the five `test-harnesses (N)` jobs.
+
+| Run | Trigger→last required | Active DAG | Sum runner | Slowest harness | Sum harness | Python matrix sum | `rust-full` | Rust gate path | `rust-lint` | `gitleaks` | `agent-sync` | Final required job |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| [31773677023](https://github.com/character-ai/larch/actions/runs/31773677023) | 368 | 364 | 2,531 | 212 | 351 | 941 | 343 | 355 | 80 | 258 | 211 | `python-tests-gate` |
+| [31776106272](https://github.com/character-ai/larch/actions/runs/31776106272) | 326 | 322 | 2,403 | 213 | 363 | 909 | 289 | 304 | 77 | 224 | 216 | `python-tests-gate` |
+| [31778104389](https://github.com/character-ai/larch/actions/runs/31778104389) | 378 | 374 | 2,463 | 234 | 376 | 932 | 345 | 360 | 81 | 177 | 216 | `python-tests-gate` |
+| Median | **368** | **364** | **2,463** | **213** | **363** | **932** | **343** | **355** | **80** | **224** | **216** | `python-tests-gate` |
+
+The `rust-full` timing artifacts provide the raw phase values below. “Candidate staging” is the target-cache save/stage phase; it is skipped when every primary key is already present, rather than being treated as a miss.
+
+| Run | Timing TSV | Restore | Compilation | Nextest | Repository policy | Coverage report | Candidate staging | Coverage end-to-end | Job total |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: |
+| 31773677023 | [9209156949](https://github.com/character-ai/larch/actions/runs/31773677023/artifacts/9209156949) | 16 | 76 | 80 | 97 | 30 | 0 s skipped: all primary keys hit | 286 | 334 |
+| 31776106272 | [9210006658](https://github.com/character-ai/larch/actions/runs/31776106272/artifacts/9210006658) | 15 | 62 | 68 | 72 | 25 | 0 s skipped: all primary keys hit | 230 | 276 |
+| 31778104389 | [9210755137](https://github.com/character-ai/larch/actions/runs/31778104389/artifacts/9210755137) | 15 | 74 | 79 | 98 | 30 | 1 s skipped: all primary keys hit | 284 | 330 |
+| Median | — | **15** | **74** | **79** | **97** | **30** | **0 s** | **284** | **330** |
+
+The post-#8482 exclusions remain visible and are not pooled with the median:
+
+| Run | Event | Queue | Trigger→last required | Cache observation | Why excluded |
+| --- | --- | ---: | ---: | --- | --- |
+| [31760348131](https://github.com/character-ai/larch/actions/runs/31760348131) | `merge_group` | 4 s | 452 s | coverage-target miss, 0 B restored; 150 s compilation; candidate staged for trusted-main publication | #8482 changed the Cargo graph |
+| [31771030876](https://github.com/character-ai/larch/actions/runs/31771030876) | `merge_group` | 4 s | 427 s | coverage-target miss, 0 B restored; 149 s compilation; candidate staged for trusted-main publication | cache miss before the eligible direct-hit sequence |
+
+No rerun, cancellation, or runner-queue outlier occurred in this collection window: every listed run used attempt 1 and had a 4 s queue. Queue delay is therefore reported separately from the 364 s median active DAG span.
+
+The observed required-job envelope is `rust-full` → `rust-coverage` → `rust-gate` → `python-tests-gate`: the Rust gate path has a 355 s median and `python-tests-gate` completed last at a 368 s median. This names the observed critical path without claiming a separate dependency-graph proof. The 368 s trigger-to-last-required median is below the seven-minute target, so this cohort does not admit the dependent optimization issues [#8485](https://github.com/character-ai/larch/issues/8485), [#8486](https://github.com/character-ai/larch/issues/8486), [#8487](https://github.com/character-ai/larch/issues/8487), and [#8488](https://github.com/character-ai/larch/issues/8488) under the #8475 decision rule; each needs new evidence and approval before implementation.
 
 ## Result and scope
 
