@@ -309,21 +309,32 @@ def _staged_outcome_matches(*, ctx: RunContext, kind: AssessmentKind) -> bool:
         return False
 
 
-def _pre_pr_reentry_phase(resume: ResumePlan) -> str:
+_PRETERMINAL_REENTRY_STARTS = frozenset({"fresh", "pre-pr-compose", "open-pr"})
+
+
+def _preterminal_reentry_phase(resume: ResumePlan) -> str:
     if resume.start == "fresh":
         return "pr-prep"
     return config.SHIP_ROUTE_ACTION_ASSESSMENTS
 
 
-def _destall_pre_pr_reentry(
+def _destall_preterminal_reentry(
     *,
     ctx: RunContext,
     resume: ResumePlan,
     runner: Runner,
     repo_root: str,
 ) -> RunContext | ShipResult:
+    """Clear a stale terminal overlay before a resumable ship replay.
+
+    ``open-pr`` is post-PR in terms of durable identity, but it deliberately
+    replays the assessment and PR-ensure stages before returning to CI. It is
+    therefore a pre-terminal reentry alongside the genuine pre-PR starts.
+    Never de-terminalize post-merge routes: durable merge evidence selects a
+    separate finalization path before this helper is reachable.
+    """
     _ = (runner, repo_root)
-    if resume.start not in {"fresh", "pre-pr-compose", "open-pr"}:
+    if resume.start not in _PRETERMINAL_REENTRY_STARTS:
         return ctx
     if not ctx.state_file:
         return ctx
@@ -341,12 +352,12 @@ def _destall_pre_pr_reentry(
         except (OSError, ValueError):
             return ShipResult(Outcome.STALLED, detail="invalid finalize-state path")
         if finalize_state.is_symlink() or not finalize_state.is_file():
-            return ShipResult(Outcome.STALLED, detail="non-regular finalize-state on pre-PR reentry")
+            return ShipResult(Outcome.STALLED, detail="non-regular finalize-state on pre-terminal reentry")
         try:
             finalize_state.unlink()
         except OSError as exc:
             return ShipResult(Outcome.STALLED, detail=f"cannot remove stale finalize-state: {exc}")
-    phase = _pre_pr_reentry_phase(resume)
+    phase = _preterminal_reentry_phase(resume)
     reset_ctx = ctx.with_(stall_tracking=False, stall_step="")
     _write_ship_state(
         reset_ctx,
@@ -356,7 +367,10 @@ def _destall_pre_pr_reentry(
         fix_attempts=resume.fix_attempts,
         transient_retries=resume.transient_retries,
     )
-    _breadcrumb(step="pre-pr-reentry", detail=f"de-terminalized prior phase {prior_phase} -> {phase}")
+    _breadcrumb(
+        step="post-pr-reentry" if resume.start == "open-pr" else "pre-pr-reentry",
+        detail=f"de-terminalized prior phase {prior_phase} -> {phase}",
+    )
     return reset_ctx
 
 
@@ -1555,7 +1569,7 @@ def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) 
 
         if resume.start == "fresh":
             fresh_context = _hydrate_fresh_context(ctx=ctx, resume=resume)
-            destalled = _destall_pre_pr_reentry(ctx=fresh_context, resume=resume, runner=runner, repo_root=repo_root)
+            destalled = _destall_preterminal_reentry(ctx=fresh_context, resume=resume, runner=runner, repo_root=repo_root)
             if isinstance(destalled, ShipResult):
                 return destalled
             fresh_context = destalled
@@ -1652,7 +1666,7 @@ def run_ship(ctx: RunContext, *, runner: Runner = proc, cwd: str | None = None) 
             pr_context = fresh_context
         else:
             pr_context = _hydrate_resume_context(ctx=ctx, resume=resume)
-            destalled = _destall_pre_pr_reentry(ctx=pr_context, resume=resume, runner=runner, repo_root=repo_root)
+            destalled = _destall_preterminal_reentry(ctx=pr_context, resume=resume, runner=runner, repo_root=repo_root)
             if isinstance(destalled, ShipResult):
                 return destalled
             pr_context = destalled

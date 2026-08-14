@@ -187,16 +187,6 @@ pub fn refresh(arguments: &[OsString]) -> ExitCode {
     } let context = context_from_parsed(
         &parsed, tmpdir, run_id, state_file, state_selected, state_present, no_logs, &merge_result,
     );
-    let summary_path = context.run_dir().join("final-summary.md"); let blocked =
-        if postmerge || !regular_file(&summary_path) { None } else { match read_lossy(&summary_path) {
-            Ok(summary) => parse_preterminal_outcome_label(&summary)
-                .filter(|label| matches!(label.as_str(), "stalled" | "bailed" | "bailed-needs-user-input"))
-                .map(|label| format!("refusing pre-terminal run-log staging with terminal outcome label '{label}'; commit only neutral in-progress labels before terminal reconciliation")),
-            Err(error) => Some(format!("pre-terminal outcome check failed: {error}")),
-        }}; if let Some(detail) = blocked {
-        println!("REFRESH_COMMITTED=false REASON=preterminal-outcome ERROR={}", one_line(&detail, 300));
-        return ExitCode::SUCCESS;
-    }
     let strict = bool_value(&text(&parsed, "--strict-final-report")).unwrap_or(false);
     let result = if postmerge {
         refresh_postmerge(
@@ -206,7 +196,9 @@ pub fn refresh(arguments: &[OsString]) -> ExitCode {
         refresh_local(&context, strict)
     }; match result {
         Ok(()) => println!("REFRESH_COMMITTED=true"), Err(message) => {
-            let reason = if postmerge && message.starts_with("post-merge-refresh: ") {
+            let reason = if !postmerge && message.starts_with("preterminal-outcome: ") {
+                "preterminal-outcome"
+            } else if postmerge && message.starts_with("post-merge-refresh: ") {
                 if message.to_lowercase().contains("redaction") { "redaction-failed" }
                 else { "post-merge-refresh-failed" }
             } else { "manifest-recovery-failed" };
@@ -261,19 +253,19 @@ fn terminal_result(ok: bool, error: &str) {
 fn refresh_local(context: &FlushContext, strict: bool) -> Result<(), String> {
     ensure_manifest(context)?;
     let _transcript = stage_checkpoint(context, FlushMode::Refresh, strict)?;
-    ensure_manifest(context)?; reconcile_manifest(context, false, true)
+    ensure_manifest(context)?; reconcile_manifest(context, false, true, true)
 }
 
 fn refresh_postmerge(context: &FlushContext, render_reports: bool) -> Result<(), String> {
     ensure_manifest(context)?;
     (|| {
         if render_reports {
-            write_final_report(context, false, false)?;
+            write_final_report(context, false, false, false)?;
             render_ledger_reports(context, false)?;
         } render_derived_reports(context)
     })().map_err(|error| format!("post-merge-refresh: {error}"))?;
     if regular_file(&context.run_dir().join("final-summary.md")) {
-        reconcile_manifest(context, true, false)?;
+        reconcile_manifest(context, true, false, false)?;
     } let mut updates = Vec::<ManifestUpdate>::new();
     if is_terminal_merge_result(&context.merge_result) {
         updates.push(("status".to_owned(), Value::String("done".to_owned())));
@@ -285,7 +277,7 @@ fn refresh_postmerge(context: &FlushContext, render_reports: bool) -> Result<(),
 fn terminal_snapshot(context: &FlushContext) -> Result<(), String> {
     ensure_manifest(context)?;
     fs::create_dir_all(context.run_dir()).map_err(|error| error.to_string())?;
-    refresh_difficulty(context); write_final_report(context, true, true)?;
+    refresh_difficulty(context); write_final_report(context, true, true, false)?;
     render_ledger_reports(context, true)?; render_derived_reports(context)?;
     stage_vendor_diagnostics(context, true)?; stage_outcomes(context, true)?;
     let transcript = capture_for_context(context, "18"); if !transcript.terminal_ok() {
@@ -294,7 +286,7 @@ fn terminal_snapshot(context: &FlushContext) -> Result<(), String> {
             transcript.status
         ));
     } flush_execution_issues(context, "18", "execution-issues.md terminal snapshot", true)?;
-    write_final_report(context, true, true)?; reconcile_manifest(context, false, false)?;
+    write_final_report(context, true, true, false)?; reconcile_manifest(context, false, false, false)?;
     ensure_manifest(context)?;
     let mut updates = vec![("steps_ran.step18".to_owned(), Value::Bool(true))];
     if context.stall_tracking {
@@ -315,11 +307,12 @@ fn stage_checkpoint(
     refresh_difficulty(context); if mode == FlushMode::Refresh {
         flush_execution_issues(
             context, "pre-push", "execution-issues.md pre-push refresh", false,
-        )?; let final_result = write_final_report(context, strict, strict); if strict {
+        )?; let final_result = write_final_report(context, strict, strict, true); if strict {
             final_result?; if !regular_file(&context.run_dir().join("final-summary.md")) {
                 return Err("final-summary.md missing after final report write".to_owned());
             }
-        } render_ledger_reports(context, false)?; render_derived_reports(context)?;
+        } ensure_preterminal_summary_neutral(context)?;
+        render_ledger_reports(context, false)?; render_derived_reports(context)?;
     } else {
         flush_execution_issues(
             context, "commit-tail", "execution-issues.md commit-tail", false,
@@ -333,10 +326,11 @@ fn stage_checkpoint(
         });
     } let transcript = capture_for_context(context, "pre-push-refresh"); flush_execution_issues(
         context, "pre-push-post-transcript", "execution-issues.md post-transcript refresh", false,
-    )?; let final_result = write_final_report(context, true, strict); if strict {
+    )?; let final_result = write_final_report(context, true, strict, true); if strict {
         final_result?;
-    } if regular_file(&context.run_dir().join("final-summary.md")) {
-        reconcile_manifest(context, false, false)?;
+    } ensure_preterminal_summary_neutral(context)?;
+    if regular_file(&context.run_dir().join("final-summary.md")) {
+        reconcile_manifest(context, false, false, true)?;
     } Ok(transcript)
 }
 
@@ -460,6 +454,7 @@ fn manifest_has_update(record: &ManifestRecord, key: &str, value: &Value) -> boo
 
 fn reconcile_manifest(
     context: &FlushContext, postmerge: bool, include_step9_heuristic: bool,
+    preterminal: bool,
 ) -> Result<(), String> {
     let record = ensure_manifest(context)?; let run_dir = context.run_dir(); let mut updates = vec![
         (
@@ -479,7 +474,11 @@ fn reconcile_manifest(
         updates.push(("steps_ran.step9a1".to_owned(), Value::Bool(false)));
     } if include_step9_heuristic && let Some(value) = step9a1_heuristic(context, &record) {
         updates.push(("steps_ran.step9a1".to_owned(), Value::Bool(value)));
-    } let outcome = normalized_outcome(context); if matches!(
+    } let outcome = if preterminal {
+        preterminal_outcome(context)
+    } else {
+        normalized_outcome(context)
+    }; if matches!(
         outcome.as_str(), "pr-created" | "pr-created-draft" | "shipping"
     ) {
         updates.push(("status".to_owned(), Value::String("in-progress".to_owned())));
@@ -525,12 +524,51 @@ fn normalized_outcome_values(context: &FlushContext) -> BTreeMap<String, String>
         ]), |rows| rows.into_iter().collect())
 }
 
+fn is_preterminal_outcome(outcome: &str) -> bool {
+    matches!(outcome, "pr-created" | "pr-created-draft" | "shipping")
+}
+
+fn preterminal_outcome(context: &FlushContext) -> String {
+    let outcome = normalized_outcome(context);
+    if is_preterminal_outcome(&outcome) {
+        outcome
+    } else {
+        // A mutable refresh is not terminal reconciliation. A stale terminal
+        // overlay may remain until ship reentry clears it, but it must not
+        // reproduce a terminal staging label on every retry.
+        "shipping".to_owned()
+    }
+}
+
+fn ensure_preterminal_summary_neutral(context: &FlushContext) -> Result<(), String> {
+    let summary_path = context.run_dir().join("final-summary.md");
+    if !regular_file(&summary_path) {
+        return Ok(());
+    }
+    let summary = read_lossy(&summary_path)
+        .map_err(|error| format!("preterminal-outcome: cannot read final summary: {error}"))?;
+    if let Some(label) = parse_preterminal_outcome_label(&summary)
+        .filter(|label| !is_preterminal_outcome(label))
+    {
+        return Err(format!(
+            "preterminal-outcome: final summary retained terminal outcome label '{label}'"
+        ));
+    }
+    Ok(())
+}
+
 fn write_final_report(
     context: &FlushContext, skip_tracking: bool, strict_reconcile: bool,
+    preterminal: bool,
 ) -> Result<(), String> {
     let outcomes = normalized_outcome_values(context);
     let outcome = outcomes
         .get("IMPLEMENT_NORMALIZED_OUTCOME") .map_or("bailed", String::as_str);
+    let outcome = if preterminal && !is_preterminal_outcome(outcome) {
+        "shipping"
+    } else {
+        outcome
+    };
     let merge_downgraded = if outcomes
         .get("IMPLEMENT_MERGE_DOWNGRADED") .is_some_and(|value| value == "true")
     { "true" } else { "false" };

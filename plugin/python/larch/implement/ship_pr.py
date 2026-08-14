@@ -223,6 +223,12 @@ def _write_terminal_state(
 
 
 def _publish_post_pr_terminal_snapshot(*, runner: Runner, ctx: RunContext, cwd: str) -> None:
+    """Refresh mutable staging after a post-PR terminal driver result.
+
+    Step 18 owns terminal reconciliation. This compatibility-named helper
+    therefore uses the ordinary pre-terminal refresh so a later open-PR replay
+    can replace its staging artifacts without publishing a terminal label.
+    """
     if ctx.pr_number is None:
         return
     with suppress(Exception):

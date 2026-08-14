@@ -106,6 +106,28 @@ def _pre_pr_resume_plan(*, branch_name: str = "feat", repo: str = "") -> ship_re
     )
 
 
+def _open_pr_resume_plan(*, branch_name: str = "feat", repo: str = "") -> ship_resume.ResumePlan:
+    return ship_resume.ResumePlan(
+        start="open-pr",
+        iteration=1,
+        rebase_count=0,
+        fix_attempts=0,
+        transient_retries=0,
+        pr_number=7,
+        pr_url="https://example.test/pr/7",
+        merge_result="",
+        branch_name=branch_name,
+        repo=repo,
+        durable=run_log_manifest.DurableFlags(
+            repo_unavailable=False,
+            forked_target=False,
+            forked=False,
+            merge=True,
+            draft=False,
+        ),
+    )
+
+
 def test_persisted_repo_root_for_pr_resolves_persisted_root(tmp_path: Path) -> None:
     # Regression for issue #6880: when the implement session persists REPO_ROOT,
     # PR composition must resolve the consumer root from persisted state instead
@@ -131,7 +153,7 @@ def test_persisted_repo_root_for_pr_raises_when_coverage_without_root(
         ship._persisted_repo_root_for_pr(ctx)  # pyright: ignore[reportPrivateUsage]
 
 
-def test_destall_pre_pr_reentry_clears_terminal_overlay(tmp_path: Path) -> None:
+def test_destall_preterminal_reentry_clears_terminal_overlay(tmp_path: Path) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(
         "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=pr-create-guideline-outcome-refresh\n"
@@ -154,7 +176,7 @@ def test_destall_pre_pr_reentry_clears_terminal_overlay(tmp_path: Path) -> None:
     )
     resume = _pre_pr_resume_plan(repo="owner/repo")
 
-    reset = ship._destall_pre_pr_reentry(  # pyright: ignore[reportPrivateUsage]
+    reset = ship._destall_preterminal_reentry(  # pyright: ignore[reportPrivateUsage]
         ctx=ctx,
         resume=resume,
         runner=RecordingRunner(),
@@ -173,7 +195,7 @@ def test_destall_pre_pr_reentry_clears_terminal_overlay(tmp_path: Path) -> None:
     assert "BAIL_REASON=" not in state
 
 
-def test_destall_pre_pr_reentry_fails_closed_on_finalize_symlink(tmp_path: Path) -> None:
+def test_destall_preterminal_reentry_fails_closed_on_finalize_symlink(tmp_path: Path) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(
         "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=pr-create-guideline-outcome-refresh\n"
@@ -185,7 +207,7 @@ def test_destall_pre_pr_reentry_fails_closed_on_finalize_symlink(tmp_path: Path)
     (tmp_path / "finalize-state.sh").symlink_to(target)
     ctx = _ctx(tmp_path, state_file=str(state_file), branch="feat", repo="owner/repo")
 
-    result = ship._destall_pre_pr_reentry(  # pyright: ignore[reportPrivateUsage]
+    result = ship._destall_preterminal_reentry(  # pyright: ignore[reportPrivateUsage]
         ctx=ctx,
         resume=_pre_pr_resume_plan(repo="owner/repo"),
         runner=RecordingRunner(),
@@ -195,6 +217,52 @@ def test_destall_pre_pr_reentry_fails_closed_on_finalize_symlink(tmp_path: Path)
     assert isinstance(result, ship.ShipResult)
     assert result.outcome is Outcome.STALLED
     assert "PHASE=stalled\n" in state_file.read_text(encoding="utf-8")
+
+
+def test_destall_open_pr_reentry_preserves_pr_identity_and_clears_terminal_overlay(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=pr-create-guideline-outcome-refresh\n"
+        "EXIT_CODE=4\nBAIL_REASON=stalled\nRUN_ID=run-abc\nREPO=owner/repo\nBRANCH_NAME=feat\n"
+        "PR_NUMBER=7\nPR_URL=https://example.test/pr/7\nMERGE=true\n",
+        encoding="utf-8",
+    )
+    finalize_state = tmp_path / "finalize-state.sh"
+    _ = finalize_state.write_text(
+        "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=pr-create-guideline-outcome-refresh\n"
+        "EXIT_CODE=4\nBAIL_REASON=stalled\nPR_NUMBER=7\n",
+        encoding="utf-8",
+    )
+    ctx = _ctx(
+        tmp_path,
+        state_file=str(state_file),
+        branch="feat",
+        branch_name="feat",
+        repo="owner/repo",
+        pr_number=7,
+        pr_url="https://example.test/pr/7",
+        stall_tracking=True,
+        stall_step="pr-create-guideline-outcome-refresh",
+    )
+
+    reset = ship._destall_preterminal_reentry(  # pyright: ignore[reportPrivateUsage]
+        ctx=ctx,
+        resume=_open_pr_resume_plan(repo="owner/repo"),
+        runner=RecordingRunner(),
+        repo_root=str(tmp_path),
+    )
+
+    assert not isinstance(reset, ship.ShipResult)
+    assert reset.pr_number == 7
+    assert reset.pr_url == "https://example.test/pr/7"
+    assert not finalize_state.exists()
+    state = state_file.read_text(encoding="utf-8")
+    assert "PHASE=assessments\n" in state
+    assert "PR_NUMBER=7\n" in state
+    assert "PR_URL=https://example.test/pr/7\n" in state
+    assert "STALL_TRACKING=false\n" in state
+    assert "EXIT_CODE=" not in state
+    assert "BAIL_REASON=" not in state
 
 
 def test_run_ship_destalls_before_first_pre_pr_flush(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -240,6 +308,82 @@ def test_run_ship_destalls_before_first_pre_pr_flush(monkeypatch: pytest.MonkeyP
     with pytest.raises(_FlushProbe):
         ship.run_ship(
             _ctx(tmp_path, state_file=str(state_file), branch="feat", repo="owner/repo"),
+            runner=RecordingRunner(),
+            cwd=str(tmp_path),
+        )
+
+
+def test_run_ship_destalls_open_pr_before_guideline_outcome_refresh(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=pr-create-guideline-outcome-refresh\n"
+        "EXIT_CODE=4\nBAIL_REASON=stalled\nRUN_ID=run-abc\nREPO=owner/repo\nBRANCH_NAME=feat\n"
+        "PR_NUMBER=7\nPR_URL=https://example.test/pr/7\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "finalize-state.sh").write_text(
+        "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=pr-create-guideline-outcome-refresh\n"
+        "EXIT_CODE=4\nBAIL_REASON=stalled\nPR_NUMBER=7\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ship,
+        "_resume_plan",
+        lambda **_kwargs: _open_pr_resume_plan(repo="owner/repo"),
+    )
+    monkeypatch.setattr(
+        ship,
+        "_invariants_gate_before_pr",
+        lambda **_kwargs: ship.InvariantsGateResult(),
+    )
+    monkeypatch.setattr(
+        ship,
+        "load_or_prepare_guidelines_note",
+        lambda **_kwargs: ship.GuidelinesGateResult(guidelines_status="absent"),
+    )
+    monkeypatch.setattr(
+        ship,
+        "write_guideline_ship_outcome",
+        lambda **_kwargs: type("OutcomeRecord", (), {"outcome": "clean"})(),
+    )
+
+    class _FlushProbe(Exception):
+        pass
+
+    def fake_refresh_logs_checkpoint(
+        runner: RecordingRunner,
+        ctx: RunContext,
+        *,
+        cwd: str | None = None,
+        strict_final_report: bool = False,
+    ) -> run_log_manifest.RefreshSkip:
+        _ = runner, cwd, strict_final_report
+        assert ctx.state_file is None
+        assert ctx.pr_number == 7
+        assert ctx.pr_url == "https://example.test/pr/7"
+        assert ctx.stall_tracking is False
+        assert ctx.stall_step == ""
+        state = state_file.read_text(encoding="utf-8")
+        assert "PHASE=assessments\n" in state
+        assert "PR_NUMBER=7\n" in state
+        assert "STALL_TRACKING=false\n" in state
+        assert "EXIT_CODE=" not in state
+        assert not (tmp_path / "finalize-state.sh").exists()
+        raise _FlushProbe
+
+    monkeypatch.setattr(ship.run_log_flush, "refresh_logs_checkpoint", fake_refresh_logs_checkpoint)
+
+    with pytest.raises(_FlushProbe):
+        ship.run_ship(
+            _ctx(
+                tmp_path,
+                state_file=str(state_file),
+                branch="feat",
+                branch_name="feat",
+                repo="owner/repo",
+            ),
             runner=RecordingRunner(),
             cwd=str(tmp_path),
         )
