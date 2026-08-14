@@ -3930,6 +3930,9 @@ def test_main_cache_inventory_and_publication_contract() -> None:
     rust_probe = publication.split("\n  main-cache-probe:", 1)[1].split(
         "\n  main-cache-merge-group-source:", 1
     )[0]
+    merge_group_source = publication.split(
+        "\n  main-cache-merge-group-source:", 1
+    )[1].split("\n  main-cache-rust-promotion:", 1)[0]
     rust_promotion_lookup = (
         publication.split("\n  main-cache-rust-promotion:", 1)[1]
         .split("\n      - name: Download Cargo inputs candidate", 1)[0]
@@ -3946,6 +3949,26 @@ def test_main_cache_inventory_and_publication_contract() -> None:
     ).read_text(encoding="utf-8")
     candidate_helper = (
         repo_root / "python" / "larch" / "implement" / "main_cache_candidate.py"
+    ).read_text(encoding="utf-8")
+    supply_chain = (
+        repo_root / "docs" / "security" / "supply-chain-credentials-and-services.md"
+    ).read_text(encoding="utf-8")
+    shipped_supply_chain = (
+        repo_root
+        / "plugin"
+        / "docs"
+        / "security"
+        / "supply-chain-credentials-and-services.md"
+    ).read_text(encoding="utf-8")
+    workflow_trust = (
+        repo_root / "docs" / "security" / "workflow-trust-and-mutations.md"
+    ).read_text(encoding="utf-8")
+    shipped_workflow_trust = (
+        repo_root
+        / "plugin"
+        / "docs"
+        / "security"
+        / "workflow-trust-and-mutations.md"
     ).read_text(encoding="utf-8")
 
     assert inventory["schema_version"] == 1
@@ -3985,6 +4008,50 @@ def test_main_cache_inventory_and_publication_contract() -> None:
     assert "main-cache-merge-group-source" in publication
     assert "ci-timing merge-group-source" in publication
     assert 'source-sha "$GITHUB_SHA"' in publication
+    assert "actions/cache/save@" not in merge_group_source
+    assert "restore-keys:" not in merge_group_source
+    assert "uses: ./.github/actions/main-cache-keys" in merge_group_source
+    assert (
+        merge_group_source.count(
+            "actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25"
+        )
+        == 2
+    )
+    for cache_path, cache_key in (
+        (
+            "path: |\n            ~/.cargo/registry\n            ~/.cargo/git",
+            "key: ${{ steps.main-cache-keys.outputs.cargo-inputs }}",
+        ),
+        (
+            "path: target/debug",
+            "key: ${{ steps.main-cache-keys.outputs.rust-lint-deps }}",
+        ),
+    ):
+        assert cache_path in merge_group_source
+        assert cache_key in merge_group_source
+    assert (
+        merge_group_source.index(
+            "Restore Cargo inputs for typed merge-group source resolution"
+        )
+        < merge_group_source.index("Resolve the exact successful merge-group producer run")
+    )
+    assert (
+        merge_group_source.index(
+            "Restore Rust lint dependencies for typed merge-group source resolution"
+        )
+        < merge_group_source.index("Resolve the exact successful merge-group producer run")
+    )
+    for profile_value in (
+        'CARGO_INCREMENTAL: "0"',
+        'CARGO_PROFILE_DEV_DEBUG: "0"',
+        'CARGO_PROFILE_TEST_DEBUG: "0"',
+    ):
+        assert profile_value in merge_group_source
+    assert "resolver_seconds" in merge_group_source
+    assert "cargo_inputs_cache_hit" in merge_group_source
+    assert "rust_lint_deps_cache_hit" in merge_group_source
+    assert "cargo run --quiet --locked --package larch-cli" in merge_group_source
+    assert "target/debug/larch" not in merge_group_source
     assert "uses: ./.github/actions/github-auth-config" in publication
     assert "GH_TOKEN:" not in publication
     assert "GH_CONFIG_DIR: ${{ steps.github-auth.outputs.config-dir }}" in publication
@@ -4067,6 +4134,17 @@ def test_main_cache_inventory_and_publication_contract() -> None:
         '--tool-version "cargo-llvm-cov=cargo-llvm-cov ${CARGO_LLVM_COV_VERSION}"'
         in coverage_action
     )
+    assert "main-cache-merge-group-source" in supply_chain
+    assert (
+        "cache action evidence, those values support comparable exact-hit and\n"
+        "Cargo-graph-miss samples"
+    ) in supply_chain
+    assert (
+        "does not weaken\n"
+        "final-SHA, event, workflow, producer, or ambiguity verification"
+    ) in workflow_trust
+    assert shipped_supply_chain == supply_chain
+    assert shipped_workflow_trust == workflow_trust
 
     candidate_artifacts = {
         "cargo-inputs": "main-cache-cargo-inputs-candidate",

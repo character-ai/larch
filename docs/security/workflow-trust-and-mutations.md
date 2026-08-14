@@ -481,6 +481,13 @@ and `contents: read` permissions, and is serialized by its own newest-wins
 concurrency group. Validation events do not gain authority to publish a
 compiler-output cache or trusted policy cache.
 
+When the publisher resolves an expensive Rust candidate source, its
+`main-cache-merge-group-source` job may restore only the canonical exact Cargo
+input and pruned lint-dependency caches. It records their two hit states and
+the typed resolver's wall-clock seconds, but runs the resolver from the checked
+out final `main`; a cache miss rebuilds from that checkout and does not weaken
+final-SHA, event, workflow, producer, or ambiguity verification.
+
 For an expensive Rust cache miss, the publisher treats a merge-group artifact
 as untrusted input. It requires exactly one successful `CI` merge-group run for
 the final `main` SHA and successful named producer jobs, then verifies the
