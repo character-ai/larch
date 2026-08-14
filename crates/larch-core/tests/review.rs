@@ -738,9 +738,7 @@ fn plan_review_collector_record(
 
 #[test]
 fn plan_review_normalization_matches_frozen_python_output() {
-    use larch_core::review::{
-        normalize_collected_findings, PlanReviewManifestSlot,
-    };
+    use larch_core::review::{PlanReviewManifestSlot, normalize_collected_findings};
 
     let records = vec![
         plan_review_collector_record(
@@ -835,17 +833,19 @@ fn plan_review_normalization_matches_frozen_python_output() {
         normalized.out_of_scope_markdown,
         plan_review_fixture_section("<!-- out-of-scope:start -->", "<!-- out-of-scope:end -->")
     );
-    assert!(!normalized
-        .out_of_scope_markdown
-        .contains("Omitted fourth proposal"));
+    assert!(
+        !normalized
+            .out_of_scope_markdown
+            .contains("Omitted fourth proposal")
+    );
 }
 
 #[test]
 fn plan_review_artifacts_and_reviewer_status_bytes_are_stable() {
     use larch_core::review::{
+        PlanReviewCollectorRecord, PlanReviewManifestSlot, PlanReviewRoundArtifacts,
         reconciled_reviewer_label, render_reviewer_status_table, render_reviewer_status_tsv,
-        reviewer_status_rows, PlanReviewCollectorRecord, PlanReviewManifestSlot,
-        PlanReviewRoundArtifacts,
+        reviewer_status_rows,
     };
 
     let artifacts = PlanReviewRoundArtifacts::new("/tmp/design", 2);
@@ -939,7 +939,7 @@ fn successful_plan_review_round() -> larch_core::review::PlanReviewRoundInput {
 #[test]
 fn plan_review_round_runner_matches_python_terminal_transitions() {
     use larch_core::review::{
-        classify_round_loop_status, run_plan_review_round, PlanReviewRoundState,
+        PlanReviewRoundState, classify_round_loop_status, run_plan_review_round,
     };
 
     let assert_state = |state: PlanReviewRoundState, exit_code, status: &str| {
@@ -1103,11 +1103,7 @@ fn plan_review_normalization_helpers_preserve_python_wire_rules() {
     );
     assert_eq!(
         all_applied_finding_keys(ledger),
-        BTreeSet::from([
-            "first".to_owned(),
-            "second".to_owned(),
-            "large".to_owned(),
-        ])
+        BTreeSet::from(["first".to_owned(), "second".to_owned(), "large".to_owned(),])
     );
     assert_eq!(
         replace_applied_finding_keys(
