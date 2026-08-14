@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Black-box contract for Rust-owned `review dispatch-panel`.
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 
 binary="${LARCH_BINARY:?set LARCH_BINARY to the test larch executable}"

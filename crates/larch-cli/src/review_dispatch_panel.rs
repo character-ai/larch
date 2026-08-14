@@ -20,7 +20,7 @@ use crate::{
 };
 use larch_adapters::{atomic_write_utf8_in, ensure_directory_chain};
 use larch_core::{
-    classify_diff, emit_kv,
+    DuplicatePolicy, KvDocument, ParseOptions, classify_diff, emit_kv,
     review::{
         ledger_path, ledger_root, normalize_output_base, parse_collector_records,
         with_manifest_attribution,
@@ -439,10 +439,12 @@ fn prepare_dynamic_slots(
     let mut dynamic = Vec::new();
     if !options.pre_scouted_manifest.is_empty() {
         let (_, producer_status) = implement_scout_status();
-        if options.site == "implement Step 5"
-            && !producer_status.is_empty()
-            && producer_status != "ok"
-        {
+        let producer_invalid = match (options.site.as_str(), producer_status.as_str()) {
+            ("implement Step 5", "" | "ok") => false,
+            ("implement Step 5", _) => true,
+            _ => false,
+        };
+        if producer_invalid {
             "producer-invalid".clone_into(&mut result.status);
             result.fail_reason = format!("producer_status_{producer_status}");
             write_dynamic_manifest(&manifest, &[])?;
@@ -529,16 +531,19 @@ fn prepare_dynamic_slots(
             directory.join("scout-coder-manifest.json").exists()
                 || directory.join("step2-external-scout-eligible.txt").exists()
         });
-        if !producer_status.is_empty() || producer_artifacts {
-            "producer-invalid".clone_into(&mut result.status);
-            result.fail_reason = if producer_status.is_empty() {
-                "producer_sidecar_ineligible".to_owned()
-            } else {
-                producer_status
-            };
-        } else {
-            "producer-missing".clone_into(&mut result.status);
-            "producer_sidecar_absent".clone_into(&mut result.fail_reason);
+        match (producer_status.as_str(), producer_artifacts) {
+            ("", false) => {
+                "producer-missing".clone_into(&mut result.status);
+                "producer_sidecar_absent".clone_into(&mut result.fail_reason);
+            }
+            ("", true) => {
+                "producer-invalid".clone_into(&mut result.status);
+                "producer_sidecar_ineligible".clone_into(&mut result.fail_reason);
+            }
+            (status, _) => {
+                "producer-invalid".clone_into(&mut result.status);
+                status.clone_into(&mut result.fail_reason);
+            }
         }
     } else {
         let mut arguments = vec![
@@ -1306,10 +1311,10 @@ fn run_python(arguments: Vec<String>) -> Result<larch_core::ProcessOutput, Strin
 }
 
 fn kv_map(text: &str) -> BTreeMap<String, String> {
-    text.lines()
-        .filter_map(|line| line.split_once('='))
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
-        .collect()
+    KvDocument::parse(text, ParseOptions::legacy()).map_or_else(
+        |_| BTreeMap::new(),
+        |document| document.select(DuplicatePolicy::Last),
+    )
 }
 
 fn emit_warnings(text: &str) {
