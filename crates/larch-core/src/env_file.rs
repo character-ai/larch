@@ -390,6 +390,23 @@ pub fn kv_text(rows: &[(&str, &str)]) -> Result<String, KvError> {
     KvDocument::from_rows(rows).render(RenderOptions::wire())
 }
 
+/// Parse exactly one CR-free `KEY=value` row with an explicit codec policy.
+///
+/// A caller that reads one terminal line must not quietly accept a second row
+/// or CR framing as value data. The returned row retains the parser's key and
+/// value semantics for `options`.
+#[must_use]
+pub fn parse_single_kv_row(text: &str, options: ParseOptions) -> Option<KvRow> {
+    if text.contains(['\n', '\r']) {
+        return None;
+    }
+    let document = KvDocument::parse(text, options).ok()?;
+    let [row] = document.rows() else {
+        return None;
+    };
+    Some(row.clone())
+}
+
 /// Parse one allowlisted `KEY=value` or `export KEY=value` shell assignment.
 ///
 /// The right-hand side must decode to at most one POSIX shell token. Comments
@@ -707,7 +724,7 @@ mod tests {
     use super::{
         CommentPolicy, CrStrip, DuplicatePolicy, EmptyKeyPolicy, EnvFile, KeyPolicy, KvDocument,
         KvErrorKind, KvRow, MalformedLinePolicy, ParseOptions, RenderOptions, kv_text,
-        parse_allowlisted_env_line, select_kv_bytes,
+        parse_allowlisted_env_line, parse_single_kv_row, select_kv_bytes,
     };
 
     #[test]
@@ -754,6 +771,25 @@ mod tests {
         let parsed = KvDocument::parse("# note\n=value\nA=\rvalue\r\n", options)
             .expect("lenient malformed policy should parse");
         assert_eq!(parsed.select(DuplicatePolicy::Last)["A"], "value");
+    }
+
+    #[test]
+    fn single_row_parser_preserves_policy_and_rejects_line_forgery() {
+        let row = parse_single_kv_row("KEY=value=with-equals", ParseOptions::environment())
+            .expect("one environment row should parse");
+        assert_eq!(row.key(), "KEY");
+        assert_eq!(row.value(), "value=with-equals");
+        assert!(
+            parse_single_kv_row("KEY=value\nOTHER=forged", ParseOptions::environment()).is_none()
+        );
+        assert!(parse_single_kv_row("KEY=value\r", ParseOptions::environment()).is_none());
+        assert!(parse_single_kv_row("lower=value", ParseOptions::environment()).is_none());
+        assert_eq!(
+            parse_single_kv_row("lower=value", ParseOptions::legacy())
+                .expect("legacy policy retains its key grammar")
+                .key(),
+            "lower"
+        );
     }
 
     #[test]

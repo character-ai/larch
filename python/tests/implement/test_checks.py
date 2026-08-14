@@ -27,6 +27,7 @@ from larch.implement import checks_lint_fix as _clf
 from larch.core import config
 from larch.core import external_defaults
 from larch.core import proc
+from larch.implement.dispatch_helpers import result_env_capture_rows
 from larch.outcomes import Outcome
 from larch.core.proc import CommandResult
 from test_support import ok
@@ -6175,6 +6176,8 @@ def test_checks_repair_loop_bgjob_launch_starts_transport(
     )
     assert "--merge-result-env" in start
     assert str(session / "bgjob" / "implement-step3-repair.merge.env") in start
+    terminal_marker = start.index("--terminal-stdout-key")
+    assert start[terminal_marker:terminal_marker + 2] == ("--terminal-stdout-key", "NEXT_ACTION")
     assert "--bgjob-merge-result-env" in start
     assert "checks" in start
     assert "repair-loop" in start
@@ -6291,6 +6294,15 @@ def test_checks_repair_loop_merge_result_env_captures_terminal_kvs(
     assert "NEXT_ACTION=continue\n" in text
     assert "LOOP_STATUS=ok\n" in text
     assert "BGJOB_RC=" not in text
+
+
+def test_checks_repair_loop_merge_rows_flush_immediately(tmp_path: Path) -> None:
+    merge_env = tmp_path / "bgjob" / "repair.merge.env"
+
+    with result_env_capture_rows(merge_env) as rows:
+        assert rows is not None
+        rows.append(("NEXT_ACTION", "main-agent-edit"))
+        assert merge_env.read_text(encoding="utf-8") == "NEXT_ACTION=main-agent-edit\n"
 
 
 def test_checks_repair_loop_main_main_agent_edit_envelope(

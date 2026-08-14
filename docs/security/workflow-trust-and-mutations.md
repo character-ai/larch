@@ -439,6 +439,20 @@ absence before it clears state or removes a row. This fail-closed retention is
 an explicit safety difference from the retired Python behavior, which could
 discard the row after an unverified timeout or orphan cleanup.
 
+After a worker observes that its requested child exited and its group drained,
+it atomically retains a confined completion witness until the daemon commits the
+ whole result transaction. The registry retains one versioned, complete recovery
+ input set: the confined merge envelope, declared sentinels, and any explicitly
+configured terminal stdout marker. A dead-daemon claimant rebuilds the
+transaction only after independently proving group absence again. It reads a
+bounded, no-follow tail of the owned
+stdout log only for that opt-in marker and only accepts a contiguous final
+`KEY=value` block containing it. Missing markers, malformed output, a tail
+that cuts through the candidate block, or a failed publication keep the
+witness and registry retryable instead of silently dropping the terminal child
+envelope. An unsafe registry artifact never authorizes reconstruction or
+publication.
+
 Recovery-lease publication writes and syncs the claimant identity in a private
 temporary file before atomically linking it into the final no-replace lease
 path. A short-lived per-row advisory lock serializes inspection, stale-lease

@@ -20,13 +20,13 @@ from larch.core import proc
 from larch.core import rust_runtime
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch.git import pr_body
-from larch.implement.dispatch_helpers import result_env_capture_rows
+from larch.implement.dispatch_helpers import ResultEnvCaptureRows, result_env_capture_rows
 from larch.report import run_log_batch
 
 _NON_RUNTIME_NAMES = frozenset({"README.md"})
 _NON_RUNTIME_EXTS = frozenset({"txt", "tsv"})
 _MAX_SMALL_CHANGE_FILES = 2
-_result_rows: list[tuple[str, str]] | None = None
+_result_rows: ResultEnvCaptureRows | None = None
 
 
 @dataclass(frozen=True)
@@ -45,8 +45,8 @@ def emit(*, key: str, value: object) -> None:
 
 
 def _emit_line(line: str) -> None:
-    print(line)
     _record_result_line(line)
+    print(line)
 
 
 def _record_result_line(line: str) -> None:
@@ -406,6 +406,8 @@ def _launch_step7a_bgjob(spec: Step7aBgjobLaunch) -> int:
             "1800",
             "--merge-result-env",
             str(merge_result_env),
+            "--terminal-stdout-key",
+            "DIAGRAM_STATUS",
             "--",
             sys.executable,
             str(plugin_root(Path(__file__).resolve().parents[3]) / "python" / "cli.py"),

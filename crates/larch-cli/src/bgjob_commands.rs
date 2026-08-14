@@ -27,8 +27,8 @@ use larch_core::{
     read_merge_result_env, read_process_identity, registry_path, render_rows, resolve_run_id,
     result_env_path, result_rows, startup_ack_timeout_s, startup_env_path, startup_in_progress,
     startup_rows, terminate_validated_process_group_with_policy, unlink_entry,
-    validate_merge_result_env, validate_run_id, validate_slug, validate_timing_overrides,
-    write_entry,
+    validate_merge_result_env, validate_run_id, validate_slug, validate_terminal_stdout_key,
+    validate_timing_overrides, worker_status_path, write_entry,
 };
 use nix::{
     sys::signal::{Signal, killpg},
@@ -65,7 +65,6 @@ const MIN_POLL_SLEEP: f64 = 0.05;
 const DAEMON_CALLER: &str = "bgjob-daemon";
 const REAP_CALLER: &str = "bgjob-reap";
 const RECOVERY_CALLER: &str = "bgjob-recovery";
-const WORKER_STATUS_SUFFIX: &str = ".worker-status.env";
 const WORKER_GATE: &str = "START\n";
 
 struct SpawnedWorker {
@@ -87,6 +86,7 @@ struct StartArguments {
     owner_pid: String,
     sentinels: Vec<String>,
     merge_result_env: String,
+    terminal_stdout_key: String,
     command: Vec<String>,
 }
 
@@ -119,7 +119,7 @@ pub fn start(arguments: &[OsString]) -> ExitCode {
     }
     if requests_help(arguments) {
         return help(
-            "usage: bgjob start --step STEP [--tmpdir PATH] --budget-s SECONDS [options] -- COMMAND...",
+            "usage: bgjob start --step STEP [--tmpdir PATH] --budget-s SECONDS [--terminal-stdout-key KEY] [options] -- COMMAND...",
         );
     }
     let parsed = match parse_start(arguments) {
@@ -415,6 +415,10 @@ fn daemon_arguments(spec: &JobSpec) -> Vec<OsString> {
         arguments.push("--merge-result-env".into());
         arguments.push(merge.clone().into());
     }
+    if let Some(key) = spec.terminal_stdout_key.as_ref() {
+        arguments.push("--terminal-stdout-key".into());
+        arguments.push(key.clone().into());
+    }
     arguments.push("--".into());
     arguments.extend(spec.command.iter().map(Into::into));
     arguments
@@ -507,6 +511,10 @@ fn build_spec(parsed: &StartArguments, owner: OwnerIdentity) -> Result<JobSpec, 
         "" => None,
         raw => Some(validate_merge_result_env(Path::new(raw), &tmpdir)?),
     };
+    let terminal_stdout_key = match parsed.terminal_stdout_key.as_str() {
+        "" => None,
+        raw => Some(validate_terminal_stdout_key(raw)?),
+    };
     Ok(JobSpec {
         step,
         tmpdir,
@@ -517,6 +525,7 @@ fn build_spec(parsed: &StartArguments, owner: OwnerIdentity) -> Result<JobSpec, 
         owner,
         sentinel_paths,
         merge_result_env,
+        terminal_stdout_key,
         initial_merge_rows: Vec::new(),
     })
 }
@@ -581,6 +590,10 @@ fn parse_start(arguments: &[OsString]) -> Result<StartArguments, &'static str> {
             }
             "--merge-result-env" => {
                 parsed.merge_result_env =
+                    take_option_value(&values, &mut index, inline, "missing-option-argument")?;
+            }
+            "--terminal-stdout-key" => {
+                parsed.terminal_stdout_key =
                     take_option_value(&values, &mut index, inline, "missing-option-argument")?;
             }
             "--sentinel" => parsed.sentinels.push(take_option_value(
@@ -798,6 +811,10 @@ fn register_startup(
         stdout_log: stdout_log.to_path_buf(),
         stderr_log: stderr_log.to_path_buf(),
         result_env: result_env_path(&spec.tmpdir, &spec.step).map_err(|error| one_line(&error))?,
+        recovery_inputs_recorded: true,
+        merge_result_env: spec.merge_result_env.clone(),
+        terminal_stdout_key: spec.terminal_stdout_key.clone(),
+        sentinel_paths: spec.sentinel_paths.clone(),
     };
     let registry = match write_entry(&entry) {
         Ok(path) => path,
@@ -1031,10 +1048,6 @@ fn worker_body(arguments: &[OsString]) -> Result<String, String> {
     Ok(rc)
 }
 
-fn worker_status_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError> {
-    Ok(result_env_path(tmpdir, step)?.with_file_name(format!("{step}{WORKER_STATUS_SUFFIX}")))
-}
-
 fn write_worker_status(path: &Path, root: &Path, step: &str, rc: &str) -> Result<(), String> {
     let rows = [
         ("WORKER_RC".to_owned(), rc.to_owned()),
@@ -1075,12 +1088,10 @@ fn worker_result_token(spec: &JobSpec, status: std::process::ExitStatus) -> Stri
             .find(|(candidate, _)| candidate == key)
             .map(|(_, value)| value.as_str())
     };
-    let token = match (value("WORKER_RC"), value("STEP")) {
+    match (value("WORKER_RC"), value("STEP")) {
         (Some(rc), Some(step)) if !rc.is_empty() && step == spec.step => rc.to_owned(),
         _ => exit_token(status),
-    };
-    let _ = remove_result_residue(&path);
-    token
+    }
 }
 
 fn monitor(
@@ -1101,6 +1112,11 @@ fn monitor(
     let mut owner_state = OwnerValidationState::default();
     let terminal = loop {
         let now = started.elapsed();
+        // Test-only phase barriers can stop the daemon after its worker
+        // becomes a zombie but before this direct parent reaps it. That is
+        // the real missing-pid recovery window `wait` must handle without a
+        // process panic or a silent terminal-envelope loss.
+        phase_barrier("before-worker-reap").map_err(|error| one_line(&error))?;
         match child.try_wait() {
             Ok(Some(status)) => {
                 phase_barrier("after-leader-exit").map_err(|error| one_line(&error))?;
@@ -1154,6 +1170,9 @@ fn monitor(
         return Ok(());
     }
     write_result(spec, &rc_token, elapsed_s)?;
+    if let Ok(path) = worker_status_path(&spec.tmpdir, &spec.step) {
+        let _ = remove_result_residue(&path);
+    }
     unlink_entry(registry);
     Ok(())
 }
@@ -1495,6 +1514,7 @@ mod tests {
             },
             sentinel_paths: Vec::new(),
             merge_result_env: None,
+            terminal_stdout_key: None,
             initial_merge_rows: Vec::new(),
         }
     }
@@ -1515,6 +1535,8 @@ mod tests {
             "/tmp/session/done",
             "--merge-result-env",
             "/tmp/session/merge.env",
+            "--terminal-stdout-key",
+            "NEXT_ACTION",
             "--",
             "/bin/echo",
             "--flagged",
@@ -1524,6 +1546,7 @@ mod tests {
         assert_eq!(parsed.tmpdir, "/tmp/session");
         assert_eq!(parsed.budget_s, Some(30));
         assert_eq!(parsed.sentinels, ["/tmp/session/done"]);
+        assert_eq!(parsed.terminal_stdout_key, "NEXT_ACTION");
         assert_eq!(parsed.command, ["/bin/echo", "--flagged"]);
 
         assert_eq!(
@@ -1652,6 +1675,7 @@ mod tests {
         let mut job = spec(sandbox.path());
         job.sentinel_paths = vec![sandbox.path().join("done")];
         job.merge_result_env = Some(sandbox.path().join("merge.env"));
+        job.terminal_stdout_key = Some("NEXT_ACTION".to_owned());
         let rendered: Vec<String> = daemon_arguments(&job)
             .into_iter()
             .map(|value| value.to_string_lossy().into_owned())
@@ -1659,6 +1683,7 @@ mod tests {
         assert_eq!(&rendered[..4], ["bgjob", "start", "--step", "demo-step"]);
         assert!(rendered.contains(&"--sentinel".to_owned()));
         assert!(rendered.contains(&"--merge-result-env".to_owned()));
+        assert!(rendered.contains(&"--terminal-stdout-key".to_owned()));
         let separator = rendered
             .iter()
             .position(|value| value == "--")

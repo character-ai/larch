@@ -4,7 +4,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     env, fmt,
     fs::{self, OpenOptions},
-    io::{Read as _, Write as _},
+    io::{Read as _, Seek as _, SeekFrom, Write as _},
     path::{Component, Path, PathBuf},
     process,
     sync::atomic::{AtomicU64, Ordering},
@@ -37,6 +37,8 @@ pub const BGJOB_COMPLETION_STAGE_SUFFIX: &str = ".completion-stage.env";
 pub const BGJOB_STARTUP_ENV_SUFFIX: &str = ".startup.env";
 /// Input-fingerprint sidecar suffix.
 pub const BGJOB_INPUT_FP_SUFFIX: &str = ".input-fp";
+/// Durable worker-completion witness suffix.
+pub const BGJOB_WORKER_STATUS_SUFFIX: &str = ".worker-status.env";
 /// Environment override for the durable registry root.
 pub const ENV_BGJOB_REGISTRY_ROOT: &str = "LARCH_BGJOB_REGISTRY_ROOT";
 /// Debug-build-only directory used by deterministic bgjob lifecycle tests.
@@ -62,6 +64,12 @@ const COMPLETION_STATE_KEY: &str = "STATE";
 const COMPLETION_RESULT_SHA256_KEY: &str = "RESULT_SHA256";
 const COMPLETION_SENTINEL_COUNT_KEY: &str = "SENTINEL_COUNT";
 const COMPLETION_SENTINEL_PREFIX: &str = "SENTINEL_";
+const REGISTRY_SENTINEL_COUNT_KEY: &str = "SENTINEL_COUNT";
+const REGISTRY_SENTINEL_PREFIX: &str = "SENTINEL_";
+const REGISTRY_MERGE_RESULT_ENV_KEY: &str = "MERGE_RESULT_ENV";
+const REGISTRY_TERMINAL_STDOUT_KEY: &str = "TERMINAL_STDOUT_KEY";
+const REGISTRY_RECOVERY_INPUTS_VERSION_KEY: &str = "RECOVERY_INPUTS_VERSION";
+const REGISTRY_RECOVERY_INPUTS_VERSION: &str = "1";
 
 const MAX_SLUG_LENGTH: usize = 97;
 const MAX_RUN_ID_LENGTH: usize = 128;
@@ -197,6 +205,12 @@ pub struct JobSpec {
     pub sentinel_paths: Vec<PathBuf>,
     /// Optional child-to-daemon merge envelope.
     pub merge_result_env: Option<PathBuf>,
+    /// Optional child stdout key that marks a terminal recovery envelope.
+    ///
+    /// A daemon that dies after its worker completes may recover this exact
+    /// terminal block from the owned stdout log only when the launcher opted
+    /// into one stable marker key.
+    pub terminal_stdout_key: Option<String>,
     /// Rows seeded into the merge envelope before launch.
     pub initial_merge_rows: Vec<(String, String)>,
 }
@@ -268,6 +282,18 @@ pub struct RegistryEntry {
     pub stderr_log: PathBuf,
     /// Completed result envelope.
     pub result_env: PathBuf,
+    /// Whether this row records the complete recovery input set.
+    ///
+    /// Legacy rows lack this versioned contract and must not be reconstructed
+    /// from a worker witness, because their merge and sentinel inputs were not
+    /// durable registry state.
+    pub recovery_inputs_recorded: bool,
+    /// Optional child-to-daemon merge envelope retained for crash recovery.
+    pub merge_result_env: Option<PathBuf>,
+    /// Optional stdout terminal marker retained for crash recovery.
+    pub terminal_stdout_key: Option<String>,
+    /// Completion sentinels retained until the terminal transaction commits.
+    pub sentinel_paths: Vec<PathBuf>,
 }
 
 /// An exclusive, durable claim held while recovering an abandoned registry row.
@@ -350,6 +376,32 @@ pub fn validate_slug(value: &str, label: &str) -> Result<String, BgjobError> {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-');
     if value.contains("..") || value.contains(['/', '\\']) || !valid {
         return Err(BgjobError::Invalid(format!("invalid {label}: {value:?}")));
+    }
+    Ok(value.to_owned())
+}
+
+/// Validate a child stdout key that authorizes terminal-envelope recovery.
+///
+/// The key has the same closed grammar as a child merge row and cannot name a
+/// daemon-owned completion field.
+///
+/// # Errors
+///
+/// Returns [`BgjobError::Invalid`] when `value` cannot safely identify a
+/// child-authored terminal row.
+pub fn validate_terminal_stdout_key(value: &str) -> Result<String, BgjobError> {
+    let valid = value
+        .bytes()
+        .next()
+        .is_some_and(|byte| byte.is_ascii_uppercase())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+        && !matches!(value, BGJOB_RC_KEY | BGJOB_ELAPSED_KEY | "STEP");
+    if !valid {
+        return Err(BgjobError::Invalid(format!(
+            "invalid terminal stdout key: {value:?}"
+        )));
     }
     Ok(value.to_owned())
 }
@@ -496,6 +548,26 @@ pub fn result_env_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError>
         &root.join(format!("{step}{BGJOB_RESULT_ENV_SUFFIX}")),
         &root,
         "result env",
+    )
+}
+
+/// Return the worker-completion witness path for `step`.
+///
+/// The worker writes this only after its requested child has exited and its
+/// process group is drained. It remains durable until terminal publication so
+/// a dead-daemon recovery can distinguish a completed child from an abandoned
+/// live group.
+///
+/// # Errors
+///
+/// Returns an error when `tmpdir` or `step` is unsafe.
+pub fn worker_status_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError> {
+    let step = validate_slug(step, "step")?;
+    let root = bgjob_dir(tmpdir)?;
+    ensure_under(
+        &root.join(format!("{step}{BGJOB_WORKER_STATUS_SUFFIX}")),
+        &root,
+        "worker status env",
     )
 }
 
@@ -790,6 +862,40 @@ pub fn read_confined_result_env(path: &Path, tmpdir: &Path) -> Result<Option<Str
     read_confined_regular_text(path, &root, "result env is unsafe")
 }
 
+/// Read the final bounded bytes of one confined regular background-job file.
+///
+/// The returned boolean is true when earlier bytes were omitted. A missing,
+/// unsafe, or non-regular path is an error: callers recovering durable state
+/// must retain their recovery inputs rather than treating absent bytes as an
+/// empty terminal envelope.
+///
+/// # Errors
+///
+/// Returns an error when the root or file cannot be revalidated, opened, or
+/// read safely.
+pub fn read_confined_regular_tail(
+    path: &Path,
+    root: &Path,
+    byte_limit: u64,
+    message: &str,
+) -> Result<(Vec<u8>, bool), BgjobError> {
+    let Some(mut file) = open_confined_regular_file(path, root, message)? else {
+        return Err(BgjobError::Invalid(message.to_owned()));
+    };
+    let length = file
+        .metadata()
+        .map_err(|error| BgjobError::Io(error.to_string()))?
+        .len();
+    let offset = length.saturating_sub(byte_limit);
+    file.seek(SeekFrom::Start(offset))
+        .map_err(|error| BgjobError::Io(error.to_string()))?;
+    let mut bytes = Vec::new();
+    file.take(byte_limit)
+        .read_to_end(&mut bytes)
+        .map_err(|error| BgjobError::Io(error.to_string()))?;
+    Ok((bytes, offset > 0))
+}
+
 /// Revalidate and read a merge-result envelope at the point of consumption.
 ///
 /// # Errors
@@ -978,15 +1084,32 @@ fn read_confined_regular_text(
     root: &Path,
     message: &str,
 ) -> Result<Option<String>, BgjobError> {
-    let path = ensure_under(path, root, message)?;
-    validate_parent_chain(&path, root, message)?;
+    let Some(mut file) = open_confined_regular_file(path, root, message)? else {
+        return Ok(None);
+    };
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|error| BgjobError::Io(error.to_string()))?;
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|_| BgjobError::Invalid(message.to_owned()))
+}
+
+fn open_confined_regular_file(
+    path: &Path,
+    root: &Path,
+    message: &str,
+) -> Result<Option<fs::File>, BgjobError> {
+    let root = checked_dir(root, "bgjob root", true)?;
+    let path = ensure_under(path, &root, message)?;
+    validate_parent_chain(&path, &root, message)?;
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
     {
         options.custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
     }
-    let mut file = match options.open(&path) {
+    let file = match options.open(&path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         #[cfg(unix)]
         Err(error) if error.raw_os_error() == Some(nix::libc::ELOOP) => {
@@ -996,13 +1119,8 @@ fn read_confined_regular_text(
         Ok(file) => file,
     };
     let _opened = checked_opened_regular_metadata(&file, &path, message)?;
-    validate_parent_chain(&path, root, message)?;
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)
-        .map_err(|error| BgjobError::Io(error.to_string()))?;
-    String::from_utf8(bytes)
-        .map(Some)
-        .map_err(|_| BgjobError::Invalid(message.to_owned()))
+    validate_parent_chain(&path, &root, message)?;
+    Ok(Some(file))
 }
 
 fn regular_output_exists(path: &Path, root: &Path) -> Result<bool, BgjobError> {
@@ -1154,6 +1272,15 @@ pub fn write_entry(entry: &RegistryEntry) -> Result<PathBuf, BgjobError> {
 ///
 /// Returns an error when the entry cannot be validated or written safely.
 pub fn write_entry_at(entry: &RegistryEntry, root: Option<&Path>) -> Result<PathBuf, BgjobError> {
+    if !entry.recovery_inputs_recorded
+        && (entry.merge_result_env.is_some()
+            || entry.terminal_stdout_key.is_some()
+            || !entry.sentinel_paths.is_empty())
+    {
+        return Err(BgjobError::Invalid(
+            "legacy registry entries cannot carry recovery inputs".to_owned(),
+        ));
+    }
     let path = registry_path(&entry.run_id, &entry.step, root)?;
     let mut rows = vec![
         ("STEP".to_owned(), entry.step.clone()),
@@ -1179,6 +1306,42 @@ pub fn write_entry_at(entry: &RegistryEntry, root: Option<&Path>) -> Result<Path
             entry.result_env.display().to_string(),
         ),
     ];
+    if entry.recovery_inputs_recorded {
+        rows.extend([
+            (
+                REGISTRY_RECOVERY_INPUTS_VERSION_KEY.to_owned(),
+                REGISTRY_RECOVERY_INPUTS_VERSION.to_owned(),
+            ),
+            (
+                REGISTRY_SENTINEL_COUNT_KEY.to_owned(),
+                entry.sentinel_paths.len().to_string(),
+            ),
+        ]);
+        if let Some(path) = entry.merge_result_env.as_ref() {
+            rows.push((
+                REGISTRY_MERGE_RESULT_ENV_KEY.to_owned(),
+                path.display().to_string(),
+            ));
+        }
+        if let Some(key) = entry.terminal_stdout_key.as_ref() {
+            rows.push((
+                REGISTRY_TERMINAL_STDOUT_KEY.to_owned(),
+                validate_terminal_stdout_key(key)?,
+            ));
+        }
+        rows.extend(
+            entry
+                .sentinel_paths
+                .iter()
+                .enumerate()
+                .map(|(index, path)| {
+                    (
+                        format!("{REGISTRY_SENTINEL_PREFIX}{index}"),
+                        path.display().to_string(),
+                    )
+                }),
+        );
+    }
     rows.extend(identity_rows("DAEMON", Some(&entry.daemon)));
     rows.extend(identity_rows("CHILD", Some(&entry.child)));
     rows.push((
@@ -1212,6 +1375,22 @@ pub fn read_entry(path: &Path) -> Option<RegistryEntry> {
     let stderr_log = validated_path(Path::new(rows.get("STDERR_LOG")?), &log_dir)?;
     let bgjob_root = bgjob_dir(&tmpdir).ok()?;
     let result_env = validated_result_output_path(Path::new(rows.get("RESULT_ENV")?), &bgjob_root)?;
+    let recovery_inputs_recorded = parse_recovery_inputs_version(&rows)?;
+    let (merge_result_env, terminal_stdout_key, sentinel_paths) = if recovery_inputs_recorded {
+        let merge_result_env = match rows.get(REGISTRY_MERGE_RESULT_ENV_KEY) {
+            Some(raw) => Some(validated_merge_result_path(Path::new(raw), &tmpdir)?),
+            None => None,
+        };
+        let terminal_stdout_key = rows
+            .get(REGISTRY_TERMINAL_STDOUT_KEY)
+            .map(|value| validate_terminal_stdout_key(value))
+            .transpose()
+            .ok()?;
+        let sentinel_paths = parse_registry_sentinel_paths(&rows, &tmpdir)?;
+        (merge_result_env, terminal_stdout_key, sentinel_paths)
+    } else {
+        (None, None, Vec::new())
+    };
     let clone_raw = rows.get("CLONE_PATH").map_or(".", String::as_str);
     Some(RegistryEntry {
         step: validate_slug(rows.get("STEP")?, "step").ok()?,
@@ -1233,6 +1412,10 @@ pub fn read_entry(path: &Path) -> Option<RegistryEntry> {
         stdout_log,
         stderr_log,
         result_env,
+        recovery_inputs_recorded,
+        merge_result_env,
+        terminal_stdout_key,
+        sentinel_paths,
     })
 }
 
@@ -1796,6 +1979,83 @@ fn validated_result_output_path(path: &Path, root: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Validate a confined merge-input path while retaining a safe I/O obstacle.
+///
+/// A registry row must remain readable when a same-user directory replaces a
+/// merge leaf: recovery then reports the failed durable input rather than
+/// discarding the child completion. Symlinks, special files, unsafe parents,
+/// and escaped paths still invalidate the row.
+fn validated_merge_result_path(path: &Path, tmpdir: &Path) -> Option<PathBuf> {
+    if !path.is_absolute() {
+        return None;
+    }
+    let resolved = ensure_under(path, tmpdir, "merge result env").ok()?;
+    validate_parent_chain(&resolved, tmpdir, "merge result env parent is unsafe").ok()?;
+    match fs::symlink_metadata(&resolved) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Some(resolved),
+        Ok(metadata)
+            if !metadata.file_type().is_symlink() && (metadata.is_file() || metadata.is_dir()) =>
+        {
+            Some(resolved)
+        }
+        Ok(_) | Err(_) => None,
+    }
+}
+
+fn parse_registry_sentinel_paths(
+    rows: &BTreeMap<String, String>,
+    tmpdir: &Path,
+) -> Option<Vec<PathBuf>> {
+    let Some(raw_count) = rows.get(REGISTRY_SENTINEL_COUNT_KEY) else {
+        return (!rows
+            .keys()
+            .any(|key| key.starts_with(REGISTRY_SENTINEL_PREFIX)))
+        .then(Vec::new);
+    };
+    let count = raw_count.parse::<usize>().ok()?;
+    // Each persisted sentinel consumes one row, so a count above the full
+    // decoded row set cannot be legitimate and must not drive an allocation.
+    if count > rows.len() {
+        return None;
+    }
+    let expected_keys = (0..count)
+        .map(|index| format!("{REGISTRY_SENTINEL_PREFIX}{index}"))
+        .collect::<BTreeSet<_>>();
+    if rows.keys().any(|key| {
+        key != REGISTRY_SENTINEL_COUNT_KEY
+            && key.starts_with(REGISTRY_SENTINEL_PREFIX)
+            && !expected_keys.contains(key)
+    }) {
+        return None;
+    }
+    expected_keys
+        .iter()
+        .map(|key| {
+            let path = Path::new(rows.get(key)?);
+            path.is_absolute()
+                .then(|| ensure_under(path, tmpdir, "registry sentinel"))?
+                .ok()
+        })
+        .collect()
+}
+
+fn parse_recovery_inputs_version(rows: &BTreeMap<String, String>) -> Option<bool> {
+    let has_recovery_input_field = rows.contains_key(REGISTRY_SENTINEL_COUNT_KEY)
+        || rows.contains_key(REGISTRY_MERGE_RESULT_ENV_KEY)
+        || rows.contains_key(REGISTRY_TERMINAL_STDOUT_KEY)
+        || rows
+            .keys()
+            .any(|key| key.starts_with(REGISTRY_SENTINEL_PREFIX));
+    match rows.get(REGISTRY_RECOVERY_INPUTS_VERSION_KEY) {
+        Some(value) if value == REGISTRY_RECOVERY_INPUTS_VERSION => rows
+            .contains_key(REGISTRY_SENTINEL_COUNT_KEY)
+            .then_some(true),
+        Some(_) => None,
+        None if has_recovery_input_field => None,
+        None => Some(false),
+    }
+}
+
 fn ensure_directory(path: &Path, label: &str) -> Result<PathBuf, BgjobError> {
     let absolute = absolute_path(path)?;
     if fs::symlink_metadata(&absolute).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
@@ -1922,17 +2182,18 @@ pub fn epoch_now() -> i64 {
 mod tests {
     use super::{
         BGJOB_RESULT_ENV_SUFFIX, BGJOB_STARTUP_ENV_SUFFIX, BgjobError, CompletionTransactionState,
-        RECOVERY_LEASE_MALFORMED_STALE_AFTER, RecoveryClaim, RecoveryLeaseFaultPhase,
-        RegistryEntry, absolute_path, bgjob_dir, checked_dir, child_liveness, claim_recovery,
-        completion_result_is_visible, daemon_liveness, default_run_id, ensure_directory,
-        ensure_under, entry_expired, epoch_now, expand_home, finish_completion_transaction,
-        has_live_entry_at, identity_rows, iter_entries_at, log_paths, parse_identity,
-        prepare_completion_transaction, private_atomic_write, read_completion_transaction,
-        read_entry, read_recovery_lease, registry_path, reject_line_value, release_recovery_claim,
-        render_rows, resolve_candidate, resolve_run_id, resolved_directory, result_env_path,
-        set_recovery_lease_fault, startup_env_path, temporary_path, unlink_entry,
-        validate_initial_merge_rows, validate_merge_result_env, validate_parent_chain,
-        validate_run_id, validate_slug, validated_path, write_entry_at,
+        RECOVERY_LEASE_MALFORMED_STALE_AFTER, REGISTRY_SENTINEL_PREFIX, RecoveryClaim,
+        RecoveryLeaseFaultPhase, RegistryEntry, absolute_path, bgjob_dir, checked_dir,
+        child_liveness, claim_recovery, completion_result_is_visible, daemon_liveness,
+        default_run_id, ensure_directory, ensure_under, entry_expired, epoch_now, expand_home,
+        finish_completion_transaction, has_live_entry_at, identity_rows, iter_entries_at,
+        log_paths, parse_identity, prepare_completion_transaction, private_atomic_write,
+        read_completion_transaction, read_entry, read_recovery_lease, registry_path,
+        reject_line_value, release_recovery_claim, render_rows, resolve_candidate, resolve_run_id,
+        resolved_directory, result_env_path, set_recovery_lease_fault, startup_env_path,
+        temporary_path, unlink_entry, validate_initial_merge_rows, validate_merge_result_env,
+        validate_parent_chain, validate_run_id, validate_slug, validate_terminal_stdout_key,
+        validated_path, write_entry_at,
     };
     use crate::{
         IdentityProbeOutput, ProcessBirthIdentity, ProcessBirthIdentityProbeOutput,
@@ -1981,6 +2242,10 @@ mod tests {
             stdout_log: log_dir.join("demo-step.stdout.log"),
             stderr_log: log_dir.join("demo-step.stderr.log"),
             result_env: tmpdir.join("bgjob/demo-step.result.env"),
+            recovery_inputs_recorded: true,
+            merge_result_env: None,
+            terminal_stdout_key: None,
+            sentinel_paths: Vec::new(),
         }
     }
 
@@ -2551,6 +2816,23 @@ mod tests {
         assert!(reject_line_value("one\ntwo", "row").is_err());
         assert!(reject_line_value("one\rtwo", "row").is_err());
         assert_eq!(reject_line_value("one", "row").expect("line"), "one");
+        assert_eq!(
+            validate_terminal_stdout_key("NEXT_ACTION").expect("terminal marker"),
+            "NEXT_ACTION"
+        );
+        for invalid in [
+            "",
+            "next_action",
+            "1ACTION",
+            "BGJOB_RC",
+            "BGJOB_ELAPSED_S",
+            "STEP",
+        ] {
+            assert!(
+                validate_terminal_stdout_key(invalid).is_err(),
+                "accepted unsafe terminal marker {invalid:?}"
+            );
+        }
 
         assert!(
             startup_env_path(sandbox.path(), "demo-step")
@@ -2682,7 +2964,22 @@ mod tests {
         let sandbox = tempfile::tempdir().expect("tempdir");
         let tmpdir = checked_dir(sandbox.path(), "tmpdir", true).expect("tmpdir");
         let registry = tmpdir.join("registry");
-        let entry = entry(&tmpdir, Some(identity(13)));
+        let mut entry = entry(&tmpdir, Some(identity(13)));
+        entry.merge_result_env = Some(tmpdir.join("bgjob/merge.env"));
+        entry.terminal_stdout_key = Some("NEXT_ACTION".to_owned());
+        entry.sentinel_paths = vec![tmpdir.join("done.sentinel")];
+        let mut incomplete = entry.clone();
+        incomplete.recovery_inputs_recorded = false;
+        assert!(
+            write_entry_at(&incomplete, Some(&registry)).is_err(),
+            "a legacy wire row must not silently discard recovery inputs"
+        );
+        let mut invalid_marker = entry.clone();
+        invalid_marker.terminal_stdout_key = Some("next_action".to_owned());
+        assert!(
+            write_entry_at(&invalid_marker, Some(&registry)).is_err(),
+            "the registry writer must reject an unusable terminal marker"
+        );
         let path = write_entry_at(&entry, Some(&registry)).expect("write registry");
         assert_eq!(read_entry(&path), Some(entry));
         assert!(
@@ -2698,6 +2995,10 @@ mod tests {
                 !line.ends_with("_BIRTH_IDENTITY=darwin:1:11")
                     && !line.ends_with("_BIRTH_IDENTITY=darwin:1:12")
                     && !line.ends_with("_BIRTH_IDENTITY=darwin:1:13")
+                    && !line.starts_with("RECOVERY_INPUTS_VERSION=")
+                    && !line.starts_with("MERGE_RESULT_ENV=")
+                    && !line.starts_with("TERMINAL_STDOUT_KEY=")
+                    && !line.starts_with(REGISTRY_SENTINEL_PREFIX)
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -2709,12 +3010,30 @@ mod tests {
         );
         assert!(legacy_entry.child.birth_identity.is_none());
         assert!(legacy_entry.daemon.birth_identity.is_none());
+        assert!(legacy_entry.merge_result_env.is_none());
+        assert!(legacy_entry.terminal_stdout_key.is_none());
+        assert!(legacy_entry.sentinel_paths.is_empty());
+        assert!(!legacy_entry.recovery_inputs_recorded);
         assert!(
             legacy_entry
                 .owner
                 .expect("legacy owner")
                 .birth_identity
                 .is_none()
+        );
+        fs::write(&path, format!("{legacy}\nSENTINEL_COUNT=0\n")).expect("partial recovery inputs");
+        assert!(
+            read_entry(&path).is_none(),
+            "unversioned recovery inputs must not authorize reconstruction"
+        );
+        fs::write(
+            &path,
+            format!("{legacy}\nRECOVERY_INPUTS_VERSION=2\nSENTINEL_COUNT=0\n"),
+        )
+        .expect("unknown recovery input version");
+        assert!(
+            read_entry(&path).is_none(),
+            "unknown recovery input version must fail closed"
         );
         assert!(validate_initial_merge_rows(&[("GOOD".to_owned(), "value".to_owned())]).is_ok());
         assert!(validate_initial_merge_rows(&[("bad".to_owned(), "value".to_owned())]).is_err());

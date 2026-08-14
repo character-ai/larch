@@ -56,7 +56,7 @@ from larch.implement.checks_run_relevant import (
     record_checks_vendor_task,
     default_repo_root,
 )
-from larch.implement.dispatch_helpers import result_env_capture_rows
+from larch.implement.dispatch_helpers import ResultEnvCaptureRows, result_env_capture_rows
 
 from larch.implement.self_edit_log import (
     file_sha256,
@@ -102,7 +102,7 @@ _ASCII_DELETE: Final = 127
 _REPAIR_LOOP_HEARTBEAT_INTERVAL_S: Final = 30.0
 _REPAIR_LOOP_HEARTBEAT_JOIN_TIMEOUT_S: Final = 2.0
 # Module-scoped sink for optional bgjob merge-result-env capture (child mode).
-_result_rows: list[tuple[str, str]] | None = None
+_result_rows: ResultEnvCaptureRows | None = None
 _PYTHON_PATH_RE: Final = r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.py"
 _STRUCTURAL_RUFF_CODES: Final[frozenset[str]] = frozenset({
     "C901",
@@ -244,12 +244,10 @@ def checks_lint_fix_main(argv: list[str] | None = None) -> int:
 
 
 def _emit_repair_kv(*, key: str, value: str) -> None:
-    print(f"{key}={value}")
     rows = _result_rows
-    if rows is None or "\n" in value or "\r" in value:
-        return
-    if re.fullmatch(r"[A-Z0-9_]+", key):
+    if rows is not None and "\n" not in value and "\r" not in value and re.fullmatch(r"[A-Z0-9_]+", key):
         rows.append((key, value))
+    print(f"{key}={value}")
 
 
 def _print_loop_ledger(loop: LoopResult) -> None:
@@ -377,6 +375,8 @@ def _launch_repair_loop_bgjob(spec: RepairLoopBgjobLaunch) -> int:
         budget_s,
         "--merge-result-env",
         str(merge_result_env),
+        "--terminal-stdout-key",
+        "NEXT_ACTION",
         "--",
         sys.executable,
         str(plugin_root(Path(__file__).resolve().parents[3]) / "python" / "cli.py"),
