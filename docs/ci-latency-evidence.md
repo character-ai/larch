@@ -18,7 +18,7 @@ All three eligible runs used `CI`, attempt 1, and 41 successful actual runner jo
 
 Every raw value used by the job-level medians is in seconds.
 
-“Python matrix sum” is the sum of the 20 `python-tests (3.11, N)` runner durations. “Harness” is the five `test-harnesses (N)` jobs.
+“Python matrix sum” is the sum of the then-current 20 `python-tests (3.11, N)` runner durations. “Harness” is the then-current five `test-harnesses (N)` jobs.
 
 | Run | Trigger→last required | Active DAG | Sum runner | Slowest harness | Sum harness | Python matrix sum | `rust-full` | Rust gate path | `rust-lint` | `gitleaks` | `agent-sync` | Final required job |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
@@ -46,6 +46,41 @@ The post-#8482 exclusions remain visible and are not pooled with the median:
 No rerun, cancellation, or runner-queue outlier occurred in this collection window: every listed run used attempt 1 and had a 4 s queue. Queue delay is therefore reported separately from the 364 s median active DAG span.
 
 The observed required-job envelope is `rust-full` → `rust-coverage` → `rust-gate` → `python-tests-gate`: the Rust gate path has a 355 s median and `python-tests-gate` completed last at a 368 s median. This names the observed critical path without claiming a separate dependency-graph proof. The 368 s trigger-to-last-required median is below the seven-minute target, so this cohort does not admit the dependent optimization issues [#8485](https://github.com/character-ai/larch/issues/8485), [#8486](https://github.com/character-ai/larch/issues/8486), [#8487](https://github.com/character-ai/larch/issues/8487), and [#8488](https://github.com/character-ai/larch/issues/8488) under the #8475 decision rule; each needs new evidence and approval before implementation.
+
+## #8486 matrix-sizing decision
+
+The operator explicitly authorized serial implementation of the remaining open leaves after the #8484 assessment. That authorization permits this narrowly measured change despite the prior admission result; it does not turn the #8484 cohort into a general performance claim.
+
+The three merge-group runs above are the planning cohort. Their Python `call` rows total 348.12 s, 346.28 s, and 346.21 s. The canonical LPT planner considered 4 and 8 output shards from the same 1,525 observed nodeids: four produces 379/382/382/382 nodeids and 87.440/87.440/87.435/87.440 modeled call seconds; eight produces 188–192 nodeids and 43.715–43.720 seconds. Four is selected because it removes 16 Python runners while its modeled test work remains far below the 355 s median Rust-gate envelope. A rebase onto newer main removed three retired nodeids from the generated map, preserving the upstream deletion; the checked-in four-shard map therefore has 1,522 entries. The planner now updates the assignment map and all three CI count fields atomically, so a requested output width cannot leave the map and matrix inconsistent.
+
+The specifically assessed marker-heavy Python example was `tests/issue/test_plan_marker_ownership.py::test_runtime_plan_markers_use_the_shared_grammar_owner`, with calls of 10.65 s, 6.12 s, and 9.96 s (median 9.96 s). At 11.4% of the four-way modeled maximum it is not a material tail. Marker prefiltering would add collection and failure-diagnosis complexity without a justified critical-path benefit, so this change keeps the existing single pytest collection path.
+
+The harness measurements show why the five-cell matrix was reduced to two. Cells 1, 2, and 5 were empty in every cohort member, yet consumed startup time. The Rust-hook leg keeps its isolated cache/bootstrap diagnostic surface; every remaining direct Bash leaf stays together in the second leg.
+
+| Run | Empty cells (s) | Rust-hook leg (s) | Other-leaf leg (s) |
+| --- | --- | ---: | ---: |
+| 31773677023 | 1=13, 2=10, 5=13 | 212 | 103 |
+| 31776106272 | 1=15, 2=14, 5=9 | 213 | 112 |
+| 31778104389 | 1=12, 2=10, 5=11 | 234 | 109 |
+
+This preserves exactly-once harness ownership and keeps the slower existing harness leg unchanged; it removes 36 s, 38 s, and 33 s of measured empty-runner time. The stable `test-harnesses-gate` and `python-tests-gate` context names remain unchanged.
+
+### Post-change controlled cohort
+
+Three serial, successful full-path `workflow_dispatch` runs exercised the final four-Python/two-harness candidate at [`fa178c45e`](https://github.com/character-ai/larch/commit/fa178c45ebd17889f10370e6cca70dfe5cec607b). Every actual runner job succeeded, all runs used attempt 1, and each had exactly 22 actual runner jobs. Values below are seconds; the final job remained the Rust-backed `python-tests-gate` consumer, not a Python matrix leg.
+
+| Run | Trigger→last | Active DAG | Sum runner | Python sum / max | Harness sum / max | Rust full | Rust gate path | Final job |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| [31793144304](https://github.com/character-ai/larch/actions/runs/31793144304) | 383 | 378 | 1,778 | 461 / 122 | 229 / 141 | 335 | 350 | `python-tests-gate` |
+| [31794577585](https://github.com/character-ai/larch/actions/runs/31794577585) | 401 | 396 | 1,840 | 477 / 128 | 264 / 167 | 350 | 365 | `python-tests-gate` |
+| [31795357826](https://github.com/character-ai/larch/actions/runs/31795357826) | 390 | 386 | 1,838 | 476 / 125 | 277 / 176 | 345 | 359 | `python-tests-gate` |
+| Median | 390 | 386 | 1,838 | 476 / 125 | 264 / 167 | 345 | 359 | `python-tests-gate` |
+
+Against the planning-cohort medians, the candidate cuts summed Python runner time from 932 s to 476 s and harness runner time from 363 s to 264 s, while reducing actual runner jobs from 41 to 22. Python matrix maximum rises from 53 s to 125 s as intended when each surviving cell owns five times as many tests, but it finishes before the Rust producer and therefore does not make the matrix a required-path tail.
+
+Collection remains the existing single pytest collection path: every new Python cell reported `collected 6,601 items`, for 26,404 item-collections across the matrix, versus 20 × 6,608 = 132,160 in the prior matrix (an 80% reduction in repeated collection work). The per-run maximum pytest elapsed time was 109.61 s, 110.95 s, and 112.93 s (median 110.95 s). This is why marker-byte prefiltering remains out of scope: the assessed marker tail is not material, and the four surviving full-collection cells remain safely before Rust.
+
+To distinguish the matrix change from live Rust-producer variance, the first two candidates were paired sequentially with the exact parent revision [`cb9c2612c`](https://github.com/character-ai/larch/commit/cb9c2612c2d157ea51256f7ad073b900823df27d) using its 20-Python/five-harness matrix. The controls were [31792414259](https://github.com/character-ai/larch/actions/runs/31792414259) (379 s trigger-to-last, 2,288 s summed runner, 915 s Python, 299 s harness, 333 s `rust-full`) and [31793876810](https://github.com/character-ai/larch/actions/runs/31793876810) (389 s, 2,277 s, 893 s, 292 s, and 341 s respectively). Their paired candidates retain the large runner-time reduction; the 383–401 s whole-workflow values track the independent `rust-full` and Rust-backed integration tail rather than a Python matrix dependency. The raw cohort does not claim a lower end-to-end median than the earlier 368 s merge-group cohort; it records the remaining critical path candidly. All samples remain below the seven-minute umbrella threshold, and the retained optimization is justified by its directly measured runner-time win without weakening any required check or failure-diagnosis surface.
 
 ## Result and scope
 
@@ -80,7 +115,7 @@ All three samples used the `CI` workflow at `refs/heads/main`, the same SHA, and
 | [31419539198](https://github.com/character-ai/larch/actions/runs/31419539198) | `282d0ca` | `workflow_dispatch` | 2026-08-10T18:31:57Z | 1 | 6 s | warm direct coverage-target hit; Cargo input/nextest/LLVM-Cov hits; gitleaks binary hit; dispatch read-only | success |
 | [31420286318](https://github.com/character-ai/larch/actions/runs/31420286318) | `282d0ca` | `workflow_dispatch` | 2026-08-10T18:40:45Z | 1 | 5 s | warm direct coverage-target hit; Cargo input/nextest/LLVM-Cov hits; gitleaks binary hit; dispatch read-only | success |
 
-The raw end-to-end values are seconds. “Harness” means the five `test-harnesses (N)` jobs; “Rust producer” is `rust-full` on main.
+The raw end-to-end values are seconds. In this historical cohort, “Harness” means the then-current five `test-harnesses (N)` jobs; “Rust producer” is `rust-full` on main.
 
 | Run | Trigger→last | Active DAG | Sum runner | Slowest harness | Sum harness | Rust producer | Rust gate path | `lint` | `rust-lint` | `gitleaks` | Final critical-path job |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |

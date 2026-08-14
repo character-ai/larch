@@ -47,6 +47,8 @@ impl WorkflowPort for FixtureWorkflow {
             python: Some(PythonPlan {
                 assignments: BTreeMap::from([("test::one".to_owned(), 1)]),
                 shard_count: 1,
+                assignments_changed: !self.noop,
+                workflow_changed: false,
                 changed: !self.noop,
             }),
             decision: if self.noop { "noop" } else { "change" }.to_owned(),
@@ -128,6 +130,23 @@ impl GitFixture {
         .expect("write fixture Makefile");
         fs::write(root.path().join(ASSIGNMENTS), "{\n  \"test::old\": 1\n}\n")
             .expect("write fixture assignments");
+        fs::create_dir_all(root.path().join(".github/workflows"))
+            .expect("create workflow directory");
+        fs::write(
+            root.path().join(CI_WORKFLOW),
+            r#"jobs:
+  python-tests:
+    strategy:
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Run Python tests (shard ${{ matrix.shard }} of 2)
+        env:
+          PYTEST_SHARD_COUNT: "2"
+  # These are the only Python tests
+"#,
+        )
+        .expect("write fixture CI workflow");
         git(root.path(), &["init", "--quiet", "--initial-branch=main"]);
         git(
             root.path(),
@@ -320,6 +339,8 @@ fn changed_plan() -> PreparedPlan {
         python: Some(PythonPlan {
             assignments: BTreeMap::from([("test::one".to_owned(), 1), ("test::two".to_owned(), 2)]),
             shard_count: 2,
+            assignments_changed: true,
+            workflow_changed: false,
             changed: true,
         }),
         decision: "approved".to_owned(),
@@ -408,6 +429,113 @@ fn timing_reports() -> (
     }))
     .expect("fixture pytest timing report");
     (harness, jobs, pytest)
+}
+
+#[test]
+fn python_workflow_shard_count_rewrite_updates_the_three_lockstep_fields() {
+    let source = r#"jobs:
+  python-tests:
+    strategy:
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Run Python tests (shard ${{ matrix.shard }} of 2)
+        env:
+          PYTEST_SHARD_COUNT: "2"
+  # These are the only Python tests
+"#;
+
+    assert_eq!(python_workflow_shard_count(source), Ok(2));
+    let rewritten = rewrite_python_workflow_shard_count(source, 4).expect("rewrite workflow");
+    assert_eq!(python_workflow_shard_count(&rewritten), Ok(4));
+    assert!(rewritten.contains("shard: [1, 2, 3, 4]"));
+    assert!(rewritten.contains("Run Python tests (shard ${{ matrix.shard }} of 4)"));
+    assert!(rewritten.contains("PYTEST_SHARD_COUNT: \"4\""));
+}
+
+#[test]
+fn python_workflow_shard_count_refuses_inconsistent_lockstep_fields() {
+    let source = r#"jobs:
+  python-tests:
+    strategy:
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Run Python tests (shard ${{ matrix.shard }} of 3)
+        env:
+          PYTEST_SHARD_COUNT: "2"
+  # These are the only Python tests
+"#;
+
+    assert!(
+        python_workflow_shard_count(source)
+            .expect_err("inconsistent workflow must fail closed")
+            .contains("inconsistent")
+    );
+}
+
+#[test]
+fn python_workflow_shard_count_refuses_ambiguous_job_boundaries() {
+    let source = r#"jobs:
+  python-tests:
+    strategy:
+      matrix:
+        shard: [1]
+    steps:
+      - name: Run Python tests (shard ${{ matrix.shard }} of 1)
+        env:
+          PYTEST_SHARD_COUNT: "1"
+  # These are the only Python tests
+  python-tests:
+    strategy:
+      matrix:
+        shard: [1]
+    steps:
+      - name: Run Python tests (shard ${{ matrix.shard }} of 1)
+        env:
+          PYTEST_SHARD_COUNT: "1"
+  # These are the only Python tests
+"#;
+
+    assert!(
+        python_workflow_shard_count(source)
+            .expect_err("ambiguous workflow must fail closed")
+            .contains("unambiguous")
+    );
+}
+
+#[test]
+fn production_workflow_writes_python_assignments_and_matrix_in_lockstep() {
+    let fixture = GitFixture::new();
+    let mut workflow = fixture.workflow();
+    let mut plan = python_only_plan();
+    let python = plan.python.as_mut().expect("Python plan");
+    python.shard_count = 4;
+    python.assignments_changed = true;
+    python.workflow_changed = true;
+    python.changed = true;
+    let expected_assignments = python.assignments.clone();
+
+    let artifacts = workflow
+        .write_candidates(&plan)
+        .expect("write Python rebalance artifacts");
+    assert_eq!(artifacts, vec![Artifact::Assignments, Artifact::CiWorkflow]);
+    let workflow_text =
+        fs::read_to_string(fixture.root.path().join(CI_WORKFLOW)).expect("read rewritten workflow");
+    assert_eq!(python_workflow_shard_count(&workflow_text), Ok(4));
+    let assignments: BTreeMap<String, u32> = serde_json::from_str(
+        &fs::read_to_string(fixture.root.path().join(ASSIGNMENTS))
+            .expect("read rewritten assignments"),
+    )
+    .expect("parse rewritten assignments");
+    assert_eq!(assignments, expected_assignments);
+
+    workflow
+        .restore_artifacts(&artifacts)
+        .expect("restore Python rebalance artifacts");
+    let restored =
+        fs::read_to_string(fixture.root.path().join(CI_WORKFLOW)).expect("read restored workflow");
+    assert_eq!(python_workflow_shard_count(&restored), Ok(2));
 }
 
 #[test]
@@ -846,6 +974,11 @@ fn pull_request_text_preserves_selected_legs() {
     python_arguments.kind = RebalanceKind::Python;
     let body = pull_request_body(&python_arguments, &python_only);
     assert!(!body.contains("- Experimental wall-clock override:"));
+
+    let python = python_only.python.as_mut().expect("Python plan");
+    python.workflow_changed = true;
+    let body = pull_request_body(&python_arguments, &python_only);
+    assert!(body.contains("- Files: python/shard-assignments.json, .github/workflows/ci.yaml"));
 }
 
 #[test]
@@ -1051,7 +1184,10 @@ fn workflow_helpers_cover_every_rebalance_kind_and_noop_recovery() {
     let mut workflow = fixture.workflow();
     let mut unchanged = changed_plan();
     unchanged.harness.as_mut().expect("harness plan").changed = false;
-    unchanged.python.as_mut().expect("python plan").changed = false;
+    let python = unchanged.python.as_mut().expect("python plan");
+    python.assignments_changed = false;
+    python.workflow_changed = false;
+    python.changed = false;
     assert_eq!(
         workflow
             .write_candidates(&unchanged)

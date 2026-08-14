@@ -4780,9 +4780,11 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "LARCH_TEST_RUST_BINARY" not in python_tests
     assert "larch-linux-test-binary" not in python_tests
     assert "PYTEST_ADDOPTS: '-m \"not rust_integration\"'" in python_tests
+    assert "shard: [1, 2, 3, 4]" in python_tests
     python_test_execution = python_tests.split(
-        "Run Python tests (shard ${{ matrix.shard }} of 20)", 1
+        "Run Python tests (shard ${{ matrix.shard }} of 4)", 1
     )[1]
+    assert 'PYTEST_SHARD_COUNT: "4"' in python_test_execution
     assert "LLVM_PROFILE_FILE" not in python_test_execution
 
     assert "name: python-tests-gate" in python_rust_integration
@@ -5066,13 +5068,15 @@ def test_ci_bootstrap_consumers_restore_exact_trusted_rust_dependency_caches() -
     assert 'line.contains("security")' in focus_area_rule
     assert "no {style} focus-area enumeration found" in focus_area_rule
 
+    assert "shard: [1, 2]" in test_harnesses
+    assert "Run Rust hook harness (shard 1 of 2)" in test_harnesses
     rust_hook = test_harnesses.split("Run Rust hook harness", 1)[1].split(
-        "Run test harnesses (shards other than 3)", 1
+        "Run test harnesses (shards other than 1)", 1
     )[0]
-    assert "if: matrix.shard == 3" in test_harnesses
+    assert "if: matrix.shard == 1" in test_harnesses
     assert "Restore Cargo inputs for Rust hook harness" in test_harnesses
     assert "Restore Rust lint dependencies for Rust hook harness" in test_harnesses
-    assert "if: matrix.shard == 3" in rust_hook
+    assert "if: matrix.shard == 1" in rust_hook
     for profile_value in (
         'CARGO_INCREMENTAL: "0"',
         'CARGO_PROFILE_DEV_DEBUG: "0"',
@@ -5354,7 +5358,7 @@ def test_rust_ci_documentation_matches_producer_topology() -> None:
         in coverage_text
     )
     assert "`rust-partial` and `rust-skip` may be the selected producer only for pull requests." in coverage_text
-    assert "The 20-shard `python-tests` matrix is artifact-independent" in coverage_text
+    assert "The 4-shard `python-tests` matrix is artifact-independent" in coverage_text
     assert "consumes the selected producer's verified `larch-linux-test-binary`" in coverage_text
     assert "selection cannot prove a narrower path" in coverage_text
     assert "An unavailable selector defaults to `full`" in rust_testing_text
