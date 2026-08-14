@@ -12,7 +12,10 @@ use std::ffi::OsString;
 
 use clap::Subcommand;
 use larch_adapters::{GixRepository, RepositoryRoot};
-use larch_core::{GitPath, RepoSizeReport, RepositoryRead, count_newlines, line_count_category};
+use larch_core::{
+    GitPath, RepoSizeReport, RepositoryRead, count_newlines, is_rust_line_count_path,
+    line_count_category, rust_line_split,
+};
 
 /// Repository-scoped developer commands.
 #[derive(Clone, Copy, Subcommand)]
@@ -53,11 +56,18 @@ fn render_size() -> Result<String, String> {
     let mut report = RepoSizeReport::default();
 
     for path in &tracked_paths {
-        let Some(category) = line_count_category(path.as_bytes()) else {
+        let path_bytes = path.as_bytes();
+        let category = line_count_category(path_bytes);
+        if category.is_none() && !is_rust_line_count_path(path_bytes) {
             continue;
-        };
+        }
         let content = fs::read(path_at_root(root.path(), path)?).map_err(|_| display_path(path))?;
-        report.add_line_count(category, count_newlines(&content));
+        if let Some(category) = category {
+            report.add_line_count(category, count_newlines(&content));
+        } else {
+            let (code_lines, test_lines) = rust_line_split(path_bytes, &content);
+            report.add_rust_line_split(code_lines, test_lines);
+        }
     }
     for path in &tracked_paths {
         let metadata =

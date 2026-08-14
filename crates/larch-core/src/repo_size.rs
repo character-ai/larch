@@ -1,6 +1,6 @@
 //! Pure aggregation and rendering for the repository-size developer report.
 
-const CATEGORY_WIDTH: usize = 37;
+const CATEGORY_WIDTH: usize = 45;
 const FILES_WIDTH: usize = 5;
 const LINES_WIDTH: usize = 6;
 const SIZE_LABEL_WIDTH: usize = 29;
@@ -19,18 +19,24 @@ pub enum RepoSizeCategory {
     BashTests,
     /// Non-test Python source files.
     PythonCode,
-    /// Python tests named `test_*.py`.
+    /// Python tests identified by filename or a `tests/` directory.
     PythonTests,
+    /// Production Rust source lines.
+    RustCode,
+    /// Rust test source lines.
+    RustTests,
     /// Markdown files.
     Markdown,
 }
 
 impl RepoSizeCategory {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 7] = [
         Self::BashScripts,
         Self::BashTests,
         Self::PythonCode,
         Self::PythonTests,
+        Self::RustCode,
+        Self::RustTests,
         Self::Markdown,
     ];
 
@@ -40,7 +46,9 @@ impl RepoSizeCategory {
             Self::BashTests => 1,
             Self::PythonCode => 2,
             Self::PythonTests => 3,
-            Self::Markdown => 4,
+            Self::RustCode => 4,
+            Self::RustTests => 5,
+            Self::Markdown => 6,
         }
     }
 
@@ -49,7 +57,9 @@ impl RepoSizeCategory {
             Self::BashScripts => "Bash scripts (runtime, non-test *.sh)",
             Self::BashTests => "Bash tests (test-*.sh)",
             Self::PythonCode => "Python code (non-test *.py)",
-            Self::PythonTests => "Python tests (test_*.py)",
+            Self::PythonTests => "Python tests (test_*.py + tests/)",
+            Self::RustCode => "Rust code (non-test *.rs)",
+            Self::RustTests => "Rust tests (#[cfg(test)] + tests/ + benches/)",
             Self::Markdown => "All Markdown (*.md)",
         }
     }
@@ -58,10 +68,7 @@ impl RepoSizeCategory {
 /// Identify the fixed line-count category for one Git-relative byte path.
 #[must_use]
 pub fn line_count_category(path: &[u8]) -> Option<RepoSizeCategory> {
-    if LINE_COUNT_EXCLUDED_PREFIXES
-        .iter()
-        .any(|prefix| path.starts_with(prefix))
-    {
+    if line_count_excluded(path) {
         return None;
     }
 
@@ -75,13 +82,39 @@ pub fn line_count_category(path: &[u8]) -> Option<RepoSizeCategory> {
         });
     }
     if suffix == b".py" {
-        return Some(if basename.starts_with(b"test_") {
-            RepoSizeCategory::PythonTests
-        } else {
-            RepoSizeCategory::PythonCode
-        });
+        return Some(
+            if basename.starts_with(b"test_")
+                || basename == b"conftest.py"
+                || has_path_component(path, b"tests")
+            {
+                RepoSizeCategory::PythonTests
+            } else {
+                RepoSizeCategory::PythonCode
+            },
+        );
     }
     (suffix == b".md").then_some(RepoSizeCategory::Markdown)
+}
+
+/// Return whether a Git-relative byte path contributes Rust line counts.
+#[must_use]
+pub fn is_rust_line_count_path(path: &[u8]) -> bool {
+    if line_count_excluded(path) {
+        return false;
+    }
+    let basename = path.rsplit(|byte| *byte == b'/').next().unwrap_or(path);
+    suffix(basename) == b".rs"
+}
+
+fn line_count_excluded(path: &[u8]) -> bool {
+    LINE_COUNT_EXCLUDED_PREFIXES
+        .iter()
+        .any(|prefix| path.starts_with(prefix))
+}
+
+fn has_path_component(path: &[u8], expected: &[u8]) -> bool {
+    path.split(|byte| *byte == b'/')
+        .any(|component| component == expected)
 }
 
 fn suffix(basename: &[u8]) -> &[u8] {
@@ -106,6 +139,398 @@ pub fn count_newlines(bytes: &[u8]) -> u64 {
     count
 }
 
+/// Split one Rust source file's newline bytes into production and test lines.
+///
+/// Files below a Cargo tests or benches directory are entirely test code.
+/// Other files use a deterministic byte lexer. Strings and comments are
+/// masked without removing newlines, then test attributes are paired with the
+/// item that follows them. Doc-test fences remain production lines.
+#[must_use]
+pub fn rust_line_split(path: &[u8], bytes: &[u8]) -> (u64, u64) {
+    let total_lines = count_newlines(bytes);
+    if has_path_component(path, b"tests") || has_path_component(path, b"benches") {
+        return (0, total_lines);
+    }
+
+    let newline_offsets: Vec<usize> = bytes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, byte)| (*byte == b'\n').then_some(index))
+        .collect();
+    let masked = mask_rust_non_code(bytes);
+    let mut test_lines = vec![false; newline_offsets.len()];
+    let mut index = 0;
+    let mut brace_depth = 0_usize;
+
+    while index < masked.len() {
+        if masked[index] == b'#'
+            && let Some(attribute) = parse_rust_attribute(&masked, index)
+        {
+            if attribute.inner && attribute.cfg_test && brace_depth == 0 {
+                return (0, total_lines);
+            }
+
+            let region_end = if !attribute.inner && attribute.cfg_test {
+                Some(rust_item_end(&masked, attribute.end))
+            } else if !attribute.inner && attribute.test {
+                rust_test_function_end(&masked, attribute.end)
+            } else {
+                None
+            };
+            if let Some(end) = region_end {
+                mark_test_lines(&mut test_lines, &newline_offsets, attribute.start, end);
+                index = end.saturating_add(1);
+                continue;
+            }
+
+            index = attribute.end;
+            continue;
+        }
+
+        match masked[index] {
+            b'{' => brace_depth = brace_depth.saturating_add(1),
+            b'}' => brace_depth = brace_depth.saturating_sub(1),
+            _ => {}
+        }
+        index += 1;
+    }
+
+    let mut marked_test_lines = 0_u64;
+    for is_test in test_lines {
+        if is_test {
+            marked_test_lines = marked_test_lines.saturating_add(1);
+        }
+    }
+    (
+        total_lines.saturating_sub(marked_test_lines),
+        marked_test_lines,
+    )
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RustAttribute {
+    start: usize,
+    end: usize,
+    inner: bool,
+    cfg_test: bool,
+    test: bool,
+}
+
+fn parse_rust_attribute(bytes: &[u8], start: usize) -> Option<RustAttribute> {
+    if bytes.get(start) != Some(&b'#') {
+        return None;
+    }
+
+    let mut cursor = skip_ascii_whitespace(bytes, start + 1);
+    let inner = bytes.get(cursor) == Some(&b'!');
+    if inner {
+        cursor = skip_ascii_whitespace(bytes, cursor + 1);
+    }
+    if bytes.get(cursor) != Some(&b'[') {
+        return None;
+    }
+    let open = cursor;
+    let close = matching_square_bracket(bytes, open)?;
+    cursor = skip_ascii_whitespace(bytes, open + 1);
+
+    let first_start = cursor;
+    let first_end = rust_identifier_end(bytes, first_start)?;
+    let first_segment = &bytes[first_start..first_end];
+    let mut final_segment = first_segment;
+    let mut segment_count = 1_usize;
+    cursor = first_end;
+
+    loop {
+        cursor = skip_ascii_whitespace(bytes, cursor);
+        if bytes.get(cursor..cursor.saturating_add(2)) != Some(b"::") {
+            break;
+        }
+        cursor = skip_ascii_whitespace(bytes, cursor + 2);
+        let segment_end = rust_identifier_end(bytes, cursor)?;
+        final_segment = &bytes[cursor..segment_end];
+        segment_count = segment_count.saturating_add(1);
+        cursor = segment_end;
+    }
+
+    cursor = skip_ascii_whitespace(bytes, cursor);
+    let cfg_test = segment_count == 1
+        && first_segment == b"cfg"
+        && bytes.get(cursor) == Some(&b'(')
+        && cfg_arguments_mention_test(bytes, cursor, close);
+
+    Some(RustAttribute {
+        start,
+        end: close + 1,
+        inner,
+        cfg_test,
+        test: final_segment == b"test",
+    })
+}
+
+fn matching_square_bracket(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 1_usize;
+    let mut cursor = open + 1;
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'[' => depth = depth.saturating_add(1),
+            b']' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(cursor);
+                }
+            }
+            _ => {}
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn cfg_arguments_mention_test(bytes: &[u8], open: usize, limit: usize) -> bool {
+    let mut cursor = open + 1;
+    while cursor < limit {
+        let Some(identifier_end) = rust_identifier_end(bytes, cursor) else {
+            cursor += 1;
+            continue;
+        };
+        if &bytes[cursor..identifier_end] == b"test" {
+            let before = bytes.get(cursor.wrapping_sub(1)).copied();
+            let after = bytes.get(identifier_end).copied();
+            if before.is_some_and(cfg_identifier_delimiter)
+                && after.is_some_and(cfg_identifier_delimiter)
+            {
+                let after_whitespace = skip_ascii_whitespace(bytes, identifier_end);
+                if bytes.get(after_whitespace) != Some(&b'=') {
+                    return true;
+                }
+            }
+        }
+        cursor = identifier_end;
+    }
+    false
+}
+
+const fn cfg_identifier_delimiter(byte: u8) -> bool {
+    byte.is_ascii_whitespace() || matches!(byte, b'(' | b',' | b')')
+}
+
+fn rust_identifier_end(bytes: &[u8], start: usize) -> Option<usize> {
+    let first = *bytes.get(start)?;
+    if first != b'_' && !first.is_ascii_alphabetic() {
+        return None;
+    }
+    let mut cursor = start + 1;
+    while bytes
+        .get(cursor)
+        .is_some_and(|byte| *byte == b'_' || byte.is_ascii_alphanumeric())
+    {
+        cursor += 1;
+    }
+    Some(cursor)
+}
+
+fn skip_ascii_whitespace(bytes: &[u8], mut cursor: usize) -> usize {
+    while bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+        cursor += 1;
+    }
+    cursor
+}
+
+fn skip_leading_rust_attributes(bytes: &[u8], mut cursor: usize) -> usize {
+    loop {
+        cursor = skip_ascii_whitespace(bytes, cursor);
+        let Some(attribute) = parse_rust_attribute(bytes, cursor) else {
+            return cursor;
+        };
+        cursor = attribute.end;
+    }
+}
+
+fn rust_item_end(bytes: &[u8], cursor: usize) -> usize {
+    let mut cursor = skip_leading_rust_attributes(bytes, cursor);
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'{' => return matching_rust_brace(bytes, cursor),
+            b';' => return cursor,
+            _ => cursor += 1,
+        }
+    }
+    bytes.len().saturating_sub(1)
+}
+
+fn rust_test_function_end(bytes: &[u8], cursor: usize) -> Option<usize> {
+    let mut cursor = skip_leading_rust_attributes(bytes, cursor);
+    let mut saw_fn = false;
+    while cursor < bytes.len() {
+        if let Some(identifier_end) = rust_identifier_end(bytes, cursor) {
+            saw_fn |= &bytes[cursor..identifier_end] == b"fn";
+            cursor = identifier_end;
+            continue;
+        }
+        match bytes[cursor] {
+            b'{' if saw_fn => return Some(matching_rust_brace(bytes, cursor)),
+            b'{' | b';' => return None,
+            _ => cursor += 1,
+        }
+    }
+    saw_fn.then(|| bytes.len().saturating_sub(1))
+}
+
+fn matching_rust_brace(bytes: &[u8], open: usize) -> usize {
+    let mut depth = 1_usize;
+    let mut cursor = open + 1;
+    while cursor < bytes.len() {
+        match bytes[cursor] {
+            b'{' => depth = depth.saturating_add(1),
+            b'}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return cursor;
+                }
+            }
+            _ => {}
+        }
+        cursor += 1;
+    }
+    bytes.len().saturating_sub(1)
+}
+
+fn mark_test_lines(test_lines: &mut [bool], newline_offsets: &[usize], start: usize, end: usize) {
+    if test_lines.is_empty() {
+        return;
+    }
+    let first_line = newline_offsets.partition_point(|newline| *newline < start);
+    if first_line >= test_lines.len() {
+        return;
+    }
+    let last_line = newline_offsets
+        .partition_point(|newline| *newline < end)
+        .min(test_lines.len() - 1);
+    for line in &mut test_lines[first_line..=last_line] {
+        *line = true;
+    }
+}
+
+fn mask_rust_non_code(bytes: &[u8]) -> Vec<u8> {
+    let mut masked = bytes.to_vec();
+    let mut cursor = 0;
+    while cursor < bytes.len() {
+        let end = match bytes.get(cursor..cursor.saturating_add(2)) {
+            Some(b"//") => Some(rust_line_comment_end(bytes, cursor)),
+            Some(b"/*") => Some(rust_block_comment_end(bytes, cursor)),
+            _ => rust_raw_string_end(bytes, cursor)
+                .or_else(|| {
+                    (bytes[cursor] == b'\'')
+                        .then(|| rust_char_literal_end(bytes, cursor))
+                        .flatten()
+                })
+                .or_else(|| (bytes[cursor] == b'"').then(|| rust_quoted_string_end(bytes, cursor))),
+        };
+        let Some(end) = end else {
+            cursor += 1;
+            continue;
+        };
+        mask_non_newlines(&mut masked, cursor, end);
+        cursor = end;
+    }
+    masked
+}
+
+fn rust_line_comment_end(bytes: &[u8], start: usize) -> usize {
+    bytes[start..]
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .map_or(bytes.len(), |offset| start + offset)
+}
+
+fn rust_block_comment_end(bytes: &[u8], start: usize) -> usize {
+    let mut depth = 1_usize;
+    let mut cursor = start + 2;
+    while cursor + 1 < bytes.len() {
+        match &bytes[cursor..cursor + 2] {
+            b"/*" => {
+                depth = depth.saturating_add(1);
+                cursor += 2;
+            }
+            b"*/" => {
+                depth = depth.saturating_sub(1);
+                cursor += 2;
+                if depth == 0 {
+                    return cursor;
+                }
+            }
+            _ => cursor += 1,
+        }
+    }
+    bytes.len()
+}
+
+fn rust_quoted_string_end(bytes: &[u8], quote: usize) -> usize {
+    let mut cursor = quote + 1;
+    while cursor < bytes.len() {
+        if bytes[cursor] == b'\\' {
+            cursor = cursor.saturating_add(2).min(bytes.len());
+        } else if bytes[cursor] == b'"' {
+            return cursor + 1;
+        } else {
+            cursor += 1;
+        }
+    }
+    bytes.len()
+}
+
+fn rust_raw_string_end(bytes: &[u8], start: usize) -> Option<usize> {
+    let hash_start = if bytes.get(start) == Some(&b'r') {
+        start + 1
+    } else if bytes.get(start..start.saturating_add(2)) == Some(b"br") {
+        start + 2
+    } else {
+        return None;
+    };
+    let hashes = bytes[hash_start..]
+        .iter()
+        .take_while(|byte| **byte == b'#')
+        .count();
+    let quote = hash_start + hashes;
+    if bytes.get(quote) != Some(&b'"') {
+        return None;
+    }
+
+    let mut cursor = quote + 1;
+    while cursor < bytes.len() {
+        if bytes[cursor] == b'"'
+            && bytes.get(cursor + 1..cursor + 1 + hashes)
+                == Some(&bytes[hash_start..hash_start + hashes])
+        {
+            return Some(cursor + 1 + hashes);
+        }
+        cursor += 1;
+    }
+    Some(bytes.len())
+}
+
+fn rust_char_literal_end(bytes: &[u8], start: usize) -> Option<usize> {
+    if bytes.get(start + 1) == Some(&b'\\') {
+        let mut cursor = start.saturating_add(3);
+        while cursor < bytes.len() {
+            if bytes[cursor] == b'\'' {
+                return Some(cursor + 1);
+            }
+            cursor += 1;
+        }
+        return Some(bytes.len());
+    }
+    (bytes.get(start + 2) == Some(&b'\'')).then_some(start + 3)
+}
+
+fn mask_non_newlines(bytes: &mut [u8], start: usize, end: usize) {
+    for byte in &mut bytes[start..end] {
+        if *byte != b'\n' {
+            *byte = b' ';
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 struct CategoryCounts {
     files: u64,
@@ -115,7 +540,7 @@ struct CategoryCounts {
 /// Aggregated values for the fixed repository-size report.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RepoSizeReport {
-    categories: [CategoryCounts; 5],
+    categories: [CategoryCounts; 7],
     repo_total: u64,
     larch_logs_total: u64,
     implement: u64,
@@ -128,6 +553,19 @@ impl RepoSizeReport {
         let counts = &mut self.categories[category.index()];
         counts.files = counts.files.saturating_add(1);
         counts.lines = counts.lines.saturating_add(lines);
+    }
+
+    /// Record one Rust file's production and test newline totals.
+    ///
+    /// A mixed file contributes one file to each non-empty category. A file
+    /// with no newline bytes contributes to neither category.
+    pub const fn add_rust_line_split(&mut self, code_lines: u64, test_lines: u64) {
+        if code_lines > 0 {
+            self.add_line_count(RepoSizeCategory::RustCode, code_lines);
+        }
+        if test_lines > 0 {
+            self.add_line_count(RepoSizeCategory::RustTests, test_lines);
+        }
     }
 
     /// Record one tracked file's logical byte size.
@@ -144,7 +582,7 @@ impl RepoSizeReport {
         }
     }
 
-    /// Render the report with the Python owner's fixed text layout.
+    /// Render the report with its fixed text layout.
     #[must_use]
     pub fn render(&self) -> String {
         let mut rows = vec![
@@ -271,7 +709,18 @@ fn render_size_line(label: &str, bytes: u64, suffix: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{RepoSizeCategory, RepoSizeReport, count_newlines, line_count_category};
+    use proptest::prelude::*;
+
+    use super::{
+        RepoSizeCategory, RepoSizeReport, count_newlines, is_rust_line_count_path,
+        line_count_category, rust_line_split,
+    };
+
+    fn assert_rust_split(path: &[u8], source: &[u8], expected: (u64, u64)) {
+        let actual = rust_line_split(path, source);
+        assert_eq!(actual, expected);
+        assert_eq!(actual.0 + actual.1, count_newlines(source));
+    }
 
     #[test]
     fn classifies_only_the_fixed_source_categories() {
@@ -292,20 +741,177 @@ mod tests {
             Some(RepoSizeCategory::PythonTests)
         );
         assert_eq!(
+            line_count_category(b"python/tests/helper.py"),
+            Some(RepoSizeCategory::PythonTests)
+        );
+        assert_eq!(
+            line_count_category(b"python/conftest.py"),
+            Some(RepoSizeCategory::PythonTests)
+        );
+        assert_eq!(
             line_count_category(b"docs/guide.md"),
             Some(RepoSizeCategory::Markdown)
         );
+        assert_eq!(line_count_category(b"crates/larch-core/src/lib.rs"), None);
+        assert!(is_rust_line_count_path(b"crates/larch-core/src/lib.rs"));
+        assert!(!is_rust_line_count_path(b"larch-logs/generated.rs"));
+        assert!(!is_rust_line_count_path(b"node_modules/pkg/generated.rs"));
         assert_eq!(line_count_category(b"larch-logs/run.md"), None);
         assert_eq!(line_count_category(b"node_modules/pkg/readme.md"), None);
         assert_eq!(line_count_category(b"docs/.md"), None);
     }
 
     #[test]
-    fn renders_zero_totals_like_the_python_owner() {
+    fn splits_cfg_test_module_lines() {
+        assert_rust_split(
+            b"crates/example/src/lib.rs",
+            b"fn production() {}\n\
+              #[cfg(test)]\n\
+              mod tests {\n\
+                  #[test]\n\
+                  fn works() {}\n\
+              }\n",
+            (1, 5),
+        );
+    }
+
+    #[test]
+    fn splits_compound_cfg_test_and_blockless_items() {
+        assert_rust_split(
+            b"crates/example/src/lib.rs",
+            b"#[cfg(all(test, feature = \"x\"))]\n\
+              fn helper() {\n\
+                  assert!(true);\n\
+              }\n\
+              fn production() {}\n",
+            (1, 4),
+        );
+        assert_rust_split(
+            b"crates/example/src/lib.rs",
+            b"#[cfg(test)]\n\
+              use crate::helper;\n\
+              fn production() {}\n",
+            (1, 2),
+        );
+    }
+
+    #[test]
+    fn masks_raw_strings_comments_and_non_test_cfg_values() {
+        let raw_string = br####"const TEXT: &str = r###"
+#[cfg(test)]
+}
+"###;
+fn production() {}
+"####;
+        assert_rust_split(b"crates/example/src/lib.rs", raw_string, (5, 0));
+
+        let comments = b"/* outer\n\
+             /* #[cfg(test)] mod hidden { */\n\
+             }\n\
+             */\n\
+             // #[test]\n\
+             fn production() {}\n";
+        assert_rust_split(b"crates/example/src/lib.rs", comments, (6, 0));
+
+        let named_cfg_values = b"#[cfg(feature = \"test\")]\n\
+            fn feature_named_test() {}\n\
+            #[cfg(test = \"value\")]\n\
+            fn keyed_test() {}\n";
+        assert_rust_split(b"crates/example/src/lib.rs", named_cfg_values, (4, 0));
+    }
+
+    #[test]
+    fn malformed_literals_remain_bounded() {
+        assert_rust_split(
+            b"crates/example/src/lib.rs",
+            b"let text = \"unterminated\\",
+            (0, 0),
+        );
+    }
+
+    #[test]
+    fn distinguishes_char_literals_from_lifetimes() {
+        assert_rust_split(
+            b"crates/example/src/lib.rs",
+            b"#[cfg(test)]\n\
+              fn helper<'a>(value: &'a str) {\n\
+                  let brace = '{';\n\
+                  let _ = value;\n\
+              }\n\
+              fn production() {}\n",
+            (1, 5),
+        );
+    }
+
+    #[test]
+    fn treats_cargo_test_directories_as_whole_file_tests() {
+        assert_rust_split(
+            b"crates/example/tests/integration.rs",
+            b"fn first() {}\nfn second() {}\n",
+            (0, 2),
+        );
+        assert_rust_split(
+            b"crates/example/benches/throughput.rs",
+            b"fn benchmark() {}\n",
+            (0, 1),
+        );
+    }
+
+    #[test]
+    fn splits_inner_and_function_test_attributes() {
+        assert_rust_split(
+            b"crates/example/src/test_only.rs",
+            b"#![cfg(test)]\nfn helper() {}\n",
+            (0, 2),
+        );
+        assert_rust_split(
+            b"crates/example/src/lib.rs",
+            b"fn production() {}\n\
+              #[test]\n\
+              fn standalone() {\n\
+              }\n",
+            (1, 3),
+        );
+        assert_rust_split(
+            b"crates/example/src/lib.rs",
+            b"#[tokio::test]\n\
+              async fn asynchronous() {}\n\
+              fn production() {}\n",
+            (1, 2),
+        );
+    }
+
+    proptest! {
+        #[test]
+        fn arbitrary_bytes_preserve_every_newline(bytes in prop::collection::vec(any::<u8>(), 0..512)) {
+            let (code, tests) = rust_line_split(b"crates/example/src/lib.rs", &bytes);
+            prop_assert_eq!(code + tests, count_newlines(&bytes));
+        }
+    }
+
+    #[test]
+    fn renders_zero_totals() {
         let report = RepoSizeReport::default();
         assert_eq!(count_newlines(b"one\ntwo\n"), 2);
         assert!(report.render().contains("( 0.0% of repo)"));
         assert!(report.render().contains("( 0.0% of run-logs)"));
+    }
+
+    #[test]
+    fn rust_file_counts_include_only_non_empty_contributions() {
+        let mut report = RepoSizeReport::default();
+        report.add_rust_line_split(3, 2);
+        report.add_rust_line_split(1, 0);
+        report.add_rust_line_split(0, 4);
+        report.add_rust_line_split(0, 0);
+        let rendered = report.render();
+
+        assert!(
+            rendered.contains("Rust code (non-test *.rs)                     │     2 │      4")
+        );
+        assert!(
+            rendered.contains("Rust tests (#[cfg(test)] + tests/ + benches/) │     2 │      6")
+        );
     }
 
     #[test]

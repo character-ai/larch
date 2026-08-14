@@ -355,7 +355,10 @@ pub use redaction::{
     RedactionResult, RuntimeRedactor, SafeText, contains_recognized_session_tmpdir_pointer, redact,
     redact_run_log_payload, redact_secrets, redact_secrets_only, redact_sensitive_paths,
 };
-pub use repo_size::{RepoSizeCategory, RepoSizeReport, count_newlines, line_count_category};
+pub use repo_size::{
+    RepoSizeCategory, RepoSizeReport, count_newlines, is_rust_line_count_path, line_count_category,
+    rust_line_split,
+};
 pub use report::{
     BLENDED_FALLBACK_WARNING, BlockMarkers, BlockMarkersError, BlockMarkersErrorKind,
     CODEX_IMPLEMENT_RAW_LABEL, CODEX_MINI_MODELS, CURSOR_COMPOSER_BASE_RATES, CURSOR_GROK_MODELS,
