@@ -737,13 +737,13 @@ fn is_security_block(text: &str) -> bool {
     static FIELD: OnceLock<Regex> = OnceLock::new();
     let header = HEADER.get_or_init(|| {
         Regex::new(
-            r"(?i)^###[ \t]+(?:OOS|FINDING)_\d+:\s*(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?`?(?:\[security\]|<security>)`?(?:\s|$|[:-])",
+            r"(?i-u)^###[ \t]+(?:OOS|FINDING)_\d+:\s*(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?`?(?:\[security\]|<security>)`?(?:\s|$|[:-])",
         )
         .expect("security header regex is valid")
     });
     let field = FIELD.get_or_init(|| {
         Regex::new(
-            r"(?i)^[ \t-]*focus[- ]area[ \t]*[:=][ \t]*security(?:[-a-z0-9 _]*)(?:[ \t]|$|\(|#|\.|,)",
+            r"(?i-u)^[ \t-]*focus[- ]area[ \t]*[:=][ \t]*security(?:[-a-z0-9 _]*)(?:[ \t]|$|\(|#|\.|,)",
         )
         .expect("security field regex is valid")
     });
