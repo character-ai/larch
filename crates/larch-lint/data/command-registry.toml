@@ -9197,7 +9197,7 @@ rust = ["gh resolve-repo", "run-log lifecycle-start", "session setup"]
 [[callers]]
 path = "skills/complete-umbrella/SKILL.md"
 kind = "skill"
-python = []
+python = ["complete-umbrella ship-leaf"]
 rust = ["agent read-claude-model", "bgjob start", "bgjob wait", "gh resolve-repo", "kv get", "session cleanup-tmpdir", "session setup", "verify skill-called"]
 
 [[callers]]

@@ -215,6 +215,31 @@ fn command_dispatch_rejects_invalid_inputs_before_remote_work() {
 }
 
 #[test]
+fn child_terminal_status_accepts_only_bounded_success_markers() {
+    assert_eq!(
+        child_terminal_status("summary\nCOMPLETE_UMBRELLA_CHILD_STATUS=complete\n"),
+        Some(ChildResultStatus::Complete)
+    );
+    assert_eq!(
+        child_terminal_status(
+            "summary\nCOMPLETE_UMBRELLA_CHILD_STATUS=needs-orchestrator-finalize\n"
+        ),
+        Some(ChildResultStatus::NeedsOrchestratorFinalize)
+    );
+    assert_eq!(
+        ChildResultStatus::NeedsOrchestratorFinalize.value(),
+        "needs-orchestrator-finalize"
+    );
+    assert!(ChildResultStatus::NeedsOrchestratorFinalize.envelope_complete());
+    assert!(!ChildResultStatus::Failed.envelope_complete());
+    assert_eq!(
+        child_terminal_status("COMPLETE_UMBRELLA_CHILD_STATUS=failed\n"),
+        None
+    );
+    assert_eq!(child_terminal_status("summary\n"), None);
+}
+
+#[test]
 fn expected_paths_and_leaf_files_fail_closed() {
     let directory = tempfile::tempdir().expect("temporary root");
     let root = temporary_root(directory.path(), "root").expect("trusted root");

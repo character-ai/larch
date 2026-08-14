@@ -21,9 +21,10 @@ use larch_adapters::{
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
-    COMPLETE_UMBRELLA_CHILD_COMPLETE, ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext,
-    DONE_PREFIX, ExternalProcessRunner, ExternalProgram, GitHubCloseReason, GitHubIssue,
-    GitHubIssueState, GitHubRepositoryRef, GitHubService, IMPLEMENTING_PREFIX, IssueMutationField,
+    COMPLETE_UMBRELLA_CHILD_COMPLETE, COMPLETE_UMBRELLA_CHILD_NEEDS_ORCHESTRATOR_FINALIZE,
+    ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext, DONE_PREFIX,
+    ExternalProcessRunner, ExternalProgram, GitHubCloseReason, GitHubIssue, GitHubIssueState,
+    GitHubRepositoryRef, GitHubService, IMPLEMENTING_PREFIX, IssueMutationField,
     IssueMutationRequest, ProcessRequest, VendorLaunchRequest, VendorProgram, build_claude_argv,
     complete_umbrella_child_prompt, complete_umbrella_done_title, complete_umbrella_start_title,
     emit_kv, has_umbrella_proposal, parse_claude_envelope, redact, redact_issue_mutation_request,
@@ -42,6 +43,42 @@ const MAX_DIRECT_LEAVES: usize = 100;
 const CHILD_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 const CHILD_SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 const CHILD_OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ChildResultStatus {
+    Complete,
+    NeedsOrchestratorFinalize,
+    Failed,
+}
+
+impl ChildResultStatus {
+    const fn value(self) -> &'static str {
+        match self {
+            Self::Complete => "complete",
+            Self::NeedsOrchestratorFinalize => "needs-orchestrator-finalize",
+            Self::Failed => "failed",
+        }
+    }
+
+    const fn envelope_complete(self) -> bool {
+        !matches!(self, Self::Failed)
+    }
+}
+
+fn child_terminal_status(text: &str) -> Option<ChildResultStatus> {
+    let marker = text
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())?
+        .trim();
+    match marker {
+        COMPLETE_UMBRELLA_CHILD_COMPLETE => Some(ChildResultStatus::Complete),
+        COMPLETE_UMBRELLA_CHILD_NEEDS_ORCHESTRATOR_FINALIZE => {
+            Some(ChildResultStatus::NeedsOrchestratorFinalize)
+        }
+        _ => None,
+    }
+}
 
 #[derive(Subcommand)]
 pub enum CompleteUmbrellaCommand {
@@ -380,7 +417,12 @@ fn run_child(arguments: &RunChildArguments) -> Result<(), String> {
     let execution = match execution {
         Ok(execution) => execution,
         Err(error) => {
-            write_child_result(arguments, &output_root, arguments.leaf, false)?;
+            write_child_result(
+                arguments,
+                &output_root,
+                arguments.leaf,
+                ChildResultStatus::Failed,
+            )?;
             return Err(format!("child process failed: {}", error.message()));
         }
     };
@@ -393,21 +435,17 @@ fn run_child(arguments: &RunChildArguments) -> Result<(), String> {
     )?;
     write_child_stderr(arguments, &output_root, &execution)?;
     let parsed = parse_claude_envelope(&raw);
-    let marker_ok = parsed
-        .text
-        .lines()
-        .rev()
-        .find(|line| !line.trim().is_empty())
-        .is_some_and(|line| line.trim() == COMPLETE_UMBRELLA_CHILD_COMPLETE);
+    let result_status = child_terminal_status(&parsed.text);
     let success = execution.status().success()
         && !execution.stdout_truncated()
         && !execution.stderr_truncated()
-        && marker_ok;
-    write_child_result(arguments, &output_root, arguments.leaf, success)?;
+        && result_status.is_some();
+    let result_status = result_status.unwrap_or(ChildResultStatus::Failed);
+    write_child_result(arguments, &output_root, arguments.leaf, result_status)?;
     if !success {
         return Err("child did not return a complete, bounded success envelope".to_owned());
     }
-    emit_kv("CHILD_STATUS", "complete");
+    emit_kv("CHILD_STATUS", result_status.value());
     emit_kv("CHILD_ISSUE", &arguments.leaf.to_string());
     Ok(())
 }
@@ -1035,12 +1073,16 @@ fn write_child_result(
     arguments: &RunChildArguments,
     root: &TemporaryRoot,
     leaf: u64,
-    success: bool,
+    status: ChildResultStatus,
 ) -> Result<(), String> {
-    let status = if success { "complete" } else { "failed" };
     let text = format!(
         "CHILD_STATUS={status}\nCHILD_ISSUE={leaf}\nCHILD_ENVELOPE_COMPLETE={}\n",
-        if success { "true" } else { "false" }
+        if status.envelope_complete() {
+            "true"
+        } else {
+            "false"
+        },
+        status = status.value(),
     );
     write_private_file(&arguments.result_env, &text, &arguments.output_root, root)
 }

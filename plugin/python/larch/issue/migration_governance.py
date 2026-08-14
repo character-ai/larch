@@ -46,9 +46,7 @@ _RECEIPT_MARKER_RE: Final = re.compile(
 _SHA256_HEX_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _SHA1_HEX_RE: Final = re.compile(r"^[0-9a-f]{40}$")
 _NONNEGATIVE_INT_RE: Final = re.compile(r"^(?:0|[1-9][0-9]*)$")
-_SHARED_OWNER_PATTERN: Final = (
-    r"(?:launchers?|adapters?|registries|registry|resolvers?|clients?|state[ -]machines?)"
-)
+_SHARED_OWNER_PATTERN: Final = r"(?:launchers?|adapters?|registries|registry|resolvers?|clients?|state[ -]machines?)"
 _OWNER_MODIFIER_PATTERN: Final = (
     r"(?:(?!(?:against|current|existing|for|from|in|into|on|through|to|using|via|with)\b)"
     r"[A-Za-z0-9_-]+[ \t]+)"
@@ -120,9 +118,7 @@ RECEIPT_STALE_REASONS: Final = frozenset(
         REASON_STALE_OWNER_SNAPSHOT,
     }
 )
-RECEIPT_SEMANTIC_REVALIDATION_REASONS: Final = frozenset(
-    {REASON_STALE_PLAN_BASE_SCOPE}
-)
+RECEIPT_SEMANTIC_REVALIDATION_REASONS: Final = frozenset({REASON_STALE_PLAN_BASE_SCOPE})
 
 
 _OWNER_ROW_MIN_PARTS: Final = 2
@@ -283,7 +279,9 @@ class GovernanceGateVerdict:
     def blocking_reasons(self) -> tuple[str, ...]:
         """Operator-visible blocking tokens from parity and freshness."""
         blocking = [
-            reason for reason in self.parity.reasons if _is_blocking_parity_reason(reason)
+            reason
+            for reason in self.parity.reasons
+            if _is_blocking_parity_reason(reason)
         ]
         blocking.extend(self.freshness.reasons)
         blocking.extend(self.owners.reasons)
@@ -394,7 +392,10 @@ def parse_receipt(*, body: str) -> PlanReceipt | None:
     for idx, line in enumerate(lines):
         if idx in fenced:
             continue
-        if _RECEIPT_MARKER_RE.match(line) is not None and _RECEIPT_RE.match(line) is None:
+        if (
+            _RECEIPT_MARKER_RE.match(line) is not None
+            and _RECEIPT_RE.match(line) is None
+        ):
             return None
         match = _RECEIPT_RE.match(line)
         if match is None:
@@ -488,7 +489,10 @@ def upsert_receipt(*, body: str, receipt: PlanReceipt) -> str:
             peek = idx + 1
             while peek < len(lines) and lines[peek].rstrip("\r\n").strip() == "":
                 peek += 1
-            if peek < len(lines) and _RECEIPT_RE.match(lines[peek].rstrip("\r\n")) is not None:
+            if (
+                peek < len(lines)
+                and _RECEIPT_RE.match(lines[peek].rstrip("\r\n")) is not None
+            ):
                 idx = peek + 1
                 continue
             break
@@ -631,9 +635,7 @@ def load_blocker_snapshot(
     try:
         for ref in body_refs:
             if ref not in by_number:
-                by_number[ref] = _issue_freshness_row(
-                    runner, ref, repo=repo, cwd=cwd
-                )
+                by_number[ref] = _issue_freshness_row(runner, ref, repo=repo, cwd=cwd)
     except issue_block.DependencyReadError:
         return (), ParityVerdict(reasons=(REASON_BLOCKER_READ_UNAVAILABLE,))
     rows = tuple(sorted(by_number.values(), key=lambda item: item.number))
@@ -642,9 +644,7 @@ def load_blocker_snapshot(
     return rows, parity
 
 
-def _tracked_paths_at_sha(
-    runner: Runner, *, sha: str, cwd: str
-) -> frozenset[str]:
+def _tracked_paths_at_sha(runner: Runner, *, sha: str, cwd: str) -> frozenset[str]:
     result = git.ls_tree_paths(runner, sha, cwd=cwd)
     if result.returncode != 0:
         raise ShipError("base-scope-ls-tree-failed")
@@ -655,9 +655,7 @@ def _tracked_paths_at_sha(
     return frozenset(part for part in parts if part)
 
 
-def _blob_oid_at_sha(
-    runner: Runner, *, sha: str, path: str, cwd: str
-) -> str:
+def _blob_oid_at_sha(runner: Runner, *, sha: str, path: str, cwd: str) -> str:
     result = git.ls_tree_entry(runner, sha, path, cwd=cwd)
     if result.returncode != 0:
         raise ShipError("base-scope-blob-lookup-failed")
@@ -675,7 +673,9 @@ def _blob_oid_at_sha(
     return oid
 
 
-def declared_scope_paths(*, plan_inner: str, tracked: frozenset[str]) -> tuple[str, ...]:
+def declared_scope_paths(
+    *, plan_inner: str, tracked: frozenset[str]
+) -> tuple[str, ...]:
     """Resolve plan headings to concrete tracked paths (globs expanded)."""
     paths: set[str] = set()
     for heading in plan_grammar.iter_plan_headings(plan_inner):
@@ -683,9 +683,7 @@ def declared_scope_paths(*, plan_inner: str, tracked: frozenset[str]) -> tuple[s
         if not token or _path_has_unsafe_shape(token):
             continue
         if _is_glob_path(token):
-            paths.update(
-                path for path in tracked if fnmatch.fnmatchcase(path, token)
-            )
+            paths.update(path for path in tracked if fnmatch.fnmatchcase(path, token))
             continue
         paths.add(token)
     return tuple(sorted(paths))
@@ -770,13 +768,14 @@ def _migration_section_text(*, plan_inner: str) -> str:
     migration_lines: list[str] = []
     for event in plan_grammar.iter_heading_events(plan_inner):
         if event.generic_level_two:
-            in_migration = event.text.strip().casefold() == "## breaking changes and migration"
+            in_migration = (
+                event.text.strip().casefold() == "## breaking changes and migration"
+            )
             continue
         if in_migration:
             stripped: str = event.text.strip()
             if any(
-                stripped.startswith(f"{key}:")
-                for key in plan_grammar.TRAILER_KEYS
+                stripped.startswith(f"{key}:") for key in plan_grammar.TRAILER_KEYS
             ) or stripped.casefold().startswith("confidence:"):
                 break
             migration_lines.append(event.text)
@@ -868,14 +867,16 @@ def _validate_reuse_sources(
         )
         creates: set[str] = set()
         if parsed.block is not None:
-            creates = {row.owner_key for row in parsed.block.owners if row.kind == "CREATE"}
+            creates = {
+                row.owner_key for row in parsed.block.owners if row.kind == "CREATE"
+            }
         snapshot_ok = (
-            (receipt_missing or (
+            receipt_missing
+            or (
                 receipt is not None
                 and receipt.owners_sha256 == hash_owner_rows(rows=parsed.raw_rows)
-            ))
-            and owner.owner_key in creates
-        )
+            )
+        ) and owner.owner_key in creates
         if not snapshot_ok:
             reasons.append(
                 f"reuse-owner-snapshot-invalid owner={owner.owner_key} issue=#{owner.source_issue}"
@@ -888,7 +889,10 @@ def _validate_reuse_sources(
 
 
 def _active_owner_conflicts(
-    *, issue: int, block: issue_wire.OwnerBlock, active_rows: Sequence[open_rows.OpenIssueRow]
+    *,
+    issue: int,
+    block: issue_wire.OwnerBlock,
+    active_rows: Sequence[open_rows.OpenIssueRow],
 ) -> tuple[str, ...]:
     creates = {row.owner_key for row in block.owners if row.kind == "CREATE"}
     conflicts: set[tuple[str, int]] = set()
@@ -979,9 +983,9 @@ def audit_stale_implementation_leases_snapshot(
         if lease is None or lease.branch in open_pr_branches:
             continue
         try:
-            updated = datetime.strptime(
-                lease.updated_at, "%Y-%m-%dT%H:%M:%SZ"
-            ).replace(tzinfo=UTC)
+            updated = datetime.strptime(lease.updated_at, "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=UTC
+            )
         except ValueError:
             continue
         age_hours = int((current - updated).total_seconds() // 3600)
@@ -1014,7 +1018,9 @@ def evaluate_owner_admission(
     parsed = issue_wire.parse_owner_block(body=body)
     reasons: list[str] = []
     if parsed.defects:
-        reasons.extend(f"owner-block-invalid defect={defect}" for defect in parsed.defects)
+        reasons.extend(
+            f"owner-block-invalid defect={defect}" for defect in parsed.defects
+        )
     if migration_requires_owner_block(plan_inner=plan_inner) and parsed.block is None:
         reasons.append(REASON_MISSING_OWNER_BLOCK)
     if parsed.block is None:
@@ -1141,10 +1147,7 @@ def _verify_receipt_refresh_result(
     expected_plan_sha256: str | None,
     expected_prior_receipt: PlanReceipt | None,
 ) -> None:
-    if (
-        expected_plan_sha256 is not None
-        and receipt.plan_sha256 != expected_plan_sha256
-    ):
+    if expected_plan_sha256 is not None and receipt.plan_sha256 != expected_plan_sha256:
         raise ShipError("plan-receipt-refresh-plan-mismatch")
     if expected_prior_receipt is not None and (
         receipt.plan_sha256 != expected_prior_receipt.plan_sha256
@@ -1239,9 +1242,7 @@ def read_issue_body(
     runner: Runner, *, issue: str, repo: str, cwd: str | None = None
 ) -> str:
     """Read the issue body through the typed GitHub adapter."""
-    result = gh.issue_view_field_read(
-        runner, issue, "body", repo=repo or None, cwd=cwd
-    )
+    result = gh.issue_view_field_read(runner, issue, "body", repo=repo or None, cwd=cwd)
     if result.returncode != 0:
         raise ShipError("issue-body-read-failed")
     try:
@@ -1329,6 +1330,64 @@ def parse_rust_line_budget_deviation(
     )
 
 
+def refresh_rust_line_budget_deviation(
+    *,
+    plan_inner: str,
+    base_sha: str,
+    head_sha: str,
+    added_lines: int,
+) -> str:
+    """Refresh only the measured fields of one valid durable deviation record."""
+    parsed = parse_rust_line_budget_deviation(plan_inner=plan_inner)
+    if parsed.defects or parsed.deviation is None:
+        raise ShipError("Rust line budget deviation is missing or malformed")
+    if (
+        _SHA1_HEX_RE.fullmatch(base_sha) is None
+        or _SHA1_HEX_RE.fullmatch(head_sha) is None
+        or added_lines < 0
+    ):
+        raise ShipError("Rust line budget refresh inputs are invalid")
+    lines = plan_inner.splitlines(keepends=True)
+    fenced = plan_grammar.balanced_fence_line_indices(lines)
+    headings = [
+        index
+        for index, line in enumerate(lines)
+        if index not in fenced
+        and line.rstrip("\r\n") == RUST_LINE_BUDGET_DEVIATION_HEADING
+    ]
+    if len(headings) != 1:
+        raise ShipError("Rust line budget deviation is missing or malformed")
+    start = headings[0] + 1
+    end = next(
+        (
+            index
+            for index in range(start, len(lines))
+            if index not in fenced and lines[index].startswith("## ")
+        ),
+        len(lines),
+    )
+    replacements = {
+        "- Base SHA: ": base_sha,
+        "- Head SHA: ": head_sha,
+        "- Added non-generated Rust lines: ": str(added_lines),
+    }
+    replaced = set[str]()
+    for index in range(start, end):
+        if index in fenced:
+            continue
+        for prefix, value in replacements.items():
+            if lines[index].startswith(prefix):
+                suffix = "\r\n" if lines[index].endswith("\r\n") else "\n"
+                if not lines[index].endswith(("\n", "\r")):
+                    suffix = ""
+                lines[index] = f"{prefix}{value}{suffix}"
+                replaced.add(prefix)
+                break
+    if replaced != set(replacements):
+        raise ShipError("Rust line budget deviation is missing or malformed")
+    return "".join(lines)
+
+
 def governance_gate_main(argv: list[str]) -> int:
     """Evaluate one existing governance gate for a Rust-owned caller.
 
@@ -1354,7 +1413,9 @@ def governance_gate_main(argv: list[str]) -> int:
         if _REPOSITORY_RE.fullmatch(repository) is None:
             raise GovernanceGateError("--repo must be exactly owner/name")
         if _SHA1_HEX_RE.fullmatch(head_sha) is None:
-            raise GovernanceGateError("--head-sha must be a 40-character hexadecimal SHA")
+            raise GovernanceGateError(
+                "--head-sha must be a 40-character hexadecimal SHA"
+            )
         repo_root = larch_io.validate_trusted_directory(repo_root)
         body = larch_io.read_trusted_text(body_file, root=body_file.parent)
         verdict = evaluate_governance_gate(
@@ -1410,7 +1471,9 @@ def _read_preflight_refresh_receipt(
     if receipt is None:
         raise GovernanceGateError("preflight receipt identity is unavailable")
     if receipt.base_sha != request.previous_base_sha:
-        raise GovernanceGateError("preflight receipt base does not match scope revalidation")
+        raise GovernanceGateError(
+            "preflight receipt base does not match scope revalidation"
+        )
     if receipt.plan_sha256 != expected_plan_sha256:
         raise GovernanceGateError("preflight receipt plan does not match checked plan")
     return receipt
@@ -1464,10 +1527,10 @@ def _render_preflight_scope_drift(
 ) -> str:
     """Render a bounded, path-only record for a reviewed scope refresh."""
     if _SHA1_HEX_RE.fullmatch(previous_base_sha) is None:
-        raise GovernanceGateError("--previous-base-sha must be a 40-character hexadecimal SHA")
-    previous_tracked = _tracked_paths_at_sha(
-        runner, sha=previous_base_sha, cwd=cwd
-    )
+        raise GovernanceGateError(
+            "--previous-base-sha must be a 40-character hexadecimal SHA"
+        )
+    previous_tracked = _tracked_paths_at_sha(runner, sha=previous_base_sha, cwd=cwd)
     target_tracked = _tracked_paths_at_sha(runner, sha=target_base_sha, cwd=cwd)
     scope_paths = declared_scope_paths(
         plan_inner=plan_inner,
@@ -1486,7 +1549,9 @@ def _render_preflight_scope_drift(
             raise ShipError("plan-receipt-scope-diff-failed")
         diff_lines = result.stdout.splitlines()
     else:
-        diff_lines = ["(no declared file paths resolved; scope drift was owner-key-only)"]
+        diff_lines = [
+            "(no declared file paths resolved; scope drift was owner-key-only)"
+        ]
     if len(diff_lines) > _PLAN_RECEIPT_SCOPE_DIFF_MAX_LINES:
         diff_lines = [
             *diff_lines[: _PLAN_RECEIPT_SCOPE_DIFF_MAX_LINES - 1],
@@ -1499,9 +1564,7 @@ def _render_preflight_scope_drift(
         rendered_rows = rendered_diff.splitlines()
         if not rendered_rows:
             rendered_rows = [json.dumps("(no declared path changed)")]
-        if any(
-            not isinstance(json.loads(row), str) for row in rendered_rows
-        ):
+        if any(not isinstance(json.loads(row), str) for row in rendered_rows):
             raise ValueError("scope diff rows are not JSON strings")
     except (TypeError, ValueError) as exc:
         raise ShipError("plan-receipt-scope-diff-redaction-failed") from exc
@@ -1542,7 +1605,9 @@ def _parse_plan_receipt_refresh_request(
     if base_ref not in _PLAN_RECEIPT_REFRESH_BASE_REFS:
         raise GovernanceGateError("--base-ref must be origin/main or upstream/main")
     if _SHA1_HEX_RE.fullmatch(previous_base_sha) is None:
-        raise GovernanceGateError("--previous-base-sha must be a 40-character hexadecimal SHA")
+        raise GovernanceGateError(
+            "--previous-base-sha must be a 40-character hexadecimal SHA"
+        )
     if _SHA1_HEX_RE.fullmatch(base_sha) is None:
         raise GovernanceGateError("--base-sha must be a 40-character hexadecimal SHA")
     return PlanReceiptRefreshRequest(
@@ -1569,11 +1634,15 @@ def plan_receipt_refresh_main(argv: list[str]) -> int:
         if not expected_plan:
             raise GovernanceGateError("preflight plan is empty")
         expected_plan_sha256 = hash_plan_block(plan_inner=expected_plan)
-        repository = request.repository or gh.resolve_repo(
-            proc, cwd=str(request.repo_root)
-        ) or ""
+        repository = (
+            request.repository
+            or gh.resolve_repo(proc, cwd=str(request.repo_root))
+            or ""
+        )
         if not repository:
-            raise GovernanceGateError("repository slug required to refresh plan receipt")
+            raise GovernanceGateError(
+                "repository slug required to refresh plan receipt"
+            )
         if _REPOSITORY_RE.fullmatch(repository) is None:
             raise GovernanceGateError("--repo must be exactly owner/name")
         request = replace(request, repository=repository)
@@ -1682,6 +1751,7 @@ __all__ = [
     "persist_plan_receipt",
     "plan_receipt_refresh_main",
     "read_issue_body",
+    "refresh_rust_line_budget_deviation",
     "render_receipt",
     "strip_adjacent_plan_receipts",
     "strip_plan_receipt_lines",
