@@ -815,6 +815,28 @@ fn initial_lease_mutation(
     issue: u64,
     request: &LeaseInitializationRequest<'_>,
 ) -> Result<(IssueMutationRequest, ImplementationLease, String), String> {
+    // A resumed bootstrap carries the preflight identity from before this run
+    // atomically installed its active title and lease. The live snapshot is
+    // already the desired postcondition when its full ownership identity
+    // matches, so preserve it instead of rejecting that expected staleness.
+    if before.state == larch_core::GitHubIssueState::Open
+        && before.title.starts_with(IMPLEMENTING_PREFIX)
+        && let Some(existing) = parse_implementation_lease(&before.body)
+        && existing.run_id == request.run_id
+        && existing.branch == request.branch
+    {
+        let title = truncate_with_prefix(
+            IMPLEMENTING_PREFIX,
+            &redact_compose(
+                strip_lifecycle_prefix(&before.title),
+                "tracking-issue title",
+            )
+            .map_err(|refusal| refusal.envelope().0)?,
+        );
+        let mutation =
+            lease_mutation_request(before, reference, issue, &before.body, request.run_id, None);
+        return Ok((mutation, existing, title));
+    }
     let expected_updated_at = chrono::DateTime::parse_from_rfc3339(request.expected_updated_at)
         .map_err(|_| "stale-identity".to_owned())?;
     let current_updated_at = chrono::DateTime::parse_from_rfc3339(&before.updated_at)
@@ -829,7 +851,7 @@ fn initial_lease_mutation(
     }
     let (base, plan) = initial_lease_identity(&before.body, request.head_sha)?;
     if let Some(existing) = parse_implementation_lease(&before.body)
-        && existing.run_id != request.run_id
+        && (existing.run_id != request.run_id || existing.branch != request.branch)
     {
         return Err("implementation-lease-run-mismatch".to_owned());
     }
@@ -2655,6 +2677,88 @@ mod tests {
         assert_eq!(
             initial_lease_mutation(&before, &reference, 7, &future),
             Err("stale-identity".to_owned())
+        );
+    }
+
+    #[test]
+    fn initial_lease_resume_reuses_only_the_matching_active_lease() {
+        let reference =
+            larch_core::GitHubRepositoryRef::new("owner", "repo").expect("valid repository");
+        let existing = ImplementationLease {
+            run_id: "run-7".to_owned(),
+            branch: "feature/work".to_owned(),
+            base: "a".repeat(40),
+            plan: "b".repeat(64),
+            updated_at: "2026-08-10T00:00:00Z".to_owned(),
+        };
+        let receipt = format!(
+            "<!-- larch:plan-receipt v1 plan_sha256={} base_sha={} blockers_sha256={} owners_sha256={} -->\n",
+            existing.plan,
+            existing.base,
+            "c".repeat(64),
+            "d".repeat(64),
+        );
+        let preflight_title = "[DESIGNED] Work";
+        let preflight_labels = std::collections::BTreeSet::from(["alpha".to_owned()]);
+        let preflight_body = receipt;
+        let before = larch_core::IssueMutationSnapshot {
+            repository: reference.clone(),
+            issue: 7,
+            title: format!("{IMPLEMENTING_PREFIX}Work"),
+            body: larch_core::upsert_implementation_lease(&preflight_body, &existing)
+                .expect("lease installs"),
+            labels: preflight_labels.clone(),
+            state: larch_core::GitHubIssueState::Open,
+            updated_at: "2026-08-10T00:00:01Z".to_owned(),
+        };
+        let expected_body_sha256 = sha256_text(&preflight_body);
+        let expected_title_sha256 = sha256_text(preflight_title);
+        let expected_labels_sha256 = super::sha256_labels(&preflight_labels);
+        let request = LeaseInitializationRequest {
+            repository: "owner/repo",
+            issue: "7",
+            run_id: &existing.run_id,
+            branch: &existing.branch,
+            head_sha: &existing.base,
+            expected_updated_at: "2026-08-10T00:00:00Z",
+            expected_body_sha256: &expected_body_sha256,
+            expected_title_sha256: &expected_title_sha256,
+            expected_labels_sha256: &expected_labels_sha256,
+        };
+
+        let (mutation, lease, title) =
+            initial_lease_mutation(&before, &reference, 7, &request).expect("resume admitted");
+
+        assert_eq!(lease, existing);
+        assert_eq!(title, before.title);
+        assert_eq!(mutation.expected_updated_at, before.updated_at);
+        assert_eq!(
+            mutation.fields,
+            std::collections::BTreeSet::from(
+                [larch_core::IssueMutationField::ImplementationLease,]
+            )
+        );
+        assert_eq!(mutation.title, None);
+        assert_eq!(mutation.body.as_deref(), Some(before.body.as_str()));
+        assert!(
+            !larch_core::mutation_would_change(&before, &mutation, mutation.body.as_deref()),
+            "the matching lease is already the desired postcondition"
+        );
+
+        let expected_body_sha256 = sha256_text(&before.body);
+        let expected_title_sha256 = sha256_text(&before.title);
+        let expected_labels_sha256 = super::sha256_labels(&before.labels);
+        let different_branch = LeaseInitializationRequest {
+            branch: "feature/other",
+            expected_updated_at: &before.updated_at,
+            expected_body_sha256: &expected_body_sha256,
+            expected_title_sha256: &expected_title_sha256,
+            expected_labels_sha256: &expected_labels_sha256,
+            ..request
+        };
+        assert_eq!(
+            initial_lease_mutation(&before, &reference, 7, &different_branch),
+            Err("implementation-lease-run-mismatch".to_owned())
         );
     }
 
