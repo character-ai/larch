@@ -861,6 +861,24 @@ mod tests {
     }
 
     #[test]
+    fn replace_labels_copies_snapshot_identity_and_only_sets_labels() {
+        let snapshot = snapshot();
+        let labels = BTreeSet::from(["difficulty:hard".to_owned()]);
+        let request = IssueMutationRequest::replace_labels(&snapshot, labels.clone());
+        assert_eq!(request.repository, snapshot.repository);
+        assert_eq!(request.issue, snapshot.issue);
+        assert_eq!(request.expected_updated_at, snapshot.updated_at);
+        assert_eq!(request.expected_state, snapshot.state);
+        assert_eq!(request.fields, BTreeSet::from([IssueMutationField::Labels]));
+        assert_eq!(request.labels.as_ref(), Some(&labels));
+        assert!(request.title.is_none());
+        assert!(request.body.is_none());
+        assert!(request.marker.is_none());
+        assert!(request.lease.is_none());
+        assert_eq!(validate_issue_mutation_request(&request), Ok(()));
+    }
+
+    #[test]
     fn protected_named_block_comparison_ignores_fenced_examples() {
         let mut before = snapshot();
         before.title = String::from("[IMPLEMENTING] Protected");

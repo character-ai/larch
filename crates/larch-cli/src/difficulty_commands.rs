@@ -12,8 +12,8 @@ use std::{
 use larch_adapters::{ExactDiffRequest, GitRef, github::IssueMutationOwner};
 use larch_core::{
     AUDIT_DENOMINATOR, BuildRecord, DifficultyFloor, DifficultyRating, FLOOR_MANIFEST_RELPATH,
-    GitHubLabelCreate, GitHubService as _, IssueMutationRequest, MergeExplicit,
-    RUBRIC, blank_merge_explicit, build_record, difficulty_line, known_labels, label_for_tier,
+    GitHubLabelCreate, GitHubService as _, IssueMutationRequest, MergeExplicit, RUBRIC,
+    blank_merge_explicit, build_record, difficulty_line, known_labels, label_for_tier,
     load_floor_manifest, load_record_data, merge_existing_record_fields, normalize_tier,
     plan_difficulty, rating_from_tier, read_changed_paths, read_rating_file,
     refresh_existing_record, resolve_panel_tier, tier_valid, unsigned_integer,

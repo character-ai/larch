@@ -1,8 +1,8 @@
 use crate::{
     argparse_compat::{
         ParsedCommandLine, choice_error, finish_parse, looks_like_option, missing,
-        parse_with_flags, parse_with_flags_and_exact, python_io_error, python_repr,
-        resolve_option, split_inline_option, usage_error, write_stdout,
+        parse_with_flags, parse_with_flags_and_exact, python_io_error, python_repr, resolve_option,
+        split_inline_option, usage_error, write_stdout,
     },
     run_log_entry_commands::{FailureRecordRequest, record_execution_failure},
 };

@@ -308,6 +308,20 @@ fn write_record_missing_output_is_argparse_usage() {
 }
 
 #[test]
+fn write_record_rejects_an_invalid_rater_choice() {
+    let output = larch(&[
+        "difficulty",
+        "write-record",
+        "--output",
+        "x.json",
+        "--rater",
+        "EASY",
+    ]);
+    assert_eq!(code(&output), 2);
+    assert!(stderr(&output).contains("argument --rater: invalid choice: 'EASY'"));
+}
+
+#[test]
 fn help_text_matches_the_frozen_python_oracle() {
     for verb in [
         "validate-rating",
