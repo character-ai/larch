@@ -439,7 +439,7 @@ test-findings-classification:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-findings-classification.sh
 
 test-review-findings-classification:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_tally.py -k findings_classification
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_tally_commands
 
 test-plan-review-loop:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'loop_dedup or migrated_collector or not_substantive_count or round_meta or emit_rejected or run_round_body_subprocess or run_round_body_in_process or (continuation and not step3_state)'
@@ -767,7 +767,7 @@ test-prune-nit-findings:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_commands prune_nit_findings
 
 test-tally-code-votes:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_tally.py -k '(tally_ or attributed_ballot or neutralized_ballot or ledger_reason) and not emit_tally'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_tally_commands tally_
 
 .PHONY: test-check-reviewer-failure-threshold
 test-check-reviewer-failure-threshold:
@@ -779,10 +779,10 @@ test-dispatch-code-voters:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test voter_dispatch_commands
 
 test-emit-tally:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_tally.py -k emit_tally
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_tally_commands emit_tally
 
 test-log-phase:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_tally.py -k log_phase
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_tally_commands log_phase
 
 # test-review-and-fix runs all sections sequentially (local-dev convenience, NOT a test-harnesses
 # prerequisite — see CARVE_OUTS in scripts/test-harness-shards-coverage.sh). CI uses the four

@@ -105,6 +105,7 @@ mod research_commands;
 mod review_commands;
 mod review_dispatch_panel;
 mod review_findings_commands;
+mod review_tally_commands;
 mod session_closeout_commands;
 mod session_env_commands;
 mod session_gate_commands;

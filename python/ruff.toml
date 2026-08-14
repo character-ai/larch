@@ -670,13 +670,6 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
-"review_tally.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "run_log_batch.py" = [
     "C901",
     "PLR0913",

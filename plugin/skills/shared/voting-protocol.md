@@ -4,7 +4,7 @@ Shared voting protocol for adjudicating review findings. Used by `/design` (plan
 
 ## Overview
 
-After deduplication, a panel casts YES/NO votes on each finding. `/design` plan review normally uses three voters (Claude, Codex, Cursor). `/review` and `/implement` Step 5 code review use three fixed slots: `codex-validity`, `codex-plan-fidelity`, and `codex-pragmatism`; each waterfalls Codex, then Cursor, then Claude. Full-tier findings need 2+ YES votes. Unavailable voters degrade through the tier table and never fail open. `/review` dispatch is `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent dispatch-voters`; tally is `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review tally-code-votes`. Original reviewers earn points from vote outcomes.
+After deduplication, a panel casts YES/NO votes on each finding. `/design` plan review normally uses three voters (Claude, Codex, Cursor). `/review` and `/implement` Step 5 code review use three fixed slots: `codex-validity`, `codex-plan-fidelity`, and `codex-pragmatism`; each waterfalls Codex, then Cursor, then Claude. Full-tier findings need 2+ YES votes. Unavailable voters degrade through the tier table and never fail open. `/review` dispatch is `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent dispatch-voters`; tally is `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" review tally-code-votes`. Original reviewers earn points from vote outcomes.
 
 ## Ballot Format
 
@@ -117,7 +117,7 @@ Voter dispatch is owned by runtime dispatchers, not prompt-side launch scaffoldi
 
 - `/design` plan review voter dispatch is owned by `scripts/larch.sh plan-review voter-dispatch` in `crates/larch-cli/src/plan_review_commands.rs`.
 - `/review` and `/implement` Step 5 code-review voter dispatch is owned by `scripts/larch.sh agent dispatch-voters`.
-- Tally ownership remains with the existing Python tally verbs, including `python/cli.py plan-review tally` and `python/cli.py review tally-code-votes`.
+- Plan-review tally remains Python-owned (`python/cli.py plan-review tally`); code-review tally, emit, and phase logging are Rust-owned (`scripts/larch.sh review tally-code-votes`, `emit-tally`, and `log-phase`).
 - The live Codex dispatch surface and output stem are documentary tokens here only: `${CLAUDE_PLUGIN_ROOT:?}/scripts/larch.sh agent launch-codex-exec` and `codex-vote-output.txt`.
 
 Do not launch voters directly from the orchestrator on `/design`, `/review`, or `/implement` Step 5 paths. The dispatchers own availability checks, fallbacks, sentinel waits, external result validation, and status emission.

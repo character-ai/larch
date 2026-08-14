@@ -21,7 +21,7 @@ Mode activation is fail-closed: if `--diff` and positional description are both 
 
 Progress and prompt pins: read `step-name-registry.tsv`; reviewer prompts preserve `code-quality / risk-integration / correctness / architecture / security`; specialist prompts are rendered through `${CLAUDE_PLUGIN_ROOT}/python/cli.py render specialist`; description mode preserves the `### In-Scope Findings` / `### Out-of-Scope Observations` dual-list contract hints.
 
-Commands: `${CLAUDE_PLUGIN_ROOT}/python/cli.py review core`, `review tally-code-votes`, `review emit-tally`, `review log-phase`, and `review compose-findings` are in `${CLAUDE_PLUGIN_ROOT}/python/cli.py`. Rust: `scripts/larch.sh review aggregate-findings`, `scripts/larch.sh review prune-nit-findings`, `scripts/larch.sh review reviewer-prune`, `scripts/larch.sh review gather-context`, `scripts/larch.sh review dispatch-panel`, `scripts/larch.sh review collect-findings`, `scripts/larch.sh review check-reviewer-failure-threshold`, `scripts/larch.sh agent dispatch-voters`, `scripts/larch.sh agent dispatch-waterfall`, and `scripts/larch.sh agent launch-claude-subprocess`. Harnesses: `crates/larch-cli/tests/review_commands.rs`, `crates/larch-cli/tests/review_dispatch_panel.rs`, `crates/larch-cli/tests/voter_dispatch_commands.rs`, and `crates/larch-cli/tests/waterfall_commands.rs`.
+Commands: `${CLAUDE_PLUGIN_ROOT}/python/cli.py review core` and `review compose-findings` are in `${CLAUDE_PLUGIN_ROOT}/python/cli.py`. Rust: `scripts/larch.sh review tally-code-votes`, `scripts/larch.sh review emit-tally`, `scripts/larch.sh review log-phase`, `scripts/larch.sh review aggregate-findings`, `scripts/larch.sh review prune-nit-findings`, `scripts/larch.sh review reviewer-prune`, `scripts/larch.sh review gather-context`, `scripts/larch.sh review dispatch-panel`, `scripts/larch.sh review collect-findings`, `scripts/larch.sh review check-reviewer-failure-threshold`, `scripts/larch.sh agent dispatch-voters`, `scripts/larch.sh agent dispatch-waterfall`, and `scripts/larch.sh agent launch-claude-subprocess`. Harnesses: `crates/larch-cli/tests/review_commands.rs`, `crates/larch-cli/tests/review_tally_commands.rs`, `crates/larch-cli/tests/review_dispatch_panel.rs`, `crates/larch-cli/tests/voter_dispatch_commands.rs`, and `crates/larch-cli/tests/waterfall_commands.rs`.
 
 Shared prune-decision helper: `${CLAUDE_PLUGIN_ROOT}/python/larch/review/review_pipeline.py` owns prune-decision status and env writing.
 
@@ -53,7 +53,7 @@ Print `> **🔶 /review 2: launch reviewers**`. `review core` calls `review disp
 <!-- step:3 — Review Cycle -->
 ## Step 3 — Review Cycle
 
-Print `> **🔶 /review 3: review cycle**`. **MANDATORY: READ ENTIRE FILE** before executing Step 3: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md`. Voting is now run by `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent dispatch-voters` + `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review tally-code-votes` inside `review core`. A judge panel votes on every round. Fixed Codex-primary archetype voters run for validity, plan-fidelity, and pragmatism, with Cursor then Claude fallback per slot. When both externals are unavailable, the panel falls back to a single Claude voter in binding-single tier. A failed or narrative-only expected voter is treated as an abstention.
+Print `> **🔶 /review 3: review cycle**`. **MANDATORY: READ ENTIRE FILE** before executing Step 3: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md`. Voting is now run by `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent dispatch-voters` + `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" review tally-code-votes` inside `review core`. A judge panel votes on every round. Fixed Codex-primary archetype voters run for validity, plan-fidelity, and pragmatism, with Cursor then Claude fallback per slot. When both externals are unavailable, the panel falls back to a single Claude voter in binding-single tier. A failed or narrative-only expected voter is treated as an abstention.
 
 `review core` neutralizes voter-facing `findings.md` before voting. Normal voters and MAV read the same `anonymous` ballot; scoring attribution stays out of band in `proposer-map.tsv`. The validation-exhausted tally path must build and pass the current round sidecar, not reuse a stale tmpdir sidecar.
 
@@ -107,7 +107,7 @@ if [[ "$review_run_id_valid" = true && "${SCOUT_STATUS:-na}" != "na" ]]; then
        manifest_basename: $manifest_basename,
        yield_tsv_basename: $yield_tsv_basename
      }' > "$scout_payload_file"
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review log-phase \
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" review log-phase \
     --run-id="$RUN_ID" \
     --log-root "$review_log_root" \
     --batch review-scout-manifest \

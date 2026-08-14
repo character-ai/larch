@@ -23,8 +23,8 @@ from larch.core import config
 from larch.core.repo_roots import larch_entrypoint
 from larch.calibration import difficulty
 from larch.review import review_core_body
-from larch.review import review_tally
 from larch.review import voting
+from larch.review.review_pipeline_shared import CodeReviewTallyRequest, surface_warning
 from larch.review._raf_util import (
     _capture_emit_to,
     _core_round_state,
@@ -297,7 +297,7 @@ def _surface_parse_failed_warning(*, core: dict[str, str], round_num: int, sessi
     pf_count = int(pf_count_raw) if pf_count_raw.isdigit() else 0
     if pf_count == 0:
         return
-    review_tally.surface_warning(
+    surface_warning(
         session_env_path=session_env_path,
         entry=(
             f"- **code-review panel (round {round_num})**: {pf_count} voter slot(s) emitted "
@@ -317,7 +317,7 @@ def _surface_under_quorum_warning(*, core: dict[str, str], round_num: int, sessi
     voter_count_raw = core.get("VOTER_COUNT", "0")
     voter_count = int(voter_count_raw) if voter_count_raw.isdigit() else 0
     quorum = voter_count // 2 + 1 if voter_count > 0 else 0
-    review_tally.surface_warning(
+    surface_warning(
         session_env_path=session_env_path,
         entry=(
             f"- **code-review panel (round {round_num})**: {uq_count} finding(s) "
@@ -608,7 +608,7 @@ def _build_targeted_tally_request(
     args: argparse.Namespace,
     merged_voter_files: list[str],
     voter_tools: list[str],
-) -> review_tally.TallyRequest | None:
+) -> CodeReviewTallyRequest | None:
     findings = round_dir / "findings.md"
     proposer_map = round_dir / "proposer-map.tsv"
     if not findings.is_file() or not proposer_map.is_file() or not merged_voter_files or len(merged_voter_files) != len(voter_tools):
@@ -623,7 +623,7 @@ def _build_targeted_tally_request(
     not_substantive = _strict_env_int(threshold, "NOT_SUBSTANTIVE_SLOTS")
     core_manifest = core.get("PANEL_MANIFEST", "")
     manifest_file = str(panel_manifest) if panel_manifest.is_file() else core_manifest if core_manifest and Path(core_manifest).is_file() else ""
-    return review_tally.TallyRequest(
+    return CodeReviewTallyRequest(
         ballot_file=str(findings),
         review_tmpdir=str(round_dir),
         voter_files=tuple(merged_voter_files),
@@ -880,7 +880,7 @@ def _surface_dropped_reviewer_warning(
     )
     if dynamic_failed == 0 and dynamic_dropped == 0 and not has_dynamic_backstop:
         return
-    review_tally.surface_warning(
+    surface_warning(
         session_env_path=session_env_path,
         entry=(
             f"- **code-review panel (round {round_num})**: dynamic reviewer slot drop/failure detected "

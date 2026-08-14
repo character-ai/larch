@@ -29,7 +29,6 @@ from larch.core import rust_runtime
 from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, repo_root_probe
 from larch.report import progress_file
 from larch.core import redact
-from larch.review import review_tally
 from larch.review.dispatch_shared import apply_new_process_group, optional_positive_float
 from larch.report import run_log_batch
 from larch.review import voting

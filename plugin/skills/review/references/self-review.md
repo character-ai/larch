@@ -17,7 +17,7 @@
 6. **Summary/tally refresh**: after adjudication, replace the stale panel-failed zero-finding summary. Ensure `REVIEW_MODE` is already bound to the active mode (`diff` or `description`; the heavy-worker path is always `diff`). Write `$REVIEW_TMPDIR/self-review-tally.env` with counts derived from self-review artifacts: `ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, and `NEUTRAL_COUNT`. Then invoke:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review emit-tally \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" review emit-tally \
   --tally-file "$REVIEW_TMPDIR/self-review-tally.env" \
   --accepted-findings-file "$ACCEPTED_FINDINGS_FILE" \
   --oos-file "$REVIEW_TMPDIR/oos.md" \

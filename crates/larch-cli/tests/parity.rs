@@ -1090,6 +1090,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "reviewer-prune",
     ),
     CleanInstallCase::new(
+        "clean-install-review-emit-tally",
+        "review",
+        "emit-tally",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-log-phase",
+        "review",
+        "log-phase",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-tally-code-votes",
+        "review",
+        "tally-code-votes",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-parse-codex-usage",
         "agent",
         "parse-codex-usage",
