@@ -16,6 +16,7 @@ use crate::{
     argparse_compat::{ParsedCommandLine, parse, usage_error},
     launcher_support::{confined_target, write_confined},
     python_verb::{plugin_root_directory, run_python_verb},
+    runtime_entrypoint::run_verified_larch,
     waterfall_commands::dispatch_for_review,
 };
 use larch_adapters::{atomic_write_utf8_in, ensure_directory_chain};
@@ -776,18 +777,18 @@ fn apply_prune(
             std::process::id()
         ));
         if evaluated {
-            let output = run_python(vec![
-                "review".to_owned(),
-                "reviewer-prune".to_owned(),
-                "filter".to_owned(),
-                "--ledger".to_owned(),
-                options.prune_ledger.clone(),
-                "--round".to_owned(),
-                options.round_num.to_string(),
-                "--manifest".to_owned(),
-                manifest.display().to_string(),
-                "--out".to_owned(),
-                temporary.display().to_string(),
+            let output = run_verified_larch(&[
+                "review".into(),
+                "reviewer-prune".into(),
+                "filter".into(),
+                "--ledger".into(),
+                options.prune_ledger.clone().into(),
+                "--round".into(),
+                options.round_num.to_string().into(),
+                "--manifest".into(),
+                manifest.display().to_string().into(),
+                "--out".into(),
+                temporary.display().to_string().into(),
             ]);
             match output {
                 Ok(output) if output.status().success() => {

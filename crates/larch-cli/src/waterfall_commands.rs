@@ -221,6 +221,7 @@ struct Options {
     claude_read_tools_add_dir: String,
     panel_artifact_dir: String,
     panel_round_num: String,
+    panel_source_agent_file: String,
 }
 
 /// The result-acceptance gates one dispatch applies to every collected slot.
@@ -365,6 +366,7 @@ fn value_field<'a>(raw: &'a mut RawOptions, flag: &str) -> Option<&'a mut String
         "--claude-read-tools-add-dir" => &mut options.claude_read_tools_add_dir,
         "--panel-artifact-dir" => &mut options.panel_artifact_dir,
         "--panel-round-num" => &mut options.panel_round_num,
+        "--panel-source-agent-file" => &mut options.panel_source_agent_file,
         "--codex-present" | "--codex-available" => &mut raw.codex_present,
         "--cursor-present" | "--cursor-available" => &mut raw.cursor_present,
         _ => return None,
@@ -1022,7 +1024,9 @@ fn panel_dispatch_rows(
     tool: LaunchTool,
 ) -> Vec<(ChildEnvironment, OsString)> {
     let round_dir = round_directory(artifact_dir);
-    let source_agent = if slot.agent.is_empty() {
+    let source_agent = if !options.panel_source_agent_file.is_empty() {
+        options.panel_source_agent_file.clone()
+    } else if slot.agent.is_empty() {
         env::var("LARCH_PANEL_SOURCE_AGENT_FILE").unwrap_or_default()
     } else {
         slot.agent.clone()
@@ -2210,45 +2214,89 @@ fn publish(report: &DispatchReport<'_>) -> Result<WaterfallDispatchOutcome, Stri
     })
 }
 
-fn emit_report(outcome: &WaterfallDispatchOutcome) {
-    emit_kv("PHASE1_SLOTS", &outcome.phase1_slots.join(" "));
-    emit_kv("PHASE2_SLOTS", &outcome.phase2_slots.join(" "));
-    emit_kv("PHASE3_SLOTS", &outcome.phase3_slots.join(" "));
-    emit_kv("ALL_OUTPUT_FILES", &outcome.all_output_files.join(" "));
-    emit_kv("ALL_OUTPUT_FILES_PATH", &outcome.paths_file);
-    emit_kv("ALL_OUTPUT_TOOLS", &outcome.all_output_tools.join(" "));
-    emit_kv("FALLBACK_COUNT", &outcome.fallback_count.to_string());
-    emit_kv(
-        "COMBINED_FALLBACK_COUNT",
-        &outcome.fallback_count.to_string(),
-    );
-    emit_kv(
-        "STRAGGLER_DROPPED_COUNT",
-        &outcome.straggler_dropped_count.to_string(),
-    );
+fn report_rows(outcome: &WaterfallDispatchOutcome) -> Vec<(&'static str, String)> {
+    let mut rows = vec![
+        ("PHASE1_SLOTS", outcome.phase1_slots.join(" ")),
+        ("PHASE2_SLOTS", outcome.phase2_slots.join(" ")),
+        ("PHASE3_SLOTS", outcome.phase3_slots.join(" ")),
+        ("ALL_OUTPUT_FILES", outcome.all_output_files.join(" ")),
+        ("ALL_OUTPUT_FILES_PATH", outcome.paths_file.clone()),
+        ("ALL_OUTPUT_TOOLS", outcome.all_output_tools.join(" ")),
+        ("FALLBACK_COUNT", outcome.fallback_count.to_string()),
+        (
+            "COMBINED_FALLBACK_COUNT",
+            outcome.fallback_count.to_string(),
+        ),
+        (
+            "STRAGGLER_DROPPED_COUNT",
+            outcome.straggler_dropped_count.to_string(),
+        ),
+    ];
     if outcome.invalid_slot_drop_count > 0 {
-        emit_kv(
+        rows.push((
             "INVALID_SLOT_DROP_COUNT",
-            &outcome.invalid_slot_drop_count.to_string(),
-        );
-        emit_kv("INVALID_SLOT_DROPS_FILE", &outcome.invalid_slots_file);
+            outcome.invalid_slot_drop_count.to_string(),
+        ));
+        rows.push((
+            "INVALID_SLOT_DROPS_FILE",
+            outcome.invalid_slots_file.clone(),
+        ));
     }
     if !outcome.warning.is_empty() {
-        emit_kv("WARN", &outcome.warning);
+        rows.push(("WARN", outcome.warning.clone()));
     }
-    emit_bool("DISPATCH_OK", outcome.dispatch_ok);
-    emit_bool("STATIC_DISPATCH_OK", outcome.static_dispatch_ok);
-    emit_bool("DYNAMIC_DISPATCH_OK", outcome.dynamic_dispatch_ok);
+    rows.push(("DISPATCH_OK", word(outcome.dispatch_ok).to_owned()));
+    rows.push((
+        "STATIC_DISPATCH_OK",
+        word(outcome.static_dispatch_ok).to_owned(),
+    ));
+    rows.push((
+        "DYNAMIC_DISPATCH_OK",
+        word(outcome.dynamic_dispatch_ok).to_owned(),
+    ));
     if outcome.all_slots_dropped {
-        emit_kv("ALL_SLOTS_DROPPED", "true");
+        rows.push(("ALL_SLOTS_DROPPED", "true".to_owned()));
     }
     if !outcome.dropped_slots_file.is_empty() {
-        emit_kv("DROPPED_SLOTS_FILE", &outcome.dropped_slots_file);
+        rows.push(("DROPPED_SLOTS_FILE", outcome.dropped_slots_file.clone()));
+    }
+    rows
+}
+
+/// Render the exact `agent dispatch-waterfall` stdout contract without emitting it.
+///
+/// Review aggregation archives this stream as a forensic artifact while calling the
+/// dispatch owner in-process, so it must retain the public command's row order.
+pub fn render_dispatch_report(outcome: &WaterfallDispatchOutcome) -> String {
+    report_rows(outcome)
+        .into_iter()
+        .map(|(key, value)| render_kv_row(key, &value))
+        .collect()
+}
+
+fn render_kv_row(key: &str, value: &str) -> String {
+    // Keep the same scalar-envelope safety boundary as `larch_core::emit_kv`.
+    // This in-process rendering path must not let a path or warning forge a
+    // second line in the archived dispatch artifact.
+    assert!(
+        !key.contains(['\n', '\r']),
+        "emit_kv key {key:?} contains newline or carriage-return"
+    );
+    assert!(
+        !value.contains(['\n', '\r']),
+        "emit_kv value for {key:?} contains newline or carriage-return"
+    );
+    format!("{key}={value}\n")
+}
+
+fn emit_report(outcome: &WaterfallDispatchOutcome) {
+    for (key, value) in report_rows(outcome) {
+        emit_kv(key, &value);
     }
 }
 
-fn emit_bool(key: &str, value: bool) {
-    emit_kv(key, if value { "true" } else { "false" });
+const fn word(value: bool) -> &'static str {
+    if value { "true" } else { "false" }
 }
 
 fn fallback_warn_threshold() -> u64 {

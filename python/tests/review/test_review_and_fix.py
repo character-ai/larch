@@ -4143,19 +4143,25 @@ def test_run_coder_cursor_normalizes_api_key_before_launch(tmp_path, monkeypatch
     assert seen_env == ["key-with-padding"]
 
 
-def test_clear_reviewer_prune_round_uses_python_helper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[Path, int, Path, Path]] = []
+def test_clear_reviewer_prune_round_uses_verified_rust_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
 
-    def fake_record(ledger: Path, round_num: int, manifest: Path, classification: Path) -> None:
-        calls.append((ledger, round_num, manifest, classification))
+    def fake_run(argv: list[str], **_kwargs: object) -> object:
+        calls.append(argv)
+        return mock.Mock(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(batch_report.review_prune, "reviewer_prune_record", fake_record)
+    monkeypatch.setattr(batch_report, "_run", fake_run)
     ledger = tmp_path / "ledger.tsv"
     work_dir = tmp_path / "work"
 
     batch_report._clear_reviewer_prune_round(ledger=ledger, round_num=3, work_dir=work_dir)
 
-    assert calls == [(ledger, 3, work_dir / "reviewer-prune-clear-empty.ndjson", work_dir / "reviewer-prune-clear-classification.tsv")]
+    assert calls == [[
+        str(batch_report.larch_entrypoint(batch_report._PLUGIN_ROOT)), "review", "reviewer-prune", "record",
+        "--ledger", str(ledger), "--round", "3",
+        "--manifest", str(work_dir / "reviewer-prune-clear-empty.ndjson"),
+        "--classification", str(work_dir / "reviewer-prune-clear-classification.tsv"),
+    ]]
     assert (work_dir / "reviewer-prune-clear-empty.ndjson").read_text(encoding="utf-8") == ""
     assert "reviewer_slots" in (work_dir / "reviewer-prune-clear-classification.tsv").read_text(encoding="utf-8")
 

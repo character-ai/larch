@@ -1,5 +1,7 @@
 //! Property tests for dormant review parity invariants.
 
+use std::collections::HashSet;
+
 use larch_core::review::{
     LedgerRow, accepted_finding_points_from_severities, classify_oos_result, classify_result,
     finding_dedup_key, neutral_high_severity_rescue_to_oos, oos_fileable_from_votes, parse_ledger,
@@ -128,5 +130,51 @@ proptest! {
         );
         let key = finding_dedup_key(&block);
         prop_assert_eq!(key, format!("\u{1f}same"));
+    }
+
+    #[test]
+    fn finding_deduplication_is_idempotent_and_preserves_first_occurrence_order(
+        entries in prop::collection::vec(("[a-z]{1,8}", "[a-z]{1,12}"), 1..16),
+    ) {
+        let blocks = entries
+            .iter()
+            .enumerate()
+            .flat_map(|(index, (location, concern))| {
+                let block = |ordinal| format!(
+                    "### FINDING_{ordinal}: candidate\n- **Location**: {location}\n- **Concern**: {concern}\n"
+                );
+                [block(index + 1), block(index + 101)]
+            })
+            .collect::<Vec<_>>();
+        let deduplicate = |input: &[String]| {
+            let mut seen = HashSet::new();
+            input
+                .iter()
+                .filter(|block| seen.insert(finding_dedup_key(block)))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        let once = deduplicate(&blocks);
+        let twice = deduplicate(&once);
+        prop_assert_eq!(&once, &twice);
+
+        let mut expected_seen = HashSet::new();
+        let expected = entries
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (location, concern))| {
+                let block = format!(
+                    "### FINDING_{}: candidate\n- **Location**: {location}\n- **Concern**: {concern}\n",
+                    index + 1
+                );
+                let key = finding_dedup_key(&block);
+                expected_seen.insert(key.clone()).then_some(key)
+            })
+            .collect::<Vec<_>>();
+        let actual = once
+            .iter()
+            .map(|block| finding_dedup_key(block))
+            .collect::<Vec<_>>();
+        prop_assert_eq!(actual, expected);
     }
 }

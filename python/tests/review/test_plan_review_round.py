@@ -19,9 +19,9 @@ from typing import TYPE_CHECKING
 from larch.review import plan_review_round
 from larch.review import plan_review_tally
 from larch.review import voting
-from larch.review import review_aggregate
 from larch.review.review_pipeline_shared import parse_collector_records
 from test_support import make_zero_findings_plan_review_fake_cli
+from tests.support.foundation import run_larch
 from tests.support.review_wire import CollectorRecord, collector_text
 
 if TYPE_CHECKING:
@@ -409,6 +409,8 @@ def test_execute_round_collect_results_omits_structured_reviewer_validation(
             return subprocess.CompletedProcess(argv, 0, "REASON=insufficient-input\nAGGREGATED=false\n", "")
         if argv[:2] == ["review", "prune-nit-findings"]:
             return _prune_nit_findings_fake(argv)
+        if argv[:2] == ["review", "reviewer-prune"]:
+            return run_larch(*argv)
         if argv[:2] == ["run-log", "append-failure"]:
             append_failure_argvs.append(argv[:])
             return subprocess.CompletedProcess(argv, 0, "APPENDED=true\n", "")
@@ -612,6 +614,8 @@ def test_execute_round_logs_waterfall_dropped_slot_to_execution_issues(
             return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
         if argv[:2] == ["review", "prune-nit-findings"]:
             return _prune_nit_findings_fake(argv)
+        if argv[:2] == ["review", "reviewer-prune"]:
+            return run_larch(*argv)
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             return subprocess.CompletedProcess(
                 argv,
@@ -1159,6 +1163,8 @@ def _install_execute_round_fake(
             return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
         if argv[:2] == ["review", "prune-nit-findings"]:
             return _prune_nit_findings_fake(argv)
+        if argv[:2] == ["review", "reviewer-prune"]:
+            return run_larch(*argv)
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             return subprocess.CompletedProcess(
                 argv,
@@ -1309,12 +1315,12 @@ def test_execute_round_snapshots_aggregator_forensics_on_failure(
 
 
 def test_aggregator_forensic_snapshot_covers_round_stamped_pointers() -> None:
-    """Every basename review_aggregate round-stamps into a committed "See plan-review/round-N/..." pointer
+    """Every round-stamped aggregator basename has a committed "See plan-review/round-N/..." pointer
     must be snapshotted into that directory, or the pointer dangles after a later round clobbers the stable
     top-level path (#4996/#5004). The snapshot list is sourced from the round-stamped set, so this guards
     against the two cross-module lists drifting apart again.
     """
-    round_stamped = set(review_aggregate.ROUND_STAMPED_FORENSICS)
+    round_stamped = set(plan_review_round.ROUND_STAMPED_FORENSICS)
     snapshotted = set(plan_review_round._AGGREGATOR_FORENSIC_FILES)
     assert round_stamped <= snapshotted
 

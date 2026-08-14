@@ -75,7 +75,7 @@ Consolidated NEVER rules from the steps below. Each gives WHY; step-local mentio
 
 1. **NEVER bypass folded Step 2a sentinel prep**. **Why:** Step 2b requires sentinels before drafting. **Apply:** the Step 2b drafter wrapper runs folded Step 2a prep, writes `NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, empty `dialectic-resolutions.md`, and `.completed/step-2a`, then drafts.
 
-2. **NEVER mechanically dedupe plan-review findings by string-key clustering.** **Why:** reviewers phrase the same concern differently; string keys near-zero dedupe and inflate ballots. `/review` has `python/cli.py review aggregate-findings`; `/design` main-agent judgment owns semantic dedup. **Apply:** group findings by `what`, `scenario_or_breakage`, and `suggested_fix`; if tempted to write a helper, read instead.
+2. **NEVER mechanically dedupe plan-review findings by string-key clustering.** **Why:** reviewers phrase the same concern differently; string keys near-zero dedupe and inflate ballots. `/review` has `scripts/larch.sh review aggregate-findings`; `/design` main-agent judgment owns semantic dedup. **Apply:** group findings by `what`, `scenario_or_breakage`, and `suggested_fix`; if tempted to write a helper, read instead.
 
 3. **NEVER bypass launcher-owned rehydration and pause checks after Step 0a.** **Why:** wrappers must self-terminate at Bash boundaries so pause/resume keeps pause requests and current-env paths. **Apply:** every post-Step-0a Bash fence invokes the launcher with a bare ported Step 0/1 verb or unported `*.sh` basename. The launcher supplies source-env and Claude PID; wrappers own source-env, pause checks, folded sentinel ordering, and the Step 6 cleanup exception. Harness: `make test-design-structure` `assert_wrapper_pause_before_work`.
 
