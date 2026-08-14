@@ -762,6 +762,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-named-block-write", "named-block", "write"),
     CleanInstallCase::new("clean-install-plan-scope-paths", "plan", "scope-paths"),
+    CleanInstallCase::new(
+        "clean-install-plan-review-panel-dispatch",
+        "plan-review",
+        "panel-dispatch",
+    ),
+    CleanInstallCase::new(
+        "clean-install-plan-review-voter-dispatch",
+        "plan-review",
+        "voter-dispatch",
+    ),
     CleanInstallCase::new("clean-install-status-check", "status", "check"),
     CleanInstallCase::new("clean-install-plan-block-read", "plan-block", "read"),
     CleanInstallCase::new(

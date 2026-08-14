@@ -168,18 +168,23 @@ RENDERING_PY="$REPO_ROOT/python/larch/rendering/rendering.py"
 assert_contains "rendering.py unquoted focus-area enum" \
     'code-quality / risk-integration / correctness / architecture / security' "$RENDERING_PY"
 
-# ── dispatch-plan-voters.sh runtime render smoke ─────────────────────────────
+# ── plan voter runtime render smoke ──────────────────────────────────────────
 
 plan_voter_tmp="$TMP/plan-voters"
-PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_QUIET_DISABLE=1 python3 "$REPO_ROOT/python/cli.py" plan-review voter-dispatch \
-    --ballot-file "$ballot_file" \
-    --design-tmpdir "$plan_voter_tmp" \
-    --round-num 1 \
-    --codex-available true \
-    --cursor-available true >/dev/null || true
-
+mkdir -p "$plan_voter_tmp"
 codex_plan_voter_prompt="$plan_voter_tmp/codex-validity-plan-voter-prompt-codex.txt"
 cursor_plan_voter_prompt="$plan_voter_tmp/codex-validity-plan-voter-prompt-cursor.txt"
+for voter_tool in codex cursor; do
+    prompt_path="$plan_voter_tmp/codex-validity-plan-voter-prompt-$voter_tool.txt"
+    PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_QUIET_DISABLE=1 python3 "$REPO_ROOT/python/cli.py" render voter \
+        --ballot-file "$ballot_file" \
+        --panel-role 'senior engineer on a voting panel deciding which proposed plan modifications should be accepted' \
+        --id-grammar finding-oos \
+        --verification-context plan \
+        --findings-ledger-file "$plan_voter_tmp/findings-ledger.tsv" \
+        --payload-bytes-output "$prompt_path.payload-bytes" \
+        --voter-tool "$voter_tool" >"$prompt_path"
+done
 
 assert_contains "plan-voter Verify silently" \
     'Verify silently' "$codex_plan_voter_prompt"

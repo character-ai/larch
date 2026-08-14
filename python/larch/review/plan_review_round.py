@@ -1044,6 +1044,7 @@ def execute_round(
         env={"LARCH_QUIET_DISABLE": "1"},
         step="3",
         text=f"round {round_num}: launching reviewers",
+        runner=_run_larch,
     )
     # panel-dispatch returns once the last reviewer finishes, so this stamp opens the
     # reviewers-to-aggregator window: collection, dedup, and nit-prune below runs here, before
@@ -1281,6 +1282,7 @@ def execute_round(
         env={"LARCH_QUIET_DISABLE": "1"},
         step="3",
         text=f"round {round_num}: dispatching 3 voters",
+        runner=_run_larch,
     )
     out_lines.append(voter.stdout)
     voter_kv = _parse_kv(voter.stdout)

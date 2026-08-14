@@ -1064,7 +1064,7 @@ def _diagram_failure_capture(*, returncode: int, stderr: str) -> tuple[str, str]
 def _needs_diagram_retry(*, returncode: int, raw: Path) -> bool:
     """Return True when the code-flow subprocess warrants a single retry.
 
-    Mirrors plan_review_panel._voter_needs_retry: retry on EXIT_TIMEOUT
+    Preserves the historical voter retry criteria: retry on EXIT_TIMEOUT
     (wall-clock timeout or degraded-auth fast-fail) and on empty output
     when the launcher did run (file present but zero-byte).  A completely
     absent file signals a hard argv / import failure — not a transient

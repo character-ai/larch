@@ -237,8 +237,6 @@ exclude = [
   "python/cli.py design step2b-drafter",
   "python/cli.py design step2b-postplan",
   "python/cli.py design step2b5",
-  "python/cli.py plan-review panel-dispatch",
-  "python/larch/review/plan_review_panel.py",
   "python/cli.py design step6",
   "python/cli.py design step6-prelude",
   "python/cli.py design step6-cleanup",
@@ -549,12 +547,6 @@ exclude = [
   # python/test_agents.py retains shared launcher helper coverage while the
   # public agent run-external-agent command is covered in Rust.
   "python/test_agents.py",
-  # python/test_plan_review_panel.py is the offline regression harness for
-  # python/plan_review_panel.py. Referenced only from Makefile
-  # (test-dispatch-plan-voters target) and python/test_plan_review_panel.py
-  # (sibling contract), matching the same Makefile-only pattern as the other
-  # root test-* harnesses above.
-  "python/test_plan_review_panel.py",
   # scripts/test-python/cli.py render voter is the offline harness for
   # python/cli.py render voter (Makefile test-render-voter-prompt
   # target +  sibling contract).
@@ -649,7 +641,6 @@ exclude = [
   "skills/design/scripts/test-findings-classification.sh",
   "python/test_plan_review.py",
   "python/test_plan_review.py",
-  "python/test_plan_review_panel.py",
   "skills/design/scripts/decompose-prompts/decomposition-specialist.txt",
   "skills/design/scripts/decompose-prompts/dependency-analyst.txt",
   "skills/design/scripts/decompose-prompts/scope-minimalist.txt",
@@ -855,7 +846,6 @@ exclude = [
   "skills/design/scripts/test-findings-classification.md",
   "python/test_plan_review.py",
   "python/test_plan_review.py",
-  "python/test_plan_review_panel.py",
   "python/test_design_summary.py",
   "skills/pause/scripts/test-pause-skill.md",
   "scripts/test-implement-timing-rehydration.md",

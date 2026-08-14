@@ -234,15 +234,11 @@ fn counts_embedded_legacy_tuple_references() {
         "python/larch/review/plan_review.py",
         b"_run_legacy((\"scripts\", \"old-helper.sh\"))\n",
     );
-    repository.write(
-        "python/larch/review/plan_review_panel.py",
-        b"_p(\"scripts\", \"old-helper.sh\")\n",
-    );
     repository.commit_all();
 
     run(&repository)
         .success()
-        .stdout(predicate::str::contains("EMBEDDED_LEGACY_REFS=2\n"))
+        .stdout(predicate::str::contains("EMBEDDED_LEGACY_REFS=1\n"))
         .stdout(predicate::str::contains("RETIRED_REFS=0\n"));
 }
 

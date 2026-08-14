@@ -197,7 +197,7 @@ test-plan-review:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k '(drift_baseline and not round_artifact) or compose_attributed_ballot or ballot_neutralization or aggregation_ok or aggregator_status or write_atomic'
 
 test-plan-review-panel:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review_panel.py -q -k 'not ((panel_dispatch and not usage) or (voter_dispatch and not usage))'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_dispatch
 
 test-plan-review-scope-anchor:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'scope_anchor and not persist_retally'
@@ -489,7 +489,7 @@ test-scout-plan-archetypes-wrapper:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_plan_scout.py -q -k plan_wrapper
 
 test-dispatch-plan-review-panel:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review_panel.py -q -k 'panel_dispatch and not usage'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_dispatch
 
 test-render-final-summary:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_summary.py -k render_final_summary
@@ -750,7 +750,8 @@ test-scout-dynamic-archetypes:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_plan_scout.py -q -k 'not plan_wrapper'
 
 test-dispatch-plan-voters:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review_panel.py -q -k 'voter_dispatch and not usage'
+	cargo build --locked --package larch-cli
+	$(HARNESS_MARK) --label $@ -- env LARCH_BINARY=target/debug/larch bash scripts/test-plan-review-dispatch.sh
 
 test-prompt-template-invariants:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-prompt-template-invariants.sh

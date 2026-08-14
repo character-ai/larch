@@ -61,6 +61,27 @@ pub fn parse_dispatch_kv(text: &str) -> BTreeMap<String, String> {
     document.select(DuplicatePolicy::Last)
 }
 
+/// Append the routing policy shared by reviewer-panel waterfall callers.
+pub fn append_review_routing_arguments(
+    arguments: &mut Vec<OsString>,
+    site: &str,
+    difficulty: &str,
+    default_model: Option<&str>,
+) {
+    arguments.extend([
+        "--site".into(),
+        site.into(),
+        "--model-role".into(),
+        "review".into(),
+        "--difficulty".into(),
+        difficulty.into(),
+        "--no-fallback".into(),
+    ]);
+    if let Some(model) = default_model {
+        arguments.extend(["--default-model".into(), model.into()]);
+    }
+}
+
 /// Program name every diagnostic and drop record still carries.
 const PROG: &str = "dispatch-with-waterfall.sh";
 /// Longest timing-ledger task kind one slot launch may record.
@@ -262,9 +283,9 @@ pub fn dispatch_waterfall(arguments: &AgentRawArguments) -> ExitCode {
 
 /// The result of one in-process waterfall dispatch.
 ///
-/// `review dispatch-panel` is the only other command allowed to invoke this
-/// layer. Keeping the result structured lets that command retain its legacy
-/// envelope without spawning another larch process or recapturing stdout.
+/// Review and plan-review dispatch commands invoke this layer directly.
+/// Keeping the result structured lets those commands retain their legacy
+/// envelopes without spawning another larch process or recapturing stdout.
 #[derive(Clone, Debug, Default)]
 #[allow(clippy::struct_excessive_bools)] // Legacy stdout exposes these independent per-panel outcomes.
 pub struct WaterfallDispatchOutcome {
@@ -277,8 +298,8 @@ pub struct WaterfallDispatchOutcome {
     pub(crate) dropped_slots_file: String,
     fallback_count: u64,
     pub(crate) straggler_dropped_count: usize,
-    invalid_slot_drop_count: usize,
-    invalid_slots_file: String,
+    pub(crate) invalid_slot_drop_count: usize,
+    pub(crate) invalid_slots_file: String,
     pub(crate) warning: String,
     pub(crate) dispatch_ok: bool,
     pub(crate) static_dispatch_ok: bool,
