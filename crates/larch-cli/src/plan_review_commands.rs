@@ -11,7 +11,7 @@ use std::{
 };
 
 use clap::Subcommand;
-use larch_adapters::{atomic_write_utf8_in, ensure_directory_chain, validate_design_tmpdir};
+use larch_adapters::{ensure_directory_chain, validate_design_tmpdir};
 use larch_core::{
     cleanup_cache_sessions_root, emit_kv, redact_secrets_only, redact_sensitive_paths,
     review::{
@@ -24,7 +24,10 @@ use serde_json::{Map, Value, json};
 use crate::{
     agent_commands::AgentRawArguments,
     argparse_compat::{ParsedCommandLine, parse, usage_error},
-    launcher_support::{confined_target, parse_presence},
+    launcher_support::{
+        parse_presence, write_confined_required as write_required,
+        write_json_lines_confined as write_manifest,
+    },
     python_verb::run_python_verb,
     runtime_entrypoint::run_verified_larch,
     voter_dispatch_commands::{
@@ -32,7 +35,8 @@ use crate::{
         launchable_tools, read_payload_bytes, record_prep_span, unix_seconds,
     },
     waterfall_commands::{
-        WaterfallDispatchOutcome, dispatch_for_review, parse_dispatch_kv, render_dispatch_report,
+        WaterfallDispatchOutcome, append_review_routing_arguments, dispatch_for_review,
+        parse_dispatch_kv, render_dispatch_report,
     },
 };
 
@@ -544,17 +548,13 @@ fn panel_waterfall_arguments(
         "--timeout".into(),
         options.timeout.clone().into(),
         "--skip-invalid-slots".into(),
-        "--site".into(),
-        "design Step 3".into(),
-        "--model-role".into(),
-        "review".into(),
-        "--difficulty".into(),
-        options.tier.clone().into(),
-        "--no-fallback".into(),
     ];
-    if options.tier != "TRIVIAL" {
-        arguments.extend(["--default-model".into(), CODEX_PLAN_REVIEW_MODEL.into()]);
-    }
+    append_review_routing_arguments(
+        &mut arguments,
+        "design Step 3",
+        &options.tier,
+        (options.tier != "TRIVIAL").then_some(CODEX_PLAN_REVIEW_MODEL),
+    );
     arguments
 }
 
@@ -1355,21 +1355,6 @@ fn payload_sidecar(path: &Path) -> PathBuf {
     let mut sidecar = path.as_os_str().to_owned();
     sidecar.push(".payload-bytes");
     PathBuf::from(sidecar)
-}
-
-fn write_manifest(path: &Path, rows: &[Map<String, Value>]) -> Result<(), String> {
-    let mut text = String::new();
-    for row in rows {
-        text.push_str(&serde_json::to_string(row).map_err(|error| error.to_string())?);
-        text.push('\n');
-    }
-    write_required(path, &text)
-}
-
-fn write_required(path: &Path, text: &str) -> Result<(), String> {
-    let (root, target) =
-        confined_target(path).ok_or_else(|| format!("cannot safely write {}", path.display()))?;
-    atomic_write_utf8_in(&root, &target, text, true, 0o600).map_err(|error| error.to_string())
 }
 
 #[cfg(test)]

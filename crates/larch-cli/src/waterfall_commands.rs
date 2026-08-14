@@ -61,6 +61,27 @@ pub fn parse_dispatch_kv(text: &str) -> BTreeMap<String, String> {
     document.select(DuplicatePolicy::Last)
 }
 
+/// Append the routing policy shared by reviewer-panel waterfall callers.
+pub fn append_review_routing_arguments(
+    arguments: &mut Vec<OsString>,
+    site: &str,
+    difficulty: &str,
+    default_model: Option<&str>,
+) {
+    arguments.extend([
+        "--site".into(),
+        site.into(),
+        "--model-role".into(),
+        "review".into(),
+        "--difficulty".into(),
+        difficulty.into(),
+        "--no-fallback".into(),
+    ]);
+    if let Some(model) = default_model {
+        arguments.extend(["--default-model".into(), model.into()]);
+    }
+}
+
 /// Program name every diagnostic and drop record still carries.
 const PROG: &str = "dispatch-with-waterfall.sh";
 /// Longest timing-ledger task kind one slot launch may record.

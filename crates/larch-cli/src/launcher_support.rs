@@ -1107,10 +1107,27 @@ pub fn parse_cursor_usage_buckets(
 /// family — an implement sidecar log, a cap-hit record under the session root —
 /// so each write resolves its own confinement root.
 pub fn write_confined(path: &Path, text: &str) {
-    let Some((root, target)) = confined_target(path) else {
-        return;
-    };
-    let _written = atomic_write_utf8_in(&root, &target, text, true, 0o600);
+    let _written = write_confined_required(path, text);
+}
+
+/// Atomically publish one confined file and preserve the write failure.
+pub fn write_confined_required(path: &Path, text: &str) -> Result<(), String> {
+    let (root, target) =
+        confined_target(path).ok_or_else(|| format!("cannot safely write {}", path.display()))?;
+    atomic_write_utf8_in(&root, &target, text, true, 0o600).map_err(|error| error.to_string())
+}
+
+/// Serialize one JSON value per line and atomically publish the manifest.
+pub fn write_json_lines_confined<T: serde::Serialize>(
+    path: &Path,
+    rows: &[T],
+) -> Result<(), String> {
+    let mut text = String::new();
+    for row in rows {
+        text.push_str(&serde_json::to_string(row).map_err(|error| error.to_string())?);
+        text.push('\n');
+    }
+    write_confined_required(path, &text)
 }
 
 /// Append to one file outside an artifact family by republishing it.

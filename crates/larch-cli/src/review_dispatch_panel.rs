@@ -14,12 +14,15 @@ use std::{
 use crate::{
     agent_commands::generated_paths,
     argparse_compat::{ParsedCommandLine, parse, usage_error},
-    launcher_support::{confined_target, write_confined},
+    launcher_support::{
+        write_confined, write_confined_required as write_required,
+        write_json_lines_confined as write_manifest,
+    },
     python_verb::{plugin_root_directory, run_python_verb},
     runtime_entrypoint::run_verified_larch,
-    waterfall_commands::{dispatch_for_review, parse_dispatch_kv},
+    waterfall_commands::{append_review_routing_arguments, dispatch_for_review, parse_dispatch_kv},
 };
-use larch_adapters::{atomic_write_utf8_in, ensure_directory_chain};
+use larch_adapters::ensure_directory_chain;
 use larch_core::{
     classify_diff, emit_kv,
     review::{
@@ -932,17 +935,13 @@ fn waterfall_arguments(
         "--timeout".into(),
         "1800".into(),
         "--straggler-cutoff".into(),
-        "--site".into(),
-        options.site.clone().into(),
-        "--model-role".into(),
-        "review".into(),
-        "--difficulty".into(),
-        options.tier.clone().into(),
-        "--no-fallback".into(),
     ];
-    if options.tier != "TRIVIAL" {
-        arguments.extend(["--default-model".into(), "gpt-5.6-terra".into()]);
-    }
+    append_review_routing_arguments(
+        &mut arguments,
+        &options.site,
+        &options.tier,
+        (options.tier != "TRIVIAL").then_some("gpt-5.6-terra"),
+    );
     if options.mode == "diff" && !options.diff_file.is_empty() {
         arguments.extend([
             "--diff-file".into(),
@@ -1236,15 +1235,6 @@ fn dynamic_agent_body(archetype: &DynamicArchetype) -> String {
         .replace("{prompt}", &archetype.prompt_body.replace('\n', "\n  "))
 }
 
-fn write_manifest(path: &Path, rows: &[Map<String, Value>]) -> Result<(), String> {
-    let mut text = String::new();
-    for row in rows {
-        text.push_str(&serde_json::to_string(row).map_err(|error| error.to_string())?);
-        text.push('\n');
-    }
-    write_required(path, &text)
-}
-
 fn manifest_row(entries: impl IntoIterator<Item = (&'static str, Value)>) -> Map<String, Value> {
     entries
         .into_iter()
@@ -1259,12 +1249,6 @@ fn read_rows(path: &Path) -> Result<Vec<Map<String, Value>>, String> {
         .filter(|line| !line.trim().is_empty())
         .map(|line| serde_json::from_str(line).map_err(|error| error.to_string()))
         .collect()
-}
-
-fn write_required(path: &Path, text: &str) -> Result<(), String> {
-    let (root, target) =
-        confined_target(path).ok_or_else(|| format!("cannot safely write {}", path.display()))?;
-    atomic_write_utf8_in(&root, &target, text, true, 0o600).map_err(|error| error.to_string())
 }
 
 fn panel_artifact_dir(review_tmpdir: &Path, round_num: usize) -> PathBuf {
