@@ -2084,42 +2084,6 @@ def test_tally_three_slot_mismatched_tools_fails(tmp_path: Path) -> None:
     assert result.returncode == 2
 
 
-def test_write_tally_allows_voter_agreement_scoreboard_header(tmp_path: Path) -> None:
-    body = tmp_path / "body.md"
-    _ = body.write_text(
-        "# Code Review Voting Tally\n\n"
-        "## Per-finding vote breakdown\n\n"
-        "## Reviewer Competition Scoreboard\n\n"
-        "## Voter Agreement Scoreboard\n\n"
-        "## Voter Severity Scoreboard\n\n",
-        encoding="utf-8",
-    )
-    result = _run_cli(
-        "voting",
-        "write-tally",
-        "--log-root",
-        str(tmp_path / "logs"),
-        "--skill",
-        "review",
-        "--run-id",
-        "run-a",
-        "--phase",
-        "code-review",
-        "--mode",
-        "hard",
-        "--rounds",
-        "1",
-        "--accepted",
-        "0",
-        "--rejected",
-        "0",
-        "--body-file",
-        str(body),
-    )
-    assert result.returncode == 0, result.stderr
-    assert "unrecognized section header" not in result.stderr
-
-
 def test_tally_three_slot_claude_fallback_single_quorum(tmp_path: Path) -> None:
     case = tmp_path / "claude-fallback"
     case.mkdir()

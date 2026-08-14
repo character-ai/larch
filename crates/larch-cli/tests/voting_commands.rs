@@ -206,7 +206,8 @@ fn write_tally_preserves_header_warning_and_staging_guards() {
     let temporary = TempDir::new().expect("create tally sandbox");
     let sandbox = fs::canonicalize(temporary.path()).expect("canonical tally sandbox");
     let body = sandbox.join("body.md");
-    fs::write(&body, "## Voting Tally\n## Foo\n").expect("write tally body");
+    #[rustfmt::skip]
+    fs::write(&body, "# Rejected Findings\n## Accepted Findings\n## Rejected Code Review Findings\n## Voting Tally\n# Code Review Voting Tally\n## Per-finding vote breakdown\n## Reviewer Competition Scoreboard\n## Voter Agreement Scoreboard\n## Voter Severity Scoreboard\n## Foo\n").expect("write tally body");
     let log_root = sandbox.join("larch-logs");
     let arguments = [
         "write-tally",

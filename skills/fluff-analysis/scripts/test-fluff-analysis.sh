@@ -18,6 +18,12 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ANALYZER="$SCRIPT_DIR/fluff-analysis.py"
+REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
+
+if [[ -z "${LARCH_BINARY:-}" ]]; then
+    LARCH_BINARY="$REPO_ROOT/python/tests/support/rust_agent_stub.py"
+    export LARCH_BINARY
+fi
 
 if [[ ! -r "$ANALYZER" ]]; then
     echo "ERROR: analyzer not readable at $ANALYZER" >&2
