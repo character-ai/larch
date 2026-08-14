@@ -8,6 +8,7 @@ mod dispatch;
 mod findings_ledger;
 mod pipeline;
 mod plan_review;
+mod repair;
 mod tally_engine;
 mod types;
 mod voting;
@@ -52,6 +53,17 @@ pub use plan_review::{
     reviewer_status_rows, run_plan_review_round, slot_human_label,
     step3_loop_status_to_loop_status, step3_next_action, step3_round_carry_values,
     step3_status_from_loop_status, strip_crlf,
+};
+pub use repair::{
+    RejectedFindingsRound, RepairBatchReport, RepairClassifier, RepairCleanupAction,
+    RepairCoderAttempt, RepairCoderInput, RepairCoderResult, RepairCommitOutcome,
+    RepairComposition, RepairConvergenceEvidence, RepairCounts, RepairRoundArtifacts,
+    RepairRoundInput, RepairRoundState, RepairSnapshotError, RepairSnapshotLayout,
+    RepairSnapshotMode, RepairTrackedPath, SnapshotArtifactIdentity, cleanup_plan,
+    collect_repair_stage_paths, count_code_review_findings, render_rejected_findings_aggregate,
+    render_repair_tally_body, render_scout_manifest_payload, resolve_coder_result,
+    resolve_repair_round, safe_patch_name, snapshot_identity_matches, tally_flush_sidecar,
+    tracked_delta_paths, untracked_delta_paths, validate_repair_snapshot,
 };
 pub use tally_engine::{ItemAdjudicationResult, ItemContext, VoteCell, adjudicate_item, run_items};
 pub use types::{
