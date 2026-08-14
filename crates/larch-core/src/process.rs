@@ -499,6 +499,8 @@ pub enum ChildEnvironment {
     LarchCodexVoteModel,
     /// Optional Cursor model override passed to a nested larch composition.
     LarchCursorModel,
+    /// Disable recursive voter-calibration feedback during calibration replay.
+    LarchVoterCalibrationFeedback,
     /// Nested reviewer-probe authentication retry limit.
     LarchExternalAuthRetries,
     /// Nested external health-check timeout.
@@ -604,6 +606,7 @@ impl ChildEnvironment {
             Self::LarchCodexReviewModel => env::LARCH_CODEX_REVIEW_MODEL,
             Self::LarchCodexVoteModel => env::LARCH_CODEX_VOTE_MODEL,
             Self::LarchCursorModel => env::LARCH_CURSOR_MODEL,
+            Self::LarchVoterCalibrationFeedback => "LARCH_VOTER_CALIBRATION_FEEDBACK",
             Self::LarchExternalAuthRetries => env::LARCH_EXTERNAL_AUTH_RETRIES,
             Self::LarchExternalHealthCheckTimeout => env::LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT,
             Self::LarchProbeNegativeTtlSeconds => env::LARCH_PROBE_NEGATIVE_TTL_SECONDS,

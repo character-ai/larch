@@ -12,7 +12,7 @@
 //!
 //! This command owns no external spawn of its own. Parse-rate checks call their
 //! Rust owner in process. `agent dispatch-waterfall` uses the verified bootstrap,
-//! while Python-owned render, calibration, and timing verbs use the delegated seam.
+//! while Python-owned render and timing verbs use the delegated seam.
 
 use std::{
     collections::BTreeMap,
@@ -35,6 +35,7 @@ use serde_json::{Map, Value};
 use crate::agent_commands::AgentRawArguments;
 use crate::agent_review::findings_ledger_path;
 use crate::argparse_compat::parse;
+use crate::calibration_commands::{positive_window, write_calibration_snapshot};
 use crate::child_process::{bounded_request, run_bounded};
 use crate::launcher_support::{confined_target, parse_presence, validate_site, write_confined};
 use crate::python_verb::{plugin_root_directory, run_python_verb};
@@ -434,35 +435,37 @@ fn unix_seconds() -> u64 {
 fn fresh_calibration_snapshot(options: &Options) -> Option<String> {
     let target = options.review_tmpdir.join("voter-calibration-stats.tsv");
     let _removed = fs::remove_file(&target);
-    if env::var("LARCH_VOTER_CALIBRATION_FEEDBACK")
-        .unwrap_or_default()
-        .trim()
-        == "0"
+    if options.site == "calibration-replay"
+        || env::var("LARCH_VOTER_CALIBRATION_FEEDBACK")
+            .unwrap_or_default()
+            .trim()
+            == "0"
     {
         return None;
     }
     let log_root = calibration_log_root(options)?;
-    let mut arguments = vec![
-        OsString::from("voter-calibration"),
-        OsString::from("snapshot"),
-        OsString::from("--log-root"),
-        log_root.into_os_string(),
-        OsString::from("--out"),
-        target.as_os_str().to_owned(),
-    ];
-    if let Some(window) =
-        env::var_os("LARCH_VOTER_CALIBRATION_WINDOW").filter(|value| !value.is_empty())
-    {
-        arguments.extend([OsString::from("--window"), window]);
-    }
-    let output = run_python_verb(arguments, VERB_TIMEOUT).ok()?;
-    let usable = output.status().success()
-        && fs::metadata(&target).is_ok_and(|meta| meta.is_file() && meta.len() > 0);
+    let window = env::var("LARCH_VOTER_CALIBRATION_WINDOW")
+        .ok()
+        .and_then(|value| positive_window(&value))
+        .unwrap_or(100);
+    let usable = write_calibration_snapshot(&log_root, &target, window).ok()?;
     if usable {
         return Some(target.display().to_string());
     }
     let _removed = fs::remove_file(&target);
     None
+}
+
+/// Return the fixed voter output basename for a semantic tool label.
+pub fn voter_output_name(tool: &str) -> Option<&'static str> {
+    VOTER_POLICIES.iter().find_map(|policy| {
+        (policy.default_label == tool
+            || policy
+                .semantic_labels
+                .iter()
+                .any(|(_, label)| *label == tool))
+        .then_some(policy.output_name)
+    })
 }
 
 /// Resolve the consumer repository's `larch-logs` root for one review session.

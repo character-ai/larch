@@ -126,15 +126,6 @@ if verb == ("render", "voter"):
         sys.stdout.write("Read the ballot from this path: %s\n" % value("--ballot-file"))
     sys.exit(1 if marker("RENDER-FAIL") else 0)
 
-if verb == ("voter-calibration", "snapshot"):
-    if marker("SNAPSHOT-FAIL"):
-        sys.exit(1)
-    out = value("--out")
-    if out and not marker("SNAPSHOT-EMPTY"):
-        with open(out, "w") as handle:
-            handle.write("tool\tyes_votes\n")
-    sys.exit(0)
-
 if verb == ("timing", "record-vendor-task"):
     with open(os.path.join(review, "timing.log"), "a") as handle:
         handle.write(" ".join(args) + "\n")
@@ -174,6 +165,15 @@ impl Fixture {
         write(&plugin.join("python/cli.py"), CLI_STUB);
         fs::create_dir_all(&review).expect("review tmpdir");
         fs::create_dir_all(&consumer).expect("consumer root");
+        let classification =
+            consumer.join("larch-logs/implement/run-1/round-1/findings-classification.tsv");
+        write(
+            &classification,
+            concat!(
+                "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tscope\n",
+                "FINDING_1\treviewer\taccepted\tNO\ttrue\tminor\tgood\tfalse\tcursor\tYES\ttrue\tmajor\tgood\tfalse\tcodex\tYES\ttrue\tminor\tgood\tfalse\tclaude\tin_scope\n",
+            ),
+        );
         write(&review.join("findings.md"), "FINDING_1: something\n");
         Self {
             _root: root,
@@ -636,10 +636,7 @@ fn the_calibration_snapshot_reaches_every_prompt_render() {
     let fixture = Fixture::create();
     let _output = fixture.dispatch("true", "true", &[]);
     let cli = fixture.read("cli-argv.log");
-    assert!(
-        cli.contains("voter-calibration snapshot --log-root"),
-        "{cli}"
-    );
+    assert!(!cli.contains("voter-calibration snapshot"), "{cli}");
     assert!(
         cli.contains(&format!(
             "--calibration-stats-file {}",
@@ -647,20 +644,10 @@ fn the_calibration_snapshot_reaches_every_prompt_render() {
         )),
         "{cli}"
     );
-    assert_eq!(
-        cli.matches("voter-calibration snapshot").count(),
-        1,
-        "{cli}"
-    );
-    // The consumer anchor resolves through the filesystem, so `/tmp` reads back
-    // as `/private/tmp` on macOS.
-    let consumer = fs::canonicalize(&fixture.consumer).expect("consumer root resolves");
     assert!(
-        cli.contains(&format!(
-            "--log-root {}",
-            consumer.join("larch-logs").display()
-        )),
-        "{cli}"
+        fixture
+            .read("voter-calibration-stats.tsv")
+            .contains("codex\t1\t1\t1\t0\t0\t0\t1.000\t0.000\ttrue")
     );
 }
 
@@ -690,7 +677,12 @@ fn a_disabled_feedback_flag_skips_the_snapshot() {
 fn a_failed_snapshot_leaves_no_stale_calibration_file() {
     let fixture = Fixture::create();
     write(&fixture.path("voter-calibration-stats.tsv"), "stale\n");
-    fixture.marker("SNAPSHOT-FAIL");
+    fs::remove_file(
+        fixture
+            .consumer
+            .join("larch-logs/implement/run-1/round-1/findings-classification.tsv"),
+    )
+    .expect("remove calibration input");
     let output = fixture.dispatch("true", "true", &[]);
     assert_eq!(output.status.code(), Some(0), "{}", stderr_of(&output));
     assert!(!fixture.path("voter-calibration-stats.tsv").exists());
@@ -862,15 +854,9 @@ fn standard_dispatch(fixture: &Fixture) -> AssertCommand {
 
 /// Assert the snapshot resolved the fixture's consumer repository.
 fn assert_consumer_log_root(fixture: &Fixture) {
-    let consumer = fs::canonicalize(&fixture.consumer).expect("consumer root resolves");
     let cli = fixture.read("cli-argv.log");
-    assert!(
-        cli.contains(&format!(
-            "--log-root {}",
-            consumer.join("larch-logs").display()
-        )),
-        "{cli}"
-    );
+    assert!(cli.contains("--calibration-stats-file"), "{cli}");
+    assert!(fixture.path("voter-calibration-stats.tsv").is_file());
 }
 
 #[test]
@@ -918,17 +904,6 @@ fn an_unresolvable_calibration_corpus_skips_the_snapshot() {
     let cli = fixture.read("cli-argv.log");
     assert!(!cli.contains("voter-calibration"), "{cli}");
     assert!(!cli.contains("--calibration-stats-file"), "{cli}");
-}
-
-#[test]
-fn the_calibration_window_override_reaches_the_snapshot() {
-    let fixture = Fixture::create();
-    let mut command = standard_dispatch(&fixture);
-    command.env("LARCH_VOTER_CALIBRATION_WINDOW", "25");
-    let output = command.output().expect("dispatch runs");
-    assert_eq!(output.status.code(), Some(0), "{}", stderr_of(&output));
-    let cli = fixture.read("cli-argv.log");
-    assert!(cli.contains("--window 25"), "{cli}");
 }
 
 #[test]

@@ -14,13 +14,6 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("calibration-replay", "rebuild-ballot"): ("larch.calibration.calibration_replay", "rebuild_ballot_main", False),
-    ("calibration-replay", "run-replay"): ("larch.calibration.calibration_replay", "run_replay_main", False),
-    ("calibration-replay", "validate-manifest"): (
-        "larch.calibration.calibration_replay",
-        "validate_manifest_main",
-        False,
-    ),
     ("difficulty", "validate-rating"): ("larch.calibration.difficulty", "validate_rating_main", True),
     ("difficulty", "extract-plan-metadata"): ("larch.calibration.difficulty", "extract_plan_metadata_main", True),
     ("difficulty", "write-record"): ("larch.calibration.difficulty", "write_record_main", True),
@@ -351,7 +344,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("render", "plan-review"): ("larch.rendering.rendering", "render_plan_review_main", False),
     ("render", "scope-anchor"): ("larch.rendering.rendering", "render_scope_anchor_main", False),
     ("render", "findings-view"): ("larch.rendering.rendering", "render_findings_view_main", False),
-    ("voter-calibration", "snapshot"): ("larch.review.voting", "voter_calibration_snapshot_main", False),
     ("difficulty-calibration", "analyze"): ("larch.calibration.difficulty_calibration", "analyze_main", False),
     ("scope-anchor", "relay-allowed"): ("larch.rendering.rendering", "scope_anchor_relay_allowed_main", False),
     ("scope-anchor", "validate"): ("larch.rendering.rendering", "scope_anchor_validate_main", False),

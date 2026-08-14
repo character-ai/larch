@@ -33,6 +33,7 @@ mod bgjob_commands;
 mod blocker_commands;
 pub(crate) mod bootstrap_commands;
 mod bootstrap_support;
+mod calibration_commands;
 mod child_process;
 mod ci_launcher_commands;
 mod ci_selection;
@@ -167,6 +168,9 @@ enum Domain {
     /// Native issue blocked-by dependency mutations.
     #[command(subcommand, name = "block-issue")]
     BlockIssue(BlockIssueCommand),
+    /// Recorded voter-calibration fixture replay commands.
+    #[command(subcommand, name = "calibration-replay")]
+    CalibrationReplay(CalibrationReplayCommand),
     /// Internal bootstrap commands used before installation completes.
     #[command(subcommand, hide = true)]
     Bootstrap(BootstrapCommand),
@@ -325,9 +329,28 @@ enum Domain {
     /// Vote parsing, tally state, panel rendering, and parse-rate checks.
     #[command(subcommand)]
     Voting(VotingCommand),
+    /// Voter calibration snapshot commands.
+    #[command(subcommand, name = "voter-calibration")]
+    VoterCalibration(VoterCalibrationCommand),
     /// Upgrade the installed larch plugin and executable.
     #[command(subcommand)]
     UpgradeLarch(UpgradeLarchCommand),
+}
+
+#[derive(Subcommand)]
+enum CalibrationReplayCommand {
+    #[command(name = "rebuild-ballot", disable_help_flag = true)]
+    RebuildBallot(RawCompatibilityArguments),
+    #[command(name = "run-replay", disable_help_flag = true)]
+    RunReplay(RawCompatibilityArguments),
+    #[command(name = "validate-manifest", disable_help_flag = true)]
+    ValidateManifest(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum VoterCalibrationCommand {
+    #[command(disable_help_flag = true)]
+    Snapshot(RawCompatibilityArguments),
 }
 
 macro_rules! voting_commands {
@@ -1601,6 +1624,18 @@ fn run(
     match cli.domain {
         Domain::Agent(command) => Ok(agent_commands::run(command)),
         Domain::Review(command) => Ok(review_commands::run(command)),
+        Domain::CalibrationReplay(CalibrationReplayCommand::RebuildBallot(arguments)) => Ok(
+            calibration_commands::rebuild_ballot_command(&arguments.arguments),
+        ),
+        Domain::CalibrationReplay(CalibrationReplayCommand::RunReplay(arguments)) => Ok(
+            calibration_commands::run_replay_command(&arguments.arguments),
+        ),
+        Domain::CalibrationReplay(CalibrationReplayCommand::ValidateManifest(arguments)) => Ok(
+            calibration_commands::validate_manifest_command(&arguments.arguments),
+        ),
+        Domain::VoterCalibration(VoterCalibrationCommand::Snapshot(arguments)) => Ok(
+            calibration_commands::voter_calibration_snapshot(&arguments.arguments),
+        ),
         Domain::Alias(command) => Ok(developer_tooling_commands::run_alias(command)),
         Domain::Bootstrap(BootstrapCommand::Invoke(arguments)) => {
             Ok(bootstrap_commands::invoke(&arguments.arguments))

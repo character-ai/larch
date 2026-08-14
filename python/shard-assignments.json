@@ -17,8 +17,6 @@
   "tests/agents/test_vendor.py::TestImportIsolation::test_production_launchers_do_not_import_vendor": 3,
   "tests/agents/test_vendor.py::TestImportIsolation::test_vendor_direct_imports_are_allowlisted": 1,
   "tests/agents/test_vendor.py::TestImportIsolation::test_vendor_transitive_graph_avoids_launcher_families": 2,
-  "tests/calibration/test_calibration_replay.py::test_run_replay_dry_run": 4,
-  "tests/calibration/test_calibration_replay.py::test_run_replay_parses_after_vote_with_mocked_dispatch": 4,
   "tests/calibration/test_difficulty_calibration.py::test_audit_pairing_renders_deltas_and_na_when_no_peer": 1,
   "tests/calibration/test_difficulty_calibration.py::test_confusion_matrix_rows_for_all_three_skills": 1,
   "tests/calibration/test_difficulty_calibration.py::test_default_synced_corpus_matches_explicit_fixture": 3,

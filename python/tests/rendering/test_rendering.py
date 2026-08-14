@@ -24,6 +24,28 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 PYTHON_DIR = Path(__file__).resolve().parents[2]
 
 
+def _write_voter_calibration_stats(*, path: Path, stats: list[voting.VoterCalibrationStat]) -> None:
+    header = "tool\tyes_votes\tvalid_yes_severity_count\tmajor\tminor\tnit\tmissing_severity\thigh_rate\tcalibration_score\tuncalibrated\n"
+    rows = [
+        "\t".join(
+            [
+                stat.tool,
+                str(stat.yes_votes),
+                str(stat.valid_yes_severity_count),
+                str(stat.major),
+                str(stat.minor),
+                str(stat.nit),
+                str(stat.missing_severity),
+                "" if stat.high_rate is None else f"{stat.high_rate:.3f}",
+                "" if stat.calibration_score is None else f"{stat.calibration_score:.3f}",
+                str(stat.uncalibrated).lower(),
+            ]
+        )
+        for stat in stats
+    ]
+    path.write_text(header + "\n".join(rows) + "\n", encoding="utf-8")
+
+
 def _reset_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
     logging_util.reset_quiet_state()
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
@@ -641,7 +663,7 @@ def test_render_voter_calibration_feedback_contributes_payload_bytes(
     stats = tmp_path / "stats.tsv"
     sidecar = tmp_path / "payload.txt"
     ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
-    assert voting.write_voter_calibration_stats(
+    _write_voter_calibration_stats(
         path=stats,
         stats=[
             voting.VoterCalibrationStat(
@@ -1742,7 +1764,7 @@ def test_render_findings_view_errors(tmp_path: Path, capsys: pytest.CaptureFixtu
 
 def test_render_voter_calibration_block_is_tool_specific(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     stats = tmp_path / "stats.tsv"
-    assert voting.write_voter_calibration_stats(
+    _write_voter_calibration_stats(
         path=stats,
         stats=[
             voting.VoterCalibrationStat(
@@ -1781,7 +1803,7 @@ def test_render_voter_calibration_block_is_tool_specific(tmp_path: Path, capsys:
 
 def test_render_voter_stats_without_tool_preserves_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     stats = tmp_path / "stats.tsv"
-    assert voting.write_voter_calibration_stats(
+    _write_voter_calibration_stats(
         path=stats,
         stats=[
             voting.VoterCalibrationStat(
@@ -1816,7 +1838,7 @@ def test_render_voter_malformed_stats_omits_calibration_block(tmp_path: Path, ca
 
 def test_render_voter_no_matching_tool_omits_calibration_block(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     stats = tmp_path / "stats.tsv"
-    assert voting.write_voter_calibration_stats(
+    _write_voter_calibration_stats(
         path=stats,
         stats=[
             voting.VoterCalibrationStat(
