@@ -365,7 +365,8 @@ def _launch_repair_loop_bgjob(spec: RepairLoopBgjobLaunch) -> int:
         external_defaults.fixer_lane_budget_sec("implement.lint_fix_coder")
         * config.RCC_MAX_ITER_DEFAULT
     )
-    child: list[str] = [
+    command: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
         "bgjob",
         "start",
         "--step",
@@ -387,15 +388,12 @@ def _launch_repair_loop_bgjob(spec: RepairLoopBgjobLaunch) -> int:
         spec.site,
     ]
     if spec.checks_site:
-        child.extend(("--checks-site", spec.checks_site))
-    child.extend(("--checks-log", spec.checks_log))
+        command.extend(("--checks-site", spec.checks_site))
+    command.extend(("--checks-log", spec.checks_log))
     if spec.repo_root:
-        child.extend(("--repo-root", spec.repo_root))
-    child.extend(("--bgjob-merge-result-env", str(merge_result_env)))
-    result = proc.run([
-        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
-        *child,
-    ])
+        command.extend(("--repo-root", spec.repo_root))
+    command.extend(("--bgjob-merge-result-env", str(merge_result_env)))
+    result = proc.run(command)
     if result.stdout:
         _ = sys.stdout.write(result.stdout)
     if result.stderr:
