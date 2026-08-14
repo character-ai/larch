@@ -586,45 +586,25 @@ fn completion_publication_crashes_recover_to_whole_output_sets() {
 
         let settled = wait_until_settled(&sandbox, &step, &tmpdir);
         let result = tmpdir.join("bgjob").join(format!("{step}.result.env"));
-        if matches!(
-            *phase,
-            "before-completion-intent" | "after-completion-stage"
-        ) {
-            assert!(
-                settled.contains("BGJOB_STATUS=DEAD"),
-                "{phase}: {settled:?}"
-            );
-            assert!(!result.exists(), "{phase} leaked a partial result");
-            assert!(!first.exists(), "{phase} leaked the first sentinel");
-            assert!(!second.exists(), "{phase} leaked the second sentinel");
-            assert!(
-                !tmpdir
-                    .join("bgjob")
-                    .join(format!("{step}.completion-stage.env"))
-                    .exists(),
-                "{phase} retained an uncommitted staged result"
-            );
-        } else {
-            assert!(
-                settled.contains("BGJOB_STATUS=DONE"),
-                "{phase}: {settled:?}"
-            );
-            assert!(settled.contains("BGJOB_RC=0"), "{phase}: {settled:?}");
-            let text = fs::read_to_string(&result).expect("recovered result envelope");
-            let document =
-                KvDocument::parse(&text, ParseOptions::environment()).expect("recovered envelope");
-            assert_eq!(
-                document
-                    .rows()
-                    .iter()
-                    .map(larch_core::KvRow::key)
-                    .collect::<Vec<_>>(),
-                ["BGJOB_RC", "BGJOB_ELAPSED_S", "STEP"],
-                "{phase}: result row order changed: {text:?}"
-            );
-            assert!(first.is_file(), "{phase} omitted the first sentinel");
-            assert!(second.is_file(), "{phase} omitted the second sentinel");
-        }
+        assert!(
+            settled.contains("BGJOB_STATUS=DONE"),
+            "{phase}: {settled:?}"
+        );
+        assert!(settled.contains("BGJOB_RC=0"), "{phase}: {settled:?}");
+        let text = fs::read_to_string(&result).expect("recovered result envelope");
+        let document =
+            KvDocument::parse(&text, ParseOptions::environment()).expect("recovered envelope");
+        assert_eq!(
+            document
+                .rows()
+                .iter()
+                .map(larch_core::KvRow::key)
+                .collect::<Vec<_>>(),
+            ["BGJOB_RC", "BGJOB_ELAPSED_S", "STEP"],
+            "{phase}: result row order changed: {text:?}"
+        );
+        assert!(first.is_file(), "{phase} omitted the first sentinel");
+        assert!(second.is_file(), "{phase} omitted the second sentinel");
         sandbox.larch().args(["bgjob", "reap"]).assert().success();
         assert!(!row.exists(), "{phase} retained its registry row");
     }
@@ -1222,6 +1202,228 @@ fn an_externally_killed_daemon_recovers_its_child_before_reporting_dead() {
 }
 
 #[test]
+fn dead_missing_pid_wait_returns_dead_without_a_process_panic() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("missing-pid-dead");
+    let log_dir = tmpdir.join("bgjob");
+    fs::create_dir_all(&log_dir).expect("bgjob logs");
+    let missing = RecordedProcessIdentity {
+        pid: i32::MAX,
+        pgid: i32::MAX,
+        start_time: "missing".to_owned(),
+        birth_identity: Some(ProcessBirthIdentity::Darwin {
+            seconds: 1,
+            microseconds: 1,
+        }),
+        command_signature: "missing".to_owned(),
+        expected_signature: String::new(),
+    };
+    let entry = RegistryEntry {
+        step: "missing-pid-dead".to_owned(),
+        run_id: "missing-pid-run".to_owned(),
+        tmpdir: tmpdir.clone(),
+        log_dir: log_dir.clone(),
+        clone_path: std::env::current_dir().expect("cwd"),
+        daemon: missing.clone(),
+        child: missing,
+        child_allows_exec: false,
+        owner: None,
+        start_epoch: epoch_now(),
+        budget_s: 60,
+        stdout_log: log_dir.join("missing-pid-dead.stdout.log"),
+        stderr_log: log_dir.join("missing-pid-dead.stderr.log"),
+        result_env: tmpdir.join("bgjob/missing-pid-dead.result.env"),
+        recovery_inputs_recorded: false,
+        merge_result_env: None,
+        terminal_stdout_key: None,
+        sentinel_paths: Vec::new(),
+    };
+    fs::write(&entry.stdout_log, "").expect("stdout log");
+    fs::write(&entry.stderr_log, "").expect("stderr log");
+    fs::write(
+        tmpdir.join("bgjob/missing-pid-dead.worker-status.env"),
+        "WORKER_RC=0\nSTEP=missing-pid-dead\n",
+    )
+    .expect("legacy worker witness");
+    let row = write_entry_at(&entry, Some(&sandbox.registry())).expect("registry row");
+
+    let output = raw_larch(&sandbox)
+        .args(["bgjob", "wait", "--step", "missing-pid-dead"])
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args(["--run-id", "missing-pid-run", "--max-wait-s", "1"])
+        .output()
+        .expect("wait missing pid");
+
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(output.stderr, b"");
+    assert_eq!(
+        output.stdout,
+        b"BGJOB_STATUS=DEAD\nBGJOB_DIAG=daemon-dead-recovered\nSTDERR_TAIL=\n"
+    );
+    assert!(
+        !row.exists(),
+        "missing-pid recovery retained the registry row"
+    );
+    assert!(
+        !entry.result_env.exists(),
+        "legacy worker witness published an incomplete result"
+    );
+}
+
+#[test]
+fn dead_daemon_recovers_the_completed_workers_terminal_stdout_envelope() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("terminal-envelope");
+    let phases = sandbox.root.path().join("terminal-envelope-phases");
+    fs::create_dir_all(&phases).expect("phase directory");
+    fs::write(phases.join("before-worker-reap.armed"), "").expect("arm worker reap phase");
+    let merge = tmpdir.join("bgjob/terminal-envelope.merge.env");
+    fs::create_dir_all(merge.parent().expect("merge parent")).expect("merge parent");
+    fs::write(
+        &merge,
+        "PERSISTED=from-merge\nLOOP_STATUS=from-stale-merge\n",
+    )
+    .expect("merge env");
+    let sentinel = tmpdir.join("terminal-envelope.done");
+    let owner_pid = std::process::id().to_string();
+    let started = raw_larch(&sandbox)
+        .args(["bgjob", "start", "--step", "terminal-envelope"])
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args([
+            "--budget-s",
+            "20",
+            "--owner-pid",
+            &owner_pid,
+            "--merge-result-env",
+        ])
+        .arg(&merge)
+        .arg("--sentinel")
+        .arg(&sentinel)
+        .args([
+            "--terminal-stdout-key",
+            "NEXT_ACTION",
+            "--",
+            "/bin/sh",
+            "-c",
+            "printf 'NEXT_ACTION=main-agent-edit\\nLOOP_STATUS=complete\\n'",
+        ])
+        .env(ENV_TEST_BGJOB_PHASE_BARRIER_DIR, &phases)
+        .output()
+        .expect("start terminal envelope job");
+    assert!(started.status.success(), "{started:?}");
+    let row = registry_row(&sandbox, "terminal-envelope");
+    let reached = phases.join("before-worker-reap.reached");
+    wait_for_file(&reached, "worker reap barrier");
+    let worker_status = tmpdir.join("bgjob/terminal-envelope.worker-status.env");
+    wait_for_file(&worker_status, "worker completion witness");
+    let daemon = phase_process_pid(&reached);
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(daemon),
+        nix::sys::signal::Signal::SIGKILL,
+    )
+    .expect("kill paused daemon");
+
+    let settled = wait_until_settled(&sandbox, "terminal-envelope", &tmpdir);
+    assert!(settled.contains("BGJOB_STATUS=DONE"), "{settled:?}");
+    assert!(settled.contains("BGJOB_RC=0"), "{settled:?}");
+    assert!(
+        settled.contains("NEXT_ACTION=main-agent-edit"),
+        "{settled:?}"
+    );
+    assert!(settled.contains("LOOP_STATUS=complete"), "{settled:?}");
+    let result = fs::read_to_string(tmpdir.join("bgjob/terminal-envelope.result.env"))
+        .expect("recovered terminal result");
+    assert!(
+        result.contains("NEXT_ACTION=main-agent-edit\n"),
+        "{result:?}"
+    );
+    assert!(result.contains("LOOP_STATUS=complete\n"), "{result:?}");
+    assert!(
+        !result.contains("LOOP_STATUS=from-stale-merge\n"),
+        "terminal stdout did not replace stale merge state: {result:?}"
+    );
+    assert!(result.contains("PERSISTED=from-merge\n"), "{result:?}");
+    assert_eq!(
+        fs::read_to_string(&merge).expect("merge env"),
+        "PERSISTED=from-merge\nLOOP_STATUS=from-stale-merge\n"
+    );
+    assert!(sentinel.is_file(), "terminal recovery omitted its sentinel");
+    assert!(!row.exists(), "terminal recovery retained the registry row");
+}
+
+#[test]
+fn dead_daemon_retains_a_completed_worker_when_the_terminal_marker_is_missing() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("terminal-marker-missing");
+    let phases = sandbox.root.path().join("terminal-marker-missing-phases");
+    fs::create_dir_all(&phases).expect("phase directory");
+    fs::write(phases.join("before-worker-reap.armed"), "").expect("arm worker reap phase");
+    let owner_pid = std::process::id().to_string();
+    let started = raw_larch(&sandbox)
+        .args(["bgjob", "start", "--step", "terminal-marker-missing"])
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args([
+            "--budget-s",
+            "20",
+            "--owner-pid",
+            &owner_pid,
+            "--terminal-stdout-key",
+            "NEXT_ACTION",
+            "--",
+            "/bin/sh",
+            "-c",
+            "printf 'LOOP_STATUS=complete\\n'",
+        ])
+        .env(ENV_TEST_BGJOB_PHASE_BARRIER_DIR, &phases)
+        .output()
+        .expect("start terminal marker job");
+    assert!(started.status.success(), "{started:?}");
+    let row = registry_row(&sandbox, "terminal-marker-missing");
+    let reached = phases.join("before-worker-reap.reached");
+    wait_for_file(&reached, "worker reap barrier");
+    wait_for_file(
+        &tmpdir.join("bgjob/terminal-marker-missing.worker-status.env"),
+        "worker completion witness",
+    );
+    let daemon = phase_process_pid(&reached);
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(daemon),
+        nix::sys::signal::Signal::SIGKILL,
+    )
+    .expect("kill paused daemon");
+
+    let deadline = Instant::now() + DEADLINE;
+    let retryable = loop {
+        let output = wait_once(&sandbox, "terminal-marker-missing", &tmpdir, "1");
+        if output.contains("BGJOB_RECOVERY=retryable") {
+            break output;
+        }
+        assert!(
+            output.contains("BGJOB_STATUS=WAIT"),
+            "marker loss became terminal: {output:?}"
+        );
+        assert!(
+            Instant::now() < deadline,
+            "marker loss did not become retryable"
+        );
+    };
+    assert!(
+        retryable.contains("terminal-stdout-marker-missing"),
+        "marker failure was not diagnosed: {retryable:?}"
+    );
+    assert!(row.exists(), "marker loss discarded durable recovery state");
+    assert!(
+        !tmpdir
+            .join("bgjob/terminal-marker-missing.result.env")
+            .exists(),
+        "marker loss published an incomplete result"
+    );
+}
+
+#[test]
 fn reap_recovers_an_externally_killed_daemons_child_group() {
     let sandbox = Sandbox::new();
     let tmpdir = sandbox.session("reap-daemon-dead");
@@ -1551,6 +1753,10 @@ fn reap_retains_an_expired_row_when_its_child_birth_identity_is_stale() {
         stdout_log: log_dir.join("reap-recycled.stdout.log"),
         stderr_log: log_dir.join("reap-recycled.stderr.log"),
         result_env: log_dir.join("reap-recycled.result.env"),
+        recovery_inputs_recorded: false,
+        merge_result_env: None,
+        terminal_stdout_key: None,
+        sentinel_paths: Vec::new(),
     };
     for log in [&entry.stdout_log, &entry.stderr_log] {
         fs::write(log, "").expect("log file");

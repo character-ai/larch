@@ -91,6 +91,8 @@ def test_step7a_bgjob_launch_starts_transport(tmp_path: Path, monkeypatch: pytes
     assert "--owner-pid" not in start
     assert "--merge-result-env" in start
     assert str(tmp_path / "bgjob" / "implement-step7a.merge.env") in start
+    terminal_marker = start.index("--terminal-stdout-key")
+    assert start[terminal_marker:terminal_marker + 2] == ("--terminal-stdout-key", "DIAGRAM_STATUS")
     assert "--bgjob-merge-result-env" in start
 
 

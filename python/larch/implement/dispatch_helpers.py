@@ -208,19 +208,33 @@ def resolve_tmpdir_path(*, tmpdir: Path, raw: str, default_relpath: str) -> Path
     return tmpdir / candidate
 
 
+class ResultEnvCaptureRows:
+    """Durably append child-owned rows before their matching stdout is emitted."""
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+        self._rows: list[tuple[str, str]] = []
+
+    def append(self, row: tuple[str, str]) -> None:
+        candidate = [*self._rows, row]
+        larch_io.atomic_write(
+            path=self._path,
+            text=larch_io.format_kvs(candidate),
+            nofollow=True,
+            mode=0o600,
+        )
+        self._rows.append(row)
+
+
 @contextlib.contextmanager
-def result_env_capture_rows(path: Path | None) -> Generator[list[tuple[str, str]] | None, None, None]:
-    """Create a protected result env and yield its mutable KEY=value rows."""
+def result_env_capture_rows(path: Path | None) -> Generator[ResultEnvCaptureRows | None, None, None]:
+    """Create a protected merge env whose rows survive a child-process crash."""
     if path is None:
         yield None
         return
-    rows: list[tuple[str, str]] = []
     path.parent.mkdir(parents=True, exist_ok=True)
     larch_io.atomic_write(path=path, text="", nofollow=True, mode=0o600)
-    try:
-        yield rows
-    finally:
-        larch_io.atomic_write(path=path, text=larch_io.format_kvs(rows), nofollow=True, mode=0o600)
+    yield ResultEnvCaptureRows(path)
 
 
 def _write_prelaunch_digests(*, repo_root: Path, porcelain_file: Path, digests_file: Path) -> None:

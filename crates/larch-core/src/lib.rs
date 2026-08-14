@@ -91,19 +91,19 @@ pub use bgjob::{
     BGJOB_COMPLETION_ENV_SUFFIX, BGJOB_COMPLETION_STAGE_SUFFIX, BGJOB_ELAPSED_KEY,
     BGJOB_INPUT_FP_SUFFIX, BGJOB_RC_KEY, BGJOB_REGISTRY_DIRNAME, BGJOB_RESULT_ENV_SUFFIX,
     BGJOB_STARTUP_ENV_SUFFIX, BGJOB_STATUS_DONE, BGJOB_STATUS_KEY, BGJOB_STATUS_STARTED,
-    BGJOB_TMP_SUBDIR, BgjobError, CompletionTransaction, CompletionTransactionState,
-    ENV_BGJOB_REGISTRY_ROOT, ENV_TEST_BGJOB_PHASE_BARRIER_DIR, JobSpec, LivenessVerdict,
-    OwnerIdentity, RecoveryClaim, RecoveryLease, RegistryEntry, ResultEnvRows, WaitResult,
-    bgjob_dir, checked_dir, child_identity_policy, child_liveness, claim_recovery,
+    BGJOB_TMP_SUBDIR, BGJOB_WORKER_STATUS_SUFFIX, BgjobError, CompletionTransaction,
+    CompletionTransactionState, ENV_BGJOB_REGISTRY_ROOT, ENV_TEST_BGJOB_PHASE_BARRIER_DIR, JobSpec,
+    LivenessVerdict, OwnerIdentity, RecoveryClaim, RecoveryLease, RegistryEntry, ResultEnvRows,
+    WaitResult, bgjob_dir, checked_dir, child_identity_policy, child_liveness, claim_recovery,
     clear_completion_residue, completion_env_path, completion_result_is_visible,
     completion_stage_env_path, daemon_liveness, default_run_id, ensure_under, entry_expired,
     epoch_now, finish_completion_transaction, has_live_entry, iter_entries, log_paths,
     phase_barrier, prepare_completion_transaction, private_atomic_write,
-    read_completion_transaction, read_confined_result_env, read_entry, read_for,
-    read_merge_result_env, recovery_claim_entry_path, registry_path, registry_root,
+    read_completion_transaction, read_confined_regular_tail, read_confined_result_env, read_entry,
+    read_for, read_merge_result_env, recovery_claim_entry_path, registry_path, registry_root,
     reject_line_value, release_recovery_claim, resolve_run_id, result_env_path, startup_env_path,
     unlink_entry, validate_initial_merge_rows, validate_merge_result_env, validate_run_id,
-    validate_slug, write_entry, write_entry_at,
+    validate_slug, validate_terminal_stdout_key, worker_status_path, write_entry, write_entry_at,
 };
 pub use bgjob_daemon::{
     BGJOB_DAEMON_POLL_INTERVAL_S, BGJOB_LOG_TAIL_BYTES, BGJOB_OWNER_GRACE_S,
@@ -136,7 +136,8 @@ pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
 pub use env_file::{
     CommentPolicy, CrStrip, DuplicateInputPolicy, DuplicatePolicy, EmptyKeyPolicy, EnvFile,
     KeyPolicy, KvDocument, KvError, KvErrorKind, KvRow, MalformedLinePolicy, ParseOptions,
-    RenderOptions, WhitespacePolicy, kv_text, parse_allowlisted_env_line, select_kv_bytes,
+    RenderOptions, WhitespacePolicy, kv_text, parse_allowlisted_env_line, parse_single_kv_row,
+    select_kv_bytes,
 };
 pub use error::{
     EnvironmentalFailure, ErrorCategory, FailureKind, InternalDefect, LarchError, OperatorError,

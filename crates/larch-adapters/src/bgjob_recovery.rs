@@ -1,12 +1,14 @@
 //! Shared durable background-job recovery for abandoned registry rows.
 
 use larch_core::{
-    BgjobError, ProcessIdentityHost, RecoveryClaim, RegistryEntry, child_identity_policy,
-    claim_recovery, clear_completion_residue, completion_result_is_visible,
-    confirm_process_group_absent, ensure_under, finish_completion_transaction, ordered_rows,
-    phase_barrier, read_completion_transaction, read_confined_result_env, read_entry,
-    recovery_claim_entry_path, release_recovery_claim, render_rows, startup_env_path,
-    terminate_validated_process_group_and_confirm, unlink_entry,
+    BgjobError, ParseOptions, ProcessIdentityHost, RecoveryClaim, RegistryEntry,
+    child_identity_policy, claim_recovery, clear_completion_residue, completion_result_is_visible,
+    confirm_process_group_absent, ensure_under, epoch_now, finish_completion_transaction,
+    merge_rows, ordered_rows, parse_single_kv_row, phase_barrier, prepare_completion_transaction,
+    read_completion_transaction, read_confined_regular_tail, read_confined_result_env, read_entry,
+    read_merge_result_env, recovery_claim_entry_path, release_recovery_claim, render_rows,
+    result_rows, startup_env_path, terminate_validated_process_group_and_confirm, unlink_entry,
+    worker_status_path,
 };
 use std::{
     fs::{self, File, OpenOptions},
@@ -16,6 +18,8 @@ use std::{
 
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt as _;
+
+const TERMINAL_STDOUT_RECOVERY_BYTES: u64 = 64 * 1024;
 
 /// The result of one exclusive abandoned-row recovery attempt.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -118,7 +122,186 @@ pub fn recover_abandoned_entry(
             );
         }
     }
+    match recover_completed_worker(host, &claim, &entry, caller, context) {
+        Ok(Some(outcome)) => return outcome,
+        Ok(None) => {}
+        Err(reason) => {
+            release_recovery_claim(&claim);
+            return failed(&entry, context, reason);
+        }
+    }
     recover_without_completion_transaction(host, &claim, &entry, caller, context)
+}
+
+/// Rebuild a terminal transaction when the worker finished but its daemon
+/// died before preparing the normal completion descriptor.
+///
+/// The worker witness proves the requested child exited and drained its owned
+/// group. Recovery independently confirms group absence before publishing any
+/// result, then reconstructs the daemon-owned envelope from the persisted
+/// launch inputs. A configured stdout marker is an explicit opt-in to recover
+/// the final contiguous child envelope from the owned stdout log.
+fn recover_completed_worker(
+    host: &dyn ProcessIdentityHost,
+    claim: &larch_core::RecoveryLease,
+    entry: &RegistryEntry,
+    caller: &str,
+    context: &str,
+) -> Result<Option<BgjobRecoveryOutcome>, String> {
+    if !entry.recovery_inputs_recorded {
+        return Ok(None);
+    }
+    let Some(worker_rc) = read_worker_completion(entry)? else {
+        return Ok(None);
+    };
+    let kill_log = entry.log_dir.join(format!("{}.kill.log.jsonl", entry.step));
+    let termination = terminate_validated_process_group_and_confirm(
+        host,
+        &entry.child,
+        child_identity_policy(entry),
+        Some(&kill_log),
+        caller,
+        context,
+    );
+    if !termination.terminated {
+        return Err(termination.reason);
+    }
+    let merged = recovered_merge_rows(entry)?;
+    let elapsed_s = epoch_now().saturating_sub(entry.start_epoch).max(0);
+    let rows = result_rows(&entry.step, &worker_rc, elapsed_s, &merged)
+        .map_err(|error| format!("completion-result-{}", one_line(&error)))?;
+    let transaction = prepare_completion_transaction(
+        &entry.tmpdir,
+        &entry.step,
+        &entry.sentinel_paths,
+        &render_rows(&rows),
+    )
+    .map_err(|error| format!("completion-prepare-{}", one_line(&error)))?;
+    finish_completion_transaction(&transaction)
+        .map_err(|error| format!("completion-transaction-{}", one_line(&error)))?;
+    if read_completed_result(&entry.tmpdir, &entry.result_env, &entry.step).is_none() {
+        return Err("completion-transaction-not-visible".to_owned());
+    }
+    if let Ok(path) = worker_status_path(&entry.tmpdir, &entry.step) {
+        let _ = remove_result_residue(&path);
+    }
+    remove_startup_marker(entry)?;
+    Ok(Some(unlink_claimed_entry(claim, entry, context, true)))
+}
+
+fn read_worker_completion(entry: &RegistryEntry) -> Result<Option<String>, String> {
+    let path = worker_status_path(&entry.tmpdir, &entry.step)
+        .map_err(|error| format!("worker-status-path-{}", one_line(&error)))?;
+    let Some(text) = read_confined_result_env(&path, &entry.tmpdir)
+        .map_err(|error| format!("worker-status-read-{}", one_line(&error)))?
+    else {
+        return Ok(None);
+    };
+    if text.contains('\r') {
+        return Err("worker-status-invalid".to_owned());
+    }
+    let rows = ordered_rows(&text);
+    let value = |key: &str| {
+        rows.iter()
+            .find(|(candidate, _)| candidate == key)
+            .map(|(_, value)| value.as_str())
+    };
+    let Some(rc) = value("WORKER_RC") else {
+        return Err("worker-status-invalid".to_owned());
+    };
+    if rc.parse::<i64>().is_err() || value("STEP") != Some(entry.step.as_str()) {
+        return Err("worker-status-invalid".to_owned());
+    }
+    let expected = render_rows(&[
+        ("WORKER_RC".to_owned(), rc.to_owned()),
+        ("STEP".to_owned(), entry.step.clone()),
+    ]);
+    if text != expected {
+        return Err("worker-status-invalid".to_owned());
+    }
+    Ok(Some(rc.to_owned()))
+}
+
+fn recovered_merge_rows(entry: &RegistryEntry) -> Result<Vec<(String, String)>, String> {
+    let mut merged = entry
+        .merge_result_env
+        .as_ref()
+        .map(|path| {
+            read_merge_result_env(path, &entry.tmpdir)
+                .map(|text| merge_rows(&text))
+                .map_err(|error| format!("merge-result-read-{}", one_line(&error)))
+        })
+        .transpose()?
+        .unwrap_or_default();
+    let Some(marker) = entry.terminal_stdout_key.as_deref() else {
+        return Ok(merged);
+    };
+    for (key, value) in terminal_stdout_rows(&entry.stdout_log, &entry.log_dir, marker)? {
+        if matches!(key.as_str(), "BGJOB_RC" | "BGJOB_ELAPSED_S" | "STEP") {
+            continue;
+        }
+        if let Some((_, existing)) = merged.iter_mut().find(|(candidate, _)| candidate == &key) {
+            *existing = value;
+        } else {
+            merged.push((key, value));
+        }
+    }
+    Ok(merged)
+}
+
+fn terminal_stdout_rows(
+    path: &Path,
+    root: &Path,
+    marker: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let (bytes, truncated) = read_verified_log_tail(path, root)?;
+    let text = String::from_utf8(bytes).map_err(|_| "terminal-stdout-invalid-utf8".to_owned())?;
+    let text = if truncated {
+        let Some(index) = text.find('\n') else {
+            return Err("terminal-stdout-truncated".to_owned());
+        };
+        &text[index + 1..]
+    } else {
+        text.as_str()
+    };
+    let mut rows = Vec::new();
+    let mut found_boundary = false;
+    for line in text.split_terminator('\n').rev() {
+        if line.is_empty() && rows.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = strict_terminal_row(line) else {
+            found_boundary = true;
+            break;
+        };
+        rows.push((key, value));
+    }
+    rows.reverse();
+    if truncated && !found_boundary {
+        return Err("terminal-stdout-truncated".to_owned());
+    }
+    if rows.iter().all(|(key, _)| key != marker) {
+        return Err("terminal-stdout-marker-missing".to_owned());
+    }
+    Ok(rows)
+}
+
+fn strict_terminal_row(line: &str) -> Option<(String, String)> {
+    let row = parse_single_kv_row(line, ParseOptions::environment())?;
+    Some((row.key().to_owned(), row.value().to_owned()))
+}
+
+fn read_verified_log_tail(path: &Path, root: &Path) -> Result<(Vec<u8>, bool), String> {
+    read_confined_regular_tail(
+        path,
+        root,
+        TERMINAL_STDOUT_RECOVERY_BYTES,
+        "stdout log is unsafe",
+    )
+    .map_err(|error| match error {
+        BgjobError::Invalid(_) => "terminal-stdout-log-unsafe".to_owned(),
+        BgjobError::Io(_) => one_line(&error),
+    })
 }
 
 fn recover_without_completion_transaction(
@@ -325,4 +508,35 @@ fn one_line(error: &impl std::fmt::Display) -> String {
         .chars()
         .take(240)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TERMINAL_STDOUT_RECOVERY_BYTES, terminal_stdout_rows};
+    use std::fs;
+
+    #[test]
+    fn truncated_terminal_stdout_without_a_proven_boundary_is_not_recovered() {
+        let root = tempfile::tempdir().expect("log root");
+        let log = root.path().join("worker.stdout.log");
+        let prefix = "X".repeat(usize::try_from(TERMINAL_STDOUT_RECOVERY_BYTES + 1).expect("size"));
+        fs::write(&log, format!("{prefix}\nNEXT_ACTION=main-agent-edit\n")).expect("stdout log");
+
+        assert_eq!(
+            terminal_stdout_rows(&log, root.path(), "NEXT_ACTION"),
+            Err("terminal-stdout-truncated".to_owned())
+        );
+    }
+
+    #[test]
+    fn terminal_stdout_rejects_a_nonregular_log_before_opening_it() {
+        let root = tempfile::tempdir().expect("log root");
+        let log = root.path().join("worker.stdout.log");
+        fs::create_dir(&log).expect("nonregular log");
+
+        assert_eq!(
+            terminal_stdout_rows(&log, root.path(), "NEXT_ACTION"),
+            Err("terminal-stdout-log-unsafe".to_owned())
+        );
+    }
 }

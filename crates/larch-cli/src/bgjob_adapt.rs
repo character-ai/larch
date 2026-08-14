@@ -19,8 +19,8 @@ use larch_core::{
     ParseOptions, RecordedProcessIdentity, RegistryEntry, bgjob_dir, checked_dir, child_liveness,
     cleanup_cache_sessions_root, clear_completion_residue, completion_result_is_visible,
     daemon_liveness, ensure_under, entry_expired, log_paths, parse_allowlisted_env_line,
-    private_atomic_write, read_entry, read_process_identity, registry_path, registry_root,
-    resolve_run_id, result_env_path, shell_quote, validate_initial_merge_rows,
+    parse_single_kv_row, private_atomic_write, read_entry, read_process_identity, registry_path,
+    registry_root, resolve_run_id, result_env_path, shell_quote, validate_initial_merge_rows,
     validate_merge_result_env, validate_run_id, validate_slug,
 };
 use std::{
@@ -288,9 +288,11 @@ fn parse_arguments(arguments: &[OsString]) -> Result<ParsedArguments, &'static s
             }
             "--initial-merge-row" => {
                 let row = take_option_value(&values, &mut index, inline, "invalid-input")?;
+                let row =
+                    parse_single_kv_row(&row, ParseOptions::legacy()).ok_or("invalid-input")?;
                 parsed
                     .initial_merge_rows
-                    .push(parse_single_kv_row(&row).ok_or("invalid-input")?);
+                    .push((row.key().to_owned(), row.value().to_owned()));
             }
             "--replace-completed-result" if inline.is_none() => {
                 parsed.replace_completed_result = true;
@@ -309,17 +311,6 @@ fn parse_arguments(arguments: &[OsString]) -> Result<ParsedArguments, &'static s
         return Err("invalid-budget");
     }
     Ok(parsed)
-}
-
-fn parse_single_kv_row(value: &str) -> Option<(String, String)> {
-    if value.contains(['\n', '\r']) {
-        return None;
-    }
-    let document = KvDocument::parse(value, ParseOptions::legacy()).ok()?;
-    let [row] = document.rows() else {
-        return None;
-    };
-    Some((row.key().to_owned(), row.value().to_owned()))
 }
 
 fn build_request(
@@ -357,6 +348,7 @@ fn build_request(
         sentinel_paths: sentinels,
         merge_result_env: (!parsed.merge_result_env.is_empty())
             .then(|| PathBuf::from(parsed.merge_result_env)),
+        terminal_stdout_key: None,
         initial_merge_rows: parsed.initial_merge_rows,
     };
     let options = AdaptOptions {
@@ -1383,7 +1375,9 @@ mod tests {
         unlink_regular_under, valid_owner_pid, validate_design_tmpdir, validate_started_stdout,
         write_stdout,
     };
-    use larch_core::{ProcessBirthIdentity, RecordedProcessIdentity, shell_quote, write_entry_at};
+    use larch_core::{
+        ParseOptions, ProcessBirthIdentity, RecordedProcessIdentity, shell_quote, write_entry_at,
+    };
     use std::{
         env,
         ffi::OsString,
@@ -1457,6 +1451,10 @@ mod tests {
                     .join(format!("{}.stderr.log", request.spec.step)),
                 result_env: result_env_path(&request.spec.tmpdir, &request.spec.step)
                     .expect("result path"),
+                recovery_inputs_recorded: true,
+                merge_result_env: request.spec.merge_result_env.clone(),
+                terminal_stdout_key: request.spec.terminal_stdout_key.clone(),
+                sentinel_paths: request.spec.sentinel_paths.clone(),
             };
             write_entry_at(&entry, Some(&self.registry_root)).expect("registry write");
             Ok(format!(
@@ -1561,6 +1559,7 @@ mod tests {
             owner: OwnerIdentity { recorded: None },
             sentinel_paths: Vec::new(),
             merge_result_env: None,
+            terminal_stdout_key: None,
             initial_merge_rows: Vec::new(),
         }
     }
@@ -1584,6 +1583,10 @@ mod tests {
             stdout_log: spec.log_dir.join("demo-step.stdout.log"),
             stderr_log: spec.log_dir.join("demo-step.stderr.log"),
             result_env: result_env_path(&spec.tmpdir, &spec.step).expect("result path"),
+            recovery_inputs_recorded: true,
+            merge_result_env: spec.merge_result_env.clone(),
+            terminal_stdout_key: spec.terminal_stdout_key.clone(),
+            sentinel_paths: spec.sentinel_paths.clone(),
         }
     }
 
@@ -2365,12 +2368,13 @@ mod tests {
             (PathBuf::from("/tmp/session-env.sh"), "123".to_owned())
         );
         assert!(parse_resolver_arguments(&[OsString::from("--resolve-session-env")]).is_err());
-        assert_eq!(
-            parse_single_kv_row("OUTCOME=continue=now"),
-            Some(("OUTCOME".to_owned(), "continue=now".to_owned()))
+        let row = parse_single_kv_row("OUTCOME=continue=now", ParseOptions::legacy())
+            .expect("one legacy row");
+        assert_eq!((row.key(), row.value()), ("OUTCOME", "continue=now"));
+        assert!(
+            parse_single_kv_row("OUTCOME=continue\nFORGED=value", ParseOptions::legacy()).is_none()
         );
-        assert!(parse_single_kv_row("OUTCOME=continue\nFORGED=value").is_none());
-        assert!(parse_single_kv_row("not-a-row").is_none());
+        assert!(parse_single_kv_row("not-a-row", ParseOptions::legacy()).is_none());
         for value in ["1", "1234567"] {
             assert!(valid_owner_pid(value), "{value}");
         }
