@@ -21,7 +21,9 @@ use crate::argparse_compat::python_io_error;
 mod admission_commands;
 mod agent_commands;
 mod agent_review;
+mod analysis_state;
 mod analyze_bugs_commands;
+mod analyze_bugs_sweep;
 mod analyze_issues_commands;
 mod argparse_compat;
 mod audit_runs_commands;
@@ -92,6 +94,7 @@ pub(crate) mod run_log_migration_commands;
 mod run_log_publication_commands;
 mod runtime_entrypoint;
 mod session_artifact_support;
+mod validate_merged_commands;
 #[rustfmt::skip]
 mod run_log_flush_commands;
 mod report_tokens_commands;
@@ -265,6 +268,9 @@ enum Domain {
     /// Prepare compact bug-learning evidence and maintain its durable marker.
     #[command(subcommand, name = "learn-from-bugs")]
     LearnFromBugs(LearnFromBugsCommand),
+    /// Inspect recent first-parent merges for possible unfiled bugs.
+    #[command(subcommand, name = "validate-merged")]
+    ValidateMerged(ValidateMergedCommand),
     /// Narrow provider transports used by Python-owned run-log workflows.
     #[command(subcommand)]
     ObjectStore(ObjectStoreCommand),
@@ -638,6 +644,25 @@ enum LearnFromBugsCommand {
     /// Translate proposal dependencies into `/issue` batch dependency rows.
     #[command(name = "filing-deps", disable_help_flag = true)]
     FilingDeps(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum ValidateMergedCommand {
+    /// Select recent first-parent merges and write finder/refuter capture paths.
+    #[command(disable_help_flag = true)]
+    Prepare(RawCompatibilityArguments),
+    /// Validate finder JSONL and write the deterministic refuter queue.
+    #[command(name = "ingest-finder", disable_help_flag = true)]
+    IngestFinder(RawCompatibilityArguments),
+    /// Validate refuter JSONL and write the validated merge artifact.
+    #[command(name = "ingest-refuter", disable_help_flag = true)]
+    IngestRefuter(RawCompatibilityArguments),
+    /// Render the report-only merge-validation result and a publishable state file.
+    #[command(disable_help_flag = true)]
+    Report(RawCompatibilityArguments),
+    /// Atomically publish the durable validate-merged marker.
+    #[command(name = "write-state", disable_help_flag = true)]
+    WriteState(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1958,6 +1983,23 @@ fn run(
             }
             LearnFromBugsCommand::FilingDeps(arguments) => {
                 learn_from_bugs_commands::filing_deps(&arguments.arguments)
+            }
+        }),
+        Domain::ValidateMerged(command) => Ok(match command {
+            ValidateMergedCommand::Prepare(arguments) => {
+                validate_merged_commands::prepare(&arguments.arguments)
+            }
+            ValidateMergedCommand::IngestFinder(arguments) => {
+                validate_merged_commands::ingest_finder(&arguments.arguments)
+            }
+            ValidateMergedCommand::IngestRefuter(arguments) => {
+                validate_merged_commands::ingest_refuter(&arguments.arguments)
+            }
+            ValidateMergedCommand::Report(arguments) => {
+                validate_merged_commands::report(&arguments.arguments)
+            }
+            ValidateMergedCommand::WriteState(arguments) => {
+                validate_merged_commands::write_state(&arguments.arguments)
             }
         }),
         Domain::Progress(command) => Ok(match command {
