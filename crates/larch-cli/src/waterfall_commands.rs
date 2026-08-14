@@ -56,10 +56,23 @@ use crate::python_verb::plugin_root_directory;
 /// Review command boundaries consume waterfall stdout directly, so they share
 /// this codec instead of reimplementing the wire grammar.
 pub fn parse_dispatch_kv(text: &str) -> BTreeMap<String, String> {
-    KvDocument::parse(text, ParseOptions::legacy()).map_or_else(
-        |_| BTreeMap::new(),
-        |document| document.select(DuplicatePolicy::Last),
-    )
+    let document = KvDocument::parse(text, ParseOptions::legacy())
+        .expect("legacy dispatch envelope parser accepts every text input");
+    document.select(DuplicatePolicy::Last)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_dispatch_kv;
+
+    #[test]
+    fn dispatch_parser_keeps_legacy_last_value_and_malformed_line_behavior() {
+        let values = parse_dispatch_kv("STATUS=first\nnot-an-envelope\nSTATUS=last\n=empty-key\n");
+
+        assert_eq!(values.get("STATUS").map(String::as_str), Some("last"));
+        assert_eq!(values.get("").map(String::as_str), Some("empty-key"));
+        assert_eq!(values.len(), 2);
+    }
 }
 
 /// Program name every diagnostic and drop record still carries.

@@ -2488,6 +2488,846 @@ fn prior_prunable(counts: impl Iterator<Item = PruneCounts>) -> Option<bool> {
     Some(total == 0 || weighted <= rejected || (accepted < 2 && accepted.saturating_mul(2) < total))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    const INPUT: &str = "\
+### FINDING_1: Parser rejects a malformed frame
+- **Reviewer(s)**: codex-output.txt (primary)
+- **Severity**: major
+- **Concern**: Validate malformed frames before decoding.
+- **Suggested revision**: Validate malformed frames before decoding.
+
+### FINDING_2: [OUT_OF_SCOPE] Document stale behavior
+- **Reviewer(s)**: cursor-output.txt
+- **Severity**: nit
+- **Concern**: Update the later documentation.
+- **Suggested revision**: Update the later documentation.
+";
+
+    const VALID_OUTPUT: &str = "\
+### FINDING_1: Parser rejects a malformed frame
+- **Reviewer(s)**: codex
+- **Severity**: major
+- **Concern**: Validate malformed frames before decoding.
+- **Suggested revisions**:
+  - From codex: Validate malformed frames before decoding.
+
+### FINDING_2: [OUT_OF_SCOPE] Document stale behavior
+- **Reviewer(s)**: cursor
+- **Severity**: nit
+- **Concern**: Update the later documentation.
+- **Suggested revisions**:
+  - From cursor: Update the later documentation.
+";
+
+    #[test]
+    fn strip_frontmatter_preserves_legacy_boundaries() {
+        assert_eq!(
+            strip_frontmatter("---\ndescription: x\n---\nbody\n"),
+            "body\n"
+        );
+        assert_eq!(strip_frontmatter("---\n---\n"), "");
+        assert_eq!(
+            strip_frontmatter("---\nunterminated\n"),
+            "---\nunterminated\n"
+        );
+        assert_eq!(strip_frontmatter("body\n"), "body\n");
+    }
+
+    #[test]
+    fn validator_enforces_empty_merge_attribution_and_scope_contracts() {
+        assert_eq!(
+            validate_aggregate_output(INPUT, EMPTY_MERGE_ATTESTATION, "code").0,
+            0
+        );
+        assert_eq!(
+            validate_aggregate_output(INPUT, "FINDING_1 was skipped\n", "code").0,
+            PREAMBLE_SLIP_RC
+        );
+        assert_eq!(
+            validate_aggregate_output(
+                INPUT,
+                &format!("### FINDING_1 without a colon\n{EMPTY_MERGE_ATTESTATION}\n"),
+                "code",
+            )
+            .0,
+            NARROW_TRIGGER_RC
+        );
+        assert_eq!(
+            validate_aggregate_output(
+                INPUT,
+                "### FINDING_1: Missing attribution\n- **Severity**: major\n",
+                "code",
+            )
+            .0,
+            MISSING_ATTRIBUTION_RC
+        );
+        assert_eq!(
+            validate_aggregate_output(
+                INPUT,
+                "### FINDING_1: Incomplete merge\n- **Reviewer(s)**: codex\n- **Severity**: major\n",
+                "code",
+            )
+            .0,
+            MISSING_REVIEWER_RC
+        );
+        assert_eq!(
+            validate_aggregate_output(
+                INPUT,
+                "### FINDING_1: Incorrect scope\n- **Reviewer(s)**: codex, cursor\n- **Severity**: major\n",
+                "code",
+            )
+            .0,
+            OOS_ATTRIBUTION_RC
+        );
+        assert_eq!(
+            validate_aggregate_output(
+                INPUT,
+                &format!("{VALID_OUTPUT}{EMPTY_MERGE_ATTESTATION}\n"),
+                "code",
+            )
+            .0,
+            2
+        );
+        assert_eq!(validate_aggregate_output(INPUT, VALID_OUTPUT, "code").0, 0);
+    }
+
+    #[test]
+    fn reviewer_inventory_and_revision_traces_preserve_raw_slot_provenance() {
+        let inventory = required_reviewer_slots_prompt_section(INPUT);
+        assert!(
+            inventory.contains("- `codex`: in-scope (observed labels: codex-output.txt (primary))")
+        );
+        assert!(
+            inventory
+                .contains("- `cursor`: out-of-scope-only (observed labels: cursor-output.txt)")
+        );
+        assert!(inventory.contains("Every listed slot must appear"));
+
+        let output_blocks = finding_blocks(VALID_OUTPUT);
+        let (bullets, warnings) = suggested_revision_bullets(&output_blocks[0], "FINDING_1");
+        assert_eq!(
+            bullets,
+            vec![(
+                "codex".to_owned(),
+                "Validate malformed frames before decoding.".to_owned()
+            )]
+        );
+        assert!(warnings.is_empty());
+        assert!(revision_trace_warnings(INPUT, &output_blocks).is_empty());
+
+        let unknown = VALID_OUTPUT.replace("From codex:", "From invented:");
+        assert!(
+            revision_trace_warnings(INPUT, &finding_blocks(&unknown))
+                .iter()
+                .any(|warning| warning.contains("unknown From slot label \"invented\""))
+        );
+        let malformed = "### FINDING_1: Bad revisions\n- **Reviewer(s)**: codex\n- **Suggested revisions**:\n  prose before a bullet\n- **Severity**: major\n";
+        assert!(
+            suggested_revision_bullets(malformed, "FINDING_1")
+                .1
+                .iter()
+                .any(|warning| warning.contains("unexpected line"))
+        );
+    }
+
+    #[test]
+    fn aggregation_edge_cases_preserve_legacy_validation_and_trace_behavior() {
+        assert!(required_reviewer_slots_prompt_section("### FINDING_1: no reviewer\n").is_empty());
+        let mixed_input = concat!(
+            "### FINDING_1: First\n- **Reviewer(s)**: codex-output.txt, cursor\n\n",
+            "### FINDING_2: [OUT_OF_SCOPE] Second\n- **Reviewer(s)**: codex-output.txt\n"
+        );
+        let inventory = required_reviewer_slots_prompt_section(mixed_input);
+        assert!(inventory.contains("- `codex`: mixed (observed labels: codex-output.txt)"));
+        assert!(inventory.contains("- `cursor`: in-scope"));
+
+        let forensic = Path::new("/tmp/round-8/aggregator-mv.stderr");
+        assert_eq!(
+            failure_reference(forensic, Path::new("/tmp/round-8"), "session.env", None),
+            "round-8/aggregator-mv.stderr"
+        );
+        let ordinary = Path::new("/tmp/ordinary.stderr");
+        assert_eq!(
+            failure_reference(ordinary, Path::new("/tmp/review"), "", None),
+            "/tmp/ordinary.stderr"
+        );
+        assert_eq!(
+            failure_see_phrase(ordinary, Path::new("/tmp/review"), "", None),
+            "See /tmp/ordinary.stderr."
+        );
+
+        let multi = "### FINDING_1: Revisions\n- **Reviewer(s)**: codex, cursor\n- **Suggested revisions**:\n  - From codex: First change\n    continued detail\n  - From cursor: Second change\n";
+        assert_eq!(
+            suggested_revision_bullets(multi, "FINDING_1").0,
+            vec![
+                (
+                    "codex".to_owned(),
+                    "First change continued detail".to_owned()
+                ),
+                ("cursor".to_owned(), "Second change".to_owned()),
+            ]
+        );
+        assert_eq!(
+            singular_suggested_revision(
+                "- **Suggested revision**: Validate malformed frames before decoding."
+            ),
+            Some("Validate malformed frames before decoding.".to_owned())
+        );
+        assert!(!revision_traceable("", &[INPUT.to_owned()]));
+        assert!(revision_traceable(
+            "Validate malformed frames before decoding.",
+            &[INPUT.to_owned()]
+        ));
+        assert_eq!(
+            reviewer_tokens("- **Reviewers**: CoDeX, Cursor"),
+            HashSet::from(["codex".to_owned(), "cursor".to_owned()])
+        );
+        assert!(reviewer_tokens("no reviewer field").is_empty());
+
+        let legacy = "### FINDING_1: Legacy\n- **Reviewer(s)**: codex\n- **Suggested revision**: Validate malformed frames before decoding.\n";
+        assert!(revision_trace_warnings(INPUT, &finding_blocks(legacy)).is_empty());
+        let both = "### FINDING_1: Both\n- **Reviewer(s)**: codex\n- **Suggested revision**: Validate malformed frames before decoding.\n- **Suggested revisions**:\n  - From codex: Validate malformed frames before decoding.\n";
+        assert!(
+            revision_trace_warnings(INPUT, &finding_blocks(both))
+                .iter()
+                .any(|warning| warning.contains("both legacy singular"))
+        );
+        let untraceable = VALID_OUTPUT.replace(
+            "Validate malformed frames before decoding.",
+            "Invent a replacement that is absent from the input.",
+        );
+        assert!(
+            revision_trace_warnings(INPUT, &finding_blocks(&untraceable))
+                .iter()
+                .any(|warning| warning.contains("not traceable"))
+        );
+        assert!(revision_trace_warnings(
+            INPUT,
+            &finding_blocks("### FINDING_2: [OUT_OF_SCOPE] Skip\n- **Reviewer(s)**: cursor\n- **Suggested revision**: unrelated\n")
+        )
+        .is_empty());
+
+        assert_eq!(
+            validate_aggregate_output(
+                "### FINDING_1: No labels\n- **Severity**: major\n",
+                VALID_OUTPUT,
+                "code"
+            )
+            .0,
+            2
+        );
+        assert_eq!(
+            validate_aggregate_output(INPUT, "plain output\n", "code").0,
+            2
+        );
+        assert_eq!(
+            validate_aggregate_output(
+                INPUT,
+                "### FINDING_1: Missing severity\n- **Reviewer(s)**: codex\n",
+                "code"
+            )
+            .0,
+            2
+        );
+        assert_eq!(
+            validate_aggregate_output(
+                INPUT,
+                "### FINDING_1: Unknown\n- **Reviewer(s)**: invented\n- **Severity**: major\n",
+                "code"
+            )
+            .0,
+            2
+        );
+        let duplicate = format!("{VALID_OUTPUT}\n{}", finding_blocks(VALID_OUTPUT)[0]);
+        assert_eq!(validate_aggregate_output(INPUT, &duplicate, "code").0, 2);
+        let plan_output = VALID_OUTPUT
+            .replace("- **Severity**: major\n", "")
+            .replace("- **Severity**: nit\n", "");
+        assert_eq!(validate_aggregate_output(INPUT, &plan_output, "plan").0, 0);
+    }
+
+    #[test]
+    fn aggregation_text_helpers_keep_compatibility_boundaries() {
+        assert_eq!(normalize_slot(" codex-output.txt (retry) "), "codex");
+        assert_eq!(
+            reviewer_line_slots("- **Reviewers**: codex, cursor").1,
+            ["codex", "cursor"]
+        );
+        assert_eq!(finding_blocks(INPUT).len(), 2);
+        assert_eq!(
+            finding_id(&finding_blocks(INPUT)[0]).as_deref(),
+            Some("FINDING_1")
+        );
+        assert_eq!(
+            drop_impure_attestation_lines(&format!(
+                "before\n{EMPTY_MERGE_ATTESTATION}=untrusted\n{EMPTY_MERGE_ATTESTATION}\nafter\n"
+            )),
+            format!("before\n{EMPTY_MERGE_ATTESTATION}\nafter\n")
+        );
+        assert!(has_nonconforming_finding_heading(
+            "### FINDING_1 nearly canonical\n"
+        ));
+        assert!(!has_nonconforming_finding_heading(
+            "### FINDING_1: canonical\n"
+        ));
+        assert_eq!(
+            strip_attestation(&format!("one\n{EMPTY_MERGE_ATTESTATION}\ntwo\n")),
+            "one\ntwo\n"
+        );
+        let problem = problem_text(
+            "### FINDING_1: [tag] Decode frame\n- **Concern**: Decode `wire` frames safely. Scenario: input arrives late.\nDescription: explain behavior\n",
+        );
+        assert!(problem.contains("Decode frame"));
+        assert!(problem.contains("Decode  frames safely"));
+        assert!(problem.contains("explain behavior"));
+        assert!(problem_score(INPUT, VALID_OUTPUT) > 0.2);
+        assert_eq!(problem_text(""), "");
+        assert_eq!(problem_score("", VALID_OUTPUT), 0.0);
+        assert_eq!(
+            renumber_findings("### FINDING_8: First\n\n### FINDING_3: Second\n"),
+            "### FINDING_1: First\n\n### FINDING_2: Second\n"
+        );
+        assert!(renumber_findings("plain text").is_empty());
+    }
+
+    #[test]
+    fn candidate_application_writes_only_after_validation() {
+        let directory = tempdir().expect("temporary directory");
+        let source = directory.path().join("source.md");
+        let candidate = directory.path().join("candidate.md");
+        let findings = directory.path().join("findings.md");
+        fs::write(&source, INPUT).expect("write input");
+        fs::write(&candidate, VALID_OUTPUT).expect("write candidate");
+        fs::write(&findings, "original findings\n").expect("write findings");
+
+        let (status, log) = apply_aggregate_candidate(
+            &candidate,
+            &source,
+            &findings,
+            directory.path(),
+            "code",
+            None,
+            false,
+            "",
+        );
+        assert_eq!(status, 0);
+        assert!(log.is_file());
+        assert_eq!(file_text(&findings).expect("read findings"), VALID_OUTPUT);
+
+        fs::write(
+            &candidate,
+            "### FINDING_1: Missing attribution\n- **Severity**: major\n",
+        )
+        .expect("write invalid candidate");
+        let (status, _) = apply_aggregate_candidate(
+            &candidate,
+            &source,
+            &findings,
+            directory.path(),
+            "code",
+            None,
+            false,
+            "",
+        );
+        assert_eq!(status, VALIDATION_FAILED_RC);
+        assert_eq!(
+            file_text(&findings).expect("read unchanged findings"),
+            VALID_OUTPUT
+        );
+
+        fs::write(&candidate, EMPTY_MERGE_ATTESTATION).expect("write empty merge candidate");
+        let (status, _) = apply_aggregate_candidate(
+            &candidate,
+            &source,
+            &findings,
+            directory.path(),
+            "code",
+            None,
+            false,
+            "",
+        );
+        assert_eq!(status, 0);
+        assert_eq!(file_text(&findings).expect("read empty merge"), "\n");
+    }
+
+    #[test]
+    fn retry_and_forensics_helpers_render_actionable_compatibility_text() {
+        assert_eq!(validation_retry_budget(), DEFAULT_VALIDATION_RETRIES);
+        let ordinary = validation_retry_prompt("base", " missing reviewer ", 1, 2);
+        assert!(ordinary.contains("attempt 1 of 2"));
+        assert!(ordinary.contains("missing reviewer"));
+        let scoped =
+            validation_retry_prompt("base", "appears only on OOS-tagged input findings", 2, 2);
+        assert!(scoped.contains("must keep `[OUT_OF_SCOPE]`"));
+        assert!(validation_retry_prompt("base", "", 1, 2).contains("validator produced no detail"));
+
+        let review_tmpdir = Path::new("/tmp/review");
+        let round_dir = review_tmpdir.join("round-2");
+        let forensic = round_dir.join("aggregator-validate.stderr");
+        assert_eq!(
+            failure_reference(&forensic, review_tmpdir, "session.env", Some(&round_dir)),
+            "round-2/aggregator-validate.stderr"
+        );
+        assert!(
+            failure_see_phrase(&forensic, review_tmpdir, "session.env", Some(&round_dir))
+                .contains("archived run log")
+        );
+        assert_eq!(
+            execution_issues_log(Path::new("/tmp/review"), "/tmp/session/session.env"),
+            PathBuf::from("/tmp/session/execution-issues.md")
+        );
+    }
+
+    #[test]
+    fn aggregate_option_grammar_preserves_defaults_and_rejects_invalid_values() {
+        let arguments =
+            |codex_present: &str, mode: &str, input_mode: &str, outside: &str, round: &str| {
+                [
+                    "--findings-file",
+                    "findings.md",
+                    "--review-tmpdir",
+                    "review",
+                    "--codex-present",
+                    codex_present,
+                    "--cursor-present",
+                    "false",
+                    "--mode",
+                    mode,
+                    "--input-mode",
+                    input_mode,
+                    "--allow-findings-outside-tmpdir",
+                    outside,
+                    "--round-num",
+                    round,
+                    "--round-dir",
+                    "review/round-3",
+                    "--site",
+                    "review.aggregate.test",
+                ]
+                .into_iter()
+                .map(OsString::from)
+                .collect::<Vec<_>>()
+            };
+        let options = aggregate_options(&arguments("true", "diff", "plan", "true", "3"))
+            .expect("valid aggregate options")
+            .expect("not help");
+        assert_eq!(options.findings_file, PathBuf::from("findings.md"));
+        assert_eq!(options.review_tmpdir, PathBuf::from("review"));
+        assert_eq!(options.codex_present, "true");
+        assert_eq!(options.cursor_present, "false");
+        assert_eq!(options.mode, "diff");
+        assert_eq!(options.input_mode, "plan");
+        assert!(options.allow_outside);
+        assert_eq!(options.round_num, 3);
+        assert_eq!(options.round_dir, Some(PathBuf::from("review/round-3")));
+        assert_eq!(options.site, "review.aggregate.test");
+
+        assert!(
+            aggregate_options(&[OsString::from("--help")])
+                .expect("help succeeds")
+                .is_none()
+        );
+        assert!(matches!(aggregate_options(&[]), Err(error) if error.contains("--findings-file")));
+        assert!(
+            matches!(aggregate_options(&arguments("yes", "diff", "code", "false", "0")), Err(error) if error.contains("invalid choice"))
+        );
+        assert!(
+            matches!(aggregate_options(&arguments("true", "invalid", "code", "false", "0")), Err(error) if error.contains("--mode"))
+        );
+        assert!(
+            matches!(aggregate_options(&arguments("true", "diff", "invalid", "false", "0")), Err(error) if error.contains("--input-mode"))
+        );
+        assert!(
+            matches!(aggregate_options(&arguments("true", "diff", "code", "invalid", "0")), Err(error) if error.contains("--allow-findings-outside-tmpdir"))
+        );
+        assert!(
+            matches!(aggregate_options(&arguments("true", "diff", "code", "false", "bad")), Err(error) if error.contains("--round-num"))
+        );
+        assert_eq!(
+            aggregate_options(&arguments("true", "diff", "code", "false", "-3"))
+                .expect("negative rounds normalize")
+                .expect("not help")
+                .round_num,
+            0
+        );
+    }
+
+    #[test]
+    fn aggregate_command_rejects_invalid_paths_and_skips_single_input() {
+        let directory = tempdir().expect("temporary directory");
+        let review = directory.path().join("review");
+        fs::create_dir(&review).expect("create review directory");
+        let outside = directory.path().join("outside.md");
+        let inside = review.join("findings.md");
+        fs::write(
+            &outside,
+            "### FINDING_1: Outside\n- **Reviewer(s)**: codex\n- **Severity**: major\n",
+        )
+        .expect("write outside finding");
+        fs::write(
+            &inside,
+            "### FINDING_1: Only input\n- **Reviewer(s)**: codex\n- **Severity**: major\n",
+        )
+        .expect("write inside finding");
+        let arguments = |findings: &Path, review_tmpdir: &Path| {
+            vec![
+                OsString::from("--findings-file"),
+                findings.as_os_str().to_owned(),
+                OsString::from("--review-tmpdir"),
+                review_tmpdir.as_os_str().to_owned(),
+                OsString::from("--codex-present"),
+                OsString::from("true"),
+                OsString::from("--cursor-present"),
+                OsString::from("false"),
+                OsString::from("--mode"),
+                OsString::from("diff"),
+            ]
+        };
+        assert_eq!(
+            aggregate_findings(&arguments(&outside, &directory.path().join("missing"))),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            aggregate_findings(&arguments(&directory.path().join("absent.md"), &review)),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            aggregate_findings(&arguments(&outside, &review)),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            aggregate_findings(&arguments(&inside, &review)),
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[test]
+    fn nit_pruning_and_manual_reviewer_option_grammar_keep_legacy_behavior() {
+        let directory = tempdir().expect("temporary directory");
+        let findings = directory.path().join("findings.md");
+        let audit = directory.path().join("audit.md");
+        let security = directory.path().join("security.md");
+        fs::write(
+            &findings,
+            concat!(
+                "### FINDING_8: Keep\n- **Severity**: minor\n\n",
+                "### FINDING_9: Drop\n- **Severity**: nit\n\n",
+                "### OOS_4: Security drop\n- **focus-area**: security-review\n- **Severity**: nit\n"
+            ),
+        )
+        .expect("write findings");
+        let arguments = vec![
+            OsString::from("--findings-file"),
+            findings.as_os_str().to_owned(),
+            OsString::from("--audit-file"),
+            audit.as_os_str().to_owned(),
+            OsString::from("--security-audit-file"),
+            security.as_os_str().to_owned(),
+        ];
+        assert_eq!(prune_nit_findings(&arguments), ExitCode::SUCCESS);
+        assert_eq!(
+            file_text(&findings).expect("read remaining finding"),
+            "### FINDING_1: Keep\n- **Severity**: minor\n\n"
+        );
+        assert!(file_text(&audit).expect("read audit").contains("Drop"));
+        assert!(
+            file_text(&security)
+                .expect("read security audit")
+                .contains("Security drop")
+        );
+        assert_eq!(
+            renumber_items(&["### OOS_7: One".to_owned(), "plain block".to_owned()]),
+            "### OOS_1: One\n\nplain block\n\n"
+        );
+        assert!(renumber_items(&[]).is_empty());
+
+        let parsed = reviewer_prune_options(&[
+            OsString::from("--ledger"),
+            OsString::from("ledger.tsv"),
+            OsString::from("--round"),
+            OsString::from("2"),
+        ])
+        .expect("legacy options");
+        assert_eq!(
+            parsed.get("--ledger").map(String::as_str),
+            Some("ledger.tsv")
+        );
+        assert!(reviewer_prune_options(&[OsString::from("--ledger=ledger.tsv")]).is_none());
+        assert!(reviewer_prune_options(&[OsString::from("--ledger")]).is_none());
+    }
+
+    #[test]
+    fn aggregation_dispatch_helpers_recognize_round_paths() {
+        assert_eq!(
+            round_number_from_path(Path::new("/tmp/review/round-12/output")),
+            Some(12)
+        );
+        assert_eq!(
+            round_number_from_path(Path::new("/tmp/round-x/output")),
+            None
+        );
+        assert_eq!(round_number_from_path(Path::new("/tmp/output")), None);
+    }
+
+    #[test]
+    fn pruning_helpers_preserve_classification_and_ledger_history() {
+        let directory = tempdir().expect("temporary directory");
+        let manifest = directory.path().join("manifest.jsonl");
+        let classification = directory.path().join("classification.tsv");
+        let status = directory.path().join("reviewer-status.tsv");
+        let ledger = directory.path().join("ledger.tsv");
+        let filtered = directory.path().join("filtered.jsonl");
+        fs::write(
+            &manifest,
+            concat!(
+                "{\"tool\":\"codex\",\"slot\":\"keep\",\"output\":\"/tmp/keep-output.txt\"}\n",
+                "{\"tool\":\"cursor\",\"slot\":\"drop\",\"output\":\"drop-output.txt\"}\n",
+                "{\"tool\":\"claude\",\"slot\":\"exempt\",\"prune_exempt\":true}\n",
+                "null\n"
+            ),
+        )
+        .expect("write manifest");
+        let rows = manifest_rows(&manifest).expect("parse manifest");
+        assert_eq!(rows.len(), 3);
+        assert_eq!(output_label(&rows[0]), "keep-output.txt");
+        assert_eq!(output_label(&rows[2]), "exempt");
+        assert_eq!(normalize_code_label("/tmp/keep-output.txt (retry)"), "keep");
+        assert_eq!(normalize_code_label("cursor-phase2"), "cursor");
+
+        fs::write(
+            &classification,
+            concat!(
+                "reviewer_slots\tvoting_result\tscope\tv1_vote\tv1_severity\tv2_vote\tv2_severity\n",
+                "keep-output.txt|drop-output.txt\taccepted\tin_scope\tYES\tmajor\tYES\tmajor\n",
+                "drop-output.txt\trejected\tin_scope\tNO\tminor\t\t\n"
+            ),
+        )
+        .expect("write classification");
+        let labels = vec!["keep-output.txt".to_owned(), "drop-output.txt".to_owned()];
+        let counts = classification_counts(&classification, &labels, false).expect("counts");
+        let keep = counts.get("keep-output.txt").expect("keep count");
+        assert_eq!(
+            (
+                keep.accepted,
+                keep.weighted_accepted,
+                keep.rejected,
+                keep.total
+            ),
+            (1, 2, 0, 1)
+        );
+        let drop = counts.get("drop-output.txt").expect("drop count");
+        assert_eq!(
+            (
+                drop.accepted,
+                drop.weighted_accepted,
+                drop.rejected,
+                drop.total
+            ),
+            (1, 2, 1, 2)
+        );
+
+        fs::write(&status, "slot\tstatus\nkeep\trun\ndrop\tskipped\n").expect("write status");
+        assert_eq!(
+            skipped_labels(Some(&status)),
+            HashSet::from(["drop".to_owned()])
+        );
+        assert_eq!(
+            normalize_ledger_row(&[
+                "1".to_owned(),
+                "codex".to_owned(),
+                "keep".to_owned(),
+                "keep-output.txt".to_owned(),
+                "2".to_owned(),
+                "0".to_owned(),
+                "2".to_owned(),
+            ])
+            .expect("legacy ledger row"),
+            vec![
+                "1",
+                "codex",
+                "keep",
+                "keep-output.txt",
+                "2",
+                "2",
+                "0",
+                "2",
+                "true"
+            ]
+        );
+
+        let ledger_rows = vec![
+            ledger_header().split('\t').map(str::to_owned).collect(),
+            vec![
+                "1",
+                "codex",
+                "keep",
+                "keep-output.txt",
+                "2",
+                "2",
+                "0",
+                "2",
+                "true",
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+            vec![
+                "1",
+                "cursor",
+                "drop",
+                "drop-output.txt",
+                "0",
+                "0",
+                "1",
+                "1",
+                "true",
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+        ];
+        fs::write(
+            &ledger,
+            write_tsv_rows(&ledger_rows).expect("render ledger"),
+        )
+        .expect("write ledger");
+        let parsed =
+            read_tsv_rows(&file_text(&ledger).expect("read ledger")).expect("parse ledger");
+        assert_eq!(parsed, ledger_rows);
+        let history = ledger_history(&ledger, 2).expect("ledger history");
+        assert_eq!(history.len(), 2);
+        assert_eq!(
+            prior_prunable(history["codex:keep"].values().cloned()),
+            Some(false)
+        );
+        assert_eq!(
+            prior_prunable(history["cursor:drop"].values().cloned()),
+            Some(true)
+        );
+
+        let result = prune_filter(&ledger, 2, &manifest, &filtered).expect("filter manifest");
+        assert_eq!((result.eligible, result.pruned), (2, 1));
+        assert_eq!(result.combos, "cursor:drop");
+        assert!(!result.fail_open);
+        let kept = file_text(&filtered).expect("read filtered manifest");
+        assert!(kept.contains("\"keep\""));
+        assert!(kept.contains("\"exempt\""));
+        assert!(!kept.contains("\"drop\""));
+    }
+
+    #[test]
+    fn pruning_edge_forms_keep_plan_attribution_and_cli_failures_explicit() {
+        let directory = tempdir().expect("temporary directory");
+        let label_map = directory.path().join("labels.tsv");
+        let plan = directory.path().join("plan.tsv");
+        let status = directory.path().join("status.tsv");
+        let manifest = directory.path().join("manifest.ndjson");
+        let ledger = directory.path().join("ledger.tsv");
+        let output = directory.path().join("filtered.ndjson");
+        fs::write(&label_map, "slot-a\tPlan A\nslot-b\tPlan B\n").expect("write label map");
+        assert_eq!(read_label_map(Some(&label_map)).len(), 2);
+        assert!(read_label_map(None).is_empty());
+        fs::write(
+            &plan,
+            "finding_reviewers\tvoting_result\nPlan A, Plan B\taccepted\nPlan A\tignored\n",
+        )
+        .expect("write plan classification");
+        let labels = vec!["Plan A".to_owned(), "Plan B".to_owned()];
+        let counts = classification_counts(&plan, &labels, true).expect("plan counts");
+        assert_eq!(counts["Plan A"].weighted_accepted, 1);
+        assert_eq!(counts["Plan B"].accepted, 1);
+        let accepted = HashMap::from([("voting_result".to_owned(), "accepted".to_owned())]);
+        assert_eq!(accepted_points(&accepted, &["voting_result".to_owned()]), 1);
+        fs::write(&status, "slot\tother\nslot-a\tskipped\n").expect("write invalid status");
+        assert!(skipped_labels(Some(&status)).is_empty());
+        let eight = vec!["1", "tool", "slot", "label", "1", "0", "1", "1"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            normalize_ledger_row(&eight)
+                .expect("eight-column row")
+                .len(),
+            9
+        );
+        assert!(normalize_ledger_row(&["bad".to_owned()]).is_none());
+
+        fs::write(
+            &manifest,
+            "{\"tool\":\"codex\",\"slot\":\"slot-a\",\"output\":\"output.txt\"}\n",
+        )
+        .expect("write manifest");
+        let old = vec![
+            ledger_header().split('\t').map(str::to_owned).collect(),
+            vec!["1", "codex", "slot-a", "Plan A", "1", "1", "0", "1", "true"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        ];
+        fs::write(&ledger, write_tsv_rows(&old).expect("render old ledger")).expect("write ledger");
+        let new = vec![
+            vec!["2", "codex", "slot-a", "Plan A", "0", "0", "1", "1", "true"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        ];
+        rewrite_ledger(&ledger, 2, &new).expect("rewrite ledger");
+        assert_eq!(
+            ledger_history(&ledger, 3).expect("rewritten history").len(),
+            1
+        );
+        let malformed = directory.path().join("malformed.tsv");
+        fs::write(&malformed, "wrong\theader\n").expect("write malformed ledger");
+        assert!(ledger_history(&malformed, 2).is_err());
+        assert_eq!(prior_prunable(std::iter::empty()), None);
+
+        assert_eq!(reviewer_prune(&[]), ExitCode::from(2));
+        assert_eq!(
+            reviewer_prune(&[OsString::from("--help")]),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            reviewer_prune(&[
+                OsString::from("record"),
+                OsString::from("--round"),
+                OsString::from("0")
+            ]),
+            ExitCode::from(2)
+        );
+        let record = vec![
+            OsString::from("record"),
+            OsString::from("--ledger"),
+            ledger.as_os_str().to_owned(),
+            OsString::from("--round"),
+            OsString::from("3"),
+            OsString::from("--manifest"),
+            manifest.as_os_str().to_owned(),
+            OsString::from("--classification"),
+            plan.as_os_str().to_owned(),
+            OsString::from("--label-map"),
+            label_map.as_os_str().to_owned(),
+        ];
+        assert_eq!(reviewer_prune(&record), ExitCode::SUCCESS);
+        let filter = vec![
+            OsString::from("filter"),
+            OsString::from("--ledger"),
+            ledger.as_os_str().to_owned(),
+            OsString::from("--round"),
+            OsString::from("4"),
+            OsString::from("--manifest"),
+            manifest.as_os_str().to_owned(),
+            OsString::from("--out"),
+            output.as_os_str().to_owned(),
+        ];
+        assert_eq!(reviewer_prune(&filter), ExitCode::SUCCESS);
+        assert!(output.is_file());
+    }
+}
+
 fn prune_filter(
     ledger: &Path,
     round: u64,
