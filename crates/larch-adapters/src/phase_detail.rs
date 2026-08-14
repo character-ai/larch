@@ -11,7 +11,7 @@ use indexmap::IndexMap;
 use larch_core::{
     CLAUDE_FABLE_5_MODEL, CLAUDE_HAIKU_4_5_MODEL, CLAUDE_OPUS_4_8_MODEL, CLAUDE_SONNET_4_6_MODEL,
     CODEX_DEFAULT_MODEL, CODEX_MINI_MODELS, CODEX_REVIEW_MODEL_DEFAULT, CURSOR_COMPOSER_BASE_RATES,
-    CURSOR_GROK_4_5_HIGH_MODEL, CURSOR_GROK_MODELS, CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
+    CURSOR_GROK_4_6_HIGH_MODEL, CURSOR_GROK_MODELS, CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
     KvDocument, ParseOptions, RateRow, TokenVendor, claude_sub_default_model, ensure_ascii_json,
     exact_rate_row,
 };
@@ -1825,7 +1825,7 @@ fn round_vendor_cost(ledger: Option<&Path>, window: Option<(i64, i64)>) -> Strin
             cursor_base.output + surcharge,
         ),
     };
-    let grok_table = table_rates(TokenVendor::Cursor, CURSOR_GROK_4_5_HIGH_MODEL);
+    let grok_table = table_rates(TokenVendor::Cursor, CURSOR_GROK_4_6_HIGH_MODEL);
     let cursor_grok_rates = TokenRates {
         input: env_rate_any(&["LARCH_CURSOR_GROK_INPUT_RATE_PER_M"], grok_table.input),
         cache_read: env_rate_any(

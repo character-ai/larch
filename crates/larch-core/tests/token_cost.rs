@@ -185,7 +185,7 @@ fn an_unpriced_per_model_bucket_is_reported_for_every_lane() {
         "BUCKETS_codex": {"input": 10, "cached_input": 20, "output": 5},
         "BUCKETS_codex_by_model": {"gpt-9-unknown": {"input": 10, "cached_input": 20, "output": 5}},
         "BUCKETS_cursor": {"input": 10, "cache_read": 20, "output": 5},
-        "BUCKETS_cursor_by_model": {"grok-4.5": {"input": 10, "cache_read": 20, "output": 5}},
+        "BUCKETS_cursor_by_model": {"cursor-unknown": {"input": 10, "cache_read": 20, "output": 5}},
         "BUCKETS_claude_sub": {"input": 10, "cache_read": 20, "output": 5},
         "BUCKETS_claude_sub_by_model": {"glm-5.2": {"input": 10, "cache_read": 20, "output": 5}},
     });
@@ -207,13 +207,46 @@ fn an_unpriced_per_model_bucket_is_reported_for_every_lane() {
         vec![
             ("claude_sub".to_owned(), "glm-5.2".to_owned()),
             ("codex".to_owned(), "gpt-9-unknown".to_owned()),
-            ("cursor".to_owned(), "grok-4.5".to_owned()),
+            ("cursor".to_owned(), "cursor-unknown".to_owned()),
         ]
     );
     // The substituted rows still price the tokens, so nothing is lost.
     assert_eq!(counts.codex.total(), 35);
-    assert_eq!(counts.cursor_grok.total(), 35);
+    assert_eq!(counts.cursor.total(), 35);
     assert_eq!(counts.claude_sub.total(), 35);
+}
+
+#[test]
+fn legacy_cursor_grok_ledger_ids_keep_the_current_grok_rate() {
+    let report = json!({
+        "BUCKETS_cursor": {"input": 1_000_000, "cache_read": 1_000_000, "output": 1_000_000},
+        "BUCKETS_cursor_by_model": {
+            "cursor-grok-4.5-high": {"input": 1_000_000, "cache_read": 0, "output": 0},
+            "grok-4.5": {"input": 0, "cache_read": 1_000_000, "output": 1_000_000},
+        },
+    });
+    let record = record_from_report(
+        report.as_object().expect("report object").clone(),
+        CLAUDE_OPUS_4_8_MODEL,
+    );
+    let mut sink = observations();
+    let cost = price_run(&record, &BTreeMap::new(), &mut sink);
+
+    assert_eq!(cost.cursor_grok_cost, Some(8.5));
+    assert!((cost.cursor_cost - 8.5).abs() < f64::EPSILON);
+    let reported: Vec<_> = sink
+        .entries()
+        .iter()
+        .filter(|entry| entry.kind() == TokenObservationKind::UnpricedModel)
+        .map(|entry| (entry.vendor().to_owned(), entry.detail().to_owned()))
+        .collect();
+    assert_eq!(
+        reported,
+        vec![
+            ("cursor".to_owned(), "cursor-grok-4.5-high".to_owned()),
+            ("cursor".to_owned(), "grok-4.5".to_owned()),
+        ]
+    );
 }
 
 #[test]

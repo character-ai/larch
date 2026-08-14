@@ -442,7 +442,7 @@ fn session_create_and_resume_argv_are_byte_exact() {
     );
     let cursor = VendorSessionHandle::create("cursor", "chat-abc123").expect("cursor");
     let mut request = VendorLaunchRequest::new("/repo", "/tmp/out.txt", "continue the debate");
-    request.model_args = vec!["--model".to_owned(), "cursor-grok-4.5-high".to_owned()];
+    request.model_args = vec!["--model".to_owned(), "cursor-grok-4.6-high".to_owned()];
     assert_eq!(
         build_cursor_resume_argv(&cursor, &request)
             .expect("resume")
@@ -459,7 +459,7 @@ fn session_create_and_resume_argv_are_byte_exact() {
             "--output-format",
             "json",
             "--model",
-            "cursor-grok-4.5-high",
+            "cursor-grok-4.6-high",
             "--workspace",
             "/repo",
             "continue the debate",

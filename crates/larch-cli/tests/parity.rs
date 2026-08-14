@@ -3008,7 +3008,7 @@ const PHASE_DETAIL_CASES: &[PhaseDetailFixture] = &[
             ),
             (
                 "tokens.jsonl",
-                "{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.6-terra\",\"input\":1000000,\"output\":0,\"cache_read\":0,\"ts\":\"2026-06-25T00:00:05Z\"}\n{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.6-luna\",\"input\":1000000,\"output\":0,\"cache_read\":0,\"ts\":\"2026-06-25T00:00:06Z\"}\n{\"type\":\"vendor\",\"vendor\":\"cursor\",\"model\":\"cursor-grok-4.5-high\",\"input\":1000000,\"output\":0,\"cache_read\":0,\"ts\":\"2026-06-25T00:00:07Z\"}\n{\"type\":\"vendor\",\"vendor\":\"claude_sub\",\"model\":\"claude-sonnet-4-6\",\"input\":1000000,\"output\":0,\"cache_read\":0,\"ts\":\"2026-06-25T00:00:08Z\"}\n",
+                "{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.6-terra\",\"input\":1000000,\"output\":0,\"cache_read\":0,\"ts\":\"2026-06-25T00:00:05Z\"}\n{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.6-luna\",\"input\":1000000,\"output\":0,\"cache_read\":0,\"ts\":\"2026-06-25T00:00:06Z\"}\n{\"type\":\"vendor\",\"vendor\":\"cursor\",\"model\":\"cursor-grok-4.6-high\",\"input\":1000000,\"output\":0,\"cache_read\":0,\"ts\":\"2026-06-25T00:00:07Z\"}\n{\"type\":\"vendor\",\"vendor\":\"claude_sub\",\"model\":\"claude-sonnet-4-6\",\"input\":1000000,\"output\":0,\"cache_read\":0,\"ts\":\"2026-06-25T00:00:08Z\"}\n",
             ),
         ],
         environment: &[],
@@ -3117,7 +3117,7 @@ const PHASE_DETAIL_CASES: &[PhaseDetailFixture] = &[
             ),
             (
                 "tokens.jsonl",
-                "{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.6-sol\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:05Z\"}\n{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.4-mini\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:06Z\"}\n{\"type\":\"vendor\",\"vendor\":\"cursor\",\"model\":\"composer-2.5\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:07Z\"}\n{\"type\":\"vendor\",\"vendor\":\"cursor\",\"model\":\"grok-4.5\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:08Z\"}\n",
+                "{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.6-sol\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:05Z\"}\n{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.4-mini\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:06Z\"}\n{\"type\":\"vendor\",\"vendor\":\"cursor\",\"model\":\"composer-2.5\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:07Z\"}\n{\"type\":\"vendor\",\"vendor\":\"cursor\",\"model\":\"cursor-grok-4.6-high\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:08Z\"}\n",
             ),
         ],
         environment: &[

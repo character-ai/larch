@@ -555,7 +555,7 @@ pub use vendor_model::{
     CLAUDE_FABLE_5_MODEL, CLAUDE_GLM_5_2_1M_MODEL, CLAUDE_GLM_5_2_MODEL, CLAUDE_HAIKU_4_5_MODEL,
     CLAUDE_OPUS_4_8_MODEL, CLAUDE_SONNET_4_6_1M_MODEL, CLAUDE_SONNET_4_6_MODEL,
     CODEX_DEFAULT_MODEL, CODEX_FIX_MODEL_DEFAULT, CODEX_REVIEW_MODEL_DEFAULT,
-    CODEX_VOTE_MODEL_DEFAULT, CURSOR_DEFAULT_MODEL, CURSOR_GROK_4_5_HIGH_MODEL, CodexModelRole,
+    CODEX_VOTE_MODEL_DEFAULT, CURSOR_DEFAULT_MODEL, CURSOR_GROK_4_6_HIGH_MODEL, CodexModelRole,
     DEBATE_CODEX_MODEL, DEBATE_CURSOR_MODEL, ModelArgError, ModelArgResult, ModelTool,
     canonicalize_glm_main_model, claude_model_from_transcript, claude_sub_default_model,
     is_posix_cntrl, normalize_claude_ledger_model, resolve_model_args,

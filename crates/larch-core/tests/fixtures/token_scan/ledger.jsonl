@@ -3,7 +3,7 @@
 {"type": "mark", "step": "Step 5 \u2014 code review", "ts": "2026-06-25T00:02:00Z"}
 {"type": "vendor", "vendor": "codex", "model": "gpt-5.6-sol", "input": 1000, "output": 10, "cache_read": 500, "cache_create": 0, "total": 0, "raw": "codex_implement", "ts": "2026-06-25T00:01:30Z"}
 {"type": "vendor", "vendor": "codex", "input": 7, "output": 3, "cache_read": 1, "total": 0, "raw": "codex_review", "ts": "2026-06-25T00:02:30Z"}
-{"type": "vendor", "vendor": "cursor", "model": "cursor-grok-4.5-high", "input": 20, "output": 5, "cache_read": 2, "total": 0, "raw": "cursor_review", "ts": "2026-06-25T00:02:40Z"}
+{"type": "vendor", "vendor": "cursor", "model": "cursor-grok-4.6-high", "input": 20, "output": 5, "cache_read": 2, "total": 0, "raw": "cursor_review", "ts": "2026-06-25T00:02:40Z"}
 {"type": "vendor", "vendor": "claude_sub", "model": "claude-sonnet-4-6[1m]", "input": 30, "output": 6, "cache_read": 3, "cache_create": 9, "total": 0, "raw": "claude_review", "ts": "2026-06-25T00:02:50Z"}
 {"type": "vendor", "vendor": "claude_sub", "input": 40, "output": 7, "total": 0, "raw": "claude_lint_fix", "ts": "2026-06-25T00:02:55Z"}
 {"type": "vendor", "vendor": "mystery", "input": 11, "output": 1, "total": 0, "ts": "2026-06-25T00:02:59Z"}

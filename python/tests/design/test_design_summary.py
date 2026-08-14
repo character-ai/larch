@@ -1060,7 +1060,7 @@ def test_read_token_report_splits_cursor_grok_from_composer(tmp_path: Path) -> N
         "BUCKETS_cursor": {"input": 150000, "cache_read": 6000000, "output": 30000, "total": 6180000},
         "BUCKETS_cursor_by_model": {
             config.CURSOR_DEFAULT_MODEL: {"input": 100000, "cache_read": 4000000, "output": 20000, "total": 4120000},
-            config.CURSOR_GROK_4_5_HIGH_MODEL: {"input": 50000, "cache_read": 2000000, "output": 10000, "total": 2060000},
+            config.CURSOR_GROK_4_6_HIGH_MODEL: {"input": 50000, "cache_read": 2000000, "output": 10000, "total": 2060000},
         },
     }
     _ = (tmp_path / "token-report-final.json").write_text(json.dumps(report), encoding="utf-8")

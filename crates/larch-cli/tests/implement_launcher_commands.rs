@@ -594,7 +594,7 @@ fn the_cursor_launcher_wraps_the_prompt_and_publishes_the_outer_meta_record() {
 #[test]
 fn the_cursor_launcher_pins_the_model_for_a_difficulty_tier() {
     for (tier, model) in [
-        ("TRIVIAL", "cursor-grok-4.5-high"),
+        ("TRIVIAL", "cursor-grok-4.6-high"),
         ("HARD", "composer-2.5"),
     ] {
         let fixture = ImplementFixture::create();

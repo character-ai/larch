@@ -6,7 +6,7 @@
 
 use crate::vendor_model::{
     CODEX_DEFAULT_MODEL, CODEX_REVIEW_MODEL_DEFAULT, CODEX_VOTE_MODEL_DEFAULT,
-    CURSOR_DEFAULT_MODEL, CURSOR_GROK_4_5_HIGH_MODEL, DEBATE_CODEX_MODEL, DEBATE_CURSOR_MODEL,
+    CURSOR_DEFAULT_MODEL, CURSOR_GROK_4_6_HIGH_MODEL, DEBATE_CODEX_MODEL, DEBATE_CURSOR_MODEL,
 };
 use regex::Regex;
 use std::sync::OnceLock;
@@ -99,8 +99,8 @@ pub fn cursor_pinned_model_declarations() -> Vec<PinnedModel> {
     let mut declarations = Vec::new();
     let mut seen_impl = std::collections::BTreeSet::new();
     for model_id in [
-        CURSOR_GROK_4_5_HIGH_MODEL, // trivial
-        CURSOR_GROK_4_5_HIGH_MODEL, // moderate
+        CURSOR_GROK_4_6_HIGH_MODEL, // trivial
+        CURSOR_GROK_4_6_HIGH_MODEL, // moderate
         CURSOR_DEFAULT_MODEL,       // hard
     ] {
         if seen_impl.insert(model_id) {
@@ -351,24 +351,45 @@ mod tests {
         EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC, MODEL_PINS_STATUS_LIST_FAILED,
         MODEL_PINS_STATUS_OK, MODEL_PINS_STATUS_SKIPPED, MODEL_PINS_STATUS_UNKNOWN_ID,
         MODEL_PINS_STATUS_UNPARSEABLE, MODEL_PINS_STATUS_UNVERIFIABLE, VendorModelPinResult,
-        codex_pinned_models, cursor_pinned_models, list_failed_detail, model_list_timeout_seconds,
-        parse_cursor_model_list, resolve_codex_model_pins, resolve_cursor_model_pins_from_list,
-        resolve_model_pins,
+        codex_pinned_models, cursor_pinned_model_declarations, cursor_pinned_models,
+        list_failed_detail, model_list_timeout_seconds, parse_cursor_model_list,
+        resolve_codex_model_pins, resolve_cursor_model_pins_from_list, resolve_model_pins,
     };
-    use crate::vendor_model::{CURSOR_DEFAULT_MODEL, CURSOR_GROK_4_5_HIGH_MODEL};
+    use crate::vendor_model::{CURSOR_DEFAULT_MODEL, CURSOR_GROK_4_6_HIGH_MODEL};
     use std::fmt::Write as _;
 
     #[test]
     fn parse_cursor_model_list_accepts_known_grammar() {
         let parsed = parse_cursor_model_list(&format!(
-            "{CURSOR_MODEL_LIST_HEADER}\n{CURSOR_DEFAULT_MODEL} - default\n{CURSOR_GROK_4_5_HIGH_MODEL} - grok\n"
+            "{CURSOR_MODEL_LIST_HEADER}\n{CURSOR_DEFAULT_MODEL} - default\n{CURSOR_GROK_4_6_HIGH_MODEL} - grok\n"
         ))
         .expect("parse");
         assert!(parsed.contains(CURSOR_DEFAULT_MODEL));
-        assert!(parsed.contains(CURSOR_GROK_4_5_HIGH_MODEL));
+        assert!(parsed.contains(CURSOR_GROK_4_6_HIGH_MODEL));
         assert!(parse_cursor_model_list("Available models\nnot a model line\n").is_none());
         assert!(parse_cursor_model_list("Available models\n\n").is_none());
         assert!(parse_cursor_model_list("").is_none());
+    }
+
+    #[test]
+    fn cursor_implement_and_debate_pins_use_live_grok() {
+        let pins = cursor_pinned_model_declarations();
+        assert!(
+            pins.iter().all(|pin| !pin.model_id.contains("grok-4.5")),
+            "legacy 4.5 aliases must not enter active pin declarations"
+        );
+        let grok_pins: Vec<_> = pins
+            .iter()
+            .filter(|pin| pin.model_id == CURSOR_GROK_4_6_HIGH_MODEL)
+            .map(|pin| pin.constant_name)
+            .collect();
+        assert_eq!(
+            grok_pins,
+            [
+                "CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY",
+                "DEBATE_CURSOR_MODEL"
+            ]
+        );
     }
 
     #[test]
