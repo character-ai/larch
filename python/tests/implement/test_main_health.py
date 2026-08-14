@@ -94,28 +94,28 @@ def test_empty_run_list_without_requested_sha_returns_skip() -> None:
     assert result.detail == "no default-branch push workflow runs found"
 
 
-def test_no_sha_match_returns_error_when_push_history_exists() -> None:
+def test_no_sha_match_returns_error_when_relevant_runs_exist() -> None:
     no_match = RecordingRunner(
         responses=[
-            _res("[]"),
             _res('[{"databaseId":4,"status":"completed","conclusion":"success","headSha":"old","event":"push"}]'),
         ],
     )
-    assert (
-        main_health.read_main_health(no_match, _query("abc")).status
-        == "error"
-    )
+
+    result = main_health.read_main_health(no_match, _query("abc"))
+
+    assert result.status == "error"
+    assert result.detail == "no push workflow runs matched head SHA abc"
 
 
-def test_no_push_history_for_requested_sha_returns_skip() -> None:
-    runner = RecordingRunner(responses=[_res("[]"), _res("[]")])
+def test_empty_run_list_with_requested_sha_returns_skip() -> None:
+    runner = RecordingRunner.strict_queue(_res("[]"))
 
     result = main_health.read_main_health(runner, _query("abc"))
 
     assert result.status == "skip"
     assert result.detail == "no default-branch push workflow runs found"
     assert runner.calls[0][runner.calls[0].index("--commit") + 1] == "abc"
-    assert "--commit" not in runner.calls[1]
+    assert len(runner.calls) == 1
 
 
 def test_no_sha_match_and_malformed_json_return_error() -> None:
@@ -127,7 +127,7 @@ def test_no_sha_match_and_malformed_json_return_error() -> None:
 
 
 def test_filtered_argv_uses_repo_bare_branch_event_workflow_limit_and_commit() -> None:
-    runner = RecordingRunner(responses=[_res("[]"), _res("[]")])
+    runner = RecordingRunner.strict_queue(_res("[]"))
 
     _ = main_health.read_main_health(
         runner,
@@ -148,8 +148,7 @@ def test_filtered_argv_uses_repo_bare_branch_event_workflow_limit_and_commit() -
     assert call[call.index("--workflow") + 1] == "CI"
     assert call[call.index("--limit") + 1] == "17"
     assert call[call.index("--commit") + 1] == "abc"
-    history_call = runner.calls[1]
-    assert "--commit" not in history_call
+    assert len(runner.calls) == 1
 
 
 def test_missing_default_workflow_returns_skip() -> None:
@@ -227,6 +226,24 @@ def test_wait_treats_skip_as_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     assert waited.health.status == "skip"
     assert waited.attempts == 1
     assert len(calls) == 1
+
+
+def test_wait_treats_empty_requested_sha_result_as_terminal_skip() -> None:
+    runner = RecordingRunner.strict_queue(_res("[]"))
+
+    def sleep(_seconds: float) -> None:
+        raise AssertionError("skip must not sleep or retry")
+
+    waited = main_health.wait_main_health(
+        runner,
+        main_health.MainHealthWaitQuery(health=_query("abc"), timeout=10, interval=1),
+        clock=lambda: 0.0,
+        sleep=sleep,
+    )
+
+    assert waited.health.status == "skip"
+    assert waited.attempts == 1
+    assert len(runner.calls) == 1
 
 
 def test_wait_ignores_stale_green_for_specific_sha_until_timeout() -> None:

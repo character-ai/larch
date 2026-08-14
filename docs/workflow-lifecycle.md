@@ -164,7 +164,7 @@ file and analysis wave. Mutable analyzer state stays in the XDG state tree. See
 
 `/implement` records `MAIN_CI_STATUS`, `MAIN_FAILED_RUN_ID`, `MAIN_HEALTH_HEAD_SHA`, and `MAIN_HEALTH_DETAIL` during preflight and materializes them into `$IMPLEMENT_TMPDIR/main-health.env`. If Step 2 sees red default-branch CI, `step2-main-health-fix.md` repairs it on the feature branch before dispatch and records `MAIN_HEALTH_REPAIR_*` ownership fields. Step 8 blocks new or different default-branch failures, but may merge when that marker covers the same failed run and base SHA and PR checks pass.
 
-Repository tests or lints that fail and then pass without an authored fix are nondeterminism defects, not harmless transients. They route as `flaky-defect-unfixed` to CI-fix. After merge, the push workflow must be watched for the merged commit SHA; a failure enters `postmerge-repair` and the `postmerge-emergency-repair.md` state machine instead of finalizing success.
+Repository tests or lints that fail and then pass without an authored fix are nondeterminism defects, not harmless transients. They route as `flaky-defect-unfixed` to CI-fix. After merge, a matching configured push workflow run is watched for the merged commit SHA; a failure enters `postmerge-repair` and the `postmerge-emergency-repair.md` state machine instead of finalizing success. A missing configured workflow or empty relevant push-run list is the neutral `skip` outcome and does not stall completion.
 
 ## Shared-owner admission and implementation leases
 
