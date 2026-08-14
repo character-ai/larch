@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 /// Default Cursor model when no env or plugin override is set.
 pub const CURSOR_DEFAULT_MODEL: &str = "composer-2.5";
 /// Cursor grok pin used by implement-lane and debate inventories.
-pub const CURSOR_GROK_4_5_HIGH_MODEL: &str = "cursor-grok-4.5-high";
+pub const CURSOR_GROK_4_6_HIGH_MODEL: &str = "cursor-grok-4.6-high";
 /// Default Codex model for the default role.
 pub const CODEX_DEFAULT_MODEL: &str = "gpt-5.6-sol";
 /// Default Codex model for the review role.
@@ -18,7 +18,7 @@ pub const CODEX_FIX_MODEL_DEFAULT: &str = "gpt-5.6-terra";
 /// Debate Codex model pin (inactive until debate live launch owns it).
 pub const DEBATE_CODEX_MODEL: &str = CODEX_DEFAULT_MODEL;
 /// Debate Cursor model pin (inactive until debate live launch owns it).
-pub const DEBATE_CURSOR_MODEL: &str = CURSOR_GROK_4_5_HIGH_MODEL;
+pub const DEBATE_CURSOR_MODEL: &str = CURSOR_GROK_4_6_HIGH_MODEL;
 /// Claude Opus model id recorded in token ledgers.
 pub const CLAUDE_OPUS_4_8_MODEL: &str = "claude-opus-4-8";
 /// Claude Sonnet model id recorded in token ledgers.

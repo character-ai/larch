@@ -198,7 +198,7 @@ These checks are verified immediately before any merge attempt — the script do
 
 ## Selecting the Step 2 implementer (`--coder`)
 
-The default Step 2 order depends on the implementation difficulty: **TRIVIAL** uses **Cursor→Codex→Claude**; **MODERATE** uses **Cursor (`cursor-grok-4.5-high`)→Codex (`gpt-5.6-terra`)→Claude**; and **HARD** uses **Codex→Cursor→Claude**. A MODERATE run therefore falls back to Codex `gpt-5.6-terra` when Cursor is unavailable.
+The default Step 2 order depends on the implementation difficulty: **TRIVIAL** uses **Cursor→Codex→Claude**; **MODERATE** uses **Cursor (`cursor-grok-4.6-high`)→Codex (`gpt-5.6-terra`)→Claude**; and **HARD** uses **Codex→Cursor→Claude**. A MODERATE run therefore falls back to Codex `gpt-5.6-terra` when Cursor is unavailable.
 
 `--coder codex` and `--coder cursor` are external-tool overrides: the selected external tool is first, the other external tool remains the next fallback, and Claude remains last. `--coder claude` selects Claude directly and does not retain the external tools as fallbacks.
 
@@ -365,12 +365,12 @@ The model name to pass to Cursor's `--model` flag (for example, `composer-2.5`).
 
 **When set:**
 - Cursor invocations use this model unless a reviewer-panel manifest row pins a per-slot `cursor_model`
-- This explicit environment or plugin configuration overrides the role default, including the Step 2 TRIVIAL and MODERATE default of `cursor-grok-4.5-high`
+- This explicit environment or plugin configuration overrides the role default, including the Step 2 TRIVIAL and MODERATE default of `cursor-grok-4.6-high`
 - The model flag is injected by `python3 python/cli.py agent model-args` as line-token argv, then consumed through Bash arrays
 
 **When not set:**
 - The global Cursor default is `composer-2.5` — Cursor's `cursor agent` CLI does not honor the model configured in `~/.cursor/cli-config.json`, so an explicit default is required to avoid falling back to a potentially rate-limited model
-- Step 2 `/implement` uses a difficulty-specific map instead: TRIVIAL and MODERATE use `cursor-grok-4.5-high`; HARD uses `composer-2.5`
+- Step 2 `/implement` uses a difficulty-specific map instead: TRIVIAL and MODERATE use `cursor-grok-4.6-high`; HARD uses `composer-2.5`
 - Cursor review prompts are wrapped with `/max-mode on.` unconditionally by `_review_launch_cursor` regardless of diff classification or `--risk`. Codex review effort is not risk-gated; `--with-effort` is always passed to Codex review launchers regardless of diff classification.
 - `composer-2.5` remains the global fallback for roles without the difficulty-specific Step 2 map, including voter, fix/coder, and review-panel uses. Callers may still supply an explicit per-slot `cursor_model` override, and retry replay preserves that override.
 
@@ -568,7 +568,7 @@ Default model basis:
 
 - **Codex default role**: `gpt-5.6-sol`, with `input=5.00`, `cached input=0.50`, and `output=30.00` per million tokens.
 - **Codex review role**: `gpt-5.6-luna`, with `input=1.00`, `cached input=0.10`, and `output=6.00` per million tokens. **Codex vote/fix roles**: `gpt-5.6-terra`, with `input=2.50`, `cached input=0.25`, and `output=15.00` per million tokens.
-- **Cursor**: `composer-2.5`, with `input=0.50`, `cache read=0.20`, and `output=2.50` per million tokens. `cursor-grok-4.5-high` has `input=2.00`, `cache read=0.50`, and `output=6.00` per million tokens; pinned `cursor-grok-4.5-high` usage is exempt from the Cursor Token Rate surcharge.
+- **Cursor**: `composer-2.5`, with `input=0.50`, `cache read=0.20`, and `output=2.50` per million tokens. `cursor-grok-4.6-high` has `input=2.00`, `cache read=0.50`, and `output=6.00` per million tokens; pinned `cursor-grok-4.6-high` usage is exempt from the Cursor Token Rate surcharge.
 - **Claude**: Opus 4.8, with `input=5.00`, `cache read=0.50`, `cache write 5m=6.25`, `cache write 1h=10.00`, and `output=25.00` per million tokens.
 - **Claude GLM-5.2** (Z.ai main-agent lane): `input=1.40`, `cache read=0.26`, `cache write 5m=0.00`, `cache write 1h=0.00`, and `output=4.40` per million tokens. The recorded alias `glm-5.2[1m]` maps to this row for **main-agent** rate lookup and final-summary identity only. Other `[1m]` model names are not stripped or remapped. Subprocess (`claude_sub`) pricing continues to use the recorded model string without this alias mapping.
 

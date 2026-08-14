@@ -313,7 +313,7 @@
           "cache_read": 500009,
           "output": 20011
         },
-        "cursor-grok-4.5-high": {
+        "cursor-grok-4.6-high": {
           "input": 30011,
           "cache_read": 150001,
           "output": 4001
@@ -984,7 +984,7 @@
           "cache_read": 600011,
           "output": 21001
         },
-        "cursor-grok-4.5-high": {
+        "cursor-grok-4.6-high": {
           "input": 30011,
           "cache_read": 100003,
           "output": 4001

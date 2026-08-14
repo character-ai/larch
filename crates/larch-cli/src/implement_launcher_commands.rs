@@ -29,7 +29,7 @@ use larch_adapters::{
 };
 use larch_core::{
     ArchitecturalKind, ArchitecturalKnowledge, ArchitecturalStatus, CODEX_DESCRIPTOR,
-    CURSOR_DEFAULT_MODEL, CURSOR_DESCRIPTOR, CURSOR_GROK_4_5_HIGH_MODEL, ChildEnvironment,
+    CURSOR_DEFAULT_MODEL, CURSOR_DESCRIPTOR, CURSOR_GROK_4_6_HIGH_MODEL, ChildEnvironment,
     CodexModelRole, ExternalAuthVerdict, LauncherArtifact, LauncherArtifactKind,
     LauncherArtifactPaths, ModelTool, VendorLaunchRequest, VendorProgram, codex_env_auth_from_key,
     emit_kv, external_auth_verdict, failure_diagnostic_source_candidates, is_quota_failure,
@@ -1239,7 +1239,7 @@ fn launch_cursor(args: &ImplementArguments) -> i32 {
 /// Resolve the Cursor implement model pinned for one difficulty tier.
 const fn cursor_implement_model(difficulty: &str) -> &'static str {
     match difficulty.as_bytes() {
-        b"TRIVIAL" | b"MODERATE" => CURSOR_GROK_4_5_HIGH_MODEL,
+        b"TRIVIAL" | b"MODERATE" => CURSOR_GROK_4_6_HIGH_MODEL,
         _ => CURSOR_DEFAULT_MODEL,
     }
 }
@@ -1604,11 +1604,11 @@ mod tests {
     fn the_cursor_implement_model_follows_the_difficulty_pins() {
         assert_eq!(
             cursor_implement_model("TRIVIAL"),
-            CURSOR_GROK_4_5_HIGH_MODEL
+            CURSOR_GROK_4_6_HIGH_MODEL
         );
         assert_eq!(
             cursor_implement_model("MODERATE"),
-            CURSOR_GROK_4_5_HIGH_MODEL
+            CURSOR_GROK_4_6_HIGH_MODEL
         );
         assert_eq!(cursor_implement_model("HARD"), CURSOR_DEFAULT_MODEL);
         assert_eq!(cursor_implement_model(""), CURSOR_DEFAULT_MODEL);

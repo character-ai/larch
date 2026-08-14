@@ -132,7 +132,7 @@ def test_cursor_implement_model_by_difficulty() -> None:
     assert set(config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY) == set(config.DIFFICULTY_TIERS)
     assert (
         config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_TRIVIAL]
-        == config.CURSOR_GROK_4_5_HIGH_MODEL
+        == config.CURSOR_GROK_4_6_HIGH_MODEL
     )
     assert (
         config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_HARD]
@@ -140,8 +140,9 @@ def test_cursor_implement_model_by_difficulty() -> None:
     )
     assert (
         config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_MODERATE]
-        == "cursor-grok-4.5-high"
+        == "cursor-grok-4.6-high"
     )
+    assert config.DEBATE_CURSOR_MODEL == config.CURSOR_GROK_4_6_HIGH_MODEL
 
 
 def test_coder_and_codex_implement_routing_by_difficulty() -> None:

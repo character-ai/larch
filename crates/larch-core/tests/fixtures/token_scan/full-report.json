@@ -54,7 +54,7 @@
     "total": 27
   },
   "BUCKETS_cursor_by_model": {
-    "cursor-grok-4.5-high": {
+    "cursor-grok-4.6-high": {
       "cache_read": 2,
       "input": 20,
       "output": 5,

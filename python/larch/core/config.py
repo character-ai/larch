@@ -487,25 +487,26 @@ CI_LOCAL_FIX_ITER_DEFAULT: Final = 6
 WATERFALL_MAX_TIERS: Final = 3
 
 CURSOR_DEFAULT_MODEL: Final = "composer-2.5"
-# Effort is embedded in the Cursor grok model id; the CLI has no bare `grok-4.5`
-# and passes no separate effort argv. `cursor-grok-4.5-high` is the valid pin for
-# the MODERATE implement lane. Do not use `-fast` variants; they are pricier.
-CURSOR_GROK_4_5_HIGH_MODEL: Final = "cursor-grok-4.5-high"
+# Effort is embedded in the Cursor grok model id; the CLI has no bare `grok-4.6`
+# and passes no separate effort argv. `cursor-grok-4.6-high` is the valid pin for
+# the TRIVIAL and MODERATE implement lanes. Do not use `-fast` variants; they
+# are pricier.
+CURSOR_GROK_4_6_HIGH_MODEL: Final = "cursor-grok-4.6-high"
 CODER_TOOL_ORDER_BY_DIFFICULTY: Final[dict[str, tuple[str, ...]]] = {
     DIFFICULTY_TIER_TRIVIAL: ("cursor", "codex", "claude"),
     DIFFICULTY_TIER_MODERATE: ("cursor", "codex", "claude"),
     DIFFICULTY_TIER_HARD: ("codex", "cursor", "claude"),
 }
 CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
-    DIFFICULTY_TIER_TRIVIAL: CURSOR_GROK_4_5_HIGH_MODEL,
-    DIFFICULTY_TIER_MODERATE: CURSOR_GROK_4_5_HIGH_MODEL,
+    DIFFICULTY_TIER_TRIVIAL: CURSOR_GROK_4_6_HIGH_MODEL,
+    DIFFICULTY_TIER_MODERATE: CURSOR_GROK_4_6_HIGH_MODEL,
     DIFFICULTY_TIER_HARD: CURSOR_DEFAULT_MODEL,
 }
 CODEX_DEFAULT_MODEL: Final = "gpt-5.6-sol"
 CLAUDE_OPUS_4_8_MODEL: Final = "claude-opus-4-8"
 # Inactive /debate role pins (piece 1). Live launch is owned by piece 2.
 DEBATE_CODEX_MODEL: Final = CODEX_DEFAULT_MODEL
-DEBATE_CURSOR_MODEL: Final = CURSOR_GROK_4_5_HIGH_MODEL
+DEBATE_CURSOR_MODEL: Final = CURSOR_GROK_4_6_HIGH_MODEL
 DEBATE_CLAUDE_MODEL: Final = CLAUDE_OPUS_4_8_MODEL
 
 

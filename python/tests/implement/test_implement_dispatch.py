@@ -8929,7 +8929,7 @@ def test_resolve_implement_rater_model_uses_moderate_cursor_default(
         difficulty_tier=difficulty.MODERATE,
     )
 
-    assert model == config.CURSOR_GROK_4_5_HIGH_MODEL
+    assert model == config.CURSOR_GROK_4_6_HIGH_MODEL
 
 
 @pytest.mark.parametrize(
@@ -8939,8 +8939,8 @@ def test_resolve_implement_rater_model_uses_moderate_cursor_default(
         ("codex", difficulty.MODERATE, config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.MODERATE]),
         ("codex", difficulty.HARD, config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.HARD]),
         ("codex", "", config.CODEX_DEFAULT_MODEL),
-        ("cursor", difficulty.TRIVIAL, config.CURSOR_GROK_4_5_HIGH_MODEL),
-        ("cursor", difficulty.MODERATE, config.CURSOR_GROK_4_5_HIGH_MODEL),
+        ("cursor", difficulty.TRIVIAL, config.CURSOR_GROK_4_6_HIGH_MODEL),
+        ("cursor", difficulty.MODERATE, config.CURSOR_GROK_4_6_HIGH_MODEL),
         ("cursor", difficulty.HARD, config.CURSOR_DEFAULT_MODEL),
         ("cursor", "", config.CURSOR_DEFAULT_MODEL),
         ("cursor", "UNKNOWN", config.CURSOR_DEFAULT_MODEL),

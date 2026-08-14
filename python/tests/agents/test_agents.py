@@ -504,28 +504,28 @@ def test_resolve_cursor_model_honors_caller_default(monkeypatch: pytest.MonkeyPa
     monkeypatch.delenv(config.ENV_LARCH_CURSOR_MODEL, raising=False)
     monkeypatch.delenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, raising=False)
 
-    assert agents.resolve_model_args("cursor", default_model="grok-4.5").argv == ("--model", "grok-4.5")
+    assert agents.resolve_model_args("cursor", default_model=config.CURSOR_GROK_4_6_HIGH_MODEL).argv == ("--model", config.CURSOR_GROK_4_6_HIGH_MODEL)
 
 
 def test_resolve_cursor_model_env_override_beats_caller_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(config.ENV_LARCH_CURSOR_MODEL, "cursor-env-override")
     monkeypatch.delenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, raising=False)
 
-    assert agents.resolve_model_args("cursor", default_model="grok-4.5").argv == ("--model", "cursor-env-override")
+    assert agents.resolve_model_args("cursor", default_model=config.CURSOR_GROK_4_6_HIGH_MODEL).argv == ("--model", "cursor-env-override")
 
 
 def test_resolve_cursor_model_plugin_override_beats_caller_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(config.ENV_LARCH_CURSOR_MODEL, raising=False)
     monkeypatch.setenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, "cursor-plugin-override")
 
-    assert agents.resolve_model_args("cursor", default_model="grok-4.5").argv == ("--model", "cursor-plugin-override")
+    assert agents.resolve_model_args("cursor", default_model=config.CURSOR_GROK_4_6_HIGH_MODEL).argv == ("--model", "cursor-plugin-override")
 
 
 def test_resolve_cursor_model_larch_env_wins_over_plugin_and_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(config.ENV_LARCH_CURSOR_MODEL, "cursor-env-wins")
     monkeypatch.setenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, "cursor-plugin-loses")
 
-    assert agents.resolve_model_args("cursor", default_model="grok-4.5").argv == ("--model", "cursor-env-wins")
+    assert agents.resolve_model_args("cursor", default_model=config.CURSOR_GROK_4_6_HIGH_MODEL).argv == ("--model", "cursor-env-wins")
 
 
 def test_resolve_model_args_ctx_absent_primary_uses_plugin_fallback() -> None:

@@ -46,7 +46,7 @@ use crate::text::unsigned_integer;
 use crate::vendor_model::{
     CLAUDE_FABLE_5_MODEL, CLAUDE_GLM_5_2_MODEL, CLAUDE_HAIKU_4_5_MODEL, CLAUDE_OPUS_4_8_MODEL,
     CLAUDE_SONNET_4_6_MODEL, CODEX_DEFAULT_MODEL, CODEX_REVIEW_MODEL_DEFAULT, CURSOR_DEFAULT_MODEL,
-    CURSOR_GROK_4_5_HIGH_MODEL, canonicalize_glm_main_model,
+    CURSOR_GROK_4_6_HIGH_MODEL, canonicalize_glm_main_model,
 };
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
@@ -79,10 +79,16 @@ pub const CODEX_MINI_MODELS: [&str; 2] = ["gpt-5.4-mini", CODEX_REVIEW_MODEL_DEF
 
 /// Cursor model ids that price at the grok rate.
 ///
-/// `grok-4.5` is the legacy label recorded by pre-#7237 run logs, kept so those
-/// logs still bucket at the grok rate. Extend, never replace, when the pin
-/// changes. Membership is exact: a near-miss id prices at the composer rate.
-pub const CURSOR_GROK_MODELS: [&str; 2] = [CURSOR_GROK_4_5_HIGH_MODEL, "grok-4.5"];
+/// The two explicitly named legacy aliases preserve historical ledger pricing;
+/// they are never active routing defaults. Membership is exact: a near-miss id
+/// prices at the composer rate.
+const LEGACY_CURSOR_GROK_4_5_HIGH_MODEL: &str = "cursor-grok-4.5-high";
+const LEGACY_GROK_4_5_MODEL: &str = "grok-4.5";
+pub const CURSOR_GROK_MODELS: [&str; 3] = [
+    CURSOR_GROK_4_6_HIGH_MODEL,
+    LEGACY_CURSOR_GROK_4_5_HIGH_MODEL,
+    LEGACY_GROK_4_5_MODEL,
+];
 
 /// One per-1M-token rate row.
 ///
@@ -132,11 +138,12 @@ impl RateRow {
     }
 }
 
-/// The single reviewed pricing source, verified as of 2026-07-09.
+/// The single reviewed pricing source, verified as of 2026-08-13.
 ///
 /// Sources: `OpenAI` GPT-5.6 family and historical Codex model pricing; the
-/// Cursor docs models-and-pricing `composer-2.5` row plus the Teams surcharge;
-/// Anthropic Claude Opus, Sonnet, Haiku, and Fable list-price buckets; and the
+/// Cursor [Models & Pricing](https://cursor.com/docs/models-and-pricing)
+/// `composer-2.5` and Grok 4.6 rows plus the
+/// Teams surcharge; Anthropic Claude Opus, Sonnet, Haiku, and Fable list-price buckets; and the
 /// Z.ai GLM-5.2 main-agent rates, whose cache-creation tiers are unused.
 pub static RATE_TABLE: [(TokenVendor, &str, RateRow); 12] = [
     (
@@ -175,7 +182,7 @@ pub static RATE_TABLE: [(TokenVendor, &str, RateRow); 12] = [
     ),
     (
         TokenVendor::Cursor,
-        CURSOR_GROK_4_5_HIGH_MODEL,
+        CURSOR_GROK_4_6_HIGH_MODEL,
         RateRow::external(2.00, 0.50, 6.00),
     ),
     (
@@ -501,7 +508,7 @@ pub fn display_rates(
         env,
         rate_row(
             TokenVendor::Cursor,
-            CURSOR_GROK_4_5_HIGH_MODEL,
+            CURSOR_GROK_4_6_HIGH_MODEL,
             observations,
         ),
     );
@@ -1055,7 +1062,7 @@ impl TokenCounts {
                 cursor_bucket_counts(raw).expect("a validated Cursor bucket stays validated");
             let grok = CURSOR_GROK_MODELS.contains(&model.as_str());
             let applied = if grok {
-                CURSOR_GROK_4_5_HIGH_MODEL
+                CURSOR_GROK_4_6_HIGH_MODEL
             } else {
                 CURSOR_DEFAULT_MODEL
             };

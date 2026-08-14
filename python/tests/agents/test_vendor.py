@@ -1137,7 +1137,7 @@ class TestSessionArgvBuilders:
             "workdir": "/repo",
             "output": "/tmp/out.txt",
             "prompt": "continue the debate",
-            "model_args": ("--model", "cursor-grok-4.5-high"),
+            "model_args": ("--model", "cursor-grok-4.6-high"),
         }
         base.update(overrides)
         return VendorLaunchRequest(**base)  # type: ignore[arg-type]
@@ -1160,7 +1160,7 @@ class TestSessionArgvBuilders:
             "--output-format",
             "json",
             "--model",
-            "cursor-grok-4.5-high",
+            "cursor-grok-4.6-high",
             "--workspace",
             "/repo",
             "continue the debate",

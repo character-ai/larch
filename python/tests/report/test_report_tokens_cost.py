@@ -781,7 +781,7 @@ def test_token_cost_argv_splits_cursor_grok_by_model() -> None:
     report = {
         "BUCKETS_cursor": {"input": 300, "cache_read": 60, "output": 30, "total": 390},
         "BUCKETS_cursor_by_model": {
-            "grok-4.5": {"input": 100, "cache_read": 20, "output": 10},
+            larch_config.CURSOR_GROK_4_6_HIGH_MODEL: {"input": 100, "cache_read": 20, "output": 10},
             "composer-2.5": {"input": 200, "cache_read": 40, "output": 20},
         },
     }
@@ -842,7 +842,7 @@ def test_price_run_preserves_cursor_lanes_only_for_valid_model_map() -> None:
         raw_report={
             "BUCKETS_cursor": {"input": 300, "cache_read": 60, "output": 30},
             "BUCKETS_cursor_by_model": {
-                "grok-4.5": {"input": 100, "cache_read": 20, "output": 10},
+                larch_config.CURSOR_GROK_4_6_HIGH_MODEL: {"input": 100, "cache_read": 20, "output": 10},
                 "composer-2.5": {"input": 200, "cache_read": 40, "output": 20},
             },
         },
@@ -852,7 +852,7 @@ def test_price_run_preserves_cursor_lanes_only_for_valid_model_map() -> None:
         claude=VendorTotals(), codex=VendorTotals(), cursor=VendorTotals(total=390), phase_rows=(),
         raw_report={
             "BUCKETS_cursor": {"input": 300, "cache_read": 60, "output": 30},
-            "BUCKETS_cursor_by_model": {"grok-4.5": "invalid"},
+            "BUCKETS_cursor_by_model": {larch_config.CURSOR_GROK_4_6_HIGH_MODEL: "invalid"},
         },
     )
 
@@ -878,27 +878,27 @@ def test_cursor_non_exact_grok_models_route_to_composer() -> None:
     assert argv[argv.index("--cursor-grok-input-tokens") + 1] == "0"
 
 
-def test_cursor_grok_current_and_legacy_ids_both_route_to_grok_lane() -> None:
-    # The live MODERATE pin (cursor-grok-4.5-high) and the legacy label recorded
-    # by pre-#7237 run logs (grok-4.5) both fold into the grok lane, so historical
-    # logs keep pricing at the grok rate (G-Wire-2). composer-2.5 stays separate.
+def test_cursor_grok_active_and_legacy_ids_all_route_to_grok_lane() -> None:
+    # Grok 4.6 is the live pin. The named 4.5 aliases exist only to preserve
+    # historical ledger pricing (G-Wire-2); composer-2.5 stays separate.
     argv = cursor_argv_from_buckets(
         by_model={
-            "cursor-grok-4.5-high": {"input": 100, "cache_read": 20, "output": 10},
-            "grok-4.5": {"input": 200, "cache_read": 40, "output": 20},
-            "composer-2.5": {"input": 300, "cache_read": 60, "output": 30},
+            larch_config.CURSOR_GROK_4_6_HIGH_MODEL: {"input": 100, "cache_read": 20, "output": 10},
+            "cursor-grok-4.5-high": {"input": 200, "cache_read": 40, "output": 20},
+            "grok-4.5": {"input": 300, "cache_read": 60, "output": 30},
+            "composer-2.5": {"input": 400, "cache_read": 80, "output": 40},
         },
-        bucket={"input": 600, "cache_read": 120, "output": 60},
+        bucket={"input": 1000, "cache_read": 200, "output": 100},
     )
 
-    assert argv[argv.index("--cursor-grok-input-tokens") + 1] == "300"
-    assert argv[argv.index("--cursor-grok-cache-read-tokens") + 1] == "60"
-    assert argv[argv.index("--cursor-grok-output-tokens") + 1] == "30"
-    assert argv[argv.index("--cursor-input-tokens") + 1] == "300"
+    assert argv[argv.index("--cursor-grok-input-tokens") + 1] == "600"
+    assert argv[argv.index("--cursor-grok-cache-read-tokens") + 1] == "120"
+    assert argv[argv.index("--cursor-grok-output-tokens") + 1] == "60"
+    assert argv[argv.index("--cursor-input-tokens") + 1] == "400"
 
 
 def test_cursor_grok_rate_row_and_overrides_ignore_surcharge() -> None:
-    row = DEFAULT_RATE_TABLE_PER_M[("cursor", "cursor-grok-4.5-high")]
+    row = DEFAULT_RATE_TABLE_PER_M[("cursor", larch_config.CURSOR_GROK_4_6_HIGH_MODEL)]
     assert row == {"input": 2.0, "cache_read": 0.5, "output": 6.0}
     rates = display_rates(environ={
         "LARCH_CURSOR_TEAMS_SURCHARGE_PER_M": "9",
@@ -913,7 +913,7 @@ def test_cursor_partial_malformed_model_map_falls_back_to_aggregate() -> None:
     report = {
         "BUCKETS_cursor": {"input": 100, "cache_read": 200, "output": 30},
         "BUCKETS_cursor_by_model": {
-            "grok-4.5": {"input": 5, "cache_read": 6, "output": 7},
+            larch_config.CURSOR_GROK_4_6_HIGH_MODEL: {"input": 5, "cache_read": 6, "output": 7},
             "broken": "not-a-bucket",
         },
     }

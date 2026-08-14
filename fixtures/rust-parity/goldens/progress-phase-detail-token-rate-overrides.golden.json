@@ -8,7 +8,7 @@
       "text": "v1\tround\t1782345600\timplement\t-\t1\t1782345600\t1782345610\t10\t0\t0\t0\t-\n"
     },
     "tokens.jsonl": {
-      "text": "{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.6-sol\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:05Z\"}\n{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.4-mini\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:06Z\"}\n{\"type\":\"vendor\",\"vendor\":\"cursor\",\"model\":\"composer-2.5\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:07Z\"}\n{\"type\":\"vendor\",\"vendor\":\"cursor\",\"model\":\"grok-4.5\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:08Z\"}\n"
+      "text": "{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.6-sol\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:05Z\"}\n{\"type\":\"vendor\",\"vendor\":\"codex\",\"model\":\"gpt-5.4-mini\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:06Z\"}\n{\"type\":\"vendor\",\"vendor\":\"cursor\",\"model\":\"composer-2.5\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:07Z\"}\n{\"type\":\"vendor\",\"vendor\":\"cursor\",\"model\":\"cursor-grok-4.6-high\",\"input\":1000000,\"cache_read\":1000000,\"ts\":\"2026-06-25T00:00:08Z\"}\n"
     }
   },
   "side_effects": {},
