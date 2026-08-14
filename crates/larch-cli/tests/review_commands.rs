@@ -179,9 +179,11 @@ fn gather_context_uses_the_current_subdirectory_as_the_legacy_search_root() {
         "base",
     );
     let output = fixture.path().join("context");
+    let path = ripgrep_path(&fixture);
 
     larch()
         .current_dir(repository.join("nested"))
+        .env("PATH", path)
         .args([
             "review",
             "gather-context",
