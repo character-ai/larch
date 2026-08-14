@@ -68,8 +68,59 @@ impl FindingScope {
 /// Preserve unrecognized review statuses rather than coercing them.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ReviewCoreStatus {
-    Known(&'static str),
+    Ok,
+    FixRequired,
+    CapReached,
+    ZeroFindings,
+    PanelFailed,
+    AggregatorValidationExhausted,
+    MainAgentVoteRequired,
+    PruneSkipped,
+    Error,
+    Exception,
+    UnknownStatus,
     Unknown(String),
+}
+
+impl ReviewCoreStatus {
+    /// Convert a wire value without losing forward-compatible values.
+    #[must_use]
+    pub fn from_wire(value: impl Into<String>) -> Self {
+        let value = value.into();
+        match value.as_str() {
+            "ok" => Self::Ok,
+            "fix-required" => Self::FixRequired,
+            "cap-reached" => Self::CapReached,
+            "zero-findings" => Self::ZeroFindings,
+            "panel-failed" => Self::PanelFailed,
+            "aggregator-validation-exhausted" => Self::AggregatorValidationExhausted,
+            "main-agent-vote-required" => Self::MainAgentVoteRequired,
+            "prune-skipped" => Self::PruneSkipped,
+            "error" => Self::Error,
+            "exception" => Self::Exception,
+            "unknown" => Self::UnknownStatus,
+            _ => Self::Unknown(value),
+        }
+    }
+
+    /// Stable wire value for a known status, or the preserved unknown value.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Ok => "ok",
+            Self::FixRequired => "fix-required",
+            Self::CapReached => "cap-reached",
+            Self::ZeroFindings => "zero-findings",
+            Self::PanelFailed => "panel-failed",
+            Self::AggregatorValidationExhausted => "aggregator-validation-exhausted",
+            Self::MainAgentVoteRequired => "main-agent-vote-required",
+            Self::PruneSkipped => "prune-skipped",
+            Self::Error => "error",
+            Self::Exception => "exception",
+            Self::UnknownStatus => "unknown",
+            Self::Unknown(value) => value,
+        }
+    }
 }
 
 /// Preserve unrecognized votes rather than coercing them.
@@ -93,6 +144,17 @@ impl ReviewVote {
             _ => Self::Unknown(value),
         }
     }
+
+    /// Stable wire value for a known vote, or the preserved unknown value.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Yes => "YES",
+            Self::No => "NO",
+            Self::JudgeError => "JUDGE_ERROR",
+            Self::Unknown(value) => value,
+        }
+    }
 }
 
 /// Preserve unrecognized severity values rather than coercing them.
@@ -114,6 +176,17 @@ impl JudgeSeverity {
             "minor" => Self::Minor,
             "nit" => Self::Nit,
             _ => Self::Unknown(value),
+        }
+    }
+
+    /// Stable wire value for a known severity, or the preserved unknown value.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Major => "major",
+            Self::Minor => "minor",
+            Self::Nit => "nit",
+            Self::Unknown(value) => value,
         }
     }
 }
@@ -201,6 +274,34 @@ pub fn code_review_classification_header(include_tools: bool, include_scope: boo
     columns.join("\t")
 }
 
+/// Return the required-column projection for a canonical header variant.
+#[must_use]
+pub fn code_review_classification_required_fields(
+    include_tools: bool,
+    include_scope: bool,
+) -> std::collections::BTreeSet<String> {
+    code_review_classification_header(include_tools, include_scope)
+        .split('\t')
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Render canonical wire values with the Python-compatible delimiters.
+#[must_use]
+pub fn render_wire_values(values: &[&str], delimiter: &str, quoted: bool) -> String {
+    values
+        .iter()
+        .map(|value| {
+            if quoted {
+                format!("`{value}`")
+            } else {
+                (*value).to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(&format!(" {delimiter} "))
+}
+
 /// Parse an exact canonical heading, keeping the ordinal losslessly.
 #[must_use]
 pub fn parse_canonical_heading(line: &str) -> Option<CanonicalHeading> {
@@ -253,13 +354,17 @@ impl From<BoundaryMode> for BlockBoundary {
     }
 }
 
-/// Read a UTF-8 finding file with Python's replacement semantics.
-#[must_use]
-pub fn read_finding_text(path: impl AsRef<Path>) -> String {
-    fs::read(path).map_or_else(
-        |_| String::new(),
-        |bytes| String::from_utf8_lossy(&bytes).into_owned(),
-    )
+/// Read a UTF-8 finding file with replacement decoding.
+///
+/// # Errors
+///
+/// Returns I/O errors other than a missing path.
+pub fn read_finding_text(path: impl AsRef<Path>) -> Result<String, std::io::Error> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(String::from_utf8_lossy(&bytes).into_owned()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(error) => Err(error),
+    }
 }
 
 /// Parse only finding blocks with the legacy compatibility boundary selection.
@@ -316,7 +421,7 @@ pub fn is_oos_eligible_block(block: &ParsedBlock) -> bool {
 }
 
 static FIELD_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^- \*\*(Location|Concern)\*\*:\s*(.*?)\s*$").expect("field regex")
+    Regex::new(r"(?m)^- \*\*((?i-u:Location|Concern))\*\*:\s*(.*?)\s*$").expect("field regex")
 });
 static FINDING_HEADER_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^### FINDING_[0-9]+:.*$").expect("header regex"));
@@ -328,10 +433,10 @@ pub fn finding_dedup_key(block: &str) -> String {
     let mut location = "";
     let mut concern = "";
     for captures in FIELD_RE.captures_iter(block) {
-        if &captures[1] == "Location" {
+        if captures[1].eq_ignore_ascii_case("Location") && location.is_empty() {
             location = captures.get(2).map_or("", |value| value.as_str());
         }
-        if &captures[1] == "Concern" {
+        if captures[1].eq_ignore_ascii_case("Concern") && concern.is_empty() {
             concern = captures.get(2).map_or("", |value| value.as_str());
         }
     }

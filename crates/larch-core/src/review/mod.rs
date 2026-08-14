@@ -17,8 +17,9 @@ pub use tally_engine::{ItemAdjudicationResult, ItemContext, VoteCell, adjudicate
 pub use types::{
     BoundaryMode, CanonicalHeading, Finding, FindingScope, FocusArea, ItemKind, JudgeSeverity,
     ParsedBlock, ReviewCoreStatus, ReviewOrdinal, ReviewVote, code_review_classification_header,
-    finding_dedup_key, is_oos_eligible_block, is_security_block_text, parse_blocks,
-    parse_canonical_heading, parse_findings_text, read_finding_text,
+    code_review_classification_required_fields, finding_dedup_key, is_oos_eligible_block,
+    is_security_block_text, parse_blocks, parse_canonical_heading, parse_findings_text,
+    read_finding_text, render_wire_values,
 };
 pub use voting::{
     accepted_finding_points_from_severities, classify_oos_result, classify_result,

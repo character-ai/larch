@@ -4,13 +4,14 @@
 //! the Python-owned table bytes and their structural examples.
 
 use larch_core::review::{
-    BoundaryMode, ItemContext, LedgerRow, ReviewVote, accepted_finding_points_from_severities,
-    adjudicate_item, classify_oos_result, classify_result, finding_dedup_key,
-    is_oos_eligible_block, parse_blocks, parse_canonical_heading, parse_ledger, render_ledger,
-    replace_round, write_round,
+    BoundaryMode, ItemContext, LedgerRow, ReviewCoreStatus, ReviewVote,
+    accepted_finding_points_from_severities, adjudicate_item, classify_oos_result, classify_result,
+    code_review_classification_required_fields, finding_dedup_key, is_oos_eligible_block,
+    parse_blocks, parse_canonical_heading, parse_ledger, render_ledger, render_wire_values,
+    replace_round, run_items, write_round,
 };
 use sha2::{Digest, Sha256};
-use std::{fs, path::PathBuf};
+use std::{cell::RefCell, fs, path::PathBuf};
 
 const FINDINGS: &str = include_str!("../../../fixtures/rust-review/finding-blocks.golden.md");
 const LEDGER: &str = include_str!("../../../fixtures/rust-review/findings-ledger.golden.tsv");
@@ -46,6 +47,27 @@ fn lossless_review_ordinal_does_not_change_legacy_saturation() {
         larch_core::parse_canonical_heading("### FINDING_184467440737095516160: Large ordinal")
             .expect("legacy");
     assert_eq!(legacy.number, u64::MAX);
+}
+
+#[test]
+fn review_wire_values_are_lossless_and_project_required_headers() {
+    assert_eq!(
+        ReviewCoreStatus::from_wire("cap-reached").as_str(),
+        "cap-reached"
+    );
+    assert_eq!(
+        ReviewCoreStatus::from_wire("future-status").as_str(),
+        "future-status"
+    );
+    assert_eq!(ReviewVote::from_wire("future-vote").as_str(), "future-vote");
+    let fields = code_review_classification_required_fields(true, true);
+    assert!(fields.contains("v3_tool"));
+    assert!(fields.contains("scope"));
+    assert!(!code_review_classification_required_fields(false, false).contains("v1_tool"));
+    assert_eq!(
+        render_wire_values(&["one", "two"], "/", true),
+        "`one` / `two`"
+    );
 }
 
 #[test]
@@ -86,6 +108,39 @@ fn frozen_ledger_round_trips_and_confined_write_rejects_escape_and_symlink() {
         std::os::unix::fs::symlink("../outside-ledger.tsv", &link).expect("link");
         assert!(write_round(root.path(), 2, vec![]).is_err());
     }
+}
+
+#[test]
+fn ledger_persistence_normalizes_rows_and_creates_a_fresh_root() {
+    let parent = tempfile::tempdir().expect("parent");
+    let root = parent.path().join("new-ledger-root");
+    let hostile = LedgerRow {
+        round: "99".to_owned(),
+        finding_id: "FINDING\t1".to_owned(),
+        title: "```title sk-aaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+        file_line: "src/lib.rs\n12".to_owned(),
+        outcome: "UNSAFE".to_owned(),
+        vote_tally: "=1/1".to_owned(),
+        reason: "secret sk-aaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+    };
+    write_round(&root, 4, vec![hostile]).expect("first write creates root");
+    let text = fs::read_to_string(root.join("findings-ledger.tsv")).expect("ledger");
+    assert!(text.contains("4\tFINDING 1\ttitle <REDACTED-TOKEN>"));
+    assert!(text.contains("\trejected\t'=1/1\tsecret <REDACTED-TOKEN>\n"));
+    assert!(!text.contains("sk-"));
+    assert!(!text.contains("```"));
+}
+
+#[test]
+fn ledger_root_requires_a_nonempty_numeric_round_suffix() {
+    let root = tempfile::tempdir().expect("root");
+    let session = root.path().join("session");
+    let invalid = session.join("round-");
+    fs::create_dir_all(&invalid).expect("invalid round dir");
+    assert_eq!(
+        larch_core::review::ledger_root(&invalid, Some(&session.join("session.env")), None),
+        invalid
+    );
 }
 
 #[test]
@@ -133,6 +188,32 @@ fn generated_merge_and_classification_invariants_hold() {
 }
 
 #[test]
+fn seeded_generated_review_invariants_hold() {
+    let mut state = 0x5eed_u64;
+    for _ in 0..512 {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1);
+        let eligible = (state as usize) % 6;
+        let yes = ((state >> 16) as usize) % 7;
+        let result = classify_result(yes, eligible);
+        assert!(matches!(result, "accepted" | "neutral" | "rejected"));
+        let malformed =
+            format!("### FINDING_1: x\n- **lOcAtIoN**: loc-{yes}\n- **CONCERN**: c-{eligible}\n");
+        assert_eq!(
+            finding_dedup_key(&malformed),
+            format!("loc-{yes}\u{1f}c-{eligible}")
+        );
+        let row = LedgerRow::new(1, "FINDING_1", "a\tb", "", "accepted", "", "");
+        assert!(
+            render_ledger(&[row])
+                .expect("render")
+                .contains("FINDING_1\ta b\t")
+        );
+    }
+}
+
+#[test]
 fn tally_adjudication_preserves_rescue_and_weight() {
     let context = ItemContext {
         item_id: "FINDING_1".to_owned(),
@@ -162,11 +243,112 @@ fn tally_adjudication_preserves_rescue_and_weight() {
     );
 }
 
+fn context(item_id: &str) -> ItemContext {
+    ItemContext {
+        item_id: item_id.to_owned(),
+        block_path: PathBuf::from("finding.md"),
+        block_text: String::new(),
+        artifact_text: String::new(),
+        reviewer: "reviewer".to_owned(),
+        cells: Vec::new(),
+        yes: 1,
+        no: 0,
+        judge_error: 0,
+        is_oos: false,
+        eligible_voters: 1,
+        voter_votes: vec![("v1".to_owned(), "YES".to_owned())],
+        voter_severities: vec!["major".to_owned()],
+    }
+}
+
+#[test]
+fn run_items_orders_hooks_and_stops_on_each_failure() {
+    let calls = RefCell::new(Vec::new());
+    let completed = run_items(
+        [context("FINDING_1")],
+        |_| {
+            calls.borrow_mut().push("serialize");
+            Ok::<_, &'static str>(())
+        },
+        |_| {
+            calls.borrow_mut().push("security");
+            Ok(true)
+        },
+        |_| {
+            calls.borrow_mut().push("publish");
+            Ok(())
+        },
+    )
+    .expect("success");
+    assert_eq!(calls.into_inner(), ["serialize", "security", "publish"]);
+    assert_eq!(completed[0].security, Some(true));
+    for (failure, expected) in [
+        ("serialize", vec!["serialize"]),
+        ("security", vec!["serialize", "security"]),
+        ("publish", vec!["serialize", "security", "publish"]),
+    ] {
+        let calls = RefCell::new(Vec::new());
+        let result = run_items(
+            [context("FINDING_1"), context("FINDING_2")],
+            |_| {
+                calls.borrow_mut().push("serialize");
+                if failure == "serialize" {
+                    Err("stop")
+                } else {
+                    Ok(())
+                }
+            },
+            |_| {
+                calls.borrow_mut().push("security");
+                if failure == "security" {
+                    Err("stop")
+                } else {
+                    Ok(true)
+                }
+            },
+            |_| {
+                calls.borrow_mut().push("publish");
+                if failure == "publish" {
+                    Err("stop")
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        assert_eq!(result, Err("stop"));
+        assert_eq!(calls.into_inner(), expected);
+    }
+}
+
+#[test]
+fn parser_boundary_modes_cover_crlf_and_fences() {
+    let text = "### FINDING_1: first\r\nbody\r\n```md\r\n### OOS_9: fenced\r\n```\r\n### OOS_2: second\r\nbody\r\n### Heading\r\nend\r\n";
+    assert_eq!(parse_blocks(text, BoundaryMode::FindingHeading).len(), 2);
+    assert_eq!(parse_blocks(text, BoundaryMode::OosHeading).len(), 2);
+    let items = parse_blocks(text, BoundaryMode::ItemHeading);
+    assert_eq!(items.len(), 2);
+    assert!(items[0].block.contains("OOS_9: fenced"));
+    assert_eq!(
+        parse_blocks(text, BoundaryMode::LevelThreeHeading)[1].block,
+        "### OOS_2: second\r\nbody\r\n"
+    );
+}
+
 #[test]
 fn frozen_vote_tables_have_pinned_hashes_and_structural_examples() {
-    for (table, heading, rows) in [
-        (CODE_TABLE, "## Voting Tally", 3_usize),
-        (PLAN_TABLE, "## Per-finding vote breakdown", 3_usize),
+    for (table, heading, rows, digest) in [
+        (
+            CODE_TABLE,
+            "## Per-finding vote breakdown",
+            3_usize,
+            "b7a6652c9a70fb10bac1bc1b4187e559fc07b18a210cd0156a6cdc1a2e5c6f09",
+        ),
+        (
+            PLAN_TABLE,
+            "## Findings",
+            3_usize,
+            "a212d86daf7656861073bc45fa681b319deea113b38771b8be164def84c8a8b8",
+        ),
     ] {
         assert!(table.starts_with(heading));
         assert_eq!(
@@ -176,6 +358,6 @@ fn frozen_vote_tables_have_pinned_hashes_and_structural_examples() {
                 .count(),
             rows
         );
-        assert_eq!(format!("{:x}", Sha256::digest(table.as_bytes())).len(), 64);
+        assert_eq!(format!("{:x}", Sha256::digest(table.as_bytes())), digest);
     }
 }

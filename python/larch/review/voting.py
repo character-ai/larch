@@ -78,6 +78,16 @@ def ledger_reason(block_text: str) -> str:
             return re.sub(r"^[- ]*[^:]+:\s*", "", normalized).strip()
     return ""
 
+
+def render_vote_table_header(section: str) -> str:
+    """Render the production vote-breakdown table header."""
+    return f"{section}\n\n| Item | YES | NO | JERR | Result |\n|---|---:|---:|---:|---|\n"
+
+
+def render_vote_table_row(*, item_id: str, yes: int, no: int, judge_error: int, result: str) -> str:
+    """Render one production vote-breakdown row."""
+    return f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n"
+
 _ALLOWED_CODE_REVIEW_HEADERS = {
     "# Rejected Findings",
     "## Accepted Findings",

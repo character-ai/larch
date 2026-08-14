@@ -17,6 +17,7 @@ sys.path.insert(0, str(_ROOT / "python"))
 
 from larch.review import findings_ledger  # noqa: E402 - developer helper bootstraps the checkout Python path
 from larch.review.review_types import parse_blocks  # noqa: E402 - developer helper bootstraps the checkout Python path
+from larch.review.voting import render_vote_table_header, render_vote_table_row  # noqa: E402 - developer helper bootstraps the checkout Python path
 
 _FIXTURES = _ROOT / "fixtures" / "rust-review"
 _FINDINGS = (
@@ -53,12 +54,37 @@ def _capture() -> dict[str, str]:
         )
         ledger = (root / findings_ledger.LEDGER_BASENAME).read_text(encoding="utf-8")
     assert "sk-" not in ledger
-    return {"finding-blocks.golden.md": _FINDINGS, "findings-ledger.golden.tsv": ledger}
+    code_table = render_vote_table_header("## Per-finding vote breakdown") + "".join(
+        render_vote_table_row(item_id=item_id, yes=yes, no=no, judge_error=0, result=result)
+        for item_id, yes, no, result in (
+            ("FINDING_1", 3, 0, "accepted"),
+            ("FINDING_2", 1, 2, "neutral"),
+            ("FINDING_3", 0, 3, "rejected"),
+        )
+    )
+    plan_table = render_vote_table_header("## Findings") + "".join(
+        render_vote_table_row(item_id=item_id, yes=yes, no=no, judge_error=0, result=result)
+        for item_id, yes, no, result in (
+            ("OOS_1", 3, 0, "accepted"),
+            ("OOS_2", 1, 2, "neutral"),
+            ("OOS_3", 0, 3, "rejected"),
+        )
+    )
+    return {
+        "finding-blocks.golden.md": _normalize_newlines(_FINDINGS),
+        "findings-ledger.golden.tsv": _normalize_newlines(ledger),
+        "code-vote-table.golden.md": _normalize_newlines(code_table),
+        "plan-vote-table.golden.md": _normalize_newlines(plan_table),
+    }
+
+
+def _normalize_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _read_exact(path: Path) -> str:
     with path.open(encoding="utf-8", newline="") as handle:
-        return handle.read()
+        return _normalize_newlines(handle.read())
 
 
 def main(argv: list[str] | None = None) -> int:

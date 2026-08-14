@@ -81,10 +81,11 @@ pub fn ledger_root(
     }
     let real = fs::canonicalize(review_tmpdir).unwrap_or_else(|_| review_tmpdir.to_path_buf());
     let nested = real.file_name().is_some_and(|name| {
-        name.to_string_lossy().starts_with("round-")
-            && name.to_string_lossy()[6..]
-                .chars()
-                .all(|character| character.is_ascii_digit())
+        name.to_string_lossy()
+            .strip_prefix("round-")
+            .is_some_and(|suffix| {
+                !suffix.is_empty() && suffix.chars().all(|character| character.is_ascii_digit())
+            })
     });
     let parent = real.parent().map(Path::to_path_buf);
     let matches_parent = |candidate: Option<PathBuf>| {
@@ -108,9 +109,7 @@ pub fn ledger_root(
 
 fn sanitize_cell(value: &str) -> String {
     let mut result = value.replace(['\t', '\r', '\n'], " ");
-    while result.contains("```") {
-        result = result.replace("```", " ");
-    }
+    result = BACKTICK_RUN_RE.replace_all(&result, " ").into_owned();
     result = result.split_whitespace().collect::<Vec<_>>().join(" ");
     if result.chars().count() > CELL_MAX_CHARS {
         result
@@ -133,6 +132,9 @@ fn secret_cell(value: &str) -> String {
         .trim_end_matches('\n')
         .to_owned()
 }
+
+static BACKTICK_RUN_RE: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"`{3,}").expect("backtick sanitizer regex"));
 
 fn sanitize_outcome(value: &str) -> String {
     let value = sanitize_cell(value).to_lowercase();
@@ -175,6 +177,18 @@ impl LedgerRow {
             &self.vote_tally,
             &self.reason,
         ]
+    }
+
+    fn sanitized_for_round(&self, round: Option<u64>) -> Self {
+        Self {
+            round: round.map_or_else(|| sanitize_cell(&self.round), |value| value.to_string()),
+            finding_id: sanitize_cell(&self.finding_id),
+            title: sanitize_cell(&secret_cell(&self.title)),
+            file_line: sanitize_cell(&secret_cell(&self.file_line)),
+            outcome: sanitize_outcome(&self.outcome),
+            vote_tally: sanitize_cell(&self.vote_tally),
+            reason: sanitize_cell(&secret_cell(&self.reason)),
+        }
     }
 }
 
@@ -277,8 +291,17 @@ pub fn replace_round(
 ///
 /// Returns the read, wire, or shared confined-write failure.
 pub fn write_round(root: &Path, round: u64, entries: Vec<LedgerRow>) -> Result<(), LedgerError> {
+    fs::create_dir_all(root).map_err(LedgerError::Io)?;
     let path = ledger_path(root);
-    let rendered = render(&replace_round(read(&path)?, round, entries))?;
+    let existing = read(&path)?
+        .into_iter()
+        .map(|row| row.sanitized_for_round(None))
+        .collect();
+    let entries = entries
+        .into_iter()
+        .map(|row| row.sanitized_for_round(Some(round)))
+        .collect();
+    let rendered = render(&replace_round(existing, round, entries))?;
     private_atomic_write(&path, &rendered, root).map_err(LedgerError::Write)
 }
 
@@ -287,7 +310,7 @@ pub fn write_round(root: &Path, round: u64, entries: Vec<LedgerRow>) -> Result<(
 /// # Errors
 ///
 /// Returns a wire error for an invalid role or an underlying ledger failure.
-pub fn prompt_section(root: &Path, role: &str, keep_neutral: bool) -> Result<String, LedgerError> {
+pub fn prompt_section(root: &Path, role: &str) -> Result<String, LedgerError> {
     if role != "reviewer" && role != "judge" {
         return Err(LedgerError::Wire(
             "role must be reviewer or judge".to_owned(),
@@ -308,10 +331,13 @@ pub fn prompt_section(root: &Path, role: &str, keep_neutral: bool) -> Result<Str
         if size + line.len() + 1 > PROMPT_MAX_BYTES && kept.len() > 1 {
             break;
         }
-        if size + line.len() < PROMPT_MAX_BYTES {
+        if size + line.len() + 1 <= PROMPT_MAX_BYTES {
             kept.push(line);
             size += line.len() + 1;
         }
+    }
+    if kept.len() == 1 {
+        return Ok(String::new());
     }
     let truncated = kept.len() != lines.len();
     let header = kept.remove(0);
@@ -320,6 +346,12 @@ pub fn prompt_section(root: &Path, role: &str, keep_neutral: bool) -> Result<Str
         .chain(kept)
         .collect::<Vec<_>>()
         .join("\n");
+    let keep_neutral = env::var("LARCH_LEDGER_KEEP_NEUTRAL")
+        .map(|value| {
+            !value.is_empty()
+                && !["0", "false", "no", "off"].contains(&value.to_ascii_lowercase().as_str())
+        })
+        .unwrap_or(false);
     let suppressed = if keep_neutral {
         "`rejected` or `oos`"
     } else {
@@ -327,10 +359,17 @@ pub fn prompt_section(root: &Path, role: &str, keep_neutral: bool) -> Result<Str
     };
     let rules = if role == "reviewer" {
         format!(
-            "Before submitting, check this ledger of prior-round suggestions. Skip a finding that duplicates a {suppressed} entry unless you have materially new evidence."
+            "Before submitting, check this ledger of prior-round suggestions. Skip a finding that duplicates a {suppressed} entry unless you have materially new evidence. For an `accepted` duplicate, do not skip: re-raise only if the prior fix looks incomplete, and say so."
         )
     } else {
-        "If a ballot item duplicates a `rejected` or `neutral` ledger entry with no materially new evidence, vote NO. Do not down-vote an `accepted` duplicate on this basis.".to_owned()
+        let suppress = if keep_neutral {
+            "`rejected`"
+        } else {
+            "`rejected` or `neutral`"
+        };
+        format!(
+            "If a ballot item duplicates a {suppress} ledger entry with no materially new evidence, vote NO. Do not down-vote an `accepted` duplicate on this basis. `oos` duplicates should not be re-raised as new OOS; vote NO if they reach the ballot. For OOS ballot items, accept genuine, concrete, non-duplicate observations and vote NO for style, noise, false positives, duplicates, or speculation with no concrete trigger."
+        )
     };
     let note = if truncated {
         "\nLedger truncated to the most recent rows that fit the prompt budget.\n"

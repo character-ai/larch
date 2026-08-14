@@ -1,7 +1,7 @@
-## Voting Tally
+## Per-finding vote breakdown
 
-| Finding | Result | Scope |
-| --- | --- | --- |
-| FINDING_1 | accepted | in_scope |
-| FINDING_2 | neutral | oos |
-| FINDING_3 | rejected | in_scope |
+| Item | YES | NO | JERR | Result |
+|---|---:|---:|---:|---|
+| FINDING_1 | 3 | 0 | 0 | accepted |
+| FINDING_2 | 1 | 2 | 0 | neutral |
+| FINDING_3 | 0 | 3 | 0 | rejected |

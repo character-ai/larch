@@ -981,7 +981,7 @@ def tally_code_votes(args: TallyRequest) -> TallyResult:
         tally_lines.append(f"**⚠ Degraded code-review panel: {parse_failed} voter slot(s) emitted narrative-only output (parse-rate ≥80% JUDGE_ERROR) and were removed from the effective quorum.**\n\n")
     if not_substantive_count > 0:
         tally_lines.append(f"{_not_substantive_warning(not_substantive_count)}\n\n")
-    tally_lines.append("## Per-finding vote breakdown\n\n| Item | YES | NO | JERR | Result |\n|---|---:|---:|---:|---|\n")
+    tally_lines.append(voting.render_vote_table_header("## Per-finding vote breakdown"))
     # Issue #4880: a finding whose per-item valid votes (yes+no) fall below the panel's majority
     # quorum was effectively decided by fewer voters than the panel size — flag it even when each
     # voter's JUDGE_ERROR rate stays under the slot-removal threshold (the silent 67%-per-voter case).
@@ -1057,7 +1057,7 @@ def tally_code_votes(args: TallyRequest) -> TallyResult:
         )
         if agreement_row is not None:
             agreement_rows.append(agreement_row)
-        tally_lines.append(f"| {context.item_id} | {context.yes} | {context.no} | {context.judge_error} | {result.voting_result} |\n")
+        tally_lines.append(voting.render_vote_table_row(item_id=context.item_id, yes=context.yes, no=context.no, judge_error=context.judge_error, result=result.voting_result))
         _record_classification_and_ledger(
             class_tsv=class_tsv,
             classification_row=_classification_row(
