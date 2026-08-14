@@ -1809,7 +1809,7 @@ def _token_command(  # noqa: PLR0913 - internal transport preserves the Rust tok
     return runner.run(argv, cwd=cwd, env=env)
 
 
-def token_mark(  # noqa: PLR0913 - mirrors the stable Rust token CLI surface.
+def token_mark(
     runner: Runner,
     *,
     step: str,
@@ -1848,7 +1848,7 @@ def token_record_vendor(  # noqa: PLR0913 - mirrors the stable Rust token CLI su
     ).returncode == 0
 
 
-def token_record_vendor_sidecar(  # noqa: PLR0913 - mirrors the stable Rust token CLI surface.
+def token_record_vendor_sidecar(
     runner: Runner,
     *,
     input_path: str,
@@ -1867,7 +1867,7 @@ def token_record_vendor_sidecar(  # noqa: PLR0913 - mirrors the stable Rust toke
     ).returncode == 0
 
 
-def token_append_record(  # noqa: PLR0913 - mirrors the stable Rust token CLI surface.
+def token_append_record(
     runner: Runner,
     *,
     input_path: str,
@@ -1885,7 +1885,7 @@ def token_append_record(  # noqa: PLR0913 - mirrors the stable Rust token CLI su
     ).returncode == 0
 
 
-def token_dump(  # noqa: PLR0913 - mirrors the stable Rust token CLI surface.
+def token_dump(
     runner: Runner,
     *,
     ledger: str | None = None,
@@ -1935,7 +1935,7 @@ def token_lane_write(  # noqa: PLR0913 - mirrors the stable Rust token CLI surfa
     ).returncode == 0
 
 
-def token_lane_report(  # noqa: PLR0913 - mirrors the stable Rust token CLI surface.
+def token_lane_report(
     runner: Runner,
     *,
     directory: str,

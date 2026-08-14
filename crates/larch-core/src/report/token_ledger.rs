@@ -9,6 +9,7 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 use std::{
     collections::BTreeMap,
+    fmt::Write,
     path::{Component, Path, PathBuf},
 };
 
@@ -47,6 +48,7 @@ pub fn mark_line(step: &str, timestamp: &str) -> String {
 ///
 /// # Errors
 /// Returns the operator diagnostic when `vendor` is the reserved main-agent id.
+#[allow(clippy::too_many_arguments)] // mirrors the Python ledger row fields
 pub fn vendor_line(
     vendor: &str,
     input: u64,
@@ -123,7 +125,7 @@ pub fn sidecar_ndjson_line(payload: &TokenSidecarPayload) -> String {
 pub fn parse_token_record_sidecar(kv: &BTreeMap<String, String>) -> Option<TokenSidecarPayload> {
     let mut tool = kv.get("TOOL").map_or("unknown", String::as_str).to_owned();
     if !matches!(tool.as_str(), "codex" | "cursor" | "claude" | "claude_sub") {
-        tool = "unknown".to_owned();
+        "unknown".clone_into(&mut tool);
     }
     let uint_key = |key: &str| -> u64 {
         kv.get(key)
@@ -261,26 +263,26 @@ pub fn render_lane_report(
     rate_per_million: f64,
     root_missing: bool,
 ) -> String {
-    let mut lines = vec![
+    let mut report_lines = vec![
         "## Token Spend (Claude tokens only; external lanes excluded)".to_owned(),
         String::new(),
     ];
     if root_missing {
-        lines.push(
+        report_lines.push(
             "_(token telemetry unavailable: $RESEARCH_TMPDIR was already removed)_".to_owned(),
         );
-        return lines.join("\n");
+        return report_lines.join("\n");
     }
     let research_empty = lanes.get("research").is_none_or(Vec::is_empty);
     let validation_empty = lanes.get("validation").is_none_or(Vec::is_empty);
     if research_empty && validation_empty {
-        lines.push(
+        report_lines.push(
             "_(no measurements available: Claude inline only, no measurable subagent invocations)_"
                 .to_owned(),
         );
-        return lines.join("\n");
+        return report_lines.join("\n");
     }
-    lines.push(phase_row(
+    report_lines.push(phase_row(
         "Research phase",
         "research",
         lanes,
@@ -289,7 +291,7 @@ pub fn render_lane_report(
         unknown,
         rate_per_million,
     ));
-    lines.push(phase_row(
+    report_lines.push(phase_row(
         "Validation phase",
         "validation",
         lanes,
@@ -307,22 +309,22 @@ pub fn render_lane_report(
     let total_lanes = total_measured + total_unknown;
     let mut cov = format!("({total_lanes} lanes, {total_measured} measured");
     if total_unknown > 0 {
-        cov.push_str(&format!(", {total_unknown} unmeasurable)"));
+        let _ = write!(cov, ", {total_unknown} unmeasurable)");
     } else {
         cov.push(')');
     }
     let cost = if rate_per_million > 0.0 && grand > 0 {
-        format!("  ${:.4}", (grand as f64 * rate_per_million) / 1_000_000.0)
+        tokens_to_cost(grand, rate_per_million)
     } else {
         String::new()
     };
-    lines.push(format!("  {:<22} {cov}: total={grand}{cost}", "Total"));
-    lines.push(String::new());
-    lines.push(
+    report_lines.push(format!("  {:<22} {cov}: total={grand}{cost}", "Total"));
+    report_lines.push(String::new());
+    report_lines.push(
         "_Note: only Claude subagent (Agent-tool) invocations report token counts. Claude inline (orchestrator) and external lanes (Cursor/Codex) are excluded from the totals above._"
             .to_owned(),
     );
-    lines.join("\n")
+    report_lines.join("\n")
 }
 
 /// Resolve a candidate ledger path under one of the allowed roots.
@@ -384,17 +386,23 @@ fn phase_row(
     let count = measured_count + unknown_count;
     let mut cov = format!("({count} lanes, {measured_count} measured");
     if unknown_count > 0 {
-        cov.push_str(&format!(", {unknown_count} unmeasurable)"));
+        let _ = write!(cov, ", {unknown_count} unmeasurable)");
     } else {
         cov.push(')');
     }
     let total = totals.get(phase).copied().unwrap_or(0);
     let cost = if rate_per_million > 0.0 && total > 0 {
-        format!("  ${:.4}", (total as f64 * rate_per_million) / 1_000_000.0)
+        tokens_to_cost(total, rate_per_million)
     } else {
         String::new()
     };
     format!("  {label:<22}{cov}: total={total}{cost}")
+}
+
+/// Format a token count as a dollar cost string (same float cast as Python).
+#[allow(clippy::cast_precision_loss)]
+fn tokens_to_cost(tokens: u64, rate: f64) -> String {
+    format!("  ${:.4}", (tokens as f64 * rate) / 1_000_000.0)
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
