@@ -15,6 +15,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, ExitCode},
     sync::LazyLock,
+    time::Duration,
 };
 
 use indexmap::IndexMap;
@@ -35,7 +36,7 @@ use tempfile::NamedTempFile;
 use crate::{
     argparse_compat::{absolute_path, parse, usage_error},
     launcher_support::confined_target,
-    python_verb::plugin_root_directory,
+    python_verb::{plugin_root_directory, run_python_verb},
     runtime_entrypoint::{plugin_root, run_verified_larch},
     waterfall_commands::{dispatch_for_review, parse_dispatch_kv, render_dispatch_report},
 };
@@ -1150,16 +1151,19 @@ fn strip_frontmatter(text: &str) -> String {
 }
 
 fn validated_scope_anchor(path: &str, review_tmpdir: &Path) -> Option<String> {
-    let output = run_verified_larch(&[
-        OsString::from("scope-anchor"),
-        OsString::from("validate"),
-        OsString::from("--mode"),
-        OsString::from("review"),
-        OsString::from("--review-tmpdir"),
-        review_tmpdir.as_os_str().to_owned(),
-        OsString::from("--path"),
-        OsString::from(path),
-    ])
+    let output = run_python_verb(
+        [
+            OsString::from("scope-anchor"),
+            OsString::from("validate"),
+            OsString::from("--mode"),
+            OsString::from("review"),
+            OsString::from("--review-tmpdir"),
+            review_tmpdir.as_os_str().to_owned(),
+            OsString::from("--path"),
+            OsString::from(path),
+        ],
+        Duration::from_secs(120),
+    )
     .ok()?;
     output
         .status()

@@ -524,12 +524,17 @@ fn aggregate_findings_preserves_the_merged_finding_wire() {
     let round = review.join("round-3");
     fs::create_dir(&round).expect("round directory");
     let findings = review.join("findings.md");
+    let scope_anchor = review.join("scope-anchor.md");
+    write(
+        &scope_anchor,
+        "Scope evidence preserved through the Python-owned validation seam.\n",
+    );
     write(
         &findings,
         "### FINDING_7: Parse frames before decoding\n- **Reviewer(s)**: codex-specialist-parser\n- **Severity**: major\n- **Concern**: The decoder accepts a malformed frame.\n- **Suggested revision**: Validate frames before decoding.\n\n### FINDING_8: Decoder error path\n- **Reviewer(s)**: cursor-specialist-errors\n- **Severity**: major\n- **Concern**: The malformed frame path is not rejected.\n- **Suggested revision**: Reject malformed frames before decoding.\n\n### FINDING_9: Regression coverage\n- **Reviewer(s)**: claude-specialist-tests\n- **Severity**: minor\n- **Concern**: Malformed frames have no regression coverage.\n- **Suggested revision**: Add malformed frame regression coverage.\n",
     );
     let merged = review.join("aggregator-output.txt");
-    let merged_text = "### FINDING_1: Validate malformed frames before decoding\n- **Reviewer(s)**: codex-specialist-parser, cursor-specialist-errors, claude-specialist-tests\n- **Severity**: major\n- **Concern**: A malformed frame reaches the decoder instead of being rejected.\n- **Suggested revisions**:\n  - From codex-specialist-parser: Validate frames before decoding.\n  - From cursor-specialist-errors: Reject malformed frames before decoding.\n  - From claude-specialist-tests: Add malformed frame regression coverage.\n".replace('\n', "\r\n");
+    let merged_text = "### FINDING_1: Validate malformed frames before decoding\n- **Reviewer(s)**: codex-specialist-parser, cursor-specialist-errors, claude-specialist-tests\n- **Concern**: A malformed frame reaches the decoder instead of being rejected.\n- **Suggested revisions**:\n  - From codex-specialist-parser: Validate frames before decoding.\n  - From cursor-specialist-errors: Reject malformed frames before decoding.\n  - From claude-specialist-tests: Add malformed frame regression coverage.\n".replace('\n', "\r\n");
     write(&merged, &merged_text);
     let paths = review.join("aggregator-output-files.txt");
     write(&paths, &format!("{}\n", merged.display()));
@@ -549,6 +554,7 @@ fn aggregate_findings_preserves_the_merged_finding_wire() {
 
     larch()
         .env("CLAUDE_PLUGIN_ROOT", plugin_root())
+        .env("LARCH_BINARY", env!("CARGO_BIN_EXE_larch"))
         .env("AGGREGATE_DISPATCH_SH", dispatch)
         .args(["review", "aggregate-findings", "--findings-file"])
         .arg(&findings)
@@ -563,13 +569,22 @@ fn aggregate_findings_preserves_the_merged_finding_wire() {
             "false",
             "--mode",
             "diff",
+            "--input-mode",
+            "plan",
+            "--scope-anchor-file",
         ])
+        .arg(&scope_anchor)
         .assert()
         .success()
         .stdout("AGGREGATED=true\nINPUT_COUNT=3\nMERGED_COUNT=1\nREASON=ok\n");
     assert_eq!(
         fs::read_to_string(&findings).expect("merged findings"),
-        merged_text
+        format!("{}\n", merged_text.trim_end())
+    );
+    assert!(
+        fs::read_to_string(review.join("aggregator-prompt.md"))
+            .expect("aggregation prompt")
+            .contains("Scope evidence preserved through the Python-owned validation seam.")
     );
     assert_eq!(
         fs::read_to_string(review.join("aggregator-dispatch.env")).expect("dispatch envelope"),
