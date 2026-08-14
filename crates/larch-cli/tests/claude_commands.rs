@@ -305,7 +305,8 @@ fn subprocess_records_usage_in_the_implement_token_ledger() {
         .filter(|path| {
             path.file_name()
                 .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("larch-tokens-") && name.ends_with(".jsonl"))
+                .is_some_and(|name| name.starts_with("larch-tokens-"))
+                && path.extension().is_some_and(|ext| ext == "jsonl")
         })
         .collect::<Vec<_>>();
     assert_eq!(

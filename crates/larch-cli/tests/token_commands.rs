@@ -59,7 +59,7 @@ fn mark_writes_one_jsonl_line() {
     assert_eq!(lines.len(), 1);
     assert!(lines[0].contains("\"type\":\"mark\""), "{}", lines[0]);
     assert!(
-        lines[0].contains("\"step\":\"Step 3 — checks\""),
+        lines[0].contains("\"step\":\"Step 3 \\u2014 checks\""),
         "{}",
         lines[0]
     );
