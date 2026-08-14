@@ -2121,7 +2121,7 @@ fn postprocess_cursor(
         .unwrap_or_default();
     if !result.is_empty() {
         let normalized = cursor_normalize_no_issues(result);
-        let validator = PythonResearchValidator { session };
+        let validator = RustResearchValidator;
         match plan_cursor_result_write(&normalized, &value, Some(&validator)) {
             larch_core::CursorResultWrite::Keep(result) => {
                 artifacts.write(artifacts.output(), &result);
@@ -2142,11 +2142,9 @@ fn postprocess_cursor(
     }
 }
 
-struct PythonResearchValidator<'a> {
-    session: &'a ReviewSession,
-}
+struct RustResearchValidator;
 
-impl ResearchOutputValidator for PythonResearchValidator<'_> {
+impl ResearchOutputValidator for RustResearchValidator {
     fn validate(&self, result_text: &str) -> bool {
         let Some(root) = system_temporary_root() else {
             return false;
@@ -2160,16 +2158,12 @@ impl ResearchOutputValidator for PythonResearchValidator<'_> {
         if fs::write(&path, result_text).is_err() {
             return false;
         }
-        run_python(
-            self.session,
-            [
-                OsString::from("eval"),
-                OsString::from("validate-research-output"),
-                OsString::from("--validation-mode"),
-                path.as_os_str().to_owned(),
-            ],
-        )
-        .is_some_and(|output| output.status().success())
+        crate::eval_commands::validate_captured(&[
+            OsString::from("--validation-mode"),
+            path.as_os_str().to_owned(),
+        ])
+        .code
+            == 0
     }
 }
 

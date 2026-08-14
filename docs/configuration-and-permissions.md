@@ -77,7 +77,7 @@ Note the ordering: because `Skill(larch:...)` begins with `l` followed by `a`, a
 
 ## `claude -p` permission propagation
 
-Larch's loop drivers spawn `claude -p` subprocesses after selecting an explicit repository working directory. **Direct legacy caller**: `python/cli.py eval research`. The Rust-owned `/complete-umbrella` child instead supplies an exact allowed-tool list, `--permission-mode dontAsk`, `--disable-slash-commands`, and `--no-session-persistence` through the shared process runner. This section documents how project-level `.claude/settings.json` propagates to children that do not override those surfaces. Audit issue: [#586](https://github.com/character-ai/larch/issues/586). Tested against Claude Code CLI version `2.1.119`.
+Larch's loop drivers spawn `claude -p` subprocesses after selecting an explicit repository working directory. **Direct caller**: `scripts/larch.sh eval research`. The Rust-owned `/complete-umbrella` child instead supplies an exact allowed-tool list, `--permission-mode dontAsk`, `--disable-slash-commands`, and `--no-session-persistence` through the shared process runner. This section documents how project-level `.claude/settings.json` propagates to children that do not override those surfaces. Audit issue: [#586](https://github.com/character-ai/larch/issues/586). Tested against Claude Code CLI version `2.1.119`.
 
 ### Empirical findings
 

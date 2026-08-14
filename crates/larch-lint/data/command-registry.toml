@@ -2885,11 +2885,13 @@ verb = "research"
 python_module = "larch.research.research_eval"
 python_function = "eval_research_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8500
+clean_install_test = "clean-install-eval-research"
 
 [[commands]]
 domain = "eval"
@@ -2897,11 +2899,13 @@ verb = "validate-research-output"
 python_module = "larch.research.research_eval"
 python_function = "validate_research_output_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8500
+clean_install_test = "clean-install-eval-validate-research-output"
 
 [[commands]]
 domain = "execution-issues"
@@ -8741,8 +8745,8 @@ rust = ["lint gitleaks"]
 [[callers]]
 path = "Makefile"
 kind = "ci"
-python = ["checks rust-clippy", "eval research"]
-rust = []
+python = ["checks rust-clippy"]
+rust = ["eval research"]
 
 [[callers]]
 path = "agents/_implementer-base.md"
@@ -9971,8 +9975,8 @@ rust = ["research validate-citations", "token lane-write"]
 [[callers]]
 path = "skills/research/references/eval-set.md"
 kind = "skill"
-python = ["eval research", "plan-review run"]
-rust = ["admission gate", "push rebase", "tracking-issue upsert-summary"]
+python = ["plan-review run"]
+rust = ["admission gate", "eval research", "push rebase", "tracking-issue upsert-summary"]
 
 [[callers]]
 path = "skills/research/references/research-phase.md"

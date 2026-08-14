@@ -572,7 +572,7 @@ still the exact debate-owned value.
 
 `/research` publishes the full report and token-spend metadata to a GitHub issue
 after a successful user-facing run unless `--no-issue` is set. Intermediate
-`python/cli.py eval research` calls pass `--no-issue`. Reports can contain
+`scripts/larch.sh eval research` calls pass `--no-issue`. Reports can contain
 private architecture, vulnerability analysis, internal infrastructure
 references, personal data, or domain-specific sensitive content that pattern
 redaction cannot recognize. Use `--no-issue` whenever the report has not been

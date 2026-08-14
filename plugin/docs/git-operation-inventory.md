@@ -37,6 +37,7 @@ crates/larch-cli/src/bootstrap_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/ci_selection.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/dirty_tree_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/developer_tooling_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/eval_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/git_command_runtime.rs	git-cli	#7671	typed-cli
 crates/larch-cli/src/drafter_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/git_commands.rs	git-cli	#7671	typed-cli,typed-read
@@ -97,7 +98,6 @@ python/larch/issue/rejected_analysis.py	later-domain	#7684	dynamic
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base
 python/larch/report/storage_config.py	later-domain	#7683	dynamic
 python/larch/report/tokens.py	later-domain	#7683	dynamic
-python/larch/research/research_eval.py	later-domain	#7684	dynamic
 python/larch/review/_raf_util.py	later-domain	#7679	status
 python/larch/review/coder_runner.py	later-domain	#7679	checkout
 python/larch/review/review_and_fix.py	later-domain	#7679	diff,ls-files,rev-parse,status

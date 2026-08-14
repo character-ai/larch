@@ -693,8 +693,13 @@ fn a_missing_workdir_refuses_the_outer_retry() {
 #[test]
 fn structured_validation_publishes_a_sidecar_and_records_recovery() {
     let fixture = Fixture::create();
-    fixture.marker("STRUCTURED-RECOVERED");
-    fixture.launch("cursor-review.txt", "0", Some("findings\n"));
+    // A preamble line before a single no-issues sentinel drives the real
+    // validator's recovered-after-preamble warning and empty wire file.
+    fixture.launch(
+        "cursor-review.txt",
+        "0",
+        Some("some preamble line\nNO_ISSUES_FOUND\n"),
+    );
     let output = fixture.text("cursor-review.txt");
     let assert = fixture
         .collect(&[
@@ -716,7 +721,8 @@ fn structured_validation_publishes_a_sidecar_and_records_recovery() {
 #[test]
 fn a_refused_structured_validation_drops_the_reviewer() {
     let fixture = Fixture::create();
-    fixture.marker("STRUCTURED-FAIL");
+    // Free-text reviewer output normalizes to nothing and is not a sentinel, so
+    // the real structured validator refuses with exit 5.
     fixture.launch("cursor-review.txt", "0", Some("findings\n"));
     let output = fixture.text("cursor-review.txt");
     let assert = fixture
@@ -731,14 +737,17 @@ fn a_refused_structured_validation_drops_the_reviewer() {
     assert_eq!(field(&stdout, 0, "STATUS"), "NOT_SUBSTANTIVE");
     assert_eq!(field(&stdout, 0, "NS_RETRY_MODE"), "structured");
     assert_eq!(field(&stdout, 0, "NS_RETRY_REASON"), "JSON_PARSE_FAIL");
-    assert_eq!(field(&stdout, 0, "FAILURE_REASON"), "structured refusal");
+    assert_eq!(
+        field(&stdout, 0, "FAILURE_REASON"),
+        "structured records not found after repair"
+    );
     assert!(stderr_of(&assert).contains("dropping NOT_SUBSTANTIVE reviewer"));
 }
 
 #[test]
 fn substantive_validation_classifies_thin_and_empty_reviewers() {
     let thin = Fixture::create();
-    thin.marker("SUBSTANTIVE-THIN");
+    // One word in short-reviewer mode is below the 30-word floor.
     thin.launch("cursor-review.txt", "0", Some("findings\n"));
     let output = thin.text("cursor-review.txt");
     let assert = thin
@@ -757,15 +766,23 @@ fn substantive_validation_classifies_thin_and_empty_reviewers() {
         field(&stdout, 0, "NS_RETRY_REASON"),
         "NO_ISSUES_FOUND_TOO_THIN"
     );
-    // The pipe is the record separator in downstream ledgers, so it is flattened.
-    assert_eq!(field(&stdout, 0, "FAILURE_REASON"), "too thin for review");
+    assert_eq!(
+        field(&stdout, 0, "FAILURE_REASON"),
+        "body too thin: 1/30 words after stripping fenced code"
+    );
 
     let empty = Fixture::create();
-    empty.marker("SUBSTANTIVE-EMPTY");
-    empty.launch("cursor-review.txt", "0", Some("findings\n"));
+    // The Cursor empty sentinel drives the validator's exit-5 empty response.
+    empty.launch("cursor-review.txt", "0", Some("CURSOR_EMPTY_RESPONSE\n"));
     let output = empty.text("cursor-review.txt");
     let assert = empty
-        .collect(&["--timeout", "5", "--substantive-validation", &output])
+        .collect(&[
+            "--timeout",
+            "5",
+            "--substantive-validation",
+            "--validation-mode",
+            &output,
+        ])
         .success();
     let stdout = stdout_of(&assert);
     assert_eq!(field(&stdout, 0, "STATUS"), "CURSOR_EMPTY_RESPONSE");
