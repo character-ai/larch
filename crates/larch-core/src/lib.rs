@@ -385,9 +385,9 @@ pub use report::{
     render_issue_detail_block, render_session_transcript, replace_markdown_block,
     replace_markdown_block_with_warn, report_has_numeric_tokens, resolve_run_report,
     round_number_from_path, run_log_batch_spec, run_log_batch_specs, run_log_ledger_path,
-    run_record, safe_int, sanitize_diagram_capture, strip_diagram_sections,
-    structured_body_dedupe_keys, summary_report, token_phase_rows, token_report_basename,
-    transcript_sources, vendor_totals_from_report,
+    run_record, run_started_at_without_manifest, safe_int, sanitize_diagram_capture,
+    strip_diagram_sections, structured_body_dedupe_keys, summary_report, token_phase_rows,
+    token_report_basename, transcript_sources, vendor_totals_from_report,
 };
 pub use retry::{
     AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,

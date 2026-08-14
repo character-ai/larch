@@ -1227,11 +1227,13 @@ verb = "rebuild-ballot"
 python_module = "larch.calibration.calibration_replay"
 python_function = "rebuild_ballot_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8439
+clean_install_test = "clean-install-calibration-replay-rebuild-ballot"
 
 [[commands]]
 domain = "calibration-replay"
@@ -1239,11 +1241,13 @@ verb = "run-replay"
 python_module = "larch.calibration.calibration_replay"
 python_function = "run_replay_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8439
+clean_install_test = "clean-install-calibration-replay-run-replay"
 
 [[commands]]
 domain = "calibration-replay"
@@ -1251,11 +1255,13 @@ verb = "validate-manifest"
 python_module = "larch.calibration.calibration_replay"
 python_function = "validate_manifest_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8439
+clean_install_test = "clean-install-calibration-replay-validate-manifest"
 
 [[commands]]
 domain = "checks"
@@ -8357,11 +8363,13 @@ verb = "snapshot"
 python_module = "larch.review.voting"
 python_function = "voter_calibration_snapshot_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8439
+clean_install_test = "clean-install-voter-calibration-snapshot"
 
 [[commands]]
 domain = "voting"
@@ -8753,12 +8761,6 @@ python = []
 rust = ["agent parse-codex-usage", "run-log append-failure", "timing record-vendor-task"]
 
 [[callers]]
-path = "python/larch/calibration/calibration_replay.py"
-kind = "python-runtime"
-python = []
-rust = ["agent dispatch-voters"]
-
-[[callers]]
 path = "python/larch/core/redact.py"
 kind = "python-runtime"
 python = ["redact scrub-log-secrets", "redact secrets"]
@@ -9044,7 +9046,7 @@ rust = ["stall-recovery record-escalation"]
 path = "python/larch/review/plan_review_panel.py"
 kind = "python-runtime"
 python = []
-rust = ["agent dispatch-waterfall", "agent launch-claude-review", "review reviewer-prune", "voting degraded-warning", "voting effective-judges", "voting parse-rate-retry"]
+rust = ["agent dispatch-waterfall", "agent launch-claude-review", "review reviewer-prune", "voter-calibration snapshot", "voting degraded-warning", "voting effective-judges", "voting parse-rate-retry"]
 
 [[callers]]
 path = "python/larch/review/plan_review_round.py"

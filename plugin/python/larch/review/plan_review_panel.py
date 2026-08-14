@@ -646,8 +646,7 @@ def _fresh_calibration_stats_file(*, design: Path) -> str | None:
     return fresh_calibration_snapshot(
         work_dir=design,
         snapshot_argv=[
-            sys.executable,
-            str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
+            str(larch_entrypoint(_REPO_ROOT)),
             "voter-calibration",
             "snapshot",
         ],

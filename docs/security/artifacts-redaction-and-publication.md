@@ -342,6 +342,13 @@ implement run. A present durability marker must be committed, and publication
 configured runs require that marker. It never deletes a run directory, archive,
 cache entry, or external path.
 
+Calibration replay treats synchronized run logs and committed calibration
+fixtures as read-only evidence. Its Rust owner validates manifest bindings and
+resolved input containment before dispatch, confines ballots and reconstructed
+ledgers to a separate work directory, and refuses unsafe write targets. Replay
+dispatch also forces calibration feedback off so a replay cannot feed its own
+result back into the synchronized corpus.
+
 The Rust-owned, operator-only `run-log migrate-layout` command is a bounded
 exception for creating the tool-first copies required by
 `character-ai/larch#8081`. Live mode accepts only the issue's exact S3 roots.

@@ -61,7 +61,7 @@ const DIRECT_FILES: &[&str] = &[
     "scripts/sleep-seconds.sh",
 ];
 
-const DEV_ONLY_PYTHON: &[&str] = &["python/larch/calibration/calibration_replay.py"];
+const DEV_ONLY_PYTHON: &[&str] = &[];
 
 const INDEX_ERROR: &str = "plugin runtime projection requires a readable git index";
 const ROOT_ERROR: &str = "plugin runtime projection requires the larch repository root";

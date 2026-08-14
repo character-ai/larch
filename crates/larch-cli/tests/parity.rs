@@ -1587,6 +1587,26 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "findings-classification-header",
     ),
     CleanInstallCase::new(
+        "clean-install-calibration-replay-rebuild-ballot",
+        "calibration-replay",
+        "rebuild-ballot",
+    ),
+    CleanInstallCase::new(
+        "clean-install-calibration-replay-run-replay",
+        "calibration-replay",
+        "run-replay",
+    ),
+    CleanInstallCase::new(
+        "clean-install-calibration-replay-validate-manifest",
+        "calibration-replay",
+        "validate-manifest",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voter-calibration-snapshot",
+        "voter-calibration",
+        "snapshot",
+    ),
+    CleanInstallCase::new(
         "clean-install-voting-compose-tally-record",
         "voting",
         "compose-tally-record",

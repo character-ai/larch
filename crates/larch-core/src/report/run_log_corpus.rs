@@ -806,6 +806,45 @@ impl RunLogCorpus {
         safe_child_directories(&self.root).directories
     }
 
+    /// Return canonical classification files below safe direct child runs
+    /// without requiring a run manifest.
+    ///
+    /// Calibration admits historical pre-manifest corpora. The traversal still
+    /// shares this reader's symlink and containment checks.
+    #[must_use]
+    pub fn classification_paths_without_manifest(
+        &self,
+        skill: &str,
+        sort: RunLogRoundSort,
+    ) -> Vec<(PathBuf, PathBuf)> {
+        let mut rows = Vec::new();
+        for run_dir in self.safe_child_run_directories() {
+            let Ok(canonical_run) = fs::canonicalize(&run_dir) else {
+                continue;
+            };
+            let mut paths: Vec<_> = RunLogFileIter::new(&run_dir)
+                .filter(|path| {
+                    let Ok(relative) = path.strip_prefix(&canonical_run) else {
+                        return false;
+                    };
+                    if skill == "review" {
+                        return path.parent() == Some(canonical_run.as_path())
+                            && path
+                                .file_name()
+                                .and_then(|name| name.to_str())
+                                .is_some_and(is_review_classification_name);
+                    }
+                    path.file_name().and_then(|name| name.to_str())
+                        == Some("findings-classification.tsv")
+                        && classification_path_matches(skill, relative)
+                })
+                .collect();
+            sort_classification_paths(&mut paths, sort);
+            rows.extend(paths.into_iter().map(|path| (canonical_run.clone(), path)));
+        }
+        rows
+    }
+
     fn discover_skill_roots(
         &self,
         pending: &mut VecDeque<RunLogCorpusEvent>,
@@ -840,6 +879,29 @@ impl RunLogCorpus {
             })
             .collect()
     }
+}
+
+/// Read a historical run's start time without requiring a modern manifest.
+#[must_use]
+pub fn run_started_at_without_manifest(run_dir: &Path) -> Option<DateTime<Utc>> {
+    for name in ["manifest.json", "run-manifest.json"] {
+        let Some(metadata) = load_metadata_candidate(&run_dir.join(name)) else {
+            continue;
+        };
+        let started = metadata.timestamp(&["started_at"]);
+        if let TimestampRead::Value(value) = started {
+            return Some(value);
+        }
+        let updated = metadata.timestamp(&["updated_at"]);
+        if let TimestampRead::Value(value) = updated {
+            return Some(value);
+        }
+        if !matches!(started, TimestampRead::Invalid) && !matches!(updated, TimestampRead::Invalid)
+        {
+            return None;
+        }
+    }
+    None
 }
 #[derive(Clone, Debug)]
 struct SkillRoot {

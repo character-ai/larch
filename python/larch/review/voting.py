@@ -101,14 +101,12 @@ CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER = _code_review_classification_header(
 from larch.review._voting_calibration import (
     ClassificationRowPrep,
     VoterAgreementTsvParse,
-    VoterCalibrationDiscoveryRow,
     VoterCalibrationStat,
     _plugin_root,
     classification_row_panel_inputs,
     classification_tsv_schema_supported,
     compute_voter_agreement,
     compute_voter_severity_distribution,
-    discover_voter_calibration_logs,
     normalize_voter_label_to_base_tool,
     read_voter_calibration_stats,
     render_voter_agreement_and_severity_scoreboards,
@@ -118,12 +116,8 @@ from larch.review._voting_calibration import (
     valid_panel_severity,
     voter_agreement_row_from_panel,
     voter_agreement_rows_from_tsv,
-    voter_calibration_snapshot_main,
-    voter_calibration_stats_from_logs,
-    write_voter_calibration_stats,
     _normalize_vote_cell,
     _resolve_voter_calibration_log_root,
-    _resolve_voter_calibration_window,
 )
 
 
