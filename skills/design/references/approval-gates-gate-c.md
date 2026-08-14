@@ -108,7 +108,7 @@ When guidelines are present, Gate C re-entry overwrites `architectural-guideline
 3. When `rejected-findings.md` contains `rejected by user during one-by-one review`, require a successful filter helper invocation before classification:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review filter-gate-b-skipped \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" plan-review filter-gate-b-skipped \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --accepted "${_accepted_corpus}" \
   --rejected "$DESIGN_TMPDIR/rejected-findings.md"

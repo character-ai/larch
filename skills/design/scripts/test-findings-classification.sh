@@ -9,9 +9,8 @@ export LARCH_QUIET_DISABLE=1
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 CLAUDE_PLUGIN_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
 export CLAUDE_PLUGIN_ROOT
-CLI="$CLAUDE_PLUGIN_ROOT/python/cli.py"
 LARCH="$CLAUDE_PLUGIN_ROOT/scripts/larch.sh"
-TALLY=(python3 "$CLI" plan-review tally)
+TALLY=("$LARCH" plan-review tally)
 run_parser() { "$LARCH" voting parse-judge-vote "$@"; }
 HEADER=$("$LARCH" voting findings-classification-header)
 

@@ -376,7 +376,7 @@ Writes are best-effort. A telemetry lock or write failure prints a warning and d
 
 `larch-logs/design/<RUN_ID>/plan-review/round-<N>/findings-classification.tsv`
 is the per-round forensic export produced by
-`python/cli.py plan-review tally`. The file always uses a 23-column,
+`scripts/larch.sh plan-review tally`. The file always uses a 23-column,
 tab-separated schema:
 
 `finding_id`, `finding_reviewers`, `voting_result`, then three repeated slot

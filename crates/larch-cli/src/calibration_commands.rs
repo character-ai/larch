@@ -4,7 +4,7 @@
 mod implementation {
 
 use crate::{
-    argparse_compat::{missing, parse_with_flags, python_repr, usage_error},
+    argparse_compat::{parse_required_with_help, python_repr},
     launcher_support::confined_target,
     runtime_entrypoint::run_verified_larch_with_environment,
     voter_dispatch_commands::voter_output_name,
@@ -60,24 +60,7 @@ fn options(
     flags: &[&'static str],
     required: &[&str],
 ) -> Result<crate::argparse_compat::ParsedCommandLine, ExitCode> {
-    let mut all_flags = flags.to_vec();
-    all_flags.extend(["-h", "--help"]);
-    let parsed = parse_with_flags(arguments, values, &all_flags, 0);
-    if parsed.flag("-h") || parsed.flag("--help") {
-        println!("{usage}");
-        return Err(ExitCode::SUCCESS);
-    }
-    if let Some(error) = parsed.value_error() {
-        return Err(usage_error(usage, program, error, 2));
-    }
-    let states: Vec<_> = required.iter().map(|name| (*name, parsed.value(name).is_some())).collect();
-    if states.iter().any(|(_, present)| !present) {
-        return Err(usage_error(usage, program, &missing(&states), 2));
-    }
-    if let Some(error) = parsed.error() {
-        return Err(usage_error(usage, program, &error, 2));
-    }
-    Ok(parsed)
+    parse_required_with_help(arguments, program, usage, usage, values, flags, required)
 }
 
 fn read_text(path: &Path) -> Result<String, String> {

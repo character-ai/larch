@@ -166,7 +166,7 @@ enum Domain {
     /// Review pipeline commands.
     #[command(subcommand)]
     Review(ReviewCommand),
-    /// Plan-review panel and voter dispatch commands.
+    /// Plan-review workflow commands.
     #[command(subcommand, name = "plan-review")]
     PlanReview(PlanReviewCommand),
     /// Alias generation and target-resolution helpers.

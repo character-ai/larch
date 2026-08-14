@@ -13,11 +13,10 @@ from pathlib import Path
 
 from larch import io as larch_io
 from larch.core import proc, rust_runtime
-from larch.design.design_terminal import json_get_bool, phase_driver_write_result_env
-from larch.design.plan_quality import sync_oversize_override_authority
-from larch.review import plan_review_round
-from larch.review import plan_review_tally
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.design import plan_grammar
+from larch.design.design_terminal import json_get_bool, phase_driver_write_result_env
+from larch.review import plan_review_round
 from larch.review.plan_review_common import (
     _REPO_ROOT,
     MERGE_KEYS,
@@ -28,7 +27,6 @@ from larch.review.plan_review_common import (
     STRUCTURAL_PLAN_LINE_THRESHOLD,
     _emit_kv,
     _plugin_root,
-    _positive_int,
     _read_count,
     _read_kv_file,
     _require_tmpdir,
@@ -46,13 +44,7 @@ from larch.review.plan_review_findings import (
     _record_already_addressed_finding_keys,
     _record_applied_finding_keys,
 )
-from larch.review.plan_review_gate_b import (
-    _STRUCTURED_GATE_B_SEVERITIES,
-    _classify_gate_b_severity,
-    _emit_gate_b_preview,
-    _gate_b_display_rows,
-    _parse_accepted_findings,
-)
+from larch.review.review_types import parse_blocks
 from larch.review.plan_review_normalize import (
     _step3_emit_next_action,
     _step3_next_action,
@@ -171,23 +163,6 @@ def step3_loop_emit_envelope(*, tmpdir: Path, status: str, round_num: int, round
     step3_loop_persist_envelope(design_tmpdir=tmpdir, status=status, round_num=round_num, rounds_completed=rounds_completed, final_round=final_round, values=values)
 
 
-def emit_plan(argv: Sequence[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py plan-review emit")
-    parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
-    ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
-    plan = tmpdir / "plan.txt"
-    text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() and not plan.is_symlink() else ""
-    diff_lines = plan_grammar.terminal_diff_lines(text)
-    if diff_lines is None:
-        _emit_kv(key="EMIT_PLAN_STATUS", value="missing-diff-lines")
-        return 1
-    _write_atomic(path=tmpdir / "diff-lines.txt", content=f"{diff_lines}\n")
-    _emit_kv(key="EMIT_PLAN_STATUS", value="ok")
-    _emit_kv(key="DIFF_LINES", value=diff_lines)
-    return 0
-
-
 def finalize_plan(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review finalize")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
@@ -253,7 +228,19 @@ def emit_design_plan_preview(argv: Sequence[str]) -> int:
             print(missing_messages.get(variant, missing_messages["step3"]))
         return 0
     if variant == "gate-b":
-        return _emit_gate_b_preview(tmpdir)
+        proc = subprocess.run(
+            [
+                str(larch_entrypoint(_plugin_root())),
+                "plan-review",
+                "gate-b-counts",
+                "--design-tmpdir",
+                str(tmpdir),
+                "--preview",
+            ],
+            check=False,
+            env=larch_entrypoint_env(_plugin_root()),
+        )
+        return proc.returncode
     plan = tmpdir / "plan.txt"
     text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() and not plan.is_symlink() else ""
     threshold_raw = os.environ.get("LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD", "120")
@@ -281,131 +268,6 @@ def emit_design_plan_preview(argv: Sequence[str]) -> int:
         print("The plan is very large. Showing the full plan body below.")
         print()
     print(text, end="" if text.endswith("\n") or not text else "\n")
-    return 0
-
-
-def gate_b_counts(argv: Sequence[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py plan-review gate-b-counts")
-    parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
-    ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
-    findings = _parse_accepted_findings(tmpdir)
-    summary = _classify_gate_b_severity(findings)
-    _emit_kv(key="ACCEPTED_COUNT", value=len(findings))
-    _emit_kv(key="HIGH_ACCEPTED_COUNT", value=summary.high_count)
-    _emit_kv(key="MEDIUM_ACCEPTED_COUNT", value=summary.medium_count)
-    _emit_kv(key="LOW_ACCEPTED_COUNT", value=summary.low_count)
-    _emit_kv(key="CRITICAL_ACCEPTED_COUNT", value=summary.critical_count)
-    _emit_kv(key="GATE_B_SEVERITY_MODE", value=summary.mode)
-    _emit_kv(key="FINDING_IDS", value=",".join(str(finding_id) for finding_id in summary.finding_ids))
-    return 0
-
-
-def _gate_b_prompt_line(row: object) -> str:
-    finding_id = row.finding_id  # type: ignore[attr-defined]
-    display_severity_label = row.display_severity_label  # type: ignore[attr-defined]
-    reviewer_text = row.reviewer_text  # type: ignore[attr-defined]
-    excerpt = row.excerpt  # type: ignore[attr-defined]
-    prefix = f"FINDING_{finding_id} [{display_severity_label}]"
-    if reviewer_text and excerpt:
-        detail = f"{reviewer_text}: {excerpt}"
-    elif reviewer_text:
-        detail = reviewer_text
-    else:
-        detail = excerpt
-    if detail:
-        return f"{prefix} — {detail}. Apply this finding to the plan?"
-    return f"{prefix} — Apply this finding to the plan?"
-
-
-def gate_b_finding_line(argv: Sequence[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py plan-review gate-b-finding-line")
-    parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
-    parser.add_argument("--finding-id", type=_positive_int, required=True)  # pyright: ignore[reportUnusedCallResult]
-    parser.add_argument("--ordinal", type=_positive_int)  # pyright: ignore[reportUnusedCallResult]
-    ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
-    rows = _gate_b_display_rows(tmpdir)
-    ids = [row.finding_id for row in rows]
-    if ns.finding_id not in ids:
-        parser.exit(1, f"{parser.prog}: unknown finding id FINDING_{ns.finding_id}\n")
-    row = rows[ids.index(ns.finding_id)]
-    if ns.ordinal is None:
-        ordinal = ids.index(ns.finding_id) + 1
-    else:
-        ordinal = ns.ordinal
-        if ordinal > len(ids) or ids[ordinal - 1] != ns.finding_id:
-            parser.exit(1, f"{parser.prog}: ordinal does not match FINDING_{ns.finding_id}\n")
-    total = len(ids)
-    _emit_kv(key="FINDING_ID", value=row.finding_id)
-    _emit_kv(key="DISPLAY_SEVERITY", value=row.display_severity_label)
-    _emit_kv(key="REVIEWER_TEXT", value=row.reviewer_text)
-    _emit_kv(key="CONCERN_EXCERPT", value=row.excerpt)
-    _emit_kv(key="ONE_BY_ONE_ORDINAL", value=ordinal)
-    _emit_kv(key="ONE_BY_ONE_TOTAL", value=total)
-    _emit_kv(key="ONE_BY_ONE_HEADER", value=f"Finding {ordinal}/{total}")
-    _emit_kv(key="ONE_BY_ONE_PROMPT_LINE", value=_gate_b_prompt_line(row))
-    return 0
-
-
-def _trailer_map(text: str) -> dict[str, str]:
-    """Preserve Gate B's legacy whole-document snapshot compatibility.
-
-    Terminal consumers use ``plan_grammar``. Gate B snapshots historically
-    accepted loose optional-trailer spellings anywhere in the document.
-    """
-    values: dict[str, str] = {}
-    for line in text.splitlines():
-        match = re.match(r"^([a-z_]+):\s*(.*?)\s*$", line)
-        if match is not None and match.group(1) in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS:
-            values[match.group(1)] = match.group(2)
-    return values
-
-
-def gate_b_dedup_plan(argv: Sequence[str]) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py plan-review gate-b-dedup")
-    parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
-    parser.add_argument("--snapshot-trailers", action="store_true")  # pyright: ignore[reportUnusedCallResult]
-    parser.add_argument("--dedup", action="store_true")  # pyright: ignore[reportUnusedCallResult]
-    ns = parser.parse_args(list(argv))
-    tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
-    plan = tmpdir / "plan.txt"
-    text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() and not plan.is_symlink() else ""
-    keys_file = tmpdir / ".gate-b-optional-trailer-keys"
-    values_file = tmpdir / ".gate-b-optional-trailer-keys.values"
-    if ns.snapshot_trailers:
-        trailers = _trailer_map(text)
-        _write_atomic(path=keys_file, content="".join(f"{key}\n" for key in sorted(trailers)))
-        _write_atomic(path=values_file, content="".join(f"{key}={trailers[key]}\n" for key in sorted(trailers)))
-        _emit_kv(key="GATE_B_DEDUP_STATUS", value="snapshot-ok")
-        return 0
-    if not ns.dedup:
-        parser.error("one of --snapshot-trailers or --dedup is required")
-    if not keys_file.is_file() or keys_file.is_symlink() or not values_file.is_file() or values_file.is_symlink():
-        _emit_kv(key="GATE_B_DEDUP_STATUS", value="missing-snapshot")
-        return 3
-    snapshot_keys = {line.strip() for line in keys_file.read_text(encoding="utf-8").splitlines() if line.strip()}
-    current = _trailer_map(text)
-    if not set(current).issubset(snapshot_keys) or not snapshot_keys.issubset(set(current)):
-        _emit_kv(key="GATE_B_DEDUP_STATUS", value="trailer-key-drift")
-        return 1
-    seen: set[str] = set()
-    removed = 0
-    out_lines: list[str] = []
-    for line in text.splitlines():
-        if re.match(r"^[a-z_]+:\s*", line):
-            out_lines.append(line)
-            continue
-        if line and line in seen:
-            removed += 1
-            continue
-        if line:
-            seen.add(line)
-        out_lines.append(line)
-    _write_atomic(path=plan, content="\n".join(out_lines) + ("\n" if text.endswith("\n") else ""))
-    sync_oversize_override_authority(design_tmpdir=tmpdir, plan=plan, previous_plan_text=text)
-    print(f"dedup-sweep: removed {removed} duplicate line(s) from plan.txt")
-    _emit_kv(key="GATE_B_DEDUP_STATUS", value="ok")
     return 0
 
 
@@ -631,10 +493,6 @@ def _record_design_round_timing_from_start_file(*, tmpdir: Path, round_num: int,
     _append_canonical_round_timing(tmpdir=tmpdir, round_num=round_num, start_s=start_s, end_s=round_end_s)
 
 
-def tally_plan_review(argv: Sequence[str]) -> int:
-    return plan_review_tally.main(list(argv))
-
-
 def _read_phase(*, tmpdir: Path, round_num: int) -> str:
     path = tmpdir / f".step3-round-{round_num}.phase"
     if path.is_file() and not path.is_symlink():
@@ -700,6 +558,21 @@ def _read_bool_param(*, tmpdir: Path, key: str, default: bool = False) -> bool:
     return json_get_bool(path=tmpdir / "run-params.json", key=key, default=default)
 
 
+def _continuation_findings(tmpdir: Path) -> list[tuple[str, str]]:
+    path = tmpdir / "accepted-plan-findings.md"
+    if not path.is_file() or path.is_symlink():
+        return []
+    findings: list[tuple[str, str]] = []
+    for parsed in parse_blocks(
+        path.read_text(encoding="utf-8", errors="replace"), boundary="level-three-heading"
+    ):
+        if parsed.kind != "FINDING":
+            continue
+        match = re.search(r"(?mi)^-\s+\*\*Severity\*\*:\s*([A-Za-z_-]+)\s*$", parsed.block)
+        findings.append((parsed.block, match.group(1).lower() if match else ""))
+    return findings
+
+
 def run_plan_review_round(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review round")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
@@ -735,10 +608,10 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     loop_status = result_env.get("LOOP_STATUS", "")
     step3_reason = result_env.get("REASON", "")
     panel_pruned_empty = result_env.get("PANEL_PRUNED_EMPTY", "")
-    findings = _parse_accepted_findings(tmpdir)
-    blocks = [finding.block for finding in findings]
-    severities = [finding.severity_raw for finding in findings]
-    structured = bool(blocks) and all(sev in _STRUCTURED_GATE_B_SEVERITIES for sev in severities)
+    findings = _continuation_findings(tmpdir)
+    blocks = [block for block, _severity in findings]
+    severities = [severity for _block, severity in findings]
+    structured = bool(blocks) and all(severity in {"major", "minor", "nit"} for severity in severities)
     accepted = len(blocks)
     nit = sum(1 for sev in severities if sev == "nit")
     non_nit = max(0, accepted - nit)

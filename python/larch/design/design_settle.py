@@ -6,6 +6,7 @@ import contextlib
 import io
 import os
 import shutil
+import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from typing import Final, Literal
 
 from larch import io as larch_io
 from larch.core import config
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.design import design_dialectic, design_pause
 from larch.design.design_session import (
     SettleDispatchResult,
@@ -121,13 +123,21 @@ class _SettleFlagScan:
 
 
 def _default_dedup(design_tmpdir: Path) -> ChildCapture:
-    from larch.review.plan_review_loop import gate_b_dedup_plan  # noqa: PLC0415 - lint-layering: ok settle calls review dedup owner without a design↔review module cycle
-
-    buf = io.StringIO()
-    err = io.StringIO()
-    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
-        rc = gate_b_dedup_plan(["--design-tmpdir", str(design_tmpdir), "--dedup"])
-    return ChildCapture(rc=int(rc), stdout=buf.getvalue(), stderr=err.getvalue())
+    result = subprocess.run(
+        [
+            str(larch_entrypoint()),
+            "plan-review",
+            "gate-b-dedup",
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--dedup",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=larch_entrypoint_env(),
+    )
+    return ChildCapture(rc=result.returncode, stdout=result.stdout, stderr=result.stderr)
 
 
 def _default_postplan(request: SettleRequest, postplan_site: str) -> ChildCapture:

@@ -1618,7 +1618,11 @@ def test_validate_plan_command_rows_single_root_unchanged(tmp_path: Path) -> Non
     assert "DEFECT script=skills/demo/scripts/gone.sh kind=missing-script" in summary.log_text
 
 
-def test_auto_fix_dispatch_alternation_with_stub(tmp_path: Path) -> None:
+def test_auto_fix_dispatch_alternation_with_stub(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     plan = tmp_path / "plan.txt"
     plan.write_text("plan body\ndiff_lines: 3\n")
     dispatch = tmp_path / "dispatch.sh"
@@ -1661,19 +1665,27 @@ fi
 """
     )
     validator.chmod(0o755)
-    gate_b = tmp_path / "gate-b.sh"
-    gate_b.write_text("#!/usr/bin/env bash\nexit 0\n")
-    gate_b.chmod(0o755)
     env = {
         "LARCH_AUTOFIX_DISPATCH_SH": str(dispatch),
         "LARCH_AUTOFIX_VALIDATE_PLAN_SH": str(validator),
-        "LARCH_AUTOFIX_GATE_B_DEDUP_PLAN_SH": str(gate_b),
         "AUTOFIX_TEST_MODE": "codex-fail-cursor-fix",
     }
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("LARCH_AUTOFIX_GATE_B_DEDUP_PLAN_SH", raising=False)
+    real_run = subprocess.run
+    gate_b_calls: list[tuple[list[str], object]] = []
+
+    def fake_run(command: list[str], *args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[1:3] == ["plan-review", "gate-b-dedup"]:
+            gate_b_calls.append((command, kwargs.get("env")))
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return real_run(command, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(plan_quality.subprocess, "run", fake_run)
     (tmp_path / "validate-plan-commands.log").write_text("defect\n")
-    cp = run_cli(
-        "plan",
-        "auto-fix-commands",
+    rc = plan_quality.auto_fix_plan_commands_main(
+        [
         "--design-tmpdir",
         str(tmp_path),
         "--plan-file",
@@ -1682,16 +1694,19 @@ fi
         "true",
         "--cursor-binary-found",
         "true",
-        env=env,
+        ]
     )
-    assert cp.returncode == 0, cp.stderr
-    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert rc == 0
+    stdout = capsys.readouterr().out
+    out = dict(line.split("=", 1) for line in stdout.splitlines() if "=" in line)
     assert out["AUTOFIX_STATUS"] == "ok"
     assert out["FIXED_BY"] == "cursor"
     calls = (tmp_path / "plan-autofix" / "attempt-2-cursor" / "vendor-calls").read_text(encoding="utf-8").splitlines()
     assert calls == ["cursor"]
     calls1 = (tmp_path / "plan-autofix" / "attempt-1-codex" / "vendor-calls").read_text(encoding="utf-8").splitlines()
     assert calls1 == ["codex"]
+    assert [call[0][-1] for call in gate_b_calls] == ["--snapshot-trailers", "--snapshot-trailers", "--dedup"]
+    assert all(call[1] is not None for call in gate_b_calls)
 
 
 def test_auto_fix_cursor_dispatch_sets_no_open_browser(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

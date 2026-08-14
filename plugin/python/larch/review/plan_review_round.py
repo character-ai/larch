@@ -101,6 +101,14 @@ def _run_larch(argv: list[str], *, env: dict[str, str] | None = None) -> subproc
     )
 
 
+def _run_plan_review_tally(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """Keep the dynamic voter tail behind a statically registered Rust selector."""
+    selector = [str(larch_entrypoint(_REPO_ROOT)), "plan-review", "tally"]
+    if argv[:2] != selector[1:]:
+        raise ValueError("plan-review tally runner received a different selector")
+    return _run_larch(argv, env=env)
+
+
 def _run_cli_with_progress(
     argv: list[str],
     *,
@@ -1327,6 +1335,7 @@ def execute_round(
         env={"LARCH_QUIET_DISABLE": "1"},
         step="3",
         text=f"round {round_num}: tallying votes",
+        runner=_run_plan_review_tally,
     )
     out_lines.append(tally.stdout)
     tally_kv = _parse_kv(tally.stdout)

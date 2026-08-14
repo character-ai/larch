@@ -544,8 +544,9 @@ pub use vendor::{
     resolve_model_pins, resolve_probe_workdir, review_retry_delay_secs, run_codex_review_preflight,
     run_cursor_review_preflight, run_ready_launch, run_vendor_launch, run_waterfall,
     run_with_vendor_retries, sanitize_tool_label, state_phrase, strip_codex_config,
-    terminal_diff_lines, token_sidecar_ingest_env, tool_state, transient_probe_retries,
-    trust_config_arg, validate_drafter_timeout, write_cursor_dirty_tree_from_baseline,
+    terminal_diff_lines, terminal_plan_trailer_value, token_sidecar_ingest_env, tool_state,
+    transient_probe_retries, trust_config_arg, validate_drafter_timeout,
+    write_cursor_dirty_tree_from_baseline,
 };
 pub use vendor_diagnostics::{
     FAILED_AGENT_STDERR_TAIL_BYTE_CAP, FAILED_AGENT_STDERR_TAIL_LINES, FailureDiagSource,

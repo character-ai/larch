@@ -152,10 +152,10 @@ _rejected_body="$DESIGN_TMPDIR/gatec-rejected-findings-framed.md"
 {
   printf '%s\n' '---LARCH-REJECTED-BEGIN---'
   if [ -s "$DESIGN_TMPDIR/rejected-findings.md" ]; then
-    if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review emit-rejected --design-tmpdir "$DESIGN_TMPDIR" --report-framing; then
+    if ! "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" plan-review emit-rejected --design-tmpdir "$DESIGN_TMPDIR" --report-framing; then
       printf '%s\n\n' '## Considered Plan Review Suggestions (Not Adopted)'
       printf '%s\n\n' 'These reviewer suggestions were considered but not adopted. Some may already be addressed by the current plan; they are not automatically unimplemented gaps.'
-      python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review emit-rejected --design-tmpdir "$DESIGN_TMPDIR" || true
+      "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" plan-review emit-rejected --design-tmpdir "$DESIGN_TMPDIR" || true
     fi
   fi
   printf '%s\n' '---LARCH-REJECTED-END---'

@@ -8,7 +8,10 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt::Write as _,
     path::{Path, PathBuf},
+    sync::LazyLock,
 };
+
+use regex::Regex;
 
 use super::{BoundaryMode, ItemKind, parse_blocks, pipeline::normalize_output_base};
 
@@ -288,7 +291,7 @@ pub struct PlanReviewFindingOutput {
 /// One accepted in-scope finding shared with Gate B renderers.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PlanReviewAcceptedFinding {
-    pub finding_id: u64,
+    pub finding_id: String,
     pub block: String,
     pub severity_raw: String,
     pub concern: String,
@@ -303,17 +306,206 @@ pub struct PlanReviewGateBSeveritySummary {
     pub high_count: usize,
     pub medium_count: usize,
     pub low_count: usize,
-    pub display_labels: BTreeMap<u64, String>,
-    pub finding_ids: Vec<u64>,
+    pub display_labels: BTreeMap<String, String>,
+    pub finding_ids: Vec<String>,
 }
 
 /// Fields for one Gate B prompt row.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PlanReviewGateBDisplayRow {
-    pub finding_id: u64,
+    pub finding_id: String,
     pub display_severity_label: String,
     pub reviewer_text: String,
     pub excerpt: String,
+}
+
+static CONCERN_FIELD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?mi)^-[\s\x{1c}-\x{1f}]+(?:\*\*)?Concern(?:\*\*)?:[\s\x{1c}-\x{1f}]*(.*)$")
+        .expect("static concern regex")
+});
+static FIELD_BOUNDARY: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(?:-[\s\x{1c}-\x{1f}]+|###[\s\x{1c}-\x{1f}]+)")
+        .expect("static field boundary regex")
+});
+static REVIEWER_FIELD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?mi)^-[\s\x{1c}-\x{1f}]+(?:\*\*)?Reviewer(?:\(s\))?(?:\*\*)?:[\s\x{1c}-\x{1f}]*(.*)$",
+    )
+    .expect("static reviewer regex")
+});
+static SEVERITY_FIELD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?mi)^-[\s\x{1c}-\x{1f}]+\*\*Severity\*\*:[\s\x{1c}-\x{1f}]*([A-Za-z_-]+)[\s\x{1c}-\x{1f}]*$").expect("static severity regex")
+});
+static GATE_B_FALLBACK_PREDICATES: LazyLock<Vec<(&'static str, Regex)>> = LazyLock::new(|| {
+    [
+        ("Low", r"\b(style|naming|future[- ]proofing|no functional change)\b"),
+        ("Medium", r"\b(robustness|clarity|secondary path|recoverable edge case)\b"),
+        ("High", r"\b(functional incorrectness|primary code path|missing required documentation contract|missing required[^.]*doc|violates?[^.]*invariant|stated invariant)\b"),
+        ("Critical", r"\b(data loss|security breach|build/ci breakage|build breakage|ci breakage|breaks (?:the )?build|breaks ci|downstream[^.]*regression|regression[^.]*downstream)\b"),
+    ]
+    .into_iter()
+    .map(|(label, pattern)| (label, Regex::new(pattern).expect("static Gate B regex")))
+    .collect()
+});
+
+/// Parse the byte-frozen accepted-finding document consumed by Gate B.
+#[must_use]
+pub fn parse_plan_review_accepted_findings(text: &str) -> Vec<PlanReviewAcceptedFinding> {
+    let field = |block: &str| {
+        let Some(found) = CONCERN_FIELD.captures(block) else {
+            return String::new();
+        };
+        let Some(matched) = found.get(0) else {
+            return String::new();
+        };
+        let mut lines = vec![crate::trim_python_whitespace(&found[1]).to_owned()];
+        for line in crate::split_text_lines(&block[matched.end()..]) {
+            if FIELD_BOUNDARY.is_match(line) {
+                break;
+            }
+            if !crate::trim_python_whitespace(line).is_empty() {
+                lines.push(crate::trim_python_whitespace(line).to_owned());
+            }
+        }
+        crate::trim_python_whitespace(&lines.join("\n")).to_owned()
+    };
+    parse_blocks(text, BoundaryMode::LevelThreeHeading)
+        .into_iter()
+        .filter(|block| block.kind == ItemKind::Finding)
+        .filter_map(|parsed| {
+            let digits = parsed.item_id.strip_prefix("FINDING_")?;
+            let finding_id = digits.trim_start_matches('0');
+            let finding_id = if finding_id.is_empty() {
+                "0"
+            } else {
+                finding_id
+            };
+            Some(PlanReviewAcceptedFinding {
+                finding_id: finding_id.to_owned(),
+                concern: field(&parsed.block),
+                reviewers: REVIEWER_FIELD
+                    .captures(&parsed.block)
+                    .map_or_else(String::new, |found| {
+                        crate::trim_python_whitespace(&found[1]).to_owned()
+                    }),
+                severity_raw: SEVERITY_FIELD
+                    .captures(&parsed.block)
+                    .map_or_else(String::new, |found| found[1].to_lowercase()),
+                block: parsed.block,
+            })
+        })
+        .collect()
+}
+
+/// Classify Gate B severity using the structured-all-or-fallback contract.
+#[must_use]
+pub fn classify_plan_review_gate_b(
+    findings: &[PlanReviewAcceptedFinding],
+) -> PlanReviewGateBSeveritySummary {
+    let structured = findings
+        .iter()
+        .all(|finding| matches!(finding.severity_raw.as_str(), "major" | "minor" | "nit"));
+    let mut summary = PlanReviewGateBSeveritySummary {
+        mode: if structured { "structured" } else { "fallback" }.to_owned(),
+        finding_ids: findings
+            .iter()
+            .map(|finding| finding.finding_id.clone())
+            .collect(),
+        ..Default::default()
+    };
+    for finding in findings {
+        let label = if structured {
+            match finding.severity_raw.as_str() {
+                "major" => "High",
+                "minor" => "Medium",
+                _ => "Low",
+            }
+        } else {
+            let concern = finding.concern.to_lowercase();
+            GATE_B_FALLBACK_PREDICATES
+                .iter()
+                .find(|(_, pattern)| pattern.is_match(&concern))
+                .map_or("Low", |(label, _)| *label)
+        };
+        *match label {
+            "Critical" => &mut summary.critical_count,
+            "High" => &mut summary.high_count,
+            "Medium" => &mut summary.medium_count,
+            _ => &mut summary.low_count,
+        } += 1;
+        summary
+            .display_labels
+            .insert(finding.finding_id.clone(), label.to_owned());
+    }
+    summary
+}
+
+/// Build frozen Gate B display fields in document order.
+#[must_use]
+pub fn plan_review_gate_b_display_rows(
+    findings: &[PlanReviewAcceptedFinding],
+) -> Vec<PlanReviewGateBDisplayRow> {
+    let summary = classify_plan_review_gate_b(findings);
+    findings
+        .iter()
+        .map(|finding| {
+            let excerpt = crate::split_text_lines(&finding.concern)
+                .into_iter()
+                .map(crate::trim_python_whitespace)
+                .filter(|line| !line.is_empty())
+                .take(2)
+                .collect::<Vec<_>>()
+                .join(" ")
+                .chars()
+                .take(200)
+                .collect();
+            PlanReviewGateBDisplayRow {
+                finding_id: finding.finding_id.clone(),
+                display_severity_label: summary
+                    .display_labels
+                    .get(&finding.finding_id)
+                    .cloned()
+                    .unwrap_or_else(|| "Low".to_owned()),
+                reviewer_text: finding.reviewers.clone(),
+                excerpt,
+            }
+        })
+        .collect()
+}
+
+/// Remove accepted blocks explicitly skipped during Gate B one-by-one review.
+#[must_use]
+pub fn filter_plan_review_gate_b_skipped(accepted: &str, rejected: &str) -> String {
+    const MARKER: &str = "rejected by user during one-by-one review";
+    if !rejected.contains(MARKER) {
+        return accepted.to_owned();
+    }
+    let normalize = |block: &str| {
+        let normalized = crate::split_text_lines(crate::trim_python_whitespace(block))
+            .into_iter()
+            .filter(|line| !line.contains(MARKER))
+            .map(|line| line.trim_end_matches(crate::is_python_whitespace))
+            .collect::<Vec<_>>()
+            .join("\n");
+        crate::trim_python_whitespace(&normalized).to_owned()
+    };
+    let skipped: BTreeSet<String> = parse_blocks(rejected, BoundaryMode::LevelThreeHeading)
+        .into_iter()
+        .filter(|block| block.kind == ItemKind::Finding && block.block.contains(MARKER))
+        .map(|block| normalize(&block.block))
+        .collect();
+    let kept = parse_blocks(accepted, BoundaryMode::LevelThreeHeading)
+        .into_iter()
+        .filter(|block| {
+            block.kind == ItemKind::Finding && !skipped.contains(&normalize(&block.block))
+        })
+        .map(|block| crate::trim_python_whitespace(&block.block).to_owned())
+        .collect::<Vec<_>>();
+    if kept.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n\n", kept.join("\n\n"))
+    }
 }
 
 /// Render recorded structured collector findings with Python-compatible layout.
@@ -972,8 +1164,8 @@ pub fn step3_next_action(status: &str, loop_status: &str, tally_status: &str) ->
 /// Read keys from an applied-finding ledger only from earlier rounds.
 #[must_use]
 pub fn applied_finding_keys_before(ledger: &str, before_round: u64) -> BTreeSet<String> {
-    ledger
-        .lines()
+    crate::split_text_lines(ledger)
+        .into_iter()
         .filter_map(|line| {
             let (round, key) = line.split_once('\t')?;
             let round = round.parse::<u64>().ok()?;
@@ -985,8 +1177,8 @@ pub fn applied_finding_keys_before(ledger: &str, before_round: u64) -> BTreeSet<
 /// Read every valid key from an applied-finding ledger.
 #[must_use]
 pub fn all_applied_finding_keys(ledger: &str) -> BTreeSet<String> {
-    ledger
-        .lines()
+    crate::split_text_lines(ledger)
+        .into_iter()
         .filter_map(|line| {
             let (round, key) = line.split_once('\t')?;
             (!key.is_empty() && is_decimal(round)).then(|| key.to_owned())
@@ -1001,8 +1193,8 @@ fn is_decimal(value: &str) -> bool {
 /// Replace one round's keys in an applied-finding ledger without duplicating input keys.
 #[must_use]
 pub fn replace_applied_finding_keys(ledger: &str, round_num: u64, keys: &[String]) -> String {
-    let mut rows = ledger
-        .lines()
+    let mut rows = crate::split_text_lines(ledger)
+        .into_iter()
         .filter(|line| {
             line.split_once('\t').is_some_and(|(round, _)| {
                 is_decimal(round) && (round.parse::<u64>() != Ok(round_num))
@@ -1026,9 +1218,9 @@ pub fn replace_applied_finding_keys(ledger: &str, round_num: u64, keys: &[String
 /// Merge already-addressed finding keys into a sorted, newline-terminated ledger.
 #[must_use]
 pub fn merge_already_addressed_finding_keys(ledger: &str, keys: &[String]) -> String {
-    let mut merged = ledger
-        .lines()
-        .map(str::trim)
+    let mut merged = crate::split_text_lines(ledger)
+        .into_iter()
+        .map(crate::trim_python_whitespace)
         .filter(|key| !key.is_empty())
         .map(str::to_owned)
         .collect::<BTreeSet<_>>();

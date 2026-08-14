@@ -43,6 +43,20 @@ raise SystemExit(0)
         encoding="utf-8",
     )
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    _write_emit_bootstrap(path.parents[1] / "scripts" / "larch.sh")
+
+
+def _write_emit_bootstrap(path: Path) -> None:
+    """Write the Rust-owner boundary used by postplan's emit consumer."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ $1 == plan-review && $2 == emit ]]; then\n"
+        "  printf 'EMIT_PLAN_STATUS=ok\\nDIFF_LINES=12\\n'\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
 def test_postplan_with_plan_size_returns_pause_code(tmp_path: Path) -> None:
@@ -92,6 +106,7 @@ def test_postplan_with_plan_size_returns_defect_code(tmp_path: Path) -> None:
 
 def test_postplan_rejects_missing_executable_facets_before_review(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     design = tmp_path / "design"
     design.mkdir()
@@ -109,6 +124,17 @@ def test_postplan_rejects_missing_executable_facets_before_review(
         run_params_json(overrides={"partition_requested": False}),
         encoding="utf-8",
     )
+
+    def fake_run_larch(
+        _root: Path,
+        *args: str,
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        del env
+        assert args[:2] == ("plan-review", "emit")
+        return _completed(args, stdout="EMIT_PLAN_STATUS=ok\nDIFF_LINES=12\n")
+
+    monkeypatch.setattr(design_postplan, "_run_larch", fake_run_larch)
 
     rc = design_postplan.postplan_emit_main(
         ["--design-tmpdir", str(design), "--with-plan-size"]
@@ -334,6 +360,10 @@ def _write_append_failure_bootstrap(path: Path, calls_file: Path) -> None:
         f"""#!/usr/bin/env python3
 import sys
 args = sys.argv[1:]
+if args[:2] == ["plan-review", "emit"]:
+    print("EMIT_PLAN_STATUS=ok")
+    print("DIFF_LINES=12")
+    raise SystemExit(0)
 if args[:2] == ["run-log", "append-failure"]:
     site = args[args.index("--site") + 1] if "--site" in args else ""
     with open({calls_path_repr}, "a", encoding="utf-8") as fh:
@@ -402,6 +432,7 @@ raise SystemExit(0)
         encoding="utf-8",
     )
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    _write_emit_bootstrap(path.parents[1] / "scripts" / "larch.sh")
 
 
 def test_postplan_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: Path) -> None:

@@ -44,7 +44,7 @@ pub use drafter::{
     DrafterStatus, DrafterTimeoutError, MAX_DRAFTER_TIMEOUT_SECONDS, drafter_model_allowed,
     drafter_path_text_allowed, drafter_token_raw_label, parse_drafter_output,
     plan_contains_standalone_scout_manifest, render_drafter_dirty_tree, render_drafter_status,
-    terminal_diff_lines, validate_drafter_timeout,
+    terminal_diff_lines, terminal_plan_trailer_value, validate_drafter_timeout,
 };
 pub use envelope::{ClaudeEnvelopeStatus, parse_claude_envelope};
 pub use external_agent::{

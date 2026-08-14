@@ -297,7 +297,7 @@ run_post_phase() {
         if [ -r "$DESIGN_TMPDIR/proposer-map.tsv" ]; then
             retally_args+=(--proposer-map-file "$DESIGN_TMPDIR/proposer-map.tsv")
         fi
-        python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" "${retally_args[@]}" >"$retally_stdout"
+        "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" "${retally_args[@]}" >"$retally_stdout"
         retally_rc=$?
         set -e
     fi

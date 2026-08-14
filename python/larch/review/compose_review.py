@@ -7,13 +7,14 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from larch.core import logging_util
 from larch.core import redact
-from larch.review.plan_review_accepted_audit import filter_gate_b_skipped_files
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.review.review_types import FOCUS_AREA_SET, parse_canonical_heading
 from larch.review import voting
 
@@ -336,7 +337,27 @@ def _parse_design_accepted(*, accepted: Path, design_dir: Path, ctx: _ParseConte
 
 
 def _filter_gate_b(*, accepted: Path, rejected: Path) -> str:
-    return filter_gate_b_skipped_files(accepted=accepted, rejected=rejected)
+    plugin_root = Path(__file__).resolve().parents[3]
+    result = subprocess.run(
+        [
+            str(larch_entrypoint(plugin_root)),
+            "plan-review",
+            "filter-gate-b-skipped",
+            "--design-tmpdir",
+            str(accepted.parent),
+            "--accepted",
+            str(accepted),
+            "--rejected",
+            str(rejected),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=larch_entrypoint_env(plugin_root),
+    )
+    if result.returncode != 0:
+        raise OSError(result.stderr.strip() or "filter-gate-b-skipped failed")
+    return result.stdout
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:

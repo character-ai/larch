@@ -454,8 +454,19 @@ fn standalone_manifest_at(text: &str, offset: usize) -> bool {
 /// blank lines are discarded. `diff_lines` must be the last trailer in it.
 #[must_use]
 pub fn terminal_diff_lines(text: &str) -> Option<u64> {
+    terminal_plan_trailer_value(text, "diff_lines")?
+        .parse::<u64>()
+        .ok()
+}
+
+/// Read one value from the final valid trailer block ending in `diff_lines`.
+#[must_use]
+pub fn terminal_plan_trailer_value<'a>(text: &'a str, key: &str) -> Option<&'a str> {
     let mut lines = split_text_lines(text);
-    while lines.last().is_some_and(|line| line.trim().is_empty()) {
+    while lines
+        .last()
+        .is_some_and(|line| crate::trim_python_whitespace(line).is_empty())
+    {
         lines.pop();
     }
     let mut trailers: Vec<(&str, &str)> = Vec::new();
@@ -472,8 +483,8 @@ pub fn terminal_diff_lines(text: &str) -> Option<u64> {
     trailers
         .iter()
         .rev()
-        .find(|(key, _value)| *key == "diff_lines")
-        .and_then(|(_key, value)| value.parse::<u64>().ok())
+        .find(|(found, _value)| *found == key)
+        .map(|(_key, value)| *value)
 }
 
 fn match_trailer_line(line: &str) -> Option<(&str, &str)> {
@@ -750,7 +761,8 @@ mod tests {
         DrafterDialectic, DrafterDirtyTree, DrafterScout, DrafterStatus, DrafterTimeoutError,
         drafter_model_allowed, drafter_path_text_allowed, drafter_token_raw_label,
         parse_drafter_output, plan_contains_standalone_scout_manifest, render_drafter_dirty_tree,
-        render_drafter_status, terminal_diff_lines, validate_drafter_timeout,
+        render_drafter_status, terminal_diff_lines, terminal_plan_trailer_value,
+        validate_drafter_timeout,
     };
 
     fn plan(body: &str) -> String {
@@ -907,6 +919,20 @@ mod tests {
     #[test]
     fn terminal_trailers_require_diff_lines_last_in_the_final_block() {
         assert_eq!(terminal_diff_lines("body\ndiff_lines: 7\n\n\n"), Some(7));
+        assert_eq!(
+            terminal_plan_trailer_value(
+                "oversize_override: operator\ndiff_lines: 18446744073709551616\n",
+                "diff_lines"
+            ),
+            Some("18446744073709551616")
+        );
+        assert_eq!(
+            terminal_plan_trailer_value(
+                "oversize_override: operator\nbody\ndiff_lines: 1\n",
+                "oversize_override"
+            ),
+            None
+        );
         assert_eq!(
             terminal_diff_lines("difficulty: HARD\ndiff_lines: 0\n"),
             Some(0)

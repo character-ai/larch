@@ -118,6 +118,42 @@ pub fn usage_error(usage: &str, program: &str, error: &str, code: u8) -> ExitCod
     ExitCode::from(code)
 }
 
+/// Parse a flag-and-value command surface with shared `argparse` ordering.
+///
+/// Help wins only after the parser has consumed the preceding command line;
+/// required arguments precede surplus-argument diagnostics.
+pub fn parse_required_with_help(
+    arguments: &[OsString],
+    program: &str,
+    usage: &str,
+    help: &str,
+    values: &[&'static str],
+    flags: &[&'static str],
+    required: &[&str],
+) -> Result<ParsedCommandLine, ExitCode> {
+    let mut all_flags = flags.to_vec();
+    all_flags.extend(["-h", "--help"]);
+    let parsed = parse_with_flags(arguments, values, &all_flags, 0);
+    if parsed.flag("-h") || parsed.flag("--help") {
+        println!("{help}");
+        return Err(ExitCode::SUCCESS);
+    }
+    if let Some(error) = parsed.value_error() {
+        return Err(usage_error(usage, program, error, 2));
+    }
+    let states: Vec<_> = required
+        .iter()
+        .map(|name| (*name, parsed.value(name).is_some()))
+        .collect();
+    if states.iter().any(|(_, present)| !present) {
+        return Err(usage_error(usage, program, &missing(&states), 2));
+    }
+    if let Some(error) = parsed.error() {
+        return Err(usage_error(usage, program, &error, 2));
+    }
+    Ok(parsed)
+}
+
 /// Parse `arguments` against a closed option table and a positional budget.
 ///
 /// `options` lists the long flags that take exactly one value. `max_positionals`

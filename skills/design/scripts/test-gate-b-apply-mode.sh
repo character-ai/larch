@@ -7,6 +7,7 @@ export LARCH_QUIET_DISABLE=1
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 CLI="$ROOT/python/cli.py"
+LARCH="$ROOT/scripts/larch.sh"
 POSTPLAN_CLI=(python3 "$CLI" design postplan-emit)
 SETTLE=(python3 "$CLI" design step35-settle)
 SKILL_MD="$ROOT/skills/design/SKILL.md"
@@ -38,7 +39,76 @@ python3 -m py_compile "$ROOT/python/larch/review/plan_review.py" || fail 'plan_r
 python3 -m py_compile "$ROOT/python/larch/design/design_settle.py" || fail 'design_settle.py py_compile failed'
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/tgbam.XXXXXX")
+TMP=$(cd "$TMP" && pwd -P)
 trap 'rm -rf "$TMP"' EXIT
+
+# The Bash-harness CI lane intentionally has no compiled Rust artifact. Rust
+# command parity is covered by the focused Cargo tests; this harness supplies
+# only the two command side effects needed to exercise the Gate B caller path.
+if [[ -z "${LARCH_BINARY:-}" ]]; then
+  PLUGIN_VERSION=$(awk -F '"' '$2 == "version" { print $4 }' "$ROOT/.claude-plugin/plugin.json")
+  case "$(uname -s):$(uname -m)" in
+    Darwin:arm64|Darwin:aarch64) LARCH_TARGET=aarch64-apple-darwin ;;
+    Darwin:x86_64|Darwin:amd64) LARCH_TARGET=x86_64-apple-darwin ;;
+    Linux:arm64|Linux:aarch64) LARCH_TARGET=aarch64-unknown-linux-gnu ;;
+    Linux:x86_64|Linux:amd64) LARCH_TARGET=x86_64-unknown-linux-gnu ;;
+    *) fail 'unsupported harness target' ;;
+  esac
+  export LARCH_BINARY="$TMP/larch-fixture"
+  cat >"$LARCH_BINARY" <<EOF
+#!/usr/bin/env bash
+set -u
+if [[ "\${1:-}" == --version ]]; then printf '%s\n' 'larch $PLUGIN_VERSION'; exit 0; fi
+if [[ "\${1:-}" == bootstrap && "\${2:-}" == self-check ]]; then
+  printf '%s\n' '{"schema_version":1,"version":"$PLUGIN_VERSION","target":"$LARCH_TARGET"}'
+  exit 0
+fi
+if [[ "\${1:-}" == plan-review && "\${2:-}" == gate-b-dedup ]]; then
+  shift 2
+  design="" snapshot=false dedup=false
+  while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+      --design-tmpdir) design="\$2"; shift 2 ;;
+      --snapshot-trailers) snapshot=true; shift ;;
+      --dedup) dedup=true; shift ;;
+      *) shift ;;
+    esac
+  done
+  if [[ "\$snapshot" == true ]]; then
+    : >"\$design/.gate-b-optional-trailer-keys"
+    : >"\$design/.gate-b-optional-trailer-keys.values"
+    printf '%s\n' 'GATE_B_DEDUP_STATUS=snapshot'
+    exit 0
+  fi
+  if [[ "\$dedup" == true ]]; then
+    before=\$(wc -l <"\$design/plan.txt")
+    awk '!seen[\$0]++' "\$design/plan.txt" >"\$design/plan.txt.tmp"
+    after=\$(wc -l <"\$design/plan.txt.tmp")
+    mv "\$design/plan.txt.tmp" "\$design/plan.txt"
+    printf 'dedup-sweep: removed %s duplicate line(s) from plan.txt\n' "\$((before - after))"
+    printf '%s\n' 'GATE_B_DEDUP_STATUS=ok'
+    exit 0
+  fi
+fi
+if [[ "\${1:-}" == plan-review && "\${2:-}" == emit ]]; then
+  shift 2
+  design=""
+  while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+      --design-tmpdir) design="\$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  diff_lines=\$(awk '/^diff_lines: [0-9]+\$/ { value=\$2 } END { print value }' "\$design/plan.txt")
+  [[ -n "\$diff_lines" ]] || { printf '%s\n' 'EMIT_PLAN_STATUS=missing-diff-lines'; exit 1; }
+  printf '%s\n' "\$diff_lines" >"\$design/diff-lines.txt"
+  printf 'EMIT_PLAN_STATUS=ok\nDIFF_LINES=%s\n' "\$diff_lines"
+  exit 0
+fi
+exit 2
+EOF
+  chmod +x "$LARCH_BINARY"
+fi
 
 read_approve_requested() {
   local run_params="$1" approve_requested=false
@@ -117,7 +187,7 @@ cat >"$D_APPLY/accepted-plan-findings.md" <<'EOF'
 - **Severity**: important
 - **Concern**: Plan needs an explicit retry constraint.
 EOF
-python3 "$CLI" plan-review gate-b-dedup --design-tmpdir "$D_APPLY" --snapshot-trailers >/dev/null
+"$LARCH" plan-review gate-b-dedup --design-tmpdir "$D_APPLY" --snapshot-trailers >/dev/null
 {
   printf '%s\n' '# Plan'
   printf '%s\n' '## Files to modify/create'

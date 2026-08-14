@@ -272,10 +272,13 @@ def driver_main(argv: Sequence[str]) -> int:
                 return 2
         print(f"STEP_STARTED={action}")
         command: list[str]
+        command_env: dict[str, str] | None = None
         if action == "EMIT_PLAN":
-            command = [sys.executable, str(root / "python" / "cli.py"), "plan-review", "emit", "--design-tmpdir", str(design_tmpdir), *action_args]
+            command = [str(larch_entrypoint(root)), "plan-review", "emit", "--design-tmpdir", str(design_tmpdir), *action_args]
+            command_env = larch_entrypoint_env(root)
         elif action == "TALLY":
-            command = [sys.executable, str(root / "python" / "cli.py"), "plan-review", "tally", "--design-tmpdir", str(design_tmpdir), *action_args]
+            command = [str(larch_entrypoint(root)), "plan-review", "tally", "--design-tmpdir", str(design_tmpdir), *action_args]
+            command_env = larch_entrypoint_env(root)
         elif action == "FINALIZE":
             command = [sys.executable, str(root / "python" / "cli.py"), "plan-review", "finalize", "--design-tmpdir", str(design_tmpdir), *action_args]
         else:
@@ -292,7 +295,7 @@ def driver_main(argv: Sequence[str]) -> int:
                 _ = sentinel.write_text("", encoding="utf-8")
             print(f"STEP_COMPLETED={action}")
             continue
-        proc_out = subprocess.run(command, capture_output=True, text=True, check=False)
+        proc_out = subprocess.run(command, capture_output=True, text=True, check=False, env=command_env)
         if proc_out.stdout:
             print(proc_out.stdout, end="")
         if proc_out.returncode != 0:

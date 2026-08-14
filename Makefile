@@ -401,10 +401,10 @@ test-design-log-publish:
 
 
 test-emit-plan:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k emit_plan
+	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --test plan_review_commands emit_and_rejected_findings_bytes_are_frozen
 
 test-gate-b-dedup-plan:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k gate_b_dedup
+	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --test plan_review_commands gate_b_lines_and_dedup_wire_are_frozen
 
 test-gate-b-apply-mode:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-gate-b-apply-mode.sh
@@ -429,7 +429,7 @@ test-validate-plan-commands:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k validate_plan
 
 test-tally-plan-review:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'tally_plan_review or tally_error_rollback or degraded_empty or cap_reached'
+	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --test plan_review_commands tally
 
 test-findings-classification:
 	@if [ -z "$${LARCH_BINARY:-}" ]; then \

@@ -37,6 +37,20 @@ if [[ "\${1:-}" == session ]]; then
         require-plugin-root|validate-design-tmpdir) exit 0 ;;
     esac
 fi
+if [[ "\${1:-}" == plan-review && "\${2:-}" == snapshot-pre-review ]]; then
+    shift 2
+    _design=""
+    while [[ \$# -gt 0 ]]; do
+        case "\$1" in
+            --design-tmpdir) _design="\${2:-}"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    [[ -n "\$_design" ]] || exit 2
+    cp "\$_design/plan.txt" "\$_design/plan-before-review.txt" || exit 1
+    printf '%s\n' 'SNAPSHOT_PRE_REVIEW_STATUS=ok'
+    exit 0
+fi
 # The Rust owner strips the sole unfenced larch:plan block (#8171). The entry
 # script only reads the stripped artifact, so the double drops the marker pair
 # and the lines it bounds.

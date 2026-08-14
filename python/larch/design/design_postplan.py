@@ -252,7 +252,8 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
         )
         return int(pause.returncode)
 
-    emit = _run_cli(root, "plan-review", "emit", "--design-tmpdir", str(design_tmpdir))
+    emit_argv = [str(larch_entrypoint(root)), "plan-review", "emit", "--design-tmpdir", str(design_tmpdir)]
+    emit = _run_larch(root, *emit_argv[1:])
     emit_kv = _parse_kv(emit.stdout)
     kvs["EMIT_PLAN_STATUS"] = emit_kv.get("EMIT_PLAN_STATUS", "not-run")
     kvs["DIFF_LINES"] = emit_kv.get("DIFF_LINES", "")

@@ -7,7 +7,7 @@ use crate::text::{
 use num_bigint::BigInt;
 use regex::{Regex, RegexBuilder};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     fmt::Write as _,
     sync::LazyLock,
 };
@@ -47,6 +47,30 @@ fn insensitive_regex(source: &str) -> Regex {
         .case_insensitive(true)
         .build()
         .expect("static case-insensitive regex")
+}
+
+/// Describe a proposer-map coverage mismatch in the shared tally wire format.
+#[must_use]
+pub fn proposer_map_item_mismatch(
+    ballot_ids: &BTreeSet<String>,
+    map_ids: &BTreeSet<String>,
+) -> Option<String> {
+    if ballot_ids == map_ids {
+        return None;
+    }
+    let missing = ballot_ids.difference(map_ids).cloned().collect::<Vec<_>>();
+    let extra = map_ids.difference(ballot_ids).cloned().collect::<Vec<_>>();
+    let mut details = Vec::new();
+    if !missing.is_empty() {
+        details.push(format!("missing item(s): {}", missing.join(", ")));
+    }
+    if !extra.is_empty() {
+        details.push(format!("extra item(s): {}", extra.join(", ")));
+    }
+    Some(format!(
+        "proposer map item mismatch ({})",
+        details.join("; ")
+    ))
 }
 #[rustfmt::skip]
 fn python_regex_text(text: &str) -> String {
@@ -561,7 +585,8 @@ fn reviewer_segment_fully_tokenized(segment: &str, labels: &[String]) -> bool {
     true
 }
 
-fn grow_reviewer_labels(labels: &mut Vec<String>, cells: impl IntoIterator<Item = String>) {
+/// Grow a known-label corpus by tokenizing reviewer attribution cells.
+pub fn grow_reviewer_labels(labels: &mut Vec<String>, cells: impl IntoIterator<Item = String>) {
     let mut seen: HashSet<String> = labels.iter().cloned().collect();
     for cell in cells {
         for raw_segment in cell.split(',') {

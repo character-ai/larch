@@ -8,7 +8,7 @@ After deduplication, a panel casts YES/NO votes on each finding. `/design` plan 
 
 ## Ballot Format
 
-Assign each deduplicated finding a stable sequential ID before voting. Ballots use one `### FINDING_N:` markdown block per finding. `/design` plan review (`python/cli.py plan-review tally`, implemented in `python/plan_review.py`) also splits `### OOS_N:` blocks. `/review` code review (`review tally-code-votes`) accepts both `### FINDING_N:` and `### OOS_N:` headings; legacy OOS code-review rows may still be `### FINDING_N:` headings with `[OUT_OF_SCOPE]` in the title:
+Assign each deduplicated finding a stable sequential ID before voting. Ballots use one `### FINDING_N:` markdown block per finding. `/design` plan review (`scripts/larch.sh plan-review tally`, implemented by the Rust CLI) also splits `### OOS_N:` blocks. `/review` code review (`review tally-code-votes`) accepts both `### FINDING_N:` and `### OOS_N:` headings; legacy OOS code-review rows may still be `### FINDING_N:` headings with `[OUT_OF_SCOPE]` in the title:
 
 ```markdown
 ### FINDING_1: <short title>
@@ -117,7 +117,7 @@ Voter dispatch is owned by runtime dispatchers, not prompt-side launch scaffoldi
 
 - `/design` plan review voter dispatch is owned by `scripts/larch.sh plan-review voter-dispatch` in `crates/larch-cli/src/plan_review_commands.rs`.
 - `/review` and `/implement` Step 5 code-review voter dispatch is owned by `scripts/larch.sh agent dispatch-voters`.
-- Plan review uses `python/cli.py plan-review tally`; code review uses `scripts/larch.sh review tally-code-votes`, `emit-tally`, and `log-phase`.
+- Tally ownership is explicit per workflow: `scripts/larch.sh plan-review tally` and `scripts/larch.sh review tally-code-votes`, `emit-tally`, and `log-phase` are Rust-owned.
 - The live Codex dispatch surface and output stem are documentary tokens here only: `${CLAUDE_PLUGIN_ROOT:?}/scripts/larch.sh agent launch-codex-exec` and `codex-vote-output.txt`.
 
 Do not launch voters directly from the orchestrator on `/design`, `/review`, or `/implement` Step 5 paths. The dispatchers own availability checks, fallbacks, sentinel waits, external result validation, and status emission.
@@ -170,7 +170,7 @@ Reviewers may return **out-of-scope observations**: pre-existing issues or conce
 
 OOS ballot format depends on the skill:
 
-- **`/design` plan review** (`python/cli.py plan-review tally`): OOS items get `OOS_` prefixed IDs (e.g., `OOS_1`, `OOS_2`) and appear as `### OOS_N:` heading blocks on the ballot:
+- **`/design` plan review** (`scripts/larch.sh plan-review tally`): OOS items get `OOS_` prefixed IDs (e.g., `OOS_1`, `OOS_2`) and appear as `### OOS_N:` heading blocks on the ballot:
 
   ```markdown
   ### OOS_1: <short title of pre-existing issue>
@@ -212,7 +212,7 @@ The scoreboard adds OOS columns:
 
 ### OOS Security Tag
 
-Security-tagged OOS items are held locally and never filed as public GitHub issues, whether accepted, neutral, or rejected. The detection contract is shared between `/design` plan review (`python/cli.py plan-review tally` / `python/voting.py`) and `/review` code review (`review tally-code-votes`) via `python/voting.py::is_security_block`:
+Security-tagged OOS items are held locally and never filed as public GitHub issues, whether accepted, neutral, or rejected. The detection contract is shared between the Rust `/design` tally (`scripts/larch.sh plan-review tally`) and `/review` code review (`review tally-code-votes`) through the common review classifier:
 
 - **Canonical token**: a block is security-tagged when its body contains at least one **unfenced** occurrence of `focus-area\s*=\s*security` (case-insensitive, optional whitespace around `=`).
 - **Dedicated field token**: a line-start `focus-area` field also routes as security when its value begins with `security` (including `security-hardening` style values), with optional bold/backtick markup around the label or value and either `:` or `=` as the separator.

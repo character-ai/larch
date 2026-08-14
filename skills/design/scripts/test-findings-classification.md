@@ -4,7 +4,7 @@ Offline regression harness for `findings-classification.tsv` and
 the Rust-owned `scripts/larch.sh voting parse-judge-vote`.
 
 Fixtures are created under a per-run `mktemp -d` directory. Each case writes a
-small ballot plus voter files and invokes `python/cli.py plan-review tally`
+small ballot plus voter files and invokes `scripts/larch.sh plan-review tally`
 with explicit `--findings-classification-out` paths so overwrite behavior and
 bad-argv no-write behavior are observable.
 

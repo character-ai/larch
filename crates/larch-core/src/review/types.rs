@@ -479,7 +479,8 @@ pub fn is_oos_eligible_block(block: &ParsedBlock) -> bool {
 static FIELD_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^- \*\*((?i-u:Location|Concern))\*\*:[ \t]*(.*?)[ \t]*$").expect("field regex")
 });
-static SPACE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").expect("space regex"));
+static SPACE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[\s\x1C-\x1F]+").expect("space regex"));
 
 /// Return the stable Location/Concern finding identity used across rounds.
 #[must_use]
@@ -511,5 +512,5 @@ pub fn finding_dedup_key(block: &str) -> String {
     } else {
         format!("{location}\u{1f}{concern}")
     };
-    SPACE_RE.replace_all(&raw, " ").trim().to_lowercase()
+    crate::trim_python_whitespace(&SPACE_RE.replace_all(&raw, " ")).to_lowercase()
 }

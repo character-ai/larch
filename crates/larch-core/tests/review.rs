@@ -226,7 +226,7 @@ fn seeded_generated_review_invariants_hold() {
             format!("### FINDING_1: x\n- **lOcAtIoN**: loc-{yes}\n- **CONCERN**: c-{eligible}\n");
         assert_eq!(
             finding_dedup_key(&malformed),
-            format!("loc-{yes}\u{1f}c-{eligible}")
+            format!("loc-{yes} c-{eligible}")
         );
         let row = LedgerRow::new(1, "FINDING_1", "a\tb", "", "accepted", "", "");
         assert!(
@@ -250,11 +250,11 @@ fn finding_dedup_key_without_fields_strips_finding_headers() {
 }
 
 #[test]
-fn finding_dedup_key_preserves_first_empty_location_match() {
+fn finding_dedup_key_uses_first_empty_location_match() {
     let key = finding_dedup_key(
         "### FINDING_1: a\n- **Location**: \n- **Location**: later.rs:1\n- **Concern**: same\n",
     );
-    assert_eq!(key, "\u{1f}same");
+    assert_eq!(key, "same");
 }
 
 #[test]
@@ -1113,7 +1113,7 @@ fn plan_review_normalization_helpers_preserve_python_wire_rules() {
         ])
     );
 
-    let ledger = "1\tfirst\n2\tsecond\n184467440737095516160\tlarge\ninvalid\n";
+    let ledger = "1\tfirst\u{2028}2\tsecond\n184467440737095516160\tlarge\ninvalid\n";
     assert_eq!(
         applied_finding_keys_before(ledger, 2),
         BTreeSet::from(["first".to_owned()])
@@ -1132,7 +1132,7 @@ fn plan_review_normalization_helpers_preserve_python_wire_rules() {
     );
     assert_eq!(
         merge_already_addressed_finding_keys(
-            "zeta\nalpha\n",
+            "zeta\u{2028}alpha\n",
             &["alpha".to_owned(), "beta".to_owned()]
         ),
         "alpha\nbeta\nzeta\n"
