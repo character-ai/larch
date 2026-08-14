@@ -96,14 +96,13 @@ def _workflow_run_filters(
     query: MainHealthQuery,
     *,
     repo: str,
-    commit: str | None,
 ) -> gh.WorkflowRunListFilters:
     return gh.WorkflowRunListFilters(
         repo=repo,
         branch=query.base_branch,
         workflow=query.workflow,
         event="push",
-        commit=commit,
+        commit=query.head_sha,
         limit=query.limit,
         cwd=query.cwd,
     )
@@ -164,15 +163,15 @@ def _classify_runs(
     requested_head_sha: str | None = query.head_sha
     cwd: str | None = query.cwd
     skip_flap_check: bool = query.skip_flap_check
-    matching = _matching_runs(runs, head_sha=requested_head_sha)
-    if not matching:
-        if requested_head_sha:
-            detail = f"no push workflow runs matched head SHA {requested_head_sha}"
-            return MainHealthStatus(status="error", detail=_bounded_detail(detail))
+    if not runs:
         return MainHealthStatus(
             status="skip",
             detail=_bounded_detail("no default-branch push workflow runs found"),
-        )
+    )
+    matching = _matching_runs(runs, head_sha=requested_head_sha)
+    if not matching and requested_head_sha:
+        detail = f"no push workflow runs matched head SHA {requested_head_sha}"
+        return MainHealthStatus(status="error", detail=_bounded_detail(detail))
     latest = matching[0]
     status = latest.status.lower()
     conclusion = (latest.conclusion or "").lower()
@@ -229,25 +228,13 @@ def read_main_health(
     query: MainHealthQuery,
 ) -> MainHealthStatus:
     query_repo = query.upstream_repo or query.repo
-    filters = _workflow_run_filters(query, repo=query_repo, commit=query.head_sha)
+    filters = _workflow_run_filters(query, repo=query_repo)
     try:
         result = gh.run_list_filtered_read(runner, filters)
         read_error = _read_error_status(result, workflow=query.workflow)
         if read_error is not None:
             return read_error
         runs = gh.parse_run_list_filtered_result(result)
-        if query.head_sha and not runs:
-            history_filters = _workflow_run_filters(query, repo=query_repo, commit=None)
-            history_result = gh.run_list_filtered_read(runner, history_filters)
-            history_error = _read_error_status(history_result, workflow=query.workflow)
-            if history_error is not None:
-                return history_error
-            history = gh.parse_run_list_filtered_result(history_result)
-            if not history:
-                return MainHealthStatus(
-                    status="skip",
-                    detail=_bounded_detail("no default-branch push workflow runs found"),
-                )
         return _classify_runs(
             runner,
             runs,
