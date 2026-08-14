@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import contextlib
 import json
 import os
 import subprocess
@@ -12,6 +13,7 @@ if TYPE_CHECKING:
 
 from larch.review import review_tally
 from larch.review import review_core_body
+from larch.core import config, logging_util
 import review_test_support as rts
 from test_support import run_cli, run_larch
 from larch.review import voting
@@ -176,6 +178,60 @@ def test_tally_result_emits_one_stable_kv_contract(tmp_path: Path, capsys: pytes
     assert rows["ACCEPTED_COUNT"] == "1"
     assert rows["UNDER_QUORUM_ITEMS"] == "FINDING_2"
     assert rows["FINDINGS_CLASSIFICATION_TSV_FILE"] == str(tmp_path / "classification.tsv")
+
+
+def test_tally_request_captures_contract_when_fd3_is_active(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An in-process tally must not bypass its captured stdout through fd 3."""
+    logging_util.reset_quiet_state()
+    read_fd, write_fd = os.pipe()
+    backup_fd: int | None = None
+    with contextlib.suppress(OSError):
+        backup_fd = os.dup(3)
+
+    def fake_tally(_request: review_tally.TallyRequest) -> review_tally.TallyResult:
+        return review_tally.TallyResult(rc=0, status="ok", accepted_count=1)
+
+    try:
+        _ = os.dup2(write_fd, 3)
+        os.close(write_fd)
+        write_fd = -1
+        monkeypatch.setenv(config.ENV_LARCH_QUIET_ACTIVE, "1")
+        monkeypatch.setenv(config.ENV_LARCH_QUIET_PID, "inherited-contract-fd")
+        monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
+        monkeypatch.setattr(review_tally, "tally_code_votes", fake_tally)
+
+        result = review_core_body._run_tally_request(  # pyright: ignore[reportPrivateUsage]
+            commands=review_core_body.ReviewCommands("", "", "", "", "", "", "", "", ""),
+            request=review_tally.TallyRequest(
+                ballot_file="unused.md",
+                review_tmpdir=str(tmp_path),
+                voter_files=(),
+            ),
+        )
+
+        assert result.returncode == 0
+        assert "TALLY_STATUS=ok\n" in result.stdout
+        assert "ACCEPTED_COUNT=1\n" in result.stdout
+        os.set_blocking(read_fd, False)
+        try:
+            leaked = os.read(read_fd, 4096)
+        except BlockingIOError:
+            leaked = b""
+        assert leaked == b""
+    finally:
+        if write_fd >= 0:
+            os.close(write_fd)
+        if backup_fd is not None:
+            _ = os.dup2(backup_fd, 3)
+            os.close(backup_fd)
+        else:
+            with contextlib.suppress(OSError):
+                os.close(3)
+        os.close(read_fd)
+        logging_util.reset_quiet_state()
 
 
 def test_emit_tally_writes_summary_json(tmp_path: Path) -> None:

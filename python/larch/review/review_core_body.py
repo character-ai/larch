@@ -507,7 +507,7 @@ def _run_tally_request(*, commands: ReviewCommands, request: review_tally.TallyR
         except SystemExit as exc:
             returncode = int(exc.code) if isinstance(exc.code, int) else 2
         else:
-            result.emit()
+            result.emit(stream=stdout)
             returncode = result.rc
     return proc.CommandResult(
         argv=("tally-code-votes", *request.to_argv()),
