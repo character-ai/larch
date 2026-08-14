@@ -73,6 +73,15 @@ checkout; no restored workspace executable is trusted. These consumers have no
 restore-key fallback or cache save step. A primary-key miss therefore lets Cargo
 rebuild from the current checkout without using an inexact cache.
 
+The trusted publisher's `main-cache-merge-group-source` job uses the same
+exact, read-only Cargo-input and lint-dependency restores before it invokes the
+typed resolver against its checked-out final `main`. Its summary records both
+cache-hit values and resolver seconds; together with the canonical key in the
+cache action evidence, those values support comparable exact-hit and
+Cargo-graph-miss samples. The job does not save a cache or run a restored
+workspace executable; an unavailable exact cache rebuilds the resolver from
+that checkout.
+
 On a successful merge-group run, an exact miss may stage a candidate artifact.
 The publisher uses `larch ci-timing merge-group-source`, a typed Actions
 operation, to prove that the newly landed `main` SHA has exactly one successful
