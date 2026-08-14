@@ -2488,6 +2488,91 @@ fn prior_prunable(counts: impl Iterator<Item = PruneCounts>) -> Option<bool> {
     Some(total == 0 || weighted <= rejected || (accepted < 2 && accepted.saturating_mul(2) < total))
 }
 
+fn prune_filter(
+    ledger: &Path,
+    round: u64,
+    manifest: &Path,
+    out: &Path,
+) -> Result<FilterResult, String> {
+    let rows = manifest_rows(manifest)?;
+    let override_value = env::var("LARCH_REVIEWER_PRUNE").unwrap_or_default();
+    let warn = if !override_value.is_empty() && override_value != "off" {
+        "reviewer-prune: ignoring LARCH_REVIEWER_PRUNE value; set it exactly to off to disable"
+            .to_owned()
+    } else {
+        String::new()
+    };
+    if override_value == "off" || round < 2 {
+        write_text(out, &file_text(manifest)?)?;
+        return Ok(FilterResult {
+            active: word(override_value != "off").to_owned(),
+            eligible: rows.len(),
+            pruned: 0,
+            combos: String::new(),
+            empty: "false".to_owned(),
+            fail_open: false,
+            warn,
+        });
+    }
+    let history = match ledger_history(ledger, round) {
+        Ok(history) => history,
+        Err(error) => {
+            write_text(out, &file_text(manifest)?)?;
+            return Ok(FilterResult {
+                active: "false".to_owned(),
+                eligible: rows.len(),
+                pruned: 0,
+                combos: String::new(),
+                empty: "false".to_owned(),
+                fail_open: true,
+                warn: format!("reviewer-prune: fail-open ledger read failed: {error}"),
+            });
+        }
+    };
+    let mut eligible = Vec::new();
+    let mut pruned = Vec::new();
+    for row in rows {
+        let tool = row.get("tool").and_then(Value::as_str).unwrap_or_default();
+        let slot = row.get("slot").and_then(Value::as_str).unwrap_or_default();
+        let combo = format!("{tool}:{slot}");
+        if row.get("prune_exempt") == Some(&Value::Bool(true)) {
+            eligible.push(row);
+            continue;
+        }
+        let Some(counts) = history.get(&combo) else {
+            pruned.push(combo);
+            continue;
+        };
+        if prior_prunable(counts.values().cloned()).unwrap_or(false) {
+            pruned.push(combo);
+        } else {
+            eligible.push(row);
+        }
+    }
+    let mut rendered = String::new();
+    for row in &eligible {
+        writeln!(
+            &mut rendered,
+            "{}",
+            serde_json::to_string(row).map_err(|error| error.to_string())?
+        )
+        .expect("string write");
+    }
+    write_text(out, &rendered)?;
+    if !pruned.is_empty() {
+        eprintln!("→ review prune: round {round} drops {}", pruned.join(","));
+    }
+    Ok(FilterResult {
+        active: "true".to_owned(),
+        eligible: eligible.len(),
+        pruned: pruned.len(),
+        combos: pruned.join(","),
+        empty: word(eligible.is_empty()).to_owned(),
+        fail_open: false,
+        warn,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2635,7 +2720,7 @@ mod tests {
     }
 
     #[test]
-    fn aggregation_edge_cases_preserve_legacy_validation_and_trace_behavior() {
+    fn aggregation_inventory_and_trace_edge_cases_preserve_legacy_behavior() {
         assert!(required_reviewer_slots_prompt_section("### FINDING_1: no reviewer\n").is_empty());
         let mixed_input = concat!(
             "### FINDING_1: First\n- **Reviewer(s)**: codex-output.txt, cursor\n\n",
@@ -2710,7 +2795,10 @@ mod tests {
             &finding_blocks("### FINDING_2: [OUT_OF_SCOPE] Skip\n- **Reviewer(s)**: cursor\n- **Suggested revision**: unrelated\n")
         )
         .is_empty());
+    }
 
+    #[test]
+    fn aggregation_validation_edge_cases_preserve_legacy_behavior() {
         assert_eq!(
             validate_aggregate_output(
                 "### FINDING_1: No labels\n- **Severity**: major\n",
@@ -2786,7 +2874,7 @@ mod tests {
         assert!(problem.contains("explain behavior"));
         assert!(problem_score(INPUT, VALID_OUTPUT) > 0.2);
         assert_eq!(problem_text(""), "");
-        assert_eq!(problem_score("", VALID_OUTPUT), 0.0);
+        assert!(problem_score("", VALID_OUTPUT).abs() < f64::EPSILON);
         assert_eq!(
             renumber_findings("### FINDING_8: First\n\n### FINDING_3: Second\n"),
             "### FINDING_1: First\n\n### FINDING_2: Second\n"
@@ -2882,37 +2970,43 @@ mod tests {
         );
     }
 
+    fn aggregate_arguments(
+        codex_present: &str,
+        mode: &str,
+        input_mode: &str,
+        outside: &str,
+        round: &str,
+    ) -> Vec<OsString> {
+        [
+            "--findings-file",
+            "findings.md",
+            "--review-tmpdir",
+            "review",
+            "--codex-present",
+            codex_present,
+            "--cursor-present",
+            "false",
+            "--mode",
+            mode,
+            "--input-mode",
+            input_mode,
+            "--allow-findings-outside-tmpdir",
+            outside,
+            "--round-num",
+            round,
+            "--round-dir",
+            "review/round-3",
+            "--site",
+            "review.aggregate.test",
+        ]
+        .into_iter()
+        .map(OsString::from)
+        .collect()
+    }
+
     #[test]
-    fn aggregate_option_grammar_preserves_defaults_and_rejects_invalid_values() {
-        let arguments =
-            |codex_present: &str, mode: &str, input_mode: &str, outside: &str, round: &str| {
-                [
-                    "--findings-file",
-                    "findings.md",
-                    "--review-tmpdir",
-                    "review",
-                    "--codex-present",
-                    codex_present,
-                    "--cursor-present",
-                    "false",
-                    "--mode",
-                    mode,
-                    "--input-mode",
-                    input_mode,
-                    "--allow-findings-outside-tmpdir",
-                    outside,
-                    "--round-num",
-                    round,
-                    "--round-dir",
-                    "review/round-3",
-                    "--site",
-                    "review.aggregate.test",
-                ]
-                .into_iter()
-                .map(OsString::from)
-                .collect::<Vec<_>>()
-            };
-        let options = aggregate_options(&arguments("true", "diff", "plan", "true", "3"))
+    fn aggregate_option_grammar_preserves_valid_defaults() {
+        let options = aggregate_options(&aggregate_arguments("true", "diff", "plan", "true", "3"))
             .expect("valid aggregate options")
             .expect("not help");
         assert_eq!(options.findings_file, PathBuf::from("findings.md"));
@@ -2931,24 +3025,28 @@ mod tests {
                 .expect("help succeeds")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn aggregate_option_grammar_rejects_invalid_values() {
         assert!(matches!(aggregate_options(&[]), Err(error) if error.contains("--findings-file")));
         assert!(
-            matches!(aggregate_options(&arguments("yes", "diff", "code", "false", "0")), Err(error) if error.contains("invalid choice"))
+            matches!(aggregate_options(&aggregate_arguments("yes", "diff", "code", "false", "0")), Err(error) if error.contains("invalid choice"))
         );
         assert!(
-            matches!(aggregate_options(&arguments("true", "invalid", "code", "false", "0")), Err(error) if error.contains("--mode"))
+            matches!(aggregate_options(&aggregate_arguments("true", "invalid", "code", "false", "0")), Err(error) if error.contains("--mode"))
         );
         assert!(
-            matches!(aggregate_options(&arguments("true", "diff", "invalid", "false", "0")), Err(error) if error.contains("--input-mode"))
+            matches!(aggregate_options(&aggregate_arguments("true", "diff", "invalid", "false", "0")), Err(error) if error.contains("--input-mode"))
         );
         assert!(
-            matches!(aggregate_options(&arguments("true", "diff", "code", "invalid", "0")), Err(error) if error.contains("--allow-findings-outside-tmpdir"))
+            matches!(aggregate_options(&aggregate_arguments("true", "diff", "code", "invalid", "0")), Err(error) if error.contains("--allow-findings-outside-tmpdir"))
         );
         assert!(
-            matches!(aggregate_options(&arguments("true", "diff", "code", "false", "bad")), Err(error) if error.contains("--round-num"))
+            matches!(aggregate_options(&aggregate_arguments("true", "diff", "code", "false", "bad")), Err(error) if error.contains("--round-num"))
         );
         assert_eq!(
-            aggregate_options(&arguments("true", "diff", "code", "false", "-3"))
+            aggregate_options(&aggregate_arguments("true", "diff", "code", "false", "-3"))
                 .expect("negative rounds normalize")
                 .expect("not help")
                 .round_num,
@@ -3074,13 +3172,11 @@ mod tests {
     }
 
     #[test]
-    fn pruning_helpers_preserve_classification_and_ledger_history() {
+    fn pruning_manifest_and_classification_helpers_preserve_legacy_behavior() {
         let directory = tempdir().expect("temporary directory");
         let manifest = directory.path().join("manifest.jsonl");
         let classification = directory.path().join("classification.tsv");
         let status = directory.path().join("reviewer-status.tsv");
-        let ledger = directory.path().join("ledger.tsv");
-        let filtered = directory.path().join("filtered.jsonl");
         fs::write(
             &manifest,
             concat!(
@@ -3158,7 +3254,23 @@ mod tests {
                 "true"
             ]
         );
+    }
 
+    #[test]
+    fn pruning_ledger_history_filters_manifest_in_order() {
+        let directory = tempdir().expect("temporary directory");
+        let manifest = directory.path().join("manifest.jsonl");
+        let ledger = directory.path().join("ledger.tsv");
+        let filtered = directory.path().join("filtered.jsonl");
+        fs::write(
+            &manifest,
+            concat!(
+                "{\"tool\":\"codex\",\"slot\":\"keep\",\"output\":\"keep-output.txt\"}\n",
+                "{\"tool\":\"cursor\",\"slot\":\"drop\",\"output\":\"drop-output.txt\"}\n",
+                "{\"tool\":\"claude\",\"slot\":\"exempt\",\"prune_exempt\":true}\n"
+            ),
+        )
+        .expect("write manifest");
         let ledger_rows = vec![
             ledger_header().split('\t').map(str::to_owned).collect(),
             vec![
@@ -3220,14 +3332,12 @@ mod tests {
     }
 
     #[test]
-    fn pruning_edge_forms_keep_plan_attribution_and_cli_failures_explicit() {
+    fn reviewer_prune_plan_attribution_handles_edge_forms() {
         let directory = tempdir().expect("temporary directory");
         let label_map = directory.path().join("labels.tsv");
         let plan = directory.path().join("plan.tsv");
         let status = directory.path().join("status.tsv");
-        let manifest = directory.path().join("manifest.ndjson");
         let ledger = directory.path().join("ledger.tsv");
-        let output = directory.path().join("filtered.ndjson");
         fs::write(&label_map, "slot-a\tPlan A\nslot-b\tPlan B\n").expect("write label map");
         assert_eq!(read_label_map(Some(&label_map)).len(), 2);
         assert!(read_label_map(None).is_empty());
@@ -3256,11 +3366,6 @@ mod tests {
         );
         assert!(normalize_ledger_row(&["bad".to_owned()]).is_none());
 
-        fs::write(
-            &manifest,
-            "{\"tool\":\"codex\",\"slot\":\"slot-a\",\"output\":\"output.txt\"}\n",
-        )
-        .expect("write manifest");
         let old = vec![
             ledger_header().split('\t').map(str::to_owned).collect(),
             vec!["1", "codex", "slot-a", "Plan A", "1", "1", "0", "1", "true"]
@@ -3284,7 +3389,16 @@ mod tests {
         fs::write(&malformed, "wrong\theader\n").expect("write malformed ledger");
         assert!(ledger_history(&malformed, 2).is_err());
         assert_eq!(prior_prunable(std::iter::empty()), None);
+    }
 
+    #[test]
+    fn reviewer_prune_cli_contract_records_and_filters() {
+        let directory = tempdir().expect("temporary directory");
+        let label_map = directory.path().join("labels.tsv");
+        let plan = directory.path().join("plan.tsv");
+        let manifest = directory.path().join("manifest.ndjson");
+        let ledger = directory.path().join("ledger.tsv");
+        let output = directory.path().join("filtered.ndjson");
         assert_eq!(reviewer_prune(&[]), ExitCode::from(2));
         assert_eq!(
             reviewer_prune(&[OsString::from("--help")]),
@@ -3298,6 +3412,17 @@ mod tests {
             ]),
             ExitCode::from(2)
         );
+        fs::write(&label_map, "slot-a\tPlan A\n").expect("write label map");
+        fs::write(
+            &plan,
+            "finding_reviewers\tvoting_result\nPlan A\taccepted\n",
+        )
+        .expect("write plan classification");
+        fs::write(
+            &manifest,
+            "{\"tool\":\"codex\",\"slot\":\"slot-a\",\"output\":\"output.txt\"}\n",
+        )
+        .expect("write manifest");
         let record = vec![
             OsString::from("record"),
             OsString::from("--ledger"),
@@ -3326,89 +3451,4 @@ mod tests {
         assert_eq!(reviewer_prune(&filter), ExitCode::SUCCESS);
         assert!(output.is_file());
     }
-}
-
-fn prune_filter(
-    ledger: &Path,
-    round: u64,
-    manifest: &Path,
-    out: &Path,
-) -> Result<FilterResult, String> {
-    let rows = manifest_rows(manifest)?;
-    let override_value = env::var("LARCH_REVIEWER_PRUNE").unwrap_or_default();
-    let warn = if !override_value.is_empty() && override_value != "off" {
-        "reviewer-prune: ignoring LARCH_REVIEWER_PRUNE value; set it exactly to off to disable"
-            .to_owned()
-    } else {
-        String::new()
-    };
-    if override_value == "off" || round < 2 {
-        write_text(out, &file_text(manifest)?)?;
-        return Ok(FilterResult {
-            active: word(override_value != "off").to_owned(),
-            eligible: rows.len(),
-            pruned: 0,
-            combos: String::new(),
-            empty: "false".to_owned(),
-            fail_open: false,
-            warn,
-        });
-    }
-    let history = match ledger_history(ledger, round) {
-        Ok(history) => history,
-        Err(error) => {
-            write_text(out, &file_text(manifest)?)?;
-            return Ok(FilterResult {
-                active: "false".to_owned(),
-                eligible: rows.len(),
-                pruned: 0,
-                combos: String::new(),
-                empty: "false".to_owned(),
-                fail_open: true,
-                warn: format!("reviewer-prune: fail-open ledger read failed: {error}"),
-            });
-        }
-    };
-    let mut eligible = Vec::new();
-    let mut pruned = Vec::new();
-    for row in rows {
-        let tool = row.get("tool").and_then(Value::as_str).unwrap_or_default();
-        let slot = row.get("slot").and_then(Value::as_str).unwrap_or_default();
-        let combo = format!("{tool}:{slot}");
-        if row.get("prune_exempt") == Some(&Value::Bool(true)) {
-            eligible.push(row);
-            continue;
-        }
-        let Some(counts) = history.get(&combo) else {
-            pruned.push(combo);
-            continue;
-        };
-        if prior_prunable(counts.values().cloned()).unwrap_or(false) {
-            pruned.push(combo);
-        } else {
-            eligible.push(row);
-        }
-    }
-    let mut rendered = String::new();
-    for row in &eligible {
-        writeln!(
-            &mut rendered,
-            "{}",
-            serde_json::to_string(row).map_err(|error| error.to_string())?
-        )
-        .expect("string write");
-    }
-    write_text(out, &rendered)?;
-    if !pruned.is_empty() {
-        eprintln!("→ review prune: round {round} drops {}", pruned.join(","));
-    }
-    Ok(FilterResult {
-        active: "true".to_owned(),
-        eligible: eligible.len(),
-        pruned: pruned.len(),
-        combos: pruned.join(","),
-        empty: word(eligible.is_empty()).to_owned(),
-        fail_open: false,
-        warn,
-    })
 }
