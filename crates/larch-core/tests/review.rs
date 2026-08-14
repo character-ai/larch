@@ -214,6 +214,108 @@ fn seeded_generated_review_invariants_hold() {
 }
 
 #[test]
+fn finding_dedup_key_preserves_first_empty_location_match() {
+    let key = finding_dedup_key(
+        "### FINDING_1: a\n- **Location**: \n- **Location**: later.rs:1\n- **Concern**: same\n",
+    );
+    assert_eq!(key, "\u{1f}same");
+}
+
+#[test]
+fn replace_round_sets_replacement_row_round() {
+    let merged = replace_round(
+        vec![LedgerRow::new(2, "KEEP", "keep", "", "accepted", "", "")],
+        3,
+        vec![LedgerRow::new(9, "NEW", "new", "", "neutral", "", "")],
+    );
+    assert_eq!(merged[1].round, "3");
+    assert_eq!(merged[1].finding_id, "NEW");
+}
+
+#[test]
+fn non_fileable_accepted_oos_scores_neutral_with_zero_weight() {
+    let context = ItemContext {
+        item_id: "OOS_1".to_owned(),
+        block_path: PathBuf::from("oos.md"),
+        block_text: String::new(),
+        artifact_text: String::new(),
+        reviewer: "reviewer".to_owned(),
+        cells: Vec::new(),
+        yes: 2,
+        no: 0,
+        judge_error: 0,
+        is_oos: true,
+        eligible_voters: 2,
+        voter_votes: vec![
+            ("v1".to_owned(), "YES".to_owned()),
+            ("v2".to_owned(), "YES".to_owned()),
+        ],
+        voter_severities: vec!["minor".to_owned(), "minor".to_owned()],
+    };
+    let result = adjudicate_item(context);
+    assert_eq!(result.voting_result, "accepted");
+    assert!(!result.fileable_oos);
+    assert_eq!(result.score_result, "neutral");
+    assert_eq!(result.accepted_weight, 0);
+}
+
+#[test]
+fn fileable_accepted_oos_strict_majority_scores_accepted() {
+    let context = ItemContext {
+        item_id: "OOS_1".to_owned(),
+        block_path: PathBuf::from("oos.md"),
+        block_text: String::new(),
+        artifact_text: String::new(),
+        reviewer: "reviewer".to_owned(),
+        cells: Vec::new(),
+        yes: 2,
+        no: 0,
+        judge_error: 0,
+        is_oos: true,
+        eligible_voters: 2,
+        voter_votes: vec![
+            ("v1".to_owned(), "YES".to_owned()),
+            ("v2".to_owned(), "YES".to_owned()),
+        ],
+        voter_severities: vec!["major".to_owned(), "major".to_owned()],
+    };
+    let result = adjudicate_item(context);
+    assert!(result.fileable_oos);
+    assert_eq!(result.score_result, "accepted");
+}
+
+#[test]
+fn review_taxonomy_exports_match_python_wire_projections() {
+    use larch_core::review::{
+        FOCUS_AREA_VALUES, FINDING_SCOPE_VALUES, focus_area_set, finding_scope_set,
+        FocusArea, FindingScope, CompatibilityBoundary, parse_findings_text,
+        is_canonical_heading, ItemKind,
+    };
+    assert_eq!(
+        FocusArea::all()
+            .iter()
+            .map(|area| area.as_str())
+            .collect::<Vec<_>>(),
+        FOCUS_AREA_VALUES
+    );
+    assert_eq!(focus_area_set().len(), FOCUS_AREA_VALUES.len());
+    assert_eq!(
+        [FindingScope::InScope.as_str(), FindingScope::OutOfScope.as_str()],
+        FINDING_SCOPE_VALUES
+    );
+    assert_eq!(finding_scope_set().len(), FINDING_SCOPE_VALUES.len());
+    assert!(is_canonical_heading("### OOS_2: title", Some(ItemKind::Oos)));
+    let findings = parse_findings_text(
+        "### FINDING_1: f\nbody\n### Notes\nnotes\n### FINDING_2: g\nbody2\n",
+        CompatibilityBoundary::AnyHeading,
+    );
+    assert_eq!(
+        findings.iter().map(|row| row.finding_id.as_str()).collect::<Vec<_>>(),
+        ["FINDING_1", "FINDING_2"]
+    );
+}
+
+#[test]
 fn tally_adjudication_preserves_rescue_and_weight() {
     let context = ItemContext {
         item_id: "FINDING_1".to_owned(),

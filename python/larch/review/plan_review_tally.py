@@ -775,7 +775,9 @@ class _Tally:
         elif self.eligible < _FULL_PANEL:
             tier = voting.panel_tier(self.eligible)
             buf += f"**⚠ Degraded plan-review panel: {self.eligible} judge(s) available. Panel tier: {tier}.**\n\n"
-        buf += voting.render_vote_table_header("## Findings")
+        buf += "## Findings\n\n"
+        buf += "| Item | YES | NO | JERR | Result |\n"
+        buf += "|---|---:|---:|---:|---|\n"
 
         accepted_chunks: list[str] = []
         rejected_chunks: list[str] = []
@@ -790,7 +792,10 @@ class _Tally:
 
         for adjudication in adjudications:
             context = adjudication.context
-            buf += voting.render_vote_table_row(item_id=context.item_id, yes=context.yes, no=context.no, judge_error=context.judge_error, result=adjudication.voting_result)
+            buf += (
+                f"| {context.item_id} | {context.yes} | {context.no} | {context.judge_error} | "
+                f"{adjudication.voting_result} |\n"
+            )
             agreement_row = self._voter_agreement_row_for_item(adjudication)
             if agreement_row is not None:
                 agreement_rows.append(agreement_row)

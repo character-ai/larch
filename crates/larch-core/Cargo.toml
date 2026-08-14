@@ -25,6 +25,7 @@ nix.workspace = true
 
 [dev-dependencies]
 larch-test-support.workspace = true
+proptest.workspace = true
 tempfile.workspace = true
 
 [lints]

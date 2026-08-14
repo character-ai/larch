@@ -352,7 +352,7 @@ pub use rebalance_tests::{
 };
 pub use redaction::{
     RedactionResult, RuntimeRedactor, SafeText, contains_recognized_session_tmpdir_pointer, redact,
-    redact_run_log_payload, redact_secrets, redact_sensitive_paths,
+    redact_run_log_payload, redact_secrets, redact_secrets_only, redact_sensitive_paths,
 };
 pub use repo_size::{RepoSizeCategory, RepoSizeReport, count_newlines, line_count_category};
 pub use report::{

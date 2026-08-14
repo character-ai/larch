@@ -127,8 +127,7 @@ fn sanitize_cell(value: &str) -> String {
 }
 
 fn secret_cell(value: &str) -> String {
-    redaction::redact_secrets(value)
-        .text()
+    redaction::redact_secrets_only(value)
         .trim_end_matches('\n')
         .to_owned()
 }
@@ -281,7 +280,10 @@ pub fn replace_round(
     existing
         .into_iter()
         .filter(|row| row.round != round)
-        .chain(entries)
+        .chain(entries.into_iter().map(|mut row| {
+            row.round = round.clone();
+            row
+        }))
         .collect()
 }
 

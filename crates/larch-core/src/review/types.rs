@@ -15,6 +15,30 @@ pub enum FocusArea {
     Security,
 }
 
+/// Stable prompt-rendering order for [`FocusArea`].
+pub const FOCUS_AREA_VALUES: [&'static str; 5] = [
+    "code-quality",
+    "risk-integration",
+    "correctness",
+    "architecture",
+    "security",
+];
+
+/// Stable membership projection for parsing reviewer input.
+#[must_use]
+pub fn focus_area_set() -> std::collections::BTreeSet<&'static str> {
+    FOCUS_AREA_VALUES.iter().copied().collect()
+}
+
+/// Stable prompt-rendering order for [`FindingScope`].
+pub const FINDING_SCOPE_VALUES: [&'static str; 2] = ["in_scope", "out_of_scope"];
+
+/// Stable membership projection for parsing reviewer scope input.
+#[must_use]
+pub fn finding_scope_set() -> std::collections::BTreeSet<&'static str> {
+    FINDING_SCOPE_VALUES.iter().copied().collect()
+}
+
 impl FocusArea {
     /// Stable wire token.
     #[must_use]
@@ -334,6 +358,21 @@ pub fn parse_blocks(text: &str, boundary: BoundaryMode) -> Vec<ParsedBlock> {
         .collect()
 }
 
+/// Legacy finding-parser boundary selection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CompatibilityBoundary {
+    /// Split only on `### FINDING_` headings.
+    FindingHeading,
+    /// Split on every level-three heading.
+    AnyHeading,
+}
+
+impl Default for CompatibilityBoundary {
+    fn default() -> Self {
+        Self::AnyHeading
+    }
+}
+
 /// Parser boundary compatibility modes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BoundaryMode {
@@ -369,13 +408,12 @@ pub fn read_finding_text(path: impl AsRef<Path>) -> Result<String, std::io::Erro
 
 /// Parse only finding blocks with the legacy compatibility boundary selection.
 #[must_use]
-pub fn parse_findings_text(text: &str, finding_heading_only: bool) -> Vec<Finding> {
-    let boundary = if finding_heading_only {
-        BoundaryMode::FindingHeading
-    } else {
-        BoundaryMode::LevelThreeHeading
+pub fn parse_findings_text(text: &str, boundary: CompatibilityBoundary) -> Vec<Finding> {
+    let boundary_mode = match boundary {
+        CompatibilityBoundary::FindingHeading => BoundaryMode::FindingHeading,
+        CompatibilityBoundary::AnyHeading => BoundaryMode::LevelThreeHeading,
     };
-    parse_blocks(text, boundary)
+    parse_blocks(text, boundary_mode)
         .into_iter()
         .filter(|block| block.kind == ItemKind::Finding)
         .map(|block| Finding {
@@ -384,6 +422,29 @@ pub fn parse_findings_text(text: &str, finding_heading_only: bool) -> Vec<Findin
             block: block.block,
         })
         .collect()
+}
+
+/// Parse findings from a UTF-8 file with replacement decoding.
+#[must_use]
+pub fn parse_findings(path: impl AsRef<Path>, boundary: CompatibilityBoundary) -> Vec<Finding> {
+    let text = read_finding_text(path).unwrap_or_else(|_| String::new());
+    parse_findings_text(&text, boundary)
+}
+
+/// Report whether `line` is a canonical heading of the optional `kind`.
+#[must_use]
+pub fn is_canonical_heading(line: &str, kind: Option<ItemKind>) -> bool {
+    let issue_kind = kind.map(|wanted| match wanted {
+        ItemKind::Finding => OosItemKind::Finding,
+        ItemKind::Oos => OosItemKind::Oos,
+    });
+    issue::is_canonical_heading(line, issue_kind)
+}
+
+/// Count fileable OOS blocks in `text`, excluding security-tagged ones.
+#[must_use]
+pub fn count_non_security_blocks(text: &str) -> usize {
+    issue::count_non_security_blocks(text)
 }
 
 /// A finding-only compatibility value.
@@ -430,16 +491,18 @@ static SPACE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").expect("s
 /// Return the stable Location/Concern finding identity used across rounds.
 #[must_use]
 pub fn finding_dedup_key(block: &str) -> String {
-    let mut location = "";
-    let mut concern = "";
+    let mut location: Option<&str> = None;
+    let mut concern: Option<&str> = None;
     for captures in FIELD_RE.captures_iter(block) {
-        if captures[1].eq_ignore_ascii_case("Location") && location.is_empty() {
-            location = captures.get(2).map_or("", |value| value.as_str());
+        if captures[1].eq_ignore_ascii_case("Location") && location.is_none() {
+            location = Some(captures.get(2).map_or("", |value| value.as_str()));
         }
-        if captures[1].eq_ignore_ascii_case("Concern") && concern.is_empty() {
-            concern = captures.get(2).map_or("", |value| value.as_str());
+        if captures[1].eq_ignore_ascii_case("Concern") && concern.is_none() {
+            concern = Some(captures.get(2).map_or("", |value| value.as_str()));
         }
     }
+    let location = location.unwrap_or("");
+    let concern = concern.unwrap_or("");
     let raw = if location.is_empty() && concern.is_empty() {
         FINDING_HEADER_RE.replace_all(block, "").into_owned()
     } else {

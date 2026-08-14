@@ -17,7 +17,6 @@ sys.path.insert(0, str(_ROOT / "python"))
 
 from larch.review import findings_ledger  # noqa: E402 - developer helper bootstraps the checkout Python path
 from larch.review.review_types import parse_blocks  # noqa: E402 - developer helper bootstraps the checkout Python path
-from larch.review.voting import render_vote_table_header, render_vote_table_row  # noqa: E402 - developer helper bootstraps the checkout Python path
 
 _FIXTURES = _ROOT / "fixtures" / "rust-review"
 _FINDINGS = (
@@ -34,8 +33,15 @@ _FINDINGS = (
     "body\r\n"
 )
 
+_CODE_TABLE_HEADER = "## Per-finding vote breakdown\n\n| Item | YES | NO | JERR | Result |\n|---|---:|---:|---:|---|\n"
+_PLAN_TABLE_HEADER = "## Findings\n\n| Item | YES | NO | JERR | Result |\n|---|---:|---:|---:|---|\n"
 
-def _capture() -> dict[str, str]:
+
+def _vote_table_row(item_id: str, yes: int, no: int, judge_error: int, result: str) -> str:
+    return f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n"
+
+
+def _capture() -> dict[str, bytes]:
     blocks = parse_blocks(_FINDINGS)
     assert blocks[0].start == len("préamble 😀\r\n")
     assert blocks[-1].item_id.endswith("184467440737095516160")
@@ -52,18 +58,18 @@ def _capture() -> dict[str, str]:
             2,
             [{"finding_id": "OOS_1", "title": "Later", "outcome": "neutral", "vote_tally": "YES=1/2", "reason": "Needs evidence"}],
         )
-        ledger = (root / findings_ledger.LEDGER_BASENAME).read_text(encoding="utf-8")
-    assert "sk-" not in ledger
-    code_table = render_vote_table_header("## Per-finding vote breakdown") + "".join(
-        render_vote_table_row(item_id=item_id, yes=yes, no=no, judge_error=0, result=result)
+        ledger = (root / findings_ledger.LEDGER_BASENAME).read_bytes()
+    assert b"sk-" not in ledger
+    code_table = _CODE_TABLE_HEADER + "".join(
+        _vote_table_row(item_id=item_id, yes=yes, no=no, judge_error=0, result=result)
         for item_id, yes, no, result in (
             ("FINDING_1", 3, 0, "accepted"),
             ("FINDING_2", 1, 2, "neutral"),
             ("FINDING_3", 0, 3, "rejected"),
         )
     )
-    plan_table = render_vote_table_header("## Findings") + "".join(
-        render_vote_table_row(item_id=item_id, yes=yes, no=no, judge_error=0, result=result)
+    plan_table = _PLAN_TABLE_HEADER + "".join(
+        _vote_table_row(item_id=item_id, yes=yes, no=no, judge_error=0, result=result)
         for item_id, yes, no, result in (
             ("OOS_1", 3, 0, "accepted"),
             ("OOS_2", 1, 2, "neutral"),
@@ -71,20 +77,11 @@ def _capture() -> dict[str, str]:
         )
     )
     return {
-        "finding-blocks.golden.md": _normalize_newlines(_FINDINGS),
-        "findings-ledger.golden.tsv": _normalize_newlines(ledger),
-        "code-vote-table.golden.md": _normalize_newlines(code_table),
-        "plan-vote-table.golden.md": _normalize_newlines(plan_table),
+        "finding-blocks.golden.md": _FINDINGS.encode("utf-8"),
+        "findings-ledger.golden.tsv": ledger,
+        "code-vote-table.golden.md": code_table.encode("utf-8"),
+        "plan-vote-table.golden.md": plan_table.encode("utf-8"),
     }
-
-
-def _normalize_newlines(text: str) -> str:
-    return text.replace("\r\n", "\n").replace("\r", "\n")
-
-
-def _read_exact(path: Path) -> str:
-    with path.open(encoding="utf-8", newline="") as handle:
-        return _normalize_newlines(handle.read())
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -93,11 +90,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     captures = _capture()
     failures: list[str] = []
-    for name, text in captures.items():
+    for name, data in captures.items():
         path = _FIXTURES / name
         if args.update:
-            _ = path.write_text(text, encoding="utf-8", newline="")
-        elif not path.is_file() or _read_exact(path) != text:
+            _ = path.write_bytes(data)
+        elif not path.is_file() or path.read_bytes() != data:
             failures.append(name)
     if failures:
         raise SystemExit(f"review golden drift: {', '.join(failures)}; rerun with --update after review")
