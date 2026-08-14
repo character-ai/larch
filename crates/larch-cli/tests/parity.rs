@@ -988,6 +988,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "gather-branch-context",
     ),
     CleanInstallCase::new(
+        "clean-install-review-gather-context",
+        "review",
+        "gather-context",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-parse-codex-usage",
         "agent",
         "parse-codex-usage",

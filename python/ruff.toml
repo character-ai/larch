@@ -692,10 +692,6 @@ ignore = [
     "PLR0912",
     "PLR0913",
 ]
-"review_gather.py" = [
-    "C901",
-    "PLR0912",
-]
 "review_prune.py" = [
     "C901",
     "PLR0911",

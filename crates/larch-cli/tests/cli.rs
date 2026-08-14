@@ -24,6 +24,7 @@ Usage: larch <COMMAND>
 Commands:
   admission          `/implement` entry admission, preflight, and fork bootstrap
   agent              Vendor-agent launch and diagnostic commands
+  review             Review pipeline commands
   alias              Alias generation and target-resolution helpers
   blocker            Issue blocker discovery
   block-issue        Native issue blocked-by dependency mutations
