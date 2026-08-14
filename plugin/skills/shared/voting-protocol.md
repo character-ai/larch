@@ -117,7 +117,7 @@ Voter dispatch is owned by runtime dispatchers, not prompt-side launch scaffoldi
 
 - `/design` plan review voter dispatch is owned by `scripts/larch.sh plan-review voter-dispatch` in `crates/larch-cli/src/plan_review_commands.rs`.
 - `/review` and `/implement` Step 5 code-review voter dispatch is owned by `scripts/larch.sh agent dispatch-voters`.
-- Plan-review tally remains Python-owned (`python/cli.py plan-review tally`); code-review tally, emit, and phase logging are Rust-owned (`scripts/larch.sh review tally-code-votes`, `emit-tally`, and `log-phase`).
+- Plan review uses `python/cli.py plan-review tally`; code review uses `scripts/larch.sh review tally-code-votes`, `emit-tally`, and `log-phase`.
 - The live Codex dispatch surface and output stem are documentary tokens here only: `${CLAUDE_PLUGIN_ROOT:?}/scripts/larch.sh agent launch-codex-exec` and `codex-vote-output.txt`.
 
 Do not launch voters directly from the orchestrator on `/design`, `/review`, or `/implement` Step 5 paths. The dispatchers own availability checks, fallbacks, sentinel waits, external result validation, and status emission.

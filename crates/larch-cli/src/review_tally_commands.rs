@@ -16,12 +16,14 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use larch_adapters::atomic_write_utf8_in;
+use larch_adapters::phase_detail;
 use larch_core::{
-    BlockBoundary, is_security_block_text, normalize_oos_block_header, parse_oos_blocks,
+    BlockBoundary, DuplicatePolicy, EmptyKeyPolicy, KvDocument, ParseOptions,
+    is_security_block_text, normalize_oos_block_header, parse_oos_blocks,
     review::{
         ItemContext, LedgerRow, VoteCell, alias_ballot_id, code_review_classification_header,
-        ledger_root, parse_judge_vote_text, reviewer_for_block_text, run_items, write_round,
+        ledger_root, normalize_output_base, parse_judge_vote_text, reviewer_for_block_text,
+        run_items, write_round,
     },
     serialize_accepted_oos,
 };
@@ -31,7 +33,9 @@ use sha2::{Digest as _, Sha256};
 use tempfile::Builder;
 
 use crate::{
-    argparse_compat::absolute_path, launcher_support::confined_target,
+    argparse_compat::split_inline_option,
+    claude_commands::parse_uint,
+    launcher_support::{append_confined_checked, write_confined_checked},
     runtime_entrypoint::run_verified_larch,
 };
 
@@ -53,8 +57,6 @@ static SPECIALIST_OUTPUT_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 static SCORE_LABEL_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:-output)?\.txt$").expect("score label regex"));
-static SUMMARY_FINDING_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^FINDING_[0-9A-Za-z_]+$").expect("summary finding regex"));
 
 #[derive(Clone, Debug)]
 struct TallyRequest {
@@ -200,12 +202,6 @@ struct ParsedOptions {
     lists: HashMap<String, Vec<String>>,
 }
 
-fn option_value(argument: &str) -> (&str, Option<&str>) {
-    argument
-        .split_once('=')
-        .map_or((argument, None), |(name, value)| (name, Some(value)))
-}
-
 fn parse_options(
     arguments: &[OsString],
     program: &str,
@@ -228,7 +224,7 @@ fn parse_options(
     let mut index = 0;
     while index < values.len() {
         let raw = &values[index];
-        let (option, inline) = option_value(raw);
+        let (option, inline) = split_inline_option(raw);
         if !known.contains(&option) && !list_options.contains(&option) {
             eprintln!("{usage}\n{program}: error: unrecognized arguments: {raw}");
             return Err(ExitCode::from(2));
@@ -308,25 +304,17 @@ fn require_all(
 }
 
 fn write_text(path: &Path, text: &str) -> Result<(), String> {
-    let absolute = absolute_path(path).map_err(|error| error.to_string())?;
-    let (root, target) = confined_target(&absolute)
-        .ok_or_else(|| format!("path is not confinable: {}", absolute.display()))?;
-    atomic_write_utf8_in(&root, &target, text, true, 0o600).map_err(|error| error.to_string())
+    write_confined_checked(path, text)
 }
 
 fn read_text(path: &Path) -> Result<String, String> {
     fs::read(path)
-        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
         .map_err(|error| error.to_string())
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn append_text(path: &Path, text: &str) -> Result<(), String> {
-    let existing = match fs::read(path) {
-        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(error) => return Err(error.to_string()),
-    };
-    write_text(path, &(existing + text))
+    append_confined_checked(path, text)
 }
 
 fn is_regular_nonempty(path: &Path) -> bool {
@@ -335,17 +323,15 @@ fn is_regular_nonempty(path: &Path) -> bool {
 }
 
 fn parse_kv(text: &str) -> BTreeMap<String, String> {
-    let mut result = BTreeMap::new();
-    for line in text.lines() {
-        if let Some((key, value)) = line.split_once('=')
-            && !key.is_empty()
-        {
-            result
-                .entry(key.to_owned())
-                .or_insert_with(|| value.to_owned());
-        }
-    }
-    result
+    KvDocument::parse(
+        text,
+        ParseOptions {
+            empty_keys: EmptyKeyPolicy::Skip,
+            ..ParseOptions::legacy()
+        },
+    )
+    .map(|document| document.select(DuplicatePolicy::First))
+    .unwrap_or_default()
 }
 
 fn parse_nonnegative(value: &str) -> usize {
@@ -353,16 +339,11 @@ fn parse_nonnegative(value: &str) -> usize {
 }
 
 fn parse_ascii_decimal(value: &str) -> Option<usize> {
-    (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
-        .then(|| value.parse::<usize>().ok())
-        .flatten()
+    parse_uint(value).and_then(|parsed| parsed.try_into().ok())
 }
 
 fn parse_positive_round(value: &str) -> Option<u64> {
-    (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
-        .then(|| value.parse::<u64>().ok())
-        .flatten()
-        .filter(|round| *round > 0)
+    parse_uint(value).filter(|round| *round > 0)
 }
 
 #[allow(clippy::too_many_lines)] // Frozen argparse-compatible options remain adjacent for auditability.
@@ -1151,26 +1132,6 @@ fn seed_oos_seq(session_env_path: &str) -> u64 {
     count + u64::from(in_block)
 }
 
-fn normalized_reviewer_basename(value: &str) -> String {
-    let base = Path::new(value)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or(value);
-    let (mut stem, extension) = base
-        .strip_suffix(".txt")
-        .map_or_else(|| (base.to_owned(), ""), |stem| (stem.to_owned(), ".txt"));
-    loop {
-        let Some(next) = ["-phase2", "-phase3", "-retry"]
-            .iter()
-            .find_map(|suffix| stem.strip_suffix(suffix))
-        else {
-            break;
-        };
-        stem = next.to_owned();
-    }
-    format!("{stem}{extension}")
-}
-
 fn collector_statuses(path: &str) -> BTreeMap<String, String> {
     if path.is_empty() || !Path::new(path).is_file() {
         return BTreeMap::new();
@@ -1185,7 +1146,7 @@ fn collector_statuses(path: &str) -> BTreeMap<String, String> {
     {
         if line.is_empty() {
             if !file.is_empty() && !status.is_empty() {
-                statuses.insert(normalized_reviewer_basename(&file), status.clone());
+                statuses.insert(normalize_output_base(&file), status.clone());
             }
             file.clear();
             status.clear();
@@ -1224,11 +1185,11 @@ fn append_manifest_dead_rows(
     let statuses = collector_statuses(collector_file);
     let seen = score_rows
         .iter()
-        .map(|(reviewer, _, _, _)| normalized_reviewer_basename(reviewer))
+        .map(|(reviewer, _, _, _)| normalize_output_base(reviewer))
         .collect::<HashSet<_>>();
     for row in manifest_rows(manifest_file) {
         let output = manifest_value(&row, "output");
-        let base = normalized_reviewer_basename(&output);
+        let base = normalize_output_base(&output);
         if base.is_empty() || seen.contains(&base) {
             continue;
         }
@@ -1246,7 +1207,7 @@ fn archetype_map(path: &Path) -> IndexMap<String, (String, String, String)> {
     let mut map = IndexMap::new();
     for row in manifest_rows(path) {
         let output = manifest_value(&row, "output");
-        let base = normalized_reviewer_basename(&output);
+        let base = normalize_output_base(&output);
         let slot = manifest_value(&row, "slot");
         let mut focus = manifest_value(&row, "focus_area");
         let mut weight = manifest_value(&row, "weight");
@@ -1304,9 +1265,7 @@ fn write_yield_tsv(
         if kind != "finding" {
             continue;
         }
-        let entry = totals
-            .entry(normalized_reviewer_basename(reviewer))
-            .or_default();
+        let entry = totals.entry(normalize_output_base(reviewer)).or_default();
         entry.0 += 1;
         if result == "accepted" {
             entry.1 += 1;
@@ -1333,7 +1292,7 @@ fn write_yield_tsv(
     write_text(path, &text)?;
     let mut orphans = Vec::new();
     for (reviewer, _, _, _) in score_rows {
-        let base = normalized_reviewer_basename(reviewer);
+        let base = normalize_output_base(reviewer);
         if !archetypes.contains_key(&base) && !orphans.contains(&base) {
             orphans.push(base);
         }
@@ -2481,39 +2440,9 @@ fn metadata_summary_counts(review_tmpdir: &Path) -> Option<(usize, usize, usize)
 fn artifact_summary_counts(review_tmpdir: &Path) -> Option<(usize, usize, usize)> {
     let tally_path = review_tmpdir.join("voting-tally.md");
     let classification_path = review_tmpdir.join("findings-classification.tsv");
-    let markdown = if tally_path.is_file() {
-        let mut counts = [0_usize; 3];
-        let mut in_findings = false;
-        for line in read_text(&tally_path).unwrap_or_default().lines() {
-            if line.starts_with("## Findings") {
-                in_findings = true;
-                continue;
-            }
-            if in_findings && line.starts_with("## ") {
-                in_findings = false;
-            }
-            if !in_findings || !line.contains('|') {
-                continue;
-            }
-            let parts = line.split('|').map(str::trim).collect::<Vec<_>>();
-            if parts.len() < 4 || !SUMMARY_FINDING_RE.is_match(parts[1]) {
-                continue;
-            }
-            let result = if !parts[parts.len() - 2].is_empty()
-                && parts[parts.len() - 2]
-                    .chars()
-                    .any(|character| character != '-')
-            {
-                parts[parts.len() - 2]
-            } else {
-                parts[parts.len() - 3]
-            };
-            increment_result(&mut counts, result);
-        }
-        Some(counts.into())
-    } else {
-        None
-    };
+    let markdown = tally_path
+        .is_file()
+        .then(|| phase_detail::review_tally_summary_counts(&tally_path));
     let lines = read_text(&classification_path)
         .unwrap_or_default()
         .lines()
@@ -2546,7 +2475,14 @@ fn artifact_summary_counts(review_tmpdir: &Path) -> Option<(usize, usize, usize)
             || !item.starts_with("OOS_"),
             |index| values.get(index).copied().unwrap_or_default() == "in_scope",
         );
-        if in_scope && SUMMARY_FINDING_RE.is_match(item) {
+        if in_scope
+            && item.strip_prefix("FINDING_").is_some_and(|suffix| {
+                !suffix.is_empty()
+                    && suffix
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+            })
+        {
             increment_result(&mut classification, result);
         }
     }

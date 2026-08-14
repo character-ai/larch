@@ -575,6 +575,17 @@ fn parse_tally(path: &Path) -> Counts {
     counts
 }
 
+/// Count in-scope accepted, rejected, and neutral rows in a voting tally.
+#[must_use]
+pub fn review_tally_summary_counts(path: &Path) -> (usize, usize, usize) {
+    let counts = parse_tally(path);
+    (
+        usize::try_from(counts.accepted).unwrap_or_default(),
+        usize::try_from(counts.rejected).unwrap_or_default(),
+        usize::try_from(counts.neutral).unwrap_or_default(),
+    )
+}
+
 fn parse_classification_counts(path: &Path) -> Counts {
     let mut counts = Counts::default();
     for row in parse_classification(path) {
