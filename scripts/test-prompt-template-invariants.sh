@@ -139,8 +139,8 @@ chmod +x "$run_external_stub"
 
 # ── review dispatch-panel prompt source assertions ───────────────────────────
 
-DISPATCH_PANEL="$REPO_ROOT/python/larch/review/review_dispatch_panel.py"
-panel_out="$TMP/dispatch-panel.py"
+DISPATCH_PANEL="$REPO_ROOT/crates/larch-cli/src/review_dispatch_panel_prompt.md"
+panel_out="$TMP/dispatch-panel.md"
 cp "$DISPATCH_PANEL" "$panel_out"
 
 assert_contains "dispatch-panel anti-preamble directive" \

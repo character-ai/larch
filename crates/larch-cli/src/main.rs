@@ -96,6 +96,7 @@ mod session_artifact_support;
 mod run_log_flush_commands;
 mod report_tokens_commands;
 mod review_commands;
+mod review_dispatch_panel;
 mod session_closeout_commands;
 mod session_env_commands;
 mod session_gate_commands;

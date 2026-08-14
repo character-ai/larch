@@ -729,16 +729,16 @@ test-review-core:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k '(review_core or write_proposer_sidecar) and not prune'
 
 test-dispatch-panel-core:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'dispatch_panel_core or generic_codex_static_row'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_dispatch_panel
 
 test-dispatch-panel-core-dynamic:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'dispatch_panel_dynamic or pre_scouted_valid_dynamic or pre_scouted_empty_ok_static_only or pre_scouted_filtered_to_zero or implement_missing_producer or review_default_ignores_ambient_implement_tmpdir or producer_scout_warning or synthesize_dynamic_slots or generic_codex_static_row'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_dispatch_panel
 
 test-dispatch-panel-reuse:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k dispatch_panel_reuse
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_dispatch_panel
 
 test-dispatch-panel-limits:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k dispatch_panel_limits
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_dispatch_panel
 
 test-scout-dynamic-archetypes:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_plan_scout.py -q -k 'not plan_wrapper'

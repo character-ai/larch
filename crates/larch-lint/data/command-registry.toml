@@ -6099,11 +6099,13 @@ verb = "dispatch-panel"
 python_module = "larch.review.review_dispatch_panel"
 python_function = "dispatch_panel_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8441
+clean_install_test = "clean-install-review-dispatch-panel"
 
 [[commands]]
 domain = "review"
@@ -9012,12 +9014,6 @@ path = "python/larch/review/review_collect.py"
 kind = "python-runtime"
 python = []
 rust = ["agent wait-reviewers"]
-
-[[callers]]
-path = "python/larch/review/review_dispatch_panel.py"
-kind = "python-runtime"
-python = []
-rust = ["agent classify-diff"]
 
 [[callers]]
 path = "python/larch/review/review_tally.py"

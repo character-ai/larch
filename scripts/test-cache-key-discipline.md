@@ -14,7 +14,7 @@
 - unstable shell-style tokens in Python prompt construction surfaces:
   - `python/larch/implement/checks_lint_fix.py`
   - `python/larch/review/coder_runner.py`
-  - `python/larch/review/review_dispatch_panel.py`
+  - `crates/larch-cli/src/review_dispatch_panel_prompt.md`
   - `python/larch/review/round_runner.py`
 
 **Scope**: External-tool prompt construction surfaces only. Runtime timing, logging, temp-file, and process-management shell code is intentionally out of scope unless it is inside a launcher `PROMPT` block, an audited prompt-bearing Markdown file, or one of the explicitly listed Python prompt construction files.

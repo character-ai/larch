@@ -181,7 +181,7 @@ check_python_prompt_surfaces() {
   for file in \
     "python/larch/implement/checks_lint_fix.py" \
     "python/larch/review/coder_runner.py" \
-    "python/larch/review/review_dispatch_panel.py" \
+    "crates/larch-cli/src/review_dispatch_panel_prompt.md" \
     "python/larch/review/round_runner.py"
   do
     if [[ ! -f "$REPO_ROOT/$file" ]]; then

@@ -1,37 +1,26 @@
 # pyright: reportUnusedCallResult=false
 from __future__ import annotations
 
-import io
 import json
-import os
 import re
 import subprocess
 from collections.abc import Mapping, Sequence
-from contextlib import redirect_stdout
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from larch.core import config
 from larch.core import proc
 import pytest
 from larch.review import coder_runner, dispatch_shared, snapshot
-from larch.review import review_collect, review_core_body, review_dispatch_panel, review_pipeline, review_pipeline_shared, review_prune, review_threshold
+from larch.review import review_collect, review_core_body, review_pipeline, review_pipeline_shared, review_prune, review_threshold
 from larch.review.review_types import ReviewCoreStatus
-from larch.rendering import rendering
 import review_test_support as rts
 from larch.review import voting
 from tests.support.review_wire import panel_manifest_ndjson, panel_manifest_row
-
-from test_support import RecordingRunner
-
-if TYPE_CHECKING:
-    from tests.support.shell_fixtures import FakeBinDirFactory
 
 ROOT = rts.ROOT
 CLI = rts.CLI
 REVIEW_PIPELINE = ROOT / "python" / "larch" / "review" / "review_pipeline.py"
 REVIEW_CORE_BODY = ROOT / "python" / "larch" / "review" / "review_core_body.py"
-REVIEW_DISPATCH_PANEL = ROOT / "python" / "larch" / "review" / "review_dispatch_panel.py"
 
 
 def test_review_pipeline_exposes_only_measured_public_modules() -> None:
@@ -801,45 +790,6 @@ def test_review_core_default_dispatches_voters_through_the_bootstrap() -> None:
     assert rts.review_core_uses_agent_dispatch_voters_by_default()
 
 
-def test_dispatch_panel_forwards_waterfall_straggler_metadata(tmp_path: Path) -> None:
-    plan = tmp_path / "plan.txt"
-    plan.write_text("plan\n", encoding="utf-8")
-    review_tmpdir = tmp_path / "review"
-    review_tmpdir.mkdir()
-    dropped = review_tmpdir / "panel.output-files.dropped-slots"
-    dropped.write_text("dyn-dyn-lint-escalation\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
-    waterfall = tmp_path / "waterfall.sh"
-    _write_executable(
-        waterfall,
-        f"""#!/usr/bin/env bash
-set -euo pipefail
-printf 'ALL_OUTPUT_FILES=\\nALL_OUTPUT_TOOLS=\\n'
-printf 'DROPPED_SLOTS_FILE={dropped}\\n'
-printf 'STRAGGLER_DROPPED_COUNT=1\\n'
-printf 'WARN=reviewer-straggler-dropped\\n'
-printf 'DISPATCH_OK=true\\nSTATIC_DISPATCH_OK=true\\nDYNAMIC_DISPATCH_OK=true\\n'
-""",
-    )
-
-    result = run_review(
-        "dispatch-panel",
-        "--mode",
-        "diff",
-        "--review-tmpdir",
-        str(review_tmpdir),
-        "--codex-available",
-        "true",
-        "--cursor-available",
-        "true",
-        "--plan-file",
-        str(plan),
-        env={"DISPATCH_WATERFALL": str(waterfall)},
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "STRAGGLER_DROPPED_COUNT=1" in result.stdout
-    assert "WATERFALL_WARN=reviewer-straggler-dropped" in result.stdout
-    assert "WARN=reviewer-straggler-dropped" not in result.stdout.splitlines()
 
 
 def test_gather_context_routes_through_verified_rust_entrypoint(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -865,13 +815,18 @@ def test_gather_context_routes_through_verified_rust_entrypoint(monkeypatch: pyt
     gathered = review_pipeline_shared._call_review_command(  # pyright: ignore[reportPrivateUsage]  # tests the migration dispatch seam
         name="gather-context", args=["--mode", "diff"]
     )
+    dispatched = review_pipeline_shared._call_review_command(  # pyright: ignore[reportPrivateUsage]  # tests the migration dispatch seam
+        name="dispatch-panel", args=["--mode", "diff"]
+    )
     _ = review_pipeline_shared._call_review_command(  # pyright: ignore[reportPrivateUsage]  # proves remaining verbs retain their Python owner
         name="collect-findings", args=[]
     )
 
     assert gathered.stdout == "MODE=diff\n"
+    assert dispatched.stdout == "MODE=diff\n"
     assert calls == [
         ("rust", ["review", "gather-context", "--mode", "diff"]),
+        ("rust", ["review", "dispatch-panel", "--mode", "diff"]),
         ("python", ["review", "collect-findings"]),
     ]
 
@@ -1537,9 +1492,6 @@ echo "STATUS=ok"
     assert (outdir / "prune-nit.env").read_text(encoding="utf-8").startswith("PRUNED_COUNT=0")
 
 
-def test_dispatch_panel_python_surface_does_not_import_agents_waterfall() -> None:
-    text = REVIEW_DISPATCH_PANEL.read_text(encoding="utf-8")
-    assert "agents.run_waterfall" not in text
 
 
 def test_review_core_default_prune_nits_uses_review_cli() -> None:
@@ -2517,938 +2469,51 @@ def test_review_core_zero_findings_records_prune_ledger(tmp_path: Path) -> None:
     assert "PRUNED_COUNT=1" in result.stdout
 
 
-def test_dispatch_panel_pre_scouted_valid_dynamic_slots(tmp_path: Path) -> None:
-    case_dir = tmp_path / "pre-scouted-valid"
-    case_dir.mkdir()
-    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    manifest = tmp_path / "pre-scouted-valid.json"
-    _ = manifest.write_text(
-        json.dumps(
-            {
-                "archetypes": [
-                    {
-                        "name": "arch",
-                        "focus_area": "architecture",
-                        "weight": 1,
-                        "rationale": "Architecture risk is central.",
-                        "prompt_body": "Check architecture drift.",
-                    },
-                    {
-                        "name": "api-contract",
-                        "focus_area": "correctness",
-                        "weight": 4,
-                        "rationale": "API changes are central.",
-                        "prompt_body": "Check API contract compatibility.",
-                    },
-                    {
-                        "name": "api-contract",
-                        "focus_area": "risk-integration",
-                        "weight": 3,
-                        "rationale": "Duplicate must be normalized out.",
-                        "prompt_body": "Duplicate should not survive.",
-                    },
-                    {
-                        "name": "cli-flow",
-                        "focus_area": "risk-integration",
-                        "weight": 3,
-                        "rationale": "CLI behavior changed.",
-                        "prompt_body": "Check command flow and user-visible behavior.",
-                    },
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    scout_must_not_run = tmp_path / "scout-must-not-run.sh"
-    _write_executable(
-        scout_must_not_run,
-        """#!/usr/bin/env bash
-echo "scout must not run" >&2
-exit 99
-""",
-    )
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
-    _write_executable(
-        stub_bin / "codex",
-        """#!/usr/bin/env bash
-out=""
-for arg in "$@"; do [[ "${last:-}" == "--output-last-message" ]] && out="$arg"; last="$arg"; done
-[[ -n "$out" ]] || exit 9
-printf 'codex review\\n' > "$out"
-""",
-    )
-    _write_executable(
-        stub_bin / "cursor",
-        """#!/usr/bin/env bash
-printf '{"result":"cursor review","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\\n'
-""",
-    )
-    _write_executable(
-        stub_bin / "claude",
-        """#!/usr/bin/env bash
-cat >/dev/null
-printf '{"type":"result","subtype":"success","is_error":false,"result":"claude review","usage":{"input_tokens":1,"output_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}\\n'
-""",
-    )
-    # Stub the waterfall: this test asserts only scout/slot accounting (computed
-    # before dispatch), so launching the real 11-slot panel adds no coverage and
-    # leaves the test as the suite's heaviest real-subprocess fan-out. Matches the
-    # other dispatch-panel accounting tests and _dispatch_panel_manifest_rows.
-    waterfall = tmp_path / "waterfall-noop.sh"
-    _write_waterfall_noop(waterfall)
-    env = {
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "LARCH_QUIET_DISABLE": "1",
-        "SCOUT_DYNAMIC_ARCHETYPES_SH": str(scout_must_not_run),
-        "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
-        "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
-        "DISPATCH_WATERFALL": str(waterfall),
-    }
-    result = run_review(
-        "dispatch-panel",
-        "--mode",
-        "diff",
-        "--diff-file",
-        str(case_dir / "review.diff"),
-        "--review-tmpdir",
-        str(case_dir),
-        "--codex-available",
-        "false",
-        "--cursor-available",
-        "true",
-        "--panel",
-        "hard",
-        "--plan-file",
-        str(case_dir / "plan.md"),
-        "--dynamic-archetypes",
-        "1",
-        "--pre-scouted-manifest",
-        str(manifest),
-        env=env,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "SCOUT_STATUS=pre-scouted" in result.stdout
-    assert "DYNAMIC_SLOTS=1" in result.stdout
-    assert "SLOT_COUNT=4" in result.stdout
 
 
-def test_synthesize_dynamic_slots_passes_findings_ledger_file(tmp_path: Path) -> None:
-    scout_manifest = tmp_path / "scout.json"
-    scout_manifest.write_text(
-        json.dumps(
-            {
-                "archetypes": [
-                    {
-                        "name": "contract",
-                        "focus_area": "correctness",
-                        "weight": 1,
-                        "rationale": "Contract risk.",
-                        "prompt_body": "Check contract.",
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    review_tmpdir = tmp_path / "review"
-    review_tmpdir.mkdir()
-    manifest = review_tmpdir / "panel-manifest.ndjson"
-    diff_file = tmp_path / "diff.txt"
-    diff_file.write_text("diff --git a/a b/a\n", encoding="utf-8")
-    runner = RecordingRunner(default=proc.CommandResult((), 0, "rendered prompt\n", "", 0.0))
-
-    count = review_dispatch_panel._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
-        scout_manifest=scout_manifest,
-        review_tmpdir=review_tmpdir,
-        manifest=manifest,
-        mode="diff",
-        context={"diff_file": str(diff_file)},
-        codex_available=False,
-        runner=runner
-    )
-
-    assert count == 1
-    render_call = next(call for call in runner.calls if call[2:4] == ["render", "specialist"])
-    assert "--findings-ledger-file" in render_call
-    assert render_call[render_call.index("--findings-ledger-file") + 1] == str(review_tmpdir / "findings-ledger.tsv")
-    assert render_call[render_call.index("--difficulty") + 1] == "MODERATE"
 
 
-def test_dynamic_agent_body_preserves_generated_prompt_contract() -> None:
-    text = review_dispatch_panel._dynamic_agent_body(  # pyright: ignore[reportPrivateUsage]
-        name="contract",
-        focus_area="correctness",
-        rationale="Inspect contract edges.",
-        prompt_body="Check parser output.",
-    )
-    assert "### In-Scope Findings" in text
-    assert "### Out-of-Scope Observations" in text
-    assert "NO_ISSUES_FOUND" in text
-    assert "- **<focus-area>** `<path>:<lines>` — <issue text>. **Suggested fix:** <text>." in text
-    assert "name: reviewer-dyn-contract" in text
-    assert 'description: "Ephemeral dynamic reviewer for correctness"' in text
 
 
-def test_synthesize_dynamic_slots_nested_implement_ledger_root(tmp_path: Path) -> None:
-    impl = tmp_path / "impl"
-    round_dir = impl / "round-2"
-    round_dir.mkdir(parents=True)
-    session_env = impl / "session-env.sh"
-    session_env.write_text("IMPLEMENT_TMPDIR=" + str(impl) + "\n", encoding="utf-8")
-    scout_manifest = round_dir / "scout.json"
-    scout_manifest.write_text(
-        json.dumps(
-            {
-                "archetypes": [
-                    {
-                        "name": "contract",
-                        "focus_area": "correctness",
-                        "weight": 1,
-                        "rationale": "Contract risk.",
-                        "prompt_body": "Check contract.",
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    manifest = round_dir / "panel-manifest.ndjson"
-    runner = RecordingRunner(default=proc.CommandResult((), 0, "rendered prompt\n", "", 0.0))
-
-    count = review_dispatch_panel._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
-        scout_manifest=scout_manifest,
-        review_tmpdir=round_dir,
-        manifest=manifest,
-        mode="diff",
-        context={"diff_file": str(tmp_path / "diff.txt")},
-        codex_available=False,
-        session_env_path=str(session_env),
-        runner=runner
-    )
-
-    assert count == 1
-    render_call = next(call for call in runner.calls if call[2:4] == ["render", "specialist"])
-    assert render_call[render_call.index("--findings-ledger-file") + 1] == str(impl / "findings-ledger.tsv")
-    assert render_call[render_call.index("--session-env-path") + 1] == str(session_env)
-    assert render_call[render_call.index("--difficulty") + 1] == "MODERATE"
 
 
-def test_synthesize_dynamic_slots_prerender_omits_architectural_knowledge(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def read_guidelines() -> rendering.architectural_guidelines.ArchitecturalGuidelinesResult:
-        return rendering.architectural_guidelines.ArchitecturalGuidelinesResult(
-            "present",
-            ROOT,
-            ROOT / "ARCHITECTURAL_GUIDELINES.md",
-            "### G-test-1: Guideline",
-        )
-
-    def read_invariants() -> rendering.architectural_guidelines.ArchitecturalGuidelinesResult:
-        return rendering.architectural_guidelines.ArchitecturalGuidelinesResult(
-            "present",
-            ROOT,
-            ROOT / "ARCHITECTURAL_INVARIANTS.md",
-            "### I-test-1: Invariant",
-        )
-
-    monkeypatch.setattr(rendering.architectural_guidelines, "read_guidelines", read_guidelines)
-    monkeypatch.setattr(rendering.architectural_guidelines, "read_invariants", read_invariants)
-    scout_manifest = tmp_path / "scout.json"
-    scout_manifest.write_text(
-        json.dumps(
-            {
-                "archetypes": [
-                    {
-                        "name": "contract",
-                        "focus_area": "correctness",
-                        "weight": 1,
-                        "rationale": "Contract risk.",
-                        "prompt_body": "Check contract.",
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    review_tmpdir = tmp_path / "review"
-    review_tmpdir.mkdir()
-    manifest = review_tmpdir / "panel-manifest.ndjson"
-    diff_file = tmp_path / "diff.txt"
-    diff_file.write_text("diff --git a/a b/a\n", encoding="utf-8")
-
-    class Runner:
-        def run(
-            self,
-            argv: Sequence[str],
-            *,
-            timeout: float | None = None,
-            cwd: str | None = None,
-            env: Mapping[str, str] | None = None,
-            check: bool = False,
-            stdout: int | None = None,
-            stderr: int | None = None,
-        ) -> proc.CommandResult:
-            _ = timeout, cwd, env, check, stdout, stderr
-            if list(argv)[2:4] != ["render", "specialist"]:
-                return proc.CommandResult(tuple(str(item) for item in argv), 99, "", "unexpected command", 0.0)
-            buffer = io.StringIO()
-            with redirect_stdout(buffer):
-                rc = rendering.render_specialist_main([str(item) for item in argv][4:])
-            return proc.CommandResult(tuple(str(item) for item in argv), rc, buffer.getvalue(), "", 0.0)
-
-    count = review_dispatch_panel._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
-        scout_manifest=scout_manifest,
-        review_tmpdir=review_tmpdir,
-        manifest=manifest,
-        mode="diff",
-        context={"diff_file": str(diff_file)},
-        codex_available=False,
-        tier="TRIVIAL",
-        runner=Runner(),
-    )
-
-    assert count == 1
-    prompt = (review_tmpdir / "dynamic-archetypes" / "dyn-contract-prompt.md").read_text(encoding="utf-8")
-    assert "### I-test-1: Invariant" not in prompt
-    assert "### G-test-1: Guideline" not in prompt
 
 
-def test_dispatch_panel_core_generic_codex_static_row_round_matrix(tmp_path: Path) -> None:
-    for round_num in (1, 2, 3):
-        case_dir = tmp_path / f"generic-round-{round_num}"
-        case_dir.mkdir()
-        _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-        waterfall_stub = tmp_path / f"waterfall-round-{round_num}.sh"
-        _write_waterfall_noop(waterfall_stub)
-        result = run_review(
-            "dispatch-panel",
-            "--mode",
-            "diff",
-            "--diff-file",
-            str(case_dir / "review.diff"),
-            "--review-tmpdir",
-            str(case_dir),
-            "--codex-available",
-            "true",
-            "--cursor-available",
-            "true",
-            "--panel",
-            "hard",
-            "--plan-file",
-            str(case_dir / "plan.md"),
-            "--round-num",
-            str(round_num),
-            env={
-                "CLAUDE_PLUGIN_ROOT": str(ROOT),
-                "LARCH_QUIET_DISABLE": "1",
-                "DISPATCH_WATERFALL": str(waterfall_stub),
-            },
-        )
-        assert result.returncode == 0, result.stderr
-        rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
-        assert not any(row.get("slot") == "generalist" for row in rows)
-        assert "STATIC_SLOT_COUNT=6" in result.stdout
 
 
-def test_dispatch_panel_core_generic_codex_static_row_when_codex_unavailable(tmp_path: Path) -> None:
-    for round_num in (1, 2):
-        case_dir = tmp_path / f"generic-unavailable-round-{round_num}"
-        case_dir.mkdir()
-        _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-        waterfall_stub = tmp_path / f"waterfall-unavailable-round-{round_num}.sh"
-        _write_waterfall_noop(waterfall_stub)
-        result = run_review(
-            "dispatch-panel",
-            "--mode",
-            "diff",
-            "--diff-file",
-            str(case_dir / "review.diff"),
-            "--review-tmpdir",
-            str(case_dir),
-            "--codex-available",
-            "false",
-            "--cursor-available",
-            "true",
-            "--panel",
-            "hard",
-            "--plan-file",
-            str(case_dir / "plan.md"),
-            "--round-num",
-            str(round_num),
-            env={
-                "CLAUDE_PLUGIN_ROOT": str(ROOT),
-                "LARCH_QUIET_DISABLE": "1",
-                "DISPATCH_WATERFALL": str(waterfall_stub),
-            },
-        )
-        assert result.returncode == 0, result.stderr
-        rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
-        assert not any(row.get("slot") == "generalist" for row in rows)
-        assert "STATIC_SLOT_COUNT=3" in result.stdout
 
 
-def _write_waterfall_noop(path: Path) -> None:
-    _write_executable(
-        path,
-        """#!/usr/bin/env bash
-printf 'DISPATCH_OK=true\\nSTATIC_DISPATCH_OK=true\\nDYNAMIC_DISPATCH_OK=true\\nALL_OUTPUT_FILES=\\nALL_OUTPUT_TOOLS=\\n'
-""",
-    )
 
 
-def test_dispatch_panel_override_receives_panel_env(tmp_path: Path) -> None:
-    case_dir = tmp_path / "round-2"
-    case_dir.mkdir()
-    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    capture = tmp_path / "panel-env.txt"
-    waterfall = tmp_path / "waterfall-capture.sh"
-    _write_executable(
-        waterfall,
-        """#!/usr/bin/env bash
-{
-  printf 'ARTIFACT=%s\n' "${LARCH_PANEL_ARTIFACT_DIR:-}"
-  printf 'SITE=%s\n' "${LARCH_PANEL_SITE:-}"
-  printf 'ROUND=%s\n' "${LARCH_PANEL_ROUND_NUM:-}"
-} >"$PANEL_ENV_CAPTURE"
-printf 'DISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nDYNAMIC_DISPATCH_OK=true\nALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\n'
-""",
-    )
-
-    result = run_review(
-        "dispatch-panel",
-        "--mode",
-        "diff",
-        "--diff-file",
-        str(case_dir / "review.diff"),
-        "--review-tmpdir",
-        str(case_dir),
-        "--codex-available",
-        "true",
-        "--cursor-available",
-        "true",
-        "--panel",
-        "simple",
-        "--plan-file",
-        str(case_dir / "plan.md"),
-        "--round-num",
-        "2",
-        "--site",
-        "implement Step 5",
-        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "DISPATCH_WATERFALL": str(waterfall), "PANEL_ENV_CAPTURE": str(capture)},
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert capture.read_text(encoding="utf-8") == f"ARTIFACT={case_dir}\nSITE=implement Step 5\nROUND=2\n"
 
 
-def test_dispatch_panel_resolves_round_subdir_for_panel_artifact(tmp_path: Path) -> None:
-    run_root = tmp_path / "review-run"
-    round_dir = run_root / "round-3"
-    round_dir.mkdir(parents=True)
-    _ = (run_root / "plan.md").write_text("# plan\n", encoding="utf-8")
-    _ = (round_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    capture = tmp_path / "panel-env-round-subdir.txt"
-    waterfall = tmp_path / "waterfall-round-subdir.sh"
-    _write_executable(
-        waterfall,
-        """#!/usr/bin/env bash
-{
-  printf 'ARTIFACT=%s\n' "${LARCH_PANEL_ARTIFACT_DIR:-}"
-  printf 'SITE=%s\n' "${LARCH_PANEL_SITE:-}"
-  printf 'ROUND=%s\n' "${LARCH_PANEL_ROUND_NUM:-}"
-} >"$PANEL_ENV_CAPTURE"
-printf 'DISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nDYNAMIC_DISPATCH_OK=true\nALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\n'
-""",
-    )
-
-    result = run_review(
-        "dispatch-panel",
-        "--mode",
-        "diff",
-        "--diff-file",
-        str(round_dir / "review.diff"),
-        "--review-tmpdir",
-        str(run_root),
-        "--codex-available",
-        "true",
-        "--cursor-available",
-        "true",
-        "--panel",
-        "simple",
-        "--plan-file",
-        str(run_root / "plan.md"),
-        "--round-num",
-        "3",
-        "--site",
-        "review Step 2",
-        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "DISPATCH_WATERFALL": str(waterfall), "PANEL_ENV_CAPTURE": str(capture)},
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert capture.read_text(encoding="utf-8") == f"ARTIFACT={round_dir}\nSITE=review Step 2\nROUND=3\n"
-    assert not (run_root / "panel-prompt-sizes.tsv").exists()
 
 
-def test_dispatch_panel_materializes_panel_prompt_sizes(tmp_path: Path) -> None:
-    case_dir = tmp_path / "round-1"
-    case_dir.mkdir()
-    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
-    _write_dispatch_vendor_stubs(stub_bin)
-    result = run_review(
-        "dispatch-panel",
-        "--mode",
-        "diff",
-        "--diff-file",
-        str(case_dir / "review.diff"),
-        "--review-tmpdir",
-        str(case_dir),
-        "--codex-available",
-        "false",
-        "--cursor-available",
-        "true",
-        "--panel",
-        "simple",
-        "--plan-file",
-        str(case_dir / "plan.md"),
-        "--round-num",
-        "1",
-        "--site",
-        "implement Step 5",
-        env={
-            "CLAUDE_PLUGIN_ROOT": str(ROOT),
-            "LARCH_QUIET_DISABLE": "1",
-            # The waterfall is Rust-owned; a Python-only run reaches it through
-            # the verified bootstrap backed by the shared test double.
-            "LARCH_BINARY": str(ROOT / "python" / "tests" / "support" / "rust_agent_stub.py"),
-            "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
-            "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
-            "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT": "0",
-            "LARCH_TRANSIENT_RETRY_DELAY": "0",
-            "LARCH_CURSOR_LAUNCH_JITTER_MS": "0",
-            "LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME": "Linux",
-            "LARCH_LIB_CURSOR_AUTH_TEST_MODE": "1",
-            "LIB_CURSOR_AUTH_TEST_UNAME": "Linux",
-            "CURSOR_API_KEY": "test-key",
-        },
-    )
-
-    assert result.returncode == 0, result.stderr
-    tsv = case_dir / "panel-prompt-sizes.tsv"
-    assert tsv.is_file()
-    text = tsv.read_text(encoding="utf-8")
-    header = text.splitlines()[0]
-    assert header.split("\t")[11] == "payload_bytes"
-    data_lines = [line for line in text.splitlines() if line and not line.startswith("site\t")]
-    assert len(data_lines) >= 1
-    for line in data_lines:
-        fields = line.split("\t")
-        assert fields[4] == "specialist"
-    assert "# Review" not in text
 
 
-def _dispatch_panel_manifest_rows(
-    case_dir: Path,
-    *,
-    round_num: int,
-    codex_available: str,
-    tier: str = config.DIFFICULTY_TIER_TRIVIAL,
-    dynamic_archetypes: str = "0",
-    pre_scouted_manifest: Path | None = None,
-) -> list[dict[str, object]]:
-    waterfall = case_dir.parent / "waterfall-noop.sh"
-    _write_waterfall_noop(waterfall)
-    panel = "simple" if tier == config.DIFFICULTY_TIER_TRIVIAL else "hard"
-    args = [
-        "dispatch-panel",
-        "--mode",
-        "diff",
-        "--diff-file",
-        str(case_dir / "review.diff"),
-        "--review-tmpdir",
-        str(case_dir),
-        "--codex-available",
-        codex_available,
-        "--cursor-available",
-        "true",
-        "--panel",
-        panel,
-        "--plan-file",
-        str(case_dir / "plan.md"),
-        "--round-num",
-        str(round_num),
-        "--tier",
-        tier,
-        "--dynamic-archetypes",
-        dynamic_archetypes,
-    ]
-    if pre_scouted_manifest is not None:
-        args.extend(["--pre-scouted-manifest", str(pre_scouted_manifest)])
-    result = run_review(
-        *args,
-        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "DISPATCH_WATERFALL": str(waterfall)},
-    )
-    assert result.returncode == 0, result.stderr
-    manifest = case_dir / "panel-manifest.ndjson"
-    return [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def test_dispatch_panel_omits_generic_codex_static_row_all_rounds(tmp_path: Path) -> None:
-    case_dir = tmp_path / "generic-codex-round-matrix"
-    case_dir.mkdir()
-    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-
-    for round_num in (1, 2, 3):
-        round_dir = case_dir / f"round-{round_num}"
-        round_dir.mkdir()
-        _ = (round_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-        _ = (round_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-        rows = _dispatch_panel_manifest_rows(round_dir, round_num=round_num, codex_available="true")
-        generalist_rows = [row for row in rows if row.get("slot") == "generalist"]
-        assert generalist_rows == [], f"round {round_num} should omit generic Codex row"
 
 
-def test_dispatch_panel_generic_codex_static_row_when_codex_unavailable(tmp_path: Path) -> None:
-    case_dir = tmp_path / "generic-codex-codex-absent"
-    case_dir.mkdir()
-    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    rows = _dispatch_panel_manifest_rows(case_dir, round_num=1, codex_available="false")
-    generalist_rows = [row for row in rows if row.get("slot") == "generalist"]
-    assert generalist_rows == []
-    codex_rows = [row for row in rows if row.get("tool") == "codex"]
-    assert codex_rows == []
 
 
-def test_dispatch_panel_trivial_dynamic_manifest_emits_cursor_only(tmp_path: Path) -> None:
-    case_dir = tmp_path / "trivial-dynamic"
-    case_dir.mkdir()
-    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    pre_scouted = case_dir / "pre-scouted.json"
-    pre_scouted.write_text(
-        json.dumps(
-            {
-                "archetypes": [
-                    {
-                        "name": "api-contract",
-                        "focus_area": "correctness",
-                        "weight": 1,
-                        "rationale": "API changed.",
-                        "prompt_body": "Check API compatibility.",
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    rows = _dispatch_panel_manifest_rows(
-        case_dir,
-        round_num=1,
-        codex_available="true",
-        tier=config.DIFFICULTY_TIER_TRIVIAL,
-        dynamic_archetypes="1",
-        pre_scouted_manifest=pre_scouted,
-    )
-
-    cursor_row = next(row for row in rows if row.get("slot") == "dyn-api-contract")
-    assert cursor_row.get("tool") == "cursor"
-    assert "cursor_model" not in cursor_row
-    assert cursor_row.get("resolved_model") == config.CURSOR_DEFAULT_MODEL
-    assert not any(row.get("slot") == "dyn-api-contract-codex" for row in rows)
 
 
 @pytest.mark.parametrize("tier", [config.DIFFICULTY_TIER_MODERATE, config.DIFFICULTY_TIER_HARD])
-def test_dispatch_panel_dynamic_manifest_adds_review_codex_rows_for_upper_tiers(
-    tmp_path: Path,
-    tier: str,
-) -> None:
-    case_dir = tmp_path / f"dynamic-{tier.lower()}"
-    case_dir.mkdir()
-    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    pre_scouted = case_dir / "pre-scouted.json"
-    pre_scouted.write_text(
-        json.dumps(
-            {
-                "archetypes": [
-                    {
-                        "name": "api-contract",
-                        "focus_area": "correctness",
-                        "weight": 1,
-                        "rationale": "API changed.",
-                        "prompt_body": "Check API compatibility.",
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    rows = _dispatch_panel_manifest_rows(
-        case_dir,
-        round_num=1,
-        codex_available="true",
-        tier=tier,
-        dynamic_archetypes="1",
-        pre_scouted_manifest=pre_scouted,
-    )
-
-    cursor_row = next(row for row in rows if row.get("slot") == "dyn-api-contract")
-    codex_row = next(row for row in rows if row.get("slot") == "dyn-api-contract-codex")
-    assert cursor_row.get("tool") == "cursor"
-    assert "cursor_model" not in cursor_row
-    assert cursor_row.get("resolved_model") == config.CURSOR_DEFAULT_MODEL
-    assert codex_row.get("tool") == "codex"
-    assert codex_row.get("model_role") == "review"
-    expected_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY[tier]
-    assert codex_row.get("resolved_model") == expected_model
 
 
-def test_dispatch_panel_pre_scouted_empty_ok_static_only(tmp_path: Path) -> None:
-    case_dir = tmp_path / "pre-scouted-empty"
-    case_dir.mkdir()
-    (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    impl = tmp_path / "impl"
-    impl.mkdir()
-    manifest = impl / "scout-coder-manifest.json"
-    manifest.write_text('{"archetypes":[]}\n', encoding="utf-8")
-    (impl / "step2-scout-coder-status.env").write_text("SCOUT_CODER_STATUS=ok\n", encoding="utf-8")
-    (impl / "step2-external-scout-eligible.txt").write_text("eligible\n", encoding="utf-8")
-    waterfall = tmp_path / "waterfall.sh"
-    _write_waterfall_noop(waterfall)
-    result = run_review(
-        "dispatch-panel",
-        "--mode", "diff",
-        "--diff-file", str(case_dir / "review.diff"),
-        "--review-tmpdir", str(case_dir),
-        "--codex-available", "false",
-        "--cursor-available", "false",
-        "--panel", "hard",
-        "--plan-file", str(case_dir / "plan.md"),
-        "--dynamic-archetypes", "1",
-        "--pre-scouted-manifest", str(manifest),
-        "--site", "implement Step 5",
-        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "IMPLEMENT_TMPDIR": str(impl), "DISPATCH_WATERFALL": str(waterfall)},
-    )
-    assert result.returncode == 0, result.stderr
-    assert "SCOUT_STATUS=pre-scouted-empty" in result.stdout
-    assert "DYNAMIC_SLOTS=0" in result.stdout
 
 
-def test_dispatch_panel_pre_scouted_filtered_to_zero_is_producer_invalid(tmp_path: Path) -> None:
-    case_dir = tmp_path / "pre-scouted-filtered-zero"
-    case_dir.mkdir()
-    (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    impl = tmp_path / "impl"
-    impl.mkdir()
-    manifest = impl / "scout-coder-manifest.json"
-    manifest.write_text(
-        '{"archetypes":[{"name":"correctness","focus_area":"correctness","weight":1,"rationale":"Check logic.","prompt_body":"Check logic."}]}\n',
-        encoding="utf-8",
-    )
-    (impl / "step2-scout-coder-status.env").write_text("SCOUT_CODER_STATUS=ok\n", encoding="utf-8")
-    (impl / "step2-external-scout-eligible.txt").write_text("eligible\n", encoding="utf-8")
-    waterfall = tmp_path / "waterfall.sh"
-    _write_waterfall_noop(waterfall)
-    result = run_review(
-        "dispatch-panel",
-        "--mode", "diff",
-        "--diff-file", str(case_dir / "review.diff"),
-        "--review-tmpdir", str(case_dir),
-        "--codex-available", "false",
-        "--cursor-available", "false",
-        "--panel", "hard",
-        "--plan-file", str(case_dir / "plan.md"),
-        "--dynamic-archetypes", "1",
-        "--pre-scouted-manifest", str(manifest),
-        "--site", "implement Step 5",
-        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "IMPLEMENT_TMPDIR": str(impl), "DISPATCH_WATERFALL": str(waterfall)},
-    )
-    assert result.returncode == 0, result.stderr
-    assert "SCOUT_STATUS=producer-invalid" in result.stdout
-    assert "SCOUT_FAIL_REASON=pre_scouted_filtered_to_zero" in result.stdout
-    assert "DYNAMIC_SLOTS=0" in result.stdout
 
 
-def test_dispatch_panel_implement_missing_producer_does_not_launch_scout(tmp_path: Path) -> None:
-    case_dir = tmp_path / "implement-missing-producer"
-    case_dir.mkdir()
-    (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    impl = tmp_path / "impl"
-    impl.mkdir()
-    scout = tmp_path / "scout-must-not-run.sh"
-    _write_executable(scout, '#!/usr/bin/env bash\necho scout-called > "$1.called"\nexit 99\n')
-    waterfall = tmp_path / "waterfall.sh"
-    _write_waterfall_noop(waterfall)
-    result = run_review(
-        "dispatch-panel",
-        "--mode", "diff",
-        "--diff-file", str(case_dir / "review.diff"),
-        "--review-tmpdir", str(case_dir),
-        "--codex-available", "false",
-        "--cursor-available", "false",
-        "--panel", "hard",
-        "--plan-file", str(case_dir / "plan.md"),
-        "--dynamic-archetypes", "1",
-        "--site", "implement Step 5",
-        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "IMPLEMENT_TMPDIR": str(impl), "SCOUT_DYNAMIC_ARCHETYPES_SH": str(scout), "DISPATCH_WATERFALL": str(waterfall)},
-    )
-    assert result.returncode == 0, result.stderr
-    assert "SCOUT_STATUS=producer-missing" in result.stdout
-    assert not list(tmp_path.glob("*.called"))
-    assert (impl / ".producer-scout-warning-logged").is_file()
 
 
-def test_dispatch_panel_docs_only_skips_producer_scout_warning(tmp_path: Path) -> None:
-    case_dir = tmp_path / "docs-only-skip-warning"
-    case_dir.mkdir()
-    (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    (case_dir / "review.diff").write_text("diff --git a/docs/foo.md b/docs/foo.md\n", encoding="utf-8")
-    impl = tmp_path / "impl"
-    impl.mkdir()
-    waterfall = tmp_path / "waterfall.sh"
-    _write_waterfall_noop(waterfall)
-    result = run_review(
-        "dispatch-panel",
-        "--mode", "diff",
-        "--diff-file", str(case_dir / "review.diff"),
-        "--review-tmpdir", str(case_dir),
-        "--codex-available", "false",
-        "--cursor-available", "false",
-        "--panel", "hard",
-        "--plan-file", str(case_dir / "plan.md"),
-        "--dynamic-archetypes", "1",
-        "--site", "implement Step 5",
-        env={
-            "CLAUDE_PLUGIN_ROOT": str(ROOT),
-            "LARCH_QUIET_DISABLE": "1",
-            "IMPLEMENT_TMPDIR": str(impl),
-            "DISPATCH_WATERFALL": str(waterfall),
-        },
-    )
-    assert result.returncode == 0, result.stderr
-    assert "SCOUT_STATUS=skipped-docs-only" in result.stdout
-    assert not (impl / ".producer-scout-warning-logged").exists()
-    assert not (impl / "execution-issues.md").exists()
 
 
-def test_dispatch_panel_core_fails_closed_when_diff_classifier_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    review_tmpdir = tmp_path / "review"
-    review_tmpdir.mkdir()
-    plan = tmp_path / "plan.md"
-    plan.write_text("# plan\n", encoding="utf-8")
-    diff = tmp_path / "review.diff"
-    diff.write_text("diff --git a/docs/a.md b/docs/a.md\n", encoding="utf-8")
-
-    def failed_classifier(*_args: object, **_kwargs: object) -> proc.CommandResult:
-        return proc.CommandResult((), 1, "", "manifest malformed", 0.0)
-
-    monkeypatch.setattr(review_pipeline_shared, "run_capture", failed_classifier)
-    assert review_dispatch_panel.dispatch_panel(
-        [
-            "--mode", "diff", "--diff-file", str(diff), "--review-tmpdir", str(review_tmpdir),
-            "--codex-available", "false", "--cursor-available", "false", "--panel", "hard",
-            "--plan-file", str(plan), "--dynamic-archetypes", "1",
-        ]
-    ) == 1
 
 
-def test_dispatch_panel_producer_scout_warning_sentinel_prevents_duplicate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    case_dir = tmp_path / "warning-sentinel"
-    case_dir.mkdir()
-    (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    impl = tmp_path / "impl"
-    impl.mkdir()
-    (impl / ".producer-scout-warning-logged").write_text("logged\n", encoding="utf-8")
-    waterfall = tmp_path / "waterfall.sh"
-    _write_waterfall_noop(waterfall)
-    append_calls: list[list[str]] = []
-    original_run = review_pipeline_shared.run_python_cli
-
-    def tracking_run(
-        args: Sequence[str],
-        *,
-        runner: proc.Runner | None = None,
-        env: Mapping[str, str] | None = None,
-    ) -> proc.CommandResult:
-        if list(args[:3]) == ["run-log", "append-entry"]:
-            append_calls.append(list(args))
-        return original_run(args, runner=runner, env=env)
-
-    monkeypatch.setattr(review_pipeline_shared, "run_python_cli", tracking_run)
-    result = run_review(
-        "dispatch-panel",
-        "--mode", "diff",
-        "--diff-file", str(case_dir / "review.diff"),
-        "--review-tmpdir", str(case_dir),
-        "--codex-available", "false",
-        "--cursor-available", "false",
-        "--panel", "hard",
-        "--plan-file", str(case_dir / "plan.md"),
-        "--dynamic-archetypes", "1",
-        "--site", "implement Step 5",
-        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "IMPLEMENT_TMPDIR": str(impl), "DISPATCH_WATERFALL": str(waterfall)},
-    )
-    assert result.returncode == 0, result.stderr
-    assert "SCOUT_STATUS=producer-missing" in result.stdout
-    assert not append_calls
 
 
-def test_dispatch_panel_review_default_ignores_ambient_implement_tmpdir(tmp_path: Path) -> None:
-    case_dir = tmp_path / "review-default-site"
-    case_dir.mkdir()
-    (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    impl = tmp_path / "impl"
-    impl.mkdir()
-    scout = tmp_path / "scout.sh"
-    called = tmp_path / "scout.called"
-    _write_executable(
-        scout,
-        f"""#!/usr/bin/env bash
-out=""
-while [[ $# -gt 0 ]]; do
-  if [[ "$1" == "--output" ]]; then out="$2"; shift 2; else shift; fi
-done
-printf 'called\\n' > "{called}"
-printf '{{"archetypes":[{{"name":"api-contract","focus_area":"correctness","weight":1,"rationale":"API changed.","prompt_body":"Check API compatibility."}}]}}\\n' > "$out"
-printf 'SCOUT_STATUS=ok\\nSCOUT_MANIFEST=%s\\nSCOUT_ARCHETYPE_COUNT=1\\n' "$out"
-""",
-    )
-    waterfall = tmp_path / "waterfall.sh"
-    _write_waterfall_noop(waterfall)
-    result = run_review(
-        "dispatch-panel",
-        "--mode", "diff",
-        "--diff-file", str(case_dir / "review.diff"),
-        "--review-tmpdir", str(case_dir),
-        "--codex-available", "false",
-        "--cursor-available", "false",
-        "--panel", "hard",
-        "--plan-file", str(case_dir / "plan.md"),
-        "--dynamic-archetypes", "1",
-        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "IMPLEMENT_TMPDIR": str(impl), "SCOUT_DYNAMIC_ARCHETYPES_SH": str(scout), "DISPATCH_WATERFALL": str(waterfall)},
-    )
-    assert result.returncode == 0, result.stderr
-    assert called.is_file()
-    assert "SCOUT_STATUS=ok" in result.stdout
 
 
 def _write_dispatch_vendor_stubs(stub_bin: Path) -> None:
@@ -3476,138 +2541,10 @@ printf '{"type":"result","subtype":"success","is_error":false,"result":"claude r
     )
 
 
-def test_dispatch_panel_rust_stub_does_not_execute_vendor_binaries(
-    tmp_path: Path, fake_bin_dir: FakeBinDirFactory
-) -> None:
-    case_dir = tmp_path / "stub-no-vendors"
-    case_dir.mkdir()
-    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    fake_bin = fake_bin_dir()
-
-    result = run_review(
-        "dispatch-panel",
-        "--mode",
-        "diff",
-        "--diff-file",
-        str(case_dir / "review.diff"),
-        "--review-tmpdir",
-        str(case_dir),
-        "--codex-available",
-        "true",
-        "--cursor-available",
-        "true",
-        "--panel",
-        "simple",
-        "--plan-file",
-        str(case_dir / "plan.md"),
-        env={
-            "CLAUDE_PLUGIN_ROOT": str(ROOT),
-            "LARCH_QUIET_DISABLE": "1",
-            "PATH": f"{fake_bin.path}{os.pathsep}{os.environ.get('PATH', '')}",
-            "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
-        },
-    )
-
-    assert result.returncode == 0, result.stderr + result.stdout
-    assert fake_bin.invocations() == []
 
 
-def test_dispatch_panel_core_both_vendor_passes_no_fallback(tmp_path: Path) -> None:
-    case_dir = tmp_path / "core-both-vendor"
-    case_dir.mkdir()
-    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    waterfall_stub = tmp_path / "waterfall-argv-stub.sh"
-    argv_log = tmp_path / "waterfall.argv"
-    _write_executable(
-        waterfall_stub,
-        f"""#!/usr/bin/env bash
-printf '%s\\n' "$*" >> "{argv_log}"
-printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=\\nALL_OUTPUT_FILES_PATH=\\nALL_OUTPUT_TOOLS=\\n'
-""",
-    )
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
-    _write_dispatch_vendor_stubs(stub_bin)
-    result = run_review(
-        "dispatch-panel",
-        "--mode",
-        "diff",
-        "--diff-file",
-        str(case_dir / "review.diff"),
-        "--review-tmpdir",
-        str(case_dir),
-        "--codex-available",
-        "true",
-        "--cursor-available",
-        "true",
-        "--panel",
-        "simple",
-        "--plan-file",
-        str(case_dir / "plan.md"),
-        env={
-            "CLAUDE_PLUGIN_ROOT": str(ROOT),
-            "LARCH_QUIET_DISABLE": "1",
-            "DISPATCH_WATERFALL": str(waterfall_stub),
-            "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
-            "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
-        },
-    )
-    assert result.returncode == 0, result.stderr
-    argv_text = argv_log.read_text(encoding="utf-8")
-    assert "--no-fallback" in argv_text
-    assert "--straggler-cutoff" in argv_text
-    assert "--codex-present true" in argv_text
-    assert "--cursor-present true" in argv_text
-    assert "--model-role review" in argv_text
 
 
-def test_dispatch_panel_core_threads_site_to_waterfall(tmp_path: Path) -> None:
-    case_dir = tmp_path / "site-dispatch"
-    case_dir.mkdir()
-    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    waterfall_stub = tmp_path / "waterfall-site-stub.sh"
-    argv_log = tmp_path / "waterfall-site.argv"
-    _write_executable(
-        waterfall_stub,
-        f"""#!/usr/bin/env bash
-printf '%s\\n' "$*" >> "{argv_log}"
-printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=\\nALL_OUTPUT_FILES_PATH=\\nALL_OUTPUT_TOOLS=\\n'
-""",
-    )
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
-    _write_dispatch_vendor_stubs(stub_bin)
-    result = run_review(
-        "dispatch-panel",
-        "--mode",
-        "diff",
-        "--diff-file",
-        str(case_dir / "review.diff"),
-        "--review-tmpdir",
-        str(case_dir),
-        "--codex-available",
-        "true",
-        "--cursor-available",
-        "true",
-        "--panel",
-        "simple",
-        "--plan-file",
-        str(case_dir / "plan.md"),
-        "--site",
-        "implement Step 5",
-        env={
-            "CLAUDE_PLUGIN_ROOT": str(ROOT),
-            "LARCH_QUIET_DISABLE": "1",
-            "DISPATCH_WATERFALL": str(waterfall_stub),
-            "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
-            "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
-        },
-    )
-    assert result.returncode == 0, result.stderr
-    assert "--site implement Step 5" in argv_log.read_text(encoding="utf-8")
 
 
 def _write_carry_forward_manifest(path: Path, rows: list[dict[str, object]]) -> None:
@@ -3621,213 +2558,18 @@ def _write_carry_forward_collector(path: Path, records: list[dict[str, str]]) ->
     path.write_text(text, encoding="utf-8")
 
 
-def test_degraded_retry_carry_forward_partitions_substantive_slots(tmp_path: Path) -> None:
-    review_tmpdir = tmp_path / "round-1"
-    review_tmpdir.mkdir()
-    ok_cursor = review_tmpdir / "cursor-specialist-correctness-output.txt"
-    failed_codex = review_tmpdir / "codex-specialist-testing-output.txt"
-    ok_dynamic = review_tmpdir / "dyn-foo-output.txt"
-    for output in (ok_cursor, failed_codex, ok_dynamic):
-        _ = output.write_text("findings\n", encoding="utf-8")
-    manifest = review_tmpdir / "panel-manifest.ndjson"
-    _write_carry_forward_manifest(manifest, [
-        {"slot": "correctness", "tool": "cursor", "output": str(ok_cursor), "agent": "a"},
-        {"slot": "testing", "tool": "codex", "output": str(failed_codex), "agent": "a"},
-        {"slot": "dyn-foo", "tool": "cursor", "output": str(ok_dynamic), "prompt_file": "p"},
-    ])
-    _write_carry_forward_collector(review_tmpdir / "collector-results.env", [
-        {"REVIEWER_FILE": str(ok_cursor), "TOOL": "cursor", "STATUS": "OK", "EXIT_CODE": "0"},
-        {"REVIEWER_FILE": str(failed_codex), "TOOL": "codex", "STATUS": "NOT_SUBSTANTIVE", "EXIT_CODE": "0"},
-        {"REVIEWER_FILE": str(ok_dynamic), "TOOL": "cursor", "STATUS": "OK", "EXIT_CODE": "0"},
-    ])
-    _ = (review_tmpdir / "degraded-retry.flag").touch()
-    launch_manifest, carry_outputs, carry_tools = review_dispatch_panel._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
-        manifest=manifest, review_tmpdir=review_tmpdir
-    )
-    assert launch_manifest != manifest
-    assert [str(row["slot"]) for row in _panel_manifest_rows(launch_manifest)] == ["testing"]
-    assert carry_outputs == [str(ok_cursor), str(ok_dynamic)]
-    assert carry_tools == ["cursor", "cursor"]
 
 
-def test_degraded_retry_carry_forward_inactive_without_flag(tmp_path: Path) -> None:
-    review_tmpdir = tmp_path / "round-1"
-    review_tmpdir.mkdir()
-    ok_cursor = review_tmpdir / "cursor-specialist-correctness-output.txt"
-    _ = ok_cursor.write_text("findings\n", encoding="utf-8")
-    manifest = review_tmpdir / "panel-manifest.ndjson"
-    _write_carry_forward_manifest(manifest, [{"slot": "correctness", "tool": "cursor", "output": str(ok_cursor), "agent": "a"}])
-    _write_carry_forward_collector(review_tmpdir / "collector-results.env", [
-        {"REVIEWER_FILE": str(ok_cursor), "TOOL": "cursor", "STATUS": "OK", "EXIT_CODE": "0"},
-    ])
-    # No degraded-retry.flag: the first pass launches the full panel.
-    launch_manifest, carry_outputs, carry_tools = review_dispatch_panel._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
-        manifest=manifest, review_tmpdir=review_tmpdir
-    )
-    assert launch_manifest == manifest
-    assert not carry_outputs
-    assert not carry_tools
 
 
-def test_degraded_retry_carry_forward_relaunches_ok_slot_with_missing_output(tmp_path: Path) -> None:
-    review_tmpdir = tmp_path / "round-1"
-    review_tmpdir.mkdir()
-    present_ok = review_tmpdir / "cursor-specialist-correctness-output.txt"
-    missing_ok = review_tmpdir / "codex-specialist-security-output.txt"
-    failed = review_tmpdir / "dyn-foo-output.txt"
-    _ = present_ok.write_text("findings\n", encoding="utf-8")
-    _ = failed.write_text("narrative only\n", encoding="utf-8")
-    # missing_ok intentionally never written to disk.
-    manifest = review_tmpdir / "panel-manifest.ndjson"
-    _write_carry_forward_manifest(manifest, [
-        {"slot": "correctness", "tool": "cursor", "output": str(present_ok), "agent": "a"},
-        {"slot": "security", "tool": "codex", "output": str(missing_ok), "agent": "a"},
-        {"slot": "dyn-foo", "tool": "cursor", "output": str(failed), "prompt_file": "p"},
-    ])
-    _write_carry_forward_collector(review_tmpdir / "collector-results.env", [
-        {"REVIEWER_FILE": str(present_ok), "TOOL": "cursor", "STATUS": "OK", "EXIT_CODE": "0"},
-        {"REVIEWER_FILE": str(missing_ok), "TOOL": "codex", "STATUS": "OK", "EXIT_CODE": "0"},
-        {"REVIEWER_FILE": str(failed), "TOOL": "cursor", "STATUS": "NOT_SUBSTANTIVE", "EXIT_CODE": "0"},
-    ])
-    _ = (review_tmpdir / "degraded-retry.flag").touch()
-    launch_manifest, carry_outputs, carry_tools = review_dispatch_panel._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
-        manifest=manifest, review_tmpdir=review_tmpdir
-    )
-    # The OK slot whose output file vanished is re-launched; only the present OK slot carries.
-    assert {str(row["slot"]) for row in _panel_manifest_rows(launch_manifest)} == {"security", "dyn-foo"}
-    assert carry_outputs == [str(present_ok)]
-    assert carry_tools == ["cursor"]
 
 
-def test_degraded_retry_carry_forward_carries_cap_hit_slots(tmp_path: Path) -> None:
-    review_tmpdir = tmp_path / "round-1"
-    review_tmpdir.mkdir()
-    cap_hit_output = review_tmpdir / "cursor-specialist-correctness-output.txt"
-    failed_codex = review_tmpdir / "codex-specialist-testing-output.txt"
-    _ = cap_hit_output.write_text("STATUS=cap_hit\npartial findings\n", encoding="utf-8")
-    _ = failed_codex.write_text("narrative only\n", encoding="utf-8")
-    manifest = review_tmpdir / "panel-manifest.ndjson"
-    _write_carry_forward_manifest(manifest, [
-        {"slot": "correctness", "tool": "cursor", "output": str(cap_hit_output), "agent": "a"},
-        {"slot": "testing", "tool": "codex", "output": str(failed_codex), "agent": "a"},
-    ])
-    _write_carry_forward_collector(review_tmpdir / "collector-results.env", [
-        {"REVIEWER_FILE": str(cap_hit_output), "TOOL": "cursor", "STATUS": "cap_hit", "EXIT_CODE": "0"},
-        {"REVIEWER_FILE": str(failed_codex), "TOOL": "codex", "STATUS": "NOT_SUBSTANTIVE", "EXIT_CODE": "0"},
-    ])
-    _ = (review_tmpdir / "degraded-retry.flag").touch()
-    launch_manifest, carry_outputs, carry_tools = review_dispatch_panel._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
-        manifest=manifest, review_tmpdir=review_tmpdir
-    )
-    assert [str(row["slot"]) for row in _panel_manifest_rows(launch_manifest)] == ["testing"]
-    assert carry_outputs == [str(cap_hit_output)]
-    assert carry_tools == ["cursor"]
 
 
-def test_degraded_retry_carry_forward_matches_phase_suffixed_collector_path(tmp_path: Path) -> None:
-    review_tmpdir = tmp_path / "round-1"
-    review_tmpdir.mkdir()
-    base_output = review_tmpdir / "cursor-specialist-correctness-output.txt"
-    phase2_output = review_tmpdir / "cursor-specialist-correctness-output-phase2.txt"
-    failed = review_tmpdir / "codex-specialist-testing-output.txt"
-    _ = phase2_output.write_text("findings\n", encoding="utf-8")
-    _ = failed.write_text("narrative only\n", encoding="utf-8")
-    manifest = review_tmpdir / "panel-manifest.ndjson"
-    _write_carry_forward_manifest(manifest, [
-        {"slot": "correctness", "tool": "cursor", "output": str(base_output), "agent": "a"},
-        {"slot": "testing", "tool": "codex", "output": str(failed), "agent": "a"},
-    ])
-    _write_carry_forward_collector(review_tmpdir / "collector-results.env", [
-        {"REVIEWER_FILE": str(phase2_output), "TOOL": "cursor", "STATUS": "OK", "EXIT_CODE": "0"},
-        {"REVIEWER_FILE": str(failed), "TOOL": "codex", "STATUS": "NOT_SUBSTANTIVE", "EXIT_CODE": "0"},
-    ])
-    _ = (review_tmpdir / "degraded-retry.flag").touch()
-    launch_manifest, carry_outputs, carry_tools = review_dispatch_panel._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
-        manifest=manifest, review_tmpdir=review_tmpdir
-    )
-    assert [str(row["slot"]) for row in _panel_manifest_rows(launch_manifest)] == ["testing"]
-    assert carry_outputs == [str(phase2_output)]
-    assert carry_tools == ["cursor"]
 
 
-def test_degraded_retry_carry_forward_all_ok_returns_empty(tmp_path: Path) -> None:
-    review_tmpdir = tmp_path / "round-1"
-    review_tmpdir.mkdir()
-    ok_a = review_tmpdir / "cursor-specialist-correctness-output.txt"
-    ok_b = review_tmpdir / "codex-specialist-testing-output.txt"
-    for output in (ok_a, ok_b):
-        _ = output.write_text("findings\n", encoding="utf-8")
-    manifest = review_tmpdir / "panel-manifest.ndjson"
-    _write_carry_forward_manifest(manifest, [
-        {"slot": "correctness", "tool": "cursor", "output": str(ok_a), "agent": "a"},
-        {"slot": "testing", "tool": "codex", "output": str(ok_b), "agent": "a"},
-    ])
-    _write_carry_forward_collector(review_tmpdir / "collector-results.env", [
-        {"REVIEWER_FILE": str(ok_a), "TOOL": "cursor", "STATUS": "OK", "EXIT_CODE": "0"},
-        {"REVIEWER_FILE": str(ok_b), "TOOL": "codex", "STATUS": "OK", "EXIT_CODE": "0"},
-    ])
-    _ = (review_tmpdir / "degraded-retry.flag").touch()
-    launch_manifest, carry_outputs, carry_tools = review_dispatch_panel._degraded_retry_carry_forward(  # pyright: ignore[reportPrivateUsage]
-        manifest=manifest, review_tmpdir=review_tmpdir
-    )
-    # Defensive: nothing left to re-launch falls back to launching the full panel.
-    assert launch_manifest == manifest
-    assert not carry_outputs
-    assert not carry_tools
 
 
-def test_dispatch_panel_degraded_retry_carries_forward_substantive_slots(tmp_path: Path) -> None:
-    case_dir = tmp_path / "carry-forward"
-    case_dir.mkdir()
-    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
-    _write_dispatch_vendor_stubs(stub_bin)
-    base_env = {
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "LARCH_QUIET_DISABLE": "1",
-        "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
-        "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
-    }
-    panel_args = (
-        "dispatch-panel", "--mode", "diff", "--diff-file", str(case_dir / "review.diff"),
-        "--review-tmpdir", str(case_dir), "--codex-available", "true", "--cursor-available", "true",
-        "--panel", "simple", "--plan-file", str(case_dir / "plan.md"),
-    )
-    # First pass (no flag) materializes the panel manifest.
-    first_stub = tmp_path / "waterfall-first.sh"
-    _write_executable(first_stub, "#!/usr/bin/env bash\nprintf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=\\nALL_OUTPUT_TOOLS=\\n'\n")
-    first = run_review(*panel_args, env={**base_env, "DISPATCH_WATERFALL": str(first_stub)})
-    assert first.returncode == 0, first.stderr
-    rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
-    assert len(rows) >= 2
-    # Simulate first-pass results: every slot substantive except the first.
-    relaunch_output = str(rows[0]["output"])
-    carried = [str(row["output"]) for row in rows[1:]]
-    for output in (relaunch_output, *carried):
-        _ = Path(output).write_text("findings\n", encoding="utf-8")
-    collector_text = f"REVIEWER_FILE={relaunch_output}\nTOOL={rows[0]['tool']}\nSTATUS=NOT_SUBSTANTIVE\nEXIT_CODE=0\n\n"
-    for row in rows[1:]:
-        collector_text += f"REVIEWER_FILE={row['output']}\nTOOL={row['tool']}\nSTATUS=OK\nEXIT_CODE=0\n\n"
-    _ = (case_dir / "collector-results.env").write_text(collector_text, encoding="utf-8")
-    _ = (case_dir / "degraded-retry.flag").touch()
-    # Retry pass: only the NOT_SUBSTANTIVE slot is re-launched; OK slots carry forward.
-    retry_stub = tmp_path / "waterfall-retry.sh"
-    argv_log = tmp_path / "waterfall-retry.argv"
-    _write_executable(retry_stub, f"#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"{argv_log}\"\nprintf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=\\nALL_OUTPUT_TOOLS=\\n'\n")
-    retry = run_review(*panel_args, env={**base_env, "DISPATCH_WATERFALL": str(retry_stub)})
-    assert retry.returncode == 0, retry.stderr
-    match = re.search(r"--slots-file (\S+)", argv_log.read_text(encoding="utf-8"))
-    assert match is not None
-    relaunch_rows = _panel_manifest_rows(Path(match.group(1)))
-    relaunch_outputs = {str(row["output"]) for row in relaunch_rows}
-    assert relaunch_output in relaunch_outputs
-    for output in carried:
-        assert output not in relaunch_outputs
-    external_line = next((line for line in retry.stdout.splitlines() if line.startswith("EXTERNAL_OUTPUT_FILES=")), "")
-    for output in carried:
-        assert output in external_line
 
 
 def test_review_core_threads_site_to_dispatch_panel_and_voters(tmp_path: Path) -> None:
@@ -3868,81 +2610,8 @@ def test_review_core_threads_site_to_dispatch_panel_and_voters(tmp_path: Path) -
     assert "site=implement Step 5" in voters_log.read_text(encoding="utf-8")
 
 
-def test_dispatch_panel_reuse_scout_parse_failed_missing_status(tmp_path: Path) -> None:
-    case_dir = tmp_path / "reuse-parse-failed"
-    case_dir.mkdir()
-    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    _ = (case_dir / "scout-round3-manifest.json").write_text(
-        json.dumps({"archetypes": [{"name": "api", "focus_area": "correctness", "weight": 1, "rationale": "r", "prompt_body": "p"}]}),
-        encoding="utf-8",
-    )
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
-    _write_dispatch_vendor_stubs(stub_bin)
-    result = run_review(
-        "dispatch-panel",
-        "--mode",
-        "diff",
-        "--diff-file",
-        str(case_dir / "review.diff"),
-        "--review-tmpdir",
-        str(case_dir),
-        "--codex-available",
-        "true",
-        "--cursor-available",
-        "true",
-        "--panel",
-        "hard",
-        "--plan-file",
-        str(case_dir / "plan.md"),
-        "--dynamic-archetypes",
-        "1",
-        "--round-num",
-        "3",
-        env={
-            "CLAUDE_PLUGIN_ROOT": str(ROOT),
-            "LARCH_QUIET_DISABLE": "1",
-            # The waterfall is Rust-owned; a Python-only run reaches it through
-            # the verified bootstrap backed by the shared test double.
-            "LARCH_BINARY": str(ROOT / "python" / "tests" / "support" / "rust_agent_stub.py"),
-            "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
-            "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
-        },
-    )
-    assert result.returncode == 0, result.stderr
-    assert "SCOUT_STATUS=parse-failed" in result.stdout
-    assert "SCOUT_FAIL_REASON=missing_status_sidecar" in result.stdout
-    assert "DYNAMIC_SLOTS=0" in result.stdout
 
 
-def test_dispatch_panel_limits_invalid_dynamic_archetypes_count(tmp_path: Path) -> None:
-    case_dir = tmp_path / "limits-invalid-dynamic"
-    case_dir.mkdir()
-    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
-    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
-    result = run_review(
-        "dispatch-panel",
-        "--mode",
-        "diff",
-        "--diff-file",
-        str(case_dir / "review.diff"),
-        "--review-tmpdir",
-        str(case_dir),
-        "--codex-available",
-        "true",
-        "--cursor-available",
-        "true",
-        "--panel",
-        "hard",
-        "--plan-file",
-        str(case_dir / "plan.md"),
-        "--dynamic-archetypes",
-        "9",
-        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1"},
-    )
-    assert result.returncode == 2
-    assert "must be an integer from 0 to 1" in result.stderr
 
 
 def test_collect_findings_done_sentinel_wait_success(tmp_path: Path) -> None:
@@ -4532,54 +3201,6 @@ def test_check_reviewer_failure_threshold_dyn_output_files_only(tmp_path: Path) 
     assert "COUNTED_SLOTS=1" in result.stdout
 
 
-def test_dispatch_panel_prune_warn_and_waterfall_straggler_drop(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("LARCH_REVIEWER_PRUNE", "enabled")
-    plan = tmp_path / "plan.txt"
-    plan.write_text("plan\n", encoding="utf-8")
-    review_tmpdir = tmp_path / "review"
-    review_tmpdir.mkdir()
-    ledger = tmp_path / "reviewer-prune-ledger.tsv"
-    ledger.write_text("combo\tround\taccepted\trejected\ttotal\n", encoding="utf-8")
-    dropped = review_tmpdir / "panel.output-files.dropped-slots"
-    dropped.write_text("testing\tcursor\tstraggler-dropped\tcut\n", encoding="utf-8")
-    waterfall = tmp_path / "waterfall.sh"
-    _write_executable(
-        waterfall,
-        f"""#!/usr/bin/env bash
-set -euo pipefail
-printf 'ALL_OUTPUT_FILES=\\nALL_OUTPUT_TOOLS=\\n'
-printf 'DROPPED_SLOTS_FILE={dropped}\\n'
-printf 'STRAGGLER_DROPPED_COUNT=1\\n'
-printf 'WARN=reviewer-straggler-dropped\\n'
-printf 'DISPATCH_OK=true\\nSTATIC_DISPATCH_OK=true\\nDYNAMIC_DISPATCH_OK=true\\n'
-""",
-    )
-
-    result = run_review(
-        "dispatch-panel",
-        "--mode",
-        "diff",
-        "--review-tmpdir",
-        str(review_tmpdir),
-        "--codex-available",
-        "true",
-        "--cursor-available",
-        "true",
-        "--plan-file",
-        str(plan),
-        "--round-num",
-        "2",
-        "--prune-ledger",
-        str(ledger),
-        env={"DISPATCH_WATERFALL": str(waterfall)},
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "WARN=reviewer-prune:" in result.stdout
-    assert "WATERFALL_WARN=reviewer-straggler-dropped" in result.stdout
 
 
 def test_review_core_real_threshold_straggler_static_not_counted_as_failure(tmp_path: Path) -> None:
@@ -4804,115 +3425,10 @@ def test_apply_findings_with_coder_logs_panel_prompt_size(tmp_path: Path, monkey
 # pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false
 
 
-def test_dispatch_panel_trivial_uses_codex_singles_and_tier_kvs(tmp_path: Path) -> None:
-    plan = tmp_path / "plan.txt"
-    plan.write_text("plan", encoding="utf-8")
-    waterfall = tmp_path / "waterfall.sh"
-    _write_executable(waterfall, """#!/usr/bin/env bash
-set -euo pipefail
-printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nDYNAMIC_DISPATCH_OK=true\n'
-""")
-    env = {**os.environ, "DISPATCH_WATERFALL": str(waterfall)}
-
-    proc = run_review(
-        "dispatch-panel",
-        "--mode", "diff",
-        "--review-tmpdir", str(tmp_path / "review"),
-        "--codex-available", "true",
-        "--cursor-available", "true",
-        "--tier", "TRIVIAL",
-        "--dynamic-archetypes", "0",
-        "--plan-file", str(plan),
-        env=env,
-    )
-
-    assert proc.returncode == 0
-    rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
-    assert [(row["slot"], row["tool"]) for row in rows] == [
-        ("correctness", "cursor"),
-        ("edge-cases", "cursor"),
-        ("testing", "cursor"),
-    ]
-    assert all("cursor_model" not in row for row in rows)
-    assert "PANEL_SHAPE=singles" in proc.stdout
-    assert "PANEL_TIER=TRIVIAL" in proc.stdout
-    assert "PANEL_ROUND_CAP=2" in proc.stdout
-    assert "STATIC_SLOT_COUNT=3" in proc.stdout
-    assert "SLOT_COUNT=3" in proc.stdout
 
 
-def test_dispatch_panel_hard_uses_pairs_and_terra_codex_review_role(tmp_path: Path) -> None:
-    plan = tmp_path / "plan.txt"
-    plan.write_text("plan", encoding="utf-8")
-    waterfall = tmp_path / "waterfall.sh"
-    _write_executable(waterfall, """#!/usr/bin/env bash
-set -euo pipefail
-printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nDYNAMIC_DISPATCH_OK=true\n'
-""")
-    env = {**os.environ, "DISPATCH_WATERFALL": str(waterfall)}
-
-    proc = run_review(
-        "dispatch-panel",
-        "--mode", "diff",
-        "--review-tmpdir", str(tmp_path / "review"),
-        "--codex-available", "true",
-        "--cursor-available", "true",
-        "--tier", "HARD",
-        "--dynamic-archetypes", "0",
-        "--plan-file", str(plan),
-        env=env,
-    )
-
-    assert proc.returncode == 0
-    rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
-    assert {row["tool"] for row in rows} == {"codex", "cursor"}
-    roles_by_slot = {str(row["slot"]): str(row.get("model_role")) for row in rows if row["tool"] == "codex"}
-    assert roles_by_slot == {"correctness": "review", "edge-cases": "review", "testing": "review"}
-    resolved_by_slot = {str(row["slot"]): str(row.get("resolved_model")) for row in rows if row["tool"] == "codex"}
-    assert resolved_by_slot == {
-        "correctness": "gpt-5.6-terra",
-        "edge-cases": "gpt-5.6-terra",
-        "testing": "gpt-5.6-terra",
-    }
-    cursor_rows = [row for row in rows if row["tool"] == "cursor"]
-    assert {row["slot"] for row in cursor_rows} == {"correctness", "edge-cases", "testing"}
-    assert all("cursor_model" not in row for row in cursor_rows)
-    assert all(row["resolved_model"] == config.CURSOR_DEFAULT_MODEL for row in cursor_rows)
-    assert "PANEL_SHAPE=pairs" in proc.stdout
-    assert "PANEL_ROUND_CAP=2" in proc.stdout
-    assert "STATIC_SLOT_COUNT=6" in proc.stdout
-    assert "SLOT_COUNT=6" in proc.stdout
 
 
-def test_dispatch_panel_codex_unavailable_emits_default_cursor_specialists(tmp_path: Path) -> None:
-    plan = tmp_path / "plan.txt"
-    plan.write_text("plan", encoding="utf-8")
-    waterfall = tmp_path / "waterfall.sh"
-    _write_executable(waterfall, """#!/usr/bin/env bash
-set -euo pipefail
-printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nDYNAMIC_DISPATCH_OK=true\n'
-""")
-    env = {**os.environ, "DISPATCH_WATERFALL": str(waterfall)}
-
-    proc = run_review(
-        "dispatch-panel",
-        "--mode", "diff",
-        "--review-tmpdir", str(tmp_path / "review"),
-        "--codex-available", "false",
-        "--cursor-available", "true",
-        "--tier", "MODERATE",
-        "--dynamic-archetypes", "0",
-        "--plan-file", str(plan),
-        env=env,
-    )
-
-    assert proc.returncode == 0
-    rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
-    assert {row["tool"] for row in rows} == {"cursor"}
-    assert {row["slot"] for row in rows} == {"correctness", "edge-cases", "testing"}
-    assert all("cursor_model" not in row for row in rows)
-    assert all(row["resolved_model"] == config.CURSOR_DEFAULT_MODEL for row in rows)
-    assert "STATIC_SLOT_COUNT=3" in proc.stdout
 
 
 def test_review_core_tier_cap_controls_fix_required(tmp_path: Path) -> None:
@@ -4938,25 +3454,6 @@ def test_review_core_tier_cap_controls_fix_required(tmp_path: Path) -> None:
     assert "EFFECTIVE_ROUND_CAP=2" in hard.stdout
 
 
-def test_forced_plan_fidelity_row_is_disabled_for_review_panel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from larch.review import review_dispatch_panel  # noqa: PLC0415
-
-    implement_tmpdir = tmp_path / "impl"
-    implement_tmpdir.mkdir()
-    (implement_tmpdir / "plan-coverage.env").write_text("PLAN_FIDELITY_FORCED=true\n", encoding="utf-8")
-    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(implement_tmpdir))
-    manifest = tmp_path / "panel.ndjson"
-    manifest.write_text("", encoding="utf-8")
-
-    review_dispatch_panel._append_forced_plan_fidelity_row(  # pyright: ignore[reportPrivateUsage]
-        manifest=manifest,
-        review_tmpdir=tmp_path,
-        codex_slots_available=True,
-        cursor_slots_available=True,
-        tier=config.DIFFICULTY_TIER_HARD,
-    )
-
-    assert _panel_manifest_rows(manifest) == []
 
 
 def test_prune_keeps_prune_exempt_rows_without_history(tmp_path: Path) -> None:

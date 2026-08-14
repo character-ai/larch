@@ -53,6 +53,7 @@ scripts/test-quick-mode-docs-sync.sh
 scripts/test-read-result-env.sh
 scripts/test-references-headers.sh
 scripts/test-render-cost-line-callsites.sh
+scripts/test-review-dispatch-panel.sh
 scripts/test-resolve-upstream-larch-repo.sh
 scripts/test-sessionstart-health.sh
 scripts/test-subskill-anchors.sh

@@ -30,12 +30,18 @@ pub enum ReviewCommand {
     #[allow(clippy::struct_field_names)]
     // raw compatibility arguments name the legacy boundary.
     GatherContext(AgentRawArguments),
+    /// Materialize and dispatch the reviewer panel.
+    #[command(name = "dispatch-panel", disable_help_flag = true)]
+    DispatchPanel(AgentRawArguments),
 }
 
 /// Dispatch one Rust-owned review command.
 pub fn run(command: ReviewCommand) -> ExitCode {
     match command {
         ReviewCommand::GatherContext(arguments) => gather_context(&arguments.arguments),
+        ReviewCommand::DispatchPanel(arguments) => {
+            crate::review_dispatch_panel::run(&arguments.arguments)
+        }
     }
 }
 

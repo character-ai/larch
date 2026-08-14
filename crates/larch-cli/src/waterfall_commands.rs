@@ -220,6 +220,7 @@ struct Options {
     difficulty: String,
     claude_read_tools_add_dir: String,
     panel_artifact_dir: String,
+    panel_round_num: String,
 }
 
 /// The result-acceptance gates one dispatch applies to every collected slot.
@@ -248,6 +249,57 @@ pub fn dispatch_waterfall(arguments: &AgentRawArguments) -> ExitCode {
     }
 }
 
+/// The result of one in-process waterfall dispatch.
+///
+/// `review dispatch-panel` is the only other command allowed to invoke this
+/// layer. Keeping the result structured lets that command retain its legacy
+/// envelope without spawning another larch process or recapturing stdout.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct WaterfallDispatchOutcome {
+    phase1_slots: Vec<String>,
+    phase2_slots: Vec<String>,
+    phase3_slots: Vec<String>,
+    pub(crate) all_output_files: Vec<String>,
+    pub(crate) all_output_tools: Vec<String>,
+    pub(crate) paths_file: String,
+    pub(crate) dropped_slots_file: String,
+    fallback_count: u64,
+    pub(crate) straggler_dropped_count: usize,
+    invalid_slot_drop_count: usize,
+    invalid_slots_file: String,
+    pub(crate) warning: String,
+    pub(crate) dispatch_ok: bool,
+    pub(crate) static_dispatch_ok: bool,
+    pub(crate) dynamic_dispatch_ok: bool,
+    all_slots_dropped: bool,
+}
+
+/// Dispatch a review panel through the sole waterfall launch owner.
+///
+/// This deliberately accepts the same raw grammar as `agent
+/// dispatch-waterfall`, but returns the report instead of emitting its own
+/// stdout envelope. Vendor processes still start only in this module.
+pub(crate) fn dispatch_for_review(
+    arguments: &[OsString],
+) -> Result<WaterfallDispatchOutcome, String> {
+    let options = match parse_arguments(arguments)? {
+        ParsedArguments::Options(options) => options,
+        ParsedArguments::Help => {
+            return Err("dispatch-waterfall help is not a dispatch request".to_owned());
+        }
+        ParsedArguments::Unknown(option) => {
+            return Err(format!("{PROG}: unknown option: {option}"));
+        }
+    };
+    let registry = LaunchRegistry::create();
+    let outcome = dispatch(&options, &registry);
+    registry.terminate_all();
+    if registry.is_cancelled() {
+        return Err("dispatch-with-waterfall.sh: dispatch cancelled".to_owned());
+    }
+    outcome
+}
+
 fn run_dispatch(options: &Options) -> ExitCode {
     let registry = LaunchRegistry::create();
     let outcome = dispatch(options, &registry);
@@ -258,7 +310,10 @@ fn run_dispatch(options: &Options) -> ExitCode {
         return ExitCode::from(SHUTDOWN_EXIT_CODE);
     }
     match outcome {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(outcome) => {
+            emit_report(&outcome);
+            ExitCode::SUCCESS
+        }
         Err(message) => {
             refuse(&message);
             ExitCode::from(2)
@@ -310,6 +365,7 @@ fn value_field<'a>(raw: &'a mut RawOptions, flag: &str) -> Option<&'a mut String
         "--difficulty" => &mut options.difficulty,
         "--claude-read-tools-add-dir" => &mut options.claude_read_tools_add_dir,
         "--panel-artifact-dir" => &mut options.panel_artifact_dir,
+        "--panel-round-num" => &mut options.panel_round_num,
         "--codex-present" | "--codex-available" => &mut raw.codex_present,
         "--cursor-present" | "--cursor-available" => &mut raw.cursor_present,
         _ => return None,
@@ -1001,7 +1057,13 @@ fn panel_dispatch_rows(
             directory.as_os_str().to_owned(),
         ));
     }
-    if let Some(number) = round_number_from_path(artifact_dir) {
+    if let Some(number) = options
+        .panel_round_num
+        .parse::<u64>()
+        .ok()
+        .filter(|number| *number > 0)
+        .or_else(|| round_number_from_path(artifact_dir))
+    {
         rows.push((
             ChildEnvironment::LarchPanelRoundNum,
             OsString::from(number.to_string()),
@@ -1836,7 +1898,10 @@ struct PhaseOutputs {
     phase3: Vec<String>,
 }
 
-fn dispatch(options: &Options, registry: &LaunchRegistry) -> Result<(), String> {
+fn dispatch(
+    options: &Options,
+    registry: &LaunchRegistry,
+) -> Result<WaterfallDispatchOutcome, String> {
     let gates = ResultGates {
         result: compile_pattern(&options.require_result_pattern, "--require-result-pattern")?,
         first_line: compile_pattern(
@@ -1897,7 +1962,7 @@ fn dispatch(options: &Options, registry: &LaunchRegistry) -> Result<(), String> 
     if registry.is_cancelled() {
         // A terminated dispatch publishes no envelope: its slots were cut, so a
         // success-shaped key-value block would misreport the round.
-        return Ok(());
+        return Ok(WaterfallDispatchOutcome::default());
     }
     write_counter(&options.fallback_counter_file, fallback_count);
     let report = DispatchReport {
@@ -2075,7 +2140,7 @@ struct DispatchReport<'a> {
     resolved_paths_file: String,
 }
 
-fn publish(report: &DispatchReport<'_>) -> Result<(), String> {
+fn publish(report: &DispatchReport<'_>) -> Result<WaterfallDispatchOutcome, String> {
     for (index, output) in report.results.outputs.iter().enumerate() {
         if output.contains(['\n', '\r']) {
             return Err(format!(
@@ -2108,62 +2173,78 @@ fn publish(report: &DispatchReport<'_>) -> Result<(), String> {
         String::new()
     };
     write_paths_file(&report.resolved_paths_file, &report.results.outputs)?;
-    emit_report(
-        report,
-        &all_output_files,
-        &all_output_tools,
-        &dropped_slots_file,
-    );
-    Ok(())
-}
-
-fn emit_report(
-    report: &DispatchReport<'_>,
-    all_output_files: &[String],
-    all_output_tools: &[String],
-    dropped_slots_file: &str,
-) {
-    let straggler_dropped = report
+    let straggler_dropped_count = report
         .results
         .drops
         .iter()
         .filter(|drop| drop.reason == "straggler-dropped")
         .count();
-    emit_kv("PHASE1_SLOTS", &report.phase_outputs.phase1.join(" "));
-    emit_kv("PHASE2_SLOTS", &report.phase_outputs.phase2.join(" "));
-    emit_kv("PHASE3_SLOTS", &report.phase_outputs.phase3.join(" "));
-    emit_kv("ALL_OUTPUT_FILES", &all_output_files.join(" "));
-    emit_kv("ALL_OUTPUT_FILES_PATH", &report.resolved_paths_file);
-    emit_kv("ALL_OUTPUT_TOOLS", &all_output_tools.join(" "));
-    emit_kv("FALLBACK_COUNT", &report.fallback_count.to_string());
-    emit_kv(
-        "COMBINED_FALLBACK_COUNT",
-        &report.fallback_count.to_string(),
-    );
-    emit_kv("STRAGGLER_DROPPED_COUNT", &straggler_dropped.to_string());
     let mut warnings = Vec::new();
     if report.fallback_count > fallback_warn_threshold() {
         warnings.push("cost-fallback-exceeded-threshold");
     }
-    if straggler_dropped > 0 {
+    if straggler_dropped_count > 0 {
         warnings.push("reviewer-straggler-dropped");
     }
     if report.invalid_count > 0 {
-        emit_kv("INVALID_SLOT_DROP_COUNT", &report.invalid_count.to_string());
-        emit_kv("INVALID_SLOT_DROPS_FILE", &report.invalid_slots_file);
         warnings.push("invalid-slots-dropped");
     }
-    if !warnings.is_empty() {
-        emit_kv("WARN", &warnings.join(";"));
+    let all_slots_dropped =
+        report.options.no_fallback && all_output_files.is_empty() && !report.slots.is_empty();
+    Ok(WaterfallDispatchOutcome {
+        phase1_slots: report.phase_outputs.phase1.clone(),
+        phase2_slots: report.phase_outputs.phase2.clone(),
+        phase3_slots: report.phase_outputs.phase3.clone(),
+        all_output_files,
+        all_output_tools,
+        paths_file: report.resolved_paths_file.clone(),
+        dropped_slots_file,
+        fallback_count: report.fallback_count,
+        straggler_dropped_count,
+        invalid_slot_drop_count: report.invalid_count,
+        invalid_slots_file: report.invalid_slots_file.clone(),
+        warning: warnings.join(";"),
+        dispatch_ok: report.status.dispatch_ok,
+        static_dispatch_ok: report.status.static_ok,
+        dynamic_dispatch_ok: report.status.dynamic_ok,
+        all_slots_dropped,
+    })
+}
+
+fn emit_report(outcome: &WaterfallDispatchOutcome) {
+    emit_kv("PHASE1_SLOTS", &outcome.phase1_slots.join(" "));
+    emit_kv("PHASE2_SLOTS", &outcome.phase2_slots.join(" "));
+    emit_kv("PHASE3_SLOTS", &outcome.phase3_slots.join(" "));
+    emit_kv("ALL_OUTPUT_FILES", &outcome.all_output_files.join(" "));
+    emit_kv("ALL_OUTPUT_FILES_PATH", &outcome.paths_file);
+    emit_kv("ALL_OUTPUT_TOOLS", &outcome.all_output_tools.join(" "));
+    emit_kv("FALLBACK_COUNT", &outcome.fallback_count.to_string());
+    emit_kv(
+        "COMBINED_FALLBACK_COUNT",
+        &outcome.fallback_count.to_string(),
+    );
+    emit_kv(
+        "STRAGGLER_DROPPED_COUNT",
+        &outcome.straggler_dropped_count.to_string(),
+    );
+    if outcome.invalid_slot_drop_count > 0 {
+        emit_kv(
+            "INVALID_SLOT_DROP_COUNT",
+            &outcome.invalid_slot_drop_count.to_string(),
+        );
+        emit_kv("INVALID_SLOT_DROPS_FILE", &outcome.invalid_slots_file);
     }
-    emit_bool("DISPATCH_OK", report.status.dispatch_ok);
-    emit_bool("STATIC_DISPATCH_OK", report.status.static_ok);
-    emit_bool("DYNAMIC_DISPATCH_OK", report.status.dynamic_ok);
-    if report.options.no_fallback && all_output_files.is_empty() && !report.slots.is_empty() {
+    if !outcome.warning.is_empty() {
+        emit_kv("WARN", &outcome.warning);
+    }
+    emit_bool("DISPATCH_OK", outcome.dispatch_ok);
+    emit_bool("STATIC_DISPATCH_OK", outcome.static_dispatch_ok);
+    emit_bool("DYNAMIC_DISPATCH_OK", outcome.dynamic_dispatch_ok);
+    if outcome.all_slots_dropped {
         emit_kv("ALL_SLOTS_DROPPED", "true");
     }
-    if !dropped_slots_file.is_empty() {
-        emit_kv("DROPPED_SLOTS_FILE", dropped_slots_file);
+    if !outcome.dropped_slots_file.is_empty() {
+        emit_kv("DROPPED_SLOTS_FILE", &outcome.dropped_slots_file);
     }
 }
 
