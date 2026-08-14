@@ -14,13 +14,13 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("difficulty", "validate-rating"): ("larch.calibration.difficulty", "validate_rating_main", True),
-    ("difficulty", "extract-plan-metadata"): ("larch.calibration.difficulty", "extract_plan_metadata_main", True),
-    ("difficulty", "write-record"): ("larch.calibration.difficulty", "write_record_main", True),
-    ("difficulty", "render-rubric"): ("larch.calibration.difficulty", "render_rubric_main", False),
-    ("difficulty", "render-line"): ("larch.calibration.difficulty", "render_line_main", True),
-    ("difficulty", "resolve-panel"): ("larch.calibration.difficulty", "resolve_panel_main", True),
-    ("difficulty", "sync-labels"): ("larch.calibration.difficulty", "sync_labels_main", True),
+    ("calibration-replay", "rebuild-ballot"): ("larch.calibration.calibration_replay", "rebuild_ballot_main", False),
+    ("calibration-replay", "run-replay"): ("larch.calibration.calibration_replay", "run_replay_main", False),
+    ("calibration-replay", "validate-manifest"): (
+        "larch.calibration.calibration_replay",
+        "validate_manifest_main",
+        False,
+    ),
     ("debate", "abort"): ("larch.debate.orchestrator", "abort_main", True),
     ("debate", "adjudicate"): ("larch.debate.orchestrator", "adjudicate_main", True),
     ("debate", "adjudication-preview"): ("larch.debate.orchestrator", "adjudication_preview_main", True),

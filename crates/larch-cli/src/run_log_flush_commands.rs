@@ -20,7 +20,7 @@ use larch_adapters::{
 use crate::{
     argparse_compat::{ParsedCommandLine, parse_with_flags},
     execution_issue_commands::write_execution_issue_records,
-    python_verb::{plugin_root_directory, run_python_verb},
+    python_verb::plugin_root_directory,
     run_log_commands::resolve_log_root,
     run_log_entry_commands::{
         append_execution_issue, effort_level, main_model_for_source, plugin_version, read_lossy,
@@ -747,14 +747,8 @@ fn refresh_difficulty(context: &FlushContext) {
         return;
     }; if !record.is_file() || record.is_symlink() {
         return;
-    } let Ok(output) = run_python_verb(
-        [
-            os("difficulty"), os("write-record"), os("--output"), record.as_os_str().to_owned(),
-            os("--refresh-existing"), os("--refresh-repo-root"), repo_root.as_os_str().to_owned(),
-        ], PYTHON_TIMEOUT,
-    ) else {
-        return;
-    }; if !output.status().success() {
+    }
+    if crate::difficulty_commands::refresh_existing_at(&record, repo_root).is_err() {
         return;
     } let _ = stage_replace_batch(
         &context.log_root, "implement", &context.run_id, "difficulty-rating", &record,
