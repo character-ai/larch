@@ -18,6 +18,12 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ANALYZER="$SCRIPT_DIR/fluff-analysis.py"
+REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
+
+if [[ -z "${LARCH_BINARY:-}" ]]; then
+    LARCH_BINARY="$REPO_ROOT/python/tests/support/rust_agent_stub.py"
+    export LARCH_BINARY
+fi
 
 if [[ ! -r "$ANALYZER" ]]; then
     echo "ERROR: analyzer not readable at $ANALYZER" >&2
@@ -55,11 +61,11 @@ echo "== bootstrap path resolves repo python directory =="
     python3 - <<'PY'
 from pathlib import Path
 
-assert (Path(__file__).resolve().parents[3] / "python" / "larch" / "review" / "self_review_tally.py").is_file()
+assert (Path(__file__).resolve().parents[3] / "scripts" / "larch.sh").is_file()
 PY
 )
 PASS=$((PASS + 1))
-echo "  ok: script-dir bootstrap path reaches repo python helper"
+echo "  ok: script-dir bootstrap path reaches verified Rust entrypoint"
 
 FIX=$(mktemp -d "${TMPDIR:-/tmp}/fluff-fixture-XXXXXX")
 trap 'rm -rf "$FIX"' EXIT
@@ -234,6 +240,19 @@ assert_contains "$REPORT" "## Q1 — Low-acceptance semantic groups" "Q1 section
 assert_contains "$REPORT" "## Recommendations" "recommendations section"
 # the rejected nit carries refactor/cleaner text -> a fluff group should surface
 assert_contains "$REPORT" "theme:refactor/dry" "refactor group surfaced"
+
+python3 - "$ANALYZER" "$IMPL" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("fluff_analysis", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+def fail_run(*_args, **_kwargs):
+    raise AssertionError("primary JSONL must not invoke the Rust fallback")
+mod.proc.run = fail_run
+assert mod._extract_one_implement_run((sys.argv[2], None, None))
+PY
+PASS=$((PASS + 1))
+echo "  ok: primary JSONL bypasses self-review fallback"
 # severity table should separate important from nit
 assert_contains "$REPORT" "reviewer-authored body severity" "implement severity table"
 assert_contains "$REPORT" "## False-negative / under-acceptance metrics" "false-negative section appears by default"

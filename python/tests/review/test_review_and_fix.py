@@ -1523,7 +1523,13 @@ def test_write_self_review_tally_nonzero_tally_failure_writes_sidecars_once(tmp_
     (impl / "rejected-findings.md").write_text("### [Code Review] Self-review\n", encoding="utf-8")
 
     def fake_run(argv, **_kwargs):
-        if argv[2:4] == ["voting", "write-tally"]:
+        if argv[1:3] == ["voting", "write-tally"]:
+            findings = Path(_arg_value(argv, "--self-review-findings-file"))
+            rows = [
+                {"id": "SELF_REVIEW_ACCEPTED_1", "outcome": "accepted"},
+                {"id": "SELF_REVIEW_REJECTED_1", "outcome": "rejected"},
+            ]
+            findings.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
             return review_and_fix.proc.CommandResult(tuple(argv), 9, "tally stdout", "tally stderr", 0.0)
         # Rust-owned run-log verbs enter through the bootstrap script.
         if argv[1:3] == ["run-log", "write"]:
@@ -1578,7 +1584,7 @@ def test_self_review_prompt_reconciles_tally_counts_from_artifacts():
 
 
 def _fake_review_batch_run(argv: list[str], *, tally_result: review_and_fix.proc.CommandResult) -> review_and_fix.proc.CommandResult:
-    if argv[2:4] == ["voting", "write-tally"]:
+    if argv[1:3] == ["voting", "write-tally"]:
         return tally_result
     # Rust-owned run-log verbs enter through the bootstrap script, so the domain
     # and verb sit right after the entrypoint rather than after `python3 cli.py`.

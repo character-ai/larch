@@ -138,7 +138,11 @@ impl CleanInstallCase {
             | "clean-install-generate-reviewer-plan-fidelity-agent"
             | "clean-install-generate-reviewer-security-structure-tests-agent"
             | "clean-install-voting-code-review-classification-header"
-            | "clean-install-voting-findings-classification-header" => 2,
+            | "clean-install-voting-compose-tally-record"
+            | "clean-install-voting-findings-classification-header"
+            | "clean-install-voting-degraded-warning"
+            | "clean-install-voting-voter-status-block"
+            | "clean-install-voting-write-tally" => 2,
             // Every umbrella verb owns a real help action, so the default
             // clean-install `--help` probe succeeds.
             _ => 0,
@@ -1533,6 +1537,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "findings-classification-header",
     ),
     CleanInstallCase::new(
+        "clean-install-voting-compose-tally-record",
+        "voting",
+        "compose-tally-record",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-degraded-warning",
+        "voting",
+        "degraded-warning",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-effective-judges",
+        "voting",
+        "effective-judges",
+    ),
+    CleanInstallCase::new(
         "clean-install-voting-parse-rate-check",
         "voting",
         "parse-rate-check",
@@ -1541,6 +1560,26 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-voting-parse-rate-retry",
         "voting",
         "parse-rate-retry",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-scoreboard",
+        "voting",
+        "scoreboard",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-tally-vote",
+        "voting",
+        "tally-vote",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-voter-status-block",
+        "voting",
+        "voter-status-block",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-write-tally",
+        "voting",
+        "write-tally",
     ),
 ];
 
@@ -2975,7 +3014,7 @@ const PHASE_DETAIL_CASES: &[PhaseDetailFixture] = &[
         seeds: &[
             (
                 "plan-review/round-1/round-meta.json",
-                "{\"tally\":{\"ACCEPTED_COUNT\":\"3\",\"REJECTED_COUNT\":\"0\",\"EXONERATED_COUNT\":\"0\",\"NEUTRAL_COUNT\":\"0\",\"OOS_PROPOSED_COUNT\":\"1\",\"OOS_ACCEPTED_COUNT\":\"0\",\"OOS_REJECTED_COUNT\":\"0\"},\"summary\":{\"panel\":{\"total_slot_count\":3}}}\n",
+                "{\"tally\":{\"ACCEPTED_COUNT\":\"4\",\"REJECTED_COUNT\":\"0\",\"EXONERATED_COUNT\":\"0\",\"NEUTRAL_COUNT\":\"0\",\"OOS_PROPOSED_COUNT\":\"1\",\"OOS_ACCEPTED_COUNT\":\"0\",\"OOS_REJECTED_COUNT\":\"0\"},\"summary\":{\"panel\":{\"total_slot_count\":3}}}\n",
             ),
             (
                 "plan-review/round-1/plan-review-prune-label-map.tsv",
@@ -2983,7 +3022,7 @@ const PHASE_DETAIL_CASES: &[PhaseDetailFixture] = &[
             ),
             (
                 "plan-review/round-1/findings-classification.tsv",
-                "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_severity\tscope\nFINDING_SOLE\tSolo-Reviewer\taccepted\tYES\tminor\tin_scope\nFINDING_MULTI\tMulti-A, Multi-B\taccepted\tYES\tminor\tin_scope\nFINDING_WHITESPACE\tCursor-Pragmatic Codex-Arch\taccepted\tYES\tminor\tin_scope\nOOS_1\tOos-Reviewer\taccepted\tYES\tmajor\toos\n",
+                "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_severity\tscope\nFINDING_SOLE\tSolo-Reviewer\taccepted\tYES\tminor\tin_scope\nFINDING_MULTI\tMulti-A, Multi-B\taccepted\tYES\tminor\tin_scope\nFINDING_WHITESPACE\tCursor-Pragmatic Codex-Arch\taccepted\tYES\tminor\tin_scope\nFINDING_PARTIAL\tCursor-Pragmatic trailing-text\taccepted\tYES\tminor\tin_scope\nOOS_1\tOos-Reviewer\taccepted\tYES\tmajor\toos\n",
             ),
         ],
         environment: &[("LARCH_UNIQUE_FINDER_BONUS", "0.25")],

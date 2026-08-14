@@ -31,7 +31,6 @@ from larch.report import progress_file
 from larch.core import redact
 from larch.review import review_tally
 from larch.review.dispatch_shared import apply_new_process_group, optional_positive_float
-from larch.review import self_review_tally
 from larch.report import run_log_batch
 from larch.review import voting
 from larch.review.review_types import ReviewCoreStatus, parse_findings, parse_findings_text, read_finding_text
@@ -1338,27 +1337,6 @@ def write_rejected(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _self_review_findings_jsonl(*, accepted: int, rejected: int) -> str:
-    tally_data = {"mode": "self-review", "accepted_count": accepted, "rejected_count": rejected}
-    records: list[str] = []
-    for item in self_review_tally.self_review_tally_items(tally_data):
-        record = {
-            "id": item.finding_id,
-            "issue_number": "0",
-            "phase": "code-review",
-            "outcome": item.outcome,
-            "schema_version": "2",
-            "reviewer_slots": ["self-review"],
-            "round_num": "1",
-            "category": "",
-            "body_severity": "",
-            "focus_area": "",
-            "prose_body": "",
-        }
-        records.append(json.dumps(record, separators=(",", ":")))
-    return "".join(f"{record}\n" for record in records)
-
-
 def write_self_review_tally(argv: list[str] | None = None) -> int:
     """Emit the Step 5 self-review run-log artifacts (best effort).
 
@@ -1396,9 +1374,8 @@ def write_self_review_tally(argv: list[str] | None = None) -> int:
     batch_input = implement_tmpdir / "larch-log-batches-input"
     batch_input.mkdir(parents=True, exist_ok=True)
     findings_file = batch_input / "review-findings-full.jsonl"
-    _write_text(path=findings_file, text=_self_review_findings_jsonl(accepted=accepted, rejected=rejected))
     tally_result = _run([
-        "python3", str(_PY_CLI), "voting", "write-tally",
+        str(larch_entrypoint(_PLUGIN_ROOT)), "voting", "write-tally",
         "--log-root", str(log_root),
         "--skill", "implement",
         "--run-id", args.run_id,
@@ -1407,6 +1384,7 @@ def write_self_review_tally(argv: list[str] | None = None) -> int:
         "--rounds", "1",
         "--accepted", str(accepted),
         "--rejected", str(rejected),
+        "--self-review-findings-file", str(findings_file),
     ])
     observe_code_review_tally_flush(impl_tmpdir=implement_tmpdir, run_id=args.run_id, result=tally_result)
     if tally_result.returncode != 0:

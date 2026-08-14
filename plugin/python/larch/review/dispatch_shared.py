@@ -13,7 +13,8 @@ from typing import Literal, Protocol, cast
 
 from larch.agents import _launch_failure, slot_manifest
 from larch.core import config, external_defaults, logging_util, proc, rust_runtime
-from larch.review import _voting_calibration, voting
+from larch.core.repo_roots import larch_entrypoint
+from larch.review import _voting_calibration
 
 VoterRowLayout = Literal["code_review_sequential", "plan_review_interleaved"]
 PathsFilePolicy = Literal["always", "nonempty"]
@@ -365,19 +366,38 @@ def emit_final_voter_kvs(  # noqa: PLR0913 - row layout and paths policy are ind
     paths_file_policy: PathsFilePolicy,
     emit_kv: Callable[..., None] | None = None,
 ) -> None:
-    """Emit the stable voter contract in-process, followed by dispatch status."""
+    """Emit the stable voter contract from its Rust owner, followed by dispatch status."""
     emitter = emit_kv or logging_util.emit_kv
     voters = (
         (path_for_wire(state.voter_1_path), state.voter_1_tool, state.voter_1_status, state.voter_1_parse_rate_status),
         (path_for_wire(state.voter_2_path), state.voter_2_tool, state.voter_2_status, state.voter_2_parse_rate_status),
         (path_for_wire(state.voter_3_path), state.voter_3_tool, state.voter_3_status, state.voter_3_parse_rate_status),
     )
-    rows = voting.build_voter_status_rows(
-        voters=voters,
-        voter_paths_file=path_for_wire(voter_paths_file),
-        row_layout=row_layout,
-        paths_file_policy=paths_file_policy,
+    result = proc.run([
+        str(larch_entrypoint()), "voting", "voter-status-block",
+        "--row-layout", row_layout, "--paths-file-policy", paths_file_policy,
+        *(value for voter in voters for value in voter), path_for_wire(voter_paths_file),
+    ])
+    if result.returncode != 0:
+        raise RuntimeError(f"voter-status-block failed with rc={result.returncode}")
+    rows: list[tuple[str, str]] = []
+    expected_keys = {
+        f"VOTER_{voter}_{suffix}"
+        for voter in range(1, VOTER_SLOT_COUNT + 1)
+        for suffix in ("PATH", "TOOL", "STATUS", "PARSE_RATE_STATUS")
+    }
+    paths_present = paths_file_policy == "always" or (
+        voter_paths_file is not None and voter_paths_file.is_file() and voter_paths_file.stat().st_size > 0
     )
+    if paths_present:
+        expected_keys.add("VOTER_PATHS_FILE")
+    for line in result.stdout.splitlines():
+        key, separator, value = line.partition("=")
+        if not separator or key not in expected_keys or any(row_key == key for row_key, _value in rows):
+            raise RuntimeError("voter-status-block emitted a malformed row")
+        rows.append((key, value))
+    if {key for key, _value in rows} != expected_keys:
+        raise RuntimeError("voter-status-block emitted an incomplete row set")
     for key, value in rows:
         emitter(key=key, value=value)
     emitter(key="DISPATCH_OK", value=dispatch_ok)

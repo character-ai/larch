@@ -34,6 +34,12 @@ session-private artifacts with private creation modes where supported. These che
 accidental cross-root writes and symlink substitution; they do not turn vendor
 input or output into a publication-safe artifact.
 
+The Rust-owned `voting scoreboard` treats its caller-selected output as a
+local private artifact. It rejects replaceable symlinks in the output path
+before creating missing parents, confines that creation below the nearest
+existing directory, and publishes the final file by private atomic replacement.
+This writer does not redact scoreboard content or authorize public publication.
+
 ## Redaction and Secret Scanning
 
 ### Redaction invariants

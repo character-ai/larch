@@ -562,7 +562,7 @@ When composite stdout lacks `STEP5_REVIEW_STATUS=` and lacks `NEXT_ACTION=checks
 <!-- # intentionally non-stable: step-5-resume.sh captures wall-clock time for round duration -->
 - **`mav-resume-past-cap`**: follow the `mav-resume-past-cap` branch body in the Step 5 review-branches reference, then follow the same post-Step-5 chain as `complete`.
 
-Note: `review-and-fix CLI` runs `flush_review_batches` after each successful `_implement_round_body` round, and best-effort once on many stall paths, writing `code-review-tally` and `review-findings-full`. `compose_review_findings_output` passes `--issue 0` as the contract; consumers join by `RUN_ID`. Step 5 needs no extra main-agent `python/cli.py voting write-tally` or `review compose-findings` call.
+Note: `review-and-fix CLI` runs `flush_review_batches` after each successful `_implement_round_body` round, and best-effort once on many stall paths, writing `code-review-tally` and `review-findings-full`. `compose_review_findings_output` passes `--issue 0` as the contract; consumers join by `RUN_ID`. Step 5 needs no extra main-agent `scripts/larch.sh voting write-tally` or `review compose-findings` call.
 
 ### Track Rejected Code Review Findings
 

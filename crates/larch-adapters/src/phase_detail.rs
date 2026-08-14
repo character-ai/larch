@@ -8,6 +8,7 @@
 use crate::{TemporaryRoot, atomic_write_utf8_in, read_kv_raw, read_optional_utf8_lossy};
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
+use larch_core::review::{raw_sole_finder_attribution, split_classification_attribution};
 use larch_core::{
     CLAUDE_FABLE_5_MODEL, CLAUDE_HAIKU_4_5_MODEL, CLAUDE_OPUS_4_8_MODEL, CLAUDE_SONNET_4_6_MODEL,
     CODEX_DEFAULT_MODEL, CODEX_MINI_MODELS, CODEX_REVIEW_MODEL_DEFAULT, CURSOR_COMPOSER_BASE_RATES,
@@ -2211,6 +2212,7 @@ fn top_reviewers_from_classification(
 ) -> Vec<(String, f64)> {
     let mut scores: BTreeMap<String, f64> = BTreeMap::new();
     let corpus = attribution_labels(round_dirs);
+    let corpus_labels = corpus.into_iter().collect::<Vec<_>>();
     let bonus = env::var("LARCH_UNIQUE_FINDER_BONUS")
         .ok()
         .and_then(|value| value.parse::<f64>().ok())
@@ -2225,8 +2227,8 @@ fn top_reviewers_from_classification(
                 continue;
             };
             let cell = row.value(column);
-            let raw_sole_finder = raw_sole_finder_attribution(cell, column, &corpus);
-            let mut reviewers = split_classification_attribution(cell, column, &corpus);
+            let raw_sole_finder = raw_sole_finder_attribution(cell, column, &corpus_labels);
+            let mut reviewers = split_classification_attribution(cell, column, &corpus_labels);
             if reviewers.is_empty() && column == "finding_reviewers" {
                 reviewers = cell
                     .trim()
@@ -2304,125 +2306,6 @@ fn classification_reviewer_column(row: &ClassificationRow) -> Option<&'static st
     ["finding_reviewers", "reviewer_slots"]
         .into_iter()
         .find(|column| row.header.iter().any(|header| header == column))
-}
-
-fn split_classification_attribution(
-    cell: &str,
-    column: &str,
-    labels: &BTreeSet<String>,
-) -> Vec<String> {
-    let cell = cell.trim();
-    if cell.is_empty() {
-        return Vec::new();
-    }
-    match column {
-        "finding_reviewers" => tokenize_finding_reviewers(cell, labels),
-        "reviewer_slots" => cell
-            .split('|')
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
-            .collect(),
-        _other => vec![cell.to_owned()],
-    }
-}
-
-fn raw_sole_finder_attribution(cell: &str, column: &str, labels: &BTreeSet<String>) -> Vec<String> {
-    let cell = cell.trim();
-    if cell.is_empty() {
-        return Vec::new();
-    }
-    if column != "finding_reviewers" {
-        return split_classification_attribution(cell, column, labels);
-    }
-    let parts: Vec<&str> = cell
-        .split(',')
-        .map(str::trim)
-        .filter(|part| !part.is_empty())
-        .collect();
-    if parts.len() != 1 {
-        return Vec::new();
-    }
-    let tokens = tokenize_finding_reviewers(parts[0], labels);
-    if tokens.is_empty() {
-        return parts.into_iter().map(ToOwned::to_owned).collect();
-    }
-    if finding_reviewer_segment_is_fully_tokenized(parts[0], labels) {
-        tokens
-    } else {
-        Vec::new()
-    }
-}
-
-fn tokenize_finding_reviewers(cell: &str, labels: &BTreeSet<String>) -> Vec<String> {
-    let candidates = reviewer_label_candidates(labels);
-    let mut tokens = Vec::new();
-    let mut seen = BTreeSet::new();
-    for segment in cell
-        .split(',')
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty())
-    {
-        if labels.contains(segment) {
-            if seen.insert(segment.to_owned()) {
-                tokens.push(segment.to_owned());
-            }
-            continue;
-        }
-        let mut position = 0;
-        while position < segment.len() {
-            let tail = &segment[position..];
-            if tail.starts_with(char::is_whitespace) {
-                position += tail.chars().next().map_or(0, char::len_utf8);
-                continue;
-            }
-            let Some(label) = candidates.iter().find(|label| label_matches(tail, label)) else {
-                break;
-            };
-            if seen.insert((*label).to_owned()) {
-                tokens.push((*label).to_owned());
-            }
-            position += label.len();
-        }
-    }
-    tokens
-}
-
-fn finding_reviewer_segment_is_fully_tokenized(segment: &str, labels: &BTreeSet<String>) -> bool {
-    let candidates = reviewer_label_candidates(labels);
-    if candidates.is_empty() {
-        return false;
-    }
-    let mut position = 0;
-    while position < segment.len() {
-        let tail = &segment[position..];
-        if tail.starts_with(char::is_whitespace) {
-            position += tail.chars().next().map_or(0, char::len_utf8);
-            continue;
-        }
-        let Some(label) = candidates.iter().find(|label| label_matches(tail, label)) else {
-            return false;
-        };
-        position += label.len();
-    }
-    true
-}
-
-fn reviewer_label_candidates(labels: &BTreeSet<String>) -> Vec<&str> {
-    let mut candidates: Vec<&str> = labels.iter().map(String::as_str).collect();
-    candidates.sort_by(|left, right| {
-        right
-            .chars()
-            .count()
-            .cmp(&left.chars().count())
-            .then_with(|| left.cmp(right))
-    });
-    candidates
-}
-
-fn label_matches(tail: &str, label: &str) -> bool {
-    tail.strip_prefix(label)
-        .is_some_and(|remainder| remainder.chars().next().is_none_or(char::is_whitespace))
 }
 
 fn accepted_points(row: &ClassificationRow) -> i64 {

@@ -44,6 +44,20 @@ def _argval(argv: list[str], flag: str) -> str:
     return ""
 
 
+def _voter_status_result(argv: list[str]) -> subprocess.CompletedProcess[str]:
+    values = argv[7:]
+    suffixes = ("PATH", "TOOL", "STATUS", "PARSE_RATE_STATUS")
+    rows = [
+        f"VOTER_{voter + 1}_{suffix}={values[voter * 4 + field]}"
+        for voter in range(3)
+        for field, suffix in enumerate(suffixes)
+    ]
+    paths = Path(values[12])
+    if _argval(argv, "--paths-file-policy") == "always" or (paths.is_file() and paths.stat().st_size):
+        rows.append(f"VOTER_PATHS_FILE={values[12]}")
+    return subprocess.CompletedProcess(argv, 0, "\n".join(rows) + "\n", "")
+
+
 def _write_waterfall_stub(tmp_path: Path) -> Path:
     stub = tmp_path / "waterfall-stub.sh"
     _ = stub.write_text(
@@ -488,6 +502,8 @@ def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path
             return cp(a, 0, stdout=stdout, stderr="")
         if verb == ("voting", "effective-judges"):
             return cp(a, 0, stdout="3\n", stderr="")
+        if verb == ("voting", "voter-status-block"):
+            return _voter_status_result(a)
         return cp(a, 0, stdout="", stderr="")
 
     class _FakePopen:
@@ -596,7 +612,7 @@ def test_voter_dispatch_marks_failed_when_done_sidecar_nonzero(
         if verb == ("voting", "effective-judges"):
             return cp(a, 0, stdout="2\n", stderr="")
         if verb == ("voting", "voter-status-block"):
-            pos = a[4:]
+            pos = a[7:]
             stdout = (
                 f"VOTER_1_PATH={pos[0]}\nVOTER_1_TOOL={pos[1]}\nVOTER_1_STATUS={pos[2]}\n"
                 f"VOTER_1_PARSE_RATE_STATUS={pos[3]}\n"
@@ -712,6 +728,8 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
             return cp(a, 0, stdout=stdout, stderr="")
         if verb == ("voting", "effective-judges"):
             return cp(a, 0, stdout="3\n", stderr="")
+        if verb == ("voting", "voter-status-block"):
+            return _voter_status_result(a)
         return cp(a, 0, stdout="", stderr="")
 
     class _FakePopen:
@@ -819,6 +837,8 @@ def test_dispatch_voters_records_voter_dispatch_prep_row(tmp_path: Path, monkeyp
             return cp(a, 0, stdout=stdout, stderr="")
         if verb == ("voting", "effective-judges"):
             return cp(a, 0, stdout="3\n", stderr="")
+        if verb == ("voting", "voter-status-block"):
+            return _voter_status_result(a)
         return cp(a, 0, stdout="", stderr="")
 
     monkeypatch.setenv("LARCH_VOTER_CALIBRATION_FEEDBACK", "0")
@@ -887,6 +907,8 @@ def test_dispatch_voters_enqueues_both_slots_when_codex_down(tmp_path: Path, mon
             return cp(a, 0, stdout=stdout, stderr="")
         if verb == ("voting", "effective-judges"):
             return cp(a, 0, stdout="3\n", stderr="")
+        if verb == ("voting", "voter-status-block"):
+            return _voter_status_result(a)
         return cp(a, 0, stdout="", stderr="")
 
     class _FakePopen:
@@ -944,6 +966,8 @@ def test_dispatch_voters_skips_stale_snapshot_after_snapshot_failure(tmp_path: P
             return cp(a, 0, stdout="DISPATCH_OK=true\n", stderr="")
         if verb == ("voting", "effective-judges"):
             return cp(a, 0, stdout="1\n", stderr="")
+        if verb == ("voting", "voter-status-block"):
+            return _voter_status_result(a)
         return cp(a, 0, stdout="", stderr="")
 
     class _FakePopen:
@@ -1588,7 +1612,7 @@ def test_voter_dispatch_claude_failure_codex_cursor_succeed(
         if verb == ("voting", "degraded-warning"):
             return cp(a, 0, stdout="DEGRADED_PANEL_WARNING=**⚠ Degraded plan-review panel: 2/3 effective judges produced substantive vote output.**\n", stderr="")
         if verb == ("voting", "voter-status-block"):
-            pos = a[4:]
+            pos = a[7:]
             v1p, v1t, v1s, v1r = pos[0], pos[1], pos[2], pos[3]
             v2p, v2t, v2s, v2r = pos[4], pos[5], pos[6], pos[7]
             v3p, v3t, v3s, v3r = pos[8], pos[9], pos[10], pos[11]
@@ -1679,7 +1703,7 @@ def test_voter_dispatch_claude_retry_recovers_full_panel(
         if verb == ("voting", "effective-judges"):
             return cp(a, 0, stdout="3\n", stderr="")
         if verb == ("voting", "voter-status-block"):
-            pos = a[4:]
+            pos = a[7:]
             v1p, v1t, v1s, v1r = pos[0], pos[1], pos[2], pos[3]
             v2p, v2t, v2s, v2r = pos[4], pos[5], pos[6], pos[7]
             v3p, v3t, v3s, v3r = pos[8], pos[9], pos[10], pos[11]
@@ -1742,7 +1766,7 @@ def test_voter_dispatch_both_down_retry_recovers(
                 return cp(a, 0, stdout="", stderr="")
             return cp(a, plan_review_panel.config.EXIT_TIMEOUT, stdout="", stderr="")
         if verb == ("voting", "voter-status-block"):
-            pos = a[4:]
+            pos = a[7:]
             return cp(
                 a,
                 0,
@@ -2197,6 +2221,8 @@ def test_plan_review_voter_dispatch_materializes_panel_prompt_sizes(tmp_path: Pa
             return cp(a, 0, stdout=stdout, stderr="")
         if verb == ("voting", "effective-judges"):
             return cp(a, 0, stdout="3\n", stderr="")
+        if verb == ("voting", "voter-status-block"):
+            return _voter_status_result(a)
         return cp(a, 0, stdout="", stderr="")
 
     class _FakePopen:

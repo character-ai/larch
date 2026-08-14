@@ -1033,7 +1033,11 @@ fn discover_callers(
             }
             python.sort();
         }
-        let mut rust = if kind == CallerKind::PythonRuntime {
+        let python_entrypoint_caller = Path::new(path.as_str())
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
+            && (content.contains("larch_entrypoint") || content.contains("scripts/larch.sh"));
+        let mut rust = if kind == CallerKind::PythonRuntime || python_entrypoint_caller {
             let selectors =
                 if !content.contains("larch_entrypoint") && !content.contains("scripts/larch.sh") {
                     Vec::new()

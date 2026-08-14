@@ -359,6 +359,12 @@ fn sync_inventories_every_caller_kind_and_shared_python_entrypoint() {
         "skills/example/SKILL.md",
         b"python3 python/cli.py fixture run\n",
     );
+    repository.write(
+        "skills/example/runtime.py",
+        br#"from larch.core import repo_roots
+COMMAND = [str(repo_roots.larch_entrypoint()), "fixture", "run"]
+"#,
+    );
     repository.write("scripts/runtime.sh", b"python3 python/cli.py fixture run\n");
     repository.write(
         "scripts/standalone.sh",
@@ -400,7 +406,7 @@ DIRECT = ["scripts/larch.sh", "fixture", "run"]
         .args(["command-registry", "sync", "--planning-issue", "7661"])
         .assert()
         .success()
-        .stdout("COMMAND_REGISTRY_STATUS=synced\nCOMMANDS=1\nCALLERS=7\n")
+        .stdout("COMMAND_REGISTRY_STATUS=synced\nCOMMANDS=1\nCALLERS=8\n")
         .stderr("");
 
     let ledger = fs::read_to_string(
@@ -416,6 +422,7 @@ DIRECT = ["scripts/larch.sh", "fixture", "run"]
         );
     }
     assert!(ledger.contains("path = \".claude/agents/private.md\""));
+    assert!(ledger.contains("path = \"skills/example/runtime.py\""));
     assert!(ledger.contains("path = \"python/larch/runtime.py\""));
     assert!(ledger.contains("rust = [\"fixture *\", \"fixture run\"]"));
     assert!(!ledger.contains("path = \"python/larch/false_positive.py\""));

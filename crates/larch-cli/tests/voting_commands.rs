@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Output},
 };
 
@@ -60,7 +60,7 @@ fn every_migrated_voting_verb_matches_its_recorded_python_transcript() {
         assert_eq!(String::from_utf8(output.stdout).expect("UTF-8 stdout"), substitute(&case.stdout, sandbox.path()), "{} stdout", case.name);
         assert_eq!(String::from_utf8(output.stderr).expect("UTF-8 stderr"), substitute(&case.stderr, sandbox.path()), "{} stderr", case.name);
         for (relative, expected) in &case.files {
-            let body = fs::read_to_string(sandbox.path().join(relative)).unwrap_or_else(|error| panic!("{} file {relative}: {error}", case.name)); assert_eq!(body, substitute(expected, sandbox.path()), "{} file {relative}", case.name);
+            let path = PathBuf::from(substitute(relative, sandbox.path())); let body = fs::read_to_string(if path.is_absolute() { path } else { sandbox.path().join(path) }).unwrap_or_else(|error| panic!("{} file {relative}: {error}", case.name)); assert_eq!(body, substitute(expected, sandbox.path()), "{} file {relative}", case.name);
         }
         for (relative, expected) in &case.file_contains {
             let body = fs::read_to_string(sandbox.path().join(relative)).expect("read output file");
@@ -71,15 +71,18 @@ fn every_migrated_voting_verb_matches_its_recorded_python_transcript() {
             let blocks = sandbox.path().join("blocks");
             assert!(blocks.is_dir()); assert_eq!(fs::read_dir(blocks).expect("read refused directory").count(), 0);
         }
+        let _ = fs::remove_dir_all(format!("{}-outside", sandbox.path().display()));
     }
     names.sort_unstable();
     names.dedup();
     #[rustfmt::skip]
     let expected = [
         "accept-finding", "ballot-parse", "classify-result", "code-review-classification-header",
-        "false-positive-match", "file-line-regex", "findings-classification-header", "is-security-block",
-        "panel-tier", "parse-judge-vote", "parse-rate-check", "parse-rate-diag-matches",
-        "parse-rate-retry", "reviewer-for-block", "split-ballot", "vote-for-id",
+        "compose-tally-record", "degraded-warning", "effective-judges", "false-positive-match",
+        "file-line-regex", "findings-classification-header", "is-security-block", "panel-tier",
+        "parse-judge-vote", "parse-rate-check", "parse-rate-diag-matches", "parse-rate-retry",
+        "reviewer-for-block", "scoreboard", "split-ballot", "tally-vote", "vote-for-id",
+        "voter-status-block", "write-tally",
     ];
     assert_eq!(names, expected);
 }
@@ -120,5 +123,163 @@ fn non_substantive_parse_rate_writes_a_bounded_matching_diagnostic() {
         let denied = run(&arguments, sandbox.path(), &environment);
         assert_eq!(denied.status.code(), Some(1)); assert!(denied.stdout.is_empty()); assert!(!denied.stderr.is_empty());
         fs::set_permissions(&voter, original).expect("restore voter permissions");
+    }
+}
+
+#[test]
+fn self_review_write_tally_composes_exact_paired_artifacts() {
+    let temporary = TempDir::new().expect("create tally sandbox");
+    let sandbox = fs::canonicalize(temporary.path()).expect("canonical tally sandbox");
+    let findings = sandbox.join("findings.jsonl");
+    let log_root = sandbox.join("larch-logs");
+    let output = Command::new(env!("CARGO_BIN_EXE_larch"))
+        .args([
+            "voting",
+            "write-tally",
+            "--log-root",
+            log_root.to_str().expect("log root"),
+            "--skill",
+            "implement",
+            "--run-id",
+            "run-sr",
+            "--phase",
+            "code-review",
+            "--mode",
+            "self-review",
+            "--rounds",
+            "1",
+            "--accepted",
+            "1",
+            "--rejected",
+            "1",
+            "--self-review-findings-file",
+            findings.to_str().expect("findings path"),
+        ])
+        .output()
+        .expect("run write-tally");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let tally = log_root.join("implement/run-sr/code-review-tally.json");
+    assert_eq!(
+        fs::read_to_string(tally).expect("read tally"),
+        "{\"schema_version\":2,\"phase\":\"code-review\",\"batch\":\"code-review-tally\",\"mode\":\"self-review\",\"rounds\":1,\"accepted_count\":1,\"rejected_count\":1,\"exonerated_count\":0}\n",
+    );
+    assert_eq!(
+        fs::read_to_string(findings).expect("read findings"),
+        concat!(
+            "{\"id\":\"SELF_REVIEW_ACCEPTED_1\",\"issue_number\":\"0\",\"phase\":\"code-review\",\"outcome\":\"accepted\",\"schema_version\":\"2\",\"reviewer_slots\":[\"self-review\"],\"round_num\":\"1\",\"category\":\"\",\"body_severity\":\"\",\"focus_area\":\"\",\"prose_body\":\"\"}\n",
+            "{\"id\":\"SELF_REVIEW_REJECTED_1\",\"issue_number\":\"0\",\"phase\":\"code-review\",\"outcome\":\"rejected\",\"schema_version\":\"2\",\"reviewer_slots\":[\"self-review\"],\"round_num\":\"1\",\"category\":\"\",\"body_severity\":\"\",\"focus_area\":\"\",\"prose_body\":\"\"}\n",
+        ),
+    );
+
+    let outside = TempDir::new().expect("create outside root");
+    let escaped = outside.path().join("escaped.jsonl");
+    let arguments = [
+        "write-tally",
+        "--log-root",
+        log_root.to_str().expect("log root"),
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-escape",
+        "--phase",
+        "code-review",
+        "--mode",
+        "self-review",
+        "--accepted",
+        "1",
+        "--self-review-findings-file",
+        escaped.to_str().expect("escape path"),
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    let refused = run(&arguments, &sandbox, &BTreeMap::new());
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(!escaped.exists());
+}
+
+#[test]
+fn write_tally_preserves_header_warning_and_staging_guards() {
+    let temporary = TempDir::new().expect("create tally sandbox");
+    let sandbox = fs::canonicalize(temporary.path()).expect("canonical tally sandbox");
+    let body = sandbox.join("body.md");
+    #[rustfmt::skip]
+    fs::write(&body, "# Rejected Findings\n## Accepted Findings\n## Rejected Code Review Findings\n## Voting Tally\n# Code Review Voting Tally\n## Per-finding vote breakdown\n## Reviewer Competition Scoreboard\n## Voter Agreement Scoreboard\n## Voter Severity Scoreboard\n## Foo\n").expect("write tally body");
+    let log_root = sandbox.join("larch-logs");
+    let arguments = [
+        "write-tally",
+        "--log-root",
+        log_root.to_str().expect("log root"),
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-warning",
+        "--phase",
+        "code-review",
+        "--mode",
+        "simple",
+        "--body-file",
+        body.to_str().expect("body path"),
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    let output = run(&arguments, &sandbox, &BTreeMap::new());
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        output.stderr,
+        b"WARNING=code-review body header validation ignored: unrecognized section header: ## Foo\n",
+    );
+    assert_eq!(
+        fs::read_to_string(log_root.join("implement/run-warning/code-review-tally.json"))
+            .expect("read tally"),
+        "{\"schema_version\":2,\"phase\":\"code-review\",\"batch\":\"code-review-tally\",\"mode\":\"simple\",\"rounds\":0,\"accepted_count\":0,\"rejected_count\":0,\"exonerated_count\":0}\n",
+    );
+    let unsafe_arguments = [
+        "write-tally",
+        "--log-root",
+        "/larch-logs",
+        "--skill",
+        "implement",
+        "--run-id",
+        "unsafe",
+        "--phase",
+        "code-review",
+        "--mode",
+        "simple",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    let unsafe_output = run(&unsafe_arguments, &sandbox, &BTreeMap::new());
+    assert_eq!(unsafe_output.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&unsafe_output.stderr)
+            .contains("unsafe write-tally staging parent")
+    );
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&sandbox, sandbox.join("linked-parent"))
+            .expect("create parent link");
+        let linked_root = sandbox.join("linked-parent/larch-logs");
+        let linked_arguments = [
+            "write-tally",
+            "--log-root",
+            linked_root.to_str().expect("linked root"),
+            "--skill",
+            "implement",
+            "--run-id",
+            "linked",
+            "--phase",
+            "code-review",
+            "--mode",
+            "simple",
+        ]
+        .map(str::to_owned)
+        .to_vec();
+        let linked = run(&linked_arguments, &sandbox, &BTreeMap::new());
+        assert_eq!(linked.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&linked.stderr).contains("symlinked ancestors"));
     }
 }

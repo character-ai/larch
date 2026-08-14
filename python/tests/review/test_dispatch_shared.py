@@ -10,7 +10,7 @@ import pytest
 
 from larch.agents import _launch_failure
 from larch.core import config, proc
-from larch.review import _voting_calibration, dispatch_shared, plan_review_panel, voting
+from larch.review import _voting_calibration, dispatch_shared, plan_review_panel
 
 
 def _result(argv: Sequence[str], returncode: int = 0, stdout: str = "") -> proc.CommandResult:
@@ -333,6 +333,16 @@ def test_record_reviewer_collect_skips_when_ledger_missing(tmp_path: Path) -> No
 
 def test_final_emitter_uses_logging_and_code_review_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     emitted: list[tuple[str, str]] = []
+    stdout = "".join(
+        f"VOTER_{voter}_{suffix}=value-{voter}-{suffix}\n"
+        for voter in range(1, 4)
+        for suffix in ("PATH", "TOOL", "STATUS", "PARSE_RATE_STATUS")
+    ) + f"VOTER_PATHS_FILE={tmp_path / 'missing-paths'}\n"
+
+    def fake_voter_status(argv: Sequence[str]) -> proc.CommandResult:
+        return _result(argv, stdout=stdout)
+
+    monkeypatch.setattr(dispatch_shared.proc, "run", fake_voter_status)
 
     def capture(*, key: str, value: str) -> None:
         emitted.append((key, value))
@@ -351,23 +361,32 @@ def test_final_emitter_uses_logging_and_code_review_order(tmp_path: Path, monkey
         "VOTER_3_PATH", "VOTER_3_TOOL", "VOTER_3_STATUS", "VOTER_3_PARSE_RATE_STATUS",
         "VOTER_PATHS_FILE", "DISPATCH_OK",
     ]
-    assert dict(emitted)["VOTER_2_PATH"] == ""
+    assert dict(emitted)["VOTER_2_PATH"] == "value-2-PATH"
 
 
-def test_plan_review_interleaved_order_omits_empty_paths_file(tmp_path: Path) -> None:
-    paths_file = tmp_path / "paths"
-    _ = paths_file.write_text("", encoding="utf-8")
-    rows = voting.build_voter_status_rows(
-        voters=(("one", "one-tool", "launched", "OK"), ("two", "two-tool", "failed", "SKIPPED"), ("three", "three-tool", "launched", "OK")),
-        voter_paths_file=str(paths_file),
-        row_layout="plan_review_interleaved",
-        paths_file_policy="nonempty",
-    )
-    assert [key for key, _value in rows] == [
-        "VOTER_1_PATH", "VOTER_1_TOOL", "VOTER_1_STATUS", "VOTER_1_PARSE_RATE_STATUS",
-        "VOTER_2_PATH", "VOTER_3_PATH", "VOTER_2_TOOL", "VOTER_3_TOOL",
-        "VOTER_2_STATUS", "VOTER_3_STATUS", "VOTER_2_PARSE_RATE_STATUS", "VOTER_3_PARSE_RATE_STATUS",
-    ]
+def test_final_emitter_rejects_injected_wire_rows_before_emitting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    emitted: list[tuple[str, str]] = []
+    stdout = "VOTER_1_PATH=value\nVOTER_PATHS_FILE=forged\n" + "".join(
+        f"VOTER_{voter}_{suffix}=value-{voter}-{suffix}\n"
+        for voter in range(1, 4)
+        for suffix in ("TOOL", "STATUS", "PARSE_RATE_STATUS")
+    ) + "VOTER_2_PATH=value-2-PATH\nVOTER_3_PATH=value-3-PATH\n"
+
+    def fake_voter_status(argv: Sequence[str]) -> proc.CommandResult:
+        return _result(argv, stdout=stdout)
+
+    def capture(*, key: str, value: str) -> None:
+        emitted.append((key, value))
+
+    monkeypatch.setattr(dispatch_shared.proc, "run", fake_voter_status)
+
+    with pytest.raises(RuntimeError, match="malformed row"):
+        dispatch_shared.emit_final_voter_kvs(
+            state=_state(tmp_path), voter_paths_file=tmp_path / "missing-paths", dispatch_ok="true",
+            row_layout="code_review_sequential", paths_file_policy="nonempty",
+            emit_kv=capture,
+        )
+    assert emitted == []
 
 
 def test_plan_trailing_kvs_use_logging_contract_stream(monkeypatch: pytest.MonkeyPatch) -> None:

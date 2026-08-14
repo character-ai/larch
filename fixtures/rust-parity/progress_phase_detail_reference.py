@@ -636,6 +636,52 @@ def _classification_row_in_scope(*, cols: dict[str, str], header: list[str]) -> 
     return not cols.get("finding_id", "").strip().startswith("OOS_")
 
 
+def _finding_reviewers_segment_fully_tokenized(*, segment: str, labels: Sequence[str]) -> bool:
+    sorted_labels = sorted({label for label in labels if label}, key=lambda label: (-len(label), label))
+    if not sorted_labels:
+        return False
+    pos = 0
+    while pos < len(segment):
+        if segment[pos].isspace():
+            pos += 1
+            continue
+        matched = next(
+            (
+                label
+                for label in sorted_labels
+                if segment.startswith(label, pos)
+                and (pos + len(label) == len(segment) or segment[pos + len(label)].isspace())
+            ),
+            "",
+        )
+        if not matched:
+            return False
+        pos += len(matched)
+    return True
+
+
+def _raw_sole_finder_attribution(
+    reviewer_cell: str,
+    *,
+    column: str,
+    corpus_labels: Sequence[str],
+) -> list[str]:
+    """Frozen sole-finder behavior retired with the Python scoreboard implementation."""
+    cell = reviewer_cell.strip()
+    if not cell:
+        return []
+    if column != "finding_reviewers":
+        return voting.split_classification_attribution(cell, column=column)
+    comma_parts = [part.strip() for part in cell.split(",") if part.strip()]
+    if len(comma_parts) != 1:
+        return []
+    segment = comma_parts[0]
+    tokens = voting.tokenize_finding_reviewers(cell=segment, labels=corpus_labels)
+    if tokens:
+        return tokens if _finding_reviewers_segment_fully_tokenized(segment=segment, labels=corpus_labels) else []
+    return comma_parts
+
+
 def _accepted_reviewers_from_classification(
     classification: Path,
     *,
@@ -659,7 +705,7 @@ def _accepted_reviewers_from_classification(
         if cols.get("voting_result") != "accepted" or not _classification_row_in_scope(cols=cols, header=header):
             continue
         reviewer_cell = cols.get(reviewer_column, "")
-        raw_reviewers = voting.raw_sole_finder_attribution(
+        raw_reviewers = _raw_sole_finder_attribution(
             reviewer_cell,
             column=reviewer_column,
             corpus_labels=labels,

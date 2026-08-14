@@ -144,6 +144,21 @@ pub fn parse_with_flags(
     flags: &[&'static str],
     max_positionals: usize,
 ) -> ParsedCommandLine {
+    parse_with_flags_and_exact(arguments, options, &[], flags, max_positionals)
+}
+
+/// Parse with additional value options that require their complete spelling.
+///
+/// This lets a migrated command extend a retired `argparse` surface without
+/// making an existing abbreviation ambiguous.
+#[must_use]
+pub fn parse_with_flags_and_exact(
+    arguments: &[OsString],
+    options: &[&'static str],
+    exact_options: &[&'static str],
+    flags: &[&'static str],
+    max_positionals: usize,
+) -> ParsedCommandLine {
     let mut parsed = ParsedCommandLine::default();
     let mut positional_only = false;
     let mut index = 0;
@@ -177,7 +192,11 @@ pub fn parse_with_flags(
             parsed.flags.push(flag);
             continue;
         }
-        let Some(option) = resolve_option(name, options) else {
+        let exact = exact_options
+            .iter()
+            .find(|option| **option == name)
+            .copied();
+        let Some(option) = exact.or_else(|| resolve_option(name, options)) else {
             parsed.unrecognized.push(argument.clone());
             continue;
         };

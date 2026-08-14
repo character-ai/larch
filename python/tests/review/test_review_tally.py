@@ -15,7 +15,7 @@ from larch.review import review_tally
 from larch.review import review_core_body
 from larch.core import config, logging_util
 import review_test_support as rts
-from test_support import run_cli, run_larch
+from test_support import run_larch
 from larch.review import voting
 from tests.support.review_wire import (
     ballot_snippet,
@@ -71,10 +71,6 @@ def _tsv_rows(path: Path) -> dict[str, dict[str, str]]:
 def _tsv_row_list(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh, delimiter="\t"))
-
-
-def _run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    return run_cli(*args, env=env, quiet_disable=True)
 
 
 def _run_larch(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -2082,42 +2078,6 @@ def test_tally_three_slot_mismatched_tools_fails(tmp_path: Path) -> None:
         "cursor-validity",
     )
     assert result.returncode == 2
-
-
-def test_write_tally_allows_voter_agreement_scoreboard_header(tmp_path: Path) -> None:
-    body = tmp_path / "body.md"
-    _ = body.write_text(
-        "# Code Review Voting Tally\n\n"
-        "## Per-finding vote breakdown\n\n"
-        "## Reviewer Competition Scoreboard\n\n"
-        "## Voter Agreement Scoreboard\n\n"
-        "## Voter Severity Scoreboard\n\n",
-        encoding="utf-8",
-    )
-    result = _run_cli(
-        "voting",
-        "write-tally",
-        "--log-root",
-        str(tmp_path / "logs"),
-        "--skill",
-        "review",
-        "--run-id",
-        "run-a",
-        "--phase",
-        "code-review",
-        "--mode",
-        "hard",
-        "--rounds",
-        "1",
-        "--accepted",
-        "0",
-        "--rejected",
-        "0",
-        "--body-file",
-        str(body),
-    )
-    assert result.returncode == 0, result.stderr
-    assert "unrecognized section header" not in result.stderr
 
 
 def test_tally_three_slot_claude_fallback_single_quorum(tmp_path: Path) -> None:

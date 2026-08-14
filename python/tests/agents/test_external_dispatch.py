@@ -499,7 +499,15 @@ def test_plan_review_voter_dispatch_uses_plan_voter_policy(tmp_path: Path, monke
         if "effective-judges" in cmd:
             return subprocess.CompletedProcess(cmd, 0, "3\n", "")
         if "voter-status-block" in cmd:
-            return subprocess.CompletedProcess(cmd, 0, "STATUS=ok\n", "")
+            pos = cmd[7:]
+            rows = [
+                f"VOTER_{voter + 1}_{suffix}={pos[voter * 4 + field]}"
+                for voter in range(3)
+                for field, suffix in enumerate(("PATH", "TOOL", "STATUS", "PARSE_RATE_STATUS"))
+            ]
+            if Path(pos[12]).is_file() and Path(pos[12]).stat().st_size:
+                rows.append(f"VOTER_PATHS_FILE={pos[12]}")
+            return subprocess.CompletedProcess(cmd, 0, "\n".join(rows) + "\n", "")
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     ballot = tmp_path / "ballot.md"

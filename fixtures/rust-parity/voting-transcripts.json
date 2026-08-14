@@ -422,5 +422,219 @@
     "exit_code": 0,
     "stdout": "accepted",
     "stderr": ""
+  },
+  {
+    "name": "effective-judges-filters-failed-empty-and-nonsubstantive",
+    "arguments": ["effective-judges", "ok\t{sandbox}/good.txt\tOK", "failed\t{sandbox}/good.txt\tOK", "ok\t{sandbox}/good.txt\tNOT_SUBSTANTIVE", "ok\t{sandbox}/empty.txt\tOK"],
+    "seeds": {"good.txt": "vote\n", "empty.txt": ""},
+    "exit_code": 0,
+    "stdout": "1\n",
+    "stderr": ""
+  },
+  {
+    "name": "degraded-warning-preserves-wire-and-diagnostic",
+    "arguments": ["degraded-warning", "1", "3", "quota hit"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "DEGRADED_PANEL_WARNING=**⚠ Degraded plan-review panel: 1/3 effective judges produced substantive vote output.** quota hit\n",
+    "stderr": "**⚠ Degraded plan-review panel: 1/3 effective judges produced substantive vote output.** quota hit\n"
+  },
+  {
+    "name": "voter-status-plan-order-and-nonempty-path-gate",
+    "arguments": ["voter-status-block", "p1", "Claude", "ok", "OK", "p2", "Codex", "skipped", "SKIPPED", "p3", "Cursor", "failed", "SKIPPED", "{sandbox}/paths.txt"],
+    "seeds": {"paths.txt": "p1\n"},
+    "exit_code": 0,
+    "stdout": "VOTER_1_PATH=p1\nVOTER_1_TOOL=Claude\nVOTER_1_STATUS=ok\nVOTER_1_PARSE_RATE_STATUS=OK\nVOTER_2_PATH=p2\nVOTER_3_PATH=p3\nVOTER_PATHS_FILE={sandbox}/paths.txt\nVOTER_2_TOOL=Codex\nVOTER_3_TOOL=Cursor\nVOTER_2_STATUS=skipped\nVOTER_3_STATUS=failed\nVOTER_2_PARSE_RATE_STATUS=SKIPPED\nVOTER_3_PARSE_RATE_STATUS=SKIPPED\n",
+    "stderr": ""
+  },
+  {
+    "name": "degraded-warning-full-panel-is-silent",
+    "arguments": ["degraded-warning", "3", "3"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "name": "degraded-warning-invalid-integer-has-stable-value-error",
+    "arguments": ["degraded-warning", "nope", "3"],
+    "seeds": {},
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": "ValueError: invalid literal for int() with base 10: 'nope'\n"
+  },
+  {
+    "name": "voter-status-code-order-and-always-path-policy",
+    "arguments": ["voter-status-block", "--row-layout", "code_review_sequential", "--paths-file-policy", "always", "p1", "Claude", "ok", "OK", "", "Codex", "skipped", "SKIPPED", "p3", "Cursor", "failed", "SKIPPED", "{sandbox}/missing"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "VOTER_1_PATH=p1\nVOTER_1_TOOL=Claude\nVOTER_1_STATUS=ok\nVOTER_1_PARSE_RATE_STATUS=OK\nVOTER_2_PATH=\nVOTER_2_TOOL=Codex\nVOTER_2_STATUS=skipped\nVOTER_2_PARSE_RATE_STATUS=SKIPPED\nVOTER_3_PATH=p3\nVOTER_3_TOOL=Cursor\nVOTER_3_STATUS=failed\nVOTER_3_PARSE_RATE_STATUS=SKIPPED\nVOTER_PATHS_FILE={sandbox}/missing\n",
+    "stderr": ""
+  },
+  {
+    "name": "compose-plan-tally-record-exact-bytes",
+    "arguments": ["compose-tally-record", "--phase", "plan-review", "--mode", "hard", "--rounds", "2", "--accepted", "1", "--rejected", "1", "--body-file", "{sandbox}/body.md"],
+    "seeds": {"body.md": "Plan café 🙂.\r\nSecond line.\r"},
+    "exit_code": 0,
+    "stdout": "{\"schema_version\":2,\"phase\":\"plan-review\",\"batch\":\"plan-review-tally\",\"mode\":\"hard\",\"rounds\":2,\"accepted_count\":1,\"rejected_count\":1,\"exonerated_count\":0,\"body\":\"Plan caf\\u00e9 \\ud83d\\ude42.\\nSecond line.\\n\"}\n",
+    "stderr": ""
+  },
+  {
+    "name": "compose-tally-record-rejects-signed-counts",
+    "arguments": ["compose-tally-record", "--phase", "code-review", "--mode", "simple", "--rounds", "+1"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "ERROR=--rounds must be a non-negative integer: +1\n"
+  },
+  {
+    "name": "compose-tally-record-missing-required-options",
+    "arguments": ["compose-tally-record"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: cli.py --phase PHASE --mode MODE [--rounds ROUNDS]\n              [--accepted ACCEPTED] [--rejected REJECTED]\n              [--exonerated EXONERATED] [--neutral NEUTRAL]\n              [--body-file BODY_FILE]\ncli.py: error: the following arguments are required: --phase, --mode\n"
+  },
+  {
+    "name": "compose-tally-record-rejects-write-only-options",
+    "arguments": ["compose-tally-record", "--phase", "code-review", "--mode", "simple", "--log-root", "somewhere"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: cli.py --phase PHASE --mode MODE [--rounds ROUNDS]\n              [--accepted ACCEPTED] [--rejected REJECTED]\n              [--exonerated EXONERATED] [--neutral NEUTRAL]\n              [--body-file BODY_FILE]\ncli.py: error: unrecognized arguments: --log-root somewhere\n"
+  },
+  {
+    "name": "compose-plan-missing-body-precedes-invalid-mode",
+    "arguments": ["compose-tally-record", "--phase", "plan-review", "--mode", "invalid"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "ERROR=--body-file is required for --phase plan-review\n"
+  },
+  {
+    "name": "write-tally-count-validation-precedes-missing-body",
+    "arguments": ["write-tally", "--log-root", "{sandbox}/larch-logs", "--skill", "implement", "--run-id", "refusal", "--phase", "code-review", "--mode", "hard", "--body-file", "{sandbox}/missing", "--rounds", "nope"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "ERROR=--rounds must be a non-negative integer: nope\n"
+  },
+  {
+    "name": "write-tally-preserves-skill-option-abbreviation",
+    "arguments": ["write-tally", "--log-root", "{sandbox}/larch-logs", "--s", "implement"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: cli.py --log-root LOG_ROOT --skill SKILL --run-id RUN_ID --phase PHASE\n              --mode MODE [--rounds ROUNDS] [--accepted ACCEPTED]\n              [--rejected REJECTED] [--exonerated EXONERATED]\n              [--neutral NEUTRAL] [--body-file BODY_FILE]\ncli.py: error: the following arguments are required: --run-id, --phase, --mode\n"
+  },
+  {
+    "name": "tally-vote-tie-does-not-accept",
+    "arguments": ["tally-vote", "--ballot-file", "{sandbox}/ballot.md", "--voter-files", "{sandbox}/v1.txt", "{sandbox}/v2.txt"],
+    "seeds": {"ballot.md": "### FINDING_1: tie\n", "v1.txt": "FINDING_1: YES\n", "v2.txt": "FINDING_1: NO\n"},
+    "exit_code": 0,
+    "stdout": "FINDING_1_ACCEPTED=false\nFINDING_1_VOTES_YES=1\nFINDING_1_VOTES_NO=1\nFINDING_COUNT=1\n",
+    "stderr": ""
+  },
+  {
+    "name": "tally-vote-single-missing-voter-keeps-legacy-acceptance",
+    "arguments": ["tally-vote", "--ballot-file", "{sandbox}/ballot.md", "--voter-files", "{sandbox}/missing.txt"],
+    "seeds": {"ballot.md": "### FINDING_1: legacy quorum\n"},
+    "exit_code": 0,
+    "stdout": "FINDING_1_ACCEPTED=true\nFINDING_1_VOTES_YES=0\nFINDING_1_VOTES_NO=0\nFINDING_COUNT=1\n",
+    "stderr": ""
+  },
+  {
+    "name": "tally-vote-repeated-voter-option-keeps-last-list",
+    "arguments": ["tally-vote", "--ballot-file", "{sandbox}/ballot.md", "--voter-files", "{sandbox}/yes.txt", "--voter-files", "{sandbox}/missing.txt"],
+    "seeds": {"ballot.md": "### FINDING_1: repeated option\n", "yes.txt": "FINDING_1: YES\n"},
+    "exit_code": 0,
+    "stdout": "FINDING_1_ACCEPTED=true\nFINDING_1_VOTES_YES=0\nFINDING_1_VOTES_NO=0\nFINDING_COUNT=1\n",
+    "stderr": ""
+  },
+  {
+    "name": "tally-vote-accepts-unambiguous-option-abbreviations",
+    "arguments": ["tally-vote", "--ballot", "{sandbox}/ballot.md", "--voter", "{sandbox}/yes.txt"],
+    "seeds": {"ballot.md": "### FINDING_1: abbreviated options\n", "yes.txt": "FINDING_1: YES\n"},
+    "exit_code": 0,
+    "stdout": "FINDING_1_ACCEPTED=true\nFINDING_1_VOTES_YES=1\nFINDING_1_VOTES_NO=0\nFINDING_COUNT=1\n",
+    "stderr": ""
+  },
+  {
+    "name": "tally-vote-missing-ballot-value-precedes-voter-option",
+    "arguments": ["tally-vote", "--ballot-file", "--voter-files"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: tally-vote [-h] --ballot-file BALLOT_FILE\n                  [--voter-files [VOTER_FILES ...]]\ntally-vote: error: argument --ballot-file: expected one argument\n"
+  },
+  {
+    "name": "tally-vote-missing-ballot-value-precedes-help",
+    "arguments": ["tally-vote", "--ballot-file", "--help"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: tally-vote [-h] --ballot-file BALLOT_FILE\n                  [--voter-files [VOTER_FILES ...]]\ntally-vote: error: argument --ballot-file: expected one argument\n"
+  },
+  {
+    "name": "compose-self-review-findings-from-tally-exact-bytes",
+    "arguments": ["compose-tally-record", "--self-review-tally-file", "{sandbox}/self-review-tally.json"],
+    "seeds": {"self-review-tally.json": "{\"mode\":\"self-review\",\"accepted_count\":1,\"rejected_count\":\"2\"}\n"},
+    "exit_code": 0,
+    "stdout": "{\"id\":\"SELF_REVIEW_ACCEPTED_1\",\"issue_number\":\"0\",\"phase\":\"code-review\",\"outcome\":\"accepted\",\"schema_version\":\"2\",\"reviewer_slots\":[\"self-review\"],\"round_num\":\"1\",\"category\":\"\",\"body_severity\":\"\",\"focus_area\":\"\",\"prose_body\":\"\"}\n{\"id\":\"SELF_REVIEW_REJECTED_1\",\"issue_number\":\"0\",\"phase\":\"code-review\",\"outcome\":\"rejected\",\"schema_version\":\"2\",\"reviewer_slots\":[\"self-review\"],\"round_num\":\"1\",\"category\":\"\",\"body_severity\":\"\",\"focus_area\":\"\",\"prose_body\":\"\"}\n{\"id\":\"SELF_REVIEW_REJECTED_2\",\"issue_number\":\"0\",\"phase\":\"code-review\",\"outcome\":\"rejected\",\"schema_version\":\"2\",\"reviewer_slots\":[\"self-review\"],\"round_num\":\"1\",\"category\":\"\",\"body_severity\":\"\",\"focus_area\":\"\",\"prose_body\":\"\"}\n",
+    "stderr": ""
+  },
+  {
+    "name": "scoreboard-weighting-neutral-and-unique-bonus",
+    "arguments": ["scoreboard", "--findings-classification-file", "{sandbox}/classification.tsv", "--reviewer-labels", "Solo,Tie,OosOnly,Rejected,Structure,Testing,Cursor-Pragmatic,Codex-Arch", "--output-file", "{sandbox}/score with spaces.md"],
+    "seeds": {"classification.tsv": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_severity\tscope\nFINDING_1\tSolo\taccepted\tYES\tmajor\tin_scope\nFINDING_2\tTie\tneutral\tYES\tminor\tin_scope\nOOS_1\tOosOnly\taccepted\tYES\tmajor\toos\nFINDING_3\tRejected\trejected\tNO\tmajor\tin_scope\nFINDING_4\tStructure, Testing\taccepted\tYES\tminor\tin_scope\nFINDING_5\tStructure, Unknown\taccepted\tYES\tminor\tin_scope\nFINDING_6\tCursor-Pragmatic Codex-Arch\taccepted\tYES\tminor\tin_scope\n"},
+    "environment": {"LARCH_UNIQUE_FINDER_BONUS": "0.3333333"},
+    "exit_code": 0,
+    "stdout": "SCOREBOARD_FILE={sandbox}/score\\ with\\ spaces.md\n",
+    "stderr": "",
+    "files": {"score with spaces.md": "| Reviewer | Score |\n|---|---:|\n| Solo | 2.33333 |\n| Tie | -0.25 |\n| OosOnly | 1 |\n| Rejected | -1 |\n| Structure | 2 |\n| Testing | 1 |\n| Cursor-Pragmatic | 1 |\n| Codex-Arch | 1 |\n"}
+  },
+  {
+    "name": "scoreboard-help-explicit-value-refusal",
+    "arguments": ["scoreboard", "--help=x"],
+    "seeds": {},
+    "exit_code": 2,
+    "stdout": "",
+    "stderr": "usage: scoreboard [-h] [--tally-file TALLY_FILE]\n                  [--findings-classification-file FINDINGS_CLASSIFICATION_FILE]\n                  --reviewer-labels REVIEWER_LABELS --output-file OUTPUT_FILE\nscoreboard: error: argument -h/--help: ignored explicit argument 'x'\n"
+  },
+  {
+    "name": "scoreboard-creates-missing-output-parents-under-root",
+    "arguments": ["scoreboard", "--reviewer-labels", "One", "--output-file", "{sandbox}/missing/nested/score.md"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "SCOREBOARD_FILE={sandbox}/missing/nested/score.md\n",
+    "stderr": "",
+    "files": {"missing/nested/score.md": "| Reviewer | Score |\n|---|---:|\n| One | 0 |\n"}
+  },
+  {
+    "name": "scoreboard-accepts-output-option-abbreviation",
+    "arguments": ["scoreboard", "--reviewer-labels", "One", "--output", "{sandbox}/abbreviated.md"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "SCOREBOARD_FILE={sandbox}/abbreviated.md\n",
+    "stderr": "",
+    "files": {"abbreviated.md": "| Reviewer | Score |\n|---|---:|\n| One | 0 |\n"}
+  },
+  {
+    "name": "scoreboard-accepts-absolute-output-outside-working-directory",
+    "arguments": ["scoreboard", "--reviewer-labels", "One", "--output-file", "{sandbox}-outside/missing/score.md"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "SCOREBOARD_FILE={sandbox}-outside/missing/score.md\n",
+    "stderr": "",
+    "files": {"{sandbox}-outside/missing/score.md": "| Reviewer | Score |\n|---|---:|\n| One | 0 |\n"}
+  },
+  {
+    "name": "scoreboard-normalizes-python-path-spelling-on-wire",
+    "arguments": ["scoreboard", "--reviewer-labels", "One", "--output-file", "./nested//score with space.md"],
+    "seeds": {},
+    "exit_code": 0,
+    "stdout": "SCOREBOARD_FILE=nested/score\\ with\\ space.md\n",
+    "stderr": "",
+    "files": {"nested/score with space.md": "| Reviewer | Score |\n|---|---:|\n| One | 0 |\n"}
   }
 ]

@@ -315,7 +315,7 @@ enum Domain {
     /// Committed run-log identity and layout helpers.
     #[command(subcommand, name = "run-log")]
     RunLog(RunLogCommand),
-    /// Stateless vote parsing, classification, and parse-rate checks.
+    /// Vote parsing, tally state, panel rendering, and parse-rate checks.
     #[command(subcommand)]
     Voting(VotingCommand),
     /// Upgrade the installed larch plugin and executable.
@@ -346,6 +346,9 @@ voting_commands!(
     (BallotParse, "ballot-parse", ballot_parse),
     (ClassifyResult, "classify-result", classify_result),
     (CodeReviewClassificationHeader, "code-review-classification-header", code_review_classification_header_command),
+    (ComposeTallyRecord, "compose-tally-record", compose_tally_record),
+    (DegradedWarning, "degraded-warning", degraded_warning),
+    (EffectiveJudges, "effective-judges", effective_judges),
     (FalsePositiveMatch, "false-positive-match", false_positive_match_command),
     (FileLineRegex, "file-line-regex", file_line_regex_command),
     (FindingsClassificationHeader, "findings-classification-header", findings_classification_header),
@@ -356,8 +359,12 @@ voting_commands!(
     (ParseRateDiagMatches, "parse-rate-diag-matches", parse_rate_diag_matches),
     (ParseRateRetry, "parse-rate-retry", parse_rate_retry),
     (ReviewerForBlock, "reviewer-for-block", reviewer_for_block),
+    (Scoreboard, "scoreboard", scoreboard),
     (SplitBallot, "split-ballot", split_ballot),
+    (TallyVote, "tally-vote", tally_vote),
+    (VoterStatusBlock, "voter-status-block", voter_status_block),
     (VoteForId, "vote-for-id", vote_for_id),
+    (WriteTally, "write-tally", write_tally),
 );
 
 #[derive(Subcommand)]
