@@ -7,6 +7,7 @@ mod collection;
 mod dispatch;
 mod findings_ledger;
 mod pipeline;
+mod plan_review;
 mod tally_engine;
 mod types;
 mod voting;
@@ -33,6 +34,24 @@ pub use pipeline::{
     GatherContextParse, description_path_matches, description_tokens, normalize_output_base,
     parse_collector_records, parse_gather_context_arguments, positive_integer,
     valid_relative_review_path,
+};
+pub use plan_review::{
+    MERGE_KEYS, NON_NIT_CONTINUE_THRESHOLD, PER_REVIEWER_OOS_PROPOSAL_CAP,
+    PlanReviewAcceptedFinding, PlanReviewAggregationOutcome, PlanReviewBallotOutcome,
+    PlanReviewCollectionOutcome, PlanReviewCollectorRecord, PlanReviewFindingOutput,
+    PlanReviewGateBDisplayRow, PlanReviewGateBSeveritySummary, PlanReviewManifestSlot,
+    PlanReviewPanelOutcome, PlanReviewReviewerStatus, PlanReviewRoundArtifacts,
+    PlanReviewRoundInput, PlanReviewRoundState, PlanReviewRoundSummary,
+    PlanReviewStructuredFinding, PlanReviewTallyOutcome, PlanReviewVoterOutcome, ROUND_CAP,
+    ROUND_THREE_AUTHORIZATION_CAP, STEP3_NORMALIZE_ALLOW_KEYS, STEP3_ROUND_CARRY_KEYS,
+    STRUCTURAL_DIFF_LINE_THRESHOLD, STRUCTURAL_MIN_REVIEW_ROUNDS, STRUCTURAL_PLAN_LINE_THRESHOLD,
+    aggregation_ok_for_voting, aggregator_status, all_applied_finding_keys,
+    applied_finding_keys_before, classify_round_loop_status, merge_already_addressed_finding_keys,
+    merge_step3_round_carry_warnings, normalize_collected_findings, reconciled_reviewer_label,
+    render_reviewer_status_table, render_reviewer_status_tsv, replace_applied_finding_keys,
+    reviewer_status_rows, run_plan_review_round, slot_human_label,
+    step3_loop_status_to_loop_status, step3_next_action, step3_round_carry_values,
+    step3_status_from_loop_status, strip_crlf,
 };
 pub use tally_engine::{ItemAdjudicationResult, ItemContext, VoteCell, adjudicate_item, run_items};
 pub use types::{
