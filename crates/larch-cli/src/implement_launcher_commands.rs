@@ -15,7 +15,6 @@
 use std::{
     env,
     ffi::{OsStr, OsString},
-    fmt::Write as _,
     path::{Path, PathBuf},
     process::ExitCode,
     time::Duration,
@@ -50,7 +49,7 @@ use crate::{
         record_codex_vendor_usage, run_vendor_launch_execution, scan_flag_arguments,
         valid_model_token, vendor_on_path, vendor_workdir, write_confined, write_preflight_bundle,
     },
-    python_verb::{publish_session_environment, run_python_verb_best_effort},
+    python_verb::publish_session_environment,
     run_log_entry_commands::{
         FailureRecordRequest, append_execution_issue, record_execution_failure,
     },
@@ -799,34 +798,11 @@ fn mark_step2_token(sidecar: &Path) {
             &format!("agent implement token mark: IMPLEMENT_TMPDIR is not a directory: {tmpdir}\n"),
         );
     }
-    let summary = match crate::python_verb::run_python_verb(
-        [
-            OsString::from("token"),
-            OsString::from("mark"),
-            OsString::from(IMPLEMENT_STEP2_LABEL),
-        ],
-        Duration::from_secs(120),
-    ) {
-        Ok(output) if output.status().success() => return,
-        Ok(output) => {
-            let code = output.status().code().unwrap_or(1);
-            let mut detail =
-                format!("agent implement token mark: token mark failed with exit {code}\n");
-            for (label, bytes) in [("stderr", output.stderr()), ("stdout", output.stdout())] {
-                let text = String::from_utf8_lossy(bytes).trim_end().to_owned();
-                if !text.is_empty() {
-                    let _ = write!(detail, "{label}:\n{text}\n");
-                }
-            }
-            append_confined(sidecar, &detail);
-            format!("token mark failed with exit {code}")
-        }
-        Err(error) => {
-            let summary = format!("token mark could not run: {error}");
-            append_confined(sidecar, &format!("agent implement token mark: {summary}\n"));
-            summary
-        }
-    };
+    if crate::token_commands::mark(&[OsString::from(IMPLEMENT_STEP2_LABEL)]) == ExitCode::SUCCESS {
+        return;
+    }
+    let summary = "token mark failed";
+    append_confined(sidecar, &format!("agent implement token mark: {summary}\n"));
     let tmpdir = env::var("IMPLEMENT_TMPDIR").unwrap_or_default();
     if tmpdir.is_empty() || !Path::new(&tmpdir).is_dir() {
         return;
@@ -1250,8 +1226,6 @@ fn record_cursor_implement_usage(artifacts: &LauncherArtifacts, sidecar: &Path, 
         return;
     };
     let mut arguments = vec![
-        OsString::from("token"),
-        OsString::from("record-vendor"),
         OsString::from("cursor"),
         OsString::from(format!("input={}", buckets.input)),
         OsString::from(format!("output={}", buckets.output)),
@@ -1263,7 +1237,7 @@ fn record_cursor_implement_usage(artifacts: &LauncherArtifacts, sidecar: &Path, 
     if !model.is_empty() {
         arguments.push(OsString::from(format!("model={model}")));
     }
-    run_python_verb_best_effort(arguments);
+    crate::token_commands::record_vendor_best_effort(arguments);
 }
 
 // ---------------------------------------------------------------------------

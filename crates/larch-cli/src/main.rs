@@ -98,6 +98,7 @@ mod session_artifact_support;
 mod validate_merged_commands;
 #[rustfmt::skip]
 mod run_log_flush_commands;
+mod ledger_append;
 mod report_tokens_commands;
 mod research_commands;
 mod review_commands;
@@ -116,6 +117,7 @@ mod state_commands;
 mod status_commands;
 mod test_shards;
 mod timing_commands;
+mod token_commands;
 mod tracking_issue_commands;
 mod triage_commands;
 mod umbrella_commands;
@@ -321,6 +323,9 @@ enum Domain {
     /// Timing-ledger marks, records, dumps, and reports.
     #[command(subcommand)]
     Timing(TimingCommand),
+    /// Token-ledger marks, vendor rows, dumps, and lane telemetry.
+    #[command(subcommand, name = "token")]
+    Token(TokenCommand),
     /// GitHub workflow helper commands.
     #[command(subcommand)]
     Gh(GhCommand),
@@ -592,6 +597,31 @@ enum TimingCommand {
     /// Print the canonical `--timing-task-kind` allow-list.
     #[command(name = "task-kinds", disable_help_flag = true)]
     TaskKinds(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum TokenCommand {
+    /// Record one step mark in the resolved token ledger.
+    #[command(disable_help_flag = true)]
+    Mark(RawCompatibilityArguments),
+    /// Record one vendor usage row in the resolved token ledger.
+    #[command(name = "record-vendor", disable_help_flag = true)]
+    RecordVendor(RawCompatibilityArguments),
+    /// Append one active-ledger vendor row from a KEY=value sidecar.
+    #[command(name = "record-vendor-sidecar", disable_help_flag = true)]
+    RecordVendorSidecar(RawCompatibilityArguments),
+    /// Append one staging NDJSON row from a KEY=value sidecar.
+    #[command(name = "append-record", disable_help_flag = true)]
+    AppendRecord(RawCompatibilityArguments),
+    /// Print the resolved ledger path and its raw rows.
+    #[command(disable_help_flag = true)]
+    Dump(RawCompatibilityArguments),
+    /// Write one research/validation lane token sidecar.
+    #[command(name = "lane-write", disable_help_flag = true)]
+    LaneWrite(RawCompatibilityArguments),
+    /// Render the research lane token-spend summary.
+    #[command(name = "lane-report", disable_help_flag = true)]
+    LaneReport(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2139,6 +2169,23 @@ fn run(
             }
             TimingCommand::TaskKinds(arguments) => {
                 timing_commands::task_kinds(&arguments.arguments)
+            }
+        }),
+        Domain::Token(command) => Ok(match command {
+            TokenCommand::Mark(arguments) => token_commands::mark(&arguments.arguments),
+            TokenCommand::RecordVendor(arguments) => {
+                token_commands::record_vendor(&arguments.arguments)
+            }
+            TokenCommand::RecordVendorSidecar(arguments) => {
+                token_commands::record_vendor_sidecar(&arguments.arguments)
+            }
+            TokenCommand::AppendRecord(arguments) => {
+                token_commands::append_record(&arguments.arguments)
+            }
+            TokenCommand::Dump(arguments) => token_commands::dump(&arguments.arguments),
+            TokenCommand::LaneWrite(arguments) => token_commands::lane_write(&arguments.arguments),
+            TokenCommand::LaneReport(arguments) => {
+                token_commands::lane_report(&arguments.arguments)
             }
         }),
         Domain::Gh(GhCommand::WorkflowPath) => {

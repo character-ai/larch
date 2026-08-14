@@ -1027,7 +1027,7 @@ def _run_token_command(
 def _run_codex(  # noqa: PLR0913,RUF100
     runner: Runner,
     *,
-    agent_cli: Path,
+    agent_cli: Path,  # noqa: ARG001 - retained for call-site compatibility.
     run_dir: Path,
     implement_tmpdir: Path,
     repo_root: str,
@@ -1079,8 +1079,9 @@ def _run_codex(  # noqa: PLR0913,RUF100
     )
     token_record = codex_log.with_suffix(codex_log.suffix + ".token-record")
     if token_record.is_file() and token_record.stat().st_size > 0:
-        _ = _run_token_command(runner=runner, argv=["python3", str(agent_cli), "token", "append-record", "--input", str(token_record), "--tmpdir", str(implement_tmpdir)], purpose="token append-record", cwd=repo_root)
-        _ = _run_token_command(runner=runner, argv=["python3", str(agent_cli), "token", "record-vendor-sidecar", "--input", str(token_record)], purpose="token record-vendor-sidecar", cwd=repo_root, env=_lint_fix_token_env(implement_tmpdir))
+        entrypoint = str(larch_entrypoint(plugin_root()))
+        _ = _run_token_command(runner=runner, argv=[entrypoint, "token", "append-record", "--input", str(token_record), "--tmpdir", str(implement_tmpdir)], purpose="token append-record", cwd=repo_root)
+        _ = _run_token_command(runner=runner, argv=[entrypoint, "token", "record-vendor-sidecar", "--input", str(token_record)], purpose="token record-vendor-sidecar", cwd=repo_root, env=_lint_fix_token_env(implement_tmpdir))
     if launcher_exit != 0 and codex_sidecar.is_file():
         _write_failed_agent_stderr_tail(
             source=codex_sidecar,

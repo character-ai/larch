@@ -275,15 +275,11 @@ fn subprocess_preserves_a_nonzero_vendor_exit_and_raw_output() {
 
 #[cfg(unix)]
 #[test]
-fn subprocess_records_usage_through_the_remaining_typed_python_verb() {
+fn subprocess_records_usage_in_the_implement_token_ledger() {
     let fixture = TempDir::new().expect("fixture");
     claude_fixture(
         fixture.path(),
         "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"result\":\"reviewed\",\"usage\":{\"input_tokens\":4,\"outputTokens\":3,\"cache_read_input_tokens\":2,\"cacheWriteTokens\":1}}'\n",
-    );
-    write(
-        &fixture.path().join("python/cli.py"),
-        "import os\nfrom pathlib import Path\nimport sys\nwith Path(__file__).with_name('calls').open('a', encoding='utf-8') as handle:\n    handle.write('\\t'.join(sys.argv[1:]) + '\\tIMPLEMENT_TMPDIR=' + os.environ.get('IMPLEMENT_TMPDIR', '') + '\\n')\n",
     );
     let prompt = fixture.path().join("prompt.txt");
     let output = fixture.path().join("review.out");
@@ -298,14 +294,38 @@ fn subprocess_records_usage_through_the_remaining_typed_python_verb() {
         .arg(&output)
         .args(["--timeout", "5", "--model", "claude-haiku-4-5"])
         .env("IMPLEMENT_TMPDIR", &telemetry_root)
+        .env("TMPDIR", &telemetry_root)
         .assert()
         .success();
 
-    let calls = fs::read_to_string(fixture.path().join("python/calls")).expect("delegated calls");
-    assert!(calls.contains(&format!(
-        "token\trecord-vendor\tclaude_sub\tinput=4\toutput=3\tcache_read=2\tcache_create=1\ttotal=10\traw=claude_review\tmodel=claude-haiku-4-5\tIMPLEMENT_TMPDIR={}",
-        telemetry_root.display()
-    )));
+    let ledgers = fs::read_dir(&telemetry_root)
+        .expect("telemetry root")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("larch-tokens-"))
+                && path.extension().is_some_and(|ext| ext == "jsonl")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ledgers.len(),
+        1,
+        "expected one token ledger under implement tmpdir"
+    );
+    let text = fs::read_to_string(&ledgers[0]).expect("ledger");
+    assert!(
+        text.contains("\"vendor\":\"claude_sub\"")
+            && text.contains("\"input\":4")
+            && text.contains("\"output\":3")
+            && text.contains("\"cache_read\":2")
+            && text.contains("\"cache_create\":1")
+            && text.contains("\"total\":10")
+            && text.contains("\"raw\":\"claude_review\"")
+            && text.contains("\"model\":\"claude-haiku-4-5\""),
+        "{text}"
+    );
 }
 
 #[cfg(unix)]

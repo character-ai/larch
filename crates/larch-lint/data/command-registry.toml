@@ -7672,11 +7672,13 @@ verb = "append-record"
 python_module = "larch.report.tokens"
 python_function = "token_append_record_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8506
+clean_install_test = "clean-install-token-append-record"
 
 [[commands]]
 domain = "token"
@@ -7744,11 +7746,13 @@ verb = "dump"
 python_module = "larch.report.tokens"
 python_function = "token_dump_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8506
+clean_install_test = "clean-install-token-dump"
 
 [[commands]]
 domain = "token"
@@ -7756,11 +7760,13 @@ verb = "lane-report"
 python_module = "larch.report.tokens"
 python_function = "token_lane_report_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8506
+clean_install_test = "clean-install-token-lane-report"
 
 [[commands]]
 domain = "token"
@@ -7768,11 +7774,13 @@ verb = "lane-write"
 python_module = "larch.report.tokens"
 python_function = "token_lane_write_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8506
+clean_install_test = "clean-install-token-lane-write"
 
 [[commands]]
 domain = "token"
@@ -7780,11 +7788,13 @@ verb = "mark"
 python_module = "larch.report.tokens"
 python_function = "token_mark_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8506
+clean_install_test = "clean-install-token-mark"
 
 [[commands]]
 domain = "token"
@@ -7876,11 +7886,13 @@ verb = "record-vendor"
 python_module = "larch.report.tokens"
 python_function = "token_record_vendor_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8506
+clean_install_test = "clean-install-token-record-vendor"
 
 [[commands]]
 domain = "token"
@@ -7888,11 +7900,13 @@ verb = "record-vendor-sidecar"
 python_module = "larch.report.tokens"
 python_function = "token_record_vendor_sidecar_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8506
+clean_install_test = "clean-install-token-record-vendor-sidecar"
 
 [[commands]]
 domain = "token"
@@ -8760,13 +8774,13 @@ rust = ["agent check-reviewers", "agent degraded-tools-gate"]
 path = "python/larch/agents/_claude_runner.py"
 kind = "python-runtime"
 python = []
-rust = ["agent launch-claude-ci", "agent launch-codex-ci", "agent launch-cursor-ci"]
+rust = ["agent launch-claude-ci", "agent launch-codex-ci", "agent launch-cursor-ci", "token append-record", "token record-vendor", "token record-vendor-sidecar"]
 
 [[callers]]
 path = "python/larch/agents/_run_external.py"
 kind = "python-runtime"
 python = []
-rust = ["agent parse-codex-usage", "run-log append-failure", "timing record-vendor-task"]
+rust = ["agent parse-codex-usage", "run-log append-failure", "timing record-vendor-task", "token record-vendor", "token record-vendor-sidecar"]
 
 [[callers]]
 path = "python/larch/core/redact.py"
@@ -8778,7 +8792,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["block-issue *", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome", "timing *", "tracking-issue *"]
+rust = ["block-issue *", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome", "timing *", "token append-record", "token dump", "token lane-report", "token lane-write", "token mark", "token record-vendor", "token record-vendor-sidecar", "tracking-issue *"]
 
 [[callers]]
 path = "python/larch/debate/orchestrator.py"
@@ -8850,7 +8864,7 @@ rust = ["timing mark"]
 path = "python/larch/design/design_step0.py"
 kind = "python-runtime"
 python = ["plan check-size"]
-rust = ["agent check-reviewers", "agent degraded-tools-gate", "progress install-statusline", "run-log lifecycle-start", "run-log storage-preflight", "session cleanup-tmpdir", "session setup", "session write-design-env", "timing mark"]
+rust = ["agent check-reviewers", "agent degraded-tools-gate", "progress install-statusline", "run-log lifecycle-start", "run-log storage-preflight", "session cleanup-tmpdir", "session setup", "session write-design-env", "timing mark", "token mark"]
 
 [[callers]]
 path = "python/larch/design/design_step1.py"
@@ -8862,7 +8876,7 @@ rust = ["agent collect-results", "dirty-tree checkpoint", "timing mark"]
 path = "python/larch/design/design_step2b.py"
 kind = "python-runtime"
 python = []
-rust = ["agent launch-claude-drafter", "agent launch-codex-drafter", "run-log append-entry", "run-log append-failure"]
+rust = ["agent launch-claude-drafter", "agent launch-codex-drafter", "run-log append-entry", "run-log append-failure", "token append-record", "token record-vendor-sidecar"]
 
 [[callers]]
 path = "python/larch/design/design_step6.py"
@@ -8922,13 +8936,13 @@ rust = []
 path = "python/larch/implement/checks_lint_fix.py"
 kind = "python-runtime"
 python = ["checks lint-fix", "checks run-relevant"]
-rust = ["agent launch-claude-lint-fix", "agent launch-codex-exec", "bgjob start", "git commit", "git stage"]
+rust = ["agent launch-claude-lint-fix", "agent launch-codex-exec", "bgjob start", "git commit", "git stage", "token append-record", "token record-vendor-sidecar"]
 
 [[callers]]
 path = "python/larch/implement/checks_run_relevant.py"
 kind = "python-runtime"
 python = ["checks run-relevant"]
-rust = ["timing mark", "timing record-vendor-task"]
+rust = ["timing mark", "timing record-vendor-task", "token mark"]
 
 [[callers]]
 path = "python/larch/implement/ci_monitor.py"
@@ -8952,7 +8966,7 @@ rust = ["timing mark"]
 path = "python/larch/implement/dispatch_recovery.py"
 kind = "python-runtime"
 python = []
-rust = ["git commit", "timing mark"]
+rust = ["git commit"]
 
 [[callers]]
 path = "python/larch/implement/dispatch_ship.py"
@@ -8982,7 +8996,7 @@ rust = ["run-log manifest"]
 path = "python/larch/implement/step_7a.py"
 kind = "python-runtime"
 python = []
-rust = ["bgjob start", "timing mark"]
+rust = ["bgjob start", "timing mark", "token mark"]
 
 [[callers]]
 path = "python/larch/rendering/rendering.py"
@@ -9066,7 +9080,7 @@ rust = ["agent compose-collector-failure-log"]
 path = "python/larch/review/review_and_fix.py"
 kind = "python-runtime"
 python = []
-rust = ["git commit", "run-log write", "stall-recovery record-escalation", "timing mark", "voting write-tally"]
+rust = ["git commit", "run-log write", "stall-recovery record-escalation", "timing mark", "token mark", "voting write-tally"]
 
 [[callers]]
 path = "python/larch/review/review_tally.py"
@@ -9588,7 +9602,7 @@ rust = []
 path = "skills/implement/references/step2-dispatch.md"
 kind = "skill"
 python = ["implement commit", "implement normalize-coder-scout", "implement recovery-paths", "implement run-dispatch", "implement step2-dispatch", "redact secrets", "token check-budget"]
-rust = ["agent launch-codex-implement", "bgjob wait", "dirty-tree scope-check", "git commit", "plan scope-paths", "run-log checkpoint"]
+rust = ["agent launch-codex-implement", "bgjob wait", "dirty-tree scope-check", "git commit", "plan scope-paths", "run-log checkpoint", "token mark"]
 
 [[callers]]
 path = "skills/implement/references/step2-main-health-fix.md"
@@ -9941,8 +9955,8 @@ rust = ["report-tokens analyze"]
 [[callers]]
 path = "skills/research/SKILL.md"
 kind = "skill"
-python = ["render lane-status", "token lane-report", "token lane-write"]
-rust = ["agent degraded-tools-gate", "git branch-info", "research banner", "research render-findings-batch", "research run-planner", "research validate-citations", "session cleanup-tmpdir", "session setup", "verify skill-called"]
+python = ["render lane-status"]
+rust = ["agent degraded-tools-gate", "git branch-info", "research banner", "research render-findings-batch", "research run-planner", "research validate-citations", "session cleanup-tmpdir", "session setup", "token lane-report", "token lane-write", "verify skill-called"]
 
 [[callers]]
 path = "skills/research/references/citation-validation-phase.md"
@@ -9953,8 +9967,8 @@ rust = ["research render-findings-batch", "research validate-citations"]
 [[callers]]
 path = "skills/research/references/critique-loop-phase.md"
 kind = "skill"
-python = ["token lane-write"]
-rust = ["research validate-citations"]
+python = []
+rust = ["research validate-citations", "token lane-write"]
 
 [[callers]]
 path = "skills/research/references/eval-set.md"
@@ -9965,14 +9979,14 @@ rust = ["admission gate", "push rebase", "tracking-issue upsert-summary"]
 [[callers]]
 path = "skills/research/references/research-phase.md"
 kind = "skill"
-python = ["token append-record", "token lane-write", "token record-vendor-sidecar"]
-rust = ["agent collect-results", "agent launch-codex-exec", "bgjob start", "bgjob wait", "research banner", "research run-planner", "session cleanup-tmpdir"]
+python = []
+rust = ["agent collect-results", "agent launch-codex-exec", "bgjob start", "bgjob wait", "research banner", "research run-planner", "session cleanup-tmpdir", "token append-record", "token lane-write", "token record-vendor-sidecar"]
 
 [[callers]]
 path = "skills/research/references/validation-phase.md"
 kind = "skill"
-python = ["render reviewer", "token append-record", "token lane-write", "token record-vendor-sidecar"]
-rust = ["agent collect-results", "agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent launch-codex-exec", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait", "research banner"]
+python = ["render reviewer"]
+rust = ["agent collect-results", "agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent launch-codex-exec", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait", "research banner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
 
 [[callers]]
 path = "skills/review-and-fix/SKILL.md"

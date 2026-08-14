@@ -65,7 +65,7 @@ Invoke a single Claude Code Reviewer subagent via the Agent tool (`subagent_type
 Slot name: `Critique-1` (iter 1) or `Critique-2` (iter 2). After the Agent return, parse `total_tokens` from the `<usage>` block and write the per-lane sidecar:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-write \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" token lane-write \
   --phase validation \
   --lane "Critique-${iter}" \
   --tool claude \
@@ -121,7 +121,7 @@ Invoke a Claude Agent subagent following the **same revision-subagent contract**
 Slot name: `Revision-Critique-1` (iter 1) or `Revision-Critique-2` (iter 2). After the Agent return, parse `total_tokens` and write the sidecar:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-write \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" token lane-write \
   --phase validation \
   --lane "Revision-Critique-${iter}" \
   --tool claude \

@@ -141,8 +141,12 @@ def _append_diagram_warning(*, implement_tmpdir: Path, message: str) -> None:
 
 
 def _checkpoint_execution_issues(implement_tmpdir: Path, *, run_id: str) -> str:
-    _run_cli("token", "mark", "Step 8 — ship PR")
     env = {**larch_entrypoint_env(Path(__file__).resolve().parents[3]), "LARCH_TIMING_SKILL": "implement"}
+    subprocess.run(
+        [str(larch_entrypoint(Path(__file__).resolve().parents[3])), "token", "mark", "Step 8 — ship PR"],
+        env=env,
+        check=False,
+    )
     subprocess.run(
         [str(larch_entrypoint(Path(__file__).resolve().parents[3])), "timing", "mark", "Step 8 — ship PR"],
         env=env,
@@ -268,11 +272,16 @@ def _run_step7a_inner(
             repo = _read_kv(path=session_env, key="REPO")
         if not repo:
             repo = _read_kv(path=session_env, key="UPSTREAM_REPO")
-    _run_cli("token", "mark", "Step 7a — pre-ship")
-    # lint-subprocess-via-runner: ok timing-mark needs LARCH_TIMING_SKILL env; _run_cli does not support custom env
+    # lint-subprocess-via-runner: ok token/timing marks need LARCH_TIMING_SKILL env; _run_cli does not support custom env
+    mark_env = {**os.environ, "LARCH_TIMING_SKILL": "implement"}
+    subprocess.run(
+        [str(larch_entrypoint(Path(__file__).resolve().parents[3])), "token", "mark", "Step 7a — pre-ship"],
+        env=mark_env,
+        check=False,
+    )
     subprocess.run(
         [str(larch_entrypoint(Path(__file__).resolve().parents[3])), "timing", "mark", "Step 7a — pre-ship"],
-        env={**os.environ, "LARCH_TIMING_SKILL": "implement"},
+        env=mark_env,
         check=False,
     )
 

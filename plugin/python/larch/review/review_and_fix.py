@@ -1290,8 +1290,7 @@ def commit_fixes(argv: list[str] | None = None) -> int:
         for key in ("LARCH_TOKEN_SESSION_ID", "LARCH_CLAUDE_SOURCE_FILE", "LARCH_TIMING_LEDGER"):
             if not os.environ.get(key):
                 os.environ[key] = _session_get(session_env_path=session, key=key, default="")
-    cli = _plugin_root() / "python" / "cli.py"
-    _run(["python3", str(cli), "token", "mark", "Step 7 — commit review fixes"])
+    _run([str(larch_entrypoint(_plugin_root())), "token", "mark", "Step 7 — commit review fixes"])
     _run([str(larch_entrypoint(_plugin_root())), "timing", "mark", "Step 7 — commit review fixes"], env={**os.environ, "LARCH_TIMING_SKILL": "implement"})
     if args.stage_all:
         return _commit_fixes_stage_all(args.message)

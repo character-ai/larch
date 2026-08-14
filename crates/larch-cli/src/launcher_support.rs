@@ -37,7 +37,6 @@ use crate::external_agent::{
     BareVendorOutput, BareVendorRun, ExternalAgentLaunch, ExternalAgentRouting,
     ExternalAgentStallWatch, platform_name, run_bare_vendor, shared_startup_lock_root,
 };
-use crate::python_verb::run_python_verb_best_effort;
 use crate::run_log_entry_commands::{FailureRecordRequest, record_execution_failure};
 use crate::timing_commands::record_vendor_timing;
 
@@ -210,9 +209,7 @@ pub fn cursor_model_argv(override_model: Option<&str>) -> Result<Vec<String>, St
 
 /// Record one Claude subprocess's usage against the shared `claude_sub` row.
 pub fn record_claude_sub_usage(usage: ClaudeUsageTotals, raw: &str, ledger_model: &str) {
-    run_python_verb_best_effort([
-        OsString::from("token"),
-        OsString::from("record-vendor"),
+    crate::token_commands::record_vendor_best_effort([
         OsString::from("claude_sub"),
         OsString::from(format!("input={}", usage.input_tokens())),
         OsString::from(format!("output={}", usage.output_tokens())),
@@ -1027,8 +1024,6 @@ pub fn cursor_configuration_context() -> Result<CursorConfigContext, String> {
 /// Record one Codex launch's per-bucket usage against the shared ledger.
 pub fn record_codex_vendor_usage(totals: &larch_core::UsageTotals, label: &str, model: &str) {
     let mut arguments = vec![
-        OsString::from("token"),
-        OsString::from("record-vendor"),
         OsString::from("codex"),
         OsString::from(format!("input={}", totals.uncached_input_tokens())),
         OsString::from(format!("cache_read={}", totals.cached_input_tokens())),
@@ -1039,7 +1034,7 @@ pub fn record_codex_vendor_usage(totals: &larch_core::UsageTotals, label: &str, 
     if !model.is_empty() {
         arguments.push(OsString::from(format!("model={model}")));
     }
-    run_python_verb_best_effort(arguments);
+    crate::token_commands::record_vendor_best_effort(arguments);
 }
 
 /// One Cursor result envelope's four usage buckets.

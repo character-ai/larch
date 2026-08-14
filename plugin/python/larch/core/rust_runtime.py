@@ -1783,6 +1783,169 @@ def timing_record_round(  # noqa: PLR0913 - mirrors the stable Rust timing CLI s
     ).returncode == 0
 
 
+def _token_runner_env(
+    ledger: str | None,
+    environment: Mapping[str, str] | None,
+) -> dict[str, str]:
+    env = dict(os.environ)
+    if environment is not None:
+        env.update(environment)
+    if ledger:
+        env["LARCH_TOKEN_LEDGER"] = ledger
+    return env
+
+
+def token_mark(
+    runner: Runner,
+    *,
+    step: str,
+    ledger: str | None = None,
+    environment: Mapping[str, str] | None = None,
+    cwd: str | None = None,
+) -> bool:
+    """Record one step mark through the sole Rust token-ledger owner."""
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "token",
+        "mark",
+    ]
+    if ledger:
+        argv.extend(["--ledger", ledger])
+    argv.append(step)
+    return runner.run(argv, cwd=cwd, env=_token_runner_env(ledger, environment)).returncode == 0
+
+
+def token_record_vendor(  # noqa: PLR0913 - mirrors the stable Rust token CLI surface.
+    runner: Runner,
+    *,
+    vendor: str,
+    fields: Sequence[str],
+    ledger: str | None = None,
+    environment: Mapping[str, str] | None = None,
+    cwd: str | None = None,
+) -> bool:
+    """Record one vendor usage row through the sole Rust token-ledger owner."""
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "token",
+        "record-vendor",
+        vendor,
+        *fields,
+    ]
+    if ledger:
+        argv[3:3] = ["--ledger", ledger]
+    return runner.run(argv, cwd=cwd, env=_token_runner_env(ledger, environment)).returncode == 0
+
+
+def token_record_vendor_sidecar(
+    runner: Runner,
+    *,
+    input_path: str,
+    ledger: str | None = None,
+    environment: Mapping[str, str] | None = None,
+    cwd: str | None = None,
+) -> bool:
+    """Append one active-ledger vendor row from a KEY=value sidecar."""
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "token",
+        "record-vendor-sidecar",
+        "--input",
+        input_path,
+    ]
+    if ledger:
+        argv[3:3] = ["--ledger", ledger]
+    return runner.run(argv, cwd=cwd, env=_token_runner_env(ledger, environment)).returncode == 0
+
+
+def token_append_record(
+    runner: Runner,
+    *,
+    input_path: str,
+    tmpdir: str,
+    environment: Mapping[str, str] | None = None,
+    cwd: str | None = None,
+) -> bool:
+    """Append one staging NDJSON row from a KEY=value sidecar."""
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "token",
+        "append-record",
+        "--input",
+        input_path,
+        "--tmpdir",
+        tmpdir,
+    ]
+    return runner.run(argv, cwd=cwd, env=_token_runner_env(None, environment)).returncode == 0
+
+
+def token_dump(
+    runner: Runner,
+    *,
+    ledger: str | None = None,
+    environment: Mapping[str, str] | None = None,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Print the resolved token ledger path and its raw rows."""
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "token",
+        "dump",
+    ]
+    if ledger:
+        argv.extend(["--ledger", ledger])
+    return runner.run(argv, cwd=cwd, env=_token_runner_env(ledger, environment))
+
+
+def token_lane_write(  # noqa: PLR0913 - mirrors the stable Rust token CLI surface.
+    runner: Runner,
+    *,
+    directory: str,
+    phase: str,
+    lane: str,
+    tool: str,
+    total_tokens: str,
+    environment: Mapping[str, str] | None = None,
+    cwd: str | None = None,
+) -> bool:
+    """Write one research/validation lane token sidecar."""
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "token",
+        "lane-write",
+        "--dir",
+        directory,
+        "--phase",
+        phase,
+        "--lane",
+        lane,
+        "--tool",
+        tool,
+        "--total-tokens",
+        total_tokens,
+    ]
+    return runner.run(argv, cwd=cwd, env=_token_runner_env(None, environment)).returncode == 0
+
+
+def token_lane_report(
+    runner: Runner,
+    *,
+    directory: str,
+    environment: Mapping[str, str] | None = None,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Render the research lane token-spend summary."""
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "token",
+        "lane-report",
+        "--dir",
+        directory,
+    ]
+    return runner.run(argv, cwd=cwd, env=_token_runner_env(None, environment))
+
+
+
 def render_phase_detail(  # noqa: PLR0913 - mirrors the Rust renderer's stable CLI surface plus the injected runner
     runner: Runner,
     *,

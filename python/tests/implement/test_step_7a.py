@@ -189,12 +189,15 @@ def test_step7a_checkpoint_flushes_only_execution_issues(tmp_path: Path, monkeyp
         return subprocess.CompletedProcess(args, 0, "", "")
 
     flushes: list[list[str]] = []
+    token_marks: list[list[str]] = []
 
     def fake_subprocess_run(*args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
         argv: list[str] = [str(part) for part in cast("Sequence[str]", args[0])] if args else []
         if "execution-issues" in argv:
             flushes.append(argv[argv.index("execution-issues"):])
             return subprocess.CompletedProcess(argv, 0, "FLUSH_STATUS=skip\nRECORDS=0\n", "")
+        if len(argv) >= 3 and argv[-3:-1] == ["token", "mark"]:
+            token_marks.append(argv)
         return subprocess.CompletedProcess(["python"], 0, "", "")
 
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
@@ -205,7 +208,9 @@ def test_step7a_checkpoint_flushes_only_execution_issues(tmp_path: Path, monkeyp
     )
 
     assert status == "ok"
-    assert calls == [("token", "mark", "Step 8 — ship PR")]
+    assert calls == []
+    assert token_marks
+    assert token_marks[0][-1] == "Step 8 — ship PR"
     assert flushes == [[
         "execution-issues", "flush",
         "--log-root", str(tmp_path / "larch-logs"),
@@ -559,6 +564,7 @@ def test_step7a_orchestrates_generation_upsert_and_checkpoint_in_order(
     _ = (tmp_path / "session-env.sh").write_text("REPO=owner/repo\n", encoding="utf-8")
     calls: list[tuple[str, ...]] = []
     events: list[str] = []
+    token_marks: list[str] = []
 
     def fake_generate(
         implement_tmpdir: Path, *, base_remote: str, base_ref: str
@@ -577,6 +583,12 @@ def test_step7a_orchestrates_generation_upsert_and_checkpoint_in_order(
             return subprocess.CompletedProcess(args, 0, "UPSERT_STATUS=ok\nCOMMENT_URL=https://example.test/comment/1\n", "")
         return subprocess.CompletedProcess(args, 0, "", "")
 
+    def fake_subprocess_run(*args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        argv: list[str] = [str(part) for part in cast("Sequence[str]", args[0])] if args else []
+        if len(argv) >= 3 and argv[-3:-1] == ["token", "mark"]:
+            token_marks.append(argv[-1])
+        return _successful_subprocess(*args, **_kwargs)
+
     def fake_checkpoint(_runner: object, *, step_prefix: str, short_name: str, base_remote: str | None = None, base_ref: str | None = None, forked_target: str = "false", cwd: str | None = None) -> step_7a.rust_runtime.CheckpointProbeOutput:
         _ = (forked_target, cwd)
         checkpoint_calls.append((step_prefix, short_name, base_remote, base_ref))
@@ -587,14 +599,14 @@ def test_step7a_orchestrates_generation_upsert_and_checkpoint_in_order(
     monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
     monkeypatch.setattr(step_7a.rust_runtime, "checkpoint_probe", fake_checkpoint)
     monkeypatch.setattr(step_7a, "_checkpoint_execution_issues", _successful_log_checkpoint)
-    monkeypatch.setattr(step_7a.subprocess, "run", _successful_subprocess)
+    monkeypatch.setattr(step_7a.subprocess, "run", fake_subprocess_run)
 
     rc = step_7a.run_step7a(tmp_path, issue_number="42")
 
     assert rc == 0
-    assert calls[0] == ("token", "mark", "Step 7a — pre-ship")
+    assert token_marks[0] == "Step 7a — pre-ship"
     assert events == ["generate"]
-    assert calls[1] == (
+    assert calls[0] == (
         "diagrams",
         "upsert",
         "--issue",

@@ -37,7 +37,7 @@ Invoke the validator script:
   --output "$RESEARCH_TMPDIR/subquestions.txt"
 ```
 
-**Token telemetry (planner)**: After the planner Agent subagent returns, parse `total_tokens` from the subagent's `<usage>` block and write a per-lane token sidecar via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-write --phase research --lane planner --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`.
+**Token telemetry (planner)**: After the planner Agent subagent returns, parse `total_tokens` from the subagent's `<usage>` block and write a per-lane token sidecar via `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" token lane-write --phase research --lane planner --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`.
 
 **On exit 0** (success): parse `COUNT=<N>` from stdout via prefix-strip, save as `RESEARCH_PLAN_N`. Proceed to Step 1.1.c.
 
@@ -135,7 +135,7 @@ Print: `> **🔶 /research 1.3: lane-launch**`
 
 **Critical sequencing**: launch all four lanes in a single message. For Codex lanes, call `bgjob start` once per lane from foreground Bash with a unique `--step` slug. For unavailable Codex lanes, launch the per-lane Claude `Agent` fallback in that same message. Do not use Claude background Bash launches.
 
-**Token telemetry (research lanes)**: every Claude `Agent` fallback (pre-launch when `codex_binary_available=false` AND every runtime-timeout replacement) writes a per-lane sidecar after the Agent return: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-write --phase research --lane <slot> --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`. Stable slot names: `architecture`, `edge-cases`, `external-comparisons`, `security`. Non-fallback Codex lanes receive best-effort usage records from `launch-codex-exec.sh` (`${OUTPUT}.token-record` / events sidecar); Claude fallbacks remain the authoritative per-lane token tally path.
+**Token telemetry (research lanes)**: every Claude `Agent` fallback (pre-launch when `codex_binary_available=false` AND every runtime-timeout replacement) writes a per-lane sidecar after the Agent return: `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" token lane-write --phase research --lane <slot> --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`. Stable slot names: `architecture`, `edge-cases`, `external-comparisons`, `security`. Non-fallback Codex lanes receive best-effort usage records from `launch-codex-exec.sh` (`${OUTPUT}.token-record` / events sidecar); Claude fallbacks remain the authoritative per-lane token tally path.
 
 **Named angle prompts** (orchestrator substitutes `<RESEARCH_QUESTION>` literally at launch time; appends the per-lane suffix from §1.2 when `RESEARCH_PLAN_N>0`):
 
@@ -221,7 +221,7 @@ For each selected output path, set `SIDECAR="${OUTPUT}.token-record"`. If `$SIDE
 ```bash
 _append_err="$(mktemp)"
 _append_rc=0
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token append-record --input "$SIDECAR" --tmpdir "$RESEARCH_TMPDIR" 2>"$_append_err" || _append_rc=$?
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" token append-record --input "$SIDECAR" --tmpdir "$RESEARCH_TMPDIR" 2>"$_append_err" || _append_rc=$?
 if (( _append_rc != 0 )); then
   printf 'WARNING: token append-record failed with exit %s' "$_append_rc" >&2
   if [[ -s "$_append_err" ]]; then printf ': %s' "$(cat "$_append_err")" >&2; fi
@@ -232,7 +232,7 @@ fi
 rm -f "$_append_err"
 _active_err="$(mktemp)"
 _active_rc=0
-env -u LARCH_TOKEN_LEDGER -u LARCH_TOKEN_SESSION_ID -u IMPLEMENT_TMPDIR -u DESIGN_TMPDIR -u SESSION_ENV_PATH RESEARCH_TMPDIR="$RESEARCH_TMPDIR" python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token record-vendor-sidecar --input "$SIDECAR" 2>"$_active_err" || _active_rc=$?
+env -u LARCH_TOKEN_LEDGER -u LARCH_TOKEN_SESSION_ID -u IMPLEMENT_TMPDIR -u DESIGN_TMPDIR -u SESSION_ENV_PATH RESEARCH_TMPDIR="$RESEARCH_TMPDIR" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" token record-vendor-sidecar --input "$SIDECAR" 2>"$_active_err" || _active_rc=$?
 if (( _active_rc != 0 )); then
   printf 'WARNING: token record-vendor-sidecar failed with exit %s' "$_active_rc" >&2
   if [[ -s "$_active_err" ]]; then printf ': %s' "$(cat "$_active_err")" >&2; fi
@@ -263,7 +263,7 @@ Preserve the `VALIDATION_*` slice unchanged. The token vocabulary is documented 
 
 Synthesis MUST write `$RESEARCH_TMPDIR/research-report.txt` so Step 2 and Step 3 can consume it.
 
-**Token telemetry (synthesis subagent)**: parse `total_tokens` from the synthesis subagent's `<usage>` block and write `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-write --phase research --lane Synthesis --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`.
+**Token telemetry (synthesis subagent)**: parse `total_tokens` from the synthesis subagent's `<usage>` block and write `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" token lane-write --phase research --lane Synthesis --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`.
 
 ### Pre-synthesis lane-output persistence
 

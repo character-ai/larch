@@ -196,6 +196,7 @@ impl CleanInstallCase {
             }
             id if id.starts_with("clean-install-run-log-") => run_log_arguments(id),
             id if id.starts_with("clean-install-timing-") => timing_arguments(id),
+            id if id.starts_with("clean-install-token-") => token_arguments(id),
             "clean-install-progress-activate" | "clean-install-progress-deactivate" => &[
                 "--repo-root",
                 "/larch-clean-install-clone-missing",
@@ -341,6 +342,31 @@ fn timing_arguments(id: &str) -> &'static [&'static str] {
             "--start-s", "0", "--end-s", "1", "--output", "clean-install.log",
         ],
         "clean-install-timing-harness-mark" => &["--label", "clean-install", "--", "/usr/bin/true"],
+        _ => &[],
+    }
+}
+
+/// Argument sets for every Rust-owned `token` clean-install case.
+///
+/// A clean install names no session temporary directory, so recording verbs
+/// resolve no ledger and still succeed after proving the dispatch route.
+#[rustfmt::skip]
+fn token_arguments(id: &str) -> &'static [&'static str] {
+    match id {
+        "clean-install-token-mark" => &["clean-install"],
+        "clean-install-token-record-vendor" => &[
+            "codex", "input=1", "output=0", "cache_read=0", "cache_create=0", "total=1", "raw=clean-install",
+        ],
+        "clean-install-token-record-vendor-sidecar" => &["--input", "/larch-clean-install-token-sidecar-missing"],
+        "clean-install-token-append-record" => &[
+            "--tmpdir", "/tmp", "--input", "/larch-clean-install-token-sidecar-missing",
+        ],
+        "clean-install-token-lane-write" => &[
+            "--dir", "/tmp", "--phase", "research", "--lane", "clean-install",
+            "--tool", "claude", "--total-tokens", "1",
+        ],
+        "clean-install-token-lane-report" => &["--dir", "/tmp"],
+        // dump and any unknown id prove dispatch with zero args.
         _ => &[],
     }
 }
@@ -1229,6 +1255,17 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-timing-telemetry-mark",
         "timing",
         "telemetry-mark",
+    ),
+    CleanInstallCase::new("clean-install-token-append-record", "token", "append-record"),
+    CleanInstallCase::new("clean-install-token-dump", "token", "dump"),
+    CleanInstallCase::new("clean-install-token-lane-report", "token", "lane-report"),
+    CleanInstallCase::new("clean-install-token-lane-write", "token", "lane-write"),
+    CleanInstallCase::new("clean-install-token-mark", "token", "mark"),
+    CleanInstallCase::new("clean-install-token-record-vendor", "token", "record-vendor"),
+    CleanInstallCase::new(
+        "clean-install-token-record-vendor-sidecar",
+        "token",
+        "record-vendor-sidecar",
     ),
     CleanInstallCase::new("clean-install-test-shard-pack", "test-shard", "pack"),
     CleanInstallCase::new(

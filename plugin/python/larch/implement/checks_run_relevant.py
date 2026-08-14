@@ -249,7 +249,7 @@ def _mark_step_ledger(*, runner: Runner, canonical_tmp: Path, site: str) -> None
         "IMPLEMENT_TMPDIR": str(canonical_tmp),
         "LARCH_TIMING_SKILL": "implement",
     }
-    _ = runner.run(["python3", str(cli), "token", "mark", label], env=env)
+    _ = runner.run([str(larch_entrypoint(cli.parents[1])), "token", "mark", label], env=env)
     timing_env = {**env, "DESIGN_TMPDIR": ""}
     _ = runner.run([str(larch_entrypoint(cli.parents[1])), "timing", "mark", label], env=timing_env)
 
