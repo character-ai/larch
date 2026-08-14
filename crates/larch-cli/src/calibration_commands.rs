@@ -13,7 +13,7 @@ use larch_adapters::{PathIntent, RepositoryRoot, TemporaryRoot, absolute_lexical
 use larch_core::{
     ChildEnvironment, DuplicatePolicy, KvDocument, ParseOptions, RunLogCorpus, RunLogRoundSort, emit_kv, file_line_regex,
     review::{LedgerRow, parse_judge_vote_text, write_round},
-    run_started_at_without_manifest,
+    python_str, run_started_at_without_manifest,
 };
 use regex::Regex;
 use serde_json::Value;
@@ -420,15 +420,6 @@ fn neutralize(text: &str) -> String {
     format!("{}{}", lines.join("\n"), if trailing_newline { "\n" } else { "" })
 }
 
-fn json_string(value: Option<&Value>) -> String {
-    match value {
-        Some(Value::String(value)) => value.clone(),
-        Some(Value::Number(value)) => value.to_string(),
-        Some(Value::Bool(value)) => value.to_string().replace('t', "T").replace('f', "F"),
-        _ => String::new(),
-    }
-}
-
 fn jsonl_ballot(repo: &Path, run_root: &Path, finding: &str, round: u64) -> Result<Option<String>, String> {
     let path = run_root.join("review-findings-full.jsonl");
     if !path.is_file() {
@@ -438,10 +429,10 @@ fn jsonl_ballot(repo: &Path, run_root: &Path, finding: &str, round: u64) -> Resu
         let Ok(Value::Object(record)) = serde_json::from_str::<Value>(line) else {
             continue;
         };
-        if json_string(record.get("id")) != finding || json_string(record.get("round_num")).trim() != round.to_string() {
+        if python_str(record.get("id")) != finding || python_str(record.get("round_num")).trim() != round.to_string() {
             continue;
         }
-        let body = json_string(record.get("prose_body"));
+        let body = python_str(record.get("prose_body"));
         if body.chars().count() == 2000 {
             return Err(format!(
                 "{finding} jsonl prose_body is exactly 2000 characters; jsonl alone is not production-parity for truncated bodies, so commit a fixture_ballot"
@@ -457,7 +448,7 @@ fn jsonl_ballot(repo: &Path, run_root: &Path, finding: &str, round: u64) -> Resu
         if !block.is_empty() {
             return Ok(Some(block));
         }
-        let title = json_string(record.get("category")).trim().to_owned();
+        let title = python_str(record.get("category")).trim().to_owned();
         let title = if title.is_empty() {
             body.lines().find_map(|line| line.trim().strip_prefix("## ").map(str::trim)).unwrap_or(finding).to_owned()
         } else {
