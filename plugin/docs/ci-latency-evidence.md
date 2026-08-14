@@ -63,7 +63,24 @@ The harness measurements show why the five-cell matrix was reduced to two. Cells
 | 31776106272 | 1=15, 2=14, 5=9 | 213 | 112 |
 | 31778104389 | 1=12, 2=10, 5=11 | 234 | 109 |
 
-This preserves exactly-once harness ownership and keeps the slower existing harness leg unchanged; it removes 36 s, 38 s, and 33 s of measured empty-runner time. The stable `test-harnesses-gate` and `python-tests-gate` context names remain unchanged. Three comparable post-change full CI runs are required below before treating this as measured result evidence.
+This preserves exactly-once harness ownership and keeps the slower existing harness leg unchanged; it removes 36 s, 38 s, and 33 s of measured empty-runner time. The stable `test-harnesses-gate` and `python-tests-gate` context names remain unchanged.
+
+### Post-change controlled cohort
+
+Three serial, successful full-path `workflow_dispatch` runs exercised the final four-Python/two-harness candidate at [`fa178c45e`](https://github.com/character-ai/larch/commit/fa178c45ebd17889f10370e6cca70dfe5cec607b). Every actual runner job succeeded, all runs used attempt 1, and each had exactly 22 actual runner jobs. Values below are seconds; the final job remained the Rust-backed `python-tests-gate` consumer, not a Python matrix leg.
+
+| Run | Trigger→last | Active DAG | Sum runner | Python sum / max | Harness sum / max | Rust full | Rust gate path | Final job |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| [31793144304](https://github.com/character-ai/larch/actions/runs/31793144304) | 383 | 378 | 1,778 | 461 / 122 | 229 / 141 | 335 | 350 | `python-tests-gate` |
+| [31794577585](https://github.com/character-ai/larch/actions/runs/31794577585) | 401 | 396 | 1,840 | 477 / 128 | 264 / 167 | 350 | 365 | `python-tests-gate` |
+| [31795357826](https://github.com/character-ai/larch/actions/runs/31795357826) | 390 | 386 | 1,838 | 476 / 125 | 277 / 176 | 345 | 359 | `python-tests-gate` |
+| Median | 390 | 386 | 1,838 | 476 / 125 | 264 / 167 | 345 | 359 | `python-tests-gate` |
+
+Against the planning-cohort medians, the candidate cuts summed Python runner time from 932 s to 476 s and harness runner time from 363 s to 264 s, while reducing actual runner jobs from 41 to 22. Python matrix maximum rises from 53 s to 125 s as intended when each surviving cell owns five times as many tests, but it finishes before the Rust producer and therefore does not make the matrix a required-path tail.
+
+Collection remains the existing single pytest collection path: every new Python cell reported `collected 6,601 items`, for 26,404 item-collections across the matrix, versus 20 × 6,608 = 132,160 in the prior matrix (an 80% reduction in repeated collection work). The per-run maximum pytest elapsed time was 109.61 s, 110.95 s, and 112.93 s (median 110.95 s). This is why marker-byte prefiltering remains out of scope: the assessed marker tail is not material, and the four surviving full-collection cells remain safely before Rust.
+
+To distinguish the matrix change from live Rust-producer variance, the first two candidates were paired sequentially with the exact parent revision [`cb9c2612c`](https://github.com/character-ai/larch/commit/cb9c2612c2d157ea51256f7ad073b900823df27d) using its 20-Python/five-harness matrix. The controls were [31792414259](https://github.com/character-ai/larch/actions/runs/31792414259) (379 s trigger-to-last, 2,288 s summed runner, 915 s Python, 299 s harness, 333 s `rust-full`) and [31793876810](https://github.com/character-ai/larch/actions/runs/31793876810) (389 s, 2,277 s, 893 s, 292 s, and 341 s respectively). Their paired candidates retain the large runner-time reduction; the 383–401 s whole-workflow values track the independent `rust-full` and Rust-backed integration tail rather than a Python matrix dependency. The raw cohort does not claim a lower end-to-end median than the earlier 368 s merge-group cohort; it records the remaining critical path candidly. All samples remain below the seven-minute umbrella threshold, and the retained optimization is justified by its directly measured runner-time win without weakening any required check or failure-diagnosis surface.
 
 ## Result and scope
 
