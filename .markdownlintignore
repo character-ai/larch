@@ -8,6 +8,11 @@ larch-logs/
 # satisfy lint rules.
 fixtures/rust-review/finding-blocks.golden.md
 
+# plan_review_normalized_findings.golden.md preserves byte-exact normalized
+# Markdown, including intentional blank-line separators between parsed blocks.
+# It is a wire-contract fixture rather than authoring-quality Markdown.
+crates/larch-core/tests/fixtures/review/plan_review_normalized_findings.golden.md
+
 # review_dispatch_panel_prompt.md is a byte-exact runtime prompt template.
 # Its intentional H1-to-H3 sequence is part of the rendered reviewer contract.
 crates/larch-cli/src/review_dispatch_panel_prompt.md
