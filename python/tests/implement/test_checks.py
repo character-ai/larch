@@ -6126,17 +6126,24 @@ def test_checks_repair_loop_bgjob_launch_starts_transport(
     checks_log = session / "initial.redacted.log"
     checks_log.write_text("err\n", encoding="utf-8")
     calls: list[tuple[str, ...]] = []
+    entrypoint = tmp_path / "scripts" / "larch.sh"
 
-    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
-        calls.append(args)
-        return subprocess.CompletedProcess(
-            args,
+    def fake_larch_entrypoint(_root: Path) -> Path:
+        return entrypoint
+
+    def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        argv_tuple = tuple(argv)
+        calls.append(argv_tuple)
+        return CommandResult(
+            argv_tuple,
             0,
             "BGJOB_STATUS=STARTED STEP=implement-step3-repair PGID=123\n",
             "",
+            0.0,
         )
 
-    monkeypatch.setattr(_clf, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(_clf, "larch_entrypoint", fake_larch_entrypoint)
+    monkeypatch.setattr(_clf.proc, "run", fake_proc_run)
     rc = checks.checks_repair_loop_main([
         "--tmpdir",
         str(session),
@@ -6154,8 +6161,8 @@ def test_checks_repair_loop_bgjob_launch_starts_transport(
         "BGJOB_STATUS=STARTED STEP=implement-step3-repair PGID=123\n"
     )
     start = calls[0]
-    assert start[:2] == ("bgjob", "start")
-    assert start[2:8] == (
+    assert start[:3] == (str(entrypoint), "bgjob", "start")
+    assert start[3:9] == (
         "--step",
         "implement-step3-repair",
         "--tmpdir",
@@ -6183,11 +6190,12 @@ def test_checks_repair_loop_bgjob_launch_site_qualifies_step6_slug(
     checks_log.write_text("err\n", encoding="utf-8")
     calls: list[tuple[str, ...]] = []
 
-    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
-        calls.append(args)
-        return subprocess.CompletedProcess(args, 0, "BGJOB_STATUS=STARTED\n", "")
+    def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        argv_tuple = tuple(argv)
+        calls.append(argv_tuple)
+        return CommandResult(argv_tuple, 0, "BGJOB_STATUS=STARTED\n", "", 0.0)
 
-    monkeypatch.setattr(_clf, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(_clf.proc, "run", fake_proc_run)
     rc = checks.checks_repair_loop_main([
         "--tmpdir",
         str(session),
@@ -6199,7 +6207,37 @@ def test_checks_repair_loop_bgjob_launch_site_qualifies_step6_slug(
         "true",
     ])
     assert rc == 0
-    assert calls[0][3] == "implement-step6-repair"
+    assert calls[0][4] == "implement-step6-repair"
+
+
+def test_checks_repair_loop_bgjob_launch_propagates_transport_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+
+    def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(argv), 23, "BGJOB_STATUS=FAILED\n", "launch failed\n", 0.0)
+
+    monkeypatch.setattr(_clf.proc, "run", fake_proc_run)
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step3",
+        "--checks-log",
+        str(checks_log),
+        "--bgjob-launch",
+        "true",
+    ])
+
+    assert rc == 23
+    captured = capsys.readouterr()
+    assert captured.out == "BGJOB_STATUS=FAILED\n"
+    assert captured.err == "launch failed\n"
 
 
 def test_checks_repair_loop_merge_result_env_captures_terminal_kvs(

@@ -8855,7 +8855,7 @@ rust = []
 path = "python/larch/implement/checks_lint_fix.py"
 kind = "python-runtime"
 python = ["checks lint-fix", "checks run-relevant"]
-rust = ["agent launch-claude-lint-fix", "agent launch-codex-exec", "git commit", "git stage"]
+rust = ["agent launch-claude-lint-fix", "agent launch-codex-exec", "bgjob start", "git commit", "git stage"]
 
 [[callers]]
 path = "python/larch/implement/checks_run_relevant.py"
@@ -8915,7 +8915,7 @@ rust = ["run-log manifest"]
 path = "python/larch/implement/step_7a.py"
 kind = "python-runtime"
 python = []
-rust = ["timing mark"]
+rust = ["bgjob start", "timing mark"]
 
 [[callers]]
 path = "python/larch/issue/validate_merged.py"

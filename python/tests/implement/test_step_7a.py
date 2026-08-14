@@ -61,22 +61,26 @@ def test_step7a_bgjob_result_capture_includes_checkpoint_and_tail(
 
 def test_step7a_bgjob_launch_starts_transport(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     calls: list[tuple[str, ...]] = []
+    entrypoint = tmp_path / "scripts" / "larch.sh"
 
-    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
-        calls.append(args)
+    def fake_larch_entrypoint(_root: Path) -> Path:
+        return entrypoint
+
+    def fake_subprocess_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        args = list(argv)
+        calls.append(tuple(args))
         return subprocess.CompletedProcess(args, 0, "BGJOB_STATUS=STARTED STEP=implement-step7a PGID=123\n", "")
 
-    monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(step_7a, "larch_entrypoint", fake_larch_entrypoint)
+    monkeypatch.setattr(step_7a.subprocess, "run", fake_subprocess_run)
 
     rc = step_7a.main(["--bgjob-launch", "true", "--implement-tmpdir", str(tmp_path), "--run-id", "run-1"])
 
     assert rc == 0
     assert capsys.readouterr().out == "BGJOB_STATUS=STARTED STEP=implement-step7a PGID=123\n"
     start = calls[0]
-    assert start[:2] == ("bgjob", "start")
-    assert start[:8] == (
-        "bgjob",
-        "start",
+    assert start[:3] == (str(entrypoint), "bgjob", "start")
+    assert start[3:9] == (
         "--step",
         "implement-step7a",
         "--tmpdir",
@@ -88,6 +92,33 @@ def test_step7a_bgjob_launch_starts_transport(tmp_path: Path, monkeypatch: pytes
     assert "--merge-result-env" in start
     assert str(tmp_path / "bgjob" / "implement-step7a.merge.env") in start
     assert "--bgjob-merge-result-env" in start
+
+
+def test_step7a_bgjob_launch_propagates_transport_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_subprocess_run(
+        argv: Sequence[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        assert kwargs == {"text": True, "capture_output": True, "check": False}
+        return subprocess.CompletedProcess(list(argv), 17, "BGJOB_STATUS=FAILED\n", "launch failed\n")
+
+    monkeypatch.setattr(step_7a.subprocess, "run", fake_subprocess_run)
+    rc = step_7a.main([
+        "--bgjob-launch",
+        "true",
+        "--implement-tmpdir",
+        str(tmp_path),
+        "--run-id",
+        "run-1",
+    ])
+
+    assert rc == 17
+    captured = capsys.readouterr()
+    assert captured.out == "BGJOB_STATUS=FAILED\n"
+    assert captured.err == "launch failed\n"
 
 
 def test_step7a_bgjob_launch_rejects_symlinked_tmpdir_before_merge_env_setup(
