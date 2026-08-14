@@ -99,7 +99,6 @@ python/larch/research/research_eval.py	later-domain	#7684	dynamic
 python/larch/review/_raf_util.py	later-domain	#7679	status
 python/larch/review/coder_runner.py	later-domain	#7679	checkout
 python/larch/review/review_and_fix.py	later-domain	#7679	diff,ls-files,rev-parse,status
-python/larch/review/review_gather.py	later-domain	#7679	ls-files
 python/larch/review/snapshot.py	later-domain	#7679	apply,cat-file,checkout,diff,ls-files,restore
 python/larch/state/finalize.py	later-domain	#7677	branch,check-ref-format,checkout,ls-remote,pull,rev-list,rev-parse,show-ref,stash,symbolic-ref
 scripts/block-submodule-edit.sh	later-domain	#7677	rev-parse

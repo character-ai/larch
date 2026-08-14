@@ -27,7 +27,7 @@ def run_review(
         merged["LARCH_QUIET_DISABLE"] = "1"
     else:
         _ = merged.pop("LARCH_QUIET_DISABLE", None)
-    if args and args[0] in {"gather-context", "dispatch-panel"}:
+    if args and args[0] == "dispatch-panel":
         merged["LARCH_BINARY"] = str(RUST_AGENT_STUB)
     if env:
         merged.update(env)

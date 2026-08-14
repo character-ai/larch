@@ -2,8 +2,8 @@
 # ruff: noqa: PLW2901
 """Shared utilities and data types for the review pipeline.
 
-Imported by review_gather, review_prune, review_dispatch_panel, review_collect,
-review_threshold, and review_core_body. Must not import from any of those modules.
+Imported by review_prune, review_dispatch_panel, review_collect, review_threshold,
+and review_core_body. Must not import from any of those modules.
 """
 
 from __future__ import annotations
@@ -187,6 +187,8 @@ def _run_command_string(*, command: str, args: Sequence[str], runner: proc.Runne
 
 
 def _call_review_command(*, name: str, args: Sequence[str], runner: proc.Runner | None = None) -> proc.CommandResult:
+    if name == "gather-context":
+        return run_larch(["review", "gather-context", *args], runner=runner)
     return _run_python_cli(["review", name, *args], runner=runner)
 
 

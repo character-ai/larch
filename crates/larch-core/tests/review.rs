@@ -1,4 +1,4 @@
-//! Frozen Python review wire fixtures and dormant Rust parity coverage.
+//! Frozen Python review wire fixtures and Rust review-contract coverage.
 //!
 //! Vote-table renderer parity belongs to #8444 and #8448; this leaf pins only
 //! the Python-owned table bytes and their structural examples.
@@ -11,7 +11,12 @@ use larch_core::review::{
     replace_round, run_items, write_round,
 };
 use sha2::{Digest, Sha256};
-use std::{cell::RefCell, fs, path::PathBuf};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::PathBuf,
+};
 
 const FINDINGS: &str = include_str!("../../../fixtures/rust-review/finding-blocks.golden.md");
 const LEDGER: &str = include_str!("../../../fixtures/rust-review/findings-ledger.golden.tsv");
@@ -454,6 +459,208 @@ fn parser_boundary_modes_cover_crlf_and_fences() {
         parse_blocks(text, BoundaryMode::LevelThreeHeading)[1].block,
         "### OOS_2: second\r\nbody\r\n"
     );
+}
+
+#[test]
+fn pipeline_helpers_preserve_legacy_argument_and_record_edges() {
+    use larch_core::review::{
+        GatherContextArgumentError, GatherContextMode, GatherContextParse,
+        description_path_matches, description_tokens, normalize_output_base,
+        parse_collector_records, parse_gather_context_arguments, positive_integer,
+        valid_relative_review_path,
+    };
+
+    let arguments = vec![
+        "--mode".to_owned(),
+        "diff".to_owned(),
+        "--output-dir".to_owned(),
+        "first".to_owned(),
+        "--output-dir".to_owned(),
+        "last".to_owned(),
+    ];
+    assert_eq!(
+        parse_gather_context_arguments(&arguments),
+        Ok(GatherContextParse::Arguments(
+            larch_core::review::GatherContextArguments {
+                mode: GatherContextMode::Diff,
+                output_dir: "last".to_owned(),
+                description_text: String::new(),
+                scope_files: String::new(),
+            }
+        ))
+    );
+    assert_eq!(
+        parse_gather_context_arguments(&["--unknown".to_owned()]),
+        Err(GatherContextArgumentError::UnknownOption(
+            "--unknown".to_owned()
+        ))
+    );
+    assert_eq!(
+        parse_gather_context_arguments(&["--mode".to_owned()]),
+        Err(GatherContextArgumentError::MissingValue(
+            "--mode".to_owned()
+        ))
+    );
+    assert_eq!(
+        parse_gather_context_arguments(&["--unknown".to_owned(), "--help".to_owned()]),
+        Ok(GatherContextParse::Help)
+    );
+    assert_eq!(
+        description_tokens("Alpha, beta /review-file and x"),
+        ["alpha", "beta", "/review-file", "and"]
+    );
+    assert_eq!(
+        description_path_matches(
+            &["review".to_owned()],
+            ["src/review.rs", "docs/review.md", "skip/review.md"],
+            |path| !path.starts_with("skip/"),
+        ),
+        BTreeSet::from(["docs/review.md".to_owned(), "src/review.rs".to_owned()])
+    );
+    assert!(valid_relative_review_path("src/review.rs"));
+    assert!(!valid_relative_review_path("../escape"));
+    assert_eq!(
+        parse_collector_records(
+            "DIAGNOSTIC=ignored\nREVIEWER_FILE=a.md\nSTATUS=old\nSTATUS=new\n=kept\n\nREVIEWER_FILE=b.md\nSTATUS=only\n",
+        ),
+        vec![
+            BTreeMap::from([
+                (String::new(), "kept".to_owned()),
+                ("REVIEWER_FILE".to_owned(), "a.md".to_owned()),
+                ("STATUS".to_owned(), "new".to_owned()),
+            ]),
+            BTreeMap::from([
+                ("REVIEWER_FILE".to_owned(), "b.md".to_owned()),
+                ("STATUS".to_owned(), "only".to_owned()),
+            ]),
+        ]
+    );
+    assert_eq!(
+        normalize_output_base("dir/agent-phase2-retry.txt"),
+        "agent.txt"
+    );
+    assert_eq!(positive_integer("3"), Some(3));
+    assert_eq!(positive_integer("0"), None);
+}
+
+#[test]
+fn dispatch_helpers_preserve_fixed_slot_and_wire_contracts() {
+    use larch_core::review::{
+        DispatchError, VoterOutputBinding, VoterPathsFilePolicy, VoterRowLayout, VoterSlotPolicy,
+        voter_states_from_bindings, voter_status_rows,
+    };
+
+    let policies = ["one", "two", "three"].map(|slot_name| VoterSlotPolicy {
+        slot_name: slot_name.to_owned(),
+        primary_tool: "codex".to_owned(),
+        default_label: format!("default-{slot_name}"),
+        semantic_labels: BTreeMap::from([("codex".to_owned(), format!("codex-{slot_name}"))]),
+    });
+    let states = voter_states_from_bindings(
+        &policies,
+        &BTreeMap::from([(
+            "one".to_owned(),
+            VoterOutputBinding {
+                path: "one.txt".to_owned(),
+                tool: "codex".to_owned(),
+                dropped: false,
+            },
+        )]),
+        &BTreeSet::from(["one".to_owned(), "two".to_owned()]),
+        &BTreeMap::from([
+            ("two".to_owned(), "two.txt".to_owned()),
+            ("three".to_owned(), "three.txt".to_owned()),
+        ]),
+    )
+    .expect("fixed voter slots");
+    assert_eq!(states[0].status, "launched");
+    assert_eq!(states[0].tool, "codex-one");
+    assert_eq!(states[1].status, "failed");
+    assert_eq!(states[1].path, "two.txt");
+    assert_eq!(states[2].status, "skipped");
+    assert_eq!(
+        voter_states_from_bindings(
+            &[
+                policies[0].clone(),
+                policies[1].clone(),
+                policies[2].clone(),
+                policies[0].clone(),
+            ],
+            &BTreeMap::new(),
+            &BTreeSet::new(),
+            &BTreeMap::new(),
+        )
+        .expect("legacy helper takes its fixed first three slots")
+        .len(),
+        3
+    );
+    assert_eq!(
+        voter_states_from_bindings(
+            &policies[..2],
+            &BTreeMap::new(),
+            &BTreeSet::new(),
+            &BTreeMap::new()
+        ),
+        Err(DispatchError::VoterCount)
+    );
+    let rows = voter_status_rows(
+        &states,
+        "paths.txt",
+        VoterRowLayout::PlanReviewInterleaved,
+        VoterPathsFilePolicy::Nonempty,
+        true,
+    )
+    .expect("fixed voter rows");
+    assert_eq!(
+        voter_status_rows(
+            &states[..2],
+            "",
+            VoterRowLayout::CodeReviewSequential,
+            VoterPathsFilePolicy::Always,
+            false,
+        ),
+        Err(DispatchError::VoterRecordCount)
+    );
+    assert_eq!(
+        rows.iter().map(|(key, _)| key.as_str()).collect::<Vec<_>>(),
+        [
+            "VOTER_1_PATH",
+            "VOTER_1_TOOL",
+            "VOTER_1_STATUS",
+            "VOTER_1_PARSE_RATE_STATUS",
+            "VOTER_2_PATH",
+            "VOTER_3_PATH",
+            "VOTER_PATHS_FILE",
+            "VOTER_2_TOOL",
+            "VOTER_3_TOOL",
+            "VOTER_2_STATUS",
+            "VOTER_3_STATUS",
+            "VOTER_2_PARSE_RATE_STATUS",
+            "VOTER_3_PARSE_RATE_STATUS",
+        ]
+    );
+}
+
+#[test]
+fn dispatch_helpers_preserve_parse_rate_and_manifest_attribution() {
+    use larch_core::review::{
+        optional_positive_float, parse_rate_status, with_manifest_attribution,
+    };
+    use serde_json::{Map, Value};
+
+    assert_eq!(optional_positive_float("", "timeout"), Ok(None));
+    assert!(optional_positive_float("0", "timeout").is_err());
+    assert_eq!(parse_rate_status(0, "warning\nOK\n"), "OK");
+    assert_eq!(parse_rate_status(1, "OK\n"), "NOT_SUBSTANTIVE");
+    let row = with_manifest_attribution(
+        Map::from_iter([("tool".to_owned(), Value::String("codex".to_owned()))]),
+        Some("vote"),
+        "tier-model",
+        &BTreeMap::new(),
+    );
+    assert_eq!(row["vendor"], "codex");
+    assert_eq!(row["model_role"], "vote");
+    assert_eq!(row["resolved_model"], "tier-model");
 }
 
 #[test]

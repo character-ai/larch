@@ -1,17 +1,31 @@
-//! Dormant parity library for Python-owned review commands.
+//! Typed review-domain contracts shared by Rust command owners.
 //!
-//! This module deliberately registers no CLI command or runtime caller.  It
-//! exists so later atomic cutover leaves can consume one tested Rust owner.
+//! Pure review models live here so each command cutover can reuse one tested
+//! owner while leaving side effects at its CLI boundary.
 
+mod dispatch;
 mod findings_ledger;
+mod pipeline;
 mod tally_engine;
 mod types;
 mod voting;
 
+pub use dispatch::{
+    DispatchError, VOTER_SLOT_COUNT, VoterOutputBinding, VoterPathsFilePolicy, VoterRowLayout,
+    VoterSlotPolicy, VoterSlotState, optional_positive_float, parse_rate_status, path_for_wire,
+    resolved_manifest_model, voter_states_from_bindings, voter_status_rows,
+    with_manifest_attribution,
+};
 pub use findings_ledger::{
     LEDGER_BASENAME, LEDGER_COLUMNS, LedgerError, LedgerRow, ledger_path, ledger_root,
     parse as parse_ledger, prompt_section, read as read_ledger, render as render_ledger,
     replace_round, write_round,
+};
+pub use pipeline::{
+    GATHER_CONTEXT_USAGE, GatherContextArgumentError, GatherContextArguments, GatherContextMode,
+    GatherContextParse, description_path_matches, description_tokens, normalize_output_base,
+    parse_collector_records, parse_gather_context_arguments, positive_integer,
+    valid_relative_review_path,
 };
 pub use tally_engine::{ItemAdjudicationResult, ItemContext, VoteCell, adjudicate_item, run_items};
 pub use types::{

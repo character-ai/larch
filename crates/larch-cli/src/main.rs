@@ -95,6 +95,7 @@ mod session_artifact_support;
 #[rustfmt::skip]
 mod run_log_flush_commands;
 mod report_tokens_commands;
+mod review_commands;
 mod session_closeout_commands;
 mod session_env_commands;
 mod session_gate_commands;
@@ -124,6 +125,7 @@ use external_defaults_commands::ExternalDefaultsCommand;
 use git_commands::GitCommand;
 use rebalance_tests::RebalanceTestsCommand;
 use repo_size_commands::RepoCommand;
+use review_commands::ReviewCommand;
 use slack_commands::SlackCommand;
 use test_shards::TestShardCommand;
 
@@ -147,6 +149,9 @@ enum Domain {
     /// Vendor-agent launch and diagnostic commands.
     #[command(subcommand)]
     Agent(AgentCommand),
+    /// Review pipeline commands.
+    #[command(subcommand)]
+    Review(ReviewCommand),
     /// Alias generation and target-resolution helpers.
     #[command(subcommand)]
     Alias(AliasCommand),
@@ -1520,6 +1525,7 @@ fn run(
 ) -> Result<ExitCode, larch_adapters::upgrade_larch::Failure> {
     match cli.domain {
         Domain::Agent(command) => Ok(agent_commands::run(command)),
+        Domain::Review(command) => Ok(review_commands::run(command)),
         Domain::Alias(command) => Ok(developer_tooling_commands::run_alias(command)),
         Domain::Bootstrap(BootstrapCommand::Invoke(arguments)) => {
             Ok(bootstrap_commands::invoke(&arguments.arguments))

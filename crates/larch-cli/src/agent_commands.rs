@@ -1134,7 +1134,7 @@ pub fn generated_paths() -> Result<std::collections::BTreeSet<String>, String> {
     parse_generated_paths(&text).map_err(|error| error.to_string())
 }
 
-struct BranchContext {
+pub struct BranchContext {
     diff_file: PathBuf,
     file_list_file: PathBuf,
     commit_log_file: PathBuf,
@@ -1160,23 +1160,16 @@ fn gather_branch_context(arguments: &AgentRawArguments) -> ExitCode {
         );
         return ExitCode::from(1);
     }
-    let context = match gather_context(&output_dir) {
+    let context = match gather_branch_context_for_review(&output_dir) {
         Ok(context) => context,
         Err(error) => {
             eprintln!("gather-branch-context.sh: {error}");
             return ExitCode::from(1);
         }
     };
-    emit_kv("DIFF_FILE", &context.diff_file.display().to_string());
-    emit_kv(
-        "FILE_LIST_FILE",
-        &context.file_list_file.display().to_string(),
-    );
-    emit_kv(
-        "COMMIT_LOG_FILE",
-        &context.commit_log_file.display().to_string(),
-    );
-    emit_kv("COMMIT_COUNT", &context.commit_count.to_string());
+    for (key, value) in branch_context_rows(&context) {
+        emit_kv(&key, &value);
+    }
     ExitCode::SUCCESS
 }
 
@@ -1202,7 +1195,8 @@ fn parse_output_dir(arguments: &[OsString]) -> Result<Option<PathBuf>, String> {
         .map(Some)
 }
 
-fn gather_context(output_dir: &Path) -> Result<BranchContext, String> {
+/// Gather the branch context shared by `agent` and `review` command boundaries.
+pub fn gather_branch_context_for_review(output_dir: &Path) -> Result<BranchContext, String> {
     let cwd = env::current_dir().map_err(|error| format!("cannot resolve cwd: {error}"))?;
     let repository =
         GixRepository::discover(&cwd).map_err(|_| "cannot open repository".to_owned())?;
@@ -1288,6 +1282,25 @@ fn gather_context(output_dir: &Path) -> Result<BranchContext, String> {
         commit_log_file: output_dir.join("commit-log.txt"),
         commit_count: String::from_utf8_lossy(&commit_log).lines().count(),
     })
+}
+
+/// Render the stable branch-context rows in their historical order.
+pub fn branch_context_rows(context: &BranchContext) -> Vec<(String, String)> {
+    vec![
+        (
+            "DIFF_FILE".to_owned(),
+            context.diff_file.display().to_string(),
+        ),
+        (
+            "FILE_LIST_FILE".to_owned(),
+            context.file_list_file.display().to_string(),
+        ),
+        (
+            "COMMIT_LOG_FILE".to_owned(),
+            context.commit_log_file.display().to_string(),
+        ),
+        ("COMMIT_COUNT".to_owned(), context.commit_count.to_string()),
+    ]
 }
 
 fn review_paths() -> Result<Vec<GitCliPath>, String> {

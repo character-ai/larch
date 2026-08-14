@@ -22,7 +22,7 @@ import review_test_support as rts
 from larch.review import voting
 from tests.support.review_wire import panel_manifest_ndjson, panel_manifest_row
 
-from test_support import RecordingRunner, make_committed_repo
+from test_support import RecordingRunner
 
 if TYPE_CHECKING:
     from tests.support.shell_fixtures import FakeBinDirFactory
@@ -842,105 +842,38 @@ printf 'DISPATCH_OK=true\\nSTATIC_DISPATCH_OK=true\\nDYNAMIC_DISPATCH_OK=true\\n
     assert "WARN=reviewer-straggler-dropped" not in result.stdout.splitlines()
 
 
-def test_gather_context_help_routes_through_review_cli() -> None:
-    result = run_review("gather-context", "--help")
+def test_gather_context_routes_through_verified_rust_entrypoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, list[str]]] = []
 
-    assert result.returncode == 0
-    assert "Usage: review gather-context" in result.stderr
+    def fake_larch(
+        args: Sequence[str], *, runner: proc.Runner | None = None, env: Mapping[str, str] | None = None
+    ) -> proc.CommandResult:
+        del runner, env
+        calls.append(("rust", list(args)))
+        return proc.CommandResult(tuple(args), 0, "MODE=diff\n", "", 0.0)
 
+    def fake_python(
+        args: Sequence[str], *, runner: proc.Runner | None = None, env: Mapping[str, str] | None = None
+    ) -> proc.CommandResult:
+        del runner, env
+        calls.append(("python", list(args)))
+        return proc.CommandResult(tuple(args), 0, "", "", 0.0)
 
-_GIT_IDENTITY = (
-    "-c", "user.name=Test User",
-    "-c", "user.email=test@example.com",
-    "-c", "commit.gpgsign=false",
-)
+    monkeypatch.setattr(review_pipeline_shared, "run_larch", fake_larch)
+    monkeypatch.setattr(review_pipeline_shared, "_run_python_cli", fake_python)
 
-
-def _git_commit(repo: Path, message: str) -> None:
-    """Commit with identity + gpgsign folded into per-command `-c` flags, so no
-    standalone `git config` spawns are needed AND every commit (not just the
-    first) carries an author identity on hosts without global git config, such
-    as CI. #4439 Trick C.
-    """
-    _ = subprocess.run([rts.GIT, *_GIT_IDENTITY, "commit", "-qm", message], cwd=repo, check=True)
-
-
-def test_gather_context_description_mode_scope_and_stdout_cap(tmp_path: Path) -> None:
-    fixture = tmp_path / "fixture"
-    fixture.mkdir()
-    # gather-context.sh is a retired script path; create it via piecewise Path
-    # joins so the literal never appears in source (lint-retired-scripts greps
-    # tracked files for it). The fixture only needs the file present so scope
-    # detection has a realistic skills/review/ tree to walk.
-    review_scripts = fixture / "skills" / "review" / "scripts"
-    review_scripts.mkdir(parents=True)
-    _ = (review_scripts / "gather-context.sh").write_text("", encoding="utf-8")
-    _ = make_committed_repo(
-        tmp_path,
-        path=fixture,
-        files={
-            "skills/review/SKILL.md": "",
-            "docs/review-agents.md": "",
-            "README.md": "",
-        },
-        commit_message="fixture",
+    gathered = review_pipeline_shared._call_review_command(  # pyright: ignore[reportPrivateUsage]  # tests the migration dispatch seam
+        name="gather-context", args=["--mode", "diff"]
     )
-    outdir = tmp_path / "gather-out"
-    outdir.mkdir()
-    result = run_review(
-        "gather-context",
-        "--mode",
-        "description",
-        "--description-text",
-        "review skill",
-        "--output-dir",
-        str(outdir),
-        env={"CLAUDE_PLUGIN_ROOT": str(ROOT)},
-        cwd=fixture,
-    )
-    assert result.returncode == 0, result.stderr
-    assert len(result.stdout) <= 2048
-    assert "MODE=description" in result.stdout
-    scope_file = rts.kv_get(stdout=result.stdout, key="FILE_LIST_FILE")
-    assert scope_file is not None
-    scope_path = Path(scope_file)
-    assert scope_path.is_file()
-    assert scope_path.stat().st_size > 0
-    assert "skills/review/SKILL.md" in scope_path.read_text(encoding="utf-8")
-
-
-def test_gather_context_diff_mode_relays_branch_kvs_and_trailing_contract(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    _ = make_committed_repo(tmp_path, path=repo, files={"src/main.py": "baseline\n"})
-    _ = subprocess.run([rts.GIT, "branch", "-M", "main"], cwd=repo, check=True)
-    _ = subprocess.run([rts.GIT, "checkout", "-qb", "feature"], cwd=repo, check=True)
-    outdir = tmp_path / "gather-out"
-    outdir.mkdir()
-    marker = "CONSUMER_REPO_UNIQUE_MARKER_abc123"
-    _ = (repo / "src" / "main.py").write_text(f"{marker}\n", encoding="utf-8")
-    _ = subprocess.run([rts.GIT, "add", "src/main.py"], cwd=repo, check=True)
-    _git_commit(repo, "feature change")
-    result = run_review(
-        "gather-context",
-        "--mode",
-        "diff",
-        "--output-dir",
-        str(outdir),
-        env={"CLAUDE_PLUGIN_ROOT": str(ROOT)},
-        cwd=repo,
+    _ = review_pipeline_shared._call_review_command(  # pyright: ignore[reportPrivateUsage]  # proves remaining verbs retain their Python owner
+        name="collect-findings", args=[]
     )
 
-    assert result.returncode == 0, result.stderr
-    assert "DIFF_FILE=" in result.stdout
-    assert "FILE_LIST_FILE=" in result.stdout
-    assert "COMMIT_COUNT=" in result.stdout
-    assert "SCOPE_FILES_COUNT=0" in result.stdout
-    assert "MODE=diff" in result.stdout
-    diff_file = rts.kv_get(stdout=result.stdout, key="DIFF_FILE")
-    assert diff_file is not None
-    diff_text = Path(diff_file).read_text(encoding="utf-8")
-    assert marker in diff_text
-    assert "python/review_pipeline.py" not in diff_text
+    assert gathered.stdout == "MODE=diff\n"
+    assert calls == [
+        ("rust", ["review", "gather-context", "--mode", "diff"]),
+        ("python", ["review", "collect-findings"]),
+    ]
 
 
 def test_check_reviewer_failure_threshold_zero_static_slots(tmp_path: Path) -> None:
