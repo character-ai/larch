@@ -214,6 +214,18 @@ fn seeded_generated_review_invariants_hold() {
 }
 
 #[test]
+fn finding_dedup_key_without_fields_strips_finding_headers() {
+    assert_eq!(
+        finding_dedup_key("### FINDING_1: Title text\nbody stays\n"),
+        finding_dedup_key("### FINDING_2: Other title\nbody stays\n")
+    );
+    assert_eq!(
+        finding_dedup_key("### FINDING_1: Title text\nbody stays\n"),
+        "body stays"
+    );
+}
+
+#[test]
 fn finding_dedup_key_preserves_first_empty_location_match() {
     let key = finding_dedup_key(
         "### FINDING_1: a\n- **Location**: \n- **Location**: later.rs:1\n- **Concern**: same\n",

@@ -479,8 +479,6 @@ pub fn is_oos_eligible_block(block: &ParsedBlock) -> bool {
 static FIELD_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^- \*\*((?i-u:Location|Concern))\*\*:[ \t]*(.*?)[ \t]*$").expect("field regex")
 });
-static FINDING_HEADER_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^### FINDING_[0-9]+:.*$").expect("header regex"));
 static SPACE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").expect("space regex"));
 
 /// Return the stable Location/Concern finding identity used across rounds.
@@ -499,7 +497,17 @@ pub fn finding_dedup_key(block: &str) -> String {
     let location = location.unwrap_or("");
     let concern = concern.unwrap_or("");
     let raw = if location.is_empty() && concern.is_empty() {
-        FINDING_HEADER_RE.replace_all(block, "").into_owned()
+        block
+            .lines()
+            .map(|line| {
+                if issue::is_canonical_heading(line, Some(OosItemKind::Finding)) {
+                    ""
+                } else {
+                    line
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     } else {
         format!("{location}\u{1f}{concern}")
     };
