@@ -107,6 +107,30 @@ fn snapshot_matches_golden() {
     assert!(default.status.success(), "{}", String::from_utf8_lossy(&default.stderr)); assert_eq!(fs::read(default_path).unwrap(), include_bytes!("../../../fixtures/rust-calibration/snapshot.golden.tsv"));
 }
 
+#[test] #[rustfmt::skip]
+fn command_and_binding_edges_are_pinned() {
+    let temp = TempDir::new().unwrap(); let root_buf = fs::canonicalize(temp.path()).unwrap(); let root = root_buf.as_path(); seed(root);
+    let help = invoke(root, &["voter-calibration", "snapshot", "--help"]); assert!(help.status.success()); assert!(String::from_utf8_lossy(&help.stdout).starts_with("usage: cli.py voter-calibration snapshot"));
+    for args in [&["voter-calibration", "snapshot", "--out"][..], &["voter-calibration", "snapshot"][..], &["voter-calibration", "snapshot", "--out", "x", "--bogus"][..]] { assert_eq!(invoke(root, args).status.code(), Some(2)); }
+    fs::write(root.join("stale.tsv"), "stale\n").unwrap(); let no_data = invoke(root, &["voter-calibration", "snapshot", "--log-root", "missing", "--out", "stale.tsv"]); assert!(no_data.status.success()); assert_eq!(no_data.stdout, b"CALIBRATION_STATS_FILE=\nCALIBRATION_STATS_STATUS=no-data\n"); assert!(!root.join("stale.tsv").exists());
+    assert!(invoke(root, &["voter-calibration", "snapshot", "--log-root", "missing", "--out", "stale.tsv"]).status.success()); let unresolved = invoke(root, &["voter-calibration", "snapshot", "--out", "x"]); assert!(!unresolved.status.success()); assert!(String::from_utf8_lossy(&unresolved.stderr).contains("log root unresolved"));
+    let run = RUNS[1].0; let run_root = format!("larch-logs/implement/{run}"); fs::write(root.join(format!("{run_root}/round-1/findings.md")), "### FINDING_10: Round source\n\n- **Concern**: issue in src/lib.rs:1\n").unwrap();
+    let rebuilt = invoke(root, &["calibration-replay", "rebuild-ballot", "--finding-id", "FINDING_10", "--run-root", &run_root, "--round-num", "1", "--output", "rebuilt.md"]); assert!(rebuilt.status.success(), "{}", String::from_utf8_lossy(&rebuilt.stdout)); assert!(String::from_utf8_lossy(&rebuilt.stdout).contains("BALLOT_SOURCE=round_findings"));
+    let json_run = "AAAAAAAA-BBBB-CCCC-DDDD-FFFFFFFFFFFF"; let json_root = format!("larch-logs/implement/{json_run}"); fs::create_dir_all(root.join(&json_root)).unwrap(); fs::write(root.join(format!("{json_root}/review-findings-full.jsonl")), "not-json\n{\"id\":\"OTHER\",\"round_num\":1}\n{\"id\":\"FINDING_JSON\",\"round_num\":1,\"category\":\"\",\"prose_body\":\"## Recovered title\\nBody\"}\n").unwrap();
+    let rebuilt = invoke(root, &["calibration-replay", "rebuild-ballot", "--finding-id", "FINDING_JSON", "--run-root", &json_root, "--round-num", "1", "--output", "jsonl.md"]); assert!(rebuilt.status.success(), "{}", String::from_utf8_lossy(&rebuilt.stdout)); assert_eq!(fs::read(root.join("jsonl.md")).unwrap(), b"### FINDING_JSON: Recovered title\n\nBody\n");
+    let valid = invoke(root, &["calibration-replay", "validate-manifest"]); assert_eq!(valid.stdout, b"MANIFEST_STATUS=ok\n"); assert!(valid.status.success());
+    let manifest = fs::read_to_string(root.join(format!("{FIXTURES}/manifest.tsv"))).unwrap(); let cohort = fs::read_to_string(root.join(format!("{FIXTURES}/cohort.tsv"))).unwrap();
+    let mh = manifest.lines().next().unwrap(); let mr1 = manifest.lines().nth(1).unwrap(); let mr2 = manifest.lines().nth(2).unwrap(); let ch = cohort.lines().next().unwrap(); let cr1 = cohort.lines().nth(1).unwrap();
+    let cases = [
+        (format!("{mh}\n{mr1}\n"), format!("{ch}\n"), "cohort denominator is empty"),
+        (format!("{mh}\n{mr1}\n{mr1}\n"), format!("{ch}\n{cr1}\n"), "duplicate labeled cohort keys"),
+        (format!("{mh}\n"), format!("{ch}\n{cr1}\n"), "manifest is missing labeled cohort rows"),
+        (format!("{mh}\n{mr1}\n{mr2}\n"), format!("{ch}\n{cr1}\n"), "manifest has rows outside the labeled cohort"),
+        (format!("{mh}\n{mr1}\n"), format!("{ch}\n{}\n", cr1.replace("cursor-plan-fidelity", "codex-plan-fidelity")), "does not match cohort"),
+    ];
+    for (manifest, cohort, message) in cases { fs::write(root.join("binding-manifest.tsv"), manifest).unwrap(); fs::write(root.join("binding-cohort.tsv"), cohort).unwrap(); let output = invoke(root, &["calibration-replay", "validate-manifest", "--manifest", "binding-manifest.tsv", "--cohort", "binding-cohort.tsv"]); assert!(!output.status.success()); assert!(String::from_utf8_lossy(&output.stdout).contains(message), "{}", String::from_utf8_lossy(&output.stdout)); }
+}
+
 #[test]
 #[rustfmt::skip]
 fn malformed_manifest_messages_are_frozen() {
