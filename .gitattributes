@@ -17,6 +17,11 @@
 *.toml   text eol=lf
 *.txt    text eol=lf
 
+# Byte-parity golden fixtures intentionally contain bare CR and CRLF bytes;
+# exempt them from text/EOL conversion so they never show a phantom
+# modification against the unnormalized committed blob.
+fixtures/rust-review/*.golden.* -text
+
 # Runtime logs are committed in development branches for auditability, but
 # they must not ship in the plugin archive consumed by users.
 larch-logs/ export-ignore
