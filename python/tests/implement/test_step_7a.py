@@ -209,7 +209,8 @@ def test_step7a_checkpoint_flushes_only_execution_issues(tmp_path: Path, monkeyp
 
     assert status == "ok"
     assert calls == []
-    assert token_marks and token_marks[0][-1] == "Step 8 — ship PR"
+    assert token_marks
+    assert token_marks[0][-1] == "Step 8 — ship PR"
     assert flushes == [[
         "execution-issues", "flush",
         "--log-root", str(tmp_path / "larch-logs"),

@@ -201,9 +201,20 @@ def _rehydrate_commit_session_from_tmpdir() -> None:
 
 def _mark_commit_timing() -> None:
     env = larch_entrypoint_env(_current_cli_path().parents[1])
-    subprocess.run([str(larch_entrypoint(_current_cli_path().parents[1])), "token", "mark", "Step 4 — commit implementation"], env=env, check=False)
+    _invoke_cli(["token", "mark", "Step 4 — commit implementation"], env=env)
     env["LARCH_TIMING_SKILL"] = "implement"
-    subprocess.run([str(larch_entrypoint(_current_cli_path().parents[1])), "timing", "mark", "Step 4 — commit implementation"], env=env, check=False)
+    _invoke_cli(["timing", "mark", "Step 4 — commit implementation"], env=env)
+
+
+def _invoke_cli(args: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """Invoke one Rust-owned command through the verified bootstrap script."""
+    return subprocess.run(
+        [str(larch_entrypoint(_current_cli_path().parents[1])), *args],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
 
 
 def _build_commit_args(args: argparse.Namespace) -> list[str]:

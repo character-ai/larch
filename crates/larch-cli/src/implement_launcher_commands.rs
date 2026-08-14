@@ -802,10 +802,7 @@ fn mark_step2_token(sidecar: &Path) {
         return;
     }
     let summary = "token mark failed";
-    append_confined(
-        sidecar,
-        &format!("agent implement token mark: {summary}\n"),
-    );
+    append_confined(sidecar, &format!("agent implement token mark: {summary}\n"));
     let tmpdir = env::var("IMPLEMENT_TMPDIR").unwrap_or_default();
     if tmpdir.is_empty() || !Path::new(&tmpdir).is_dir() {
         return;

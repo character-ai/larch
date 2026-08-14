@@ -1027,7 +1027,7 @@ def _run_token_command(
 def _run_codex(  # noqa: PLR0913,RUF100
     runner: Runner,
     *,
-    agent_cli: Path,
+    agent_cli: Path,  # noqa: ARG001 - retained for call-site compatibility.
     run_dir: Path,
     implement_tmpdir: Path,
     repo_root: str,

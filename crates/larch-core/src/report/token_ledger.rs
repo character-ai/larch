@@ -99,7 +99,10 @@ pub fn sidecar_ndjson_line(payload: &TokenSidecarPayload) -> String {
         format!("\"raw\":{}", Value::String(payload.raw.clone())),
         format!("\"input\":{}", Value::Number(payload.input.into())),
         format!("\"output\":{}", Value::Number(payload.output.into())),
-        format!("\"cache_read\":{}", Value::Number(payload.cache_read.into())),
+        format!(
+            "\"cache_read\":{}",
+            Value::Number(payload.cache_read.into())
+        ),
         format!(
             "\"cache_create\":{}",
             Value::Number(payload.cache_create.into())
@@ -107,7 +110,10 @@ pub fn sidecar_ndjson_line(payload: &TokenSidecarPayload) -> String {
         format!("\"total\":{}", Value::Number(payload.total.into())),
     ];
     if !payload.model.is_empty() {
-        parts.push(format!("\"model\":{}", Value::String(payload.model.clone())));
+        parts.push(format!(
+            "\"model\":{}",
+            Value::String(payload.model.clone())
+        ));
     }
     format!("{{{}}}\n", parts.join(","))
 }
@@ -116,10 +122,7 @@ pub fn sidecar_ndjson_line(payload: &TokenSidecarPayload) -> String {
 #[must_use]
 pub fn parse_token_record_sidecar(kv: &BTreeMap<String, String>) -> Option<TokenSidecarPayload> {
     let mut tool = kv.get("TOOL").map_or("unknown", String::as_str).to_owned();
-    if !matches!(
-        tool.as_str(),
-        "codex" | "cursor" | "claude" | "claude_sub"
-    ) {
+    if !matches!(tool.as_str(), "codex" | "cursor" | "claude" | "claude_sub") {
         tool = "unknown".to_owned();
     }
     let uint_key = |key: &str| -> u64 {
@@ -407,8 +410,8 @@ fn hex_encode(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        active_ledger_vendor, mark_line, parse_token_record_sidecar, safe_lane_slug, sidecar_ndjson_line,
-        vendor_line,
+        active_ledger_vendor, mark_line, parse_token_record_sidecar, safe_lane_slug,
+        sidecar_ndjson_line, vendor_line,
     };
     use std::collections::BTreeMap;
 

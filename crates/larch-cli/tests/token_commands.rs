@@ -79,23 +79,14 @@ fn record_vendor_rejects_reserved_claude() {
         "raw=claude_main",
     ]);
     assert_eq!(output.status.code(), Some(1));
-    assert!(
-        stderr(&output).contains("reserved"),
-        "{}",
-        stderr(&output)
-    );
+    assert!(stderr(&output).contains("reserved"), "{}", stderr(&output));
     assert!(!fixture.ledger().exists());
 }
 
 #[test]
 fn dump_prints_path_and_contents() {
     let fixture = Fixture::new();
-    assert!(
-        fixture
-            .run(&["mark", "Step 1"])
-            .status
-            .success()
-    );
+    assert!(fixture.run(&["mark", "Step 1"]).status.success());
     let output = fixture.run(&["dump"]);
     assert!(output.status.success(), "{}", stderr(&output));
     let text = stdout(&output);
@@ -113,7 +104,11 @@ fn lane_write_and_lane_report_roundtrip_under_tmp() {
     let fixture = Fixture::new();
     let dir = PathBuf::from("/tmp").join(format!(
         "larch-token-lane-{}",
-        fixture.tmpdir.file_name().and_then(|n| n.to_str()).unwrap_or("case")
+        fixture
+            .tmpdir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("case")
     ));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("lane dir");
@@ -160,7 +155,10 @@ fn append_record_writes_ndjson() {
     let ndjson = fixture.tmpdir.join("token-report.ndjson");
     let text = fs::read_to_string(ndjson).expect("ndjson");
     assert!(text.contains("codex"), "{text}");
-    assert!(text.contains("\"total\":3") || text.contains("total"), "{text}");
+    assert!(
+        text.contains("\"total\":3") || text.contains("total"),
+        "{text}"
+    );
 }
 
 #[test]

@@ -1147,7 +1147,12 @@ def test_make_conflict_launch_fn_retries_only_missing_token_sidecar_leg(
     _ = launch_fn("cursor", "a.txt")
     _ = launch_fn("cursor", "a.txt")
 
-    verbs = [call[3] for call in runner.calls]
+    verbs: list[str] = []
+    for call in runner.calls:
+        if "token" not in call:
+            continue
+        token_at = list(call).index("token")
+        verbs.append(str(call[token_at + 1]))
     assert verbs == ["append-record", "record-vendor-sidecar", "record-vendor-sidecar"]
 
 

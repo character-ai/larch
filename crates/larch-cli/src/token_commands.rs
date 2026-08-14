@@ -322,7 +322,10 @@ fn record_vendor_values(vendor: &str, vals: &VendorValues, ledger: Option<&str>)
     }
 }
 
-fn record_vendor_from_sidecar(input_path: Option<&Path>, ledger: Option<&str>) -> Result<(), String> {
+fn record_vendor_from_sidecar(
+    input_path: Option<&Path>,
+    ledger: Option<&str>,
+) -> Result<(), String> {
     let Some(input_path) = input_path else {
         return Ok(());
     };
@@ -371,7 +374,10 @@ fn record_vendor_from_sidecar(input_path: Option<&Path>, ledger: Option<&str>) -
     Ok(())
 }
 
-fn append_token_record_from_sidecar(input_path: Option<&Path>, tmpdir: &Path) -> Result<(), String> {
+fn append_token_record_from_sidecar(
+    input_path: Option<&Path>,
+    tmpdir: &Path,
+) -> Result<(), String> {
     if !tmpdir.is_dir() {
         return Err("--tmpdir must exist".to_owned());
     }
@@ -557,7 +563,10 @@ fn validate_under_tmp(raw: &str, env_map: &BTreeMap<String, String>) -> Result<P
             root.join(path)
         }
     };
-    if let Some(parent) = candidate.parent().filter(|value| !value.as_os_str().is_empty()) {
+    if let Some(parent) = candidate
+        .parent()
+        .filter(|value| !value.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
     resolve_under_roots(raw, &root, &allowed)
@@ -658,15 +667,17 @@ fn validate_research_dir(path: &Path) -> Result<(), String> {
             probe.display()
         ));
     }
-    let resolved = probe.canonicalize().map_err(|_error| {
-        format!(
-            "--dir resolves outside allowed roots: {}",
-            path.display()
-        )
-    })?;
+    let resolved = probe
+        .canonicalize()
+        .map_err(|_error| format!("--dir resolves outside allowed roots: {}", path.display()))?;
     let allowed = prefixes
         .into_iter()
-        .filter_map(|prefix| prefix.exists().then(|| prefix.canonicalize().ok()).flatten())
+        .filter_map(|prefix| {
+            prefix
+                .exists()
+                .then(|| prefix.canonicalize().ok())
+                .flatten()
+        })
         .collect::<Vec<_>>();
     if !allowed
         .iter()

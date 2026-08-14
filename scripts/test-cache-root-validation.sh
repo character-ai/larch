@@ -7,8 +7,19 @@ unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDI
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
+if [ -z "${LARCH_BINARY:-}" ]; then
+    if [ -x "$REPO_ROOT/target/debug/larch" ]; then
+        export LARCH_BINARY="$REPO_ROOT/target/debug/larch"
+    elif [ -x "$REPO_ROOT/target/release/larch" ]; then
+        export LARCH_BINARY="$REPO_ROOT/target/release/larch"
+    else
+        cargo build --quiet --locked --package larch-cli --bin larch
+        export LARCH_BINARY="$REPO_ROOT/target/debug/larch"
+    fi
+fi
 FINALIZE=(python3 "$REPO_ROOT/python/cli.py" implement-finalize)
-TOKEN_CLI=(python3 "$REPO_ROOT/python/cli.py" token)
+TOKEN_CLI=("$REPO_ROOT/scripts/larch.sh" token)
 
 PASS=0
 FAIL=0

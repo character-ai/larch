@@ -11,7 +11,6 @@ import re
 import shutil
 import signal
 import subprocess
-import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
