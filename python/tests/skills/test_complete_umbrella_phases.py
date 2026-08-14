@@ -18,7 +18,10 @@ def _read(name: str) -> str:
 
 def test_every_primary_phase_loads_the_shared_context_economy_contract() -> None:
     for phase in PHASES:
-        assert "Read `phase-common.md` in this directory in full before acting." in _read(phase)
+        assert (
+            "Read `phase-common.md` in this directory in full before acting."
+            in _read(phase)
+        )
 
     common = _read("phase-common.md")
     assert "Set `head_limit` on every `Grep` call." in common
@@ -30,7 +33,10 @@ def test_every_primary_phase_loads_the_shared_context_economy_contract() -> None
 
 def test_implement_and_review_inputs_are_phase_scoped() -> None:
     implementation = _read("implement.md")
-    assert "Read only `$SESSION_TMPDIR/design-brief.md` and `$SESSION_TMPDIR/leaf-issue.md`" in implementation
+    assert (
+        "Read only `$SESSION_TMPDIR/design-brief.md` and `$SESSION_TMPDIR/leaf-issue.md`"
+        in implementation
+    )
     assert "Do not repeat broad repository exploration." in implementation
 
     review = _read("adversarial-review.md")
@@ -44,6 +50,8 @@ def test_ship_is_deterministic_and_fixer_is_failure_only() -> None:
     assert "complete-umbrella ship-leaf" in ship
     assert "refresh CI once every 300 seconds" in ship
     assert "`ci_failed`" in ship
+    assert "`needs-orchestrator-finalize`" in ship
+    assert "Only the top-level complete-umbrella owner" in ship
     assert "Do not spawn a CI fixer when checks are pending or green." in ship
     assert "The driver's persisted state enforces the fix-attempt cap." in ship
 
@@ -60,3 +68,13 @@ def test_managed_leaf_phases_persist_and_verify_gate_evidence() -> None:
     assert "RUST_LINE_BUDGET_STATUS=deviation-required" in review
     assert "RUST_LINE_BUDGET_STATUS=deviation-recorded" in review
     assert "Publish the complete updated plan" in review
+
+
+def test_top_level_routes_stale_budget_evidence_to_the_parent_finalizer() -> None:
+    skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "CHILD_STATUS=needs-orchestrator-finalize" in skill
+    assert "--mode finalize-budget-deviation" in skill
+    assert "active plan lease" in skill
+    assert "only the plan record's measured base SHA, head SHA, and count" in skill

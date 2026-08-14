@@ -51,6 +51,45 @@ def test_parse_native_blocker_exact_fields_only() -> None:
     assert mg.parse_native_blocker_refs(body=body) == (2, 7780, 7781)
 
 
+def test_refresh_rust_line_budget_deviation_preserves_decision_and_rationale() -> None:
+    plan = _plan_inner().replace(
+        "diff_lines: 12\n",
+        "## Rust line budget deviation\n\n"
+        "- Split decision: retain this leaf as one PR\n"
+        "- Rationale: The atomic migration and compatibility repair share one boundary.\n"
+        f"- Base SHA: {'a' * 40}\n"
+        f"- Head SHA: {'b' * 40}\n"
+        "- Added non-generated Rust lines: 1501\n"
+        "- Preserved note: this text is not a measurement field.\n\n"
+        "diff_lines: 12\n",
+    )
+
+    refreshed = mg.refresh_rust_line_budget_deviation(
+        plan_inner=plan,
+        base_sha="c" * 40,
+        head_sha="d" * 40,
+        added_lines=1503,
+    )
+
+    parsed = mg.parse_rust_line_budget_deviation(plan_inner=refreshed)
+    assert parsed.defects == ()
+    assert parsed.deviation == mg.RustLineBudgetDeviation(
+        split_decision="retain this leaf as one PR",
+        rationale="The atomic migration and compatibility repair share one boundary.",
+        base_sha="c" * 40,
+        head_sha="d" * 40,
+        added_lines=1503,
+    )
+    assert "- Preserved note: this text is not a measurement field.\n" in refreshed
+    with pytest.raises(ShipError, match="missing or malformed"):
+        _ = mg.refresh_rust_line_budget_deviation(
+            plan_inner=_plan_inner(),
+            base_sha="c" * 40,
+            head_sha="d" * 40,
+            added_lines=1503,
+        )
+
+
 def test_parse_owner_rows_exact_block() -> None:
     body = (
         "prologue\n"
@@ -106,7 +145,9 @@ def test_hash_canonicalization_is_order_independent() -> None:
         mg.BlockerSnapshotRow(2, "open", "t2"),
     )
     assert mg.hash_blocker_rows(rows=rows_a) == mg.hash_blocker_rows(rows=rows_b)
-    assert mg.hash_owner_rows(rows=("b", "a", "a")) == mg.hash_owner_rows(rows=("a", "b"))
+    assert mg.hash_owner_rows(rows=("b", "a", "a")) == mg.hash_owner_rows(
+        rows=("a", "b")
+    )
 
 
 def test_receipt_parse_render_upsert_roundtrip() -> None:
@@ -120,7 +161,9 @@ def test_receipt_parse_render_upsert_roundtrip() -> None:
     )
     updated = mg.upsert_receipt(body=body, receipt=receipt)
     assert mg.parse_receipt(body=updated) == receipt
-    assert updated.index("<!-- larch:plan:end -->") < updated.index("larch:plan-receipt")
+    assert updated.index("<!-- larch:plan:end -->") < updated.index(
+        "larch:plan-receipt"
+    )
     replaced = mg.upsert_receipt(
         body=updated,
         receipt=mg.PlanReceipt(
@@ -169,9 +212,7 @@ def test_missing_receipt_is_advisory_but_a_malformed_receipt_still_blocks(
 
 
 def test_scope_drift_requires_preflight_semantic_revalidation() -> None:
-    scope_only = mg.FreshnessVerdict(
-        reasons=(mg.REASON_STALE_PLAN_BASE_SCOPE,)
-    )
+    scope_only = mg.FreshnessVerdict(reasons=(mg.REASON_STALE_PLAN_BASE_SCOPE,))
     assert not scope_only.ok
     assert scope_only.hard_reasons == ()
     assert scope_only.semantic_revalidation_reasons == (
@@ -283,24 +324,27 @@ def test_plan_receipt_refresh_cli_persists_the_checked_base_sha(
     monkeypatch.setattr(issue_mutation, "read_snapshot", read_snapshot)
     monkeypatch.setattr(mg.git, "rev_parse", rev_parse)
     monkeypatch.setattr(mg, "_render_preflight_scope_drift", render_scope_drift)
-    assert mg.plan_receipt_refresh_main(
-        [
-            "--issue",
-            "7",
-            "--repo",
-            "owner/repo",
-            "--repo-root",
-            str(tmp_path),
-            "--preflight-tmpdir",
-            str(preflight_tmpdir),
-            "--base-ref",
-            "origin/main",
-            "--previous-base-sha",
-            "a" * 40,
-            "--base-sha",
-            "b" * 40,
-        ]
-    ) == 0
+    assert (
+        mg.plan_receipt_refresh_main(
+            [
+                "--issue",
+                "7",
+                "--repo",
+                "owner/repo",
+                "--repo-root",
+                str(tmp_path),
+                "--preflight-tmpdir",
+                str(preflight_tmpdir),
+                "--base-ref",
+                "origin/main",
+                "--previous-base-sha",
+                "a" * 40,
+                "--base-sha",
+                "b" * 40,
+            ]
+        )
+        == 0
+    )
     assert captured == {
         "issue": "7",
         "repo": "owner/repo",
@@ -407,22 +451,25 @@ def test_plan_receipt_refresh_cli_resolves_the_local_repository(
     monkeypatch.setattr(mg, "_write_refreshed_preflight_snapshot", write_snapshot)
     monkeypatch.setattr(mg.git, "rev_parse", rev_parse)
     monkeypatch.setattr(mg, "_render_preflight_scope_drift", render_scope_drift)
-    assert mg.plan_receipt_refresh_main(
-        [
-            "--issue",
-            "7",
-            "--repo-root",
-            str(tmp_path),
-            "--preflight-tmpdir",
-            str(preflight_tmpdir),
-            "--base-ref",
-            "origin/main",
-            "--previous-base-sha",
-            "a" * 40,
-            "--base-sha",
-            "b" * 40,
-        ]
-    ) == 0
+    assert (
+        mg.plan_receipt_refresh_main(
+            [
+                "--issue",
+                "7",
+                "--repo-root",
+                str(tmp_path),
+                "--preflight-tmpdir",
+                str(preflight_tmpdir),
+                "--base-ref",
+                "origin/main",
+                "--previous-base-sha",
+                "a" * 40,
+                "--base-sha",
+                "b" * 40,
+            ]
+        )
+        == 0
+    )
     assert repositories == ["owner/repo"]
 
 
@@ -446,22 +493,25 @@ def test_plan_receipt_refresh_cli_rejects_an_invalid_resolved_repository(
 
     monkeypatch.setattr(mg, "persist_plan_receipt", persist)
     monkeypatch.setattr(mg.gh, "resolve_repo", resolve_repo)
-    assert mg.plan_receipt_refresh_main(
-        [
-            "--issue",
-            "7",
-            "--repo-root",
-            str(tmp_path),
-            "--preflight-tmpdir",
-            str(preflight_tmpdir),
-            "--base-ref",
-            "origin/main",
-            "--previous-base-sha",
-            "a" * 40,
-            "--base-sha",
-            "b" * 40,
-        ]
-    ) == 2
+    assert (
+        mg.plan_receipt_refresh_main(
+            [
+                "--issue",
+                "7",
+                "--repo-root",
+                str(tmp_path),
+                "--preflight-tmpdir",
+                str(preflight_tmpdir),
+                "--base-ref",
+                "origin/main",
+                "--previous-base-sha",
+                "a" * 40,
+                "--base-sha",
+                "b" * 40,
+            ]
+        )
+        == 2
+    )
     output = capsys.readouterr()
     assert output.out == "PLAN_RECEIPT_REFRESHED=false\n"
     assert "--repo must be exactly owner/name" in output.err
@@ -486,24 +536,27 @@ def test_plan_receipt_refresh_cli_refuses_when_the_reviewed_base_moved(
 
     monkeypatch.setattr(mg, "persist_plan_receipt", persist)
     monkeypatch.setattr(mg.git, "rev_parse", moved_rev_parse)
-    assert mg.plan_receipt_refresh_main(
-        [
-            "--issue",
-            "7",
-            "--repo",
-            "owner/repo",
-            "--repo-root",
-            str(tmp_path),
-            "--preflight-tmpdir",
-            str(preflight_tmpdir),
-            "--base-ref",
-            "origin/main",
-            "--previous-base-sha",
-            "a" * 40,
-            "--base-sha",
-            "b" * 40,
-        ]
-    ) == 2
+    assert (
+        mg.plan_receipt_refresh_main(
+            [
+                "--issue",
+                "7",
+                "--repo",
+                "owner/repo",
+                "--repo-root",
+                str(tmp_path),
+                "--preflight-tmpdir",
+                str(preflight_tmpdir),
+                "--base-ref",
+                "origin/main",
+                "--previous-base-sha",
+                "a" * 40,
+                "--base-sha",
+                "b" * 40,
+            ]
+        )
+        == 2
+    )
     output = capsys.readouterr()
     assert output.out == "PLAN_RECEIPT_REFRESHED=false\n"
     assert "plan-receipt-refresh-base-moved" in output.err
@@ -553,24 +606,27 @@ def test_plan_receipt_refresh_cli_rechecks_base_before_mutation(
     monkeypatch.setattr(mg.git, "rev_parse", rev_parse)
     monkeypatch.setattr(mg, "persist_plan_receipt", persist)
     monkeypatch.setattr(mg, "_render_preflight_scope_drift", render_scope_drift)
-    assert mg.plan_receipt_refresh_main(
-        [
-            "--issue",
-            "7",
-            "--repo",
-            "owner/repo",
-            "--repo-root",
-            str(tmp_path),
-            "--preflight-tmpdir",
-            str(preflight_tmpdir),
-            "--base-ref",
-            "origin/main",
-            "--previous-base-sha",
-            "a" * 40,
-            "--base-sha",
-            "b" * 40,
-        ]
-    ) == 2
+    assert (
+        mg.plan_receipt_refresh_main(
+            [
+                "--issue",
+                "7",
+                "--repo",
+                "owner/repo",
+                "--repo-root",
+                str(tmp_path),
+                "--preflight-tmpdir",
+                str(preflight_tmpdir),
+                "--base-ref",
+                "origin/main",
+                "--previous-base-sha",
+                "a" * 40,
+                "--base-sha",
+                "b" * 40,
+            ]
+        )
+        == 2
+    )
     output = capsys.readouterr()
     assert output.out == "PLAN_RECEIPT_REFRESHED=false\n"
     assert "plan-receipt-refresh-base-moved" in output.err
@@ -614,24 +670,27 @@ def test_plan_receipt_refresh_cli_refuses_a_changed_preflight_receipt(
 
     monkeypatch.setattr(mg, "persist_plan_receipt", persist)
     monkeypatch.setattr(mg.git, "rev_parse", current_rev_parse)
-    assert mg.plan_receipt_refresh_main(
-        [
-            "--issue",
-            "7",
-            "--repo",
-            "owner/repo",
-            "--repo-root",
-            str(tmp_path),
-            "--preflight-tmpdir",
-            str(preflight_tmpdir),
-            "--base-ref",
-            "origin/main",
-            "--previous-base-sha",
-            "a" * 40,
-            "--base-sha",
-            "b" * 40,
-        ]
-    ) == 2
+    assert (
+        mg.plan_receipt_refresh_main(
+            [
+                "--issue",
+                "7",
+                "--repo",
+                "owner/repo",
+                "--repo-root",
+                str(tmp_path),
+                "--preflight-tmpdir",
+                str(preflight_tmpdir),
+                "--base-ref",
+                "origin/main",
+                "--previous-base-sha",
+                "a" * 40,
+                "--base-sha",
+                "b" * 40,
+            ]
+        )
+        == 2
+    )
     output = capsys.readouterr()
     assert output.out == "PLAN_RECEIPT_REFRESHED=false\n"
     assert "preflight receipt base does not match scope revalidation" in output.err
@@ -658,12 +717,14 @@ def test_persist_plan_receipt_refuses_a_changed_preflight_plan(
         owners_sha256="d" * 64,
     )
 
-    def read_snapshot(*_args: object, **_kwargs: object) -> issue_mutation.IssueSnapshot:
+    def read_snapshot(
+        *_args: object, **_kwargs: object
+    ) -> issue_mutation.IssueSnapshot:
         return snapshot
 
-    def build_receipt(*_args: object, **_kwargs: object) -> tuple[
-        mg.PlanReceipt, mg.ParityVerdict
-    ]:
+    def build_receipt(
+        *_args: object, **_kwargs: object
+    ) -> tuple[mg.PlanReceipt, mg.ParityVerdict]:
         return receipt, mg.ParityVerdict(reasons=())
 
     monkeypatch.setattr(issue_mutation, "read_snapshot", read_snapshot)
@@ -713,12 +774,14 @@ def test_persist_plan_receipt_refuses_changed_governance_inputs(
         owners_sha256=prior_receipt.owners_sha256,
     )
 
-    def read_snapshot(*_args: object, **_kwargs: object) -> issue_mutation.IssueSnapshot:
+    def read_snapshot(
+        *_args: object, **_kwargs: object
+    ) -> issue_mutation.IssueSnapshot:
         return snapshot
 
-    def build_receipt(*_args: object, **_kwargs: object) -> tuple[
-        mg.PlanReceipt, mg.ParityVerdict
-    ]:
+    def build_receipt(
+        *_args: object, **_kwargs: object
+    ) -> tuple[mg.PlanReceipt, mg.ParityVerdict]:
         return changed_receipt, mg.ParityVerdict(reasons=())
 
     monkeypatch.setattr(issue_mutation, "read_snapshot", read_snapshot)
@@ -772,12 +835,14 @@ def test_preflight_bound_receipt_refresh_never_falls_back_to_whole_body_write(
         owners_sha256=prior_receipt.owners_sha256,
     )
 
-    def read_snapshot(*_args: object, **_kwargs: object) -> issue_mutation.IssueSnapshot:
+    def read_snapshot(
+        *_args: object, **_kwargs: object
+    ) -> issue_mutation.IssueSnapshot:
         return snapshot
 
-    def build_receipt(*_args: object, **_kwargs: object) -> tuple[
-        mg.PlanReceipt, mg.ParityVerdict
-    ]:
+    def build_receipt(
+        *_args: object, **_kwargs: object
+    ) -> tuple[mg.PlanReceipt, mg.ParityVerdict]:
         return refreshed_receipt, mg.ParityVerdict(reasons=())
 
     monkeypatch.setattr(issue_mutation, "read_snapshot", read_snapshot)
@@ -813,15 +878,11 @@ def test_scope_drift_record_is_json_quoted_bounded_and_disables_external_diff(
     captured: dict[str, object] = {}
     tracked_shas: list[str] = []
 
-    def tracked_paths(
-        _runner: object, *, sha: str, cwd: str
-    ) -> frozenset[str]:
+    def tracked_paths(_runner: object, *, sha: str, cwd: str) -> frozenset[str]:
         assert cwd == "/repo"
         tracked_shas.append(sha)
         return (
-            frozenset({"removed.md"})
-            if sha == "a" * 40
-            else frozenset({"README.md"})
+            frozenset({"removed.md"}) if sha == "a" * 40 else frozenset({"README.md"})
         )
 
     monkeypatch.setattr(mg, "_tracked_paths_at_sha", tracked_paths)
@@ -888,7 +949,9 @@ def test_scope_drift_record_is_json_quoted_bounded_and_disables_external_diff(
 def test_load_blocker_snapshot_fail_closed_on_api_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def boom(*_args: object, **_kwargs: object) -> list[issue_block.BlockedByDependency]:
+    def boom(
+        *_args: object, **_kwargs: object
+    ) -> list[issue_block.BlockedByDependency]:
         raise issue_block.DependencyReadError("api down")
 
     monkeypatch.setattr(issue_block, "read_blocked_by_dependencies", boom)
@@ -912,7 +975,9 @@ def test_freshness_detects_plan_owner_blocker_and_base_scope_drift(
     _ = readme.write_text("v1\n", encoding="utf-8")
     # Minimal git repo for ls-tree/rev-parse.
     _ = subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
-    _ = subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, capture_output=True)
+    _ = subprocess.run(
+        ["git", "add", "README.md"], cwd=repo, check=True, capture_output=True
+    )
     _ = subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "init"],
         cwd=repo,
@@ -920,7 +985,11 @@ def test_freshness_detects_plan_owner_blocker_and_base_scope_drift(
         capture_output=True,
     )
     base_sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
 
     plan_inner = _plan_inner()
@@ -945,7 +1014,9 @@ def test_freshness_detects_plan_owner_blocker_and_base_scope_drift(
     body = mg.upsert_receipt(body=body, receipt=receipt)
 
     class _GitRunner:
-        def run(self, argv: list[str] | tuple[str, ...], **kwargs: object) -> CommandResult:
+        def run(
+            self, argv: list[str] | tuple[str, ...], **kwargs: object
+        ) -> CommandResult:
             completed = subprocess.run(
                 list(argv),
                 cwd=str(kwargs.get("cwd") or repo),
@@ -1017,7 +1088,9 @@ def test_freshness_detects_plan_owner_blocker_and_base_scope_drift(
 
     # In-scope change at HEAD vs base
     _ = readme.write_text("v2\n", encoding="utf-8")
-    _ = subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, capture_output=True)
+    _ = subprocess.run(
+        ["git", "add", "README.md"], cwd=repo, check=True, capture_output=True
+    )
     _ = subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "change"],
         cwd=repo,
@@ -1025,7 +1098,11 @@ def test_freshness_detects_plan_owner_blocker_and_base_scope_drift(
         capture_output=True,
     )
     head_sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
     stale_scope = mg.validate_receipt_freshness(
         runner,  # type: ignore[arg-type]
@@ -1040,18 +1117,38 @@ def test_freshness_detects_plan_owner_blocker_and_base_scope_drift(
 
     # Unrelated main movement: add out-of-scope file, keep README at base content via...
     # Re-create a branch where README matches base but an unrelated file advanced HEAD.
-    _ = subprocess.run(["git", "checkout", "-B", "unrelated", base_sha], cwd=repo, check=True, capture_output=True)
+    _ = subprocess.run(
+        ["git", "checkout", "-B", "unrelated", base_sha],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
     other = repo / "OTHER.md"
     _ = other.write_text("other\n", encoding="utf-8")
-    _ = subprocess.run(["git", "add", "OTHER.md"], cwd=repo, check=True, capture_output=True)
     _ = subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "unrelated"],
+        ["git", "add", "OTHER.md"], cwd=repo, check=True, capture_output=True
+    )
+    _ = subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-m",
+            "unrelated",
+        ],
         cwd=repo,
         check=True,
         capture_output=True,
     )
     unrelated_head = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
     still_ok = mg.validate_receipt_freshness(
         runner,  # type: ignore[arg-type]
@@ -1064,7 +1161,9 @@ def test_freshness_detects_plan_owner_blocker_and_base_scope_drift(
     _ = monkeypatch  # reserved for future runner seams
 
 
-def test_read_blocked_by_dependencies_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_blocked_by_dependencies_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def fail_read(*_a: object, **_k: object) -> CommandResult:
         return CommandResult(("gh",), 1, "", "boom", 0.01)
 
@@ -1074,7 +1173,10 @@ def test_read_blocked_by_dependencies_fail_closed(monkeypatch: pytest.MonkeyPatc
 
 
 def _owner_block(*rows: str) -> str:
-    return "\n".join(("<!-- larch:owners:start -->", *rows, "<!-- larch:owners:end -->")) + "\n"
+    return (
+        "\n".join(("<!-- larch:owners:start -->", *rows, "<!-- larch:owners:end -->"))
+        + "\n"
+    )
 
 
 @pytest.mark.parametrize(
@@ -1093,19 +1195,27 @@ def _owner_block(*rows: str) -> str:
     ],
 )
 def test_additive_migration_does_not_require_owner_block(migration_text: str) -> None:
-    plan = _plan_inner().replace(
-        "- Fixture owns this plan.",
-        "- Reuse the existing command registry.",
-    ).replace("None.\n\n", f"{migration_text}\n\n")
+    plan = (
+        _plan_inner()
+        .replace(
+            "- Fixture owns this plan.",
+            "- Reuse the existing command registry.",
+        )
+        .replace("None.\n\n", f"{migration_text}\n\n")
+    )
 
     assert not mg.migration_requires_owner_block(plan_inner=plan)
 
 
 def test_additive_migration_passes_owner_admission_without_block() -> None:
-    plan = _plan_inner().replace(
-        "- Fixture owns this plan.",
-        "- Reuse the existing command registry and typed adapter.",
-    ).replace("None.\n\n", "No breaking changes to existing behavior.\n\n")
+    plan = (
+        _plan_inner()
+        .replace(
+            "- Fixture owns this plan.",
+            "- Reuse the existing command registry and typed adapter.",
+        )
+        .replace("None.\n\n", "No breaking changes to existing behavior.\n\n")
+    )
     body = compose_named_block(marker="plan", inner=plan)
 
     verdict = mg.evaluate_owner_admission(
@@ -1176,6 +1286,7 @@ def test_active_create_conflicts_with_active_or_pending_reuse(
         labels=(),
         body=active_body,
     )
+
     def read_open(*_args: object, **_kwargs: object) -> tuple[OpenIssueRow, ...]:
         return (active,)
 
@@ -1187,9 +1298,7 @@ def test_active_create_conflicts_with_active_or_pending_reuse(
     verdict = mg.evaluate_owner_admission(
         RecordingRunner(responses=[]), issue="7", repo="o/r", body=body
     )
-    assert verdict.reasons == (
-        "active-owner-conflict owner=shared-owner issue=#8",
-    )
+    assert verdict.reasons == ("active-owner-conflict owner=shared-owner issue=#8",)
 
 
 def test_reuse_source_requires_native_edge_and_valid_owner_snapshot(
@@ -1229,21 +1338,25 @@ def test_reuse_source_requires_native_edge_and_valid_owner_snapshot(
     reasons = mg._validate_reuse_sources(  # pyright: ignore[reportPrivateUsage]
         RecordingRunner(responses=[]), block=parsed.block, body="", repo="o/r", cwd=None
     )
-    assert reasons == (
-        "reuse-missing-native-blocker owner=shared-owner issue=#6",
-    )
+    assert reasons == ("reuse-missing-native-blocker owner=shared-owner issue=#6",)
     source_body = compose_named_block(marker="plan", inner=source_plan) + source_owners
     reasons = mg._validate_reuse_sources(  # pyright: ignore[reportPrivateUsage]
-        RecordingRunner(responses=[]), block=parsed.block, body="Native blocker: #6.\n", repo="o/r", cwd=None
+        RecordingRunner(responses=[]),
+        block=parsed.block,
+        body="Native blocker: #6.\n",
+        repo="o/r",
+        cwd=None,
     )
     assert reasons == ()
     source_body += "\n<!-- larch:plan-receipt -->\n"
     reasons = mg._validate_reuse_sources(  # pyright: ignore[reportPrivateUsage]
-        RecordingRunner(responses=[]), block=parsed.block, body="Native blocker: #6.\n", repo="o/r", cwd=None
+        RecordingRunner(responses=[]),
+        block=parsed.block,
+        body="Native blocker: #6.\n",
+        repo="o/r",
+        cwd=None,
     )
-    assert reasons == (
-        "reuse-owner-snapshot-invalid owner=shared-owner issue=#6",
-    )
+    assert reasons == ("reuse-owner-snapshot-invalid owner=shared-owner issue=#6",)
 
 
 def test_stale_lease_watchdog_is_report_only_and_checks_open_pr() -> None:

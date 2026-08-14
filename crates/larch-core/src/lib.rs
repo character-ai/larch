@@ -125,10 +125,11 @@ pub use ci_timing::{
     collect_harness_timing, collect_job_timing, collect_pytest_timing,
 };
 pub use complete_umbrella::{
-    COMPLETE_UMBRELLA_CHILD_COMPLETE, CompleteUmbrellaLeaf, CompleteUmbrellaNext,
-    complete_umbrella_child_prompt, complete_umbrella_done_title, complete_umbrella_start_title,
-    has_umbrella_proposal, select_complete_umbrella_leaf, umbrella_leaf_opening,
-    umbrella_leaf_prefix, validate_complete_umbrella_leaf, validate_complete_umbrella_parent,
+    COMPLETE_UMBRELLA_CHILD_COMPLETE, COMPLETE_UMBRELLA_CHILD_NEEDS_ORCHESTRATOR_FINALIZE,
+    CompleteUmbrellaLeaf, CompleteUmbrellaNext, complete_umbrella_child_prompt,
+    complete_umbrella_done_title, complete_umbrella_start_title, has_umbrella_proposal,
+    select_complete_umbrella_leaf, umbrella_leaf_opening, umbrella_leaf_prefix,
+    validate_complete_umbrella_leaf, validate_complete_umbrella_parent,
 };
 pub use config::{GIT_COMMIT_CO_AUTHORED_BY_TRAILER, env};
 
