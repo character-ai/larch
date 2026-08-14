@@ -23,6 +23,7 @@ use larch_core::{
         gantt::{self, MAX_WIDTH},
         growth_chart,
     },
+    review::render_wire_values,
 };
 use regex::Regex;
 use sha2::{Digest, Sha256};
@@ -538,30 +539,16 @@ fn code_reviewer_body(template: &Path, section: &str) -> Result<String, String> 
 fn render_wire_value_placeholders(text: &str) -> String {
     text.replace(
         "{FOCUS_AREA_VALUES}",
-        &render_wire_values(FOCUS_AREA_VALUES, true),
+        &render_wire_values(FOCUS_AREA_VALUES, "/", true),
     )
     .replace(
         "{FOCUS_AREA_VALUES_BARE}",
-        &render_wire_values(FOCUS_AREA_VALUES, false),
+        &render_wire_values(FOCUS_AREA_VALUES, "/", false),
     )
     .replace(
         "{FINDING_SCOPE_VALUES}",
-        &render_wire_values(FINDING_SCOPE_VALUES, true),
+        &render_wire_values(FINDING_SCOPE_VALUES, "/", true),
     )
-}
-
-fn render_wire_values(values: &[&str], quoted: bool) -> String {
-    values
-        .iter()
-        .map(|value| {
-            if quoted {
-                format!("`{value}`")
-            } else {
-                (*value).to_owned()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" / ")
 }
 
 fn extract_generated_body(template: &Path, heading: Option<&str>) -> Result<String, String> {

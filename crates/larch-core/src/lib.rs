@@ -36,6 +36,8 @@ mod redaction;
 mod repo_size;
 pub mod report;
 mod retry;
+/// Dormant review-domain parity APIs. Python remains the production owner.
+pub mod review;
 mod review_dispatch;
 mod run_log;
 mod session_env;
@@ -350,7 +352,7 @@ pub use rebalance_tests::{
 };
 pub use redaction::{
     RedactionResult, RuntimeRedactor, SafeText, contains_recognized_session_tmpdir_pointer, redact,
-    redact_run_log_payload, redact_secrets, redact_sensitive_paths,
+    redact_run_log_payload, redact_secrets, redact_secrets_only, redact_sensitive_paths,
 };
 pub use repo_size::{RepoSizeCategory, RepoSizeReport, count_newlines, line_count_category};
 pub use report::{

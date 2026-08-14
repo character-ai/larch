@@ -40,6 +40,11 @@ static SECRET_FAMILIES: LazyLock<Vec<SecretFamily>> = LazyLock::new(|| {
             "cursor-api-key",
             r"(?:crsr_[A-Za-z0-9_-]{20,}|key_[A-Za-z0-9]{32,})",
         ),
+    ]
+});
+
+static EXTRA_SECRET_FAMILIES: LazyLock<Vec<SecretFamily>> = LazyLock::new(|| {
+    vec![
         SecretFamily::new("slack-token", r"xox[baprs]-[A-Za-z0-9-]{10,}"),
         SecretFamily::new("google-api-key", r"AIza[0-9A-Za-z_-]{35}"),
         SecretFamily::new("stripe-live-key", r"(?:sk|rk)_live_[0-9A-Za-z]{16,}"),
@@ -279,6 +284,7 @@ pub fn redact_secrets(text: &str) -> RedactionResult {
     let mut scrubbed = pem_scrubbed;
     for family in SECRET_FAMILIES
         .iter()
+        .chain(EXTRA_SECRET_FAMILIES.iter())
         .filter(|family| family.name != "pem-private-key")
     {
         scrubbed = family
@@ -290,6 +296,25 @@ pub fn redact_secrets(text: &str) -> RedactionResult {
         text: scrubbed,
         findings,
     }
+}
+
+/// Redact the Python `redact_secrets_only` profile: base secret families only.
+#[must_use]
+pub fn redact_secrets_only(text: &str) -> String {
+    let mut scrubbed = redact_pem_blocks(text);
+    for family in SECRET_FAMILIES
+        .iter()
+        .filter(|family| family.name != "pem-private-key")
+    {
+        scrubbed = family
+            .pattern
+            .replace_all(&scrubbed, REDACTED_TOKEN)
+            .into_owned();
+    }
+    if !scrubbed.is_empty() && !scrubbed.ends_with('\n') {
+        scrubbed.push('\n');
+    }
+    scrubbed
 }
 
 /// Redact session temporary directories and operator repository roots.
@@ -341,7 +366,7 @@ pub fn redact(text: &str) -> RedactionResult {
 
 fn count_secret_families(text: &str) -> BTreeMap<&'static str, usize> {
     let mut findings = BTreeMap::new();
-    for family in SECRET_FAMILIES.iter() {
+    for family in SECRET_FAMILIES.iter().chain(EXTRA_SECRET_FAMILIES.iter()) {
         let count = family.pattern.find_iter(text).count();
         if count != 0 {
             findings.insert(family.name, count);
