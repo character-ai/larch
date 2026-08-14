@@ -227,7 +227,7 @@ There are four pre-commit-driven paths:
 - **Local git hook** — Run `make setup` (or `pre-commit install`) to enable pre-commit hooks on every commit. Bypassable via `git commit --no-verify`; the CI jobs are the enforced backstop.
 - **Manual pre-commit stage** — Run `pre-commit run --hook-stage manual --all-files` only when deliberately requesting repository-wide policy, agent/config, secret, or type scans. It is not part of relevant checks or the default git hook.
 
-`.github/workflows/requirements-lint.txt` is the central pinned dependency file for the CI Python lint environment. The `lint`, `shellcheck`, `test-harnesses` matrix cells, and `agent-sync` all use it for `actions/setup-python` pip caching and `pip install -r`.
+`.github/workflows/requirements-lint.txt` is the central pinned dependency file for the CI Python lint environment. The `lint`, `shellcheck`, and `test-harnesses` matrix cells use it for `actions/setup-python` pip caching and `pip install -r`. `agent-sync` is Rust-only: it restores the exact trusted Cargo-input and lint-dependency caches, then runs `make agent-sync`.
 
 ## Shellcheck Engine
 

@@ -4985,6 +4985,108 @@ def test_gitleaks_ci_uses_a_verified_scanner_and_typed_history_resolver() -> Non
     assert shipped_workflow_trust == workflow_trust
 
 
+def test_ci_bootstrap_consumers_restore_exact_trusted_rust_dependency_caches() -> None:
+    """Keep the three bootstrap consumers read-only and profile-compatible."""
+    repo_root = Path(__file__).resolve().parents[3]
+    workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(
+        encoding="utf-8"
+    )
+    makefile = (repo_root / "Makefile").read_text(encoding="utf-8")
+    focus_area_rule = (
+        repo_root / "crates" / "larch-lint" / "src" / "rules" / "focus_area_enum.rs"
+    ).read_text(encoding="utf-8")
+    supply_chain = (
+        repo_root / "docs" / "security" / "supply-chain-credentials-and-services.md"
+    ).read_text(encoding="utf-8")
+    shipped_supply_chain = (
+        repo_root
+        / "plugin"
+        / "docs"
+        / "security"
+        / "supply-chain-credentials-and-services.md"
+    ).read_text(encoding="utf-8")
+    gitleaks = workflow.split("\n  gitleaks:", 1)[1].split("\n  agent-sync:", 1)[0]
+    agent_sync = workflow.split("\n  agent-sync:", 1)[1].split("\n  trufflehog:", 1)[0]
+    test_harnesses = workflow.split("\n  test-harnesses:", 1)[1].split(
+        "\n  test-harnesses-gate:", 1
+    )[0]
+    cache_sha = "caa296126883cff596d87d8935842f9db880ef25"
+
+    for consumer in (gitleaks, agent_sync, test_harnesses):
+        assert "actions/cache/restore@" + cache_sha in consumer
+        assert "actions/cache/save@" + cache_sha not in consumer
+        assert "restore-keys:" not in consumer
+        assert "key: ${{ steps.main-cache-keys.outputs.cargo-inputs }}" in consumer
+        assert "key: ${{ steps.main-cache-keys.outputs.rust-lint-deps }}" in consumer
+
+    for consumer in (gitleaks, agent_sync):
+        for profile_value in (
+            'CARGO_INCREMENTAL: "0"',
+            'CARGO_PROFILE_DEV_DEBUG: "0"',
+            'CARGO_PROFILE_TEST_DEBUG: "0"',
+        ):
+            assert profile_value in consumer
+        assert "cargo_inputs_cache_hit" in consumer
+        assert "rust_lint_deps_cache_hit" in consumer
+        assert "rust_bootstrap_seconds" in consumer
+
+    assert gitleaks.index("Restore Cargo inputs for typed gitleaks history resolver") < gitleaks.index(
+        "Build typed gitleaks history resolver"
+    )
+    assert gitleaks.index("Restore Rust lint dependencies for typed gitleaks history resolver") < gitleaks.index(
+        "Build typed gitleaks history resolver"
+    )
+
+    assert "runs-on: ubuntu-24.04" in agent_sync
+    assert "actions/setup-python" not in agent_sync
+    assert "pip install" not in agent_sync
+    assert "make agent-sync" in agent_sync
+    assert "generate check" in makefile
+    assert "lint rule topology-rule-paths" in makefile
+    assert "lint rule focus-area-enum" in makefile
+    for path in (
+        "skills/shared/reviewer-templates.md",
+        "agents/code-reviewer.md",
+        "agents/reviewer-structure.md",
+        "agents/reviewer-correctness.md",
+        "agents/reviewer-testing.md",
+        "agents/reviewer-security.md",
+        "agents/reviewer-edge-cases.md",
+        "agents/reviewer-plan-fidelity.md",
+        "agents/reviewer-code-robustness.md",
+        "docs/review-agents.md",
+        "skills/review/SKILL.md",
+        "python/larch/rendering/rendering.py",
+        "skills/design/SKILL.md",
+    ):
+        assert f'"{path}",' in focus_area_rule
+    assert 'Regex::new(r"`code-quality`.*`risk-integration`.*`correctness`.*`architecture`")' in focus_area_rule
+    assert '"code-quality / risk-integration / correctness / architecture"' in focus_area_rule
+    assert 'line.contains("security")' in focus_area_rule
+    assert "no {style} focus-area enumeration found" in focus_area_rule
+
+    rust_hook = test_harnesses.split("Run Rust hook harness", 1)[1].split(
+        "Run test harnesses (shards other than 3)", 1
+    )[0]
+    assert "if: matrix.shard == 3" in test_harnesses
+    assert "Restore Cargo inputs for Rust hook harness" in test_harnesses
+    assert "Restore Rust lint dependencies for Rust hook harness" in test_harnesses
+    assert "if: matrix.shard == 3" in rust_hook
+    for profile_value in (
+        'CARGO_INCREMENTAL: "0"',
+        'CARGO_PROFILE_DEV_DEBUG: "0"',
+        'CARGO_PROFILE_TEST_DEBUG: "0"',
+    ):
+        assert profile_value in rust_hook
+    assert 'LARCH_BINARY: ""' in rust_hook
+    assert "Record Rust hook harness cache timing metadata" in test_harnesses
+    assert "rust_bootstrap_seconds" in test_harnesses
+
+    assert "restore the exact\nCargo-input and lint-dependency classes read-only" in supply_chain
+    assert "no\nrestore-key fallback or cache save step" in supply_chain
+    assert shipped_supply_chain == supply_chain
+
+
 def _gitleaks_ci_preparation_script(repo_root: Path) -> str:
     bootstrap = (
         repo_root / ".github" / "actions" / "gitleaks-bootstrap" / "action.yaml"

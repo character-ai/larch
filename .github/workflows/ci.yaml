@@ -262,8 +262,49 @@ jobs:
       - name: Install test harness Python dependencies
         if: steps.cache-site-packages.outputs.cache-hit != 'true'
         run: pip install -r .github/workflows/requirements-test-harnesses.txt
-      - name: Run test harnesses (shard ${{ matrix.shard }} of 5)
+      # Shard 3 is the only harness leg that builds larch. Restore the exact
+      # trusted dependency caches, but leave the current checkout's executable
+      # to Cargo so a cached workspace product can never run candidate code.
+      - name: Restore Cargo inputs for Rust hook harness
+        if: matrix.shard == 3
+        id: cargo-inputs-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.main-cache-keys.outputs.cargo-inputs }}
+      - name: Restore Rust lint dependencies for Rust hook harness
+        if: matrix.shard == 3
+        id: rust-lint-deps-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: target/debug
+          key: ${{ steps.main-cache-keys.outputs.rust-lint-deps }}
+      - name: Run Rust hook harness (shard 3 of 5)
+        if: matrix.shard == 3
+        id: rust-hook-bootstrap
+        env:
+          CARGO_INCREMENTAL: "0"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+          CARGO_PROFILE_TEST_DEBUG: "0"
+          LARCH_BINARY: ""
+        run: |
+          set -euo pipefail
+          make test-harnesses-${{ matrix.shard }}
+          printf 'seconds=%s\n' "$SECONDS" >> "$GITHUB_OUTPUT"
+      - name: Run test harnesses (shards other than 3)
+        if: matrix.shard != 3
         run: make test-harnesses-${{ matrix.shard }}
+      - name: Record Rust hook harness cache timing metadata
+        if: always() && matrix.shard == 3
+        run: |
+          {
+            echo "## Rust hook harness cache timing metadata"
+            echo "- cargo_inputs_cache_hit: ${{ steps.cargo-inputs-cache.outputs.cache-hit }}"
+            echo "- rust_lint_deps_cache_hit: ${{ steps.rust-lint-deps-cache.outputs.cache-hit }}"
+            echo "- rust_bootstrap_seconds: ${{ steps.rust-hook-bootstrap.outputs.seconds }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # Aggregate gate so branch protection can require the whole test-harnesses
   # matrix via one stable check, regardless of shard count.
@@ -1358,6 +1399,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
       GITLEAKS_VERSION: "8.18.4"
       GITLEAKS_ARCHIVE_SHA256: "ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d"
       GITLEAKS_BINARY_SHA256: "46a05260e7cce527f132cb618de59d22262b8b5eb47f66c288447b95c7a98b7e"
@@ -1386,6 +1430,22 @@ jobs:
           checkout_seconds="$(( $(date +%s) - checkout_started ))"
           test "$checkout_seconds" -ge 0
           printf 'seconds=%s\n' "$checkout_seconds" >> "$GITHUB_OUTPUT"
+      # These exact trusted-main restores supply only Cargo inputs and pruned
+      # dependency products. Cargo still builds the current history resolver.
+      - name: Restore Cargo inputs for typed gitleaks history resolver
+        id: cargo-inputs-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.main-cache-keys.outputs.cargo-inputs }}
+      - name: Restore Rust lint dependencies for typed gitleaks history resolver
+        id: rust-lint-deps-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: target/debug
+          key: ${{ steps.main-cache-keys.outputs.rust-lint-deps }}
       - name: Build typed gitleaks history resolver
         id: gitleaks-rust-bootstrap
         run: |
@@ -1456,6 +1516,8 @@ jobs:
           {
             echo "## Gitleaks timing metadata"
             echo "- cache_hit: ${{ steps.gitleaks-cache.outputs.cache-hit }}"
+            echo "- cargo_inputs_cache_hit: ${{ steps.cargo-inputs-cache.outputs.cache-hit }}"
+            echo "- rust_lint_deps_cache_hit: ${{ steps.rust-lint-deps-cache.outputs.cache-hit }}"
             echo "- checkout_seconds: ${{ steps.gitleaks-checkout-timing.outputs.seconds }}"
             echo "- rust_bootstrap_seconds: ${{ steps.gitleaks-rust-bootstrap.outputs.seconds }}"
             echo "- rust_bootstrap: typed larch history resolver"
@@ -1468,8 +1530,12 @@ jobs:
   # Generator and local metadata drift checks. Uses a sparse checkout because
   # Legacy larch-logs fixtures are not part of the generated runtime surface.
   agent-sync:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -1479,105 +1545,37 @@ jobs:
           sparse-checkout-cone-mode: false
       - id: main-cache-keys
         uses: ./.github/actions/main-cache-keys
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-      - id: pip-lint-cache
+      - name: Restore Cargo inputs
+        id: cargo-inputs-cache
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          path: ~/.cache/pip
-          key: ${{ steps.main-cache-keys.outputs.pip-lint }}
-      - name: Walk generators registry and check for drift
-        run: cargo run --quiet --locked --package larch-cli -- generate check
-      - name: Install lint dependencies
-        env:
-          PIP_RETRIES: "5"
-          PIP_DEFAULT_TIMEOUT: "30"
-        run: pip install -r .github/workflows/requirements-lint.txt
-      - name: Assert focus-area enum includes 'security' in canonical surfaces
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.main-cache-keys.outputs.cargo-inputs }}
+      - name: Restore Rust lint dependencies
+        id: rust-lint-deps-cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: target/debug
+          key: ${{ steps.main-cache-keys.outputs.rust-lint-deps }}
+      # The canonical Rust rule owns the same checked reviewer surfaces and
+      # security-on-enumeration semantics as the retired shell assertion.
+      - name: Run generated and reviewer metadata checks
+        id: agent-sync-rust-bootstrap
         run: |
           set -euo pipefail
-          # Files where the formal backticked enum lives. These are the
-          # authoritative declarations of the focus-area tag set.
-          BACKTICKED_FILES=(
-            skills/shared/reviewer-templates.md
-            agents/code-reviewer.md
-            agents/reviewer-structure.md
-            agents/reviewer-correctness.md
-            agents/reviewer-testing.md
-            agents/reviewer-security.md
-            agents/reviewer-edge-cases.md
-            agents/reviewer-plan-fidelity.md
-            agents/reviewer-code-robustness.md
-            docs/review-agents.md
-          )
-          # Files where the enum appears unquoted (slash-separated) inside
-          # Cursor/Codex prompt strings in the Voting-Protocol SKILL.md
-          # callers. These prompts are what external reviewers actually see,
-          # so a regression here silently weakens the review panel.
-          UNQUOTED_FILES=(
-            skills/review/SKILL.md
-            python/larch/rendering/rendering.py
-            skills/design/SKILL.md
-          )
-          # Note: README.md and docs/agents.md use natural prose
-          # ("code quality, risk/integration, correctness, architecture,
-          # security") that does not match a stable enum-like regex. They are
-          # maintained by hand during Phase 2 and are not mechanically
-          # checked here. /research is intentionally excluded — its
-          # external-reviewer prose uses a different taxonomy.
-          exit_code=0
-
-          # shellcheck disable=SC2016
-          # Backticked enum: literal backticks in the regex are intentional;
-          # the single-quotes around the pattern prevent the shell from
-          # parsing them as command substitution.
-          for f in "${BACKTICKED_FILES[@]}"; do
-            if [[ ! -f "$f" ]]; then
-              echo "::error file=$f::expected file is missing"
-              exit_code=1
-              continue
-            fi
-            if grep -n '`code-quality`.*`risk-integration`.*`correctness`.*`architecture`' "$f" >/tmp/hits 2>/dev/null; then
-              while IFS= read -r hit; do
-                line_no="${hit%%:*}"
-                line_text="${hit#*:}"
-                if ! printf '%s\n' "$line_text" | grep -q 'security'; then
-                  echo "::error file=$f,line=$line_no::backticked focus-area enumeration does not include 'security': $line_text"
-                  exit_code=1
-                fi
-              done </tmp/hits
-            else
-              echo "::error file=$f::no backticked focus-area enumeration found (file should contain the canonical \`code-quality\`/\`risk-integration\`/... enum)"
-              exit_code=1
-            fi
-          done
-
-          # Unquoted slash-separated enum (as it appears inside SKILL.md
-          # prompt strings for Cursor/Codex).
-          for f in "${UNQUOTED_FILES[@]}"; do
-            if [[ ! -f "$f" ]]; then
-              echo "::error file=$f::expected file is missing"
-              exit_code=1
-              continue
-            fi
-            if grep -n 'code-quality / risk-integration / correctness / architecture' "$f" >/tmp/hits 2>/dev/null; then
-              while IFS= read -r hit; do
-                line_no="${hit%%:*}"
-                line_text="${hit#*:}"
-                if ! printf '%s\n' "$line_text" | grep -q 'security'; then
-                  echo "::error file=$f,line=$line_no::unquoted focus-area enumeration does not include 'security': $line_text"
-                  exit_code=1
-                fi
-              done </tmp/hits
-            else
-              echo "::error file=$f::no unquoted focus-area enumeration found (SKILL.md should contain the slash-separated enum in Cursor/Codex prompt strings)"
-              exit_code=1
-            fi
-          done
-
-          rm -f /tmp/hits
-          exit "$exit_code"
+          make agent-sync
+          printf 'seconds=%s\n' "$SECONDS" >> "$GITHUB_OUTPUT"
+      - name: Record agent-sync cache timing metadata
+        if: always()
+        run: |
+          {
+            echo "## Agent sync cache timing metadata"
+            echo "- cargo_inputs_cache_hit: ${{ steps.cargo-inputs-cache.outputs.cache-hit }}"
+            echo "- rust_lint_deps_cache_hit: ${{ steps.rust-lint-deps-cache.outputs.cache-hit }}"
+            echo "- rust_bootstrap_seconds: ${{ steps.agent-sync-rust-bootstrap.outputs.seconds }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # Full-checkout verified secret scan. Kept separate from `agent-sync` so
   # generated-file checks can use sparse checkout without weakening scan scope.

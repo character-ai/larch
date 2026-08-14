@@ -65,6 +65,14 @@ linker choice, Cargo configuration, and schema. It has no broad
 `restore-keys` fallback. Any bound above 2 GiB needs explicit PR evidence that
 transfer cost remains net-positive.
 
+The `gitleaks` and `agent-sync` bootstrap jobs, plus only the
+`test-harnesses` shard that runs `test-hook-anti-read-poll`, restore the exact
+Cargo-input and lint-dependency classes read-only. They use the producer's
+non-incremental, no-debug Cargo profile and then build or run the current
+checkout; no restored workspace executable is trusted. These consumers have no
+restore-key fallback or cache save step. A primary-key miss therefore lets Cargo
+rebuild from the current checkout without using an inexact cache.
+
 On a successful merge-group run, an exact miss may stage a candidate artifact.
 The publisher uses `larch ci-timing merge-group-source`, a typed Actions
 operation, to prove that the newly landed `main` SHA has exactly one successful
