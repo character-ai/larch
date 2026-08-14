@@ -27,12 +27,12 @@ Launch a single Claude Agent subagent (no `subagent_type` — the `code-reviewer
 
 `PLANNER_PROMPT` = ``"Decompose the following research question into 2–4 focused, non-overlapping subquestions that together cover the question. Each subquestion should be answerable independently. Output exactly the subquestions, one per line, no numbering, no leading bullets, no preamble, no commentary. Each subquestion MUST end with a question mark. Original question: <RESEARCH_QUESTION>"``
 
-### 1.1.b — Validate and persist via python/cli.py research run-planner
+### 1.1.b — Validate and persist via scripts/larch.sh research run-planner
 
 Invoke the validator script:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" research run-planner \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" research run-planner \
   --raw "$RESEARCH_TMPDIR/planner-raw.txt" \
   --output "$RESEARCH_TMPDIR/subquestions.txt"
 ```
@@ -70,7 +70,7 @@ if [[ -t 0 ]]; then
       ;;
     edit)
       # Operator-edit subroutine: $EDITOR or stdin fallback, then re-validate via
-      # python/cli.py research run-planner. The validator is the single source of truth so
+      # scripts/larch.sh research run-planner. The validator is the single source of truth so
       # operator edits face the same ?-suffix and 2-4 count rules as planner output.
       cp "$RESEARCH_TMPDIR/subquestions.txt" "$RESEARCH_TMPDIR/subquestions-edit.txt"
       if [[ -n "${EDITOR:-}" ]]; then
@@ -83,7 +83,7 @@ if [[ -t 0 ]]; then
           printf '%s\n' "$LINE" >> "$RESEARCH_TMPDIR/subquestions-edit.txt"
         done
       fi
-      if VALIDATOR_OUT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" research run-planner \
+      if VALIDATOR_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" research run-planner \
             --raw "$RESEARCH_TMPDIR/subquestions-edit.txt" \
             --output "$RESEARCH_TMPDIR/subquestions.txt" 2>&1); then
         RESEARCH_PLAN_N=$(printf '%s\n' "$VALIDATOR_OUT" | sed -n 's/^COUNT=//p' | head -1)
@@ -282,7 +282,7 @@ When any of the four research lanes ran as a Claude-fallback, the orchestrator p
 **Runtime computation** (orchestrator forks the helper):
 
 ```bash
-BANNER=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" research banner "$RESEARCH_TMPDIR/lane-status.txt" 2>/dev/null) || BANNER=""
+BANNER=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" research banner "$RESEARCH_TMPDIR/lane-status.txt" 2>/dev/null) || BANNER=""
 ```
 
 The `|| BANNER=""` clause guarantees the assignment succeeds even when the helper is absent. `$BANNER` is either the substituted banner literal (when `N_FALLBACK >= 1`) or the empty string. The orchestrator post-processes the synthesis subagent's response by prepending `$BANNER` (when non-empty) to the body before writing `research-report.txt`. **The synthesis subagent must NOT emit the banner literal — that is the orchestrator's exclusive responsibility.**

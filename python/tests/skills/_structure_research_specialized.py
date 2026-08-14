@@ -220,12 +220,12 @@ def run(repo_root: Path) -> list[str]:
         contains(validation, literal, label)
 
     for file, literal, label in (
-        (research, 'python/cli.py" research run-planner', "[python cli] research-phase.md must pin research run-planner in §1.1.b"),
-        (research, "python/cli.py research run-planner", "[python cli] research-phase.md must pin research run-planner in §1.1.c edit loop"),
-        (citation, 'python/cli.py" research validate-citations', "[python cli] citation-validation-phase.md must pin research validate-citations"),
-        (skill, 'python/cli.py" research validate-citations', "[python cli] SKILL.md must pin research validate-citations at Step 2.5"),
-        (research, 'python/cli.py" research banner', "[python cli] research-phase.md must pin research banner at Step 1.5"),
-        (skill, "python/cli.py research render-findings-batch", "[python cli] SKILL.md must pin research render-findings-batch at Step 3"),
+        (research, 'scripts/larch.sh" research run-planner', "[rust cli] research-phase.md must pin research run-planner in §1.1.b"),
+        (research, "scripts/larch.sh research run-planner", "[rust cli] research-phase.md must pin research run-planner in §1.1.c edit loop"),
+        (citation, 'scripts/larch.sh" research validate-citations', "[rust cli] citation-validation-phase.md must pin research validate-citations"),
+        (skill, 'scripts/larch.sh" research validate-citations', "[rust cli] SKILL.md must pin research validate-citations at Step 2.5"),
+        (research, 'scripts/larch.sh" research banner', "[rust cli] research-phase.md must pin research banner at Step 1.5"),
+        (skill, "scripts/larch.sh research render-findings-batch", "[rust cli] SKILL.md must pin research render-findings-batch at Step 3"),
         (skill, '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" verify skill-called --sentinel-file "$RESEARCH_TMPDIR/issue-completed.sentinel"', "[rust cli] filing sentinel verification must launch scripts/larch.sh"),
         (skill, '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" verify skill-called --sentinel-file "$RESEARCH_TMPDIR/research-issue.sentinel"', "[rust cli] auto-issue sentinel verification must launch scripts/larch.sh"),
     ):

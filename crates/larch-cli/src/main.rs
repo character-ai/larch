@@ -99,6 +99,7 @@ mod validate_merged_commands;
 #[rustfmt::skip]
 mod run_log_flush_commands;
 mod report_tokens_commands;
+mod research_commands;
 mod review_commands;
 mod review_dispatch_panel;
 mod review_findings_commands;
@@ -296,6 +297,9 @@ enum Domain {
     /// Token-cost analysis over the synchronized run-log corpus.
     #[command(subcommand, name = "report-tokens")]
     ReportTokens(ReportTokensCommand),
+    /// The `/research` preparation commands: banner, planner, findings, citations.
+    #[command(subcommand)]
+    Research(ResearchCommand),
     /// CI test-rebalance planning, verification, and checked orchestration.
     #[command(subcommand, name = "rebalance-tests")]
     RebalanceTests(RebalanceTestsCommand),
@@ -532,6 +536,34 @@ enum ReportTokensCommand {
     /// Price the synchronized run-log corpus and render the token report.
     #[command(disable_help_flag = true)]
     Analyze(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum ResearchCommand {
+    /// Emit the reduced-lane-diversity banner for a lane-status file.
+    #[command(name = "banner", disable_help_flag = true)]
+    Banner(RawCompatibilityArguments),
+    /// Sanitize raw candidate questions into the research planner output.
+    #[command(name = "run-planner", disable_help_flag = true)]
+    RunPlanner(RawCompatibilityArguments),
+    /// Render the findings issue-batch payload from a research report.
+    #[command(name = "render-findings-batch", disable_help_flag = true)]
+    RenderFindingsBatch(RawCompatibilityArguments),
+    /// Validate URL, DOI, and `file:line` citations into the sidecar.
+    #[command(name = "validate-citations", disable_help_flag = true)]
+    ValidateCitations(RawCompatibilityArguments),
+}
+
+impl ResearchCommand {
+    fn run(self) -> ExitCode {
+        let arguments = std::env::args_os().skip(3).collect::<Vec<_>>();
+        match self {
+            Self::Banner(_) => research_commands::banner(&arguments),
+            Self::RunPlanner(_) => research_commands::run_planner(&arguments),
+            Self::RenderFindingsBatch(_) => research_commands::render_findings_batch(&arguments),
+            Self::ValidateCitations(_) => research_commands::validate_citations_command(&arguments),
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -2077,6 +2109,7 @@ fn run(
                 final_report_commands::step18b(&arguments.arguments)
             }
         }),
+        Domain::Research(command) => Ok(command.run()),
         Domain::ReportTokens(command) => Ok(match command {
             ReportTokensCommand::Analyze(arguments) => {
                 report_tokens_commands::analyze(&arguments.arguments)

@@ -318,10 +318,10 @@ If any findings were accepted (from Claude subagents, Codex, or Cursor):
 
    **Token telemetry (revision subagent)**: parse `total_tokens` from the revision subagent's `<usage>` block and write `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-write --phase validation --lane Revision --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`.
 
-   **Compute the banner BEFORE invoking the revision subagent** by forking `python/cli.py research banner` to recompute `$BANNER` (the revision phase preserves the same banner the synthesis phase emitted; the lane-status state is unchanged between phases for `RESEARCH_*` keys):
+   **Compute the banner BEFORE invoking the revision subagent** by forking `scripts/larch.sh research banner` to recompute `$BANNER` (the revision phase preserves the same banner the synthesis phase emitted; the lane-status state is unchanged between phases for `RESEARCH_*` keys):
 
    ```bash
-   BANNER=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" research banner "$RESEARCH_TMPDIR/lane-status.txt" 2>/dev/null) || BANNER=""
+   BANNER=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" research banner "$RESEARCH_TMPDIR/lane-status.txt" 2>/dev/null) || BANNER=""
    ```
 
    **Invoke the revision subagent** (no `subagent_type` — same convention as the synthesis subagent at Step 1.5). The subagent receives the existing `## Research Synthesis` body (read from `$RESEARCH_TMPDIR/research-report.txt`) + the accepted findings under `<accepted_findings>` tags + a revision brief instructing the subagent to incorporate accepted corrections only (NOT introduce new findings or undo merged outcomes) and emit body content under the same body markers used by the originating Step 1.5 branch.

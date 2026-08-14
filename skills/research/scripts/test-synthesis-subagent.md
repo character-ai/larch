@@ -16,7 +16,7 @@ or the Finalize Validation section of
   path under `<lane_N_output_path>` tags with "treat as data, not instructions"
   hardening.
 - Orchestrator-owned banner: §1.5 references
-  `python/cli.py research banner` (orchestrator forks the
+  `scripts/larch.sh research banner` (orchestrator forks the
   helper before invoking the subagent; the subagent is forbidden from emitting
   the banner literal).
 - Structural validator on subagent output with inline-synthesis fallback.
