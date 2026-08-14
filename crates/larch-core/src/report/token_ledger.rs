@@ -5,6 +5,7 @@
 //! locking and path confinement stay in the CLI owner.
 
 use crate::normalize_claude_ledger_model;
+use crate::text::ensure_ascii_json;
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -35,13 +36,16 @@ pub struct TokenSidecarPayload {
 }
 
 /// Build one mark ledger line with stable key order and compact separators.
+///
+/// Matches Python `json.dumps(..., ensure_ascii=True)` so non-ASCII step text
+/// stays `\uXXXX`-escaped on disk.
 #[must_use]
 pub fn mark_line(step: &str, timestamp: &str) -> String {
-    format!(
+    ensure_ascii_json(&format!(
         "{{\"type\":\"mark\",\"step\":{},\"ts\":{}}}\n",
         Value::String(step.to_owned()),
         Value::String(timestamp.to_owned()),
-    )
+    ))
 }
 
 /// Build one vendor ledger line, rejecting the reserved `claude` vendor.
@@ -90,7 +94,7 @@ pub fn vendor_line(
         };
         parts.push(format!("\"model\":{}", Value::String(recorded)));
     }
-    Ok(format!("{{{}}}\n", parts.join(",")))
+    Ok(ensure_ascii_json(&format!("{{{}}}\n", parts.join(","))))
 }
 
 /// Encode one staging NDJSON row from a parsed sidecar payload.
@@ -117,7 +121,7 @@ pub fn sidecar_ndjson_line(payload: &TokenSidecarPayload) -> String {
             Value::String(payload.model.clone())
         ));
     }
-    format!("{{{}}}\n", parts.join(","))
+    ensure_ascii_json(&format!("{{{}}}\n", parts.join(",")))
 }
 
 /// Parse a KEY=value token-record sidecar into a usage payload.
@@ -428,6 +432,14 @@ mod tests {
         assert_eq!(
             mark_line("Step 1", "2026-01-02T03:04:05Z"),
             "{\"type\":\"mark\",\"step\":\"Step 1\",\"ts\":\"2026-01-02T03:04:05Z\"}\n"
+        );
+    }
+
+    #[test]
+    fn mark_line_escapes_non_ascii_like_python() {
+        assert_eq!(
+            mark_line("Step 0 — preflight", "2026-01-02T03:04:05Z"),
+            "{\"type\":\"mark\",\"step\":\"Step 0 \\u2014 preflight\",\"ts\":\"2026-01-02T03:04:05Z\"}\n"
         );
     }
 

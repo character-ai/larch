@@ -11,7 +11,6 @@ import re
 import shutil
 import signal
 import subprocess
-import sys  # noqa: F401 - re-exported via agents wildcard import as agents.sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass

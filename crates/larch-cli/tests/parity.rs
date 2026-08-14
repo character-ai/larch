@@ -354,7 +354,6 @@ fn timing_arguments(id: &str) -> &'static [&'static str] {
 fn token_arguments(id: &str) -> &'static [&'static str] {
     match id {
         "clean-install-token-mark" => &["clean-install"],
-        "clean-install-token-dump" => &[],
         "clean-install-token-record-vendor" => &[
             "codex", "input=1", "output=0", "cache_read=0", "cache_create=0", "total=1", "raw=clean-install",
         ],
@@ -367,6 +366,7 @@ fn token_arguments(id: &str) -> &'static [&'static str] {
             "--tool", "claude", "--total-tokens", "1",
         ],
         "clean-install-token-lane-report" => &["--dir", "/tmp"],
+        // dump and any unknown id prove dispatch with zero args.
         _ => &[],
     }
 }

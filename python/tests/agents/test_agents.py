@@ -607,7 +607,7 @@ def test_run_external_agent_writes_meta_done_and_stderr_sink(tmp_path: Path) -> 
         timeout_seconds=5,
         stderr_sink=str(sink),
         cmd=[
-            agents.sys.executable,
+            sys.executable,
             "-c",
             "import sys; print('ok'); print('diag', file=sys.stderr)",
         ],
