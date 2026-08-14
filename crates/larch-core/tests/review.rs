@@ -23,6 +23,8 @@ const FINDINGS: &str = include_str!("../../../fixtures/rust-review/finding-block
 const LEDGER: &str = include_str!("../../../fixtures/rust-review/findings-ledger.golden.tsv");
 const CODE_TABLE: &str = include_str!("../../../fixtures/rust-review/code-vote-table.golden.md");
 const PLAN_TABLE: &str = include_str!("../../../fixtures/rust-review/plan-vote-table.golden.md");
+const PLAN_REVIEW_NORMALIZED_FINDINGS: &str =
+    include_str!("fixtures/review/plan_review_normalized_findings.golden.md");
 
 #[test]
 fn finding_fixture_keeps_python_code_point_offsets_and_exact_slices() {
@@ -706,4 +708,433 @@ fn frozen_vote_tables_have_pinned_hashes_and_structural_examples() {
         );
         assert_eq!(format!("{:x}", Sha256::digest(table.as_bytes())), digest);
     }
+}
+
+fn plan_review_fixture_section(start: &str, end: &str) -> &'static str {
+    let (_, after_start) = PLAN_REVIEW_NORMALIZED_FINDINGS
+        .split_once(start)
+        .expect("fixture start marker");
+    let after_newline = after_start
+        .strip_prefix('\n')
+        .expect("newline after fixture start marker");
+    let (section, _) = after_newline.split_once(end).expect("fixture end marker");
+    section
+}
+
+fn structured_plan_review_finding(
+    values: [&str; 7],
+) -> larch_core::review::PlanReviewStructuredFinding {
+    larch_core::review::PlanReviewStructuredFinding {
+        scope: values[0].to_owned(),
+        severity: values[1].to_owned(),
+        focus_area: values[2].to_owned(),
+        location: values[3].to_owned(),
+        what: values[4].to_owned(),
+        scenario_or_breakage: values[5].to_owned(),
+        suggested_fix: values[6].to_owned(),
+    }
+}
+
+fn plan_review_collector_record(
+    reviewer_file: &str,
+    tool: &str,
+    status: &str,
+    findings: &[[&str; 7]],
+) -> larch_core::review::PlanReviewCollectorRecord {
+    larch_core::review::PlanReviewCollectorRecord {
+        reviewer_file: reviewer_file.to_owned(),
+        tool: tool.to_owned(),
+        status: status.to_owned(),
+        structured_findings: findings
+            .iter()
+            .copied()
+            .map(structured_plan_review_finding)
+            .collect(),
+    }
+}
+
+#[test]
+fn plan_review_normalization_matches_frozen_python_output() {
+    use larch_core::review::{PlanReviewManifestSlot, normalize_collected_findings};
+
+    let records = vec![
+        plan_review_collector_record(
+            "outputs/cursor-plan-arch-output.txt",
+            "cursor",
+            "OK",
+            &[
+                [
+                    "in_scope",
+                    "high",
+                    "correctness",
+                    "plan.txt:9",
+                    "Persist the phase",
+                    "a resume sees stale state",
+                    "write the phase before continuation",
+                ],
+                [
+                    "out_of_scope",
+                    "major",
+                    "architecture",
+                    "docs/migration.md",
+                    "Split the migration",
+                    "requires a separate leaf",
+                    "file a follow-up",
+                ],
+                [
+                    "oos",
+                    "minor",
+                    "testing",
+                    "python/tests/review/test_plan_review.py",
+                    "Add a follow-up test",
+                    "needs an integration fixture",
+                    "add a fixture",
+                ],
+                [
+                    "out-of-scope",
+                    "nit",
+                    "documentation",
+                    "CHANGELOG.md",
+                    "Clarify the changelog",
+                    "release notes are owned elsewhere",
+                    "leave for release",
+                ],
+                [
+                    "oos",
+                    "minor",
+                    "architecture",
+                    "ignored.md",
+                    "Omitted fourth proposal",
+                    "the per-slot cap is three",
+                    "do not retain",
+                ],
+            ],
+        ),
+        plan_review_collector_record(
+            "outputs/codex-plan-pragmatic-output.txt",
+            "codex",
+            "OK",
+            &[[
+                "out_of_scope",
+                "minor",
+                "release",
+                "docs/release.md",
+                "Add release note",
+                "belongs to a later release",
+                "create release work",
+            ]],
+        ),
+        plan_review_collector_record(
+            "outputs/codex-plan-innovation-output.txt",
+            "codex",
+            "TIMEOUT",
+            &[],
+        ),
+    ];
+    let manifest = vec![PlanReviewManifestSlot {
+        slot: "cursor-plan-arch".to_owned(),
+        tool: "cursor".to_owned(),
+        output: "outputs/cursor-plan-arch-output.txt".to_owned(),
+        agent: String::new(),
+        prompt_file: "prompts/cursor-plan-arch.md".to_owned(),
+    }];
+
+    let normalized = normalize_collected_findings(&records, &manifest);
+    assert_eq!(normalized.ok_count, 2);
+    assert_eq!(normalized.failure_count, 1);
+    assert_eq!(
+        normalized.in_scope_markdown,
+        plan_review_fixture_section("<!-- in-scope:start -->", "<!-- in-scope:end -->")
+    );
+    assert_eq!(
+        normalized.out_of_scope_markdown,
+        plan_review_fixture_section("<!-- out-of-scope:start -->", "<!-- out-of-scope:end -->")
+    );
+    assert!(
+        !normalized
+            .out_of_scope_markdown
+            .contains("Omitted fourth proposal")
+    );
+}
+
+#[test]
+fn plan_review_artifacts_and_reviewer_status_bytes_are_stable() {
+    use larch_core::review::{
+        PlanReviewCollectorRecord, PlanReviewManifestSlot, PlanReviewRoundArtifacts,
+        reconciled_reviewer_label, render_reviewer_status_table, render_reviewer_status_tsv,
+        reviewer_status_rows,
+    };
+
+    let artifacts = PlanReviewRoundArtifacts::new("/tmp/design", 2);
+    assert_eq!(
+        artifacts.round_dir(),
+        PathBuf::from("/tmp/design/plan-review/round-2")
+    );
+    assert_eq!(
+        artifacts.reviewer_status_tsv(),
+        PathBuf::from("/tmp/design/plan-review/round-2/reviewer-status.tsv")
+    );
+    assert_eq!(
+        artifacts.round_summary_env(),
+        PathBuf::from("/tmp/design/plan-review/round-2/round-summary.env")
+    );
+    assert_eq!(
+        artifacts.findings_classification_tsv(),
+        PathBuf::from("/tmp/design/plan-review/round-2/findings-classification.tsv")
+    );
+    assert_eq!(
+        artifacts.oos_dropped_before_vote(),
+        PathBuf::from("/tmp/design/plan-review/round-2/oos-dropped-before-vote.md")
+    );
+    assert_eq!(
+        artifacts.stable_reviewer_status_table(),
+        PathBuf::from("/tmp/design/reviewer-status-table.txt")
+    );
+    let manifest = vec![PlanReviewManifestSlot {
+        slot: "cursor-plan-arch".to_owned(),
+        tool: "cursor".to_owned(),
+        output: "outputs/cursor-plan-arch-output.txt".to_owned(),
+        agent: "larch:reviewer".to_owned(),
+        prompt_file: String::new(),
+    }];
+    let records = vec![PlanReviewCollectorRecord {
+        reviewer_file: "outputs/cursor-plan-arch-output.txt".to_owned(),
+        tool: "codex".to_owned(),
+        status: "OK".to_owned(),
+        structured_findings: vec![],
+    }];
+    let rows = reviewer_status_rows(&manifest, &records);
+    assert_eq!(
+        reconciled_reviewer_label("cursor-plan-arch", "codex"),
+        "Cursor-Arch (via Codex)"
+    );
+    assert_eq!(
+        render_reviewer_status_tsv(&rows),
+        "slot\tstatus\telapsed\nCursor-Arch (via Codex)\tdone\t\n"
+    );
+    assert_eq!(
+        render_reviewer_status_table(&rows),
+        Some("📊 Reviewers: | Cursor-Arch (via Codex): ✅ |".to_owned())
+    );
+}
+
+fn successful_plan_review_round() -> larch_core::review::PlanReviewRoundInput {
+    use larch_core::review::{
+        PlanReviewAggregationOutcome, PlanReviewBallotOutcome, PlanReviewCollectionOutcome,
+        PlanReviewPanelOutcome, PlanReviewRoundInput, PlanReviewTallyOutcome,
+        PlanReviewVoterOutcome,
+    };
+
+    PlanReviewRoundInput {
+        panel: PlanReviewPanelOutcome::default(),
+        collection: PlanReviewCollectionOutcome {
+            record_count: 1,
+            ok_count: 1,
+            ..PlanReviewCollectionOutcome::default()
+        },
+        aggregation: PlanReviewAggregationOutcome {
+            reason: "ok".to_owned(),
+            aggregated: true,
+            ..PlanReviewAggregationOutcome::default()
+        },
+        ballot: PlanReviewBallotOutcome {
+            has_canonical_items: true,
+            ..PlanReviewBallotOutcome::default()
+        },
+        voter: PlanReviewVoterOutcome {
+            dispatch_ok: true,
+            ..PlanReviewVoterOutcome::default()
+        },
+        tally: PlanReviewTallyOutcome {
+            status: "ok".to_owned(),
+            accepted_count: 2,
+            ..PlanReviewTallyOutcome::default()
+        },
+    }
+}
+
+#[test]
+fn plan_review_round_runner_matches_python_terminal_transitions() {
+    use larch_core::review::{
+        PlanReviewRoundState, classify_round_loop_status, run_plan_review_round,
+    };
+
+    let assert_state = |state: PlanReviewRoundState, exit_code, status: &str| {
+        assert_eq!(state.exit_code, exit_code);
+        assert_eq!(state.loop_status, status);
+    };
+    let normal = successful_plan_review_round();
+    let state = run_plan_review_round(2, &normal);
+    assert_state(state.clone(), 0, "complete");
+    assert_eq!(state.rounds_completed, Some(2));
+    assert_eq!(
+        state.summary().render(),
+        "LOOP_STATUS=complete\nCOLLECT_OK_COUNT=1\nCOLLECT_FAILURE_COUNT=0\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nACCEPTED_COUNT=2\nDEGRADED_PANEL=0\n"
+    );
+
+    let mut panel_failed = normal.clone();
+    panel_failed.panel.exit_code = 9;
+    assert_state(run_plan_review_round(1, &panel_failed), 9, "panel-failed");
+
+    let mut pruned_empty = normal.clone();
+    pruned_empty.panel.panel_pruned_empty = true;
+    let state = run_plan_review_round(1, &pruned_empty);
+    assert_state(state.clone(), 0, "zero-findings-degraded-panel");
+    assert_eq!(state.aggregator_status, "skipped-pruned-empty");
+
+    let mut empty_failed_collector = normal.clone();
+    empty_failed_collector.collection.exit_code = 1;
+    empty_failed_collector.collection.record_count = 0;
+    empty_failed_collector.collection.ok_count = 0;
+    assert_state(
+        run_plan_review_round(1, &empty_failed_collector),
+        1,
+        "panel-failed",
+    );
+
+    let mut aggregation_failed = normal.clone();
+    aggregation_failed.aggregation.reason = "bad-output".to_owned();
+    aggregation_failed.aggregation.aggregated = false;
+    assert_state(
+        run_plan_review_round(1, &aggregation_failed),
+        1,
+        "panel-failed",
+    );
+
+    let mut ballot_failed = normal.clone();
+    ballot_failed.ballot.preparation_failed = true;
+    assert_state(run_plan_review_round(1, &ballot_failed), 2, "tally-error");
+
+    let mut zero_ballot = normal.clone();
+    zero_ballot.ballot.has_canonical_items = false;
+    assert_state(
+        run_plan_review_round(1, &zero_ballot),
+        0,
+        "zero-findings-degraded-panel",
+    );
+
+    let mut voter_failed = normal.clone();
+    voter_failed.voter.dispatch_ok = false;
+    assert_state(run_plan_review_round(1, &voter_failed), 1, "panel-failed");
+
+    let mut tally_failed = normal.clone();
+    tally_failed.tally.status = "tally-error".to_owned();
+    assert_state(run_plan_review_round(1, &tally_failed), 2, "tally-error");
+
+    let mut main_agent_vote = normal.clone();
+    main_agent_vote.tally.status = "main-agent-vote-required".to_owned();
+    assert_state(
+        run_plan_review_round(1, &main_agent_vote),
+        0,
+        "main-agent-vote-required",
+    );
+
+    let mut degraded_empty_collector = normal;
+    degraded_empty_collector.collection.record_count = 1;
+    degraded_empty_collector.collection.ok_count = 0;
+    degraded_empty_collector.tally.accepted_count = 0;
+    assert_state(
+        run_plan_review_round(1, &degraded_empty_collector),
+        0,
+        "degraded-empty-collector",
+    );
+
+    assert_eq!(
+        classify_round_loop_status(0, 1, true, false, "ok"),
+        "zero-findings-degraded-panel"
+    );
+}
+
+#[test]
+fn plan_review_normalization_helpers_preserve_python_wire_rules() {
+    use larch_core::review::{
+        aggregation_ok_for_voting, aggregator_status, all_applied_finding_keys,
+        applied_finding_keys_before, merge_already_addressed_finding_keys,
+        merge_step3_round_carry_warnings, replace_applied_finding_keys,
+        step3_loop_status_to_loop_status, step3_next_action, step3_round_carry_values,
+        step3_status_from_loop_status, strip_crlf,
+    };
+
+    assert!(aggregation_ok_for_voting(0, "insufficient-input", false));
+    assert!(aggregation_ok_for_voting(0, "ok", true));
+    assert!(!aggregation_ok_for_voting(0, "ok", false));
+    assert_eq!(aggregator_status(1, "ok", true), "aggregator-failed");
+    assert_eq!(aggregator_status(0, "", false), "aggregator-failed");
+    assert_eq!(
+        step3_loop_status_to_loop_status("complete", "zero-findings-degraded-panel"),
+        "zero-findings-degraded-panel"
+    );
+    assert_eq!(
+        step3_loop_status_to_loop_status("cap-hit", ""),
+        "cap-reached"
+    );
+    assert_eq!(step3_status_from_loop_status("cap-reached"), "cap-hit");
+    assert_eq!(
+        step3_next_action("complete", "complete", "tally-error"),
+        "step3b-bypass"
+    );
+    assert_eq!(
+        step3_next_action("", "zero-findings-degraded-panel", "ok"),
+        "step3b"
+    );
+    assert_eq!(strip_crlf("first\r\nsecond"), "firstsecond");
+    let warnings = BTreeMap::from([
+        ("DEGRADED_PANEL_WARNING".to_owned(), "degraded".to_owned()),
+        (
+            "INVALID_SLOT_PANEL_WARNING".to_owned(),
+            "invalid".to_owned(),
+        ),
+        (
+            "UNRELATED".to_owned(),
+            "kept only on degraded exit".to_owned(),
+        ),
+    ]);
+    assert_eq!(
+        step3_round_carry_values(false, &warnings),
+        BTreeMap::from([
+            ("DEGRADED_PANEL_WARNING".to_owned(), "degraded".to_owned()),
+            (
+                "INVALID_SLOT_PANEL_WARNING".to_owned(),
+                "invalid".to_owned()
+            ),
+        ])
+    );
+    assert_eq!(
+        merge_step3_round_carry_warnings(
+            &BTreeMap::from([("DEGRADED_PANEL_WARNING".to_owned(), String::new())]),
+            &warnings,
+        ),
+        BTreeMap::from([
+            ("DEGRADED_PANEL_WARNING".to_owned(), "degraded".to_owned()),
+            (
+                "INVALID_SLOT_PANEL_WARNING".to_owned(),
+                "invalid".to_owned()
+            ),
+        ])
+    );
+
+    let ledger = "1\tfirst\n2\tsecond\n184467440737095516160\tlarge\ninvalid\n";
+    assert_eq!(
+        applied_finding_keys_before(ledger, 2),
+        BTreeSet::from(["first".to_owned()])
+    );
+    assert_eq!(
+        all_applied_finding_keys(ledger),
+        BTreeSet::from(["first".to_owned(), "second".to_owned(), "large".to_owned(),])
+    );
+    assert_eq!(
+        replace_applied_finding_keys(
+            ledger,
+            2,
+            &["replacement".to_owned(), "replacement".to_owned()]
+        ),
+        "1\tfirst\n184467440737095516160\tlarge\n2\treplacement\n"
+    );
+    assert_eq!(
+        merge_already_addressed_finding_keys(
+            "zeta\nalpha\n",
+            &["alpha".to_owned(), "beta".to_owned()]
+        ),
+        "alpha\nbeta\nzeta\n"
+    );
 }
