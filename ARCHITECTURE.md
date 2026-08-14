@@ -1,9 +1,10 @@
 # Rust Architecture
 
-Larch ships one released Rust executable named `larch`. The developer/CI-only
-`larch-harness-mark` helper is the narrow timing exception. The Rust workspace
-grows by domain, not by copying the Python package tree. Python remains
-migration code until each command moves directly to its Rust owner.
+Larch ships one released Rust executable named `larch`. The dependency-free
+`larch-harness-mark` and `larch-residual-bash-paths` developer/CI helpers are
+the narrow exceptions. The Rust workspace grows by domain, not by copying the
+Python package tree. Python remains migration code until each command moves
+directly to its Rust owner.
 
 ## Crates
 
@@ -12,7 +13,7 @@ migration code until each command moves directly to its Rust owner.
 | `larch-core` | Effect-free domain types, use cases, and narrow ports for Git, GitHub, Google services, process execution, storage, and time. | None. |
 | `larch-adapters` | Concrete implementations of core ports. This includes filesystem and process boundaries, `gix`, Git CLI exceptions, GitHub and Google clients, and other external I/O. | `larch-core`. |
 | `larch-cli` | The composition root and the only released binary. It parses arguments, constructs adapters, and invokes core use cases or repository-policy rules. Its binary target is named `larch`. | `larch-core`, `larch-adapters`, `larch-harness-mark`, `larch-lint`. |
-| `larch-harness-mark` | Dependency-free inherited-stdio timer boundary. Its library preserves the `timing harness-mark` child-row contract; its standard-library-only developer/CI binary avoids both Cargo workspace setup and compiling the released CLI before a harness child begins. The standalone binary is never a release artifact. | None. |
+| `larch-harness-mark` | Dependency-free developer/CI bootstrap helpers. Its library preserves the `timing harness-mark` child-row contract and owns residual-Bash manifest validation shared with `larch residual-bash paths`. Its standard-library-only binaries avoid Cargo workspace setup and compiling the released CLI before a harness child or shellcheck begins. Neither binary is a release artifact. | None. |
 | `larch-lint` | Library-only repository policy tooling exposed through `larch lint`. | None of the product crates. |
 | `larch-test-support` | Workspace-only fixture builders for files, environments, clocks, processes, HTTP responses, Git repositories, run-log corpora, and reporting parity snapshots. Product crates may use it only as a dev-dependency. | `larch-core`. |
 
@@ -194,11 +195,14 @@ work:
   in production shell, and requires the GitHub and Google service inventories to
   name each client owner. `gh-argv-literal` keeps raw `gh` construction in the
   wrapper, and `subprocess-via-runner` keeps process spawns behind the runner.
-- `larch-harness-mark` is the narrow developer/CI exception: it launches an
-  arbitrary harness child with inherited standard streams and forwards that
-  child's status after emitting timing rows. Its one direct process call carries
-  the same reason-bearing lint suppression as the previous `timing harness-mark`
-  implementation. It is not a plugin runtime entrypoint or release artifact.
+- `larch-harness-mark` contains the narrow dependency-free developer/CI
+  exceptions. The timer launches an arbitrary harness child with inherited
+  standard streams and forwards that child's status after emitting timing
+  rows. Its one direct process call carries the same reason-bearing lint
+  suppression as the previous `timing harness-mark` implementation. The
+  residual-Bash reader validates the shared manifest owner, checks every path
+  exists, and emits NUL-delimited paths for shellcheck. Neither helper is a
+  plugin runtime entrypoint or release artifact.
 
 Do not add Octocrab or Google clients until their implementation leaf lands.
 That leaf must centralize the reviewed version and rustls-only features in the

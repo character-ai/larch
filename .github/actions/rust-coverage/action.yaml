@@ -375,13 +375,11 @@ runs:
           unset CARGO_LLVM_COV_SHOW_ENV &&
           cargo nextest run --workspace --all-features --locked \
             --target-dir "$coverage_target_dir" --no-run &&
-          # nextest compiles test executables, but the top-level CLI is not
-          # guaranteed to be one of them. Build it with Cargo's test profile
-          # under the same coverage environment and target directory for
-          # downstream validation and Python integration tests, rather than
-          # compiling the CLI again with the dev profile.
-          cargo build --profile test --package larch-cli --bin larch --all-features --locked \
-            --target-dir "$coverage_target_dir"
+          # The larch-cli integration-test graph requires CARGO_BIN_EXE_larch,
+          # so this Cargo invocation emits both the test executables and the
+          # top-level test-profile CLI used downstream. Keep that postcondition
+          # explicit instead of starting a redundant second Cargo build.
+          test -x "$coverage_target_dir/debug/larch"
         )
         run_timed compilation compile_coverage
         # Reuse the coverage-instrumented target and compiler environment.

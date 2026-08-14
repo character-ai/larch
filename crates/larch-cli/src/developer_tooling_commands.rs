@@ -11,7 +11,7 @@ use std::{
     fmt::Write as _,
     fs,
     io::{self, Write as _},
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
     process::ExitCode,
 };
 
@@ -21,10 +21,11 @@ use std::os::unix::ffi::OsStringExt as _;
 use clap::{Args, Subcommand};
 use larch_adapters::GixRepository;
 use larch_core::{Head, RepositoryRead, Revision, StatusOptions};
+use larch_harness_mark::{
+    RESIDUAL_BASH_MANIFEST, has_shell_suffix_bytes, read_residual_bash_paths,
+};
 use regex::bytes::RegexBuilder;
 
-const RESIDUAL_MANIFEST: &str = "scripts/residual-bash-paths.txt";
-const SHELL_SUFFIXES: [&str; 2] = [".sh", ".inc.bash"];
 const MAX_U64_DECIMAL: &str = "18446744073709551615";
 const PUBLIC_STYLE_LINE: &str = "**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**";
 const DEV_STYLE_LINE: &str = "**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**";
@@ -312,7 +313,7 @@ fn residual_bash_paths(arguments: &[OsString]) -> u8 {
             }
         }
     } else {
-        match read_residual_paths(&root, options.check_exists) {
+        match read_residual_bash_paths(&root, options.check_exists) {
             Ok(paths) => paths,
             Err(error) => {
                 eprintln!("ERROR: {error}");
@@ -322,7 +323,7 @@ fn residual_bash_paths(arguments: &[OsString]) -> u8 {
     };
     if options.intersect_git
         && options.check_exists
-        && let Err(error) = read_residual_paths(&root, true)
+        && let Err(error) = read_residual_bash_paths(&root, true)
     {
         eprintln!("ERROR: {error}");
         return 2;
@@ -383,14 +384,14 @@ fn residual_root_from_cwd() -> PathBuf {
     let start = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let start = fs::canonicalize(&start).unwrap_or(start);
     for candidate in start.ancestors() {
-        if candidate.join(RESIDUAL_MANIFEST).is_file() {
+        if candidate.join(RESIDUAL_BASH_MANIFEST).is_file() {
             return candidate.to_owned();
         }
     }
     if let Some(root) = env::var_os("CLAUDE_PLUGIN_ROOT")
         .map(PathBuf::from)
         .map(|path| absolute_path(&path))
-        && root.join(RESIDUAL_MANIFEST).is_file()
+        && root.join(RESIDUAL_BASH_MANIFEST).is_file()
     {
         return root;
     }
@@ -408,92 +409,8 @@ fn absolute_path(path: &Path) -> PathBuf {
     fs::canonicalize(&absolute).unwrap_or(absolute)
 }
 
-fn read_residual_paths(root: &Path, check_exists: bool) -> Result<Vec<String>, String> {
-    let manifest = root.join(RESIDUAL_MANIFEST);
-    let source = fs::read_to_string(&manifest).map_err(|_| {
-        format!(
-            "could not read residual bash manifest: {}",
-            manifest.display()
-        )
-    })?;
-    let mut paths = Vec::new();
-    let mut seen = BTreeSet::new();
-    for (offset, line) in source.lines().enumerate() {
-        let value = line.trim();
-        if value.is_empty() || value.starts_with('#') {
-            continue;
-        }
-        validate_residual_path(value)?;
-        if !seen.insert(value.to_owned()) {
-            return Err(format!(
-                "duplicate residual bash path at {}:{}: {value}",
-                manifest.display(),
-                offset + 1
-            ));
-        }
-        if check_exists && !root.join(value).is_file() {
-            return Err(format!(
-                "missing residual bash path under {}: {value}",
-                root.display()
-            ));
-        }
-        paths.push(value.to_owned());
-    }
-    Ok(paths)
-}
-
-fn validate_residual_path(value: &str) -> Result<(), String> {
-    if value.starts_with('/') || value.contains('\0') {
-        return Err(format!(
-            "invalid residual bash path: {}",
-            python_repr(value)
-        ));
-    }
-    if Path::new(value)
-        .components()
-        .any(|component| component == Component::ParentDir)
-    {
-        return Err(format!(
-            "invalid residual bash path: {}",
-            python_repr(value)
-        ));
-    }
-    if value.starts_with("larch-logs/") || value.starts_with("node_modules/") {
-        return Err(format!(
-            "excluded residual bash path: {}",
-            python_repr(value)
-        ));
-    }
-    if !has_shell_suffix(value) {
-        return Err(format!(
-            "residual bash path must end with .sh or .inc.bash: {}",
-            python_repr(value)
-        ));
-    }
-    Ok(())
-}
-
-fn python_repr(value: &str) -> String {
-    let mut rendered = String::from("'");
-    for character in value.chars() {
-        match character {
-            '\\' => rendered.push_str("\\\\"),
-            '\'' => rendered.push_str("\\'"),
-            '\n' => rendered.push_str("\\n"),
-            '\r' => rendered.push_str("\\r"),
-            '\t' => rendered.push_str("\\t"),
-            character if character.is_control() => {
-                let _ = write!(rendered, "\\x{:02x}", character as u32);
-            }
-            character => rendered.push(character),
-        }
-    }
-    rendered.push('\'');
-    rendered
-}
-
 fn intersect_git_shell_paths(root: &Path) -> Result<Vec<String>, String> {
-    let manifest_paths = read_residual_paths(root, false)?;
+    let manifest_paths = read_residual_bash_paths(root, false)?;
     let paths = git_shell_paths(root);
     Ok(manifest_paths
         .into_iter()
@@ -525,13 +442,7 @@ fn git_shell_paths(root: &Path) -> BTreeSet<Vec<u8>> {
 }
 
 fn is_shell_path(path: &[u8]) -> bool {
-    SHELL_SUFFIXES
-        .iter()
-        .any(|suffix| path.ends_with(suffix.as_bytes()))
-}
-
-fn has_shell_suffix(path: &str) -> bool {
-    SHELL_SUFFIXES.iter().any(|suffix| path.ends_with(suffix))
+    has_shell_suffix_bytes(path)
 }
 
 #[derive(Default)]

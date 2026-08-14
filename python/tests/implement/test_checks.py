@@ -3707,6 +3707,7 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     ).read_text(encoding="utf-8")
     lint = workflow.split("\n  lint:", 1)[1].split("\n  lint-local:", 1)[0]
     lint_local = workflow.split("\n  lint-local:", 1)[1].split("\n  shellcheck:", 1)[0]
+    shellcheck = workflow.split("\n  shellcheck:", 1)[1].split("\n  test-harnesses:", 1)[0]
     lint_skip = lint.split("SKIP: ", 1)[1].split("\n", 1)[0].split(",")
     lint_local_skip = lint_local.split("SKIP: ", 1)[1].split("\n", 1)[0].split(",")
 
@@ -3756,6 +3757,11 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     assert "cargo test --doc" in rust_coverage
     assert "make rust-coverage" not in workflow
     assert "rust-coverage" not in makefile
+    assert "crates/larch-harness-mark/src/residual_bash_main.rs" in shellcheck
+    assert "rustc --edition=2024 --crate-name larch_residual_bash_paths" in shellcheck
+    assert '"$residual_bash_reader" --root "$GITHUB_WORKSPACE"' in shellcheck
+    assert "cargo build" not in shellcheck
+    assert '"$GITHUB_WORKSPACE/scripts/larch.sh" residual-bash paths' not in shellcheck
     assert "EmbarkStudios/cargo-deny-action@b66acf5e9fe20f8aba065be86778a8a4c846f902" in rust_deny
     for hook in (
         "cargo-fmt",
@@ -4556,8 +4562,11 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "cargo llvm-cov show-env --sh" in rust_coverage
     assert "cargo nextest run --workspace --all-features --locked \\" in rust_coverage
     assert '--target-dir "$coverage_target_dir" --no-run' in rust_coverage
-    assert "cargo build --profile test --package larch-cli --bin larch --all-features --locked \\" in rust_coverage
-    assert "cargo build --package larch-cli --bin larch --all-features --locked \\" not in rust_coverage
+    coverage_compilation = rust_coverage.split("compile_coverage() (", 1)[1].split(
+        "run_timed compilation compile_coverage", 1
+    )[0]
+    assert 'test -x "$coverage_target_dir/debug/larch"' in coverage_compilation
+    assert "cargo build" not in coverage_compilation
     assert "cargo llvm-cov nextest --no-report \\" in rust_coverage
     assert 'thread_counts="4 6 8 10 12 14 16"' in rust_coverage
     assert "cargo llvm-cov clean --profraw-only" in rust_coverage
