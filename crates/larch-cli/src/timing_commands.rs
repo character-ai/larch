@@ -14,8 +14,7 @@ use std::{
     io::Write as _,
     path::{Path, PathBuf},
     process::ExitCode,
-    thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::UNIX_EPOCH,
 };
 
 use larch_adapters::{
@@ -32,13 +31,7 @@ use larch_core::{
     validate_progress_run_id,
 };
 
-#[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt as _;
-
-/// Seconds an append waits for the ledger lock before it gives up.
-const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
-/// Pause between lock attempts.
-const LOCK_RETRY_PAUSE: Duration = Duration::from_millis(50);
+use crate::ledger_append::{append_locked_line, restore_owner_only_permissions};
 /// Basename of a tmpdir-resolved ledger.
 const LEDGER_BASENAME: &str = "timing-ledger.tsv";
 /// Markdown block markers the appended timing section uses.
@@ -435,17 +428,18 @@ pub fn telemetry_mark(arguments: &[OsString]) -> ExitCode {
         .iter()
         .map(|(key, value)| (key.as_str(), value.clone()))
         .collect();
-    let mut mark_args = vec![OsString::from(label)];
-    if let Some((_, ledger)) = overrides
+    let mark_args = if let Some((_, ledger)) = overrides
         .iter()
         .find(|(key, _)| key == "LARCH_TOKEN_LEDGER")
     {
-        mark_args = vec![
+        vec![
             OsString::from("--ledger"),
             OsString::from(ledger),
             OsString::from(label),
-        ];
-    }
+        ]
+    } else {
+        vec![OsString::from(label)]
+    };
     let _ignored = crate::token_commands::mark_with_env(&mark_args, &override_refs);
     environment.set("DESIGN_TMPDIR", "");
     environment.set("LARCH_TIMING_SKILL", "implement");
@@ -979,12 +973,8 @@ fn under_allowed_root(path: &Path, roots: &[PathBuf]) -> bool {
 fn append_row(path: &Path, row: &str) -> Result<(), String> {
     ensure_ledger(path)?;
     let line = format!("{row}\n");
-    append_locked(path, &line)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        let _ignored = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
-    }
+    append_locked_line(path, &line, "timing")?;
+    restore_owner_only_permissions(path);
     Ok(())
 }
 
@@ -1007,48 +997,6 @@ fn ensure_ledger(path: &Path) -> Result<(), String> {
         ));
     }
     Ok(())
-}
-
-#[cfg(unix)]
-fn append_locked(path: &Path, line: &str) -> Result<(), String> {
-    use nix::fcntl::{Flock, FlockArg};
-
-    let mut handle = fs::OpenOptions::new()
-        .append(true)
-        .create(true)
-        .mode(0o600)
-        .custom_flags(nix::libc::O_NOFOLLOW)
-        .open(path)
-        .map_err(|error| error.to_string())?;
-    let deadline = SystemTime::now() + LOCK_TIMEOUT;
-    loop {
-        match Flock::lock(handle, FlockArg::LockExclusiveNonblock) {
-            Ok(mut locked) => {
-                return locked
-                    .write_all(line.as_bytes())
-                    .map_err(|error| error.to_string());
-            }
-            Err((returned, _errno)) => handle = returned,
-        }
-        if SystemTime::now() >= deadline {
-            eprintln!(
-                "timing: WARNING: flock lock acquisition failed; skipping append for {}",
-                path.display()
-            );
-            return Ok(());
-        }
-        thread::sleep(LOCK_RETRY_PAUSE);
-    }
-}
-
-#[cfg(not(unix))]
-fn append_locked(path: &Path, line: &str) -> Result<(), String> {
-    fs::OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(path)
-        .and_then(|mut handle| handle.write_all(line.as_bytes()))
-        .map_err(|error| error.to_string())
 }
 
 #[cfg(test)]

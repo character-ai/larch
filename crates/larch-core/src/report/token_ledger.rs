@@ -187,8 +187,7 @@ pub fn active_ledger_vendor(tool: &str) -> Option<&'static str> {
 /// Hex SHA-256 of one UTF-8 value, matching Python's `_sha256_hex`.
 #[must_use]
 pub fn sha256_hex(value: &str) -> String {
-    let digest = Sha256::digest(value.as_bytes());
-    hex_encode(&digest)
+    format!("{:x}", Sha256::digest(value.as_bytes()))
 }
 
 /// Sanitize a lane name the same way Python does for sidecar filenames.
@@ -407,16 +406,6 @@ fn phase_row(
 #[allow(clippy::cast_precision_loss)]
 fn tokens_to_cost(tokens: u64, rate: f64) -> String {
     format!("  ${:.4}", (tokens as f64 * rate) / 1_000_000.0)
-}
-
-fn hex_encode(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(HEX[(byte >> 4) as usize] as char);
-        out.push(HEX[(byte & 0x0f) as usize] as char);
-    }
-    out
 }
 
 #[cfg(test)]

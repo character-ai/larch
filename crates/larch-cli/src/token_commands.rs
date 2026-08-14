@@ -10,8 +10,7 @@ use std::{
     io::Write as _,
     path::{Path, PathBuf},
     process::ExitCode,
-    thread,
-    time::{Duration, SystemTime},
+    time::SystemTime,
 };
 
 use chrono::{DateTime, Utc};
@@ -27,10 +26,7 @@ use std::ffi::OsString;
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt as _;
 
-/// Seconds an append waits for the ledger lock before it gives up.
-const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
-/// Pause between lock attempts.
-const LOCK_RETRY_PAUSE: Duration = Duration::from_millis(50);
+use crate::ledger_append::{append_locked_line, restore_owner_only_permissions};
 
 /// Record one step mark in the resolved token ledger.
 pub fn mark(arguments: &[OsString]) -> ExitCode {
@@ -75,14 +71,14 @@ pub fn record_vendor(arguments: &[OsString]) -> ExitCode {
         return ExitCode::from(1);
     };
     let mut vals = VendorValues::default();
-    for kv in rest.iter().skip(1) {
-        let Some((key, value)) = kv.split_once('=') else {
-            eprintln!("token record-vendor: unknown argument: {kv}");
+    for option in rest.iter().skip(1) {
+        let Some((key, value)) = option.split_once('=') else {
+            eprintln!("token record-vendor: unknown argument: {option}");
             return ExitCode::from(1);
         };
         match key {
-            "raw" => vals.raw = value.to_owned(),
-            "model" => vals.model = value.to_owned(),
+            "raw" => value.clone_into(&mut vals.raw),
+            "model" => value.clone_into(&mut vals.model),
             "input" | "output" | "cache_read" | "cache_create" | "total" => {
                 if !value.bytes().all(|byte| byte.is_ascii_digit()) {
                     eprintln!("token record-vendor: {key} must be a non-negative integer");
@@ -99,7 +95,7 @@ pub fn record_vendor(arguments: &[OsString]) -> ExitCode {
                 }
             }
             _ => {
-                eprintln!("token record-vendor: unknown argument: {kv}");
+                eprintln!("token record-vendor: unknown argument: {option}");
                 return ExitCode::from(1);
             }
         }
@@ -334,7 +330,7 @@ fn record_vendor_from_sidecar(
     };
     let mut vendor = payload.tool.clone();
     if vendor == "claude" {
-        vendor = "claude_sub".to_owned();
+        "claude_sub".clone_into(&mut vendor);
     }
     let Some(active) = active_ledger_vendor(&vendor) else {
         let raw_tool = raw_tool_from_sidecar(input_path);
@@ -445,7 +441,8 @@ fn report_lane(root: &Path) -> Result<String, String> {
         .filter(|path| {
             path.file_name()
                 .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("lane-tokens-") && name.ends_with(".txt"))
+                .is_some_and(|name| name.starts_with("lane-tokens-"))
+                && path.extension().is_some_and(|ext| ext == "txt")
         })
         .collect::<Vec<_>>();
     entries.sort();
@@ -518,10 +515,9 @@ fn resolve_token_ledger_path(
         .get("LARCH_TOKEN_LEDGER")
         .filter(|value| !value.is_empty())
         .cloned()
+        && let Ok(path) = validate_under_tmp(&raw, &env_map)
     {
-        if let Ok(path) = validate_under_tmp(&raw, &env_map) {
-            return Ok(Some(path));
-        }
+        return Ok(Some(path));
     }
     let slug = sha256_hex(&resolve_session_id(&env_map));
     for key in ["IMPLEMENT_TMPDIR", "DESIGN_TMPDIR", "RESEARCH_TMPDIR"] {
@@ -533,13 +529,11 @@ fn resolve_token_ledger_path(
         .get("SESSION_ENV_PATH")
         .filter(|value| !value.is_empty())
         .cloned()
-    {
-        if let Some(root) = Path::new(&session_env)
+        && let Some(root) = Path::new(&session_env)
             .parent()
             .and_then(|parent| canonical_dir(parent.to_str().unwrap_or("")))
-        {
-            return Ok(Some(root.join(default_ledger_basename(&slug))));
-        }
+    {
+        return Ok(Some(root.join(default_ledger_basename(&slug))));
     }
     Ok(None)
 }
@@ -627,13 +621,14 @@ fn validate_research_dir(path: &Path) -> Result<(), String> {
         ));
     }
     let cache_root = env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("/"))
-                .join(".cache")
-        })
+        .map_or_else(
+            || {
+                env::var_os("HOME")
+                    .map_or_else(|| PathBuf::from("/"), PathBuf::from)
+                    .join(".cache")
+            },
+            PathBuf::from,
+        )
         .join("larch")
         .join("sessions");
     let prefixes = [
@@ -699,12 +694,8 @@ enum AppendError {
 
 fn append_jsonl(path: &Path, line: &str) -> Result<(), AppendError> {
     ensure_regular_file(path)?;
-    append_locked(path, line).map_err(AppendError::Io)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        let _ignored = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
-    }
+    append_locked_line(path, line, "token").map_err(AppendError::Io)?;
+    restore_owner_only_permissions(path);
     Ok(())
 }
 
@@ -748,43 +739,6 @@ fn ensure_regular_file(path: &Path) -> Result<(), AppendError> {
         }
     }
     Ok(())
-}
-
-#[cfg(unix)]
-fn append_locked(path: &Path, line: &str) -> Result<(), String> {
-    use nix::fcntl::{Flock, FlockArg};
-
-    let mut handle = fs::OpenOptions::new()
-        .append(true)
-        .create(true)
-        .mode(0o600)
-        .custom_flags(nix::libc::O_NOFOLLOW)
-        .open(path)
-        .map_err(|error| error.to_string())?;
-    let deadline = SystemTime::now() + LOCK_TIMEOUT;
-    loop {
-        match Flock::lock(handle, FlockArg::LockExclusiveNonblock) {
-            Ok(mut locked) => {
-                return locked
-                    .write_all(line.as_bytes())
-                    .map_err(|error| error.to_string());
-            }
-            Err((returned, _errno)) => handle = returned,
-        }
-        if SystemTime::now() >= deadline {
-            eprintln!(
-                "token: WARNING: flock lock acquisition failed; skipping append for {}",
-                path.display()
-            );
-            return Ok(());
-        }
-        thread::sleep(LOCK_RETRY_PAUSE);
-    }
-}
-
-#[cfg(not(unix))]
-fn append_locked(path: &Path, line: &str) -> Result<(), String> {
-    append_plain(path, line).map_err(|error| error.to_string())
 }
 
 fn timestamp_utc() -> String {

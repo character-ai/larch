@@ -8774,13 +8774,13 @@ rust = ["agent check-reviewers", "agent degraded-tools-gate"]
 path = "python/larch/agents/_claude_runner.py"
 kind = "python-runtime"
 python = []
-rust = ["agent launch-claude-ci", "agent launch-codex-ci", "agent launch-cursor-ci"]
+rust = ["agent launch-claude-ci", "agent launch-codex-ci", "agent launch-cursor-ci", "token append-record", "token record-vendor", "token record-vendor-sidecar"]
 
 [[callers]]
 path = "python/larch/agents/_run_external.py"
 kind = "python-runtime"
 python = []
-rust = ["agent parse-codex-usage", "run-log append-failure", "timing record-vendor-task"]
+rust = ["agent parse-codex-usage", "run-log append-failure", "timing record-vendor-task", "token record-vendor", "token record-vendor-sidecar"]
 
 [[callers]]
 path = "python/larch/core/redact.py"
@@ -8792,7 +8792,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["block-issue *", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome", "timing *", "tracking-issue *"]
+rust = ["block-issue *", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome", "timing *", "token *", "tracking-issue *"]
 
 [[callers]]
 path = "python/larch/debate/orchestrator.py"
@@ -8864,7 +8864,7 @@ rust = ["timing mark"]
 path = "python/larch/design/design_step0.py"
 kind = "python-runtime"
 python = ["plan check-size"]
-rust = ["agent check-reviewers", "agent degraded-tools-gate", "progress install-statusline", "run-log lifecycle-start", "run-log storage-preflight", "session cleanup-tmpdir", "session setup", "session write-design-env", "timing mark"]
+rust = ["agent check-reviewers", "agent degraded-tools-gate", "progress install-statusline", "run-log lifecycle-start", "run-log storage-preflight", "session cleanup-tmpdir", "session setup", "session write-design-env", "timing mark", "token mark"]
 
 [[callers]]
 path = "python/larch/design/design_step1.py"
@@ -8876,7 +8876,7 @@ rust = ["agent collect-results", "dirty-tree checkpoint", "timing mark"]
 path = "python/larch/design/design_step2b.py"
 kind = "python-runtime"
 python = []
-rust = ["agent launch-claude-drafter", "agent launch-codex-drafter", "run-log append-entry", "run-log append-failure"]
+rust = ["agent launch-claude-drafter", "agent launch-codex-drafter", "run-log append-entry", "run-log append-failure", "token append-record", "token record-vendor-sidecar"]
 
 [[callers]]
 path = "python/larch/design/design_step6.py"
@@ -8936,13 +8936,13 @@ rust = []
 path = "python/larch/implement/checks_lint_fix.py"
 kind = "python-runtime"
 python = ["checks lint-fix", "checks run-relevant"]
-rust = ["agent launch-claude-lint-fix", "agent launch-codex-exec", "bgjob start", "git commit", "git stage"]
+rust = ["agent launch-claude-lint-fix", "agent launch-codex-exec", "bgjob start", "git commit", "git stage", "token append-record", "token record-vendor-sidecar"]
 
 [[callers]]
 path = "python/larch/implement/checks_run_relevant.py"
 kind = "python-runtime"
 python = ["checks run-relevant"]
-rust = ["timing mark", "timing record-vendor-task"]
+rust = ["timing mark", "timing record-vendor-task", "token mark"]
 
 [[callers]]
 path = "python/larch/implement/ci_monitor.py"
@@ -8966,7 +8966,7 @@ rust = ["timing mark"]
 path = "python/larch/implement/dispatch_recovery.py"
 kind = "python-runtime"
 python = []
-rust = ["git commit", "timing mark"]
+rust = ["git commit"]
 
 [[callers]]
 path = "python/larch/implement/dispatch_ship.py"
@@ -8996,7 +8996,7 @@ rust = ["run-log manifest"]
 path = "python/larch/implement/step_7a.py"
 kind = "python-runtime"
 python = []
-rust = ["bgjob start", "timing mark"]
+rust = ["bgjob start", "timing mark", "token mark"]
 
 [[callers]]
 path = "python/larch/rendering/rendering.py"
@@ -9080,7 +9080,7 @@ rust = ["agent compose-collector-failure-log"]
 path = "python/larch/review/review_and_fix.py"
 kind = "python-runtime"
 python = []
-rust = ["git commit", "run-log write", "stall-recovery record-escalation", "timing mark", "voting write-tally"]
+rust = ["git commit", "run-log write", "stall-recovery record-escalation", "timing mark", "token mark", "voting write-tally"]
 
 [[callers]]
 path = "python/larch/review/review_tally.py"
@@ -9602,7 +9602,7 @@ rust = []
 path = "skills/implement/references/step2-dispatch.md"
 kind = "skill"
 python = ["implement commit", "implement normalize-coder-scout", "implement recovery-paths", "implement run-dispatch", "implement step2-dispatch", "redact secrets", "token check-budget"]
-rust = ["agent launch-codex-implement", "bgjob wait", "dirty-tree scope-check", "git commit", "plan scope-paths", "run-log checkpoint"]
+rust = ["agent launch-codex-implement", "bgjob wait", "dirty-tree scope-check", "git commit", "plan scope-paths", "run-log checkpoint", "token *"]
 
 [[callers]]
 path = "skills/implement/references/step2-main-health-fix.md"

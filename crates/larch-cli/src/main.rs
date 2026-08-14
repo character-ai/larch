@@ -115,6 +115,7 @@ mod stall_recovery_reporting;
 mod state_commands;
 mod status_commands;
 mod test_shards;
+mod ledger_append;
 mod timing_commands;
 mod token_commands;
 mod tracking_issue_commands;
