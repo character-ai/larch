@@ -83,3 +83,25 @@ fn append_locked(path: &Path, line: &str, _domain: &str) -> Result<(), String> {
         .and_then(|mut handle| handle.write_all(line.as_bytes()))
         .map_err(|error| error.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{append_locked_line, restore_owner_only_permissions};
+    use std::fs;
+
+    #[test]
+    fn append_locked_line_writes_and_restores_mode() {
+        let directory = tempfile::tempdir().expect("tmpdir");
+        let path = directory.path().join("ledger.jsonl");
+        append_locked_line(&path, "{\"ok\":true}\n", "token").expect("append");
+        restore_owner_only_permissions(&path);
+        let text = fs::read_to_string(&path).expect("read");
+        assert_eq!(text, "{\"ok\":true}\n");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let mode = fs::metadata(&path).expect("meta").permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+    }
+}
