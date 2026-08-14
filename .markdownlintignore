@@ -7,3 +7,7 @@ larch-logs/
 # offset cases). It is not authoring-quality markdown and must not be edited to
 # satisfy lint rules.
 fixtures/rust-review/finding-blocks.golden.md
+
+# review_dispatch_panel_prompt.md is a byte-exact runtime prompt template.
+# Its intentional H1-to-H3 sequence is part of the rendered reviewer contract.
+crates/larch-cli/src/review_dispatch_panel_prompt.md

@@ -4,6 +4,7 @@ use std::{
     collections::BTreeMap,
     env,
     ffi::OsString,
+    fmt::Write as _,
     fs,
     path::{Path, PathBuf},
     process::ExitCode,
@@ -33,7 +34,7 @@ const STATIC_ARCHETYPES: [&str; 3] = ["correctness", "edge-cases", "testing"];
 const DYNAMIC_AGENT_TEMPLATE: &str = include_str!("review_dispatch_panel_prompt.md");
 const OPTIONS: &str = include_str!("review_dispatch_panel_options.txt");
 
-pub(crate) fn run(arguments: &[OsString]) -> ExitCode {
+pub fn run(arguments: &[OsString]) -> ExitCode {
     if arguments.iter().any(|argument| argument == "--help") {
         eprintln!("{USAGE}");
         return ExitCode::SUCCESS;
@@ -50,7 +51,7 @@ pub(crate) fn run(arguments: &[OsString]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    match dispatch(options) {
+    match dispatch(&options) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("{PROGRAM}: {error}");
@@ -114,7 +115,7 @@ impl PanelOptions {
         let mut panel = value("--panel");
         let tier = if tier.is_empty() {
             if panel.is_empty() {
-                panel = "hard".to_owned();
+                "hard".clone_into(&mut panel);
             }
             if panel == "simple" {
                 "TRIVIAL".to_owned()
@@ -122,7 +123,7 @@ impl PanelOptions {
                 "MODERATE".to_owned()
             }
         } else {
-            panel = panel_for_tier(&tier).to_owned();
+            panel_for_tier(&tier).clone_into(&mut panel);
             tier
         };
         if !matches!(panel.as_str(), "simple" | "hard") {
@@ -188,9 +189,10 @@ impl PanelOptions {
 }
 
 fn default_value(value: String, fallback: &str) -> String {
-    match value.is_empty() {
-        true => fallback.to_owned(),
-        false => value,
+    if value.is_empty() {
+        fallback.to_owned()
+    } else {
+        value
     }
 }
 
@@ -221,25 +223,25 @@ struct PruneResult {
     panel_pruned_empty: String,
 }
 
-fn dispatch(options: PanelOptions) -> Result<(), String> {
+fn dispatch(options: &PanelOptions) -> Result<(), String> {
     ensure_directory_chain(&options.review_tmpdir).map_err(|error| error.to_string())?;
     let manifest_path = options.review_tmpdir.join("panel-manifest.ndjson");
     let plugin_root =
         plugin_root_directory().ok_or_else(|| "cannot resolve the plugin root".to_owned())?;
-    let mut rows = static_rows(&options, &plugin_root);
+    let mut rows = static_rows(options, &plugin_root);
     write_manifest(&manifest_path, &rows)?;
 
-    let scout = prepare_dynamic_slots(&options, &mut rows)?;
+    let scout = prepare_dynamic_slots(options, &mut rows)?;
     write_manifest(&manifest_path, &rows)?;
-    append_producer_scout_warning_once(&options, &scout);
+    append_producer_scout_warning_once(options, &scout);
 
-    let (static_slot_count, dynamic_slots) = slot_counts(&rows);
+    let (static_slot_count, _, _, dynamic_slots) = slot_counts(&rows);
     let panel_full = static_slot_count + dynamic_slots;
-    let prune = apply_prune(&options, &manifest_path, &mut rows, panel_full)?;
+    let prune = apply_prune(options, &manifest_path, &mut rows, panel_full)?;
     write_manifest(&manifest_path, &rows)?;
     if prune.panel_pruned_empty == "true" && prune.status == "pruned-empty" {
         emit_panel_envelope(
-            &options,
+            options,
             &scout,
             &manifest_path,
             &prune,
@@ -258,24 +260,26 @@ fn dispatch(options: PanelOptions) -> Result<(), String> {
 
     let (launch_manifest, carry_outputs, carry_tools) =
         degraded_retry_manifest(&options.review_tmpdir, &manifest_path, &rows)?;
-    let (remaining_static, remaining_dynamic) = slot_counts(&rows);
+    let (remaining_static, remaining_cursor, remaining_codex, remaining_dynamic) =
+        slot_counts(&rows);
     if remaining_static + remaining_dynamic > 0 {
         eprintln!(
-            "→ review: launching {} reviewers ({} static, {} dynamic)",
+            "→ review: launching {} reviewers ({} Cursor static, {} Codex static, {} dynamic)",
             remaining_static + remaining_dynamic,
-            remaining_static,
+            remaining_cursor,
+            remaining_codex,
             remaining_dynamic
         );
     }
     let artifact_dir = panel_artifact_dir(&options.review_tmpdir, options.round_num);
-    let waterfall_arguments = waterfall_arguments(&options, &launch_manifest, &artifact_dir);
+    let waterfall_arguments = waterfall_arguments(options, &launch_manifest, &artifact_dir);
     let outcome = match dispatch_for_review(&waterfall_arguments) {
         Ok(outcome) => outcome,
         Err(error) => {
             eprintln!("{error}");
             emit_kv("WARN", "agent dispatch-waterfall exited rc=2");
             emit_panel_envelope(
-                &options,
+                options,
                 &scout,
                 &manifest_path,
                 &prune,
@@ -298,7 +302,7 @@ fn dispatch(options: PanelOptions) -> Result<(), String> {
     tools.extend(carry_tools);
     let (external, claude) = split_outputs(&outputs, &tools);
     emit_panel_envelope(
-        &options,
+        options,
         &scout,
         &manifest_path,
         &prune,
@@ -374,11 +378,28 @@ fn panel_tools(options: &PanelOptions) -> Vec<(&'static str, &'static str)> {
     .collect()
 }
 
-fn slot_counts(rows: &[Map<String, Value>]) -> (usize, usize) {
-    let count = |key: &str| rows.iter().filter(|row| row.contains_key(key)).count();
-    (count("agent"), count("prompt_file"))
+fn slot_counts(rows: &[Map<String, Value>]) -> (usize, usize, usize, usize) {
+    let mut static_total = 0;
+    let mut static_cursor = 0;
+    let mut static_codex = 0;
+    let mut dynamic = 0;
+    for row in rows {
+        if row.contains_key("agent") {
+            static_total += 1;
+            match row.get("tool").and_then(Value::as_str) {
+                Some("cursor") => static_cursor += 1,
+                Some("codex") => static_codex += 1,
+                _ => {}
+            }
+        }
+        if row.contains_key("prompt_file") {
+            dynamic += 1;
+        }
+    }
+    (static_total, static_cursor, static_codex, dynamic)
 }
 
+#[allow(clippy::too_many_lines)] // The legacy scout-status state machine is kept contiguous for parity auditing.
 fn prepare_dynamic_slots(
     options: &PanelOptions,
     rows: &mut Vec<Map<String, Value>>,
@@ -402,7 +423,9 @@ fn prepare_dynamic_slots(
         let diff = fs::read_to_string(&options.diff_file).map_err(|error| error.to_string())?;
         let generated =
             generated_paths().map_err(|error| format!("diff classification failed: {error}"))?;
-        diff_mode = classify_diff(&diff, &generated).as_str().to_owned();
+        classify_diff(&diff, &generated)
+            .as_str()
+            .clone_into(&mut diff_mode);
         if matches!(
             diff_mode.as_str(),
             "docs-only" | "test-only" | "generated-only"
@@ -420,7 +443,7 @@ fn prepare_dynamic_slots(
             && !producer_status.is_empty()
             && producer_status != "ok"
         {
-            result.status = "producer-invalid".to_owned();
+            "producer-invalid".clone_into(&mut result.status);
             result.fail_reason = format!("producer_status_{producer_status}");
             write_dynamic_manifest(&manifest, &[])?;
         } else {
@@ -431,15 +454,7 @@ fn prepare_dynamic_slots(
                     &manifest,
                     options.dynamic_max,
                 );
-            if !filter_ok {
-                write_dynamic_manifest(&manifest, &[])?;
-                result.status = if options.site == "implement Step 5" {
-                    "producer-invalid".to_owned()
-                } else {
-                    "parse-failed".to_owned()
-                };
-                result.fail_reason = "pre_scouted_manifest_validation".to_owned();
-            } else {
+            if filter_ok {
                 dynamic = dynamic_manifest(&manifest)
                     .unwrap_or_default()
                     .into_iter()
@@ -449,8 +464,8 @@ fn prepare_dynamic_slots(
                     && raw_count.unwrap_or_default() > 0
                     && dynamic.is_empty()
                 {
-                    result.status = "producer-invalid".to_owned();
-                    result.fail_reason = "pre_scouted_filtered_to_zero".to_owned();
+                    "producer-invalid".clone_into(&mut result.status);
+                    "pre_scouted_filtered_to_zero".clone_into(&mut result.fail_reason);
                     write_dynamic_manifest(&manifest, &[])?;
                 } else {
                     result.status = if dynamic.is_empty() {
@@ -459,6 +474,15 @@ fn prepare_dynamic_slots(
                         "pre-scouted".to_owned()
                     };
                 }
+            } else {
+                write_dynamic_manifest(&manifest, &[])?;
+                let status = if options.site == "implement Step 5" {
+                    "producer-invalid"
+                } else {
+                    "parse-failed"
+                };
+                status.clone_into(&mut result.status);
+                "pre_scouted_manifest_validation".clone_into(&mut result.fail_reason);
             }
         }
     } else if options.site != "implement Step 5" && manifest.is_file() && nonempty(&manifest) {
@@ -489,13 +513,13 @@ fn prepare_dynamic_slots(
                     .take(options.dynamic_max)
                     .collect();
             } else if result.status == "parse-failed" && result.fail_reason.is_empty() {
-                result.fail_reason = "cached_parse_failed".to_owned();
+                "cached_parse_failed".clone_into(&mut result.fail_reason);
             }
         } else if cached.as_ref().is_some_and(Vec::is_empty) {
-            result.status = "empty".to_owned();
+            "empty".clone_into(&mut result.status);
         } else {
-            result.status = "parse-failed".to_owned();
-            result.fail_reason = "missing_status_sidecar".to_owned();
+            "parse-failed".clone_into(&mut result.status);
+            "missing_status_sidecar".clone_into(&mut result.fail_reason);
             write_dynamic_manifest(&manifest, &[])?;
         }
     } else if options.site == "implement Step 5" {
@@ -506,15 +530,15 @@ fn prepare_dynamic_slots(
                 || directory.join("step2-external-scout-eligible.txt").exists()
         });
         if !producer_status.is_empty() || producer_artifacts {
-            result.status = "producer-invalid".to_owned();
+            "producer-invalid".clone_into(&mut result.status);
             result.fail_reason = if producer_status.is_empty() {
                 "producer_sidecar_ineligible".to_owned()
             } else {
                 producer_status
             };
         } else {
-            result.status = "producer-missing".to_owned();
-            result.fail_reason = "producer_sidecar_absent".to_owned();
+            "producer-missing".clone_into(&mut result.status);
+            "producer_sidecar_absent".clone_into(&mut result.fail_reason);
         }
     } else {
         let mut arguments = vec![
@@ -551,10 +575,10 @@ fn prepare_dynamic_slots(
             ]);
         }
         let scout_output = run_python(arguments);
-        let (ok, stdout) = match scout_output {
-            Ok(output) => (output.status().success(), process_stdout(&output)),
-            Err(_) => (false, String::new()),
-        };
+        let (ok, stdout) = scout_output.map_or_else(
+            |_| (false, String::new()),
+            |output| (output.status().success(), process_stdout(&output)),
+        );
         let scout_kv = kv_map(&stdout);
         result.status = scout_kv.get("SCOUT_STATUS").cloned().unwrap_or_else(|| {
             if ok {
@@ -576,7 +600,7 @@ fn prepare_dynamic_slots(
                 "validation-failed".to_owned()
             };
             if result.fail_reason.is_empty() {
-                result.fail_reason = "dispatch_manifest_validation".to_owned();
+                "dispatch_manifest_validation".clone_into(&mut result.fail_reason);
             }
         } else if result.status == "ok" {
             dynamic = valid
@@ -668,8 +692,8 @@ fn synthesize_dynamic_rows(
         let (payload_bytes, prompt_text) = match rendered {
             Ok(output) if output.status().success() && !output.stdout().is_empty() => (
                 read_payload_bytes(&payload_sidecar)
-                    .saturating_add(archetype.rationale.as_bytes().len())
-                    .saturating_add(archetype.prompt_body.as_bytes().len()),
+                    .saturating_add(archetype.rationale.len())
+                    .saturating_add(archetype.prompt_body.len()),
                 process_stdout(&output),
             ),
             Ok(output) if output.status().success() => {
@@ -805,7 +829,7 @@ fn apply_prune(
                     }
                 }
                 _ => {
-                    result.status = "failed".to_owned();
+                    "failed".clone_into(&mut result.status);
                 }
             }
         }
@@ -1060,9 +1084,11 @@ fn append_producer_scout_warning_once(_options: &PanelOptions, scout: &ScoutResu
     if sentinel.exists() {
         return;
     }
-    let reason = (!scout.fail_reason.is_empty())
-        .then(|| format!(" ({})", scout.fail_reason))
-        .unwrap_or_default();
+    let reason = if scout.fail_reason.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", scout.fail_reason)
+    };
     let output = run_python(vec![
         "run-log".to_owned(),
         "append-entry".to_owned(),
@@ -1114,9 +1140,11 @@ fn write_scout_status(options: &PanelOptions, scout: &ScoutResult) -> Result<(),
     };
     let mut text = format!("SCOUT_STATUS={}\n", scout.status);
     if !scout.fail_reason.is_empty() {
-        text.push_str(&format!("SCOUT_FAIL_REASON={}\n", scout.fail_reason));
+        writeln!(&mut text, "SCOUT_FAIL_REASON={}", scout.fail_reason)
+            .expect("writing to String cannot fail");
     }
-    text.push_str(&format!("SCOUT_MANIFEST={}\n", manifest.display()));
+    writeln!(&mut text, "SCOUT_MANIFEST={}", manifest.display())
+        .expect("writing to String cannot fail");
     write_required(
         &options
             .review_tmpdir
@@ -1323,7 +1351,7 @@ fn panel_for_tier(tier: &str) -> &'static str {
     if tier == "TRIVIAL" { "simple" } else { "hard" }
 }
 
-fn bool_word(value: bool) -> &'static str {
+const fn bool_word(value: bool) -> &'static str {
     if value { "true" } else { "false" }
 }
 

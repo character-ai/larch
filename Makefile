@@ -31,6 +31,7 @@ HARNESS_MARK ?= sh -c 'timer=target/harness-mark/larch-harness-mark; LARCH_HARNE
 .PHONY: test-step-7a step-7a-py-harness step-7a-bash-harness test-step-8-oos-checkpoint
 .PHONY: test-oos-disposition-gate oos-disposition-gate-bash-harness
 .PHONY: test-flush-execution-issues flush-execution-issues-bash-harness
+.PHONY: test-review-dispatch-panel
 .PHONY: test-stall-recovery-report test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3 test-step-18b-final-report
 .PHONY: test-resolve-upstream-larch-repo test-file-failure-report-cross-repo
 .PHONY: test-design-pause-resume
@@ -739,6 +740,12 @@ test-dispatch-panel-reuse:
 
 test-dispatch-panel-limits:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_dispatch_panel
+
+# Manual direct wrapper for the Rust integration harness. It keeps the shell
+# contract independently runnable while rust-full owns its CI execution.
+test-review-dispatch-panel:
+	cargo build --locked --package larch-cli
+	$(HARNESS_MARK) --label $@ -- env LARCH_BINARY=target/debug/larch bash scripts/test-review-dispatch-panel.sh
 
 test-scout-dynamic-archetypes:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_plan_scout.py -q -k 'not plan_wrapper'

@@ -255,7 +255,8 @@ pub fn dispatch_waterfall(arguments: &AgentRawArguments) -> ExitCode {
 /// layer. Keeping the result structured lets that command retain its legacy
 /// envelope without spawning another larch process or recapturing stdout.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct WaterfallDispatchOutcome {
+#[allow(clippy::struct_excessive_bools)] // Legacy stdout exposes these independent per-panel outcomes.
+pub struct WaterfallDispatchOutcome {
     phase1_slots: Vec<String>,
     phase2_slots: Vec<String>,
     phase3_slots: Vec<String>,
@@ -279,9 +280,7 @@ pub(crate) struct WaterfallDispatchOutcome {
 /// This deliberately accepts the same raw grammar as `agent
 /// dispatch-waterfall`, but returns the report instead of emitting its own
 /// stdout envelope. Vendor processes still start only in this module.
-pub(crate) fn dispatch_for_review(
-    arguments: &[OsString],
-) -> Result<WaterfallDispatchOutcome, String> {
+pub fn dispatch_for_review(arguments: &[OsString]) -> Result<WaterfallDispatchOutcome, String> {
     let options = match parse_arguments(arguments)? {
         ParsedArguments::Options(options) => options,
         ParsedArguments::Help => {
