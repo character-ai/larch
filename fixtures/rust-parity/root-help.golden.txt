@@ -59,6 +59,7 @@ Commands:
   test-shard          Pack and rewrite deterministic test-shard assignments
   verify              Small side-effect verification helpers
   timing              Timing-ledger marks, records, dumps, and reports
+  token               Token-ledger marks, vendor rows, dumps, and lane telemetry
   gh                  GitHub workflow helper commands
   push                Push commands with typed Git network operations
   run-log             Committed run-log identity and layout helpers
