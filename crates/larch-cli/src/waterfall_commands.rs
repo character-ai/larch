@@ -262,9 +262,9 @@ pub fn dispatch_waterfall(arguments: &AgentRawArguments) -> ExitCode {
 
 /// The result of one in-process waterfall dispatch.
 ///
-/// `review dispatch-panel` is the only other command allowed to invoke this
-/// layer. Keeping the result structured lets that command retain its legacy
-/// envelope without spawning another larch process or recapturing stdout.
+/// Review and plan-review dispatch commands invoke this layer directly.
+/// Keeping the result structured lets those commands retain their legacy
+/// envelopes without spawning another larch process or recapturing stdout.
 #[derive(Clone, Debug, Default)]
 #[allow(clippy::struct_excessive_bools)] // Legacy stdout exposes these independent per-panel outcomes.
 pub struct WaterfallDispatchOutcome {
@@ -277,8 +277,8 @@ pub struct WaterfallDispatchOutcome {
     pub(crate) dropped_slots_file: String,
     fallback_count: u64,
     pub(crate) straggler_dropped_count: usize,
-    invalid_slot_drop_count: usize,
-    invalid_slots_file: String,
+    pub(crate) invalid_slot_drop_count: usize,
+    pub(crate) invalid_slots_file: String,
     pub(crate) warning: String,
     pub(crate) dispatch_ok: bool,
     pub(crate) static_dispatch_ok: bool,

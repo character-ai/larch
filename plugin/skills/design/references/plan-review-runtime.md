@@ -1,9 +1,9 @@
 # Plan Review Runtime Reference
 **Consumer**: `/design` Step 3 loads this reference for prompt-side contracts only: panel topology, static identity, round gates, Claude fallback archetype, semantic dedup, accepted/rejected/OOS templates, post-driver tally interpretation, and MainAgent 0-judge fallback. Scout, panel dispatch, collection, aggregation, ballot rebuild, voter dispatch, tally, and finalize writes are loop-internal to `python/plan_review.py`.
 
-**Contract**: `python/rendering.py` owns runtime prompts from `python/cli.py render plan-review` and `python/cli.py render voter`. `python/plan_review_panel.py` and `python/cli.py plan-review panel-dispatch` own runtime slot manifests, including Step 2b scouts from `$DESIGN_TMPDIR/scout-plan-manifest.json`. `python/cli.py plan-review voter-dispatch` owns the Claude/Codex/Cursor voter matrix. Prompt-side loads stay limited to Consumer.
+**Contract**: `python/rendering.py` owns runtime prompts from `python/cli.py render plan-review` and `python/cli.py render voter`. `crates/larch-cli/src/plan_review_commands.rs`, reached through `scripts/larch.sh plan-review panel-dispatch`, owns runtime slot manifests, including Step 2b scouts from `$DESIGN_TMPDIR/scout-plan-manifest.json`. The same Rust owner exposes `plan-review voter-dispatch` and owns the Codex-primary voter matrix plus its one-Claude degraded floor. Prompt-side loads stay limited to Consumer.
 
-**Topology anchor**: round-gated static plus dynamic panel; keep synced with `python/larch/review/plan_review_panel.py`.
+**Topology anchor**: round-gated static plus dynamic panel; keep synced with `crates/larch-cli/src/plan_review_commands.rs`.
 
 **When to load**: load once at Step 3 entry via the MANDATORY SKILL.md directive. Do NOT load during Steps 0, 1, 2a, 2b, 3.5, 3b, 4, or 5. Use only for Consumer-listed contracts; loop mechanics stay in `python/plan_review.py`.
 
@@ -48,9 +48,9 @@ Step 2b produces `$DESIGN_TMPDIR/scout-plan-manifest.json`, using `{"archetypes"
 
 1. **Drafter scout output (fail-open)**: the Step 2b drafter emits a compact scout block after the plan. The launcher validates it with `python/cli.py scout filter-manifest`, filters reserved static slugs, and caps at one archetype. Missing or invalid output warns, writes an empty manifest when possible, and still runs the static Step 3 panel. Step 3 launches no separate plan-archetype scout.
 
-2. **Dispatch (Step 3 manifest consumption)**: `python/cli.py plan-review panel-dispatch` renders static prompts first, then the dynamic tail via `python/cli.py render plan-review`. It emits rows from binary-derived attempt flags, not Step 0 health. Cursor rows emit when Cursor is available; Codex rows emit when Codex is available and use the default model role. It invokes `scripts/larch.sh agent dispatch-waterfall` with **`--no-fallback`** for every reviewer panel, so failed or unavailable vendors drop rows instead of spawning cross-vendor or Claude reviewer backfill. It does not pass `--require-first-line-pattern`; collector terminal `NOT_SUBSTANTIVE` handles format and quality. Voter parity uses `python/cli.py plan-review voter-dispatch` with the same matrix (issue #3207 skip-do-not-pad). Emits `PANEL_PATHS_FILE=<path>` on stdout so SKILL can pass `--paths-file` without re-parsing `ALL_OUTPUT_FILES_PATH`.
+2. **Dispatch (Step 3 manifest consumption)**: `scripts/larch.sh plan-review panel-dispatch` renders static prompts first, then the dynamic tail via `python/cli.py render plan-review`. It emits rows from binary-derived attempt flags, not Step 0 health. Cursor rows emit when Cursor is available; Codex rows emit when Codex is available and use the default model role. Dynamic scout archetypes retain their paired Cursor and Codex rows so the shared waterfall classifies unavailable rows consistently. The command invokes the Rust waterfall owner in-process with **`--no-fallback`** for every reviewer panel, so failed or unavailable vendors drop rows instead of spawning cross-vendor or Claude reviewer backfill. It does not pass `--require-first-line-pattern`; collector terminal `NOT_SUBSTANTIVE` handles format and quality. `scripts/larch.sh plan-review voter-dispatch` uses the shared Codex-primary voter matrix. The panel command emits `PANEL_PATHS_FILE=<path>` on stdout so SKILL can pass `--paths-file` without re-parsing `ALL_OUTPUT_FILES_PATH`.
 
-3. **Harness overrides**: `DISPATCH_PLAN_REVIEW_WATERFALL_SH` substitutes the waterfall dispatcher.
+3. **Harness coverage**: `scripts/test-plan-review-dispatch.sh` runs the Rust commands against a confined launcher fixture and checks the manifest, prompt, failure, pruning, voter-order, and degraded-floor contracts.
 
 ---
 
@@ -84,9 +84,9 @@ Single-pass `LOOP_STATUS` values remain `complete`, `zero-findings-degraded-pane
 
 ## Claude Code Reviewer Subagent archetype (both-absent floor)
 
-Claude is NOT a primary plan reviewer. The external panel is default: present vendors per archetype in round 1, then round 2 prunes on round-1 productivity under the fixed cap of 2; optional dynamic `dyn-*` pairs appear only when scouting succeeds. Under `--no-fallback` there is **no per-slot Claude pad** when one external fails, and no generic Codex replacement row. Voter 1 remains in `scripts/larch.sh agent launch-claude-review` subprocess scope.
+Claude is NOT a primary plan reviewer. The external panel is default: present vendors per archetype in round 1, then round 2 prunes on round-1 productivity under the fixed cap of 2; optional dynamic `dyn-*` pairs appear only when scouting succeeds. Under `--no-fallback` there is **no per-slot Claude pad** when one external fails, and no generic Codex replacement row. Plan-review voters use three Codex-primary slots when either external vendor is available. When both are absent, only slot 1 runs as a Claude floor voter.
 
-**Voter 1** (Claude) in the 3-voter panel is **not** an Agent-tool subagent: `python/plan_review.py` drives `python/cli.py plan-review voter-dispatch`, which launches Voter 1 through `scripts/larch.sh agent launch-claude-review` (`--role voter`, `--timing-task-kind claude-plan-voter`). The prompt and rubric match the historical Agent-tool contract, but execution is subprocess-scoped like other Rust-owned Claude-review lanes.
+The Claude floor voter is **not** an Agent-tool subagent: `python/plan_review.py` drives `scripts/larch.sh plan-review voter-dispatch`, whose shared waterfall owner launches Claude through `scripts/larch.sh agent launch-claude-review`. The prompt and rubric match the historical Agent-tool contract, but execution is subprocess-scoped like other Rust-owned Claude-review lanes.
 
 Use the Code Reviewer archetype from `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md`, filling in the variables for **plan review**:
 
@@ -105,13 +105,13 @@ Use the Code Reviewer archetype from `${CLAUDE_PLUGIN_ROOT}/skills/shared/review
   ```
 - **`{OUTPUT_INSTRUCTION}`** = `"What the concern is"` + `"Suggested revision to the plan"`
 
-Plan-review **reviewer** panels dispatch with `--no-fallback`; missing vendors drop rows instead of cross-vendor or Claude reviewer backfill (see `docs/review-agents.md`). **Voter 1** is launched by `python/cli.py plan-review voter-dispatch` via `scripts/larch.sh agent launch-claude-review`; do not use a separate Agent-tool vote. Plan-review reviewers do not receive a competition notice; that surface is code-review-only via `python/cli.py render specialist --competition-notice`.
+Plan-review **reviewer** panels dispatch with `--no-fallback`; missing vendors drop rows instead of cross-vendor or Claude reviewer backfill (see `docs/review-agents.md`). `scripts/larch.sh plan-review voter-dispatch` owns all plan-review voter launches, including the one-Claude floor when both external vendors are absent; do not use a separate Agent-tool vote. Plan-review reviewers do not receive a competition notice; that surface is code-review-only via `python/cli.py render specialist --competition-notice`.
 
 ---
 
 ## Voter prompts
 
-Voter prompts are emitted at runtime by `python/cli.py render voter` through `python/cli.py plan-review voter-dispatch`. Do not duplicate them here; rubric prose lives in `skills/shared/review-acceptance-rubric.md`, `skills/shared/oos-acceptance-rubric.md`, and `skills/shared/voting-protocol.md`.
+Voter prompts are emitted at runtime by `python/cli.py render voter` through `scripts/larch.sh plan-review voter-dispatch`. Do not duplicate them here; rubric prose lives in `skills/shared/review-acceptance-rubric.md`, `skills/shared/oos-acceptance-rubric.md`, and `skills/shared/voting-protocol.md`.
 
 ---
 

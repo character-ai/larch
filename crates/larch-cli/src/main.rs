@@ -72,6 +72,7 @@ mod learn_from_bugs_commands;
 mod migration_audit_commands;
 mod oos_commands;
 mod oos_file_commands;
+mod plan_review_commands;
 mod progress_commands;
 mod push_network;
 mod push_rebase;
@@ -130,6 +131,7 @@ use complete_umbrella_commands::CompleteUmbrellaCommand;
 use developer_tooling_commands::{AliasCommand, ResidualBashCommand, VerifyCommand};
 use external_defaults_commands::ExternalDefaultsCommand;
 use git_commands::GitCommand;
+use plan_review_commands::PlanReviewCommand;
 use rebalance_tests::RebalanceTestsCommand;
 use repo_size_commands::RepoCommand;
 use review_commands::ReviewCommand;
@@ -159,6 +161,9 @@ enum Domain {
     /// Review pipeline commands.
     #[command(subcommand)]
     Review(ReviewCommand),
+    /// Plan-review panel and voter dispatch commands.
+    #[command(subcommand, name = "plan-review")]
+    PlanReview(PlanReviewCommand),
     /// Alias generation and target-resolution helpers.
     #[command(subcommand)]
     Alias(AliasCommand),
@@ -1636,6 +1641,7 @@ fn run(
         Domain::VoterCalibration(VoterCalibrationCommand::Snapshot(arguments)) => Ok(
             calibration_commands::voter_calibration_snapshot(&arguments.arguments),
         ),
+        Domain::PlanReview(command) => Ok(plan_review_commands::run(command)),
         Domain::Alias(command) => Ok(developer_tooling_commands::run_alias(command)),
         Domain::Bootstrap(BootstrapCommand::Invoke(arguments)) => {
             Ok(bootstrap_commands::invoke(&arguments.arguments))

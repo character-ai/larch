@@ -10,7 +10,7 @@ import pytest
 
 from larch.agents import _launch_failure
 from larch.core import config, proc
-from larch.review import _voting_calibration, dispatch_shared, plan_review_panel
+from larch.review import _voting_calibration, dispatch_shared
 
 
 def _result(argv: Sequence[str], returncode: int = 0, stdout: str = "") -> proc.CommandResult:
@@ -75,20 +75,6 @@ def test_dispatch_state_and_path_wire_preserve_absence(tmp_path: Path) -> None:
     assert state.voter_1_path == vote
     assert dispatch_shared.path_for_wire(state.voter_2_path) == ""
     assert dispatch_shared.path_for_wire(None) != "."
-
-
-def test_plan_review_binding_absence_keeps_placeholder_paths(tmp_path: Path) -> None:
-    policies = dispatch_shared.topology_voter_policies("design.plan_voters")
-    state = plan_review_panel._state_from_bindings(  # pyright: ignore[reportPrivateUsage]
-        design=tmp_path,
-        policies=policies,
-        bindings={},
-        launched_policies=policies[:1],
-    )
-    assert state.voter_1_path == tmp_path / policies[0].output_name
-    assert state.voter_2_path == tmp_path / policies[1].output_name
-    assert state.voter_1_status == "failed"
-    assert state.voter_2_status == "skipped"
 
 
 def test_manifest_attribution_uses_explicit_role_and_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -387,15 +373,3 @@ def test_final_emitter_rejects_injected_wire_rows_before_emitting(tmp_path: Path
             emit_kv=capture,
         )
     assert emitted == []
-
-
-def test_plan_trailing_kvs_use_logging_contract_stream(monkeypatch: pytest.MonkeyPatch) -> None:
-    emitted: list[tuple[str, str]] = []
-
-    def capture(*, key: str, value: str) -> None:
-        emitted.append((key, value))
-
-    monkeypatch.setattr(plan_review_panel.logging_util, "emit_kv", capture)
-    plan_review_panel._emit(key="VOTER_1_RETRIED", value="false")  # pyright: ignore[reportPrivateUsage]
-    plan_review_panel._emit(key="DEGRADED_PANEL", value="1")  # pyright: ignore[reportPrivateUsage]
-    assert emitted == [("VOTER_1_RETRIED", "false"), ("DEGRADED_PANEL", "1")]

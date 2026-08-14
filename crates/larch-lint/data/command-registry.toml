@@ -4962,11 +4962,13 @@ verb = "panel-dispatch"
 python_module = "larch.review.plan_review_panel"
 python_function = "dispatch_panel_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8446
+clean_install_test = "clean-install-plan-review-panel-dispatch"
 
 [[commands]]
 domain = "plan-review"
@@ -5226,11 +5228,13 @@ verb = "voter-dispatch"
 python_module = "larch.review.plan_review_panel"
 python_function = "dispatch_voters_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8446
+clean_install_test = "clean-install-plan-review-voter-dispatch"
 
 [[commands]]
 domain = "plan-review"
@@ -9043,12 +9047,6 @@ python = []
 rust = ["stall-recovery record-escalation"]
 
 [[callers]]
-path = "python/larch/review/plan_review_panel.py"
-kind = "python-runtime"
-python = []
-rust = ["agent dispatch-waterfall", "agent launch-claude-review", "review reviewer-prune", "voter-calibration snapshot", "voting degraded-warning", "voting effective-judges", "voting parse-rate-retry"]
-
-[[callers]]
 path = "python/larch/review/plan_review_round.py"
 kind = "python-runtime"
 python = []
@@ -9213,8 +9211,8 @@ rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps 
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally"]
-rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "named-block write", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
+python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally"]
+rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "named-block write", "plan-review panel-dispatch", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -9303,8 +9301,8 @@ rust = []
 [[callers]]
 path = "skills/design/references/plan-review-runtime.md"
 kind = "skill"
-python = ["decompose panel-dispatch", "plan-review panel-dispatch", "plan-review preview", "plan-review run", "plan-review step3-entry-preview", "plan-review voter-dispatch", "render plan-review", "render specialist", "render voter", "scout filter-manifest"]
-rust = ["agent dispatch-waterfall", "agent launch-claude-review", "bgjob wait"]
+python = ["decompose panel-dispatch", "plan-review preview", "plan-review run", "plan-review step3-entry-preview", "render plan-review", "render specialist", "render voter", "scout filter-manifest"]
+rust = ["agent launch-claude-review", "bgjob wait", "plan-review panel-dispatch", "plan-review voter-dispatch"]
 
 [[callers]]
 path = "skills/design/references/plan-review.md"
@@ -10071,14 +10069,14 @@ rust = ["alias generate", "session setup", "verify skill-called"]
 [[callers]]
 path = "skills/shared/topology.tsv"
 kind = "skill"
-python = ["plan-review panel-dispatch"]
-rust = []
+python = []
+rust = ["plan-review panel-dispatch"]
 
 [[callers]]
 path = "skills/shared/voting-protocol.md"
 kind = "skill"
-python = ["plan-review tally", "plan-review voter-dispatch", "render voter", "review tally-code-votes"]
-rust = ["agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review", "oos file", "voting code-review-classification-header", "voting findings-classification-header"]
+python = ["plan-review tally", "render voter", "review tally-code-votes"]
+rust = ["agent dispatch-voters", "agent launch-codex-exec", "oos file", "plan-review voter-dispatch", "voting code-review-classification-header", "voting findings-classification-header"]
 
 [[callers]]
 path = "skills/status/SKILL.md"

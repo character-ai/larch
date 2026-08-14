@@ -151,7 +151,7 @@ drops that were never persisted (#3392, #3423, #5047, #5529). Mechanical
 backing: per-slot prune ledgers and manifests such as
 `reviewer-prune-ledger.tsv`, `*-slots.ndjson`, and dropped-slot sidecars, plus
 drop-path coverage in `python/tests/review/test_plan_review_round.py`,
-`python/tests/review/test_plan_review_panel.py`, and the agent waterfall tests.
+`scripts/test-plan-review-dispatch.sh`, and the agent waterfall tests.
 
 ## Agent contracts
 

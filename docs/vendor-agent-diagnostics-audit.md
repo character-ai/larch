@@ -64,7 +64,7 @@ unmigrated launcher commands); **R** = residual gap named below.
 | `scripts/larch.sh agent launch-cursor-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | As codex CI launcher. |
 | `scripts/larch.sh agent launch-claude-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | Direct-Claude CI lane via `scripts/larch.sh agent launch-claude-subprocess` (carrier saved). |
 | `python/cli.py agent launch-codex-exec` | ✅ inherit | ✅ backstop | R batch | **I/R** | Wrapper path inherits; preflight/no-wrapper exits are a residual carrier gap. |
-| `python/cli.py plan-review voter-dispatch` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter launches inherit the carrier; dropped-slot give-up batch append is residual. |
+| `scripts/larch.sh plan-review voter-dispatch` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter launches inherit the carrier; dropped-slot give-up batch append is residual. |
 | `scripts/larch.sh agent dispatch-voters` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter 1 failure site token: `agent dispatch-voters voter1`. |
 | `scripts/larch.sh agent dispatch-waterfall` | ✅ inherit | ✅ backstop | R batch | **I/R** | Waterfall dropped-slot output-path exposure is residual. |
 | `python/cli.py review-and-fix apply-findings` | ✅ inherit | ✅ backstop | R batch | **I/R** | `run_coder_dispatch_*` give-up inherits; per-tool sink + batch append is residual. |

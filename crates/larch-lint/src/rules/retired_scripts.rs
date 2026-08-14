@@ -22,10 +22,7 @@ const NAME: &str = "retired-scripts";
 const DESCRIPTION: &str = "Reject references to retired script paths";
 const MANIFEST_PATH: &str = "python/migrated-scripts.tsv";
 const IMPLEMENT_SKILL_PATH: &str = "skills/implement/SKILL.md";
-const EMBEDDED_LEGACY_MODULES: [&str; 2] = [
-    "python/larch/review/plan_review.py",
-    "python/larch/review/plan_review_panel.py",
-];
+const EMBEDDED_LEGACY_MODULES: [&str; 1] = ["python/larch/review/plan_review.py"];
 
 pub static METADATA: RuleMetadata = RuleMetadata::new(
     NAME,

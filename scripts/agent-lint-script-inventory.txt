@@ -50,6 +50,7 @@ scripts/test-legacy-title-prefix-literals-scope.sh
 scripts/test-orchestrator-scope-sync.sh
 scripts/test-pipe-sigpipe-safety.sh
 scripts/test-plan-adequacy-audit.sh
+scripts/test-plan-review-dispatch.sh
 scripts/test-prompt-template-invariants.sh
 scripts/test-quick-mode-docs-sync.sh
 scripts/test-read-result-env.sh

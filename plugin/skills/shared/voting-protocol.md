@@ -52,16 +52,18 @@ Valid vote tokens are `YES` and `NO`; legacy stray `EXONERATE` maps to `NO`. If 
 | 1 | 1 | Binding single-judge decision; YES accepts, NO rejects |
 | 0 | Main agent decides | No automated vote; main agent reads ballot as untrusted data and adjudicates |
 
-Dispatchers warn when effective voters fall below the expected panel size. For `/review` and `/implement` Step 5, expected size is the three-slot code-review panel when Cursor or Codex lanes are available, or **one Claude fallback voter** when neither external lane is active. Code-review voters waterfall Codex, then Cursor, then Claude. A single-Claude fallback is intentional and warns only if that expected judge fails. (`/design` still back-fills unavailable externals to keep expected size three.) `effective` means not `failed` and substantive enough to contribute valid vote lines after retries. On the three-slot code-review path, `ELIGIBLE_VOTERS` and `EFFECTIVE_VOTERS` count only substantive non-empty voter files after parse-rate removal; empty placeholders keep `vN_tool` attribution but do not inflate quorum.
+Dispatchers warn when effective voters fall below the expected panel size. For `/design`, `/review`, and `/implement` Step 5, expected size is three when Cursor or Codex lanes are available, or **one Claude fallback voter** when neither external lane is active. Voters waterfall Codex, then Cursor, then Claude. The code-review single-Claude floor warns only if that expected judge fails; plan review preserves its `1/3 ... quota hit` warning even when the floor succeeds. `effective` means not `failed` and substantive enough to contribute valid vote lines after retries. On the three-slot path, `ELIGIBLE_VOTERS` and `EFFECTIVE_VOTERS` count only substantive non-empty voter files after parse-rate removal; empty placeholders keep `vN_tool` attribution but do not inflate quorum.
 
 After thresholding, each finding becomes `accepted`, `neutral` (≥1 YES but below threshold; -0.25 points unless neutral rescue routes it to OOS), or `rejected` (0 YES; −1 point). `python/voting.py::classify_result` owns classification; tally scripts map labels to KV and JSON at emission. Neutral rescue keeps `Result=neutral` in the vote table, but routes a single-YES `major` neutral to OOS artifacts with `scope=oos`. Single-YES `minor`, `nit`, missing, or invalid severities stay dropped.
 
 ## Voter Panel Composition
 
 **For plan review** (`/design` Step 3):
-- **Voter 1**: Claude — via `python/cli.py plan-review voter-dispatch` → `scripts/larch.sh agent launch-claude-review --role voter` (always launched; model resolved from `LARCH_VOTER_MODEL`, default `claude-sonnet-4-6`)
-- **Voter 2**: Codex — via `python/cli.py plan-review voter-dispatch` → `scripts/larch.sh agent dispatch-waterfall` → `scripts/larch.sh agent launch-review` (waterfalls Codex, then Cursor, then Claude)
-- **Voter 3**: Cursor — via `python/cli.py plan-review voter-dispatch` → `scripts/larch.sh agent dispatch-waterfall` → `scripts/larch.sh agent launch-review` (waterfalls Cursor, then Codex, then Claude)
+- **Voter 1** (`v1`): `codex-validity`: `render voter --voter-tool <active-tool>`
+- **Voter 2** (`v2`): `codex-plan-fidelity`: `render voter --voter-tool <active-tool>`
+- **Voter 3** (`v3`): `codex-pragmatism`: `render voter --voter-tool <active-tool>`
+
+`scripts/larch.sh plan-review voter-dispatch` launches the same Codex-primary waterfall as the code-review panel below. If both external tools are unavailable, it launches one Claude floor voter at slot 1 and emits failed, `not-run` placeholders for slots 2 and 3.
 
 **For code review** (`/review` Step 3 and `/implement` Step 5): `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent dispatch-voters` launches three fixed voter slots, using **canonical slot indexing** (`v1`/`v2`/`v3` always map to validity/plan-fidelity/pragmatism, never to compacted surviving voters). All three voters use Codex-primary waterfall dispatch (Codex, then Cursor, then Claude) and may fall through to the configured external fallback labels:
 - **Voter 1** (`v1`): `codex-validity`: `render voter --archetype validity-correctness`
@@ -113,9 +115,9 @@ You must vote on every item. Do NOT skip any. Do NOT modify files.
 
 ## Launching Voters
 
-Voter dispatch is owned by Python dispatchers, not prompt-side launch scaffolding.
+Voter dispatch is owned by runtime dispatchers, not prompt-side launch scaffolding.
 
-- `/design` plan review voter dispatch is owned by `python/cli.py plan-review voter-dispatch`.
+- `/design` plan review voter dispatch is owned by `scripts/larch.sh plan-review voter-dispatch` in `crates/larch-cli/src/plan_review_commands.rs`.
 - `/review` and `/implement` Step 5 code-review voter dispatch is owned by `scripts/larch.sh agent dispatch-voters`.
 - Tally ownership remains with the existing Python tally verbs, including `python/cli.py plan-review tally` and `python/cli.py review tally-code-votes`.
 - The live Codex dispatch surface and output stem are documentary tokens here only: `${CLAUDE_PLUGIN_ROOT:?}/scripts/larch.sh agent launch-codex-exec` and `codex-vote-output.txt`.

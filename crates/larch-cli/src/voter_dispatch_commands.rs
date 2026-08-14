@@ -95,25 +95,25 @@ const USAGE: &str = concat!(
 );
 
 /// One fixed voter slot, resolved from the `review.voters` topology role.
-struct VoterPolicy {
+pub struct VoterPolicy {
     /// Manifest slot name the waterfall binds outputs back to.
-    slot_name: &'static str,
+    pub slot_name: &'static str,
     /// Vendor phase one dispatches this slot to.
-    primary_tool: &'static str,
+    pub primary_tool: &'static str,
     /// Wire tool label a skipped or failed slot reports.
-    default_label: &'static str,
+    pub default_label: &'static str,
     /// Voter archetype the prompt renders.
-    archetype: &'static str,
+    pub archetype: &'static str,
     /// Prompt-file and artifact prefix.
-    prompt_label: &'static str,
+    pub prompt_label: &'static str,
     /// Output basename inside the review tmpdir.
-    output_name: &'static str,
+    pub output_name: &'static str,
     /// Wire tool label per launched vendor.
-    semantic_labels: &'static [(&'static str, &'static str)],
+    pub semantic_labels: &'static [(&'static str, &'static str)],
 }
 
-/// The three code-review voter slots, in canonical wire order.
-const VOTER_POLICIES: [VoterPolicy; 3] = [
+/// The three shared review voter slots, in canonical wire order.
+pub const VOTER_POLICIES: [VoterPolicy; 3] = [
     VoterPolicy {
         slot_name: "voter-1",
         primary_tool: "codex",
@@ -330,7 +330,12 @@ fn run(options: &Options) -> ExitCode {
     write_confined(&manifest, &manifest_rows(options, launched, &prompts));
     let prep_end = unix_seconds();
     let waterfall = dispatch_waterfall(options, &manifest, &context, &plugin_root);
-    record_prep_span(options, prep_start, prep_end);
+    record_prep_span(
+        &options.review_tmpdir,
+        options.round_num,
+        prep_start,
+        prep_end,
+    );
     publish(options, launched, &manifest, &waterfall, &context)
 }
 
@@ -418,7 +423,7 @@ fn bounded_copy(options: &Options, label: &str, source: &str, max_bytes: u64) ->
 }
 
 /// Seconds since the epoch, as the timing ledger records them.
-fn unix_seconds() -> u64 {
+pub fn unix_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_secs())
@@ -428,22 +433,29 @@ fn unix_seconds() -> u64 {
 // Calibration snapshot
 // ---------------------------------------------------------------------------
 
-/// Publish a nonempty voter-calibration snapshot beside the review tmpdir.
-///
-/// A stale snapshot is worse than none: the previous run's file is removed
-/// first, and a failed or empty refresh leaves the calibration flag off.
 fn fresh_calibration_snapshot(options: &Options) -> Option<String> {
-    let target = options.review_tmpdir.join("voter-calibration-stats.tsv");
+    if options.site == "calibration-replay" {
+        return None;
+    }
+    fresh_calibration_snapshot_for(&options.review_tmpdir)
+}
+
+/// Publish a fresh calibration snapshot for plan-review voters.
+pub fn fresh_plan_calibration_snapshot(review_tmpdir: &Path) -> Option<String> {
+    fresh_calibration_snapshot_for(review_tmpdir)
+}
+
+fn fresh_calibration_snapshot_for(review_tmpdir: &Path) -> Option<String> {
+    let target = review_tmpdir.join("voter-calibration-stats.tsv");
     let _removed = fs::remove_file(&target);
-    if options.site == "calibration-replay"
-        || env::var("LARCH_VOTER_CALIBRATION_FEEDBACK")
-            .unwrap_or_default()
-            .trim()
-            == "0"
+    if env::var("LARCH_VOTER_CALIBRATION_FEEDBACK")
+        .unwrap_or_default()
+        .trim()
+        == "0"
     {
         return None;
     }
-    let log_root = calibration_log_root(options)?;
+    let log_root = calibration_log_root(review_tmpdir)?;
     let window = env::var("LARCH_VOTER_CALIBRATION_WINDOW")
         .ok()
         .and_then(|value| positive_window(&value))
@@ -473,7 +485,7 @@ pub fn voter_output_name(tool: &str) -> Option<&'static str> {
 /// The environment anchors win, then the implement session that owns this
 /// review tmpdir, then the working tree. The plugin's own checkout is never a
 /// calibration corpus, so a root that resolves to it is refused.
-fn calibration_log_root(options: &Options) -> Option<PathBuf> {
+fn calibration_log_root(review_tmpdir: &Path) -> Option<PathBuf> {
     for name in ["LARCH_CONSUMER_REPO", "CLAUDE_PROJECT_DIR", "REPO_ROOT"] {
         let raw = env::var(name).unwrap_or_default();
         if raw.trim().is_empty() {
@@ -483,7 +495,7 @@ fn calibration_log_root(options: &Options) -> Option<PathBuf> {
             return Some(root.join("larch-logs"));
         }
     }
-    let session = implement_session_root(&options.review_tmpdir);
+    let session = implement_session_root(review_tmpdir);
     session
         .and_then(reject_plugin_root)
         .map(|root| root.join("larch-logs"))
@@ -568,10 +580,14 @@ struct SlotPrompts {
 ///
 /// Phase one is the slot's primary vendor when present, phase two the opposite
 /// vendor when present, and phase three always Claude.
-fn launchable_tools(policy: &VoterPolicy, options: &Options) -> Vec<&'static str> {
+pub fn launchable_tools(
+    policy: &VoterPolicy,
+    codex_available: bool,
+    cursor_available: bool,
+) -> Vec<&'static str> {
     let present = |tool: &str| match tool {
-        "codex" => options.codex_available,
-        "cursor" => options.cursor_available,
+        "codex" => codex_available,
+        "cursor" => cursor_available,
         _ => true,
     };
     let mut tools: Vec<&'static str> = Vec::new();
@@ -609,7 +625,7 @@ fn build_prompts(
     for policy in VOTER_POLICIES.iter().take(launched) {
         let mut prompt_files = BTreeMap::new();
         let mut payload_files = BTreeMap::new();
-        for tool in launchable_tools(policy, options) {
+        for tool in launchable_tools(policy, options.codex_available, options.cursor_available) {
             let prompt = options
                 .review_tmpdir
                 .join(format!("{}-vote-prompt-{tool}.txt", policy.prompt_label));
@@ -686,7 +702,7 @@ fn render_voter_prompt(
     Ok(read_payload_bytes(&sidecar))
 }
 
-fn read_payload_bytes(path: &Path) -> i64 {
+pub fn read_payload_bytes(path: &Path) -> i64 {
     fs::read_to_string(path)
         .ok()
         .and_then(|text| text.trim().parse::<i64>().ok())
@@ -758,7 +774,7 @@ const fn vote_model_for_tier(tier: &str) -> &'static str {
 }
 
 /// Resolve the model one manifest row attributes its slot to.
-fn resolved_model(tool: &str, default_model: &str) -> Option<String> {
+pub fn resolved_model(tool: &str, default_model: &str) -> Option<String> {
     let (parsed, role, flag) = match tool {
         "codex" => (
             larch_core::ModelTool::Codex,
@@ -873,7 +889,7 @@ fn waterfall_arguments(
     arguments
 }
 
-const fn bool_text(value: bool) -> &'static str {
+pub const fn bool_text(value: bool) -> &'static str {
     if value { "true" } else { "false" }
 }
 
@@ -977,11 +993,13 @@ fn build_waterfall_request(
 /// A voter stamps its own start only after the waterfall spawns it, so without
 /// this row the timing Gantt shows a blank band where the calibration
 /// snapshot, the prompt renders, and the manifest write actually ran.
-fn record_prep_span(options: &Options, start: u64, end: u64) {
-    if resolved_timing_ledger().is_none_or(|ledger| !ledger.is_file()) {
+pub fn record_prep_span(review_tmpdir: &Path, round_num: u64, start: u64, end: u64) {
+    let ledger =
+        resolved_timing_ledger().unwrap_or_else(|| review_tmpdir.join("timing-ledger.tsv"));
+    if !ledger.is_file() {
         return;
     }
-    let output = format!("voter-dispatch-prep-round-{}.out", options.round_num);
+    let output = format!("voter-dispatch-prep-round-{round_num}.out");
     crate::timing_commands::record_vendor_timing(
         "claude",
         "voter-dispatch-prep",
@@ -1125,7 +1143,7 @@ fn semantic_label<'a>(policy: &'a VoterPolicy, tool: &str) -> &'a str {
 }
 
 /// Whether one slot produced a nonempty result and a zero completion sentinel.
-fn completed(path: &str) -> bool {
+pub fn completed(path: &str) -> bool {
     if !is_nonempty(path) {
         return false;
     }
@@ -1135,7 +1153,7 @@ fn completed(path: &str) -> bool {
         .is_some_and(|first| first == "0")
 }
 
-fn is_nonempty(path: &str) -> bool {
+pub fn is_nonempty(path: &str) -> bool {
     !path.is_empty() && fs::metadata(path).is_ok_and(|meta| meta.is_file() && meta.len() > 0)
 }
 
@@ -1219,38 +1237,18 @@ fn parse_kv(output: &str) -> BTreeMap<String, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Options, VOTER_POLICIES, launchable_tools, resolved_model, semantic_label,
-        vote_model_for_tier,
+        VOTER_POLICIES, launchable_tools, resolved_model, semantic_label, vote_model_for_tier,
     };
-    use std::path::PathBuf;
-
-    fn options(codex: bool, cursor: bool) -> Options {
-        Options {
-            ballot_file: String::new(),
-            review_tmpdir: PathBuf::new(),
-            codex_available: codex,
-            cursor_available: cursor,
-            session_env_path: String::new(),
-            diff_file: String::new(),
-            plan_file: String::new(),
-            round_num: 1,
-            site: "review Step 2".to_owned(),
-            tier: String::new(),
-        }
-    }
 
     #[test]
     fn launchable_tools_follow_the_waterfall_order() {
         let policy = &VOTER_POLICIES[0];
         assert_eq!(
-            launchable_tools(policy, &options(true, true)),
+            launchable_tools(policy, true, true),
             ["codex", "cursor", "claude"]
         );
-        assert_eq!(
-            launchable_tools(policy, &options(false, true)),
-            ["cursor", "claude"]
-        );
-        assert_eq!(launchable_tools(policy, &options(false, false)), ["claude"]);
+        assert_eq!(launchable_tools(policy, false, true), ["cursor", "claude"]);
+        assert_eq!(launchable_tools(policy, false, false), ["claude"]);
     }
 
     #[test]

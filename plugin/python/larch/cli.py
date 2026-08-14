@@ -219,8 +219,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("plan-review", "await-loop-identity"): ("larch.core.process_identity", "await_loop_identity_main", False),
     ("plan-review", "teardown-loop-identity"): ("larch.core.process_identity", "teardown_loop_identity_main", False),
     ("plan-review", "normalize-status"): ("larch.review.plan_review", "normalize_step3_status_main", True),
-    ("plan-review", "panel-dispatch"): ("larch.review.plan_review_panel", "dispatch_panel_main", True),
-    ("plan-review", "voter-dispatch"): ("larch.review.plan_review_panel", "dispatch_voters_main", True),
     ("plan-review", "tally"): ("larch.review.plan_review", "tally_main", True),
     ("plan-review", "emit"): ("larch.review.plan_review", "emit_main", True),
     ("plan-review", "finalize"): ("larch.review.plan_review", "finalize_main", True),
