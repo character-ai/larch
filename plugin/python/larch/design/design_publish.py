@@ -1436,8 +1436,7 @@ def publish_core(argv: Sequence[str]) -> int:
     if design_rating is not None:
         design_tier = design_rating.adjusted_tier
         sync_args = [
-            sys.executable,
-            str(plugin_root / "python" / "cli.py"),
+            str(larch_entrypoint(plugin_root)),
             "difficulty",
             "sync-labels",
             "--issue",
@@ -1447,18 +1446,31 @@ def publish_core(argv: Sequence[str]) -> int:
         ]
         if parsed["--repo"]:
             sync_args.extend(["--repo", parsed["--repo"]])
-        _ = subprocess.run(sync_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        larch_env = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(plugin_root)}
+        _ = subprocess.run(
+            sync_args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            env=larch_env,
+        )
         raw_rating = design_tmpdir / difficulty.DESIGN_RAW_RATING_BASENAME
         record_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
         record_args = [
-            sys.executable, str(plugin_root / "python" / "cli.py"), "difficulty", "write-record",
+            str(larch_entrypoint(plugin_root)), "difficulty", "write-record",
             "--output", str(record_path), "--rater", "design", "--rater-tool", "claude",
             "--rater-model", "unknown", "--design-tier", design_tier, "--fallback-tier", design_tier,
             "--fallback-rationale", "design plan metadata",
         ]
         if raw_rating.is_file() and not raw_rating.is_symlink():
             record_args.extend(["--raw-rating-file", str(raw_rating), "--design-raw-rating-file", str(raw_rating)])
-        record = subprocess.run(record_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        record = subprocess.run(
+            record_args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            env=larch_env,
+        )
         if record.returncode == 0 and record_path.is_file():
             run_id = os.environ.get("RUN_ID", "")
             run_id_path = design_tmpdir / "run-id.txt"
