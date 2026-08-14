@@ -596,20 +596,23 @@ fn prepare_manifest(
         atomic_write(&path, manifest.canonical_json().as_bytes(), 0o600)?;
         return Ok(());
     }
-    let manifest = read_json_object(&path, "lifecycle manifest")?;
+    let mut manifest = read_json_object(&path, "lifecycle manifest")?;
     validate_manifest_identity(&manifest, context)?;
-    if validate_parent {
-        validate_manifest_parent(&manifest, parent)?;
-    }
     let needs_lifecycle_fields = manifest.get("lifecycle_schema_version").is_none();
-    if needs_lifecycle_fields {
-        update_manifest(context, &lifecycle_manifest_updates(resolution), &now())?;
-    } else if manifest.get("lifecycle_schema_version") != Some(&json!(LIFECYCLE_SCHEMA_VERSION))
-        || !manifest_matches_resolution(&manifest, resolution)
+    if !needs_lifecycle_fields
+        && (manifest.get("lifecycle_schema_version") != Some(&json!(LIFECYCLE_SCHEMA_VERSION))
+            || !manifest_matches_resolution(&manifest, resolution))
     {
         return Err(LifecycleError::new(
             "run-log publication or repository identity changed after lifecycle start",
         ));
+    }
+    if validate_parent {
+        backfill_adopted_manifest_parent(&path, &mut manifest, parent)?;
+        validate_manifest_parent(&manifest, parent)?;
+    }
+    if needs_lifecycle_fields {
+        update_manifest(context, &lifecycle_manifest_updates(resolution), &now())?;
     }
     Ok(())
 }
@@ -1148,10 +1151,7 @@ fn validate_manifest_parent(
     expected: Option<&(String, String)>,
 ) -> Result<(), LifecycleError> {
     let matches = expected.map_or_else(
-        || {
-            manifest.get("parent_skill").is_none_or(Value::is_null)
-                && manifest.get("parent_run_id").is_none_or(Value::is_null)
-        },
+        || manifest_parent_is_unset(manifest),
         |parent| {
             manifest.get("parent_skill") == Some(&json!(parent.0))
                 && manifest.get("parent_run_id") == Some(&json!(parent.1))
@@ -1163,6 +1163,30 @@ fn validate_manifest_parent(
         ));
     }
     Ok(())
+}
+
+fn backfill_adopted_manifest_parent(
+    path: &Path,
+    manifest: &mut Map<String, Value>,
+    expected: Option<&(String, String)>,
+) -> Result<(), LifecycleError> {
+    let Some(parent) = expected else {
+        return Ok(());
+    };
+    if !manifest_parent_is_unset(manifest) {
+        return Ok(());
+    }
+
+    manifest.insert("parent_skill".to_owned(), json!(parent.0));
+    manifest.insert("parent_run_id".to_owned(), json!(parent.1));
+    let document = ManifestDocument::from_value(Value::Object(manifest.clone()))
+        .map_err(|error| LifecycleError::new(error.to_string()))?;
+    atomic_write(path, document.canonical_json().as_bytes(), 0o600)
+}
+
+fn manifest_parent_is_unset(manifest: &Map<String, Value>) -> bool {
+    manifest.get("parent_skill").is_none_or(Value::is_null)
+        && manifest.get("parent_run_id").is_none_or(Value::is_null)
 }
 
 fn manifest_matches_resolution(

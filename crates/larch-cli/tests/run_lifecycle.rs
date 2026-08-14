@@ -332,6 +332,77 @@ fn persisted_context_rehydrates_in_a_later_process_without_shell_state() {
 }
 
 #[test]
+fn lifecycle_start_adopts_parentless_run_log_init_manifest() {
+    let harness = Harness::new();
+    let repo = harness.repo.to_str().expect("UTF-8 repo path");
+    let parent = harness.run(&[
+        "run-log",
+        "lifecycle-start",
+        "--repo-root",
+        repo,
+        "--skill",
+        "design",
+        "--run-id",
+        "init-parent",
+    ]);
+    assert!(
+        parent.status.success(),
+        "parent start failed: {}",
+        String::from_utf8_lossy(&parent.stderr)
+    );
+    let parent_context = output_value(&parent, "CONTEXT_FILE");
+    let log_root = harness.root.join("child-run-logs");
+    let log_root = log_root.to_str().expect("UTF-8 log root");
+    let initialized = harness.run(&[
+        "run-log",
+        "init",
+        "--log-root",
+        log_root,
+        "--skill",
+        "review",
+        "--run-id",
+        "init-child",
+        "--issue",
+        "8490",
+    ]);
+    assert!(
+        initialized.status.success(),
+        "init failed: {}",
+        String::from_utf8_lossy(&initialized.stderr)
+    );
+
+    let adopted = harness.run(&[
+        "run-log",
+        "lifecycle-start",
+        "--repo-root",
+        repo,
+        "--log-root",
+        log_root,
+        "--skill",
+        "review",
+        "--run-id",
+        "init-child",
+        "--issue",
+        "8490",
+        "--lifecycle-parent-context",
+        &parent_context,
+        "--adopt-existing",
+    ]);
+    assert!(
+        adopted.status.success(),
+        "adoption failed: {}",
+        String::from_utf8_lossy(&adopted.stderr)
+    );
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &fs::read(Path::new(log_root).join("review/init-child/manifest.json"))
+            .expect("manifest should read"),
+    )
+    .expect("manifest should decode");
+    assert_eq!(manifest["parent_skill"], "design");
+    assert_eq!(manifest["parent_run_id"], "init-parent");
+}
+
+#[test]
 fn lifecycle_start_rejects_invalid_arguments_and_missing_state() {
     let harness = Harness::new();
     let repo = harness.repo.to_str().expect("UTF-8 repo path");

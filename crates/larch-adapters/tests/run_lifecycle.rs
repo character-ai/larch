@@ -633,6 +633,42 @@ fn adoption_rehydrates_explicit_log_root_without_inherited_parent_state() {
 }
 
 #[test]
+fn adoption_backfills_parent_for_parentless_run_log_init_manifests() {
+    let harness = Harness::new();
+    let parent = harness.start(&harness.enabled, "design", "init-parent", None);
+    for (run_id, omit_parent_fields) in [("init-child-null", false), ("init-child-absent", true)] {
+        let child = harness.start(&harness.enabled, "review", run_id, None);
+        let manifest_path = child.context.run_dir.join("manifest.json");
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+        let manifest = manifest.as_object_mut().unwrap();
+        if omit_parent_fields {
+            manifest.remove("parent_skill");
+            manifest.remove("parent_run_id");
+        }
+        manifest.remove("lifecycle_schema_version");
+        fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+        fs::remove_file(&child.context_file).unwrap();
+
+        let mut adoption = harness.request(&harness.enabled, "review", run_id);
+        adoption.parent_context = Some(&parent.context_file);
+        adoption.adopt_existing = true;
+        let adopted = start(&adoption).unwrap();
+
+        assert_eq!(adopted.context, child.context);
+        assert!(adopted.context_file.is_file());
+        let repaired: serde_json::Value =
+            serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+        assert_eq!(repaired["parent_skill"], "design");
+        assert_eq!(repaired["parent_run_id"], "init-parent");
+        assert_eq!(repaired["lifecycle_schema_version"], 3);
+        let repaired_bytes = fs::read(&manifest_path).unwrap();
+        assert_eq!(start(&adoption).unwrap().context, child.context);
+        assert_eq!(fs::read(&manifest_path).unwrap(), repaired_bytes);
+    }
+}
+
+#[test]
 fn ordinary_adoption_rejects_an_omitted_existing_parent() {
     let harness = Harness::new();
     let parent = harness.start(&harness.enabled, "design", "strict-parent", None);
@@ -642,6 +678,8 @@ fn ordinary_adoption_rejects_an_omitted_existing_parent() {
         "strict-child",
         Some(&parent.context_file),
     );
+    let manifest_path = child.context.run_dir.join("manifest.json");
+    let original_manifest = fs::read(&manifest_path).unwrap();
 
     let result = start(&StartRequest {
         repo_root: &harness.repo,
@@ -659,8 +697,26 @@ fn ordinary_adoption_rejects_an_omitted_existing_parent() {
         adopt_existing: true,
     });
 
-    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("existing lifecycle parent identity mismatch")
+    );
     assert!(child.context_file.is_file());
+    assert_eq!(fs::read(&manifest_path).unwrap(), original_manifest);
+
+    let different_parent = harness.start(&harness.enabled, "design", "different-parent", None);
+    let mut mismatch = harness.request(&harness.enabled, "review", "strict-child");
+    mismatch.parent_context = Some(&different_parent.context_file);
+    mismatch.adopt_existing = true;
+    assert!(
+        start(&mismatch)
+            .unwrap_err()
+            .to_string()
+            .contains("existing lifecycle parent identity mismatch")
+    );
+    assert_eq!(fs::read(&manifest_path).unwrap(), original_manifest);
 }
 
 #[tokio::test]
