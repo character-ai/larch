@@ -16,7 +16,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NoReturn, cast
+from typing import NoReturn, TextIO, cast
 
 from larch import io as larch_io
 from larch.review import findings_ledger
@@ -129,12 +129,13 @@ class TallyResult:
     def failure(cls, message: str) -> TallyResult:
         return cls(rc=2, error=message)
 
-    def emit(self) -> None:
+    def emit(self, *, stream: TextIO | None = None) -> None:
+        """Emit the tally contract to the default or explicitly supplied stream."""
         if self.error:
             print(self.error, file=sys.stderr)
             return
         for warning in self.warnings:
-            logging_util.emit_kv(key="WARN", value=warning)
+            logging_util.emit_kv(key="WARN", value=warning, stream=stream)
         rows = (
             ("TALLY_STATUS", self.status),
             ("ACCEPTED_COUNT", self.accepted_count),
@@ -156,17 +157,45 @@ class TallyResult:
         )
         for key, value in rows:
             if value is not None:
-                logging_util.emit_kv(key=key, value=str(value) if isinstance(value, Path) else value)
+                logging_util.emit_kv(
+                    key=key,
+                    value=str(value) if isinstance(value, Path) else value,
+                    stream=stream,
+                )
         if self.status == "ok":
-            logging_util.emit_kv(key="UNDER_QUORUM_COUNT", value=len(self.under_quorum_items))
-            logging_util.emit_kv(key="UNDER_QUORUM_ITEMS", value=", ".join(self.under_quorum_items))
-        logging_util.emit_kv(key="PARSE_FAILED_COUNT", value=self.parse_failed_count)
+            logging_util.emit_kv(
+                key="UNDER_QUORUM_COUNT",
+                value=len(self.under_quorum_items),
+                stream=stream,
+            )
+            logging_util.emit_kv(
+                key="UNDER_QUORUM_ITEMS",
+                value=", ".join(self.under_quorum_items),
+                stream=stream,
+            )
+        logging_util.emit_kv(
+            key="PARSE_FAILED_COUNT",
+            value=self.parse_failed_count,
+            stream=stream,
+        )
         if self.voting_skipped_warning:
-            logging_util.emit_kv(key="VOTING_SKIPPED_WARNING", value=self.voting_skipped_warning)
+            logging_util.emit_kv(
+                key="VOTING_SKIPPED_WARNING",
+                value=self.voting_skipped_warning,
+                stream=stream,
+            )
         if self.findings_classification_tsv_file is not None:
-            logging_util.emit_kv(key="FINDINGS_CLASSIFICATION_TSV_FILE", value=str(self.findings_classification_tsv_file))
+            logging_util.emit_kv(
+                key="FINDINGS_CLASSIFICATION_TSV_FILE",
+                value=str(self.findings_classification_tsv_file),
+                stream=stream,
+            )
         if self.yield_tsv_file is not None:
-            logging_util.emit_kv(key="YIELD_TSV_FILE", value=str(self.yield_tsv_file))
+            logging_util.emit_kv(
+                key="YIELD_TSV_FILE",
+                value=str(self.yield_tsv_file),
+                stream=stream,
+            )
 
 
 def _error(message: str) -> int:
