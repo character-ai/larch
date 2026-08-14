@@ -58,12 +58,10 @@ After thresholding, each finding becomes `accepted`, `neutral` (≥1 YES but bel
 
 ## Voter Panel Composition
 
-**For plan review** (`/design` Step 3):
+**For plan review** (`/design` Step 3), `scripts/larch.sh plan-review voter-dispatch` launches the same Codex-primary waterfall as the code-review panel below. If both external tools are unavailable, it launches only slot 1 as a Claude floor voter and marks slots 2 and 3 failed, `not-run`:
 - **Voter 1** (`v1`): `codex-validity`: `render voter --voter-tool <active-tool>`
 - **Voter 2** (`v2`): `codex-plan-fidelity`: `render voter --voter-tool <active-tool>`
 - **Voter 3** (`v3`): `codex-pragmatism`: `render voter --voter-tool <active-tool>`
-
-`scripts/larch.sh plan-review voter-dispatch` launches the same Codex-primary waterfall as the code-review panel below. If both external tools are unavailable, it launches one Claude floor voter at slot 1 and emits failed, `not-run` placeholders for slots 2 and 3.
 
 **For code review** (`/review` Step 3 and `/implement` Step 5): `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent dispatch-voters` launches three fixed voter slots, using **canonical slot indexing** (`v1`/`v2`/`v3` always map to validity/plan-fidelity/pragmatism, never to compacted surviving voters). All three voters use Codex-primary waterfall dispatch (Codex, then Cursor, then Claude) and may fall through to the configured external fallback labels:
 - **Voter 1** (`v1`): `codex-validity`: `render voter --archetype validity-correctness`

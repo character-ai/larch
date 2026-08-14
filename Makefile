@@ -750,7 +750,8 @@ test-scout-dynamic-archetypes:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_plan_scout.py -q -k 'not plan_wrapper'
 
 test-dispatch-plan-voters:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_dispatch
+	cargo build --locked --package larch-cli
+	$(HARNESS_MARK) --label $@ -- env LARCH_BINARY=target/debug/larch bash scripts/test-plan-review-dispatch.sh
 
 test-prompt-template-invariants:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-prompt-template-invariants.sh
