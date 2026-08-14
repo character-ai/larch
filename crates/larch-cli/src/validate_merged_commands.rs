@@ -6,34 +6,30 @@
 
 use std::{
     collections::BTreeMap,
-    env,
     ffi::OsString,
-    fs::{self, OpenOptions},
+    fs,
     path::{Path, PathBuf},
     process::ExitCode,
 };
 
 #[cfg(unix)]
-use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
-
-#[cfg(unix)]
-use nix::fcntl::{Flock, FlockArg};
+use std::os::unix::fs::PermissionsExt as _;
 
 use chrono::Utc;
-use larch_adapters::ensure_directory_chain;
 use larch_core::private_atomic_write;
 use serde_json::{Map, Value, json};
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-    analyze_bugs_commands::{self, SweepCandidateData},
+    analysis_state,
+    analyze_bugs_commands::{self, SweepCandidateData, exact_keys},
     analyze_bugs_sweep::{
         self, emit_rows, sweep_ingest_finder, sweep_ingest_refuter, sweep_prepare,
         sweep_state_path, write_sweep_state,
     },
     argparse_compat::{
-        ParsedCommandLine, join_arguments, looks_like_option, missing, parse_with_flags,
-        split_inline_option, usage_error,
+        ParsedCommandLine, missing, parse_with_flags, split_inline_option, unrecognized_arguments,
+        usage_error,
     },
     github_repository_resolution::ambient_repo,
 };
@@ -81,10 +77,6 @@ struct ValidateMergedState {
     merge_watermark: String,
     pending_merge_shas: Vec<String>,
     unresolved_candidates: Vec<UnresolvedCandidate>,
-}
-
-struct StateSnapshot {
-    digest: String,
 }
 
 /// Dispatch `validate-merged prepare`.
@@ -263,9 +255,9 @@ fn prepare_inner(
     repo: &str,
     max_merges: usize,
 ) -> Result<Vec<(String, String)>, String> {
-    let durable_path = state_path(root)?;
+    let durable_path = analysis_state::marker_path(root, STATE_RELPATH)?;
     let durable = load_state(&durable_path, repo)?;
-    analyze_bugs_sweep::private_dir(run_dir)?;
+    analyze_bugs_commands::private_dir(run_dir)?;
     let ledger = run_dir.join("validate-merged-ledger.jsonl");
     if let Some(state) = &durable {
         write_sweep_state(
@@ -276,7 +268,7 @@ fn prepare_inner(
         )?;
     }
     let mut prepared = sweep_prepare(run_dir, &ledger, repo, max_merges)?;
-    let snapshot = state_snapshot(&durable_path)?;
+    let snapshot = analysis_state::read_snapshot(&durable_path)?;
     replace_row(
         &mut prepared.rows,
         "STATE_PATH",
@@ -304,7 +296,7 @@ fn report_inner(
 ) -> Result<(String, Vec<(String, String)>), String> {
     let artifact = analyze_bugs_commands::load_validated_sweep(run_dir)?
         .ok_or_else(|| "validated merge result is missing".to_owned())?;
-    let current = load_state(&state_path(root)?, repo)?;
+    let current = load_state(&analysis_state::marker_path(root, STATE_RELPATH)?, repo)?;
     let mut by_identity = BTreeMap::new();
     if let Some(current) = current {
         for item in current.unresolved_candidates {
@@ -381,9 +373,9 @@ fn write_state_inner(
 ) -> Result<Vec<(String, String)>, String> {
     let state =
         load_state(state_input, repo)?.ok_or_else(|| "state input is missing".to_owned())?;
-    let target = state_path(root)?;
+    let target = analysis_state::marker_path(root, STATE_RELPATH)?;
     let expected = if expected_digest.is_empty() {
-        state_snapshot(&target)?.digest
+        analysis_state::read_snapshot(&target)?.digest
     } else {
         expected_digest.to_owned()
     };
@@ -595,7 +587,7 @@ fn write_state_file(path: &Path, state: &ValidateMergedState) -> Result<(), Stri
             return Err("refusing to write duplicate pending merge SHAs".to_owned());
         }
     }
-    analyze_bugs_sweep::private_write(path, &serialize_state(state)?)
+    analyze_bugs_commands::private_write(path, &serialize_state(state)?)
 }
 
 fn serialize_state(state: &ValidateMergedState) -> Result<String, String> {
@@ -620,158 +612,14 @@ fn serialize_state(state: &ValidateMergedState) -> Result<String, String> {
     Ok(text)
 }
 
-fn state_path(root: &Path) -> Result<PathBuf, String> {
-    let storage =
-        crate::run_log_commands::resolve_enabled_storage_path(Some(root)).map_err(|error| {
-            match error {
-                crate::run_log_commands::PreflightFailure::Configuration(error) => {
-                    error.to_string()
-                }
-                crate::run_log_commands::PreflightFailure::Provider(error) => error.to_string(),
-            }
-        })?;
-    let home = env::var_os("XDG_STATE_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::var_os("HOME")
-                .filter(|value| !value.is_empty())
-                .map(|home| PathBuf::from(home).join(".local/state"))
-        })
-        .ok_or_else(|| "could not resolve analysis-state root".to_owned())?;
-    if !home.is_absolute() {
-        return Err("analysis state home must be an absolute path".to_owned());
-    }
-    let home = fs::canonicalize(&home).unwrap_or(home);
-    let client_repo = storage.client_repo.clone();
-    let storage_origin_id = storage.storage_origin_id();
-    Ok(home
-        .join("larch/analysis-state/v2")
-        .join(client_repo)
-        .join(storage_origin_id)
-        .join(STATE_RELPATH))
-}
-
-fn state_snapshot(path: &Path) -> Result<StateSnapshot, String> {
-    if has_symlink_ancestor(path) {
-        return Err(format!(
-            "refusing symlinked analysis state: {}",
-            path.display()
-        ));
-    }
-    let before = match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-            return Err(format!(
-                "analysis state is not a regular file: {}",
-                path.display()
-            ));
-        }
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(StateSnapshot {
-                digest: "missing".to_owned(),
-            });
-        }
-        Err(error) => return Err(format!("analysis state is unreadable: {error}")),
-    };
-    let data = fs::read(path).map_err(|error| format!("analysis state is unreadable: {error}"))?;
-    let after = fs::symlink_metadata(path)
-        .map_err(|error| format!("analysis state changed while reading: {error}"))?;
-    if after.file_type().is_symlink() || !after.is_file() || !same_state_metadata(&before, &after) {
-        return Err(format!(
-            "analysis state changed while reading: {}",
-            path.display()
-        ));
-    }
-    Ok(StateSnapshot {
-        digest: format!("{:x}", Sha256::digest(&data)),
-    })
-}
-
 fn write_state_locked(path: &Path, data: &[u8], expected_digest: &str) -> Result<String, String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "state path has no parent".to_owned())?;
-    ensure_directory_chain(parent).map_err(|error| error.to_string())?;
-    #[cfg(unix)]
-    fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
-        .map_err(|error| error.to_string())?;
-    let _lock = lock_state(path)?;
-    let current = state_snapshot(path)?;
-    if current.digest != expected_digest {
-        return Err(format!(
-            "analysis state changed concurrently: {}",
-            path.display()
-        ));
-    }
+    let locked = analysis_state::lock_existing(path, expected_digest)?;
     let text = std::str::from_utf8(data).map_err(|error| error.to_string())?;
-    private_atomic_write(path, text, parent).map_err(|error| error.to_string())?;
+    private_atomic_write(path, text, &locked.parent).map_err(|error| error.to_string())?;
     #[cfg(unix)]
     fs::set_permissions(path, fs::Permissions::from_mode(0o600))
         .map_err(|error| format!("could not write analysis state: {error}"))?;
     Ok(format!("{:x}", Sha256::digest(data)))
-}
-
-fn lock_state(path: &Path) -> Result<Flock<fs::File>, String> {
-    let lock = path.with_file_name(format!(
-        ".{}.lock",
-        path.file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("state")
-    ));
-    if fs::symlink_metadata(&lock).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
-        return Err(format!("could not lock analysis state: {}", path.display()));
-    }
-    let mut options = OpenOptions::new();
-    options.read(true).write(true).create(true);
-    #[cfg(unix)]
-    {
-        options.mode(0o600).custom_flags(nix::libc::O_NOFOLLOW);
-    }
-    let file = options
-        .open(&lock)
-        .map_err(|error| format!("could not lock analysis state: {error}"))?;
-    if !file
-        .metadata()
-        .map_err(|error| format!("could not lock analysis state: {error}"))?
-        .is_file()
-    {
-        return Err(format!("could not lock analysis state: {}", path.display()));
-    }
-    #[cfg(unix)]
-    fs::set_permissions(&lock, fs::Permissions::from_mode(0o600))
-        .map_err(|error| format!("could not lock analysis state: {error}"))?;
-    #[cfg(unix)]
-    Flock::lock(file, FlockArg::LockExclusive)
-        .map_err(|(_file, error)| format!("could not lock analysis state: {error}"))
-}
-
-fn same_state_metadata(before: &fs::Metadata, after: &fs::Metadata) -> bool {
-    if before.len() != after.len() || before.modified().ok() != after.modified().ok() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        before.dev() == after.dev()
-            && before.ino() == after.ino()
-            && before.mtime() == after.mtime()
-            && before.mtime_nsec() == after.mtime_nsec()
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
-}
-
-fn has_symlink_ancestor(path: &Path) -> bool {
-    let mut current = path.parent();
-    while let Some(candidate) = current {
-        if fs::symlink_metadata(candidate).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
-            return true;
-        }
-        current = candidate.parent();
-    }
-    false
 }
 
 fn resolve_repo(explicit: &str) -> Result<String, String> {
@@ -792,10 +640,6 @@ fn timestamp(value: &str, label: &str) -> Result<String, String> {
 
 fn now_utc() -> String {
     Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
-}
-
-fn exact_keys(object: &Map<String, Value>, expected: &[&str]) -> bool {
-    object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
 }
 
 fn replace_row(rows: &mut [(String, String)], key: &str, value: String) {
@@ -827,7 +671,7 @@ fn parse_command(
     if let Some(error) = parsed.value_error() {
         return Err(usage_error(usage, program, error, 2));
     }
-    if let Some(error) = strict_unrecognized(arguments, options) {
+    if let Some(error) = unrecognized_arguments(arguments, options, &["-h", "--help"]) {
         return Err(usage_error(usage, program, &error, 2));
     }
     Ok(parsed)
@@ -855,36 +699,6 @@ fn help_explicit_argument(arguments: &[OsString], usage: &str, program: &str) ->
         }
     }
     None
-}
-
-fn strict_unrecognized(arguments: &[OsString], options: &[&str]) -> Option<String> {
-    let mut unknown = Vec::new();
-    let mut positionals_only = false;
-    let mut index = 0;
-    while let Some(argument) = arguments.get(index) {
-        let text = argument.to_string_lossy();
-        if !positionals_only && text == "--" {
-            positionals_only = true;
-            unknown.push(argument.clone());
-        } else if !positionals_only {
-            let (name, inline) = split_inline_option(&text);
-            if options.contains(&name) {
-                if inline.is_none()
-                    && arguments
-                        .get(index + 1)
-                        .is_some_and(|value| !looks_like_option(value))
-                {
-                    index += 1;
-                }
-            } else if !matches!(name, "-h" | "--help") {
-                unknown.push(argument.clone());
-            }
-        } else {
-            unknown.push(argument.clone());
-        }
-        index += 1;
-    }
-    (!unknown.is_empty()).then(|| format!("unrecognized arguments: {}", join_arguments(&unknown)))
 }
 
 fn required_options(

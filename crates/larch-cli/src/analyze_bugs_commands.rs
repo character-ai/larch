@@ -1310,7 +1310,7 @@ fn added_line_count(diff: &str) -> u64 {
     .unwrap_or(u64::MAX)
 }
 
-fn repository_path_text(path: &GitPath) -> Result<String, String> {
+pub fn repository_path_text(path: &GitPath) -> Result<String, String> {
     let path = std::str::from_utf8(path.as_bytes())
         .map_err(|_| "repository path is not UTF-8 for a line-oriented artifact".to_owned())?
         .to_owned();
@@ -2585,7 +2585,7 @@ fn create_run_dir(cache_root: &Path, repo: &str) -> Result<PathBuf, String> {
     unreachable!("unbounded UUID stream always yields another candidate")
 }
 
-fn private_dir(path: &Path) -> Result<(), String> {
+pub fn private_dir(path: &Path) -> Result<(), String> {
     fs::create_dir_all(path).map_err(|error| error.to_string())?;
     let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
@@ -2597,7 +2597,7 @@ fn private_dir(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn private_write(path: &Path, text: &str) -> Result<(), String> {
+pub fn private_write(path: &Path, text: &str) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| "output path has no parent".to_owned())?;
@@ -3124,7 +3124,7 @@ fn absolute_directory(path: &Path, label: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn full_sha(value: &str) -> bool {
+pub fn full_sha(value: &str) -> bool {
     value.len() == 40
         && value
             .bytes()
@@ -4142,7 +4142,7 @@ fn parse_runtime_result(
     ))
 }
 
-fn exact_keys(object: &Map<String, Value>, expected: &[&str]) -> bool {
+pub fn exact_keys(object: &Map<String, Value>, expected: &[&str]) -> bool {
     object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
 }
 

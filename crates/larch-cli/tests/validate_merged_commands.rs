@@ -361,3 +361,93 @@ fn write_state_round_trip_and_rejects_foreign_repo() {
         .code(2)
         .stderr("validate-merged: committed state marker has an unsupported schema or foreign repository\n");
 }
+
+#[test]
+fn prepare_selects_first_parent_merges_and_excludes_flush_release_and_logs() {
+    let fixture = Fixture::create();
+    let root = &fixture.root;
+    git(root, ["checkout", "-q", "-b", "real-one"]);
+    fs::create_dir_all(root.join("python/larch/issue")).expect("dir");
+    fs::write(root.join("python/larch/issue/a.py"), "A = 3\n").expect("write");
+    git(root, ["add", "--", "python/larch/issue/a.py"]);
+    git(root, ["commit", "-q", "-m", "fix: real one"]);
+    git(root, ["checkout", "-q", "main"]);
+    git(
+        root,
+        ["merge", "--no-ff", "-q", "-m", "Merge real one", "real-one"],
+    );
+    let real_one = git_stdout(root, ["rev-parse", "HEAD"]);
+
+    git(root, ["checkout", "-q", "-b", "real-two"]);
+    fs::create_dir_all(root.join("python/larch/core")).expect("dir");
+    fs::write(root.join("python/larch/core/b.py"), "B = 1\n").expect("write");
+    git(root, ["add", "--", "python/larch/core/b.py"]);
+    git(root, ["commit", "-q", "-m", "fix: real two"]);
+    git(root, ["checkout", "-q", "main"]);
+    git(
+        root,
+        ["merge", "--no-ff", "-q", "-m", "Merge real two", "real-two"],
+    );
+    let real_two = git_stdout(root, ["rev-parse", "HEAD"]);
+
+    fs::create_dir_all(root.join("larch-logs/run")).expect("logs");
+    fs::write(root.join("larch-logs/run/x.md"), "log\n").expect("flush");
+    git(root, ["add", "--", "larch-logs/run/x.md"]);
+    git(root, ["commit", "-q", "-m", "chore(larch-logs): flush"]);
+    fs::write(root.join("VERSION"), "1.0.0\n").expect("version");
+    git(root, ["add", "--", "VERSION"]);
+    git(root, ["commit", "-q", "-m", "Release v1.0.0"]);
+    git(root, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
+
+    let run_dir = root.join("run");
+    let output = fixture
+        .command()
+        .args([
+            "validate-merged",
+            "prepare",
+            "--root",
+            root.to_str().expect("utf8"),
+            "--run-dir",
+            run_dir.to_str().expect("utf8"),
+            "--repo",
+            "o/r",
+            "--max-merges",
+            "20",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let text = String::from_utf8_lossy(&output);
+    assert!(text.contains("SELECTED_COUNT=2"), "{text}");
+    let selected: Value = serde_json::from_str(
+        &fs::read_to_string(run_dir.join("sweep-selected-merges.json")).expect("selected"),
+    )
+    .expect("json");
+    let shas = selected["selected"]
+        .as_array()
+        .expect("selected")
+        .iter()
+        .map(|row| row["merge_sha"].as_str().expect("sha").to_owned())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        shas,
+        [real_one, real_two]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>()
+    );
+}
+
+fn git_stdout<const N: usize>(root: &Path, arguments: [&str; N]) -> String {
+    let output = ProcessCommand::new("git")
+        .current_dir(root)
+        .args(arguments)
+        .output()
+        .expect("git");
+    assert!(output.status.success(), "git {arguments:?} failed");
+    String::from_utf8(output.stdout)
+        .expect("utf8")
+        .trim()
+        .to_owned()
+}

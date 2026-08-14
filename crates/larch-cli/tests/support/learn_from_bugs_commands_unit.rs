@@ -3,6 +3,7 @@ use crate::github_service::with_test_github_service;
 use larch_adapters::github::OctocrabGitHubService;
 use larch_test_support::{IssueServiceExchange, IssueServiceStub};
 use serde_json::json;
+use std::os::unix::fs::PermissionsExt as _;
 use std::sync::Arc;
 
 fn issue(number: u64, title: &str, body: &str) -> GitHubIssue {

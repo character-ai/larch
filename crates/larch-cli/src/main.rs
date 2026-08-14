@@ -21,6 +21,7 @@ use crate::argparse_compat::python_io_error;
 mod admission_commands;
 mod agent_commands;
 mod agent_review;
+mod analysis_state;
 mod analyze_bugs_commands;
 mod analyze_bugs_sweep;
 mod analyze_issues_commands;

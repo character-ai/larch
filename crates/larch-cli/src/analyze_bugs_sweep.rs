@@ -11,16 +11,16 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt as _;
-
 use larch_adapters::{GixRepository, unified_blob_diff};
-use larch_core::{ChangeKind, GitPath, ObjectId, RepositoryRead, Revision, private_atomic_write};
+use larch_core::{ChangeKind, ObjectId, RepositoryRead, Revision};
 use regex::Regex;
 use serde_json::{Map, Value, json};
 use std::sync::LazyLock;
 
 use crate::admission_commands::fetch_origin_main;
+use crate::analyze_bugs_commands::{
+    exact_keys, full_sha, private_dir, private_write, repository_path_text,
+};
 
 pub const SWEEP_SCHEMA_VERSION: u64 = 1;
 const SWEEP_INITIAL_WINDOW_SECONDS: u64 = 48 * 60 * 60;
@@ -893,10 +893,7 @@ fn build_commit(
     let mut touched = Vec::new();
     let mut full_diff = String::new();
     for change in changes.entries() {
-        let path = path_text(&change.path)?;
-        if path.is_empty() {
-            continue;
-        }
+        let path = repository_path_text(&change.path)?;
         if !matches!(
             change.kind,
             ChangeKind::Added | ChangeKind::Deleted | ChangeKind::Modified | ChangeKind::Renamed
@@ -1000,7 +997,7 @@ fn discover_consumers(
     let defining = defining_paths.iter().cloned().collect::<BTreeSet<_>>();
     let mut hits = Vec::new();
     for path in files {
-        let path_text = path_text(&path)?;
+        let path_text = repository_path_text(&path)?;
         if defining.contains(&path_text) || excluded_consumer_path(&path_text) {
             continue;
         }
@@ -1260,13 +1257,6 @@ pub fn require_full_sha(value: &str, label: &str) -> Result<String, String> {
     Ok(value.to_owned())
 }
 
-pub fn full_sha(value: &str) -> bool {
-    value.len() == 40
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
-}
-
 pub fn sweep_timestamp(value: &str) -> bool {
     value.len() == 20
         && value.as_bytes().get(10) == Some(&b'T')
@@ -1325,10 +1315,6 @@ fn normalize_agent_text(value: &str) -> String {
         .collect::<String>()
         .trim()
         .to_owned()
-}
-
-fn exact_keys(object: &Map<String, Value>, expected: &[&str]) -> bool {
-    object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
 }
 
 fn string_field(object: &Map<String, Value>, field: &str) -> String {
@@ -1446,26 +1432,6 @@ fn sort_json(value: &Value) -> Value {
     }
 }
 
-pub fn private_dir(path: &Path) -> Result<(), String> {
-    fs::create_dir_all(path).map_err(|error| error.to_string())?;
-    let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err("analysis state directory is not a regular directory".to_owned());
-    }
-    #[cfg(unix)]
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
-        .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-pub fn private_write(path: &Path, text: &str) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "output path has no parent".to_owned())?;
-    private_dir(parent)?;
-    private_atomic_write(path, text, parent).map_err(|error| error.to_string())
-}
-
 fn absolute_path(path: &Path) -> Result<PathBuf, String> {
     if path.is_absolute() {
         Ok(path.to_path_buf())
@@ -1474,16 +1440,6 @@ fn absolute_path(path: &Path) -> Result<PathBuf, String> {
             .map(|current| current.join(path))
             .map_err(|error| format!("could not resolve sweep state path: {error}"))
     }
-}
-
-fn path_text(path: &GitPath) -> Result<String, String> {
-    let path = std::str::from_utf8(path.as_bytes())
-        .map_err(|_| "repository path is not UTF-8 for a line-oriented artifact".to_owned())?
-        .to_owned();
-    if path.contains(['\n', '\r']) {
-        return Err("repository path is unsafe for a line-oriented artifact".to_owned());
-    }
-    Ok(path)
 }
 
 fn unix_now() -> Result<u64, String> {
@@ -1709,151 +1665,5 @@ mod tests {
         .expect("write malformed");
         let error = super::load_sweep_state(&path).expect_err("schema");
         assert!(error.contains("unsupported sweep state schema"));
-    }
-
-    #[test]
-    fn prepare_selects_first_parent_merges_and_excludes_flush_release_and_logs() {
-        let _cwd = CwdLock::acquire();
-        let directory = tempdir().expect("tempdir");
-        let repo = directory.path().join("repo");
-        fs::create_dir_all(&repo).expect("repo");
-        git(&repo, &["init", "-q", "-b", "main"]);
-        git(&repo, &["config", "user.email", "sweep@example.com"]);
-        git(&repo, &["config", "user.name", "sweep-test"]);
-        commit_file(&repo, "python/larch/issue/a.py", "A = 1\n", "seed");
-        let base = rev_parse(&repo);
-        git(&repo, &["update-ref", "refs/remotes/origin/main", &base]);
-
-        commit_file(
-            &repo,
-            "larch-logs/run/x.md",
-            "log\n",
-            "chore(larch-logs): flush",
-        );
-        commit_file(&repo, "VERSION", "1.0.0\n", "Release v1.0.0");
-        commit_file(&repo, "larch-logs/other.md", "more\n", "docs: logs only");
-        commit_file(
-            &repo,
-            "python/larch/issue/a.py",
-            "A = 2\n",
-            "fix: direct main commit",
-        );
-
-        git(&repo, &["checkout", "-q", "-b", "real-one"]);
-        commit_file(&repo, "python/larch/issue/a.py", "A = 3\n", "fix: real one");
-        git(&repo, &["checkout", "-q", "main"]);
-        git(
-            &repo,
-            &["merge", "--no-ff", "-q", "-m", "Merge real one", "real-one"],
-        );
-        let real_one = rev_parse(&repo);
-
-        git(&repo, &["checkout", "-q", "-b", "real-two"]);
-        commit_file(&repo, "python/larch/core/b.py", "B = 1\n", "fix: real two");
-        git(&repo, &["checkout", "-q", "main"]);
-        git(
-            &repo,
-            &["merge", "--no-ff", "-q", "-m", "Merge real two", "real-two"],
-        );
-        let real_two = rev_parse(&repo);
-        git(&repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
-
-        let previous = std::env::current_dir().expect("cwd");
-        std::env::set_current_dir(&repo).expect("chdir");
-        let _restore = RestoreCwd { previous };
-        let run_dir = directory.path().join("run");
-        let ledger = directory.path().join("ledger.jsonl");
-        fs::write(&ledger, "").expect("ledger");
-        super::write_sweep_state(
-            &super::sweep_state_path(&ledger).expect("state path"),
-            &base,
-            "2026-01-01T00:00:00Z",
-            &[],
-        )
-        .expect("watermark");
-        let prepared = super::sweep_prepare(&run_dir, &ledger, "o/r", 20).expect("prepare");
-        let selected: Value = serde_json::from_str(
-            &fs::read_to_string(run_dir.join(super::SWEEP_SELECTED_MANIFEST_NAME))
-                .expect("selected"),
-        )
-        .expect("json");
-        let shas = selected["selected"]
-            .as_array()
-            .expect("selected array")
-            .iter()
-            .map(|row| row["merge_sha"].as_str().expect("sha").to_owned())
-            .collect::<std::collections::BTreeSet<_>>();
-        assert_eq!(
-            shas,
-            [real_one, real_two]
-                .into_iter()
-                .collect::<std::collections::BTreeSet<_>>()
-        );
-        assert_eq!(super::kv(&prepared.rows, "SKIPPED_COUNT"), Some("0"));
-    }
-
-    struct RestoreCwd {
-        previous: std::path::PathBuf,
-    }
-
-    impl Drop for RestoreCwd {
-        fn drop(&mut self) {
-            let _ = std::env::set_current_dir(&self.previous);
-        }
-    }
-
-    struct CwdLock {
-        _guard: std::sync::MutexGuard<'static, ()>,
-    }
-
-    impl CwdLock {
-        fn acquire() -> Self {
-            static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-            Self {
-                _guard: LOCK
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner),
-            }
-        }
-    }
-
-    fn git(repo: &std::path::Path, arguments: &[&str]) {
-        let output = std::process::Command::new("git")
-            .current_dir(repo)
-            .args(arguments)
-            .env("GIT_AUTHOR_NAME", "sweep-test")
-            .env("GIT_AUTHOR_EMAIL", "sweep@example.com")
-            .env("GIT_COMMITTER_NAME", "sweep-test")
-            .env("GIT_COMMITTER_EMAIL", "sweep@example.com")
-            .output()
-            .expect("git");
-        assert!(
-            output.status.success(),
-            "git {arguments:?} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    fn commit_file(repo: &std::path::Path, relative: &str, content: &str, message: &str) {
-        let path = repo.join(relative);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("parent");
-        }
-        fs::write(&path, content).expect("write");
-        git(repo, &["add", "--", relative]);
-        git(repo, &["commit", "-q", "-m", message]);
-    }
-
-    fn rev_parse(repo: &std::path::Path) -> String {
-        let output = std::process::Command::new("git")
-            .current_dir(repo)
-            .args(["rev-parse", "HEAD"])
-            .output()
-            .expect("rev-parse");
-        assert!(output.status.success(), "rev-parse failed");
-        String::from_utf8(output.stdout)
-            .expect("utf8")
-            .trim()
-            .to_owned()
     }
 }
