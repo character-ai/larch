@@ -1147,6 +1147,18 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "analyze",
     ),
     CleanInstallCase::new("clean-install-repo-size", "repo", "size"),
+    CleanInstallCase::new("clean-install-research-banner", "research", "banner"),
+    CleanInstallCase::new(
+        "clean-install-research-render-findings-batch",
+        "research",
+        "render-findings-batch",
+    ),
+    CleanInstallCase::new("clean-install-research-run-planner", "research", "run-planner"),
+    CleanInstallCase::new(
+        "clean-install-research-validate-citations",
+        "research",
+        "validate-citations",
+    ),
     CleanInstallCase::new(
         "clean-install-residual-bash-paths",
         "residual-bash",

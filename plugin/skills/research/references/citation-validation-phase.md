@@ -27,7 +27,7 @@ The empty-synthesis path is reachable when Step 1 inline-fallback synthesis fail
 Invoke the Python validator (it owns argv, SSRF, DNS, TLS, regex, and sidecar contracts):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" research validate-citations \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" research validate-citations \
   --report "$RESEARCH_TMPDIR/research-report.txt" \
   --output "$RESEARCH_TMPDIR/citation-validation.md" \
   --tmpdir "$RESEARCH_TMPDIR"
@@ -88,7 +88,7 @@ The script's stdout summary (parsed by the orchestrator from the validator's las
 
 ## 2.5.6 — Step 3 splice contract
 
-Step 3 (final-report write) is the sole consumer of the sidecar. After writing the report block to `research-report-final.md` and BEFORE the helper-driven sidecar generation (`python/cli.py research render-findings-batch`), Step 3:
+Step 3 (final-report write) is the sole consumer of the sidecar. After writing the report block to `research-report-final.md` and BEFORE the helper-driven sidecar generation (`scripts/larch.sh research render-findings-batch`), Step 3:
 
 1. Checks `$RESEARCH_TMPDIR/citation-validation.md` exists and is non-empty.
 2. Appends the sidecar's full content to `research-report-final.md` with a single blank line separator. The sidecar already opens with `## Citation Validation` so no extra header is added.

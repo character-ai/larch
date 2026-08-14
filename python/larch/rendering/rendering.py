@@ -10,13 +10,11 @@ import contextlib
 import hashlib
 import os
 import re
-import string
 import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Sequence
 
 from larch.calibration import difficulty
 from larch.core import architectural_guidelines
@@ -61,172 +59,6 @@ Apply the full Review Acceptance Rubric. Prioritize **is it worth it**. Vote NO 
 }
 
 
-# Shared findings-batch rendering helpers used by /research. Keep these pure:
-# python/research.py owns CLI parsing and file IO.
-_FINDINGS_END_HEADERS = (
-    "### Risk Assessment",
-    "### Difficulty Estimate",
-    "### Feasibility Verdict",
-    "### Key Files and Areas",
-    "### Open Questions",
-)
-
-
-def extract_markdown_section(*, text: str, start_header: str, end_headers: Sequence[str] = _FINDINGS_END_HEADERS) -> str:
-    """Return a fenced-aware markdown section body without the start header."""
-    lines = text.splitlines()
-    in_section = False
-    in_fence = False
-    out: list[str] = []
-    end_set = set(end_headers)
-    for line in lines:
-        if re.match(r"^[ \t]*```", line):
-            if in_section:
-                out.append(line)
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            if in_section:
-                out.append(line)
-            continue
-        if not in_section:
-            if line == start_header:
-                in_section = True
-            continue
-        if line.startswith("## ") or line in end_set:
-            break
-        out.append(line)
-    return "\n".join(out)
-
-
-def strip_outer_blank_lines(text: str) -> str:
-    """Trim only leading and trailing blank lines."""
-    lines = text.splitlines()
-    start = 0
-    end = len(lines)
-    while start < end and not lines[start].strip():
-        start += 1
-    while end > start and not lines[end - 1].strip():
-        end -= 1
-    return "\n".join(lines[start:end])
-
-
-def flatten_metadata(*, text: str, header: str, default: str = "N/A", joiner: str = " ") -> str:
-    """Extract a section and flatten non-empty lines into one metadata value."""
-    body = strip_outer_blank_lines(extract_markdown_section(text=text, start_header=header))
-    if not body:
-        return default
-    values: list[str] = []
-    for line in body.splitlines():
-        value = re.sub(r"^[ \t]*[-*][ \t]*", "", line)
-        value = re.sub(r"^[ \t]*>[ \t]*", "", value).strip()
-        if value:
-            values.append(value)
-    if not values:
-        return default
-    return joiner.join(values)
-
-
-def split_finding_items(findings_text: str) -> list[str]:
-    """Split a Findings Summary body using numbered, bullet, then paragraph heuristics."""
-    text = strip_outer_blank_lines(findings_text)
-    if not text:
-        return []
-    items: list[str] = []
-    current: list[str] = []
-    mode = ""
-    base_indent = 0
-    in_fence = False
-
-    def emit_current() -> None:
-        nonlocal current
-        item = strip_outer_blank_lines("\n".join(current))
-        if item:
-            items.append(item)
-        current = []
-
-    for line in text.splitlines():
-        if re.match(r"^```", line):
-            in_fence = not in_fence
-            current.append(line)
-            continue
-        if in_fence:
-            current.append(line)
-            continue
-        if re.match(r"^####\s+subquestion\s+[0-9]+", line, re.IGNORECASE):
-            emit_current()
-            base_indent = 0
-            continue
-        is_numbered = re.match(r"^[ \t]*[0-9]+\.[ \t]", line) is not None
-        is_bulleted = re.match(r"^[ \t]{0,2}[-*][ \t]", line) is not None
-        indent_match = re.match(r"^[ \t]+", line)
-        indent = len(indent_match.group(0)) if indent_match else 0
-        if not mode:
-            if is_numbered:
-                mode = "numbered"
-                current = [line]
-                base_indent = indent
-                continue
-            if is_bulleted:
-                mode = "bulleted"
-                current = [line]
-                base_indent = indent
-                continue
-            if line.strip():
-                mode = "paragraph"
-                current = [line]
-            continue
-        if not current and (is_numbered or is_bulleted):
-            mode = "numbered" if is_numbered else "bulleted"
-            current = [line]
-            base_indent = indent
-            continue
-        if (is_numbered or is_bulleted) and indent <= base_indent:
-            emit_current()
-            mode = "numbered" if is_numbered else "bulleted"
-            current = [line]
-            base_indent = indent
-            continue
-        if mode == "paragraph" and not line.strip():
-            emit_current()
-            base_indent = 0
-            continue
-        current.append(line)
-    emit_current()
-    return items
-
-
-def finding_title_from_body(*, body: str, index: int, max_len: int = 80) -> str:
-    """Derive a stable issue title from the first finding sentence."""
-    first = body.splitlines()[0] if body.splitlines() else ""
-    first = re.sub(r"^[ \t]*[0-9]+\.[ \t]+", "", first)
-    first = re.sub(r"^[ \t]*[-*][ \t]+", "", first).strip()
-    sentence = first
-    for i in range(len(first) - 1):
-        if first[i] in ".!?" and first[i + 1] == " ":
-            sentence = first[:i]
-            break
-    if len(sentence) > max_len:
-        sentence = sentence[:max_len]
-    sentence = sentence.rstrip(string.whitespace + string.punctuation)
-    return sentence or f"Finding {index}"
-
-
-def escape_issue_body_lines(body: str) -> str:
-    """Escape body lines that would look like generic issue-batch headings."""
-    out: list[str] = []
-    in_fence = False
-    for line in body.splitlines():
-        if re.match(r"^[ \t]*```", line):
-            in_fence = not in_fence
-            out.append(line)
-        elif not in_fence and re.match(r"^###[ \t]", line):
-            out.append("\\" + line)
-        else:
-            out.append(line)
-    return "\n".join(out)
-
-
 def render_findings_view(*, run_dir: Path, view: str = "all") -> tuple[int, str, str]:
     if view not in {"accepted", "rejected", "oos", "all"}:
         return 1, "", f"render findings-view: unknown view {view} (accepted|rejected|oos|all)"
@@ -266,72 +98,6 @@ def render_findings_view_main(argv: list[str] | None = None) -> int:
     if stderr:
         print(stderr, file=sys.stderr)
     return rc
-
-
-def render_issue_batch_items(
-    items: Sequence[str],
-    *,
-    risk: str,
-    difficulty: str,
-    feasibility: str,
-    files_touched: str,
-    open_questions: str,
-    branch: str,
-    commit: str,
-    research_question: str,
-    timestamp: str,
-) -> str:
-    """Render generic `### <title>` issue-batch markdown for findings."""
-    chunks: list[str] = []
-    for i, item in enumerate(items, start=1):
-        title = finding_title_from_body(body=item, index=i)
-        prose = escape_issue_body_lines(item)
-        chunk = (
-            f"### {title}\n\n"
-            f"**Source**: /research output, branch `{branch}` at `{commit}`, run {timestamp}\n"
-            f"**Risk**: {risk}\n"
-            f"**Difficulty**: {difficulty}\n"
-            f"**Feasibility**: {feasibility}\n"
-            f"**Files touched**: {files_touched}\n\n"
-            f"{prose}\n"
-        )
-        if open_questions:
-            chunk += f"\n**Open questions** (if any): {open_questions}\n"
-        chunk += f"\n---\n*This issue was filed from /research output. Audit context: {research_question}*\n\n"
-        chunks.append(chunk)
-    return "".join(chunks)
-
-
-def render_findings_issue_batch(
-    report_text: str,
-    *,
-    research_question: str,
-    branch: str,
-    commit: str,
-    timestamp: str,
-) -> tuple[int, str, bool]:
-    """Render /research findings. Returns (count, markdown, section_absent)."""
-    findings = extract_markdown_section(text=report_text, start_header="### Findings Summary")
-    section_absent = "### Findings Summary" not in report_text.splitlines()
-    items = split_finding_items(findings)
-    if not items:
-        return 0, "", section_absent
-    return (
-        len(items),
-        render_issue_batch_items(
-            items,
-            risk=flatten_metadata(text=report_text, header="### Risk Assessment"),
-            difficulty=flatten_metadata(text=report_text, header="### Difficulty Estimate"),
-            feasibility=flatten_metadata(text=report_text, header="### Feasibility Verdict"),
-            files_touched=flatten_metadata(text=report_text, header="### Key Files and Areas", joiner=", "),
-            open_questions=flatten_metadata(text=report_text, header="### Open Questions", default="", joiner="; "),
-            branch=branch,
-            commit=commit,
-            research_question=research_question,
-            timestamp=timestamp,
-        ),
-        section_absent,
-    )
 
 
 class UsageError(ValueError):

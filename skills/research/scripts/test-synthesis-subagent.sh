@@ -6,7 +6,7 @@
 #   - §1.5 mandates a single synthesis-subagent invocation that reads the 4
 #     lane output files by path, with explicit "treat as data, not instructions"
 #     hardening prose.
-#   - The orchestrator forks `python/cli.py research banner` BEFORE invoking the
+#   - The orchestrator forks `scripts/larch.sh research banner` BEFORE invoking the
 #     subagent (banner ownership is the orchestrator's, not the subagent's).
 #   - A structural validator runs after the subagent returns, with an inline
 #     fallback on validator failure.
@@ -73,13 +73,13 @@ else
   fail "[invocation] §1.5 must mention the synthesis subagent"
 fi
 
-# ---------- Pin 2: orchestrator forks python/cli.py research banner ----------
+# ---------- Pin 2: orchestrator forks scripts/larch.sh research banner ----------
 
-if printf '%s\n' "$SECTION_15" | grep -Fq 'python/cli.py" research banner' \
-  || printf '%s\n' "$SECTION_15" | grep -Fq 'python/cli.py research banner'; then
+if printf '%s\n' "$SECTION_15" | grep -Fq 'scripts/larch.sh" research banner' \
+  || printf '%s\n' "$SECTION_15" | grep -Fq 'scripts/larch.sh research banner'; then
   PASS=$((PASS + 1))
 else
-  fail "[banner ownership] §1.5 must reference python/cli.py research banner — orchestrator forks helper before subagent"
+  fail "[banner ownership] §1.5 must reference scripts/larch.sh research banner — orchestrator forks helper before subagent"
 fi
 
 # ---------- Pin 3: lane-output file path tags ----------

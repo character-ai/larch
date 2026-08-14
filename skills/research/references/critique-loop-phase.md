@@ -2,7 +2,7 @@
 
 **Consumer**: `/research` Step 2.6: loaded via the `MANDATORY: READ ENTIRE FILE` directive at Step 2.6 entry in SKILL.md.
 
-**Contract**: bounded evaluator-optimizer loop. Runs unconditionally after Step 2.5 (citation validation) finishes. Per iteration (cap `RESEARCH_CRITIQUE_MAX=2`): a single Claude Code Reviewer subagent critiques the validated synthesis at `$RESEARCH_TMPDIR/research-report.txt` against the original research question + Step 2 accepted-findings tally + Step 2.5's `citation-validation.md` sidecar (verbatim, under namespaced XML wrappers); the orchestrator parses findings, applies a categorical Important-finding gate (with a parser fail-safe that defaults to "continue"); on continue, a second Claude Agent subagent revises the synthesis under the same per-profile structural-validator + atomic-mktemp+mv contract used at Step 2 Finalize Validation; the revised synthesis is then re-validated by `python/cli.py research validate-citations` (overwrites the existing `citation-validation.md` in place). Iteration N+1's critique pass consumes the freshly-overwritten sidecar. Loop exits early when the critique reports zero in-scope `**Important**` findings, when the cap is reached, or when a refine pass produces a byte-identical synthesis AND the most recent critique had zero Important findings.
+**Contract**: bounded evaluator-optimizer loop. Runs unconditionally after Step 2.5 (citation validation) finishes. Per iteration (cap `RESEARCH_CRITIQUE_MAX=2`): a single Claude Code Reviewer subagent critiques the validated synthesis at `$RESEARCH_TMPDIR/research-report.txt` against the original research question + Step 2 accepted-findings tally + Step 2.5's `citation-validation.md` sidecar (verbatim, under namespaced XML wrappers); the orchestrator parses findings, applies a categorical Important-finding gate (with a parser fail-safe that defaults to "continue"); on continue, a second Claude Agent subagent revises the synthesis under the same per-profile structural-validator + atomic-mktemp+mv contract used at Step 2 Finalize Validation; the revised synthesis is then re-validated by `scripts/larch.sh research validate-citations` (overwrites the existing `citation-validation.md` in place). Iteration N+1's critique pass consumes the freshly-overwritten sidecar. Loop exits early when the critique reports zero in-scope `**Important**` findings, when the cap is reached, or when a refine pass produces a byte-identical synthesis AND the most recent critique had zero Important findings.
 
 **When to load**: once Step 2.6 is about to execute. Do NOT load during Step 0, Step 1, Step 2, Step 2.5, Step 3, or Step 4. SKILL.md is the sole owner of the Step 2.6 entry breadcrumb; this file does NOT emit that. This file owns intermediate operator-visible warnings and body content.
 
@@ -133,10 +133,10 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-write \
 
 ## 2.6.6: Re-run citation validation
 
-After the refine pass writes a new `$RESEARCH_TMPDIR/research-report.txt`, re-run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" research validate-citations` to refresh the citation-validation sidecar:
+After the refine pass writes a new `$RESEARCH_TMPDIR/research-report.txt`, re-run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" research validate-citations` to refresh the citation-validation sidecar:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" research validate-citations \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" research validate-citations \
   --report "$RESEARCH_TMPDIR/research-report.txt" \
   --output "$RESEARCH_TMPDIR/citation-validation.md" \
   --tmpdir "$RESEARCH_TMPDIR"
