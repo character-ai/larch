@@ -53,6 +53,12 @@ pub enum ReviewCommand {
     CollectFindings(AgentRawArguments),
     #[command(name = "check-reviewer-failure-threshold", disable_help_flag = true)]
     CheckReviewerFailureThreshold(AgentRawArguments),
+    #[command(name = "aggregate-findings", disable_help_flag = true)]
+    AggregateFindings(AgentRawArguments),
+    #[command(name = "prune-nit-findings", disable_help_flag = true)]
+    PruneNitFindings(AgentRawArguments),
+    #[command(name = "reviewer-prune", disable_help_flag = true)]
+    ReviewerPrune(AgentRawArguments),
 }
 
 /// Dispatch one Rust-owned review command.
@@ -65,6 +71,15 @@ pub fn run(command: ReviewCommand) -> ExitCode {
         ReviewCommand::CollectFindings(arguments) => collect_findings(&arguments.arguments),
         ReviewCommand::CheckReviewerFailureThreshold(arguments) => {
             check_reviewer_failure_threshold(&arguments.arguments)
+        }
+        ReviewCommand::AggregateFindings(arguments) => {
+            crate::review_findings_commands::run_aggregate_findings(&arguments.arguments)
+        }
+        ReviewCommand::PruneNitFindings(arguments) => {
+            crate::review_findings_commands::run_prune_nit_findings(&arguments.arguments)
+        }
+        ReviewCommand::ReviewerPrune(arguments) => {
+            crate::review_findings_commands::run_reviewer_prune(&arguments.arguments)
         }
     }
 }

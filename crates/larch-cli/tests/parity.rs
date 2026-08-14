@@ -1014,6 +1014,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "check-reviewer-failure-threshold",
     ),
     CleanInstallCase::new(
+        "clean-install-review-aggregate-findings",
+        "review",
+        "aggregate-findings",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-prune-nit-findings",
+        "review",
+        "prune-nit-findings",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-reviewer-prune",
+        "review",
+        "reviewer-prune",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-parse-codex-usage",
         "agent",
         "parse-codex-usage",

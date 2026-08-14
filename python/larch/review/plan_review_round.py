@@ -19,7 +19,6 @@ from larch import io as larch_io
 from larch.core import config, logging_util, proc, rust_runtime
 from larch.report import progress_file
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
-from larch.review import review_aggregate
 from larch.review.dispatch_shared import record_reviewer_collect
 from larch.review.review_types import is_canonical_heading, parse_blocks
 from larch.review import voting
@@ -31,6 +30,14 @@ _COLLECT_TIMEOUT = "1860"
 _PANEL_TIMEOUT = "1860"
 _ARCHETYPES = ("arch", "innovation", "pragmatic", "requirements")
 PER_REVIEWER_OOS_PROPOSAL_CAP = 3
+MIN_AGGREGATE_INPUTS = 2
+ROUND_STAMPED_FORENSICS = frozenset({
+    "aggregator-dispatch.stderr",
+    "aggregator-validate.stderr",
+    "aggregator-empty-merge.stderr",
+    "aggregator-scope-parity.stderr",
+    "aggregator-mv.stderr",
+})
 
 
 def _emit(*, key: str, value: object = "") -> None:
@@ -174,19 +181,20 @@ def _write_plan_review_prune_label_map(*, design: Path, manifest: Path) -> Path:
 
 def _record_plan_review_prune_round(*, design: Path, round_num: int, manifest: Path, classification: Path) -> None:
     try:
-        from larch.review import review_prune  # noqa: PLC0415
-
         label_map = _write_plan_review_prune_label_map(design=design, manifest=manifest)
-        review_prune.reviewer_prune_record(
-            ledger=design / "reviewer-prune-ledger.tsv",
-            round_num=round_num,
-            manifest=manifest,
-            classification=classification,
-            options=review_prune.PruneRecordOptions(
-                label_map=label_map,
-                reviewer_status=design / "plan-review" / f"round-{round_num}" / "reviewer-status.tsv",
-            ),
+        result = _run_larch(
+            [
+                "review", "reviewer-prune", "record",
+                "--ledger", str(design / "reviewer-prune-ledger.tsv"),
+                "--round", str(round_num),
+                "--manifest", str(manifest),
+                "--classification", str(classification),
+                "--label-map", str(label_map),
+                "--reviewer-status", str(design / "plan-review" / f"round-{round_num}" / "reviewer-status.tsv"),
+            ],
         )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or f"rc={result.returncode}")
     except Exception as exc:  # fail open by contract
         _emit(key="WARN", value=f"plan-review reviewer-prune record failed for round {round_num}: {exc}")
 
@@ -698,7 +706,7 @@ def _apply_aggregator_status(
     agg_status = _aggregator_status_from_kv(agg_kv=agg_kv, returncode=returncode)
     if (
         agg_status == "insufficient-input"
-        and ok_count < review_aggregate.MIN_AGGREGATE_INPUTS
+        and ok_count < MIN_AGGREGATE_INPUTS
     ):
         _log_insufficient_input_warning(design=design, round_num=round_num)
     elif agg_status not in {"ok", "disabled"}:
@@ -891,7 +899,7 @@ def _compose_attributed_ballot(*, design: Path, oos_md: str) -> str:
 def _drop_nits_before_plan_vote(*, design: Path, round_num: int, path: Path) -> str:
     round_dir = design / "plan-review" / f"round-{round_num}"
     round_dir.mkdir(parents=True, exist_ok=True)
-    result = _run_cli(
+    result = _run_larch(
         argv=[
             "review",
             "prune-nit-findings",
@@ -958,12 +966,12 @@ def _classify_round_loop_status(
 # them -- so an early-round aggregator failure stays diagnosable after a later round succeeds. The
 # snapshot runs only on aggregator failure, so a clean run adds no committed bytes.
 #
-# Issue #5004: source the round-stamped basenames from review_aggregate so this snapshot set and the
-# committed-pointer set cannot drift. They were hand-maintained in two modules and diverged, leaving the
-# empty-merge/scope-parity/mv failure pointers resolving to clobbered top-level paths. Append the dispatch
-# env and raw output for extra forensic context; those are snapshotted but never named by a committed pointer.
+# The Rust aggregator owns the committed-pointer set; keep this matching snapshot list local so the
+# Python round publisher retains those artifacts without importing a retired command owner. Append the
+# dispatch env and raw output for extra forensic context; those are snapshotted but never named by a
+# committed pointer.
 _AGGREGATOR_FORENSIC_FILES = (
-    *sorted(review_aggregate.ROUND_STAMPED_FORENSICS),
+    *sorted(ROUND_STAMPED_FORENSICS),
     "aggregator-dispatch.env",
     "aggregator-output.txt",
 )
@@ -1180,6 +1188,7 @@ def execute_round(
         env={"LARCH_QUIET_DISABLE": "1"},
         step="3",
         text=f"round {round_num}: aggregating reviewer findings",
+        runner=_run_larch,
     )
     agg_kv = _parse_kv(agg.stdout)
     values["AGGREGATOR_STATUS"] = _apply_aggregator_status(

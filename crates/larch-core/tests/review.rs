@@ -5,7 +5,8 @@
 
 use larch_core::review::{
     BoundaryMode, ItemContext, LedgerRow, ReviewCoreStatus, ReviewVote,
-    accepted_finding_points_from_severities, adjudicate_item, classify_oos_result, classify_result,
+    accepted_finding_points_from_classification_fields, accepted_finding_points_from_severities,
+    adjudicate_item, classify_oos_result, classify_result,
     code_review_classification_required_fields, finding_dedup_key, is_oos_eligible_block,
     parse_blocks, parse_canonical_heading, parse_ledger, render_ledger, render_wire_values,
     replace_round, run_items, write_round,
@@ -189,6 +190,22 @@ fn generated_merge_and_classification_invariants_hold() {
     assert_eq!(
         finding_dedup_key("### FINDING_1: a\n- **Location**: x.rs:1\n- **Concern**: same\n"),
         finding_dedup_key("### FINDING_2: b\n- **Location**: x.rs:1\n- **Concern**: same\n")
+    );
+}
+
+#[test]
+fn accepted_finding_points_reads_standard_classification_fields() {
+    let fields = BTreeMap::from([
+        ("v1_vote", "YES".to_owned()),
+        ("v1_severity", "major".to_owned()),
+        ("v2_vote", "YES".to_owned()),
+        ("v2_severity", "major".to_owned()),
+        ("v3_vote", "NO".to_owned()),
+        ("v3_severity", "minor".to_owned()),
+    ]);
+    assert_eq!(
+        accepted_finding_points_from_classification_fields(|field| fields.get(field).cloned()),
+        2
     );
 }
 

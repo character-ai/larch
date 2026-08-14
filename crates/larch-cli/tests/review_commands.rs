@@ -58,6 +58,22 @@ fn ripgrep_path(fixture: &TempDir) -> std::path::PathBuf {
     directory
 }
 
+fn plugin_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("workspace root")
+        .to_path_buf()
+}
+
+#[cfg(unix)]
+fn executable_script(path: &Path, text: &str) {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    write(path, text);
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("make fixture executable");
+}
+
 #[test]
 fn gather_context_preserves_description_rows_and_content_fallback() {
     let fixture = TempDir::new().expect("fixture");
@@ -496,5 +512,199 @@ fn gather_context_preserves_legacy_help_and_argument_failures() {
         .code(2)
         .stderr(predicate::eq(
             "review gather-context: --mode must be diff or description\n",
+        ));
+}
+
+#[cfg(unix)]
+#[test]
+fn aggregate_findings_preserves_the_merged_finding_wire() {
+    let fixture = TempDir::new().expect("fixture");
+    let review = fixture.path().join("review");
+    fs::create_dir(&review).expect("review directory");
+    let round = review.join("round-3");
+    fs::create_dir(&round).expect("round directory");
+    let findings = review.join("findings.md");
+    let scope_anchor = review.join("scope-anchor.md");
+    write(
+        &scope_anchor,
+        "Scope evidence preserved through the Python-owned validation seam.\n",
+    );
+    write(
+        &findings,
+        "### FINDING_7: Parse frames before decoding\n- **Reviewer(s)**: codex-specialist-parser\n- **Severity**: major\n- **Concern**: The decoder accepts a malformed frame.\n- **Suggested revision**: Validate frames before decoding.\n\n### FINDING_8: Decoder error path\n- **Reviewer(s)**: cursor-specialist-errors\n- **Severity**: major\n- **Concern**: The malformed frame path is not rejected.\n- **Suggested revision**: Reject malformed frames before decoding.\n\n### FINDING_9: Regression coverage\n- **Reviewer(s)**: claude-specialist-tests\n- **Severity**: minor\n- **Concern**: Malformed frames have no regression coverage.\n- **Suggested revision**: Add malformed frame regression coverage.\n",
+    );
+    let merged = review.join("aggregator-output.txt");
+    let merged_text = "### FINDING_1: Validate malformed frames before decoding\n- **Reviewer(s)**: codex-specialist-parser, cursor-specialist-errors, claude-specialist-tests\n- **Concern**: A malformed frame reaches the decoder instead of being rejected.\n- **Suggested revisions**:\n  - From codex-specialist-parser: Validate frames before decoding.\n  - From cursor-specialist-errors: Reject malformed frames before decoding.\n  - From claude-specialist-tests: Add malformed frame regression coverage.\n".replace('\n', "\r\n");
+    write(&merged, &merged_text);
+    let paths = review.join("aggregator-output-files.txt");
+    write(&paths, &format!("{}\n", merged.display()));
+    let panel_context = fixture.path().join("panel-context.txt");
+    let slot_record = fixture.path().join("slot-record.ndjson");
+    let dispatch = fixture.path().join("dispatch.sh");
+    executable_script(
+        &dispatch,
+        &format!(
+            "#!/bin/sh\nslots=''\nwhile [ \"$#\" -gt 0 ]; do\n  case \"$1\" in\n    --slots-file) slots=\"$2\"; shift 2 ;;\n    *) shift ;;\n  esac\ndone\ncat \"$slots\" > '{}'\nprintf '%s\\n%s\\n%s\\n%s\\n' \"$LARCH_PANEL_SOURCE_AGENT_FILE\" \"$LARCH_PANEL_PHASE\" \"$LARCH_PANEL_PAYLOAD_BYTES\" \"$LARCH_PANEL_ARTIFACT_DIR\" > '{}'\nprintf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES={}\\nALL_OUTPUT_FILES_PATH={}\\n'\n",
+            slot_record.display(),
+            panel_context.display(),
+            merged.display(),
+            paths.display(),
+        ),
+    );
+
+    larch()
+        .env("CLAUDE_PLUGIN_ROOT", plugin_root())
+        .env("LARCH_BINARY", env!("CARGO_BIN_EXE_larch"))
+        .env("AGGREGATE_DISPATCH_SH", dispatch)
+        .args(["review", "aggregate-findings", "--findings-file"])
+        .arg(&findings)
+        .args(["--review-tmpdir"])
+        .arg(&review)
+        .args([
+            "--round-num",
+            "3",
+            "--codex-present",
+            "true",
+            "--cursor-present",
+            "false",
+            "--mode",
+            "diff",
+            "--input-mode",
+            "plan",
+            "--scope-anchor-file",
+        ])
+        .arg(&scope_anchor)
+        .assert()
+        .success()
+        .stdout("AGGREGATED=true\nINPUT_COUNT=3\nMERGED_COUNT=1\nREASON=ok\n");
+    assert_eq!(
+        fs::read_to_string(&findings).expect("merged findings"),
+        format!("{}\n", merged_text.trim_end())
+    );
+    assert!(
+        fs::read_to_string(review.join("aggregator-prompt.md"))
+            .expect("aggregation prompt")
+            .contains("Scope evidence preserved through the Python-owned validation seam.")
+    );
+    assert_eq!(
+        fs::read_to_string(review.join("aggregator-dispatch.env")).expect("dispatch envelope"),
+        format!(
+            "DISPATCH_OK=true\nALL_OUTPUT_FILES={}\nALL_OUTPUT_FILES_PATH={}\n",
+            merged.display(),
+            paths.display(),
+        )
+    );
+    let panel_context = fs::read_to_string(panel_context).expect("panel context");
+    let panel_context: Vec<&str> = panel_context.lines().collect();
+    assert_eq!(panel_context[0], "agents/orchestrator-aggregator.md");
+    assert_eq!(panel_context[1], "aggregate-findings");
+    assert!(panel_context[2].parse::<usize>().expect("payload size") > 0);
+    assert_eq!(
+        panel_context[3],
+        fs::canonicalize(&round)
+            .expect("canonical round path")
+            .to_str()
+            .expect("UTF-8 round path")
+    );
+    let canonical_review = fs::canonicalize(&review).expect("canonical review path");
+    assert_eq!(
+        fs::read_to_string(slot_record).expect("slot record"),
+        format!(
+            "{{\"slot\":\"aggregator\",\"tool\":\"codex\",\"output\":\"{}\",\"prompt_file\":\"{}\",\"model_role\":\"review\",\"payload_bytes\":{}}}\n",
+            canonical_review.join("aggregator-output.txt").display(),
+            canonical_review.join("aggregator-prompt.md").display(),
+            panel_context[2],
+        )
+    );
+}
+
+#[test]
+fn prune_nit_findings_keeps_order_and_separates_security_audit() {
+    let fixture = TempDir::new().expect("fixture");
+    let findings = fixture.path().join("findings.md");
+    write(
+        &findings,
+        "### FINDING_8: Keep\n- **Severity**: minor\n\n### FINDING_9: Drop\n- **Severity**: nit\n\n### OOS_4: Security drop\n- **focus-area**: security-review\n- **Severity**: nit\n",
+    );
+    let audit = fixture.path().join("audit.md");
+    let security = fixture.path().join("security.md");
+
+    larch()
+        .args(["review", "prune-nit-findings", "--findings-file"])
+        .arg(&findings)
+        .args(["--audit-file"])
+        .arg(&audit)
+        .args(["--security-audit-file"])
+        .arg(&security)
+        .assert()
+        .success()
+        .stdout("PRUNED_COUNT=2\nINSCOPE_REMAINING=1\nSTATUS=ok\n");
+    assert_eq!(
+        fs::read_to_string(&findings).expect("remaining findings"),
+        "### FINDING_1: Keep\n- **Severity**: minor\n\n"
+    );
+    assert!(
+        fs::read_to_string(&audit)
+            .expect("audit")
+            .contains("### FINDING_9: Drop")
+    );
+    assert!(
+        fs::read_to_string(&security)
+            .expect("security audit")
+            .contains("### OOS_4: Security drop")
+    );
+}
+
+#[test]
+fn reviewer_prune_records_weighted_history_then_filters_in_manifest_order() {
+    let fixture = TempDir::new().expect("fixture");
+    let ledger = fixture.path().join("ledger.tsv");
+    let manifest = fixture.path().join("manifest.ndjson");
+    write(
+        &manifest,
+        "{\"tool\":\"codex\",\"slot\":\"keep\",\"output\":\"keep-output.txt\"}\n{\"tool\":\"cursor\",\"slot\":\"drop\",\"output\":\"drop-output.txt\"}\n",
+    );
+    let classification = fixture.path().join("classification.tsv");
+    write(
+        &classification,
+        "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_severity\tv2_vote\tv2_severity\tv3_vote\tv3_severity\tscope\nFINDING_1\tkeep-output.txt\taccepted\tYES\tmajor\tYES\tmajor\tNO\tminor\tin_scope\n",
+    );
+    larch()
+        .args(["review", "reviewer-prune", "record", "--ledger"])
+        .arg(&ledger)
+        .args(["--round", "1", "--manifest"])
+        .arg(&manifest)
+        .args(["--classification"])
+        .arg(&classification)
+        .assert()
+        .success()
+        .stdout("");
+    let out = fixture.path().join("filtered.ndjson");
+    larch()
+        .args(["review", "reviewer-prune", "filter", "--ledger"])
+        .arg(&ledger)
+        .args(["--round", "2", "--manifest"])
+        .arg(&manifest)
+        .args(["--out"])
+        .arg(&out)
+        .assert()
+        .success()
+        .stdout("PRUNE_ACTIVE=true\nELIGIBLE_COUNT=1\nPRUNED_COUNT=1\nPRUNED_COMBOS=cursor:drop\nPANEL_PRUNED_EMPTY=false\n");
+    assert_eq!(
+        fs::read_to_string(out).expect("filtered manifest"),
+        "{\"tool\":\"codex\",\"slot\":\"keep\",\"output\":\"keep-output.txt\"}\n"
+    );
+}
+
+#[test]
+fn reviewer_prune_keeps_the_legacy_manual_option_grammar() {
+    let usage = "Usage: review reviewer-prune record --ledger FILE --round N --manifest FILE --classification FILE [--label-map FILE] [--reviewer-status FILE] | review reviewer-prune filter --ledger FILE --round N --manifest FILE --out FILE";
+    larch()
+        .args(["review", "reviewer-prune", "record", "--ledger=ledger.tsv"])
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(format!(
+            "unknown option: --ledger=ledger.tsv\n{usage}\n{usage}\n"
         ));
 }

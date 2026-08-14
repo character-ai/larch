@@ -21,7 +21,6 @@ from larch.report import progress_file
 from larch.report.timing import resolve_timing_ledger_path
 from larch.review.dispatch_shared import PANEL_COMMON_OPTIONS, record_reviewer_collect
 from larch.review.review_pipeline_shared import (
-    PruneRecordOptions,
     ReviewCommands,
     ReviewCoreBranchContext,
     ReviewCoreResult,
@@ -41,10 +40,6 @@ from larch.review.review_pipeline_shared import (
 )
 from larch.review import voting
 from larch.review.review_types import ReviewCoreStatus
-from larch.review.review_prune import (
-    reviewer_prune_record,
-    write_prune_decision_env,
-)
 
 if TYPE_CHECKING:
     from larch.review import review_tally
@@ -247,22 +242,34 @@ def _record_prune_round(*, prune_ledger: str, round_num: int, panel_manifest: st
     classification = Path(classification_file)
     if not manifest.is_file() or not classification.is_file():
         return ()
-    try:
-        reviewer_prune_record(
-            ledger=Path(prune_ledger),
-            round_num=round_num,
-            manifest=manifest,
-            classification=classification,
-            options=PruneRecordOptions(label_map=label_map),
-        )
-    except Exception as exc:
-        return (("WARN", f"reviewer-prune record failed for round {round_num}: {exc}"),)
+    args = [
+        "review", "reviewer-prune", "record",
+        "--ledger", prune_ledger,
+        "--round", str(round_num),
+        "--manifest", panel_manifest,
+        "--classification", classification_file,
+    ]
+    if label_map is not None:
+        args.extend(["--label-map", str(label_map)])
+    result = run_larch(args)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or f"rc={result.returncode}"
+        return (("WARN", f"reviewer-prune record failed for round {round_num}: {detail}"),)
     return ()
 
 
 def _ensure_prune_sidecars(*, review_tmpdir: Path, round_num: int) -> None:
     if not (review_tmpdir / "prune-decision.env").is_file():
-        write_prune_decision_env(dest=review_tmpdir / "prune-decision.env", round_num=round_num, prune_active="false", prune_status="skipped", panel_full=0, eligible=0, pruned_count=0, pruned_combos="", panel_pruned_empty="false")
+        _write_text(path=review_tmpdir / "prune-decision.env", text=(
+            f"ROUND={round_num}\n"
+            "PRUNE_ACTIVE=false\n"
+            "PRUNE_STATUS=skipped\n"
+            "PANEL_FULL=0\n"
+            "ELIGIBLE=0\n"
+            "PRUNED_COUNT=0\n"
+            "PRUNED_COMBOS=\n"
+            "PANEL_PRUNED_EMPTY=false\n"
+        ))
     if not (review_tmpdir / "prune-nit.env").is_file():
         _write_text(path=review_tmpdir / "prune-nit.env", text="PRUNED_COUNT=0\nINSCOPE_REMAINING=0\nSTATUS=skipped\n")
 

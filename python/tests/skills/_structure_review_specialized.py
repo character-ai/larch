@@ -50,10 +50,9 @@ def run(repo_root: Path) -> list[str]:
     review_verbs = (
         "core",
         "tally-code-votes", "emit-tally", "log-phase",
-        "reviewer-prune",
     )
-    if len(review_verbs) != 5:
-        failures.append("(1) internal harness error: expected Python review verb list must contain 5 entries")
+    if len(review_verbs) != 4:
+        failures.append("(1) internal harness error: expected Python review verb list must contain 4 entries")
     for verb in review_verbs:
         require(cli, f'("review", "{verb}")', "(1) missing python/cli.py review " + verb + " registry entry")
     review_commands = file("crates/larch-cli/src/review_commands.rs")

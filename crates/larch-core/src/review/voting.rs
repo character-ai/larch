@@ -445,6 +445,21 @@ pub fn accepted_finding_points_from_severities(votes: &[String], severities: &[S
     }
 }
 
+/// Return the accepted finding weight from the standard classification fields.
+///
+/// Both code-review and plan-review consumers store the three voter columns
+/// under the same names, so this keeps their field lookup and weighting rule
+/// in one owner.
+#[must_use]
+pub fn accepted_finding_points_from_classification_fields(
+    value: impl Fn(&str) -> Option<String>,
+) -> u8 {
+    let votes = ["v1_vote", "v2_vote", "v3_vote"].map(|field| value(field).unwrap_or_default());
+    let severities =
+        ["v1_severity", "v2_severity", "v3_severity"].map(|field| value(field).unwrap_or_default());
+    accepted_finding_points_from_severities(&votes, &severities)
+}
+
 fn reviewer_tokens(cell: &str, labels: &[String]) -> Vec<String> {
     let label_set: HashSet<&str> = labels
         .iter()
@@ -696,21 +711,9 @@ pub fn scoreboard_scores_from_tsv(
             let base = if !has_scope || accepted_oos {
                 1.0
             } else {
-                let votes: Vec<String> = (1..=3)
-                    .map(|index| {
-                        row.get(&format!("v{index}_vote"))
-                            .cloned()
-                            .unwrap_or_default()
-                    })
-                    .collect();
-                let severities: Vec<String> = (1..=3)
-                    .map(|index| {
-                        row.get(&format!("v{index}_severity"))
-                            .cloned()
-                            .unwrap_or_default()
-                    })
-                    .collect();
-                f64::from(accepted_finding_points_from_severities(&votes, &severities))
+                f64::from(accepted_finding_points_from_classification_fields(
+                    |field| row.get(field).cloned(),
+                ))
             };
             if unique_finder_bonus > 0.0 && !oos && raw_reviewers.len() == 1 {
                 base + unique_finder_bonus
