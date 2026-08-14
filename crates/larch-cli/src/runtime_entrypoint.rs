@@ -77,6 +77,17 @@ const VERIFIED_LARCH_CONTEXT: &[ChildEnvironment] = &[
 /// the bootstrap process cannot be started. A non-zero child exit is returned
 /// in [`ProcessOutput`] so the caller can preserve that command's own contract.
 pub fn run_verified_larch(arguments: &[OsString]) -> Result<ProcessOutput, String> {
+    run_verified_larch_with_environment(arguments, &[])
+}
+
+/// Run verified larch with explicitly scoped environment overrides.
+///
+/// # Errors
+/// Returns the same resolution and process errors as [`run_verified_larch`].
+pub fn run_verified_larch_with_environment(
+    arguments: &[OsString],
+    environment: &[(ChildEnvironment, OsString)],
+) -> Result<ProcessOutput, String> {
     let root = plugin_root()?;
     let script = root.join("scripts").join("larch.sh");
     if !script.is_file() || script.is_symlink() {
@@ -100,6 +111,9 @@ pub fn run_verified_larch(arguments: &[OsString]) -> Result<ProcessOutput, Strin
         ChildEnvironment::ClaudePluginRoot,
         root.as_os_str().to_owned(),
     );
+    for (key, value) in environment {
+        request = request.with_environment(*key, value.clone());
+    }
     run_bounded(request)
         .map_err(|error| format!("could not start verified larch entrypoint: {error}"))
 }

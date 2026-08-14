@@ -538,6 +538,31 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "write-state",
     ),
     CleanInstallCase::new(
+        "clean-install-validate-merged-ingest-finder",
+        "validate-merged",
+        "ingest-finder",
+    ),
+    CleanInstallCase::new(
+        "clean-install-validate-merged-ingest-refuter",
+        "validate-merged",
+        "ingest-refuter",
+    ),
+    CleanInstallCase::new(
+        "clean-install-validate-merged-prepare",
+        "validate-merged",
+        "prepare",
+    ),
+    CleanInstallCase::new(
+        "clean-install-validate-merged-report",
+        "validate-merged",
+        "report",
+    ),
+    CleanInstallCase::new(
+        "clean-install-validate-merged-write-state",
+        "validate-merged",
+        "write-state",
+    ),
+    CleanInstallCase::new(
         "clean-install-analyze-issues-analyze",
         "analyze-issues",
         "analyze",
@@ -1012,6 +1037,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-review-check-reviewer-failure-threshold",
         "review",
         "check-reviewer-failure-threshold",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-aggregate-findings",
+        "review",
+        "aggregate-findings",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-prune-nit-findings",
+        "review",
+        "prune-nit-findings",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-reviewer-prune",
+        "review",
+        "reviewer-prune",
     ),
     CleanInstallCase::new(
         "clean-install-agent-parse-codex-usage",
@@ -1557,6 +1597,26 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-voting-findings-classification-header",
         "voting",
         "findings-classification-header",
+    ),
+    CleanInstallCase::new(
+        "clean-install-calibration-replay-rebuild-ballot",
+        "calibration-replay",
+        "rebuild-ballot",
+    ),
+    CleanInstallCase::new(
+        "clean-install-calibration-replay-run-replay",
+        "calibration-replay",
+        "run-replay",
+    ),
+    CleanInstallCase::new(
+        "clean-install-calibration-replay-validate-manifest",
+        "calibration-replay",
+        "validate-manifest",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voter-calibration-snapshot",
+        "voter-calibration",
+        "snapshot",
     ),
     CleanInstallCase::new(
         "clean-install-voting-compose-tally-record",

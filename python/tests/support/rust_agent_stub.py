@@ -19,6 +19,7 @@ coverage live in Rust integration tests.
 
 from __future__ import annotations
 
+import csv
 import gzip
 import hashlib
 import io
@@ -51,6 +52,16 @@ ARCHIVE_FORMAT = "larch-run-archive"
 ARCHIVE_MANIFEST_NAME = "archive-manifest.json"
 ARCHIVE_SCHEMA_VERSION = 1
 ARCHIVE_SHA256_HEX_LENGTH = 64
+PRUNE_MIN_ACCEPTED = 2
+PRUNE_WEIGHT_MAJOR = 2
+PRUNE_LEGACY_COLUMNS = 7
+PRUNE_WEIGHTED_COLUMNS = 8
+PRUNE_CURRENT_COLUMNS = 9
+PRUNE_WINDOW_START_ROUND = 2
+_PRUNE_LEDGER_HEADER = (
+    "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count"
+    "\trejected_count\ttotal_count\tobserved"
+)
 
 
 @dataclass(frozen=True)
@@ -519,6 +530,258 @@ def _flag(arguments: list[str], name: str, default: str = "") -> str:
         if token.startswith(f"{name}="):
             return token[len(name) + 1 :]
     return default
+
+
+def _prune_rows(path: Path) -> list[dict[str, object]]:
+    return [
+        value
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines()
+        if line.strip()
+        if isinstance(value := json.loads(line), dict)
+    ]
+
+
+def _prune_label(value: str) -> str:
+    label = re.sub(r"\s*\([^()]*\)\s*$", "", value.strip()).strip()
+    base = Path(label).name
+    stem, extension = (base[:-4], ".txt") if base.endswith(".txt") else (base, "")
+    if "-output" in stem:
+        return stem.rpartition("-output")[0]
+    while True:
+        trimmed = re.sub(r"-(?:phase2|phase3|retry)$", "", stem)
+        if trimmed == stem:
+            return stem + extension
+        stem = trimmed
+
+
+def _prune_plan_tokens(cell: str, labels: list[str]) -> set[str]:
+    tokens: set[str] = set()
+    ordered = sorted((label for label in labels if label), key=lambda label: (-len(label), label))
+    for segment in cell.split(","):
+        position = 0
+        while position < len(segment):
+            if segment[position].isspace():
+                position += 1
+                continue
+            label = next(
+                (
+                    candidate
+                    for candidate in ordered
+                    if segment.startswith(candidate, position)
+                    and (position + len(candidate) == len(segment) or segment[position + len(candidate)].isspace())
+                ),
+                "",
+            )
+            if not label:
+                break
+            tokens.add(label)
+            position += len(label)
+    return tokens
+
+
+def _prune_points(row: dict[str, str], header: list[str]) -> int:
+    if row.get("voting_result", "").strip() != "accepted":
+        return 0
+    if "scope" not in header or row.get("scope", "").strip() == "oos":
+        return 1
+    major_yes = sum(
+        row.get(f"v{index}_vote", "") == "YES" and row.get(f"v{index}_severity", "") == "major"
+        for index in range(1, 4)
+    )
+    return PRUNE_WEIGHT_MAJOR if major_yes >= PRUNE_MIN_ACCEPTED else 1
+
+
+def _normalized_prune_ledger_row(row: list[str]) -> list[str] | None:
+    if len(row) == PRUNE_LEGACY_COLUMNS:
+        normalized = [*row[:5], row[4], *row[5:], "true"]
+    elif len(row) == PRUNE_WEIGHTED_COLUMNS:
+        normalized = [*row, "true"]
+    elif len(row) == PRUNE_CURRENT_COLUMNS:
+        normalized = row
+    else:
+        return None
+    try:
+        _ = [int(normalized[index]) for index in (0, 4, 5, 6, 7)]
+    except ValueError:
+        return None
+    return normalized if normalized[8] in {"true", "false"} else None
+
+
+def _reviewer_prune_record(arguments: list[str]) -> int:  # noqa: C901, PLR0912, PLR0915 - narrow test-double compatibility surface.
+    ledger_raw = _flag(arguments, "--ledger")
+    manifest_raw = _flag(arguments, "--manifest")
+    classification_raw = _flag(arguments, "--classification")
+    label_map_raw = _flag(arguments, "--label-map")
+    ledger = Path(ledger_raw)
+    manifest = Path(manifest_raw)
+    classification = Path(classification_raw)
+    try:
+        round_num = int(_flag(arguments, "--round"))
+        if not ledger_raw or not manifest_raw or not classification_raw or round_num <= 0 or not manifest.is_file() or not classification.is_file():
+            return 2
+        label_map = {}
+        if label_map_raw and Path(label_map_raw).is_file():
+            label_map = {
+                slot: label
+                for line in Path(label_map_raw).read_text(encoding="utf-8", errors="replace").splitlines()
+                if "\t" in line
+                if (slot := line.split("\t", 1)[0])
+                if (label := line.split("\t", 1)[1])
+            }
+    except (OSError, ValueError):
+        return 2
+    rows = _prune_rows(manifest)
+    slots = [
+        (row, label_map.get(str(row.get("slot") or ""), Path(str(row.get("output") or row.get("slot") or "")).name))
+        for row in rows
+    ]
+    labels = [label for _, label in slots]
+    counts = {label: [0, 0, 0, 0] for label in labels}
+    try:
+        with classification.open(encoding="utf-8", errors="replace", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter="\t")
+            header = list(reader.fieldnames or [])
+            attribute = "finding_reviewers" if "finding_reviewers" in header else "reviewer_slots"
+            keys = {label: label if label_map else _prune_label(label) for label in labels}
+            for row in reader:
+                result = (row.get("voting_result") or "").strip()
+                if result not in {"accepted", "rejected", "neutral"}:
+                    continue
+                cell = row.get(attribute) or ""
+                tokens = _prune_plan_tokens(cell, labels) if label_map else {_prune_label(token) for token in cell.split("|") if token.strip()}
+                for label, key in keys.items():
+                    if key not in tokens:
+                        continue
+                    values = counts[label]
+                    values[3] += 1
+                    if result == "accepted":
+                        values[0] += 1
+                        values[1] += _prune_points(row, header)
+                    elif result == "rejected":
+                        values[2] += 1
+    except OSError:
+        return 1
+    skipped: set[str] = set()
+    status = _flag(arguments, "--reviewer-status")
+    try:
+        if status and not Path(status).is_symlink() and Path(status).is_file():
+            with Path(status).open(encoding="utf-8", errors="replace", newline="") as handle:
+                skipped = {
+                    row.get("slot", "")
+                    for row in csv.DictReader(handle, delimiter="\t")
+                    if row.get("status") == "skipped" and row.get("slot")
+                }
+    except OSError:
+        pass
+    existing: list[list[str]] = []
+    if ledger.exists():
+        for line in ledger.read_text(encoding="utf-8", errors="replace").splitlines():
+            normalized = _normalized_prune_ledger_row(line.split("\t"))
+            if normalized is not None and int(normalized[0]) != round_num:
+                existing.append(normalized)
+    recorded = [
+        [
+            str(round_num), str(row.get("tool") or ""), str(row.get("slot") or ""), label,
+            *(str(value) for value in counts[label]), str(label not in skipped).lower(),
+        ]
+        for row, label in slots
+    ]
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    _ = ledger.write_text("\n".join([_PRUNE_LEDGER_HEADER, *("\t".join(row) for row in [*existing, *recorded])]) + "\n", encoding="utf-8")
+    return 0
+
+
+def _reviewer_prune_filter(arguments: list[str]) -> int:  # noqa: C901, PLR0912, PLR0915 - narrow test-double compatibility surface.
+    ledger_raw = _flag(arguments, "--ledger")
+    manifest_raw = _flag(arguments, "--manifest")
+    out_raw = _flag(arguments, "--out")
+    ledger = Path(ledger_raw)
+    manifest = Path(manifest_raw)
+    out = Path(out_raw)
+    try:
+        round_num = int(_flag(arguments, "--round"))
+        if not ledger_raw or not manifest_raw or not out_raw or round_num <= 0 or not manifest.is_file():
+            return 2
+        rows = _prune_rows(manifest)
+        original = manifest.read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return 2
+    override = os.environ.get("LARCH_REVIEWER_PRUNE", "")
+    warn = "" if not override or override == "off" else "reviewer-prune: ignoring LARCH_REVIEWER_PRUNE value; set it exactly to off to disable"
+    if override == "off" or round_num < PRUNE_WINDOW_START_ROUND:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        _ = out.write_text(original, encoding="utf-8")
+        if warn:
+            print(f"WARN={warn}")
+        print(f"PRUNE_ACTIVE={'false' if override == 'off' else 'true'}")
+        print(f"ELIGIBLE_COUNT={len(rows)}\nPRUNED_COUNT=0\nPRUNED_COMBOS=\nPANEL_PRUNED_EMPTY=false")
+        return 0
+    history: dict[str, dict[int, list[int | bool]]] = {}
+    try:
+        lines = ledger.read_text(encoding="utf-8", errors="replace").splitlines()
+        valid_headers = {
+            _PRUNE_LEDGER_HEADER,
+            _PRUNE_LEDGER_HEADER.rsplit("\tobserved", 1)[0],
+            "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count",
+        }
+        if not lines or lines[0] not in valid_headers:
+            raise ValueError("missing ledger columns")
+        for line in lines[1:]:
+            normalized = _normalized_prune_ledger_row(line.split("\t"))
+            if normalized is None:
+                raise ValueError("malformed ledger row")
+            row_round = int(normalized[0])
+            if row_round >= round_num:
+                continue
+            key = f"{normalized[1]}:{normalized[2]}"
+            values = [int(normalized[index]) for index in range(4, 8)] + [normalized[8] == "true"]
+            prior = history.setdefault(key, {}).get(row_round)
+            if prior is None:
+                history[key][row_round] = values
+            else:
+                history[key][row_round] = [max(int(prior[index]), int(values[index])) for index in range(4)] + [bool(prior[4]) or bool(values[4])]
+    except (OSError, ValueError):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        _ = out.write_text(original, encoding="utf-8")
+        print("WARN=reviewer-prune: fail-open ledger read failed")
+        print(f"PRUNE_ACTIVE=false\nELIGIBLE_COUNT={len(rows)}\nPRUNED_COUNT=0\nPRUNED_COMBOS=\nPANEL_PRUNED_EMPTY=false\nPRUNE_FAIL_OPEN=true")
+        return 0
+    eligible: list[dict[str, object]] = []
+    pruned: list[str] = []
+    for row in rows:
+        combo = f"{row.get('tool') or ''}:{row.get('slot') or ''}"
+        history_rows = list(history.get(combo, {}).values())
+        if row.get("prune_exempt") is True:
+            eligible.append(row)
+            continue
+        if not history_rows:
+            pruned.append(combo)
+            continue
+        prior = [values for values in history_rows if values[4]]
+        if not prior:
+            eligible.append(row)
+            continue
+        accepted, weighted, rejected, total = (sum(int(values[index]) for values in prior) for index in range(4))
+        if total == 0 or weighted <= rejected or (accepted < PRUNE_MIN_ACCEPTED and accepted * PRUNE_MIN_ACCEPTED < total):
+            pruned.append(combo)
+        else:
+            eligible.append(row)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    _ = out.write_text("".join(json.dumps(row, separators=(",", ":")) + "\n" for row in eligible), encoding="utf-8")
+    if warn:
+        print(f"WARN={warn}")
+    print(f"PRUNE_ACTIVE=true\nELIGIBLE_COUNT={len(eligible)}\nPRUNED_COUNT={len(pruned)}\nPRUNED_COMBOS={','.join(pruned)}\nPANEL_PRUNED_EMPTY={str(not eligible).lower()}")
+    return 0
+
+
+def _reviewer_prune(arguments: list[str]) -> int:
+    if not arguments:
+        return 2
+    if arguments[0] == "record":
+        return _reviewer_prune_record(arguments[1:])
+    if arguments[0] == "filter":
+        return _reviewer_prune_filter(arguments[1:])
+    return 2
 
 
 def _safe_archive_path(raw: str, *, allow_manifest: bool = False) -> str:
@@ -2148,6 +2411,7 @@ def main(arguments: list[str]) -> int:
             ("run-log", "exists"): _run_log_exists,
             ("run-log", "write-round"): _run_log_write_round,
             ("run-log", "verify-completeness"): _run_log_verify_completeness,
+            ("review", "reviewer-prune"): _reviewer_prune,
             ("agent", "launch-claude-subprocess"): _launch_claude_subprocess,
             ("agent", "launch-claude-review"): _launch_claude_review,
             ("issue", "title-eligibility"): _issue_title_eligibility,

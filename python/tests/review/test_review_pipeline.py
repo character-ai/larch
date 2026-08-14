@@ -9,7 +9,7 @@ from pathlib import Path
 from larch.core import proc
 import pytest
 from larch.review import coder_runner, dispatch_shared, snapshot
-from larch.review import review_core_body, review_pipeline, review_pipeline_shared, review_prune
+from larch.review import review_core_body, review_pipeline, review_pipeline_shared
 from larch.review.review_types import ReviewCoreStatus
 import review_test_support as rts
 from larch.review import voting
@@ -1504,7 +1504,18 @@ def test_ensure_reviewer_prune_ledger_preserves_good_rows_and_drops_malformed(tm
         encoding="utf-8",
     )
 
-    review_prune.ensure_reviewer_prune_ledger(ledger)
+    manifest = tmp_path / "empty.ndjson"
+    classification = tmp_path / "classification.tsv"
+    manifest.write_text("", encoding="utf-8")
+    classification.write_text("finding_id\treviewer_slots\tvoting_result\n", encoding="utf-8")
+    result = run_review(
+        "reviewer-prune", "record",
+        "--ledger", str(ledger),
+        "--round", "3",
+        "--manifest", str(manifest),
+        "--classification", str(classification),
+    )
+    assert result.returncode == 0, result.stderr
 
     assert ledger.read_text(encoding="utf-8").splitlines() == [
         current_header,
@@ -1762,14 +1773,6 @@ def _filter_prune_round(tmp_path: Path, manifest: Path, ledger: Path, round_num:
     )
 
 
-def test_reviewer_prune_window_evaluated_round_two_and_onward() -> None:
-    assert review_prune.prune_window_evaluated(1) == "false"
-    assert review_prune.prune_window_evaluated(2) == "true"
-    assert review_prune.prune_window_evaluated(3) == "true"
-    assert review_prune.prune_window_evaluated(4) == "true"
-    assert review_prune.prune_window_evaluated(5) == "true"
-
-
 def test_reviewer_prune_filter_round_one_never_prunes(tmp_path: Path) -> None:
     manifest, ledger = _record_prune_rounds(tmp_path, [["rejected"]])
 
@@ -1795,7 +1798,10 @@ def test_reviewer_prune_filter_round_two_prunes_no_history(tmp_path: Path) -> No
     manifest = tmp_path / "panel.ndjson"
     _write_single_prune_manifest(manifest)
     ledger = tmp_path / "ledger.tsv"
-    review_prune.ensure_reviewer_prune_ledger(ledger)
+    ledger.write_text(
+        "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count\tobserved\n",
+        encoding="utf-8",
+    )
 
     result = _filter_prune_round(tmp_path, manifest, ledger, 2)
 
@@ -1854,22 +1860,6 @@ def test_reviewer_prune_filter_keeps_low_severity_code_review_positive_net(tmp_p
     assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t1\t0\t1\ttrue")
     assert "PRUNED_COUNT=0" in result.stdout
     assert "PANEL_PRUNED_EMPTY=false" in result.stdout
-
-
-def test_reviewer_prune_normalize_code_label_reconciles_output_suffix_to_bare_token() -> None:
-    # Issue #5733: the aggregator now emits bare slot tokens while reviewer
-    # output labels keep the "-output[...].txt" suffix. Both must canonicalize
-    # to the same bare slot so the reviewer-prune join populates non-zero.
-    bare = "cursor-specialist-correctness"
-    assert review_prune._normalize_code_label("cursor-specialist-correctness-output") == bare  # pyright: ignore[reportPrivateUsage]
-    assert review_prune._normalize_code_label("cursor-specialist-correctness-output.txt") == bare  # pyright: ignore[reportPrivateUsage]
-    assert review_prune._normalize_code_label("cursor-specialist-correctness-output-ns-retry") == bare  # pyright: ignore[reportPrivateUsage]
-    assert review_prune._normalize_code_label(bare) == bare  # pyright: ignore[reportPrivateUsage]
-    # Dynamic and -codex dynamic slots reconcile too: _normalize_slot keeps
-    # "-codex" (it strips only -output/-ns-retry), so the label must canonicalize
-    # to the same "-codex"-bearing slot the aggregator emits as the bare token.
-    assert review_prune._normalize_code_label("dyn-foo-output.txt") == "dyn-foo"  # pyright: ignore[reportPrivateUsage]
-    assert review_prune._normalize_code_label("dyn-foo-codex-output.txt") == "dyn-foo-codex"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_reviewer_prune_record_bare_classification_tokens_populate_counts(tmp_path: Path) -> None:
@@ -2446,8 +2436,6 @@ def test_review_core_tier_cap_controls_fix_required(tmp_path: Path) -> None:
 
 
 def test_prune_keeps_prune_exempt_rows_without_history(tmp_path: Path) -> None:
-    from larch.review import review_prune  # noqa: PLC0415
-
     manifest = tmp_path / "panel.ndjson"
     exempt = {"slot": "plan-fidelity-forced", "tool": "codex", "output": str(tmp_path / "pf.txt"), "prune_exempt": True}
     ordinary = {"slot": "correctness", "tool": "codex", "output": str(tmp_path / "c.txt")}
@@ -2456,8 +2444,15 @@ def test_prune_keeps_prune_exempt_rows_without_history(tmp_path: Path) -> None:
     ledger.write_text("round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count\n", encoding="utf-8")
     out = tmp_path / "out.ndjson"
 
-    result = review_prune.reviewer_prune_filter(ledger=ledger, round_num=2, manifest=manifest, out=out)
+    result = run_review(
+        "reviewer-prune", "filter",
+        "--ledger", str(ledger),
+        "--round", "2",
+        "--manifest", str(manifest),
+        "--out", str(out),
+    )
 
     rows = _panel_manifest_rows(out)
-    assert result.prune_active == "true"
+    assert result.returncode == 0, result.stderr
+    assert "PRUNE_ACTIVE=true" in result.stdout
     assert [row["slot"] for row in rows] == ["plan-fidelity-forced"]

@@ -22,7 +22,6 @@ from larch.review import findings_ledger
 from larch.agents import slot_manifest
 from larch.core import external_defaults
 from larch.calibration import difficulty
-from larch.review import review_prune
 from larch.review import voting
 from larch import io as larch_io
 from larch.core import config
@@ -52,6 +51,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _ARCHETYPES = ("arch", "innovation", "pragmatic", "requirements")
 _DISPATCH_LABEL = "plan-review voter-dispatch"
 _PLAN_VOTER_PANEL_SIZE = 3
+_PRUNE_WINDOW_START_ROUND = 2
 _SLOT_LABEL_MAX_LEN = 200
 _GENERIC_CODEX_PLAN_REVIEW_ROLE = (
     "You are a senior reviewer for this project. Review code, plans, or conflict resolutions across "
@@ -455,15 +455,14 @@ def _degraded_invalid_slot_warning(kv: dict[str, str]) -> str:
 
 
 def _filter_pruned(*, design: Path, manifest: Path, prune_round_num: int) -> tuple[Path, dict[str, str]]:
-    if review_prune.prune_window_evaluated(prune_round_num) != "true":
+    if prune_round_num < _PRUNE_WINDOW_START_ROUND:
         return manifest, {"PANEL_PRUNED_EMPTY": "false", "PRUNED_COUNT": "0"}
     pre = design / "plan-review-slots.pre-prune.ndjson"
     out = design / "plan-review-slots.pruned.ndjson"
     _ = pre.write_text(manifest.read_text(encoding="utf-8"), encoding="utf-8")
     proc = subprocess.run(
         [
-            sys.executable,
-            str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
+            str(larch_entrypoint(_REPO_ROOT)),
             "review",
             "reviewer-prune",
             "filter",
@@ -647,8 +646,7 @@ def _fresh_calibration_stats_file(*, design: Path) -> str | None:
     return fresh_calibration_snapshot(
         work_dir=design,
         snapshot_argv=[
-            sys.executable,
-            str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
+            str(larch_entrypoint(_REPO_ROOT)),
             "voter-calibration",
             "snapshot",
         ],

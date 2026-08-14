@@ -20,7 +20,6 @@ from larch.review import plan_review_panel
 from larch.design import plan_scout
 from larch.git import rebase
 
-from larch.review import review_aggregate
 from larch.review import review_and_fix
 from larch.review import coder_runner, snapshot
 from larch.core import config
@@ -544,42 +543,6 @@ def test_plan_review_voter_dispatch_uses_plan_voter_policy(tmp_path: Path, monke
     # issue #5817: plan voters waterfall fully; the dispatch no longer injects --no-fallback.
     assert not any("--no-fallback" in cmd for cmd in run_commands if "dispatch-waterfall" in cmd)
     assert seen_policies == ["design.plan_voters"]
-
-
-def test_review_aggregate_selects_code_and_plan_roles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    seen: list[str] = []
-    slot_rows: list[dict[str, object]] = []
-
-    def fake_slot_defaults(role_id: str, *_args: object, **_kwargs: object) -> tuple[config.SlotDefault, ...]:
-        seen.append(role_id)
-        return (config.SlotDefault(slot=f"slot-{role_id}", tool="codex", output="aggregator-output.txt", model_role="review"),)
-
-    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        if "--slots-file" not in cmd:
-            return subprocess.CompletedProcess(cmd, 0, "", "")
-        slots_file = Path(cmd[cmd.index("--slots-file") + 1])
-        slot_rows.extend(json.loads(line) for line in slots_file.read_text(encoding="utf-8").splitlines())
-        output = tmp_path / "aggregator-output.txt"
-        output.write_text("### FINDING_1: merged\nBody\n\n### FINDING_2: merged\nBody\n", encoding="utf-8")
-        return subprocess.CompletedProcess(cmd, 0, f"DISPATCH_OK=true\nALL_OUTPUT_FILES={output}\n", "")
-
-    findings = tmp_path / "findings.md"
-    findings.write_text("### FINDING_1: a\nBody\n\n### FINDING_2: b\nBody\n", encoding="utf-8")
-    monkeypatch.setattr(review_aggregate.external_defaults, "slot_defaults", fake_slot_defaults)
-    monkeypatch.setattr(review_aggregate.subprocess, "run", fake_run)
-    monkeypatch.setattr(review_aggregate, "_apply_aggregate_candidate", lambda **_kwargs: (0, ""))
-    monkeypatch.setattr(review_aggregate, "_split_plan_scope_blocks", lambda **_kwargs: (findings, None, 0))
-
-    assert review_aggregate.aggregate_findings([
-        "--findings-file", str(findings), "--review-tmpdir", str(tmp_path), "--codex-present", "true", "--cursor-present", "true", "--mode", "description", "--input-mode", "code",
-    ]) == 0
-    findings.write_text("### FINDING_1: a\nBody\n\n### FINDING_2: b\nBody\n", encoding="utf-8")
-    assert review_aggregate.aggregate_findings([
-        "--findings-file", str(findings), "--review-tmpdir", str(tmp_path), "--codex-present", "true", "--cursor-present", "true", "--mode", "description", "--input-mode", "plan",
-    ]) == 0
-
-    assert seen == ["review.findings_aggregator", "design.plan_findings_aggregator"]
-    assert [row["model_role"] for row in slot_rows] == ["review", "review"]
 
 
 def test_decompose_panel_and_aggregator_use_decompose_roles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

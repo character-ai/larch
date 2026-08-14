@@ -1,0 +1,2 @@
+round	finding_id	title	file_line	outcome	vote_tally	reason
+1	FINDING_ALPHA	Ledger parity	python/calibration_replay.py:100	accepted	YES=2/3	bug in python/calibration_replay.py:100

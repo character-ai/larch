@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import cast
 
 from larch.report import run_log_batch
-from larch.review import review_prune
 from larch.review import voting
 from larch.core.repo_roots import larch_entrypoint
 from larch.review._raf_util import (
@@ -67,10 +66,15 @@ def _clear_reviewer_prune_round(*, ledger: Path, round_num: int, work_dir: Path)
     empty_classification = work_dir / "reviewer-prune-clear-classification.tsv"
     _write_text(path=empty_manifest, text="")
     _write_text(path=empty_classification, text="finding_id\treviewer_slots\tvoting_result\n")
-    try:
-        review_prune.reviewer_prune_record(ledger=ledger, round_num=round_num, manifest=empty_manifest, classification=empty_classification)
-    except Exception as exc:
-        _err(f"WARN: reviewer-prune clear failed for round {round_num}: {exc}")
+    result = _run([
+        str(larch_entrypoint(_PLUGIN_ROOT)), "review", "reviewer-prune", "record",
+        "--ledger", str(ledger),
+        "--round", str(round_num),
+        "--manifest", str(empty_manifest),
+        "--classification", str(empty_classification),
+    ])
+    if result.returncode != 0:
+        _err(f"WARN: reviewer-prune clear failed for round {round_num}: {result.stderr.strip() or result.returncode}")
 
 
 def _append_round_oos_artifact(*, round_num: int, round_oos: Path, oos_jsonl: Path, oos_markdown: Path) -> None:

@@ -355,7 +355,10 @@ pub use redaction::{
     RedactionResult, RuntimeRedactor, SafeText, contains_recognized_session_tmpdir_pointer, redact,
     redact_run_log_payload, redact_secrets, redact_secrets_only, redact_sensitive_paths,
 };
-pub use repo_size::{RepoSizeCategory, RepoSizeReport, count_newlines, line_count_category};
+pub use repo_size::{
+    RepoSizeCategory, RepoSizeReport, count_newlines, is_rust_line_count_path, line_count_category,
+    rust_line_split,
+};
 pub use report::{
     BLENDED_FALLBACK_WARNING, BlockMarkers, BlockMarkersError, BlockMarkersErrorKind,
     CODEX_IMPLEMENT_RAW_LABEL, CODEX_MINI_MODELS, CURSOR_COMPOSER_BASE_RATES, CURSOR_GROK_MODELS,
@@ -382,9 +385,9 @@ pub use report::{
     render_issue_detail_block, render_session_transcript, replace_markdown_block,
     replace_markdown_block_with_warn, report_has_numeric_tokens, resolve_run_report,
     round_number_from_path, run_log_batch_spec, run_log_batch_specs, run_log_ledger_path,
-    run_record, safe_int, sanitize_diagram_capture, strip_diagram_sections,
-    structured_body_dedupe_keys, summary_report, token_phase_rows, token_report_basename,
-    transcript_sources, vendor_totals_from_report,
+    run_record, run_started_at_without_manifest, safe_int, sanitize_diagram_capture,
+    strip_diagram_sections, structured_body_dedupe_keys, summary_report, token_phase_rows,
+    token_report_basename, transcript_sources, vendor_totals_from_report,
 };
 pub use retry::{
     AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,

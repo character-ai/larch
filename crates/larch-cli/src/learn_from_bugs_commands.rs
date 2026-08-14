@@ -7,23 +7,16 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
-    env,
     ffi::OsString,
-    fs::{self, OpenOptions},
+    fs,
     path::{Path, PathBuf},
     process::ExitCode,
     sync::LazyLock,
 };
 
-#[cfg(unix)]
-use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
-
-#[cfg(unix)]
-use nix::fcntl::{Flock, FlockArg};
-
 use chrono::{DateTime, NaiveDate};
 use larch_adapters::git::GixRepository;
-use larch_adapters::{ensure_directory_chain, path_under};
+use larch_adapters::path_under;
 #[cfg(test)]
 use larch_core::DONE_PREFIX as DONE_TITLE_PREFIX;
 use larch_core::{
@@ -38,13 +31,20 @@ use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
 
 use crate::{
+    analysis_state,
     argparse_compat::{
-        ParsedCommandLine, join_arguments, looks_like_option, parse_with_flags, usage_error,
+        ParsedCommandLine, parse_with_flags, unrecognized_arguments as strict_unrecognized,
+        usage_error,
     },
     github_repository_resolution::{
         RemoteRepoResult, ambient_repo, repository_ref, resolve_remote_repo,
     },
     github_service::with_github_service,
+};
+
+#[cfg(test)]
+use crate::analysis_state::{
+    has_symlink_ancestor, lock_state, read_snapshot as state_snapshot, same_state_metadata,
 };
 
 const PREPARE_PROGRAM: &str = "learn-from-bugs prepare";
@@ -225,7 +225,7 @@ pub fn prepare(arguments: &[OsString]) -> ExitCode {
         Ok(repo) => repo,
         Err(error) => return command_error(PREPARE_PROGRAM, &error),
     };
-    let marker = match state_path(&root) {
+    let marker = match analysis_state::marker_path(&root, STATE_RELPATH) {
         Ok(path) => path,
         Err(error) => return command_error(PREPARE_PROGRAM, &error),
     };
@@ -448,7 +448,9 @@ pub fn read_state(arguments: &[OsString]) -> ExitCode {
     if let Some(error) = strict_unrecognized(arguments, OPTIONS, &[]) {
         return usage_refusal(READ_STATE_USAGE, READ_STATE_PROGRAM, &error);
     }
-    let path = match canonical_root(&root).and_then(|root| state_path(&root)) {
+    let path = match canonical_root(&root)
+        .and_then(|root| analysis_state::marker_path(&root, STATE_RELPATH))
+    {
         Ok(path) => path,
         Err(error) => return command_error(READ_STATE_PROGRAM, &error),
     };
@@ -483,7 +485,7 @@ pub fn read_state(arguments: &[OsString]) -> ExitCode {
 #[must_use]
 pub fn audit_scan_boundary(root: &Path) -> Option<(String, String)> {
     let path = canonical_root(root)
-        .and_then(|root| state_path(&root))
+        .and_then(|root| analysis_state::marker_path(&root, STATE_RELPATH))
         .ok()?;
     let state = read_state_file(&path).ok()??;
     Some(audit_scan_boundary_from_state(state))
@@ -570,11 +572,11 @@ pub fn write_state(arguments: &[OsString]) -> ExitCode {
         Ok(root) => root,
         Err(error) => return command_error(WRITE_STATE_PROGRAM, &error),
     };
-    let path = match state_path(&root) {
+    let path = match analysis_state::marker_path(&root, STATE_RELPATH) {
         Ok(path) => path,
         Err(error) => return command_error(WRITE_STATE_PROGRAM, &error),
     };
-    let snapshot = match state_snapshot(&path) {
+    let snapshot = match analysis_state::read_snapshot(&path) {
         Ok(snapshot) => snapshot,
         Err(error) => return command_error(WRITE_STATE_PROGRAM, &error),
     };
@@ -692,7 +694,7 @@ pub fn check_proposals(arguments: &[OsString]) -> ExitCode {
         Ok(root) => root,
         Err(error) => return command_error(CHECK_PROPOSALS_PROGRAM, &error),
     };
-    let state_path = match state_path(&root) {
+    let state_path = match analysis_state::marker_path(&root, STATE_RELPATH) {
         Ok(path) => path,
         Err(error) => return command_error(CHECK_PROPOSALS_PROGRAM, &error),
     };
@@ -999,10 +1001,10 @@ pub fn state_publish(arguments: &[OsString]) -> ExitCode {
     let Ok(root) = canonical_root(&path_from_argument(&values["--root"])) else {
         return state_publish_write_failure();
     };
-    let Ok(path) = state_path(&root) else {
+    let Ok(path) = analysis_state::marker_path(&root, STATE_RELPATH) else {
         return state_publish_write_failure();
     };
-    let Ok(snapshot) = state_snapshot(&path) else {
+    let Ok(snapshot) = analysis_state::read_snapshot(&path) else {
         return state_publish_write_failure();
     };
     let result = write_state_locked(
@@ -1163,39 +1165,6 @@ fn strict_parse(
         return Err(usage_error(usage, program, &error, 2));
     }
     Ok(parsed)
-}
-
-fn strict_unrecognized(arguments: &[OsString], options: &[&str], flags: &[&str]) -> Option<String> {
-    let mut unknown = Vec::new();
-    let mut positionals_only = false;
-    let mut index = 0;
-    while let Some(argument) = arguments.get(index) {
-        let text = argument.to_string_lossy();
-        if !positionals_only && text == "--" {
-            positionals_only = true;
-            unknown.push(argument.clone());
-        } else if !positionals_only {
-            let (name, inline) = split_inline_option(&text).map_or_else(
-                || (text.as_ref(), None),
-                |(name, value)| (name, Some(value)),
-            );
-            if options.contains(&name) {
-                if inline.is_none()
-                    && arguments
-                        .get(index + 1)
-                        .is_some_and(|value| !looks_like_option(value))
-                {
-                    index += 1;
-                }
-            } else if !flags.contains(&name) {
-                unknown.push(argument.clone());
-            }
-        } else {
-            unknown.push(argument.clone());
-        }
-        index += 1;
-    }
-    (!unknown.is_empty()).then(|| format!("unrecognized arguments: {}", join_arguments(&unknown)))
 }
 
 fn usage_refusal(usage: &str, program: &str, error: &str) -> ExitCode {
@@ -2084,12 +2053,6 @@ struct StateRecord {
 }
 
 #[derive(Clone, Debug)]
-struct StateSnapshot {
-    data: Option<Vec<u8>>,
-    digest: String,
-}
-
-#[derive(Clone, Debug)]
 struct Proposal {
     id: String,
     kind: String,
@@ -2733,132 +2696,15 @@ fn filing_path_exists(edges: &BTreeSet<(usize, usize)>, start: usize, target: us
     false
 }
 
-fn state_path(root: &Path) -> Result<PathBuf, String> {
-    let storage =
-        crate::run_log_commands::resolve_enabled_storage_path(Some(root)).map_err(|error| {
-            match error {
-                crate::run_log_commands::PreflightFailure::Configuration(error) => {
-                    error.to_string()
-                }
-                crate::run_log_commands::PreflightFailure::Provider(error) => error.to_string(),
-            }
-        })?;
-    let home = env::var_os("XDG_STATE_HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            env::var_os("HOME")
-                .filter(|value| !value.is_empty())
-                .map(|home| PathBuf::from(home).join(".local/state"))
-        })
-        .ok_or_else(|| "could not resolve analysis-state root".to_owned())?;
-    if !home.is_absolute() {
-        return Err("analysis state home must be an absolute path".to_owned());
-    }
-    let home = fs::canonicalize(&home).unwrap_or(home);
-    let storage_origin_id = storage.storage_origin_id();
-    Ok(home
-        .join("larch/analysis-state/v2")
-        .join(storage.client_repo)
-        .join(storage_origin_id)
-        .join(STATE_RELPATH))
-}
-
 fn read_state_file(path: &Path) -> Result<Option<StateRecord>, String> {
-    match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-            return Ok(None);
-        }
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(_) => return Ok(None),
-    }
-    if has_symlink_ancestor(path) {
+    let Ok(snapshot) = analysis_state::read_snapshot(path) else {
         return Ok(None);
-    }
-    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    };
+    let Some(bytes) = snapshot.data else {
+        return Ok(None);
+    };
     let value = serde_json::from_slice(&bytes).map_err(|_| "invalid state".to_owned())?;
     Ok(state_from_value(&value))
-}
-
-fn state_snapshot(path: &Path) -> Result<StateSnapshot, String> {
-    if has_symlink_ancestor(path) {
-        return Err(format!(
-            "refusing symlinked analysis state: {}",
-            path.display()
-        ));
-    }
-    let before = match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-            return Err(format!(
-                "analysis state is not a regular file: {}",
-                path.display()
-            ));
-        }
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(StateSnapshot {
-                data: None,
-                digest: "missing".to_owned(),
-            });
-        }
-        Err(error) => return Err(format!("analysis state is unreadable: {error}")),
-    };
-    let data = fs::read(path).map_err(|error| format!("analysis state is unreadable: {error}"))?;
-    let after = fs::symlink_metadata(path)
-        .map_err(|error| format!("analysis state changed while reading: {error}"))?;
-    if after.file_type().is_symlink() || !after.is_file() || !same_state_metadata(&before, &after) {
-        return Err(format!(
-            "analysis state changed while reading: {}",
-            path.display()
-        ));
-    }
-    Ok(StateSnapshot {
-        digest: format!("{:x}", Sha256::digest(&data)),
-        data: Some(data),
-    })
-}
-
-fn same_state_metadata(before: &fs::Metadata, after: &fs::Metadata) -> bool {
-    if before.len() != after.len() || before.modified().ok() != after.modified().ok() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        before.dev() == after.dev()
-            && before.ino() == after.ino()
-            && before.mtime() == after.mtime()
-            && before.mtime_nsec() == after.mtime_nsec()
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
-}
-
-fn has_symlink_ancestor(path: &Path) -> bool {
-    let mut current = path.parent();
-    while let Some(candidate) = current {
-        if fs::symlink_metadata(candidate).is_ok_and(|metadata| refused_symlink(&metadata)) {
-            return true;
-        }
-        current = candidate.parent();
-    }
-    false
-}
-
-fn refused_symlink(metadata: &fs::Metadata) -> bool {
-    if !metadata.file_type().is_symlink() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        metadata.uid() != 0
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
 }
 
 fn state_from_value(value: &Value) -> Option<StateRecord> {
@@ -3165,29 +3011,16 @@ fn write_state_locked(
     proposals_file: Option<&Path>,
     base_file: Option<&Path>,
     root: &Path,
-    expected_snapshot: &StateSnapshot,
+    expected_snapshot: &analysis_state::StateSnapshot,
 ) -> Result<(StateRecord, String), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "state path has no parent".to_owned())?;
-    ensure_directory_chain(parent).map_err(|error| error.to_string())?;
-    #[cfg(unix)]
-    fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
-        .map_err(|error| error.to_string())?;
-    let _lock = lock_state(path)?;
-    let current_snapshot = state_snapshot(path)?;
-    if current_snapshot.digest != expected_snapshot.digest {
-        return Err(format!(
-            "analysis state changed concurrently: {}",
-            path.display()
-        ));
-    }
-    let existing = current_snapshot
+    let locked = analysis_state::lock_existing(path, &expected_snapshot.digest)?;
+    let existing = locked
+        .snapshot
         .data
         .as_deref()
         .and_then(|data| serde_json::from_slice(data).ok())
         .and_then(|value| state_from_value(&value));
-    if current_snapshot.data.is_some() && existing.is_none() {
+    if locked.snapshot.data.is_some() && existing.is_none() {
         return Err("existing state marker is invalid or unsupported".to_owned());
     }
     if let Some(proposals_path) = proposals_file {
@@ -3208,43 +3041,9 @@ fn write_state_locked(
         return Err("--proposals-file is required to preserve proposal history".to_owned());
     }
     let text = serialize_state(&next)?;
-    private_atomic_write(path, &text, parent).map_err(|error| error.to_string())?;
+    private_atomic_write(path, &text, &locked.parent).map_err(|error| error.to_string())?;
     let digest = format!("{:x}", Sha256::digest(text.as_bytes()));
     Ok((next, digest))
-}
-
-fn lock_state(path: &Path) -> Result<Flock<fs::File>, String> {
-    let lock = path.with_file_name(format!(
-        ".{}.lock",
-        path.file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("state")
-    ));
-    if fs::symlink_metadata(&lock).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
-        return Err(format!("could not lock analysis state: {}", path.display()));
-    }
-    let mut options = OpenOptions::new();
-    options.read(true).write(true).create(true);
-    #[cfg(unix)]
-    {
-        options.mode(0o600).custom_flags(nix::libc::O_NOFOLLOW);
-    }
-    let file = options
-        .open(&lock)
-        .map_err(|error| format!("could not lock analysis state: {error}"))?;
-    if !file
-        .metadata()
-        .map_err(|error| format!("could not lock analysis state: {error}"))?
-        .is_file()
-    {
-        return Err(format!("could not lock analysis state: {}", path.display()));
-    }
-    #[cfg(unix)]
-    fs::set_permissions(&lock, fs::Permissions::from_mode(0o600))
-        .map_err(|error| format!("could not lock analysis state: {error}"))?;
-    #[cfg(unix)]
-    Flock::lock(file, FlockArg::LockExclusive)
-        .map_err(|(_file, error)| format!("could not lock analysis state: {error}"))
 }
 
 fn serialize_state(state: &StateRecord) -> Result<String, String> {

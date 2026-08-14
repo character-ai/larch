@@ -32,6 +32,7 @@ crates/larch-cli/src/admission_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/audit_umbrella_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/audit_runs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/analyze_bugs_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/analyze_bugs_sweep.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/bootstrap_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/ci_selection.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/dirty_tree_commands.rs	gix-read	#7671	typed-read
@@ -92,7 +93,6 @@ python/larch/implement/dispatch_step2.py	later-domain	#7681	rev-parse
 python/larch/implement/rust_clippy.py	later-domain	#7681	diff,ls-files,rev-parse
 python/larch/implement/scope_disposition.py	later-domain	#7681	dynamic
 python/larch/implement/step_7a.py	later-domain	#7681	diff,merge-base
-python/larch/issue/analyze_bugs.py	later-domain	#7684	diff,fetch,grep,log,merge-base,rev-parse,show
 python/larch/issue/rejected_analysis.py	later-domain	#7684	dynamic
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base
 python/larch/report/storage_config.py	later-domain	#7683	dynamic

@@ -16,11 +16,12 @@ use crate::{
     argparse_compat::{ParsedCommandLine, parse, usage_error},
     launcher_support::{confined_target, write_confined},
     python_verb::{plugin_root_directory, run_python_verb},
-    waterfall_commands::dispatch_for_review,
+    runtime_entrypoint::run_verified_larch,
+    waterfall_commands::{dispatch_for_review, parse_dispatch_kv},
 };
 use larch_adapters::{atomic_write_utf8_in, ensure_directory_chain};
 use larch_core::{
-    DuplicatePolicy, KvDocument, ParseOptions, classify_diff, emit_kv,
+    classify_diff, emit_kv,
     review::{
         ledger_path, ledger_root, normalize_output_base, parse_collector_records,
         with_manifest_attribution,
@@ -502,7 +503,7 @@ fn prepare_dynamic_slots(
             .review_tmpdir
             .join(format!("scout-round{}-status.env", options.round_num));
         if status_path.is_file() {
-            let status = kv_map(&fs::read_to_string(&status_path).unwrap_or_default());
+            let status = parse_dispatch_kv(&fs::read_to_string(&status_path).unwrap_or_default());
             result.status = status
                 .get("SCOUT_STATUS")
                 .cloned()
@@ -584,7 +585,7 @@ fn prepare_dynamic_slots(
             |_| (false, String::new()),
             |output| (output.status().success(), process_stdout(&output)),
         );
-        let scout_kv = kv_map(&stdout);
+        let scout_kv = parse_dispatch_kv(&stdout);
         result.status = scout_kv.get("SCOUT_STATUS").cloned().unwrap_or_else(|| {
             if ok {
                 "ok".to_owned()
@@ -776,22 +777,22 @@ fn apply_prune(
             std::process::id()
         ));
         if evaluated {
-            let output = run_python(vec![
-                "review".to_owned(),
-                "reviewer-prune".to_owned(),
-                "filter".to_owned(),
-                "--ledger".to_owned(),
-                options.prune_ledger.clone(),
-                "--round".to_owned(),
-                options.round_num.to_string(),
-                "--manifest".to_owned(),
-                manifest.display().to_string(),
-                "--out".to_owned(),
-                temporary.display().to_string(),
+            let output = run_verified_larch(&[
+                "review".into(),
+                "reviewer-prune".into(),
+                "filter".into(),
+                "--ledger".into(),
+                options.prune_ledger.clone().into(),
+                "--round".into(),
+                options.round_num.to_string().into(),
+                "--manifest".into(),
+                manifest.display().to_string().into(),
+                "--out".into(),
+                temporary.display().to_string().into(),
             ]);
             match output {
                 Ok(output) if output.status().success() => {
-                    let kv = kv_map(&process_stdout(&output));
+                    let kv = parse_dispatch_kv(&process_stdout(&output));
                     if let Some(warn) = kv.get("WARN").filter(|value| !value.is_empty()) {
                         emit_kv("WARN", warn);
                     }
@@ -1130,7 +1131,7 @@ fn implement_scout_status() -> (Option<PathBuf>, String) {
     let status = fs::read_to_string(directory.join("step2-scout-coder-status.env"))
         .ok()
         .map(|text| {
-            kv_map(&text)
+            parse_dispatch_kv(&text)
                 .get("SCOUT_CODER_STATUS")
                 .cloned()
                 .unwrap_or_default()
@@ -1200,7 +1201,9 @@ fn filter_dynamic_manifest(input: &Path, output: &Path, max: usize) -> bool {
     emit_warnings(&stdout);
     output.status().success()
         && matches!(
-            kv_map(&stdout).get("SCOUT_STATUS").map(String::as_str),
+            parse_dispatch_kv(&stdout)
+                .get("SCOUT_STATUS")
+                .map(String::as_str),
             Some("ok" | "empty"),
         )
 }
@@ -1307,13 +1310,6 @@ fn run_python(arguments: Vec<String>) -> Result<larch_core::ProcessOutput, Strin
     run_python_verb(
         arguments.into_iter().map(OsString::from),
         Duration::from_secs(120),
-    )
-}
-
-fn kv_map(text: &str) -> BTreeMap<String, String> {
-    KvDocument::parse(text, ParseOptions::legacy()).map_or_else(
-        |_| BTreeMap::new(),
-        |document| document.select(DuplicatePolicy::Last),
     )
 }
 

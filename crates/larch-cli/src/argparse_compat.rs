@@ -304,6 +304,42 @@ pub fn looks_like_option(value: &OsStr) -> bool {
     text.starts_with('-') && !negative_number
 }
 
+/// Report argparse `unrecognized arguments` using the shared option/flag tables.
+#[must_use]
+pub fn unrecognized_arguments(
+    arguments: &[OsString],
+    options: &[&str],
+    flags: &[&str],
+) -> Option<String> {
+    let mut unknown = Vec::new();
+    let mut positionals_only = false;
+    let mut index = 0;
+    while let Some(argument) = arguments.get(index) {
+        let text = argument.to_string_lossy();
+        if !positionals_only && text == "--" {
+            positionals_only = true;
+            unknown.push(argument.clone());
+        } else if !positionals_only {
+            let (name, inline) = split_inline_option(&text);
+            if options.contains(&name) {
+                if inline.is_none()
+                    && arguments
+                        .get(index + 1)
+                        .is_some_and(|value| !looks_like_option(value))
+                {
+                    index += 1;
+                }
+            } else if !flags.contains(&name) {
+                unknown.push(argument.clone());
+            }
+        } else {
+            unknown.push(argument.clone());
+        }
+        index += 1;
+    }
+    (!unknown.is_empty()).then(|| format!("unrecognized arguments: {}", join_arguments(&unknown)))
+}
+
 /// Render arguments the way `argparse` renders an `unrecognized arguments` list.
 #[must_use]
 pub fn join_arguments(arguments: &[OsString]) -> String {

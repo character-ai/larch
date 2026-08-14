@@ -1227,11 +1227,13 @@ verb = "rebuild-ballot"
 python_module = "larch.calibration.calibration_replay"
 python_function = "rebuild_ballot_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8439
+clean_install_test = "clean-install-calibration-replay-rebuild-ballot"
 
 [[commands]]
 domain = "calibration-replay"
@@ -1239,11 +1241,13 @@ verb = "run-replay"
 python_module = "larch.calibration.calibration_replay"
 python_function = "run_replay_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8439
+clean_install_test = "clean-install-calibration-replay-run-replay"
 
 [[commands]]
 domain = "calibration-replay"
@@ -1251,11 +1255,13 @@ verb = "validate-manifest"
 python_module = "larch.calibration.calibration_replay"
 python_function = "validate_manifest_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8439
+clean_install_test = "clean-install-calibration-replay-validate-manifest"
 
 [[commands]]
 domain = "checks"
@@ -6047,11 +6053,13 @@ verb = "aggregate-findings"
 python_module = "larch.review.review_aggregate"
 python_function = "aggregate_findings_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8443
+clean_install_test = "clean-install-review-aggregate-findings"
 
 [[commands]]
 domain = "review"
@@ -6163,11 +6171,13 @@ verb = "prune-nit-findings"
 python_module = "larch.review.review_aggregate"
 python_function = "prune_nit_findings_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8443
+clean_install_test = "clean-install-review-prune-nit-findings"
 
 [[commands]]
 domain = "review"
@@ -6175,11 +6185,13 @@ verb = "reviewer-prune"
 python_module = "larch.review.review_prune"
 python_function = "reviewer_prune_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8443
+clean_install_test = "clean-install-review-reviewer-prune"
 
 [[commands]]
 domain = "review"
@@ -8260,11 +8272,13 @@ verb = "ingest-finder"
 python_module = "larch.issue.validate_merged"
 python_function = "ingest_finder_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8505
+clean_install_test = "clean-install-validate-merged-ingest-finder"
 
 [[commands]]
 domain = "validate-merged"
@@ -8272,11 +8286,13 @@ verb = "ingest-refuter"
 python_module = "larch.issue.validate_merged"
 python_function = "ingest_refuter_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8505
+clean_install_test = "clean-install-validate-merged-ingest-refuter"
 
 [[commands]]
 domain = "validate-merged"
@@ -8284,11 +8300,13 @@ verb = "prepare"
 python_module = "larch.issue.validate_merged"
 python_function = "prepare_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8505
+clean_install_test = "clean-install-validate-merged-prepare"
 
 [[commands]]
 domain = "validate-merged"
@@ -8296,11 +8314,13 @@ verb = "report"
 python_module = "larch.issue.validate_merged"
 python_function = "report_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8505
+clean_install_test = "clean-install-validate-merged-report"
 
 [[commands]]
 domain = "validate-merged"
@@ -8308,11 +8328,13 @@ verb = "write-state"
 python_module = "larch.issue.validate_merged"
 python_function = "write_state_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8505
+clean_install_test = "clean-install-validate-merged-write-state"
 
 [[commands]]
 domain = "verify"
@@ -8349,11 +8371,13 @@ verb = "snapshot"
 python_module = "larch.review.voting"
 python_function = "voter_calibration_snapshot_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8439
+clean_install_test = "clean-install-voter-calibration-snapshot"
 
 [[commands]]
 domain = "voting"
@@ -8745,12 +8769,6 @@ python = []
 rust = ["agent parse-codex-usage", "run-log append-failure", "timing record-vendor-task"]
 
 [[callers]]
-path = "python/larch/calibration/calibration_replay.py"
-kind = "python-runtime"
-python = []
-rust = ["agent dispatch-voters"]
-
-[[callers]]
 path = "python/larch/core/redact.py"
 kind = "python-runtime"
 python = ["redact scrub-log-secrets", "redact secrets"]
@@ -8967,12 +8985,6 @@ python = []
 rust = ["bgjob start", "timing mark"]
 
 [[callers]]
-path = "python/larch/issue/validate_merged.py"
-kind = "python-runtime"
-python = ["validate-merged ingest-finder", "validate-merged ingest-refuter", "validate-merged prepare", "validate-merged report", "validate-merged write-state"]
-rust = []
-
-[[callers]]
 path = "python/larch/rendering/rendering.py"
 kind = "python-runtime"
 python = []
@@ -9012,7 +9024,7 @@ rust = ["run-log write-round"]
 path = "python/larch/review/batch_report.py"
 kind = "python-runtime"
 python = []
-rust = ["run-log write", "run-log write-round", "voting write-tally"]
+rust = ["review reviewer-prune", "run-log write", "run-log write-round", "voting write-tally"]
 
 [[callers]]
 path = "python/larch/review/coder_runner.py"
@@ -9042,19 +9054,13 @@ rust = ["stall-recovery record-escalation"]
 path = "python/larch/review/plan_review_panel.py"
 kind = "python-runtime"
 python = []
-rust = ["agent dispatch-waterfall", "agent launch-claude-review", "voting degraded-warning", "voting effective-judges", "voting parse-rate-retry"]
+rust = ["agent dispatch-waterfall", "agent launch-claude-review", "review reviewer-prune", "voter-calibration snapshot", "voting degraded-warning", "voting effective-judges", "voting parse-rate-retry"]
 
 [[callers]]
 path = "python/larch/review/plan_review_round.py"
 kind = "python-runtime"
 python = []
 rust = ["agent compose-collector-failure-log"]
-
-[[callers]]
-path = "python/larch/review/review_aggregate.py"
-kind = "python-runtime"
-python = []
-rust = ["agent dispatch-waterfall", "dirty-tree scope-marker", "run-log append-entry"]
 
 [[callers]]
 path = "python/larch/review/review_and_fix.py"
@@ -9215,8 +9221,8 @@ rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps 
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings"]
-rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "named-block write", "run-log append-failure", "session write-run-params", "timing record-round"]
+python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally"]
+rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "named-block write", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -9977,8 +9983,8 @@ rust = ["timing record-round"]
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["checks run-relevant", "render specialist", "render voter", "review core", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "scout dynamic-archetypes", "token claude-source"]
-rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review check-reviewer-failure-threshold", "review collect-findings", "review dispatch-panel", "review gather-context", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir", "session setup"]
+python = ["checks run-relevant", "render specialist", "render voter", "review core", "review log-phase", "review tally-code-votes", "review-and-fix step5", "scout dynamic-archetypes", "token claude-source"]
+rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review aggregate-findings", "review check-reviewer-failure-threshold", "review collect-findings", "review dispatch-panel", "review gather-context", "review prune-nit-findings", "review reviewer-prune", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir", "session setup"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"

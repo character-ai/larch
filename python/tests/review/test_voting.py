@@ -3,7 +3,6 @@ from __future__ import annotations
 
 # pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -12,7 +11,6 @@ from typing import cast
 import pytest
 
 from larch.review import voting
-from larch.core import config
 from larch.review.review_types import (
     JudgeSeverity,
     ReviewVote,
@@ -1012,28 +1010,13 @@ def test_voter_calibration_base_tool_normalization_and_snapshot_round_trip(tmp_p
         calibration_score=0.0,
         uncalibrated=True,
     )
-    assert voting.write_voter_calibration_stats(path=path, stats=[stat])
+    path.write_text(
+        "tool\tyes_votes\tvalid_yes_severity_count\tmajor\tminor\tnit\tmissing_severity\thigh_rate\tcalibration_score\tuncalibrated\n"
+        "codex\t3\t2\t2\t0\t0\t1\t1.000\t0.000\ttrue\n",
+        encoding="utf-8",
+    )
     loaded = voting.read_voter_calibration_stats(path)
     assert loaded["codex"] == stat
-
-
-def test_voter_calibration_log_window_groups_by_run_dir(tmp_path: Path) -> None:
-    root = tmp_path / "larch-logs"
-    newer = root / "implement" / "newer"
-    older = root / "implement" / "older"
-    for run, started, severity in ((newer, "2026-01-02T00:00:00Z", "major"), (older, "2026-01-01T00:00:00Z", "minor")):
-        round_dir = run / "round-1"
-        round_dir.mkdir(parents=True)
-        (run / "manifest.json").write_text(json.dumps({"started_at": started}), encoding="utf-8")
-        (round_dir / "findings-classification.tsv").write_text(
-            voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
-            + f"\nFINDING_1\treviewer\taccepted\tYES\ttrue\t{severity}\tgood\tfalse\tcodex\tNO\ttrue\tminor\tgood\tfalse\tcursor\tYES\ttrue\tminor\tgood\tfalse\tclaude\tin\n",
-            encoding="utf-8",
-        )
-    stats = voting.voter_calibration_stats_from_logs(log_root=root, window=1)
-    codex = next(stat for stat in stats if stat.tool == "codex")
-    assert codex.major == 1
-    assert codex.minor == 0
 
 
 def test_resolve_voter_calibration_log_root_design_source_env_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1165,105 +1148,3 @@ def test_resolve_voter_calibration_log_root_prefers_larch_consumer_repo_env(tmp_
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
     root = voting._resolve_voter_calibration_log_root(design_tmpdir=None, review_tmpdir=None)  # pyright: ignore[reportPrivateUsage]
     assert root == (consumer / "larch-logs").resolve()
-
-
-def test_voter_calibration_snapshot_main_reads_env_window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    log_root = tmp_path / "larch-logs"
-    run = log_root / "implement" / "run-a"
-    round_dir = run / "round-1"
-    round_dir.mkdir(parents=True)
-    (run / "manifest.json").write_text('{"started_at": "2026-01-02T00:00:00Z"}\n', encoding="utf-8")
-    (round_dir / "findings-classification.tsv").write_text(
-        voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
-        + "\nFINDING_1\treviewer\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tcodex\tNO\ttrue\tminor\tgood\tfalse\tcursor\tYES\ttrue\tminor\tgood\tfalse\tclaude\tin\n",
-        encoding="utf-8",
-    )
-    out = tmp_path / "stats.tsv"
-    monkeypatch.delenv(config.ENV_LARCH_VOTER_CALIBRATION_WINDOW, raising=False)
-    rc = voting.voter_calibration_snapshot_main(["--log-root", str(log_root), "--out", str(out)])
-    assert rc == 0
-    assert out.is_file()
-    monkeypatch.setenv(config.ENV_LARCH_VOTER_CALIBRATION_WINDOW, "1")
-    out2 = tmp_path / "stats-window.tsv"
-    rc = voting.voter_calibration_snapshot_main(["--log-root", str(log_root), "--out", str(out2)])
-    assert rc == 0
-    assert out2.is_file()
-
-
-def test_voter_calibration_snapshot_main_malformed_env_window_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    log_root = tmp_path / "larch-logs"
-    log_root.mkdir()
-    out = tmp_path / "stats.tsv"
-    monkeypatch.setenv(config.ENV_LARCH_VOTER_CALIBRATION_WINDOW, "not-a-number")
-    rc = voting.voter_calibration_snapshot_main(["--log-root", str(log_root), "--out", str(out)])
-    assert rc == 0
-    assert voting._resolve_voter_calibration_window("not-a-number") == config.VOTER_CALIBRATION_WINDOW_DEFAULT  # pyright: ignore[reportPrivateUsage]
-
-
-def test_voter_calibration_design_multi_round_grouping(tmp_path: Path) -> None:
-    log_root = tmp_path / "larch-logs"
-    run = log_root / "design" / "session-a"
-    for round_num in (1, 2):
-        round_dir = run / "plan-review" / f"round-{round_num}"
-        round_dir.mkdir(parents=True)
-        (round_dir / "findings-classification.tsv").write_text(
-            voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
-            + "\nFINDING_1\treviewer\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tcodex\tNO\ttrue\tminor\tgood\tfalse\tcursor\tYES\ttrue\tminor\tgood\tfalse\tclaude\tin\n",
-            encoding="utf-8",
-        )
-    (run / "manifest.json").write_text('{"started_at": "2026-01-02T00:00:00Z"}\n', encoding="utf-8")
-    rows = voting.discover_voter_calibration_logs(log_root)
-    assert len({row.run_dir for row in rows}) == 1
-
-
-def test_voter_calibration_flat_review_run_dir_grouping(tmp_path: Path) -> None:
-    log_root = tmp_path / "larch-logs"
-    run = log_root / "review" / "run-flat"
-    run.mkdir(parents=True)
-    (run / "review-findings-classification-round-1.tsv").write_text(
-        voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
-        + "\nFINDING_1\treviewer\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tcodex\tNO\ttrue\tminor\tgood\tfalse\tcursor\tYES\ttrue\tminor\tgood\tfalse\tclaude\tin\n",
-        encoding="utf-8",
-    )
-    rows = voting.discover_voter_calibration_logs(log_root)
-    assert rows[0].run_dir == run
-
-
-def test_voter_calibration_snapshot_skips_unsupported_tsv(tmp_path: Path) -> None:
-    log_root = tmp_path / "larch-logs"
-    run = log_root / "implement" / "run-bad"
-    round_dir = run / "round-1"
-    round_dir.mkdir(parents=True)
-    (run / "manifest.json").write_text('{"started_at": "2026-01-02T00:00:00Z"}\n', encoding="utf-8")
-    (round_dir / "findings-classification.tsv").write_text("not-a-tsv-header\n", encoding="utf-8")
-    stats = voting.voter_calibration_stats_from_logs(log_root=log_root, window=1)
-    assert stats == []
-
-
-def test_voter_calibration_snapshot_zero_severity_yes_votes_omitted(tmp_path: Path) -> None:
-    log_root = tmp_path / "larch-logs"
-    run = log_root / "implement" / "run-zero"
-    round_dir = run / "round-1"
-    round_dir.mkdir(parents=True)
-    (run / "manifest.json").write_text('{"started_at": "2026-01-02T00:00:00Z"}\n', encoding="utf-8")
-    (round_dir / "findings-classification.tsv").write_text(
-        voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
-        + "\nFINDING_1\treviewer\taccepted\tNO\ttrue\t\t\t\t\tcodex\tNO\ttrue\t\t\t\tcursor\tNO\ttrue\t\t\t\tclaude\tin\n",
-        encoding="utf-8",
-    )
-    stats = voting.voter_calibration_stats_from_logs(log_root=log_root, window=1)
-    assert stats == []
-
-
-def test_discover_voter_calibration_logs_skips_symlinks_and_keeps_order(tmp_path: Path) -> None:
-    log_root = tmp_path / "larch-logs"
-    implement = log_root / "implement" / "run-real" / "round-2"
-    implement.mkdir(parents=True)
-    (implement / "findings-classification.tsv").write_text("h\n", encoding="utf-8")
-    earlier = log_root / "implement" / "run-real" / "round-10"
-    earlier.mkdir(parents=True)
-    (earlier / "findings-classification.tsv").write_text("h\n", encoding="utf-8")
-    linked = log_root / "implement" / "run-link"
-    linked.symlink_to(log_root / "implement" / "run-real")
-    rows = voting.discover_voter_calibration_logs(log_root)
-    assert [row.path.parent.name for row in rows] == ["round-10", "round-2"]

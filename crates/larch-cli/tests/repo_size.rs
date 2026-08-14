@@ -6,42 +6,50 @@ use assert_cmd::Command;
 use tempfile::TempDir;
 
 const MIXED_REPORT: &str = "\
-┌───────────────────────────────────────┬───────┬────────┐
-│               Category                │ Files │ Lines  │
-├───────────────────────────────────────┼───────┼────────┤
-│ Bash scripts (runtime, non-test *.sh) │     1 │      1 │
-├───────────────────────────────────────┼───────┼────────┤
-│ Bash tests (test-*.sh)                │     1 │      2 │
-├───────────────────────────────────────┼───────┼────────┤
-│ Python code (non-test *.py)           │     1 │      3 │
-├───────────────────────────────────────┼───────┼────────┤
-│ Python tests (test_*.py)              │     1 │      1 │
-├───────────────────────────────────────┼───────┼────────┤
-│ All Markdown (*.md)                   │     3 │      3 │
-└───────────────────────────────────────┴───────┴────────┘
+┌───────────────────────────────────────────────┬───────┬────────┐
+│                   Category                    │ Files │ Lines  │
+├───────────────────────────────────────────────┼───────┼────────┤
+│ Bash scripts (runtime, non-test *.sh)         │     1 │      1 │
+├───────────────────────────────────────────────┼───────┼────────┤
+│ Bash tests (test-*.sh)                        │     1 │      2 │
+├───────────────────────────────────────────────┼───────┼────────┤
+│ Python code (non-test *.py)                   │     1 │      3 │
+├───────────────────────────────────────────────┼───────┼────────┤
+│ Python tests (test_*.py + tests/)             │     1 │      1 │
+├───────────────────────────────────────────────┼───────┼────────┤
+│ Rust code (non-test *.rs)                     │     2 │      3 │
+├───────────────────────────────────────────────┼───────┼────────┤
+│ Rust tests (#[cfg(test)] + tests/ + benches/) │     3 │      8 │
+├───────────────────────────────────────────────┼───────┼────────┤
+│ All Markdown (*.md)                           │     3 │      3 │
+└───────────────────────────────────────────────┴───────┴────────┘
 
 Repo (tracked content):          0.00 MB
-larch-logs/ total:               0.00 MB   ( 8.5% of repo)
+larch-logs/ total:               0.00 MB   ( 2.8% of repo)
   ├─ implement:                  0.00 MB   (33.3% of run-logs)
   ├─ design:                     0.00 MB   (33.3% of run-logs)
   └─ rest (shared, etc.):        0.00 MB   (33.3% of run-logs)
-Repo minus larch-logs:           0.00 MB   (91.5% of repo)
+Repo minus larch-logs:           0.00 MB   (97.2% of repo)
 ";
 
 const EMPTY_REPORT: &str = "\
-┌───────────────────────────────────────┬───────┬────────┐
-│               Category                │ Files │ Lines  │
-├───────────────────────────────────────┼───────┼────────┤
-│ Bash scripts (runtime, non-test *.sh) │     0 │      0 │
-├───────────────────────────────────────┼───────┼────────┤
-│ Bash tests (test-*.sh)                │     0 │      0 │
-├───────────────────────────────────────┼───────┼────────┤
-│ Python code (non-test *.py)           │     0 │      0 │
-├───────────────────────────────────────┼───────┼────────┤
-│ Python tests (test_*.py)              │     0 │      0 │
-├───────────────────────────────────────┼───────┼────────┤
-│ All Markdown (*.md)                   │     0 │      0 │
-└───────────────────────────────────────┴───────┴────────┘
+┌───────────────────────────────────────────────┬───────┬────────┐
+│                   Category                    │ Files │ Lines  │
+├───────────────────────────────────────────────┼───────┼────────┤
+│ Bash scripts (runtime, non-test *.sh)         │     0 │      0 │
+├───────────────────────────────────────────────┼───────┼────────┤
+│ Bash tests (test-*.sh)                        │     0 │      0 │
+├───────────────────────────────────────────────┼───────┼────────┤
+│ Python code (non-test *.py)                   │     0 │      0 │
+├───────────────────────────────────────────────┼───────┼────────┤
+│ Python tests (test_*.py + tests/)             │     0 │      0 │
+├───────────────────────────────────────────────┼───────┼────────┤
+│ Rust code (non-test *.rs)                     │     0 │      0 │
+├───────────────────────────────────────────────┼───────┼────────┤
+│ Rust tests (#[cfg(test)] + tests/ + benches/) │     0 │      0 │
+├───────────────────────────────────────────────┼───────┼────────┤
+│ All Markdown (*.md)                           │     0 │      0 │
+└───────────────────────────────────────────────┴───────┴────────┘
 
 Repo (tracked content):          0.00 MB
 larch-logs/ total:               0.00 MB   ( 0.0% of repo)
@@ -77,7 +85,7 @@ fn write(root: &Path, relative: &str, content: &[u8]) {
 }
 
 #[test]
-fn mixed_repository_matches_the_python_report_golden_fixture() {
+fn mixed_repository_matches_the_golden_fixture() {
     let repository = repository();
     let root = repository.path();
 
@@ -85,6 +93,31 @@ fn mixed_repository_matches_the_python_report_golden_fixture() {
     write(root, "scripts/test-unit.sh", b"first\nsecond\n");
     write(root, "python/tool.py", b"one\ntwo\nthree\n");
     write(root, "python/test_tool.py", b"test\n");
+    write(
+        root,
+        "crates/example/src/lib.rs",
+        b"fn production() {}\n\
+          #[cfg(test)]\n\
+          mod tests {\n\
+              #[test]\n\
+              fn unit() {}\n\
+          }\n",
+    );
+    write(
+        root,
+        "crates/example/src/main.rs",
+        b"fn first() {}\nfn second() {}\n",
+    );
+    write(
+        root,
+        "crates/example/tests/integration.rs",
+        b"fn first() {}\nfn second() {}\n",
+    );
+    write(
+        root,
+        "crates/example/benches/throughput.rs",
+        b"fn benchmark() {}\n",
+    );
     write(root, "docs/guide.md", b"guide\n");
     write(root, "docs/space name.md", b"space\n");
     write(root, "docs/binary.md", b"\xff\n");

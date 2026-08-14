@@ -123,7 +123,7 @@ test-redact-tmpdir-paths:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/core/test_redact.py -k 'tmpdir or operator'
 
 test-reviewer-prune:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k reviewer_prune
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_commands reviewer_prune
 
 test-lib-prune-decision:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'prune and not reviewer_prune'
@@ -760,10 +760,10 @@ test-collect-findings:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_commands collect_findings
 
 test-aggregate-findings:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_aggregate.py
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_commands aggregate_findings
 
 test-prune-nit-findings:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_aggregate.py -k 'prune_nit'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_commands prune_nit_findings
 
 test-tally-code-votes:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_tally.py -k '(tally_ or attributed_ballot or neutralized_ballot or ledger_reason) and not emit_tally'

@@ -21,7 +21,9 @@ use crate::argparse_compat::python_io_error;
 mod admission_commands;
 mod agent_commands;
 mod agent_review;
+mod analysis_state;
 mod analyze_bugs_commands;
+mod analyze_bugs_sweep;
 mod analyze_issues_commands;
 mod argparse_compat;
 mod audit_runs_commands;
@@ -31,6 +33,7 @@ mod bgjob_commands;
 mod blocker_commands;
 pub(crate) mod bootstrap_commands;
 mod bootstrap_support;
+mod calibration_commands;
 mod child_process;
 mod ci_launcher_commands;
 mod ci_selection;
@@ -92,12 +95,14 @@ pub(crate) mod run_log_migration_commands;
 mod run_log_publication_commands;
 mod runtime_entrypoint;
 mod session_artifact_support;
+mod validate_merged_commands;
 #[rustfmt::skip]
 mod run_log_flush_commands;
 mod report_tokens_commands;
 mod research_commands;
 mod review_commands;
 mod review_dispatch_panel;
+mod review_findings_commands;
 mod session_closeout_commands;
 mod session_env_commands;
 mod session_gate_commands;
@@ -164,6 +169,9 @@ enum Domain {
     /// Native issue blocked-by dependency mutations.
     #[command(subcommand, name = "block-issue")]
     BlockIssue(BlockIssueCommand),
+    /// Recorded voter-calibration fixture replay commands.
+    #[command(subcommand, name = "calibration-replay")]
+    CalibrationReplay(CalibrationReplayCommand),
     /// Internal bootstrap commands used before installation completes.
     #[command(subcommand, hide = true)]
     Bootstrap(BootstrapCommand),
@@ -265,6 +273,9 @@ enum Domain {
     /// Prepare compact bug-learning evidence and maintain its durable marker.
     #[command(subcommand, name = "learn-from-bugs")]
     LearnFromBugs(LearnFromBugsCommand),
+    /// Inspect recent first-parent merges for possible unfiled bugs.
+    #[command(subcommand, name = "validate-merged")]
+    ValidateMerged(ValidateMergedCommand),
     /// Narrow provider transports used by Python-owned run-log workflows.
     #[command(subcommand)]
     ObjectStore(ObjectStoreCommand),
@@ -322,9 +333,28 @@ enum Domain {
     /// Vote parsing, tally state, panel rendering, and parse-rate checks.
     #[command(subcommand)]
     Voting(VotingCommand),
+    /// Voter calibration snapshot commands.
+    #[command(subcommand, name = "voter-calibration")]
+    VoterCalibration(VoterCalibrationCommand),
     /// Upgrade the installed larch plugin and executable.
     #[command(subcommand)]
     UpgradeLarch(UpgradeLarchCommand),
+}
+
+#[derive(Subcommand)]
+enum CalibrationReplayCommand {
+    #[command(name = "rebuild-ballot", disable_help_flag = true)]
+    RebuildBallot(RawCompatibilityArguments),
+    #[command(name = "run-replay", disable_help_flag = true)]
+    RunReplay(RawCompatibilityArguments),
+    #[command(name = "validate-manifest", disable_help_flag = true)]
+    ValidateManifest(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum VoterCalibrationCommand {
+    #[command(disable_help_flag = true)]
+    Snapshot(RawCompatibilityArguments),
 }
 
 macro_rules! voting_commands {
@@ -669,6 +699,25 @@ enum LearnFromBugsCommand {
     /// Translate proposal dependencies into `/issue` batch dependency rows.
     #[command(name = "filing-deps", disable_help_flag = true)]
     FilingDeps(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum ValidateMergedCommand {
+    /// Select recent first-parent merges and write finder/refuter capture paths.
+    #[command(disable_help_flag = true)]
+    Prepare(RawCompatibilityArguments),
+    /// Validate finder JSONL and write the deterministic refuter queue.
+    #[command(name = "ingest-finder", disable_help_flag = true)]
+    IngestFinder(RawCompatibilityArguments),
+    /// Validate refuter JSONL and write the validated merge artifact.
+    #[command(name = "ingest-refuter", disable_help_flag = true)]
+    IngestRefuter(RawCompatibilityArguments),
+    /// Render the report-only merge-validation result and a publishable state file.
+    #[command(disable_help_flag = true)]
+    Report(RawCompatibilityArguments),
+    /// Atomically publish the durable validate-merged marker.
+    #[command(name = "write-state", disable_help_flag = true)]
+    WriteState(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1607,6 +1656,18 @@ fn run(
     match cli.domain {
         Domain::Agent(command) => Ok(agent_commands::run(command)),
         Domain::Review(command) => Ok(review_commands::run(command)),
+        Domain::CalibrationReplay(CalibrationReplayCommand::RebuildBallot(arguments)) => Ok(
+            calibration_commands::rebuild_ballot_command(&arguments.arguments),
+        ),
+        Domain::CalibrationReplay(CalibrationReplayCommand::RunReplay(arguments)) => Ok(
+            calibration_commands::run_replay_command(&arguments.arguments),
+        ),
+        Domain::CalibrationReplay(CalibrationReplayCommand::ValidateManifest(arguments)) => Ok(
+            calibration_commands::validate_manifest_command(&arguments.arguments),
+        ),
+        Domain::VoterCalibration(VoterCalibrationCommand::Snapshot(arguments)) => Ok(
+            calibration_commands::voter_calibration_snapshot(&arguments.arguments),
+        ),
         Domain::Alias(command) => Ok(developer_tooling_commands::run_alias(command)),
         Domain::Bootstrap(BootstrapCommand::Invoke(arguments)) => {
             Ok(bootstrap_commands::invoke(&arguments.arguments))
@@ -1989,6 +2050,23 @@ fn run(
             }
             LearnFromBugsCommand::FilingDeps(arguments) => {
                 learn_from_bugs_commands::filing_deps(&arguments.arguments)
+            }
+        }),
+        Domain::ValidateMerged(command) => Ok(match command {
+            ValidateMergedCommand::Prepare(arguments) => {
+                validate_merged_commands::prepare(&arguments.arguments)
+            }
+            ValidateMergedCommand::IngestFinder(arguments) => {
+                validate_merged_commands::ingest_finder(&arguments.arguments)
+            }
+            ValidateMergedCommand::IngestRefuter(arguments) => {
+                validate_merged_commands::ingest_refuter(&arguments.arguments)
+            }
+            ValidateMergedCommand::Report(arguments) => {
+                validate_merged_commands::report(&arguments.arguments)
+            }
+            ValidateMergedCommand::WriteState(arguments) => {
+                validate_merged_commands::write_state(&arguments.arguments)
             }
         }),
         Domain::Progress(command) => Ok(match command {

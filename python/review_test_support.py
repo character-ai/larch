@@ -28,6 +28,17 @@ def run_review(
         _ = merged.pop("LARCH_QUIET_DISABLE", None)
     if env:
         merged.update(env)
+    migrated = {"aggregate-findings", "prune-nit-findings", "reviewer-prune"}
+    if args and args[0] in migrated:
+        _ = merged.setdefault("CLAUDE_PLUGIN_ROOT", str(ROOT))
+        return subprocess.run(
+            [str(ROOT / "scripts" / "larch.sh"), "review", *args],
+            cwd=cwd or ROOT,
+            env=merged,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
     return subprocess.run(
         [sys.executable, str(CLI), "review", *args],
         cwd=cwd or ROOT,

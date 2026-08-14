@@ -1,10 +1,6 @@
 # pyright: reportUnusedCallResult=false, reportUnusedFunction=false, reportUnknownArgumentType=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportArgumentType=false
 # ruff: noqa: PLW2901
-"""Shared utilities and data types for the review pipeline.
-
-Imported by review_prune and review_core_body.
-Must not import from any of those modules.
-"""
+"""Shared utilities and data types for the review pipeline."""
 
 from __future__ import annotations
 
@@ -25,36 +21,7 @@ from larch.review.review_types import ReviewCoreStatus
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 CLI = _PLUGIN_ROOT / "python" / "cli.py"
 STATIC_REVIEWERS = ("correctness", "edge-cases", "testing")
-REVIEWER_PRUNE_ACCEPTANCE_FLOOR_NUMERATOR = 1
-REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR = 2
-REVIEWER_PRUNE_ACCEPTED_COUNT_FLOOR = 2
 PER_REVIEWER_OOS_PROPOSAL_CAP = 3
-
-
-@dataclass(frozen=True)
-class PruneRoundCounts:
-    accepted: int = 0
-    weighted_accepted: int = 0
-    rejected: int = 0
-    total: int = 0
-    observed: bool = True
-
-
-@dataclass(frozen=True)
-class PruneRecordOptions:
-    label_map: Path | None = None
-    reviewer_status: Path | None = None
-
-
-@dataclass(frozen=True)
-class PruneFilterResult:
-    prune_active: str
-    eligible_count: int
-    pruned_count: int
-    pruned_combos: str
-    panel_pruned_empty: str
-    prune_fail_open: str = "false"
-    warn: str = ""
 
 
 @dataclass(frozen=True)
@@ -188,7 +155,7 @@ def _run_command_string(*, command: str, args: Sequence[str], runner: proc.Runne
 
 
 def _call_review_command(*, name: str, args: Sequence[str], runner: proc.Runner | None = None) -> proc.CommandResult:
-    if name in {"gather-context", "dispatch-panel", "collect-findings", "check-reviewer-failure-threshold"}:
+    if name in {"gather-context", "dispatch-panel", "collect-findings", "check-reviewer-failure-threshold", "aggregate-findings", "prune-nit-findings", "reviewer-prune"}:
         return run_larch(["review", name, *args], runner=runner)
     return _run_python_cli(["review", name, *args], runner=runner)
 

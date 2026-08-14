@@ -279,7 +279,7 @@ const EXPECTED_COMMANDS: [ExpectedCommand; 96] = [
 ];
 
 /// Commands that are deliberately outside #7682's closed boundary.
-const HANDOFF_COMMANDS: [HandoffCommand; 21] = [
+const HANDOFF_COMMANDS: [HandoffCommand; 16] = [
     HandoffCommand::new("analyze-issues", "render-chart", 7683),
     HandoffCommand::new("clarify", "comment-fetch", 7680),
     HandoffCommand::new("clarify", "comment-post", 7680),
@@ -296,11 +296,6 @@ const HANDOFF_COMMANDS: [HandoffCommand; 21] = [
     HandoffCommand::new("token", "cost", 7684),
     HandoffCommand::new("token", "render-cost-line", 7684),
     HandoffCommand::new("tracking", "post-issue", 7681),
-    HandoffCommand::new("validate-merged", "ingest-finder", 7684),
-    HandoffCommand::new("validate-merged", "ingest-refuter", 7684),
-    HandoffCommand::new("validate-merged", "prepare", 7684),
-    HandoffCommand::new("validate-merged", "report", 7684),
-    HandoffCommand::new("validate-merged", "write-state", 7684),
 ];
 
 const RESEARCH_LIBRARY: &str =
@@ -316,12 +311,11 @@ const GOVERNANCE_GATE_LIBRARY: &str =
 /// The package initializer is structural. Every other issue module at any
 /// depth must name both its receiving umbrella and its behaviorally distinct
 /// reason for remaining in Python.
-const RETAINED_MODULES: [RetainedModule; 20] = [
+const RETAINED_MODULES: [RetainedModule; 18] = [
     RetainedModule::new("python/larch/issue/_ground_truth.py", 7684, RESEARCH_LIBRARY),
     RetainedModule::new("python/larch/issue/_oos.py", 7684, RESEARCH_LIBRARY),
     RetainedModule::new("python/larch/issue/_report.py", 7684, RESEARCH_LIBRARY),
     RetainedModule::new("python/larch/issue/_util.py", 7684, RESEARCH_LIBRARY),
-    RetainedModule::new("python/larch/issue/analyze_bugs.py", 7684, RESEARCH_LIBRARY),
     RetainedModule::new("python/larch/issue/file_oos.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new(
         "python/larch/issue/issue_block.py",
@@ -348,7 +342,6 @@ const RETAINED_MODULES: [RetainedModule; 20] = [
     RetainedModule::new("python/larch/issue/rejected_analysis.py", 7684, RESEARCH_LIBRARY),
     RetainedModule::new("python/larch/issue/title_match.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/tracking_issue.py", 7681, IMPLEMENT_LIBRARY),
-    RetainedModule::new("python/larch/issue/validate_merged.py", 7684, RESEARCH_LIBRARY),
 ];
 
 pub static METADATA: RuleMetadata = RuleMetadata::new(
