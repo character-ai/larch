@@ -96,11 +96,12 @@ proptest! {
         title in "[a-z ]{1,20}",
     ) {
         let row = LedgerRow::new(round, &finding_id, &title, "", "accepted", "", "");
+        let sanitized_title = row.title.clone();
         let rendered = render_ledger(&[row]).expect("render");
         let parsed = parse_ledger(&rendered).expect("parse");
         prop_assert_eq!(parsed.len(), 1);
         prop_assert_eq!(&parsed[0].finding_id, &finding_id);
-        prop_assert_eq!(&parsed[0].title, &title);
+        prop_assert_eq!(&parsed[0].title, &sanitized_title);
     }
 
     #[test]

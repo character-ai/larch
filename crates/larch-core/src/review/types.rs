@@ -477,7 +477,7 @@ pub fn is_oos_eligible_block(block: &ParsedBlock) -> bool {
 }
 
 static FIELD_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^- \*\*((?i-u:Location|Concern))\*\*:\s*(.*?)\s*$").expect("field regex")
+    Regex::new(r"(?m)^- \*\*((?i-u:Location|Concern))\*\*:[ \t]*(.*?)[ \t]*$").expect("field regex")
 });
 static FINDING_HEADER_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^### FINDING_[0-9]+:.*$").expect("header regex"));
