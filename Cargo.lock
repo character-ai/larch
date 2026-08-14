@@ -3103,6 +3103,7 @@ dependencies = [
  "larch-lint",
  "larch-test-support",
  "nix",
+ "num-bigint",
  "octocrab",
  "predicates",
  "regex",

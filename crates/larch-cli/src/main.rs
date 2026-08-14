@@ -113,6 +113,7 @@ mod tracking_issue_commands;
 mod triage_commands;
 mod umbrella_commands;
 mod voter_dispatch_commands;
+mod voting_commands;
 mod waterfall_commands;
 
 use agent_commands::AgentCommand;
@@ -313,10 +314,50 @@ enum Domain {
     /// Committed run-log identity and layout helpers.
     #[command(subcommand, name = "run-log")]
     RunLog(RunLogCommand),
+    /// Stateless vote parsing, classification, and parse-rate checks.
+    #[command(subcommand)]
+    Voting(VotingCommand),
     /// Upgrade the installed larch plugin and executable.
     #[command(subcommand)]
     UpgradeLarch(UpgradeLarchCommand),
 }
+
+macro_rules! voting_commands {
+    ($(($variant:ident, $name:literal, $handler:ident)),+ $(,)?) => {
+        #[derive(Subcommand)]
+        enum VotingCommand {
+            $(#[command(name = $name, disable_help_flag = true)]
+            $variant(RawCompatibilityArguments),)+
+        }
+        impl VotingCommand {
+            fn run(self) -> ExitCode {
+                let arguments = std::env::args_os().skip(3).collect::<Vec<_>>();
+                match self {
+                    $(Self::$variant(_) => voting_commands::$handler(&arguments),)+
+                }
+            }
+        }
+    };
+}
+#[rustfmt::skip]
+voting_commands!(
+    (AcceptFinding, "accept-finding", accept_finding_command),
+    (BallotParse, "ballot-parse", ballot_parse),
+    (ClassifyResult, "classify-result", classify_result),
+    (CodeReviewClassificationHeader, "code-review-classification-header", code_review_classification_header_command),
+    (FalsePositiveMatch, "false-positive-match", false_positive_match_command),
+    (FileLineRegex, "file-line-regex", file_line_regex_command),
+    (FindingsClassificationHeader, "findings-classification-header", findings_classification_header),
+    (IsSecurityBlock, "is-security-block", is_security_block),
+    (PanelTier, "panel-tier", panel_tier_command),
+    (ParseJudgeVote, "parse-judge-vote", parse_judge_vote),
+    (ParseRateCheck, "parse-rate-check", parse_rate_check),
+    (ParseRateDiagMatches, "parse-rate-diag-matches", parse_rate_diag_matches),
+    (ParseRateRetry, "parse-rate-retry", parse_rate_retry),
+    (ReviewerForBlock, "reviewer-for-block", reviewer_for_block),
+    (SplitBallot, "split-ballot", split_ballot),
+    (VoteForId, "vote-for-id", vote_for_id),
+);
 
 #[derive(Subcommand)]
 enum RunLogCommand {
@@ -2113,6 +2154,7 @@ fn run(
         Domain::RunLog(RunLogCommand::Refresh(arguments)) => {
             Ok(run_log_flush_commands::refresh(&arguments.arguments))
         }
+        Domain::Voting(command) => Ok(command.run()),
         Domain::UpgradeLarch(command) => match command {
             UpgradeLarchCommand::ReleaseStep7Root(arguments) => {
                 let version = arguments

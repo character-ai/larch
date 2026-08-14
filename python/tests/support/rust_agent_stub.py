@@ -33,6 +33,7 @@ import sys
 import tarfile
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from pathlib import PurePosixPath
@@ -1965,6 +1966,30 @@ def _timing_noop(_arguments: list[str]) -> int:
     return 0
 
 
+def _voting_parse_rate(arguments: list[str], *, envelope: bool) -> int:
+    """Return a caller-selected parse-rate result without duplicating the Rust policy."""
+    raw = os.environ.get("LARCH_TEST_VOTING_PARSE_RATE_JSON", "")
+    decoded: object = json.loads(raw) if raw else {}
+    if not isinstance(decoded, dict):
+        return 2
+    statuses = cast("dict[str, object]", decoded)
+    voter = Path(_flag(arguments, "--voter-file")).name
+    status = str(statuses.get(voter, statuses.get("*", "OK")))
+    if status not in {"OK", "NOT_SUBSTANTIVE"}:
+        return 2
+    prefix = "PARSE_RATE_STATUS=" if envelope else ""
+    print(f"{prefix}{status}")
+    return 0
+
+
+def _voting_parse_rate_check(arguments: list[str]) -> int:
+    return _voting_parse_rate(arguments, envelope=True)
+
+
+def _voting_parse_rate_retry(arguments: list[str]) -> int:
+    return _voting_parse_rate(arguments, envelope=False)
+
+
 def main(arguments: list[str]) -> int:
     result = 2
     if arguments == ["--version"]:
@@ -1974,7 +1999,7 @@ def main(arguments: list[str]) -> int:
         print(json.dumps({"schema_version": 1, "version": _version(), "target": _target()}, separators=(",", ":")))
         result = 0
     else:
-        handlers = {
+        handlers: dict[tuple[str, str], Callable[[list[str]], int]] = {
             ("agent", "classify-diff"): _classify,
             ("agent", "wait-reviewers"): _wait,
             ("agent", "gather-branch-context"): _gather,
@@ -2010,6 +2035,8 @@ def main(arguments: list[str]) -> int:
             ("timing", "report"): _timing_noop,
             ("timing", "dump"): _timing_noop,
             ("timing", "telemetry-mark"): _timing_noop,
+            ("voting", "parse-rate-check"): _voting_parse_rate_check,
+            ("voting", "parse-rate-retry"): _voting_parse_rate_retry,
         }
         handler = handlers.get((arguments[0], arguments[1])) if len(arguments) >= ARG_PAIR_SIZE else None
         if handler is not None:

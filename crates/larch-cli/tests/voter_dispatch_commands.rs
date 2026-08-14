@@ -70,8 +70,10 @@ for row in rows:
         tool = opposite
     else:
         tool = "claude"
+    label = os.path.basename(output).removesuffix("-vote-output.txt")
     with open(output, "w") as handle:
-        handle.write("" if marker("EMPTY-" + slot) else "FINDING_1: YES\n")
+        handle.write("" if marker("EMPTY-" + slot) else "narrative only\n" if marker("PARSE-BAD-" + label) else "FINDING_1: YES\n")
+    if marker("STALE-DIAG-" + label): os.mkdir(output.removesuffix(".txt") + "-parse-rate-diag.txt")
     with open(output + ".done", "w") as handle:
         handle.write("1\n" if marker("RC1-" + slot) else "0\n")
     outputs.append(output)
@@ -123,13 +125,6 @@ if verb == ("render", "voter"):
     if not marker("RENDER-NO-POINTER"):
         sys.stdout.write("Read the ballot from this path: %s\n" % value("--ballot-file"))
     sys.exit(1 if marker("RENDER-FAIL") else 0)
-
-if verb == ("voting", "parse-rate-retry"):
-    tool = value("--voter-tool")
-    if marker("PARSE-RC1-" + tool):
-        sys.exit(1)
-    sys.stdout.write("NOT_SUBSTANTIVE\n" if marker("PARSE-BAD-" + tool) else "OK\n")
-    sys.exit(0)
 
 if verb == ("voter-calibration", "snapshot"):
     if marker("SNAPSHOT-FAIL"):
@@ -218,8 +213,12 @@ impl Fixture {
             "LARCH_VOTER_CALIBRATION_WINDOW",
             "LARCH_CODEX_MODEL",
             "LARCH_CODEX_VOTE_MODEL",
+            "LARCH_VOTER_JUDGE_ERROR_PARSE_THRESHOLD",
         ] {
             command.env_remove(key);
+        }
+        if self.path("THRESHOLD-HALF").exists() {
+            command.env("LARCH_VOTER_JUDGE_ERROR_PARSE_THRESHOLD", "0.5");
         }
         command.args(["agent", "dispatch-voters"]);
         command
@@ -286,6 +285,8 @@ fn a_full_panel_publishes_three_launched_voters() {
         fixture.path("code-voter-paths.txt").display().to_string()
     );
     assert_eq!(fixture.read("code-voter-paths.txt").lines().count(), 3);
+    let cli = fixture.read("cli-argv.log");
+    assert!(!cli.contains("voting parse-rate-retry"));
     assert!(!stdout.contains("DEGRADED_PANEL_WARNING"), "{stdout}");
 }
 
@@ -439,25 +440,32 @@ fn an_empty_result_fails_its_slot() {
 }
 
 #[test]
+#[rustfmt::skip]
 fn a_narrative_only_voter_leaves_the_tally() {
     let fixture = Fixture::create();
     fixture.marker("PARSE-BAD-codex-pragmatism");
+    fixture.marker("STALE-DIAG-codex-validity");
     let output = fixture.dispatch("true", "true", &[]);
     let stdout = stdout_of(&output);
     assert_eq!(kv(&stdout, "VOTER_3_PARSE_RATE_STATUS"), "NOT_SUBSTANTIVE");
+    assert_eq!(kv(&stdout, "VOTER_1_PARSE_RATE_STATUS"), "NOT_SUBSTANTIVE");
     assert_eq!(kv(&stdout, "VOTER_3_STATUS"), "launched");
+    let stderr = stderr_of(&output);
+    assert!(!stderr.contains("ballot items returned JUDGE_ERROR") && !stderr.contains("os error"), "{stderr}");
     assert!(stdout.contains("DEGRADED_PANEL_WARNING"), "{stdout}");
     // The path still reaches the tally so the retry sidecars remain readable.
     assert_eq!(fixture.read("code-voter-paths.txt").lines().count(), 3);
 }
 
 #[test]
-fn a_nonzero_parse_rate_check_counts_as_not_substantive() {
+#[rustfmt::skip]
+fn nested_parse_rate_keeps_the_retired_child_threshold_boundary() {
     let fixture = Fixture::create();
-    fixture.marker("PARSE-RC1-codex-validity");
+    fixture.marker("THRESHOLD-HALF");
+    write(&fixture.path("findings.md"), "FINDING_1: one\nFINDING_2: two\n");
     let output = fixture.dispatch("true", "true", &[]);
-    let stdout = stdout_of(&output);
-    assert_eq!(kv(&stdout, "VOTER_1_PARSE_RATE_STATUS"), "NOT_SUBSTANTIVE");
+    assert_eq!(kv(&stdout_of(&output), "VOTER_1_PARSE_RATE_STATUS"), "OK");
+    assert!(output.stderr.is_empty(), "{}", stderr_of(&output));
 }
 
 #[test]
@@ -555,15 +563,6 @@ fn the_waterfall_receives_the_retired_dispatch_grammar() {
             fixture.path("plan-context.txt").display()
         )),
         "{argv}"
-    );
-    let cli = fixture.read("cli-argv.log");
-    assert!(
-        cli.contains(&format!(
-            "--ctx=--diff-file --ctx {} --ctx=--plan-file --ctx {}",
-            fixture.path("diff-context.txt").display(),
-            fixture.path("plan-context.txt").display()
-        )),
-        "{cli}"
     );
 }
 

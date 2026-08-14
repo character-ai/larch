@@ -61,9 +61,7 @@ def test_vote_for_id_last_match_and_exonerate(tmp_path: Path) -> None:
         vote_lines({"FINDING_1": "YES", "FINDING_10": "YES"}) + "finding_1: exonerate -- old token\n",
         encoding="utf-8",
     )
-    result = run_cli("voting", "vote-for-id", "FINDING_1", str(voter))
-    assert result.returncode == 0
-    assert result.stdout == "NO\n"
+    assert voting.vote_for_id(ballot_id="FINDING_1", voter_file=voter) == "NO"
 
 
 def test_vote_for_id_text_uses_the_file_vote_grammar() -> None:
@@ -82,18 +80,10 @@ def test_reviewer_security_and_split_ballot(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     out_dir = tmp_path / "blocks"
-    result = run_cli("voting", "split-ballot", str(ballot), str(out_dir))
-    assert result.returncode == 0
+    voting.split_ballot(ballot_file=ballot, out_dir=out_dir)
     assert (out_dir / "FINDING_1.md").exists()
     assert voting.reviewer_for_block(out_dir / "FINDING_1.md") == "Structure"
     assert voting.is_security_block(out_dir / "FINDING_1.md")
-
-    dup = tmp_path / "dup.md"
-    dup.write_text("### FINDING_1: one\n### FINDING_1: dup\n", encoding="utf-8")
-    result = run_cli("voting", "split-ballot", str(dup), str(tmp_path / "dup-blocks"))
-    assert result.returncode == 1
-    assert "duplicate ballot heading FINDING_1" in result.stderr
-
 
 def test_ballot_blocks_use_canonical_parser_and_exact_item_slices(tmp_path: Path) -> None:
     ballot_text = (
@@ -213,18 +203,18 @@ def test_parse_judge_vote_cases(
 ) -> None:
     voter = tmp_path / "voter.txt"
     voter.write_text(f"noise\n{line}\n", encoding="utf-8")
-    result = run_cli("voting", "parse-judge-vote", str(voter), "FINDING_1")
-    assert result.returncode == 0
-    assert f"PARSED_VOTE={expected_vote}\n" in result.stdout
-    assert f"PARSED_CORRECTNESS={expected_correctness}\n" in result.stdout
-    assert f"PARSED_UNCERTAIN={expected_uncertain}\n" in result.stdout
+    vote, correctness, _severity, _quality, uncertain = voting.parse_judge_vote(
+        voter_file=voter,
+        ballot_id="FINDING_1",
+    )
+    assert vote == expected_vote
+    assert correctness == expected_correctness
+    assert uncertain == expected_uncertain
 
 
-def test_parse_judge_vote_missing_args_and_unreadable(tmp_path: Path) -> None:
-    result = run_cli("voting", "parse-judge-vote")
-    assert result.returncode == 2
-    result = run_cli("voting", "parse-judge-vote", str(tmp_path / "missing.txt"), "FINDING_1")
-    assert result.returncode == 2
+def test_parse_judge_vote_unreadable_library_path(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        voting.parse_judge_vote(voter_file=tmp_path / "missing.txt", ballot_id="FINDING_1")
 
 
 def test_markdown_table_votes_are_recovered(tmp_path: Path) -> None:
@@ -244,22 +234,6 @@ def test_markdown_table_votes_are_recovered(tmp_path: Path) -> None:
     assert voting.vote_for_id(ballot_id="FINDING_2", voter_file=voter) == "NO"
     assert voting.vote_for_id(ballot_id="OOS_1", voter_file=voter) == "NO"  # EXONERATE maps to NO
     assert voting.parse_judge_vote(voter_file=voter, ballot_id="FINDING_1")[0] == "YES"
-
-    ballot = tmp_path / "ballot.md"
-    ballot.write_text("### FINDING_1: a\n### FINDING_2: b\n", encoding="utf-8")
-    # The parse-rate gate must see the recovered votes and keep the voter (OK, not NOT_SUBSTANTIVE).
-    assert (
-        voting.check_voter_parse_rate(
-            voter_file=str(voter),
-            voter_tool="claude",
-            ballot_file=str(ballot),
-            id_grammar="finding-oos",
-            review_tmpdir=str(tmp_path),
-            log_mode="quiet",
-        )
-        == "OK"
-    )
-
 
 def test_markdown_table_votes_preserve_axis_tokens(tmp_path: Path) -> None:
     voter = tmp_path / "voter.txt"
@@ -340,12 +314,8 @@ def test_anchored_votes_unaffected_by_markdown_normalization(tmp_path: Path) -> 
     assert voting.vote_for_id(ballot_id="FINDING_2", voter_file=voter) == "NO"
 
 
-def test_file_line_regex_and_false_positive() -> None:
-    result = run_cli("voting", "file-line-regex", "--name", "extensionless-re")
-    assert result.returncode == 0
-    assert "Makefile" in result.stdout
-    assert run_cli("voting", "false-positive-match", "Closed as duplicate of #123").returncode == 0
-    assert run_cli("voting", "false-positive-match", "This is not a duplicate").returncode == 1
+def test_file_line_regex_library_remains_for_python_consumers() -> None:
+    assert "Makefile" in voting.FILE_LINE_REGEXES["extensionless-re"]
 
 
 def test_classification_row_panel_inputs_keep_raw_header_and_oos_scope() -> None:
@@ -386,9 +356,9 @@ def test_ballot_parse_tally_vote_and_scoreboard(tmp_path: Path) -> None:
         "### FINDING_2: [OOS] Drift\n- **Concern**: oos\n",
         encoding="utf-8",
     )
-    parsed = run_cli("voting", "ballot-parse", "--ballot-file", str(ballot))
-    assert "FINDING_1_CONCERN=first line continued" in parsed.stdout
-    assert "FINDING_2_OOS=true" in parsed.stdout
+    parsed = "\n".join(voting.ballot_parse(ballot))
+    assert "FINDING_1_CONCERN=first line continued" in parsed
+    assert "FINDING_2_OOS=true" in parsed
 
     v1 = tmp_path / "v1.txt"
     v2 = tmp_path / "v2.txt"
@@ -479,52 +449,6 @@ def test_plan_review_rejects_self_review_mode(tmp_path: Path) -> None:
         str(body),
     )
     assert result.returncode == 2
-
-
-def test_parse_rate_retry_bare_status_and_oos_grammar(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    (root / "python").mkdir(parents=True)
-    (root / "python" / "cli.py").write_text("# unused\n", encoding="utf-8")
-    ballot = tmp_path / "ballot.md"
-    ballot.write_text("### OOS_1: drift\n", encoding="utf-8")
-    voter = tmp_path / "voter.txt"
-    voter.write_text("narrative only\n", encoding="utf-8")
-    prompt = tmp_path / "slot-prompt.txt"
-    prompt.write_text("prompt\n", encoding="utf-8")
-    result = run_cli(
-        "voting",
-        "parse-rate-retry",
-        "--ballot-file",
-        str(ballot),
-        "--id-grammar",
-        "finding-oos",
-        "--review-tmpdir",
-        str(tmp_path),
-        "--plugin-root",
-        str(root),
-        "--dispatch-label",
-        "agent dispatch-voters",
-        "--retry-prefix-kind",
-        "code",
-        "--launch-mode",
-        "description",
-        "--ctx=--diff-file",
-        "--ctx",
-        "-leading-dash.diff",
-        "--slot",
-        "1",
-        "--voter-file",
-        str(voter),
-        "--voter-tool",
-        "codex",
-        "--prompt-file",
-        str(prompt),
-    )
-    assert result.returncode == 0
-    assert result.stdout == "NOT_SUBSTANTIVE\n"
-    assert "PARSE_RATE_STATUS" not in result.stdout
-    assert voter.read_text(encoding="utf-8") == "narrative only\n"
-    assert not (tmp_path / "voter-parse-retry.txt").exists()
 
 
 def test_voter_agreement_row_from_panel_semantics() -> None:
@@ -838,182 +762,6 @@ def test_code_review_classification_header_variants_share_one_schema() -> None:
     assert code_review_classification_required_fields(
         include_tools=True, include_scope=True
     ) == frozenset(full.split("\t"))
-
-
-def test_parse_rate_retry_classify_only_dispatch_shaped_argv(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    (root / "python").mkdir(parents=True)
-    (root / "python" / "cli.py").write_text("# unused\n", encoding="utf-8")
-    ballot = tmp_path / "ballot.md"
-    ballot.write_text("### FINDING_1: bug\n", encoding="utf-8")
-    voter = tmp_path / "claude-vote-output.txt"
-    voter.write_text("narrative only\n", encoding="utf-8")
-    diff = tmp_path / "review.diff"
-    plan = tmp_path / "plan.md"
-    diff.write_text("diff", encoding="utf-8")
-    plan.write_text("plan", encoding="utf-8")
-    result = run_cli(
-        "voting",
-        "parse-rate-retry",
-        "--ballot-file",
-        str(ballot),
-        "--id-grammar",
-        "finding-only",
-        "--review-tmpdir",
-        str(tmp_path),
-        "--plugin-root",
-        str(root),
-        "--dispatch-label",
-        "agent dispatch-voters",
-        "--ctx=--diff-file",
-        "--ctx",
-        str(diff),
-        "--ctx=--plan-file",
-        "--ctx",
-        str(plan),
-        "--slot",
-        "1",
-        "--voter-file",
-        str(voter),
-        "--voter-tool",
-        "claude",
-    )
-    assert result.returncode == 0
-    assert result.stdout == "NOT_SUBSTANTIVE\n"
-    assert voter.read_text(encoding="utf-8") == "narrative only\n"
-    assert not (tmp_path / "claude-vote-output-parse-retry.txt").exists()
-    assert not (tmp_path / "claude-vote-output-first-pass.txt").exists()
-
-
-def test_parse_rate_retry_legacy_argv_is_classify_only(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    (root / "python").mkdir(parents=True)
-    (root / "python" / "cli.py").write_text("# unused\n", encoding="utf-8")
-    ballot = tmp_path / "ballot.md"
-    ballot.write_text("### FINDING_1: bug\n", encoding="utf-8")
-    voter = tmp_path / "cursor-vote-output.txt"
-    voter.write_text("narrative only\n", encoding="utf-8")
-    prompt = tmp_path / "cursor-vote-prompt.txt"
-    prompt.write_text("prompt\n", encoding="utf-8")
-    result = run_cli(
-        "voting",
-        "parse-rate-retry",
-        "--ballot-file",
-        str(ballot),
-        "--id-grammar",
-        "finding-only",
-        "--review-tmpdir",
-        str(tmp_path),
-        "--plugin-root",
-        str(root),
-        "--dispatch-label",
-        "agent dispatch-voters",
-        "--retry-prefix-kind",
-        "code",
-        "--launch-mode",
-        "description",
-        "--slot",
-        "3",
-        "--voter-file",
-        str(voter),
-        "--voter-tool",
-        "cursor",
-        "--prompt-file",
-        str(prompt),
-    )
-    assert result.returncode == 0
-    assert result.stdout == "NOT_SUBSTANTIVE\n"
-    assert voter.read_text(encoding="utf-8") == "narrative only\n"
-    assert not (tmp_path / "cursor-vote-output-parse-retry.txt").exists()
-    assert not (tmp_path / "cursor-vote-output-first-pass.txt").exists()
-
-
-def test_parse_rate_failure_is_not_substantive_and_suppressed(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    scripts = root / "scripts"
-    scripts.mkdir(parents=True)
-    launcher = scripts / "agent launch-review"
-    launcher.write_text("#!/usr/bin/env bash\nexit 17\n", encoding="utf-8")
-    launcher.chmod(0o755)
-    append_log = tmp_path / "append.log"
-    append = scripts / "append-tool-failure.sh"
-    append.write_text(f"#!/usr/bin/env bash\nprintf called >>{append_log}\n", encoding="utf-8")
-    append.chmod(0o755)
-    base = tmp_path / "test-dispatch-code-voters.tmp"
-    base.mkdir()
-    ballot = base / "ballot.md"
-    ballot.write_text("### FINDING_1: bug\n", encoding="utf-8")
-    voter = base / "voter.txt"
-    voter.write_text("narrative only\n", encoding="utf-8")
-    prompt = base / "prompt.txt"
-    prompt.write_text("prompt\n", encoding="utf-8")
-    result = run_cli(
-        "voting",
-        "parse-rate-retry",
-        "--voter-file",
-        str(voter),
-        "--voter-tool",
-        "cursor",
-        "--ballot-file",
-        str(ballot),
-        "--id-grammar",
-        "finding-only",
-        "--review-tmpdir",
-        str(base),
-        "--plugin-root",
-        str(root),
-    )
-    assert result.returncode == 0
-    assert result.stdout == "NOT_SUBSTANTIVE\n"
-    assert not append_log.exists()
-
-
-def test_judge_error_parse_threshold_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Issue #4880: the per-voter JUDGE_ERROR parse-rate threshold is tunable via env (default 0.8).
-    monkeypatch.delenv("LARCH_VOTER_JUDGE_ERROR_PARSE_THRESHOLD", raising=False)
-    assert voting._judge_error_parse_threshold() == 0.8  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setenv("LARCH_VOTER_JUDGE_ERROR_PARSE_THRESHOLD", "0.5")
-    assert voting._judge_error_parse_threshold() == 0.5  # pyright: ignore[reportPrivateUsage]
-    # Invalid, empty, or out-of-range values fall back to the default.
-    for bad in ("abc", "0", "-0.1", "1.5", ""):
-        monkeypatch.setenv("LARCH_VOTER_JUDGE_ERROR_PARSE_THRESHOLD", bad)
-        assert voting._judge_error_parse_threshold() == 0.8  # pyright: ignore[reportPrivateUsage]
-
-
-def test_parse_rate_diag_uses_bounded_prefix_read(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    ballot = tmp_path / "ballot.md"
-    ballot.write_text("### FINDING_1: bug\n### FINDING_2: bug\n", encoding="utf-8")
-    voter = tmp_path / "voter.txt"
-    voter.write_text("X" * 1000, encoding="utf-8")
-
-    def forbidden_read_bytes(_path: Path) -> bytes:
-        raise AssertionError("read_bytes should not be used for parse-rate snippets")
-
-    monkeypatch.setattr(Path, "read_bytes", forbidden_read_bytes)
-    assert (
-        voting.check_voter_parse_rate(
-            voter_file=str(voter),
-            voter_tool="cursor",
-            ballot_file=str(ballot),
-            id_grammar="finding-only",
-            review_tmpdir=str(tmp_path),
-            log_mode="quiet",
-        )
-        == "NOT_SUBSTANTIVE"
-    )
-    diag = (tmp_path / "voter-parse-rate-diag.txt").read_text(encoding="utf-8")
-    assert "--- first 200 bytes of voter output ---\n" + ("X" * 200) in diag
-    assert "X" * 201 not in diag
-
-
-def test_is_harness_review_path_matches_agent_voters_pytest_segment(tmp_path: Path) -> None:
-    base = tmp_path / "test_agent_voters.tmp" / "review"
-    voter = base / "voter.txt"
-    assert voting.is_harness_review_path(base)
-    assert voting.should_suppress_parse_rate_issue_append(voter_path=voter, base_tmp=base)
 
 
 def test_plan_coverage_and_degraded_warning(tmp_path: Path) -> None:
@@ -1339,96 +1087,8 @@ def test_write_tally_header_validation_and_logger_kv_reemission(tmp_path: Path) 
     assert plan_record["body"] == "Plan review accepted with one follow-up.\n"
 
 
-def test_parse_rate_retry_empty_retry_output_stays_not_substantive(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    scripts = root / "scripts"
-    scripts.mkdir(parents=True)
-    launcher = scripts / "agent launch-review"
-    launcher.write_text(
-        "#!/usr/bin/env bash\n"
-        "set -euo pipefail\n"
-        "out=''\n"
-        "while [ $# -gt 0 ]; do\n"
-        '  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;; esac\n'
-        "done\n"
-        ': >"$out"\n'
-        'printf "0\\n" >"$out.done"\n',
-        encoding="utf-8",
-    )
-    launcher.chmod(0o755)
-    append = scripts / "append-tool-failure.sh"
-    append.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    append.chmod(0o755)
-    ballot = tmp_path / "ballot.md"
-    ballot.write_text("### FINDING_1: bug\n", encoding="utf-8")
-    voter = tmp_path / "voter.txt"
-    voter.write_text("narrative only\n", encoding="utf-8")
-    prompt = tmp_path / "prompt.txt"
-    prompt.write_text("prompt\n", encoding="utf-8")
-    result = run_cli(
-        "voting",
-        "parse-rate-retry",
-        "--ballot-file",
-        str(ballot),
-        "--id-grammar",
-        "finding-only",
-        "--review-tmpdir",
-        str(tmp_path),
-        "--plugin-root",
-        str(root),
-        "--dispatch-label",
-        "agent dispatch-voters",
-        "--retry-prefix-kind",
-        "code",
-        "--launch-mode",
-        "description",
-        "--slot",
-        "1",
-        "--voter-file",
-        str(voter),
-        "--voter-tool",
-        "claude",
-        "--prompt-file",
-        str(prompt),
-    )
-    assert result.returncode == 0
-    assert result.stdout == "NOT_SUBSTANTIVE\n"
-    assert voter.read_text(encoding="utf-8") == "narrative only\n"
-
-
-def test_quiet_parent_diagnostic_stays_off_stdout(tmp_path: Path) -> None:
-    ballot = tmp_path / "ballot.md"
-    voter = tmp_path / "voter.txt"
-    ballot.write_text("### FINDING_1: bug\n", encoding="utf-8")
-    voter.write_text("narrative\n", encoding="utf-8")
-    env = os.environ.copy()
-    env.pop("LARCH_QUIET_DISABLE", None)
-    env["LARCH_QUIET_ACTIVE"] = "1"
-    env["LARCH_QUIET_PID"] = "999999"
-    result = run_cli(
-        "voting",
-        "parse-rate-check",
-        "--voter-file",
-        str(voter),
-        "--voter-tool",
-        "claude",
-        "--ballot-file",
-        str(ballot),
-        "--id-grammar",
-        "finding-only",
-        "--review-tmpdir",
-        str(tmp_path),
-        env=env,
-    )
-    assert result.returncode == 0
-    assert result.stdout == "PARSE_RATE_STATUS=NOT_SUBSTANTIVE\n"
-    assert "Voter claude" in result.stderr
-
-
-def test_findings_classification_header_cli(capsys) -> None:
-    rc = voting.findings_classification_header_main([])
-    assert rc == 0
-    assert capsys.readouterr().out == voting.FINDINGS_CLASSIFICATION_HEADER + "\n"
+def test_findings_classification_header_library() -> None:
+    assert voting.findings_classification_header() == voting.FINDINGS_CLASSIFICATION_HEADER
 
 
 def test_code_review_classification_header_is_22_column_schema() -> None:
@@ -1869,22 +1529,6 @@ def test_validate_proposer_map_for_neutralized_ballot_rejects_stale_hash(tmp_pat
     _ = neutral_ballot.write_text(voting.neutralize_reviewer_attribution(text=current_attributed), encoding="utf-8")
     with pytest.raises(voting.TallyError, match="stale for current ballot"):
         voting.validate_proposer_map_for_neutralized_ballot(ballot_file=neutral_ballot, map_file=map_file)
-
-
-def test_voter_launcher_tool_normalizes_external_archetypes() -> None:
-    # launch_voter_retry was removed with the parse-rate retry subsystem (main
-    # #4547); the surviving contract is that external archetype voter labels
-    # normalize to their launcher tool, while non-archetype labels pass through
-    # unchanged.
-    assert voting.voter_launcher_tool("codex-validity") == "codex"
-    assert voting.voter_launcher_tool("codex-plan-fidelity") == "codex"
-    assert voting.voter_launcher_tool("codex-pragmatism") == "codex"
-    assert voting.voter_launcher_tool("cursor-validity") == "cursor"
-    assert voting.voter_launcher_tool("cursor-plan-fidelity") == "cursor"
-    assert voting.voter_launcher_tool("cursor-pragmatism") == "cursor"
-    assert voting.voter_launcher_tool("claude") == "claude"
-    assert voting.voter_launcher_tool("codex") == "codex"
-    assert voting.voter_launcher_tool("cursor") == "cursor"
 
 
 def test_judge_severity_enum_is_shared_and_public_boundaries_return_strings() -> None:

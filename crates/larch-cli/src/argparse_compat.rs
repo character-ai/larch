@@ -9,10 +9,13 @@
 use std::{
     env,
     ffi::{OsStr, OsString},
+    fmt::Write as _,
     io::{self, Read as _, Write as _},
     path::{Path, PathBuf},
     process::ExitCode,
 };
+#[rustfmt::skip]
+static PYTHON_NONPRINTABLE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"^[\p{C}\p{Z}]$").expect("static Python printability regex"));
 
 /// One command line as `argparse` would have interpreted it.
 #[derive(Debug, Default)]
@@ -266,7 +269,7 @@ pub fn utf8_arguments(
 #[must_use]
 pub fn looks_like_option(value: &OsStr) -> bool {
     let text = value.to_string_lossy();
-    if text.contains(' ') {
+    if text == "-" || text.contains(' ') {
         return false;
     }
     let negative_number = text.strip_prefix('-').is_some_and(|number| {
@@ -290,6 +293,32 @@ pub fn join_arguments(arguments: &[OsString]) -> String {
         .map(|argument| argument.to_string_lossy())
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Render a string with Python `repr` quoting and diagnostic-safe escapes.
+#[must_use]
+#[rustfmt::skip]
+pub fn python_repr(value: &str) -> String {
+    let quote = if value.contains('\'') && !value.contains('"') { '"' } else { '\'' };
+    let mut output = String::from(quote);
+    for character in value.chars() {
+        match character {
+            '\\' => output.push_str("\\\\"), '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"), '\t' => output.push_str("\\t"),
+            '\u{08}' => output.push_str("\\x08"), '\u{0c}' => output.push_str("\\x0c"),
+            escaped if escaped == quote => { output.push('\\'); output.push(escaped); }
+            escaped if escaped != ' ' && PYTHON_NONPRINTABLE.is_match(&escaped.to_string()) => {
+                let code = escaped as u32;
+                let (prefix, width) = if code <= 0xff { ('x', 2) }
+                    else if code <= 0xffff { ('u', 4) } else { ('U', 8) };
+                output.push('\\'); output.push(prefix);
+                let _ = write!(output, "{code:0width$x}");
+            }
+            other => output.push(other),
+        }
+    }
+    output.push(quote);
+    output
 }
 
 /// Write exact text to stdout, reporting a broken pipe as a failure exit.
@@ -335,7 +364,10 @@ pub fn python_io_error(error: &io::Error, path: &Path) -> String {
     };
     let rendered = error.to_string();
     let detail = rendered.split(" (os error ").next().unwrap_or("I/O error");
-    format!("[Errno {code}] {detail}: '{}'", path.display())
+    format!(
+        "[Errno {code}] {detail}: {}",
+        python_repr(&path.to_string_lossy())
+    )
 }
 
 /// Resolve a caller-supplied path against the working directory.

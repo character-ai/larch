@@ -1813,3 +1813,5 @@ jobs:
           cd python
           python3 -m pytest --durations=0 -m rust_integration \
             tests/report/test_run_lifecycle_consumer.py::test_consumer_reaches_rust_through_its_bootstrap
+          cd ..
+          LARCH_BINARY="$LARCH_TEST_RUST_BINARY" make test-findings-classification

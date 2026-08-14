@@ -380,28 +380,6 @@ def accepted_points_from_classification_row(
     return accepted_finding_points_from_severities(severities, votes=votes)
 
 
-def _bounded_prefix_text(*, path: Path, limit: int) -> str:
-    try:
-        with path.open("rb") as handle:
-            return handle.read(limit).decode("utf-8", errors="replace")
-    except OSError:
-        return ""
-
-
-def findings_classification_header_main(argv: list[str]) -> int:
-    if argv:
-        return _error("usage: findings-classification-header")
-    print(findings_classification_header())
-    return 0
-
-
-def code_review_classification_header_main(argv: list[str]) -> int:
-    if argv:
-        return _error("usage: code-review-classification-header")
-    print(code_review_classification_header())
-    return 0
-
-
 def _larch_argv(plugin_root: str = "") -> list[str]:
     """Return the verified-bootstrap prefix for a Rust-owned command."""
     return [str(larch_entrypoint(plugin_root or None))]
@@ -543,13 +521,6 @@ def vote_for_id(*, ballot_id: str, voter_file: str | Path, alias_id: str = "") -
     return vote_for_id_text(ballot_id=ballot_id, text=raw, alias_id=alias_id)
 
 
-def vote_for_id_main(argv: list[str]) -> int:
-    if len(argv) != 2:  # noqa: PLR2004
-        return _error("usage: vote-for-id <id> <voter-file>")
-    print(vote_for_id(ballot_id=argv[0], voter_file=argv[1]))
-    return 0
-
-
 def reviewer_for_block(block_file: str | Path) -> str:
     try:
         lines = Path(block_file).read_text(encoding="utf-8", errors="replace").splitlines()
@@ -561,13 +532,6 @@ def reviewer_for_block(block_file: str | Path) -> str:
             value = _normalize_reviewer_value(match.group("value"))
             return value or "unknown"
     return "unknown"
-
-
-def reviewer_for_block_main(argv: list[str]) -> int:
-    if len(argv) != 1:
-        return _error("usage: reviewer-for-block <block-file>")
-    sys.stdout.write(reviewer_for_block(argv[0]))
-    return 0
 
 
 def _normalize_reviewer_value(value: str) -> str:
@@ -841,12 +805,6 @@ def is_security_block(block_file: str | Path) -> bool:
     return is_security_block_text(text)
 
 
-def is_security_block_main(argv: list[str]) -> int:
-    if len(argv) != 1:
-        return _error("usage: is-security-block <block-file>")
-    return 0 if is_security_block(argv[0]) else 1
-
-
 def accept_finding(*, yes: int, no: int, exonerate: int, eligible: int) -> bool:
     _ = no, exonerate
     if eligible <= 0:
@@ -879,13 +837,6 @@ def classify_oos_result(*, yes: int, no: int, exonerate: int, eligible: int) -> 
         return "neutral"
     return "rejected"
 
-def accept_finding_main(argv: list[str]) -> int:
-    if len(argv) != 4:  # noqa: PLR2004
-        return _error("usage: accept-finding <yes> <no> <exonerate> <eligible>")
-    yes, no, exonerate, eligible = (int(v) for v in argv)
-    return 0 if accept_finding(yes=yes, no=no, exonerate=exonerate, eligible=eligible) else 1
-
-
 def classify_result(*, yes: int, no: int, exonerate: int, eligible: int) -> str:
     if eligible <= 0:
         return "rejected"
@@ -896,14 +847,6 @@ def classify_result(*, yes: int, no: int, exonerate: int, eligible: int) -> str:
     return "rejected"
 
 
-def classify_result_main(argv: list[str]) -> int:
-    if len(argv) != 4:  # noqa: PLR2004
-        return _error("usage: classify-result <yes> <no> <exonerate> <eligible>")
-    yes, no, exonerate, eligible = (int(v) for v in argv)
-    sys.stdout.write(classify_result(yes=yes, no=no, exonerate=exonerate, eligible=eligible))
-    return 0
-
-
 def panel_tier(eligible: int) -> str:
     if eligible >= 3:  # noqa: PLR2004
         return "full-3"
@@ -912,13 +855,6 @@ def panel_tier(eligible: int) -> str:
     if eligible == 1:
         return "single-judge"
     return "main-agent-required"
-
-
-def panel_tier_main(argv: list[str]) -> int:
-    if len(argv) != 1:
-        return _error("usage: panel-tier <eligible>")
-    sys.stdout.write(panel_tier(int(argv[0])))
-    return 0
 
 
 def split_ballot(*, ballot_file: str | Path, out_dir: str | Path) -> None:
@@ -932,13 +868,6 @@ def split_ballot(*, ballot_file: str | Path, out_dir: str | Path) -> None:
         raise SystemExit(1) from exc
     for item_id, block in blocks.items():
         (out_path / f"{item_id}.md").write_text(block, encoding="utf-8")
-
-
-def split_ballot_main(argv: list[str]) -> int:
-    if len(argv) != 2:  # noqa: PLR2004
-        return _error("usage: split-ballot <ballot-file> <out-dir>")
-    split_ballot(ballot_file=argv[0], out_dir=argv[1])
-    return 0
 
 
 def _parse_judge_vote_from_lines(*, ballot_id: str, lines: Iterable[str]) -> tuple[str, str, str, str, str]:
@@ -983,326 +912,6 @@ def parse_judge_vote(*, voter_file: str | Path, ballot_id: str, alias_id: str = 
     if parsed[0] or not alias_id:
         return parsed
     return _parse_judge_vote_from_lines(ballot_id=alias_id, lines=lines)
-
-
-def parse_judge_vote_main(argv: list[str]) -> int:
-    logging_util.quiet_init(argv0="cli.py")
-    if len(argv) != 2:  # noqa: PLR2004
-        logging_util.BreadcrumbWriter().emit("usage: parse-judge-vote <voter_file> <ballot_id>")
-        return 2
-    voter_file, ballot_id = argv
-    if not os.access(voter_file, os.R_OK) or not Path(voter_file).is_file():
-        logging_util.BreadcrumbWriter().emit(
-            f"parse-judge-vote: voter file is missing or unreadable: {voter_file}"
-        )
-        return 2
-    vote, correctness, severity, quality, uncertain = parse_judge_vote(voter_file=voter_file, ballot_id=ballot_id)
-    logging_util.emit_kv(key="PARSED_VOTE", value=vote)
-    logging_util.emit_kv(key="PARSED_CORRECTNESS", value=correctness)
-    logging_util.emit_kv(key="PARSED_SEVERITY", value=severity)
-    logging_util.emit_kv(key="PARSED_QUALITY", value=quality)
-    logging_util.emit_kv(key="PARSED_UNCERTAIN", value=uncertain)
-    return 0
-
-
-def voter_parse_rate_diag_path(voter_path: str | Path) -> Path:
-    path = Path(voter_path)
-    text = str(path)
-    if text.endswith(".txt"):
-        return Path(text[:-4] + "-parse-rate-diag.txt")
-    return Path(text + "-parse-rate-diag.txt")
-
-
-def voter_output_sha256(voter_path: str | Path) -> str:
-    digest = hashlib.sha256()
-    with Path(voter_path).open("rb") as handle:
-        for chunk in iter(lambda: handle.read(65536), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _darwin_path_aliases(path: str | Path) -> set[str]:
-    text = str(path)
-    aliases = {text, str(Path(text))}
-    for candidate in tuple(aliases):
-        if candidate.startswith("/private/var/"):
-            aliases.add(candidate.removeprefix("/private"))
-        elif candidate.startswith("/var/"):
-            aliases.add("/private" + candidate)
-    return aliases
-
-
-def voter_parse_rate_diag_matches_output(voter_path: str | Path) -> bool:
-    # review_tally.py no longer reads this sidecar; it calls parse-rate-check directly.
-    path = Path(voter_path)
-    diag_file = voter_parse_rate_diag_path(path)
-    if not diag_file.is_file() or not path.is_file():
-        return False
-    recorded_path = recorded_sha = ""
-    for line in diag_file.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith("voter_file=") and not recorded_path:
-            recorded_path = line[len("voter_file=") :]
-        elif line.startswith("voter_sha256=") and not recorded_sha:
-            recorded_sha = line[len("voter_sha256=") :]
-    path_matches = bool(_darwin_path_aliases(recorded_path) & _darwin_path_aliases(path))
-    return bool(recorded_path and recorded_sha) and path_matches and recorded_sha == voter_output_sha256(path)
-
-
-def parse_rate_diag_matches_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="parse-rate-diag-matches")
-    parser.add_argument("--voter-file", required=True)
-    args = parser.parse_args(argv)
-    return 0 if voter_parse_rate_diag_matches_output(args.voter_file) else 1
-
-
-def _ballot_ids(*, ballot_file: str | Path, grammar: str) -> list[str]:
-    ids: list[str] = []
-    seen: set[str] = set()
-    if grammar == "finding-oos":
-        pattern = re.compile(r"^(?:###\s+)?((?:FINDING|OOS)_[0-9]+):")
-    else:
-        pattern = re.compile(r"^(?:###\s+)?(FINDING_[0-9]+):")
-    try:
-        lines = Path(ballot_file).read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return []
-    for line in lines:
-        match = pattern.match(line)
-        if match and match.group(1) not in seen:
-            seen.add(match.group(1))
-            ids.append(match.group(1))
-    return ids
-
-
-def voter_launcher_tool(voter_tool: str) -> str:
-    if voter_tool.startswith("codex-"):
-        return "codex"
-    if voter_tool.startswith("cursor-"):
-        return "cursor"
-    return voter_tool
-
-
-def parse_rate_check_tool_label(voter_tool: str) -> str:
-    launcher_tool = voter_launcher_tool(voter_tool)
-    if launcher_tool == "claude":
-        return "agent launch-claude-review (voter parse-rate check)"
-    if launcher_tool in {"codex", "cursor"}:
-        return f"agent launch-review --tool {launcher_tool} (voter parse-rate check; label {voter_tool})"
-    return f"voter parse-rate check ({voter_tool})"
-
-
-def is_harness_review_path(path: str | Path) -> bool:
-    text = str(path)
-    patterns = (
-        "test-dispatch-code-voters.",
-        "test_agent_voters.",
-        "test-dispatch-plan-voters.",
-        "test-plan-review-loop.",
-        "test-collect-",
-        "test-check-",
-        "test-tally-",
-    )
-    return any(token in text for token in patterns)
-
-
-def should_suppress_parse_rate_issue_append(*, voter_path: str | Path, base_tmp: str | Path) -> bool:
-    # Normalize via Path to collapse repeated slashes (e.g. $TMPDIR ending in /)
-    voter = str(Path(voter_path))
-    base = str(Path(base_tmp))
-    return voter.startswith(base + "/") and (is_harness_review_path(base) or is_harness_review_path(voter))
-
-
-def _issues_log(base_tmp: str) -> str:
-    if os.environ.get("LARCH_EXECUTION_ISSUES_LOG"):
-        return os.environ["LARCH_EXECUTION_ISSUES_LOG"]
-    if os.environ.get("SESSION_ENV_PATH"):
-        return str(Path(os.environ["SESSION_ENV_PATH"]).parent / "execution-issues.md")
-    if os.environ.get("IMPLEMENT_TMPDIR"):
-        return str(Path(os.environ["IMPLEMENT_TMPDIR"]) / "execution-issues.md")
-    return str(Path(base_tmp) / "execution-issues.md")
-
-
-# Issue #4880: per-voter JUDGE_ERROR rate at or above this fraction removes the voter slot from the
-# effective quorum. Parameterized (default unchanged) so operators can tune how aggressively a
-# partially-truncated voter is dropped without a code change.
-_DEFAULT_JUDGE_ERROR_PARSE_THRESHOLD = 0.8
-
-
-def _judge_error_parse_threshold() -> float:
-    raw = os.environ.get("LARCH_VOTER_JUDGE_ERROR_PARSE_THRESHOLD", "")
-    if not raw:
-        return _DEFAULT_JUDGE_ERROR_PARSE_THRESHOLD
-    try:
-        value = float(raw)
-    except ValueError:
-        return _DEFAULT_JUDGE_ERROR_PARSE_THRESHOLD
-    if value <= 0 or value > 1:
-        return _DEFAULT_JUDGE_ERROR_PARSE_THRESHOLD
-    return value
-
-
-def check_voter_parse_rate(
-    *,
-    voter_file: str,
-    voter_tool: str,
-    ballot_file: str,
-    id_grammar: str,
-    review_tmpdir: str,
-    slot: str = "",
-    log_mode: str = "log",
-    plugin_root: str = "",
-    dispatch_label: str = "agent dispatch-voters",
-) -> str:
-    voter_path = Path(voter_file)
-    diag_file = voter_parse_rate_diag_path(voter_path)
-    if not voter_path.is_file() or voter_path.stat().st_size == 0:
-        return "OK"
-    ids = _ballot_ids(ballot_file=ballot_file, grammar=id_grammar)
-    if not ids:
-        return "OK"
-    ballot_id_set = set(ids)
-    judge_error_count = 0
-    for item_id in ids:
-        try:
-            parsed_vote = parse_judge_vote(
-                voter_file=voter_path,
-                ballot_id=item_id,
-                alias_id=alias_ballot_id(item_id, ballot_id_set),
-            )[0]
-        except FileNotFoundError:
-            parsed_vote = ""
-        one = parsed_vote or "JUDGE_ERROR"
-        if one == "JUDGE_ERROR":
-            judge_error_count += 1
-    if judge_error_count / len(ids) >= _judge_error_parse_threshold():
-        first_bytes = _bounded_prefix_text(path=voter_path, limit=200)
-        voter_file_aliases: list[str] = sorted(_darwin_path_aliases(voter_file), key=lambda alias: (alias.startswith("/private/var/"), alias))
-        lines: list[str] = []
-        if slot:
-            lines.append(f"slot={slot}")
-        lines.extend(
-            [
-                f"voter_tool={voter_tool}",
-                f"judge_error_count={judge_error_count}",
-                f"total_findings={len(ids)}",
-                f"total_ballot_items={len(ids)}",
-            ]
-        )
-        lines.extend(f"voter_file={alias}" for alias in voter_file_aliases)
-        lines.extend(
-            [
-                f"voter_sha256={voter_output_sha256(voter_path)}",
-                "--- first 200 bytes of voter output ---",
-                first_bytes,
-            ]
-        )
-        with suppress(OSError):
-            diag_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        if log_mode == "log":
-            _plain_diagnostic(
-                f"**⚠ Voter {voter_tool}: {judge_error_count}/{len(ids)} ballot items returned JUDGE_ERROR: voter likely produced prose without FINDING_N:/OOS_N: VOTE lines. Check voter output at {voter_path}.**"
-            )
-            if not should_suppress_parse_rate_issue_append(voter_path=voter_path, base_tmp=review_tmpdir):
-                proc.run(
-                    [
-                        *_larch_argv(plugin_root),
-                        "run-log",
-                        "append-failure",
-                        "--log",
-                        _issues_log(review_tmpdir),
-                        "--site",
-                        f"{dispatch_label} {voter_tool}",
-                        "--tool",
-                        parse_rate_check_tool_label(voter_tool),
-                        "--exit-code",
-                        "0",
-                        "--status-label",
-                        "warning",
-                        "--category",
-                        "Warnings",
-                        "--output-file",
-                        str(diag_file),
-                        "--redact",
-                    ]
-                )
-        return "NOT_SUBSTANTIVE"
-    with suppress(FileNotFoundError):
-        diag_file.unlink()
-    return "OK"
-
-
-def _parse_rate_common_parser(prog: str) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog=prog)
-    parser.add_argument("--voter-file", required=True)
-    parser.add_argument("--voter-tool", required=True)
-    parser.add_argument("--ballot-file", required=True)
-    parser.add_argument("--id-grammar", choices=("finding-only", "finding-oos"), required=True)
-    parser.add_argument("--review-tmpdir", required=True)
-    parser.add_argument("--slot", default="")
-    parser.add_argument("--log-mode", default="log")
-    parser.add_argument("--plugin-root", default="")
-    parser.add_argument("--dispatch-label", default="agent dispatch-voters")
-    return parser
-
-
-def parse_rate_check_main(argv: list[str]) -> int:
-    parser = _parse_rate_common_parser("parse-rate-check")
-    args = parser.parse_args(argv)
-    status = check_voter_parse_rate(
-        voter_file=args.voter_file,
-        voter_tool=args.voter_tool,
-        ballot_file=args.ballot_file,
-        id_grammar=args.id_grammar,
-        review_tmpdir=args.review_tmpdir,
-        slot=args.slot,
-        log_mode=args.log_mode,
-        plugin_root=args.plugin_root,
-        dispatch_label=args.dispatch_label,
-    )
-    print(f"PARSE_RATE_STATUS={status}")
-    return 0
-
-
-def _extract_ctx(argv: list[str]) -> tuple[list[str], list[str]]:
-    rest: list[str] = []
-    ctx: list[str] = []
-    i = 0
-    while i < len(argv):
-        arg = argv[i]
-        if arg == "--ctx":
-            if i + 1 >= len(argv):
-                raise SystemExit(_error("parse-rate-retry: --ctx requires a value"))
-            ctx.append(argv[i + 1])
-            i += 2
-        elif arg.startswith("--ctx="):
-            ctx.append(arg[len("--ctx=") :])
-            i += 1
-        else:
-            rest.append(arg)
-            i += 1
-    return rest, ctx
-
-
-def parse_rate_retry_main(argv: list[str]) -> int:
-    rest, _ctx = _extract_ctx(argv)
-    parser = _parse_rate_common_parser("parse-rate-retry")
-    parser.add_argument("--prompt-file", default="")
-    parser.add_argument("--retry-prefix-kind", choices=("code", "plan"), default="code")
-    parser.add_argument("--launch-mode", default="")
-    args = parser.parse_args(rest)
-    status = check_voter_parse_rate(
-        voter_file=args.voter_file,
-        voter_tool=args.voter_tool,
-        ballot_file=args.ballot_file,
-        id_grammar=args.id_grammar,
-        review_tmpdir=args.review_tmpdir,
-        slot=args.slot,
-        log_mode="log",
-        plugin_root=args.plugin_root,
-        dispatch_label=args.dispatch_label,
-    )
-    print(status)
-    return 0
 
 
 def effective_judges(records: Iterable[str]) -> int:
@@ -1568,39 +1177,6 @@ def write_tally_main(argv: list[str]) -> int:
         return int(exc.code)
 
 
-def false_positive_match(text: str) -> bool:
-    negated = (
-        r"(^|[^a-z])not\s+((a|an)\s+)?duplicate([^a-z]|$)",
-        r"(^|[^a-z])not\s+((a|an)\s+)?false[- ]positive([^a-z]|$)",
-    )
-    positives = (
-        r"(^|[^a-z])won[^\s]*t\s+fix([^a-z]|$)",
-        r"(^|[^a-z])wontfix([^a-z]|$)",
-        r"(^|[^a-z])superseded(\s+by\s+#[0-9]+)?([^a-z]|$)",
-        r"(^|[^a-z])not\s+an\s+issue([^a-z]|$)",
-        r"(^|[^a-z])not\s+a\s+bug([^a-z]|$)",
-        r"(^|[^a-z])duplicate\s+of\s+#[0-9]+([^a-z]|$)",
-        r"(^|[^a-z])false[- ]positive([^a-z]|$)",
-    )
-    if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in negated):
-        return False
-    return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in positives)
-
-
-def false_positive_match_main(argv: list[str]) -> int:
-    if len(argv) != 1:
-        return _error("usage: false-positive-match <text>")
-    return 0 if false_positive_match(argv[0]) else 1
-
-
-def file_line_regex_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="file-line-regex")
-    parser.add_argument("--name", required=True, choices=sorted(FILE_LINE_REGEXES))
-    args = parser.parse_args(argv)
-    print(FILE_LINE_REGEXES[args.name])
-    return 0
-
-
 def ballot_parse(ballot_file: str | Path) -> list[str]:
     lines = Path(ballot_file).read_text(encoding="utf-8", errors="replace").splitlines()
     output: list[str] = []
@@ -1633,16 +1209,6 @@ def ballot_parse(ballot_file: str | Path) -> list[str]:
     emit()
     output.append(f"FINDING_COUNT={idx}")
     return output
-
-
-def ballot_parse_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="ballot-parse")
-    parser.add_argument("--ballot-file", required=True)
-    args = parser.parse_args(argv)
-    if not Path(args.ballot_file).is_file():
-        return _error("ballot-parse: --ballot-file must name a file")
-    print("\n".join(ballot_parse(args.ballot_file)))
-    return 0
 
 
 def tally_vote_main(argv: list[str]) -> int:

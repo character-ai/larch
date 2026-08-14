@@ -10,9 +10,10 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 CLAUDE_PLUGIN_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
 export CLAUDE_PLUGIN_ROOT
 CLI="$CLAUDE_PLUGIN_ROOT/python/cli.py"
+LARCH="$CLAUDE_PLUGIN_ROOT/scripts/larch.sh"
 TALLY=(python3 "$CLI" plan-review tally)
-run_parser() { python3 "$CLI" voting parse-judge-vote "$@"; }
-HEADER=$(python3 "$CLI" voting findings-classification-header)
+run_parser() { "$LARCH" voting parse-judge-vote "$@"; }
+HEADER=$("$LARCH" voting findings-classification-header)
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2
@@ -105,7 +106,7 @@ parser_value() {
 assert_parser_vote_matches_vote_for_id() {
     local voter_file="$1" ballot_id="$2" parsed lib_vote
     parsed=$(run_parser "$voter_file" "$ballot_id")
-    lib_vote=$(python3 "$CLI" voting vote-for-id "$ballot_id" "$voter_file")
+    lib_vote=$("$LARCH" voting vote-for-id "$ballot_id" "$voter_file")
     [[ "$(parser_value "$parsed" PARSED_VOTE)" == "${lib_vote/JUDGE_ERROR/}" ]] \
         || fail "parser/lib vote mismatch for $ballot_id in $voter_file"
 }
@@ -239,7 +240,7 @@ quiet_votes="$W2Q/quiet-votes.txt"
 cat > "$quiet_votes" <<'EOF'
 FINDING_2: YES SEVERITY=major CORRECTNESS=true UNCERTAIN=false
 EOF
-quiet_out=$(env -u LARCH_QUIET_DISABLE DESIGN_TMPDIR="$W2Q/design" python3 "$CLI" voting parse-judge-vote "$quiet_votes" FINDING_2)
+quiet_out=$(env -u LARCH_QUIET_DISABLE DESIGN_TMPDIR="$W2Q/design" "$LARCH" voting parse-judge-vote "$quiet_votes" FINDING_2)
 [[ "$(parser_value "$quiet_out" PARSED_VOTE)" == "YES" ]] || fail "quiet parser vote capture failed"
 [[ "$(parser_value "$quiet_out" PARSED_QUALITY)" == "" ]] || fail "quiet parser missing-quality capture failed"
 [[ "$(parser_value "$quiet_out" PARSED_UNCERTAIN)" == "true" ]] || fail "quiet parser missing-quality uncertain fallback failed"
@@ -277,7 +278,7 @@ read -r default_header < "$W3D/design/plan-review/round-1/findings-classificatio
 [[ "$default_header" == "$HEADER" ]] || fail "default findings-classification header drifted"
 
 echo "=== anchored vote helper remains compatible ==="
-vote=$(python3 "$CLI" voting vote-for-id FINDING_1 "$CLAUDE")
+vote=$("$LARCH" voting vote-for-id FINDING_1 "$CLAUDE")
 [[ "$vote" == "YES" ]] || fail "vote_for_id did not parse extended vote line"
 
 echo "=== lowercased ballot ids and vote/parser parity ==="

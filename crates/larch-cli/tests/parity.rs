@@ -136,7 +136,9 @@ impl CleanInstallCase {
             | "clean-install-generate-pre-rendered-reviewer-prompts"
             | "clean-install-generate-reviewer-code-robustness-agent"
             | "clean-install-generate-reviewer-plan-fidelity-agent"
-            | "clean-install-generate-reviewer-security-structure-tests-agent" => 2,
+            | "clean-install-generate-reviewer-security-structure-tests-agent"
+            | "clean-install-voting-code-review-classification-header"
+            | "clean-install-voting-findings-classification-header" => 2,
             // Every umbrella verb owns a real help action, so the default
             // clean-install `--help` probe succeeds.
             _ => 0,
@@ -1514,6 +1516,26 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-verify-skill-called",
         "verify",
         "skill-called",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-code-review-classification-header",
+        "voting",
+        "code-review-classification-header",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-findings-classification-header",
+        "voting",
+        "findings-classification-header",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-parse-rate-check",
+        "voting",
+        "parse-rate-check",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-parse-rate-retry",
+        "voting",
+        "parse-rate-retry",
     ),
 ];
 
