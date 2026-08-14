@@ -5,11 +5,7 @@
 //! credibility block, and the always-`rc 0`-or-`rc 2` exit contract.
 
 use std::{
-    collections::BTreeMap,
-    ffi::OsString,
-    fmt::Write as _,
-    path::Path,
-    process::ExitCode,
+    collections::BTreeMap, ffi::OsString, fmt::Write as _, path::Path, process::ExitCode,
     sync::LazyLock,
 };
 
@@ -23,7 +19,8 @@ use super::{
 };
 use crate::argparse_compat::parse;
 
-static EXCERPT_WS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").expect("excerpt ws regex"));
+static EXCERPT_WS_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\s+").expect("excerpt ws regex"));
 static POSITIVE_INT_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[0-9]+$").expect("positive-int regex"));
 
@@ -113,8 +110,10 @@ fn validate_text(
 ) -> (usize, usize, usize, usize) {
     let claims = Claims::extract(text, request.max_claims);
     if claims.is_empty() {
-        let _ignored =
-            write_text_atomic(request.output, &sidecar_no_claims(text.len(), split_text_lines(text).len()));
+        let _ignored = write_text_atomic(
+            request.output,
+            &sidecar_no_claims(text.len(), split_text_lines(text).len()),
+        );
         emit_summary(Counts::default());
         return (0, 0, 0, 0);
     }
@@ -223,7 +222,8 @@ fn build_ledger(
 impl Ledger {
     fn push(&mut self, claim: &str, claim_type: &str, result: &FetchResult) {
         self.counts.record(result.status());
-        self.rows.push(CitationLedgerRow::new(claim, claim_type, result));
+        self.rows
+            .push(CitationLedgerRow::new(claim, claim_type, result));
     }
 }
 
@@ -510,7 +510,9 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         Err(message) => {
             let _ignored = write_text_atomic(
                 output_path,
-                &sidecar_status(&format!("invalid argument ({message}); sidecar is degraded")),
+                &sidecar_status(&format!(
+                    "invalid argument ({message}); sidecar is degraded"
+                )),
             );
             emit_summary(Counts::default());
             diagnostic(&format!("validate-citations: {message}"));

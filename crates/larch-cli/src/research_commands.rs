@@ -48,8 +48,9 @@ static DOI_RE: LazyLock<Regex> = LazyLock::new(|| {
 static VALID_DOI_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^10\.[0-9]{4,9}/[A-Za-z0-9._;()/:-]+$").expect("static valid-DOI regex")
 });
-static BANNER_LINE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^RESEARCH_[A-Z_]+_STATUS=fallback_").expect("static banner regex"));
+static BANNER_LINE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^RESEARCH_[A-Z_]+_STATUS=fallback_").expect("static banner regex")
+});
 static FILELINE_RE: LazyLock<Regex> = LazyLock::new(|| {
     let any = file_line_regex("any-re").expect("any-re owner");
     let extensionless = file_line_regex("extensionless-re").expect("extensionless-re owner");
@@ -61,8 +62,9 @@ static FILELINE_KEEP_RE: LazyLock<Regex> = LazyLock::new(|| {
     )
     .expect("static file-line keep regex")
 });
-static FILELINE_CITE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^([^:]+):([0-9]+)(-([0-9]+))?$").expect("static file-line cite regex"));
+static FILELINE_CITE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^([^:]+):([0-9]+)(-([0-9]+))?$").expect("static file-line cite regex")
+});
 static BULLET_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[ \t]*[-*][ \t]+").expect("static bullet regex"));
 
@@ -124,9 +126,10 @@ fn write_text_atomic(path: &Path, text: &str) -> std::io::Result<()> {
     {
         fs::create_dir_all(parent)?;
     }
-    let file_name = path
-        .file_name()
-        .map_or_else(|| ".tmp".to_owned(), |name| name.to_string_lossy().into_owned());
+    let file_name = path.file_name().map_or_else(
+        || ".tmp".to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
     let temp = path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()));
     fs::write(&temp, text)?;
     match fs::rename(&temp, path) {
@@ -193,7 +196,9 @@ pub fn banner(arguments: &[OsString]) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let Some(first) = arguments.first() else {
-        diagnostic("WARNING: research banner requires <lane-status.txt-path>; emitting empty banner");
+        diagnostic(
+            "WARNING: research banner requires <lane-status.txt-path>; emitting empty banner",
+        );
         return ExitCode::SUCCESS;
     };
     let banner = compute_banner(Path::new(first));
@@ -320,7 +325,9 @@ pub fn render_findings_batch(arguments: &[OsString]) -> ExitCode {
         .iter()
         .filter_map(|name| parsed.value(name).and_then(std::ffi::OsStr::to_str))
         .collect();
-    if parsed.error().is_some() || values.len() != options.len() || values.iter().any(|value| value.is_empty())
+    if parsed.error().is_some()
+        || values.len() != options.len()
+        || values.iter().any(|value| value.is_empty())
     {
         diagnostic(usage);
         return ExitCode::from(1);
@@ -334,7 +341,10 @@ fn render_findings_batch_run(parsed: &crate::argparse_compat::ParsedCommandLine)
     let Ok(report_text) = read_regular_file(&report) else {
         diagnostic(&format!(
             "ERROR: report file not found: {}",
-            parsed.value("--report").unwrap_or_default().to_string_lossy()
+            parsed
+                .value("--report")
+                .unwrap_or_default()
+                .to_string_lossy()
         ));
         return ExitCode::from(2);
     };
@@ -346,8 +356,14 @@ fn render_findings_batch_run(parsed: &crate::argparse_compat::ParsedCommandLine)
         &report_text,
         &render::FindingsContext {
             research_question: &question,
-            branch: &parsed.value("--branch").unwrap_or_default().to_string_lossy(),
-            commit: &parsed.value("--commit").unwrap_or_default().to_string_lossy(),
+            branch: &parsed
+                .value("--branch")
+                .unwrap_or_default()
+                .to_string_lossy(),
+            commit: &parsed
+                .value("--commit")
+                .unwrap_or_default()
+                .to_string_lossy(),
             timestamp: &timestamp,
         },
     );
@@ -409,13 +425,21 @@ pub fn validate_citations_command(arguments: &[OsString]) -> ExitCode {
 /// Extract sorted, unique URLs, trimming trailing sentence punctuation.
 #[must_use]
 pub fn extract_urls(text: &str) -> Vec<String> {
-    sorted_unique(URL_RE.find_iter(text).map(|matched| trim_trailing(matched.as_str())))
+    sorted_unique(
+        URL_RE
+            .find_iter(text)
+            .map(|matched| trim_trailing(matched.as_str())),
+    )
 }
 
 /// Extract sorted, unique DOIs, trimming trailing sentence punctuation.
 #[must_use]
 pub fn extract_dois(text: &str) -> Vec<String> {
-    sorted_unique(DOI_RE.find_iter(text).map(|matched| trim_trailing(matched.as_str())))
+    sorted_unique(
+        DOI_RE
+            .find_iter(text)
+            .map(|matched| trim_trailing(matched.as_str())),
+    )
 }
 
 /// Extract sorted, unique `file:line` citations that survive the keep filter.
@@ -505,7 +529,9 @@ const fn is_blocked_v6(ip: Ipv6Addr) -> bool {
 /// Whether a hostname is a loopback alias or resolves to a blocked literal.
 fn is_private_hostname(host: &str) -> bool {
     let lowered = host.trim_matches(['[', ']']).to_lowercase();
-    if lowered == "localhost" || lowered == "localhost.localdomain" || lowered.ends_with(".localhost")
+    if lowered == "localhost"
+        || lowered == "localhost.localdomain"
+        || lowered.ends_with(".localhost")
     {
         return true;
     }
@@ -582,8 +608,7 @@ fn fetch_url(url: &str, timeout: u64, seams: &FetchSeams<'_>) -> FetchResult {
     if is_private_hostname(&parts.host) {
         return FetchResult::new("FAIL", "ssrf-private-host");
     }
-    let (addresses, refusal) =
-        resolve_public_ips(&parts.host, parts.port, timeout, seams.resolver);
+    let (addresses, refusal) = resolve_public_ips(&parts.host, parts.port, timeout, seams.resolver);
     match refusal {
         Some("ssrf-private-resolved") => return FetchResult::new("FAIL", "ssrf-private-resolved"),
         Some(reason @ ("timeout" | "network-error")) => return FetchResult::new("UNKNOWN", reason),

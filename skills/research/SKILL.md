@@ -194,7 +194,7 @@ Print: `> **🔶 /research 1: research**`
 
 **MANDATORY: READ ENTIRE FILE** before executing Step 1: `${CLAUDE_PLUGIN_ROOT}/skills/research/references/research-phase.md`. It carries the planner pre-pass (Step 1.1, always on), the TTY-only interactive review checkpoint (Step 1.1.c, no hard-fail when stdin is not a TTY: passthrough proceeds with the planner output), the fixed 4-lane mapping (architecture / edge cases / external comparisons / security), the four named angle-prompt literals (`RESEARCH_PROMPT_ARCH`, `RESEARCH_PROMPT_EDGE`, `RESEARCH_PROMPT_EXT`, `RESEARCH_PROMPT_SEC`), the single collection block at Step 1.4, and the single synthesis branch at Step 1.5 using `scripts/larch.sh research banner`. Each external lane is Codex-first with a per-lane Claude `Agent` fallback. Cursor is NOT used for research lanes (still in validation panel). **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/validation-phase.md` at Step 1**: that reference is Step 2's body. **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/citation-validation-phase.md` at Step 1**: that reference is Step 2.5's body. **Do NOT load `${CLAUDE_PLUGIN_ROOT}/skills/research/references/critique-loop-phase.md` at Step 1**: that reference is Step 2.6's body.
 
-Execute Step 1 per the reference file above. SKILL.md is the sole owner of Step 1 entry breadcrumbs; the reference file emits none. Step 1.1 invokes `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" research run-planner` (contract in `python/larch/research/research.py`); the script's offline regression harness is `${CLAUDE_PLUGIN_ROOT}/python/tests/research/test_research.py`, wired into `make lint`. The Step 1.5 synthesis-subagent contract is structurally pinned by `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-synthesis-subagent.sh` (contract in sibling `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-synthesis-subagent.md`), also wired into `make lint`.
+Execute Step 1 per the reference file above. SKILL.md is the sole owner of Step 1 entry breadcrumbs; the reference file emits none. Step 1.1 invokes `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" research run-planner` (contract in `crates/larch-cli/src/research_commands.rs`); the offline regression tests live in `crates/larch-cli/src/research_commands/tests.rs`. The Step 1.5 synthesis-subagent contract is structurally pinned by `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-synthesis-subagent.sh` (contract in sibling `${CLAUDE_PLUGIN_ROOT}/skills/research/scripts/test-synthesis-subagent.md`), also wired into `make lint`.
 
 <!-- step:2: Findings Validation -->
 
@@ -228,7 +228,7 @@ Then conditionally print advisory warnings (not errors: fail-soft):
 - When `<fail> > 0`: `**⚠ 2.5: citation-validation: <fail> claim(s) FAILED. See ## Citation Validation in the report.**`
 - When `<unknown> > 0`: `**ℹ 2.5: citation-validation: <unknown> claim(s) UNKNOWN. See ## Citation Validation in the report.**`
 
-The sidecar at `$RESEARCH_TMPDIR/citation-validation.md` is consumed by Step 3 (splice contract: appended as a `## Citation Validation` section to `research-report-final.md` before the user-visible `cat`). See `python/larch/research/research.py` for the full validator contract; the offline regression harness is `${CLAUDE_PLUGIN_ROOT}/python/tests/research/test_research.py`, wired into `make lint`. Budget-exhaustion coverage lives in `${CLAUDE_PLUGIN_ROOT}/python/tests/research/test_research.py` with injected fetcher seams, so the pytest suite stays offline and deterministic.
+The sidecar at `$RESEARCH_TMPDIR/citation-validation.md` is consumed by Step 3 (splice contract: appended as a `## Citation Validation` section to `research-report-final.md` before the user-visible `cat`). See `crates/larch-cli/src/research_commands/citations.rs` for the full validator contract; the offline regression tests live in `crates/larch-cli/src/research_commands/tests.rs`. Budget-exhaustion coverage lives in `crates/larch-cli/src/research_commands/tests.rs` with injected fetcher seams, so the suite stays offline and deterministic.
 
 <!-- step:2.6: Critique Loop -->
 
@@ -273,7 +273,7 @@ Print the final research report under a `## Research Report` header. Required se
 - `### Key Files and Areas`: relevant files/modules/areas
 - `### Open Questions`: unresolved questions or areas needing further investigation
 
-When any external research lane ran as a Claude-fallback (`N_FALLBACK >= 1` per the §1.5 banner preamble in `${CLAUDE_PLUGIN_ROOT}/skills/research/references/research-phase.md`), Step 1.5 prepends a reduced-diversity banner under `## Research Synthesis`. The banner is computed by the canonical executable helper `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" research banner` (contract in `python/larch/research/research.py`); the orchestrator forks the helper with the lane-status.txt path and prepends the helper's stdout to the synthesis subagent's body before writing `research-report.txt`. The banner contract is guarded by `${CLAUDE_PLUGIN_ROOT}/python/tests/research/test_research.py`. Example degraded-path preview (one Codex angle fell back):
+When any external research lane ran as a Claude-fallback (`N_FALLBACK >= 1` per the §1.5 banner preamble in `${CLAUDE_PLUGIN_ROOT}/skills/research/references/research-phase.md`), Step 1.5 prepends a reduced-diversity banner under `## Research Synthesis`. The banner is computed by the canonical executable helper `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" research banner` (contract in `crates/larch-cli/src/research_commands.rs`); the orchestrator forks the helper with the lane-status.txt path and prepends the helper's stdout to the synthesis subagent's body before writing `research-report.txt`. The banner contract is guarded by `crates/larch-cli/src/research_commands/tests.rs`. Example degraded-path preview (one Codex angle fell back):
 
 ```markdown
 ## Research Synthesis
@@ -318,7 +318,7 @@ if [[ "$SKIP_SIDECAR" != "true" ]]; then
 fi
 ```
 
-Helper exit 3 (empty findings) is non-fatal: the helper writes an empty sidecar and prints a warning to stderr. Exits 1 / 2 indicate operator/orchestrator bugs and are also logged but non-fatal here. See `python/larch/research/research.py` for the full contract; the offline regression harness is `${CLAUDE_PLUGIN_ROOT}/python/tests/research/test_research.py`, wired into `make lint`.
+Helper exit 3 (empty findings) is non-fatal: the helper writes an empty sidecar and prints a warning to stderr. Exits 1 / 2 indicate operator/orchestrator bugs and are also logged but non-fatal here. See `crates/larch-cli/src/research_commands.rs` for the full contract; the offline regression tests live in `crates/larch-cli/src/research_commands/tests.rs`.
 
 Finally print the report for user visibility, gated on a successful write:
 

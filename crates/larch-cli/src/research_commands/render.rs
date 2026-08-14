@@ -24,7 +24,8 @@ const END_HEADERS: &[&str] = &[
 const FINDINGS_HEADER: &str = "### Findings Summary";
 const PUNCTUATION: &str = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
 
-static FENCE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[ \t]*```").expect("fence regex"));
+static FENCE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[ \t]*```").expect("fence regex"));
 static SUBQUESTION_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^####\s+subquestion\s+[0-9]+").expect("subquestion regex"));
 static NUMBERED_RE: LazyLock<Regex> =
@@ -40,7 +41,8 @@ static FLATTEN_BULLET_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[ \t]*[-*][ \t]*").expect("flatten bullet-prefix regex"));
 static QUOTE_PREFIX_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[ \t]*>[ \t]*").expect("quote-prefix regex"));
-static HEADING_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^###[ \t]").expect("heading regex"));
+static HEADING_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^###[ \t]").expect("heading regex"));
 
 /// The per-run context threaded into every rendered issue-batch item.
 pub struct FindingsContext<'a> {
@@ -52,7 +54,10 @@ pub struct FindingsContext<'a> {
 
 /// Render `/research` findings. Returns `(count, markdown, section_absent)`.
 #[must_use]
-pub fn render_findings_issue_batch(report_text: &str, context: &FindingsContext<'_>) -> (usize, String, bool) {
+pub fn render_findings_issue_batch(
+    report_text: &str,
+    context: &FindingsContext<'_>,
+) -> (usize, String, bool) {
     let findings = extract_markdown_section(report_text, FINDINGS_HEADER);
     let section_absent = !split_text_lines(report_text)
         .into_iter()
@@ -144,7 +149,10 @@ fn flatten_metadata(text: &str, header: &str, default: &str, joiner: &str) -> St
         .into_iter()
         .map(|line| {
             let without_bullet = FLATTEN_BULLET_RE.replace(line, "");
-            QUOTE_PREFIX_RE.replace(&without_bullet, "").trim().to_owned()
+            QUOTE_PREFIX_RE
+                .replace(&without_bullet, "")
+                .trim()
+                .to_owned()
         })
         .filter(|value| !value.is_empty())
         .collect();
@@ -208,12 +216,20 @@ impl Splitter {
             return;
         }
         if self.current.is_empty() && (is_numbered || is_bulleted) {
-            self.start(if is_numbered { "numbered" } else { "bulleted" }, line, indent);
+            self.start(
+                if is_numbered { "numbered" } else { "bulleted" },
+                line,
+                indent,
+            );
             return;
         }
         if (is_numbered || is_bulleted) && indent <= self.base_indent {
             self.emit_current();
-            self.start(if is_numbered { "numbered" } else { "bulleted" }, line, indent);
+            self.start(
+                if is_numbered { "numbered" } else { "bulleted" },
+                line,
+                indent,
+            );
             return;
         }
         if self.mode == "paragraph" && line.trim().is_empty() {
@@ -252,9 +268,14 @@ fn split_finding_items(findings_text: &str) -> Vec<String> {
 
 /// Derive a stable issue title from the first finding sentence.
 fn finding_title_from_body(body: &str, index: usize) -> String {
-    let first_line = split_text_lines(body).first().map_or(String::new(), |line| (*line).to_owned());
+    let first_line = split_text_lines(body)
+        .first()
+        .map_or(String::new(), |line| (*line).to_owned());
     let without_number = NUM_PREFIX_RE.replace(&first_line, "");
-    let first = BULLET_PREFIX_RE.replace(&without_number, "").trim().to_owned();
+    let first = BULLET_PREFIX_RE
+        .replace(&without_number, "")
+        .trim()
+        .to_owned();
     let chars: Vec<char> = first.chars().collect();
     let mut sentence: Vec<char> = chars.clone();
     for window in 0..chars.len().saturating_sub(1) {
@@ -301,7 +322,11 @@ fn escape_issue_body_lines(body: &str) -> String {
 }
 
 /// Render generic `### <title>` issue-batch markdown for every finding item.
-fn render_issue_batch_items(items: &[String], metadata: &Metadata, context: &FindingsContext<'_>) -> String {
+fn render_issue_batch_items(
+    items: &[String],
+    metadata: &Metadata,
+    context: &FindingsContext<'_>,
+) -> String {
     let mut chunks = String::new();
     for (offset, item) in items.iter().enumerate() {
         let index = offset + 1;

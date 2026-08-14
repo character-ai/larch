@@ -8,8 +8,8 @@ use super::citations::{ValidateRequest, validate_citations};
 use super::render::{FindingsContext, render_findings_issue_batch};
 use super::{
     FetchResult, FetchSeams, Resolver, check_fileline, compute_banner, extract_dois,
-    extract_filelines, extract_urls, fetch_url, is_blocked_ip, is_private_hostname, run_planner_core,
-    sanitize_planner_line,
+    extract_filelines, extract_urls, fetch_url, is_blocked_ip, is_private_hostname,
+    run_planner_core, sanitize_planner_line,
 };
 
 fn seams<'a>(
@@ -56,12 +56,18 @@ fn planner_sanitizes_and_classifies_each_branch() {
 
     let collision = dir.path().join("collision.txt");
     std::fs::write(&collision, "a||b?\nc?\n").expect("write");
-    assert_eq!(run_planner_core(&collision, &output), ("delimiter_collision", 1));
+    assert_eq!(
+        run_planner_core(&collision, &output),
+        ("delimiter_collision", 1)
+    );
 
     let good = dir.path().join("good.txt");
     std::fs::write(&good, "- First?\n* Second?\nnot a question\n").expect("write");
     assert_eq!(run_planner_core(&good, &output), ("success", 0));
-    assert_eq!(std::fs::read_to_string(&output).expect("read"), "First?\nSecond?\n");
+    assert_eq!(
+        std::fs::read_to_string(&output).expect("read"),
+        "First?\nSecond?\n"
+    );
 
     let bad = dir.path().join("bad.txt");
     std::fs::write(&bad, "a?\nb?\n").expect("write");
@@ -72,11 +78,20 @@ fn planner_sanitizes_and_classifies_each_branch() {
 #[test]
 fn extractors_sort_dedupe_and_trim() {
     let text = "See https://arxiv.org/abs/1. Also https://arxiv.org/abs/1, and 10.1234/foo; plus src/main.rs:10-20 and Makefile:3.";
-    assert_eq!(extract_urls(text), vec!["https://arxiv.org/abs/1".to_owned()]);
+    assert_eq!(
+        extract_urls(text),
+        vec!["https://arxiv.org/abs/1".to_owned()]
+    );
     assert_eq!(extract_dois(text), vec!["10.1234/foo".to_owned()]);
     let filelines = extract_filelines(text);
-    assert!(filelines.contains(&"src/main.rs:10-20".to_owned()), "{filelines:?}");
-    assert!(filelines.contains(&"Makefile:3".to_owned()), "{filelines:?}");
+    assert!(
+        filelines.contains(&"src/main.rs:10-20".to_owned()),
+        "{filelines:?}"
+    );
+    assert!(
+        filelines.contains(&"Makefile:3".to_owned()),
+        "{filelines:?}"
+    );
 }
 
 #[test]
@@ -97,7 +112,10 @@ fn ssrf_guards_reject_private_targets() {
 fn fetch_url_maps_the_full_status_taxonomy() {
     let resolver = |_host: &str, _port: u16| Ok(vec!["93.184.216.34".to_owned()]);
     let ok = |_url: &str, _ip: &str, _timeout: u64| Ok(200u16);
-    assert_eq!(fetch_url("https://example.com/", 10, &seams(&resolver, &ok)).token(), "PASS");
+    assert_eq!(
+        fetch_url("https://example.com/", 10, &seams(&resolver, &ok)).token(),
+        "PASS"
+    );
 
     let redirect = |_url: &str, _ip: &str, _timeout: u64| Ok(301u16);
     assert_eq!(
@@ -143,7 +161,10 @@ fn check_fileline_covers_existence_and_range() {
     std::fs::write(root.join("file.txt"), "one\ntwo\nthree\n").expect("write");
 
     assert_eq!(check_fileline("file.txt", Some(&root)), FetchResult::pass());
-    assert_eq!(check_fileline("file.txt:2", Some(&root)), FetchResult::pass());
+    assert_eq!(
+        check_fileline("file.txt:2", Some(&root)),
+        FetchResult::pass()
+    );
     assert_eq!(
         check_fileline("file.txt:9", Some(&root)),
         FetchResult::new("FAIL", "line-out-of-range")
@@ -179,7 +200,10 @@ fn validate_citations_writes_the_no_op_sidecar() {
     let counts = validate_citations(&request, None, None);
     assert_eq!(counts, (0, 0, 0, 0));
     let sidecar = std::fs::read_to_string(&output).expect("read");
-    assert!(sidecar.contains("Citation validation is a no-op"), "{sidecar}");
+    assert!(
+        sidecar.contains("Citation validation is a no-op"),
+        "{sidecar}"
+    );
 }
 
 #[test]
@@ -212,7 +236,10 @@ fn validate_citations_renders_ledger_rows_with_injected_fetcher() {
     let (pass, fail, unknown, total) = validate_citations(&request, Some(&fetcher), Some(&root));
     assert_eq!(total, 4, "pass={pass} fail={fail} unknown={unknown}");
     let sidecar = std::fs::read_to_string(&output).expect("read");
-    assert!(sidecar.contains("| `src.rs:1` | file-line | PASS |"), "{sidecar}");
+    assert!(
+        sidecar.contains("| `src.rs:1` | file-line | PASS |"),
+        "{sidecar}"
+    );
     assert!(sidecar.contains("Domain credibility"), "{sidecar}");
 }
 
