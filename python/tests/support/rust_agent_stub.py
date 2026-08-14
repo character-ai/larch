@@ -40,6 +40,8 @@ from pathlib import PurePosixPath
 from typing import Literal, cast
 
 ARG_PAIR_SIZE = 2
+DEGRADED_REASON_ARGUMENT_COUNT = 3
+VOTER_STATUS_POSITIONAL_COUNT = 13
 CURSOR_DEGRADED_OUTPUT_TOKEN_FLOOR = 1_000
 CURSOR_DEGRADED_RESULT_BYTES_CEILING = 500
 ENV_CLAUDE_PLUGIN_ROOT = "CLAUDE_PLUGIN_ROOT"
@@ -1990,6 +1992,129 @@ def _voting_parse_rate_retry(arguments: list[str]) -> int:
     return _voting_parse_rate(arguments, envelope=False)
 
 
+def _voting_effective_judges(arguments: list[str]) -> int:
+    records = arguments or sys.stdin.read().splitlines()
+    count = 0
+    for record in records:
+        parts = record.split("\t")
+        status, path, parse_rate = [*parts, "", "", ""][:3]
+        candidate = Path(path)
+        if status != "failed" and parse_rate != "NOT_SUBSTANTIVE" and candidate.is_file() and candidate.stat().st_size:
+            count += 1
+    print(count)
+    return 0
+
+
+def _voting_degraded_warning(arguments: list[str]) -> int:
+    if len(arguments) not in {2, 3}:
+        return 2
+    effective, expected = int(arguments[0]), int(arguments[1])
+    if effective < expected:
+        warning = f"**⚠ Degraded plan-review panel: {effective}/{expected} effective judges produced substantive vote output.**"
+        if len(arguments) == DEGRADED_REASON_ARGUMENT_COUNT and arguments[2]:
+            warning += f" {arguments[2]}"
+        print(warning, file=sys.stderr)
+        print(f"DEGRADED_PANEL_WARNING={warning}")
+    return 0
+
+
+def _voting_voter_status_block(arguments: list[str]) -> int:
+    row_layout = _flag(arguments, "--row-layout", "plan_review_interleaved")
+    paths_policy = _flag(arguments, "--paths-file-policy", "nonempty")
+    values: list[str] = []
+    index = 0
+    while index < len(arguments):
+        if arguments[index] in {"--row-layout", "--paths-file-policy"}:
+            index += 2
+        else:
+            values.append(arguments[index])
+            index += 1
+    if len(values) != VOTER_STATUS_POSITIONAL_COUNT:
+        return 2
+    suffixes = ("PATH", "TOOL", "STATUS", "PARSE_RATE_STATUS")
+    sequential = tuple((voter, field) for voter in range(3) for field in range(4))
+    interleaved = ((0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (2, 0), (1, 1), (2, 1), (1, 2), (2, 2), (1, 3), (2, 3))
+    order = sequential if row_layout == "code_review_sequential" else interleaved
+    for position, (voter, field) in enumerate(order):
+        print(f"VOTER_{voter + 1}_{suffixes[field]}={values[voter * 4 + field]}")
+        if position == (11 if row_layout == "code_review_sequential" else 5):
+            paths = Path(values[12])
+            if paths_policy == "always" or (paths.is_file() and paths.stat().st_size):
+                print(f"VOTER_PATHS_FILE={values[12]}")
+    return 0
+
+
+def _voting_write_tally(arguments: list[str]) -> int:
+    phase = _flag(arguments, "--phase")
+    mode = _flag(arguments, "--mode")
+    batch = "plan-review-tally" if phase == "plan-review" else "code-review-tally"
+    record: dict[str, object] = {
+        "schema_version": 2, "phase": phase, "batch": batch, "mode": mode,
+        "rounds": int(_flag(arguments, "--rounds", "0")),
+        "accepted_count": int(_flag(arguments, "--accepted", "0")),
+        "rejected_count": int(_flag(arguments, "--rejected", "0")),
+        "exonerated_count": int(_flag(arguments, "--exonerated", "0")),
+    }
+    body_file = _flag(arguments, "--body-file")
+    if phase == "plan-review" and body_file:
+        record["body"] = Path(body_file).read_text(encoding="utf-8")
+    findings_file = _flag(arguments, "--self-review-findings-file")
+    if findings_file:
+        rows: list[str] = []
+        for outcome, count, prefix in (
+            ("accepted", int(record["accepted_count"]), "SELF_REVIEW_ACCEPTED"),
+            ("rejected", int(record["rejected_count"]), "SELF_REVIEW_REJECTED"),
+        ):
+            rows.extend(json.dumps({
+                    "id": f"{prefix}_{item}", "issue_number": "0", "phase": "code-review",
+                    "outcome": outcome, "schema_version": "2", "reviewer_slots": ["self-review"],
+                    "round_num": "1", "category": "", "body_severity": "", "focus_area": "", "prose_body": "",
+                }, separators=(",", ":")) for item in range(1, count + 1))
+        _ = Path(findings_file).write_text("".join(f"{row}\n" for row in rows), encoding="utf-8")
+    parent = Path(_flag(arguments, "--log-root")).parent
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=parent, delete=False) as handle:
+        _ = handle.write(json.dumps(record, separators=(",", ":")) + "\n")
+        source = handle.name
+    try:
+        return _run_log_write([
+            "--log-root", _flag(arguments, "--log-root"), "--skill", _flag(arguments, "--skill"),
+            "--run-id", _flag(arguments, "--run-id"), "--batch", batch, "--input-file", source,
+        ])
+    finally:
+        Path(source).unlink(missing_ok=True)
+
+
+def _voting_compose_tally_record(arguments: list[str]) -> int:
+    if len(arguments) != ARG_PAIR_SIZE or arguments[0] != "--self-review-tally-file":
+        return 2
+    try:
+        record = json.loads(Path(arguments[1]).read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError):
+        return 1
+    if not isinstance(record, dict):
+        return 0
+    typed = cast("dict[str, object]", record)
+    if typed.get("mode") != "self-review":
+        return 0
+    def count(name: str) -> int:
+        try:
+            return max(0, int(str(typed.get(name))))
+        except (TypeError, ValueError):
+            return 0
+    rows: list[str] = []
+    for outcome, total, prefix in (
+        ("accepted", count("accepted_count"), "SELF_REVIEW_ACCEPTED"),
+        ("rejected", count("rejected_count"), "SELF_REVIEW_REJECTED"),
+    ):
+        rows.extend(json.dumps({
+                "id": f"{prefix}_{item}", "issue_number": "0", "phase": "code-review",
+                "outcome": outcome, "schema_version": "2", "reviewer_slots": ["self-review"],
+                "round_num": "1", "category": "", "body_severity": "", "focus_area": "", "prose_body": "",
+            }, separators=(",", ":")) for item in range(1, total + 1))
+    _ = sys.stdout.write("".join(f"{row}\n" for row in rows))
+    return 0
+
+
 def main(arguments: list[str]) -> int:
     result = 2
     if arguments == ["--version"]:
@@ -2037,6 +2162,11 @@ def main(arguments: list[str]) -> int:
             ("timing", "telemetry-mark"): _timing_noop,
             ("voting", "parse-rate-check"): _voting_parse_rate_check,
             ("voting", "parse-rate-retry"): _voting_parse_rate_retry,
+            ("voting", "effective-judges"): _voting_effective_judges,
+            ("voting", "degraded-warning"): _voting_degraded_warning,
+            ("voting", "voter-status-block"): _voting_voter_status_block,
+            ("voting", "write-tally"): _voting_write_tally,
+            ("voting", "compose-tally-record"): _voting_compose_tally_record,
         }
         handler = handlers.get((arguments[0], arguments[1])) if len(arguments) >= ARG_PAIR_SIZE else None
         if handler is not None:

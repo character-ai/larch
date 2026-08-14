@@ -376,7 +376,7 @@ def flush_review_batches(*,
     derived_accepted, derived_rejected = _derive_code_review_tally(findings_file)
     _write_text(path=body_file, text=_build_tally_body(impl_tmpdir=impl_tmpdir, rounds=rounds, derived_accepted=derived_accepted, derived_rejected=derived_rejected))
     tally_result = _run([
-        "python3", str(_PY_CLI), "voting", "write-tally",
+        str(larch_entrypoint(_PLUGIN_ROOT)), "voting", "write-tally",
         "--log-root", str(impl_tmpdir / "larch-logs"),
         "--skill", "implement",
         "--run-id", run_id,

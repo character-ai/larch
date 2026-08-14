@@ -30,7 +30,7 @@ python_dir = repo_root / "python"
 if str(python_dir) not in sys.path:
     sys.path.insert(0, str(python_dir))
 
-from larch.core import config, repo_roots  # noqa: E402
+from larch.core import config, proc, repo_roots  # noqa: E402
 from larch.core.architectural_guidelines import CLEAN_INVARIANT_PRESENTATION_NOTE, CLEAN_PRESENTATION_NOTE, DESIGN_ASSESSMENT, GUIDELINE_SHIP_OUTCOME_SIDECAR, INVARIANT_DESIGN_ASSESSMENT, INVARIANT_SHIP_OUTCOME_SIDECAR, validate_invariant_ship_outcome_record  # noqa: E402
 from larch.issue.rejected_analysis import (  # noqa: E402
     _lookup_jsonl_record,
@@ -39,7 +39,6 @@ from larch.issue.rejected_analysis import (  # noqa: E402
 from larch.implement.ship_guidelines import GUIDELINE_SHIP_REASON_TOKENS  # noqa: E402
 from larch.report import run_log_corpus  # noqa: E402
 from larch.report.run_log_manifest import implement_step8_reachable  # noqa: E402
-from larch.review.self_review_tally import self_review_tally_items  # noqa: E402
 
 # --------------------------------------------------------------------------
 # semantic-group classifier — a finding may carry many tags (multi-label)
@@ -480,7 +479,6 @@ def _extract_one_implement_run(args):
     started = manifest_started(run_dir)
     larch_version = manifest_larch_version(run_dir)
     period = period_of_version(since_version, larch_version) if since_version is not None else period_of(cutoff, started_at=started)
-    fallback_records = _self_review_tally_records(run_dir, run_id, larch_version, period)
     round_tsv = {}
     for tsv_path in run_log_corpus.classification_tsv_paths("implement", Path(run_dir), round_sort="lexical"):
         tsv = str(tsv_path)
@@ -488,7 +486,7 @@ def _extract_one_implement_run(args):
         round_tsv[match.group(1) if match else ""] = parse_impl_tsv(read_text(tsv))
     malformed_jsonl = False
     if not os.path.exists(jf):
-        return fallback_records
+        return _self_review_tally_records(run_dir, run_id, larch_version, period)
     for line in read_text(jf).splitlines():
         line = line.strip()
         if not line:
@@ -539,21 +537,31 @@ def _extract_one_implement_run(args):
         })
     if records or malformed_jsonl:
         return records
-    return fallback_records
+    return _self_review_tally_records(run_dir, run_id, larch_version, period)
 
 
 def _self_review_tally_records(run_dir, run_id, larch_version, period):
+    tally_file = os.path.join(run_dir, "code-review-tally.json")
     try:
-        data = json.loads(read_text(os.path.join(run_dir, "code-review-tally.json")) or "{}")
-    except (ValueError, TypeError):
+        result = proc.run([
+            str(repo_roots.larch_entrypoint(repo_root)), "voting", "compose-tally-record",
+            "--self-review-tally-file", tally_file,
+        ])
+    except (OSError, RuntimeError, ValueError):
+        return []
+    if result.returncode != 0:
         return []
     rows = []
-    for item in self_review_tally_items(data):
+    for line in result.stdout.splitlines():
+        try:
+            item = json.loads(line)
+        except (ValueError, TypeError):
+            return []
         rows.append({
             "skill": "implement", "source": "committed-self-review-tally", "run_id": run_id,
-            "round": "", "phase": "code-review", "finding_id": item.finding_id,
+            "round": "", "phase": "code-review", "finding_id": item["id"],
             "larch_version": larch_version,
-            "outcome": item.outcome, "is_oos_id": False,
+            "outcome": item["outcome"], "is_oos_id": False,
             "title": "",
             "focus_area": "",
             "body_severity": "",

@@ -138,7 +138,11 @@ impl CleanInstallCase {
             | "clean-install-generate-reviewer-plan-fidelity-agent"
             | "clean-install-generate-reviewer-security-structure-tests-agent"
             | "clean-install-voting-code-review-classification-header"
-            | "clean-install-voting-findings-classification-header" => 2,
+            | "clean-install-voting-compose-tally-record"
+            | "clean-install-voting-findings-classification-header"
+            | "clean-install-voting-degraded-warning"
+            | "clean-install-voting-voter-status-block"
+            | "clean-install-voting-write-tally" => 2,
             // Every umbrella verb owns a real help action, so the default
             // clean-install `--help` probe succeeds.
             _ => 0,
@@ -1528,6 +1532,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "findings-classification-header",
     ),
     CleanInstallCase::new(
+        "clean-install-voting-compose-tally-record",
+        "voting",
+        "compose-tally-record",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-degraded-warning",
+        "voting",
+        "degraded-warning",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-effective-judges",
+        "voting",
+        "effective-judges",
+    ),
+    CleanInstallCase::new(
         "clean-install-voting-parse-rate-check",
         "voting",
         "parse-rate-check",
@@ -1536,6 +1555,26 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-voting-parse-rate-retry",
         "voting",
         "parse-rate-retry",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-scoreboard",
+        "voting",
+        "scoreboard",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-tally-vote",
+        "voting",
+        "tally-vote",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-voter-status-block",
+        "voting",
+        "voter-status-block",
+    ),
+    CleanInstallCase::new(
+        "clean-install-voting-write-tally",
+        "voting",
+        "write-tally",
     ),
 ];
 

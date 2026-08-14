@@ -8400,23 +8400,28 @@ verb = "compose-tally-record"
 python_module = "larch.review.voting"
 python_function = "compose_tally_record_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8438
+clean_install_test = "clean-install-voting-compose-tally-record"
 
 [[commands]]
 domain = "voting"
 verb = "degraded-warning"
+# Rust normalizes the legacy uncaught traceback to its stable terminal ValueError line.
 python_module = "larch.review.voting"
 python_function = "degraded_warning_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8438
+clean_install_test = "clean-install-voting-degraded-warning"
 
 [[commands]]
 domain = "voting"
@@ -8424,11 +8429,13 @@ verb = "effective-judges"
 python_module = "larch.review.voting"
 python_function = "effective_judges_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8438
+clean_install_test = "clean-install-voting-effective-judges"
 
 [[commands]]
 domain = "voting"
@@ -8569,11 +8576,13 @@ verb = "scoreboard"
 python_module = "larch.review.voting"
 python_function = "scoreboard_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8438
+clean_install_test = "clean-install-voting-scoreboard"
 
 [[commands]]
 domain = "voting"
@@ -8594,11 +8603,13 @@ verb = "tally-vote"
 python_module = "larch.review.voting"
 python_function = "tally_vote_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8438
+clean_install_test = "clean-install-voting-tally-vote"
 
 [[commands]]
 domain = "voting"
@@ -8619,11 +8630,13 @@ verb = "voter-status-block"
 python_module = "larch.review.voting"
 python_function = "voter_status_block_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8438
+clean_install_test = "clean-install-voting-voter-status-block"
 
 [[commands]]
 domain = "voting"
@@ -8631,11 +8644,13 @@ verb = "write-tally"
 python_module = "larch.review.voting"
 python_function = "write_tally_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8438
+clean_install_test = "clean-install-voting-write-tally"
 
 [[callers]]
 path = ".github/workflows/ci.yaml"
@@ -8983,13 +8998,19 @@ rust = ["run-log write-round"]
 path = "python/larch/review/batch_report.py"
 kind = "python-runtime"
 python = []
-rust = ["run-log write", "run-log write-round"]
+rust = ["run-log write", "run-log write-round", "voting write-tally"]
 
 [[callers]]
 path = "python/larch/review/coder_runner.py"
 kind = "python-runtime"
 python = []
 rust = ["agent cursor-wrap-prompt", "agent launch-claude-review-fix", "agent launch-codex-exec", "agent run-external-agent", "git commit", "timing record-vendor-task"]
+
+[[callers]]
+path = "python/larch/review/dispatch_shared.py"
+kind = "python-runtime"
+python = []
+rust = ["voting voter-status-block"]
 
 [[callers]]
 path = "python/larch/review/plan_review.py"
@@ -9007,7 +9028,7 @@ rust = ["stall-recovery record-escalation"]
 path = "python/larch/review/plan_review_panel.py"
 kind = "python-runtime"
 python = []
-rust = ["agent dispatch-waterfall", "agent launch-claude-review", "voting parse-rate-retry"]
+rust = ["agent dispatch-waterfall", "agent launch-claude-review", "voting degraded-warning", "voting effective-judges", "voting parse-rate-retry"]
 
 [[callers]]
 path = "python/larch/review/plan_review_round.py"
@@ -9025,7 +9046,7 @@ rust = ["agent dispatch-waterfall", "dirty-tree scope-marker", "run-log append-e
 path = "python/larch/review/review_and_fix.py"
 kind = "python-runtime"
 python = []
-rust = ["git commit", "run-log write", "stall-recovery record-escalation", "timing mark"]
+rust = ["git commit", "run-log write", "stall-recovery record-escalation", "timing mark", "voting write-tally"]
 
 [[callers]]
 path = "python/larch/review/review_collect.py"
@@ -9430,10 +9451,16 @@ python = ["difficulty-calibration analyze"]
 rust = []
 
 [[callers]]
+path = "skills/fluff-analysis/scripts/fluff-analysis.py"
+kind = "skill"
+python = []
+rust = ["voting compose-tally-record"]
+
+[[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["architectural-assessment materialize", "architectural-assessment submit", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue", "voting write-tally"]
-rust = ["admission fork-env", "admission gate", "bgjob wait", "bootstrap invoke", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary"]
+python = ["architectural-assessment materialize", "architectural-assessment submit", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue"]
+rust = ["admission fork-env", "admission gate", "bgjob wait", "bootstrap invoke", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"

@@ -1,9 +1,16 @@
 //! Shared review voting policy and parsing primitives.
 use super::{BoundaryMode, parse_blocks};
-use crate::text::{is_python_whitespace, split_text_lines, trim_python_whitespace};
+use crate::text::{
+    ensure_ascii_json, is_python_whitespace, python_bigint, split_text_lines,
+    trim_python_whitespace,
+};
 use num_bigint::BigInt;
 use regex::{Regex, RegexBuilder};
-use std::{collections::HashSet, sync::LazyLock};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt::Write as _,
+    sync::LazyLock,
+};
 /// The plan-review classification schema exposed to shell callers.
 pub const FINDINGS_CLASSIFICATION_HEADER: &str = "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\tscope";
 static TABLE_VOTE_ID: LazyLock<Regex> =
@@ -436,4 +443,355 @@ pub fn accepted_finding_points_from_severities(votes: &[String], severities: &[S
     } else {
         1
     }
+}
+
+fn reviewer_tokens(cell: &str, labels: &[String]) -> Vec<String> {
+    let label_set: HashSet<&str> = labels
+        .iter()
+        .filter(|label| !label.is_empty())
+        .map(String::as_str)
+        .collect();
+    let mut sorted: Vec<&str> = label_set.iter().copied().collect();
+    sorted.sort_by(|left, right| {
+        right
+            .chars()
+            .count()
+            .cmp(&left.chars().count())
+            .then_with(|| left.cmp(right))
+    });
+    let mut tokens = Vec::new();
+    let mut seen = HashSet::new();
+    for raw_segment in cell.split(',') {
+        let segment = trim_python_whitespace(raw_segment);
+        if segment.is_empty() {
+            continue;
+        }
+        if label_set.contains(segment) {
+            if seen.insert(segment.to_owned()) {
+                tokens.push(segment.to_owned());
+            }
+            continue;
+        }
+        let mut position = 0;
+        while position < segment.len() {
+            let Some(character) = segment[position..].chars().next() else {
+                break;
+            };
+            if is_python_whitespace(character) {
+                position += character.len_utf8();
+                continue;
+            }
+            let Some(label) = sorted.iter().find(|label| {
+                if !segment[position..].starts_with(**label) {
+                    return false;
+                }
+                let end = position + label.len();
+                end == segment.len()
+                    || segment[end..]
+                        .chars()
+                        .next()
+                        .is_some_and(is_python_whitespace)
+            }) else {
+                break;
+            };
+            if seen.insert((*label).to_owned()) {
+                tokens.push((*label).to_owned());
+            }
+            position += label.len();
+        }
+    }
+    tokens
+}
+
+fn reviewer_segment_fully_tokenized(segment: &str, labels: &[String]) -> bool {
+    if labels.iter().all(String::is_empty) {
+        return false;
+    }
+    let mut sorted: Vec<&str> = labels
+        .iter()
+        .filter(|label| !label.is_empty())
+        .map(String::as_str)
+        .collect();
+    sorted.sort_by(|left, right| {
+        right
+            .chars()
+            .count()
+            .cmp(&left.chars().count())
+            .then_with(|| left.cmp(right))
+    });
+    let mut position = 0;
+    while position < segment.len() {
+        let Some(character) = segment[position..].chars().next() else {
+            break;
+        };
+        if is_python_whitespace(character) {
+            position += character.len_utf8();
+            continue;
+        }
+        let Some(label) = sorted.iter().find(|label| {
+            if !segment[position..].starts_with(**label) {
+                return false;
+            }
+            let end = position + label.len();
+            end == segment.len()
+                || segment[end..]
+                    .chars()
+                    .next()
+                    .is_some_and(is_python_whitespace)
+        }) else {
+            return false;
+        };
+        position += label.len();
+    }
+    true
+}
+
+fn grow_reviewer_labels(labels: &mut Vec<String>, cells: impl IntoIterator<Item = String>) {
+    let mut seen: HashSet<String> = labels.iter().cloned().collect();
+    for cell in cells {
+        for raw_segment in cell.split(',') {
+            let segment = trim_python_whitespace(raw_segment);
+            if segment.is_empty() {
+                continue;
+            }
+            let matched = reviewer_tokens(segment, labels);
+            if matched.is_empty() && !segment.contains(' ') && !segment.contains('\t') {
+                if seen.insert(segment.to_owned()) {
+                    labels.push(segment.to_owned());
+                }
+            } else {
+                for token in matched {
+                    if seen.insert(token.clone()) {
+                        labels.push(token);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn split_attribution(cell: &str, column: &str, labels: &[String]) -> Vec<String> {
+    let cell = trim_python_whitespace(cell);
+    if cell.is_empty() {
+        return Vec::new();
+    }
+    if column == "finding_reviewers" {
+        reviewer_tokens(cell, labels)
+    } else if column == "reviewer_slots" {
+        cell.split('|')
+            .map(trim_python_whitespace)
+            .filter(|part| !part.is_empty())
+            .map(str::to_owned)
+            .collect()
+    } else {
+        vec![cell.to_owned()]
+    }
+}
+
+fn raw_sole_finder(cell: &str, column: &str, corpus_labels: &[String]) -> Vec<String> {
+    let cell = trim_python_whitespace(cell);
+    if cell.is_empty() {
+        return Vec::new();
+    }
+    if column != "finding_reviewers" {
+        return split_attribution(cell, column, &[]);
+    }
+    let comma_parts: Vec<&str> = cell
+        .split(',')
+        .map(trim_python_whitespace)
+        .filter(|part| !part.is_empty())
+        .collect();
+    if comma_parts.len() != 1 {
+        return Vec::new();
+    }
+    let segment = comma_parts[0];
+    let tokens = reviewer_tokens(segment, corpus_labels);
+    if tokens.is_empty() {
+        return vec![segment.to_owned()];
+    }
+    if reviewer_segment_fully_tokenized(segment, corpus_labels) {
+        tokens
+    } else {
+        Vec::new()
+    }
+}
+
+fn row_is_oos(row: &BTreeMap<String, String>, has_scope: bool) -> bool {
+    if has_scope {
+        row.get("scope")
+            .is_some_and(|scope| trim_python_whitespace(scope).eq_ignore_ascii_case("oos"))
+    } else {
+        row.get("finding_id")
+            .is_some_and(|item| trim_python_whitespace(item).starts_with("OOS_"))
+    }
+}
+
+/// Replay reviewer scores from one plan- or code-review classification TSV.
+///
+/// # Errors
+///
+/// Returns a CSV error when the tab-delimited input is malformed.
+pub fn scoreboard_scores_from_tsv(
+    text: &str,
+    reviewer_labels: &[String],
+    unique_finder_bonus: f64,
+) -> Result<BTreeMap<String, f64>, csv::Error> {
+    let mut scores: BTreeMap<String, f64> = reviewer_labels
+        .iter()
+        .cloned()
+        .map(|label| (label, 0.0))
+        .collect();
+    let mut reader = csv::ReaderBuilder::new()
+        .delimiter(b'\t')
+        .flexible(true)
+        .from_reader(text.as_bytes());
+    let headers: Vec<String> = reader.headers()?.iter().map(str::to_owned).collect();
+    let mut rows = Vec::new();
+    for record in reader.records() {
+        let record = record?;
+        let mut row = BTreeMap::new();
+        for (index, header) in headers.iter().enumerate() {
+            row.insert(header.clone(), record.get(index).unwrap_or("").to_owned());
+        }
+        rows.push(row);
+    }
+    let reviewer_column = if headers.iter().any(|header| header == "finding_reviewers") {
+        "finding_reviewers"
+    } else {
+        "reviewer_slots"
+    };
+    let mut corpus_labels = reviewer_labels.to_vec();
+    if reviewer_column == "finding_reviewers" {
+        grow_reviewer_labels(
+            &mut corpus_labels,
+            rows.iter()
+                .map(|row| row.get(reviewer_column).cloned().unwrap_or_default()),
+        );
+    }
+    let has_scope = headers.iter().any(|header| header == "scope");
+    for row in rows {
+        let result = trim_python_whitespace(row.get("voting_result").map_or("", String::as_str));
+        if !matches!(result, "accepted" | "rejected" | "neutral") {
+            continue;
+        }
+        let reviewer_cell = row.get(reviewer_column).map_or("", String::as_str);
+        let reviewers = split_attribution(reviewer_cell, reviewer_column, reviewer_labels);
+        let raw_reviewers = raw_sole_finder(reviewer_cell, reviewer_column, &corpus_labels);
+        let oos = row_is_oos(&row, has_scope);
+        let delta = if result == "accepted" {
+            let accepted_oos = row
+                .get("scope")
+                .is_some_and(|scope| trim_python_whitespace(scope) == "oos");
+            let base = if !has_scope || accepted_oos {
+                1.0
+            } else {
+                let votes: Vec<String> = (1..=3)
+                    .map(|index| {
+                        row.get(&format!("v{index}_vote"))
+                            .cloned()
+                            .unwrap_or_default()
+                    })
+                    .collect();
+                let severities: Vec<String> = (1..=3)
+                    .map(|index| {
+                        row.get(&format!("v{index}_severity"))
+                            .cloned()
+                            .unwrap_or_default()
+                    })
+                    .collect();
+                f64::from(accepted_finding_points_from_severities(&votes, &severities))
+            };
+            if unique_finder_bonus > 0.0 && !oos && raw_reviewers.len() == 1 {
+                base + unique_finder_bonus
+            } else {
+                base
+            }
+        } else if result == "rejected" {
+            -1.0
+        } else if oos {
+            0.0
+        } else {
+            -0.25
+        };
+        for reviewer in reviewers {
+            if let Some(score) = scores.get_mut(&reviewer) {
+                *score += delta;
+            }
+        }
+    }
+    Ok(scores)
+}
+
+/// Values needed to compose one byte-stable run-log tally record.
+pub struct TallyRecordFields<'a> {
+    pub phase: &'a str,
+    pub batch: &'a str,
+    pub mode: &'a str,
+    pub rounds: &'a str,
+    pub accepted: &'a str,
+    pub rejected: &'a str,
+    pub exonerated: &'a str,
+    pub body: Option<&'a str>,
+}
+
+/// Compose the byte-stable run-log tally record.
+#[must_use]
+pub fn compose_tally_record_json(fields: &TallyRecordFields<'_>) -> String {
+    let mut record = format!(
+        "{{\"schema_version\":2,\"phase\":{},\"batch\":{},\"mode\":{},\"rounds\":{},\"accepted_count\":{},\"rejected_count\":{},\"exonerated_count\":{}",
+        serde_json::Value::String(fields.phase.to_owned()),
+        serde_json::Value::String(fields.batch.to_owned()),
+        serde_json::Value::String(fields.mode.to_owned()),
+        fields.rounds,
+        fields.accepted,
+        fields.rejected,
+        fields.exonerated,
+    );
+    if let Some(body) = fields.body {
+        record.push_str(",\"body\":");
+        record.push_str(&serde_json::Value::String(body.to_owned()).to_string());
+    }
+    record.push('}');
+    ensure_ascii_json(&record)
+}
+
+/// Compose the exact self-review findings JSONL paired with a tally record.
+#[must_use]
+pub fn compose_self_review_findings_jsonl(accepted: usize, rejected: usize) -> String {
+    let mut output = String::new();
+    for (outcome, count, prefix) in [
+        ("accepted", accepted, "SELF_REVIEW_ACCEPTED"),
+        ("rejected", rejected, "SELF_REVIEW_REJECTED"),
+    ] {
+        for index in 1..=count {
+            let _ = writeln!(
+                output,
+                "{{\"id\":\"{prefix}_{index}\",\"issue_number\":\"0\",\"phase\":\"code-review\",\"outcome\":\"{outcome}\",\"schema_version\":\"2\",\"reviewer_slots\":[\"self-review\"],\"round_num\":\"1\",\"category\":\"\",\"body_severity\":\"\",\"focus_area\":\"\",\"prose_body\":\"\"}}"
+            );
+        }
+    }
+    output
+}
+
+/// Expand a self-review tally document into its exact findings JSONL records.
+#[must_use]
+pub fn compose_self_review_findings_from_tally_json(text: &str) -> String {
+    let Ok(serde_json::Value::Object(record)) = serde_json::from_str(text) else {
+        return String::new();
+    };
+    if record.get("mode").and_then(serde_json::Value::as_str) != Some("self-review") {
+        return String::new();
+    }
+    let count = |name: &str| -> usize {
+        let raw = match record.get(name) {
+            Some(serde_json::Value::String(value)) => value.clone(),
+            Some(serde_json::Value::Number(value)) => value.to_string(),
+            _ => return 0,
+        };
+        python_bigint(&raw)
+            .filter(|value| value.sign() != num_bigint::Sign::Minus)
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(0)
+    };
+    compose_self_review_findings_jsonl(count("accepted_count"), count("rejected_count"))
 }

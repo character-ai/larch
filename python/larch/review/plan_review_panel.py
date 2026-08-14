@@ -1121,8 +1121,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
 
     effective_proc = larch_proc.run(
         [
-            sys.executable,
-            str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
+            str(larch_entrypoint(_REPO_ROOT)),
             "voting",
             "effective-judges",
             f"{state.voter_1_status}\t{state.voter_1_path}\t{state.voter_1_parse_rate_status}",
@@ -1136,8 +1135,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     if effective < _PLAN_VOTER_PANEL_SIZE:
         warn_proc = larch_proc.run(
             [
-                sys.executable,
-                str(plugin_root(_REPO_ROOT) / "python" / "cli.py"),
+                str(larch_entrypoint(_REPO_ROOT)),
                 "voting",
                 "degraded-warning",
                 str(effective),
