@@ -8252,11 +8252,13 @@ verb = "ingest-finder"
 python_module = "larch.issue.validate_merged"
 python_function = "ingest_finder_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8505
+clean_install_test = "clean-install-validate-merged-ingest-finder"
 
 [[commands]]
 domain = "validate-merged"
@@ -8264,11 +8266,13 @@ verb = "ingest-refuter"
 python_module = "larch.issue.validate_merged"
 python_function = "ingest_refuter_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8505
+clean_install_test = "clean-install-validate-merged-ingest-refuter"
 
 [[commands]]
 domain = "validate-merged"
@@ -8276,11 +8280,13 @@ verb = "prepare"
 python_module = "larch.issue.validate_merged"
 python_function = "prepare_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8505
+clean_install_test = "clean-install-validate-merged-prepare"
 
 [[commands]]
 domain = "validate-merged"
@@ -8288,11 +8294,13 @@ verb = "report"
 python_module = "larch.issue.validate_merged"
 python_function = "report_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8505
+clean_install_test = "clean-install-validate-merged-report"
 
 [[commands]]
 domain = "validate-merged"
@@ -8300,11 +8308,13 @@ verb = "write-state"
 python_module = "larch.issue.validate_merged"
 python_function = "write_state_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8505
+clean_install_test = "clean-install-validate-merged-write-state"
 
 [[commands]]
 domain = "verify"
@@ -8957,12 +8967,6 @@ path = "python/larch/implement/step_7a.py"
 kind = "python-runtime"
 python = []
 rust = ["bgjob start", "timing mark"]
-
-[[callers]]
-path = "python/larch/issue/validate_merged.py"
-kind = "python-runtime"
-python = ["validate-merged ingest-finder", "validate-merged ingest-refuter", "validate-merged prepare", "validate-merged report", "validate-merged write-state"]
-rust = []
 
 [[callers]]
 path = "python/larch/rendering/rendering.py"

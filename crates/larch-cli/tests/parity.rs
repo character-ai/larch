@@ -538,6 +538,31 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "write-state",
     ),
     CleanInstallCase::new(
+        "clean-install-validate-merged-ingest-finder",
+        "validate-merged",
+        "ingest-finder",
+    ),
+    CleanInstallCase::new(
+        "clean-install-validate-merged-ingest-refuter",
+        "validate-merged",
+        "ingest-refuter",
+    ),
+    CleanInstallCase::new(
+        "clean-install-validate-merged-prepare",
+        "validate-merged",
+        "prepare",
+    ),
+    CleanInstallCase::new(
+        "clean-install-validate-merged-report",
+        "validate-merged",
+        "report",
+    ),
+    CleanInstallCase::new(
+        "clean-install-validate-merged-write-state",
+        "validate-merged",
+        "write-state",
+    ),
+    CleanInstallCase::new(
         "clean-install-analyze-issues-analyze",
         "analyze-issues",
         "analyze",

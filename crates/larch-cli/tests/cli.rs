@@ -61,6 +61,7 @@ Commands:
   audit-runs         Run-log audit preflight, titles, advisory, mapping, scanning, and closure
   analyze-bugs       Bounded filed-bug evidence and verification commands
   learn-from-bugs    Prepare compact bug-learning evidence and maintain its durable marker
+  validate-merged    Inspect recent first-parent merges for possible unfiled bugs
   object-store       Narrow provider transports used by Python-owned run-log workflows
   oos                Composition, capping, ordering, and disposition of a run's OOS batch
   release            Release-maintenance commands

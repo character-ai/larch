@@ -3415,23 +3415,23 @@ struct AnalyticsViewData {
 }
 
 #[derive(Clone)]
-struct SweepCandidateData {
-    merge_sha: String,
-    file: String,
-    symbol: String,
-    description: String,
-    severity: String,
-    confidence: String,
+pub struct SweepCandidateData {
+    pub merge_sha: String,
+    pub file: String,
+    pub symbol: String,
+    pub description: String,
+    pub severity: String,
+    pub confidence: String,
 }
 
-struct SweepReportData {
-    pinned_tip: String,
-    selected_count: u64,
-    skipped_count: u64,
-    pending_shas: Vec<String>,
-    coverage_incomplete: bool,
-    candidates: Vec<SweepCandidateData>,
-    selected_manifest: Value,
+pub struct SweepReportData {
+    pub pinned_tip: String,
+    pub selected_count: u64,
+    pub skipped_count: u64,
+    pub pending_shas: Vec<String>,
+    pub coverage_incomplete: bool,
+    pub candidates: Vec<SweepCandidateData>,
+    pub selected_manifest: Value,
 }
 
 #[allow(clippy::cognitive_complexity, clippy::too_many_lines)] // The fixed report section order is a Python compatibility contract.
@@ -4788,7 +4788,7 @@ fn report_counts(rows: &[ReportRow]) -> (usize, usize, usize, usize, usize, usiz
     )
 }
 
-fn markdown_table(rows: &[Vec<String>]) -> String {
+pub fn markdown_table(rows: &[Vec<String>]) -> String {
     let Some(header) = rows.first() else {
         return String::new();
     };
@@ -4813,7 +4813,7 @@ fn markdown_table(rows: &[Vec<String>]) -> String {
     output.join("\n")
 }
 
-fn short_sha(sha: &str) -> String {
+pub fn short_sha(sha: &str) -> String {
     sha.chars().take(12).collect()
 }
 
@@ -4904,7 +4904,7 @@ fn sweep_state_path(ledger_path: &Path) -> Result<PathBuf, String> {
 }
 
 #[allow(clippy::too_many_lines)] // Every coupled sweep artifact field must be checked before report state advances.
-fn load_validated_sweep(run_dir: &Path) -> Result<Option<SweepReportData>, String> {
+pub fn load_validated_sweep(run_dir: &Path) -> Result<Option<SweepReportData>, String> {
     const VALIDATED: &str = "sweep-validated.json";
     const SELECTED: &str = "sweep-selected-merges.json";
     let artifact_path = run_dir.join(VALIDATED);
