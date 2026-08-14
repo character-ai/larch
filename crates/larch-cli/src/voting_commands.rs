@@ -9,11 +9,12 @@ use crate::{
 #[rustfmt::skip]
 use larch_adapters::{PathIntent, TemporaryRoot, absolute_lexical, assert_no_symlink_path_or_ancestors, atomic_write_utf8, ensure_directory_chain, parent_directory, write_confined_file};
 use larch_core::review::{
-    FINDINGS_CLASSIFICATION_HEADER, TallyRecordFields, accept_finding, alias_ballot_id,
-    ballot_blocks, ballot_parse_text, classify_unbounded_result, code_review_classification_header,
+    FINDINGS_CLASSIFICATION_HEADER, TallyRecordFields, VoterPathsFilePolicy, VoterRowLayout,
+    VoterSlotState, accept_finding, alias_ballot_id, ballot_blocks, ballot_parse_text,
+    classify_unbounded_result, code_review_classification_header,
     compose_self_review_findings_from_tally_json, compose_self_review_findings_jsonl,
     compose_tally_record_json, false_positive_match, panel_tier, parse_judge_vote_text,
-    reviewer_for_block_text, scoreboard_scores_from_tsv, vote_for_id_text,
+    reviewer_for_block_text, scoreboard_scores_from_tsv, vote_for_id_text, voter_status_rows,
 };
 use larch_core::{
     file_line_regex, is_security_block_text, python_bigint, python_float, redact,
@@ -870,38 +871,19 @@ pub fn voter_status_block(arguments: &[OsString]) -> ExitCode {
         eprintln!("usage: voter-status-block <13 positional args>");
         return ExitCode::from(2);
     }
-    let suffixes = ["PATH", "TOOL", "STATUS", "PARSE_RATE_STATUS"];
     #[rustfmt::skip]
-    let interleaved = [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (2, 0), (1, 1), (2, 1), (1, 2), (2, 2), (1, 3), (2, 3)];
+    let row_layout = if row_layout == "code_review_sequential" { VoterRowLayout::CodeReviewSequential } else { VoterRowLayout::PlanReviewInterleaved };
     #[rustfmt::skip]
-    let sequential = [(0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3), (2, 0), (2, 1), (2, 2), (2, 3)];
-    let order = if row_layout == "code_review_sequential" {
-        &sequential
-    } else {
-        &interleaved
-    };
-    for (index, (voter, field)) in order.iter().enumerate() {
-        println!(
-            "VOTER_{}_{}={}",
-            voter + 1,
-            suffixes[*field],
-            values[voter * 4 + field]
-        );
-        let paths_index = if row_layout == "code_review_sequential" {
-            11
-        } else {
-            5
-        };
-        if index == paths_index {
-            let paths = Path::new(&values[12]);
-            if paths_file_policy == "always"
-                || (!values[12].is_empty()
-                    && paths.is_file()
-                    && paths.metadata().is_ok_and(|metadata| metadata.len() > 0))
-            {
-                println!("VOTER_PATHS_FILE={}", values[12]);
-            }
-        }
+    let paths_file_policy = if paths_file_policy == "always" { VoterPathsFilePolicy::Always } else { VoterPathsFilePolicy::Nonempty };
+    #[rustfmt::skip]
+    let voters = values[..12].chunks_exact(4).map(|fields| VoterSlotState { path: fields[0].clone(), tool: fields[1].clone(), status: fields[2].clone(), parse_rate_status: fields[3].clone() }).collect::<Vec<_>>();
+    let paths = Path::new(&values[12]);
+    #[rustfmt::skip]
+    let paths_file_nonempty = matches!(paths_file_policy, VoterPathsFilePolicy::Nonempty) && !values[12].is_empty() && paths.is_file() && paths.metadata().is_ok_and(|metadata| metadata.len() > 0);
+    #[rustfmt::skip]
+    let rows = voter_status_rows(&voters, &values[12], row_layout, paths_file_policy, paths_file_nonempty).expect("three fixed voter records");
+    for (key, value) in rows {
+        println!("{key}={value}");
     }
     ExitCode::SUCCESS
 }

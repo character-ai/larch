@@ -570,7 +570,10 @@ fn grow_reviewer_labels(labels: &mut Vec<String>, cells: impl IntoIterator<Item 
     }
 }
 
-fn split_attribution(cell: &str, column: &str, labels: &[String]) -> Vec<String> {
+/// Split one classification reviewer cell using the legacy column-specific grammar.
+#[must_use]
+#[rustfmt::skip]
+pub fn split_classification_attribution(cell: &str, column: &str, labels: &[String]) -> Vec<String> {
     let cell = trim_python_whitespace(cell);
     if cell.is_empty() {
         return Vec::new();
@@ -588,13 +591,19 @@ fn split_attribution(cell: &str, column: &str, labels: &[String]) -> Vec<String>
     }
 }
 
-fn raw_sole_finder(cell: &str, column: &str, corpus_labels: &[String]) -> Vec<String> {
+/// Return the raw sole-finder attribution used to decide unique-bonus eligibility.
+#[must_use]
+pub fn raw_sole_finder_attribution(
+    cell: &str,
+    column: &str,
+    corpus_labels: &[String],
+) -> Vec<String> {
     let cell = trim_python_whitespace(cell);
     if cell.is_empty() {
         return Vec::new();
     }
     if column != "finding_reviewers" {
-        return split_attribution(cell, column, &[]);
+        return split_classification_attribution(cell, column, &[]);
     }
     let comma_parts: Vec<&str> = cell
         .split(',')
@@ -675,8 +684,10 @@ pub fn scoreboard_scores_from_tsv(
             continue;
         }
         let reviewer_cell = row.get(reviewer_column).map_or("", String::as_str);
-        let reviewers = split_attribution(reviewer_cell, reviewer_column, reviewer_labels);
-        let raw_reviewers = raw_sole_finder(reviewer_cell, reviewer_column, &corpus_labels);
+        let reviewers =
+            split_classification_attribution(reviewer_cell, reviewer_column, reviewer_labels);
+        let raw_reviewers =
+            raw_sole_finder_attribution(reviewer_cell, reviewer_column, &corpus_labels);
         let oos = row_is_oos(&row, has_scope);
         let delta = if result == "accepted" {
             let accepted_oos = row

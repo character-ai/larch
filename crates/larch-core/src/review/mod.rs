@@ -43,6 +43,7 @@ pub use voting::{
     classify_oos_result, classify_result, classify_unbounded_result,
     compose_self_review_findings_from_tally_json, compose_self_review_findings_jsonl,
     compose_tally_record_json, false_positive_match, neutral_high_severity_rescue_to_oos,
-    oos_fileable_from_votes, panel_tier, parse_judge_vote_text, reviewer_for_block_text,
-    scoreboard_scores_from_tsv, vote_for_id_text,
+    oos_fileable_from_votes, panel_tier, parse_judge_vote_text, raw_sole_finder_attribution,
+    reviewer_for_block_text, scoreboard_scores_from_tsv, split_classification_attribution,
+    vote_for_id_text,
 };

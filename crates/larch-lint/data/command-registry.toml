@@ -10103,3 +10103,9 @@ path = "skills/upgrade-larch/SKILL.md"
 kind = "skill"
 python = []
 rust = ["upgrade-larch run"]
+
+[[callers]]
+path = "skills/voter-calibration/scripts/voter-calibration.py"
+kind = "skill"
+python = []
+rust = ["analyze-issues fetch"]
