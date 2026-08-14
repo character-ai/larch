@@ -453,30 +453,103 @@ fn terminal_accepts_a_symlinked_ancestor_spelling() {
 }
 
 #[test]
-fn refresh_refuses_a_preterminal_terminal_outcome() {
+fn post_pr_stall_refresh_recovers_terminal_staging_before_terminal_reconciliation() {
     let fixture = Fixture::new();
     fixture.seed_terminal();
     fs::create_dir_all(fixture.run_dir()).expect("run directory");
     let summary = fixture.run_dir().join("final-summary.md");
     fs::write(&summary, "## /implement run run-abc: stalled\n").expect("terminal summary");
+    fs::write(
+        fixture.tmpdir.join("ship-pr-state.sh"),
+        concat!(
+            "RUN_ID=run-abc\n",
+            "PHASE=stalled\n",
+            "STALL_TRACKING=true\n",
+            "STALL_STEP=pr-create-guideline-outcome-refresh\n",
+            "EXIT_CODE=4\n",
+            "BAIL_REASON=stalled\n",
+            "PR_NUMBER=17\n",
+            "PR_URL=https://example.test/pr/17\n",
+            "MERGE=true\n",
+        ),
+    )
+    .expect("stalled ship state");
+    fs::write(
+        fixture.tmpdir.join("finalize-state.sh"),
+        concat!(
+            "RUN_ID=run-abc\n",
+            "PHASE=stalled\n",
+            "STALL_TRACKING=true\n",
+            "STALL_STEP=pr-create-guideline-outcome-refresh\n",
+            "EXIT_CODE=4\n",
+            "BAIL_REASON=stalled\n",
+            "PR_NUMBER=17\n",
+            "PR_URL=https://example.test/pr/17\n",
+            "MERGE=true\n",
+        ),
+    )
+    .expect("stalled finalize state");
+    let session =
+        fs::read_to_string(fixture.tmpdir.join("session-env.sh")).expect("seeded session state");
+    fs::write(
+        fixture.tmpdir.join("session-env.sh"),
+        format!("{session}STALL_TRACKING=true\n"),
+    )
+    .expect("stalled session state");
 
-    let output = fixture
-        .command()
-        .args(["run-log", "refresh", "--implement-tmpdir"])
-        .arg(&fixture.tmpdir)
-        .args(["--run-id", fixture.run_id, "--no-logs-commit", "false"])
-        .output()
-        .expect("refresh command");
+    let refresh = || {
+        fixture
+            .command()
+            .args(["run-log", "refresh", "--implement-tmpdir"])
+            .arg(&fixture.tmpdir)
+            .args(["--run-id", fixture.run_id, "--no-logs-commit", "false"])
+            .output()
+            .expect("refresh command")
+    };
 
-    assert!(output.status.success());
+    let first = refresh();
+    assert!(first.status.success());
+    assert!(String::from_utf8_lossy(&first.stdout).contains("REFRESH_COMMITTED=true\n"));
+    let first_summary = fs::read_to_string(&summary).expect("neutral summary");
+    assert!(first_summary.contains("## /implement run run-abc: shipping\n"));
+    assert!(!first_summary.contains(": stalled\n"));
+    assert_eq!(fixture.manifest()["status"], "in-progress");
+
+    let terminal = fixture.terminal();
     assert!(
-        String::from_utf8_lossy(&output.stdout)
-            .contains("REFRESH_COMMITTED=false REASON=preterminal-outcome")
+        terminal.status.success(),
+        "{}",
+        String::from_utf8_lossy(&terminal.stderr)
     );
-    assert_eq!(
-        fs::read_to_string(summary).unwrap(),
-        "## /implement run run-abc: stalled\n"
+    assert!(
+        fs::read_to_string(&summary)
+            .expect("terminal summary")
+            .contains("## /implement run run-abc: stalled\n")
     );
+
+    fs::write(
+        fixture.tmpdir.join("ship-pr-state.sh"),
+        concat!(
+            "RUN_ID=run-abc\n",
+            "PHASE=assessments\n",
+            "STALL_TRACKING=false\n",
+            "STALL_STEP=\n",
+            "PR_NUMBER=17\n",
+            "PR_URL=https://example.test/pr/17\n",
+            "MERGE=true\n",
+        ),
+    )
+    .expect("destalled ship state");
+    fs::remove_file(fixture.tmpdir.join("finalize-state.sh")).expect("remove terminal overlay");
+
+    let recovered = refresh();
+    assert!(recovered.status.success());
+    assert!(String::from_utf8_lossy(&recovered.stdout).contains("REFRESH_COMMITTED=true\n"));
+    let recovered_summary = fs::read_to_string(&summary).expect("recovered summary");
+    assert!(recovered_summary.contains("## /implement run run-abc: pr-created\n"));
+    assert!(!recovered_summary.contains(": stalled\n"));
+    assert_eq!(fixture.manifest()["status"], "in-progress");
+    assert_eq!(fixture.manifest()["pr_number"], 17);
 }
 
 #[test]

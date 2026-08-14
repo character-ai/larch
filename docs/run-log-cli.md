@@ -275,8 +275,11 @@ succeed. It sets `UNCHANGED=true` when the batch file exists.
 
 `run-log refresh` keeps the legacy `REFRESH_COMMITTED=true` success field, but
 an implement refresh now updates only the mutable session staging tree. It
-does not commit or publish that snapshot. Skip and failure paths emit
-`REFRESH_COMMITTED=false REASON=<token>`.
+does not commit or publish that snapshot. A pre-terminal refresh keeps its
+final-summary and manifest outcomes in-progress (`shipping`, `pr-created`, or
+`pr-created-draft`) even when a stale terminal overlay remains on disk;
+post-merge refresh and `prepare-terminal-snapshot` retain terminal outcomes.
+Skip and failure paths emit `REFRESH_COMMITTED=false REASON=<token>`.
 
 `run-log checkpoint` stages a narrow mutable recovery snapshot. It does not
 terminalize the lifecycle or publish an archive.
