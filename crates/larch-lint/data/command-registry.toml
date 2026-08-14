@@ -8619,7 +8619,7 @@ planning_issue = 7679
 path = ".github/workflows/ci.yaml"
 kind = "ci"
 python = ["checks contains-pins", "ci stage-main-cache-candidate", "ci stage-rust-policy-candidate"]
-rust = ["ci gitleaks-base", "ci rust-select", "ci rust-select-summary", "release plugin-runtime", "residual-bash paths"]
+rust = ["ci gitleaks-base", "ci rust-select", "ci rust-select-summary", "release plugin-runtime"]
 
 [[callers]]
 path = ".github/workflows/main-cache-publication.yaml"
