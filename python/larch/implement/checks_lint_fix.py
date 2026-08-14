@@ -340,10 +340,6 @@ class RepairLoopBgjobLaunch:
     repo_root: str
 
 
-def _run_cli(*args: str) -> CommandResult:
-    return proc.run([sys.executable, str(plugin_root(Path(__file__).resolve().parents[3]) / "python" / "cli.py"), *args])
-
-
 def _repair_loop_step_slug(site: str) -> str:
     return f"implement-{site}-repair"
 
@@ -396,7 +392,10 @@ def _launch_repair_loop_bgjob(spec: RepairLoopBgjobLaunch) -> int:
     if spec.repo_root:
         child.extend(("--repo-root", spec.repo_root))
     child.extend(("--bgjob-merge-result-env", str(merge_result_env)))
-    result = _run_cli(*child)
+    result = proc.run([
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        *child,
+    ])
     if result.stdout:
         _ = sys.stdout.write(result.stdout)
     if result.stderr:
