@@ -15,7 +15,7 @@ from larch.review import review_tally
 from larch.review import review_core_body
 from larch.core import config, logging_util
 import review_test_support as rts
-from test_support import run_cli, run_larch
+from test_support import run_larch
 from larch.review import voting
 from tests.support.review_wire import (
     ballot_snippet,
@@ -71,10 +71,6 @@ def _tsv_rows(path: Path) -> dict[str, dict[str, str]]:
 def _tsv_row_list(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh, delimiter="\t"))
-
-
-def _run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    return run_cli(*args, env=env, quiet_disable=True)
 
 
 def _run_larch(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
