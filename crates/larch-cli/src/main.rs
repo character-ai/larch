@@ -98,6 +98,7 @@ mod session_artifact_support;
 mod validate_merged_commands;
 #[rustfmt::skip]
 mod run_log_flush_commands;
+mod ledger_append;
 mod report_tokens_commands;
 mod research_commands;
 mod review_commands;
@@ -115,7 +116,6 @@ mod stall_recovery_reporting;
 mod state_commands;
 mod status_commands;
 mod test_shards;
-mod ledger_append;
 mod timing_commands;
 mod token_commands;
 mod tracking_issue_commands;
