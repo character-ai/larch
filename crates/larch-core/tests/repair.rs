@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, path::Path};
 
 use larch_core::review::{
     RejectedFindingsRound, RepairBatchReport, RepairClassifier, RepairCleanupAction,
@@ -38,6 +38,8 @@ fn full_snapshot() -> RepairSnapshotLayout {
 #[test]
 fn repair_artifacts_and_coder_wire_match_python_contract() {
     let artifacts = RepairRoundArtifacts::new("/tmp/implement", 2);
+    assert_eq!(artifacts.root(), Path::new("/tmp/implement"));
+    assert_eq!(artifacts.round_num(), 2);
     assert_eq!(
         artifacts.round_dir().to_string_lossy(),
         "/tmp/implement/round-2"
@@ -50,6 +52,28 @@ fn repair_artifacts_and_coder_wire_match_python_contract() {
         artifacts.composed_findings().to_string_lossy(),
         "/tmp/implement/round-2/review-findings-full.composed.jsonl"
     );
+    for (path, expected) in [
+        (artifacts.review_core_env(), "round-2/review-core.env"),
+        (
+            artifacts.accepted_findings(),
+            "round-2/accepted-findings.md",
+        ),
+        (
+            artifacts.rejected_findings(),
+            "round-2/rejected-findings.md",
+        ),
+        (
+            artifacts.rejected_findings_full(),
+            "round-2/rejected-findings-full.md",
+        ),
+        (artifacts.coder_env(), "round-2/coder.env"),
+        (artifacts.coder_output(), "round-2/coder-output.log"),
+        (artifacts.result_env(), "round-2/review-and-fix.env"),
+        (artifacts.summary(), "review-and-fix-summary.json"),
+        (artifacts.accumulated_oos(), "accumulated-oos.jsonl"),
+    ] {
+        assert_eq!(path, Path::new("/tmp/implement").join(expected));
+    }
     let result = larch_core::review::RepairCoderResult {
         rc: 0,
         tool: "codex".to_owned(),
@@ -67,7 +91,7 @@ fn repair_artifacts_and_coder_wire_match_python_contract() {
 }
 
 #[test]
-fn repair_snapshot_transitions_and_cleanup_preserve_python_baselines() {
+fn repair_snapshot_modes_and_cleanup_preserve_python_baselines() {
     let missing = RepairSnapshotLayout::default();
     assert_eq!(
         validate_repair_snapshot(&missing),
@@ -129,7 +153,66 @@ fn repair_snapshot_transitions_and_cleanup_preserve_python_baselines() {
         validate_repair_snapshot(&unsafe_head_untracked),
         Err(RepairSnapshotError::UnexpectedPatches)
     );
+}
 
+#[test]
+fn repair_snapshot_validation_rejects_malformed_artifacts() {
+    assert_eq!(
+        validate_repair_snapshot(&RepairSnapshotLayout {
+            pre_head: Some("\n".to_owned()),
+            ..full_snapshot()
+        }),
+        Err(RepairSnapshotError::InvalidHead)
+    );
+    assert_eq!(
+        validate_repair_snapshot(&RepairSnapshotLayout {
+            root_entries: BTreeSet::from([
+                "pre-coder-head.txt".to_owned(),
+                "pre-coder-untracked-paths.txt".to_owned(),
+                "pre-coder-path-diffs".to_owned(),
+            ]),
+            ..full_snapshot()
+        }),
+        Err(RepairSnapshotError::PartialArtifacts)
+    );
+    assert_eq!(
+        validate_repair_snapshot(&RepairSnapshotLayout {
+            root_entries: BTreeSet::from([
+                "pre-coder-head.txt".to_owned(),
+                "pre-coder-tracked-paths.txt".to_owned(),
+                "pre-coder-untracked-paths.txt".to_owned(),
+            ]),
+            ..full_snapshot()
+        }),
+        Err(RepairSnapshotError::PartialArtifacts)
+    );
+    assert_eq!(
+        validate_repair_snapshot(&RepairSnapshotLayout {
+            root_entries: BTreeSet::from(["unexpected.txt".to_owned()]),
+            ..full_snapshot()
+        }),
+        Err(RepairSnapshotError::UnexpectedRootArtifact(
+            "unexpected.txt".to_owned()
+        ))
+    );
+    assert_eq!(
+        validate_repair_snapshot(&RepairSnapshotLayout {
+            untracked_paths: Some(vec!["../unsafe".to_owned()]),
+            ..full_snapshot()
+        }),
+        Err(RepairSnapshotError::InvalidInventory)
+    );
+    assert_eq!(
+        validate_repair_snapshot(&RepairSnapshotLayout {
+            tracked_paths: Some(vec!["a/b".to_owned(), "a\\b".to_owned()]),
+            ..full_snapshot()
+        }),
+        Err(RepairSnapshotError::PatchNameCollision)
+    );
+}
+
+#[test]
+fn repair_snapshot_delta_and_identity_contracts_preserve_python_baselines() {
     let baseline = BTreeSet::from(["dirty.py".to_owned()]);
     let tracked = tracked_delta_paths(
         &[
@@ -157,6 +240,20 @@ fn repair_snapshot_transitions_and_cleanup_preserve_python_baselines() {
     assert!(
         collect_repair_stage_paths(RepairSnapshotMode::Full, "", &tracked, &untracked).is_empty()
     );
+    assert!(
+        collect_repair_stage_paths(RepairSnapshotMode::Missing, "base", &tracked, &untracked)
+            .is_empty()
+    );
+    assert_eq!(
+        cleanup_plan(RepairSnapshotMode::HeadUntracked, true),
+        vec![
+            RepairCleanupAction::RestoreStaged,
+            RepairCleanupAction::RemoveAttemptUntracked,
+            RepairCleanupAction::RestoreAttemptTracked,
+            RepairCleanupAction::Verify,
+        ]
+    );
+    assert!(cleanup_plan(RepairSnapshotMode::Full, false).is_empty());
 
     let identity = SnapshotArtifactIdentity {
         name: "pre-coder-head.txt".to_owned(),
@@ -167,6 +264,7 @@ fn repair_snapshot_transitions_and_cleanup_preserve_python_baselines() {
         std::slice::from_ref(&identity),
         std::slice::from_ref(&identity),
     ));
+    assert!(!snapshot_identity_matches(&[identity], &[]));
 }
 
 #[test]
@@ -212,6 +310,118 @@ fn repair_coder_terminal_transitions_match_python() {
     });
     assert_eq!(failed_coder.status, "submodule-violation");
     assert_eq!(failed_coder.rc, 3);
+}
+
+#[test]
+fn repair_coder_pre_attempt_transitions_match_python() {
+    let pre_attempt = |input: RepairCoderInput| {
+        let result = resolve_coder_result(&input);
+        (result.rc, result.status)
+    };
+    assert_eq!(
+        pre_attempt(RepairCoderInput::default()),
+        (0, "skipped".to_owned())
+    );
+    assert_eq!(
+        pre_attempt(RepairCoderInput {
+            input_count: 1,
+            scrub_ok: false,
+            ..RepairCoderInput::default()
+        }),
+        (2, "failed".to_owned())
+    );
+    assert_eq!(
+        pre_attempt(RepairCoderInput {
+            input_count: 1,
+            scrub_ok: true,
+            ..RepairCoderInput::default()
+        }),
+        (0, "skipped".to_owned())
+    );
+    assert_eq!(
+        pre_attempt(RepairCoderInput {
+            input_count: 1,
+            scrub_ok: true,
+            scrubbed_count: 1,
+            snapshot_valid: false,
+            tool_log: "coder.log".to_owned(),
+            ..RepairCoderInput::default()
+        }),
+        (2, "failed".to_owned())
+    );
+}
+
+#[test]
+fn repair_coder_attempt_failure_and_commit_transitions_match_python() {
+    let attempts = |attempt| RepairCoderInput {
+        input_count: 1,
+        scrub_ok: true,
+        scrubbed_count: 1,
+        snapshot_valid: true,
+        snapshot_head_fresh: true,
+        tool_log: "coder.log".to_owned(),
+        attempts: vec![attempt],
+        ..RepairCoderInput::default()
+    };
+    for (attempt, expected_rc, expected_status) in [
+        (
+            RepairCoderAttempt {
+                cleanup_ok: false,
+                ..RepairCoderAttempt::default()
+            },
+            2,
+            "failed",
+        ),
+        (
+            RepairCoderAttempt {
+                tool: "codex".to_owned(),
+                dispatched: true,
+                cleanup_ok: false,
+                submodule_revert_count: 1,
+                ..RepairCoderAttempt::default()
+            },
+            2,
+            "failed",
+        ),
+        (
+            RepairCoderAttempt {
+                tool: "codex".to_owned(),
+                dispatched: true,
+                cleanup_ok: true,
+                stage_path_count: 1,
+                commit: RepairCommitOutcome::StaleIndexLock,
+                ..RepairCoderAttempt::default()
+            },
+            2,
+            "stale-index-lock",
+        ),
+        (
+            RepairCoderAttempt {
+                tool: "codex".to_owned(),
+                dispatched: true,
+                cleanup_ok: true,
+                stage_path_count: 1,
+                ..RepairCoderAttempt::default()
+            },
+            0,
+            "applied",
+        ),
+    ] {
+        let result = resolve_coder_result(&attempts(attempt));
+        assert_eq!(
+            (result.rc, result.status.as_str()),
+            (expected_rc, expected_status)
+        );
+    }
+    assert_eq!(
+        resolve_coder_result(&attempts(RepairCoderAttempt {
+            dispatched: true,
+            cleanup_ok: true,
+            ..RepairCoderAttempt::default()
+        }))
+        .status,
+        "main-agent-required"
+    );
 }
 
 #[test]
