@@ -416,7 +416,13 @@ fn mask_rust_non_code(bytes: &[u8]) -> Vec<u8> {
     let mut cursor = 0;
     while cursor < bytes.len() {
         let end = match bytes.get(cursor..cursor.saturating_add(2)) {
-            Some(b"//") => Some(rust_line_comment_end(bytes, cursor)),
+            Some(b"//") => Some(
+                cursor
+                    + bytes[cursor..]
+                        .iter()
+                        .take_while(|byte| **byte != b'\n')
+                        .count(),
+            ),
             Some(b"/*") => Some(rust_block_comment_end(bytes, cursor)),
             _ => rust_raw_string_end(bytes, cursor)
                 .or_else(|| {
@@ -434,13 +440,6 @@ fn mask_rust_non_code(bytes: &[u8]) -> Vec<u8> {
         cursor = end;
     }
     masked
-}
-
-fn rust_line_comment_end(bytes: &[u8], start: usize) -> usize {
-    bytes[start..]
-        .iter()
-        .position(|byte| *byte == b'\n')
-        .map_or(bytes.len(), |offset| start + offset)
 }
 
 fn rust_block_comment_end(bytes: &[u8], start: usize) -> usize {
