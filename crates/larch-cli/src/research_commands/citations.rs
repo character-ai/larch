@@ -87,7 +87,7 @@ pub fn validate_citations(
         return degraded(request.output, &unreadable_notice(request.report));
     }
     let _ignored = std::fs::create_dir_all(request.tmpdir);
-    let Ok(text) = std::fs::read_to_string(request.report) else {
+    let Ok(text) = super::read_text_lossy(request.report) else {
         return degraded(request.output, &unreadable_notice(request.report));
     };
     validate_text(request, &text, fetcher, git_root)

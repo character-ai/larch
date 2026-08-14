@@ -27,7 +27,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use larch_core::{emit_kv, file_line_regex, split_text_lines};
+use larch_core::{emit_kv, file_line_regex, split_text_lines, universal_newlines};
 use regex::Regex;
 
 use crate::argparse_compat::parse;
@@ -138,6 +138,19 @@ fn write_text_atomic(path: &Path, text: &str) -> std::io::Result<()> {
     }
 }
 
+/// Read a file the way Python `Path.read_text(errors="replace")` did.
+///
+/// The retired Python decoded UTF-8 lossily and opened in universal-newline
+/// mode, so a report carrying a stray non-UTF-8 byte or `\r\n` endings still
+/// validated rather than being refused as unreadable. Reading raw bytes,
+/// decoding lossily, and translating newlines preserves that contract; the
+/// result is byte-identical to `read_to_string` for UTF-8, `\n`-only input.
+fn read_text_lossy(path: &Path) -> std::io::Result<String> {
+    let bytes = fs::read(path)?;
+    let decoded = String::from_utf8_lossy(&bytes);
+    Ok(universal_newlines(&decoded).into_owned())
+}
+
 /// Print one contract-stream line to stdout, matching Python `logging_util.emit`.
 fn emit_line(text: &str) {
     println!("{text}");
@@ -158,7 +171,7 @@ fn diagnostic(message: &str) {
 /// one lane ran as a Claude fallback.
 #[must_use]
 pub fn compute_banner(path: &Path) -> String {
-    let Ok(text) = fs::read_to_string(path) else {
+    let Ok(text) = read_text_lossy(path) else {
         return String::new();
     };
     let count = split_text_lines(&text)
@@ -227,7 +240,7 @@ fn run_planner_core(raw: &Path, output: &Path) -> (&'static str, u8) {
     if !parent.is_dir() {
         return ("bad_path", 2);
     }
-    let Ok(text) = fs::read_to_string(raw) else {
+    let Ok(text) = read_text_lossy(raw) else {
         return ("empty_input", 1);
     };
     let questions: Vec<String> = split_text_lines(&text)
@@ -364,7 +377,7 @@ fn read_regular_file(path: &Path) -> std::io::Result<String> {
     if !fs::metadata(path)?.is_file() {
         return Err(std::io::Error::from(std::io::ErrorKind::NotFound));
     }
-    fs::read_to_string(path)
+    read_text_lossy(path)
 }
 
 /// Return the first non-blank line of `path`, if the file is a readable regular.
@@ -782,7 +795,7 @@ fn check_range(cite: &str, range: &FileLineRange, target: &Path) -> FetchResult 
     if range.start > range.end {
         return FetchResult::new("FAIL", "line-range-empty");
     }
-    let Ok(text) = fs::read_to_string(target) else {
+    let Ok(text) = read_text_lossy(target) else {
         return FetchResult::new("UNKNOWN", "file-unreadable");
     };
     let _ = cite;
