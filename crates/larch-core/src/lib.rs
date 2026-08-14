@@ -36,7 +36,7 @@ mod redaction;
 mod repo_size;
 pub mod report;
 mod retry;
-/// Dormant review-domain parity APIs. Python remains the production owner.
+/// Review-domain contracts shared by Rust-owned selectors and migration consumers.
 pub mod review;
 mod review_dispatch;
 mod run_log;

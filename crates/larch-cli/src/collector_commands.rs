@@ -32,7 +32,7 @@ use larch_core::{
     ExternalProcessRunner as _, ExternalProgram, FAILED_AGENT_STDERR_TAIL_BYTE_CAP,
     FAILED_AGENT_STDERR_TAIL_LINES, KvDocument, LarchProgram, LauncherArtifactKind, ParseOptions,
     ProcessRequest, ReviewerWaitConfig, ReviewerWaitRow, SafeText, cursor_child_environment,
-    emit_kv, render_failed_agent_stderr_tail, wait_for_reviewers,
+    render_failed_agent_stderr_tail, wait_for_reviewers,
 };
 use regex::Regex;
 use serde_json::Value;
@@ -162,6 +162,17 @@ pub struct CollectorOutcome {
     pub records: Vec<CollectorRecord>,
     /// Operator-facing diagnostic lines, already redacted.
     pub diagnostics: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StructuredReviewerRow {
+    pub scope: String,
+    pub severity: String,
+    pub focus_area: String,
+    pub location: String,
+    pub what: String,
+    pub scenario: String,
+    pub suggested_fix: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -364,14 +375,66 @@ fn paths_from_file(path: &str) -> Result<Vec<String>, String> {
 }
 
 fn emit_records(records: &[CollectorRecord], publication: Publication) {
+    print!("{}", render_records(records, publication));
+}
+
+pub fn render_records(records: &[CollectorRecord], publication: Publication) -> String {
+    let mut rendered = String::new();
     for (position, record) in records.iter().enumerate() {
         if position > 0 {
-            println!();
+            rendered.push('\n');
         }
         for (key, value) in record.fields(publication) {
-            emit_kv(key, value);
+            rendered.push_str(key);
+            rendered.push('=');
+            rendered.push_str(value);
+            rendered.push('\n');
         }
     }
+    rendered
+}
+
+pub fn structured_reviewer_rows(path: &Path, review_tmpdir: &Path) -> Vec<StructuredReviewerRow> {
+    if !is_non_empty_file(path) {
+        return Vec::new();
+    }
+    let Ok(temporary) = tempfile::Builder::new()
+        .prefix("collect-tsv.")
+        .suffix(".tsv")
+        .tempfile_in(review_tmpdir)
+    else {
+        return Vec::new();
+    };
+    let sidecar = temporary.into_temp_path();
+    let result = run_validator(&[
+        "--structured-reviewer-mode".to_owned(),
+        "--write-structured".to_owned(),
+        sidecar.display().to_string(),
+        path.display().to_string(),
+    ]);
+    if result.exit_code != 0 {
+        return Vec::new();
+    }
+    let Ok(text) = fs::read_to_string(&sidecar) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter_map(|line| {
+            let columns = line.splitn(8, '\t').collect::<Vec<_>>();
+            if columns.first() == Some(&"schema_version") || columns.len() < 8 {
+                return None;
+            }
+            Some(StructuredReviewerRow {
+                scope: columns[1].to_owned(),
+                severity: columns[2].to_owned(),
+                focus_area: columns[3].to_owned(),
+                location: columns[4].to_owned(),
+                what: columns[5].to_owned(),
+                scenario: columns[6].to_owned(),
+                suggested_fix: columns[7].to_owned(),
+            })
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------

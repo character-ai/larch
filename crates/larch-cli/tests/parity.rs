@@ -1004,6 +1004,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "dispatch-panel",
     ),
     CleanInstallCase::new(
+        "clean-install-review-collect-findings",
+        "review",
+        "collect-findings",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-check-reviewer-failure-threshold",
+        "review",
+        "check-reviewer-failure-threshold",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-parse-codex-usage",
         "agent",
         "parse-codex-usage",

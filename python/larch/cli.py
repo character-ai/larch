@@ -362,12 +362,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("scope-anchor", "validate"): ("larch.rendering.rendering", "scope_anchor_validate_main", False),
     ("scope-anchor", "retally-handoff"): ("larch.rendering.rendering", "scope_anchor_retally_handoff_main", False),
     ("scope-anchor", "design-handoff"): ("larch.rendering.rendering", "scope_anchor_design_handoff_main", False),
-    ("review", "collect-findings"): ("larch.review.review_collect", "collect_findings_main", True),
-    ("review", "check-reviewer-failure-threshold"): (
-        "larch.review.review_threshold",
-        "check_reviewer_failure_threshold_main",
-        True,
-    ),
     ("review", "aggregate-findings"): ("larch.review.review_aggregate", "aggregate_findings_main", True),
     ("review", "prune-nit-findings"): ("larch.review.review_aggregate", "prune_nit_findings_main", True),
     ("review", "tally-code-votes"): ("larch.review.review_tally", "tally_code_votes_main", True),

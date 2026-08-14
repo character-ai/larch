@@ -32,6 +32,8 @@ from larch.review.review_pipeline_shared import (
     _get,
     _kv_parse,
     _manifest_rows,
+    _normalize_output_base,
+    _output_file_success,
     _parse_args,
     _run_command_string,
     _write_text,
@@ -132,8 +134,7 @@ def _collector_success_count(path: Path) -> int:
 
 
 def _static_slug_for_file(file: str) -> str | None:
-    from larch.review.review_threshold import _normalize_output_base as _norm_base  # noqa: PLC0415
-    base = _norm_base(file)
+    base = _normalize_output_base(file)
     if base == "codex-generalist-output.txt":
         return "generalist"
     match = re.match(r"^(?:cursor|codex)-specialist-(.+)-output\.txt$", base)
@@ -182,7 +183,6 @@ def _static_coverage_reason(*,
     dropped_slots_file: str = "",
 ) -> str:
     from larch.review.review_pipeline_shared import STATIC_REVIEWERS  # noqa: PLC0415
-    from larch.review.review_threshold import _normalize_output_base as _norm_base  # noqa: PLC0415
     success: set[str] = set()
     collector_success: set[str] = set()
     rejected: set[str] = set()
@@ -198,17 +198,16 @@ def _static_coverage_reason(*,
             collector_success.add(slug)
             success.add(slug)
         else:
-            rejected.add(_norm_base(base))
+            rejected.add(_normalize_output_base(base))
     not_substantive_covered: set[str] = {
         slug
         for slug, statuses in returned_statuses_by_slug.items()
         if statuses and all(status == "NOT_SUBSTANTIVE" for status in statuses)
     }
-    from larch.review.review_threshold import _output_file_success  # noqa: PLC0415
     for output in outputs:
         base = Path(output).name
         slug = _static_slug_for_file(base)
-        if slug and _norm_base(base) not in rejected and _output_file_success(Path(output)):
+        if slug and _normalize_output_base(base) not in rejected and _output_file_success(Path(output)):
             success.add(slug)
     expected: set[str] = set()
     if manifest.is_file():

@@ -2,7 +2,7 @@
 # ruff: noqa: PLW2901
 """Shared utilities and data types for the review pipeline.
 
-Imported by review_prune, review_collect, review_threshold, and review_core_body.
+Imported by review_prune and review_core_body.
 Must not import from any of those modules.
 """
 
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -187,7 +188,7 @@ def _run_command_string(*, command: str, args: Sequence[str], runner: proc.Runne
 
 
 def _call_review_command(*, name: str, args: Sequence[str], runner: proc.Runner | None = None) -> proc.CommandResult:
-    if name in {"gather-context", "dispatch-panel"}:
+    if name in {"gather-context", "dispatch-panel", "collect-findings", "check-reviewer-failure-threshold"}:
         return run_larch(["review", name, *args], runner=runner)
     return _run_python_cli(["review", name, *args], runner=runner)
 
@@ -252,7 +253,6 @@ def _get_list(*, parsed: Mapping[str, str | list[str]], key: str) -> list[str]:
 
 
 def _normalize_output_base(base: str) -> str:
-    import re  # noqa: PLC0415
     base = Path(base).name
     stem, ext = (base[:-4], ".txt") if base.endswith(".txt") else (base, "")
     while True:
@@ -261,6 +261,13 @@ def _normalize_output_base(base: str) -> str:
             break
         stem = new
     return stem + ext
+
+
+def _output_file_success(path: Path) -> bool:
+    if not path.is_file() or path.stat().st_size == 0:
+        return False
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return re.search(r"^STATUS=NOT_SUBSTANTIVE$", text, re.MULTILINE) is None
 
 
 def _manifest_rows(path: Path) -> list[dict[str, object]]:

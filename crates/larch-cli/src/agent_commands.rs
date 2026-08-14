@@ -1007,7 +1007,7 @@ fn parse_positive_integer(raw: &str, flag: &str) -> Result<u64, String> {
     Ok(value)
 }
 
-fn parse_poll_interval(raw: &str) -> Option<Duration> {
+pub fn parse_poll_interval(raw: &str) -> Option<Duration> {
     if raw.is_empty() || raw == "." || raw.matches('.').count() > 1 {
         return None;
     }

@@ -48,24 +48,21 @@ def run(repo_root: Path) -> list[str]:
         failures.append(f"(1) skills/review/SKILL.md must stay <= 200 lines after script extraction (found {len(lines)})")
 
     review_verbs = (
-        "core", "collect-findings",
+        "core",
         "tally-code-votes", "emit-tally", "log-phase",
-        "check-reviewer-failure-threshold", "reviewer-prune",
+        "reviewer-prune",
     )
-    if len(review_verbs) != 7:
-        failures.append("(1) internal harness error: expected review verb list must contain 7 entries")
+    if len(review_verbs) != 5:
+        failures.append("(1) internal harness error: expected Python review verb list must contain 5 entries")
     for verb in review_verbs:
         require(cli, f'("review", "{verb}")', "(1) missing python/cli.py review " + verb + " registry entry")
-    require(
-        file("crates/larch-cli/src/review_commands.rs"),
-        '#[command(name = "gather-context"',
-        "(1) missing Rust review gather-context command",
-    )
-    require(
-        file("crates/larch-cli/src/review_commands.rs"),
-        '#[command(name = "dispatch-panel"',
-        "(1) missing Rust review dispatch-panel command",
-    )
+    review_commands = file("crates/larch-cli/src/review_commands.rs")
+    for verb in ("gather-context", "dispatch-panel", "collect-findings", "check-reviewer-failure-threshold"):
+        require(
+            review_commands,
+            f'#[command(name = "{verb}"',
+            f"(1) missing Rust review {verb} command",
+        )
 
     review_and_fix = file("skills/review-and-fix")
     if not (review_and_fix / "SKILL.md").is_file(): failures.append("(1b) missing skills/review-and-fix/SKILL.md")
@@ -141,9 +138,9 @@ def run(repo_root: Path) -> list[str]:
     require(skill, "**⚠ --diff cannot be combined with a description. Use --diff alone for branch diff review, or provide a description without --diff. Aborting.**", "(11) SKILL.md is missing the verbatim --diff+description mutual-exclusion abort message")
     require(skill, "**⚠ /review requires either --diff (branch diff review) or a description of what to review.", "(12) SKILL.md is missing the verbatim no-args error abort message")
 
-    collect = file("python/larch/review/review_collect.py")
-    if not any(all(token in line for token in ("agent collect-results", "--timeout 1860", "--substantive-validation", "--validation-mode")) for line in read(collect).splitlines()):
-        failures.append("(13) no review collect-findings implementation line carries 'agent collect-results', '--timeout 1860', '--substantive-validation', and '--validation-mode' together — issue #661 substantive-validation contract pin is broken")
+    collection = file("crates/larch-core/src/review/collection.rs")
+    if not all(token in read(review_commands) for token in ("collect(&options)", "SubstantiveValidation::ShortReviewer", '"1860"')):
+        failures.append("(13) Rust review collect-findings no longer preserves the collector, short-reviewer validation, and 1860-second default contracts")
     require(skill, "python/cli.py render specialist", "(14) SKILL.md does not reference 'python/cli.py render specialist' — specialist prompt rendering is not wired")
     require(file("python/larch/rendering/rendering.py"), "--mode", "(14) python/rendering.py does not accept '--mode' — diff/description mode handling is missing")
     renderer = file("python/larch/rendering/rendering.py")
@@ -154,11 +151,11 @@ def run(repo_root: Path) -> list[str]:
             failures.append(f"(15) agents/{name}.md does not exist — specialist agent definition is missing")
         require(agent, "### In-Scope Findings", f"(15) agents/{name}.md is missing '### In-Scope Findings' section header — dual-list output contract is broken")
         require(agent, "### Out-of-Scope Observations", f"(15) agents/{name}.md is missing '### Out-of-Scope Observations' section header — dual-list output contract is broken")
-    collect_lines = read(collect).splitlines()
-    if not any(all(token in line for token in ("In description mode", "dual-list output", "### In-Scope Findings", "### Out-of-Scope Observations")) for line in collect_lines):
-        failures.append("(16) no review collect-findings implementation line carries 'In description mode', 'dual-list output', '### In-Scope Findings', AND '### Out-of-Scope Observations' together — Step 3a description-mode dual-list parsing contract is broken")
-    if not any(all(token in line for token in ("In diff mode", "single-list output", "entire output")) for line in collect_lines):
-        failures.append("(17) no review collect-findings implementation line carries 'In diff mode', 'single-list output', AND 'entire output' together — Step 3a diff-mode single-list preservation is broken")
+    collection_text = read(collection)
+    if not all(token in collection_text for token in ("### In-Scope Findings", "### Out-of-Scope Observations", "parse_markdown_findings")):
+        failures.append("(16) Rust review collect-findings no longer preserves dual-list parsing for description mode")
+    if "parse_markdown_findings" not in collection_text:
+        failures.append("(17) Rust review collect-findings no longer preserves finding parsing for diff mode")
     for needle, label in (
         ("> **🔶 /review 4: final summary**", "(18) SKILL.md missing Step 4 progress pin — final summary step drifted"),
         ("If `RUN_ID` is non-empty, write flat review larch-log batches", "(18) SKILL.md missing Step 4 larch-log batch opener — filing semantics drifted"),

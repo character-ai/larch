@@ -1,26 +1,46 @@
 //! Rust command boundary for review context gathering.
 
 use std::{
+    collections::BTreeMap,
     env,
     ffi::OsString,
     fmt::Write as _,
     fs,
     path::{Component, Path, PathBuf},
     process::ExitCode,
+    thread,
+    time::{Duration, Instant},
 };
 
 use clap::Subcommand;
-use larch_adapters::{GixRepository, atomic_write_utf8_in, ensure_directory_chain};
+use larch_adapters::{
+    GixRepository, atomic_write_utf8_in, ensure_directory_chain, read_optional_utf8_lossy,
+};
 use larch_core::{
-    GitPath, RepositoryRead, StatusOptions, emit_kv,
+    GitPath, RepositoryRead, ReviewerWaitConfig, ReviewerWaitHost, ReviewerWaitRow, StatusOptions,
+    emit_kv,
     review::{
-        GATHER_CONTEXT_USAGE, GatherContextArguments, GatherContextMode, GatherContextParse,
-        description_path_matches, description_tokens, parse_gather_context_arguments,
-        valid_relative_review_path,
+        CollectedFinding, GATHER_CONTEXT_USAGE, GatherContextArguments, GatherContextMode,
+        GatherContextParse, PanelManifestSlot, ReviewerFailureThresholdInput, ReviewerOutput,
+        description_path_matches, description_tokens, has_no_findings_sentinel,
+        parse_gather_context_arguments, parse_markdown_findings, render_collection,
+        reviewer_failure_threshold, valid_relative_review_path,
+    },
+    wait_for_reviewers,
+};
+use serde_json::Value;
+
+use crate::{
+    agent_commands::{AgentRawArguments, parse_poll_interval},
+    argparse_compat::absolute_path,
+    collector_commands::{
+        CollectorOptions, Publication, StructuredValidation, SubstantiveValidation, collect,
+        render_records, structured_reviewer_rows,
     },
 };
 
-use crate::{agent_commands::AgentRawArguments, argparse_compat::absolute_path};
+const COLLECT_FINDINGS_USAGE: &str = "Usage: review collect-findings --mode diff|description --findings-file FILE --oos-file FILE [--external-output-files FILE...] [--claude-output-files FILE...] [--timeout SECONDS]";
+const REVIEWER_THRESHOLD_USAGE: &str = "Usage: review check-reviewer-failure-threshold --collector-results-file FILE --panel hard|simple [--intended-slots N] [--launched-slots N] [--dropped-slots-file FILE] [--panel-manifest FILE] [--reviewer-output-files FILE...] [--round-num N]";
 
 /// Review-domain commands now owned by Rust.
 #[derive(Subcommand)]
@@ -33,6 +53,10 @@ pub enum ReviewCommand {
     /// Materialize and dispatch the reviewer panel.
     #[command(name = "dispatch-panel", disable_help_flag = true)]
     DispatchPanel(AgentRawArguments),
+    #[command(name = "collect-findings", disable_help_flag = true)]
+    CollectFindings(AgentRawArguments),
+    #[command(name = "check-reviewer-failure-threshold", disable_help_flag = true)]
+    CheckReviewerFailureThreshold(AgentRawArguments),
 }
 
 /// Dispatch one Rust-owned review command.
@@ -41,6 +65,10 @@ pub fn run(command: ReviewCommand) -> ExitCode {
         ReviewCommand::GatherContext(arguments) => gather_context(&arguments.arguments),
         ReviewCommand::DispatchPanel(arguments) => {
             crate::review_dispatch_panel::run(&arguments.arguments)
+        }
+        ReviewCommand::CollectFindings(arguments) => collect_findings(&arguments.arguments),
+        ReviewCommand::CheckReviewerFailureThreshold(arguments) => {
+            check_reviewer_failure_threshold(&arguments.arguments)
         }
     }
 }
@@ -292,4 +320,604 @@ fn write_rows(output_dir: &Path, rows: &[(String, String)]) -> Result<(), String
         writeln!(&mut content, "{key}={value}").expect("writing to String cannot fail");
     }
     atomic_write_utf8_in(&root, &target, &content, true, 0o600).map_err(|error| error.to_string())
+}
+
+enum LegacyReviewArguments {
+    Help,
+    Values(ReviewArgumentValues),
+}
+
+#[derive(Default)]
+struct ReviewArgumentValues {
+    values: BTreeMap<String, String>,
+    lists: BTreeMap<String, Vec<String>>,
+}
+
+impl ReviewArgumentValues {
+    fn value(&self, name: &str, default: &str) -> String {
+        self.values
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| default.to_owned())
+    }
+
+    fn list(&self, name: &str) -> Vec<String> {
+        self.lists.get(name).cloned().unwrap_or_default()
+    }
+}
+
+fn parse_legacy_review_arguments(
+    arguments: &[String],
+    usage: &str,
+    options: &[&str],
+    list_options: &[&str],
+) -> Result<LegacyReviewArguments, String> {
+    if arguments.iter().any(|argument| argument == "--help") {
+        return Ok(LegacyReviewArguments::Help);
+    }
+    let mut parsed = ReviewArgumentValues::default();
+    let mut index = 0_usize;
+    while index < arguments.len() {
+        let option = &arguments[index];
+        if list_options.contains(&option.as_str()) {
+            index += 1;
+            let mut values = Vec::new();
+            while let Some(value) = arguments.get(index) {
+                if value.starts_with("--") {
+                    break;
+                }
+                values.push(value.clone());
+                index += 1;
+            }
+            parsed.lists.insert(option.clone(), values);
+            continue;
+        }
+        if !options.contains(&option.as_str()) {
+            return Err(format!("unknown option: {option}\n{usage}"));
+        }
+        let Some(value) = arguments.get(index + 1) else {
+            return Err(format!("{option} requires a value\n{usage}"));
+        };
+        parsed.values.insert(option.clone(), value.clone());
+        index += 2;
+    }
+    Ok(LegacyReviewArguments::Values(parsed))
+}
+
+fn raw_arguments(arguments: &[OsString]) -> Vec<String> {
+    arguments
+        .iter()
+        .map(|argument| argument.to_string_lossy().into_owned())
+        .collect()
+}
+
+#[allow(clippy::too_many_lines)] // Ordered collector artifacts and failure logs share one compatibility transaction.
+fn collect_findings(arguments: &[OsString]) -> ExitCode {
+    let arguments = raw_arguments(arguments);
+    let parsed = match parse_legacy_review_arguments(
+        &arguments,
+        COLLECT_FINDINGS_USAGE,
+        [
+            "--mode",
+            "--timeout",
+            "--session-env-path",
+            "--findings-file",
+            "--oos-file",
+        ]
+        .as_slice(),
+        ["--external-output-files", "--claude-output-files"].as_slice(),
+    ) {
+        Ok(LegacyReviewArguments::Help) => {
+            eprintln!("{COLLECT_FINDINGS_USAGE}");
+            return ExitCode::SUCCESS;
+        }
+        Ok(LegacyReviewArguments::Values(parsed)) => parsed,
+        Err(message) => {
+            eprintln!("{message}");
+            return ExitCode::from(2);
+        }
+    };
+    let mode = parsed.value("--mode", "");
+    if !matches!(mode.as_str(), "diff" | "description") {
+        eprintln!("review collect-findings: --mode must be diff or description");
+        return ExitCode::from(2);
+    }
+    let findings_file = PathBuf::from(parsed.value("--findings-file", ""));
+    let oos_file = PathBuf::from(parsed.value("--oos-file", ""));
+    let timeout = parsed.value("--timeout", "1860");
+    let external_files = parsed
+        .list("--external-output-files")
+        .into_iter()
+        .map(PathBuf::from)
+        .collect::<Vec<_>>();
+    let claude_files = parsed
+        .list("--claude-output-files")
+        .into_iter()
+        .map(PathBuf::from)
+        .collect::<Vec<_>>();
+    let review_tmpdir = env::var_os("REVIEW_TMPDIR")
+        .filter(|value| !value.is_empty())
+        .map_or_else(
+            || {
+                findings_file
+                    .parent()
+                    .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
+            },
+            PathBuf::from,
+        );
+    if let Err(error) = ensure_review_parent(&findings_file)
+        .and_then(|()| ensure_review_parent(&oos_file))
+        .and_then(|()| ensure_review_directory(&review_tmpdir))
+    {
+        eprintln!("review collect-findings: cannot prepare output paths: {error}");
+        return ExitCode::from(1);
+    }
+    let collector_results = review_tmpdir.join("collector-results.env");
+    let mut collector_text = String::new();
+    if !external_files.is_empty() {
+        let Some(timeout_seconds) = positive_seconds(&timeout) else {
+            eprintln!("Error: --timeout value must be a positive integer, got '{timeout}'");
+            return ExitCode::from(1);
+        };
+        let options = CollectorOptions {
+            timeout: timeout_seconds,
+            output_files: external_files
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect(),
+            substantive: SubstantiveValidation::ShortReviewer,
+            structured: StructuredValidation::Off,
+            publication: Publication::Full,
+        };
+        let outcome = collect(&options);
+        collector_text = render_records(&outcome.records, Publication::Full);
+        for diagnostic in outcome.diagnostics {
+            eprintln!("{diagnostic}");
+        }
+    }
+    if let Err(error) = write_review_file(&collector_results, &collector_text) {
+        eprintln!("review collect-findings: cannot write collector results: {error}");
+        return ExitCode::from(1);
+    }
+    if !claude_files.is_empty() {
+        let Some(timeout_seconds) = positive_seconds(&timeout) else {
+            let text =
+                format!("Error: --timeout value must be a positive integer, got '{timeout}'\n");
+            let _ignored =
+                write_review_file(&review_tmpdir.join("wait-for-claude-reviewers.log"), &text);
+            return ExitCode::from(1);
+        };
+        let poll_interval = match reviewer_poll_interval() {
+            Ok(interval) => interval,
+            Err(message) => {
+                let _ignored = write_review_file(
+                    &review_tmpdir.join("wait-for-claude-reviewers.log"),
+                    &format!("{message}\n"),
+                );
+                return ExitCode::from(1);
+            }
+        };
+        let sentinels = claude_files
+            .iter()
+            .map(|path| PathBuf::from(format!("{}.done", path.display())))
+            .collect::<Vec<_>>();
+        let wait = collect_reviewer_wait(&sentinels, timeout_seconds, poll_interval);
+        let wait_log = review_tmpdir.join("wait-for-claude-reviewers.log");
+        if let Err(error) = write_review_file(&wait_log, &wait.log) {
+            eprintln!("review collect-findings: cannot write reviewer wait log: {error}");
+            return ExitCode::from(1);
+        }
+        if wait.timed_out {
+            return ExitCode::from(1);
+        }
+    }
+    let dirty_detected = [external_files.as_slice(), claude_files.as_slice()]
+        .into_iter()
+        .flatten()
+        .any(|path| dirty_tree_sidecar(path));
+    let mut rows = Vec::new();
+    for path in &external_files {
+        if !collector_ok(&collector_text, path) {
+            continue;
+        }
+        let label = output_label(path);
+        let structured = structured_reviewer_rows(path, &review_tmpdir)
+            .into_iter()
+            .map(|row| structured_finding(&row, &label))
+            .collect::<Vec<_>>();
+        if structured.is_empty() {
+            rows.extend(parse_markdown_findings(&read_file_lossy(path), &label));
+        } else {
+            rows.extend(structured);
+        }
+    }
+    for path in &claude_files {
+        let label = output_label(path);
+        let mut reviewer_rows = parse_markdown_findings(&read_file_lossy(path), &label);
+        if reviewer_rows.is_empty() {
+            reviewer_rows = structured_reviewer_rows(path, &review_tmpdir)
+                .into_iter()
+                .map(|row| structured_finding(&row, &label))
+                .collect();
+        }
+        let output = read_file_lossy(path);
+        if !reviewer_rows.is_empty() || has_no_findings_sentinel(&output) {
+            let _ignored = write!(
+                collector_text,
+                "REVIEWER_FILE={}\nTOOL=claude\nSTATUS=OK\nEXIT_CODE=0\n\n",
+                path.display()
+            );
+        } else if is_non_empty_regular_file(path) {
+            let _ignored = write!(
+                collector_text,
+                "REVIEWER_FILE={}\nTOOL=claude\nSTATUS=NOT_SUBSTANTIVE\nEXIT_CODE=0\n\n",
+                path.display()
+            );
+            eprintln!(
+                "**⚠ Reviewer {}: non-substantive output produced no prose or TSV findings**",
+                output_label(path)
+            );
+        }
+        rows.extend(reviewer_rows);
+    }
+    if let Err(error) = write_review_file(&collector_results, &collector_text) {
+        eprintln!("review collect-findings: cannot write collector results: {error}");
+        return ExitCode::from(1);
+    }
+    let rendered = render_collection(rows);
+    if let Err(error) = write_review_file(&findings_file, &rendered.findings)
+        .and_then(|()| write_review_file(&oos_file, &rendered.oos))
+    {
+        eprintln!("review collect-findings: cannot write finding artifacts: {error}");
+        return ExitCode::from(1);
+    }
+    emit_kv("FINDINGS_COUNT", &rendered.findings_count.to_string());
+    emit_kv("OOS_COUNT", &rendered.oos_count.to_string());
+    emit_kv(
+        "DIRTY_DETECTED",
+        if dirty_detected { "true" } else { "false" },
+    );
+    emit_kv("COLLECT_OK", "true");
+    emit_kv(
+        "COLLECTOR_OUTPUT_FILE",
+        &collector_results.display().to_string(),
+    );
+    ExitCode::SUCCESS
+}
+
+fn positive_seconds(value: &str) -> Option<u64> {
+    (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+        .then(|| value.parse::<u64>().ok())
+        .flatten()
+        .filter(|seconds| *seconds > 0)
+}
+
+fn ensure_review_directory(path: &Path) -> Result<(), String> {
+    let absolute = absolute_path(path).map_err(|error| error.to_string())?;
+    ensure_directory_chain(&absolute).map_err(|error| error.to_string())
+}
+
+fn ensure_review_parent(path: &Path) -> Result<(), String> {
+    ensure_review_directory(path.parent().unwrap_or_else(|| Path::new(".")))
+}
+
+fn write_review_file(path: &Path, content: &str) -> Result<(), String> {
+    let absolute = absolute_path(path).map_err(|error| error.to_string())?;
+    let (root, target) = crate::launcher_support::confined_target(&absolute)
+        .ok_or_else(|| "review output path is not a confinable file".to_owned())?;
+    atomic_write_utf8_in(&root, &target, content, true, 0o600).map_err(|error| error.to_string())
+}
+
+fn output_label(path: &Path) -> String {
+    path.file_name()
+        .map_or_else(String::new, |name| name.to_string_lossy().into_owned())
+}
+
+fn read_file_lossy(path: &Path) -> String {
+    fs::read(path)
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .unwrap_or_default()
+}
+
+fn is_non_empty_regular_file(path: &Path) -> bool {
+    fs::metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
+}
+
+fn collector_ok(collector_text: &str, reviewer_file: &Path) -> bool {
+    larch_core::review::parse_threshold_collector_records(collector_text)
+        .into_iter()
+        .any(|record| {
+            record.reviewer_file == reviewer_file.display().to_string()
+                && matches!(record.status.as_str(), "OK" | "cap_hit")
+        })
+}
+
+fn structured_finding(
+    row: &crate::collector_commands::StructuredReviewerRow,
+    label: &str,
+) -> CollectedFinding {
+    let prefix = if row.scope == "out_of_scope" {
+        "[OUT_OF_SCOPE] "
+    } else {
+        ""
+    };
+    CollectedFinding {
+        title: format!("{prefix}{}: {}", row.focus_area, row.location),
+        label: label.to_owned(),
+        body: format!(
+            "[{}] {} {} {}",
+            row.severity, row.what, row.scenario, row.suggested_fix
+        ),
+    }
+}
+
+fn dirty_tree_sidecar(path: &Path) -> bool {
+    let sidecar = PathBuf::from(format!("{}.dirty-tree", path.display()));
+    fs::read_to_string(sidecar)
+        .ok()
+        .and_then(|text| {
+            text.lines()
+                .find_map(|line| line.strip_prefix("STATUS=").map(str::to_owned))
+        })
+        .is_some_and(|status| status == "dirty")
+}
+
+fn reviewer_poll_interval() -> Result<Duration, String> {
+    let raw = env::var("WAIT_FOR_REVIEWERS_POLL_INTERVAL").unwrap_or_else(|_| "1".to_owned());
+    parse_poll_interval(&raw).ok_or_else(|| {
+        format!("Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '{raw}'")
+    })
+}
+
+struct CapturedReviewerWaitHost {
+    started: Instant,
+    diagnostics: String,
+}
+
+impl CapturedReviewerWaitHost {
+    fn new() -> Self {
+        Self {
+            started: Instant::now(),
+            diagnostics: String::new(),
+        }
+    }
+}
+
+impl ReviewerWaitHost for CapturedReviewerWaitHost {
+    fn now(&mut self) -> Duration {
+        self.started.elapsed()
+    }
+
+    fn sleep(&mut self, duration: Duration) {
+        thread::sleep(duration);
+    }
+
+    fn read_sentinel(&mut self, path: &Path) -> Option<String> {
+        read_optional_utf8_lossy(path).unwrap_or_else(|_| Some(String::new()))
+    }
+
+    fn diagnostic(&mut self, text: &str) {
+        self.diagnostics.push_str(text);
+    }
+}
+
+struct CollectedReviewerWait {
+    log: String,
+    timed_out: bool,
+}
+
+fn collect_reviewer_wait(
+    sentinels: &[PathBuf],
+    timeout: u64,
+    poll_interval: Duration,
+) -> CollectedReviewerWait {
+    let mut host = CapturedReviewerWaitHost::new();
+    let result = wait_for_reviewers(
+        &mut host,
+        sentinels,
+        ReviewerWaitConfig::new(timeout, poll_interval),
+    );
+    let mut rows = String::new();
+    for row in result.rows() {
+        match row {
+            ReviewerWaitRow::Done {
+                index,
+                name,
+                exit_code,
+            } => {
+                let _ignored = writeln!(rows, "DONE {index} {name}: exit={exit_code}");
+            }
+            ReviewerWaitRow::Timeout { index, name } => {
+                let _ignored = writeln!(rows, "TIMEOUT {index} {name}");
+            }
+        }
+    }
+    rows.push_str(&host.diagnostics);
+    CollectedReviewerWait {
+        log: rows,
+        timed_out: result.timed_out() > 0,
+    }
+}
+
+#[allow(clippy::too_many_lines)] // Frozen option parsing and stdout form one compatibility boundary.
+fn check_reviewer_failure_threshold(arguments: &[OsString]) -> ExitCode {
+    let arguments = raw_arguments(arguments);
+    let parsed = match parse_legacy_review_arguments(
+        &arguments,
+        REVIEWER_THRESHOLD_USAGE,
+        [
+            "--collector-results-file",
+            "--panel",
+            "--intended-slots",
+            "--launched-slots",
+            "--dropped-slots-file",
+            "--panel-manifest",
+            "--round-num",
+        ]
+        .as_slice(),
+        ["--reviewer-output-files"].as_slice(),
+    ) {
+        Ok(LegacyReviewArguments::Help) => {
+            eprintln!("{REVIEWER_THRESHOLD_USAGE}");
+            return ExitCode::SUCCESS;
+        }
+        Ok(LegacyReviewArguments::Values(parsed)) => parsed,
+        Err(message) => {
+            eprintln!("{message}");
+            return ExitCode::from(2);
+        }
+    };
+    let panel = parsed.value("--panel", "");
+    if !matches!(panel.as_str(), "hard" | "simple") {
+        eprintln!("review check-reviewer-failure-threshold: --panel must be hard or simple");
+        return ExitCode::from(2);
+    }
+    let intended_raw = parsed.value("--intended-slots", "3");
+    let round_raw = parsed.value("--round-num", "1");
+    let Some(intended_slots) = nonnegative_usize(&intended_raw) else {
+        eprintln!("review check-reviewer-failure-threshold: slot counts must be integers");
+        return ExitCode::from(2);
+    };
+    if nonnegative_usize(&round_raw)
+        .filter(|round| *round > 0)
+        .is_none()
+    {
+        eprintln!("review check-reviewer-failure-threshold: slot counts must be integers");
+        return ExitCode::from(2);
+    }
+    let launched_slots = match parsed
+        .values
+        .get("--launched-slots")
+        .filter(|value| !value.is_empty())
+    {
+        Some(value) => {
+            if let Some(value) = nonnegative_usize(value) {
+                Some(value)
+            } else {
+                eprintln!(
+                    "review check-reviewer-failure-threshold: --launched-slots must be a non-negative integer"
+                );
+                return ExitCode::from(2);
+            }
+        }
+        None => None,
+    };
+    let collector_file = PathBuf::from(parsed.value("--collector-results-file", ""));
+    let collector_results = read_file_lossy(&collector_file);
+    let dropped_slots = match parsed
+        .values
+        .get("--dropped-slots-file")
+        .filter(|value| !value.is_empty())
+    {
+        Some(value) => {
+            let path = PathBuf::from(value);
+            if !path.is_file() {
+                eprintln!(
+                    "review check-reviewer-failure-threshold: --dropped-slots-file must name a file"
+                );
+                return ExitCode::from(2);
+            }
+            Some(read_file_lossy(&path))
+        }
+        None => None,
+    };
+    let panel_manifest = match parsed
+        .values
+        .get("--panel-manifest")
+        .map(PathBuf::from)
+        .filter(|path| path.is_file())
+    {
+        Some(path) => {
+            if let Ok(slots) = panel_manifest_slots(&read_file_lossy(&path)) {
+                slots
+            } else {
+                eprintln!(
+                    "review check-reviewer-failure-threshold: --panel-manifest contains invalid JSON"
+                );
+                return ExitCode::from(1);
+            }
+        }
+        None => Vec::new(),
+    };
+    let reviewer_outputs = parsed
+        .list("--reviewer-output-files")
+        .into_iter()
+        .map(|path| {
+            let path = PathBuf::from(path);
+            ReviewerOutput {
+                path: path.display().to_string(),
+                content: is_non_empty_regular_file(&path).then(|| read_file_lossy(&path)),
+            }
+        })
+        .collect();
+    let result = reviewer_failure_threshold(&ReviewerFailureThresholdInput {
+        collector_results,
+        reviewer_outputs,
+        dropped_slots,
+        panel_manifest,
+        intended_slots,
+        launched_slots,
+    });
+    emit_kv("INTENDED_SLOTS", &result.intended_slots.to_string());
+    emit_kv("SUCCEEDED_SLOTS", &result.succeeded_slots.to_string());
+    emit_kv("FAILED_SLOTS", &result.failed_slots.to_string());
+    emit_kv("COUNTED_SLOTS", &result.counted_slots.to_string());
+    emit_kv(
+        "NOT_SUBSTANTIVE_SLOTS",
+        &result.not_substantive_slots.to_string(),
+    );
+    emit_kv("DROPPED_SLOTS", &result.dropped_slots.to_string());
+    emit_kv(
+        "DROPPED_STATIC_SLOTS",
+        &result.dropped_static_slots.to_string(),
+    );
+    emit_kv(
+        "DYNAMIC_FAILED_SLOTS",
+        &result.dynamic_failed_slots.to_string(),
+    );
+    emit_kv(
+        "DYNAMIC_DROPPED_SLOTS",
+        &result.dynamic_dropped_slots.to_string(),
+    );
+    emit_kv(
+        "THRESHOLD_OK",
+        if result.threshold_ok { "true" } else { "false" },
+    );
+    emit_kv("THRESHOLD_REASON", &result.threshold_reason);
+    ExitCode::SUCCESS
+}
+
+fn nonnegative_usize(value: &str) -> Option<usize> {
+    (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+        .then(|| value.parse::<usize>().ok())
+        .flatten()
+}
+
+fn panel_manifest_slots(text: &str) -> Result<Vec<PanelManifestSlot>, ()> {
+    text.lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|value| {
+            let value = serde_json::from_str::<Value>(value).map_err(|_| ())?;
+            let Some(object) = value.as_object() else {
+                return Ok(None);
+            };
+            let (Some(slot), Some(tool), Some(output)) = (
+                object.get("slot").and_then(Value::as_str),
+                object.get("tool").and_then(Value::as_str),
+                object.get("output").and_then(Value::as_str),
+            ) else {
+                return Ok(None);
+            };
+            Ok(
+                (!slot.is_empty() && !tool.is_empty() && !output.is_empty()).then(|| {
+                    PanelManifestSlot {
+                        slot: slot.to_owned(),
+                        tool: tool.to_owned(),
+                        output: output.to_owned(),
+                    }
+                }),
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(|slots| slots.into_iter().flatten().collect())
 }

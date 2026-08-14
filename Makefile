@@ -757,7 +757,7 @@ test-prompt-template-invariants:
 
 
 test-collect-findings:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k collect_findings
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_commands collect_findings
 
 test-aggregate-findings:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_aggregate.py
@@ -770,7 +770,8 @@ test-tally-code-votes:
 
 .PHONY: test-check-reviewer-failure-threshold
 test-check-reviewer-failure-threshold:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'check_reviewer_failure_threshold or python_surface_does_not_import_agents_waterfall or static_coverage_reason'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_commands reviewer_failure_threshold
+	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'python_surface_does_not_import_agents_waterfall or static_coverage_reason'
 
 .PHONY: test-dispatch-code-voters
 test-dispatch-code-voters:
