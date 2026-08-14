@@ -8,17 +8,13 @@ use std::{
     fs,
     path::{Component, Path, PathBuf},
     process::ExitCode,
-    thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use clap::Subcommand;
-use larch_adapters::{
-    GixRepository, atomic_write_utf8_in, ensure_directory_chain, read_optional_utf8_lossy,
-};
+use larch_adapters::{GixRepository, atomic_write_utf8_in, ensure_directory_chain};
 use larch_core::{
-    GitPath, RepositoryRead, ReviewerWaitConfig, ReviewerWaitHost, ReviewerWaitRow, StatusOptions,
-    emit_kv,
+    GitPath, RepositoryRead, StatusOptions, emit_kv,
     review::{
         CollectedFinding, GATHER_CONTEXT_USAGE, GatherContextArguments, GatherContextMode,
         GatherContextParse, PanelManifestSlot, ReviewerFailureThresholdInput, ReviewerOutput,
@@ -26,13 +22,13 @@ use larch_core::{
         parse_gather_context_arguments, parse_markdown_findings, render_collection,
         reviewer_failure_threshold, valid_relative_review_path,
     },
-    wait_for_reviewers,
 };
 use serde_json::Value;
 
 use crate::{
-    agent_commands::{AgentRawArguments, parse_poll_interval},
+    agent_commands::{AgentRawArguments, capture_reviewer_wait, parse_poll_interval},
     argparse_compat::absolute_path,
+    claude_commands::parse_uint,
     collector_commands::{
         CollectorOptions, Publication, StructuredValidation, SubstantiveValidation, collect,
         render_records, structured_reviewer_rows,
@@ -455,7 +451,7 @@ fn collect_findings(arguments: &[OsString]) -> ExitCode {
     let collector_results = review_tmpdir.join("collector-results.env");
     let mut collector_text = String::new();
     if !external_files.is_empty() {
-        let Some(timeout_seconds) = positive_seconds(&timeout) else {
+        let Some(timeout_seconds) = parse_uint(&timeout).filter(|seconds| *seconds > 0) else {
             eprintln!("Error: --timeout value must be a positive integer, got '{timeout}'");
             return ExitCode::from(1);
         };
@@ -480,7 +476,7 @@ fn collect_findings(arguments: &[OsString]) -> ExitCode {
         return ExitCode::from(1);
     }
     if !claude_files.is_empty() {
-        let Some(timeout_seconds) = positive_seconds(&timeout) else {
+        let Some(timeout_seconds) = parse_uint(&timeout).filter(|seconds| *seconds > 0) else {
             let text =
                 format!("Error: --timeout value must be a positive integer, got '{timeout}'\n");
             let _ignored =
@@ -501,13 +497,14 @@ fn collect_findings(arguments: &[OsString]) -> ExitCode {
             .iter()
             .map(|path| PathBuf::from(format!("{}.done", path.display())))
             .collect::<Vec<_>>();
-        let wait = collect_reviewer_wait(&sentinels, timeout_seconds, poll_interval);
+        let (wait_log_content, timed_out) =
+            capture_reviewer_wait(&sentinels, timeout_seconds, poll_interval);
         let wait_log = review_tmpdir.join("wait-for-claude-reviewers.log");
-        if let Err(error) = write_review_file(&wait_log, &wait.log) {
+        if let Err(error) = write_review_file(&wait_log, &wait_log_content) {
             eprintln!("review collect-findings: cannot write reviewer wait log: {error}");
             return ExitCode::from(1);
         }
-        if wait.timed_out {
+        if timed_out {
             return ExitCode::from(1);
         }
     }
@@ -585,13 +582,6 @@ fn collect_findings(arguments: &[OsString]) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn positive_seconds(value: &str) -> Option<u64> {
-    (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
-        .then(|| value.parse::<u64>().ok())
-        .flatten()
-        .filter(|seconds| *seconds > 0)
-}
-
 fn ensure_review_directory(path: &Path) -> Result<(), String> {
     let absolute = absolute_path(path).map_err(|error| error.to_string())?;
     ensure_directory_chain(&absolute).map_err(|error| error.to_string())
@@ -667,76 +657,6 @@ fn reviewer_poll_interval() -> Result<Duration, String> {
     parse_poll_interval(&raw).ok_or_else(|| {
         format!("Error: WAIT_FOR_REVIEWERS_POLL_INTERVAL must be a positive number, got '{raw}'")
     })
-}
-
-struct CapturedReviewerWaitHost {
-    started: Instant,
-    diagnostics: String,
-}
-
-impl CapturedReviewerWaitHost {
-    fn new() -> Self {
-        Self {
-            started: Instant::now(),
-            diagnostics: String::new(),
-        }
-    }
-}
-
-impl ReviewerWaitHost for CapturedReviewerWaitHost {
-    fn now(&mut self) -> Duration {
-        self.started.elapsed()
-    }
-
-    fn sleep(&mut self, duration: Duration) {
-        thread::sleep(duration);
-    }
-
-    fn read_sentinel(&mut self, path: &Path) -> Option<String> {
-        read_optional_utf8_lossy(path).unwrap_or_else(|_| Some(String::new()))
-    }
-
-    fn diagnostic(&mut self, text: &str) {
-        self.diagnostics.push_str(text);
-    }
-}
-
-struct CollectedReviewerWait {
-    log: String,
-    timed_out: bool,
-}
-
-fn collect_reviewer_wait(
-    sentinels: &[PathBuf],
-    timeout: u64,
-    poll_interval: Duration,
-) -> CollectedReviewerWait {
-    let mut host = CapturedReviewerWaitHost::new();
-    let result = wait_for_reviewers(
-        &mut host,
-        sentinels,
-        ReviewerWaitConfig::new(timeout, poll_interval),
-    );
-    let mut rows = String::new();
-    for row in result.rows() {
-        match row {
-            ReviewerWaitRow::Done {
-                index,
-                name,
-                exit_code,
-            } => {
-                let _ignored = writeln!(rows, "DONE {index} {name}: exit={exit_code}");
-            }
-            ReviewerWaitRow::Timeout { index, name } => {
-                let _ignored = writeln!(rows, "TIMEOUT {index} {name}");
-            }
-        }
-    }
-    rows.push_str(&host.diagnostics);
-    CollectedReviewerWait {
-        log: rows,
-        timed_out: result.timed_out() > 0,
-    }
 }
 
 #[allow(clippy::too_many_lines)] // Frozen option parsing and stdout form one compatibility boundary.

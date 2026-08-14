@@ -242,9 +242,13 @@ pub fn parse_legacy_collector_blocks(text: &str) -> Vec<BTreeMap<String, String>
             }
             continue;
         }
-        if let Some((key, value)) = line.split_once('=') {
-            current.insert(key.to_owned(), value.to_owned());
-        }
+        let Ok(document) = KvDocument::parse(line, ParseOptions::legacy()) else {
+            continue;
+        };
+        let Some(row) = document.rows().first() else {
+            continue;
+        };
+        current.insert(row.key().to_owned(), row.value().to_owned());
     }
     if !current.is_empty() {
         records.push(current);
