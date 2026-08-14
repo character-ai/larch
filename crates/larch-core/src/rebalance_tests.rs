@@ -587,11 +587,9 @@ fn build_python_plan(
     let timing = pytest_report(wire.timing)?;
     validate_pytest_cohort(&timing, &expected_run_ids)?;
     let count = match (options.n_python_shards, timing.observed_shard_count) {
-        (Some(expected), Some(observed)) if expected != observed => {
-            return Err(format!(
-                "rebalance-tests n_python_shards={expected} does not match observed pytest shard count {observed}"
-            ));
-        }
+        // An explicit count is the requested output matrix width. The caller
+        // still supplies complete observed timing evidence, but a rebalance
+        // must be able to reduce or expand that prior matrix.
         (Some(expected), _) => expected,
         (None, Some(observed)) => observed,
         (None, None) => {
@@ -600,11 +598,6 @@ fn build_python_plan(
     };
     if timing.nodeid_medians.is_empty() {
         return Err("rebalance-tests pytest timing has no nodeid medians".to_owned());
-    }
-    if current_assignments.values().any(|shard| *shard > count) {
-        return Err(format!(
-            "rebalance-tests python assignments have a shard outside 1..={count}"
-        ));
     }
     let timings = timing
         .nodeid_medians

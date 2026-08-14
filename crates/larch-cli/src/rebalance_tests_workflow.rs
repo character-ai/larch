@@ -21,12 +21,19 @@ use serde::Deserialize;
 use serde_json::json;
 const MAKEFILE: &str = "Makefile";
 const ASSIGNMENTS: &str = "python/shard-assignments.json";
+const CI_WORKFLOW: &str = ".github/workflows/ci.yaml";
 const MAIN: &str = "main";
 const DEFAULT_WORKFLOW: &str = "ci.yaml";
 const WORKFLOW_POLL: Duration = Duration::from_secs(15);
 const WORKFLOW_WAIT_LIMIT: Duration = Duration::from_secs(30 * 60);
 const WORKFLOW_LIST_LIMIT: usize = 20;
 const WORKFLOW_EVENT: &str = "workflow_dispatch";
+const PYTHON_TESTS_HEADER: &str = "\n  python-tests:\n";
+const PYTHON_TESTS_FOOTER: &str = "\n  # These are the only Python tests";
+const PYTHON_SHARD_MATRIX_PREFIX: &str = "        shard: [";
+const PYTHON_TEST_NAME_PREFIX: &str =
+    r"      - name: Run Python tests (shard ${{ matrix.shard }} of ";
+const PYTHON_SHARD_COUNT_PREFIX: &str = "          PYTEST_SHARD_COUNT: \"";
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum RebalanceKind {
     Harness,
@@ -94,12 +101,14 @@ pub struct RebalanceRunArguments {
 enum Artifact {
     Makefile,
     Assignments,
+    CiWorkflow,
 }
 impl Artifact {
     const fn path(self) -> &'static str {
         match self {
             Self::Makefile => MAKEFILE,
             Self::Assignments => ASSIGNMENTS,
+            Self::CiWorkflow => CI_WORKFLOW,
         }
     }
 }
@@ -117,6 +126,8 @@ struct HarnessPlan {
 struct PythonPlan {
     assignments: BTreeMap<String, u32>,
     shard_count: u32,
+    assignments_changed: bool,
+    workflow_changed: bool,
     changed: bool,
 }
 #[derive(Clone, Debug)]
@@ -345,6 +356,15 @@ impl ProductionWorkflow {
             .map_err(|error| format!("cannot safely access {MAKEFILE}: {error}"))
     }
 
+    fn ci_workflow(
+        &self,
+        intent: larch_adapters::PathIntent,
+    ) -> Result<larch_adapters::ConfinedPath, String> {
+        self.root
+            .confine(CI_WORKFLOW, intent)
+            .map_err(|error| format!("cannot safely access {CI_WORKFLOW}: {error}"))
+    }
+
     fn collect_plan(
         &self,
         arguments: &RebalanceRunArguments,
@@ -363,6 +383,11 @@ impl ProductionWorkflow {
             .kind
             .includes_python()
             .then(|| self.read_assignments())
+            .transpose()?;
+        let current_python_shard_count = arguments
+            .kind
+            .includes_python()
+            .then(|| self.read_python_shard_count())
             .transpose()?;
         let (harness_pair, pytest_timing) = self.runtime.block_on(async {
             let selection = CiTimingRunSelection::Recent {
@@ -406,6 +431,17 @@ impl ProductionWorkflow {
         })?;
         let (harness_timing, jobs_timing) =
             harness_pair.map_or((None, None), |(harness, jobs)| (Some(harness), Some(jobs)));
+        if let (Some(configured), Some(observed)) = (
+            current_python_shard_count,
+            pytest_timing
+                .as_ref()
+                .and_then(|timing| timing.observed_shard_count),
+        ) && configured != observed
+        {
+            return Err(format!(
+                "rebalance-tests Python workflow shard count {configured} does not match observed pytest shard count {observed}"
+            ));
+        }
         let request = plan_request(
             arguments,
             current_harness.as_ref(),
@@ -420,7 +456,15 @@ impl ProductionWorkflow {
         if !result.success || response.decision == "rejected" {
             return Err(format_plan_rejection(&response));
         }
-        response.into_prepared(arguments.kind, repository.clone(), current_harness)
+        let mut prepared =
+            response.into_prepared(arguments.kind, repository.clone(), current_harness)?;
+        if let (Some(python), Some(configured)) =
+            (prepared.python.as_mut(), current_python_shard_count)
+        {
+            python.workflow_changed = python.shard_count != configured;
+            python.changed |= python.workflow_changed;
+        }
+        Ok(prepared)
     }
 
     fn read_assignments(&self) -> Result<BTreeMap<String, u32>, String> {
@@ -430,6 +474,11 @@ impl ProductionWorkflow {
             .map_err(|error| format!("cannot safely read {ASSIGNMENTS}: {error}"))?;
         serde_json::from_str(&read_utf8(&path).map_err(|error| error.to_string())?)
             .map_err(|error| format!("invalid {ASSIGNMENTS}: {error}"))
+    }
+
+    fn read_python_shard_count(&self) -> Result<u32, String> {
+        let path = self.ci_workflow(larch_adapters::PathIntent::Read)?;
+        python_workflow_shard_count(&read_utf8(&path).map_err(|error| error.to_string())?)
     }
 
     fn restore_artifacts(&self, artifacts: &[Artifact]) -> Result<(), String> {
@@ -613,7 +662,7 @@ impl WorkflowPort for ProductionWorkflow {
             }
         }
         if let Some(python) = &plan.python
-            && python.changed
+            && python.assignments_changed
         {
             let target = self
                 .root
@@ -631,6 +680,27 @@ impl WorkflowPort for ProductionWorkflow {
                 return Err(self.rollback_write_failure(
                     &written,
                     format!("cannot write {ASSIGNMENTS}: {error}"),
+                ));
+            }
+        }
+        if let Some(python) = &plan.python
+            && python.workflow_changed
+        {
+            let source = self
+                .ci_workflow(larch_adapters::PathIntent::Read)
+                .map_err(|error| self.rollback_write_failure(&written, error))?;
+            let source_text = read_utf8(&source)
+                .map_err(|error| self.rollback_write_failure(&written, error.to_string()))?;
+            let rendered = rewrite_python_workflow_shard_count(&source_text, python.shard_count)
+                .map_err(|error| self.rollback_write_failure(&written, error))?;
+            let target = self
+                .ci_workflow(larch_adapters::PathIntent::Write)
+                .map_err(|error| self.rollback_write_failure(&written, error))?;
+            written.push(Artifact::CiWorkflow);
+            if let Err(error) = atomic_write_utf8(&target, &rendered, 0o644) {
+                return Err(self.rollback_write_failure(
+                    &written,
+                    format!("cannot write {CI_WORKFLOW}: {error}"),
                 ));
             }
         }
@@ -886,6 +956,8 @@ impl PlanResponse {
         let python = self.python.map(|response| PythonPlan {
             assignments: response.assignments,
             shard_count: response.shard_count,
+            assignments_changed: !response.is_noop,
+            workflow_changed: false,
             changed: !response.is_noop,
         });
         if kind.includes_harness() != harness.is_some()
@@ -1009,6 +1081,127 @@ fn assignments_json(assignments: &BTreeMap<String, u32>) -> String {
     rendered
 }
 
+fn python_workflow_shard_count(source: &str) -> Result<u32, String> {
+    let (_, body, _) = split_python_tests_block(source)?;
+    let matrix = python_matrix_shard_count(body)?;
+    let named = python_named_shard_count(body)?;
+    let configured = python_configured_shard_count(body)?;
+    if matrix != named || matrix != configured {
+        return Err(format!(
+            "rebalance-tests Python workflow shard count is inconsistent: matrix={matrix}, name={named}, env={configured}"
+        ));
+    }
+    Ok(matrix)
+}
+
+fn rewrite_python_workflow_shard_count(source: &str, count: u32) -> Result<String, String> {
+    if count == 0 {
+        return Err("rebalance-tests Python workflow shard count must be positive".to_owned());
+    }
+    let (before, body, after) = split_python_tests_block(source)?;
+    let previous = python_workflow_shard_count(source)?;
+    if previous == count {
+        return Ok(source.to_owned());
+    }
+    let matrix = unique_python_line(body, PYTHON_SHARD_MATRIX_PREFIX, "matrix")?;
+    let named = unique_python_line(body, PYTHON_TEST_NAME_PREFIX, "test name")?;
+    let configured = unique_python_line(body, PYTHON_SHARD_COUNT_PREFIX, "environment")?;
+    let replacement_matrix = format!(
+        "{PYTHON_SHARD_MATRIX_PREFIX}{}]",
+        render_python_shard_list(count)
+    );
+    let replacement_name = format!("{PYTHON_TEST_NAME_PREFIX}{count})");
+    let replacement_configured = format!("{PYTHON_SHARD_COUNT_PREFIX}{count}\"");
+    let body = body
+        .replacen(matrix, &replacement_matrix, 1)
+        .replacen(named, &replacement_name, 1)
+        .replacen(configured, &replacement_configured, 1);
+    Ok(format!(
+        "{before}{PYTHON_TESTS_HEADER}{body}{PYTHON_TESTS_FOOTER}{after}"
+    ))
+}
+
+fn split_python_tests_block(source: &str) -> Result<(&str, &str, &str), String> {
+    if source.matches(PYTHON_TESTS_HEADER).count() != 1
+        || source.matches(PYTHON_TESTS_FOOTER).count() != 1
+    {
+        return Err(format!(
+            "rebalance-tests requires one unambiguous Python test job boundary in {CI_WORKFLOW}"
+        ));
+    }
+    let (before, remainder) = source.split_once(PYTHON_TESTS_HEADER).ok_or_else(|| {
+        format!("rebalance-tests cannot find the Python test job in {CI_WORKFLOW}")
+    })?;
+    let (body, after) = remainder.split_once(PYTHON_TESTS_FOOTER).ok_or_else(|| {
+        format!("rebalance-tests cannot find the Python test job boundary in {CI_WORKFLOW}")
+    })?;
+    Ok((before, body, after))
+}
+
+fn unique_python_line<'a>(body: &'a str, prefix: &str, label: &str) -> Result<&'a str, String> {
+    let matches = body
+        .lines()
+        .filter(|line| line.starts_with(prefix))
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [line] => Ok(*line),
+        [] => Err(format!(
+            "rebalance-tests cannot find the Python test {label} line in {CI_WORKFLOW}"
+        )),
+        _ => Err(format!(
+            "rebalance-tests found multiple Python test {label} lines in {CI_WORKFLOW}"
+        )),
+    }
+}
+
+fn python_matrix_shard_count(body: &str) -> Result<u32, String> {
+    let line = unique_python_line(body, PYTHON_SHARD_MATRIX_PREFIX, "matrix")?;
+    let members = line
+        .strip_prefix(PYTHON_SHARD_MATRIX_PREFIX)
+        .and_then(|value| value.strip_suffix(']'))
+        .ok_or_else(|| "rebalance-tests Python shard matrix has invalid syntax".to_owned())?;
+    let shards = members
+        .split(',')
+        .map(str::trim)
+        .map(str::parse::<u32>)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "rebalance-tests Python shard matrix has a non-numeric member".to_owned())?;
+    let count = u32::try_from(shards.len())
+        .map_err(|_| "rebalance-tests Python shard matrix is too large".to_owned())?;
+    if count == 0 || shards.iter().copied().ne(1..=count) {
+        return Err(
+            "rebalance-tests Python shard matrix must contain contiguous shard ids from 1"
+                .to_owned(),
+        );
+    }
+    Ok(count)
+}
+
+fn python_named_shard_count(body: &str) -> Result<u32, String> {
+    let line = unique_python_line(body, PYTHON_TEST_NAME_PREFIX, "test name")?;
+    line.strip_prefix(PYTHON_TEST_NAME_PREFIX)
+        .and_then(|value| value.strip_suffix(')'))
+        .and_then(|value| value.parse().ok())
+        .filter(|count: &u32| *count > 0)
+        .ok_or_else(|| "rebalance-tests Python test name has an invalid shard count".to_owned())
+}
+
+fn python_configured_shard_count(body: &str) -> Result<u32, String> {
+    let line = unique_python_line(body, PYTHON_SHARD_COUNT_PREFIX, "environment")?;
+    line.strip_prefix(PYTHON_SHARD_COUNT_PREFIX)
+        .and_then(|value| value.strip_suffix('"'))
+        .and_then(|value| value.parse().ok())
+        .filter(|count: &u32| *count > 0)
+        .ok_or_else(|| "rebalance-tests Python environment has an invalid shard count".to_owned())
+}
+
+fn render_python_shard_list(count: u32) -> String {
+    (1..=count)
+        .map(|shard| shard.to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn branch_name(prefix: &str) -> String {
     format!("{}-{}", prefix, Utc::now().format("%Y%m%d-%H%M%S"))
 }
@@ -1036,9 +1229,14 @@ fn pull_request_body(arguments: &RebalanceRunArguments, plan: &PreparedPlan) -> 
         legs.push("harness");
         files.push(MAKEFILE);
     }
-    if plan.python.is_some() {
+    if let Some(python) = &plan.python {
         legs.push("python");
-        files.push(ASSIGNMENTS);
+        if python.assignments_changed {
+            files.push(ASSIGNMENTS);
+        }
+        if python.workflow_changed {
+            files.push(CI_WORKFLOW);
+        }
     }
     let mut body = vec![
         "Automatically generated by `/rebalance-tests`.".to_owned(),

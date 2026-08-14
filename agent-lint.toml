@@ -414,7 +414,7 @@ exclude = [
   "scripts/test-sessionstart-health.sh",
   # scripts/test-cleanup-sessionstart.sh is the regression harness for
   # scripts/cleanup-sessionstart.sh (the SessionStart cleanup hook). Referenced
-  # only from Makefile (test-cleanup-sessionstart target, test-harnesses-5 shard)
+  # only from Makefile (test-cleanup-sessionstart target, test-harnesses-2 shard)
   # and scripts/test-cleanup-sessionstart.md (sibling contract), matching the
   # Makefile-only pattern as scripts/test-sessionstart-health.sh above.
   "scripts/test-cleanup-sessionstart.sh",
@@ -941,13 +941,13 @@ exclude = [
   # the fragile two-step prose contract in skills/implement/SKILL.md Steps 1 and 5.
   # Invoked from SKILL.md Step 1 (plan-review-tally batch) and Step 5
   # (code-review-tally batch).
-  # target; test-harnesses-4 shard) and the sibling contract
+  # target; test-harnesses-2 shard) and the sibling contract
   # the other test-* harnesses above.
   # skills/implement/scripts/test-*.sh entries below are offline regression
   # harnesses for the extracted /implement prompt-side wrappers introduced by
   # the Step 0 (tracking + materialization) / 4 / 7 / 7a / 11 / 16 / 16a / 17 / 18
   # script factoring work. They are
-  # referenced from Makefile targets in test-harnesses-3 and from sibling
+  # referenced from Makefile targets in test-harnesses-2 and from sibling
   # contracts, not from runtime skill prose.
   "python/test_implement_dispatch.py",
   "python/test_review_and_fix.py",

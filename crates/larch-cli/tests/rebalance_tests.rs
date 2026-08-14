@@ -66,6 +66,13 @@ fn python_plan_request(current_assignments: &str) -> String {
     )
 }
 
+fn python_plan_request_for_count(current_assignments: &str, shard_count: u32) -> String {
+    python_plan_request(current_assignments).replace(
+        "\"n_python_shards\":2",
+        &format!("\"n_python_shards\":{shard_count}"),
+    )
+}
+
 fn python_verify_request(balance_threshold: f64) -> String {
     format!(
         r#"{{"schema_version":1,"kind":"verify","selection":"python","options":{{"max_shard_wall_clock":300.0,"balance_threshold":{balance_threshold},"experimental_wall_clock_override":null}},"harness":null,"python":{{"expected_run_ids":[11,12],"expected_shard_count":2,"timing":{PYTEST_TIMING}}}}}"#
@@ -119,6 +126,22 @@ fn plan_uses_the_existing_shard_packer_for_python_nodeids() {
     assert_eq!(
         output["python"]["assignments"],
         serde_json::json!({"fast": 2, "medium": 2, "slow": 1})
+    );
+}
+
+#[test]
+fn plan_allows_an_explicit_python_matrix_resize() {
+    let output = result(
+        "plan",
+        &python_plan_request_for_count("{\"old\":2}", 4),
+        true,
+    );
+
+    assert_eq!(output["decision"], "change");
+    assert_eq!(output["python"]["shard_count"], 4);
+    assert_eq!(
+        output["python"]["assignments"],
+        serde_json::json!({"fast": 3, "medium": 2, "slow": 1})
     );
 }
 

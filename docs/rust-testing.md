@@ -264,7 +264,7 @@ follows:
   executable instead. Both producers retain repository policy, plugin
   projection validation, and the Linux artifact handoff required for Python
   integration.
-- The 20-shard `python-tests` matrix is artifact-independent and runs its
+- The 4-shard `python-tests` matrix is artifact-independent and runs its
   stub-safe tests without waiting for Rust coverage. The required
   `python-rust-integration` job waits for `python-tests` and the stable
   `rust-coverage` aggregate, then consumes the selected producer's verified

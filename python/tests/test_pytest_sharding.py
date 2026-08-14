@@ -98,6 +98,25 @@ def test_load_shard_assignments_valid_map(tmp_path: Path) -> None:
     assert pytest_sharding.load_shard_assignments(path) == {"test_a.py::test_b": 2}
 
 
+def test_checked_in_assignments_cover_each_four_shard_ci_leg_once() -> None:
+    assignments = pytest_sharding.load_shard_assignments()
+    assert assignments
+    assert set(assignments.values()) == {1, 2, 3, 4}
+
+    nodeids = list(assignments)
+    selected: set[int] = set()
+    for shard_id in range(1, 5):
+        shard = pytest_sharding.select_shard_nodeids(
+            nodeids=nodeids,
+            shard_id=shard_id,
+            shard_count=4,
+            assignments=assignments,
+        )
+        assert selected.isdisjoint(shard)
+        selected |= shard
+    assert selected == set(range(len(nodeids)))
+
+
 @pytest.mark.parametrize(
     "content",
     [
