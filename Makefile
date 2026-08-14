@@ -437,7 +437,7 @@ test-tally-plan-review:
 
 test-findings-classification:
 	@if [ -z "$${LARCH_BINARY:-}" ]; then \
-		cargo build --quiet --locked --package larch-cli --bin larch; \
+		cargo build --quiet --locked --package larch-cli --bin larch || exit 1; \
 		export LARCH_BINARY="$$(pwd -P)/target/debug/larch"; \
 	fi; \
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-findings-classification.sh
