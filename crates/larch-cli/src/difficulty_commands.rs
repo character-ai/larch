@@ -12,7 +12,7 @@ use std::{
 use larch_adapters::{ExactDiffRequest, GitRef, github::IssueMutationOwner};
 use larch_core::{
     AUDIT_DENOMINATOR, BuildRecord, DifficultyFloor, DifficultyRating, FLOOR_MANIFEST_RELPATH,
-    GitHubLabelCreate, GitHubService as _, IssueMutationField, IssueMutationRequest, MergeExplicit,
+    GitHubLabelCreate, GitHubService as _, IssueMutationRequest, MergeExplicit,
     RUBRIC, blank_merge_explicit, build_record, difficulty_line, known_labels, label_for_tier,
     load_floor_manifest, load_record_data, merge_existing_record_fields, normalize_tier,
     plan_difficulty, rating_from_tier, read_changed_paths, read_rating_file,
@@ -23,8 +23,8 @@ use serde_json::{Map, Value};
 
 use crate::{
     argparse_compat::{
-        ParsedCommandLine, missing, parse_with_flags, python_io_error, python_repr,
-        split_inline_option, usage_error, write_stdout,
+        ParsedCommandLine, choice_error, finish_parse, parse_with_flags, python_io_error,
+        usage_error, write_stdout,
     },
     git_command_runtime::GitCommandRuntime,
     github_repository_resolution::{ambient_repo, repository_ref},
@@ -598,20 +598,12 @@ fn sync_labels_inner(repo: &str, issue: &str, tier: &str) -> Result<String, Stri
             .cloned()
             .collect();
         let _inserted = labels.insert(label.clone());
-        let request = IssueMutationRequest {
-            repository: repository.clone(),
-            issue: number,
-            expected_updated_at: snapshot.updated_at.clone(),
-            expected_state: snapshot.state,
-            fields: BTreeSet::from([IssueMutationField::Labels]),
-            title: None,
-            body: None,
-            labels: Some(labels),
-            marker: None,
-            lease: None,
-        };
         owner
-            .apply(cancellation, &authorization, &request)
+            .apply(
+                cancellation,
+                &authorization,
+                &IssueMutationRequest::replace_labels(&snapshot, labels),
+            )
             .await
             .map(|_verified| ())
             .map_err(|error| error.to_string())
@@ -908,72 +900,7 @@ fn parse_command(
             code => Err(code),
         };
     }
-    if let Some(error) = parsed.value_error() {
-        return Err(usage_error(usage, program, error, 2));
-    }
-    let required_state: Vec<(&str, bool)> = required
-        .iter()
-        .map(|option| (*option, parsed.value(option).is_some()))
-        .collect();
-    if required_state.iter().any(|(_option, present)| !present) {
-        return Err(usage_error(usage, program, &missing(&required_state), 2));
-    }
-    if let Some(error) = parsed.error() {
-        return Err(usage_error(usage, program, &error, 2));
-    }
-    Ok(parsed)
-}
-
-fn choice_error(
-    arguments: &[OsString],
-    options: &[&'static str],
-    choices: &[(&str, &[&str])],
-) -> Option<String> {
-    use crate::argparse_compat::looks_like_option;
-    let mut index = 0;
-    while index < arguments.len() {
-        let text = arguments[index].to_string_lossy();
-        index += 1;
-        if text == "--" {
-            break;
-        }
-        if !looks_like_option(&arguments[index - 1]) {
-            continue;
-        }
-        let (name, inline) = split_inline_option(&text);
-        if crate::argparse_compat::resolve_option(name, &["-h", "--help"]).is_some() {
-            break;
-        }
-        let Some(option) = crate::argparse_compat::resolve_option(name, options) else {
-            continue;
-        };
-        let value = if let Some(value) = inline {
-            value.to_owned()
-        } else {
-            let value = arguments.get(index)?;
-            if looks_like_option(value) {
-                return None;
-            }
-            index += 1;
-            value.to_string_lossy().into_owned()
-        };
-        let Some((_option, allowed)) = choices.iter().find(|(choice, _allowed)| *choice == option)
-        else {
-            continue;
-        };
-        if !allowed.contains(&value.as_str()) {
-            return Some(format!(
-                "argument {option}: invalid choice: {} (choose from {})",
-                python_repr(&value),
-                allowed
-                    .iter()
-                    .map(|choice| python_repr(choice))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-    }
-    None
+    finish_parse(parsed, usage, program, required)
 }
 
 fn option_text(parsed: &ParsedCommandLine, name: &str) -> String {

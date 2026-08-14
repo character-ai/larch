@@ -73,7 +73,6 @@ crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked
 python/larch/agents/_run_external.py	later-domain	#7678	dynamic
 crates/larch-cli/src/agent_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/oos_commands.rs	gix-read	#7671	typed-read
-python/larch/calibration/difficulty.py	later-domain	#7686	diff
 python/larch/core/architectural_guidelines.py	later-domain	#7686	diff,merge-base,rev-parse
 python/larch/core/coder_delta_guards.py	later-domain	#7686	config,diff,ls-files,submodule
 python/larch/core/forked_repo.py	later-domain	#7682	config,ls-remote,merge-base,remote,rev-parse,show-ref,status,submodule,worktree

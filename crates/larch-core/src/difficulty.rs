@@ -993,14 +993,7 @@ pub fn rating_from_tier(tier: &str, rationale: &str) -> Option<DifficultyRating>
 #[must_use]
 pub fn difficulty_line(data: &Map<String, Value>) -> String {
     let predicted = nonempty(&json_string(data.get("predicted_tier")), "unknown");
-    let applied = {
-        let value = json_string(data.get("applied_tier"));
-        if value.is_empty() {
-            predicted.clone()
-        } else {
-            value
-        }
-    };
+    let applied = nonempty(&json_string(data.get("applied_tier")), &predicted);
     let mut parts = vec![
         format!("predicted {predicted}"),
         format!("applied {applied}"),
@@ -1310,13 +1303,13 @@ fn is_regular_file(path: &Path) -> bool {
 }
 
 fn json_string(value: Option<&Value>) -> String {
-    match value {
-        Some(Value::String(text)) => text.clone(),
-        Some(Value::Number(number)) => number.to_string(),
-        Some(Value::Bool(flag)) => flag.to_string(),
-        Some(Value::Null) | None => String::new(),
-        Some(other) => other.to_string(),
-    }
+    value.map_or(String::new(), |item| match item {
+        Value::String(text) => text.clone(),
+        Value::Number(number) => number.to_string(),
+        Value::Bool(flag) => flag.to_string(),
+        Value::Null => String::new(),
+        other => other.to_string(),
+    })
 }
 
 fn json_bool(value: Option<&Value>) -> bool {

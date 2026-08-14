@@ -74,6 +74,25 @@ pub struct IssueMutationRequest {
     pub lease: Option<IssueMutationLease>,
 }
 
+impl IssueMutationRequest {
+    /// Build a labels-only freshness-checked mutation from a live snapshot.
+    #[must_use]
+    pub fn replace_labels(snapshot: &IssueMutationSnapshot, labels: BTreeSet<String>) -> Self {
+        Self {
+            repository: snapshot.repository.clone(),
+            issue: snapshot.issue,
+            expected_updated_at: snapshot.updated_at.clone(),
+            expected_state: snapshot.state,
+            fields: BTreeSet::from([IssueMutationField::Labels]),
+            title: None,
+            body: None,
+            labels: Some(labels),
+            marker: None,
+            lease: None,
+        }
+    }
+}
+
 /// The canonical GitHub state used by a compare-and-swap mutation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IssueMutationSnapshot {
