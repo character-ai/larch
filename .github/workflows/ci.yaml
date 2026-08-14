@@ -178,10 +178,10 @@ jobs:
         run: bash scripts/test-pipe-sigpipe-safety.sh
 
   # Dedicated shellcheck job — installs the pinned shellcheck-py==0.11.0.1
-  # binary directly (no pre-commit overhead) and runs shellcheck -x in
-  # parallel via xargs over scripts, skills, and .claude. The pre-commit
-  # `shellcheck` hook remains active for local `pre-commit run` and the dev
-  # git-hook; CI skips it in `lint` and `lint-local` via the SKIP env var.
+  # binary directly (no pre-commit overhead), compiles the dependency-free
+  # canonical manifest reader, and runs shellcheck -x in parallel via xargs.
+  # The pre-commit `shellcheck` hook remains active for local `pre-commit run`
+  # and the dev git-hook; CI skips it in `lint` and `lint-local` via SKIP.
   # shellcheck-py pinned to 0.11.0.1 — keep in sync with .pre-commit-config.yaml on bump.
   shellcheck:
     runs-on: ubuntu-latest
@@ -212,9 +212,11 @@ jobs:
         run: |
           set -euo pipefail
           max_parallel="$(nproc 2>/dev/null || echo 1)"
-          cargo build --locked --package larch-cli --bin larch
-          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$GITHUB_WORKSPACE/target/debug/larch" \
-            "$GITHUB_WORKSPACE/scripts/larch.sh" residual-bash paths --null-delimited \
+          residual_bash_reader="$RUNNER_TEMP/larch-residual-bash-paths"
+          rustc --edition=2024 --crate-name larch_residual_bash_paths \
+            "$GITHUB_WORKSPACE/crates/larch-harness-mark/src/residual_bash_main.rs" \
+            -o "$residual_bash_reader"
+          "$residual_bash_reader" --root "$GITHUB_WORKSPACE" \
             | xargs -0 -r -n 1 -P "$max_parallel" shellcheck -x --exclude=SC2329 --
 
   # Regression harness shards (the `test-*` bash scripts in Makefile). Runs

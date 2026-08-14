@@ -412,7 +412,11 @@ If GitHub cannot provide a merge queue, enable
 and record the reason in the tracking issue. Keep the `merge_group` trigger so
 the workflow remains ready for a later queue activation.
 
-The `shellcheck` job runs as a dedicated CI job in parallel with `lint`; the `lint` job SKIPs the shellcheck hook to avoid paying the pre-commit env-install cost twice.
+The `shellcheck` job runs as a dedicated CI job in parallel with `lint`. It
+compiles the dependency-free `larch-residual-bash-paths` reader directly with
+`rustc`, so manifest validation stays shared with `larch residual-bash paths`
+without building the released CLI. The `lint` job skips the shellcheck hook to
+avoid paying the pre-commit environment-install cost twice.
 
 ### Changing the shard count (lockstep edit)
 
@@ -605,7 +609,12 @@ Focused harnesses cover the /design auto-reporting port:
 
 ## Residual Bash lint scope
 
-Bash-targeting linters use the residual shell manifest instead of broad repo discovery. The shared reader is `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" residual-bash paths [--root PATH]`; fixture harnesses pass `--root` so they read the fixture manifest.
+Bash-targeting linters use the residual shell manifest instead of broad repo
+discovery. Runtime and local callers use
+`"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" residual-bash paths [--root PATH]`;
+fixture harnesses pass `--root` so they read the fixture manifest. CI
+shellcheck compiles the dependency-free `larch-residual-bash-paths` binary from
+the same canonical Rust module and enables existence checks unconditionally.
 
 The residual manifest covers kept hooks, thin wrappers, the approved
 `scripts/larch.sh` clean-install bootstrap, `scripts/sleep-seconds.sh`, the
