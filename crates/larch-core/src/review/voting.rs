@@ -71,9 +71,8 @@ fn table_vote_token(text: &str) -> Option<&'static str> {
     }
     None
 }
-fn strip_markdown_markers(cell: &str) -> String {
-    trim_python_whitespace(&cell.replace(['*', '`'], "")).to_owned()
-}
+#[rustfmt::skip]
+fn strip_markdown_markers(cell: &str) -> String { trim_python_whitespace(&cell.replace(['*', '`'], "")).to_owned() }
 #[rustfmt::skip]
 fn normalize_markdown_table_votes(text: &str) -> String {
     if !text.contains('|') {

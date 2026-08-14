@@ -116,7 +116,7 @@ fn non_substantive_parse_rate_writes_a_bounded_matching_diagnostic() {
     #[cfg(unix)] {
         use std::os::unix::fs::PermissionsExt as _;
         let original = fs::metadata(&voter).expect("voter metadata").permissions();
-        fs::set_permissions(&voter, fs::Permissions::from_mode(0)).expect("deny voter read");
+        fs::set_permissions(&voter, fs::Permissions::from_mode(0o0)).expect("deny voter read");
         let denied = run(&arguments, sandbox.path(), &environment);
         assert_eq!(denied.status.code(), Some(1)); assert!(denied.stdout.is_empty()); assert!(!denied.stderr.is_empty());
         fs::set_permissions(&voter, original).expect("restore voter permissions");

@@ -67,6 +67,10 @@ if [[ "\${1:-}" == run-log && "\${2:-}" == append-failure ]]; then
     printf 'APPENDED=true\nLOG=%s\n' "\$log"
     exit 0
 fi
+if [[ "\${1:-}" == voting && "\${2:-}" == findings-classification-header ]]; then
+    printf 'finding_id\tfinding_reviewers\tvoting_result\n'
+    exit 0
+fi
 exit 2
 EOF2
 chmod +x "$LARCH_BINARY"
