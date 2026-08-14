@@ -9955,13 +9955,8 @@ rust = ["report-tokens analyze"]
 [[callers]]
 path = "skills/research/SKILL.md"
 kind = "skill"
-<<<<<<< HEAD
-python = ["render lane-status", "token lane-report", "token lane-write"]
-rust = ["agent degraded-tools-gate", "git branch-info", "research banner", "research render-findings-batch", "research run-planner", "research validate-citations", "session cleanup-tmpdir", "session setup", "verify skill-called"]
-=======
-python = ["render lane-status", "research banner", "research render-findings-batch", "research run-planner", "research validate-citations"]
-rust = ["agent degraded-tools-gate", "git branch-info", "session cleanup-tmpdir", "session setup", "token lane-report", "token lane-write", "verify skill-called"]
->>>>>>> bda62205d (Fixes #8506: port token recording and staging commands to Rust)
+python = ["render lane-status"]
+rust = ["agent degraded-tools-gate", "git branch-info", "research banner", "research render-findings-batch", "research run-planner", "research validate-citations", "session cleanup-tmpdir", "session setup", "token lane-report", "token lane-write", "verify skill-called"]
 
 [[callers]]
 path = "skills/research/references/citation-validation-phase.md"
@@ -9972,13 +9967,8 @@ rust = ["research render-findings-batch", "research validate-citations"]
 [[callers]]
 path = "skills/research/references/critique-loop-phase.md"
 kind = "skill"
-<<<<<<< HEAD
-python = ["token lane-write"]
-rust = ["research validate-citations"]
-=======
-python = ["research validate-citations"]
-rust = ["token lane-write"]
->>>>>>> bda62205d (Fixes #8506: port token recording and staging commands to Rust)
+python = []
+rust = ["research validate-citations", "token lane-write"]
 
 [[callers]]
 path = "skills/research/references/eval-set.md"
@@ -9989,24 +9979,14 @@ rust = ["admission gate", "push rebase", "tracking-issue upsert-summary"]
 [[callers]]
 path = "skills/research/references/research-phase.md"
 kind = "skill"
-<<<<<<< HEAD
-python = ["token append-record", "token lane-write", "token record-vendor-sidecar"]
-rust = ["agent collect-results", "agent launch-codex-exec", "bgjob start", "bgjob wait", "research banner", "research run-planner", "session cleanup-tmpdir"]
-=======
-python = ["research banner", "research run-planner"]
-rust = ["agent collect-results", "agent launch-codex-exec", "bgjob start", "bgjob wait", "session cleanup-tmpdir", "token append-record", "token lane-write", "token record-vendor-sidecar"]
->>>>>>> bda62205d (Fixes #8506: port token recording and staging commands to Rust)
+python = []
+rust = ["agent collect-results", "agent launch-codex-exec", "bgjob start", "bgjob wait", "research banner", "research run-planner", "session cleanup-tmpdir", "token append-record", "token lane-write", "token record-vendor-sidecar"]
 
 [[callers]]
 path = "skills/research/references/validation-phase.md"
 kind = "skill"
-<<<<<<< HEAD
-python = ["render reviewer", "token append-record", "token lane-write", "token record-vendor-sidecar"]
-rust = ["agent collect-results", "agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent launch-codex-exec", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait", "research banner"]
-=======
-python = ["render reviewer", "research banner"]
-rust = ["agent collect-results", "agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent launch-codex-exec", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait", "token append-record", "token lane-write", "token record-vendor-sidecar"]
->>>>>>> bda62205d (Fixes #8506: port token recording and staging commands to Rust)
+python = ["render reviewer"]
+rust = ["agent collect-results", "agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent launch-codex-exec", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait", "research banner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
 
 [[callers]]
 path = "skills/review-and-fix/SKILL.md"
