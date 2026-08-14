@@ -3,6 +3,7 @@
 //! Pure review models live here so each command cutover can reuse one tested
 //! owner while leaving side effects at its CLI boundary.
 
+mod collection;
 mod dispatch;
 mod findings_ledger;
 mod pipeline;
@@ -10,6 +11,12 @@ mod tally_engine;
 mod types;
 mod voting;
 
+pub use collection::{
+    CollectedFinding, CollectionRender, CollectorResultRecord, PanelManifestSlot,
+    ReviewerFailureThreshold, ReviewerFailureThresholdInput, ReviewerOutput,
+    has_no_findings_sentinel, parse_markdown_findings, parse_threshold_collector_records,
+    render_collection, reviewer_failure_threshold,
+};
 pub use dispatch::{
     DispatchError, VOTER_SLOT_COUNT, VoterOutputBinding, VoterPathsFilePolicy, VoterRowLayout,
     VoterSlotPolicy, VoterSlotState, optional_positive_float, parse_rate_status, path_for_wire,

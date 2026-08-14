@@ -673,12 +673,6 @@ ignore = [
     "F401",
     "PLR0912",
 ]
-"review_collect.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-]
 "review_core_body.py" = [
     "C901",
     "PLR0911",
@@ -690,12 +684,6 @@ ignore = [
     "C901",
     "PLR0911",
     "PLR0913",
-]
-"review_threshold.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
 ]
 "review_tally.py" = [
     "C901",

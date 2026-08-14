@@ -6051,11 +6051,13 @@ verb = "check-reviewer-failure-threshold"
 python_module = "larch.review.review_threshold"
 python_function = "check_reviewer_failure_threshold_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8442
+clean_install_test = "clean-install-review-check-reviewer-failure-threshold"
 
 [[commands]]
 domain = "review"
@@ -6063,11 +6065,13 @@ verb = "collect-findings"
 python_module = "larch.review.review_collect"
 python_function = "collect_findings_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8442
+clean_install_test = "clean-install-review-collect-findings"
 
 [[commands]]
 domain = "review"
@@ -9051,12 +9055,6 @@ python = []
 rust = ["git commit", "run-log write", "stall-recovery record-escalation", "timing mark", "voting write-tally"]
 
 [[callers]]
-path = "python/larch/review/review_collect.py"
-kind = "python-runtime"
-python = []
-rust = ["agent wait-reviewers"]
-
-[[callers]]
 path = "python/larch/review/review_tally.py"
 kind = "python-runtime"
 python = []
@@ -9972,7 +9970,7 @@ rust = ["timing record-round"]
 path = "skills/review/SKILL.md"
 kind = "skill"
 python = ["checks run-relevant", "render specialist", "render voter", "review core", "review log-phase", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "scout dynamic-archetypes", "token claude-source"]
-rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review dispatch-panel", "review gather-context", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir", "session setup"]
+rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review check-reviewer-failure-threshold", "review collect-findings", "review dispatch-panel", "review gather-context", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir", "session setup"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"

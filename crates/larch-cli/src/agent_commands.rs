@@ -4,6 +4,7 @@ use std::{
     collections::BTreeMap,
     env,
     ffi::{OsStr, OsString},
+    fmt::Write as _,
     fs,
     path::{Path, PathBuf},
     process::ExitCode,
@@ -941,17 +942,27 @@ fn wait_reviewers(arguments: &AgentRawArguments) -> ExitCode {
         &parsed.sentinels,
         ReviewerWaitConfig::new(parsed.timeout_seconds, poll_interval),
     );
-    for row in result.rows() {
+    print!("{}", render_reviewer_wait_rows(result.rows()));
+    ExitCode::SUCCESS
+}
+
+fn render_reviewer_wait_rows(rows: &[ReviewerWaitRow]) -> String {
+    let mut rendered = String::new();
+    for row in rows {
         match row {
             ReviewerWaitRow::Done {
                 index,
                 name,
                 exit_code,
-            } => println!("DONE {index} {name}: exit={exit_code}"),
-            ReviewerWaitRow::Timeout { index, name } => println!("TIMEOUT {index} {name}"),
+            } => {
+                let _ignored = writeln!(rendered, "DONE {index} {name}: exit={exit_code}");
+            }
+            ReviewerWaitRow::Timeout { index, name } => {
+                let _ignored = writeln!(rendered, "TIMEOUT {index} {name}");
+            }
         }
     }
-    ExitCode::SUCCESS
+    rendered
 }
 
 fn parse_wait_arguments(arguments: &[OsString]) -> WaitParse {
@@ -1007,7 +1018,7 @@ fn parse_positive_integer(raw: &str, flag: &str) -> Result<u64, String> {
     Ok(value)
 }
 
-fn parse_poll_interval(raw: &str) -> Option<Duration> {
+pub fn parse_poll_interval(raw: &str) -> Option<Duration> {
     if raw.is_empty() || raw == "." || raw.matches('.').count() > 1 {
         return None;
     }
@@ -1037,12 +1048,14 @@ pub enum WaitBreadcrumbs {
     Stderr,
     /// Drop every breadcrumb fragment.
     Discard,
+    Capture,
 }
 
 /// The single system-clock, real-filesystem reviewer wait host.
 pub struct SystemWaitHost {
     started: Instant,
     breadcrumbs: WaitBreadcrumbs,
+    diagnostics: String,
 }
 
 impl SystemWaitHost {
@@ -1052,7 +1065,12 @@ impl SystemWaitHost {
         Self {
             started: Instant::now(),
             breadcrumbs,
+            diagnostics: String::new(),
         }
+    }
+
+    fn take_diagnostics(&mut self) -> String {
+        std::mem::take(&mut self.diagnostics)
     }
 }
 
@@ -1070,10 +1088,28 @@ impl ReviewerWaitHost for SystemWaitHost {
     }
 
     fn diagnostic(&mut self, text: &str) {
-        if self.breadcrumbs == WaitBreadcrumbs::Stderr {
-            eprint!("{text}");
+        match self.breadcrumbs {
+            WaitBreadcrumbs::Stderr => eprint!("{text}"),
+            WaitBreadcrumbs::Discard => {}
+            WaitBreadcrumbs::Capture => self.diagnostics.push_str(text),
         }
     }
+}
+
+pub fn capture_reviewer_wait(
+    sentinels: &[PathBuf],
+    timeout: u64,
+    poll_interval: Duration,
+) -> (String, bool) {
+    let mut host = SystemWaitHost::new(WaitBreadcrumbs::Capture);
+    let result = wait_for_reviewers(
+        &mut host,
+        sentinels,
+        ReviewerWaitConfig::new(timeout, poll_interval),
+    );
+    let mut log = render_reviewer_wait_rows(result.rows());
+    log.push_str(&host.take_diagnostics());
+    (log, result.timed_out() > 0)
 }
 
 fn classify_diff_command(arguments: &AgentRawArguments) -> ExitCode {

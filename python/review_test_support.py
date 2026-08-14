@@ -364,18 +364,6 @@ if [[ -n "${TEST_THRESHOLD_ARGV_LOG:-}" ]]; then
     printf 'argv=%s\\n' "$*"
   } >> "$TEST_THRESHOLD_ARGV_LOG"
 fi
-root="${CLAUDE_PLUGIN_ROOT:-}"
-if [[ -z "$root" ]]; then
-  root="$(cd "$(dirname "$0")/../../../.." && pwd)"
-fi
-if [[ "${TEST_THRESHOLD_LEGACY_STUB:-false}" != "true" ]]; then
-  output="$(python3 "$root/python/cli.py" review check-reviewer-failure-threshold "$@" 2>&1)" || exit $?
-  if [[ -n "${TEST_THRESHOLD_OK:-}" ]]; then
-    output="$(printf '%s\n' "$output" | sed "s/^THRESHOLD_OK=.*/THRESHOLD_OK=${TEST_THRESHOLD_OK}/")"
-  fi
-  printf '%s\\n' "$output"
-  exit 0
-fi
 intended=""
 launched=""
 dropped=""

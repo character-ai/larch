@@ -230,6 +230,32 @@ pub fn parse_collector_records(text: &str) -> Vec<BTreeMap<String, String>> {
     records
 }
 
+/// Parse legacy blank-line-delimited blocks, keeping malformed leading blocks.
+#[must_use]
+pub fn parse_legacy_collector_blocks(text: &str) -> Vec<BTreeMap<String, String>> {
+    let mut records = Vec::new();
+    let mut current = BTreeMap::<String, String>::new();
+    for line in crate::split_text_lines(text) {
+        if line.is_empty() {
+            if !current.is_empty() {
+                records.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+        let Ok(document) = KvDocument::parse(line, ParseOptions::legacy()) else {
+            continue;
+        };
+        let Some(row) = document.rows().first() else {
+            continue;
+        };
+        current.insert(row.key().to_owned(), row.value().to_owned());
+    }
+    if !current.is_empty() {
+        records.push(current);
+    }
+    records
+}
+
 /// Normalize a reviewer output basename across retry and phase suffixes.
 #[must_use]
 pub fn normalize_output_base(base: &str) -> String {
