@@ -4,14 +4,12 @@
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from larch.core import config
 from larch.core import proc
 from larch.rendering import findings_ledger
 from larch.core import logging_util
@@ -86,31 +84,6 @@ def _patch_architectural_guidelines(
     monkeypatch.setattr(rendering.architectural_guidelines, "read_invariants", read_invariants)
 
 
-def _lane_status_fixture(tmp_path: Path, body: str) -> Path:
-    path = tmp_path / "lanes.env"
-    _ = path.write_text(body, encoding="utf-8")
-    return path
-
-
-def _all_ok_lane_body() -> str:
-    return """\
-RESEARCH_ARCH_STATUS=ok
-RESEARCH_ARCH_REASON=
-RESEARCH_EDGE_STATUS=ok
-RESEARCH_EDGE_REASON=
-RESEARCH_EXT_STATUS=ok
-RESEARCH_EXT_REASON=
-RESEARCH_SEC_STATUS=ok
-RESEARCH_SEC_REASON=
-VALIDATION_CODE_STATUS=ok
-VALIDATION_CODE_REASON=
-VALIDATION_CURSOR_STATUS=ok
-VALIDATION_CURSOR_REASON=
-VALIDATION_CODEX_STATUS=ok
-VALIDATION_CODEX_REASON=
-"""
-
-
 def test_mermaid_from_md_rejection_reports_heading(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
     doc = tmp_path / "doc.md"
@@ -124,61 +97,6 @@ def test_mermaid_from_md_rejection_reports_heading(tmp_path: Path, capsys: pytes
     assert "STATUS=rejected" in out
     assert "REASON_TOKEN=pipe-in-node-label fence=1 line=2" in out
     assert "FENCE_1_HEADING=architecture" in out
-
-
-def test_render_lane_status_sanitizes_reason(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    kv = tmp_path / "lanes.env"
-    _ = kv.write_text(
-        "RESEARCH_ARCH_STATUS=fallback_probe_failed\nRESEARCH_ARCH_REASON=a=b | c\nVALIDATION_CODE_STATUS=ok\n",
-        encoding="utf-8",
-    )
-    rc = rendering.render_lane_status_main(["--input", str(kv)])
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "RESEARCH_ARCH_HEADER=Architecture: Claude-fallback (probe failed: ab c)" in out
-    assert "VALIDATION_CODE_HEADER=Code: ✅" in out
-
-
-def test_render_lane_status_uses_last_value_and_ignores_advisory_noise(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _reset_quiet(monkeypatch)
-    kv = _lane_status_fixture(
-        tmp_path,
-        "# comment\nRESEARCH_ARCH_STATUS=failed\nRESEARCH_ARCH_STATUS=ok\nnot-a-kv\n",
-    )
-
-    assert rendering.render_lane_status_main(["--input", str(kv)]) == 0
-    assert "RESEARCH_ARCH_HEADER=Architecture: ✅" in capsys.readouterr().out
-
-
-def test_reviewer_renderer_preserves_ampersand_target(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    q = tmp_path / "q.txt"
-    c = tmp_path / "c.txt"
-    ins = tmp_path / "ins.txt"
-    _ = q.write_text("question", encoding="utf-8")
-    _ = c.write_text("context with {REVIEW_TARGET}", encoding="utf-8")
-    _ = ins.write_text("Find issues", encoding="utf-8")
-    rc = rendering.render_reviewer_main(
-        [
-            "--target",
-            "R&D findings",
-            "--research-question-file",
-            str(q),
-            "--context-file",
-            str(c),
-            "--in-scope-instruction-file",
-            str(ins),
-        ],
-    )
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "R&D findings" in out
-    assert "context with {REVIEW_TARGET}" in out
 
 
 def test_diagrams_upsert_dry_run_merges_sections(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
@@ -266,65 +184,6 @@ def test_diagrams_upsert_live_reads_and_mutates_only_through_rust(
     assert "## Code Flow Diagram" in calls[1][2]
     assert "COMMENT_URL=https://github.com/owner/repo/issues/42#issuecomment-11" in captured.out
     assert "UPDATED=true" in captured.out
-
-
-def test_render_lane_status_all_ok(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    rc = rendering.render_lane_status_main(["--input", str(_lane_status_fixture(tmp_path, _all_ok_lane_body()))])
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert out == (
-        "RESEARCH_ARCH_HEADER=Architecture: ✅\n"
-        "RESEARCH_EDGE_HEADER=Edge cases: ✅\n"
-        "RESEARCH_EXT_HEADER=External comparisons: ✅\n"
-        "RESEARCH_SEC_HEADER=Security: ✅\n"
-        "VALIDATION_CODE_HEADER=Code: ✅\n"
-        "VALIDATION_CURSOR_HEADER=Cursor: ✅\n"
-        "VALIDATION_CODEX_HEADER=Codex: ✅\n"
-    )
-
-
-def test_render_lane_status_unknown_token_warns(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    body = "RESEARCH_ARCH_STATUS=weird\nVALIDATION_CODE_STATUS=ok\n"
-    rc = rendering.render_lane_status_main(["--input", str(_lane_status_fixture(tmp_path, body))])
-    captured = capsys.readouterr()
-    assert rc == 0
-    assert "RESEARCH_ARCH_HEADER=Architecture: (unknown)" in captured.out
-    assert "unknown status token weird" in captured.err
-
-
-def test_render_lane_status_missing_input_exit_2(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    missing = tmp_path / "missing.env"
-    rc = rendering.render_lane_status_main(["--input", str(missing)])
-    captured = capsys.readouterr()
-    assert rc == 2
-    assert "input file missing" in captured.err
-
-
-def test_render_lane_status_emits_on_stdout_under_inherited_quiet(tmp_path: Path) -> None:
-    kv = _lane_status_fixture(tmp_path, _all_ok_lane_body())
-    env = os.environ.copy()
-    env[config.ENV_LARCH_QUIET_ACTIVE] = "1"
-    env[config.ENV_LARCH_QUIET_PID] = "999999"
-    env["IMPLEMENT_TMPDIR"] = str(tmp_path)
-    _ = env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "import os, sys; sys.path.insert(0, os.environ['PY_DIR']); from larch.rendering import rendering; "
-            "raise SystemExit(rendering.render_lane_status_main(['--input', os.environ['LANE_INPUT']]))",
-        ],
-        capture_output=True,
-        text=True,
-        env={**env, "PY_DIR": str(PYTHON_DIR), "LANE_INPUT": str(kv)},
-        cwd=str(PYTHON_DIR),
-        check=False,
-    )
-    assert result.returncode == 0
-    assert result.stdout.count("HEADER=") == 7
 
 
 def test_architectural_guidelines_review_section_noops_for_absent_invalid_or_empty(
@@ -1714,52 +1573,6 @@ def test_render_voter_archetype_lens_blocks(tmp_path: Path, capsys: pytest.Captu
     pragmatic = _render_voter_text(tmp_path, capsys, "--archetype", "pragmatism-cost")
     assert "**is it worth it**" in pragmatic
     assert "Defer to validity on correctness and security" in pragmatic
-
-
-def test_render_findings_view_filters_and_handles_missing_body(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    (run_dir / "review-findings-full.jsonl").write_text(
-        '{"outcome":"accepted","round_num":1,"prose_body":"accepted body"}\n'
-        '{"outcome":"rejected","round_num":2}\n'
-        '{"outcome":"out_of_scope","round_num":3,"prose_body":"oos body"}\n'
-        'not json\n',
-        encoding="utf-8",
-    )
-    assert rendering.render_findings_view_main([str(run_dir), "all"]) == 0
-    all_out = capsys.readouterr().out
-    assert "### FINDING (accepted) round-1" in all_out
-    assert "accepted body" in all_out
-    assert "### FINDING (rejected) round-2" in all_out
-    assert "(no prose body)" in all_out
-    assert "### FINDING (out_of_scope) round-3" in all_out
-    assert rendering.render_findings_view_main([str(run_dir), "oos"]) == 0
-    oos_out = capsys.readouterr().out
-    assert "out_of_scope" in oos_out
-    assert "accepted body" not in oos_out
-
-
-def test_render_findings_view_preserves_empty_prose_body(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    (run_dir / "review-findings-full.jsonl").write_text(
-        '{"outcome":"accepted","round_num":1,"prose_body":""}\n',
-        encoding="utf-8",
-    )
-    assert rendering.render_findings_view_main([str(run_dir), "all"]) == 0
-    out = capsys.readouterr().out
-    assert "### FINDING (accepted) round-1\n\n" in out
-    assert "(no prose body)" not in out
-
-
-def test_render_findings_view_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert rendering.render_findings_view_main([str(tmp_path), "all"]) == 1
-    assert "not found" in capsys.readouterr().err
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    (run_dir / "review-findings-full.jsonl").write_text("", encoding="utf-8")
-    assert rendering.render_findings_view_main([str(run_dir), "bad"]) == 1
-    assert "unknown view" in capsys.readouterr().err
 
 
 def test_render_voter_calibration_block_is_tool_specific(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

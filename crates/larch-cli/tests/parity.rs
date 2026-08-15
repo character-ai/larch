@@ -74,6 +74,10 @@ impl CleanInstallCase {
             // fixture home, so it reports its `STATUS=unavailable` exit after
             // proving verified dispatch.
             | "clean-install-token-claude-source"
+            // `render lane-status` parses with `add_help=False`, so the
+            // clean-install `--help` token reads as an invalid flag and the verb
+            // reports its own breadcrumb refusal exit.
+            | "clean-install-render-lane-status"
             | "clean-install-session-local-cleanup" => 1,
             "clean-install-admission-preflight" => 3,
             "clean-install-token-measure-cache-efficiency"
@@ -154,6 +158,10 @@ impl CleanInstallCase {
             | "clean-install-plan-review-drift-baseline"
             | "clean-install-plan-review-step3-mav"
             | "clean-install-plan-review-step3b-tail"
+            // `render reviewer` also parses with `add_help=False`; the
+            // clean-install `--help` token surfaces as the argparse usage exit
+            // the Python owner echoed after its prefix.
+            | "clean-install-render-reviewer"
             | "clean-install-voting-write-tally" => 2,
             // Every umbrella verb owns a real help action, so the default
             // clean-install `--help` probe succeeds.
@@ -1497,6 +1505,13 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "difficulty-calibration",
         "analyze",
     ),
+    CleanInstallCase::new(
+        "clean-install-render-findings-view",
+        "render",
+        "findings-view",
+    ),
+    CleanInstallCase::new("clean-install-render-lane-status", "render", "lane-status"),
+    CleanInstallCase::new("clean-install-render-reviewer", "render", "reviewer"),
     CleanInstallCase::new(
         "clean-install-dirty-tree-baseline",
         "dirty-tree",

@@ -167,7 +167,7 @@ printf 'RESEARCH_DENY_ACTIVE_SENTINEL=%s\n' "$RESEARCH_DENY_ACTIVE_SENTINEL"
 
 ### 0b: Initialize lane-status record
 
-Write `$RESEARCH_TMPDIR/lane-status.txt` with the per-angle pre-launch attribution (4 research angles, all Codex-first) plus the 3 validation reviewer slots (Code / Cursor / Codex). The 14-key schema is consumed by `${CLAUDE_PLUGIN_ROOT}/python/cli.py render lane-status` at Step 3 to render the final-report header.
+Write `$RESEARCH_TMPDIR/lane-status.txt` with the per-angle pre-launch attribution (4 research angles, all Codex-first) plus the 3 validation reviewer slots (Code / Cursor / Codex). The 14-key schema is consumed by `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh render lane-status` at Step 3 to render the final-report header.
 
 The four research lanes use the **Codex pre-launch status** (each lane is Codex-first; the per-lane fallback is Claude `Agent`). The `VALIDATION_CODE_*` slot uses pre-launch status `ok` (Claude code-reviewer subagent has no fallback path); `VALIDATION_CURSOR_*` and `VALIDATION_CODEX_*` use the Cursor/Codex pre-launch statuses respectively.
 
@@ -247,7 +247,7 @@ Print: `> **🔶 /research 3: report**`
 Render the per-lane attribution headers from `$RESEARCH_TMPDIR/lane-status.txt`:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render lane-status --input "$RESEARCH_TMPDIR/lane-status.txt"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" render lane-status --input "$RESEARCH_TMPDIR/lane-status.txt"
 ```
 
 Parse the seven output lines via prefix-strip (NOT `cut -d=`, since rendered values can contain `=` characters):

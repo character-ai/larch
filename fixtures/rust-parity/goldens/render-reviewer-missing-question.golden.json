@@ -1,0 +1,24 @@
+{
+  "exit_code": 2,
+  "files": {
+    "ctx.txt": {
+      "text": "Some research findings.\nLine two.\n"
+    },
+    "inscope.txt": {
+      "text": "What the concern is\nSuggested revision to the plan\n"
+    },
+    "oos.txt": {
+      "text": "Custom OOS instruction line\n"
+    },
+    "rq.txt": {
+      "text": "What is the research question here?\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "render-reviewer-prompt.sh: --research-question-file path is missing or unreadable: <SANDBOX>/nope.txt\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

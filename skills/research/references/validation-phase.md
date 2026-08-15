@@ -45,7 +45,7 @@ Token vocabulary is documented in `${CLAUDE_PLUGIN_ROOT}/python/larch/rendering/
 
 The research report is already written to `$RESEARCH_TMPDIR/research-report.txt` from Step 1.5, so both Codex and Cursor can read it.
 
-External reviewer prompts are rendered from the unified Code Reviewer archetype in `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md` via `${CLAUDE_PLUGIN_ROOT}/python/cli.py render reviewer`. Before launching either external lane, write the shared prompt inputs to `$RESEARCH_TMPDIR`:
+External reviewer prompts are rendered from the unified Code Reviewer archetype in `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh render reviewer`. Before launching either external lane, write the shared prompt inputs to `$RESEARCH_TMPDIR`:
 
 ```bash
 cat > "$RESEARCH_TMPDIR/research-question.txt" <<'LARCH_RESEARCH_END_a3f2b1'
@@ -74,7 +74,7 @@ Validation lane identity and bgjob mapping:
 Run Cursor **first** in the parallel message (it takes the longest). Render the prompt **in foreground** before the background launch:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render reviewer \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" render reviewer \
   --target 'research findings' \
   --research-question-file "$RESEARCH_TMPDIR/research-question.txt" \
   --context-file "$RESEARCH_TMPDIR/research-report.txt" \
@@ -146,7 +146,7 @@ Do not call `bgjob wait` unless the launch printed that exact marker; if it did 
 Run Codex **second** in the parallel message (after Cursor):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render reviewer \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" render reviewer \
   --target 'research findings' \
   --research-question-file "$RESEARCH_TMPDIR/research-question.txt" \
   --context-file "$RESEARCH_TMPDIR/research-report.txt" \

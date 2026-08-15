@@ -287,6 +287,9 @@ enum Domain {
     /// Generic ASCII Gantt rendering.
     #[command(subcommand)]
     Gantt(GanttCommand),
+    /// Rust-owned runtime prompt and view renderers.
+    #[command(subcommand)]
+    Render(RenderCommand),
     /// Issue-backlog report rendering.
     #[command(subcommand, name = "analyze-issues")]
     AnalyzeIssues(AnalyzeIssuesCommand),
@@ -714,6 +717,19 @@ enum GanttCommand {
     /// Render a rows TSV as a plain ASCII Gantt chart.
     #[command(name = "render", disable_help_flag = true)]
     Render(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum RenderCommand {
+    /// Render one filtered view of a run's review-findings JSONL.
+    #[command(name = "findings-view", disable_help_flag = true)]
+    FindingsView(RawCompatibilityArguments),
+    /// Render the /research per-lane attribution headers.
+    #[command(name = "lane-status", disable_help_flag = true)]
+    LaneStatus(RawCompatibilityArguments),
+    /// Render the /research validation reviewer prompt.
+    #[command(disable_help_flag = true)]
+    Reviewer(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2153,6 +2169,7 @@ fn run(
         Domain::Gantt(GanttCommand::Render(arguments)) => {
             Ok(rendering_commands::gantt_render(&arguments.arguments))
         }
+        Domain::Render(command) => Ok(dispatch_render(command)),
         Domain::AnalyzeIssues(command) => Ok(match command {
             AnalyzeIssuesCommand::Fetch(arguments) => {
                 analyze_issues_commands::fetch(&arguments.arguments)
@@ -3440,6 +3457,20 @@ const fn conflict_code(kind: larch_core::ConflictKind) -> &'static str {
         larch_core::ConflictKind::DeletedByUs => "DU",
         larch_core::ConflictKind::BothAdded => "AA",
         larch_core::ConflictKind::BothModified => "UU",
+    }
+}
+
+fn dispatch_render(command: RenderCommand) -> ExitCode {
+    match command {
+        RenderCommand::FindingsView(arguments) => {
+            rendering_commands::render_findings_view(&arguments.arguments)
+        }
+        RenderCommand::LaneStatus(arguments) => {
+            rendering_commands::render_lane_status(&arguments.arguments)
+        }
+        RenderCommand::Reviewer(arguments) => {
+            rendering_commands::render_reviewer(&arguments.arguments)
+        }
     }
 }
 

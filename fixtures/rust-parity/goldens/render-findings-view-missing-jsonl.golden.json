@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "render findings-view: review-findings-full.jsonl not found in <SANDBOX>/missing\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}
