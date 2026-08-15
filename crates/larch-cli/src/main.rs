@@ -121,6 +121,7 @@ mod status_commands;
 mod test_shards;
 mod timing_commands;
 mod token_commands;
+mod token_measurement_commands;
 mod tracking_issue_commands;
 mod triage_commands;
 mod umbrella_commands;
@@ -632,6 +633,27 @@ enum TokenCommand {
     /// Render the research lane token-spend summary.
     #[command(name = "lane-report", disable_help_flag = true)]
     LaneReport(RawCompatibilityArguments),
+    /// Measure tracked Markdown prompt cost.
+    #[command(name = "measure-md-cost", disable_help_flag = true)]
+    MeasureMdCost(RawCompatibilityArguments),
+    /// Measure Claude cache creation efficiency.
+    #[command(name = "measure-cache-efficiency", disable_help_flag = true)]
+    MeasureCacheEfficiency(RawCompatibilityArguments),
+    /// Measure checks-digest savings.
+    #[command(name = "measure-checks-digest-savings", disable_help_flag = true)]
+    MeasureChecksDigestSavings(RawCompatibilityArguments),
+    /// Measure repeated prompt shingles.
+    #[command(name = "measure-ngram-duplication", disable_help_flag = true)]
+    MeasureNgramDuplication(RawCompatibilityArguments),
+    /// Measure panel prompt cost.
+    #[command(name = "measure-panel-cost", disable_help_flag = true)]
+    MeasurePanelCost(RawCompatibilityArguments),
+    /// Measure realized skill and reference cost.
+    #[command(name = "measure-realized-cost", disable_help_flag = true)]
+    MeasureRealizedCost(RawCompatibilityArguments),
+    /// Measure reference-read frequency.
+    #[command(name = "measure-references-heatmap", disable_help_flag = true)]
+    MeasureReferencesHeatmap(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2215,6 +2237,27 @@ fn run(
             TokenCommand::LaneWrite(arguments) => token_commands::lane_write(&arguments.arguments),
             TokenCommand::LaneReport(arguments) => {
                 token_commands::lane_report(&arguments.arguments)
+            }
+            TokenCommand::MeasureMdCost(arguments) => {
+                token_measurement_commands::measure_md_cost(&arguments.arguments)
+            }
+            TokenCommand::MeasureCacheEfficiency(arguments) => {
+                token_measurement_commands::measure_cache_efficiency(&arguments.arguments)
+            }
+            TokenCommand::MeasureChecksDigestSavings(arguments) => {
+                token_measurement_commands::measure_checks_digest_savings(&arguments.arguments)
+            }
+            TokenCommand::MeasureNgramDuplication(arguments) => {
+                token_measurement_commands::measure_ngram_duplication(&arguments.arguments)
+            }
+            TokenCommand::MeasurePanelCost(arguments) => {
+                token_measurement_commands::measure_panel_cost(&arguments.arguments)
+            }
+            TokenCommand::MeasureRealizedCost(arguments) => {
+                token_measurement_commands::measure_realized_cost(&arguments.arguments)
+            }
+            TokenCommand::MeasureReferencesHeatmap(arguments) => {
+                token_measurement_commands::measure_references_heatmap(&arguments.arguments)
             }
         }),
         Domain::Gh(GhCommand::WorkflowPath) => {

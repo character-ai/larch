@@ -309,13 +309,13 @@ contract. Malformed regex faults exit 1 with stderr only.
 Run:
 
 ```bash
-python3 python/cli.py token measure-cache-efficiency
+scripts/larch.sh token measure-cache-efficiency
 ```
 
 The command ranks cache-create versus cache-read outliers per run and per step.
 It synchronizes the current repository once, then reads `token-report.json` and
-`token-report-final.json` from the unpacked cache. It also uses the existing
-ledger fallback from `report_tokens_scan.py` when available.
+`token-report-final.json` from the unpacked cache. It also uses the shared Rust
+token-ledger fallback when available.
 
 Output is measurement only. It does not change token capture, report JSON
 shapes, or CI gates.

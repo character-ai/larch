@@ -15,7 +15,7 @@ use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as
 #[cfg(unix)]
 use nix::fcntl::{Flock, FlockArg};
 
-use larch_adapters::ensure_directory_chain;
+use larch_adapters::{atomic_write_utf8_in, ensure_directory_chain};
 use sha2::{Digest as _, Sha256};
 
 /// Bytes and SHA-256 digest of one regular analysis-state file, or `missing`.
@@ -65,6 +65,14 @@ pub fn marker_path(root: &Path, relpath: &str) -> Result<PathBuf, String> {
             }
         })?;
     storage_root(&storage.client_repo, &storage.storage_origin_id()).map(|root| root.join(relpath))
+}
+
+/// Publish one owner-only marker with the shared state lock and path policy.
+pub fn write_marker(path: &Path, text: &str) -> Result<(), String> {
+    let (root, target) = crate::launcher_support::confined_target(path)
+        .ok_or_else(|| "state path has no safe parent".to_owned())?;
+    let _lock = lock_state(&target)?;
+    atomic_write_utf8_in(&root, &target, text, false, 0o600).map_err(|error| error.to_string())
 }
 
 /// Read a regular marker file without following a swapped inode.
