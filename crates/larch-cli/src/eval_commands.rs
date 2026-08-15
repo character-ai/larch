@@ -1806,6 +1806,7 @@ pub fn eval_research_command(arguments: &[OsString]) -> ExitCode {
 #[allow(clippy::items_after_statements)]
 mod tests {
     use super::*;
+    use std::fmt::Write as _;
     use tempfile::tempdir;
 
     fn run(arguments: &[&str]) -> ValidationRun {
@@ -2044,9 +2045,10 @@ mod tests {
                 _ => "routine note",
             };
             let number = index + 1;
-            text.push_str(&format!(
+            let _ = write!(
+                text,
                 "### eval-{number}: id-{number}\n- **category**: {category}\n- **expected_provenance_count**: 1\n- **expected_keywords**: alpha, beta\n- **question**: what is item {number}?\n- **notes**: {notes}\n\n"
-            ));
+            );
         }
         text
     }
@@ -2082,7 +2084,7 @@ mod tests {
     fn git_repo_with(files: &[(&str, &str)]) -> tempfile::TempDir {
         let dir = tempdir().expect("tempdir");
         let run = |args: &[&str]| {
-            let output = std::process::Command::new("git")
+            let output = std::process::Command::new("git") // lint-subprocess-via-runner: ok test-only helper builds a throwaway git repo; the shared runner is product-only
                 .args(args)
                 .current_dir(dir.path())
                 .env("GIT_AUTHOR_NAME", "test")

@@ -6,7 +6,7 @@
 
 use assert_cmd::Command;
 use predicates::prelude::*;
-use std::{env, fs, path::Path};
+use std::{env, fmt::Write as _, fs, path::Path};
 use tempfile::TempDir;
 
 #[cfg(unix)]
@@ -31,9 +31,10 @@ fn valid_eval_set() -> String {
             _ => "routine note",
         };
         let number = index + 1;
-        text.push_str(&format!(
+        let _ = write!(
+            text,
             "### eval-{number}: id-{number}\n- **category**: {category}\n- **expected_provenance_count**: 1\n- **expected_keywords**: alpha, beta\n- **question**: what is item {number}?\n- **notes**: {notes}\n\n"
-        ));
+        );
     }
     text
 }
