@@ -37,6 +37,13 @@ if [[ "\${1:-}" == session ]]; then
         require-plugin-root|validate-design-tmpdir) exit 0 ;;
     esac
 fi
+if [[ "\${1:-}" == plan-review ]]; then
+    case "\${2:-}" in
+        step3-entry|step3-entry-state|step3-entry-preview|prelaunch-failure)
+            exec "$ROOT/target/debug/larch" "\$@"
+            ;;
+    esac
+fi
 if [[ "\${1:-}" == plan-review && "\${2:-}" == snapshot-pre-review ]]; then
     shift 2
     _design=""

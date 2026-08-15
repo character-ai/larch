@@ -601,13 +601,18 @@ def step3_continuation_entry_main(argv: Sequence[str]) -> int:
         (design_tmpdir / ".step3-entry-plan-printed").unlink()
     if (design_tmpdir / ".pause-requested").is_file():
         return _call_pause_save(design_tmpdir=design_tmpdir)
-    # Local import prevents the design/review package edge from becoming a
-    # module-level cycle while retaining the existing plan-review state owner.
-    from larch.review import plan_review  # noqa: PLC0415 - avoids a design/review module cycle
-
-    rc = plan_review.step3_state_main([
-        "--design-tmpdir", str(design_tmpdir), "--auto-continuation-entry",
-    ])
+    completed = subprocess.run(
+        [
+            str(larch_entrypoint(request.claude_plugin_root)),
+            "plan-review",
+            "step3-state",
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--auto-continuation-entry",
+        ],
+        check=False,
+    )
+    rc = completed.returncode
     if rc == 0:
         _maybe_timing_mark(label="design Step 3 — auto-continuation entry")
     return rc

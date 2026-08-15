@@ -16,7 +16,6 @@ from larch.design.design_settle import (
     step35_settle_for,
     step35_settle_main,
 )
-from larch.review import plan_review
 from test_support import make_design_tmpdir
 
 
@@ -397,5 +396,5 @@ def test_plan_review_step35_settle_delegates_in_process(
         return SettleResult(exit_rc=0, next_action="gate-c-return")
 
     monkeypatch.setattr("larch.design.design_settle.step35_settle_for", fake_for)
-    rc = plan_review.step35_settle(["--site", "gate-c", "--plugin-root", str(plugin)])
+    rc = step35_settle_main(["--site", "gate-c", "--plugin-root", str(plugin)])
     assert rc == 0

@@ -147,6 +147,9 @@ impl CleanInstallCase {
             | "clean-install-voting-findings-classification-header"
             | "clean-install-voting-degraded-warning"
             | "clean-install-voting-voter-status-block"
+            | "clean-install-plan-review-drift-baseline"
+            | "clean-install-plan-review-step3-mav"
+            | "clean-install-plan-review-step3b-tail"
             | "clean-install-voting-write-tally" => 2,
             // Every umbrella verb owns a real help action, so the default
             // clean-install `--help` probe succeeds.
@@ -798,14 +801,35 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "plan-review",
         "voter-dispatch",
     ),
+    CleanInstallCase::new("clean-install-plan-review-continuation", "plan-review", "continuation"),
+    CleanInstallCase::new("clean-install-plan-review-drift-baseline", "plan-review", "drift-baseline"),
     CleanInstallCase::new("clean-install-plan-review-emit", "plan-review", "emit"),
     CleanInstallCase::new("clean-install-plan-review-emit-rejected", "plan-review", "emit-rejected"),
     CleanInstallCase::new("clean-install-plan-review-filter-gate-b-skipped", "plan-review", "filter-gate-b-skipped"),
+    CleanInstallCase::new("clean-install-plan-review-finalize", "plan-review", "finalize"),
     CleanInstallCase::new("clean-install-plan-review-gate-b-counts", "plan-review", "gate-b-counts"),
     CleanInstallCase::new("clean-install-plan-review-gate-b-dedup", "plan-review", "gate-b-dedup"),
     CleanInstallCase::new("clean-install-plan-review-gate-b-finding-line", "plan-review", "gate-b-finding-line"),
+    CleanInstallCase::new("clean-install-plan-review-json-get-bool", "plan-review", "json-get-bool"),
+    CleanInstallCase::new("clean-install-plan-review-normalize-status", "plan-review", "normalize-status"),
     CleanInstallCase::new("clean-install-plan-review-persist-accepted-audit", "plan-review", "persist-accepted-audit"),
+    CleanInstallCase::new("clean-install-plan-review-persist-retally-env", "plan-review", "persist-retally-env"),
+    CleanInstallCase::new("clean-install-plan-review-persist-round-start-s", "plan-review", "persist-round-start-s"),
+    CleanInstallCase::new("clean-install-plan-review-prelaunch-failure", "plan-review", "prelaunch-failure"),
+    CleanInstallCase::new("clean-install-plan-review-preview", "plan-review", "preview"),
+    CleanInstallCase::new("clean-install-plan-review-round-artifact-included", "plan-review", "round-artifact-included"),
+    CleanInstallCase::new("clean-install-plan-review-round-revise-artifact-excluded", "plan-review", "round-revise-artifact-excluded"),
+    CleanInstallCase::new("clean-install-plan-review-round-revise-artifact-included", "plan-review", "round-revise-artifact-included"),
+    CleanInstallCase::new("clean-install-plan-review-run", "plan-review", "run"),
     CleanInstallCase::new("clean-install-plan-review-snapshot-pre-review", "plan-review", "snapshot-pre-review"),
+    CleanInstallCase::new("clean-install-plan-review-step3-entry", "plan-review", "step3-entry"),
+    CleanInstallCase::new("clean-install-plan-review-step3-entry-preview", "plan-review", "step3-entry-preview"),
+    CleanInstallCase::new("clean-install-plan-review-step3-entry-state", "plan-review", "step3-entry-state"),
+    CleanInstallCase::new("clean-install-plan-review-step3-gate-b-bypass", "plan-review", "step3-gate-b-bypass"),
+    CleanInstallCase::new("clean-install-plan-review-step3-mav", "plan-review", "step3-mav"),
+    CleanInstallCase::new("clean-install-plan-review-step3-state", "plan-review", "step3-state"),
+    CleanInstallCase::new("clean-install-plan-review-step35", "plan-review", "step35"),
+    CleanInstallCase::new("clean-install-plan-review-step3b-tail", "plan-review", "step3b-tail"),
     CleanInstallCase::new("clean-install-plan-review-tally", "plan-review", "tally"),
     CleanInstallCase::new("clean-install-status-check", "status", "check"),
     CleanInstallCase::new("clean-install-plan-block-read", "plan-block", "read"),

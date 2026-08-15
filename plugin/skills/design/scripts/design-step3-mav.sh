@@ -317,7 +317,7 @@ run_post_phase() {
         --tally-plan-review-status "$retally_status"
         --loop-status complete
     )
-    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review persist-retally-env "${persist_args[@]}"
+    "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" plan-review persist-retally-env "${persist_args[@]}"
     append_mav_warning_once "$artifact_round"
     accepted_count="$(count_accepted_findings)"
     if [ "$retally_status" = ok ]; then

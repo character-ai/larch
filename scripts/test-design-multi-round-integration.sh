@@ -5,7 +5,7 @@ unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDI
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-CLI="$ROOT/python/cli.py"
+CLI="$ROOT/target/debug/larch"
 fail() { printf '%s\n' "$1" >&2; exit 1; }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-design-multi-round-int.XXXXXX")"
@@ -136,7 +136,7 @@ out=$(env -u LARCH_QUIET_PID \
     LARCH_QUIET_DISABLE=1 \
     LARCH_AGGREGATOR_DISABLED=1 \
     RUN_STEP3_PLAN_REVIEW_LOOP_SH="$per_entry_stub" \
-    python3 "$CLI" plan-review run \
+    "$CLI" plan-review run \
         --design-tmpdir "$TMP/design" \
         --no-preview
         )
@@ -238,7 +238,7 @@ run_step3_out=$(env -u LARCH_QUIET_PID \
     RUN_STEP3_DEDUP_PLAN_SH="$D2/dedup-ok.sh" \
     RUN_STEP3_POSTPLAN_EMIT_SH="$D2/postplan-ok.sh" \
     RUN_STEP3_CONTINUATION_SH="$D2/continue-true.sh" \
-    python3 "$CLI" plan-review run --design-tmpdir "$D2" --mode loop)
+    "$CLI" plan-review run --design-tmpdir "$D2" --mode loop)
 printf '%s\n' "$run_step3_out" | grep -q '^STEP3_REVIEW_LOOP_STATUS=complete$' || fail "loop mode should finish with complete envelope"
 printf '%s\n' "$run_step3_out" | grep -q '^FINAL_ROUND_NUM=2$' || fail "loop mode should complete two review rounds"
 printf 'preserve me\n' >"$D2/plan-review/round-1/preserve.txt"

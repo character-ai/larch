@@ -3,8 +3,8 @@
 unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
-MODULE="$ROOT/python/larch/review/plan_review.py"
-NORMALIZE_MODULE="$ROOT/python/larch/review/plan_review_normalize.py"
+RUST_OWNER="$ROOT/crates/larch-cli/src/plan_review_commands.rs"
+export LARCH_BINARY="${LARCH_BINARY:-$ROOT/target/debug/larch}"
 WRAPPER="$ROOT/skills/design/scripts/design-step3-review.sh"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -132,10 +132,12 @@ if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "run":
 raise SystemExit(delegate())
 CLIPY
   chmod +x "$dir/python/cli.py"
-  cat >"$dir/scripts/larch.sh" <<'LARCH'
+cat >"$dir/scripts/larch.sh" <<'LARCH'
 #!/usr/bin/env bash
 case "${1:-} ${2:-}" in
   "session require-plugin-root"|"session validate-design-tmpdir") exit 0 ;;
+  "plan-review run") exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" "$@" ;;
+  "plan-review normalize-status"|"plan-review prelaunch-failure") exec "${LARCH_BINARY:?}" "$@" ;;
 esac
 exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" "$@"
 LARCH
@@ -155,13 +157,12 @@ wait_for_done() {
   return 1
 }
 
-grep -Fq 'step3_stage_postplan_failed' "$NORMALIZE_MODULE" || fail 'postplan-failed staging helper missing'
-grep -Fq 'failed-postplan' "$NORMALIZE_MODULE" || fail 'failed-postplan outcome not staged'
-grep -Fq 'record-escalation' "$NORMALIZE_MODULE" || fail 'record-escalation call missing'
-grep -Fq -- 'step3-review' "$MODULE" || fail 'record-escalation site missing'
-grep -Fq 'main-agent-vote-required' "$MODULE" || fail 'escalation/degradation status set missing'
-grep -Fq 'BGJOB_RC_KEY' "$NORMALIZE_MODULE" || fail 'normalizer must include BGJOB_RC in allowed/read keys'
-grep -Fq 'design-step3-review.result.env' "$NORMALIZE_MODULE" || fail 'normalizer must prefer bgjob Step 3 result env'
+grep -Fq 'SUMMARY_OUTCOME=failed-postplan' "$RUST_OWNER" || fail 'failed-postplan outcome not staged'
+grep -Fq 'record-escalation' "$RUST_OWNER" || fail 'record-escalation call missing'
+grep -Fq -- 'step3-review' "$RUST_OWNER" || fail 'record-escalation site missing'
+grep -Fq 'main-agent-vote-required' "$RUST_OWNER" || fail 'escalation/degradation status set missing'
+grep -Fq 'STEP3_NORMALIZE_ALLOW_KEYS' "$RUST_OWNER" || fail 'normalizer must use the shared result key allowlist'
+grep -Fq 'design-step3-review.result.env' "$RUST_OWNER" || fail 'normalizer must prefer bgjob Step 3 result env'
 grep -Fq 'bgjob/design-step3-review.result.env' "$SKILL_MD" || fail 'SKILL must name bgjob Step 3 result env'
 grep -Fq 'BGJOB_RC=0' "$SKILL_MD" || fail 'SKILL must gate Step 3 success on BGJOB_RC=0'
 grep -Fq 'bgjob wait --step design-step3-review' "$SKILL_MD" || fail 'SKILL must use chunked bgjob wait for Step 3'

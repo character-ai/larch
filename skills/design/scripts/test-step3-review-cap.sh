@@ -7,7 +7,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 APPROVAL_GATES="$ROOT/skills/design/references/approval-gates-gate-b.md"
-CLI="$ROOT/python/cli.py"
+CLI="$ROOT/target/debug/larch"
+RUST_OWNER="$ROOT/crates/larch-cli/src/plan_review_commands.rs"
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2
@@ -26,10 +27,8 @@ grep -Fq 'Covers cap-hit, `LOOP_STATUS=panel-failed`' "$SKILL_MD" \
 grep -Fq 'MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`' "$SKILL_MD" \
     || fail 'SKILL missing tally-error non-consumption prose'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-grep -Fq 'run_step3_review' "$ROOT/python/larch/review/plan_review.py" \
-    || fail 'plan_review.py missing Step 3 run entry point'
-grep -Fq 'run_step3_review' "$ROOT/python/larch/review/plan_review.py" \
-    || fail 'plan_review.py missing Step 3 run entry point'
+grep -Fq 'pub fn run(arguments:' "$RUST_OWNER" \
+    || fail 'Rust plan-review owner missing Step 3 run entry point'
 grep -Fq 'PLAN_REVIEW_CONTINUE_REASON=explicit-approve' "$SKILL_MD" \
     || fail 'SKILL missing explicit --per-round-approval continuation stop contract'
 grep -Fq 'Do not jump directly to Step 3b from this post-apply resume branch' "$SKILL_MD" \
@@ -53,8 +52,8 @@ grep -Fq 'design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase 
 if grep -Fq -- '--mode single' "$SKILL_MD" "$APPROVAL_GATES"; then
     fail 'SKILL/approval-gates must not retain legacy --mode single prose'
 fi
-grep -Fq 'plan-review continuation' "$ROOT/python/larch/review/plan_review_loop.py" \
-    || fail 'plan_review.py missing native continuation entry point'
+grep -Fq 'pub fn continuation(arguments:' "$RUST_OWNER" \
+    || fail 'Rust plan-review owner missing continuation entry point'
 
 TMP_PARENT="${TMPDIR:-/tmp}"
 if mkdir -p "${HOME}/.cache/larch/sessions" 2>/dev/null && [[ -w "${HOME}/.cache/larch/sessions" ]]; then
@@ -124,7 +123,7 @@ run_driver() {
     env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" \
         RUN_STEP3_TEST_DH="$design_tmpdir" \
         RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" \
-        python3 "$CLI" plan-review run \
+        "$CLI" plan-review run \
         --design-tmpdir "$design_tmpdir"
 }
 
@@ -250,7 +249,7 @@ printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'Gate-C 
 
 run_continuation() {
     local design_tmpdir="$1" approve="$2"
-    CLAUDE_PLUGIN_ROOT="$ROOT" python3 "$CLI" plan-review continuation --design-tmpdir "$design_tmpdir" --approve-requested "$approve"
+    CLAUDE_PLUGIN_ROOT="$ROOT" "$CLI" plan-review continuation --design-tmpdir "$design_tmpdir" --approve-requested "$approve"
 }
 
 echo "=== continuation helper stops before cap cleanup ==="
@@ -519,7 +518,7 @@ cat >"$DCHAIN/accepted-plan-findings.md" <<'EOF'
 EOF
 cont_out=$(run_continuation "$DCHAIN" false)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'chain first continuation should continue'
-state_out=$(CLAUDE_PLUGIN_ROOT="$ROOT" python3 "$CLI" plan-review step3-state --design-tmpdir "$DCHAIN" --auto-continuation-entry)
+state_out=$(CLAUDE_PLUGIN_ROOT="$ROOT" "$CLI" plan-review step3-state --design-tmpdir "$DCHAIN" --auto-continuation-entry)
 printf '%s\n' "$state_out" | grep -q '^STEP3_STATE=auto-continuation-entry$' || fail 'chain auto-continuation state missing'
 printf 'round1 applied plan\n' >"$DCHAIN/plan-after-round-1.txt"
 run_driver "$DCHAIN" "$chain_stub" >/dev/null

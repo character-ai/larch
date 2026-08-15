@@ -304,7 +304,7 @@ exclude = [
   # form, which agent-lint's G004/dead-script reachability does not count as a
   # structured invocation (it recognizes only the braced "${CLAUDE_PLUGIN_ROOT}/..."
   # form). The prior braced reference in design-step3-review.sh was removed when
-  # Step 3 status normalization moved to python/plan_review.py, leaving mav.sh as
+  # Step 3 status normalization moved to the Rust plan-review owner, leaving mav.sh as
   # the sole live caller, so exclude the helper explicitly as a false positive.
   # Its regression harness is Makefile-only (test-read-result-env target) and
   # follows the same G004/dead-script false-positive pattern as the other
@@ -376,9 +376,8 @@ exclude = [
   # from skills/implement/SKILL.md.
   "skills/implement/scripts/hook-stop-fail-close.sh",
   "skills/implement/scripts/hook-stop-fail-close.md",
-  # skills/design/scripts/dedup-plan-lines.py is invoked from
-  # python/plan_review.py through $DEDUP_PLAN_LINES_PY;
-  # agent-lint's G004/dead-script rule does not follow shell variable indirection.
+  # skills/design/scripts/dedup-plan-lines.py remains as a documented
+  # compatibility utility; it is not part of the Rust Step 3 loop cutover.
   "skills/design/scripts/dedup-plan-lines.py",
   # structured invoker was ported to Python (python/design_log_publish_flow.py).
   # scripts/pre-commit-shellcheck.sh is the parallel shellcheck wrapper invoked
@@ -414,14 +413,11 @@ exclude = [
   "scripts/test-effort-prose.md",
   # (sibling contract), matching the same Makefile-only pattern.
   # (sibling contract), matching the same Makefile-only pattern.
-  # python/test_plan_review.py and
-  # scripts/test-design-multi-round-integration.sh are Makefile-only
+  # scripts/test-design-multi-round-integration.sh is a Makefile-only
   # regression harnesses for the /design plan-review round-artifact
   # allowlist. The runtime library/script surfaces are referenced from
-  # python/plan_review.py and python/design_log_publish_flow.py,
+  # the Rust plan-review owner and python/design_log_publish_flow.py,
   # but the harnesses themselves are not invoked from skill prose.
-  "python/test_plan_review.py",
-  "python/test_plan_review.py",
   "scripts/test-design-multi-round-integration.sh",
   "scripts/test-design-multi-round-integration.md",
   # Recovery/helper harnesses introduced for manifest-schema recovery are
@@ -625,11 +621,7 @@ exclude = [
   "python/test_design_pause.py",
   # for python/cli.py session write-design-env (Makefile test-write-design-
   # current-env target). Same Makefile-only pattern as other design test-*.
-  "python/test_plan_review.py",
-  "python/test_plan_review.py",
   "skills/design/scripts/test-findings-classification.sh",
-  "python/test_plan_review.py",
-  "python/test_plan_review.py",
   "skills/design/scripts/decompose-prompts/decomposition-specialist.txt",
   "skills/design/scripts/decompose-prompts/dependency-analyst.txt",
   "skills/design/scripts/decompose-prompts/scope-minimalist.txt",
@@ -823,11 +815,7 @@ exclude = [
   "python/tests/design/test_design_lifecycle.py",
   "python/test_design_publish.py",
   "python/test_design_pause.py",
-  "python/test_plan_review.py",
-  "python/test_plan_review.py",
   "skills/design/scripts/test-findings-classification.md",
-  "python/test_plan_review.py",
-  "python/test_plan_review.py",
   "python/test_design_summary.py",
   "skills/pause/scripts/test-pause-skill.md",
   "scripts/test-implement-timing-rehydration.md",
@@ -894,7 +882,7 @@ exclude = [
   "scripts/larch.sh progress render-phase-detail",
   # scripts/larch.sh progress write-design-round-meta synthesizes per-round round-meta.json and
   # panel-manifest.ndjson for /design plan-review. It is invoked at runtime only
-  # from python/plan_review.py and
+  # from the Rust plan-review owner and
   # through its shared runtime entrypoint via variable-expanded
   # $PLUGIN_ROOT/scripts/... edges that G004 cannot discover.
   "scripts/larch.sh progress write-design-round-meta",

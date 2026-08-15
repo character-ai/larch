@@ -559,6 +559,9 @@ def test_design_driver_emit_plan_is_rerunnable(
     assert review_calls[0][1] is not None
     assert review_calls[1][0][1:3] == ["plan-review", "tally"]
     assert review_calls[1][1] is not None
+    assert review_calls[2][0][1:3] == ["plan-review", "finalize"]
+    assert review_calls[2][1] is not None
+    assert all(call[0][0] == str(repo_roots.larch_entrypoint(CLI.parent.parent)) for call in review_calls)
     _ = (design / "plan.txt").write_text(plan_body(header="# Plan", diff_lines=9), encoding="utf-8")
     assert design_step1.driver_main(args) == 0
     second = capsys.readouterr().out
@@ -6636,13 +6639,37 @@ def _patch_successful_codex_drafter(monkeypatch: pytest.MonkeyPatch, design: Pat
         if args[1:3] == ["agent", "launch-codex-drafter"]:
             (design / "plan.txt").write_text(plan_body(diff_lines=1), encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
-        if args[2:4] == ["plan-review", "preview"]:
+        if args[1:3] == ["plan-review", "preview"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         if args[2:4] == ["design", "dialectic-promote-candidates"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
+
+
+def test_step2b_preview_uses_verified_rust_entrypoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    seen: list[tuple[list[str], dict[str, str]]] = []
+
+    def fake_run(argv: Sequence[object], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        args = [str(item) for item in argv]
+        seen.append((args, cast("dict[str, str]", kwargs["env"])))
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout="## Implementation Plan\n", stderr="")
+
+    monkeypatch.setattr(design_step2b.subprocess, "run", fake_run)
+    design_step2b._print_step2b_plan_review_preview(  # pyright: ignore[reportPrivateUsage]
+        design_tmpdir=tmp_path,
+        plugin_root=CLI.parent.parent,
+    )
+    argv, environment = seen[0]
+    assert argv == [str(repo_roots.larch_entrypoint(CLI.parent.parent)), "plan-review", "preview", "--design-tmpdir", str(tmp_path), "--variant", "step2b"]
+    assert environment["CLAUDE_PLUGIN_ROOT"] == str(CLI.parent.parent)
+    assert environment["LARCH_QUIET_DISABLE"] == "1"
+    assert capsys.readouterr().out == "[plan-preview] ## Implementation Plan\n"
 
 
 @pytest.mark.parametrize(
@@ -6765,7 +6792,7 @@ def test_step2b_drafter_postplan_rc11_pause_after_predrafter_checkpoint(
             (design / "plan.txt").write_text(plan_body(diff_lines=1), encoding="utf-8")
             (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
             (design / ".pause-requested").write_text("", encoding="utf-8")
-        if args[2:4] == ["plan-review", "preview"]:
+        if args[1:3] == ["plan-review", "preview"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
@@ -6869,7 +6896,7 @@ def test_step2b_drafter_promotes_only_after_postplan_rc_zero(
                 stdout="DIALECTIC_CANDIDATES_WRITTEN=true\n",
                 stderr="",
             )
-        if args[2:4] == ["plan-review", "preview"]:
+        if args[1:3] == ["plan-review", "preview"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
@@ -6928,7 +6955,7 @@ def test_step2b_drafter_warns_when_dialectic_promotion_fails(
                 stdout="DIALECTIC_CANDIDATES_WRITTEN=false\nDIALECTIC_CANDIDATES_FAIL_REASON=mismatch\n",
                 stderr="",
             )
-        if args[2:4] == ["plan-review", "preview"]:
+        if args[1:3] == ["plan-review", "preview"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
@@ -6980,7 +7007,7 @@ def test_step2b_drafter_promoted_fingerprint_matches_postplan_plan(
             with redirect_stdout(buf):
                 design_dialectic.promote_candidates(design)
             return subprocess.CompletedProcess(args=args, returncode=0, stdout=buf.getvalue(), stderr="")
-        if args[2:4] == ["plan-review", "preview"]:
+        if args[1:3] == ["plan-review", "preview"]:
             return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
         return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 

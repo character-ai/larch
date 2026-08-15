@@ -44,7 +44,7 @@
 - **question**: How does `/design` Step 3 resolve accepted plan-review findings, and how does the review loop preserve progress when an external reviewer is unavailable?
 - **category**: architecture
 - **expected_provenance_count**: 2
-- **expected_keywords**: python/cli.py plan-review run, python/plan_review.py, revise-plan-with-waterfall, plan-review voter-dispatch, fallback
+- **expected_keywords**: scripts/larch.sh plan-review run, crates/larch-cli/src/plan_review_commands.rs, revise-plan-with-waterfall, plan-review voter-dispatch, fallback
 - **notes**: Architecture; should explain that Step 3 runs the plan-review loop, applies accepted findings with `revise-plan-with-waterfall.sh`, records durable round state, and uses the reviewer fallback/waterfall behavior documented for the plan-review panel.
 
 ### eval-6: parent-issue-sentinel-branches
@@ -107,7 +107,7 @@
 - **question**: What happens to a `/implement` run if `/design`'s Cursor plan-review lane times out during review, and how does external reviewer availability propagate into the resumed implementation workflow?
 - **category**: risk-assessment
 - **expected_provenance_count**: 2
-- **expected_keywords**: python/cli.py plan-review run, python/plan_review.py, plan-review voter-dispatch, cursor_available, fallback, session-env
+- **expected_keywords**: scripts/larch.sh plan-review run, crates/larch-cli/src/plan_review_commands.rs, plan-review voter-dispatch, cursor_available, fallback, session-env
 - **notes**: Risk; should explain the Step 3 fallback/degraded-review behavior, how reviewer availability is persisted through session-env/run params, and that `/implement` consumes the final issue plan rather than replaying `/design` reviewer lanes.
 
 ### eval-15: ci-fix-rebase-failure-modes

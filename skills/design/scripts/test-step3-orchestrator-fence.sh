@@ -5,16 +5,18 @@ unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDI
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+PLAN_REVIEW_BINARY="$REPO_ROOT/target/debug/larch"
 
 apply_gate_b_bypass_sentinels() {
     local design_tmpdir="$1"
     local _repo_root="$REPO_ROOT"
     CLAUDE_PLUGIN_ROOT="$_repo_root" SESSION_ENV_PATH="" CLAUDE_PID="test" DESIGN_TMPDIR="$design_tmpdir" ISSUE_NUMBER=1 \
-      python3 "$_repo_root/python/cli.py" plan-review step3-gate-b-bypass \
+      "$PLAN_REVIEW_BINARY" plan-review step3-gate-b-bypass \
       --plugin-root "$_repo_root" \
       --session-env-path /dev/null >/dev/null
 }
 export -f apply_gate_b_bypass_sentinels
+export PLAN_REVIEW_BINARY
 
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
     return 0
@@ -75,7 +77,7 @@ fail() {
 }
 
 # Mirrors skills/design/SKILL.md Step 3 thin-fence (run-step3-review.sh --mode loop handoff).
-# Display pass; Python normalizer owns safe result-env load and stdout overlay.
+# Display pass; the Rust normalizer owns safe result-env load and stdout overlay.
 apply_step3_display_pass() {
     local plan_review_out="$1"
     while IFS= read -r _line || [[ -n "$_line" ]]; do
@@ -107,7 +109,7 @@ apply_step3_handoff() {
     _stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-handoff-stdout.XXXXXX")"
     printf '%s\n' "${plan_review_out:-}" >"$_stdout_file"
     set +e
-    _normalizer_out=$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" python3 "$REPO_ROOT/python/cli.py" plan-review normalize-status \
+    _normalizer_out=$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$PLAN_REVIEW_BINARY" plan-review normalize-status \
       --design-tmpdir "$design_tmpdir" \
       --stdout-file "$_stdout_file" \
       --loop-rc "$plan_review_rc")
@@ -185,7 +187,7 @@ invoke_step3_review_wrapper() {
         printf 'BGJOB_RC=%s\n' "$review_rc" >"$_result_env"
     fi
     # Normalize via --read-result-env (same as post-DONE orchestrator step).
-    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_BINARY="$PLAN_REVIEW_BINARY" \
       "$REPO_ROOT/skills/design/scripts/design-step3-review.sh" \
       --session-env-path "$session_env" \
       --claude-pid test \

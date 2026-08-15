@@ -170,7 +170,7 @@ malformed row now warns once instead of once per internal read.
 
 - **G1 review pipeline port (#3692)**: `review gather-context`, `review dispatch-panel`, `review collect-findings`, `review check-reviewer-failure-threshold`, `review aggregate-findings`, `review prune-nit-findings`, `review reviewer-prune`, `review tally-code-votes`, `review emit-tally`, and `review log-phase` are Rust-owned through `scripts/larch.sh`; Python review core and plan-review callers reach each through the verified bootstrap and retain only documented override seams. `review_pipeline_shared.py` retains only the typed tally argv relay, while `python/compose_review.py` owns compose behavior in-process.
 
-- **C3a1 plan-review CLI façade (#3680, #8446, #8448)**: `python/plan_review.py` registers the remaining Python-owned `plan-review` verbs and delegates several loop, finalize/preview, state, and timing paths to gzip-embedded retired bash via `_run_legacy()` / `_materialize_legacy_root()`. The Rust-owned `plan-review panel-dispatch`, `voter-dispatch`, `tally`, `emit`, `emit-rejected`, three `gate-b-*`, and three accepted-audit commands live in `crates/larch-cli/src/plan_review_commands.rs`; their Python registrations and superseded Python owners are removed. Operator docs name `scripts/larch.sh plan-review <verb>` for those Rust-owned commands and `python/cli.py plan-review <verb>` for the remaining Python-owned commands.
+- **C3a1 plan-review CLI façade (#3680, #8446, #8448, #8449)**: `crates/larch-cli/src/plan_review_commands.rs` owns panel and voter dispatch, tally and audit commands, the Step 3 loop and continuation, finalize/preview, entry/state, normalization, persistence utilities, and round-artifact filters. Their Python registrations and superseded `plan_review.py` / `plan_review_loop.py` owners are removed. The loop-identity verbs remain in `larch.core.process_identity`, and `step35-settle` remains in `larch.design.design_settle`. Operator docs use `scripts/larch.sh plan-review <verb>` for Rust-owned commands.
 
 ## Per-domain migration recipe
 
@@ -307,7 +307,7 @@ Most release helpers remain behind `python/cli.py`. Every audit-runs verb is Rus
 
 - Added `python/plan_quality.py` under the existing `plan` CLI domain for command parsing, validation, plan-size checks, revision, auto-fix, optional trailers, and plan-goals composition.
 - Surviving Bash callers invoke `python3 python/cli.py plan ...` directly. No shim layer is added.
-- Drift baseline write-once moved to `python/cli.py plan-review drift-baseline` (sourced by `python/cli.py design postplan-emit`); see **C3a1 design plan-review cutover** below.
+- Drift baseline write-once moved to `scripts/larch.sh plan-review drift-baseline`; see **C3a1 design plan-review cutover** below.
 - `plan validate` preserves `VALIDATE_LOG_FILE`: it writes `$DESIGN_TMPDIR/validate-plan-commands.log` when possible, otherwise a stable temp log.
 - `python/cli.py design driver` bootstraps `PLUGIN_ROOT` when `CLAUDE_PLUGIN_ROOT` is unset.
 - Step 3 keeps `RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH` as an override while defaulting to `plan revise-waterfall`.
@@ -320,11 +320,11 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 
 ### C3a1 design plan-review cutover
 
-- The plan-review loop enters through the `plan-review` CLI domain. `python/plan_review.py` owns the remaining loop mechanics; `crates/larch-cli/src/plan_review_commands.rs` owns panel and voter dispatch plus tally, emit, Gate B, and accepted-audit commands through `scripts/larch.sh`.
-- Bash wrappers call `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review ...` directly. `design-step3-review.sh` remains the process-group wrapper for Step 3.
-- **Gzip-shim façade (interim runtime):** most remaining Python-owned `plan-review` verbs still delegate through `_run_legacy()` to gzip-embedded retired bash bodies materialized at runtime (`EMBEDDED_LEGACY_REFS` in `python/plan_review.py`). Panel and voter dispatch reuse the shared Rust waterfall launch layer, and the tally, emit, Gate B, and accepted-audit command families are Rust-owned; remaining loop behavior stays Bash until a follow-up in-process port lands. Embedded plan-review assets rewrite reviewer pruning to `review reviewer-prune` before materialization. Regenerate embedded blobs from reviewable sources when absorbed Bash behavior changes; `make lint-retired-scripts` guards deleted on-disk paths only.
+- The plan-review loop enters through `scripts/larch.sh plan-review run`. `crates/larch-cli/src/plan_review_commands.rs` owns its rounds, continuation, normalization, entry/state, finalize/preview, persistence, panel/voter dispatch, tally, emit, Gate B, accepted-audit, and round-artifact filtering contracts.
+- `design-step3-review.sh` remains the process-group wrapper for Step 3 and calls the Rust command surface through the verified bootstrap.
+- `python/larch/review/plan_review.py` and `plan_review_loop.py` are removed. Python retains only separately owned review helpers that still serve later migration leaves.
 - `dedup-plan-lines.py` remains in place. The migration does not add a standalone `snapshot-plan-round` verb and does not migrate Step 3.6 assessor scripts.
-- `step3_record_report_evidence` moved into `python/plan_review.py`; `design-step3-review.sh` no longer sources the Step 3 loop controller on result-env read failure.
+- Step 3 report evidence and result-env recovery are Rust-owned; `design-step3-review.sh` does not source a loop controller on result-env read failure.
 
 ### C3b design lifecycle direct CLI
 

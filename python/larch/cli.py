@@ -210,40 +210,11 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("plan", "optional-trailers"): ("larch.design.plan_quality", "optional_trailers_main", True),
     ("plan", "compose-goals-test"): ("larch.design.plan_quality", "compose_plan_goals_test_main", True),
     ("plan", "step1-log"): ("larch.design.design_step_log", "step1_log_main", True),
-    ("plan-review", "run"): ("larch.review.plan_review", "run_main", True),
     ("plan-review", "write-loop-identity"): ("larch.core.process_identity", "write_loop_identity_main", False),
     ("plan-review", "await-loop-identity"): ("larch.core.process_identity", "await_loop_identity_main", False),
     ("plan-review", "teardown-loop-identity"): ("larch.core.process_identity", "teardown_loop_identity_main", False),
-    ("plan-review", "normalize-status"): ("larch.review.plan_review", "normalize_step3_status_main", True),
-    ("plan-review", "finalize"): ("larch.review.plan_review", "finalize_main", True),
-    ("plan-review", "preview"): ("larch.review.plan_review", "preview_main", True),
-    ("plan-review", "persist-retally-env"): ("larch.review.plan_review", "persist_retally_env_main", True),
-    ("plan-review", "persist-round-start-s"): ("larch.review.plan_review", "persist_round_start_s_main", True),
-    ("plan-review", "step3-state"): ("larch.review.plan_review", "step3_state_main", True),
-    ("plan-review", "continuation"): ("larch.review.plan_review", "continuation_main", True),
-    ("plan-review", "prelaunch-failure"): ("larch.review.plan_review", "prelaunch_failure_main", True),
-    ("plan-review", "step3-entry"): ("larch.review.plan_review", "step3_entry_main", True),
-    ("plan-review", "step3-entry-preview"): ("larch.review.plan_review", "step3_entry_preview_main", True),
-    ("plan-review", "step3-entry-state"): ("larch.review.plan_review", "step3_entry_state_main", True),
-    ("plan-review", "step3-gate-b-bypass"): ("larch.review.plan_review", "step3_gate_b_bypass_main", True),
-    ("plan-review", "step3-mav"): ("larch.review.plan_review", "step3_mav_main", True),
     ("design", "step3b-entry"): ("larch.design.design_step3b", "step3b_entry_main", True),
-    ("plan-review", "step3b-tail"): ("larch.review.plan_review", "step3b_tail_main", True),
-    ("plan-review", "step35"): ("larch.review.plan_review", "step35_main", True),
     ("plan-review", "step35-settle"): ("larch.design.design_settle", "step35_settle_main", True),
-    ("plan-review", "json-get-bool"): ("larch.review.plan_review", "json_get_bool_main", True),
-    ("plan-review", "round-artifact-included"): ("larch.review.plan_review", "round_artifact_included_main", False),
-    ("plan-review", "round-revise-artifact-included"): (
-        "larch.review.plan_review",
-        "round_revise_artifact_included_main",
-        False,
-    ),
-    ("plan-review", "round-revise-artifact-excluded"): (
-        "larch.review.plan_review",
-        "round_revise_artifact_excluded_main",
-        False,
-    ),
-    ("plan-review", "drift-baseline"): ("larch.review.plan_review", "drift_baseline_main", False),
     ("issue", "governance-gate"): (
         "larch.issue.migration_governance",
         "governance_gate_main",
@@ -462,16 +433,7 @@ def _run_subcommand(module_name: str, func_name: str, rest_argv: list[str]) -> i
         )
         return 2
 
-    try:
-        return int(target_main(rest_argv))
-    except RuntimeError as exc:
-        plan_review_mod = sys.modules.get("larch.review.plan_review")
-        if plan_review_mod is not None:
-            plan_review_error = getattr(plan_review_mod, "PlanReviewError", None)
-            if plan_review_error is not None and isinstance(exc, plan_review_error):
-                print(f"ERROR: plan-review: {exc}", file=sys.stderr)
-                return 1
-        raise
+    return int(target_main(rest_argv))
 
 
 def main(argv: list[str] | None = None) -> int:

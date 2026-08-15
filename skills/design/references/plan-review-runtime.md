@@ -1,19 +1,19 @@
 # Plan Review Runtime Reference
-**Consumer**: `/design` Step 3 loads this reference for prompt-side contracts only: panel topology, static identity, round gates, Claude fallback archetype, semantic dedup, accepted/rejected/OOS templates, post-driver tally interpretation, and MainAgent 0-judge fallback. Scout, panel dispatch, collection, aggregation, ballot rebuild, voter dispatch, tally, and finalize writes are loop-internal to `python/plan_review.py`.
+**Consumer**: `/design` Step 3 loads this reference for prompt-side contracts only: panel topology, static identity, round gates, Claude fallback archetype, semantic dedup, accepted/rejected/OOS templates, post-driver tally interpretation, and MainAgent 0-judge fallback. Scout, panel dispatch, collection, aggregation, ballot rebuild, voter dispatch, tally, and finalize writes are internal to the Rust plan-review owner.
 
 **Contract**: `python/rendering.py` owns runtime prompts from `python/cli.py render plan-review` and `python/cli.py render voter`. `crates/larch-cli/src/plan_review_commands.rs`, reached through `scripts/larch.sh plan-review panel-dispatch`, owns runtime slot manifests, including Step 2b scouts from `$DESIGN_TMPDIR/scout-plan-manifest.json`. The same Rust owner exposes `plan-review voter-dispatch` and owns the Codex-primary voter matrix plus its one-Claude degraded floor. Prompt-side loads stay limited to Consumer.
 
 **Topology anchor**: round-gated static plus dynamic panel; keep synced with `crates/larch-cli/src/plan_review_commands.rs`.
 
-**When to load**: load once at Step 3 entry via the MANDATORY SKILL.md directive. Do NOT load during Steps 0, 1, 2a, 2b, 3.5, 3b, 4, or 5. Use only for Consumer-listed contracts; loop mechanics stay in `python/plan_review.py`.
+**When to load**: load once at Step 3 entry via the MANDATORY SKILL.md directive. Do NOT load during Steps 0, 1, 2a, 2b, 3.5, 3b, 4, or 5. Use only for Consumer-listed contracts; loop mechanics stay in `crates/larch-cli/src/plan_review_commands.rs`.
 
-**Failure logging**: reviewer/collector/voter failures and non-`OK` collector statuses are loop-internal to `python/plan_review.py` and `python/plan_review_round.py`. Prompt-side orchestration does not append failure logs in loop mode.
+**Failure logging**: reviewer/collector/voter failures and non-`OK` collector statuses are loop-internal to the Rust plan-review owner. Prompt-side orchestration does not append failure logs in loop mode.
 
 ---
 
 ## Step 3 entry preview contract
 
-SKILL.md loads this runtime slice before `design-step3-entry.sh`, which calls `python/cli.py plan-review step3-entry-preview` internally. The entry point runs `python/cli.py plan-review preview --variant step3` and emits the result under `## Plan Candidate for Review`. `.step3-entry-plan-printed` suppresses later re-entry prints.
+SKILL.md loads this runtime slice before `design-step3-entry.sh`, which calls `scripts/larch.sh plan-review step3-entry-preview` internally. The entry point runs the Rust `plan-review preview --variant step3` owner and emits the result under `## Plan Candidate for Review`. `.step3-entry-plan-printed` suppresses later re-entry prints.
 
 For a large plan, use the preview helper's parsed threshold, bounded outline, and fallback preview. Preserve its note that the operator may ask to show the full plan before voting kickoff. `plan-before-review.txt` is the Step 3 entry snapshot consumed by the Gate C accepted-findings audit.
 
@@ -56,11 +56,11 @@ Step 2b produces `$DESIGN_TMPDIR/scout-plan-manifest.json`, using `{"archetypes"
 
 ## Single-pass review
 
-`python/cli.py plan-review run` runs one pass per invocation with loop internals: panel → collect → aggregate → ballot → voter dispatch → tally. It never reads `review-round-count.txt`; omitted `--prune-round-num` defaults to `--round-num`. The outer Step 3 driver (`python/cli.py plan-review run --mode loop` via `design-step3-review.sh`) owns the cap of 2, passes `--prune-round-num`, and is sole writer of `review-round-count.txt`. Artifact `--round-num` remains the plan-review snapshot index.
+`scripts/larch.sh plan-review run` runs one pass per invocation with loop internals: panel → collect → aggregate → ballot → voter dispatch → tally. It never reads `review-round-count.txt` inside a pass; the outer loop owner tracks the count. The outer Step 3 driver (`scripts/larch.sh plan-review run --mode loop` via `design-step3-review.sh`) owns the cap of 2 and is sole writer of `review-round-count.txt`. Artifact `--round-num` remains the plan-review snapshot index.
 
 Step 2b supplies `$DESIGN_TMPDIR/scout-plan-manifest.json`. `python/cli.py scout filter-manifest` enforces cap, reserved-slug, duplicate, and prompt-safety rules. Plan rewrites before Step 3 remove stale manifests, so fallback and post-rewrite reviews run static-only until a fresh drafter materializes one.
 
-Normal `/design` Step 3 calls `design-step3-review.sh` as a foreground bgjob starter. Fresh launch stdout is exactly `BGJOB_STATUS=STARTED STEP=design-step3-review PGID=<n>`. A live identity-valid registry row or a regular non-symlink Step 3 result env means do not relaunch; run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob wait --step design-step3-review --tmpdir "$DESIGN_TMPDIR" --max-wait-s 270`. The child runs `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run --mode loop`; `python/plan_review.py` owns rounds, accepted-finding apply, dedup/postplan, plan rewrites, and `STEP3_REVIEW_LOOP_STATUS` merge KVs. Bail-outs resume the same round through the same wrapper with `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND"` and durable `.step3-round-N.phase`.
+Normal `/design` Step 3 calls `design-step3-review.sh` as a foreground bgjob starter. Fresh launch stdout is exactly `BGJOB_STATUS=STARTED STEP=design-step3-review PGID=<n>`. A live identity-valid registry row or a regular non-symlink Step 3 result env means do not relaunch; run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob wait --step design-step3-review --tmpdir "$DESIGN_TMPDIR" --max-wait-s 270`. The child runs `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" plan-review run --mode loop`; the Rust owner handles rounds, accepted-finding apply, dedup/postplan, plan rewrites, and `STEP3_REVIEW_LOOP_STATUS` merge KVs. Bail-outs resume the same round through the same wrapper with `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND"` and durable `.step3-round-N.phase`.
 
 After `BGJOB_STATUS=DONE`, read the result env and require `BGJOB_RC=0` plus loop envelope KVs before normal routing. `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env` is completion truth; legacy `$DESIGN_TMPDIR/.step3-review-result.env` is only merge input and absent-bgjob fallback. `BGJOB_STATUS=WAIT` means run the identical wait next. `BGJOB_STATUS=DEAD`, `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, non-zero `BGJOB_RC`, or missing route KVs use the existing Step 3 failure/stall path.
 
@@ -78,7 +78,7 @@ Single-pass `LOOP_STATUS` values remain `complete`, `zero-findings-degraded-pane
 - **Gate C audit fidelity source**: trace final `plan.txt` against the filtered accepted corpus selected above for all Step 3 applied changes across rounds. When that selected corpus is `accepted-plan-findings-all.md`, it is the end-state applied set; otherwise `accepted-plan-findings.md` is only the current-round Gate B apply set. When Gate B one-by-one skips are present, filter the selected corpus with `plan-review filter-gate-b-skipped` before classification and fidelity checks.
 - **`oos-accepted-design.md` cumulation**: `_accumulate_round_oos` appends accepted OOS before successful terminal status mapping so cumulative OOS survives automatic single-pass reruns. Gate C(c) re-entry overwrites those artifacts. See `approval-gates.md` State Invariants (**No preserved findings across manual review runs**) for cross-Gate-C reruns.
 - **Severity precedence (Gate B)**: see `approval-gates-gate-b.md` **Severity classification contract** for the Gate B presentation rule.
-- **Artifacts**: per-entry forensics live under `plan-review/round-N/` plus `round-summary.env`; canonical allowlist in `python/plan_review.py`. Gate B reads active accepted/rejected/OOS artifacts, not passive post-apply summaries.
+- **Artifacts**: per-entry forensics live under `plan-review/round-N/` plus `round-summary.env`; the canonical allowlist is Rust-owned. Gate B reads active accepted/rejected/OOS artifacts, not passive post-apply summaries.
 
 ---
 
@@ -86,7 +86,7 @@ Single-pass `LOOP_STATUS` values remain `complete`, `zero-findings-degraded-pane
 
 Claude is NOT a primary plan reviewer. The external panel is default: present vendors per archetype in round 1, then round 2 prunes on round-1 productivity under the fixed cap of 2; optional dynamic `dyn-*` pairs appear only when scouting succeeds. Under `--no-fallback` there is **no per-slot Claude pad** when one external fails, and no generic Codex replacement row. Plan-review voters use three Codex-primary slots when either external vendor is available. When both are absent, only slot 1 runs as a Claude floor voter.
 
-The Claude floor voter is **not** an Agent-tool subagent: `python/plan_review.py` drives `scripts/larch.sh plan-review voter-dispatch`, whose shared waterfall owner launches Claude through `scripts/larch.sh agent launch-claude-review`. The prompt and rubric match the historical Agent-tool contract, but execution is subprocess-scoped like other Rust-owned Claude-review lanes.
+The Claude floor voter is **not** an Agent-tool subagent: the Rust plan-review loop drives `scripts/larch.sh plan-review voter-dispatch`, whose shared waterfall owner launches Claude through `scripts/larch.sh agent launch-claude-review`. The prompt and rubric match the historical Agent-tool contract, but execution is subprocess-scoped like other Rust-owned Claude-review lanes.
 
 Use the Code Reviewer archetype from `${CLAUDE_PLUGIN_ROOT}/skills/shared/reviewer-templates.md`, filling in the variables for **plan review**:
 
@@ -117,13 +117,13 @@ Voter prompts are emitted at runtime by `python/cli.py render voter` through `sc
 
 ## Ballot file handling
 
-Ballot rebuild, proposer-map writes, validation, anonymizing rewrites, and voter prompt path references are loop-internal to `python/plan_review.py`. There is no prompt-side Write-tool ballot authoring in loop mode. The deferred MainAgent wrapper obtains `BALLOT_PATH` from `design-step3-mav.sh --phase pre`; use that trusted path instead of constructing one inline.
+Ballot rebuild, proposer-map writes, validation, anonymizing rewrites, and voter prompt path references are loop-internal to the Rust plan-review owner. There is no prompt-side Write-tool ballot authoring in loop mode. The deferred MainAgent wrapper obtains `BALLOT_PATH` from `design-step3-mav.sh --phase pre`; use that trusted path instead of constructing one inline.
 
 ---
 
 ## Collecting External Reviewer Results
 
-Reviewer dispatch, collection, structured validation, failure logging, finding ingestion, and zero-findings artifacts are loop-internal to `python/plan_review.py`. Prompt-side orchestration needs only these dedup rules for recovery or adjudication paths that rebuild or interpret ballots.
+Reviewer dispatch, collection, structured validation, failure logging, finding ingestion, and zero-findings artifacts are loop-internal to the Rust plan-review owner. Prompt-side orchestration needs only these dedup rules for recovery or adjudication paths that rebuild or interpret ballots.
 
 1. Deduplicate in-scope findings semantically with main-agent judgment. Read each finding's `what`, `scenario_or_breakage`, and `suggested_fix`; group the same underlying concern even when phrasing, `file:line` locations, or `focus_area` differ. Do NOT cluster mechanically by `(focus_area, location, what-prefix)`; that misses paraphrases. Assign stable sequential IDs (`FINDING_1`, `FINDING_2`, etc.) and note proposer reviewer(s).
 2. Deduplicate out-of-scope observations the same way: read body fields, group by meaning, not string keys, and assign `OOS_` IDs (`OOS_1`, `OOS_2`, etc.).
@@ -133,7 +133,7 @@ Reviewer dispatch, collection, structured validation, failure logging, finding i
 
 ## Voting Panel launch-order and tally
 
-Voting dispatch, eligible-voter filtering, parse-rate classification, tallying, and scoreboard writes are loop-internal to `python/plan_review.py`. Thresholds, OOS voting semantics, and competition scoring live in `skills/shared/voting-protocol.md`.
+Voting dispatch, eligible-voter filtering, parse-rate classification, tallying, and scoreboard writes are loop-internal to the Rust plan-review owner. Thresholds, OOS voting semantics, and competition scoring live in `skills/shared/voting-protocol.md`.
 
 **Voter line format**: Voters output one anchored line per ballot item. The vote token remains immediately after the ID, followed by lowercase forensic rating axes:
 
@@ -152,7 +152,7 @@ After the driver returns, read `$DESIGN_TMPDIR/voting-tally.md` for vote breakdo
 
 ## Finalize Plan Review
 
-Finalize writes are loop-internal to `python/plan_review.py`. After the driver returns, read these artifacts instead of hand-writing replacements:
+Finalize writes are loop-internal to the Rust plan-review owner. After the driver returns, read these artifacts instead of hand-writing replacements:
 
 - `$DESIGN_TMPDIR/accepted-plan-findings.md` contains accepted in-scope `FINDING_*` items for Gate B or loop bail-out handling. It may be empty.
 - `$DESIGN_TMPDIR/rejected-findings.md` contains rejected in-scope findings using the Track Rejected template below. It may be empty.
@@ -171,7 +171,7 @@ Finalize writes are loop-internal to `python/plan_review.py`. After the driver r
 - **Proposed resolution**: <suggested change to the plan; surfaced to Step 3.5 Gate B for default auto-apply or explicit `--per-round-approval` review>
 ```
 
-When TSV omits `severity`, `python/plan_review.py` renders `- **Severity**: nit` (see **Severity default** under Single-pass review). The loop appends `. Scenario: <text>` to `- **Concern**:` when TSV has a non-empty scenario column; manual blocks without this suffix remain valid.
+When TSV omits `severity`, the Rust owner renders `- **Severity**: nit` (see **Severity default** under Single-pass review). The loop appends `. Scenario: <text>` to `- **Concern**:` when TSV has a non-empty scenario column; manual blocks without this suffix remain valid.
 
 ### Accepted OOS format (byte-preserved)
 

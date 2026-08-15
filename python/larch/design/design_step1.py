@@ -280,7 +280,8 @@ def driver_main(argv: Sequence[str]) -> int:
             command = [str(larch_entrypoint(root)), "plan-review", "tally", "--design-tmpdir", str(design_tmpdir), *action_args]
             command_env = larch_entrypoint_env(root)
         elif action == "FINALIZE":
-            command = [sys.executable, str(root / "python" / "cli.py"), "plan-review", "finalize", "--design-tmpdir", str(design_tmpdir), *action_args]
+            command = [str(larch_entrypoint(root)), "plan-review", "finalize", "--design-tmpdir", str(design_tmpdir), *action_args]
+            command_env = larch_entrypoint_env(root)
         else:
             env: dict[str, str] = os.environ.copy()
             env["DESIGN_TMPDIR"] = str(design_tmpdir)

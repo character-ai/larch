@@ -38,7 +38,7 @@ Inline Step 2b fallback may call `python/cli.py design dialectic-write-candidate
 Any post-Step-2b `plan.txt` rewrite clears auto candidates and cached auto digest after the mutation chain succeeds. Authoritative choke points:
 
 1. `python/cli.py design step35-settle` after successful post-dedup `gate-b-dedup`, and again after successful `step2b-postplan` when `POSTPLAN_RC=0`.
-2. `python/plan_review.py` at successful exit of `_run_dedup` when rc is 0, including the `plan_changed` early-return path.
+2. The Rust plan-review owner at successful exit of its dedup pipeline when rc is 0, including the unchanged-plan path.
 3. `python/design_postplan.py` / `python/cli.py design step2b-postplan` when `plan.txt` bytes change by entry/exit hash compare.
 
 Do not add prompt-side clears before dedup completes. `dialectic-clear-stale` removes stale auto candidates, stale digest/status, and `dialectic-manual-request.txt` unless fingerprint-valid manual candidates and manual digest/status still match the current plan. A lone manual request file never triggers deferred loading.

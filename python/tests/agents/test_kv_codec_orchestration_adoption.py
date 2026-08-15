@@ -19,7 +19,6 @@ from larch.implement import (
     step_7a,
 )
 from larch.review import (
-    plan_review_loop,
     plan_review_normalize,
     review_pipeline_shared,
 )
@@ -145,17 +144,6 @@ def test_step_7a_first_rc_last_wins(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     )
     assert any("rc=42" in entry for entry in issues)
     assert not sidecar.exists()
-
-
-def test_resolve_findings_file_uses_last_value(tmp_path: Path) -> None:
-    findings = tmp_path / "custom-findings.md"
-    _ = findings.write_text("ok\n", encoding="utf-8")
-    approval = tmp_path / ".gate-b-per-round-approval-round-1.env"
-    _ = approval.write_text(
-        f"FINDINGS_FILE={tmp_path / 'other.md'}\nFINDINGS_FILE={findings}\n",
-        encoding="utf-8",
-    )
-    assert plan_review_loop._resolve_findings_file(tmpdir=tmp_path, round_num=1) == findings.resolve()
 
 
 def test_step3_overlay_allowlist_last_wins_and_prints_warn(

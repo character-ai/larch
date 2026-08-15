@@ -95,7 +95,7 @@ If the baseline file is a symlink, missing either key, or contains a non-integer
 
 **Site-aware retained hard prompts**: initial/discussion Step 2b.5, Gate B, and retained Step 2b.5 all use Split/Override/Cancel. Override writes `oversize_override: operator` to `plan.txt` and deletes stale `composed-plan.md`.
 
-Merged mode treats rc 2/3 nonfatally in the driver; `python/plan_review.py` uses the same warn-and-continue contract and gates `partition_requested` handoff on plan-size rc=0.
+Merged mode treats rc 2/3 nonfatally in the driver; the Rust plan-review owner uses the same warn-and-continue contract and gates `partition_requested` handoff on plan-size rc=0.
 
 ## Edit in sync
 

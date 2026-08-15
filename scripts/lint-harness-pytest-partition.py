@@ -55,7 +55,6 @@ ENFORCED = (
     # coverage gaps / overlaps, closed into strict partitions with negligible
     # shard-timing shift (each catch-all absorbs only a handful of tests).
     "python/tests/implement/test_finalize.py",
-    "python/tests/review/test_plan_review.py",
     # #4459 Bucket 1: files that previously paid full-file pytest runtime
     # under several target names, now sliced into strict per-target partitions.
     "python/tests/report/test_run_logs.py",

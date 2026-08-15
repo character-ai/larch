@@ -71,6 +71,9 @@ if [[ "\${1:-}" == voting && "\${2:-}" == findings-classification-header ]]; the
     printf 'finding_id\tfinding_reviewers\tvoting_result\n'
     exit 0
 fi
+if [[ "\${1:-}" == plan-review && "\${2:-}" == persist-retally-env ]]; then
+    exec "$ROOT/target/debug/larch" "\$@"
+fi
 if [[ "\${1:-}" == plan-review && "\${2:-}" == tally ]]; then
     shift 2
     ballot="" design="" voter="" classification=""

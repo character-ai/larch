@@ -29,7 +29,7 @@ Run renderer commands as `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design r
 4. **Gate B apply contract**: by default (`approve_requested=false`) Gate B **auto-applies** every accepted in-scope finding with no prompt. Under `--per-round-approval` (`approve_requested=true`) it prompts before revising `plan.txt`, and rewriting runs only after **Apply all** or applied individual findings in **Go through each**. It never asks again for already-approved apply actions. Gate A and Gate C never auto-revise `plan.txt`; Gate A may revise it only for user-resolved discussion outcomes. Gate B never treats `discussion-round2.md` as patch instructions. The script-internal Step 3 loop applies accepted findings on the happy path via `python/cli.py plan revise-waterfall`; prompt-side Gate B applies only on loop bail-outs. There is no persisted mode state; each Gate B entry recomputes UX from `approve_requested`.
 
 <!-- loop-mode review contract -->
-In loop mode, accepted findings are applied inside `python/plan_review.py` before `STEP3_REVIEW_LOOP_STATUS=complete`. Prompt-side Gate B applies only on loop bail-outs; under `--per-round-approval` it asks explicitly: Apply all / Go through each / Switch to discussion mode.
+In loop mode, accepted findings are applied inside the Rust plan-review owner before `STEP3_REVIEW_LOOP_STATUS=complete`. Prompt-side Gate B applies only on loop bail-outs; under `--per-round-approval` it asks explicitly: Apply all / Go through each / Switch to discussion mode.
 
 Step 5c missing or empty `$DESIGN_TMPDIR/composed-plan.md` is a file-precondition defect. Recovery must compose Step 5c item 1 first, then re-run `design-step5c.sh --fresh-attempt`. Skip auto-repair and do not offer Override.
 
