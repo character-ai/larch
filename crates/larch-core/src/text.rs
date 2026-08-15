@@ -281,7 +281,8 @@ pub fn balanced_fence_line_indices<S: AsRef<str>>(lines: &[S]) -> BTreeSet<usize
 
 /// Match the Python fence-marker pattern against an already-stripped line: at
 /// least three backticks or tildes, then an arbitrary suffix.
-fn fence_marker(line: &str) -> Option<(char, usize, &str)> {
+#[must_use]
+pub fn fence_marker(line: &str) -> Option<(char, usize, &str)> {
     let marker = line.chars().next()?;
     if marker != '`' && marker != '~' {
         return None;

@@ -224,6 +224,13 @@ GitHub client and never contacts a non-loopback address. Always finish the stub
 so unconsumed exchanges fail the test. Fixture code must not call
 `set_current_dir`, `set_var`, or `remove_var`.
 
+`larch_core::design` owns the plan-grammar and plan-quality analysis core
+ported in #8575: heading and trailer parsing, M1/M2 validation with injected
+tracked paths, optional metadata, size-trigger assessment, and plan-command
+extraction. Golden parity for command extraction reuses
+`skills/design/scripts/fixtures/parse-plan-commands`. Later command leaves
+register CLI verbs; this core stays network-free and filesystem-bounded.
+
 ## Test boundaries
 
 - Unit tests live in a crate-local `#[cfg(test)]` module. They cover private

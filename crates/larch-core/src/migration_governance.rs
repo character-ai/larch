@@ -936,66 +936,7 @@ fn has_glob(path: &str) -> bool {
 }
 
 fn scope_glob_matches(name: &str, pattern: &str) -> bool {
-    let name = name.chars().collect::<Vec<_>>();
-    let pattern = pattern.chars().collect::<Vec<_>>();
-    let (mut name_index, mut pattern_index) = (0, 0);
-    let (mut star, mut resume) = (None, 0);
-    while name_index < name.len() {
-        if let Some(next) = glob_atom_end(&pattern, pattern_index, name[name_index]) {
-            name_index += 1;
-            pattern_index = next;
-        } else if pattern.get(pattern_index) == Some(&'*') {
-            star = Some(pattern_index);
-            pattern_index += 1;
-            resume = name_index;
-        } else if let Some(index) = star {
-            pattern_index = index + 1;
-            resume += 1;
-            name_index = resume;
-        } else {
-            return false;
-        }
-    }
-    while pattern.get(pattern_index) == Some(&'*') {
-        pattern_index += 1;
-    }
-    pattern_index == pattern.len()
-}
-
-fn glob_atom_end(pattern: &[char], index: usize, value: char) -> Option<usize> {
-    match pattern.get(index) {
-        Some('?') => Some(index + 1),
-        Some('[') => match glob_class(pattern, index, value) {
-            Some((end, true)) => Some(end),
-            Some(_) => None,
-            None => (value == '[').then_some(index + 1),
-        },
-        Some(expected) if *expected == value => Some(index + 1),
-        _ => None,
-    }
-}
-
-fn glob_class(pattern: &[char], index: usize, value: char) -> Option<(usize, bool)> {
-    let mut start = index + 1;
-    let negated = pattern.get(start) == Some(&'!');
-    start += usize::from(negated);
-    let mut end = start + usize::from(pattern.get(start) == Some(&']'));
-    while end < pattern.len() && pattern[end] != ']' {
-        end += 1;
-    }
-    (end < pattern.len()).then_some(())?;
-    let mut cursor = start;
-    let mut matched = false;
-    while cursor < end {
-        if cursor + 2 < end && pattern[cursor + 1] == '-' {
-            matched |= pattern[cursor] <= value && value <= pattern[cursor + 2];
-            cursor += 3;
-        } else {
-            matched |= pattern[cursor] == value;
-            cursor += 1;
-        }
-    }
-    Some((end + 1, matched != negated))
+    crate::glob_matches(name, pattern)
 }
 
 fn scope_file_map(files: &[ScopeFile]) -> Result<BTreeMap<String, String>, ScopeFingerprintDefect> {
