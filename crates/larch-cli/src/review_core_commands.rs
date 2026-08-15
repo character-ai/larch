@@ -2261,6 +2261,52 @@ mod tests {
     use std::cell::RefCell;
     use tempfile::TempDir;
 
+    fn fixture_options(sandbox: &TempDir) -> CoreOptions {
+        let args = [
+            "--mode",
+            "diff",
+            "--output-dir",
+            sandbox.path().to_str().expect("utf8"),
+            "--codex-available",
+            "true",
+            "--cursor-available",
+            "true",
+        ]
+        .into_iter()
+        .map(OsString::from)
+        .collect::<Vec<_>>();
+        parse_core_options(&args).expect("valid fixture arguments")
+    }
+
+    fn completed(stdout: impl Into<String>) -> Output {
+        Output {
+            rc: 0,
+            stdout: stdout.into(),
+            stderr: String::new(),
+        }
+    }
+
+    fn successful_dispatch(sandbox: &TempDir) -> Output {
+        let manifest = sandbox.path().join("panel-manifest.ndjson");
+        fs::write(&manifest, "").expect("manifest");
+        completed(format!(
+            "PANEL_MODE=waterfall\nPANEL_SHAPE=hard\nPANEL_TIER=MODERATE\nPANEL_MANIFEST={}\nSCOUT_STATUS=na\nDYNAMIC_SLOTS=0\nSTATIC_SLOT_COUNT=0\nPANEL_PRUNED_EMPTY=false\nSLOT_COUNT=1\nLAUNCHED_SLOTS=1\n",
+            path(&manifest),
+        ))
+    }
+
+    fn prepare_successful_collection(sandbox: &TempDir) {
+        fs::write(
+            sandbox.path().join("collector-results.env"),
+            "REVIEWER_FILE=none\nSTATUS=OK\n",
+        )
+        .expect("collector results");
+    }
+
+    fn canonical_finding() -> &'static str {
+        "### FINDING_1: correctness: source: concrete detail\n- **Reviewer(s)**: alpha\n- **Concern**: concrete\n"
+    }
+
     #[test]
     fn core_rejects_invalid_tier_before_spawning_a_phase() {
         let args = [
@@ -2629,6 +2675,581 @@ mod tests {
             read_text(&sandbox.path().join("review-core-threshold.env"))
                 .contains("COVERAGE_GATE_REASON=static reviewer coverage satisfied")
         );
+    }
+
+    #[test]
+    fn core_zero_findings_runs_the_compatibility_tally_and_restores_oos() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let options = fixture_options(&sandbox);
+        prepare_successful_collection(&sandbox);
+        fs::write(
+            sandbox.path().join("oos-accepted-review.md"),
+            "pre-existing OOS artifact\n",
+        )
+        .expect("oos fixture");
+        let calls = RefCell::new(Vec::new());
+
+        let result = run_core_with(&options, &|command| {
+            calls.borrow_mut().push(command[1].clone());
+            Ok(match command[1].as_str() {
+                "gather-context" => completed("MODE=diff\n"),
+                "dispatch-panel" => successful_dispatch(&sandbox),
+                "collect-findings" => completed("FINDINGS_COUNT=0\n"),
+                "check-reviewer-failure-threshold" => {
+                    completed("THRESHOLD_OK=true\nTHRESHOLD_REASON=\nNOT_SUBSTANTIVE_SLOTS=0\n")
+                }
+                "tally-code-votes" => completed("TALLY_STATUS=ok\nVOTING_TALLY_FILE=votes.md\n"),
+                "emit-tally" => Output::default(),
+                phase => panic!("unexpected phase: {phase}"),
+            })
+        });
+
+        assert_eq!(result.rc, 0);
+        assert_eq!(
+            calls.into_inner(),
+            [
+                "gather-context",
+                "dispatch-panel",
+                "collect-findings",
+                "check-reviewer-failure-threshold",
+                "tally-code-votes",
+                "emit-tally",
+            ]
+        );
+        assert!(
+            result
+                .rows
+                .contains(&row("REVIEW_CORE_STATUS", "zero-findings"))
+        );
+        assert!(result.rows.contains(&row("VOTING_TALLY_FILE", "votes.md")));
+        assert_eq!(
+            read_text(&sandbox.path().join("oos-accepted-review.md")),
+            "pre-existing OOS artifact\n"
+        );
+    }
+
+    #[test]
+    fn core_threshold_failure_emits_the_panel_failure_envelope() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let options = fixture_options(&sandbox);
+        prepare_successful_collection(&sandbox);
+        let calls = RefCell::new(Vec::new());
+
+        let result = run_core_with(&options, &|command| {
+            calls.borrow_mut().push(command[1].clone());
+            Ok(match command[1].as_str() {
+                "gather-context" => completed("MODE=diff\n"),
+                "dispatch-panel" => successful_dispatch(&sandbox),
+                "collect-findings" => completed("FINDINGS_COUNT=1\n"),
+                "check-reviewer-failure-threshold" => {
+                    completed("THRESHOLD_OK=false\nTHRESHOLD_REASON=reviewer threshold exceeded\n")
+                }
+                "emit-tally" => Output::default(),
+                phase => panic!("unexpected phase: {phase}"),
+            })
+        });
+
+        assert_eq!(result.rc, 2);
+        assert_eq!(
+            calls.into_inner(),
+            [
+                "gather-context",
+                "dispatch-panel",
+                "collect-findings",
+                "check-reviewer-failure-threshold",
+                "emit-tally",
+            ]
+        );
+        assert!(
+            result
+                .rows
+                .contains(&row("REVIEW_CORE_STATUS", "panel-failed"))
+        );
+        assert!(
+            result
+                .rows
+                .contains(&row("THRESHOLD_REASON", "reviewer threshold exceeded"))
+        );
+        assert_eq!(
+            read_text(&sandbox.path().join("review-core-panel-failed-tally.env")),
+            "ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nEXONERATED_COUNT=0\nNEUTRAL_COUNT=0\n"
+        );
+    }
+
+    #[test]
+    fn core_validation_exhaustion_keeps_the_voting_and_classification_protocol() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let options = fixture_options(&sandbox);
+        prepare_successful_collection(&sandbox);
+        fs::write(sandbox.path().join("findings.md"), canonical_finding()).expect("findings");
+        let voters = (1..=3)
+            .map(|index| sandbox.path().join(format!("voter-{index}.txt")))
+            .collect::<Vec<_>>();
+        for voter in &voters {
+            fs::write(voter, "vote\n").expect("voter");
+        }
+        let classification = sandbox.path().join("classification.tsv");
+        fs::write(&classification, "FINDING_1\taccepted\n").expect("classification");
+        let calls = RefCell::new(Vec::new());
+
+        let result = run_core_with(&options, &|command| {
+            calls.borrow_mut().push(command[1].clone());
+            Ok(match command[1].as_str() {
+                "gather-context" => completed("MODE=diff\n"),
+                "dispatch-panel" => successful_dispatch(&sandbox),
+                "collect-findings" => completed("FINDINGS_COUNT=1\n"),
+                "check-reviewer-failure-threshold" => {
+                    completed("THRESHOLD_OK=true\nTHRESHOLD_REASON=\nNOT_SUBSTANTIVE_SLOTS=0\n")
+                }
+                "prune-nit-findings" => {
+                    completed("PRUNED_COUNT=0\nINSCOPE_REMAINING=1\nSTATUS=ok\n")
+                }
+                "aggregate-findings" => completed("REASON=validation-exhausted\n"),
+                "dispatch-voters" => completed(format!(
+                    "VOTER_1_PATH={}\nVOTER_1_STATUS=complete\nVOTER_1_TOOL=codex-validity\nVOTER_2_PATH={}\nVOTER_2_STATUS=complete\nVOTER_2_TOOL=codex-plan-fidelity\nVOTER_3_PATH={}\nVOTER_3_STATUS=complete\nVOTER_3_TOOL=codex-pragmatism\n",
+                    path(&voters[0]),
+                    path(&voters[1]),
+                    path(&voters[2]),
+                )),
+                "tally-code-votes" => completed(format!(
+                    "TALLY_STATUS=ok\nFINDINGS_CLASSIFICATION_TSV_FILE={}\n",
+                    path(&classification),
+                )),
+                "emit-tally" => Output::default(),
+                phase => panic!("unexpected phase: {phase}"),
+            })
+        });
+
+        assert_eq!(result.rc, 2);
+        assert_eq!(
+            result
+                .rows
+                .iter()
+                .find(|(key, _)| key == "REVIEW_CORE_STATUS"),
+            Some(&row(
+                "REVIEW_CORE_STATUS",
+                "aggregator-validation-exhausted"
+            ))
+        );
+        assert!(result.rows.contains(&row(
+            "FINDINGS_CLASSIFICATION_TSV_FILE",
+            path(&classification)
+        )));
+        assert!(read_text(&sandbox.path().join("findings.md")).contains("anonymous"));
+        assert!(
+            read_text(&sandbox.path().join("findings-classification-round-map.env"))
+                .contains("FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=")
+        );
+        assert_eq!(
+            calls.into_inner(),
+            [
+                "gather-context",
+                "dispatch-panel",
+                "collect-findings",
+                "check-reviewer-failure-threshold",
+                "prune-nit-findings",
+                "aggregate-findings",
+                "prune-nit-findings",
+                "dispatch-voters",
+                "tally-code-votes",
+                "emit-tally",
+            ]
+        );
+    }
+
+    #[test]
+    fn core_main_agent_vote_preserves_the_nonterminal_review_result() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let options = fixture_options(&sandbox);
+        prepare_successful_collection(&sandbox);
+        fs::write(sandbox.path().join("findings.md"), canonical_finding()).expect("findings");
+        let voters = (1..=3)
+            .map(|index| sandbox.path().join(format!("voter-{index}.txt")))
+            .collect::<Vec<_>>();
+        for voter in &voters {
+            fs::write(voter, "vote\n").expect("voter");
+        }
+
+        let result = run_core_with(&options, &|command| {
+            Ok(match command[1].as_str() {
+                "gather-context" => completed("MODE=diff\n"),
+                "dispatch-panel" => successful_dispatch(&sandbox),
+                "collect-findings" => completed("FINDINGS_COUNT=1\n"),
+                "check-reviewer-failure-threshold" => {
+                    completed("THRESHOLD_OK=true\nTHRESHOLD_REASON=\nNOT_SUBSTANTIVE_SLOTS=0\n")
+                }
+                "prune-nit-findings" => {
+                    completed("PRUNED_COUNT=0\nINSCOPE_REMAINING=1\nSTATUS=ok\n")
+                }
+                "aggregate-findings" => completed("REASON=ok\nMERGED_COUNT=1\n"),
+                "dispatch-voters" => completed(format!(
+                    "VOTER_1_PATH={}\nVOTER_1_STATUS=complete\nVOTER_2_PATH={}\nVOTER_2_STATUS=complete\nVOTER_3_PATH={}\nVOTER_3_STATUS=complete\n",
+                    path(&voters[0]),
+                    path(&voters[1]),
+                    path(&voters[2]),
+                )),
+                "tally-code-votes" => {
+                    completed("TALLY_STATUS=main-agent-vote-required\nOUT_OF_SCOPE_DRIFT_COUNT=7\n")
+                }
+                "emit-tally" => Output::default(),
+                phase => panic!("unexpected phase: {phase}"),
+            })
+        });
+
+        assert_eq!(result.rc, 0);
+        assert!(
+            result
+                .rows
+                .contains(&row("REVIEW_CORE_STATUS", "main-agent-vote-required"))
+        );
+        assert!(result.rows.contains(&row("OUT_OF_SCOPE_DRIFT_COUNT", "7")));
+        assert_eq!(read_text(&sandbox.path().join("rejected-findings.md")), "");
+    }
+
+    #[test]
+    fn core_nit_pruning_to_zero_uses_the_zero_findings_vote_path() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let options = fixture_options(&sandbox);
+        prepare_successful_collection(&sandbox);
+        let findings = sandbox.path().join("findings.md");
+        fs::write(&findings, canonical_finding()).expect("findings");
+        let calls = RefCell::new(Vec::new());
+
+        let result = run_core_with(&options, &|command| {
+            calls.borrow_mut().push(command[1].clone());
+            Ok(match command[1].as_str() {
+                "gather-context" => completed("MODE=diff\n"),
+                "dispatch-panel" => successful_dispatch(&sandbox),
+                "collect-findings" => completed("FINDINGS_COUNT=1\n"),
+                "check-reviewer-failure-threshold" => {
+                    completed("THRESHOLD_OK=true\nTHRESHOLD_REASON=\nNOT_SUBSTANTIVE_SLOTS=0\n")
+                }
+                "prune-nit-findings" => {
+                    fs::write(&findings, "").expect("pruned ballot");
+                    completed("PRUNED_COUNT=1\nINSCOPE_REMAINING=0\nSTATUS=ok\n")
+                }
+                "tally-code-votes" => completed("TALLY_STATUS=ok\n"),
+                "emit-tally" => Output::default(),
+                phase => panic!("unexpected phase: {phase}"),
+            })
+        });
+
+        assert_eq!(result.rc, 0);
+        assert!(
+            result
+                .rows
+                .contains(&row("REVIEW_CORE_STATUS", "zero-findings"))
+        );
+        assert_eq!(
+            calls.into_inner(),
+            [
+                "gather-context",
+                "dispatch-panel",
+                "collect-findings",
+                "check-reviewer-failure-threshold",
+                "prune-nit-findings",
+                "tally-code-votes",
+                "emit-tally",
+            ]
+        );
+    }
+
+    #[test]
+    fn static_coverage_accounts_for_collector_output_and_straggler_exceptions() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let manifest = sandbox.path().join("panel-manifest.ndjson");
+        let correctness = sandbox
+            .path()
+            .join("codex-specialist-correctness-output.txt");
+        let edge_cases = sandbox
+            .path()
+            .join("codex-specialist-edge-cases-output.txt");
+        let testing = sandbox.path().join("cursor-specialist-testing-output.txt");
+        for output in [&correctness, &edge_cases, &testing] {
+            fs::write(output, "review output\n").expect("review output");
+        }
+        fs::write(
+            &manifest,
+            format!(
+                "{{\"agent\":\"codex\",\"output\":\"{}\"}}\n{{\"agent\":\"codex\",\"output\":\"{}\"}}\n{{\"agent\":\"cursor\",\"output\":\"{}\"}}\n",
+                path(&correctness),
+                path(&edge_cases),
+                path(&testing),
+            ),
+        )
+        .expect("manifest");
+        let collector = sandbox.path().join("collector-results.env");
+        fs::write(
+            &collector,
+            format!(
+                "REVIEWER_FILE={}\nSTATUS=OK\n\nREVIEWER_FILE={}\nSTATUS=NOT_SUBSTANTIVE\n\nREVIEWER_FILE={}\nSTATUS=FAILED\n",
+                path(&correctness),
+                path(&edge_cases),
+                path(&testing),
+            ),
+        )
+        .expect("collector results");
+        let dropped = sandbox.path().join("dropped-slots.tsv");
+        fs::write(&dropped, "testing\tcursor\tstraggler-dropped\n").expect("dropped slots");
+
+        assert_eq!(
+            static_coverage_reason(
+                &collector,
+                &manifest,
+                &[path(&correctness).to_owned(), path(&edge_cases).to_owned()],
+                &dropped,
+            ),
+            None
+        );
+        fs::write(&dropped, "").expect("clear dropped slots");
+        assert_eq!(
+            static_coverage_reason(&collector, &manifest, &[], &dropped),
+            Some("no successful static reviewer for archetype(s): testing".to_owned())
+        );
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)] // One integration-shaped fixture preserves the coupled compatibility artifacts.
+    fn core_zero_findings_forwards_optional_artifacts_and_records_prune_warnings() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let review = sandbox.path().join("review");
+        let session_env = sandbox.path().join("session/session-env.sh");
+        fs::create_dir_all(session_env.parent().expect("session parent")).expect("session parent");
+        fs::create_dir_all(&review).expect("review directory");
+        fs::write(
+            session_env
+                .parent()
+                .expect("session parent")
+                .join("oos-accepted-review.md"),
+            "parent OOS\n",
+        )
+        .expect("parent oos");
+        fs::write(
+            session_env
+                .parent()
+                .expect("session parent")
+                .join("accumulated-oos.md"),
+            "parent accumulated OOS\n",
+        )
+        .expect("parent accumulated oos");
+        let diff = sandbox.path().join("review.diff");
+        let scope = sandbox.path().join("scope-files.txt");
+        let plan = sandbox.path().join("plan.md");
+        let manifest = review.join("panel-manifest.ndjson");
+        let dropped = review.join("dropped-slots.tsv");
+        let external = review.join("codex-specialist-correctness-output.txt");
+        let claude = review.join("claude-output.txt");
+        let classification = review.join("classification.tsv");
+        for (path, text) in [
+            (&diff, "diff\n"),
+            (&scope, "src/lib.rs\n"),
+            (&plan, "plan\n"),
+            (&manifest, ""),
+            (&dropped, "correctness\tcodex\tstraggler-dropped\n"),
+            (&external, "review\n"),
+            (&claude, "review\n"),
+            (&classification, "FINDING_1\taccepted\n"),
+        ] {
+            fs::write(path, text).expect("fixture artifact");
+        }
+        fs::write(
+            review.join("collector-results.env"),
+            "REVIEWER_FILE=none\nSTATUS=OK\n",
+        )
+        .expect("collector results");
+        let raw = vec![
+            "--mode".to_owned(),
+            "diff".to_owned(),
+            "--output-dir".to_owned(),
+            path(&review).to_owned(),
+            "--codex-available".to_owned(),
+            "true".to_owned(),
+            "--cursor-available".to_owned(),
+            "true".to_owned(),
+            "--session-env-path".to_owned(),
+            path(&session_env).to_owned(),
+            "--plan-file".to_owned(),
+            path(&plan).to_owned(),
+            "--prune-ledger".to_owned(),
+            path(&review.join("prune-ledger.tsv")).to_owned(),
+        ];
+        let args = raw
+            .iter()
+            .map(|value| OsString::from(value.as_str()))
+            .collect::<Vec<_>>();
+        let options = parse_core_options(&args).expect("valid fixture arguments");
+        let calls = RefCell::new(Vec::new());
+
+        let result = run_core_with(&options, &|command| {
+            calls.borrow_mut().push(command.to_vec());
+            Ok(match command[1].as_str() {
+                "gather-context" => completed(format!(
+                    "MODE=diff\nDIFF_FILE={}\nFILE_LIST_FILE={}\nCOMMIT_COUNT=3\n",
+                    path(&diff),
+                    path(&scope),
+                )),
+                "dispatch-panel" => completed(format!(
+                    "PANEL_MODE=waterfall\nPANEL_SHAPE=hard\nPANEL_TIER=MODERATE\nPANEL_MANIFEST={}\nSCOUT_STATUS=degraded\nSCOUT_FAIL_REASON=scout unavailable\nSCOUT_MANIFEST=pre-scouted.ndjson\nDYNAMIC_SLOTS=1\nSTATIC_SLOT_COUNT=3\nPANEL_PRUNED_EMPTY=false\nPRUNED_COMBOS=one,two\nSLOT_COUNT=4\nLAUNCHED_SLOTS=3\nEXTERNAL_OUTPUT_FILES={}\nCLAUDE_OUTPUT_FILES={}\nDROPPED_SLOTS_FILE={}\nSTRAGGLER_DROPPED_COUNT=1\nWATERFALL_WARN=slow reviewer\n",
+                    path(&manifest),
+                    path(&external),
+                    path(&claude),
+                    path(&dropped),
+                )),
+                "collect-findings" => completed("FINDINGS_COUNT=0\n"),
+                "check-reviewer-failure-threshold" => {
+                    return Err("threshold helper unavailable".to_owned());
+                }
+                "tally-code-votes" => completed(format!(
+                    "TALLY_STATUS=ok\nFINDINGS_CLASSIFICATION_TSV_FILE={}\n",
+                    path(&classification),
+                )),
+                "reviewer-prune" => Output {
+                    rc: 1,
+                    stdout: String::new(),
+                    stderr: "ledger unavailable".to_owned(),
+                },
+                "emit-tally" => Output {
+                    rc: 0,
+                    stdout: String::new(),
+                    stderr: "emit warning".to_owned(),
+                },
+                phase => panic!("unexpected phase: {phase}"),
+            })
+        });
+
+        assert_eq!(result.rc, 0);
+        assert!(
+            result
+                .rows
+                .contains(&row("SCOUT_FAIL_REASON", "scout unavailable"))
+        );
+        assert!(
+            result
+                .rows
+                .contains(&row("SCOUT_MANIFEST", "pre-scouted.ndjson"))
+        );
+        assert!(result.rows.contains(&row("PRUNED_COMBOS", "one,two")));
+        assert!(result.rows.iter().any(|(key, value)| {
+            key == "WARN" && value.contains("reviewer-prune record failed")
+        }));
+        assert!(
+            read_text(&review.join("review-core-threshold.env"))
+                .contains("COVERAGE_GATE_REASON=static reviewer coverage satisfied")
+        );
+        assert_eq!(
+            read_text(
+                &session_env
+                    .parent()
+                    .expect("session parent")
+                    .join("oos-accepted-review.md")
+            ),
+            "parent OOS\n"
+        );
+        assert_eq!(
+            read_text(
+                &session_env
+                    .parent()
+                    .expect("session parent")
+                    .join("accumulated-oos.md")
+            ),
+            "parent accumulated OOS\n"
+        );
+        let calls = calls.into_inner();
+        let collect = calls
+            .iter()
+            .find(|command| command[1] == "collect-findings")
+            .expect("collect call");
+        assert!(collect.contains(&"--external-output-files".to_owned()));
+        assert!(collect.contains(&path(&external).to_owned()));
+        assert!(collect.contains(&"--claude-output-files".to_owned()));
+        let tally = calls
+            .iter()
+            .find(|command| command[1] == "tally-code-votes")
+            .expect("tally call");
+        assert!(tally.contains(&"--scope-files".to_owned()));
+        assert!(tally.contains(&"--plan-file".to_owned()));
+        assert!(tally.contains(&"--manifest-file".to_owned()));
+        assert!(calls.iter().any(|command| command[1] == "reviewer-prune"));
+    }
+
+    #[test]
+    fn core_helper_protocols_preserve_failure_metadata_and_fail_closed() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let threshold = sandbox.path().join("threshold.env");
+        fs::write(
+            &threshold,
+            "THRESHOLD_OK=true\nTHRESHOLD_REASON=old\nCOVERAGE_GATE_OK=true\nCOVERAGE_GATE_REASON=old\nUNCHANGED=value\n",
+        )
+        .expect("threshold");
+        rewrite_threshold(&threshold, "false", "no successful reviewer");
+        let rewritten = read_text(&threshold);
+        assert!(rewritten.contains("THRESHOLD_OK=false"));
+        assert!(rewritten.contains("THRESHOLD_REASON=no successful reviewer"));
+        assert!(rewritten.contains("COVERAGE_GATE_OK=false"));
+        assert!(rewritten.contains("COVERAGE_GATE_REASON=no successful reviewer"));
+        assert!(rewritten.contains("UNCHANGED=value"));
+        assert!(protected_threshold_reason("dispatch-panel unavailable"));
+        assert!(protected_threshold_reason(
+            "aggregation-validation-exhausted"
+        ));
+        assert!(!protected_threshold_reason("ordinary failure"));
+
+        fs::write(sandbox.path().join("findings.md"), "finding\n").expect("findings");
+        assert!(parseable_output_present(sandbox.path()));
+        assert_eq!(
+            static_slug("/tmp/codex-generalist-output.txt"),
+            Some("generalist".to_owned())
+        );
+        assert_eq!(
+            static_slug("/tmp/cursor-specialist-testing-output-retry.txt"),
+            Some("testing".to_owned())
+        );
+        assert_eq!(static_slug("not-a-review-output.txt"), None);
+
+        let ballot = sandbox.path().join("ballot.md");
+        fs::write(
+            &ballot,
+            "### FINDING_1: first\n- **Reviewer**: alpha\n\n### OOS_2: second\n- **Reviewer**: beta\n",
+        )
+        .expect("ballot");
+        assert_eq!(ballot_block_count(&ballot), Some(2));
+        assert_eq!(ballot_block_count(&sandbox.path().join("missing.md")), None);
+
+        let mut rows = vec![row("EXISTING", "kept")];
+        let map = sandbox.path().join("findings-classification-round-map.env");
+        fs::write(
+            &map,
+            "EXISTING=value\nFINDINGS_CLASSIFICATION_TSV_FILE=old\nFINDINGS_CLASSIFICATION_TSV_FILE_ROUND_2=old\n",
+        )
+        .expect("classification map");
+        record_classification(sandbox.path(), 2, "/tmp/new.tsv", &mut rows);
+        let mapped = read_text(&map);
+        assert!(mapped.contains("EXISTING=value"));
+        assert!(!mapped.contains("=old"));
+        assert!(mapped.contains("FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_2=/tmp/new.tsv"));
+        assert!(rows.contains(&row("FINDINGS_CLASSIFICATION_TSV_FILE", "/tmp/new.tsv")));
+
+        let proposer_map = sandbox.path().join("proposer-map.tsv");
+        fs::write(&ballot, "").expect("empty ballot");
+        assert_eq!(
+            prepare_proposer_map(&ballot, &proposer_map),
+            Err("ballot has no canonical items".to_owned())
+        );
+        fs::write(&ballot, "### FINDING_1: missing reviewer\n").expect("missing reviewer");
+        assert_eq!(
+            prepare_proposer_map(&ballot, &proposer_map),
+            Err("ballot item FINDING_1 has missing reviewer attribution".to_owned())
+        );
+        fs::write(
+            &ballot,
+            "### FINDING_1: anonymous reviewer\n- **Reviewer**: anonymous\n",
+        )
+        .expect("anonymous reviewer");
+        assert_eq!(
+            prepare_proposer_map(&ballot, &proposer_map),
+            Err("ballot item FINDING_1 has missing or neutral reviewer attribution".to_owned())
+        );
+        assert_eq!(safe_tsv(" alpha\tbeta\n "), "alpha beta");
     }
 
     #[test]

@@ -871,4 +871,197 @@ mod tests {
             "## title\u{007f}\u{0080}\n\n😀\n- **Reviewer**: panel"
         );
     }
+
+    #[test]
+    #[allow(clippy::too_many_lines)] // One parity fixture needs all artifact precedence cases visible together.
+    fn composition_preserves_artifact_precedence_reviewer_aliases_and_all_outcomes() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let design = sandbox.path().join("design");
+        let round_two = design.join("plan-review/round-2");
+        fs::create_dir_all(&round_two).expect("design rounds");
+        fs::write(
+            design.join("plan-review-slots.ndjson"),
+            r#"{"slot":"codex-plan-security_scan","output":"/artifacts/slot-security.txt"}
+not-json
+"#,
+        )
+        .expect("root slots");
+        fs::write(
+            design.join("plan-review-prune-label-map.tsv"),
+            "codex-plan-security_scan\tSecurity Experts\n",
+        )
+        .expect("root labels");
+        fs::write(
+            round_two.join("plan-review-slots.ndjson"),
+            r#"{"slot":"dyn-cursor-plan-risk","output":"/artifacts/slot-risk.txt"}
+"#,
+        )
+        .expect("round slots");
+        fs::write(
+            round_two.join("plan-review-prune-label-map.tsv"),
+            "dyn-cursor-plan-risk\tRisk Panel\n",
+        )
+        .expect("round labels");
+        fs::write(
+            design.join("accepted-plan-findings.md"),
+            "### FINDING_1: architecture: source: plan detail\n- **Reviewer(s)**: Security Experts\n- **Severity**: high\n- **Focus area**: ARCHITECTURE\n",
+        )
+        .expect("accepted plan findings");
+        fs::write(
+            design.join("rejected-findings.md"),
+            "### [Plan Review] Risk Panel\n- **Concern**: rejected plan detail\n",
+        )
+        .expect("rejected plan findings");
+
+        let implementation = sandbox.path().join("implementation");
+        let round_two = implementation.join("round-2");
+        let round_ten = implementation.join("round-10");
+        fs::create_dir_all(&round_two).expect("round two");
+        fs::create_dir_all(&round_ten).expect("round ten");
+        fs::write(
+            round_two.join("accepted-findings.md"),
+            "### FINDING_2: correctness: source: code detail\n- **Reviewer**: code-reviewer\n- **Severity**: medium\n- **Focus area**: TESTING\n",
+        )
+        .expect("accepted code findings");
+        fs::write(
+            round_two.join("oos.md"),
+            "### OOS_1: risk-integration: scope detail\n- **Reviewer**: scope-reviewer\n",
+        )
+        .expect("oos findings");
+        fs::write(
+            round_two.join("rejected-findings-full.md"),
+            "### [Code Review] code-rejector\n- **Concern**: rejected code detail\n",
+        )
+        .expect("full rejected findings");
+        fs::write(
+            round_ten.join("rejected-findings.md"),
+            "### [rejected] ignored title\n- **Reviewer**: fallback-rejector\n- **Concern**: fallback rejection\n",
+        )
+        .expect("rejected findings");
+
+        let mapping = build_design_reviewer_map(Some(&design));
+        assert_eq!(
+            mapping.get("Security Experts").map(String::as_str),
+            Some("slot-security.txt")
+        );
+        assert_eq!(
+            mapping.get("Risk Panel").map(String::as_str),
+            Some("slot-risk.txt")
+        );
+        assert_eq!(
+            mapping.get("Cursor-dyn-risk").map(String::as_str),
+            Some("slot-risk.txt")
+        );
+
+        let output = sandbox.path().join("public/reports/findings.jsonl");
+        let args = [
+            "--design-artifacts-dir",
+            design.to_str().expect("utf8"),
+            "--implement-tmpdir",
+            implementation.to_str().expect("utf8"),
+            "--issue",
+            "8455",
+            "--archive-dir",
+            "unused",
+            "--archive-threshold",
+            "99",
+            "--output",
+            output.to_str().expect("utf8"),
+        ]
+        .into_iter()
+        .map(OsString::from)
+        .collect::<Vec<_>>();
+
+        assert_eq!(compose_findings(&args), ExitCode::SUCCESS);
+        let records = split_text_lines(&read_text(&output))
+            .into_iter()
+            .map(|line| serde_json::from_str::<Value>(line).expect("json record"))
+            .collect::<Vec<_>>();
+        assert_eq!(records.len(), 6);
+        assert!(records.iter().any(|record| {
+            record["id"] == "FINDING_1"
+                && record["phase"] == "plan-review"
+                && record["outcome"] == "accepted"
+                && record["reviewer_slots"] == json!(["slot-security.txt"])
+                && record["category"] == "architecture"
+        }));
+        assert!(records.iter().any(|record| {
+            record["id"] == "REJ_P1"
+                && record["outcome"] == "rejected"
+                && record["reviewer_slots"] == json!(["slot-risk.txt"])
+        }));
+        assert!(records.iter().any(|record| {
+            record["id"] == "FINDING_2"
+                && record["round_num"] == "2"
+                && record["category"] == "correctness"
+        }));
+        assert!(records.iter().any(|record| {
+            record["id"] == "OOS_CR2_1"
+                && record["outcome"] == "out_of_scope"
+                && record["category"] == "risk-integration"
+        }));
+        assert!(records.iter().any(|record| {
+            record["id"] == "REJ_CR2_1" && record["reviewer_slots"] == json!(["code-rejector"])
+        }));
+        assert!(records.iter().any(|record| {
+            record["id"] == "REJ_CR10_1" && record["reviewer_slots"] == json!(["fallback-rejector"])
+        }));
+    }
+
+    #[test]
+    fn composition_accepts_legacy_oos_and_root_rejected_fallbacks() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let implementation = sandbox.path().join("implementation");
+        let round = implementation.join("round-3");
+        fs::create_dir_all(&round).expect("round");
+        fs::write(
+            round.join("oos.md"),
+            "### FINDING_8: [OUT_OF_SCOPE] security: deferred scope detail\n- **Reviewer**: scope-reviewer\n",
+        )
+        .expect("legacy oos");
+        fs::write(
+            implementation.join("rejected-findings-full.md"),
+            "### [rejected] root fallback\n- **Reviewer**: root-rejector\n- **Concern**: fallback detail\n",
+        )
+        .expect("root rejected findings");
+        let output = sandbox.path().join("out.jsonl");
+        let args = [
+            "--implement-tmpdir",
+            implementation.to_str().expect("utf8"),
+            "--issue",
+            "0",
+            "--output",
+            output.to_str().expect("utf8"),
+        ]
+        .into_iter()
+        .map(OsString::from)
+        .collect::<Vec<_>>();
+
+        assert_eq!(compose_findings(&args), ExitCode::SUCCESS);
+        let rendered = read_text(&output);
+        assert!(rendered.contains("OOS_CR3_1"));
+        assert!(rendered.contains("REJ_C1"));
+        assert!(rendered.contains("root-rejector"));
+
+        let invalid = ["--issue", "invalid", "--output", "out.jsonl"]
+            .into_iter()
+            .map(OsString::from)
+            .collect::<Vec<_>>();
+        assert_eq!(compose_findings(&invalid), ExitCode::from(2));
+        assert!(matches!(
+            parse_arguments(&[OsString::from("--issue")]),
+            Err(message) if message == "--issue requires a value"
+        ));
+        assert!(matches!(
+            parse_arguments(&[
+                OsString::from("--issue"),
+                OsString::from("1"),
+                OsString::from("--output"),
+                OsString::from("out.jsonl"),
+                OsString::from("--unexpected"),
+                OsString::from("value"),
+            ]),
+            Err(message) if message == "unrecognized arguments: --unexpected"
+        ));
+    }
 }
