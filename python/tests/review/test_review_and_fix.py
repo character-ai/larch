@@ -10,7 +10,7 @@ import shutil
 import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
 from unittest import mock
 
 from larch.calibration import difficulty_calibration
@@ -25,9 +25,6 @@ from larch.review import snapshot
 from _pytest.mark.structures import Mark, MarkDecorator
 from test_support import ok
 from tests.support.review_wire import panel_manifest_ndjson, panel_manifest_row
-
-if TYPE_CHECKING:
-    from larch.review.review_pipeline_shared import CodeReviewTallyRequest
 
 _RUST_GIT = str(review_and_fix.larch_entrypoint(review_and_fix._plugin_root()))
 
@@ -60,6 +57,27 @@ def _tmp_impl(tmp_path: Path) -> Path:
 
 def _arg_value(argv: list[str], flag: str) -> str:
     return argv[argv.index(flag) + 1]
+
+
+def _capture_with_fake_core(fake_core):
+    """Keep round-runner tests independent of the production core owner."""
+    production_capture = round_runner.review_core_capture
+
+    def capture(*, core_args, env_path, review_core_impl=None, implement_tmpdir=None):
+        del review_core_impl
+        return production_capture(
+            core_args=core_args,
+            env_path=env_path,
+            review_core_impl=fake_core,
+            implement_tmpdir=implement_tmpdir,
+        )
+
+    return capture
+
+
+def _compose_empty(*, output, **_kwargs):
+    Path(output).write_text("", encoding="utf-8")
+    return True
 
 
 def _fix_applied_round_result(impl: Path, *, round_num: int = 1) -> review_and_fix.RoundResult:
@@ -151,7 +169,8 @@ def test_step5_single_emits_round_kvs_without_review_core_leak(tmp_path, monkeyp
         logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
         return 0
 
-    monkeypatch.setattr(round_runner.review_core_body, "review_core", fake_core)
+    monkeypatch.setattr(round_runner, "review_core_capture", _capture_with_fake_core(fake_core))
+    monkeypatch.setattr(round_runner, "_compose_review_findings_output", _compose_empty)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "single", "--round-num", "1"])
 
     out = capsys.readouterr().out
@@ -178,7 +197,8 @@ def test_step5_loop_emits_single_final_envelope(tmp_path, monkeypatch, capsys):
         logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
         return 0
 
-    monkeypatch.setattr(round_runner.review_core_body, "review_core", fake_core)
+    monkeypatch.setattr(round_runner, "review_core_capture", _capture_with_fake_core(fake_core))
+    monkeypatch.setattr(round_runner, "_compose_review_findings_output", _compose_empty)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
 
     out = capsys.readouterr().out
@@ -203,7 +223,8 @@ def test_step5_loop_writes_mergeable_completion_kvs(tmp_path, monkeypatch, capsy
         logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
         return 0
 
-    monkeypatch.setattr(round_runner.review_core_body, "review_core", fake_core)
+    monkeypatch.setattr(round_runner, "review_core_capture", _capture_with_fake_core(fake_core))
+    monkeypatch.setattr(round_runner, "_compose_review_findings_output", _compose_empty)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
 
     result_lines = (impl / ".step5-review-result.env").read_text(encoding="utf-8").splitlines()
@@ -279,11 +300,13 @@ def test_write_rejected_counts_and_copies(tmp_path, monkeypatch, capsys):
     assert (tmp_path / "logs" / "implement" / "run-1" / "rejected-findings.md").is_file()
 
 
-def test_review_and_fix_source_uses_in_process_review_core():
+def test_review_and_fix_source_uses_rust_review_core_bootstrap():
     raf_source = Path(review_and_fix.__file__).read_text(encoding="utf-8")
     rr_source = Path(round_runner.__file__).read_text(encoding="utf-8")
     assert '"review", "core"' not in raf_source
-    assert '"review", "core"' not in rr_source
+    assert '"review", "core"' in rr_source
+    assert "review_core_body" not in rr_source
+    assert "larch_entrypoint(_PLUGIN_ROOT)" in rr_source
     assert "python/cli.py review core" not in raf_source
     assert "python/cli.py review core" not in rr_source
     assert "review_core_capture" in raf_source  # present via import
@@ -4557,9 +4580,7 @@ def test_under_quorum_retry_revotes_only_targeted_items(tmp_path: Path, monkeypa
         voter_2.write_text("FINDING_1: NO -- targeted direct\n", encoding="utf-8")
         return ok(tuple(str(item) for item in argv), f"VOTER_1_PATH={voter_1}\nVOTER_1_TOOL=codex-validity\nVOTER_2_PATH={voter_2}\nVOTER_2_TOOL=codex-plan-fidelity\nVOTER_3_PATH={revote_dir / 'missing.txt'}\nVOTER_3_TOOL=codex-pragmatism\n")
 
-    def fake_tally(*, commands: object, request: CodeReviewTallyRequest):
-        del commands
-        args = request.to_argv()
+    def fake_tally(args: list[str]):
         tally_argv.extend(str(item) for item in args)
         round_dir = Path(args[args.index("--review-tmpdir") + 1])
         (round_dir / "voting-tally.md").write_text("clean targeted tally\n", encoding="utf-8")
@@ -4569,21 +4590,29 @@ def test_under_quorum_retry_revotes_only_targeted_items(tmp_path: Path, monkeypa
         tally_file.write_text("TALLY_STATUS=ok\n", encoding="utf-8")
         return ok(tuple(str(item) for item in args), "TALLY_STATUS=ok\n" "ACCEPTED_COUNT=0\n" "REJECTED_COUNT=0\n" "EXONERATED_COUNT=0\n" "NEUTRAL_COUNT=0\n" "UNDER_QUORUM_COUNT=0\n" "UNDER_QUORUM_ITEMS=\n" "PARSE_FAILED_COUNT=0\n" "VOTER_COUNT=3\n" f"ACCEPTED_FINDINGS_FILE={round_dir / 'accepted-findings.md'}\n" f"TALLY_FILE={tally_file}\n" f"VOTING_TALLY_FILE={round_dir / 'voting-tally.md'}\n" f"FINDINGS_CLASSIFICATION_TSV_FILE={classification}\n")
 
-    def fake_emit(*, commands, args, out_file, runner=None):
-        del commands, runner
+    def fake_emit(args: list[str]):
         emit_argv.extend(str(item) for item in args)
-        out_file.write_text("EMIT_OK=true\n", encoding="utf-8")
-        return {"EMIT_OK": "true"}
+        return ok(tuple(str(item) for item in args), "EMIT_OK=true\n")
 
-    def fake_record_prune_round(*, prune_ledger: str, round_num: int, panel_manifest: str, classification_file: str, label_map=None):
-        del round_num, label_map
-        prune_records.append((panel_manifest, classification_file))
-        return ()
+    def fake_record_prune_round(argv: list[str]):
+        prune_records.append((_arg_value(argv, "--manifest"), _arg_value(argv, "--classification")))
+        return ok(tuple(str(item) for item in argv))
 
-    monkeypatch.setattr(round_runner.review_core_body, "run_larch", fake_dispatch)
-    monkeypatch.setattr(round_runner.review_core_body, "_run_tally_request", fake_tally)
-    monkeypatch.setattr(round_runner.review_core_body, "_emit_tally", fake_emit)
-    monkeypatch.setattr(round_runner.review_core_body, "_record_prune_round", fake_record_prune_round)
+    production_run = round_runner._run
+
+    def fake_run(argv, **kwargs):
+        command = [str(item) for item in argv[1:]]
+        if command[:2] == ["agent", "dispatch-voters"]:
+            return fake_dispatch(command)
+        if command[:2] == ["review", "tally-code-votes"]:
+            return fake_tally(command[2:])
+        if command[:2] == ["review", "emit-tally"]:
+            return fake_emit(command[2:])
+        if command[:3] == ["review", "reviewer-prune", "record"]:
+            return fake_record_prune_round(command)
+        return production_run(argv, **kwargs)
+
+    monkeypatch.setattr(round_runner, "_run", fake_run)
 
     args = argparse.Namespace(
         implement_tmpdir=str(impl),
@@ -4764,11 +4793,6 @@ def test_under_quorum_targeted_setup_failure_runs_full_retry(tmp_path: Path, mon
         for key, value in core_values.items():
             logging_util.emit(f"{key}={value}")
         return 0
-
-    def fail_dispatch(argv, **_kwargs):
-        raise AssertionError(f"targeted dispatch should not run after ballot extraction fails: {argv}")
-
-    monkeypatch.setattr(round_runner.review_core_body, "run_larch", fail_dispatch)
 
     args = argparse.Namespace(
         implement_tmpdir=str(impl),

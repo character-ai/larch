@@ -16,4 +16,4 @@ node group).
 
 ## Edit-in-sync
 
-Update with `crates/larch-cli/src/session_setup_commands.rs`, `scripts/larch.sh session write-env`, `python/cli.py review-and-fix step5`, `python/cli.py review core`, `crates/larch-cli/tests/session_setup.rs`, `python/tests/implement/test_implement_shell_scripts.py`, and `skills/shared/subskill-invocation.md` when changing nested review session-env propagation.
+Update with `crates/larch-cli/src/session_setup_commands.rs`, `scripts/larch.sh session write-env`, `python/cli.py review-and-fix step5`, `scripts/larch.sh review core`, `crates/larch-cli/tests/session_setup.rs`, `python/tests/implement/test_implement_shell_scripts.py`, and `skills/shared/subskill-invocation.md` when changing nested review session-env propagation.

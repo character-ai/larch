@@ -22,7 +22,6 @@ from collections.abc import Callable, Mapping
 from larch.core import config
 from larch.core.repo_roots import larch_entrypoint
 from larch.calibration import difficulty
-from larch.review import review_core_body
 from larch.review import voting
 from larch.review.review_pipeline_shared import CodeReviewTallyRequest, surface_warning
 from larch.review._raf_util import (
@@ -36,6 +35,7 @@ from larch.review._raf_util import (
     _prior_summary_counts,
     _read_text,
     _run,
+    _PLUGIN_ROOT,
     _session_get,
     _temporary_env,
     _write_env,
@@ -99,7 +99,7 @@ def review_core_capture(*,
     review_core_impl: ReviewCoreImpl | None = None,
     implement_tmpdir: str | Path | None = None,
 ) -> int:
-    """Run review core in-process and write its contract stream to ``env_path``."""
+    """Run the Rust-owned review core and capture its contract stream."""
     output = Path(env_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     override = os.environ.get("REVIEW_AND_FIX_REVIEW_CORE_SH", "")
@@ -123,17 +123,27 @@ def review_core_capture(*,
         if result.stderr:
             _err(result.stderr.rstrip())
         return result.returncode
-    impl = review_core_impl or review_core_body.review_core
-    buffer = io.StringIO()
-    with _temporary_env(name=config.ENV_IMPLEMENT_TMPDIR, value=str(implement_tmpdir) if implement_tmpdir is not None else os.environ.get(config.ENV_IMPLEMENT_TMPDIR)):
-        try:
-            with _capture_emit_to(buffer):
-                rc = int(impl(list(core_args)))
-        except BaseException as exc:  # preserve cleanup, convert to contract failure
-            buffer.write(f"REVIEW_CORE_STATUS=exception\nREVIEW_CORE_ERROR={type(exc).__name__}\n")
-            rc = 1
-    _write_text(path=output, text=buffer.getvalue())
-    return rc
+    if review_core_impl is not None:
+        # Injection remains limited to tests that exercise the surrounding
+        # Python round runner. Production always invokes the Rust owner.
+        buffer = io.StringIO()
+        with _temporary_env(name=config.ENV_IMPLEMENT_TMPDIR, value=str(implement_tmpdir) if implement_tmpdir is not None else os.environ.get(config.ENV_IMPLEMENT_TMPDIR)):
+            try:
+                with _capture_emit_to(buffer):
+                    rc = int(review_core_impl(list(core_args)))
+            except BaseException as exc:  # preserve cleanup, convert to contract failure
+                buffer.write(f"REVIEW_CORE_STATUS=exception\nREVIEW_CORE_ERROR={type(exc).__name__}\n")
+                rc = 1
+        _write_text(path=output, text=buffer.getvalue())
+        return rc
+    env = os.environ.copy()
+    if implement_tmpdir is not None:
+        env[config.ENV_IMPLEMENT_TMPDIR] = str(implement_tmpdir)
+    result = _run([str(larch_entrypoint(_PLUGIN_ROOT)), "review", "core", *core_args], env=env)
+    _write_text(path=output, text=result.stdout)
+    if result.stderr:
+        _err(result.stderr.rstrip())
+    return result.returncode
 
 
 def _filter_in_scope(*, accepted_file: Path, output: Path) -> None:
@@ -708,20 +718,26 @@ def _apply_targeted_retally_outputs(
     updated["REJECTED_FINDINGS_FILE"] = str(round_dir / "rejected-findings.md")
     updated["FINDINGS_FILE"] = str(round_dir / "findings.md")
     classification = updated.get("FINDINGS_CLASSIFICATION_TSV_FILE", "")
-    rows = review_core_body._record_classification(  # noqa: SLF001 - targeted retally must update the same classification sidecar.
-        review_tmpdir=round_dir,
-        round_num=round_num,
-        classification_file=classification,
-    )
-    for key, value in rows:
-        updated[str(key)] = str(value)
+    if classification:
+        map_file = round_dir / "findings-classification-round-map.env"
+        round_key = f"FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_{round_num}"
+        existing = [
+            line
+            for line in _read_text(map_file).splitlines()
+            if not line.startswith("FINDINGS_CLASSIFICATION_TSV_FILE=")
+            and not line.startswith(round_key + "=")
+        ]
+        existing.extend((f"FINDINGS_CLASSIFICATION_TSV_FILE={classification}", f"{round_key}={classification}"))
+        _write_text(path=map_file, text="\n".join(existing) + "\n")
+        updated["FINDINGS_CLASSIFICATION_TSV_FILE"] = classification
+        updated[round_key] = classification
     if _reviewer_prune_status_records(status):
-        review_core_body._record_prune_round(  # noqa: SLF001 - targeted retally must refresh the same prune ledger.
-            prune_ledger=str(prune_ledger),
-            round_num=round_num,
-            panel_manifest=str(panel_manifest),
-            classification_file=classification,
-        )
+        if prune_ledger and panel_manifest.is_file() and Path(classification).is_file():
+            _ = _run([
+                str(larch_entrypoint(_PLUGIN_ROOT)), "review", "reviewer-prune", "record",
+                "--ledger", str(prune_ledger), "--round", str(round_num),
+                "--manifest", str(panel_manifest), "--classification", classification,
+            ])
     else:
         _clear_reviewer_prune_round(ledger=prune_ledger, round_num=round_num, work_dir=round_dir)
     _write_env(path=core_out, values=updated)
@@ -787,12 +803,7 @@ def _run_under_quorum_revote(
     else:
         dispatch_args = None
     if ok and dispatch_args is not None:
-        commands = review_core_body._review_commands()  # noqa: SLF001 - targeted retry reuses review-core command overrides.
-        dispatch_result = (
-            review_core_body._run_command_string(command=commands.dispatch_voters, args=dispatch_args)  # noqa: SLF001 - targeted retry reuses review-core command overrides.
-            if commands.dispatch_voters
-            else review_core_body.run_larch(["agent", "dispatch-voters", *dispatch_args])
-        )
+        dispatch_result = _run([str(larch_entrypoint(_PLUGIN_ROOT)), "agent", "dispatch-voters", *dispatch_args])
         _write_text(path=revote_dir / "review-core-voters.env", text=dispatch_result.stdout)
         dispatch_env = _parse_env_file(revote_dir / "review-core-voters.env")
         ok = dispatch_result.returncode == 0
@@ -813,11 +824,9 @@ def _run_under_quorum_revote(
     backup_dir = revote_dir / "pre-targeted-final"
     if ok and tally_request is not None:
         _backup_targeted_artifacts(round_dir, backup_dir)
-        commands = review_core_body._review_commands()  # noqa: SLF001 - targeted retry reuses review-core command overrides.
-        tally_result = review_core_body._run_tally_request(  # noqa: SLF001 - targeted retry reuses review-core command overrides.
-            commands=commands,
-            request=tally_request,
-        )
+        tally_result = _run([
+            str(larch_entrypoint(_PLUGIN_ROOT)), "review", "tally-code-votes", *tally_request.to_argv(),
+        ])
         _write_text(path=tally_env_path, text=tally_result.stdout)
         tally = _parse_env_file(tally_env_path)
         ok = bool(tally.get("TALLY_STATUS")) and tally.get("TALLY_STATUS") != "main-agent-vote-required"
@@ -830,14 +839,13 @@ def _run_under_quorum_revote(
     else:
         emit_args = None
     if ok and emit_args is not None:
-        commands = review_core_body._review_commands()  # noqa: SLF001 - targeted retry reuses review-core command overrides.
-        with _temporary_env(name=config.ENV_IMPLEMENT_TMPDIR, value=str(getattr(args, "implement_tmpdir", ""))):
-            emit = review_core_body._emit_tally_with_context(  # noqa: SLF001 - targeted retally must mirror emit-tally context.
-                commands=commands,
-                args=emit_args,
-                out_file=revote_dir / "review-core-targeted-emit.env",
-                session_env_path=str(getattr(args, "session_env_path", "")),
-            )
+        if getattr(args, "session_env_path", ""):
+            emit_args.extend(["--session-env-path", str(args.session_env_path)])
+        if getattr(args, "implement_tmpdir", ""):
+            emit_args.extend(["--implement-tmpdir", str(args.implement_tmpdir)])
+        emit_result = _run([str(larch_entrypoint(_PLUGIN_ROOT)), "review", "emit-tally", *emit_args])
+        _write_text(path=revote_dir / "review-core-targeted-emit.env", text=emit_result.stdout)
+        emit = _parse_env_file(revote_dir / "review-core-targeted-emit.env")
         ok = emit.get("EMIT_OK") == "true"
     if ok:
         _apply_targeted_retally_outputs(

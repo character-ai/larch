@@ -65,6 +65,12 @@ pub enum ReviewCommand {
     EmitTally(AgentRawArguments),
     #[command(name = "log-phase", disable_help_flag = true)]
     LogPhase(AgentRawArguments),
+    /// Orchestrate one complete code-review panel round.
+    #[command(name = "core", disable_help_flag = true)]
+    Core(AgentRawArguments),
+    /// Compose review artifacts into the public findings JSONL.
+    #[command(name = "compose-findings", disable_help_flag = true)]
+    ComposeFindings(AgentRawArguments),
 }
 
 /// Dispatch one Rust-owned review command.
@@ -95,6 +101,10 @@ pub fn run(command: ReviewCommand) -> ExitCode {
         }
         ReviewCommand::LogPhase(arguments) => {
             crate::review_tally_commands::log_phase(&arguments.arguments)
+        }
+        ReviewCommand::Core(arguments) => crate::review_core_commands::core(&arguments.arguments),
+        ReviewCommand::ComposeFindings(arguments) => {
+            crate::review_compose_commands::compose_findings(&arguments.arguments)
         }
     }
 }

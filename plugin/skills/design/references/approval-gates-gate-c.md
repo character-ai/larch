@@ -104,7 +104,7 @@ When guidelines are present, Gate C re-entry overwrites `architectural-guideline
    - The complete on-disk `$DESIGN_TMPDIR/plan.txt`, not only the chat preview.
    - Non-empty `$DESIGN_TMPDIR/discussion-round1.md` when present (explicit Round 1 refusals).
    - Non-empty `$DESIGN_TMPDIR/design-outline.md` when `.outline-approved` exists (approved non-goals).
-2. Select the accepted corpus and build the classification set, mirroring `compose_review.py`: bind `_accepted_corpus` to non-empty `$DESIGN_TMPDIR/accepted-plan-findings-all.md` when that file exists and has non-zero size; else to non-empty `$DESIGN_TMPDIR/accepted-plan-findings.md`; else treat as no cumulative accepted findings.
+2. Select the accepted corpus and build the classification set, mirroring the Rust-owned `review compose-findings` contract: bind `_accepted_corpus` to non-empty `$DESIGN_TMPDIR/accepted-plan-findings-all.md` when that file exists and has non-zero size; else to non-empty `$DESIGN_TMPDIR/accepted-plan-findings.md`; else treat as no cumulative accepted findings.
 3. When `rejected-findings.md` contains `rejected by user during one-by-one review`, require a successful filter helper invocation before classification:
 
 ```bash

@@ -1008,7 +1008,10 @@ for arg in "$@"; do
   if [[ "$prev" == "--output" ]]; then out="$arg"; fi
   prev="$arg"
 done
-printf '%s\n' "$$" > "$(dirname "$out")/child.pid"
+pid_path="$(dirname "$out")/child.pid"
+pid_tmp="$pid_path.$$"
+printf '%s\n' "$$" > "$pid_tmp"
+mv "$pid_tmp" "$pid_path"
 sleep 120
 "#,
     );

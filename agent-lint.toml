@@ -351,7 +351,6 @@ exclude = [
   # agent-lint does not follow those Python CLI edges.
   "python/cli.py ci failed-jobs",
   "python/ci_monitor.py",
-  "python/test_compose_review.py",
   # Makefile-only harness for metadata summary publication. Runtime reachability
   # is through Step 0 helpers, not direct SKILL.md invocation.
   "python/test_pr_body.py",

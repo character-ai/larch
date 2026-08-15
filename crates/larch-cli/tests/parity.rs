@@ -1119,6 +1119,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "gather-context",
     ),
     CleanInstallCase::new(
+        "clean-install-review-core",
+        "review",
+        "core",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-compose-findings",
+        "review",
+        "compose-findings",
+    ),
+    CleanInstallCase::new(
         "clean-install-review-dispatch-panel",
         "review",
         "dispatch-panel",

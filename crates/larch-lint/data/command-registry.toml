@@ -6185,11 +6185,13 @@ verb = "compose-findings"
 python_module = "larch.review.compose_review"
 python_function = "compose_findings_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8445
+clean_install_test = "clean-install-review-compose-findings"
 
 [[commands]]
 domain = "review"
@@ -6197,11 +6199,13 @@ verb = "core"
 python_module = "larch.review.review_core_body"
 python_function = "review_core_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8445
+clean_install_test = "clean-install-review-core"
 
 [[commands]]
 domain = "review"
@@ -9169,19 +9173,13 @@ rust = ["run-log write-round"]
 path = "python/larch/review/batch_report.py"
 kind = "python-runtime"
 python = []
-rust = ["review reviewer-prune", "run-log write", "run-log write-round", "voting write-tally"]
+rust = ["review compose-findings", "review reviewer-prune", "run-log write", "run-log write-round", "voting write-tally"]
 
 [[callers]]
 path = "python/larch/review/coder_runner.py"
 kind = "python-runtime"
 python = []
 rust = ["agent cursor-wrap-prompt", "agent launch-claude-review-fix", "agent launch-codex-exec", "agent run-external-agent", "git commit", "timing record-vendor-task"]
-
-[[callers]]
-path = "python/larch/review/compose_review.py"
-kind = "python-runtime"
-python = []
-rust = ["plan-review filter-gate-b-skipped"]
 
 [[callers]]
 path = "python/larch/review/dispatch_shared.py"
@@ -9211,7 +9209,7 @@ rust = ["git commit", "run-log write", "stall-recovery record-escalation", "timi
 path = "python/larch/review/round_runner.py"
 kind = "python-runtime"
 python = []
-rust = ["git snapshot-untracked", "progress write-implement-round-meta"]
+rust = ["agent dispatch-voters", "git snapshot-untracked", "progress write-implement-round-meta", "review core", "review emit-tally", "review reviewer-prune", "review tally-code-votes"]
 
 [[callers]]
 path = "python/larch/state/closeout.py"
@@ -10116,14 +10114,14 @@ rust = ["agent collect-results", "agent cursor-auth-preflight", "agent cursor-wr
 [[callers]]
 path = "skills/review-and-fix/SKILL.md"
 kind = "skill"
-python = ["checks run-relevant", "redact scrub-submodule-paths", "review compose-findings", "review core", "review-and-fix apply-findings", "review-and-fix step5"]
-rust = ["timing record-round"]
+python = ["checks run-relevant", "redact scrub-submodule-paths", "review-and-fix apply-findings", "review-and-fix step5"]
+rust = ["review compose-findings", "review core", "timing record-round"]
 
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["checks run-relevant", "render specialist", "render voter", "review core", "review-and-fix step5", "scout dynamic-archetypes", "token claude-source"]
-rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review aggregate-findings", "review check-reviewer-failure-threshold", "review collect-findings", "review dispatch-panel", "review emit-tally", "review gather-context", "review log-phase", "review prune-nit-findings", "review reviewer-prune", "review tally-code-votes", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir", "session setup"]
+python = ["checks run-relevant", "render specialist", "render voter", "review-and-fix step5", "scout dynamic-archetypes", "token claude-source"]
+rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review aggregate-findings", "review check-reviewer-failure-threshold", "review collect-findings", "review core", "review dispatch-panel", "review emit-tally", "review gather-context", "review log-phase", "review prune-nit-findings", "review reviewer-prune", "review tally-code-votes", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir", "session setup"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"

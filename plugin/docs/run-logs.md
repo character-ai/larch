@@ -607,7 +607,7 @@ is not separately enumerated in the tally envelope counters.
 
 **Mode**: replace (line-delimited JSON). **Written**: Step 5, immediately after the `code-review-tally` batch.
 
-Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. One JSON object per line with keys `id`, `issue_number`, `phase` (`plan-review` | `code-review`), `outcome` (`accepted` | `rejected` | `out_of_scope`), `schema_version` (`2`), `reviewer_slots` (array of redacted reviewer labels), `round_num` (empty outside numbered review rounds), `category` (best-effort, extracted from a leading `## <cat>: ...` body line — may be empty), and `prose_body` (redacted). See `python/compose_review.py` (producer contract; `python/cli.py review compose-findings` is the CLI entrypoint).
+Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. One JSON object per line has `id`, `issue_number`, `phase` (`plan-review` | `code-review`), `outcome` (`accepted` | `rejected` | `out_of_scope`), `schema_version` (`2`), `reviewer_slots` (array of redacted reviewer labels), `round_num` (empty outside numbered review rounds), `category` (best-effort, extracted from a leading `## <cat>: ...` body line — may be empty), and `prose_body` (redacted). `crates/larch-cli/src/review_compose_commands.rs` owns the producer contract; invoke it through `scripts/larch.sh review compose-findings`.
 
 **Backward compatibility**: Published `review-findings-full.jsonl` files may
 mix envelopes across archives. Normalize each line in three ways: **(1) v2**
@@ -628,7 +628,7 @@ else
 end
 ```
 
-See `python/compose_review.py` for the same mixed-stream contract (`python/cli.py review compose-findings` is the CLI entrypoint).
+See `crates/larch-cli/src/review_compose_commands.rs` for the same mixed-stream contract (`scripts/larch.sh review compose-findings` is the CLI entrypoint).
 
 ### version-bump-reasoning.md
 
