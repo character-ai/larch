@@ -34,12 +34,12 @@ use larch_core::{
     GitHubService, GitHubTransportPolicy, IMPLEMENTING_PREFIX, IssueCreateRequest,
     MAX_AUDIT_LEAVES, MAX_AUDIT_SOURCES, RepositoryRead, Revision, audit_issue_fingerprint,
     audit_leaf_prefix, audit_proposal_existing_numbers, audit_snapshot_sha256,
-    build_audit_proposal, emit_kv, has_umbrella_proposal, mark_audit_graph_in_flight,
-    mark_audit_leaf_in_flight, mark_audit_proposal_complete, parse_audit_ledger,
-    parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved, render_audit_proposal,
-    render_audit_snapshot, replace_audit_issue_fingerprints, triage_label_is_security,
-    triage_text_is_security_sensitive, umbrella_leaf_opening, validate_audit_ledger,
-    validate_audit_proposal_binding,
+    build_audit_proposal, emit_kv, has_umbrella_proposal, is_controlling_umbrella_title,
+    mark_audit_graph_in_flight, mark_audit_leaf_in_flight, mark_audit_proposal_complete,
+    parse_audit_ledger, parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved,
+    render_audit_proposal, render_audit_snapshot, replace_audit_issue_fingerprints,
+    triage_label_is_security, triage_text_is_security_sensitive, umbrella_leaf_opening,
+    validate_audit_ledger, validate_audit_proposal_binding,
 };
 use regex::Regex;
 use std::{
@@ -723,14 +723,6 @@ fn has_exact_leaf_title(title: &str, umbrella: u64) -> bool {
         .is_some_and(|rest| !rest.trim().is_empty())
 }
 
-fn is_controlling_umbrella_title(title: &str) -> bool {
-    let title = title
-        .strip_prefix(IMPLEMENTING_PREFIX)
-        .or_else(|| title.strip_prefix(DONE_PREFIX))
-        .unwrap_or(title);
-    title.starts_with("[UMBRELLA] ") || title.starts_with("[CHIEF UMBRELLA] ")
-}
-
 fn is_controlling_umbrella(issue: &GitHubIssue) -> bool {
     is_controlling_umbrella_title(&issue.title)
 }
@@ -745,7 +737,9 @@ fn require_no_nested_umbrella_children(
 ) -> Result<(), String> {
     for number in direct_numbers {
         let Some(child) = issues.get(number) else {
-            return Err(format!("direct child #{number} is missing from the audit snapshot"));
+            return Err(format!(
+                "direct child #{number} is missing from the audit snapshot"
+            ));
         };
         if is_controlling_umbrella(child) {
             return Err("nested umbrellas are not supported".to_owned());

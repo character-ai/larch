@@ -139,9 +139,9 @@ pub use umbrella::{
     STALE_COMPLETION_SENTINEL, STALE_PREPARED_PARTITION, UMBRELLA_PROPOSAL_TOKEN,
     UNKNOWN_LEAF_IDENTITY, UmbrellaRefusal, UmbrellaSnapshot, UmbrellaSourceKind, check_leaf_cap,
     classify_umbrella_source, completion_sentinel_for_record, expected_completion_sentinel,
-    is_managed_partition_title, is_umbrella_leaf_title, is_umbrella_title, leaf_identity,
-    mark_leaf_in_flight, parse_proposal, prepare_proposal_from_batch, reconcile_in_flight,
-    record_leaf_resolved, render_proposal, render_snapshot, umbrella_leaf_opening_text,
-    validate_final_umbrella, verify_graph_state,
+    is_controlling_umbrella_title, is_managed_partition_title, is_umbrella_leaf_title,
+    is_umbrella_title, leaf_identity, mark_leaf_in_flight, parse_proposal,
+    prepare_proposal_from_batch, reconcile_in_flight, record_leaf_resolved, render_proposal,
+    render_snapshot, umbrella_leaf_opening_text, validate_final_umbrella, verify_graph_state,
 };
 pub use untrusted::{redact_untrusted_stream, untrusted_content_block, xml_escape_attr};

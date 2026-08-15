@@ -27,9 +27,9 @@ use larch_core::{
     GitHubRepositoryRef, GitHubService, IMPLEMENTING_PREFIX, IssueMutationField,
     IssueMutationRequest, ProcessRequest, VendorLaunchRequest, VendorProgram, build_claude_argv,
     complete_umbrella_child_prompt, complete_umbrella_done_title, complete_umbrella_start_title,
-    emit_kv, has_umbrella_proposal, parse_claude_envelope, redact, redact_issue_mutation_request,
-    select_complete_umbrella_leaf, umbrella_leaf_opening, umbrella_leaf_prefix,
-    validate_complete_umbrella_leaf, validate_complete_umbrella_parent,
+    emit_kv, has_umbrella_proposal, is_controlling_umbrella_title, parse_claude_envelope, redact,
+    redact_issue_mutation_request, select_complete_umbrella_leaf, umbrella_leaf_opening,
+    umbrella_leaf_prefix, validate_complete_umbrella_leaf, validate_complete_umbrella_parent,
 };
 use serde::Serialize;
 use std::{
@@ -838,7 +838,7 @@ async fn read_graph(
             .issue(repository, reference.issue_number(), cancellation)
             .await
             .map_err(|error| error.to_string())?;
-        if is_nested_umbrella_title(&issue.title) {
+        if is_controlling_umbrella_title(&issue.title) {
             return Err("nested umbrellas are not supported".to_owned());
         }
         validate_complete_umbrella_leaf(&issue, umbrella)?;
@@ -962,19 +962,11 @@ async fn require_top_level_umbrella(
             .issue(repository, reference.issue_number(), cancellation)
             .await
             .map_err(|error| error.to_string())?;
-        if is_nested_umbrella_title(&child.title) {
+        if is_controlling_umbrella_title(&child.title) {
             return Err("nested umbrellas are not supported".to_owned());
         }
     }
     Ok(())
-}
-
-fn is_nested_umbrella_title(title: &str) -> bool {
-    let title = title
-        .strip_prefix(IMPLEMENTING_PREFIX)
-        .or_else(|| title.strip_prefix(DONE_PREFIX))
-        .unwrap_or(title);
-    title.starts_with("[UMBRELLA] ") || title.starts_with("[CHIEF UMBRELLA] ")
 }
 
 fn exact_title_request(
