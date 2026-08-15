@@ -491,6 +491,7 @@ impl ProductionWorkflow {
                 let git = self.git();
                 git.restore(
                     RestoreRequest {
+                        source: None,
                         staged: true,
                         paths: paths.clone(),
                     },

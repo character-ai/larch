@@ -304,12 +304,17 @@ git_op!(ResetRequest, Reset);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RestoreRequest {
+    pub source: Option<GitRef>,
     pub staged: bool,
     pub paths: Vec<GitPath>,
 }
 impl RestoreRequest {
     fn argv(&self) -> Result<Vec<OsString>, GitCliInputError> {
         let mut a = Vec::new();
+        if let Some(source) = &self.source {
+            a.push("--source".into());
+            a.push(source.as_os_str().into());
+        }
         if self.staged {
             a.push("--staged".into());
         }
@@ -427,13 +432,23 @@ git_op!(CleanRequest, Clean);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ApplyRequest {
-    pub patch: GitPath,
+    pub patch: GitFilePath,
+    pub cached: bool,
     pub index: bool,
     pub check: bool,
 }
 impl ApplyRequest {
     fn argv(&self) -> Result<Vec<OsString>, GitCliInputError> {
         let mut a = Vec::new();
+        if self.cached && self.index {
+            return Err(err(
+                GitCliInputErrorKind::UnsupportedCombination,
+                "git apply cannot request both --cached and --index",
+            ));
+        }
+        if self.cached {
+            a.push("--cached".into());
+        }
         if self.index {
             a.push("--index".into());
         }
