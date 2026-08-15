@@ -1252,6 +1252,28 @@ enum DifficultyCommand {
     SyncLabels(RawCompatibilityArguments),
 }
 
+impl DifficultyCommand {
+    fn run(self) -> ExitCode {
+        match self {
+            Self::ValidateRating(arguments) => {
+                difficulty_commands::validate_rating(&arguments.arguments)
+            }
+            Self::ExtractPlanMetadata(arguments) => {
+                difficulty_commands::extract_plan_metadata(&arguments.arguments)
+            }
+            Self::WriteRecord(arguments) => difficulty_commands::write_record(&arguments.arguments),
+            Self::RenderRubric(arguments) => {
+                difficulty_commands::render_rubric(&arguments.arguments)
+            }
+            Self::RenderLine(arguments) => difficulty_commands::render_line(&arguments.arguments),
+            Self::ResolvePanel(arguments) => {
+                difficulty_commands::resolve_panel(&arguments.arguments)
+            }
+            Self::SyncLabels(arguments) => difficulty_commands::sync_labels(&arguments.arguments),
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum DirtyTreeCommand {
     /// Classify tracked and new untracked paths against a baseline.
@@ -1881,29 +1903,7 @@ fn run(
                 oos_commands::disposition_checkpoint(&arguments.arguments)
             }
         }),
-        Domain::Difficulty(command) => Ok(match command {
-            DifficultyCommand::ValidateRating(arguments) => {
-                difficulty_commands::validate_rating(&arguments.arguments)
-            }
-            DifficultyCommand::ExtractPlanMetadata(arguments) => {
-                difficulty_commands::extract_plan_metadata(&arguments.arguments)
-            }
-            DifficultyCommand::WriteRecord(arguments) => {
-                difficulty_commands::write_record(&arguments.arguments)
-            }
-            DifficultyCommand::RenderRubric(arguments) => {
-                difficulty_commands::render_rubric(&arguments.arguments)
-            }
-            DifficultyCommand::RenderLine(arguments) => {
-                difficulty_commands::render_line(&arguments.arguments)
-            }
-            DifficultyCommand::ResolvePanel(arguments) => {
-                difficulty_commands::resolve_panel(&arguments.arguments)
-            }
-            DifficultyCommand::SyncLabels(arguments) => {
-                difficulty_commands::sync_labels(&arguments.arguments)
-            }
-        }),
+        Domain::Difficulty(command) => Ok(command.run()),
         Domain::Deps(command) => Ok(match command {
             DepsCommand::ResolveRepo(arguments) => {
                 deps_audit_commands::resolve_repo(&arguments.arguments)
