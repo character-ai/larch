@@ -85,10 +85,13 @@ contains_file "$RUST_CORE" 'pub fn prepare_artifacts' 'Rust core owns preparatio
 contains_file "$RUST_CORE" 'pub fn ingest_artifact' 'Rust core owns verdict ingestion'
 contains_file "$RUST_CORE" 'pub fn finalize_artifacts' 'Rust core owns finalization artifacts'
 contains_file "$RUST_CORE" 'pub fn record_plan' 'Rust core owns recording decisions'
-not_contains_file "$PYTHON_CORE" 'def prepare(' 'prepare implementation removed from Python'
-not_contains_file "$PYTHON_CORE" 'def ingest_verdict(' 'ingest implementation removed from Python'
-not_contains_file "$PYTHON_CORE" 'def finalize(' 'finalize implementation removed from Python'
-not_contains_file "$PYTHON_CORE" 'def record(' 'record implementation removed from Python'
+if [ ! -e "$PYTHON_CORE" ]; then
+    PASS=$((PASS + 1))
+    printf '  ok: superseded Python rejected_analysis module removed\n'
+else
+    FAIL=$((FAIL + 1))
+    printf '  FAIL: superseded Python rejected_analysis module still present\n' >&2
+fi
 
 printf '== wrapper behavior ==\n'
 if "$WRAPPER" prepare --days 1 >/tmp/rejected-analysis-wrapper.out 2>/tmp/rejected-analysis-wrapper.err; then

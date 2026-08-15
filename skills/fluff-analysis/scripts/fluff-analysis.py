@@ -32,13 +32,68 @@ if str(python_dir) not in sys.path:
 
 from larch.core import config, proc, repo_roots  # noqa: E402
 from larch.core.architectural_guidelines import CLEAN_INVARIANT_PRESENTATION_NOTE, CLEAN_PRESENTATION_NOTE, DESIGN_ASSESSMENT, GUIDELINE_SHIP_OUTCOME_SIDECAR, INVARIANT_DESIGN_ASSESSMENT, INVARIANT_SHIP_OUTCOME_SIDECAR, validate_invariant_ship_outcome_record  # noqa: E402
-from larch.issue.rejected_analysis import (  # noqa: E402
-    _lookup_jsonl_record,
-    _records_by_round_and_token,
-)
+from larch.core.findings import parse_canonical_heading  # noqa: E402
 from larch.implement.ship_guidelines import GUIDELINE_SHIP_REASON_TOKENS  # noqa: E402
 from larch.report import run_log_corpus  # noqa: E402
 from larch.report.run_log_manifest import implement_step8_reachable  # noqa: E402
+
+# --------------------------------------------------------------------------
+# finding-id join helpers (formerly python/larch/issue/rejected_analysis.py)
+# --------------------------------------------------------------------------
+
+
+def _first_canonical_heading(text):
+    """Return (item_id, title) from the first canonical heading, if present."""
+    for line in text.splitlines():
+        heading = parse_canonical_heading(line)
+        if heading is not None:
+            return (heading.item_id, heading.title)
+    return None
+
+
+def _finding_tokens(value, prose_body=""):
+    """Return the shared finding-id aliases used by fluff-analysis joins."""
+    heading = _first_canonical_heading(prose_body or "")
+    tokens = set()
+    for raw in (value, heading[0] if heading is not None else ""):
+        text = (raw or "").strip().upper()
+        if not text:
+            continue
+        tokens.add(text)
+        match = re.match(r"REJ_CR\d+_(\d+)$", text)
+        if match:
+            tokens.add(f"FINDING_{match.group(1)}")
+        match = re.match(r"FINDING_(\d+)$", text)
+        if match:
+            tokens.add(f"REJ_CR1_{match.group(1)}")
+    return tokens
+
+
+def _lookup_jsonl_record(*, by_token, round_num, row_id, allow_unscoped):
+    matches = []
+    for token in _finding_tokens(row_id):
+        keyed = by_token.get((round_num, token))
+        if keyed is not None:
+            matches.append(keyed)
+        elif allow_unscoped:
+            unscoped = by_token.get(("", token))
+            if unscoped is not None:
+                matches.append(unscoped)
+    unique = {id(item): item for item in matches}
+    if len(unique) > 1:
+        return "ambiguous"
+    return next(iter(unique.values()), None) if unique else None
+
+
+def _records_by_round_and_token(records, *, default_round=""):
+    out = {}
+    for record in records:
+        prose = str(record.get("prose_body") or record.get("body") or record.get("text") or "")
+        round_num = str(record.get("round_num") or default_round or "")
+        for token in _finding_tokens(str(record.get("id") or ""), prose):
+            out[(round_num, token)] = record
+    return out
+
 
 # --------------------------------------------------------------------------
 # semantic-group classifier — a finding may carry many tags (multi-label)

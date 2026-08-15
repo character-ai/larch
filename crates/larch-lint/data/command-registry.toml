@@ -1231,7 +1231,7 @@ owner = "rust"
 implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
-planning_issue = 7684
+planning_issue = 7679
 migration_issue = 8439
 clean_install_test = "clean-install-calibration-replay-rebuild-ballot"
 
@@ -1245,7 +1245,7 @@ owner = "rust"
 implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
-planning_issue = 7684
+planning_issue = 7679
 migration_issue = 8439
 clean_install_test = "clean-install-calibration-replay-run-replay"
 
@@ -1259,7 +1259,7 @@ owner = "rust"
 implementation_parity = "complete"
 consumer_cutover = "complete"
 python_removal = "complete"
-planning_issue = 7684
+planning_issue = 7679
 migration_issue = 8439
 clean_install_test = "clean-install-calibration-replay-validate-manifest"
 
