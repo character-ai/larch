@@ -272,7 +272,10 @@ impl PlanTrailers {
     /// Terminal `diff_lines` integer when present and typed.
     #[must_use]
     pub fn diff_lines(&self) -> Option<i64> {
-        match self.get(TrailerKey::DiffLines).map(|item| &item.parsed_value) {
+        match self
+            .get(TrailerKey::DiffLines)
+            .map(|item| &item.parsed_value)
+        {
             Some(TrailerValue::Int(value)) => Some(*value),
             _ => None,
         }
@@ -458,9 +461,7 @@ pub fn terminal_diff_lines(text: &str) -> Option<i64> {
 /// # Errors
 ///
 /// Returns when a supplied value fails trailer grammar validation.
-pub fn compose_trailer_lines(
-    values: &[(TrailerKey, TrailerValue)],
-) -> Result<Vec<String>, String> {
+pub fn compose_trailer_lines(values: &[(TrailerKey, TrailerValue)]) -> Result<Vec<String>, String> {
     let mut rendered = Vec::new();
     for key in CANONICAL_TRAILER_ORDER
         .iter()
@@ -1026,7 +1027,8 @@ mod tests {
             crate::balanced_fence_line_indices(&["```md", "## NEW: after-unclosed.py"]).is_empty()
         );
         assert!(
-            crate::balanced_fence_line_indices(&["```md", "## NEW: still-open.py", "~~~"]).is_empty()
+            crate::balanced_fence_line_indices(&["```md", "## NEW: still-open.py", "~~~"])
+                .is_empty()
         );
     }
 
@@ -1065,8 +1067,7 @@ mod tests {
 
     #[test]
     fn final_contiguous_block_boundaries_duplicates_and_terminal_requirement() {
-        let text =
-            "body\ndifficulty: HARD\nconfidence: high\ndiff_added: 1\ndiff_added: 2\ndiff_lines: 3\n";
+        let text = "body\ndifficulty: HARD\nconfidence: high\ndiff_added: 1\ndiff_added: 2\ndiff_lines: 3\n";
         let trailers = parse_final_trailers(text, true);
         assert_eq!(
             trailers.lines,

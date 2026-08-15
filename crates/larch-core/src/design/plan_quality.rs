@@ -37,8 +37,7 @@ pub const PLAN_SIZE_MAX_SURFACES: usize = 4;
 pub const OVERSIZE_OVERRIDE_OPERATOR: &str = "operator";
 
 /// TSV header for parsed plan-command rows.
-pub const HEADER: &str =
-    "row_type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid";
+pub const HEADER: &str = "row_type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid";
 
 static FILES_CREATE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^###[ \t]+Files[ \t]+to[ \t]+create([ \t]|$)").expect("files create regex")
@@ -57,17 +56,15 @@ static H2_FILES_CREATE_OR_UPDATE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^##[ \t]+Files[ \t]+to[ \t]+(create|update)")
         .expect("h2 files create/update regex")
 });
-static ADDS_FLAG_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[ \t]*-[ \t]+Adds[ \t]+flag:").expect("adds flag regex")
-});
+static ADDS_FLAG_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[ \t]*-[ \t]+Adds[ \t]+flag:").expect("adds flag regex"));
 static ADDS_FLAG_INDENTED_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[ \t]+-[ \t]+Adds[ \t]+flag:").expect("adds flag indented regex")
 });
 static HASH_HEADING_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^#{2,3}[ \t]+").expect("hash heading regex"));
-static BASH_FENCE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[ \t]*```[ \t]*(bash|sh)[ \t]*$").expect("bash fence regex")
-});
+static BASH_FENCE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[ \t]*```[ \t]*(bash|sh)[ \t]*$").expect("bash fence regex"));
 static CONTINUATION_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\\\s*$").expect("continuation regex"));
 static DOUBLE_CONTINUATION_RE: LazyLock<Regex> =
@@ -84,9 +81,8 @@ static ADDS_FLAG_STRIP_RE: LazyLock<Regex> = LazyLock::new(|| {
 static ADDS_FLAG_INDENTED_STRIP_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[ \t]+-[ \t]+Adds[ \t]+flag:[ \t]*").expect("adds flag indented strip regex")
 });
-static NEW_BOLD_STRIP_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[^*]*\*\*NEW\*\*:[ \t]*").expect("new bold strip regex")
-});
+static NEW_BOLD_STRIP_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[^*]*\*\*NEW\*\*:[ \t]*").expect("new bold strip regex"));
 static UPDATED_BOLD_STRIP_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[^*]*\*\*UPDATED\*\*:[ \t]*").expect("updated bold strip regex")
 });
@@ -235,22 +231,16 @@ pub fn parse_optional_metadata(plan_text: &str) -> OptionalMetadata {
     .map(|(key, _)| key.to_owned())
     .collect::<Vec<_>>();
     let mut values = Vec::new();
-    if has_added
-        && let Some(value) = &diff_added
-    {
+    if has_added && let Some(value) = &diff_added {
         values.push(format!("diff_added={value}"));
     }
-    if has_deleted
-        && let Some(value) = &diff_deleted
-    {
+    if has_deleted && let Some(value) = &diff_deleted {
         values.push(format!("diff_deleted={value}"));
     }
     if has_mech {
         values.push(format!("mechanical_churn={mechanical}"));
     }
-    if has_oversize_override
-        && let Some(value) = &oversize_override
-    {
+    if has_oversize_override && let Some(value) = &oversize_override {
         values.push(format!("oversize_override={value}"));
     }
     OptionalMetadata {
@@ -476,7 +466,10 @@ pub fn parse_plan_commands(
             && !pending_updated.is_empty()
             && ADDS_FLAG_INDENTED_RE.is_match(raw)
         {
-            let flag = ADDS_FLAG_INDENTED_STRIP_RE.replace(raw, "").trim().to_owned();
+            let flag = ADDS_FLAG_INDENTED_STRIP_RE
+                .replace(raw, "")
+                .trim()
+                .to_owned();
             emit_updated_flag(&mut rows, &pending_updated, &flag, idx);
         }
     }
@@ -512,7 +505,10 @@ fn bad_field(text: &str) -> bool {
 
 fn strip_md_ticks(text: &str) -> String {
     let stripped = TICK_PREFIX_RE.replace(text, "");
-    TICK_SUFFIX_RE.replace(stripped.trim(), "").trim().to_owned()
+    TICK_SUFFIX_RE
+        .replace(stripped.trim(), "")
+        .trim()
+        .to_owned()
 }
 
 fn emit_parse_note(rows: &mut Vec<PlanCommandRow>, line: usize, reason: &str) {
@@ -1012,7 +1008,10 @@ mod tests {
         assert_eq!(full.diff_added.as_deref(), Some("10"));
         assert_eq!(full.diff_deleted.as_deref(), Some("2"));
         assert_eq!(full.mechanical_churn, "true");
-        assert_eq!(full.oversize_override.as_deref(), Some(OVERSIZE_OVERRIDE_OPERATOR));
+        assert_eq!(
+            full.oversize_override.as_deref(),
+            Some(OVERSIZE_OVERRIDE_OPERATOR)
+        );
         assert_eq!(
             full.keys,
             [
@@ -1033,8 +1032,9 @@ mod tests {
             ]
         );
 
-        let malformed =
-            parse_optional_metadata("body\ndifficulty: HARD\noversize_override: model\ndiff_lines: 3\n");
+        let malformed = parse_optional_metadata(
+            "body\ndifficulty: HARD\noversize_override: model\ndiff_lines: 3\n",
+        );
         assert_eq!(malformed.metadata_trailer_lines, 0);
         assert!(malformed.keys.is_empty());
     }
