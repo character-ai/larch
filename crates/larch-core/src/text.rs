@@ -357,7 +357,7 @@ pub fn file_line_regex(name: &str) -> Option<String> {
 
 /// The four alternatives of the shared reviewer file-reference grammar.
 ///
-/// Ports Python `larch.review.voting.FILE_LINE_REGEXES` as one owner, so the
+/// Ports Python `larch.calibration.voting.FILE_LINE_REGEXES` as one owner, so the
 /// evidence reader and the OOS conflict model cannot drift apart on which
 /// prose counts as a file reference. The alternatives are returned as source
 /// strings because the two readers compose them differently: evidence matching

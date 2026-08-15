@@ -24,7 +24,7 @@ from larch.issue import issue_wire
 from larch.core import architectural_guidelines
 from larch.core.repo_roots import consumer_repo_root, larch_entrypoint, larch_entrypoint_env
 from larch.state.session_env import validate_design_tmpdir
-from larch.review.review_types import FOCUS_AREA_VALUES, render_wire_values
+from larch.core.findings import FOCUS_AREA_VALUES, render_wire_values
 
 from larch.design.design_session import (
     PostplanDecision,

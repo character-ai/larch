@@ -42,7 +42,7 @@ from larch.core import config, external_defaults, proc, redact
 from larch.core.repo_roots import larch_entrypoint
 from larch.debate import protocol
 from larch.report import run_logs
-from larch.review import voting
+from larch.calibration import voting
 
 STATE_SCHEMA_VERSION: Final[int] = 2
 _SUPPORTED_STATE_SCHEMA_VERSIONS: Final[frozenset[int]] = frozenset({1, STATE_SCHEMA_VERSION})

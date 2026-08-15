@@ -13,11 +13,11 @@ import pytest
 
 from larch.core import config
 from larch.core import proc
-from larch.review import findings_ledger
+from larch.rendering import findings_ledger
 from larch.core import logging_util
 from larch.rendering import rendering
 from larch.rendering import _rendering_helpers as helpers
-from larch.review import voting
+from larch.calibration import voting
 from tests.support.design_wire import plan_body, run_params_json
 
 REPO_ROOT = Path(__file__).resolve().parents[3]

@@ -63,7 +63,8 @@ def run(repo_root: Path) -> list[str]:
     if not (review_and_fix / "SKILL.md").is_file(): failures.append("(1b) missing skills/review-and-fix/SKILL.md")
     review_and_fix_commands = file("crates/larch-cli/src/review_and_fix_commands.rs")
     if not review_and_fix_commands.is_file(): failures.append("(1b) missing Rust review-and-fix command owner")
-    if file("python/larch/review/review_and_fix.py").exists(): failures.append("(1b) superseded Python review-and-fix owner must be removed")
+    review_python_root = file("python/larch/review")
+    if review_python_root.is_dir() and any(review_python_root.glob("*.py")): failures.append("(1b) superseded Python review package must be removed")
     if not cli.is_file(): failures.append("(1b) missing python/cli.py")
     for needle, label in (
         ('("review-and-fix", "apply-findings")', "(1b) Python review-and-fix apply-findings registry entry must be removed"),
@@ -170,16 +171,16 @@ def run(repo_root: Path) -> list[str]:
     ): require(skill, needle, label)
     if "/umbrella" in skill_text: failures.append("(19) SKILL.md must not reference '/umbrella' — removed umbrella composition must not return")
 
-    protocol, voting, types = file("skills/shared/voting-protocol.md"), file("python/larch/review/voting.py"), file("python/larch/review/review_types.py")
+    protocol, voting, types = file("skills/shared/voting-protocol.md"), file("python/larch/calibration/voting.py"), file("python/larch/core/findings.py")
     if not protocol.is_file(): failures.append("(20) skills/shared/voting-protocol.md missing")
     for needle, label in (
         ("security-tagged findings (focus-area=security) are held locally and NEVER filed publicly", "(20a) voting-protocol.md security guard prose drifted"),
         ("Match discrimination (false-positive guard)", "(20b) voting-protocol.md missing Match discrimination procedure"),
         ("Security counter-invariant", "(20c) voting-protocol.md missing Security counter-invariant clause"),
     ): require(protocol, needle, label)
-    if not voting.is_file(): failures.append("(20) python/larch/review/voting.py missing")
-    if not types.is_file(): failures.append("(20) python/larch/review/review_types.py missing")
-    require(types, "_SECURITY_FIELD_RE", "(20d) review_types.py must carry _SECURITY_FIELD_RE for is_security_block_text")
-    require(voting, "is_security_block_text", "(20e) voting.py::is_security_block must delegate to review_types.is_security_block_text")
+    if not voting.is_file(): failures.append("(20) Python voting compatibility helper missing")
+    if not types.is_file(): failures.append("(20) Python findings compatibility helper missing")
+    require(types, "_SECURITY_FIELD_RE", "(20d) findings.py must carry _SECURITY_FIELD_RE for is_security_block_text")
+    require(voting, "is_security_block_text", "(20e) voting.py::is_security_block must delegate to findings.is_security_block_text")
 
     return failures

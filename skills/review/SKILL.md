@@ -23,7 +23,7 @@ Progress and prompt pins: read `step-name-registry.tsv`; reviewer prompts preser
 
 Commands: `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh review core` and `review compose-findings` are Rust-owned through the verified bootstrap. Rust: `scripts/larch.sh review tally-code-votes`, `scripts/larch.sh review emit-tally`, `scripts/larch.sh review log-phase`, `scripts/larch.sh review aggregate-findings`, `scripts/larch.sh review prune-nit-findings`, `scripts/larch.sh review reviewer-prune`, `scripts/larch.sh review gather-context`, `scripts/larch.sh review dispatch-panel`, `scripts/larch.sh review collect-findings`, `scripts/larch.sh review check-reviewer-failure-threshold`, `scripts/larch.sh agent dispatch-voters`, `scripts/larch.sh agent dispatch-waterfall`, and `scripts/larch.sh agent launch-claude-subprocess`. Harnesses: `crates/larch-cli/tests/review_commands.rs`, `crates/larch-cli/tests/review_tally_commands.rs`, `crates/larch-cli/tests/review_dispatch_panel.rs`, `crates/larch-cli/tests/voter_dispatch_commands.rs`, and `crates/larch-cli/tests/waterfall_commands.rs`.
 
-Shared prune-decision helper: `${CLAUDE_PLUGIN_ROOT}/python/larch/review/review_pipeline.py` owns prune-decision status and env writing.
+`review reviewer-prune`, reached through `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`, owns prune-decision status and env writing.
 
 Dynamic reviewer scout contract and harness: `${CLAUDE_PLUGIN_ROOT}/python/cli.py scout dynamic-archetypes` / `${CLAUDE_PLUGIN_ROOT}/python/larch/design/plan_scout.py` / `${CLAUDE_PLUGIN_ROOT}/python/tests/design/test_plan_scout.py`.
 

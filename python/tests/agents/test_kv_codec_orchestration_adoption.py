@@ -10,17 +10,12 @@ from types import SimpleNamespace
 import pytest
 
 from larch.agents import _vendor
-from larch.core import config
 from larch.implement import (
     checks_lint_fix,
     dispatch_commit_route,
     dispatch_manifest,
     dispatch_ship,
     step_7a,
-)
-from larch.review import (
-    plan_review_normalize,
-    review_pipeline_shared,
 )
 
 
@@ -38,22 +33,6 @@ def test_vendor_cap_status_uses_first_whitespace_token() -> None:
         runner=lambda _argv: type("R", (), {"stdout": "STATUS=under_cap TOTAL=1\n"})(),
     )
     assert miss.hit is False
-
-
-def test_collector_records_last_wins_within_block_and_ignores_preamble() -> None:
-    text = (
-        "DIAG=noise\n"
-        "REVIEWER_FILE=a.md\n"
-        "STATUS=old\r\n"
-        "STATUS=new\n"
-        "\n"
-        "REVIEWER_FILE=b.md\n"
-        "STATUS=only\n"
-    )
-    assert review_pipeline_shared.parse_collector_records(text) == [
-        {"REVIEWER_FILE": "a.md", "STATUS": "new"},
-        {"REVIEWER_FILE": "b.md", "STATUS": "only"},
-    ]
 
 
 def test_parse_launcher_exit_first_digit_or_none() -> None:
@@ -144,55 +123,3 @@ def test_step_7a_first_rc_last_wins(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     )
     assert any("rc=42" in entry for entry in issues)
     assert not sidecar.exists()
-
-
-def test_step3_overlay_allowlist_last_wins_and_prints_warn(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    stdout = tmp_path / "stdout.env"
-    _ = stdout.write_text(
-        "NEXT_ACTION=old\nNEXT_ACTION=new\nDROP=1\nWARN=one\nWARN=two\n",
-        encoding="utf-8",
-    )
-    values: dict[str, str] = {}
-    plan_review_normalize._step3_overlay_stdout_env(
-        values=values,
-        stdout_file=stdout,
-        primary_regular=True,
-        selected_source=tmp_path / "other.env",
-    )
-    assert values["NEXT_ACTION"] == "new"
-    assert "DROP" not in values
-    assert capsys.readouterr().out == "WARN=one\nWARN=two\n"
-
-
-def test_step3_read_result_env_allowlist_last_wins(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    result_env = tmp_path / "bgjob" / "design-step3-review.result.env"
-    result_env.parent.mkdir(parents=True)
-    _ = result_env.write_text(
-        f"{config.BGJOB_RC_KEY}=0\nNEXT_ACTION=keep\nNEXT_ACTION=final-summary:done\n"
-        "LOOP_STATUS=complete\nIGNORED=1\n",
-        encoding="utf-8",
-    )
-    rc = plan_review_normalize._step3_normalize_read_result_env(tmp_path)
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "NEXT_ACTION=final-summary:done" in out
-    assert "IGNORED=" not in out
-    assert "READ_RESULT_ENV_STATUS=ok" in out
-
-
-def test_pipeline_collector_records_blank_line_separated(tmp_path: Path) -> None:
-    path = tmp_path / "collector.env"
-    _ = path.write_text(
-        "A=1\nA=2\n\nB=3\n",
-        encoding="utf-8",
-    )
-    assert review_pipeline_shared._collector_records(path) == [
-        {"A": "2"},
-        {"B": "3"},
-    ]

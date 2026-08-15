@@ -21,7 +21,7 @@ from larch.errors import ShipError
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch.issue import file_oos
 from larch.issue import oos_priority
-from larch.review.review_types import is_security_block_text, parse_blocks
+from larch.core.findings import is_security_block_text, parse_blocks
 
 OOS_ISSUE_STDOUT_FILE = "oos-issue.stdout.txt"
 OOS_AGGREGATE_POOL_FILE = "oos-aggregate-pool.md"

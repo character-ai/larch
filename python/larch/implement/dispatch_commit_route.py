@@ -30,7 +30,7 @@ from larch.implement import checks_result_identity
 from larch.implement import ship
 from larch.implement import scope_disposition
 from larch.implement.self_edit_log import file_sha256, read_self_edits
-from larch.review.review_types import parse_findings
+from larch.core.findings import parse_findings
 from larch.implement.dispatch_helpers import (
     _current_cli_path,
     _emit_kv,

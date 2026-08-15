@@ -1,4 +1,4 @@
-"""Shared review-domain value types and canonical reviewer-item parsing."""
+"""Shared finding value types and canonical reviewer-item parsing."""
 
 from __future__ import annotations
 

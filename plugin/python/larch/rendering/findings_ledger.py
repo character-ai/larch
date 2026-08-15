@@ -1,4 +1,4 @@
-"""Ephemeral cross-round findings ledger helpers."""
+"""Render ephemeral cross-round findings ledger context."""
 
 from __future__ import annotations
 

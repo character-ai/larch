@@ -288,8 +288,8 @@ const HANDOFF_COMMANDS: [HandoffCommand; 14] = [
     HandoffCommand::new("clarify", "label", 7680),
     HandoffCommand::new("clarify", "state", 7680),
     HandoffCommand::new("issue", "migration-audit", 7685),
-    HandoffCommand::new("oos", "normalize-header", 7679),
-    HandoffCommand::new("oos", "serialize", 7679),
+    HandoffCommand::new("oos", "normalize-header", 7680),
+    HandoffCommand::new("oos", "serialize", 7680),
     HandoffCommand::new("rejected-analysis", "finalize", 7684),
     HandoffCommand::new("rejected-analysis", "record", 7684),
     HandoffCommand::new("render", "run-summary", 7680),
@@ -302,7 +302,6 @@ const RESEARCH_LIBRARY: &str =
     "issue analysis library retained for the research and analytics umbrella";
 const DESIGN_LIBRARY: &str =
     "issue wire or payload library retained for the design workflow umbrella";
-const REVIEW_LIBRARY: &str = "OOS library retained for the review pipeline umbrella";
 const IMPLEMENT_LIBRARY: &str =
     "pure pull-request footer library retained for the implementation workflow umbrella";
 const GOVERNANCE_GATE_LIBRARY: &str =
@@ -331,7 +330,7 @@ const RETAINED_MODULES: [RetainedModule; 18] = [
         7681,
         GOVERNANCE_GATE_LIBRARY,
     ),
-    RetainedModule::new("python/larch/issue/oos.py", 7679, REVIEW_LIBRARY),
+    RetainedModule::new("python/larch/issue/oos.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/oos_disposition.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/oos_priority.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new(

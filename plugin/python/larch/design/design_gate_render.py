@@ -9,10 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
-from larch.review.plan_review_common import effective_authorized_cap
-
-
 _TRUE_FALSE = frozenset({"true", "false"})
+ROUND_CAP = 2
 _GATE_C_OTHER_AFFORDANCE = (
     "Use Other to request debate <decision>: <option A> vs <option B> "
     "(or debate <candidate-id> when fingerprint-valid candidates exist)."
@@ -209,7 +207,7 @@ def _render_gate_c(
     accepted_audit_escalation: bool,
 ) -> GateRender:
     count, warning = _review_count(design_tmpdir)
-    cap = effective_authorized_cap(Path(design_tmpdir)) if design_tmpdir else 2
+    cap = ROUND_CAP
     at_cap = count >= cap
     extra: list[tuple[str, str]] = [("REVIEW_ROUND_CAP", str(cap))]
     if warning:

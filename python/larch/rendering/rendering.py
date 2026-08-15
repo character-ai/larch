@@ -18,7 +18,7 @@ from pathlib import Path
 
 from larch.calibration import difficulty
 from larch.core import architectural_guidelines
-from larch.review import findings_ledger
+from larch.rendering import findings_ledger
 from larch.issue import issue_wire
 from larch import io as larch_io
 from larch.core import logging_util
@@ -29,8 +29,8 @@ from larch.core import redact
 from larch.core import rust_runtime
 from larch.state import session_env
 from larch.errors import ShipError
-from larch.review import voting
-from larch.review.review_types import FINDING_SCOPE_VALUES, FOCUS_AREA_VALUES, render_wire_values
+from larch.calibration import voting
+from larch.core.findings import FINDING_SCOPE_VALUES, FOCUS_AREA_VALUES, render_wire_values
 from larch.rendering._rendering_helpers import (
     RenderError,
     extract_generated_body as _extract_generated_body,

@@ -13,7 +13,7 @@ import re
 from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
-from larch.review.review_types import parse_canonical_heading
+from larch.core.findings import parse_canonical_heading
 
 
 def _first_canonical_heading(text: str) -> tuple[str, str] | None:

@@ -584,7 +584,7 @@ def discover_submodule_paths(cwd: Path) -> set[str]:
 
 
 def scrub_submodule_paths(*, input_path: Path, output_path: Path, log_path: Path) -> ScrubSubmodulePathsResult:
-    from larch.review.review_types import parse_blocks  # noqa: PLC0415 - deferred function-level import keeps larch.core import-time free of larch.review  # lint-layering: ok review_types is stdlib-only so no import cycle
+    from larch.core.findings import parse_blocks  # noqa: PLC0415 - deferred function-level import avoids a core import cycle
     text = input_path.read_text(encoding="utf-8", errors="replace")
     repo = Path.cwd()
     submodules = discover_submodule_paths(repo)

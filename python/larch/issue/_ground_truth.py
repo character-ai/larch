@@ -28,7 +28,7 @@ from larch.issue._oos import (
     iter_filed_oos_records,
 )
 from larch.issue._report import default_category, issue_number, title_tokens
-from larch.review.review_types import parse_blocks
+from larch.core.findings import parse_blocks
 from larch.issue._util import (
     BODY_CAP,
     CATEGORY_PATTERNS,
@@ -40,7 +40,7 @@ from larch.issue._util import (
     parse_iso,
 )
 from larch.report import run_log_corpus
-from larch.review import voting
+from larch.calibration import voting
 
 
 @dataclass(frozen=True)

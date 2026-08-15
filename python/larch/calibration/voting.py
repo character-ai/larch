@@ -1,4 +1,4 @@
-"""Voting, tally, parse-rate, and scoreboard helpers for larch."""
+"""Voting, tally, parse-rate, and scoreboard compatibility helpers."""
 # ruff: noqa: E402, F401
 # pylint: disable=unused-import
 # pyright: reportPrivateUsage=false, reportUnusedImport=false
@@ -15,7 +15,7 @@ import sys
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-from larch.review.review_types import (
+from larch.core.findings import (
     JudgeSeverity,
     ParsedBlock,
     ReviewVote,
@@ -97,8 +97,8 @@ CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER = _code_review_classification_header(
     include_tools=True, include_scope=True
 )
 
-# Re-exports from sibling module — preserves `voting.X` access for callers and tests.
-from larch.review._voting_calibration import (
+# Re-exports from the calibration analyzer preserve `voting.X` access for callers.
+from larch.calibration.voter_calibration import (
     ClassificationRowPrep,
     VoterAgreementTsvParse,
     VoterCalibrationStat,

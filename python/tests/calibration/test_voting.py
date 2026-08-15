@@ -10,8 +10,8 @@ from typing import cast
 
 import pytest
 
-from larch.review import voting
-from larch.review.review_types import (
+from larch.calibration import voting
+from larch.core.findings import (
     JudgeSeverity,
     ReviewVote,
     code_review_classification_header,

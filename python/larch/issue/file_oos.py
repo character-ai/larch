@@ -25,8 +25,8 @@ from typing import NamedTuple
 from larch import io as larch_io
 from larch.core import config
 from larch.report import run_log_corpus
-from larch.review import voting
-from larch.review.review_types import count_non_security_blocks, parse_blocks
+from larch.calibration import voting
+from larch.core.findings import count_non_security_blocks, parse_blocks
 from larch.issue.issue_create import ParsedItem, parse_issue_input
 from larch.core.redact import redact
 
