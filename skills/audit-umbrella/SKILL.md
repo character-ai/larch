@@ -167,7 +167,7 @@ For a dependency whose endpoint is a new leaf, set `kind` to `new` and use the e
   >"$AUDIT_TMPDIR/leaf-N-identity.env"
 ```
 
-Use the exact same bytes in `proposal-input.json`. Existing endpoints use `{"kind":"existing","number":N}`. Express every edge as `dependent <- prerequisite`. Include only genuine prerequisites and identify only demonstrably false existing edges in `remove_dependencies`.
+Use the exact same bytes in `proposal-input.json`. Existing endpoints use `{"kind":"existing","number":N}`. Express every edge as `dependent <- prerequisite`. Include only genuine leaf-to-leaf (or other non-umbrella) prerequisites in `dependencies`. Do not declare `umbrella <- leaf` edges: apply's native-graph phase already attaches every direct leaf as a native sub-issue and as an umbrella blocker, and final verification re-proves that set independently. Identify only demonstrably false existing edges in `remove_dependencies`.
 
 ## Step 4: Persist, apply, and verify the batch
 
