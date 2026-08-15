@@ -460,7 +460,7 @@ def test_token_report_append_json_writes_json_not_repr(tmp_path: Path) -> None:
 
 def test_token_ledger_mark_record_dump(tmp_path: Path) -> None:
     ledger = tmp_path / "ledger.jsonl"
-    tokens.TokenLedger(ledger).mark("Step 1 - fixture")
+    _ = tokens.TokenLedger(ledger).mark("Step 1 - fixture")
     tokens.TokenLedger(ledger).record_vendor("codex", total=123, raw="codex_implement", model="gpt-5.5")
     dump = tokens.TokenLedger(ledger).dump()
     assert '"type":"mark"' in dump
@@ -972,7 +972,7 @@ def test_panel_prompt_size_explicit_malformed_does_not_fall_back_to_env(
 
 def test_panel_prompt_size_migrates_legacy_header_on_append(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     out = tmp_path / "panel-prompt-sizes.tsv"
-    out.write_text(
+    _ = out.write_text(
         "site\tphase\tround_num\tslot\tslot_kind\ttool\toutput\tprompt_bytes\tprompt_tokens\tagent_file\tagent_bytes\tagent_tokens\n"
         "review\t\t1\tcorrectness\tspecialist\tcursor\told.txt\t12\t3\tagents/reviewer-testing.md\t8\t2\n",
         encoding="utf-8",
@@ -1020,7 +1020,7 @@ def test_repo_relative_agent_path_rejects_symlink_source(tmp_path: Path, monkeyp
     monkeypatch.setattr(tokens, "_repo_root", lambda: tmp_path)  # pyright: ignore[reportPrivateUsage]
     agent = tmp_path / "agents" / "reviewer.md"
     agent.parent.mkdir()
-    agent.write_text("agent body\n", encoding="utf-8")
+    _ = agent.write_text("agent body\n", encoding="utf-8")
     symlink = tmp_path / "agent-link.md"
     try:
         symlink.symlink_to(agent)

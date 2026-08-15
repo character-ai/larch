@@ -64,6 +64,7 @@ crates/larch-cli/src/session_closeout_commands.rs	git-cli	#7671	typed-cli,typed-
 crates/larch-cli/src/session_setup_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/stall_recovery_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/stall_recovery_reporting.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/token_measurement_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/triage_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked-paths
 python/larch/agents/_run_external.py	later-domain	#7678	dynamic
@@ -96,7 +97,6 @@ python/larch/implement/step_7a.py	later-domain	#7681	diff,merge-base
 python/larch/issue/rejected_analysis.py	later-domain	#7684	dynamic
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base
 python/larch/report/storage_config.py	later-domain	#7683	dynamic
-python/larch/report/tokens.py	later-domain	#7683	dynamic
 python/larch/research/research_eval.py	later-domain	#7684	dynamic
 python/larch/review/_raf_util.py	later-domain	#7679	status
 python/larch/review/coder_runner.py	later-domain	#7679	checkout

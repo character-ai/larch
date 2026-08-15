@@ -23,7 +23,7 @@ use std::{
 use tiktoken_rs::cl100k_base_singleton;
 
 use super::run_log_corpus::{RunLogFileIter, is_contained_regular_file, safe_child_directories};
-use super::session_transcript::REDACTED_OPERATOR_REPO;
+use super::session_transcript::{REDACTED_OPERATOR_REPO, strip_plugin_cache_read_suffix};
 
 const CHECKS_DIGEST_FIELDS: [&str; 9] = [
     "site",
@@ -60,9 +60,9 @@ fn tracked_text_paths(tracked: &[Vec<u8>]) -> Vec<String> {
 }
 
 fn read_lossy(path: &Path) -> Result<String, String> {
-    fs::read(path)
-        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-        .map_err(|error| format!("could not read {}: {error}", path.display()))
+    let bytes =
+        fs::read(path).map_err(|error| format!("could not read {}: {error}", path.display()))?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn claude_root_imports(repo: &Path) -> BTreeSet<String> {
@@ -295,23 +295,6 @@ fn skill_runs(corpus_root: &Path) -> BTreeMap<String, Vec<MeasurementRun>> {
     grouped
 }
 
-fn plugin_cache_suffix(path: &str) -> Option<String> {
-    let parts: Vec<&str> = path.split('/').collect();
-    for (index, part) in parts.iter().enumerate() {
-        if *part == "plugins"
-            && index + 4 < parts.len()
-            && parts[index + 1..index + 4] == ["cache", "larch-local", "larch"]
-            && !parts[index + 4].is_empty()
-        {
-            if (index == 0 || parts[index - 1] == ".claude") && index + 5 < parts.len() {
-                return Some(parts[index + 5..].join("/"));
-            }
-            return None;
-        }
-    }
-    None
-}
-
 fn normalize_read_path(raw: &Value, repo: &Path) -> Option<String> {
     let mut path = raw.as_str()?.to_owned();
     if !has_markdown_extension(&path) {
@@ -326,7 +309,7 @@ fn normalize_read_path(raw: &Value, repo: &Path) -> Option<String> {
     let prefix = format!("{}/", repo.display());
     if path.starts_with(&prefix) {
         path.replace_range(..prefix.len(), "");
-    } else if let Some(relative) = plugin_cache_suffix(&path) {
+    } else if let Some(relative) = strip_plugin_cache_read_suffix(&path) {
         path = relative;
     } else if path.starts_with('/') {
         return None;
@@ -1220,7 +1203,7 @@ mod tests {
         path
     }
 
-    fn token_report(path: &Path, value: Value) {
+    fn token_report(path: &Path, value: &Value) {
         write(path, &value.to_string());
     }
 
@@ -1299,7 +1282,7 @@ mod tests {
         let first = run(corpus, "design", "run-1", 1);
         token_report(
             &first.join("token-report-final.json"),
-            json!({"claude": {
+            &json!({"claude": {
                 "totals": {"cache_create_5m": 3, "cache_create_1h": 2, "cache_read": 5},
                 "per_step": [{"step": "3", "totals": {"cache_create_5m": 3, "cache_create_1h": 2, "cache_read": 5}}]
             }}),
@@ -1307,7 +1290,7 @@ mod tests {
         let second = run(corpus, "design", "run-2", 2);
         token_report(
             &second.join("token-report-final.json"),
-            json!({"claude": {
+            &json!({"claude": {
                 "totals": {"cache_create": 7, "cache_read": 5},
                 "per_step": [{"step": "3", "totals": {"cache_create": 7, "cache_read": 5}}]
             }}),
@@ -1315,7 +1298,7 @@ mod tests {
         let outlier = run(corpus, "implement", "run-3", 3);
         token_report(
             &outlier.join("token-report.json"),
-            json!({"claude_sub": {
+            &json!({"claude_sub": {
                 "totals": {"cache_create": 9, "cache_read": 0},
                 "per_step": [{"step": "5", "totals": {"cache_create": 9, "cache_read": 0}}]
             }}),

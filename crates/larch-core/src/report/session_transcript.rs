@@ -583,7 +583,7 @@ fn normalize_reference_read_path(raw: Option<&Value>, repo_root: Option<&Path>) 
 ///
 /// The installed layout is `<...>/plugins/cache/larch-local/larch/<version>/`,
 /// so the version component is consumed with the root.
-fn strip_plugin_cache_read_suffix(path: &str) -> Option<String> {
+pub(super) fn strip_plugin_cache_read_suffix(path: &str) -> Option<String> {
     let parts: Vec<&str> = path.split('/').collect();
     for (index, part) in parts.iter().enumerate() {
         if *part != "plugins"
