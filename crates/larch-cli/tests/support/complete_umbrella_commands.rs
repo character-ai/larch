@@ -808,11 +808,11 @@ async fn remote_graph_checks_reject_incomplete_or_nested_lifecycles() {
         response(200, refs(&[(99, 990, "open")])),
         response(200, &nested_child),
     ]);
-    let nested_error =
-        match read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA).await {
-            Err(error) => error,
-            Ok(_) => panic!("umbrella children must refuse"),
-        };
+    let Err(nested_error) =
+        read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA).await
+    else {
+        panic!("umbrella children must refuse");
+    };
     assert_eq!(nested_error, "nested umbrellas are not supported");
     server.join().expect("nested graph stub completed");
 
