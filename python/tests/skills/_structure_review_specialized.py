@@ -47,12 +47,11 @@ def run(repo_root: Path) -> list[str]:
     if len(lines) > 200:
         failures.append(f"(1) skills/review/SKILL.md must stay <= 200 lines after script extraction (found {len(lines)})")
 
-    review_verbs = ("core",)
-    if len(review_verbs) != 1:
-        failures.append("(1) internal harness error: expected Python review verb list must contain 1 entry")
-    for verb in review_verbs:
-        require(cli, f'("review", "{verb}")', "(1) missing python/cli.py review " + verb + " registry entry")
     review_commands = file("crates/larch-cli/src/review_commands.rs")
+    review_core_commands = file("crates/larch-cli/src/review_core_commands.rs")
+    require(review_commands, '#[command(name = "core"', "(1) missing Rust review core command")
+    require(review_commands, "crate::review_core_commands::core", "(1) Rust review core command is not dispatched to its owner")
+    require(review_core_commands, "pub fn core(", "(1) missing Rust review core owner")
     for verb in ("gather-context", "dispatch-panel", "collect-findings", "check-reviewer-failure-threshold"):
         require(
             review_commands,

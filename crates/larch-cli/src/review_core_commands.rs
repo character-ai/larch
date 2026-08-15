@@ -17,8 +17,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use larch_adapters::ensure_directory_chain;
 use larch_core::{
-    SafeText, emit_kv,
+    DuplicatePolicy, KvDocument, ParseOptions, SafeText, emit_kv,
     review::{self, normalize_output_base, parse_blocks, parse_legacy_collector_blocks},
 };
 use regex::Regex;
@@ -170,7 +171,7 @@ fn parse_core_options(arguments: &[OsString]) -> Option<CoreOptions> {
         &env::var("LARCH_DYNAMIC_ARCHETYPES_MAX").unwrap_or_else(|_| "0".to_owned()),
     );
     let round_raw = value("--round-num", "1");
-    let round_num = decimal_number(&round_raw).filter(|value| *value > 0);
+    let round_num = crate::claude_commands::parse_uint(&round_raw).filter(|value| *value > 0);
     if !matches!(mode.as_str(), "diff" | "description")
         || !matches!(codex_available.as_str(), "true" | "false")
         || !matches!(cursor_available.as_str(), "true" | "false")
@@ -1583,12 +1584,7 @@ fn get(values: &BTreeMap<String, String>, key: &str, default: &str) -> String {
         .unwrap_or_else(|| default.to_owned())
 }
 fn parse_number(value: &str, default: u64) -> u64 {
-    decimal_number(value).unwrap_or(default)
-}
-fn decimal_number(value: &str) -> Option<u64> {
-    (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
-        .then(|| value.parse::<u64>().ok())
-        .flatten()
+    crate::claude_commands::parse_uint(value).unwrap_or(default)
 }
 fn split_paths(value: &str) -> Vec<String> {
     value.split_whitespace().map(str::to_owned).collect()
@@ -1608,10 +1604,12 @@ fn read_text(path: &Path) -> String {
         .unwrap_or_default()
 }
 fn write_text(path: &Path, text: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    fs::write(path, text).map_err(|error| error.to_string())
+    let parent = path
+        .parent()
+        .filter(|value| !value.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    ensure_directory_chain(parent).map_err(|error| error.to_string())?;
+    atomic_write(path, text)
 }
 fn append_text(path: &Path, text: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
@@ -1630,17 +1628,18 @@ fn copy_checked(source: &Path, dest: &Path) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 fn parse_kv(text: &str) -> BTreeMap<String, String> {
-    let mut values = BTreeMap::new();
-    for line in text.lines() {
-        if let Some((key, value)) = line.split_once('=')
-            && !key.is_empty()
-        {
-            // `_kv_parse(..., skip_empty_key=True)` was the retired Python
-            // reader. Its default duplicate policy is last-wins.
-            values.insert(key.to_owned(), value.to_owned());
-        }
-    }
-    values
+    // `_kv_parse(..., skip_empty_key=True)` was the retired Python reader.
+    // Its default duplicate policy is last-wins.
+    KvDocument::parse(text, ParseOptions::legacy()).map_or_else(
+        |_| BTreeMap::new(),
+        |document| {
+            document
+                .select(DuplicatePolicy::Last)
+                .into_iter()
+                .filter(|(key, _)| !key.is_empty())
+                .collect()
+        },
+    )
 }
 
 fn call<F>(runner: &F, domain: &str, verb: &str, args: Vec<String>) -> Result<Output, String>
@@ -2318,6 +2317,10 @@ mod tests {
         let values = parse_kv("MODE=first\n=ignored\nMODE=last\n");
         assert_eq!(values.get("MODE").map(String::as_str), Some("last"));
         assert!(!values.contains_key(""));
+
+        let values = parse_kv("MODE=first\r\n=ignored\r\nMODE=last\r\r\nTRAIL=tail\r");
+        assert_eq!(values.get("MODE").map(String::as_str), Some("last\r"));
+        assert_eq!(values.get("TRAIL").map(String::as_str), Some("tail\r"));
     }
 
     #[test]
@@ -2475,6 +2478,7 @@ mod tests {
         assert!(sandbox.path().join("voting-tally.md").is_file());
     }
 
+    #[allow(clippy::too_many_lines)] // The phase-by-phase parity fixture keeps the legacy sequence explicit.
     #[test]
     fn core_full_round_preserves_the_recorded_phase_order_and_envelope() {
         let sandbox = TempDir::new().expect("sandbox");
@@ -2674,13 +2678,13 @@ mod tests {
     #[test]
     fn proposer_neutralization_does_not_treat_fenced_headings_as_ballot_items() {
         let reviewer = Regex::new(r"^(?P<prefix>[\s-]*(?:\*\*Reviewer\(s\)\*\*|\*\*Reviewers?\*\*|Reviewer\(s\)|Reviewers?)\s*:\s*)(?P<value>.*?)(?P<trailing>[ \t]*)$").expect("regex");
-        let ballot = r#"### FINDING_1: title
+        let ballot = r"### FINDING_1: title
 - **Reviewer**: first-reviewer
 ```markdown
 ### FINDING_2: illustrative heading
 - **Reviewer**: fenced-reviewer
 ```
-"#;
+";
         let neutral = neutralize_reviewer(ballot, &reviewer);
         assert!(neutral.contains("- **Reviewer**: anonymous"));
         assert!(neutral.contains("- **Reviewer**: fenced-reviewer"));

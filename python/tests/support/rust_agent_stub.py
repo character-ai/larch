@@ -3,7 +3,7 @@
 # The entry-write run-log verbs deliberately reuse the shared private batch
 # helpers rather than restating their behavior. The manifest fixture is local
 # so test plumbing does not retain the retired Python manifest writer.
-"""Verified-bootstrap test double for Rust-owned agent and run-log commands.
+"""Verified-bootstrap test double for Rust-owned agent, run-log, and review commands.
 
 Python integration tests exercise their callers through ``scripts/larch.sh``,
 which needs a version-matching executable that a Python-only test run does not
@@ -12,9 +12,9 @@ need; the real command contracts live in Rust integration tests
 (``crates/larch-cli/tests/``).
 
 The entry-write ``run-log`` verbs delegate to the surviving
-`larch.report.run_log_batch` helpers. The archive fixture below is test-only
-plumbing for Python callers; the production archive contract and hostile-input
-coverage live in Rust integration tests.
+`larch.report.run_log_batch` helpers. The archive fixture and empty review
+composer below are test-only plumbing for Python callers; the production
+contracts and hostile-input coverage live in Rust integration tests.
 """
 
 from __future__ import annotations
@@ -782,6 +782,30 @@ def _reviewer_prune(arguments: list[str]) -> int:
     if arguments[0] == "filter":
         return _reviewer_prune_filter(arguments[1:])
     return 2
+
+
+def _review_compose_findings(arguments: list[str]) -> int:
+    """Write the empty composition required by Python caller-only tests.
+
+    Detailed artifact precedence, parsing, and redaction parity are owned by
+    the Rust command tests. The callers covered by this double already stub
+    their review core and require only the durable empty JSONL envelope.
+    """
+    output = _flag(arguments, "--output")
+    issue = _flag(arguments, "--issue")
+    if not output or not issue.isdecimal():
+        return 2
+    target = Path(output)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _ = target.write_text("", encoding="utf-8")
+    except OSError:
+        return 1
+    print("COMPOSED=true")
+    print(f"OUTPUT={target}")
+    print("FINDINGS_TOTAL=0")
+    print("MODE=jsonl")
+    return 0
 
 
 def _safe_archive_path(raw: str, *, allow_manifest: bool = False) -> str:
@@ -2461,6 +2485,7 @@ def main(arguments: list[str]) -> int:
             ("run-log", "exists"): _run_log_exists,
             ("run-log", "write-round"): _run_log_write_round,
             ("run-log", "verify-completeness"): _run_log_verify_completeness,
+            ("review", "compose-findings"): _review_compose_findings,
             ("review", "reviewer-prune"): _reviewer_prune,
             ("agent", "launch-claude-subprocess"): _launch_claude_subprocess,
             ("agent", "launch-claude-review"): _launch_claude_review,
