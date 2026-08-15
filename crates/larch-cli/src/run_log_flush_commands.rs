@@ -1,13 +1,12 @@
 //! Atomic checkpoint, refresh, transcript, and terminal-snapshot orchestration.
 //!
-//! The four public selectors in this module own the mutable run-log flush. A
-//! flush may ask the remaining Python difficulty renderer for a payload, while
-//! the Rust owner performs report rendering, batch staging, and every manifest
+//! The four public selectors in this module own the mutable run-log flush. Token
+//! reports, difficulty records, and timing reports render in process, while the
+//! Rust owner performs report rendering, batch staging, and every manifest
 //! transition.
 #![allow(clippy::possible_missing_else)] // Compact independent phases are sequential, not branches.
 use std::{
     collections::BTreeMap, env, ffi::OsString, fs, path::{Path, PathBuf}, process::ExitCode,
-    time::Duration,
 };
 
 use larch_adapters::{
@@ -28,7 +27,6 @@ use crate::{
     },
 };
 const RC_INTERNAL: u8 = 1; const RC_USAGE: u8 = 2;
-const PYTHON_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum FlushMode {
