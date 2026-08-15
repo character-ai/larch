@@ -32,7 +32,6 @@ from larch.design.design_core import (
 )
 from larch.design.design_session import (
     _call_pause_save,
-    _capture_stdout_stderr,
     _design_require_plugin_root,
     _design_tmpdir,
     _parse_common_wrapper_args,

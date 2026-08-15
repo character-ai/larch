@@ -4,7 +4,6 @@ Command ownership for parse/validate/check-size/revise/auto-fix lives in Rust.
 This module keeps optional-trailer parsing used by remaining design Python and
 tests until later design leaves retire it.
 """
-# ruff: noqa: S108, PLR2004
 # pylint: skip-file
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 

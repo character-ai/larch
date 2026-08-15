@@ -30,7 +30,7 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="design.decompose.harness_agg"></a>`design.decompose.harness_agg` | cli.py | offline aggregator merge coverage | `python/cli.py` |
 | <a id="design.decompose.harness_file"></a>`design.decompose.harness_file` | cli.py | offline prepare annotate close-original coverage | `python/cli.py` |
 | <a id="design.plan.preview_emit"></a>`design.plan.preview_emit` | Step 3 plan-candidate preview | Gate C final-plan preview | `crates/larch-cli/src/plan_review_commands.rs` |
-| <a id="design.plan_commands.validate"></a>`design.plan_commands.validate` | Tier2+opt-in Tier3 | plan fenced bash/sh | `python/larch/design/plan_quality.py` |
+| <a id="design.plan_commands.validate"></a>`design.plan_commands.validate` | Tier2+opt-in Tier3 | plan fenced bash/sh | `crates/larch-cli/src/plan_quality_commands.rs` |
 | <a id="implement.conflict_review.panel"></a>`implement.conflict_review.panel` | ci-fixer | ci-fixer MODE conflict self-review only | `skills/implement/references/conflict-resolution.md` |
 | <a id="implement.conflict_review.rounds_max"></a>`implement.conflict_review.rounds_max` | 2 total | resolution-review rounds | `agents/ci-fixer.md` |
 | <a id="research.lanes"></a>`research.lanes` | four research lanes | architecture + edge cases + external comparisons + security | `skills/research/references/research-phase.md` |

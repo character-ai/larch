@@ -1,5 +1,7 @@
 //! Rust owner for the `plan` validation and auto-fix command surface (#8576).
 //!
+//! Topology row design.plan_commands.validate: Tier2+opt-in Tier3.
+//!
 //! Atomically replaces the Python registrations for `parse-commands`,
 //! `validate-commands`, `validate`, `check-size`, `set-oversize-override`,
 //! `revise-waterfall`, `auto-fix-commands`, `validator-autofix`,
