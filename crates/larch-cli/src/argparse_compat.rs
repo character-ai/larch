@@ -196,6 +196,93 @@ fn parse_required_with_help_mode(
     Ok(parsed)
 }
 
+/// Refuse a parsed line that is missing required options or still has errors.
+pub fn finish_parse(
+    parsed: ParsedCommandLine,
+    usage: &str,
+    program: &str,
+    required: &[&str],
+) -> Result<ParsedCommandLine, ExitCode> {
+    if let Some(error) = parsed.value_error() {
+        return Err(usage_error(usage, program, error, 2));
+    }
+    let required_state: Vec<(&str, bool)> = required
+        .iter()
+        .map(|option| (*option, parsed.value(option).is_some()))
+        .collect();
+    if required_state.iter().any(|(_option, present)| !present) {
+        return Err(usage_error(usage, program, &missing(&required_state), 2));
+    }
+    if let Some(error) = parsed.error() {
+        return Err(usage_error(usage, program, &error, 2));
+    }
+    Ok(parsed)
+}
+
+/// Return the first `argparse` invalid-choice or ambiguous-option error.
+#[must_use]
+pub fn choice_error(
+    arguments: &[OsString],
+    options: &[&'static str],
+    choices: &[(&str, &[&str])],
+) -> Option<String> {
+    let mut index = 0;
+    while index < arguments.len() {
+        let text = arguments[index].to_string_lossy();
+        index += 1;
+        if text == "--" {
+            break;
+        }
+        if !looks_like_option(&arguments[index - 1]) {
+            continue;
+        }
+        let (name, inline) = split_inline_option(&text);
+        if resolve_option(name, &["-h", "--help"]).is_some() {
+            break;
+        }
+        let Some(option) = resolve_option(name, options) else {
+            let matches = options
+                .iter()
+                .filter(|candidate| candidate.starts_with(name))
+                .copied()
+                .collect::<Vec<_>>();
+            if matches.len() > 1 {
+                return Some(format!(
+                    "ambiguous option: {text} could match {}",
+                    matches.join(", ")
+                ));
+            }
+            continue;
+        };
+        let value = if let Some(value) = inline {
+            value.to_owned()
+        } else {
+            let value = arguments.get(index)?;
+            if looks_like_option(value) {
+                return None;
+            }
+            index += 1;
+            value.to_string_lossy().into_owned()
+        };
+        let Some((_option, allowed)) = choices.iter().find(|(choice, _allowed)| *choice == option)
+        else {
+            continue;
+        };
+        if !allowed.contains(&value.as_str()) {
+            return Some(format!(
+                "argument {option}: invalid choice: {} (choose from {})",
+                python_repr(&value),
+                allowed
+                    .iter()
+                    .map(|choice| python_repr(choice))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
+    None
+}
+
 /// Parse `arguments` against a closed option table and a positional budget.
 ///
 /// `options` lists the long flags that take exactly one value. `max_positionals`

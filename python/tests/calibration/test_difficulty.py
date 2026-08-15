@@ -1,17 +1,15 @@
-# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportArgumentType=false
 from __future__ import annotations
 
 import json
 from dataclasses import FrozenInstanceError, is_dataclass
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from larch.calibration import difficulty
-from larch.core.proc import CommandResult
 from larch.design import plan_grammar
-from larch.errors import ShipError
-from larch.issue import issue_mutation
 
 
 def test_validate_rating_low_confidence_bumps_and_sanitizes() -> None:
@@ -269,10 +267,7 @@ def test_codex_review_model_role_for_archetype_always_review() -> None:
     assert difficulty.codex_review_model_role(difficulty.HARD) == "review"
 
 
-def test_write_record_merge_preserves_resolution_fields(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_write_record_merge_preserves_resolution_fields(tmp_path: Path) -> None:
     out = tmp_path / "difficulty-rating.json"
     existing = {
         "schema_version": 1,
@@ -296,73 +291,23 @@ def test_write_record_merge_preserves_resolution_fields(
         "audit_evaluated": True,
         "escalated_round": True,
     }
-    _ = out.write_text(json.dumps(existing), encoding="utf-8")
-
-    rc = difficulty.write_record_main([
-        "--output", str(out),
-        "--rater", "implement",
-        "--fallback-tier", "MODERATE",
-        "--fallback-rationale", "new",
-    ])
+    built = difficulty.build_record(
+        rater="implement",
+        fallback_rating=difficulty.validate_rating_object(
+            {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "new"}
+        ),
+    )
+    merged = difficulty._merge_existing_record_fields(
+        built, cast("dict[str, object]", existing), difficulty.blank_merge_args()
+    )
+    difficulty.write_record(out, merged)
     data = json.loads(out.read_text(encoding="utf-8"))
 
-    assert rc == 0
     assert data["override_source"] == "operator"
     assert data["audit_upgrade"] == "true"
     assert data["panel_tier"] == "HARD"
     assert data["round_cap"] == 2
     assert data["escalations"] == existing["escalations"]
-
-    monkeypatch.setattr(
-        difficulty.proc,
-        "run",
-        lambda *_args, **_kwargs: CommandResult(
-            ("git",), 0, "hooks/pre-tool-use.sh\n", "", 0.01
-        ),
-    )
-    assert difficulty.write_record_main([
-        "--output", str(out),
-        "--refresh-existing",
-        "--refresh-repo-root", str(tmp_path),
-    ]) == 0
-    refreshed = json.loads(out.read_text(encoding="utf-8"))
-    assert refreshed["floors_applied"][0]["path"] == "hooks/pre-tool-use.sh"
-    assert refreshed["floors_applied"][0]["floor"] == "MODERATE"
-    assert refreshed["panel_tier"] == "HARD"
-    assert refreshed["round_cap"] == 2
-    assert refreshed["escalations"] == existing["escalations"]
-
-
-def test_refresh_existing_record_preserves_bytes_when_git_diff_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    out = tmp_path / "difficulty-rating.json"
-    record = difficulty.build_record(
-        rater="implement",
-        implement_rating=difficulty.validate_rating_object({
-            "predicted_tier": "MODERATE",
-            "confidence": "medium",
-            "rationale": "existing scope",
-        }),
-        changed_paths=("old.py",),
-    )
-    difficulty.write_record(out, record)
-    before = out.read_bytes()
-    monkeypatch.setattr(
-        difficulty.proc,
-        "run",
-        lambda *_args, **_kwargs: CommandResult(("git",), 1, "", "failed", 0.01),
-    )
-
-    rc = difficulty.write_record_main([
-        "--output", str(out),
-        "--refresh-existing",
-        "--refresh-repo-root", str(tmp_path),
-    ])
-
-    assert rc == 1
-    assert out.read_bytes() == before
 
 
 def test_resolve_panel_tier_clamps_stale_hard_round_cap(tmp_path: Path) -> None:
@@ -409,20 +354,19 @@ def test_write_record_merge_recomputes_unresolved_bootstrap_tiers(tmp_path: Path
         ),
     )
     difficulty.write_record(out, existing)
-
-    rc = difficulty.write_record_main([
-        "--output",
-        str(out),
-        "--rater",
-        "fallback",
-        "--fallback-tier",
-        "HARD",
-        "--fallback-rationale",
-        "new",
-    ])
+    existing_data = json.loads(out.read_text(encoding="utf-8"))
+    rebuilt = difficulty.build_record(
+        rater="fallback",
+        fallback_rating=difficulty.validate_rating_object(
+            {"predicted_tier": "HARD", "confidence": "medium", "rationale": "new"}
+        ),
+    )
+    merged = difficulty._merge_existing_record_fields(
+        rebuilt, existing_data, difficulty.blank_merge_args()
+    )
+    difficulty.write_record(out, merged)
     data = json.loads(out.read_text(encoding="utf-8"))
 
-    assert rc == 0
     assert data["applied_tier"] == difficulty.HARD
     assert data["panel_tier"] == difficulty.HARD
     assert data["override_source"] == "none"
@@ -461,68 +405,3 @@ def test_resolve_step2_effective_difficulty_invalid_inputs_fail_closed(tmp_path:
     _ = (tmp_path / "difficulty-prior.env").write_text("DESIGN_DIFFICULTY=also-unknown\n", encoding="utf-8")
 
     assert difficulty.resolve_step2_effective_difficulty(tmp_path) == ""
-
-
-def test_sync_labels_uses_freshness_checked_label_mutation(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    label_updates: list[frozenset[str]] = []
-
-    def fake_snapshot(_runner: object, *, repository: str, issue: str, **_kwargs: object) -> issue_mutation.IssueSnapshot:
-        return issue_mutation.IssueSnapshot(
-            repository=repository,
-            issue=issue,
-            title="title",
-            body="",
-            labels=frozenset({"difficulty:trivial", "keep"}),
-            state="OPEN",
-            updated_at="2026-07-19T18:00:00Z",
-        )
-
-    def fake_update(_runner: object, *, labels: frozenset[str], **_kwargs: object) -> None:
-        label_updates.append(labels)
-
-    def fake_proc_run(argv: list[str] | tuple[str, ...], **_kwargs: object) -> CommandResult:
-        return CommandResult(tuple(argv), 0, "", "", 0.01)
-
-    monkeypatch.setattr(difficulty.issue_mutation, "read_snapshot", fake_snapshot)
-    monkeypatch.setattr(difficulty.issue_mutation, "update_labels", fake_update)
-    monkeypatch.setattr(difficulty.proc, "run", fake_proc_run)
-
-    rc = difficulty.sync_labels_main(["--issue", "9", "--tier", "HARD", "--repo", "o/r"])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "STATUS=ok" in out
-    assert "LABEL=difficulty:hard" in out
-    assert label_updates == [frozenset({"difficulty:hard", "keep"})]
-
-
-def test_sync_labels_add_failure_returns_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    def fake_snapshot(_runner: object, *, repository: str, issue: str, **_kwargs: object) -> issue_mutation.IssueSnapshot:
-        return issue_mutation.IssueSnapshot(
-            repository=repository,
-            issue=issue,
-            title="title",
-            body="",
-            labels=frozenset(),
-            state="OPEN",
-            updated_at="2026-07-19T18:00:00Z",
-        )
-
-    def fake_update(*_args: object, **_kwargs: object) -> None:
-        raise ShipError("label add failed")
-
-    monkeypatch.setattr(difficulty.gh, "resolve_repo", lambda _runner: "o/r")
-    monkeypatch.setattr(difficulty.issue_mutation, "read_snapshot", fake_snapshot)
-    monkeypatch.setattr(difficulty.issue_mutation, "update_labels", fake_update)
-    monkeypatch.setattr(
-        difficulty.proc,
-        "run",
-        lambda argv, **_k: CommandResult(tuple(argv), 0, "", "", 0.01),
-    )
-
-    rc = difficulty.sync_labels_main(["--issue", "9", "--tier", "MODERATE"])
-    assert rc == 1
-    out = capsys.readouterr().out
-    assert "STATUS=error" in out
-    assert "ERROR=label-add-failed" in out

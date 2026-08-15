@@ -19,7 +19,7 @@
 //! Ports `larch.issue.oos_filer`.
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     env,
     ffi::OsString,
     fs,
@@ -32,9 +32,9 @@ use larch_adapters::github::IssueMutationOwner;
 use larch_core::{
     AcceptedBlock, AcceptedSource, FILE_CONFLICT_DEFAULT_CLUSTER_CAP,
     FILE_CONFLICT_DEFAULT_GLOBAL_CAP, FiledIssue, GitHubLabelCreate, GitHubRepositoryRef,
-    GitHubService as _, IssueMutationField, IssueMutationRequest, ManifestDocument,
-    OOS_CORRECTNESS_LABEL, OOS_CORRECTNESS_LABEL_COLOR, OOS_CORRECTNESS_LABEL_DESCRIPTION,
-    ParsedItem, combined_block_count, dedupe_filed, ensure_ascii_json, is_capped_rollup_body,
+    GitHubService as _, IssueMutationRequest, ManifestDocument, OOS_CORRECTNESS_LABEL,
+    OOS_CORRECTNESS_LABEL_COLOR, OOS_CORRECTNESS_LABEL_DESCRIPTION, ParsedItem,
+    combined_block_count, dedupe_filed, ensure_ascii_json, is_capped_rollup_body,
     issue_number_from_url, ndjson_filed_evidence, parse_intra_batch_deps, parse_issue_input,
     priority_by_combined_item, priority_urls, read_universal_newlines, render_blocks,
     render_oos_ndjson, render_recovery_evidence, render_sentinel, sanitize_public_text,
@@ -258,20 +258,12 @@ impl FilingGateway for LiveFiling {
             };
             let mut labels = snapshot.labels.clone();
             let _added = labels.insert(OOS_CORRECTNESS_LABEL.to_owned());
-            let request = IssueMutationRequest {
-                repository: repository.clone(),
-                issue: number,
-                expected_updated_at: snapshot.updated_at.clone(),
-                expected_state: snapshot.state,
-                fields: BTreeSet::from([IssueMutationField::Labels]),
-                title: None,
-                body: None,
-                labels: Some(labels),
-                marker: None,
-                lease: None,
-            };
             Ok(owner
-                .apply(cancellation, &authorization, &request)
+                .apply(
+                    cancellation,
+                    &authorization,
+                    &IssueMutationRequest::replace_labels(&snapshot, labels),
+                )
                 .await
                 .map(|_verified| ())
                 .map_err(|error| error.to_string()))

@@ -552,8 +552,7 @@ def test_write_step2_difficulty_record_passes_resolved_rater_model(
             output.write_text("{}\n", encoding="utf-8")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    monkeypatch.setattr(dispatch_step2, "_invoke_cli", fake_invoke_cli)
-    monkeypatch.setattr(dispatch_step2, "_invoke_larch", fake_invoke_cli, raising=False)
+    monkeypatch.setattr(dispatch_step2, "_invoke_larch", fake_invoke_cli)
     st = SimpleNamespace(tmpdir=tmp, repo_root=repo, tool_tag="codex", difficulty="")
 
     dispatch_step2._write_step2_difficulty_record(
@@ -584,8 +583,7 @@ def test_write_step2_difficulty_record_uses_trivial_tier_model(
             output.write_text("{}\n", encoding="utf-8")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    monkeypatch.setattr(dispatch_step2, "_invoke_cli", fake_invoke_cli)
-    monkeypatch.setattr(dispatch_step2, "_invoke_larch", fake_invoke_cli, raising=False)
+    monkeypatch.setattr(dispatch_step2, "_invoke_larch", fake_invoke_cli)
     st = SimpleNamespace(tmpdir=tmp, repo_root=repo, tool_tag="codex", difficulty=difficulty.TRIVIAL)
 
     dispatch_step2._write_step2_difficulty_record(
@@ -8275,8 +8273,7 @@ def test_append_warning_normalizes_plain_text_for_final_summary(
 
     monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
     monkeypatch.setattr(implement_dispatch, "_invoke_larch", fake_invoke, raising=False)
-    monkeypatch.setattr(dispatch_step2, "_invoke_cli", fake_invoke)
-    monkeypatch.setattr(dispatch_step2, "_invoke_larch", fake_invoke, raising=False)
+    monkeypatch.setattr(dispatch_step2, "_invoke_larch", fake_invoke)
     st = cast("implement_dispatch.DispatchState", SimpleNamespace(tmpdir=tmp_path))
 
     implement_dispatch._append_warning(st=st, text="Step 7a.1 — plan coverage compute failed closed: /p: boom")

@@ -37,7 +37,6 @@ from larch.implement.dispatch_helpers import (
     _err,
     _git,
     _git_stdout,
-    _invoke_cli,
     _invoke_larch,
     _maybe_mark_step2_telemetry,
     _parse_kv,
@@ -587,7 +586,7 @@ def _write_step2_difficulty_record(*, st: DispatchState, manifest: dict[str, obj
     skipped = _step2_panel_skipped(st.tmpdir)
     if skipped:
         args.extend(["--panel-skipped", skipped])
-    result = _invoke_cli(args, cwd=st.repo_root)
+    result = _invoke_larch(args, cwd=st.repo_root)
     if result.returncode == 0 and out.is_file():
         _invoke_larch([
             "run-log",

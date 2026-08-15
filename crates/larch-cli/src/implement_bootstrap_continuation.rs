@@ -395,22 +395,9 @@ fn difficulty_prior(options: &BootstrapOptions) -> String {
         return String::new();
     }
     let plan = Path::new(&options.preflight_tmpdir).join("plan-from-issue.txt");
-    let Ok(output) = crate::python_verb::run_python_verb(
-        [
-            OsString::from("difficulty"),
-            OsString::from("extract-plan-metadata"),
-            OsString::from("--plan-file"),
-            plan.into_os_string(),
-        ],
-        Duration::from_secs(120),
-    ) else {
+    let Ok(prior) = crate::difficulty_commands::extract_plan_difficulty(&plan) else {
         return String::new();
     };
-    if !output.status().success() {
-        return String::new();
-    }
-    let values = parse_kv(&String::from_utf8_lossy(output.stdout()));
-    let prior = values.get("DESIGN_DIFFICULTY").cloned().unwrap_or_default();
     if valid_difficulty(&prior) {
         prior
     } else {
@@ -439,38 +426,13 @@ fn write_initial_difficulty_record(
         return;
     }
     let record = Path::new(&state.implement_tmpdir).join("difficulty-rating.json");
-    let mut arguments = vec![
-        OsString::from("difficulty"),
-        OsString::from("write-record"),
-        OsString::from("--output"),
-        record.clone().into_os_string(),
-        OsString::from("--rater"),
-        OsString::from("fallback"),
-        OsString::from("--rater-tool"),
-        OsString::from("bootstrap"),
-        OsString::from("--rater-model"),
-        OsString::from("unknown"),
-        OsString::from("--fallback-tier"),
-        OsString::from("MODERATE"),
-        OsString::from("--fallback-rationale"),
-        OsString::from("initial record seeded before implement rating"),
-    ];
-    if valid_difficulty(prior) {
-        arguments.extend([OsString::from("--design-tier"), OsString::from(prior)]);
-    }
-    if valid_difficulty(&options.difficulty_override) {
-        arguments.extend([
-            OsString::from("--override-tier"),
-            OsString::from(&options.difficulty_override),
-            OsString::from("--override-source"),
-            OsString::from("operator"),
-        ]);
-    }
-    let Ok(output) = crate::python_verb::run_python_verb(arguments, Duration::from_secs(120))
-    else {
-        return;
-    };
-    if !output.status().success() {
+    if crate::difficulty_commands::write_bootstrap_record(
+        &record,
+        prior,
+        &options.difficulty_override,
+    )
+    .is_err()
+    {
         return;
     }
     let _ignored = run_verified_larch(&[

@@ -1,7 +1,7 @@
 use crate::{
     argparse_compat::{
-        ParsedCommandLine, looks_like_option, missing, parse_with_flags,
-        parse_with_flags_and_exact, python_io_error, python_repr, resolve_option,
+        ParsedCommandLine, choice_error, finish_parse, looks_like_option, missing,
+        parse_with_flags, parse_with_flags_and_exact, python_io_error, python_repr, resolve_option,
         split_inline_option, usage_error, write_stdout,
     },
     run_log_entry_commands::{FailureRecordRequest, record_execution_failure},
@@ -115,61 +115,7 @@ fn parse_options(
         argparse_help(usage, options);
         return Err(ExitCode::SUCCESS);
     }
-    if let Some(error) = parsed.value_error() {
-        return Err(usage_error(usage, program, error, 2));
-    }
-    let required_state: Vec<(&str, bool)> = required
-        .iter()
-        .map(|option| (*option, parsed.value(option).is_some()))
-        .collect();
-    if required_state.iter().any(|(_option, present)| !present) {
-        return Err(usage_error(usage, program, &missing(&required_state), 2));
-    }
-    if let Some(error) = parsed.error() {
-        return Err(usage_error(usage, program, &error, 2));
-    }
-    Ok(parsed)
-}
-#[rustfmt::skip]
-fn choice_error(arguments: &[OsString], options: &[&'static str], choices: &[(&str, &[&str])]) -> Option<String> {
-    let mut index = 0;
-    while index < arguments.len() {
-        let text = arguments[index].to_string_lossy();
-        index += 1;
-        if text == "--" { break; }
-        if !looks_like_option(&arguments[index - 1]) { continue; }
-        let (name, inline) = split_inline_option(&text);
-        if resolve_option(name, &["-h", "--help"]).is_some() { break; }
-        let Some(option) = resolve_option(name, options) else {
-            let matches = options.iter().filter(|candidate| candidate.starts_with(name)).copied().collect::<Vec<_>>();
-            if matches.len() > 1 { return Some(format!("ambiguous option: {text} could match {}", matches.join(", "))); }
-            continue;
-        };
-        let value = if let Some(value) = inline {
-            value.to_owned()
-        } else {
-            let value = arguments.get(index)?;
-            if looks_like_option(value) { return None; }
-            index += 1;
-            value.to_string_lossy().into_owned()
-        };
-        let Some((_option, allowed)) = choices.iter().find(|(choice, _allowed)| *choice == option)
-        else {
-            continue;
-        };
-        if !allowed.contains(&value.as_str()) {
-            return Some(format!(
-                "argument {option}: invalid choice: {} (choose from {})",
-                python_repr(&value),
-                allowed
-                    .iter()
-                    .map(|choice| python_repr(choice))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-    }
-    None
+    finish_parse(parsed, usage, program, required)
 }
 #[must_use]
 pub fn findings_classification_header(arguments: &[OsString]) -> ExitCode {

@@ -1411,6 +1411,33 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "write-makefile",
     ),
     CleanInstallCase::new(
+        "clean-install-difficulty-extract-plan-metadata",
+        "difficulty",
+        "extract-plan-metadata",
+    ),
+    CleanInstallCase::new(
+        "clean-install-difficulty-render-line",
+        "difficulty",
+        "render-line",
+    ),
+    CleanInstallCase::new("clean-install-difficulty-render-rubric", "difficulty", "render-rubric"),
+    CleanInstallCase::new(
+        "clean-install-difficulty-resolve-panel",
+        "difficulty",
+        "resolve-panel",
+    ),
+    CleanInstallCase::new("clean-install-difficulty-sync-labels", "difficulty", "sync-labels"),
+    CleanInstallCase::new(
+        "clean-install-difficulty-validate-rating",
+        "difficulty",
+        "validate-rating",
+    ),
+    CleanInstallCase::new(
+        "clean-install-difficulty-write-record",
+        "difficulty",
+        "write-record",
+    ),
+    CleanInstallCase::new(
         "clean-install-dirty-tree-baseline",
         "dirty-tree",
         "baseline",

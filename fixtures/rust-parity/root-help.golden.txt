@@ -20,6 +20,7 @@ Commands:
   combine-issues      Combine related issues while preserving their dependency graph
   dirty-tree          Working-tree checkpoint and scope compatibility commands
   deps                The `/deps` open-issue dependency audit: reads, plan, and one apply
+  difficulty          Difficulty rating, record, panel, and label commands
   execution-issues    The `/implement` execution-issue ledger lifecycle
   external-defaults   External tool default readers
   example             Non-production commands that exercise dispatcher wiring

@@ -2733,11 +2733,13 @@ verb = "extract-plan-metadata"
 python_module = "larch.calibration.difficulty"
 python_function = "extract_plan_metadata_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8501
+clean_install_test = "clean-install-difficulty-extract-plan-metadata"
 
 [[commands]]
 domain = "difficulty"
@@ -2745,11 +2747,13 @@ verb = "render-line"
 python_module = "larch.calibration.difficulty"
 python_function = "render_line_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8501
+clean_install_test = "clean-install-difficulty-render-line"
 
 [[commands]]
 domain = "difficulty"
@@ -2757,11 +2761,13 @@ verb = "render-rubric"
 python_module = "larch.calibration.difficulty"
 python_function = "render_rubric_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8501
+clean_install_test = "clean-install-difficulty-render-rubric"
 
 [[commands]]
 domain = "difficulty"
@@ -2769,11 +2775,13 @@ verb = "resolve-panel"
 python_module = "larch.calibration.difficulty"
 python_function = "resolve_panel_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8501
+clean_install_test = "clean-install-difficulty-resolve-panel"
 
 [[commands]]
 domain = "difficulty"
@@ -2781,11 +2789,13 @@ verb = "sync-labels"
 python_module = "larch.calibration.difficulty"
 python_function = "sync_labels_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8501
+clean_install_test = "clean-install-difficulty-sync-labels"
 
 [[commands]]
 domain = "difficulty"
@@ -2793,11 +2803,13 @@ verb = "validate-rating"
 python_module = "larch.calibration.difficulty"
 python_function = "validate_rating_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8501
+clean_install_test = "clean-install-difficulty-validate-rating"
 
 [[commands]]
 domain = "difficulty"
@@ -2805,11 +2817,13 @@ verb = "write-record"
 python_module = "larch.calibration.difficulty"
 python_function = "write_record_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8501
+clean_install_test = "clean-install-difficulty-write-record"
 
 [[commands]]
 domain = "difficulty-calibration"
@@ -8945,7 +8959,7 @@ rust = ["plan-review drift-baseline", "plan-review emit", "plan-review json-get-
 path = "python/larch/design/design_publish.py"
 kind = "python-runtime"
 python = ["diagrams upsert"]
-rust = ["named-block write", "run-log append-failure", "run-log write", "session write-design-env", "tracking-issue rename"]
+rust = ["difficulty sync-labels", "difficulty write-record", "named-block write", "run-log append-failure", "run-log write", "session write-design-env", "tracking-issue rename"]
 
 [[callers]]
 path = "python/larch/design/design_router.py"
@@ -9346,8 +9360,8 @@ rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps 
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "plan check-size", "plan parse-commands"]
-rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "named-block write", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
+python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "mermaid sanitize", "plan check-size", "plan parse-commands"]
+rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -9598,8 +9612,8 @@ rust = ["voting compose-tally-record"]
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["architectural-assessment materialize", "architectural-assessment submit", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue"]
-rust = ["admission fork-env", "admission gate", "bgjob wait", "bootstrap invoke", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
+python = ["architectural-assessment materialize", "architectural-assessment submit", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue"]
+rust = ["admission fork-env", "admission gate", "bgjob wait", "bootstrap invoke", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -9640,8 +9654,8 @@ rust = ["bgjob wait", "stall-recovery record-escalation"]
 [[callers]]
 path = "skills/implement/references/codex-manifest-schema.md"
 kind = "skill"
-python = ["difficulty render-rubric", "implement step2-dispatch", "redact secrets"]
-rust = []
+python = ["implement step2-dispatch", "redact secrets"]
+rust = ["difficulty render-rubric"]
 
 [[callers]]
 path = "skills/implement/references/conflict-resolution.md"

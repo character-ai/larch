@@ -45,6 +45,7 @@ mod combine_issues_commands;
 mod complete_umbrella_commands;
 mod deps_audit_commands;
 mod developer_tooling_commands;
+mod difficulty_commands;
 mod dirty_tree_commands;
 mod drafter_commands;
 mod execution_issue_commands;
@@ -213,6 +214,9 @@ enum Domain {
     /// The `/deps` open-issue dependency audit: reads, plan, and one apply.
     #[command(subcommand)]
     Deps(DepsCommand),
+    /// Difficulty rating, record, panel, and label commands.
+    #[command(subcommand)]
+    Difficulty(DifficultyCommand),
     /// The `/implement` execution-issue ledger lifecycle.
     #[command(subcommand, name = "execution-issues")]
     ExecutionIssues(ExecutionIssuesCommand),
@@ -1224,6 +1228,53 @@ enum OosCommand {
 }
 
 #[derive(Subcommand)]
+enum DifficultyCommand {
+    /// Validate a raw model rating object.
+    #[command(name = "validate-rating", disable_help_flag = true)]
+    ValidateRating(RawCompatibilityArguments),
+    /// Read plan-trailer difficulty metadata.
+    #[command(name = "extract-plan-metadata", disable_help_flag = true)]
+    ExtractPlanMetadata(RawCompatibilityArguments),
+    /// Write or refresh a persisted difficulty record.
+    #[command(name = "write-record", disable_help_flag = true)]
+    WriteRecord(RawCompatibilityArguments),
+    /// Print the shared rating rubric.
+    #[command(name = "render-rubric", disable_help_flag = true)]
+    RenderRubric(RawCompatibilityArguments),
+    /// Render one human-readable record summary line.
+    #[command(name = "render-line", disable_help_flag = true)]
+    RenderLine(RawCompatibilityArguments),
+    /// Resolve and persist panel fields for a record.
+    #[command(name = "resolve-panel", disable_help_flag = true)]
+    ResolvePanel(RawCompatibilityArguments),
+    /// Replace difficulty labels on a GitHub issue.
+    #[command(name = "sync-labels", disable_help_flag = true)]
+    SyncLabels(RawCompatibilityArguments),
+}
+
+impl DifficultyCommand {
+    fn run(self) -> ExitCode {
+        match self {
+            Self::ValidateRating(arguments) => {
+                difficulty_commands::validate_rating(&arguments.arguments)
+            }
+            Self::ExtractPlanMetadata(arguments) => {
+                difficulty_commands::extract_plan_metadata(&arguments.arguments)
+            }
+            Self::WriteRecord(arguments) => difficulty_commands::write_record(&arguments.arguments),
+            Self::RenderRubric(arguments) => {
+                difficulty_commands::render_rubric(&arguments.arguments)
+            }
+            Self::RenderLine(arguments) => difficulty_commands::render_line(&arguments.arguments),
+            Self::ResolvePanel(arguments) => {
+                difficulty_commands::resolve_panel(&arguments.arguments)
+            }
+            Self::SyncLabels(arguments) => difficulty_commands::sync_labels(&arguments.arguments),
+        }
+    }
+}
+
+#[derive(Subcommand)]
 enum DirtyTreeCommand {
     /// Classify tracked and new untracked paths against a baseline.
     #[command(disable_help_flag = true)]
@@ -1852,6 +1903,7 @@ fn run(
                 oos_commands::disposition_checkpoint(&arguments.arguments)
             }
         }),
+        Domain::Difficulty(command) => Ok(command.run()),
         Domain::Deps(command) => Ok(match command {
             DepsCommand::ResolveRepo(arguments) => {
                 deps_audit_commands::resolve_repo(&arguments.arguments)

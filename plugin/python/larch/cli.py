@@ -14,13 +14,6 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("difficulty", "validate-rating"): ("larch.calibration.difficulty", "validate_rating_main", True),
-    ("difficulty", "extract-plan-metadata"): ("larch.calibration.difficulty", "extract_plan_metadata_main", True),
-    ("difficulty", "write-record"): ("larch.calibration.difficulty", "write_record_main", True),
-    ("difficulty", "render-rubric"): ("larch.calibration.difficulty", "render_rubric_main", False),
-    ("difficulty", "render-line"): ("larch.calibration.difficulty", "render_line_main", True),
-    ("difficulty", "resolve-panel"): ("larch.calibration.difficulty", "resolve_panel_main", True),
-    ("difficulty", "sync-labels"): ("larch.calibration.difficulty", "sync_labels_main", True),
     ("debate", "abort"): ("larch.debate.orchestrator", "abort_main", True),
     ("debate", "adjudicate"): ("larch.debate.orchestrator", "adjudicate_main", True),
     ("debate", "adjudication-preview"): ("larch.debate.orchestrator", "adjudication_preview_main", True),

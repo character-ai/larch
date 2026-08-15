@@ -74,6 +74,25 @@ pub struct IssueMutationRequest {
     pub lease: Option<IssueMutationLease>,
 }
 
+impl IssueMutationRequest {
+    /// Build a labels-only freshness-checked mutation from a live snapshot.
+    #[must_use]
+    pub fn replace_labels(snapshot: &IssueMutationSnapshot, labels: BTreeSet<String>) -> Self {
+        Self {
+            repository: snapshot.repository.clone(),
+            issue: snapshot.issue,
+            expected_updated_at: snapshot.updated_at.clone(),
+            expected_state: snapshot.state,
+            fields: BTreeSet::from([IssueMutationField::Labels]),
+            title: None,
+            body: None,
+            labels: Some(labels),
+            marker: None,
+            lease: None,
+        }
+    }
+}
+
 /// The canonical GitHub state used by a compare-and-swap mutation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IssueMutationSnapshot {
@@ -839,6 +858,24 @@ mod tests {
                 .reason(),
             "invalid-body-request"
         );
+    }
+
+    #[test]
+    fn replace_labels_copies_snapshot_identity_and_only_sets_labels() {
+        let snapshot = snapshot();
+        let labels = BTreeSet::from(["difficulty:hard".to_owned()]);
+        let request = IssueMutationRequest::replace_labels(&snapshot, labels.clone());
+        assert_eq!(request.repository, snapshot.repository);
+        assert_eq!(request.issue, snapshot.issue);
+        assert_eq!(request.expected_updated_at, snapshot.updated_at);
+        assert_eq!(request.expected_state, snapshot.state);
+        assert_eq!(request.fields, BTreeSet::from([IssueMutationField::Labels]));
+        assert_eq!(request.labels.as_ref(), Some(&labels));
+        assert!(request.title.is_none());
+        assert!(request.body.is_none());
+        assert!(request.marker.is_none());
+        assert!(request.lease.is_none());
+        assert_eq!(validate_issue_mutation_request(&request), Ok(()));
     }
 
     #[test]
