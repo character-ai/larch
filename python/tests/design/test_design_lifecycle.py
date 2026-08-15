@@ -3182,8 +3182,13 @@ def test_step2b_postplan_nonfatal_rc_10_exits_zero_and_emits_rows(tmp_path: Path
 
 
 def test_step2b5_echoes_check_size_stdout_and_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args=[], returncode=7, stdout="PLAN_SIZE_STATUS=failed\n", stderr="")
+    real_run = design_step5c.subprocess.run
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        cmd = args[0] if args else kwargs.get("args")
+        if isinstance(cmd, (list, tuple)) and "check-size" in cmd:
+            return subprocess.CompletedProcess(args=[], returncode=7, stdout="PLAN_SIZE_STATUS=failed\n", stderr="")
+        return real_run(*args, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(design_step5c.subprocess, "run", fake_run)
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
@@ -3197,8 +3202,13 @@ def test_step2b5_echoes_check_size_stdout_and_rc(tmp_path: Path, monkeypatch: py
 
 
 def test_step2b5_self_logs_on_rc2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args=[], returncode=2, stdout="PLAN_SIZE_STATUS=missing-diff-lines\n", stderr="")
+    real_run = design_step5c.subprocess.run
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        cmd = args[0] if args else kwargs.get("args")
+        if isinstance(cmd, (list, tuple)) and "check-size" in cmd:
+            return subprocess.CompletedProcess(args=[], returncode=2, stdout="PLAN_SIZE_STATUS=missing-diff-lines\n", stderr="")
+        return real_run(*args, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(design_step5c.subprocess, "run", fake_run)
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
@@ -3217,8 +3227,13 @@ def test_step2b5_self_logs_on_rc2(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
 
 def test_step2b5_self_logs_on_rc3(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args=[], returncode=3, stdout="", stderr="usage: missing plan\n")
+    real_run = design_step5c.subprocess.run
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        cmd = args[0] if args else kwargs.get("args")
+        if isinstance(cmd, (list, tuple)) and "check-size" in cmd:
+            return subprocess.CompletedProcess(args=[], returncode=3, stdout="", stderr="usage: missing plan\n")
+        return real_run(*args, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(design_step5c.subprocess, "run", fake_run)
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
@@ -3233,8 +3248,13 @@ def test_step2b5_self_logs_on_rc3(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
 
 def test_step2b5_no_log_on_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args=[], returncode=0, stdout="PLAN_SIZE_STATUS=ok\n", stderr="")
+    real_run = design_step5c.subprocess.run
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        cmd = args[0] if args else kwargs.get("args")
+        if isinstance(cmd, (list, tuple)) and "check-size" in cmd:
+            return subprocess.CompletedProcess(args=[], returncode=0, stdout="PLAN_SIZE_STATUS=ok\n", stderr="")
+        return real_run(*args, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(design_step5c.subprocess, "run", fake_run)
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
