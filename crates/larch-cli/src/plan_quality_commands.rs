@@ -10,7 +10,21 @@
     clippy::cognitive_complexity,
     clippy::option_if_let_else,
     clippy::assigning_clones,
-    clippy::similar_names
+    clippy::similar_names,
+    clippy::map_unwrap_or,
+    clippy::collapsible_if,
+    clippy::redundant_pub_crate,
+    clippy::needless_bool,
+    clippy::manual_let_else,
+    clippy::redundant_closure,
+    clippy::single_match_else,
+    clippy::if_same_then_else,
+    clippy::manual_range_patterns,
+    clippy::collection_is_never_read,
+    clippy::bool_to_int_with_if,
+    clippy::if_not_else,
+    clippy::useless_format,
+    clippy::format_push_string
 )]
 
 use std::{

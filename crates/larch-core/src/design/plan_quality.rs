@@ -1126,15 +1126,14 @@ fn override_trailer_start(lines: &[String], diff_idx: usize, trailer: &str) -> u
             trailer_start = idx;
             continue;
         }
-        if let Some(matched) = match_trailer_line(stripped) {
-            if matched.key == TrailerKey::Difficulty
+        if let Some(matched) = match_trailer_line(stripped)
+            && (matched.key == TrailerKey::Difficulty
                 || OPTIONAL_SIZE_TRAILER_KEYS
                     .iter()
-                    .any(|key| *key == matched.key.as_str())
-            {
-                trailer_start = idx;
-                continue;
-            }
+                    .any(|key| *key == matched.key.as_str()))
+        {
+            trailer_start = idx;
+            continue;
         }
         break;
     }
@@ -1149,10 +1148,16 @@ fn ratio_token(current: i64, baseline: i64) -> String {
             "1".to_owned()
         };
     }
-    let value = current as f64 / baseline as f64;
-    if (value - value.round()).abs() < f64::EPSILON {
-        format!("{}", value as i64)
-    } else {
+    if current % baseline == 0 {
+        return (current / baseline).to_string();
+    }
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        reason = "parity with Python float ratio rendering"
+    )]
+    {
+        let value = current as f64 / baseline as f64;
         let rendered = format!("{value:.2}");
         rendered
             .trim_end_matches('0')
@@ -1163,7 +1168,7 @@ fn ratio_token(current: i64, baseline: i64) -> String {
 
 /// Whether drift exceeds `baseline * multiple`, matching Python check-size.
 #[must_use]
-pub fn drift_exceeds(current: i64, baseline: i64, multiple: i64) -> bool {
+pub const fn drift_exceeds(current: i64, baseline: i64, multiple: i64) -> bool {
     if baseline == 0 {
         current > 0
     } else {

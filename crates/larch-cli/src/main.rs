@@ -1881,7 +1881,7 @@ fn run_session(command: SessionCommand) -> ExitCode {
     }
 }
 
-#[allow(clippy::too_many_lines)] // Domain dispatch enumerates every Rust-owned command pair.
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)] // Domain dispatch enumerates every Rust-owned command pair.
 fn run(
     cli: Cli,
     metadata: larch_core::BuildMetadata,

@@ -61,7 +61,7 @@ fn parity_case(name: &'static str, arguments: &[&str], seeds: Vec<SeedFile>) -> 
     }
 }
 
-fn mini_plan() -> &'static str {
+const fn mini_plan() -> &'static str {
     "### NEW: fixture\n\n1. Touch `scripts/noop.sh`.\n\ndiff_lines: 1\n"
 }
 
@@ -72,7 +72,7 @@ fn session_seeds(plan: &str) -> Vec<SeedFile> {
     )]
 }
 
-fn design_tmpdir() -> &'static str {
+const fn design_tmpdir() -> &'static str {
     "{sandbox}/.home/.cache/larch/sessions/plan-quality-parity"
 }
 

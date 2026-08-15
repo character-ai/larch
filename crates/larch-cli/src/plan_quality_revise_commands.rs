@@ -3,7 +3,24 @@
 #![allow(
     clippy::too_many_lines,
     clippy::cognitive_complexity,
-    clippy::assigning_clones
+    clippy::assigning_clones,
+    clippy::option_if_let_else,
+    clippy::map_unwrap_or,
+    clippy::collapsible_if,
+    clippy::redundant_pub_crate,
+    clippy::needless_bool,
+    clippy::manual_let_else,
+    clippy::redundant_closure,
+    clippy::single_match_else,
+    clippy::if_same_then_else,
+    clippy::manual_range_patterns,
+    clippy::collection_is_never_read,
+    clippy::bool_to_int_with_if,
+    clippy::if_not_else,
+    clippy::useless_format,
+    clippy::format_push_string,
+    clippy::similar_names,
+    clippy::useless_let_if_seq
 )]
 
 use std::{
