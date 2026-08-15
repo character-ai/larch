@@ -661,6 +661,28 @@ pub fn parse_rate_check(arguments: &[OsString]) -> ExitCode {
 fn parse_rate_status(request: &ParseRateRequest, ambient: bool) -> Result<&'static str, ExitCode> {
     check_parse_rate(request, ambient).map_err(|error| { if ambient { eprintln!("{error}"); } ExitCode::FAILURE })
 }
+
+/// Reuse the frozen parse-rate policy from code-review tallying without
+/// re-entering the command parser or emitting a nested command envelope.
+pub fn tally_parse_rate_status(
+    voter_file: &Path,
+    voter_tool: &str,
+    ballot_file: &Path,
+    review_tmpdir: &Path,
+    slot: &str,
+) -> Result<&'static str, String> {
+    let request = ParseRateRequest {
+        voter_file: voter_file.to_path_buf(),
+        voter_tool: voter_tool.to_owned(),
+        ballot_file: ballot_file.to_path_buf(),
+        id_grammar: "finding-oos".to_owned(),
+        review_tmpdir: review_tmpdir.to_path_buf(),
+        slot: slot.to_owned(),
+        log_mode: "none".to_owned(),
+        dispatch_label: "agent dispatch-voters".to_owned(),
+    };
+    check_parse_rate(&request, true).map_err(|error| error.to_string())
+}
 fn extract_ctx(arguments: &[OsString]) -> Result<Vec<OsString>, ExitCode> {
     let mut rest = Vec::new();
     let mut index = 0;

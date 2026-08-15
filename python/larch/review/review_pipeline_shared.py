@@ -45,6 +45,55 @@ class ReviewCommands:
 
 
 @dataclass(frozen=True)
+class CodeReviewTallyRequest:
+    """Stable Rust tally argv shared by review-core and targeted retries."""
+
+    ballot_file: str
+    review_tmpdir: str
+    voter_files: tuple[str, ...]
+    voter_tools: tuple[str, ...] = ()
+    session_env_path: str = ""
+    scope_files: str = ""
+    plan_file: str = ""
+    manifest_file: str = ""
+    collector_results_file: str = ""
+    not_substantive_count: str = "0"
+    cursor_available: str = ""
+    codex_available: str = ""
+    round_num: str = "1"
+    both_down: str = "false"
+    proposer_map_file: str = ""
+
+    def to_argv(self) -> list[str]:
+        argv = [
+            "--ballot-file", self.ballot_file,
+            "--review-tmpdir", self.review_tmpdir,
+            "--cursor-available", self.cursor_available,
+            "--codex-available", self.codex_available,
+            "--round-num", self.round_num,
+        ]
+        if self.proposer_map_file:
+            argv.extend(["--proposer-map-file", self.proposer_map_file])
+        for flag, value in (
+            ("--session-env-path", self.session_env_path),
+            ("--scope-files", self.scope_files),
+            ("--plan-file", self.plan_file),
+            ("--manifest-file", self.manifest_file),
+            ("--collector-results-file", self.collector_results_file),
+        ):
+            if value:
+                argv.extend([flag, value])
+        if self.not_substantive_count != "0":
+            argv.extend(["--not-substantive-count", self.not_substantive_count])
+        if self.both_down != "false":
+            argv.extend(["--both-down", self.both_down])
+        argv.extend(["--voter-files", *self.voter_files])
+        if self.voter_tools:
+            argv.extend(["--voter-tools", *self.voter_tools])
+        return argv
+
+
+@dataclass(frozen=True)
 class ReviewCoreBranchContext:
     commands: ReviewCommands
     review_tmpdir: Path
@@ -155,9 +204,29 @@ def _run_command_string(*, command: str, args: Sequence[str], runner: proc.Runne
 
 
 def _call_review_command(*, name: str, args: Sequence[str], runner: proc.Runner | None = None) -> proc.CommandResult:
-    if name in {"gather-context", "dispatch-panel", "collect-findings", "check-reviewer-failure-threshold", "aggregate-findings", "prune-nit-findings", "reviewer-prune"}:
+    if name in {"gather-context", "dispatch-panel", "collect-findings", "check-reviewer-failure-threshold", "aggregate-findings", "prune-nit-findings", "reviewer-prune", "tally-code-votes", "emit-tally", "log-phase"}:
         return run_larch(["review", name, *args], runner=runner)
     return _run_python_cli(["review", name, *args], runner=runner)
+
+
+def surface_warning(*, session_env_path: str, entry: str) -> None:
+    """Best-effort operator-visible warning surface retained outside tally ownership."""
+    log = ""
+    if os.environ.get("LARCH_EXECUTION_ISSUES_LOG"):
+        log = os.environ["LARCH_EXECUTION_ISSUES_LOG"]
+    elif session_env_path:
+        log = str(Path(session_env_path).parent / "execution-issues.md")
+    elif os.environ.get("IMPLEMENT_TMPDIR"):
+        log = str(Path(os.environ["IMPLEMENT_TMPDIR"]) / "execution-issues.md")
+    if not log:
+        return
+    try:
+        _ = run_larch([
+            "run-log", "append-entry", "--log", log,
+            "--category", "Warnings", "--entry", entry,
+        ])
+    except OSError:
+        return
 
 
 def _call_maybe_override(*, command: str, review_name: str, args: Sequence[str], runner: proc.Runner | None = None) -> proc.CommandResult:
