@@ -357,7 +357,7 @@ Published locations are:
 - Implement Step 5: `larch-logs/implement/<RUN_ID>/round-<N>/panel-prompt-sizes.tsv`.
 - Standalone review: `larch-logs/review/<RUN_ID>/panel-prompt-sizes.tsv`, or `larch-logs/review/<RUN_ID>/round-<N>/panel-prompt-sizes.tsv` when the dispatch is round-local.
 
-`python3 python/cli.py token measure-panel-cost` synchronizes once, then aggregates cached panel TSVs by agent file, plus generated/no-agent buckets for voters and generated prompts. It writes a TSV under the `measure-panel-cost` owner in the [analyzer state tree](analysis-state.md) with dispatch counts, runs observed, loads per run, prompt counts, scaffold and payload counts, agent counts, and total realized counts. Rows rank by scaffold bytes so fixed prompt surface stays visible even when payload-heavy runs dominate realized bytes.
+`scripts/larch.sh token measure-panel-cost` synchronizes once, then aggregates cached panel TSVs by agent file, plus generated/no-agent buckets for voters and generated prompts. It writes a TSV under the `measure-panel-cost` owner in the [analyzer state tree](analysis-state.md) with dispatch counts, runs observed, loads per run, prompt counts, scaffold and payload counts, agent counts, and total realized counts. Rows rank by scaffold bytes so fixed prompt surface stays visible even when payload-heavy runs dominate realized bytes.
 
 ### checks digest-size telemetry
 
@@ -370,7 +370,7 @@ Published locations are:
 
 Writes are best-effort. A telemetry lock or write failure prints a warning and does not change the checks result or the `DIGEST_FILE=` failure envelope. The writer skips telemetry unless exactly one active implement or review run directory exists under the session `larch-logs/` tree.
 
-`python3 python/cli.py token measure-checks-digest-savings` synchronizes once, then aggregates cached checks-digest TSVs into the `measure-checks-digest-savings` owner in the [analyzer state tree](analysis-state.md). It reports `status=insufficient-data` until at least 5 valid rows exist. With 5 or more rows, positive aggregate signed token savings yields `recommendation=go-design-validator-extension`; zero or negative aggregate token savings yields `recommendation=no-go-design-validator-extension`. The design-validator digest extension remains gated on a future positive measurement.
+`scripts/larch.sh token measure-checks-digest-savings` synchronizes once, then aggregates cached checks-digest TSVs into the `measure-checks-digest-savings` owner in the [analyzer state tree](analysis-state.md). It reports `status=insufficient-data` until at least 5 valid rows exist. With 5 or more rows, positive aggregate signed token savings yields `recommendation=go-design-validator-extension`; zero or negative aggregate token savings yields `recommendation=no-go-design-validator-extension`. The design-validator digest extension remains gated on a future positive measurement.
 
 ### design plan-review `findings-classification.tsv`
 
@@ -725,7 +725,7 @@ A filtered, machine-readable rendering of the Claude Code session, produced by `
 
 The `session-transcript` capture records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome, including `captured`, `suppressed-no-logs-commit`, `render-failed`, and `render-empty`. A terminal recapture failure retains the prior staged transcript when available, reports the failure, blocks publication, and preserves the session for retry. For `/implement` runs whose manifest records `steps_ran.step18=true`, `session-transcript.jsonl` is part of the required-file completeness manifest. When no source is configured, the execution issue names the missing artifact so I-Flush-1 can waive it. The recovery warning records only the discovered transcript basename, not the full operator-local path. A bounded-input condition adds a separate `status=render-bounded` warning entry without changing the capture status. See `docs/session-transcript-render.md` for the complete schema.
 
-`python3 python/cli.py token measure-references-heatmap` synchronizes once, then starts with a `transcript_coverage` section that reports transcript-bearing runs, total runs, missing transcript runs, and the coverage ratio per skill before the per-reference heatmap rows. A skill with transcripts and zero reference reads is reported as measured zero data, not as missing data.
+`scripts/larch.sh token measure-references-heatmap` synchronizes once, then starts with a `transcript_coverage` section that reports transcript-bearing runs, total runs, missing transcript runs, and the coverage ratio per skill before the per-reference heatmap rows. A skill with transcripts and zero reference reads is reported as measured zero data, not as missing data.
 
 ### round-<N>/
 

@@ -1,8 +1,8 @@
 //! `token` recording and staging verbs.
 //!
 //! Owns ledger mutation, sidecar staging, and research-lane telemetry for the
-//! commands migrated by #8506. Remaining analytical `token` verbs stay Python
-//! until their own leaves cut over.
+//! commands migrated by #8506. Analytical measurement verbs are composed in
+//! `token_measurement_commands`.
 
 use std::{
     collections::BTreeMap,

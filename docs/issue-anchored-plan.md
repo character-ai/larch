@@ -94,6 +94,16 @@ The only merge-authorizing split decision is `retain this leaf as one PR`; a
 decision to split requires reducing the branch before retrying. The
 adversarial-review phase writes this section through the canonical named-block
 owner and rechecks it. The ship driver repeats the check at the merge boundary.
+If a CI-fix commit makes an otherwise valid record stale, the leaf ship phase
+returns a bounded `needs-orchestrator-finalize` handoff without mutating the
+issue. Only the top-level `/complete-umbrella` owner may remeasure the recorded
+clean branch and open PR after rechecking its exact head, `main` base, CLEAN
+merge state, green checks, closing link, and active plan lease. It changes only
+the record's `Base SHA`, `Head SHA`, and added-line count through the canonical
+named-block compare-and-swap with read-back, then reruns the ordinary ship gate,
+which still requires an exact match. Missing, malformed, or self-authored new
+decisions remain refusals; this route does not loosen the gate or authorize a
+leaf child to refresh its own evidence.
 Historical leaves are never mutated to add a plan, approval, or deviation. The
 read-only migration audit reports their available plan and Rust-budget evidence
 separately from current gate findings.
@@ -429,8 +439,9 @@ operator-visible “finish the existing clarify thread first” outcome instead
 - Do **not** hand-edit `session-env.sh` or `finalize-state.sh` from orchestrator
   prose — sanctioned writers only (`skills/implement/SKILL.md` NEVER #13–#14).
 - Plan body updates belong to `/design` (`scripts/larch.sh named-block write --marker plan`) except for
-  mechanical merges documented elsewhere; avoid concurrent manual edits to the
-  same `larch:plan` markers while a run holds `IMPLEMENTING` on the tracking issue.
+  the complete-umbrella stale-budget finalization above and mechanical merges
+  documented elsewhere; avoid concurrent manual edits to the same `larch:plan`
+  markers while a run holds `IMPLEMENTING` on the tracking issue.
 
 | `STATE` value | Meaning |
 |---|---|

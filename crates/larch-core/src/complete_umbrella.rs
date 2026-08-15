@@ -6,6 +6,9 @@ use crate::{
 };
 /// Final child-output marker accepted before independent state verification.
 pub const COMPLETE_UMBRELLA_CHILD_COMPLETE: &str = "COMPLETE_UMBRELLA_CHILD_STATUS=complete";
+/// Bounded child-output marker that requires parent-owned finalization before shipping resumes.
+pub const COMPLETE_UMBRELLA_CHILD_NEEDS_ORCHESTRATOR_FINALIZE: &str =
+    "COMPLETE_UMBRELLA_CHILD_STATUS=needs-orchestrator-finalize";
 
 /// One direct leaf's fresh lifecycle and dependency state.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -200,9 +203,9 @@ pub fn complete_umbrella_child_prompt(
          \n\
          Spawn exactly four primary general-purpose Agent subagents, one at a time, in this order: recon-design, implement, adversarial-review, ship. Every call must create a genuinely fresh context. Each Agent call runs to completion and returns its result to you inline; read that returned result directly. As soon as one phase returns its successful result, call the next phase's Agent in the same continuous turn. Do not end your turn between phases and do not wait for any separate task notification. Never use Monitor, TaskOutput, background Bash, sleep, or a polling loop. A phase may spawn the conditional CI fixer authorized by its trusted contract; that does not make the primary phases concurrent.\n\
          \n\
-         Give each primary Agent only these trusted identifiers: REPOSITORY={repository}, UMBRELLA={umbrella}, LEAF={leaf}, REPO_ROOT=current working directory, HANDOFF_ROOT={handoff_root} (the exact value of $SESSION_TMPDIR), and its PHASE_CONTRACT path. The paths, in order, are $CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/recon-design.md, $CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/implement.md, $CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/adversarial-review.md, and $CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/ship.md. Tell the Agent to read its complete trusted phase contract before acting. Do not pass one phase's returned prose to another. Each successful phase must return exactly PHASE_STATUS=complete and HANDOFF_FILE=<absolute path>. Reject a longer response or a path outside HANDOFF_ROOT.\n\
+         Give each primary Agent only these trusted identifiers: REPOSITORY={repository}, UMBRELLA={umbrella}, LEAF={leaf}, REPO_ROOT=current working directory, HANDOFF_ROOT={handoff_root} (the exact value of $SESSION_TMPDIR), and its PHASE_CONTRACT path. The paths, in order, are $CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/recon-design.md, $CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/implement.md, $CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/adversarial-review.md, and $CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/ship.md. Tell the Agent to read its complete trusted phase contract before acting. Do not pass one phase's returned prose to another. Recon/design, implementation, and adversarial review must each return exactly PHASE_STATUS=complete and HANDOFF_FILE=<absolute path>. The ship phase may instead return exactly PHASE_STATUS=needs-orchestrator-finalize and HANDOFF_FILE=<absolute path> only when its contract directs parent-owned finalization. Reject a longer response or a path outside HANDOFF_ROOT.\n\
          \n\
-         Make optimal evidence-based decisions and do not ask the operator questions. On an unrecoverable failure or malformed phase result, stop with one concise line and end with COMPLETE_UMBRELLA_CHILD_STATUS=failed. Only after the ship phase verifies every remote and local postcondition, end with COMPLETE_UMBRELLA_CHILD_STATUS=complete."
+         Make optimal evidence-based decisions and do not ask the operator questions. On an unrecoverable failure or malformed phase result, stop with one concise line and end with COMPLETE_UMBRELLA_CHILD_STATUS=failed. When the ship phase returns PHASE_STATUS=needs-orchestrator-finalize, end with COMPLETE_UMBRELLA_CHILD_STATUS=needs-orchestrator-finalize. Only after the ship phase verifies every remote and local postcondition, end with COMPLETE_UMBRELLA_CHILD_STATUS=complete."
     )
 }
 
@@ -341,8 +344,10 @@ mod tests {
         assert!(prompt.contains("references/recon-design.md"));
         assert!(prompt.contains("references/adversarial-review.md"));
         assert!(prompt.contains("PHASE_STATUS=complete"));
+        assert!(prompt.contains("PHASE_STATUS=needs-orchestrator-finalize"));
         assert!(!prompt.contains("Read both leaf issue"));
         assert!(prompt.contains(COMPLETE_UMBRELLA_CHILD_COMPLETE));
+        assert!(prompt.contains(COMPLETE_UMBRELLA_CHILD_NEEDS_ORCHESTRATOR_FINALIZE));
     }
 
     #[test]

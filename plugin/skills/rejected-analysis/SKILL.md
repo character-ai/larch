@@ -90,7 +90,7 @@ SYNC_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" run-log sync)
 
 Parse and retain `WORK_DIR`, `VERIFY_COUNT`, `VERDICTS_FILE`, `INGEST_STATUS_FILE`, `LEDGER_PENDING_FILE`, `ISSUE_SENTINEL`, `REPO_ROOT`, and every `VERIFY_PROMPT_<candidate-id>=<path>` row.
 
-The Python prepare step owns local cache discovery, vote joins, 1-YES inclusion, 0-YES drops, OOS-deferred drops, security-sensitive drops, near-duplicate collapse, open-issue overlap, cap accounting, prompt rendering, `ledger-pending.tsv`, empty `verdicts.jsonl`, and empty durable `ingest-status.jsonl`. Later steps read ordinary files below the parsed corpus root and perform no more cloud operations.
+The Rust prepare command owns local cache discovery, vote joins, 1-YES inclusion, 0-YES drops, OOS-deferred drops, security-sensitive drops, near-duplicate collapse, exhaustive open-issue overlap, cap accounting, prompt rendering, `ledger-pending.tsv`, empty `verdicts.jsonl`, and empty durable `ingest-status.jsonl`. Later steps read ordinary files below the parsed corpus root and perform no more cloud operations.
 
 The frozen `finding_hash` excludes run-local `FINDING_N`. It hashes only normalized `file_path` and normalized `concern`. It never uses live filesystem existence to choose the hash path.
 
@@ -240,7 +240,7 @@ Report success counters only when all conditions are clear and `record` reports 
 
 ## Implementation files
 
-- `scripts/rejected-analysis.sh` (contract: `scripts/rejected-analysis.md`) is the thin Python CLI wrapper.
+- `scripts/rejected-analysis.sh` (contract: `scripts/rejected-analysis.md`) is the thin runtime wrapper: Rust owns `prepare` and `ingest-verdict`; Python retains `finalize` and `record` until their follow-up leaf.
 - `scripts/test-rejected-analysis.sh` (contract: `scripts/test-rejected-analysis.md`) is the offline structural harness for this skill.
 
 ## NEVER

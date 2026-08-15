@@ -47,12 +47,9 @@ def run(repo_root: Path) -> list[str]:
     if len(lines) > 200:
         failures.append(f"(1) skills/review/SKILL.md must stay <= 200 lines after script extraction (found {len(lines)})")
 
-    review_verbs = (
-        "core",
-        "tally-code-votes", "emit-tally", "log-phase",
-    )
-    if len(review_verbs) != 4:
-        failures.append("(1) internal harness error: expected Python review verb list must contain 4 entries")
+    review_verbs = ("core",)
+    if len(review_verbs) != 1:
+        failures.append("(1) internal harness error: expected Python review verb list must contain 1 entry")
     for verb in review_verbs:
         require(cli, f'("review", "{verb}")', "(1) missing python/cli.py review " + verb + " registry entry")
     review_commands = file("crates/larch-cli/src/review_commands.rs")

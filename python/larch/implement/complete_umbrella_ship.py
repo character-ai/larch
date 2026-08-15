@@ -50,6 +50,7 @@ _STATE_STATUSES: Final = frozenset(
         "prepared",
         "monitoring",
         "ci_failed",
+        "awaiting_orchestrator_finalize",
         "queued",
         "merged",
         "finalizing",
@@ -114,6 +115,7 @@ class CiWaitOutcome:
 class MergePrOutcome:
     pull_request: gh.PullRequest
     queued: bool = False
+    needs_orchestrator_finalize: bool = False
 
 
 @dataclass(frozen=True)
@@ -141,6 +143,15 @@ class RustLineBudgetOutcome:
 
     status: str
     budget: RustLineBudget | None = None
+    deviation: migration_governance.RustLineBudgetDeviation | None = None
+
+
+@dataclass(frozen=True)
+class BudgetFinalizationOutcome:
+    """One parent-owned refresh of stale, otherwise valid budget evidence."""
+
+    status: str
+    budget: RustLineBudget
 
 
 def _detail(text: str) -> str:
@@ -521,22 +532,30 @@ def _measure_rust_line_budget(
     )
 
 
-def _matching_budget_deviation(
-    *, issue_body: str, budget: RustLineBudget
-) -> bool:
+def _valid_budget_deviation(
+    *, issue_body: str
+) -> tuple[str, migration_governance.RustLineBudgetDeviation] | None:
     plan_inner, malformed = issue_blocks.parse_named_block(
         body=issue_body, marker="plan"
     )
     if malformed or plan_inner is None:
-        return False
+        return None
     parsed = migration_governance.parse_rust_line_budget_deviation(
         plan_inner=plan_inner
     )
     deviation = parsed.deviation
-    return bool(
-        not parsed.defects
-        and deviation is not None
-        and deviation.base_sha == budget.base_sha
+    if parsed.defects or deviation is None:
+        return None
+    return plan_inner, deviation
+
+
+def _matching_budget_deviation(*, issue_body: str, budget: RustLineBudget) -> bool:
+    record = _valid_budget_deviation(issue_body=issue_body)
+    if record is None:
+        return False
+    _plan_inner, deviation = record
+    return (
+        deviation.base_sha == budget.base_sha
         and deviation.head_sha == budget.head_sha
         and deviation.added_lines == budget.added_lines
     )
@@ -559,23 +578,21 @@ def _rust_line_budget_outcome(
         issue=str(request.leaf),
         cwd=str(request.repo_root),
     )
-    if _matching_budget_deviation(issue_body=issue.body, budget=budget):
-        return RustLineBudgetOutcome(status="deviation-recorded", budget=budget)
-    return RustLineBudgetOutcome(status="deviation-required", budget=budget)
-
-
-def _require_rust_line_budget(
-    runner: Runner,
-    request: LeafShipRequest,
-    *,
-    head_sha: str,
-) -> None:
-    outcome = _rust_line_budget_outcome(runner, request, head_sha=head_sha)
-    if outcome.status == "deviation-required":
-        raise ShipError(
-            "managed chief leaf exceeds the Rust line budget without a matching "
-            "durable split decision and rationale"
+    record = _valid_budget_deviation(issue_body=issue.body)
+    if record is not None:
+        _plan_inner, deviation = record
+        if _matching_budget_deviation(issue_body=issue.body, budget=budget):
+            return RustLineBudgetOutcome(
+                status="deviation-recorded",
+                budget=budget,
+                deviation=deviation,
+            )
+        return RustLineBudgetOutcome(
+            status="deviation-required",
+            budget=budget,
+            deviation=deviation,
         )
+    return RustLineBudgetOutcome(status="deviation-required", budget=budget)
 
 
 def prepare_leaf(
@@ -827,6 +844,23 @@ def _distill_ci_failure(
     raise ShipError("failed CI logs did not become ready")
 
 
+def _needs_orchestrator_budget_finalization(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    head_sha: str,
+) -> bool:
+    budget_outcome = _rust_line_budget_outcome(runner, request, head_sha=head_sha)
+    if budget_outcome.status != "deviation-required":
+        return False
+    if budget_outcome.deviation is not None:
+        return True
+    raise ShipError(
+        "managed chief leaf exceeds the Rust line budget without a matching "
+        "durable split decision and rationale"
+    )
+
+
 def _merge_pr(
     runner: Runner,
     request: LeafShipRequest,
@@ -854,7 +888,15 @@ def _merge_pr(
         cwd=cwd,
     ):
         raise ShipError("CI changed after the green pre-merge check")
-    _require_rust_line_budget(runner, request, head_sha=head_sha)
+    if _needs_orchestrator_budget_finalization(
+        runner,
+        request,
+        head_sha=head_sha,
+    ):
+        return MergePrOutcome(
+            pull_request=pull_request,
+            needs_orchestrator_finalize=True,
+        )
 
     queue_enabled = gh.default_branch_merge_queue_enabled(
         runner,
@@ -1166,7 +1208,9 @@ def _run_premerge(
         state = replace(state, status="ci_failed", ci_errors_file=str(errors_file))
         _write_state(request, state)
         if state.ci_fix_attempts >= config.COMPLETE_UMBRELLA_CI_FIX_ATTEMPTS:
-            raise ShipError("complete-umbrella CI fix attempt cap reached after failed CI")
+            raise ShipError(
+                "complete-umbrella CI fix attempt cap reached after failed CI"
+            )
         return state, LeafShipOutcome(
             status="ci_failed",
             pr_number=state.pr_number,
@@ -1180,6 +1224,18 @@ def _run_premerge(
         head_sha=head_sha,
         sleep_fn=sleep_fn,
     )
+    if merge_outcome.needs_orchestrator_finalize:
+        state = replace(
+            state,
+            status="awaiting_orchestrator_finalize",
+            pr_url=merge_outcome.pull_request.url,
+        )
+        _write_state(request, state)
+        return state, LeafShipOutcome(
+            status="needs-orchestrator-finalize",
+            pr_number=state.pr_number,
+            pr_url=state.pr_url,
+        )
     if merge_outcome.queued:
         state = replace(
             state,
@@ -1282,6 +1338,129 @@ def line_budget_leaf(
     return _rust_line_budget_outcome(runner, request, head_sha=head_sha)
 
 
+def _require_budget_finalization_pr(
+    runner: Runner,
+    request: LeafShipRequest,
+) -> str:
+    state = _read_state(request)
+    if state is None or state.status != "awaiting_orchestrator_finalize":
+        raise ShipError("leaf ship state is not awaiting orchestrator finalization")
+    cwd = str(request.repo_root)
+    push.assert_clean_worktree(runner, cwd=cwd)
+    branch = git.current_branch(runner, cwd=cwd)
+    if branch != state.branch:
+        raise ShipError("orchestrator finalization branch changed")
+    head_sha = git.rev_parse(runner, "HEAD", cwd=cwd)
+    if _HEAD_RE.fullmatch(head_sha) is None or head_sha != state.head_sha:
+        raise ShipError("orchestrator finalization head changed")
+    pull_request = gh.pr_view(
+        runner,
+        state.pr_number,
+        repo=request.repository,
+        cwd=cwd,
+    )
+    if pull_request.state.upper() != "OPEN" or pull_request.head_ref != state.branch:
+        raise ShipError("orchestrator finalization requires the original open PR")
+    _require_main_base(runner, request, pr_number=pull_request.number)
+    merge_state = _require_pr_head(
+        runner,
+        request,
+        pr_number=pull_request.number,
+        head_sha=head_sha,
+    )
+    if merge_state.merge_state_status not in config.ADMIN_ELIGIBLE_MERGE_STATES:
+        raise ShipError("orchestrator finalization requires an admin-merge eligible PR")
+    if not gh.pr_checks_all_pass(
+        runner,
+        pull_request.number,
+        repo=request.repository,
+        cwd=cwd,
+    ):
+        raise ShipError("orchestrator finalization requires green CI")
+    _ensure_pr_body(runner, request, pull_request)
+    return head_sha
+
+
+def _refresh_stale_budget_deviation(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    budget: RustLineBudget,
+) -> BudgetFinalizationOutcome:
+    snapshot = issue_mutation.read_snapshot(
+        runner,
+        repository=request.repository,
+        issue=str(request.leaf),
+        cwd=str(request.repo_root),
+    )
+    if snapshot.state.upper() != "OPEN":
+        raise ShipError("orchestrator finalization refuses a non-open leaf")
+    record = _valid_budget_deviation(issue_body=snapshot.body)
+    if record is None:
+        raise ShipError("orchestrator finalization requires a valid durable deviation")
+    lease = issue_wire.named_block_lease(marker="plan")
+    if lease is None:
+        raise ShipError("orchestrator finalization requires an active plan lease")
+    if _matching_budget_deviation(issue_body=snapshot.body, budget=budget):
+        return BudgetFinalizationOutcome(status="already-recorded", budget=budget)
+    plan_inner, _deviation = record
+    refreshed_plan = migration_governance.refresh_rust_line_budget_deviation(
+        plan_inner=plan_inner,
+        base_sha=budget.base_sha,
+        head_sha=budget.head_sha,
+        added_lines=budget.added_lines,
+    )
+    refreshed_body, malformed = issue_blocks.replace_named_block(
+        body=snapshot.body,
+        marker="plan",
+        inner=refreshed_plan,
+    )
+    if malformed:
+        raise ShipError("orchestrator finalization could not replace the plan block")
+    mutation = issue_mutation.apply(
+        runner,
+        issue_mutation.request_for_snapshot(
+            snapshot,
+            fields=frozenset({issue_mutation.MutationField.NAMED_BLOCK}),
+            body=refreshed_body,
+            marker="plan",
+            lease=lease,
+        ),
+        cwd=str(request.repo_root),
+    )
+    if mutation.after.body != refreshed_body:
+        raise ShipError("orchestrator finalization plan read-back failed")
+    return BudgetFinalizationOutcome(status="recorded", budget=budget)
+
+
+def finalize_budget_deviation(
+    runner: Runner,
+    request: LeafShipRequest,
+) -> BudgetFinalizationOutcome:
+    """Refresh stale over-budget evidence from the parent orchestrator only."""
+    request = _validate_request(request)
+    head_sha = _require_budget_finalization_pr(runner, request)
+    budget_outcome = _rust_line_budget_outcome(
+        runner,
+        request,
+        head_sha=head_sha,
+    )
+    if budget_outcome.budget is None:
+        raise ShipError("orchestrator finalization requires stale over-limit evidence")
+    if budget_outcome.status not in {"deviation-required", "deviation-recorded"}:
+        raise ShipError("orchestrator finalization requires stale over-limit evidence")
+    budget = budget_outcome.budget
+    refreshed = _refresh_stale_budget_deviation(
+        runner,
+        request,
+        budget=budget,
+    )
+    verified = _rust_line_budget_outcome(runner, request, head_sha=head_sha)
+    if verified.status != "deviation-recorded":
+        raise ShipError("orchestrator finalization budget evidence is still stale")
+    return refreshed
+
+
 def _emit(outcome: LeafShipOutcome) -> None:
     logging_util.emit_kv(key="SHIP_STATUS", value=outcome.status)
     logging_util.emit_kv(
@@ -1313,11 +1492,27 @@ def _emit_line_budget(outcome: RustLineBudgetOutcome) -> None:
     )
 
 
+def _emit_budget_finalization(outcome: BudgetFinalizationOutcome) -> None:
+    logging_util.emit_kv(key="BUDGET_FINALIZATION_STATUS", value=outcome.status)
+    logging_util.emit_kv(
+        key="RUST_LINE_BUDGET_ADDED_LINES",
+        value=str(outcome.budget.added_lines),
+    )
+    logging_util.emit_kv(key="RUST_LINE_BUDGET_BASE_SHA", value=outcome.budget.base_sha)
+    logging_util.emit_kv(key="RUST_LINE_BUDGET_HEAD_SHA", value=outcome.budget.head_sha)
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py complete-umbrella ship-leaf")
     _ = parser.add_argument(
         "--mode",
-        choices=("prepare", "ship", "verify", "line-budget"),
+        choices=(
+            "prepare",
+            "ship",
+            "verify",
+            "line-budget",
+            "finalize-budget-deviation",
+        ),
         required=True,
     )
     _ = parser.add_argument("--repository", required=True)
@@ -1343,9 +1538,13 @@ def main(argv: list[str]) -> int:
             outcome = ship_leaf(proc, request)
         elif args.mode == "verify":
             outcome = verify_leaf(proc, request)
-        else:
+        elif args.mode == "line-budget":
             budget_outcome = line_budget_leaf(proc, request)
             _emit_line_budget(budget_outcome)
+            return config.EXIT_OK
+        else:
+            finalization_outcome = finalize_budget_deviation(proc, request)
+            _emit_budget_finalization(finalization_outcome)
             return config.EXIT_OK
     except (OSError, ShipError, ValueError) as exc:
         _emit(LeafShipOutcome(status="error", detail=str(exc)))

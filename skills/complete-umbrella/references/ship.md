@@ -28,13 +28,14 @@ Route only on `SHIP_STATUS`:
 
 - `complete`: run the same command with `--mode verify`. Require another `SHIP_STATUS=complete`.
 - `ci_failed`: require `CI_ERRORS_FILE` to be a regular file below `$SESSION_TMPDIR`. Spawn one fresh general-purpose Agent with only the identifiers from your prompt, the positive fix round, `CI_ERRORS_FILE`, and `PHASE_CONTRACT=$CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/ci-fix.md`. Await its task notification. Require exactly `PHASE_STATUS=complete` and a contained `HANDOFF_FILE`, then rerun ship mode. The driver's persisted state enforces the fix-attempt cap.
+- `needs-orchestrator-finalize`: do not mutate the issue, retry ship mode, rebase, or spawn a fixer. Write `$SESSION_TMPDIR/ship-summary.md` with only the PR number, PR URL, and `SHIP_STATUS=needs-orchestrator-finalize`, then end with `PHASE_STATUS=needs-orchestrator-finalize` and its contained `HANDOFF_FILE`. Only the top-level complete-umbrella owner may perform the bounded finalization route.
 - Any other value or nonzero exit: fail. Do not repair deterministic shipping state by hand.
 
 Do not poll while the driver runs. Do not spawn a CI fixer when checks are pending or green.
 
 After verified completion, write `$SESSION_TMPDIR/ship-summary.md` with only the PR number, PR URL, final issue state, final local HEAD, and `SHIP_STATUS=complete`.
 
-End with:
+After verified completion, end with:
 
 ```text
 PHASE_STATUS=complete

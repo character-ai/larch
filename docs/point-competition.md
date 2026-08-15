@@ -96,7 +96,7 @@ Future reviewer token budget should be allocated by precision-value, not cumulat
 - **Numerator (in-scope competition net):** weighted in-scope accepted points minus in-scope rejected points only, i.e. `accepted_weight - Rejected`. Use the same +2/+1/-1 rules from `## Scoring Rules`, including +2 for accepted in-scope major or blocker findings. Exclude OOS accepted and OOS rejected.
 - **Denominator:** the in-scope proposed count, the `Findings` / `Proposed` scoreboard column for in-scope rows only. Exclude OOS proposed.
 - **Formula:** `net-score-per-finding = (accepted_weight - Rejected) ÷ Proposed`. Division by zero is undefined until a separate policy is stated.
-- **Why not raw `Score`:** live tally `Score` also includes `OOS Accepted - OOS Rejected` while `Proposed` / `Findings` is in-scope only (`python/plan_review_tally.py`, `python/review_tally.py`). Dividing full `Score` by in-scope `Proposed` would let OOS-heavy reviewers inflate the signal without raising the denominator.
+- **Why not raw `Score`:** live tally `Score` also includes `OOS Accepted - OOS Rejected` while `Proposed` / `Findings` is in-scope only (`python/plan_review_tally.py`, `crates/larch-cli/src/review_tally_commands.rs`). Dividing full `Score` by in-scope `Proposed` would let OOS-heavy reviewers inflate the signal without raising the denominator.
 
 ### Rationale
 

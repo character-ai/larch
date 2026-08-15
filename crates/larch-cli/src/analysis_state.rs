@@ -15,7 +15,7 @@ use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as
 #[cfg(unix)]
 use nix::fcntl::{Flock, FlockArg};
 
-use larch_adapters::ensure_directory_chain;
+use larch_adapters::{atomic_write_utf8_in, ensure_directory_chain};
 use sha2::{Digest as _, Sha256};
 
 /// Bytes and SHA-256 digest of one regular analysis-state file, or `missing`.
@@ -32,17 +32,8 @@ pub struct LockedMarker {
     pub snapshot: StateSnapshot,
 }
 
-/// Resolve `$XDG_STATE_HOME/larch/analysis-state/v2/<client>/<origin>/<relpath>`.
-pub fn marker_path(root: &Path, relpath: &str) -> Result<PathBuf, String> {
-    let storage =
-        crate::run_log_commands::resolve_enabled_storage_path(Some(root)).map_err(|error| {
-            match error {
-                crate::run_log_commands::PreflightFailure::Configuration(error) => {
-                    error.to_string()
-                }
-                crate::run_log_commands::PreflightFailure::Provider(error) => error.to_string(),
-            }
-        })?;
+/// Resolve `$XDG_STATE_HOME/larch/analysis-state/v2/<client>/<origin>`.
+pub fn storage_root(client_repo: &str, storage_origin_id: &str) -> Result<PathBuf, String> {
     let home = env::var_os("XDG_STATE_HOME")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
@@ -56,12 +47,32 @@ pub fn marker_path(root: &Path, relpath: &str) -> Result<PathBuf, String> {
         return Err("analysis state home must be an absolute path".to_owned());
     }
     let home = fs::canonicalize(&home).unwrap_or(home);
-    let storage_origin_id = storage.storage_origin_id();
     Ok(home
         .join("larch/analysis-state/v2")
-        .join(storage.client_repo)
-        .join(storage_origin_id)
-        .join(relpath))
+        .join(client_repo)
+        .join(storage_origin_id))
+}
+
+/// Resolve `$XDG_STATE_HOME/larch/analysis-state/v2/<client>/<origin>/<relpath>`.
+pub fn marker_path(root: &Path, relpath: &str) -> Result<PathBuf, String> {
+    let storage =
+        crate::run_log_commands::resolve_enabled_storage_path(Some(root)).map_err(|error| {
+            match error {
+                crate::run_log_commands::PreflightFailure::Configuration(error) => {
+                    error.to_string()
+                }
+                crate::run_log_commands::PreflightFailure::Provider(error) => error.to_string(),
+            }
+        })?;
+    storage_root(&storage.client_repo, &storage.storage_origin_id()).map(|root| root.join(relpath))
+}
+
+/// Publish one owner-only marker with the shared state lock and path policy.
+pub fn write_marker(path: &Path, text: &str) -> Result<(), String> {
+    let (root, target) = crate::launcher_support::confined_target(path)
+        .ok_or_else(|| "state path has no safe parent".to_owned())?;
+    let _lock = lock_state(&target)?;
+    atomic_write_utf8_in(&root, &target, text, false, 0o600).map_err(|error| error.to_string())
 }
 
 /// Read a regular marker file without following a swapped inode.

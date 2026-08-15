@@ -19,7 +19,6 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use larch_adapters::atomic_write_utf8_in;
 use larch_core::{
     emit_kv,
     review::{
@@ -34,8 +33,8 @@ use serde_json::Value;
 use tempfile::NamedTempFile;
 
 use crate::{
-    argparse_compat::{absolute_path, parse, usage_error},
-    launcher_support::confined_target,
+    argparse_compat::{parse, usage_error},
+    launcher_support::write_confined_checked,
     python_verb::{plugin_root_directory, run_python_verb},
     runtime_entrypoint::{plugin_root, run_verified_larch},
     waterfall_commands::{dispatch_for_review, parse_dispatch_kv, render_dispatch_report},
@@ -161,10 +160,7 @@ const fn word(value: bool) -> &'static str {
 }
 
 fn write_text(path: &Path, text: &str) -> Result<(), String> {
-    let absolute = absolute_path(path).map_err(|error| error.to_string())?;
-    let (root, target) = confined_target(&absolute)
-        .ok_or_else(|| format!("path is not confinable: {}", absolute.display()))?;
-    atomic_write_utf8_in(&root, &target, text, true, 0o600).map_err(|error| error.to_string())
+    write_confined_checked(path, text)
 }
 
 fn append_text(path: &Path, text: &str) -> Result<(), String> {

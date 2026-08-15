@@ -44,7 +44,6 @@ MAKEFILE = os.path.join(REPO_ROOT, "Makefile")
 # guards against a duplicate full-file target being reintroduced
 # (e.g. test_research.py after the Trick A3 de-duplication).
 ENFORCED = (
-    "python/tests/review/test_review_tally.py",
     "python/tests/review/test_review_pipeline.py",
     "python/tests/research/test_research.py",
     "python/tests/agents/test_agents.py",

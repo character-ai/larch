@@ -700,7 +700,7 @@ impl RunLogFileIter {
             entries: VecDeque::new(),
         }
     }
-    fn new(run_dir: &Path) -> Self {
+    pub(super) fn new(run_dir: &Path) -> Self {
         let Ok(run_root) = fs::canonicalize(run_dir) else {
             return Self::empty();
         };
@@ -718,6 +718,16 @@ impl RunLogFileIter {
             directories: VecDeque::from([run_root]),
             entries: VecDeque::new(),
         }
+    }
+
+    /// Stream safe regular files below one directory.
+    #[must_use]
+    pub fn from_directory(run_dir: &Path) -> Self {
+        let mut files = Self::new(run_dir);
+        if let Ok(root) = fs::canonicalize(run_dir) {
+            files.contain_root = root;
+        }
+        files
     }
 }
 impl Iterator for RunLogFileIter {
@@ -958,8 +968,8 @@ impl Iterator for RunLogCorpusIter {
         }
     }
 }
-struct ChildDirectoryScan {
-    directories: Vec<PathBuf>,
+pub(super) struct ChildDirectoryScan {
+    pub(super) directories: Vec<PathBuf>,
     warnings: Vec<RunLogCorpusWarning>,
 }
 impl ChildDirectoryScan {
@@ -996,7 +1006,7 @@ fn resolve_safe_root(root: &Path) -> Result<PathBuf, RunLogCorpusWarning> {
         )
     })
 }
-fn safe_child_directories(root: &Path) -> ChildDirectoryScan {
+pub(super) fn safe_child_directories(root: &Path) -> ChildDirectoryScan {
     let resolved_root = match resolve_safe_root(root) {
         Ok(path) => path,
         Err(warning) => return ChildDirectoryScan::warning(warning),
@@ -1177,7 +1187,7 @@ fn valid_larch_version(value: &str) -> bool {
                     .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-'))
         })
 }
-fn is_contained_regular_file(run_dir: &Path, path: &Path) -> bool {
+pub(super) fn is_contained_regular_file(run_dir: &Path, path: &Path) -> bool {
     if !is_regular_file(path) {
         return false;
     }

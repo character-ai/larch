@@ -10,7 +10,7 @@ import shutil
 import threading
 import time
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from unittest import mock
 
 from larch.calibration import difficulty_calibration
@@ -18,7 +18,6 @@ from larch.report import exec_issue_detail
 from larch.core import logging_util
 import pytest
 from larch.review import review_and_fix
-from larch.review import review_tally
 from larch.review import batch_report
 from larch.review import coder_runner
 from larch.review import round_runner
@@ -26,6 +25,9 @@ from larch.review import snapshot
 from _pytest.mark.structures import Mark, MarkDecorator
 from test_support import ok
 from tests.support.review_wire import panel_manifest_ndjson, panel_manifest_row
+
+if TYPE_CHECKING:
+    from larch.review.review_pipeline_shared import CodeReviewTallyRequest
 
 _RUST_GIT = str(review_and_fix.larch_entrypoint(review_and_fix._plugin_root()))
 
@@ -830,7 +832,7 @@ def test_surface_parse_failed_warning_calls_surface_warning_when_nonzero(monkeyp
     def fake_surface_warning(*, session_env_path: str, entry: str) -> None:
         calls.append({"session_env_path": session_env_path, "entry": entry})
 
-    monkeypatch.setattr(review_tally, "surface_warning", fake_surface_warning)
+    monkeypatch.setattr(round_runner, "surface_warning", fake_surface_warning)
     core = {"PARSE_FAILED_COUNT": "2"}
     review_and_fix._surface_parse_failed_warning(core=core, round_num=3, session_env_path="/tmp/session-env.sh")
     assert len(calls) == 1
@@ -844,7 +846,7 @@ def test_surface_parse_failed_warning_skips_when_zero(monkeypatch: pytest.Monkey
     def fake_surface_warning(*, session_env_path: str, entry: str) -> None:
         calls.append({"session_env_path": session_env_path, "entry": entry})
 
-    monkeypatch.setattr(review_tally, "surface_warning", fake_surface_warning)
+    monkeypatch.setattr(round_runner, "surface_warning", fake_surface_warning)
     review_and_fix._surface_parse_failed_warning(core={"PARSE_FAILED_COUNT": "0"}, round_num=1, session_env_path="/tmp/session-env.sh")
     assert not calls
 
@@ -855,7 +857,7 @@ def test_surface_dropped_reviewer_warning_uses_dynamic_counters(tmp_path: Path, 
     def fake_surface_warning(*, session_env_path: str, entry: str) -> None:
         calls.append(entry)
 
-    monkeypatch.setattr(review_tally, "surface_warning", fake_surface_warning)
+    monkeypatch.setattr(round_runner, "surface_warning", fake_surface_warning)
     attempts = tmp_path / "dropped-reviewer-attempts.env"
     attempts.write_text("DYNAMIC_FAILED_SLOTS=1\nDYNAMIC_DROPPED_SLOTS=0\n", encoding="utf-8")
 
@@ -883,7 +885,7 @@ def test_surface_dropped_reviewer_warning_static_straggler_backstop_does_not_war
     def capture_warning(*, session_env_path: str, entry: str) -> None:
         calls.append(entry)
 
-    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+    monkeypatch.setattr(round_runner, "surface_warning", capture_warning)
     threshold = tmp_path / "review-core-threshold.env"
     threshold.write_text("STRAGGLER_DROPPED_COUNT=1\n", encoding="utf-8")
     dropped = tmp_path / "panel.output-files.dropped-slots"
@@ -911,7 +913,7 @@ def test_surface_dropped_reviewer_warning_static_straggler_with_dynamic_manifest
     def capture_warning(*, session_env_path: str, entry: str) -> None:
         calls.append(entry)
 
-    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+    monkeypatch.setattr(round_runner, "surface_warning", capture_warning)
     threshold = tmp_path / "review-core-threshold.env"
     threshold.write_text("STRAGGLER_DROPPED_COUNT=1\n", encoding="utf-8")
     dropped = tmp_path / "panel.output-files.dropped-slots"
@@ -950,7 +952,7 @@ def test_surface_dropped_reviewer_warning_static_straggler_without_ledger_does_n
     def capture_warning(*, session_env_path: str, entry: str) -> None:
         calls.append(entry)
 
-    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+    monkeypatch.setattr(round_runner, "surface_warning", capture_warning)
     threshold = tmp_path / "review-core-threshold.env"
     threshold.write_text("STRAGGLER_DROPPED_COUNT=1\n", encoding="utf-8")
     manifest = tmp_path / "panel-manifest.ndjson"
@@ -989,7 +991,7 @@ def test_surface_dropped_reviewer_warning_dynamic_straggler_backstop_warns(
     def capture_warning(*, session_env_path: str, entry: str) -> None:
         calls.append(entry)
 
-    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+    monkeypatch.setattr(round_runner, "surface_warning", capture_warning)
     threshold = tmp_path / "review-core-threshold.env"
     threshold.write_text("STRAGGLER_DROPPED_COUNT=1\n", encoding="utf-8")
     dropped = tmp_path / "panel.output-files.dropped-slots"
@@ -4318,7 +4320,7 @@ def test_degraded_retry_skips_zero_findings_round(tmp_path: Path, monkeypatch: p
     def capture_warning(*, session_env_path: str, entry: str) -> None:
         warned.append(entry)
 
-    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+    monkeypatch.setattr(round_runner, "surface_warning", capture_warning)
 
     args = argparse.Namespace(
         implement_tmpdir=str(impl),
@@ -4441,7 +4443,7 @@ def test_no_spurious_under_quorum_warning_after_successful_retry(tmp_path: Path,
     def capture_warning(*, session_env_path: str, entry: str) -> None:
         warned.append(entry)
 
-    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+    monkeypatch.setattr(round_runner, "surface_warning", capture_warning)
 
     args = argparse.Namespace(
         implement_tmpdir=str(impl),
@@ -4555,7 +4557,7 @@ def test_under_quorum_retry_revotes_only_targeted_items(tmp_path: Path, monkeypa
         voter_2.write_text("FINDING_1: NO -- targeted direct\n", encoding="utf-8")
         return ok(tuple(str(item) for item in argv), f"VOTER_1_PATH={voter_1}\nVOTER_1_TOOL=codex-validity\nVOTER_2_PATH={voter_2}\nVOTER_2_TOOL=codex-plan-fidelity\nVOTER_3_PATH={revote_dir / 'missing.txt'}\nVOTER_3_TOOL=codex-pragmatism\n")
 
-    def fake_tally(*, commands: object, request: review_tally.TallyRequest):
+    def fake_tally(*, commands: object, request: CodeReviewTallyRequest):
         del commands
         args = request.to_argv()
         tally_argv.extend(str(item) for item in args)
@@ -4876,7 +4878,7 @@ def test_dropped_reviewer_warning_persists_after_successful_degraded_retry(
     def capture_warning(*, session_env_path: str, entry: str) -> None:
         warned.append(entry)
 
-    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+    monkeypatch.setattr(round_runner, "surface_warning", capture_warning)
 
     args = argparse.Namespace(
         implement_tmpdir=str(impl),
@@ -4927,7 +4929,7 @@ def test_parse_failed_warning_surfaces_after_still_degraded_retry(tmp_path: Path
     def capture_warning(*, session_env_path: str, entry: str) -> None:
         warned.append(entry)
 
-    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+    monkeypatch.setattr(round_runner, "surface_warning", capture_warning)
 
     args = argparse.Namespace(
         implement_tmpdir=str(impl),
@@ -4987,7 +4989,7 @@ def test_no_spurious_parse_failed_warning_after_successful_retry(tmp_path: Path,
     def capture_warning(*, session_env_path: str, entry: str) -> None:
         warned.append(entry)
 
-    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+    monkeypatch.setattr(round_runner, "surface_warning", capture_warning)
 
     args = argparse.Namespace(
         implement_tmpdir=str(impl),
@@ -5061,7 +5063,7 @@ def test_run_round_reentry_clears_stale_dropped_reviewer_attempts(
     def capture_first(*, session_env_path: str, entry: str) -> None:
         first_warned.append(entry)
 
-    monkeypatch.setattr(review_tally, "surface_warning", capture_first)
+    monkeypatch.setattr(round_runner, "surface_warning", capture_first)
     review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
 
     assert run_count == 1
@@ -5074,7 +5076,7 @@ def test_run_round_reentry_clears_stale_dropped_reviewer_attempts(
     def capture_second(*, session_env_path: str, entry: str) -> None:
         second_warned.append(entry)
 
-    monkeypatch.setattr(review_tally, "surface_warning", capture_second)
+    monkeypatch.setattr(round_runner, "surface_warning", capture_second)
     review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
 
     assert run_count == 2

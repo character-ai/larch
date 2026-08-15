@@ -20,8 +20,14 @@ def test_owner_block_roundtrip_and_fenced_lookalike() -> None:
         domain="issue",
         verb="migration-audit",
         owners=(
-            issue_wire.OwnerRow("CREATE", "migration-owner", "python/larch/issue/issue_wire.py::OwnerBlock"),
-            issue_wire.OwnerRow("REUSE", "typed-mutation", "python/larch/issue/issue_mutation.py", 7781),
+            issue_wire.OwnerRow(
+                "CREATE",
+                "migration-owner",
+                "python/larch/issue/issue_wire.py::OwnerBlock",
+            ),
+            issue_wire.OwnerRow(
+                "REUSE", "typed-mutation", "python/larch/issue/issue_mutation.py", 7781
+            ),
         ),
     )
     rendered = issue_wire.render_owner_block(block=block)
@@ -36,16 +42,46 @@ def test_owner_block_roundtrip_and_fenced_lookalike() -> None:
 @pytest.mark.parametrize(
     ("rows", "defect"),
     [
-        (("COMMAND\tissue\tmigration-audit", "CREATE\tbad_key\tx.py"), "invalid-owner-key"),
-        (("COMMAND\tissue\tmigration-audit", "CREATE\tkey\t../x.py"), "unsafe-owner-target"),
-        (("COMMAND\tissue\tmigration-audit", "CREATE\tkey\tx.py::bad symbol"), "unsafe-owner-target"),
-        (("CREATE\tkey\tx.py", "COMMAND\tissue\tmigration-audit"), "unsorted-owner-rows"),
-        (("COMMAND\tissue\tmigration-audit", "CREATE\tkey\tx.py", "CREATE\tkey\tx.py"), "duplicate-owner-row"),
-        (("COMMAND\tissue\tmigration-audit", "CREATE\tkey\tx.py", "REUSE\tkey\t#7\ty.py"), "duplicate-owner-key"),
+        (
+            ("COMMAND\tissue\tmigration-audit", "CREATE\tbad_key\tx.py"),
+            "invalid-owner-key",
+        ),
+        (
+            ("COMMAND\tissue\tmigration-audit", "CREATE\tkey\t../x.py"),
+            "unsafe-owner-target",
+        ),
+        (
+            ("COMMAND\tissue\tmigration-audit", "CREATE\tkey\tx.py::bad symbol"),
+            "unsafe-owner-target",
+        ),
+        (
+            ("CREATE\tkey\tx.py", "COMMAND\tissue\tmigration-audit"),
+            "unsorted-owner-rows",
+        ),
+        (
+            (
+                "COMMAND\tissue\tmigration-audit",
+                "CREATE\tkey\tx.py",
+                "CREATE\tkey\tx.py",
+            ),
+            "duplicate-owner-row",
+        ),
+        (
+            (
+                "COMMAND\tissue\tmigration-audit",
+                "CREATE\tkey\tx.py",
+                "REUSE\tkey\t#7\ty.py",
+            ),
+            "duplicate-owner-key",
+        ),
     ],
 )
-def test_owner_block_rejects_adversarial_rows(rows: tuple[str, ...], defect: str) -> None:
-    body = "\n".join(("<!-- larch:owners:start -->", *rows, "<!-- larch:owners:end -->"))
+def test_owner_block_rejects_adversarial_rows(
+    rows: tuple[str, ...], defect: str
+) -> None:
+    body = "\n".join(
+        ("<!-- larch:owners:start -->", *rows, "<!-- larch:owners:end -->")
+    )
     assert defect in issue_wire.parse_owner_block(body=body).defects
 
 
@@ -74,11 +110,15 @@ def test_implementation_lease_roundtrip_and_malformed_refusal() -> None:
         )
 
 
-def test_emit_untrusted_content_block_matches_file_block_redaction(tmp_path: Path) -> None:
+def test_emit_untrusted_content_block_matches_file_block_redaction(
+    tmp_path: Path,
+) -> None:
     raw = "<tag> sk-" + "A" * 24 + " & text"
     file_path = tmp_path / "raw.txt"
     _ = file_path.write_text(raw, encoding="utf-8")
-    assert issue_wire.emit_untrusted_content_block(tag="sample", text=raw) == issue_wire.emit_untrusted_file_block(tag="sample", path=file_path)
+    assert issue_wire.emit_untrusted_content_block(
+        tag="sample", text=raw
+    ) == issue_wire.emit_untrusted_file_block(tag="sample", path=file_path)
     out = issue_wire.emit_untrusted_content_block(tag="sample", text=raw)
     assert "&lt;tag&gt;" in out
     assert "&lt;REDACTED-TOKEN&gt;" in out
@@ -95,7 +135,10 @@ plan
 after
 """
     assert issue_wire.parse_named_block(body=body, marker="plan") == ("plan\n", "")
-    assert issue_wire.parse_named_block(body=body, marker="design-pause") == ("pause\n", "")
+    assert issue_wire.parse_named_block(body=body, marker="design-pause") == (
+        "pause\n",
+        "",
+    )
     assert issue_wire.parse_named_block(body=body, marker="other") == (None, "")
 
 
@@ -123,8 +166,14 @@ def test_neutralize_named_block_markers_keeps_examples_out_of_wire_parser() -> N
 @pytest.mark.parametrize(
     ("body", "token"),
     [
-        ("<!-- larch:plan:start -->\na\n<!-- larch:plan:end -->\n<!-- larch:plan:start -->\nb\n<!-- larch:plan:end -->\n", "multiple-start"),
-        ("<!-- larch:plan:start -->\na\n<!-- larch:plan:end -->\n<!-- larch:plan:end -->\n", "multiple-end"),
+        (
+            "<!-- larch:plan:start -->\na\n<!-- larch:plan:end -->\n<!-- larch:plan:start -->\nb\n<!-- larch:plan:end -->\n",
+            "multiple-start",
+        ),
+        (
+            "<!-- larch:plan:start -->\na\n<!-- larch:plan:end -->\n<!-- larch:plan:end -->\n",
+            "multiple-end",
+        ),
         ("<!-- larch:plan:start -->\na\n", "start-without-end"),
         ("<!-- larch:plan:end -->\n", "end-without-start"),
         ("<!-- larch:plan:end -->\na\n<!-- larch:plan:start -->\n", "end-before-start"),
@@ -150,6 +199,40 @@ tail
     assert "larch:design-pause:start" in stripped
     assert "plan\n" not in stripped
     assert stripped.endswith("tail\n")
+
+
+def test_replace_named_block_preserves_markers_and_unrelated_body() -> None:
+    body = """intro
+<!-- larch:design-pause:start -->
+pause
+<!-- larch:design-pause:end -->
+<!-- larch:plan:start -->
+old plan
+<!-- larch:plan:end -->
+tail
+"""
+    replaced, malformed = issue_blocks.replace_named_block(
+        body=body,
+        marker="plan",
+        inner="new plan",
+    )
+
+    assert malformed == ""
+    assert (
+        replaced
+        == """intro
+<!-- larch:design-pause:start -->
+pause
+<!-- larch:design-pause:end -->
+<!-- larch:plan:start -->
+new plan
+<!-- larch:plan:end -->
+tail
+"""
+    )
+    assert issue_blocks.replace_named_block(
+        body="no plan", marker="plan", inner="new plan"
+    ) == ("", "missing-block")
 
 
 def test_compose_named_block_strips_trailing_lf() -> None:
@@ -192,7 +275,12 @@ class IssueRunner:
     ) -> CommandResult:
         args = list(argv)
         self.calls.append(args)
-        if args[:4] == ["gh", "issue", "view", "9"]:  # lint-gh-argv-literal: ok fixture assertion
+        if args[:4] == [
+            "gh",
+            "issue",
+            "view",
+            "9",
+        ]:  # lint-gh-argv-literal: ok fixture assertion
             labels: list[object] = []
             payload: dict[str, object] = {
                 "title": self.title,
@@ -201,8 +289,15 @@ class IssueRunner:
                 "state": "OPEN",
                 "updatedAt": self.updated_at,
             }
-            return CommandResult(tuple(args), 0, __import__("json").dumps(payload), "", 0.01)
-        if args[:4] == ["gh", "issue", "edit", "9"]:  # lint-gh-argv-literal: ok fixture assertion
+            return CommandResult(
+                tuple(args), 0, __import__("json").dumps(payload), "", 0.01
+            )
+        if args[:4] == [
+            "gh",
+            "issue",
+            "edit",
+            "9",
+        ]:  # lint-gh-argv-literal: ok fixture assertion
             body_file = args[args.index("--body-file") + 1]
             edited = Path(body_file).read_text(encoding="utf-8")
             self.edit_bodies.append(edited)
@@ -213,12 +308,18 @@ class IssueRunner:
                 self.body = edited
                 self.updated_at = "2026-07-19T00:00:01Z"
             return CommandResult(tuple(args), 0, "", "", 0.01)
-        if args[:3] == ["gh", "repo", "view"]:  # lint-gh-argv-literal: ok fixture assertion
+        if args[:3] == [
+            "gh",
+            "repo",
+            "view",
+        ]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(args), 0, "owner/repo\n", "", 0.01)
         raise AssertionError(f"unexpected call: {args}")
 
 
-def test_extract_scope_paths_honors_section_bounds_and_optional_filter(tmp_path: Path) -> None:
+def test_extract_scope_paths_honors_section_bounds_and_optional_filter(
+    tmp_path: Path,
+) -> None:
     plan = """## Plan
 ### UPDATED: `outside.txt`
 ## Files to modify/create
@@ -228,14 +329,34 @@ def test_extract_scope_paths_honors_section_bounds_and_optional_filter(tmp_path:
 ### REWRITTEN: skills/design/scripts/x.sh (legacy)
 ## Acceptance
 """
-    assert issue_wire.extract_scope_paths(plan_text=plan) == ["docs/optional.md", "a/b.py", "c/d.md", "skills/design/scripts/x.sh"]
-    assert issue_wire.extract_scope_paths(plan_text=plan, include_optional=False) == ["a/b.py", "c/d.md", "skills/design/scripts/x.sh"]
+    assert issue_wire.extract_scope_paths(plan_text=plan) == [
+        "docs/optional.md",
+        "a/b.py",
+        "c/d.md",
+        "skills/design/scripts/x.sh",
+    ]
+    assert issue_wire.extract_scope_paths(plan_text=plan, include_optional=False) == [
+        "a/b.py",
+        "c/d.md",
+        "skills/design/scripts/x.sh",
+    ]
     empty = tmp_path / "empty.md"
-    _ = empty.write_text("## Files to modify/create\n\n## Acceptance\n", encoding="utf-8")
-    assert issue_wire.extract_scope_paths(plan_text=empty.read_text(encoding="utf-8")) == ["skills/design/SKILL.md"]
-    assert issue_wire.extract_scope_paths(plan_text=empty.read_text(encoding="utf-8"), use_fallback=False) == []
+    _ = empty.write_text(
+        "## Files to modify/create\n\n## Acceptance\n", encoding="utf-8"
+    )
+    assert issue_wire.extract_scope_paths(
+        plan_text=empty.read_text(encoding="utf-8")
+    ) == ["skills/design/SKILL.md"]
+    assert (
+        issue_wire.extract_scope_paths(
+            plan_text=empty.read_text(encoding="utf-8"), use_fallback=False
+        )
+        == []
+    )
     scopeless = "## Plan\n### UPDATED: `docs/expected.md`\n## Acceptance\n"
-    assert issue_wire.extract_scope_paths(plan_text=scopeless, use_fallback=False) == ["docs/expected.md"]
+    assert issue_wire.extract_scope_paths(plan_text=scopeless, use_fallback=False) == [
+        "docs/expected.md"
+    ]
     multi_scopeless = (
         "## Plan\n"
         "### UPDATED: `a/one.py`\n"
@@ -244,7 +365,9 @@ def test_extract_scope_paths_honors_section_bounds_and_optional_filter(tmp_path:
         "### MAY_UPDATE: `d/opt.py`\n"
         "## Acceptance\n"
     )
-    assert issue_wire.extract_scope_paths(plan_text=multi_scopeless, use_fallback=False, include_optional=False) == ["a/one.py", "b/two.md", "c/three.sh"]
+    assert issue_wire.extract_scope_paths(
+        plan_text=multi_scopeless, use_fallback=False, include_optional=False
+    ) == ["a/one.py", "b/two.md", "c/three.sh"]
 
 
 def test_extract_scope_paths_ignores_fenced_sections_and_keeps_root_paths() -> None:
@@ -261,18 +384,35 @@ def test_extract_scope_paths_ignores_fenced_sections_and_keeps_root_paths() -> N
 
 
 def test_title_eligibility_and_insert_signal_marker() -> None:
-    assert issue_wire.title_lifecycle_reject_marker("  [implementing] x") == "[IMPLEMENTING]"
+    assert (
+        issue_wire.title_lifecycle_reject_marker("  [implementing] x")
+        == "[IMPLEMENTING]"
+    )
     assert issue_wire.title_lifecycle_reject_marker("[STALLED] x") is None
     assert issue_wire.title_lifecycle_reject_marker("[Debating] x") == "[DEBATING]"
     assert issue_wire.title_lifecycle_reject_marker("  [dEbAtEd] x") == "[DEBATED]"
-    assert issue_wire.insert_signal_marker(title="[DESIGNED] My feature", marker="FALSE-POSITIVE") == "[DESIGNED] [FALSE-POSITIVE] My feature"
-    assert issue_wire.insert_signal_marker(title="[DESIGNED] [FALSE-POSITIVE] My feature", marker="FALSE-POSITIVE") == "[DESIGNED] [FALSE-POSITIVE] My feature"
     assert (
-        issue_wire.insert_signal_marker(title="[DEBATING] Open question", marker="NEEDS-INPUT")
+        issue_wire.insert_signal_marker(
+            title="[DESIGNED] My feature", marker="FALSE-POSITIVE"
+        )
+        == "[DESIGNED] [FALSE-POSITIVE] My feature"
+    )
+    assert (
+        issue_wire.insert_signal_marker(
+            title="[DESIGNED] [FALSE-POSITIVE] My feature", marker="FALSE-POSITIVE"
+        )
+        == "[DESIGNED] [FALSE-POSITIVE] My feature"
+    )
+    assert (
+        issue_wire.insert_signal_marker(
+            title="[DEBATING] Open question", marker="NEEDS-INPUT"
+        )
         == "[DEBATING] [NEEDS-INPUT] Open question"
     )
     assert (
-        issue_wire.insert_signal_marker(title="[Debated] Mixed case", marker="FALSE-POSITIVE")
+        issue_wire.insert_signal_marker(
+            title="[Debated] Mixed case", marker="FALSE-POSITIVE"
+        )
         == "[Debated] [FALSE-POSITIVE] Mixed case"
     )
     assert (
@@ -299,11 +439,15 @@ def test_untrusted_helpers(tmp_path: Path) -> None:
     assert token not in redacted
     file = tmp_path / "payload.txt"
     _ = file.write_text("<x>", encoding="utf-8")
-    assert issue_wire.emit_untrusted_file_block(tag="tag", path=file) == '<tag encoding="literal-redacted">\n&lt;x&gt;\n\n</tag>\n\n'
+    assert (
+        issue_wire.emit_untrusted_file_block(tag="tag", path=file)
+        == '<tag encoding="literal-redacted">\n&lt;x&gt;\n\n</tag>\n\n'
+    )
 
 
 def test_gh_issue_view_body_and_edit_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = IssueRunner("body", edit_failures=2)
+
     def retry_no_sleep(
         fn: Callable[[], tuple[CommandResult, int, str]],
     ) -> retry.RetryResult[CommandResult]:
@@ -314,6 +458,8 @@ def test_gh_issue_view_body_and_edit_retry(monkeypatch: pytest.MonkeyPatch) -> N
     assert body == "body"
     result = gh.issue_edit_body_with_retry(runner, "9", "redacted", repo="owner/repo")
     assert result.returncode == 0
-    edit_calls = [call for call in runner.calls if call[:3] == ["gh", "issue", "edit"]]  # lint-gh-argv-literal: ok fixture assertion
+    edit_calls = [
+        call for call in runner.calls if call[:3] == ["gh", "issue", "edit"]
+    ]  # lint-gh-argv-literal: ok fixture assertion
     assert len(edit_calls) == 3
     assert runner.edit_bodies[-1] == "redacted"

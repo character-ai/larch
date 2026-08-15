@@ -18,7 +18,10 @@ def named_block_marker_re(*, marker: str, kind: str) -> re.Pattern[str]:
 
 
 def _line_is_marker(*, line: str, marker: str, kind: str) -> bool:
-    return named_block_marker_re(marker=marker, kind=kind).match(line.rstrip("\r\n")) is not None
+    return (
+        named_block_marker_re(marker=marker, kind=kind).match(line.rstrip("\r\n"))
+        is not None
+    )
 
 
 @dataclass(frozen=True)
@@ -35,12 +38,14 @@ def classify_named_block_lines(  # noqa: PLR0911 - each branch returns one malfo
     start_indexes = [
         idx
         for idx, line in enumerate(lines)
-        if idx not in fenced_lines and _line_is_marker(line=line, marker=marker, kind="start")
+        if idx not in fenced_lines
+        and _line_is_marker(line=line, marker=marker, kind="start")
     ]
     end_indexes = [
         idx
         for idx, line in enumerate(lines)
-        if idx not in fenced_lines and _line_is_marker(line=line, marker=marker, kind="end")
+        if idx not in fenced_lines
+        and _line_is_marker(line=line, marker=marker, kind="end")
     ]
     if not start_indexes and not end_indexes:
         return _BlockSpan(None, None, "")
@@ -79,3 +84,19 @@ def strip_named_block(*, body: str, marker: str) -> tuple[str, str]:
     if span.start is None or span.end is None:
         return body, ""
     return "".join([*lines[: span.start], *lines[span.end + 1 :]]), ""
+
+
+def replace_named_block(*, body: str, marker: str, inner: str) -> tuple[str, str]:
+    """Replace exactly one named block's inner text without moving its markers."""
+    lines = body.splitlines(keepends=True)
+    span = classify_named_block_lines(lines=lines, marker=marker)
+    if span.malformed:
+        return "", span.malformed
+    if span.start is None or span.end is None:
+        return "", "missing-block"
+    inner_lines = inner.splitlines(keepends=True)
+    if inner_lines and not inner_lines[-1].endswith(("\n", "\r")):
+        marker_line = lines[span.start]
+        suffix = "\r\n" if marker_line.endswith("\r\n") else "\n"
+        inner_lines[-1] += suffix
+    return "".join([*lines[: span.start + 1], *inner_lines, *lines[span.end :]]), ""

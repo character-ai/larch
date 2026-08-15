@@ -483,6 +483,11 @@ changes cannot reuse another origin's cache, locks, pending publication, or
 analyzer state. Treat its ledgers, retry bundles, and generated reports as
 untrusted private operator state. See [Analyzer state](../analysis-state.md).
 
+The Rust-owned `token measure-*` commands synchronize through the same run-log
+boundary, skip symlinked corpus entries and report inputs, and publish only to
+their fixed owner plus validated date filename under that analyzer-state tree.
+They do not write into the synchronized corpus or the consumer repository.
+
 `/design` and standalone `/review` resolve storage before session work.
 Enabled storage runs the exact prefix-scoped preflight and preserves the
 existing design allowlists, review round artifacts, breadcrumbs, completeness

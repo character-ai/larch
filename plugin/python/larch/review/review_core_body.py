@@ -6,14 +6,12 @@
 from __future__ import annotations
 
 import contextlib
-import io
 import os
 import re
 import shutil
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from larch.core import config, logging_util, proc, rust_runtime
 from larch.calibration import difficulty
@@ -24,6 +22,7 @@ from larch.review.review_pipeline_shared import (
     ReviewCommands,
     ReviewCoreBranchContext,
     ReviewCoreResult,
+    CodeReviewTallyRequest,
     _append_text,
     _call_maybe_override,
     _collector_records,
@@ -40,9 +39,6 @@ from larch.review.review_pipeline_shared import (
 )
 from larch.review import voting
 from larch.review.review_types import ReviewCoreStatus
-
-if TYPE_CHECKING:
-    from larch.review import review_tally
 
 
 def _review_commands() -> ReviewCommands:
@@ -500,28 +496,10 @@ def _emit_review_core_result(result: ReviewCoreResult) -> int:
     return result.rc
 
 
-def _run_tally_request(*, commands: ReviewCommands, request: review_tally.TallyRequest) -> proc.CommandResult:
+def _run_tally_request(*, commands: ReviewCommands, request: CodeReviewTallyRequest) -> proc.CommandResult:
     if commands.tally:
         return _run_command_string(command=commands.tally, args=request.to_argv())
-    from larch.review import review_tally  # noqa: PLC0415 - keeps review-pipeline imports acyclic until tally execution.
-
-    stdout = io.StringIO()
-    stderr = io.StringIO()
-    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-        try:
-            result = review_tally.tally_code_votes(request)
-        except SystemExit as exc:
-            returncode = int(exc.code) if isinstance(exc.code, int) else 2
-        else:
-            result.emit(stream=stdout)
-            returncode = result.rc
-    return proc.CommandResult(
-        argv=("tally-code-votes", *request.to_argv()),
-        returncode=returncode,
-        stdout=stdout.getvalue(),
-        stderr=stderr.getvalue(),
-        duration=0.0,
-    )
+    return run_larch(["review", "tally-code-votes", *request.to_argv()])
 
 
 def _emit_tally(*, commands: ReviewCommands, args: Sequence[str], out_file: Path, runner: object = None) -> dict[str, str]:
@@ -576,9 +554,7 @@ def _zero_findings_branch(*,  # noqa: PLR0913,RUF100
     rows: list[tuple[str, object]] = list(prefix_rows)
     voter = review_tmpdir / "zero-findings-voter.txt"
     _write_text(path=voter, text="")
-    from larch.review import review_tally  # noqa: PLC0415 - keeps review-pipeline imports acyclic until tally execution.
-
-    request = review_tally.TallyRequest(
+    request = CodeReviewTallyRequest(
         ballot_file=str(review_tmpdir / "findings.md"),
         review_tmpdir=str(review_tmpdir),
         voter_files=(str(voter),),
@@ -713,9 +689,7 @@ def _dispatch_voters_for_ballot(ctx: ReviewCoreBranchContext) -> tuple[list[str]
 
 
 def _tally_voted_ballot(ctx: ReviewCoreBranchContext, *, proposer_map: Path, voter_files: list[str], voter_tools: list[str], out_name: str) -> tuple[proc.CommandResult, dict[str, str]]:
-    from larch.review import review_tally  # noqa: PLC0415 - keeps review-pipeline imports acyclic until tally execution.
-
-    request = review_tally.TallyRequest(
+    request = CodeReviewTallyRequest(
         ballot_file=str(ctx.review_tmpdir / "findings.md"),
         review_tmpdir=str(ctx.review_tmpdir),
         voter_files=tuple(voter_files),
@@ -1175,9 +1149,7 @@ def _review_core_body(
         if status:
             rows.append((f"VOTER_{idx}_STATUS", status))
     plan_file = _get(parsed=parsed, key="--plan-file")
-    from larch.review import review_tally  # noqa: PLC0415 - keeps review-pipeline imports acyclic until tally execution.
-
-    request = review_tally.TallyRequest(
+    request = CodeReviewTallyRequest(
         ballot_file=str(review_tmpdir / "findings.md"),
         review_tmpdir=str(review_tmpdir),
         voter_files=tuple(voter_files),

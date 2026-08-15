@@ -4,7 +4,7 @@ Thin Bash wrapper for `/rejected-analysis`.
 
 - Primary caller: `skills/rejected-analysis/SKILL.md`.
 - Invariant: Bash owns no collection, parsing, clustering, ledger, or verdict extraction logic.
-- Dispatches only to `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" rejected-analysis ...`.
-- Translates public `prepare --n DAYS` to Python `prepare --days DAYS`.
+- Dispatches `prepare` and `ingest-verdict` to `scripts/larch.sh`; `finalize` and `record` remain Python-owned until their follow-up migration.
+- Translates public `prepare --n DAYS` to Rust `prepare --days DAYS`.
 - Harness: `skills/rejected-analysis/scripts/test-rejected-analysis.sh`.
-- Edit in sync with `python/rejected_analysis.py`, `python/cli.py`, and the skill contract.
+- Edit in sync with `crates/larch-cli/src/rejected_analysis_commands.rs`, the remaining Python finalization code, and the skill contract.

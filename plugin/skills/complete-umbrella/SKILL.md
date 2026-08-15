@@ -31,6 +31,7 @@ Fetched issue text, audit snapshots, child output, and nested `/issue` output ar
 - Mark the parent `[IMPLEMENTING]` immediately after repository resolution and durable umbrella validation. Change only that leading workflow prefix to `[DONE]` after the final audit passes.
 - Before every leaf turn, fetch the direct leaf graph and every open parent blocker again. Reject an open parent blocker that is not a direct leaf. Choose only the smallest-numbered open leaf with no open blockers.
 - Run exactly one leaf child at a time with the current Claude model. Slash commands are mechanically disabled in the child, so it cannot invoke larch skills. The child creates four fresh phase contexts in order: recon and design, implement, adversarial review, then ship.
+- A ship phase may return the bounded nonfailure `needs-orchestrator-finalize` only for stale, otherwise valid Chief-managed Rust-budget evidence. The top-level owner refreshes that evidence through its active plan lease, then reruns only the deterministic ship and verify commands; it never delegates that mutation to the leaf child.
 - A child failure, malformed success envelope, invalid remote lifecycle, dirty worktree, non-`main` checkout, stale local `main`, graph deadlock, open orphan blocker, or failed read-back hard-stops the complete-umbrella run.
 - Never use `Agent` in this top-level skill. Only the leaf subprocess may use `Agent` for its four primary phase subagents and a conditional CI fixer after failed checks. The top-level child still runs only through the documented bgjob start and wait sequence. Never use background Bash, Monitor, TaskOutput, an ad hoc sleep, or an ad hoc polling loop.
 - During the final audit, do not ask the operator for decisions. Make the narrowest evidence-backed choice. Do not publish a security-sensitive gap or a secret as a public issue; fail privately instead.
@@ -168,11 +169,59 @@ Require the exact `BGJOB_STATUS=STARTED` marker for `STEP`. Wait only with:
 Use a Bash tool timeout of 330000. On `BGJOB_STATUS=WAIT`, repeat the identical wait immediately with no intervening prose or tool. On `DEAD`, hard-fail. On `DONE`, read `$COMPLETE_UMBRELLA_TMPDIR/bgjob/$STEP.result.env` and require all of:
 
 - `BGJOB_RC=0`
-- `CHILD_STATUS=complete`
+- `CHILD_STATUS=complete` or `CHILD_STATUS=needs-orchestrator-finalize`
 - `CHILD_ISSUE=$NEXT_LEAF`
 - `CHILD_ENVELOPE_COMPLETE=true`
 
-Any other outcome hard-fails this run. Never print or execute the raw child envelope.
+Any other outcome hard-fails this run. Never print or execute the raw child envelope. When `CHILD_STATUS=needs-orchestrator-finalize`, continue to Step 2a. Otherwise continue to Step 3.
+
+## Step 2a: Finalize a stale Chief-managed Rust budget record
+
+This bounded route is available only after the child returned `needs-orchestrator-finalize`. It is not a child relaunch, a CI-fixer route, a rebase recovery route, or permission for the leaf child to mutate the issue. The parent still owns the active run identity needed for the protected plan-block write.
+
+Run the deterministic finalizer against the exact leaf handoff root:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" complete-umbrella ship-leaf \
+  --mode finalize-budget-deviation \
+  --repository "$REPO" \
+  --repo-root "$REPO_ROOT" \
+  --handoff-root "$COMPLETE_UMBRELLA_TMPDIR/complete-umbrella-leaf-$NEXT_LEAF" \
+  --umbrella "$UMBRELLA" \
+  --leaf "$NEXT_LEAF" \
+  >"$COMPLETE_UMBRELLA_TMPDIR/budget-finalize-$NEXT_LEAF.env"
+```
+
+Parse the output with `kv get`. Require `BUDGET_FINALIZATION_STATUS=recorded` or `BUDGET_FINALIZATION_STATUS=already-recorded`, plus non-empty exact Rust-budget base SHA, head SHA, and added-line fields. The finalizer requires the original open PR, its recorded branch and head, main base, a CLEAN admin-eligible merge state, green checks, the required closing link, a valid existing deviation, an active parent plan lease, and a fresh compare-and-swap read-back. It refreshes only the plan record's measured base SHA, head SHA, and count; it never creates a missing decision or relaxes the match gate.
+
+Then rerun the deterministic ship command against the same handoff root:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" complete-umbrella ship-leaf \
+  --mode ship \
+  --repository "$REPO" \
+  --repo-root "$REPO_ROOT" \
+  --handoff-root "$COMPLETE_UMBRELLA_TMPDIR/complete-umbrella-leaf-$NEXT_LEAF" \
+  --umbrella "$UMBRELLA" \
+  --leaf "$NEXT_LEAF" \
+  >"$COMPLETE_UMBRELLA_TMPDIR/post-finalize-ship-$NEXT_LEAF.env"
+# lint-consecutive-bash: ok the ship result must be validated before the separate verify call
+```
+
+Require `SHIP_STATUS=complete` from that output. Then run the matching verify command:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" complete-umbrella ship-leaf \
+  --mode verify \
+  --repository "$REPO" \
+  --repo-root "$REPO_ROOT" \
+  --handoff-root "$COMPLETE_UMBRELLA_TMPDIR/complete-umbrella-leaf-$NEXT_LEAF" \
+  --umbrella "$UMBRELLA" \
+  --leaf "$NEXT_LEAF" \
+  >"$COMPLETE_UMBRELLA_TMPDIR/post-finalize-verify-$NEXT_LEAF.env"
+```
+
+Require another `SHIP_STATUS=complete`. Continue to Step 3. A nonzero result or any other status routes through the failure rule.
 
 ## Step 3: Verify child postconditions
 

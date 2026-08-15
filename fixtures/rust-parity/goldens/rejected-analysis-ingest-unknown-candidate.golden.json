@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "work/candidates.json": {
+      "text": "[\n  {\n    \"candidate_id\": \"C1\",\n    \"finding_hash\": \"finding-hash\",\n    \"concern_hash\": \"concern-hash\",\n    \"prompt_path\": \"work/verify-C1.md\",\n    \"finding\": {\n      \"finding_hash\": \"finding-hash\",\n      \"concern_hash\": \"concern-hash\",\n      \"source_skill\": \"implement\",\n      \"run_id\": \"RUN-1\",\n      \"round_num\": \"1\",\n      \"canonical_finding_id\": \"FINDING_1\",\n      \"synthetic_id\": \"REJ_CR1_1\",\n      \"reviewer_slots\": [\"cursor-specialist\"],\n      \"dissenting_slots\": [\"cursor\"],\n      \"file_path\": \"python/foo.py\",\n      \"line_hint\": \"12\",\n      \"concern\": \"Missing required check\",\n      \"prose_body\": \"Finding one\",\n      \"classification_row\": {},\n      \"vote_split\": {\n        \"yes_votes\": 1,\n        \"no_votes\": 2,\n        \"yes_slots\": [\"cursor\"],\n        \"no_slots\": [\"codex\", \"claude\"],\n        \"high_severity\": true\n      },\n      \"started_at\": \"2026-08-14T12:00:00Z\",\n      \"demoted_later_touched\": false\n    }\n  }\n]"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "rejected-analysis ingest-verdict: unknown candidate_id: C2\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -10,6 +10,7 @@
 use std::{
     env,
     ffi::OsString,
+    fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, PoisonError},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -1129,6 +1130,25 @@ pub fn write_json_lines_confined<T: serde::Serialize>(
 pub fn append_confined(path: &Path, text: &str) {
     let existing = read_text(path);
     write_confined(path, &format!("{existing}{text}"));
+}
+
+/// Atomically publish one file and propagate a confinement or I/O failure.
+pub fn write_confined_checked(path: &Path, text: &str) -> Result<(), String> {
+    let absolute =
+        crate::argparse_compat::absolute_path(path).map_err(|error| error.to_string())?;
+    let (root, target) = confined_target(&absolute)
+        .ok_or_else(|| format!("path is not confinable: {}", absolute.display()))?;
+    atomic_write_utf8_in(&root, &target, text, true, 0o600).map_err(|error| error.to_string())
+}
+
+/// Append to one confined file and propagate a read or write failure.
+pub fn append_confined_checked(path: &Path, text: &str) -> Result<(), String> {
+    let existing = match fs::read(path) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error.to_string()),
+    };
+    write_confined_checked(path, &(existing + text))
 }
 
 /// Resolve the canonical root and rebuilt path for one confined write.

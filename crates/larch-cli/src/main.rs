@@ -79,6 +79,7 @@ mod push_rebase;
 mod python_verb;
 mod rebalance_tests;
 mod rebalance_tests_workflow;
+mod rejected_analysis_commands;
 mod release_assets;
 mod release_common;
 mod release_plugin_runtime;
@@ -106,6 +107,7 @@ mod research_commands;
 mod review_commands;
 mod review_dispatch_panel;
 mod review_findings_commands;
+mod review_tally_commands;
 mod session_closeout_commands;
 mod session_env_commands;
 mod session_gate_commands;
@@ -120,6 +122,7 @@ mod status_commands;
 mod test_shards;
 mod timing_commands;
 mod token_commands;
+mod token_measurement_commands;
 mod tracking_issue_commands;
 mod triage_commands;
 mod umbrella_commands;
@@ -278,6 +281,9 @@ enum Domain {
     /// Bounded filed-bug evidence and verification commands.
     #[command(subcommand, name = "analyze-bugs")]
     AnalyzeBugs(AnalyzeBugsCommand),
+    /// Recover verified rejected code-review findings from run logs.
+    #[command(subcommand, name = "rejected-analysis")]
+    RejectedAnalysis(RejectedAnalysisCommand),
     /// Prepare compact bug-learning evidence and maintain its durable marker.
     #[command(subcommand, name = "learn-from-bugs")]
     LearnFromBugs(LearnFromBugsCommand),
@@ -653,6 +659,27 @@ enum TokenCommand {
     /// Render the research lane token-spend summary.
     #[command(name = "lane-report", disable_help_flag = true)]
     LaneReport(RawCompatibilityArguments),
+    /// Measure tracked Markdown prompt cost.
+    #[command(name = "measure-md-cost", disable_help_flag = true)]
+    MeasureMdCost(RawCompatibilityArguments),
+    /// Measure Claude cache creation efficiency.
+    #[command(name = "measure-cache-efficiency", disable_help_flag = true)]
+    MeasureCacheEfficiency(RawCompatibilityArguments),
+    /// Measure checks-digest savings.
+    #[command(name = "measure-checks-digest-savings", disable_help_flag = true)]
+    MeasureChecksDigestSavings(RawCompatibilityArguments),
+    /// Measure repeated prompt shingles.
+    #[command(name = "measure-ngram-duplication", disable_help_flag = true)]
+    MeasureNgramDuplication(RawCompatibilityArguments),
+    /// Measure panel prompt cost.
+    #[command(name = "measure-panel-cost", disable_help_flag = true)]
+    MeasurePanelCost(RawCompatibilityArguments),
+    /// Measure realized skill and reference cost.
+    #[command(name = "measure-realized-cost", disable_help_flag = true)]
+    MeasureRealizedCost(RawCompatibilityArguments),
+    /// Measure reference-read frequency.
+    #[command(name = "measure-references-heatmap", disable_help_flag = true)]
+    MeasureReferencesHeatmap(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -726,6 +753,16 @@ enum AnalyzeBugsCommand {
     /// Render the report-only bug-verification result and optional follow-up body.
     #[command(disable_help_flag = true)]
     Report(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum RejectedAnalysisCommand {
+    /// Select rejected findings and write read-only verifier prompts.
+    #[command(disable_help_flag = true)]
+    Prepare(RawCompatibilityArguments),
+    /// Validate one launcher artifact and append its durable verdict status.
+    #[command(name = "ingest-verdict", disable_help_flag = true)]
+    IngestVerdict(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2082,6 +2119,14 @@ fn run(
                 analyze_bugs_commands::report(&arguments.arguments)
             }
         }),
+        Domain::RejectedAnalysis(command) => Ok(match command {
+            RejectedAnalysisCommand::Prepare(arguments) => {
+                rejected_analysis_commands::prepare(&arguments.arguments)
+            }
+            RejectedAnalysisCommand::IngestVerdict(arguments) => {
+                rejected_analysis_commands::ingest_verdict(&arguments.arguments)
+            }
+        }),
         Domain::LearnFromBugs(command) => Ok(match command {
             LearnFromBugsCommand::CheckProposals(arguments) => {
                 learn_from_bugs_commands::check_proposals(&arguments.arguments)
@@ -2219,6 +2264,27 @@ fn run(
             TokenCommand::LaneWrite(arguments) => token_commands::lane_write(&arguments.arguments),
             TokenCommand::LaneReport(arguments) => {
                 token_commands::lane_report(&arguments.arguments)
+            }
+            TokenCommand::MeasureMdCost(arguments) => {
+                token_measurement_commands::measure_md_cost(&arguments.arguments)
+            }
+            TokenCommand::MeasureCacheEfficiency(arguments) => {
+                token_measurement_commands::measure_cache_efficiency(&arguments.arguments)
+            }
+            TokenCommand::MeasureChecksDigestSavings(arguments) => {
+                token_measurement_commands::measure_checks_digest_savings(&arguments.arguments)
+            }
+            TokenCommand::MeasureNgramDuplication(arguments) => {
+                token_measurement_commands::measure_ngram_duplication(&arguments.arguments)
+            }
+            TokenCommand::MeasurePanelCost(arguments) => {
+                token_measurement_commands::measure_panel_cost(&arguments.arguments)
+            }
+            TokenCommand::MeasureRealizedCost(arguments) => {
+                token_measurement_commands::measure_realized_cost(&arguments.arguments)
+            }
+            TokenCommand::MeasureReferencesHeatmap(arguments) => {
+                token_measurement_commands::measure_references_heatmap(&arguments.arguments)
             }
         }),
         Domain::Gh(GhCommand::WorkflowPath) => {

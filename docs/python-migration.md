@@ -168,7 +168,7 @@ full-CLI build and emits separate cold-or-warm bootstrap timing diagnostics.
 One deliberate difference: the Rust report parses the ledger once, so a
 malformed row now warns once instead of once per internal read.
 
-- **G1 review pipeline port (#3692)**: `review gather-context`, `review dispatch-panel`, `review collect-findings`, `review check-reviewer-failure-threshold`, `review aggregate-findings`, `review prune-nit-findings`, and `review reviewer-prune` are Rust-owned through `scripts/larch.sh`; Python review core and plan-review callers reach each through the verified bootstrap and retain only documented override seams. `python/review_pipeline.py` owns `core` in-process, while `python/review_tally.py` and `python/compose_review.py` own tally, emit, log-phase, and compose behavior in-process.
+- **G1 review pipeline port (#3692)**: `review gather-context`, `review dispatch-panel`, `review collect-findings`, `review check-reviewer-failure-threshold`, `review aggregate-findings`, `review prune-nit-findings`, `review reviewer-prune`, `review tally-code-votes`, `review emit-tally`, and `review log-phase` are Rust-owned through `scripts/larch.sh`; Python review core and plan-review callers reach each through the verified bootstrap and retain only documented override seams. `review_pipeline_shared.py` retains only the typed tally argv relay, while `python/compose_review.py` owns compose behavior in-process.
 
 - **C3a1 plan-review CLI façade (#3680, #8446)**: `python/plan_review.py` registers the remaining Python-owned `plan-review` verbs and delegates several loop, emit/finalize/preview, state, timing, and Gate B paths to gzip-embedded retired bash via `_run_legacy()` / `_materialize_legacy_root()`. The `tally` verb is ported in-process to `python/plan_review_tally.py`. The Rust-owned `plan-review panel-dispatch` and `plan-review voter-dispatch` commands live in `crates/larch-cli/src/plan_review_commands.rs`; their Python registrations and superseded `python/larch/review/plan_review_panel.py` implementation are removed. Operator docs name `scripts/larch.sh plan-review <verb>` for those Rust-owned dispatch commands and `python/cli.py plan-review <verb>` for the remaining Python-owned commands.
 
@@ -268,7 +268,7 @@ domain module (lazy import).
 
 For `report-tokens analyze` and `final-report`, cost calculations use
 `larch_core::report::RATE_TABLE`. The Python `report_tokens_cost.py` helper
-remains only for the #7680 compatibility payload and #7684 token/analytics
+remains only for the #7680 compatibility payload and #7684 token pricing
 commands. Both paths accept the rate-override environment variables documented
 in `docs/configuration-and-permissions.md`.
 

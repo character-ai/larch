@@ -1,6 +1,10 @@
 //! Integration coverage for the Rust-owned `token` verbs.
 
-use std::{fs, path::PathBuf, process::Output};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::{Command as ProcessCommand, Output},
+};
 
 use assert_cmd::Command as AssertCommand;
 
@@ -47,6 +51,91 @@ fn stdout(output: &Output) -> String {
 
 fn stderr(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+struct MeasurementFixture {
+    _directory: tempfile::TempDir,
+    root: PathBuf,
+    home: PathBuf,
+    state: PathBuf,
+}
+
+impl MeasurementFixture {
+    fn new() -> Self {
+        let directory = tempfile::tempdir().expect("temporary root should create");
+        let root = directory.path().join("repository");
+        let home = directory.path().join("home");
+        let state = directory.path().join("state");
+        fs::create_dir_all(root.join("docs")).expect("fixture repository");
+        fs::create_dir_all(&home).expect("fixture home");
+        fs::create_dir_all(&state).expect("fixture state home");
+        run_git(&root, &["init", "-b", "main"]);
+        run_git(&root, &["config", "user.email", "test@example.com"]);
+        run_git(&root, &["config", "user.name", "Larch Test"]);
+        fs::write(root.join("README.md"), "").expect("fixture readme");
+        fs::write(root.join("docs/guide.md"), "").expect("fixture guide");
+        fs::write(
+            root.join("tools-config.toml"),
+            "[larch]\nstorage_base_uri = \"s3://fixture-bucket/larch-tests\"\n",
+        )
+        .expect("fixture storage configuration");
+        run_git(&root, &["add", "."]);
+        run_git(&root, &["commit", "-m", "fixture"]);
+        run_git(
+            &root,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/acme/widget.git",
+            ],
+        );
+        Self {
+            _directory: directory,
+            root,
+            home,
+            state,
+        }
+    }
+
+    fn run(&self, verb: &str) -> Output {
+        let mut command = AssertCommand::cargo_bin("larch").expect("larch binary should build");
+        command
+            .current_dir(&self.root)
+            .env("HOME", &self.home)
+            .env("XDG_STATE_HOME", &self.state)
+            .env("LARCH_MEASURE_DATE", "fixture")
+            .env_remove("CLAUDE_PROJECT_DIR")
+            .env_remove("LARCH_LOGS_URI")
+            .env_remove("LARCH_STORAGE_BASE_URI")
+            .args(["token", verb]);
+        command.output().expect("measurement command should launch")
+    }
+
+    fn disable_storage(&self) {
+        fs::remove_file(self.root.join("tools-config.toml")).expect("remove storage config");
+    }
+}
+
+fn run_git(root: &Path, arguments: &[&str]) {
+    let output = ProcessCommand::new("git")
+        .current_dir(root)
+        .args(arguments)
+        .output()
+        .expect("fixture git should launch");
+    assert!(
+        output.status.success(),
+        "git {arguments:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn wrote_path(output: &Output) -> PathBuf {
+    stdout(output)
+        .trim_end()
+        .strip_prefix("WROTE\t")
+        .map(PathBuf::from)
+        .expect("WROTE path")
 }
 
 #[test]
@@ -303,4 +392,57 @@ fn append_record_tolerates_absent_sidecar() {
         fixture.tmpdir.to_str().expect("utf8"),
     ]);
     assert!(output.status.success(), "{}", stderr(&output));
+}
+
+#[test]
+fn measurement_source_commands_preserve_black_box_wires() {
+    let fixture = MeasurementFixture::new();
+    let markdown = fixture.run("measure-md-cost");
+    assert_eq!(markdown.status.code(), Some(0));
+    assert_eq!(stderr(&markdown), "");
+    let markdown_path = wrote_path(&markdown);
+    assert_eq!(
+        stdout(&markdown),
+        format!("WROTE\t{}\n", markdown_path.display())
+    );
+    assert_eq!(
+        fs::read_to_string(markdown_path).expect("markdown report"),
+        "path\ttier\tbytes\ttokens\tlines\th2_count\n\
+docs/guide.md\ttier-3-doc\t0\t0\t0\t0\n\
+README.md\ttier-3-other\t0\t0\t0\t0\n"
+    );
+
+    let ngram = fixture.run("measure-ngram-duplication");
+    assert_eq!(ngram.status.code(), Some(0));
+    assert_eq!(stderr(&ngram), "");
+    let ngram_path = wrote_path(&ngram);
+    assert_eq!(stdout(&ngram), format!("WROTE\t{}\n", ngram_path.display()));
+    assert_eq!(
+        fs::read_to_string(ngram_path).expect("ngram report"),
+        "score\toccurrences\tfiles\tshingle\n"
+    );
+}
+
+#[test]
+fn corpus_measurements_preserve_disabled_storage_refusal() {
+    let fixture = MeasurementFixture::new();
+    fixture.disable_storage();
+    let refusal = "run-log storage is disabled; configure [larch].storage_base_uri or set LARCH_STORAGE_BASE_URI\n";
+    for verb in [
+        "measure-cache-efficiency",
+        "measure-checks-digest-savings",
+        "measure-panel-cost",
+        "measure-realized-cost",
+        "measure-references-heatmap",
+    ] {
+        let output = fixture.run(verb);
+        assert_eq!(output.status.code(), Some(4), "{verb}");
+        assert_eq!(stdout(&output), "", "{verb}");
+        let prefix = if verb == "measure-cache-efficiency" {
+            ""
+        } else {
+            "ERROR: "
+        };
+        assert_eq!(stderr(&output), format!("{prefix}{refusal}"), "{verb}");
+    }
 }

@@ -59,6 +59,12 @@ pub enum ReviewCommand {
     PruneNitFindings(AgentRawArguments),
     #[command(name = "reviewer-prune", disable_help_flag = true)]
     ReviewerPrune(AgentRawArguments),
+    #[command(name = "tally-code-votes", disable_help_flag = true)]
+    TallyCodeVotes(AgentRawArguments),
+    #[command(name = "emit-tally", disable_help_flag = true)]
+    EmitTally(AgentRawArguments),
+    #[command(name = "log-phase", disable_help_flag = true)]
+    LogPhase(AgentRawArguments),
 }
 
 /// Dispatch one Rust-owned review command.
@@ -80,6 +86,15 @@ pub fn run(command: ReviewCommand) -> ExitCode {
         }
         ReviewCommand::ReviewerPrune(arguments) => {
             crate::review_findings_commands::run_reviewer_prune(&arguments.arguments)
+        }
+        ReviewCommand::TallyCodeVotes(arguments) => {
+            crate::review_tally_commands::tally_code_votes(&arguments.arguments)
+        }
+        ReviewCommand::EmitTally(arguments) => {
+            crate::review_tally_commands::emit_tally(&arguments.arguments)
+        }
+        ReviewCommand::LogPhase(arguments) => {
+            crate::review_tally_commands::log_phase(&arguments.arguments)
         }
     }
 }
