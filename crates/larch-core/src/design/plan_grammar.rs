@@ -916,7 +916,10 @@ mod tests {
         iter_plan_headings, match_heading, match_trailer_line, parse_final_trailers,
         terminal_diff_lines, validate_plan_contract, validate_plan_facets,
     };
-    use std::{collections::HashSet, fs};
+    use std::{
+        collections::{BTreeSet, HashSet},
+        fs,
+    };
     use tempfile::TempDir;
 
     fn valid_plan(path: &str) -> String {
@@ -994,7 +997,7 @@ mod tests {
                 "```",
                 "after"
             ]),
-            [2].into_iter().collect()
+            BTreeSet::from([2])
         );
         assert_eq!(
             crate::balanced_fence_line_indices(&[
@@ -1004,7 +1007,7 @@ mod tests {
                 "~~~~",
                 "after"
             ]),
-            [2].into_iter().collect()
+            BTreeSet::from([2])
         );
         assert_eq!(
             crate::balanced_fence_line_indices(&[
@@ -1013,7 +1016,7 @@ mod tests {
                 "## NEW: still-hidden.py",
                 "````"
             ]),
-            [1, 2].into_iter().collect()
+            BTreeSet::from([1, 2])
         );
         assert!(
             crate::balanced_fence_line_indices(&[
