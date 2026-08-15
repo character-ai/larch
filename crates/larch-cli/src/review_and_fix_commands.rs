@@ -617,7 +617,8 @@ enum VerifiedLarchGitRequest<'a> {
 }
 
 fn larch_git_command(request: VerifiedLarchGitRequest<'_>) -> Vec<OsString> {
-    let mut invocation = vec![OsString::from(LARCH_GIT_DOMAIN)];
+    let mut invocation = Vec::new();
+    invocation.push(OsString::from(LARCH_GIT_DOMAIN));
     match request {
         VerifiedLarchGitRequest::SnapshotUntracked { output } => {
             invocation.extend([
