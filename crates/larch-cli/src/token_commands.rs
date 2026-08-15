@@ -649,7 +649,9 @@ fn report_transcript_paths(options: &ReportArguments) -> Result<Vec<PathBuf>, St
 fn resolve_lenient(path: &Path) -> PathBuf {
     for ancestor in path.ancestors() {
         if let Ok(canonical) = fs::canonicalize(ancestor) {
-            let tail = path.strip_prefix(ancestor).unwrap_or_else(|_| Path::new(""));
+            let tail = path
+                .strip_prefix(ancestor)
+                .unwrap_or_else(|_| Path::new(""));
             // Joining an empty tail would append a trailing separator; a fully
             // existing path resolves to the canonical form with no trailing slash,
             // matching Python's `Path.resolve()`.

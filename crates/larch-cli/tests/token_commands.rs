@@ -708,7 +708,11 @@ fn claude_source_replays_a_snapshot_whose_session_dir_is_not_on_disk() {
         .env_remove("LARCH_CLAUDE_SOURCE_FILE")
         .env_remove("LARCH_CLAUDE_SESSION_ID")
         .env_remove("CLAUDE_CODE_SESSION_ID")
-        .args(["token", "claude-source", source.to_str().expect("source utf8")]);
+        .args([
+            "token",
+            "claude-source",
+            source.to_str().expect("source utf8"),
+        ]);
     let output = command.output().expect("token claude-source should launch");
 
     assert!(output.status.success(), "{}", stderr(&output));
