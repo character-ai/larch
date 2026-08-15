@@ -138,6 +138,31 @@ pub fn lock_existing(path: &Path, expected_digest: &str) -> Result<LockedMarker,
     })
 }
 
+/// Run one state replacement while holding the path's shared exclusive lock.
+///
+/// The callback owns the actual read-modify-write transaction. Keeping this
+/// lock surface shared prevents command ports from recreating their own lock
+/// file, permissions, or symlink policy.
+///
+/// # Errors
+///
+/// Returns an error when the state parent or lock is unsafe, or when the
+/// callback declines to commit its replacement.
+pub fn with_state_lock<T>(
+    path: &Path,
+    operation: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "state path has no parent".to_owned())?;
+    ensure_directory_chain(parent).map_err(|error| error.to_string())?;
+    #[cfg(unix)]
+    fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
+        .map_err(|error| error.to_string())?;
+    let _lock = lock_state(path)?;
+    operation()
+}
+
 pub fn lock_state(path: &Path) -> Result<Flock<fs::File>, String> {
     let lock = path.with_file_name(format!(
         ".{}.lock",

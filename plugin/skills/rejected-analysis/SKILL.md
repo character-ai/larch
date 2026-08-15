@@ -240,7 +240,7 @@ Report success counters only when all conditions are clear and `record` reports 
 
 ## Implementation files
 
-- `scripts/rejected-analysis.sh` (contract: `scripts/rejected-analysis.md`) is the thin runtime wrapper: Rust owns `prepare` and `ingest-verdict`; Python retains `finalize` and `record` until their follow-up leaf.
+- `scripts/rejected-analysis.sh` (contract: `scripts/rejected-analysis.md`) is the thin runtime wrapper. Rust owns every `rejected-analysis` verb.
 - `scripts/test-rejected-analysis.sh` (contract: `scripts/test-rejected-analysis.md`) is the offline structural harness for this skill.
 
 ## NEVER

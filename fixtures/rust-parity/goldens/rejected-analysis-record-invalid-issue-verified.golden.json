@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: rejected-analysis record [-h] --work-dir WORK_DIR [--issue-output ISSUE_OUTPUT] [--issue-verified {true,false}] [--issues-failed ISSUES_FAILED] [--launch-failures LAUNCH_FAILURES] [--repo-root REPO_ROOT]\nrejected-analysis record: error: argument --issue-verified: invalid choice: 'yes' (choose from true, false)\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

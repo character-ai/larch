@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Thin larch wrapper for /rejected-analysis. Preparation and ingestion live in Rust.
+# Thin larch wrapper for /rejected-analysis. Every verb lives in Rust.
 set -euo pipefail
 
 resolve_root() {
@@ -9,7 +9,6 @@ resolve_root() {
 }
 
 ROOT=$(resolve_root)
-CLI="$ROOT/python/cli.py"
 
 usage() {
     cat >&2 <<'USAGE'
@@ -92,7 +91,7 @@ case "$cmd" in
         exec "$ROOT/scripts/larch.sh" rejected-analysis ingest-verdict "${args[@]}"
         ;;
     finalize)
-        exec python3 "$CLI" rejected-analysis finalize "$@"
+        exec "$ROOT/scripts/larch.sh" rejected-analysis finalize "$@"
         ;;
     record)
         args=()
@@ -109,7 +108,7 @@ case "$cmd" in
                     ;;
             esac
         done
-        exec python3 "$CLI" rejected-analysis record "${args[@]}"
+        exec "$ROOT/scripts/larch.sh" rejected-analysis record "${args[@]}"
         ;;
     *)
         usage

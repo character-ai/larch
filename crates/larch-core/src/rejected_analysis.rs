@@ -1,20 +1,19 @@
-//! Shared Rust owner for rejected-analysis preparation and verdict ingestion.
+//! Shared Rust owner for rejected-analysis candidate recovery and recording.
 //!
-//! The downstream `finalize` and `record` verbs remain Python-owned until their
-//! dedicated migration leaf lands.  This module therefore preserves their
-//! private work-directory wire format exactly enough for those readers to
-//! consume artifacts produced by the Rust commands.
+//! The module owns the complete private work-directory and analyzer-state wire
+//! contract for `prepare`, `ingest-verdict`, `finalize`, and `record`.
 
 #![allow(
     clippy::cognitive_complexity,
     clippy::too_many_lines,
     clippy::too_many_arguments,
-    reason = "The compatibility transaction is intentionally kept in one owner while the final two verbs remain Python-owned."
+    reason = "The compatibility transaction is intentionally kept in one owner."
 )]
 
 use std::{
     cmp::Reverse,
     collections::{BTreeMap, BTreeSet},
+    fmt::Write as _,
     fs,
     path::{Component, Path, PathBuf},
     sync::LazyLock,
@@ -25,12 +24,18 @@ use regex::Regex;
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
 
-use crate::{RunLogCorpus, RunLogFileIter, private_atomic_write, untrusted_content_block};
+use crate::{
+    RunLogCorpus, RunLogFileIter,
+    env_file::{DuplicatePolicy, KvDocument, ParseOptions},
+    private_atomic_write, untrusted_content_block,
+};
 
 const LEDGER_SCHEMA_VERSION: &str = "1";
 const INGEST_STATUS_SCHEMA_VERSION: u64 = 1;
 pub const LEDGER_RELATIVE: &str = "rejected-analysis/ledger.tsv";
+pub const VERDICT_SIDECAR_RELATIVE: &str = "rejected-analysis/verdicts.tsv";
 pub const INGEST_STATUS_FILE: &str = "ingest-status.jsonl";
+const ISSUE_CLUSTER_SCHEMA_VERSION: u64 = 1;
 const MAX_RUN_LOG_FILE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_RUN_FILES: usize = 10_000;
 
@@ -56,6 +61,20 @@ const LEDGER_COLUMNS: [&str; 21] = [
     "issue_url",
     "triaged_at",
     "alias_of",
+];
+
+const SIDECAR_COLUMNS: [&str; 11] = [
+    "schema_version",
+    "finding_hash",
+    "source_skill",
+    "run_id",
+    "round_num",
+    "finding_id",
+    "dissenting_slots",
+    "verdict",
+    "current_location",
+    "evidence",
+    "triaged_at",
 ];
 
 static SECURITY_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -229,6 +248,15 @@ impl LedgerEntry {
             })
             .collect()
     }
+
+    #[must_use]
+    pub fn with_issue(mut self, issue_number: &str, issue_url: &str) -> Self {
+        self.values
+            .insert("issue_number".to_owned(), issue_number.to_owned());
+        self.values
+            .insert("issue_url".to_owned(), issue_url.to_owned());
+        self
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -242,6 +270,57 @@ pub struct PrepareResult {
     pub work_dir: PathBuf,
     pub repo_root: PathBuf,
     pub candidates: Vec<Candidate>,
+}
+
+/// One bounded issue batch rendered from confirmed rejected findings.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IssueCluster {
+    pub batch_index: usize,
+    pub title: String,
+    pub finding_hashes: Vec<String>,
+}
+
+/// Files and counts emitted by `rejected-analysis finalize`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FinalizeResult {
+    pub confirmed_count: usize,
+    pub issue_batch_file: PathBuf,
+    pub issue_cluster_map_file: PathBuf,
+    pub issue_sentinel: PathBuf,
+    pub ledger_pending_file: PathBuf,
+    pub ingest_status_file: PathBuf,
+    pub issue_output_stub: PathBuf,
+    pub launch_failures: i64,
+    pub clusters: Vec<IssueCluster>,
+}
+
+/// Observable outcome emitted by `rejected-analysis record`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecordResult {
+    pub ledger_appended: usize,
+    pub issues_created: i64,
+    pub issues_deduplicated: i64,
+    pub dismissed_count: usize,
+    pub unmapped_confirmed: bool,
+    pub exit_code: i32,
+}
+
+/// Prepared record mutation consumed under the CLI-owned analyzer-state locks.
+#[derive(Clone, Debug)]
+pub struct RecordPlan {
+    result: RecordResult,
+    work_dir: PathBuf,
+    safe_rows: Vec<BTreeMap<String, String>>,
+    filed_rows: Vec<LedgerEntry>,
+    candidates: BTreeMap<String, Candidate>,
+}
+
+impl RecordPlan {
+    /// Return the result that remains valid after the plan's mutations commit.
+    #[must_use]
+    pub const fn result(&self) -> &RecordResult {
+        &self.result
+    }
 }
 
 /// Scan the bounded run-log corpus and write the stable preparation wire set.
@@ -1589,9 +1668,13 @@ fn read_ledger_hashes(path: &Path) -> BTreeSet<String> {
 fn write_pending_ledger(path: &Path, entries: &[LedgerEntry]) -> Result<(), String> {
     let mut prior = read_ledger_rows(path);
     prior.extend(entries.iter().map(LedgerEntry::row));
+    write_ledger_atomic(path, &prior)
+}
+
+fn merge_ledger_rows(rows: Vec<BTreeMap<String, String>>) -> Vec<BTreeMap<String, String>> {
     let mut positions = BTreeMap::new();
     let mut merged = Vec::new();
-    for row in prior {
+    for row in rows {
         let Some(finding_hash) = row
             .get("finding_hash")
             .filter(|value| !value.is_empty())
@@ -1608,8 +1691,13 @@ fn write_pending_ledger(path: &Path, entries: &[LedgerEntry]) -> Result<(), Stri
             merged[index] = row;
         }
     }
+    merged
+}
+
+fn write_ledger_atomic(path: &Path, rows: &[BTreeMap<String, String>]) -> Result<(), String> {
+    let merged = merge_ledger_rows(rows.to_vec());
     let mut text = format!("{}\n", LEDGER_COLUMNS.join("\t"));
-    for row in merged {
+    for row in &merged {
         let values: Vec<String> = LEDGER_COLUMNS
             .iter()
             .map(|column| sanitize_field(row.get(*column).map_or("", String::as_str)))
@@ -1623,7 +1711,12 @@ fn write_pending_ledger(path: &Path, entries: &[LedgerEntry]) -> Result<(), Stri
     if !root.exists() {
         fs::create_dir_all(root).map_err(|error| error.to_string())?;
     }
-    private_atomic_write(path, &text, root).map_err(|error| error.to_string())
+    private_atomic_write(path, &text, root).map_err(|error| error.to_string())?;
+    let readback = read_ledger_rows(path);
+    if readback.len() != merged.len() {
+        return Err("ledger readback mismatch after atomic write".to_owned());
+    }
+    Ok(())
 }
 
 fn read_ledger_rows(path: &Path) -> Vec<BTreeMap<String, String>> {
@@ -2102,16 +2195,780 @@ fn append_json_line(path: &Path, value: &Value, root: &Path) -> Result<(), Strin
     private_atomic_write(path, &text, &canonical_root).map_err(|error| error.to_string())
 }
 
+#[derive(Clone, Debug)]
+struct VerificationVerdict {
+    status: String,
+    current_location: String,
+    evidence: String,
+    dirty_tree: bool,
+}
+
+#[derive(Clone, Debug)]
+struct IngestStatusRow {
+    finding_hash: String,
+    status: String,
+    launcher_exit: i64,
+}
+
+/// Finalize verifier outcomes into bounded issue batches and pending ledger rows.
+///
+/// # Errors
+///
+/// Returns an error when a work artifact cannot be confined and written.
+pub fn finalize_artifacts(work_dir: &Path, now: DateTime<Utc>) -> Result<FinalizeResult, String> {
+    let candidates = load_candidates(work_dir);
+    let status_map = load_ingest_status_map(work_dir)?;
+    let verdicts = load_verdicts(work_dir);
+    let mut ledger_entries = Vec::new();
+    let mut confirmed: Vec<(Candidate, VerificationVerdict)> = Vec::new();
+    let mut launch_failures = 0_i64;
+    let triaged_at = now_iso(now);
+
+    for candidate in candidates {
+        let status = status_map.get(&candidate.candidate_id);
+        let verdict = verdicts.get(&candidate.candidate_id);
+        if status.is_some_and(|status| status.status == "launch-failed") {
+            launch_failures += 1;
+            continue;
+        }
+        if status.is_some_and(|status| status.status == "dirty-tree") {
+            ledger_entries.push(LedgerEntry::for_finding(
+                &candidate.finding,
+                "dismissed",
+                "dismissed:dirty-tree",
+                "",
+                &triaged_at,
+            ));
+            continue;
+        }
+        if status.is_some_and(|status| {
+            matches!(status.status.as_str(), "parse-failed" | "location-mismatch")
+        }) {
+            ledger_entries.push(LedgerEntry::for_finding(
+                &candidate.finding,
+                "dismissed",
+                "dismissed:verification-failed",
+                "",
+                &triaged_at,
+            ));
+            continue;
+        }
+        if status.is_some_and(|status| status.status == "ingested")
+            && let Some(verdict) = verdict
+            && location_matches(&candidate, &verdict.current_location)
+        {
+            match verdict.status.as_str() {
+                "confirmed" => {
+                    let mut evidence_finding = candidate.finding.clone();
+                    evidence_finding.prose_body =
+                        format!("{}\n{}", evidence_finding.prose_body, verdict.evidence);
+                    if is_security_sensitive(&evidence_finding) {
+                        ledger_entries.push(LedgerEntry::for_finding(
+                            &candidate.finding,
+                            "dismissed",
+                            "dismissed:security-sensitive",
+                            "",
+                            &triaged_at,
+                        ));
+                    } else if let Some(position) = confirmed.iter().position(|(prior, _)| {
+                        prior.finding.finding_hash == candidate.finding.finding_hash
+                    }) {
+                        confirmed[position] = (candidate, verdict.clone());
+                    } else {
+                        confirmed.push((candidate, verdict.clone()));
+                    }
+                }
+                "stale" => ledger_entries.push(LedgerEntry::for_finding(
+                    &candidate.finding,
+                    "stale",
+                    "dismissed:stale",
+                    "",
+                    &triaged_at,
+                )),
+                "already-fixed" => ledger_entries.push(LedgerEntry::for_finding(
+                    &candidate.finding,
+                    "already-fixed",
+                    "dismissed:already-fixed",
+                    "",
+                    &triaged_at,
+                )),
+                _ => {}
+            }
+            continue;
+        }
+        if status.is_none() {
+            launch_failures += 1;
+            ledger_entries.push(LedgerEntry::for_finding(
+                &candidate.finding,
+                "dismissed",
+                "dismissed:verification-failed",
+                "",
+                &triaged_at,
+            ));
+        } else if status.is_some_and(|status| status.launcher_exit == 0) {
+            ledger_entries.push(LedgerEntry::for_finding(
+                &candidate.finding,
+                "dismissed",
+                "dismissed:verification-failed",
+                "",
+                &triaged_at,
+            ));
+        }
+    }
+
+    let ledger_pending_file = work_dir.join("ledger-pending.tsv");
+    write_pending_ledger(&ledger_pending_file, &ledger_entries)?;
+    let confirmed_candidates: Vec<Candidate> = confirmed
+        .iter()
+        .map(|(candidate, _)| candidate.clone())
+        .collect();
+    let clusters = build_issue_clusters(&confirmed_candidates);
+    let issue_batch_file = work_dir.join("issue-batch.md");
+    let confirmed_by_hash: BTreeMap<String, (&Candidate, &VerificationVerdict)> = confirmed
+        .iter()
+        .map(|(candidate, verdict)| (candidate.finding.finding_hash.clone(), (candidate, verdict)))
+        .collect();
+    write_work_file(
+        work_dir,
+        "issue-batch.md",
+        &render_issue_batch(&clusters, &confirmed_by_hash),
+    )?;
+    let issue_cluster_map_file = work_dir.join("issue-cluster-map.json");
+    write_json_pretty(
+        &issue_cluster_map_file,
+        &issue_cluster_json(&clusters),
+        work_dir,
+    )?;
+    let issue_output_stub = work_dir.join("issue.stdout.txt");
+    if fs::symlink_metadata(&issue_output_stub).is_err() {
+        write_work_file(work_dir, "issue.stdout.txt", "")?;
+    }
+
+    Ok(FinalizeResult {
+        confirmed_count: clusters
+            .iter()
+            .map(|cluster| cluster.finding_hashes.len())
+            .sum(),
+        issue_batch_file,
+        issue_cluster_map_file,
+        issue_sentinel: work_dir.join("issue-completed.sentinel"),
+        ledger_pending_file,
+        ingest_status_file: work_dir.join(INGEST_STATUS_FILE),
+        issue_output_stub,
+        launch_failures,
+        clusters,
+    })
+}
+
+fn load_ingest_status_map(work_dir: &Path) -> Result<BTreeMap<String, IngestStatusRow>, String> {
+    let mut rows = BTreeMap::new();
+    for value in json_lines(&work_dir.join(INGEST_STATUS_FILE)) {
+        let Some(object) = value.as_object() else {
+            continue;
+        };
+        let status = object.get("status").map(value_text).unwrap_or_default();
+        if !matches!(
+            status.as_str(),
+            "ingested" | "launch-failed" | "dirty-tree" | "parse-failed" | "location-mismatch"
+        ) {
+            continue;
+        }
+        let candidate_id = object
+            .get("candidate_id")
+            .map(value_text)
+            .unwrap_or_default();
+        if candidate_id.is_empty() {
+            continue;
+        }
+        let row = IngestStatusRow {
+            finding_hash: object
+                .get("finding_hash")
+                .map(value_text)
+                .unwrap_or_default(),
+            status,
+            launcher_exit: ingest_launcher_exit(object.get("launcher_exit"))?,
+        };
+        let _ = rows.insert(candidate_id, row);
+    }
+    Ok(rows)
+}
+
+fn load_verdicts(work_dir: &Path) -> BTreeMap<String, VerificationVerdict> {
+    let mut verdicts = BTreeMap::new();
+    for value in json_lines(&work_dir.join("verdicts.jsonl")) {
+        let Some(object) = value.as_object() else {
+            continue;
+        };
+        let status = object.get("status").map(value_text).unwrap_or_default();
+        if !matches!(status.as_str(), "confirmed" | "stale" | "already-fixed") {
+            continue;
+        }
+        let candidate_id = object
+            .get("candidate_id")
+            .map(value_text)
+            .unwrap_or_default();
+        if candidate_id.is_empty() {
+            continue;
+        }
+        let verdict = VerificationVerdict {
+            status,
+            current_location: object
+                .get("current_location")
+                .map(value_text)
+                .unwrap_or_default(),
+            evidence: object.get("evidence").map(value_text).unwrap_or_default(),
+            dirty_tree: object.get("dirty_tree").is_some_and(value_truthy),
+        };
+        let _ = verdicts.insert(candidate_id, verdict);
+    }
+    verdicts
+}
+
+fn json_lines(path: &Path) -> Vec<Value> {
+    String::from_utf8_lossy(&fs::read(path).unwrap_or_default())
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect()
+}
+
+fn ingest_launcher_exit(value: Option<&Value>) -> Result<i64, String> {
+    let Some(value) = value else {
+        return Ok(0);
+    };
+    if !value_truthy(value) {
+        return Ok(0);
+    }
+    match value {
+        Value::Number(value) => value
+            .as_i64()
+            .ok_or_else(|| "invalid ingest launcher_exit".to_owned()),
+        Value::String(value) => value
+            .trim()
+            .parse()
+            .map_err(|_| "invalid ingest launcher_exit".to_owned()),
+        Value::Bool(value) => Ok(i64::from(*value)),
+        Value::Null | Value::Array(_) | Value::Object(_) => {
+            Err("invalid ingest launcher_exit".to_owned())
+        }
+    }
+}
+
+fn build_issue_clusters(candidates: &[Candidate]) -> Vec<IssueCluster> {
+    let mut by_key: BTreeMap<String, Vec<&Candidate>> = BTreeMap::new();
+    for candidate in candidates {
+        by_key
+            .entry(issue_cluster_key(&candidate.finding))
+            .or_default()
+            .push(candidate);
+    }
+    let mut clusters = Vec::new();
+    for candidates in by_key.into_values() {
+        for batch in candidates.chunks(5) {
+            let findings: Vec<&Finding> =
+                batch.iter().map(|candidate| &candidate.finding).collect();
+            clusters.push(IssueCluster {
+                batch_index: clusters.len() + 1,
+                title: issue_cluster_title(&findings),
+                finding_hashes: batch
+                    .iter()
+                    .map(|candidate| candidate.finding.finding_hash.clone())
+                    .collect(),
+            });
+        }
+    }
+    clusters
+}
+
+fn issue_cluster_key(finding: &Finding) -> String {
+    let parts: Vec<&str> = finding.file_path.split('/').collect();
+    if parts.len() >= 2 {
+        format!("{}/{}", parts[0], parts[1])
+    } else {
+        parts.first().copied().unwrap_or("general").to_owned()
+    }
+}
+
+fn issue_cluster_title(findings: &[&Finding]) -> String {
+    let Some(finding) = findings.first() else {
+        return "Recover rejected finding in general: rejected finding".to_owned();
+    };
+    let key = issue_cluster_key(finding);
+    let area = if key.is_empty() {
+        "rejected finding"
+    } else {
+        &key
+    };
+    let concern: String = finding.concern.chars().take(80).collect();
+    format!("Recover rejected finding in {area}: {concern}")
+}
+
+fn render_issue_batch(
+    clusters: &[IssueCluster],
+    by_hash: &BTreeMap<String, (&Candidate, &VerificationVerdict)>,
+) -> String {
+    let mut output = String::new();
+    for cluster in clusters {
+        writeln!(output, "### {}", cluster.title).expect("writing to String cannot fail");
+        output.push_str(
+            "## Summary\n\nA rejected code-review finding was verified against current code and should be fixed.\n",
+        );
+        output.push_str("## Findings\n");
+        for finding_hash in &cluster.finding_hashes {
+            let Some((candidate, verdict)) = by_hash.get(finding_hash) else {
+                continue;
+            };
+            let finding = &candidate.finding;
+            output.push('\n');
+            writeln!(output, "- Finding hash: `{}`", finding.finding_hash)
+                .expect("writing to String cannot fail");
+            writeln!(output, "  - File: `{}`", finding.file_path)
+                .expect("writing to String cannot fail");
+            let line_hint = if finding.line_hint.is_empty() {
+                "none"
+            } else {
+                &finding.line_hint
+            };
+            writeln!(output, "  - Line hint: `{line_hint}`")
+                .expect("writing to String cannot fail");
+            writeln!(output, "  - Concern: {}", sanitize_field(&finding.concern))
+                .expect("writing to String cannot fail");
+            writeln!(
+                output,
+                "  - Provenance: {}/{} round {}, {}",
+                finding.source_skill,
+                finding.run_id,
+                finding.round_num,
+                finding.canonical_finding_id
+            )
+            .expect("writing to String cannot fail");
+            writeln!(
+                output,
+                "  - Vote split: {}",
+                sanitize_field(&finding.vote_split.format())
+            )
+            .expect("writing to String cannot fail");
+            let dissenting = if finding.dissenting_slots.is_empty() {
+                "none".to_owned()
+            } else {
+                finding.dissenting_slots.join(", ")
+            };
+            writeln!(output, "  - Dissenting voter(s): `{dissenting}`")
+                .expect("writing to String cannot fail");
+            writeln!(
+                output,
+                "  - Verification verdict: `{}` at `{}`",
+                verdict.status,
+                sanitize_field(&verdict.current_location)
+            )
+            .expect("writing to String cannot fail");
+            writeln!(
+                output,
+                "  - Verification evidence: {}",
+                sanitize_field(&verdict.evidence)
+            )
+            .expect("writing to String cannot fail");
+        }
+        output.push_str("\n## Suggested next step\n\nDesign and implement the smallest fix for the verified finding.\n\n");
+    }
+    output
+}
+
+fn issue_cluster_json(clusters: &[IssueCluster]) -> Value {
+    let values: Vec<Value> = clusters
+        .iter()
+        .map(|cluster| {
+            let mut value = Map::new();
+            value.insert(
+                "batch_index".to_owned(),
+                Value::from(u64::try_from(cluster.batch_index).unwrap_or(u64::MAX)),
+            );
+            value.insert(
+                "finding_hashes".to_owned(),
+                Value::Array(
+                    cluster
+                        .finding_hashes
+                        .iter()
+                        .cloned()
+                        .map(Value::String)
+                        .collect(),
+                ),
+            );
+            Value::Object(value)
+        })
+        .collect();
+    let mut root = Map::new();
+    root.insert("clusters".to_owned(), Value::Array(values));
+    root.insert(
+        "schema_version".to_owned(),
+        Value::from(ISSUE_CLUSTER_SCHEMA_VERSION),
+    );
+    Value::Object(root)
+}
+
+/// Build the durable analyzer-state mutations for `rejected-analysis record`.
+///
+/// The caller commits the returned plan while holding the shared analyzer-state
+/// locks, one lock for each durable file.
+///
+/// # Errors
+///
+/// Returns an error when a work-directory artifact is malformed or cannot be
+/// safely read.
+pub fn record_plan(
+    work_dir: &Path,
+    issue_output: Option<&Path>,
+    issue_verified: Option<bool>,
+    mut issues_failed: i64,
+    launch_failures: i64,
+    now: DateTime<Utc>,
+) -> Result<RecordPlan, String> {
+    let pending_rows = merge_ledger_rows(read_ledger_rows(&work_dir.join("ledger-pending.tsv")));
+    let status_map = load_ingest_status_map(work_dir)?;
+    let candidates: BTreeMap<String, Candidate> = load_candidates(work_dir)
+        .into_iter()
+        .map(|candidate| (candidate.finding.finding_hash.clone(), candidate))
+        .collect();
+    let candidate_hashes: BTreeSet<String> = candidates.keys().cloned().collect();
+    let launch_failed_hashes: BTreeSet<String> = status_map
+        .values()
+        .filter(|row| row.status == "launch-failed" && candidate_hashes.contains(&row.finding_hash))
+        .map(|row| row.finding_hash.clone())
+        .collect();
+    let derived_launch_failures = i64::try_from(launch_failed_hashes.len()).unwrap_or(i64::MAX);
+    let effective_launch_failures = launch_failures.max(derived_launch_failures);
+    let safe_rows: Vec<BTreeMap<String, String>> = pending_rows
+        .into_iter()
+        .filter(|row| {
+            !launch_failed_hashes.contains(row.get("finding_hash").map_or("", String::as_str))
+        })
+        .collect();
+    let issue_text = issue_output
+        .filter(|path| path.is_file())
+        .map_or_else(String::new, read_lossy);
+    let (issue_map, created, parsed_failed, deduplicated) = if issue_text.trim().is_empty() {
+        (BTreeMap::new(), 0, 0, 0)
+    } else {
+        parse_issue_output(&issue_text)?
+    };
+    if parsed_failed != 0 {
+        issues_failed = parsed_failed;
+    }
+    let clusters = load_cluster_hashes(work_dir)?;
+    let mut unmapped_confirmed = false;
+    let mut filed_rows = Vec::new();
+    if issue_verified == Some(true) {
+        for (batch_index, hashes) in clusters {
+            let Some((number, url, duplicate)) = issue_map.get(&batch_index) else {
+                if !hashes.is_empty() {
+                    unmapped_confirmed = true;
+                }
+                continue;
+            };
+            let disposition = if *duplicate { "deduped-as" } else { "filed-as" };
+            for finding_hash in hashes {
+                if launch_failed_hashes.contains(&finding_hash) {
+                    continue;
+                }
+                let Some(candidate) = candidates.get(&finding_hash) else {
+                    unmapped_confirmed = true;
+                    continue;
+                };
+                filed_rows.push(
+                    LedgerEntry::for_finding(
+                        &candidate.finding,
+                        "confirmed",
+                        disposition,
+                        "",
+                        &now_iso(now),
+                    )
+                    .with_issue(number, url),
+                );
+            }
+        }
+    } else if !issue_text.trim().is_empty() && (created > 0 || deduplicated > 0) {
+        unmapped_confirmed = true;
+    }
+    let dismissed_count = safe_rows
+        .iter()
+        .filter(|row| {
+            row.get("disposition")
+                .is_some_and(|disposition| disposition.starts_with("dismissed:"))
+        })
+        .count();
+    let result = RecordResult {
+        ledger_appended: safe_rows.len() + filed_rows.len(),
+        issues_created: created,
+        issues_deduplicated: deduplicated,
+        dismissed_count,
+        unmapped_confirmed,
+        exit_code: i32::from(
+            unmapped_confirmed
+                || issues_failed > 0
+                || issue_verified == Some(false)
+                || effective_launch_failures > 0,
+        ),
+    };
+    Ok(RecordPlan {
+        result,
+        work_dir: work_dir.to_path_buf(),
+        safe_rows,
+        filed_rows,
+        candidates,
+    })
+}
+
+/// Replace the pending ledger portion of a record plan while its caller holds
+/// the ledger's analyzer-state lock.
+///
+/// # Errors
+///
+/// Returns an error when the durable ledger cannot be safely replaced.
+pub fn commit_record_ledger(plan: &RecordPlan, ledger_path: &Path) -> Result<(), String> {
+    let mut rows = read_ledger_rows(ledger_path);
+    rows.extend(plan.safe_rows.iter().cloned());
+    rows.extend(plan.filed_rows.iter().map(LedgerEntry::row));
+    write_ledger_atomic(ledger_path, &rows)
+}
+
+/// Replace the verdict sidecar portion of a record plan while its caller holds
+/// the sidecar's analyzer-state lock.
+///
+/// # Errors
+///
+/// Returns an error when the durable sidecar cannot be safely replaced.
+pub fn commit_record_sidecar(
+    plan: &RecordPlan,
+    sidecar_path: &Path,
+    now: DateTime<Utc>,
+) -> Result<(), String> {
+    let verdicts = load_verdicts(&plan.work_dir);
+    let statuses = load_ingest_status_map(&plan.work_dir)?;
+    let mut new_rows = Vec::new();
+    for (candidate_id, verdict) in verdicts {
+        if verdict.dirty_tree
+            || statuses
+                .get(&candidate_id)
+                .is_some_and(|status| status.status == "dirty-tree")
+        {
+            continue;
+        }
+        let Some(candidate) = plan
+            .candidates
+            .values()
+            .find(|candidate| candidate.candidate_id == candidate_id)
+        else {
+            continue;
+        };
+        let finding = &candidate.finding;
+        let mut row = BTreeMap::new();
+        row.insert(
+            "schema_version".to_owned(),
+            LEDGER_SCHEMA_VERSION.to_owned(),
+        );
+        row.insert("finding_hash".to_owned(), finding.finding_hash.clone());
+        row.insert("source_skill".to_owned(), finding.source_skill.clone());
+        row.insert("run_id".to_owned(), finding.run_id.clone());
+        row.insert("round_num".to_owned(), finding.round_num.clone());
+        row.insert(
+            "finding_id".to_owned(),
+            finding.canonical_finding_id.clone(),
+        );
+        row.insert(
+            "dissenting_slots".to_owned(),
+            finding.dissenting_slots.join(","),
+        );
+        row.insert("verdict".to_owned(), verdict.status);
+        row.insert(
+            "current_location".to_owned(),
+            sanitize_field(&verdict.current_location),
+        );
+        row.insert("evidence".to_owned(), sanitize_field(&verdict.evidence));
+        row.insert("triaged_at".to_owned(), now_iso(now));
+        new_rows.push(row);
+    }
+    if new_rows.is_empty() && fs::symlink_metadata(sidecar_path).is_err() {
+        return Ok(());
+    }
+    let mut rows = read_sidecar_rows(sidecar_path);
+    for row in new_rows {
+        let Some(finding_hash) = row
+            .get("finding_hash")
+            .filter(|value| !value.is_empty())
+            .cloned()
+        else {
+            continue;
+        };
+        if let Some(position) = rows
+            .iter()
+            .position(|prior| prior.get("finding_hash") == Some(&finding_hash))
+        {
+            rows[position] = row;
+        } else {
+            rows.push(row);
+        }
+    }
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let mut text = format!("{}\n", SIDECAR_COLUMNS.join("\t"));
+    for row in rows {
+        let values: Vec<String> = SIDECAR_COLUMNS
+            .iter()
+            .map(|column| sanitize_field(row.get(*column).map_or("", String::as_str)))
+            .collect();
+        text.push_str(&values.join("\t"));
+        text.push('\n');
+    }
+    let root = sidecar_path
+        .parent()
+        .ok_or_else(|| "sidecar path has no parent".to_owned())?;
+    if !root.exists() {
+        fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    }
+    private_atomic_write(sidecar_path, &text, root).map_err(|error| error.to_string())
+}
+
+fn read_lossy(path: &Path) -> String {
+    String::from_utf8_lossy(&fs::read(path).unwrap_or_default()).into_owned()
+}
+
+type IssueOutputMapping = BTreeMap<usize, (String, String, bool)>;
+type ParsedIssueOutput = (IssueOutputMapping, i64, i64, i64);
+
+fn parse_issue_output(text: &str) -> Result<ParsedIssueOutput, String> {
+    let document = KvDocument::parse(text, ParseOptions::legacy())
+        .expect("the legacy KEY=value parser accepts every input");
+    let values = document.select(DuplicatePolicy::Last);
+    let created = issue_output_count(&values, "ISSUES_CREATED")?;
+    let failed = issue_output_count(&values, "ISSUES_FAILED")?;
+    let deduplicated = issue_output_count(&values, "ISSUES_DEDUPLICATED")?;
+    let mut mapping = BTreeMap::new();
+    let mut seen_keys = BTreeSet::new();
+    for row in document.rows() {
+        if !seen_keys.insert(row.key()) {
+            continue;
+        }
+        let key = row.key();
+        let Some(number) = values.get(key).filter(|value| !value.is_empty()) else {
+            continue;
+        };
+        if let Some(batch_index) = issue_output_batch_index(key, "ISSUE_", "_NUMBER") {
+            let _ = mapping.insert(
+                batch_index,
+                (
+                    number.clone(),
+                    values
+                        .get(&format!("ISSUE_{batch_index}_URL"))
+                        .cloned()
+                        .unwrap_or_default(),
+                    false,
+                ),
+            );
+        } else if let Some(batch_index) =
+            issue_output_batch_index(key, "ISSUE_", "_DUPLICATE_OF_NUMBER")
+        {
+            let _ = mapping.insert(
+                batch_index,
+                (
+                    number.clone(),
+                    values
+                        .get(&format!("ISSUE_{batch_index}_DUPLICATE_OF_URL"))
+                        .cloned()
+                        .unwrap_or_default(),
+                    true,
+                ),
+            );
+        }
+    }
+    Ok((mapping, created, failed, deduplicated))
+}
+
+fn issue_output_count(values: &BTreeMap<String, String>, key: &str) -> Result<i64, String> {
+    let Some(value) = values.get(key).filter(|value| !value.is_empty()) else {
+        return Ok(0);
+    };
+    value
+        .trim()
+        .parse()
+        .map_err(|_| format!("invalid issue output {key}"))
+}
+
+fn issue_output_batch_index(key: &str, prefix: &str, suffix: &str) -> Option<usize> {
+    key.strip_prefix(prefix)?.strip_suffix(suffix)?.parse().ok()
+}
+
+fn load_cluster_hashes(work_dir: &Path) -> Result<Vec<(usize, Vec<String>)>, String> {
+    let Ok(Value::Object(root)) =
+        serde_json::from_str::<Value>(&read_lossy(&work_dir.join("issue-cluster-map.json")))
+    else {
+        return Ok(Vec::new());
+    };
+    let Some(Value::Array(clusters)) = root.get("clusters") else {
+        return Ok(Vec::new());
+    };
+    clusters
+        .iter()
+        .map(|cluster| {
+            let object = cluster
+                .as_object()
+                .ok_or_else(|| "invalid issue cluster map".to_owned())?;
+            let batch_index = cluster_batch_index(object.get("batch_index"))?;
+            let hashes = object
+                .get("finding_hashes")
+                .and_then(Value::as_array)
+                .map(|values| values.iter().map(value_text).collect())
+                .unwrap_or_default();
+            Ok((batch_index, hashes))
+        })
+        .collect()
+}
+
+fn cluster_batch_index(value: Option<&Value>) -> Result<usize, String> {
+    let value = value.map(value_text).unwrap_or_default();
+    value
+        .trim()
+        .parse()
+        .map_err(|_| "invalid issue cluster map".to_owned())
+}
+
+fn read_sidecar_rows(path: &Path) -> Vec<BTreeMap<String, String>> {
+    let Ok(text) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let mut lines = text.lines();
+    let Some(header) = lines.next() else {
+        return Vec::new();
+    };
+    let header: Vec<&str> = header.split('\t').collect();
+    lines
+        .map(|line| {
+            let cells: Vec<&str> = line.split('\t').collect();
+            header
+                .iter()
+                .enumerate()
+                .map(|(index, name)| {
+                    (
+                        (*name).to_owned(),
+                        cells.get(index).copied().unwrap_or_default().to_owned(),
+                    )
+                })
+                .collect()
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         Candidate, Finding, LedgerEntry, OpenIssue, VoteSplit, append_json_line,
-        candidate_from_json, candidate_json, classification_rows, disposition_priority,
-        extract_target, extract_verdict, finding_hash, finding_tokens, ingest_artifact,
-        jsonl_records, load_candidates, location_matches, make_finding, matching_records,
-        open_issue_overlap, parse_timestamp, prepare_artifacts, python_json, read_ledger_rows,
-        render_prompt, run_started_at, safe_regular_files, usize_value, value_truthy, vote_split,
-        write_path_in_work_dir, write_pending_ledger,
+        candidate_from_json, candidate_json, classification_rows, commit_record_ledger,
+        commit_record_sidecar, disposition_priority, extract_target, extract_verdict,
+        finalize_artifacts, finding_hash, finding_tokens, ingest_artifact, jsonl_records,
+        load_candidates, location_matches, make_finding, matching_records, open_issue_overlap,
+        parse_issue_output, parse_timestamp, prepare_artifacts, python_json, read_ledger_rows,
+        record_plan, render_prompt, run_started_at, safe_regular_files, usize_value, value_truthy,
+        vote_split, write_path_in_work_dir, write_pending_ledger,
     };
     use chrono::{DateTime, Utc};
     use serde_json::{Value, json};
@@ -2268,6 +3125,214 @@ mod tests {
         .expect("prepare candidate");
         assert_eq!(prepared.candidates.len(), 1);
         work_dir
+    }
+
+    #[test]
+    fn finalization_and_recording_preserve_the_rust_work_directory_contract() {
+        let fixture = tempdir().expect("fixture directory");
+        let work_dir = prepared_candidate_work_dir(fixture.path());
+        let output = work_dir.join("verdict-C1.txt");
+        fs::write(
+            &output,
+            json!({
+                "status": "confirmed",
+                "current_location": "python/foo.py:13",
+                "evidence": "Current code still omits the check.",
+            })
+            .to_string(),
+        )
+        .expect("verdict output");
+        fs::write(format!("{}.dirty-tree", output.display()), "STATUS=clean\n")
+            .expect("clean sidecar");
+        assert_eq!(
+            ingest_artifact(&work_dir, "C1", &output, 0, None).expect("ingest verdict"),
+            ("ingested".to_owned(), "confirmed".to_owned())
+        );
+
+        let finalized = finalize_artifacts(&work_dir, test_now()).expect("finalize artifacts");
+        assert_eq!(finalized.confirmed_count, 1);
+        assert!(
+            fs::read_to_string(&finalized.issue_batch_file)
+                .expect("issue batch")
+                .contains("Dissenting voter(s):")
+        );
+        fs::write(
+            &finalized.issue_output_stub,
+            "ISSUES_CREATED=1\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=0\nISSUE_1_NUMBER=123\nISSUE_1_URL=https://example.invalid/123\n",
+        )
+        .expect("issue output");
+
+        let state_root = fixture.path().join("state");
+        let plan = record_plan(
+            &work_dir,
+            Some(&finalized.issue_output_stub),
+            Some(true),
+            0,
+            0,
+            test_now(),
+        )
+        .expect("record plan");
+        assert_eq!(plan.result().exit_code, 0);
+        let ledger = state_root.join("rejected-analysis/ledger.tsv");
+        let sidecar = state_root.join("rejected-analysis/verdicts.tsv");
+        commit_record_ledger(&plan, &ledger).expect("commit ledger");
+        commit_record_sidecar(&plan, &sidecar, test_now()).expect("commit sidecar");
+        assert!(
+            fs::read_to_string(ledger)
+                .expect("ledger")
+                .contains("filed-as")
+        );
+        assert!(
+            fs::read_to_string(sidecar)
+                .expect("verdict sidecar")
+                .contains("finding_hash")
+        );
+    }
+
+    #[test]
+    fn finalization_leaves_launch_failures_retryable() {
+        let fixture = tempdir().expect("fixture directory");
+        let work_dir = prepared_candidate_work_dir(fixture.path());
+        assert_eq!(
+            ingest_artifact(&work_dir, "C1", &work_dir.join("missing.txt"), 1, None)
+                .expect("record launch failure"),
+            ("launch-failed".to_owned(), String::new())
+        );
+
+        let finalized = finalize_artifacts(&work_dir, test_now()).expect("finalize artifacts");
+        assert_eq!(finalized.launch_failures, 1);
+        let plan = record_plan(&work_dir, None, None, 0, 0, test_now()).expect("record plan");
+        assert_eq!(plan.result().exit_code, 1);
+        let ledger = fixture.path().join("state/rejected-analysis/ledger.tsv");
+        commit_record_ledger(&plan, &ledger).expect("commit ledger");
+        let finding_hash = load_candidates(&work_dir)
+            .into_iter()
+            .next()
+            .expect("candidate")
+            .finding
+            .finding_hash;
+        assert!(
+            !fs::read_to_string(ledger)
+                .expect("ledger")
+                .contains(&finding_hash)
+        );
+    }
+
+    #[test]
+    fn finalization_refilters_security_sensitive_verifier_evidence() {
+        let fixture = tempdir().expect("fixture directory");
+        let work_dir = prepared_candidate_work_dir(fixture.path());
+        let output = work_dir.join("verdict-C1.txt");
+        fs::write(
+            &output,
+            json!({
+                "status": "confirmed",
+                "current_location": "python/foo.py:12",
+                "evidence": "The token would remain exposed to callers.",
+            })
+            .to_string(),
+        )
+        .expect("verdict output");
+        fs::write(format!("{}.dirty-tree", output.display()), "STATUS=clean\n")
+            .expect("clean sidecar");
+        let _ = ingest_artifact(&work_dir, "C1", &output, 0, None).expect("ingest verdict");
+
+        let finalized = finalize_artifacts(&work_dir, test_now()).expect("finalize artifacts");
+        assert_eq!(finalized.confirmed_count, 0);
+        assert!(
+            fs::read_to_string(finalized.ledger_pending_file)
+                .expect("pending ledger")
+                .contains("dismissed:security-sensitive")
+        );
+        assert!(
+            fs::read_to_string(finalized.issue_batch_file)
+                .expect("issue batch")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn recording_keeps_filed_rows_when_issue_creation_reports_failure() {
+        let fixture = tempdir().expect("fixture directory");
+        let work_dir = prepared_candidate_work_dir(fixture.path());
+        let output = work_dir.join("verdict-C1.txt");
+        fs::write(
+            &output,
+            json!({
+                "status": "confirmed",
+                "current_location": "python/foo.py:13",
+                "evidence": "Current code still omits the check.",
+            })
+            .to_string(),
+        )
+        .expect("verdict output");
+        fs::write(format!("{}.dirty-tree", output.display()), "STATUS=clean\n")
+            .expect("clean sidecar");
+        let _ = ingest_artifact(&work_dir, "C1", &output, 0, None).expect("ingest verdict");
+        let finalized = finalize_artifacts(&work_dir, test_now()).expect("finalize artifacts");
+        fs::write(
+            &finalized.issue_output_stub,
+            "ISSUES_CREATED=1\nISSUES_FAILED=1\nISSUES_DEDUPLICATED=0\nISSUE_1_NUMBER=456\nISSUE_1_URL=https://example.invalid/456\n",
+        )
+        .expect("issue output");
+
+        let plan = record_plan(
+            &work_dir,
+            Some(&finalized.issue_output_stub),
+            Some(true),
+            1,
+            0,
+            test_now(),
+        )
+        .expect("record plan");
+        assert_eq!(plan.result().exit_code, 1);
+        let ledger = fixture.path().join("state/rejected-analysis/ledger.tsv");
+        commit_record_ledger(&plan, &ledger).expect("commit ledger");
+        let text = fs::read_to_string(ledger).expect("ledger");
+        assert!(text.contains("filed-as"));
+        assert!(text.contains("456"));
+    }
+
+    #[test]
+    fn recording_does_not_publish_dirty_tree_verdicts_to_the_sidecar() {
+        let fixture = tempdir().expect("fixture directory");
+        let work_dir = prepared_candidate_work_dir(fixture.path());
+        let output = work_dir.join("verdict-C1.txt");
+        fs::write(&output, "ignored").expect("verdict output");
+        assert_eq!(
+            ingest_artifact(&work_dir, "C1", &output, 0, None).expect("record dirty-tree result"),
+            ("dirty-tree".to_owned(), "dismissed:dirty-tree".to_owned())
+        );
+        let _ = finalize_artifacts(&work_dir, test_now()).expect("finalize artifacts");
+        let plan = record_plan(&work_dir, None, None, 0, 0, test_now()).expect("record plan");
+        let state_root = fixture.path().join("state/rejected-analysis");
+        commit_record_ledger(&plan, &state_root.join("ledger.tsv")).expect("commit ledger");
+        let sidecar = state_root.join("verdicts.tsv");
+        commit_record_sidecar(&plan, &sidecar, test_now()).expect("commit sidecar");
+        assert!(
+            !sidecar.is_file()
+                || !fs::read_to_string(sidecar)
+                    .expect("sidecar")
+                    .contains("finding-hash")
+        );
+    }
+
+    #[test]
+    fn issue_output_mapping_preserves_python_source_order() {
+        let (mapping, created, failed, deduplicated) = parse_issue_output(
+            "ISSUES_CREATED=1\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=1\nISSUE_1_DUPLICATE_OF_NUMBER=41\nISSUE_1_DUPLICATE_OF_URL=https://example.invalid/41\nISSUE_1_NUMBER=42\nISSUE_1_URL=https://example.invalid/42\n",
+        )
+        .expect("issue output");
+
+        assert_eq!((created, failed, deduplicated), (1, 0, 1));
+        assert_eq!(
+            mapping.get(&1),
+            Some(&(
+                String::from("42"),
+                String::from("https://example.invalid/42"),
+                false
+            ))
+        );
     }
 
     #[test]
