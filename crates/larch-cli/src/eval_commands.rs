@@ -34,8 +34,7 @@ use crate::argparse_compat::parse_with_flags;
 use crate::child_process::{bounded_request_in, run_bounded_detailed};
 use crate::research_commands::{FILELINE_RE, read_text_lossy, write_text_atomic};
 
-const ANTHROPIC_EVAL_SOURCE: &str =
-    "anthropic.com/engineering/built-multi-agent-research-system";
+const ANTHROPIC_EVAL_SOURCE: &str = "anthropic.com/engineering/built-multi-agent-research-system";
 const EVAL_SET_REL: &str = "skills/research/references/eval-set.md";
 const EVAL_BASELINE_REL: &str = "skills/research/references/eval-baseline.json";
 const STRUCTURED_HEADER: &str = "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix";
@@ -50,9 +49,8 @@ static TSV_ROW_START_RE: LazyLock<Regex> =
 static FINDING_LINE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^FINDING_[0-9]+:\s*(YES|NO|EXONERATE)").expect("static finding-line regex")
 });
-static URL_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"https?://[A-Za-z0-9._/?#&=%-]+").expect("static URL regex")
-});
+static URL_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"https?://[A-Za-z0-9._/?#&=%-]+").expect("static URL regex"));
 static PROV_FILE_LINE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[A-Za-z0-9_/.-]+:[0-9]+").expect("static file-line prov regex"));
 static PROV_REPO_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -73,8 +71,9 @@ static NEWLINE_RUN_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[\r\n]+").expect("static newline-run regex"));
 static ADVERSARIAL_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)adversarial").expect("static adversarial regex"));
-static FICTITIOUS_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)fictitious|fabricat|invent").expect("static fictitious regex"));
+static FICTITIOUS_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)fictitious|fabricat|invent").expect("static fictitious regex")
+});
 static DATA_ABSENCE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)data[- ]absen|no data|don.t have data").expect("static data-absence regex")
 });
@@ -249,10 +248,16 @@ fn normalize_json_record(value: &Value) -> Option<Value> {
     let object = value.as_object()?;
     let mut record = object.clone();
     if let Some(Value::String(severity)) = record.get("severity") {
-        record.insert("severity".to_owned(), Value::String(severity.to_lowercase()));
+        record.insert(
+            "severity".to_owned(),
+            Value::String(severity.to_lowercase()),
+        );
     }
     if let Some(Value::String(focus)) = record.get("focus_area") {
-        record.insert("focus_area".to_owned(), Value::String(canonical_focus(focus)));
+        record.insert(
+            "focus_area".to_owned(),
+            Value::String(canonical_focus(focus)),
+        );
     }
     if record.get("schema_version").and_then(Value::as_f64) != Some(1.0) {
         return None;
@@ -309,7 +314,10 @@ fn validate_structured_jsonl(text: &str) -> String {
 
 fn clean_tsv(value: &str) -> String {
     let flattened = value.replace(['\r', '\n'], " ");
-    WHITESPACE_RUN_RE.replace_all(&flattened, " ").trim().to_owned()
+    WHITESPACE_RUN_RE
+        .replace_all(&flattened, " ")
+        .trim()
+        .to_owned()
 }
 
 /// Yield assembled TSV data rows after the header, joining continuations.
@@ -566,9 +574,7 @@ fn validate_structured_reviewer_output(
         write_structured(write_target, "");
         return 0;
     }
-    if !lines.iter().any(|line| line_json_has_schema_version(line))
-        && sentinel_indexes.len() == 1
-    {
+    if !lines.iter().any(|line| line_json_has_schema_version(line)) && sentinel_indexes.len() == 1 {
         write_structured(write_target, "");
         if sentinel_indexes[0] > 0 {
             output.emit("WARNING=NO_ISSUES_SENTINEL_RECOVERED_AFTER_PREAMBLE");
@@ -898,9 +904,8 @@ fn validate_eval_set_header(raw_text: &str, entries: &[EvalEntry], output: &mut 
         }
     }
     if !first20.contains("When-to-load") && !first20.contains("When to load") {
-        output.diag(
-            "eval-research: eval-set.md missing first-20-lines header marker: When-to-load",
-        );
+        output
+            .diag("eval-research: eval-set.md missing first-20-lines header marker: When-to-load");
         ok = false;
     }
     if !raw_text.contains(ANTHROPIC_EVAL_SOURCE) {
@@ -1115,9 +1120,10 @@ fn run_claude(root: &Path, prompt: &[u8], out_path: &Path, err_path: &Path, time
         Duration::from_secs(5),
         8 * 1024 * 1024,
     ) {
-        Ok(request) => request
-            .with_stdin(prompt.to_vec())
-            .with_environment(ChildEnvironment::ClaudePluginRoot, root.as_os_str().to_owned()),
+        Ok(request) => request.with_stdin(prompt.to_vec()).with_environment(
+            ChildEnvironment::ClaudePluginRoot,
+            root.as_os_str().to_owned(),
+        ),
         Err(_error) => {
             let _ignored = fs::write(out_path, b"");
             let _ignored = fs::write(err_path, b"");
@@ -1181,7 +1187,10 @@ fn score_output(path: &Path, keywords: &str) -> Score {
         .map(|keyword| keyword.trim().to_lowercase())
         .filter(|keyword| !keyword.is_empty())
         .collect();
-    let matched = kws.iter().filter(|keyword| lowered.contains(*keyword)).count();
+    let matched = kws
+        .iter()
+        .filter(|keyword| lowered.contains(*keyword))
+        .count();
     Score {
         prov_file_line: unique_matches(&PROV_FILE_LINE_RE, &text),
         prov_repo_path: unique_matches(&PROV_REPO_PATH_RE, &text),
@@ -1219,7 +1228,13 @@ fn run_judge(
     }
     let _ignored = fs::write(&judge_out, b"");
     let _ignored = fs::write(&judge_err, b"");
-    run_claude(root, prompt.as_bytes(), &judge_out, &judge_err, judge_timeout)
+    run_claude(
+        root,
+        prompt.as_bytes(),
+        &judge_out,
+        &judge_err,
+        judge_timeout,
+    )
 }
 
 fn first_match(text: &str, pattern: &str) -> Option<String> {
@@ -1255,14 +1270,23 @@ fn parse_judge_output(judge_file: &Path) -> Vec<(String, String)> {
         &source_quality,
         &tool_efficiency,
     ];
-    if all.iter().any(|value| value.as_deref().unwrap_or("").is_empty()) {
+    if all
+        .iter()
+        .any(|value| value.as_deref().unwrap_or("").is_empty())
+    {
         return failed;
     }
     let total_value = total.clone().unwrap_or_default();
     if !JUDGE_TOTAL_RE.is_match(&total_value) {
         return failed;
     }
-    for axis in [&factual, &citation, &completeness, &source_quality, &tool_efficiency] {
+    for axis in [
+        &factual,
+        &citation,
+        &completeness,
+        &source_quality,
+        &tool_efficiency,
+    ] {
         if !JUDGE_AXIS_RE.is_match(axis.as_deref().unwrap_or("")) {
             return failed;
         }
@@ -1271,9 +1295,18 @@ fn parse_judge_output(judge_file: &Path) -> Vec<(String, String)> {
         ("JUDGE_STATUS".to_owned(), "ok".to_owned()),
         ("JUDGE_FACTUAL".to_owned(), factual.unwrap_or_default()),
         ("JUDGE_CITATION".to_owned(), citation.unwrap_or_default()),
-        ("JUDGE_COMPLETENESS".to_owned(), completeness.unwrap_or_default()),
-        ("JUDGE_SOURCE_QUALITY".to_owned(), source_quality.unwrap_or_default()),
-        ("JUDGE_TOOL_EFFICIENCY".to_owned(), tool_efficiency.unwrap_or_default()),
+        (
+            "JUDGE_COMPLETENESS".to_owned(),
+            completeness.unwrap_or_default(),
+        ),
+        (
+            "JUDGE_SOURCE_QUALITY".to_owned(),
+            source_quality.unwrap_or_default(),
+        ),
+        (
+            "JUDGE_TOOL_EFFICIENCY".to_owned(),
+            tool_efficiency.unwrap_or_default(),
+        ),
         ("JUDGE_TOTAL".to_owned(), total_value),
     ]
 }
@@ -1313,9 +1346,15 @@ fn classify_url_reputability(out_file: &Path) -> String {
         .any(|token| lowered.contains(token))
         {
             high += 1;
-        } else if ["medium.com", "dev.to", ".blog", "substack.com", "hashnode.dev"]
-            .iter()
-            .any(|token| lowered.contains(token))
+        } else if [
+            "medium.com",
+            "dev.to",
+            ".blog",
+            "substack.com",
+            "hashnode.dev",
+        ]
+        .iter()
+        .any(|token| lowered.contains(token))
         {
             low += 1;
         } else {
@@ -1503,8 +1542,8 @@ fn run_eval_entry(args: &EvalResearchArgs, entry: &EvalEntry, work_dir: &Path) -
         format!("WALL_CLOCK_SECONDS={elapsed}\nEXIT_CODE={rc}\n"),
     );
     let research_status = research_status_from_run(rc, &stderr_path);
-    let has_research = fs::metadata(&research_file)
-        .is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0);
+    let has_research =
+        fs::metadata(&research_file).is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0);
     let score = if research_status == "ok" || has_research {
         score_output(&research_file, &entry.expected_keywords)
     } else {
@@ -1516,7 +1555,14 @@ fn run_eval_entry(args: &EvalResearchArgs, entry: &EvalEntry, work_dir: &Path) -
             classify_url_reputability(&research_file),
         );
     }
-    let judge_kv = judge_entry(args, &out_dir, entry, &research_file, research_status, has_research);
+    let judge_kv = judge_entry(
+        args,
+        &out_dir,
+        entry,
+        &research_file,
+        research_status,
+        has_research,
+    );
     let row = baseline_row(entry, &score, research_status, &judge_kv, elapsed);
     let _ignored = fs::write(
         out_dir.join("row.json"),
@@ -1572,7 +1618,10 @@ fn write_baseline_file(write_baseline: &Path, rows: &[Value], root: &Path, outpu
     }
     let _ignored = fs::write(
         write_baseline,
-        format!("{}\n", serde_json::to_string_pretty(&payload).unwrap_or_default()),
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&payload).unwrap_or_default()
+        ),
     );
     output.emit(format!(
         "eval-research: baseline written to {}",
@@ -1582,7 +1631,9 @@ fn write_baseline_file(write_baseline: &Path, rows: &[Value], root: &Path, outpu
 
 /// Emit the markdown results table for the collected rows.
 fn emit_results_table(rows: &[Value], output: &mut Output) {
-    output.emit("| id | category | prov_fl | prov_path | prov_url | kw% | len | judge | wall(s) | status |");
+    output.emit(
+        "| id | category | prov_fl | prov_path | prov_url | kw% | len | judge | wall(s) | status |",
+    );
     output.emit("|---|---|---|---:|---:|---:|---:|---:|---:|---:|");
     for row in rows {
         let provenance = row.get("provenance").cloned().unwrap_or(Value::Null);
@@ -1669,12 +1720,7 @@ fn eval_research_main(arguments: &[OsString], output: &mut Output) -> i32 {
             return 2;
         }
     }
-    let parsed = parse_with_flags(
-        arguments,
-        &EVAL_VALUE_FLAGS,
-        &["--smoke-test"],
-        0,
-    );
+    let parsed = parse_with_flags(arguments, &EVAL_VALUE_FLAGS, &["--smoke-test"], 0);
     if parsed.value_error().is_some() {
         return 2;
     }
@@ -1741,9 +1787,10 @@ fn value_or_default(
     option: &str,
     default: &str,
 ) -> String {
-    parsed
-        .value(option)
-        .map_or_else(|| default.to_owned(), |value| value.to_string_lossy().into_owned())
+    parsed.value(option).map_or_else(
+        || default.to_owned(),
+        |value| value.to_string_lossy().into_owned(),
+    )
 }
 
 /// Execute `eval research`, printing to the real streams.
@@ -1796,7 +1843,9 @@ mod tests {
         let normalized = validate_structured_tsv(&text, &mut output);
         assert_eq!(
             normalized,
-            format!("{STRUCTURED_HEADER}\n1\tin_scope\tmajor\tsecurity\tsrc/a.rs:1\twhat\tscenario\tfix\n")
+            format!(
+                "{STRUCTURED_HEADER}\n1\tin_scope\tmajor\tsecurity\tsrc/a.rs:1\twhat\tscenario\tfix\n"
+            )
         );
     }
 
@@ -1839,17 +1888,23 @@ mod tests {
             ),
             0
         );
-        assert!(preamble
-            .out
-            .iter()
-            .any(|line| line == "WARNING=NO_ISSUES_SENTINEL_RECOVERED_AFTER_PREAMBLE"));
+        assert!(
+            preamble
+                .out
+                .iter()
+                .any(|line| line == "WARNING=NO_ISSUES_SENTINEL_RECOVERED_AFTER_PREAMBLE")
+        );
 
         let mut junk = Output::default();
         assert_eq!(
             validate_structured_reviewer_output("not a sentinel\n", None, &mut junk),
             5
         );
-        assert!(junk.out.iter().any(|line| line == "structured records not found after repair"));
+        assert!(
+            junk.out
+                .iter()
+                .any(|line| line == "structured records not found after repair")
+        );
     }
 
     #[test]
@@ -1862,7 +1917,11 @@ mod tests {
             validate_structured_reviewer_output(good, Some(&wire), &mut output),
             0
         );
-        assert!(fs::read_to_string(&wire).expect("read").contains("\"severity\":\"nit\""));
+        assert!(
+            fs::read_to_string(&wire)
+                .expect("read")
+                .contains("\"severity\":\"nit\"")
+        );
     }
 
     #[test]
@@ -1964,5 +2023,428 @@ mod tests {
         let text = "one two\n```\nignored code here\n```\nthree four five\n";
         assert_eq!(word_count_without_fences(text), 5);
         assert!(has_code_fence_content(text));
+    }
+
+    fn valid_eval_set() -> String {
+        let mut text = String::from(
+            "# eval-set\nConsumer: research harness\nContract: scored eval entries\nWhen-to-load: on eval-research\nSource: anthropic.com/engineering/built-multi-agent-research-system\n\n",
+        );
+        let categories = [
+            "lookup",
+            "architecture",
+            "external-comparison",
+            "risk-assessment",
+            "feasibility",
+        ];
+        for index in 0..20 {
+            let category = categories[index % 5];
+            let notes = match index {
+                0 => "adversarial fictitious probe",
+                1 => "adversarial no data expected",
+                _ => "routine note",
+            };
+            let number = index + 1;
+            text.push_str(&format!(
+                "### eval-{number}: id-{number}\n- **category**: {category}\n- **expected_provenance_count**: 1\n- **expected_keywords**: alpha, beta\n- **question**: what is item {number}?\n- **notes**: {notes}\n\n"
+            ));
+        }
+        text
+    }
+
+    fn valid_baseline_json() -> String {
+        let entries: Vec<Value> = (1..=2)
+            .map(|number| {
+                serde_json::json!({
+                    "id": format!("id-{number}"),
+                    "category": "lookup",
+                    "provenance": {"file_line": 0, "repo_path": 0, "url": 0},
+                    "keyword_coverage_pct": 0,
+                    "length_lines": 0,
+                    "judge_status": "ok",
+                    "judge_total": 50,
+                    "wall_clock_seconds": 1,
+                    "research_status": "ok",
+                })
+            })
+            .collect();
+        serde_json::json!({"version": 2, "entries": entries}).to_string()
+    }
+
+    fn plugin_root_with_fixtures() -> tempfile::TempDir {
+        let dir = tempdir().expect("tempdir");
+        let refs = dir.path().join("skills/research/references");
+        fs::create_dir_all(&refs).expect("refs dir");
+        fs::write(refs.join("eval-set.md"), valid_eval_set()).expect("eval-set");
+        fs::write(refs.join("eval-baseline.json"), valid_baseline_json()).expect("baseline");
+        dir
+    }
+
+    fn git_repo_with(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let dir = tempdir().expect("tempdir");
+        let run = |args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir.path())
+                .env("GIT_AUTHOR_NAME", "test")
+                .env("GIT_AUTHOR_EMAIL", "test@example.com")
+                .env("GIT_COMMITTER_NAME", "test")
+                .env("GIT_COMMITTER_EMAIL", "test@example.com")
+                .output()
+                .expect("git command");
+            assert!(
+                output.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        run(&["init", "-q"]);
+        for (relative, body) in files {
+            let path = dir.path().join(relative);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).expect("parent dir");
+            }
+            fs::write(&path, body).expect("repo file");
+        }
+        run(&["add", "-A"]);
+        run(&["commit", "-q", "-m", "init"]);
+        dir
+    }
+
+    #[test]
+    fn score_output_counts_provenance_and_keywords() {
+        let dir = tempdir().expect("tempdir");
+        let research = dir.path().join("research.md");
+        fs::write(
+            &research,
+            "See src/foo.rs:10 and skills/research/references/eval-set.md.\nVisit https://anthropic.com/x for ALPHA context.\n",
+        )
+        .expect("write");
+        let score = score_output(&research, "alpha, beta");
+        assert!(score.prov_file_line >= 1);
+        assert!(score.prov_repo_path >= 1);
+        assert_eq!(score.prov_url, 1);
+        assert_eq!(score.kw_pct, 50);
+        assert_eq!(score.length, 2);
+
+        // Missing file and empty keyword list are both defined behaviors.
+        let missing = score_output(&dir.path().join("nope.md"), "");
+        assert_eq!(missing.kw_pct, 0);
+        assert_eq!(missing.length, 0);
+    }
+
+    #[test]
+    fn parse_judge_output_reads_scores_or_reports_failure() {
+        let dir = tempdir().expect("tempdir");
+        let good = dir.path().join("judge.txt");
+        fs::write(
+            &good,
+            "JUDGE_SCORE_FACTUAL=18\nJUDGE_SCORE_CITATION=15\nJUDGE_SCORE_COMPLETENESS=16\nJUDGE_SCORE_SOURCE_QUALITY=14\nJUDGE_SCORE_TOOL_EFFICIENCY=12\nJUDGE_SCORE_TOTAL=75\n",
+        )
+        .expect("write");
+        let parsed = parse_judge_output(&good);
+        assert_eq!(judge_value(&parsed, "JUDGE_STATUS").as_deref(), Some("ok"));
+        assert_eq!(judge_value(&parsed, "JUDGE_TOTAL").as_deref(), Some("75"));
+        assert_eq!(judge_value(&parsed, "JUDGE_FACTUAL").as_deref(), Some("18"));
+
+        // Missing file -> parse_failed.
+        let absent = parse_judge_output(&dir.path().join("absent.txt"));
+        assert_eq!(
+            judge_value(&absent, "JUDGE_STATUS").as_deref(),
+            Some("parse_failed")
+        );
+
+        // Present but missing an axis -> parse_failed.
+        let partial = dir.path().join("partial.txt");
+        fs::write(&partial, "JUDGE_SCORE_TOTAL=50\n").expect("write");
+        assert_eq!(
+            judge_value(&parse_judge_output(&partial), "JUDGE_STATUS").as_deref(),
+            Some("parse_failed")
+        );
+    }
+
+    #[test]
+    fn first_match_returns_none_for_uncaptured_pattern() {
+        assert_eq!(first_match("nothing here", r"^X=([0-9]+)"), None);
+    }
+
+    #[test]
+    fn classify_url_reputability_buckets_by_domain() {
+        let dir = tempdir().expect("tempdir");
+        let file = dir.path().join("out.md");
+        fs::write(
+            &file,
+            "https://anthropic.com/a https://medium.com/b https://random.example.net/c\n",
+        )
+        .expect("write");
+        assert_eq!(
+            classify_url_reputability(&file),
+            "URL_HIGH=1\nURL_LOW=1\nURL_UNKNOWN=1\n"
+        );
+        assert_eq!(
+            classify_url_reputability(&dir.path().join("absent.md")),
+            "URL_HIGH=0\nURL_LOW=0\nURL_UNKNOWN=0\n"
+        );
+    }
+
+    #[test]
+    fn research_status_from_run_maps_every_branch() {
+        let dir = tempdir().expect("tempdir");
+        let stderr = dir.path().join("research.stderr");
+        fs::write(&stderr, "unrelated failure\n").expect("write");
+        assert_eq!(research_status_from_run(0, &stderr), "ok");
+        assert_eq!(research_status_from_run(124, &stderr), "timeout");
+        assert_eq!(research_status_from_run(1, &stderr), "research_failed");
+        fs::write(&stderr, "TIMED_OUT_AFTER=5\n").expect("write");
+        assert_eq!(research_status_from_run(1, &stderr), "timeout");
+    }
+
+    #[test]
+    fn baseline_row_reflects_judge_and_scores() {
+        let entry = EvalEntry {
+            id: "id-1".to_owned(),
+            category: "lookup".to_owned(),
+            expected_provenance_count: 1,
+            expected_keywords: "alpha".to_owned(),
+            question: "q".to_owned(),
+            notes: "n".to_owned(),
+        };
+        let score = Score {
+            prov_file_line: 2,
+            prov_repo_path: 1,
+            prov_url: 3,
+            kw_pct: 50,
+            length: 9,
+        };
+        let judged = vec![
+            ("JUDGE_STATUS".to_owned(), "ok".to_owned()),
+            ("JUDGE_TOTAL".to_owned(), "80".to_owned()),
+        ];
+        let row = baseline_row(&entry, &score, "ok", &judged, 7);
+        assert_eq!(row["judge_total"], Value::from(80));
+        assert_eq!(row["judge_status"], Value::from("ok"));
+        assert_eq!(row["provenance"]["url"], Value::from(3));
+
+        let unscored = baseline_row(&entry, &Score::default(), "research_failed", &[], 0);
+        assert_eq!(unscored["judge_total"], Value::Null);
+        assert_eq!(unscored["judge_status"], Value::from("unknown"));
+    }
+
+    #[test]
+    fn results_table_and_scalars_render() {
+        assert_eq!(json_scalar(&Value::from("x")), "x");
+        assert_eq!(json_scalar(&Value::Null), "null");
+        assert_eq!(json_scalar(&Value::from(4)), "4");
+
+        let rows = vec![
+            serde_json::json!({
+                "id": "id-1", "category": "lookup",
+                "provenance": {"file_line": 1, "repo_path": 0, "url": 2},
+                "keyword_coverage_pct": 50, "length_lines": 9,
+                "judge_total": 80, "judge_status": "ok",
+                "wall_clock_seconds": 7, "research_status": "ok",
+            }),
+            serde_json::json!({
+                "id": "id-2", "category": "feasibility",
+                "provenance": {"file_line": 0, "repo_path": 0, "url": 0},
+                "keyword_coverage_pct": 0, "length_lines": 0,
+                "judge_total": Value::Null, "judge_status": "skipped_no_research",
+                "wall_clock_seconds": 0, "research_status": "research_failed",
+            }),
+        ];
+        let mut output = Output::default();
+        emit_results_table(&rows, &mut output);
+        let text = output.stdout_text();
+        assert!(text.contains("| id | category |"));
+        assert!(text.contains("| id-1 | lookup |"));
+        assert!(text.contains("| id-2 | feasibility |"));
+    }
+
+    #[test]
+    fn write_baseline_file_records_harness_commit_and_timestamp() {
+        let repo = git_repo_with(&[("seed.txt", "seed\n")]);
+        let target = repo.path().join("out/baseline.json");
+        let rows = vec![serde_json::json!({"id": "id-1"})];
+        let mut output = Output::default();
+        write_baseline_file(&target, &rows, repo.path(), &mut output);
+        let written = fs::read_to_string(&target).expect("baseline written");
+        let value: Value = serde_json::from_str(&written).expect("valid json");
+        assert_eq!(value["version"], Value::from(2));
+        assert!(value["harness_commit"].as_str().is_some());
+        assert!(
+            value["generated_at"]
+                .as_str()
+                .is_some_and(|ts| ts.ends_with('Z'))
+        );
+        assert!(
+            output
+                .stdout_text()
+                .contains("eval-research: baseline written to")
+        );
+    }
+
+    #[test]
+    fn harness_commit_is_none_outside_a_repository() {
+        let dir = tempdir().expect("tempdir");
+        assert_eq!(harness_commit(dir.path()), None);
+    }
+
+    #[test]
+    fn fetch_and_preview_baseline_ref_round_trip() {
+        let repo = git_repo_with(&[(
+            "skills/research/references/eval-baseline.json",
+            &valid_baseline_json(),
+        )]);
+        let dir = tempdir().expect("tempdir");
+        let target = dir.path().join("baseline-rows.json");
+        assert!(fetch_baseline_ref(repo.path(), "HEAD", &target));
+        assert!(target.is_file());
+
+        // Non-repository and unknown ref both fail closed.
+        let empty = tempdir().expect("tempdir");
+        assert!(!fetch_baseline_ref(empty.path(), "HEAD", &target));
+        assert!(!fetch_baseline_ref(repo.path(), "does-not-exist", &target));
+
+        let args = EvalResearchArgs {
+            plugin_root: repo.path().to_path_buf(),
+            id_filter: String::new(),
+            baseline_ref: "HEAD".to_owned(),
+            work_dir: None,
+            write_baseline: None,
+            timeout: 4200,
+            judge_timeout: 600,
+            smoke_test: false,
+        };
+        let mut output = Output::default();
+        assert_eq!(preview_baseline_ref(&args, dir.path(), &mut output), None);
+        assert!(output.stdout_text().contains("PREVIEW MODE"));
+
+        let mut refusal = Output::default();
+        let missing = EvalResearchArgs {
+            plugin_root: empty.path().to_path_buf(),
+            ..args
+        };
+        assert_eq!(
+            preview_baseline_ref(&missing, dir.path(), &mut refusal),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn small_helpers_match_their_contracts() {
+        assert_eq!(build_research_prompt("q"), "/larch:research --no-issue q\n");
+        assert!(baseline_ref_valid("main/HEAD-1.0"));
+        assert!(!baseline_ref_valid("bad ref"));
+        assert!(!baseline_ref_valid(""));
+        // Exercised for coverage; the boolean depends on the host and is not asserted.
+        let _present = claude_on_path();
+
+        let arguments: Vec<OsString> = ["--id", "x", "--timeout"]
+            .iter()
+            .map(OsString::from)
+            .collect();
+        assert!(!eval_flag_missing_value(&arguments, "--id"));
+        assert!(eval_flag_missing_value(&arguments, "--timeout"));
+        assert!(!eval_flag_missing_value(&arguments, "--work-dir"));
+        let dashed: Vec<OsString> = ["--id", "--next"].iter().map(OsString::from).collect();
+        assert!(eval_flag_missing_value(&dashed, "--id"));
+    }
+
+    #[test]
+    fn validate_eval_set_accepts_a_complete_fixture_and_rejects_gaps() {
+        let dir = tempdir().expect("tempdir");
+        let good = dir.path().join("eval-set.md");
+        fs::write(&good, valid_eval_set()).expect("write");
+        let mut ok_output = Output::default();
+        assert!(validate_eval_set(&good, &mut ok_output));
+
+        let bad = dir.path().join("bad.md");
+        fs::write(&bad, "### eval-1: id-1\n- **category**: lookup\n").expect("write");
+        let mut bad_output = Output::default();
+        assert!(!validate_eval_set(&bad, &mut bad_output));
+        let diagnostics = bad_output.stderr_text();
+        assert!(diagnostics.contains("header marker"));
+        assert!(diagnostics.contains("need at least 20"));
+
+        let mut missing_output = Output::default();
+        assert!(!validate_eval_set(
+            &dir.path().join("nope.md"),
+            &mut missing_output
+        ));
+    }
+
+    #[test]
+    fn validate_baseline_json_enforces_shape() {
+        let dir = tempdir().expect("tempdir");
+        let good = dir.path().join("eval-baseline.json");
+        fs::write(&good, valid_baseline_json()).expect("write");
+        let mut ok_output = Output::default();
+        assert!(validate_baseline_json(&good, &mut ok_output));
+
+        let cases = [
+            ("not json at all", "or not valid JSON"),
+            ("{\"version\": 1, \"entries\": []}", "missing required keys"),
+            (
+                "{\"version\": 2, \"entries\": [{\"id\": \"x\"}]}",
+                "missing provenance object",
+            ),
+        ];
+        for (body, needle) in cases {
+            let path = dir.path().join("case.json");
+            fs::write(&path, body).expect("write");
+            let mut output = Output::default();
+            assert!(!validate_baseline_json(&path, &mut output), "{body}");
+            assert!(output.stderr_text().contains(needle), "{body}");
+        }
+
+        let mut missing = Output::default();
+        assert!(!validate_baseline_json(
+            &dir.path().join("absent.json"),
+            &mut missing
+        ));
+    }
+
+    #[test]
+    fn eval_research_smoke_test_validates_without_launching() {
+        let root = plugin_root_with_fixtures();
+        let args = EvalResearchArgs {
+            plugin_root: root.path().to_path_buf(),
+            id_filter: String::new(),
+            baseline_ref: String::new(),
+            work_dir: None,
+            write_baseline: None,
+            timeout: 4200,
+            judge_timeout: 600,
+            smoke_test: true,
+        };
+        let mut output = Output::default();
+        assert_eq!(eval_research(&args, &mut output), 0);
+        assert!(output.stdout_text().contains("smoke test PASS"));
+
+        // A plugin root without fixtures fails validation before any launch.
+        let empty = tempdir().expect("tempdir");
+        let broken = EvalResearchArgs {
+            plugin_root: empty.path().to_path_buf(),
+            ..args
+        };
+        let mut broken_output = Output::default();
+        assert_eq!(eval_research(&broken, &mut broken_output), 1);
+    }
+
+    #[test]
+    fn eval_research_main_reports_argument_errors() {
+        assert_eq!(eval_run(&["--unknown-flag"]).0, 2);
+        assert_eq!(eval_run(&["--judge-timeout", "0"]).0, 2);
+        assert_eq!(eval_run(&["--id"]).0, 2);
+    }
+
+    #[test]
+    fn normalize_json_record_lowercases_and_maps_focus() {
+        let record = r#"{"schema_version":1,"scope":"in_scope","severity":"MAJOR","focus_area":"completeness","location":"a.rs:1","what":"w","scenario_or_breakage":"s","suggested_fix":"f"}"#;
+        let normalized = validate_structured_jsonl(record);
+        assert!(normalized.contains("\"severity\":\"major\""));
+        assert!(normalized.contains("\"focus_area\":\"code-quality\""));
+
+        let wrong_schema = r#"{"schema_version":2,"scope":"in_scope","severity":"nit","focus_area":"security","location":"a","what":"w","scenario_or_breakage":"s","suggested_fix":"f"}"#;
+        assert!(validate_structured_jsonl(wrong_schema).is_empty());
     }
 }
