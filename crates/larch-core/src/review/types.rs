@@ -326,6 +326,20 @@ pub fn render_wire_values(values: &[&str], delimiter: &str, quoted: bool) -> Str
         .join(&format!(" {delimiter} "))
 }
 
+/// Render a decoded JSON value the way Python's `str()` renders it, so wire
+/// consumers ported from Python keep byte-compatible diagnostics and views.
+#[must_use]
+pub fn python_str_of_json(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => "None".to_owned(),
+        serde_json::Value::Bool(true) => "True".to_owned(),
+        serde_json::Value::Bool(false) => "False".to_owned(),
+        serde_json::Value::Number(number) => number.to_string(),
+        serde_json::Value::String(text) => text.clone(),
+        other => other.to_string(),
+    }
+}
+
 /// Parse an exact canonical heading, keeping the ordinal losslessly.
 #[must_use]
 pub fn parse_canonical_heading(line: &str) -> Option<CanonicalHeading> {

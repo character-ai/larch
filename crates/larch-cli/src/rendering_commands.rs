@@ -23,7 +23,7 @@ use larch_core::{
         gantt::{self, MAX_WIDTH},
         growth_chart,
     },
-    review::render_wire_values,
+    review::{python_str_of_json, render_wire_values},
 };
 use regex::Regex;
 use serde_json::Value;
@@ -401,7 +401,7 @@ fn findings_view_body(run_dir: &Path, view: &str) -> Result<String, String> {
             continue;
         };
         let outcome = match row.get("outcome") {
-            Some(value) if python_truthy(value) => python_str(value),
+            Some(value) if python_truthy(value) => python_str_of_json(value),
             _ => String::new(),
         };
         if view == "oos" {
@@ -413,10 +413,10 @@ fn findings_view_body(run_dir: &Path, view: &str) -> Result<String, String> {
         }
         let round_num = row
             .get("round_num")
-            .map_or_else(|| "None".to_owned(), python_str);
+            .map_or_else(|| "None".to_owned(), python_str_of_json);
         let body = match row.get("prose_body") {
             None | Some(Value::Null) => "(no prose body)".to_owned(),
-            Some(value) => python_str(value),
+            Some(value) => python_str_of_json(value),
         };
         let _ = write!(out, "### FINDING ({outcome}) round-{round_num}\n{body}\n");
     }
@@ -779,18 +779,6 @@ fn python_truthy(value: &Value) -> bool {
         Value::String(text) => !text.is_empty(),
         Value::Array(items) => !items.is_empty(),
         Value::Object(entries) => !entries.is_empty(),
-    }
-}
-
-/// Render a JSON value the way Python's `str()` renders the decoded object.
-fn python_str(value: &Value) -> String {
-    match value {
-        Value::Null => "None".to_owned(),
-        Value::Bool(true) => "True".to_owned(),
-        Value::Bool(false) => "False".to_owned(),
-        Value::Number(number) => number.to_string(),
-        Value::String(text) => text.clone(),
-        other => other.to_string(),
     }
 }
 

@@ -895,14 +895,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 fn json_diag_value(value: &Value) -> String {
-    match value {
-        Value::Null => "None".to_owned(),
-        Value::Bool(true) => "True".to_owned(),
-        Value::Bool(false) => "False".to_owned(),
-        Value::Number(number) => number.to_string(),
-        Value::String(text) => text.clone(),
-        other => other.to_string(),
-    }
+    crate::review::python_str_of_json(value)
 }
 
 fn is_positive_int(value: &str) -> bool {
