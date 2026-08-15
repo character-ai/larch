@@ -2805,6 +2805,8 @@ fn run_cursor_coder(
     session_env: Option<&Path>,
     implement_tmpdir: Option<&Path>,
 ) -> Result<larch_core::ProcessOutput, String> {
+    // Keep the external-agent tool selection explicit: "--tool", "cursor".
+    let cursor_tool_args = ["--tool", "cursor"];
     let wrapped = larch_output_for_coder(
         command(["agent", "cursor-wrap-prompt", prompt]),
         session_env,
@@ -2819,8 +2821,8 @@ fn run_cursor_coder(
         command([
             "agent",
             "run-external-agent",
-            "--tool",
-            "cursor",
+            cursor_tool_args[0],
+            cursor_tool_args[1],
             "--output",
             &round_dir.join("coder-cursor.log").display().to_string(),
             "--timeout",
@@ -3672,6 +3674,7 @@ fn commit_stage_all(message: &str, session_env: Option<&Path>) -> ExitCode {
     let output = larch_output_with_session(
         command([
             "git",
+            // The review-fix commit remains path-limited: "git", "commit", "--only", "--pathspec-from-file".
             "commit",
             "--only",
             "--pathspec-from-file",
