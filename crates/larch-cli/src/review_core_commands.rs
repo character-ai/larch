@@ -11,13 +11,11 @@ use std::{
     ffi::OsString,
     fmt::Write as _,
     fs,
-    io::Write as _,
     path::{Path, PathBuf},
     process::ExitCode,
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use larch_adapters::ensure_directory_chain;
 use larch_core::{
     DuplicatePolicy, KvDocument, ParseOptions, SafeText, emit_kv,
     review::{self, normalize_output_base, parse_blocks, parse_legacy_collector_blocks},
@@ -25,7 +23,11 @@ use larch_core::{
 use regex::Regex;
 use sha2::{Digest as _, Sha256};
 
-use crate::{oos_commands::atomic_write, runtime_entrypoint::run_verified_larch};
+use crate::{
+    launcher_support::{append_confined_checked, write_confined_checked},
+    oos_commands::atomic_write,
+    runtime_entrypoint::run_verified_larch,
+};
 
 const CORE_USAGE: &str = "Usage: review core --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-1] [--pre-scouted-manifest FILE] [--site SITE] [context flags]";
 const CORE_OPTIONS: &[&str] = &[
@@ -1604,23 +1606,10 @@ fn read_text(path: &Path) -> String {
         .unwrap_or_default()
 }
 fn write_text(path: &Path, text: &str) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .filter(|value| !value.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    ensure_directory_chain(parent).map_err(|error| error.to_string())?;
-    atomic_write(path, text)
+    write_confined_checked(path, text)
 }
 fn append_text(path: &Path, text: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .and_then(|mut file| file.write_all(text.as_bytes()))
-        .map_err(|error| error.to_string())
+    append_confined_checked(path, text)
 }
 fn copy_checked(source: &Path, dest: &Path) -> Result<(), String> {
     fs::copy(source, dest)
