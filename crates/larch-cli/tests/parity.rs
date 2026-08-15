@@ -1448,6 +1448,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "write-record",
     ),
     CleanInstallCase::new(
+        "clean-install-difficulty-calibration-analyze",
+        "difficulty-calibration",
+        "analyze",
+    ),
+    CleanInstallCase::new(
         "clean-install-dirty-tree-baseline",
         "dirty-tree",
         "baseline",

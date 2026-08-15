@@ -451,7 +451,7 @@ fn v2_emit_extra_excluded(key: &str) -> bool {
         || (V2_RESERVED_KEYS.contains(&key) && !V2_EXTRA_PROMOTABLE_RESERVED_KEYS.contains(&key))
 }
 
-fn python_string(value: &Value) -> String {
+pub fn python_string(value: &Value) -> String {
     match value {
         Value::String(text) => text.clone(),
         Value::Null => "None".to_owned(),

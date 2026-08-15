@@ -148,7 +148,7 @@ test-rejected-analysis:
 	$(HARNESS_MARK) --label $@ -- bash skills/rejected-analysis/scripts/test-rejected-analysis.sh
 
 test-difficulty-calibration:
-	python3 -m pytest python/tests/calibration/test_difficulty_calibration.py
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test difficulty_calibration_parity
 
 test-voter-calibration:
 	$(HARNESS_MARK) --label $@ -- bash skills/voter-calibration/scripts/test-voter-calibration.sh

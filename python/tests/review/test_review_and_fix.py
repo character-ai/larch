@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import cast
 from unittest import mock
 
-from larch.calibration import difficulty_calibration
 from larch.report import exec_issue_detail
 from larch.core import logging_util
 import pytest
@@ -1534,11 +1533,6 @@ def test_write_self_review_tally_nonzero_counts(tmp_path, monkeypatch):
     ]
     assert all(row["phase"] == "code-review" for row in rows)
     assert all(row["round_num"] == "1" for row in rows)
-    state = difficulty_calibration.AnalyzerState()
-    parsed, source_parseable, count = difficulty_calibration._parse_jsonl_source(findings_path, skill="implement", state=state)
-    assert source_parseable is True
-    assert count == 3
-    assert sum(1 for row in parsed if row.accepted) == 2
 
 
 def test_write_self_review_tally_nonzero_tally_failure_writes_sidecars_once(tmp_path, monkeypatch):

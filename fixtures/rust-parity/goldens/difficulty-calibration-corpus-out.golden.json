@@ -1,0 +1,87 @@
+{
+  "exit_code": 0,
+  "files": {
+    "logs/design/DESIGN/difficulty-rating.json": {
+      "text": "{\"rater\":[\"implement\"],\"rater_tool\":{\"name\":\"codex\"},\"rater_model\":0,\"predicted_tier\":\"TRIVIAL\",\"design_tier\":null,\"implement_tier\":null,\"applied_tier\":\"TRIVIAL\",\"floors_applied\":[],\"audit_upgrade\":null,\"escalations\":[],\"panel_skipped\":[\"typed\"]}"
+    },
+    "logs/design/DESIGN/manifest.json": {
+      "text": "{\"started_at\":\"2026-06-15T10:00:00Z\",\"issue_number\":42}"
+    },
+    "logs/design/DESIGN/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv2_vote\tv3_vote\tscope\nFINDING_1\treviewer\taccepted\tYES\tNO\tNO\t\n"
+    },
+    "logs/design/DESIGN/timing-report-final.json": {
+      "text": "{\"total_seconds\":0,\"per_step\":[{\"duration_seconds\":9223372036854775807},{\"duration_seconds\":9223372036854775807}]}"
+    },
+    "logs/design/DESIGN/token-report-final.json": {
+      "text": "{\"BUCKETS_claude\":{\"total\":9223372036854775807},\"BUCKETS_codex\":{\"total\":9223372036854775807}}"
+    },
+    "logs/design/EMPTY/difficulty-rating.json": {
+      "text": "{\"rater\":[\"implement\"],\"rater_tool\":{\"name\":\"codex\"},\"rater_model\":0,\"predicted_tier\":\"TRIVIAL\",\"design_tier\":null,\"implement_tier\":null,\"applied_tier\":\"TRIVIAL\",\"floors_applied\":[],\"audit_upgrade\":null,\"escalations\":[],\"panel_skipped\":[\"typed\"]}"
+    },
+    "logs/design/EMPTY/manifest.json": {
+      "text": "{\"started_at\":\"2026-06-15T10:00:00Z\",\"issue_number\":42}"
+    },
+    "logs/design/EMPTY/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv2_vote\tv3_vote\tscope\n"
+    },
+    "logs/implement/BOUND/difficulty-rating.json": {
+      "text": "{\"rater\":[\"implement\"],\"rater_tool\":{\"name\":\"codex\"},\"rater_model\":0,\"predicted_tier\":\"TRIVIAL\",\"design_tier\":null,\"implement_tier\":null,\"applied_tier\":\"TRIVIAL\",\"floors_applied\":[],\"audit_upgrade\":null,\"escalations\":[],\"panel_skipped\":[\"typed\"]}"
+    },
+    "logs/implement/BOUND/manifest.json/child": {
+      "text": "not a file"
+    },
+    "logs/implement/BOUND/round-1/findings-classification.tsv": {
+      "text": "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\nFINDING_1\treviewer\trejected\n"
+    },
+    "logs/implement/BOUND/timing-report.json/child": {
+      "text": "not a file"
+    },
+    "logs/implement/BOUND/token-report.json/child": {
+      "text": "not a file"
+    },
+    "logs/implement/IMPL/difficulty-rating.json": {
+      "text": "{\"rater\":\"implement\",\"rater_tool\":\"codex\",\"rater_model\":\"gpt-test\",\"predicted_tier\":\"MODERATE\",\"design_tier\":null,\"implement_tier\":null,\"applied_tier\":\"MODERATE\",\"floors_applied\":[],\"audit_upgrade\":\"true\",\"escalations\":[],\"panel_skipped\":null}"
+    },
+    "logs/implement/IMPL/manifest.json": {
+      "text": "{\"started_at\":\"2026-06-15T10:00:00Z\",\"issue_number\":42}"
+    },
+    "logs/implement/IMPL/round-1/findings-classification.tsv": {
+      "text": "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\nFINDING_1\treviewer\taccepted\nFINDING_2\treviewer\taccepted\nFINDING_3\treviewer\taccepted\n"
+    },
+    "logs/implement/IMPL/timing-report.json": {
+      "text": "{\"total_seconds\":0,\"per_step\":[{\"duration_seconds\":9223372036854775807},{\"duration_seconds\":9223372036854775807}]}"
+    },
+    "logs/implement/IMPL/token-report.json": {
+      "text": "{\"BUCKETS_claude\":{\"total\":9223372036854775807},\"BUCKETS_codex\":{\"total\":9223372036854775807}}"
+    },
+    "logs/rejected-analysis-verdicts.tsv": {
+      "text": "schema_version\tfinding_hash\tsource_skill\trun_id\tround_num\tfinding_id\tdissenting_slots\tverdict\tcurrent_location\tevidence\ttriaged_at\n1\thash1\timplement\tIMPL\t1\tFINDING_1\tv1\tstale\tloc\tevidence\t2026-01-01T00:00:00Z\n1\thash1\timplement\tIMPL\t1\tFINDING_1\tv1\tconfirmed\tloc\tevidence\t2026-01-02T00:00:00Z\n"
+    },
+    "logs/review/BROKEN/difficulty-rating.json": {
+      "text": "{"
+    },
+    "logs/review/BROKEN/manifest.json": {
+      "text": "{"
+    },
+    "logs/review/BROKEN/review-findings-full.jsonl": {
+      "text": "{bad\n{\"id\":\"FINDING_X\",\"phase\":\"design\",\"outcome\":\"accepted\"}\n{\"id\":[\"TYPED\"],\"phase\":\"code-review\",\"outcome\":{\"unexpected\":1}}\n"
+    },
+    "logs/review/NO-RATING/review-findings.ndjson": {
+      "text": "{\"id\":\"FINDING_1\",\"phase\":\"code-review\",\"outcome\":\"accepted\",\"round_num\":1}\n"
+    },
+    "logs/review/NO-SOURCE/difficulty-rating.json": {
+      "text": "{\"rater\":[\"implement\"],\"rater_tool\":{\"name\":\"codex\"},\"rater_model\":0,\"predicted_tier\":\"TRIVIAL\",\"design_tier\":null,\"implement_tier\":null,\"applied_tier\":\"TRIVIAL\",\"floors_applied\":[],\"audit_upgrade\":null,\"escalations\":[],\"panel_skipped\":[\"typed\"]}"
+    },
+    "wire/report.md": {
+      "text": "# Difficulty Calibration\n\n## Corpus Summary\n\n| Skill | Runs | Ratable | Known realized | Unratable | Unknown realized |\n|---|---:|---:|---:|---:|---:|\n| design | 2 | 2 | 2 | 0 | 0 |\n| implement | 2 | 2 | 2 | 0 | 0 |\n| review | 3 | 1 | 2 | 2 | 1 |\n\n## Degraded Inputs\n\n| Counter | Count |\n|---|---:|\n| duplicate_sidecar_rows | 1 |\n| malformed_classification_rows | 2 |\n| malformed_manifests | 2 |\n| missing_classification_sources | 1 |\n| missing_manifests | 3 |\n| missing_or_malformed_timing_reports | 5 |\n| missing_or_malformed_token_reports | 5 |\n| unknown_realized_tiers | 1 |\n| unratable_malformed_rating | 1 |\n| unratable_missing_rating | 1 |\n| unsupported_classification_rows | 1 |\n\n## Confusion Matrix by Skill\n\n### design\n\n| Applied \\ Realized | TRIVIAL | MODERATE | HARD |\n|---|---:|---:|---:|\n| TRIVIAL | 1 | 1 | 0 |\n| MODERATE | 0 | 0 | 0 |\n| HARD | 0 | 0 | 0 |\n\nDenominator: 2\n\n### implement\n\n| Applied \\ Realized | TRIVIAL | MODERATE | HARD |\n|---|---:|---:|---:|\n| TRIVIAL | 1 | 0 | 0 |\n| MODERATE | 0 | 0 | 1 |\n| HARD | 0 | 0 | 0 |\n\nDenominator: 2\n\n### review\n\n| Applied \\ Realized | TRIVIAL | MODERATE | HARD |\n|---|---:|---:|---:|\n| TRIVIAL | 0 | 0 | 0 |\n| MODERATE | 0 | 0 | 0 |\n| HARD | 0 | 0 | 0 |\n\nDenominator: 0\n\n## Confusion Matrix by Rater\n\n### ['implement']/{'name': 'codex'}/unknown\n\n| Applied \\ Realized | TRIVIAL | MODERATE | HARD |\n|---|---:|---:|---:|\n| TRIVIAL | 2 | 1 | 0 |\n| MODERATE | 0 | 0 | 0 |\n| HARD | 0 | 0 | 0 |\n\nDenominator: 3\n\n### implement/codex/gpt-test\n\n| Applied \\ Realized | TRIVIAL | MODERATE | HARD |\n|---|---:|---:|---:|\n| TRIVIAL | 0 | 0 | 0 |\n| MODERATE | 0 | 0 | 1 |\n| HARD | 0 | 0 | 0 |\n\nDenominator: 1\n\n## Under-rating Misses\n\n| Skill | Run | Issue | Applied | Predicted | Realized | Accepted | Panel skipped | False-negative burden | Link |\n|---|---|---:|---|---|---|---:|---|---|---|\n| design | DESIGN | 42 | TRIVIAL | TRIVIAL | MODERATE | 1 | ['typed'] | confirmed=0 | larch-logs/design/DESIGN |\n| implement | IMPL | 42 | MODERATE | MODERATE | HARD | 3 | n/a | confirmed=1; stale=1 | larch-logs/implement/IMPL |\n\n## Per-tier Tokens, Cost, and Latency\n\n| Applied tier | Runs | Tokens total | USD | Avg latency seconds |\n|---|---:|---:|---:|---:|\n| TRIVIAL | 4 | 18446744073709551614 | $0.00 | 18446744073709551616 |\n| MODERATE | 1 | 18446744073709551614 | $0.00 | 18446744073709551616 |\n| HARD | 0 | n/a | n/a | n/a |\n\n## Audit-run Deltas\n\n| Skill | Run | Month | Pre-audit tier | Peer count | Token delta | Latency delta seconds |\n|---|---|---|---|---:|---:|---:|\n| implement | IMPL | 2026-06 | MODERATE | 0 | n/a | n/a |\n\n## Escalation Statistics\n\n| Skill | Ratable runs | Escalated runs | Rate |\n|---|---:|---:|---:|\n| design | 2 | 0 | 0.00 |\n| implement | 2 | 0 | 0.00 |\n| review | 1 | 0 | 0.00 |\n\n## Tier-distribution Drift\n\n### By Month\n\n| Month | TRIVIAL | MODERATE | HARD |\n|---|---:|---:|---:|\n| 2026-06 | 2 | 1 | 0 |\n\n### By Rater Model\n\n| Rater model | TRIVIAL | MODERATE | HARD |\n|---|---:|---:|---:|\n| gpt-test | 0 | 1 | 0 |\n| unknown | 4 | 0 | 0 |\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "REPORT_FILE=<SANDBOX>/wire/report.md\n"
+  }
+}

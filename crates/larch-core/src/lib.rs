@@ -11,6 +11,7 @@ mod complete_umbrella;
 mod config;
 mod context;
 mod difficulty;
+mod difficulty_calibration;
 mod env_file;
 mod error;
 mod external_defaults;
@@ -150,6 +151,7 @@ pub use difficulty::{
     tier_rank, tier_valid, trailing_plan_difficulty, trailing_plan_metadata_lines,
     validate_rating_object, write_record_map,
 };
+pub use difficulty_calibration::difficulty_calibration_report;
 pub use env_file::{
     CommentPolicy, CrStrip, DuplicateInputPolicy, DuplicatePolicy, EmptyKeyPolicy, EnvFile,
     KeyPolicy, KvDocument, KvError, KvErrorKind, KvRow, MalformedLinePolicy, ParseOptions,

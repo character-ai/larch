@@ -41,6 +41,7 @@ pub use lifecycle::{
     LifecycleContext, LifecycleError, LifecycleOutcome, UNIVERSAL_EXECUTION_ISSUES,
     UNIVERSAL_FINAL_REPORT, UNIVERSAL_SESSION_TRANSCRIPT,
 };
+pub use manifest::python_string;
 pub use manifest::{
     ManifestDocument, ManifestFormatVersion, ManifestReadError, ManifestReadErrorKind,
     ManifestRecord, ManifestUpdate, ManifestV2Seed, ManifestWriteError,
