@@ -3421,8 +3421,14 @@ mod tests {
             dependent: AuditDependencyNode::Existing { number: 11 },
             prerequisite: AuditDependencyNode::New { identity },
         };
-        assert!(is_native_owned_umbrella_blocker(&proposal, &umbrella_to_new));
-        assert!(is_native_owned_umbrella_blocker(&proposal, &umbrella_to_old));
+        assert!(is_native_owned_umbrella_blocker(
+            &proposal,
+            &umbrella_to_new
+        ));
+        assert!(is_native_owned_umbrella_blocker(
+            &proposal,
+            &umbrella_to_old
+        ));
         assert!(!is_native_owned_umbrella_blocker(&proposal, &leaf_to_leaf));
     }
 
