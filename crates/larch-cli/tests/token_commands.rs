@@ -646,6 +646,94 @@ fn report_replays_a_validated_source_snapshot() {
 }
 
 #[test]
+fn claude_source_replays_a_validated_source_snapshot() {
+    let fixture = Fixture::new();
+    let transcript = fixture.tmpdir.join("claude-session.jsonl");
+    fs::write(&transcript, "{\"type\":\"user\"}\n").expect("transcript");
+    let source = fixture.tmpdir.join("claude-source.env");
+    fs::write(
+        &source,
+        format!(
+            "TRANSCRIPT_PATH={}\nSESSION_DIR={}\nSESSION_UUID=fixture-session\n",
+            transcript.display(),
+            fixture.tmpdir.display()
+        ),
+    )
+    .expect("source snapshot");
+    let output = fixture.run(&["claude-source", source.to_str().expect("source utf8")]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        stdout(&output),
+        format!(
+            "TRANSCRIPT_PATH={}\nSESSION_DIR={}\nSESSION_UUID=fixture-session\n",
+            transcript.display(),
+            fixture.tmpdir.display()
+        )
+    );
+}
+
+#[test]
+fn claude_source_replays_a_snapshot_whose_session_dir_is_not_on_disk() {
+    // A bootstrap snapshot names SESSION_DIR = <project>/<uuid>, a directory that
+    // is never created. The replay must still honor the pinned transcript rather
+    // than fall back to the newest project scan (which would pick `zzz.jsonl`).
+    let directory = tempfile::tempdir().expect("temporary root");
+    let base = fs::canonicalize(directory.path()).expect("canonical root");
+    let repo = base.join("repo");
+    fs::create_dir_all(&repo).expect("repo dir");
+    run_git(&repo, &["init", "-b", "main"]);
+    let repo_canonical = fs::canonicalize(&repo).expect("canonical repo");
+    let dashed = repo_canonical.to_string_lossy().replace('/', "-");
+    let home = base.join("home");
+    let project = home.join(".claude").join("projects").join(dashed);
+    fs::create_dir_all(&project).expect("project dir");
+    let pinned = project.join("aaa.jsonl");
+    fs::write(&pinned, "{\"type\":\"user\"}\n").expect("pinned transcript");
+    fs::write(project.join("zzz.jsonl"), "{\"type\":\"user\"}\n").expect("competing transcript");
+    let source = base.join("source.env");
+    fs::write(
+        &source,
+        format!(
+            "TRANSCRIPT_PATH={}\nSESSION_DIR={}\nSESSION_UUID=aaa\n",
+            pinned.display(),
+            project.join("aaa").display()
+        ),
+    )
+    .expect("source snapshot");
+
+    let mut command = AssertCommand::cargo_bin("larch").expect("larch binary should build");
+    command
+        .current_dir(&repo)
+        .env("HOME", &home)
+        .env_remove("LARCH_CLAUDE_SOURCE_FILE")
+        .env_remove("LARCH_CLAUDE_SESSION_ID")
+        .env_remove("CLAUDE_CODE_SESSION_ID")
+        .args(["token", "claude-source", source.to_str().expect("source utf8")]);
+    let output = command.output().expect("token claude-source should launch");
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let rendered = stdout(&output);
+    assert!(
+        rendered.contains(&format!("TRANSCRIPT_PATH={}\n", pinned.display())),
+        "expected pinned transcript, got: {rendered}"
+    );
+    assert!(rendered.contains("SESSION_UUID=aaa\n"), "{rendered}");
+    assert!(!rendered.contains("zzz.jsonl"), "{rendered}");
+}
+
+#[test]
+fn claude_source_reports_unavailable_without_a_project() {
+    let fixture = Fixture::new();
+    let output = fixture.run(&["claude-source"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        stdout(&output),
+        "STATUS=unavailable\nREASON=not inside a git repository\n"
+    );
+    assert_eq!(stderr(&output), "");
+}
+
+#[test]
 fn report_scrape_normalizes_confined_token_and_timing_sidecars() {
     let fixture = Fixture::new();
     let sidecar = fixture.tmpdir.join("side=car.json");

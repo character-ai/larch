@@ -391,7 +391,7 @@ fn kv_value(text: &str, key: &str) -> String {
 }
 
 /// Resolve `(larch_version, main_model, effort)` for the summary identity rows.
-fn resolve_identity(implement_tmpdir: &Path, manifest: &Path) -> RunSummaryIdentity {
+fn resolve_identity(manifest: &Path) -> RunSummaryIdentity {
     let clean = |value: &str| -> String {
         let text = value.trim();
         if matches!(text, "" | "unknown" | "None") {
@@ -421,7 +421,7 @@ fn resolve_identity(implement_tmpdir: &Path, manifest: &Path) -> RunSummaryIdent
     .unwrap_or_else(|| "unknown".to_owned());
     let mut model = clean(roster_model);
     if model.is_empty() && !manifest_authoritative {
-        model = live_main_model(implement_tmpdir);
+        model = live_main_model();
     }
     let effort = [
         clean(
@@ -449,17 +449,13 @@ fn resolve_identity(implement_tmpdir: &Path, manifest: &Path) -> RunSummaryIdent
 /// Recover the main-agent model from the live session transcript.
 ///
 /// Only reached when the run manifest is missing, which is the same degraded
-/// path the Python owner covered with `tokens.read_main_model`.
-fn live_main_model(implement_tmpdir: &Path) -> String {
-    let Ok((0, stdout)) = delegate(implement_tmpdir, ["token".into(), "claude-source".into()])
-    else {
+/// path the Python owner covered with `tokens.read_main_model`. Resolves the
+/// transcript in-process through the Rust `token claude-source` owner (#8557).
+fn live_main_model() -> String {
+    let Ok(source) = crate::token_commands::resolve_claude_source(None) else {
         return String::new();
     };
-    let transcript = kv_value(&stdout, "TRANSCRIPT_PATH");
-    if transcript.is_empty() {
-        return String::new();
-    }
-    let Ok(text) = fs::read_to_string(&transcript) else {
+    let Ok(text) = fs::read_to_string(&source.transcript) else {
         return String::new();
     };
     let model = claude_model_from_transcript(&text);
@@ -978,7 +974,7 @@ fn write_final_report(options: &WriteOptions) -> ReportOutcome {
             .unwrap_or_else(|| "false".to_owned()),
         needs_user_reason,
         needs_user_next_action,
-        identity: resolve_identity(tmpdir, &run_dir.join("manifest.json")),
+        identity: resolve_identity(&run_dir.join("manifest.json")),
         cost,
     });
     let issue_detail = report::build_issue_detail_section(&load_result, |kind, details| {

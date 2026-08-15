@@ -312,7 +312,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("clarify", "comment-post"): ("larch.design.clarify", "clarify_comment_post_main", False),
     ("clarify", "label"): ("larch.design.clarify", "clarify_label_main", False),
     ("token", "check-budget"): ("larch.report.tokens", "token_check_budget_main", False),
-    ("token", "claude-source"): ("larch.report.tokens", "token_claude_source_main", False),
     ("token", "compute-pr-line-counts"): ("larch.report.tokens", "compute_pr_line_counts_main", False),
     ("token", "compute-pr-lines"): ("larch.report.tokens", "compute_pr_lines_main", False),
     ("redact", "secrets"): ("larch.core.redact", "main_secrets", False),
