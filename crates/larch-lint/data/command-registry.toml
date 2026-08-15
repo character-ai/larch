@@ -5634,11 +5634,13 @@ verb = "finalize"
 python_module = "larch.issue.rejected_analysis"
 python_function = "finalize_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8504
+clean_install_test = "clean-install-rejected-analysis-finalize"
 
 [[commands]]
 domain = "rejected-analysis"
@@ -5674,11 +5676,13 @@ verb = "record"
 python_module = "larch.issue.rejected_analysis"
 python_function = "record_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8504
+clean_install_test = "clean-install-rejected-analysis-record"
 
 [[commands]]
 domain = "release"
@@ -9990,8 +9994,8 @@ rust = ["agent launch-review", "run-log sync", "verify skill-called"]
 [[callers]]
 path = "skills/rejected-analysis/scripts/rejected-analysis.sh"
 kind = "skill"
-python = ["rejected-analysis finalize", "rejected-analysis record"]
-rust = ["rejected-analysis ingest-verdict", "rejected-analysis prepare"]
+python = []
+rust = ["rejected-analysis finalize", "rejected-analysis ingest-verdict", "rejected-analysis prepare", "rejected-analysis record"]
 
 [[callers]]
 path = "skills/report-tokens/SKILL.md"

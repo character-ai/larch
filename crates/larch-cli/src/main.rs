@@ -763,6 +763,12 @@ enum RejectedAnalysisCommand {
     /// Validate one launcher artifact and append its durable verdict status.
     #[command(name = "ingest-verdict", disable_help_flag = true)]
     IngestVerdict(RawCompatibilityArguments),
+    /// Render bounded issue batches and pending analyzer-state rows.
+    #[command(disable_help_flag = true)]
+    Finalize(RawCompatibilityArguments),
+    /// Commit verified issue dispositions into durable analyzer state.
+    #[command(disable_help_flag = true)]
+    Record(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2125,6 +2131,12 @@ fn run(
             }
             RejectedAnalysisCommand::IngestVerdict(arguments) => {
                 rejected_analysis_commands::ingest_verdict(&arguments.arguments)
+            }
+            RejectedAnalysisCommand::Finalize(arguments) => {
+                rejected_analysis_commands::finalize(&arguments.arguments)
+            }
+            RejectedAnalysisCommand::Record(arguments) => {
+                rejected_analysis_commands::record(&arguments.arguments)
             }
         }),
         Domain::LearnFromBugs(command) => Ok(match command {

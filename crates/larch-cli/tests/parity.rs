@@ -519,6 +519,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "runtime",
     ),
     CleanInstallCase::new(
+        "clean-install-rejected-analysis-finalize",
+        "rejected-analysis",
+        "finalize",
+    ),
+    CleanInstallCase::new(
         "clean-install-rejected-analysis-ingest-verdict",
         "rejected-analysis",
         "ingest-verdict",
@@ -527,6 +532,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-rejected-analysis-prepare",
         "rejected-analysis",
         "prepare",
+    ),
+    CleanInstallCase::new(
+        "clean-install-rejected-analysis-record",
+        "rejected-analysis",
+        "record",
     ),
     CleanInstallCase::new(
         "clean-install-learn-from-bugs-check-proposals",
@@ -7986,8 +7996,8 @@ impl RejectedAnalysisDiagnosticFixture {
     }
 }
 
-const REJECTED_ANALYSIS_DIAGNOSTIC_CASES: &[RejectedAnalysisDiagnosticFixture] =
-    &[RejectedAnalysisDiagnosticFixture {
+const REJECTED_ANALYSIS_DIAGNOSTIC_CASES: &[RejectedAnalysisDiagnosticFixture] = &[
+    RejectedAnalysisDiagnosticFixture {
         name: "rejected-analysis-ingest-invalid-launcher-exit",
         command: "ingest-verdict",
         arguments: &[
@@ -8000,7 +8010,122 @@ const REJECTED_ANALYSIS_DIAGNOSTIC_CASES: &[RejectedAnalysisDiagnosticFixture] =
             "--launcher-exit",
             "nope",
         ],
-    }];
+    },
+    RejectedAnalysisDiagnosticFixture {
+        name: "rejected-analysis-finalize-missing-work-dir",
+        command: "finalize",
+        arguments: &[],
+    },
+    RejectedAnalysisDiagnosticFixture {
+        name: "rejected-analysis-record-invalid-issue-verified",
+        command: "record",
+        arguments: &["--work-dir", "x", "--issue-verified", "yes"],
+    },
+];
+
+const REJECTED_ANALYSIS_CONFIRMED_VERDICT: &str = concat!(
+    "{\"candidate_id\": \"C1\", \"finding_hash\": \"finding-hash\", ",
+    "\"status\": \"confirmed\", \"current_location\": \"python/foo.py:13\", ",
+    "\"evidence\": \"Current code still omits the check.\", \"dirty_tree\": false}\n",
+);
+const REJECTED_ANALYSIS_INGESTED_STATUS: &str = concat!(
+    "{\"schema_version\": 1, \"candidate_id\": \"C1\", ",
+    "\"finding_hash\": \"finding-hash\", \"status\": \"ingested\", ",
+    "\"disposition\": \"confirmed\", \"launcher_exit\": 0, ",
+    "\"output_path\": \"work/verdict-C1.txt\"}\n",
+);
+const REJECTED_ANALYSIS_LEDGER_HEADER: &str = concat!(
+    "schema_version\tfinding_hash\tconcern_hash\tsource_skill\trun_id\tround_num\t",
+    "finding_id\treviewer_slots\tdissenting_slots\tfile_path\tline_hint\tyes_votes\t",
+    "no_votes\thigh_severity\tvote_split\tverdict\tdisposition\tissue_number\t",
+    "issue_url\ttriaged_at\talias_of\n",
+);
+const REJECTED_ANALYSIS_CLUSTER_MAP: &str = concat!(
+    "{\n  \"clusters\": [\n    {\n      \"batch_index\": 1,\n",
+    "      \"finding_hashes\": [\n        \"finding-hash\"\n      ]\n",
+    "    }\n  ],\n  \"schema_version\": 1\n}\n",
+);
+
+struct RejectedAnalysisFinalizeRecordFixture {
+    name: &'static str,
+    command: &'static str,
+    arguments: &'static [&'static str],
+    seeds: &'static [(&'static str, &'static str)],
+}
+
+impl RejectedAnalysisFinalizeRecordFixture {
+    fn build(&self, python: &Path, fixture: &Path, rust: &Path) -> ParityCase {
+        ParityCase {
+            name: self.name,
+            python: Program::new(python).args(
+                std::iter::once(path_text(fixture).to_owned())
+                    .chain(std::iter::once(self.command.to_owned()))
+                    .chain(self.arguments.iter().map(|argument| (*argument).to_owned())),
+            ),
+            rust: Program::new(rust).args(
+                ["rejected-analysis", self.command]
+                    .into_iter()
+                    .map(str::to_owned)
+                    .chain(self.arguments.iter().map(|argument| (*argument).to_owned())),
+            ),
+            seed_files: self
+                .seeds
+                .iter()
+                .map(|(path, contents)| SeedFile::text(path, contents))
+                .collect(),
+            side_effect_records: Vec::new(),
+            normalization: vec![
+                NormalizationRule::SandboxRoot,
+                NormalizationRule::Rfc3339Utc,
+            ],
+        }
+    }
+}
+
+const REJECTED_ANALYSIS_FINALIZE_RECORD_CASES: &[RejectedAnalysisFinalizeRecordFixture] = &[
+    RejectedAnalysisFinalizeRecordFixture {
+        name: "rejected-analysis-finalize-confirmed",
+        command: "finalize",
+        arguments: &["--work-dir", "{sandbox}/work"],
+        seeds: &[
+            ("work/candidates.json", REJECTED_ANALYSIS_CANDIDATES),
+            ("work/verdicts.jsonl", REJECTED_ANALYSIS_CONFIRMED_VERDICT),
+            (
+                "work/ingest-status.jsonl",
+                REJECTED_ANALYSIS_INGESTED_STATUS,
+            ),
+            ("work/ledger-pending.tsv", REJECTED_ANALYSIS_LEDGER_HEADER),
+        ],
+    },
+    RejectedAnalysisFinalizeRecordFixture {
+        name: "rejected-analysis-record-filed",
+        command: "record",
+        arguments: &[
+            "--work-dir",
+            "{sandbox}/work",
+            "--issue-output",
+            "{sandbox}/work/issue.stdout.txt",
+            "--issue-verified",
+            "true",
+            "--repo-root",
+            "{sandbox}/state",
+        ],
+        seeds: &[
+            ("work/candidates.json", REJECTED_ANALYSIS_CANDIDATES),
+            ("work/verdicts.jsonl", REJECTED_ANALYSIS_CONFIRMED_VERDICT),
+            (
+                "work/ingest-status.jsonl",
+                REJECTED_ANALYSIS_INGESTED_STATUS,
+            ),
+            ("work/ledger-pending.tsv", REJECTED_ANALYSIS_LEDGER_HEADER),
+            ("work/issue-cluster-map.json", REJECTED_ANALYSIS_CLUSTER_MAP),
+            (
+                "work/issue.stdout.txt",
+                "ISSUES_CREATED=1\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=0\nISSUE_1_NUMBER=123\nISSUE_1_URL=https://example.invalid/123\n",
+            ),
+        ],
+    },
+];
 
 #[test]
 fn rejected_analysis_preparation_has_reviewed_black_box_parity() {
@@ -8026,6 +8151,21 @@ fn rejected_analysis_diagnostics_have_reviewed_black_box_parity() {
     let golden_directory = fixture_directory.join("goldens");
 
     for fixture in REJECTED_ANALYSIS_DIAGNOSTIC_CASES {
+        let case = fixture.build(&python, &python_fixture, &rust);
+        let golden = golden_directory.join(format!("{}.golden.json", fixture.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
+#[test]
+fn rejected_analysis_finalization_and_recording_have_reviewed_black_box_parity() {
+    let fixture_directory = fixture_directory();
+    let python = find_executable("python3");
+    let python_fixture = fixture_directory.join("rejected_analysis_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let golden_directory = fixture_directory.join("goldens");
+
+    for fixture in REJECTED_ANALYSIS_FINALIZE_RECORD_CASES {
         let case = fixture.build(&python, &python_fixture, &rust);
         let golden = golden_directory.join(format!("{}.golden.json", fixture.name));
         assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));

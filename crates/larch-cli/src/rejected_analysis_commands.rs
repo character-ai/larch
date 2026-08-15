@@ -9,19 +9,28 @@
     reason = "The two compatibility command boundaries keep their historical argument diagnostics together."
 )]
 
-use std::{env, ffi::OsString, fs, path::PathBuf, process::ExitCode};
+use std::{
+    env,
+    ffi::OsString,
+    fs,
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
 use chrono::{DateTime, Utc};
 use larch_adapters::GixRepository;
 use larch_core::{
     GitHubIssueState, GitPath, Head, RepositoryRead, emit_kv,
-    rejected_analysis::{self, INGEST_STATUS_FILE, OpenIssue, PrepareResult},
+    rejected_analysis::{
+        self, INGEST_STATUS_FILE, LEDGER_RELATIVE, OpenIssue, PrepareResult,
+        VERDICT_SIDECAR_RELATIVE,
+    },
 };
 use uuid::Uuid;
 
 use crate::{
     analysis_state,
-    argparse_compat::{ParsedCommandLine, missing, parse_with_flags, usage_error},
+    argparse_compat::{ParsedCommandLine, absolute_path, missing, parse_with_flags, usage_error},
     github_repository_resolution::{ambient_repo, repository_ref},
     github_service::{list_exhaustive_issues_for_state, with_github_service},
     run_log_commands,
@@ -34,6 +43,10 @@ const PREPARE_USAGE: &str = "usage: rejected-analysis prepare [-h] --days DAYS [
 const PREPARE_HELP: &str = "usage: rejected-analysis prepare [-h] --days DAYS [--log-root LOG_ROOT]\n                                 [--work-dir WORK_DIR]\n                                 [--verify-cap VERIFY_CAP]\n\noptions:\n  -h, --help            show this help message and exit\n  --days DAYS, --n DAYS\n  --log-root LOG_ROOT   offline fixture corpus override; default synchronizes\n                        the current repository cache\n  --work-dir WORK_DIR\n  --verify-cap VERIFY_CAP\n";
 const INGEST_USAGE: &str = "usage: rejected-analysis ingest-verdict [-h] --work-dir WORK_DIR\n                                        --candidate-id CANDIDATE_ID --output\n                                        OUTPUT --launcher-exit LAUNCHER_EXIT\n                                        [--dirty-sidecar DIRTY_SIDECAR]";
 const INGEST_HELP: &str = "usage: rejected-analysis ingest-verdict [-h] --work-dir WORK_DIR\n                                        --candidate-id CANDIDATE_ID --output\n                                        OUTPUT --launcher-exit LAUNCHER_EXIT\n                                        [--dirty-sidecar DIRTY_SIDECAR]\n\noptions:\n  -h, --help            show this help message and exit\n  --work-dir WORK_DIR\n  --candidate-id CANDIDATE_ID\n  --output OUTPUT\n  --launcher-exit LAUNCHER_EXIT\n  --dirty-sidecar DIRTY_SIDECAR\n";
+const FINALIZE_USAGE: &str = "usage: rejected-analysis finalize [-h] --work-dir WORK_DIR";
+const FINALIZE_HELP: &str = "usage: rejected-analysis finalize [-h] --work-dir WORK_DIR\n\noptions:\n  -h, --help           show this help message and exit\n  --work-dir WORK_DIR\n";
+const RECORD_USAGE: &str = "usage: rejected-analysis record [-h] --work-dir WORK_DIR\n                                [--issue-output ISSUE_OUTPUT]\n                                [--issue-verified {true,false}]\n                                [--issues-failed ISSUES_FAILED]\n                                [--launch-failures LAUNCH_FAILURES]\n                                [--repo-root REPO_ROOT]";
+const RECORD_HELP: &str = "usage: rejected-analysis record [-h] --work-dir WORK_DIR\n                                [--issue-output ISSUE_OUTPUT]\n                                [--issue-verified {true,false}]\n                                [--issues-failed ISSUES_FAILED]\n                                [--launch-failures LAUNCH_FAILURES]\n                                [--repo-root REPO_ROOT]\n\noptions:\n  -h, --help            show this help message and exit\n  --work-dir WORK_DIR\n  --issue-output ISSUE_OUTPUT\n  --issue-verified {true,false}\n  --issues-failed ISSUES_FAILED\n  --launch-failures LAUNCH_FAILURES\n  --repo-root REPO_ROOT\n";
 
 #[derive(Clone, Debug)]
 struct PrepareRequest {
@@ -41,6 +54,16 @@ struct PrepareRequest {
     log_root: Option<PathBuf>,
     work_dir: Option<PathBuf>,
     verify_cap: i128,
+}
+
+#[derive(Clone, Debug)]
+struct RecordRequest {
+    work_dir: PathBuf,
+    issue_output: Option<PathBuf>,
+    issue_verified: Option<bool>,
+    issues_failed: i64,
+    launch_failures: i64,
+    repo_root: Option<PathBuf>,
 }
 
 /// Execute `rejected-analysis prepare`.
@@ -131,6 +154,243 @@ pub fn ingest_verdict(arguments: &[OsString]) -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+/// Execute `rejected-analysis finalize`.
+#[must_use]
+pub fn finalize(arguments: &[OsString]) -> ExitCode {
+    if help_requested(arguments) {
+        print!("{FINALIZE_HELP}");
+        return ExitCode::SUCCESS;
+    }
+    let work_dir = match parse_finalize(arguments) {
+        Ok(work_dir) => work_dir,
+        Err(code) => return code,
+    };
+    match rejected_analysis::finalize_artifacts(&work_dir, Utc::now()) {
+        Ok(result) => {
+            emit_kv("CONFIRMED_COUNT", &result.confirmed_count.to_string());
+            emit_kv(
+                "ISSUE_BATCH_FILE",
+                &result.issue_batch_file.display().to_string(),
+            );
+            emit_kv(
+                "ISSUE_CLUSTER_MAP_FILE",
+                &result.issue_cluster_map_file.display().to_string(),
+            );
+            emit_kv(
+                "ISSUE_SENTINEL",
+                &result.issue_sentinel.display().to_string(),
+            );
+            emit_kv(
+                "LEDGER_PENDING_FILE",
+                &result.ledger_pending_file.display().to_string(),
+            );
+            emit_kv(
+                "INGEST_STATUS_FILE",
+                &result.ingest_status_file.display().to_string(),
+            );
+            emit_kv(
+                "ISSUE_OUTPUT_STUB",
+                &result.issue_output_stub.display().to_string(),
+            );
+            emit_kv("LAUNCH_FAILURES", &result.launch_failures.to_string());
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("rejected-analysis finalize: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+/// Execute `rejected-analysis record`.
+#[must_use]
+pub fn record(arguments: &[OsString]) -> ExitCode {
+    if help_requested(arguments) {
+        print!("{RECORD_HELP}");
+        return ExitCode::SUCCESS;
+    }
+    let request = match parse_record(arguments) {
+        Ok(request) => request,
+        Err(code) => return code,
+    };
+    match record_live(&request) {
+        Ok(result) => {
+            emit_kv("LEDGER_APPENDED", &result.ledger_appended.to_string());
+            emit_kv("ISSUES_CREATED", &result.issues_created.to_string());
+            emit_kv(
+                "ISSUES_DEDUPLICATED",
+                &result.issues_deduplicated.to_string(),
+            );
+            emit_kv("DISMISSED_COUNT", &result.dismissed_count.to_string());
+            emit_kv(
+                "UNMAPPED_CONFIRMED",
+                if result.unmapped_confirmed {
+                    "true"
+                } else {
+                    "false"
+                },
+            );
+            emit_kv("RECORD_EXIT_RC", &result.exit_code.to_string());
+            ExitCode::from(u8::try_from(result.exit_code).unwrap_or(2))
+        }
+        Err(error) => {
+            eprintln!("rejected-analysis record: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn parse_finalize(arguments: &[OsString]) -> Result<PathBuf, ExitCode> {
+    let parsed = parse_with_flags(arguments, &["--work-dir"], &[], 0);
+    if let Some(error) = parsed.value_error() {
+        return Err(usage_error(
+            FINALIZE_USAGE,
+            "rejected-analysis finalize",
+            error,
+            2,
+        ));
+    }
+    if let Some(error) = parsed.error() {
+        return Err(usage_error(
+            FINALIZE_USAGE,
+            "rejected-analysis finalize",
+            &error,
+            2,
+        ));
+    }
+    option_path(&parsed, "--work-dir").ok_or_else(|| {
+        usage_error(
+            FINALIZE_USAGE,
+            "rejected-analysis finalize",
+            &missing(&[("--work-dir", false)]),
+            2,
+        )
+    })
+}
+
+fn parse_record(arguments: &[OsString]) -> Result<RecordRequest, ExitCode> {
+    let parsed = parse_with_flags(
+        arguments,
+        &[
+            "--work-dir",
+            "--issue-output",
+            "--issue-verified",
+            "--issues-failed",
+            "--launch-failures",
+            "--repo-root",
+        ],
+        &[],
+        0,
+    );
+    if let Some(error) = parsed.value_error() {
+        return Err(usage_error(
+            RECORD_USAGE,
+            "rejected-analysis record",
+            error,
+            2,
+        ));
+    }
+    if let Some(error) = parsed.error() {
+        return Err(usage_error(
+            RECORD_USAGE,
+            "rejected-analysis record",
+            &error,
+            2,
+        ));
+    }
+    let work_dir = option_path(&parsed, "--work-dir").ok_or_else(|| {
+        usage_error(
+            RECORD_USAGE,
+            "rejected-analysis record",
+            &missing(&[("--work-dir", false)]),
+            2,
+        )
+    })?;
+    let issue_verified = match option_text(&parsed, "--issue-verified").as_deref() {
+        None | Some("") => None,
+        Some("true") => Some(true),
+        Some("false") => Some(false),
+        Some(value) => {
+            return Err(usage_error(
+                RECORD_USAGE,
+                "rejected-analysis record",
+                &format!(
+                    "argument --issue-verified: invalid choice: '{value}' (choose from 'true', 'false')"
+                ),
+                2,
+            ));
+        }
+    };
+    let issues_failed = parse_i64_option(&parsed, "--issues-failed", 0)?;
+    let launch_failures = parse_i64_option(&parsed, "--launch-failures", 0)?;
+    Ok(RecordRequest {
+        work_dir,
+        issue_output: option_path(&parsed, "--issue-output")
+            .filter(|path| !path.as_os_str().is_empty()),
+        issue_verified,
+        issues_failed,
+        launch_failures,
+        repo_root: option_path(&parsed, "--repo-root").filter(|path| !path.as_os_str().is_empty()),
+    })
+}
+
+fn parse_i64_option(
+    parsed: &ParsedCommandLine,
+    option: &str,
+    default: i64,
+) -> Result<i64, ExitCode> {
+    let Some(value) = option_text(parsed, option) else {
+        return Ok(default);
+    };
+    value.parse::<i64>().map_err(|_| {
+        usage_error(
+            RECORD_USAGE,
+            "rejected-analysis record",
+            &format!("argument {option}: invalid int value: '{value}'"),
+            2,
+        )
+    })
+}
+
+fn record_live(request: &RecordRequest) -> Result<rejected_analysis::RecordResult, String> {
+    let repo_root = request
+        .repo_root
+        .as_deref()
+        .map(absolute_path)
+        .transpose()
+        .map_err(|error| error.to_string())?
+        .or_else(|| read_work_root(&request.work_dir, "repo-root.txt"))
+        .unwrap_or_else(|| absolute_path(Path::new(".")).unwrap_or_else(|_| PathBuf::from(".")));
+    let state_root =
+        read_work_root(&request.work_dir, "state-root.txt").unwrap_or_else(|| repo_root.clone());
+    let ledger_path = state_root.join(LEDGER_RELATIVE);
+    let sidecar_path = state_root.join(VERDICT_SIDECAR_RELATIVE);
+    let plan = rejected_analysis::record_plan(
+        &request.work_dir,
+        request.issue_output.as_deref(),
+        request.issue_verified,
+        request.issues_failed,
+        request.launch_failures,
+        Utc::now(),
+    )?;
+    analysis_state::with_state_lock(&ledger_path, || {
+        rejected_analysis::commit_record_ledger(&plan, &ledger_path)
+    })?;
+    analysis_state::with_state_lock(&sidecar_path, || {
+        rejected_analysis::commit_record_sidecar(&plan, &sidecar_path, Utc::now())
+    })?;
+    Ok(plan.result().clone())
+}
+
+fn read_work_root(work_dir: &Path, marker: &str) -> Option<PathBuf> {
+    let text = fs::read_to_string(work_dir.join(marker)).ok()?;
+    let value = text.trim();
+    if value.is_empty() {
+        return None;
+    }
+    absolute_path(Path::new(value)).ok()
 }
 
 fn parse_prepare(arguments: &[OsString]) -> Result<PrepareRequest, ExitCode> {

@@ -71,8 +71,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         "main",
         True,
     ),
-    ("rejected-analysis", "finalize"): ("larch.issue.rejected_analysis", "finalize_main", False),
-    ("rejected-analysis", "record"): ("larch.issue.rejected_analysis", "record_main", False),
     ("implement", "step2-dispatch"): ("larch.implement.implement_dispatch", "step2_dispatch_main", False),
     ("implement", "run-dispatch"): ("larch.implement.implement_dispatch", "run_dispatch_main", False),
     ("implement", "recovery-paths"): ("larch.implement.implement_dispatch", "recovery_paths_main", False),
