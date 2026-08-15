@@ -9107,7 +9107,7 @@ rust = ["push rebase"]
 path = "python/larch/implement/dispatch_commit_route.py"
 kind = "python-runtime"
 python = ["implement commit"]
-rust = ["bgjob adapt", "dirty-tree scope-check", "review-and-fix check-changes", "review-and-fix commit-fixes", "review-and-fix step5"]
+rust = ["bgjob adapt", "dirty-tree scope-check"]
 
 [[callers]]
 path = "python/larch/implement/dispatch_helpers.py"

@@ -755,8 +755,11 @@ test-dispatch-plan-voters:
 	cargo build --locked --package larch-cli
 	$(HARNESS_MARK) --label $@ -- env LARCH_BINARY=target/debug/larch bash scripts/test-plan-review-dispatch.sh
 
-test-prompt-template-invariants:
+build-larch-cli:
 	cargo build --locked --package larch-cli
+
+.PHONY: build-larch-cli
+test-prompt-template-invariants: build-larch-cli
 	$(HARNESS_MARK) --label $@ -- env LARCH_BINARY="$(CURDIR)/target/debug/larch" bash scripts/test-prompt-template-invariants.sh
 
 

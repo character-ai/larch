@@ -43,8 +43,8 @@ use std::{
 use clap::Subcommand;
 use larch_adapters::{GitPath as GitCliPath, GixRepository, ensure_directory_chain};
 use larch_core::{
-    ChildEnvironment, Head, RepositoryRead, SafeText, StatusOptions, emit_kv, redact_secrets_only,
-    redact_sensitive_paths, resolve_panel_tier,
+    ChildEnvironment, DuplicatePolicy, Head, KvDocument, ParseOptions, RepositoryRead, SafeText,
+    StatusOptions, emit_kv, redact_secrets_only, redact_sensitive_paths, resolve_panel_tier,
     review::{
         BoundaryMode, ItemKind, RejectedFindingsRound, RepairBatchReport, RepairClassifier,
         RepairCoderResult, RepairComposition, RepairConvergenceEvidence, RepairCounts,
@@ -82,6 +82,7 @@ const NORMALIZE_USAGE: &str = "usage: cli.py review-and-fix normalize-status [-h
 const REJECTED_USAGE: &str = "usage: cli.py review-and-fix write-rejected [-h] --implement-tmpdir IMPLEMENT_TMPDIR [--run-id RUN_ID] [--log-root LOG_ROOT]";
 const SELF_TALLY_USAGE: &str = "usage: cli.py review-and-fix write-self-review-tally [-h] --implement-tmpdir IMPLEMENT_TMPDIR --run-id RUN_ID";
 const SELF_SNAPSHOT_USAGE: &str = "usage: cli.py review-and-fix write-pre-self-review-snapshot [-h] --implement-tmpdir IMPLEMENT_TMPDIR";
+const LARCH_GIT_DOMAIN: &str = "git";
 
 /// Rust-owned review-and-fix verbs.  The loop identity verbs intentionally
 /// remain in the Python CLI until their separately-scoped migration lands.
@@ -259,15 +260,15 @@ fn parse_options(
     let mut options = Options::default();
     let mut index = 0;
     while index < arguments.len() {
-        let raw = arguments[index].to_string_lossy().into_owned();
-        if raw == "-h" || raw == "--help" {
+        let option = arguments[index].to_string_lossy().into_owned();
+        if option == "-h" || option == "--help" {
             options.flags.insert("--help".to_owned());
             index += 1;
             continue;
         }
-        let (name, inline_value) = raw
+        let (name, inline_value) = option
             .split_once('=')
-            .map_or((raw.as_str(), None), |(key, value)| (key, Some(value)));
+            .map_or((option.as_str(), None), |(key, value)| (key, Some(value)));
         let name = aliases
             .iter()
             .find_map(|(alias, canonical)| (*alias == name).then_some(*canonical))
@@ -294,12 +295,12 @@ fn parse_options(
             index += 1;
             continue;
         }
-        if allow_positionals && !raw.starts_with('-') {
-            options.positionals.push(raw);
+        if allow_positionals && !option.starts_with('-') {
+            options.positionals.push(option);
             index += 1;
             continue;
         }
-        return Err(format!("unrecognized arguments: {raw}"));
+        return Err(format!("unrecognized arguments: {option}"));
     }
     Ok(options)
 }
@@ -345,14 +346,10 @@ fn remove_regular_file(path: &Path) {
 }
 
 fn parse_kvs(text: &str) -> BTreeMap<String, String> {
-    let mut values = BTreeMap::new();
-    for line in text.lines() {
-        if let Some((key, value)) = line.split_once('=')
-            && !key.is_empty()
-        {
-            values.insert(key.to_owned(), value.to_owned());
-        }
-    }
+    let document = KvDocument::parse(text, ParseOptions::legacy())
+        .expect("legacy review-and-fix envelope parser accepts every text input");
+    let mut values = document.select(DuplicatePolicy::Last);
+    values.remove("");
     values
 }
 
@@ -598,6 +595,60 @@ fn emit_child_stderr(output: &larch_core::ProcessOutput) {
 
 fn command(arguments: impl IntoIterator<Item = impl Into<OsString>>) -> Vec<OsString> {
     arguments.into_iter().map(Into::into).collect()
+}
+
+/// Closed Git operations dispatched through the verified larch runtime.
+///
+/// These preserve the existing `larch git` command behavior (including its
+/// mutation policy and diagnostics) without passing arbitrary Git argv through
+/// this review-and-fix boundary.
+enum VerifiedLarchGitRequest<'a> {
+    SnapshotUntracked {
+        output: &'a Path,
+    },
+    CommitPathspec {
+        pathspec_from_file: &'a Path,
+        message: &'a str,
+    },
+    CommitPaths {
+        message: &'a str,
+        paths: &'a [String],
+    },
+}
+
+fn larch_git_command(request: VerifiedLarchGitRequest<'_>) -> Vec<OsString> {
+    let mut invocation = vec![OsString::from(LARCH_GIT_DOMAIN)];
+    match request {
+        VerifiedLarchGitRequest::SnapshotUntracked { output } => {
+            invocation.extend([
+                OsString::from("snapshot-untracked"),
+                OsString::from("--output"),
+                output.as_os_str().to_owned(),
+            ]);
+        }
+        VerifiedLarchGitRequest::CommitPathspec {
+            pathspec_from_file,
+            message,
+        } => {
+            invocation.extend([
+                OsString::from("commit"),
+                OsString::from("--only"),
+                OsString::from("--pathspec-from-file"),
+                pathspec_from_file.as_os_str().to_owned(),
+                OsString::from("-m"),
+                OsString::from(message),
+            ]);
+        }
+        VerifiedLarchGitRequest::CommitPaths { message, paths } => {
+            invocation.extend([
+                OsString::from("commit"),
+                OsString::from("-m"),
+                OsString::from(message),
+            ]);
+            invocation.extend(paths.iter().cloned().map(OsString::from));
+        }
+    }
+    invocation
 }
 
 fn session_value(session: &Path, key: &str) -> String {
@@ -1596,17 +1647,11 @@ fn run_round(options: &Step5Options, round_num: u64, suppress_emit: bool) -> Rou
         return fallback();
     }
     if round_num == 1 {
+        let untracked_baseline = options.implement_tmpdir.join("pre-review-untracked.txt");
         if let Ok(output) = larch_output_for_tmpdir(
-            command([
-                "git",
-                "snapshot-untracked",
-                "--output",
-                &options
-                    .implement_tmpdir
-                    .join("pre-review-untracked.txt")
-                    .display()
-                    .to_string(),
-            ]),
+            larch_git_command(VerifiedLarchGitRequest::SnapshotUntracked {
+                output: &untracked_baseline,
+            }),
             &options.implement_tmpdir,
         ) {
             emit_child_stderr(&output);
@@ -2394,7 +2439,7 @@ fn discover_submodules(root: &Path) -> Vec<String> {
         let line = line.trim();
         if let Some(value) = line
             .strip_prefix("path")
-            .and_then(|value| value.split_once('=').map(|(_, value)| value.trim()))
+            .and_then(|value| value.find('=').map(|index| value[index + 1..].trim()))
             && !value.is_empty()
         {
             paths.insert(value.trim_matches('/').to_owned());
@@ -2630,15 +2675,10 @@ fn apply_coder(
         let mut commit_sha = String::new();
         if let Some(round) = round_num {
             let output = larch_output_for_coder(
-                command([
-                    "git",
-                    "commit",
-                    "--only",
-                    "--pathspec-from-file",
-                    &stage_file.display().to_string(),
-                    "-m",
-                    &format!("Address code review feedback (round {round})"),
-                ]),
+                larch_git_command(VerifiedLarchGitRequest::CommitPathspec {
+                    pathspec_from_file: &stage_file,
+                    message: &format!("Address code review feedback (round {round})"),
+                }),
                 session_env,
                 implement_tmpdir,
                 round_dir,
@@ -3609,10 +3649,11 @@ fn commit_fixes(arguments: &[OsString]) -> ExitCode {
     if options.flag("--stage-all") {
         return commit_stage_all(message, session_env.as_deref());
     }
-    let mut args = command(["git", "commit", "-m", message]);
-    args.extend(options.positionals.iter().cloned().map(OsString::from));
     let output = larch_output_with_session(
-        args,
+        larch_git_command(VerifiedLarchGitRequest::CommitPaths {
+            message,
+            paths: &options.positionals,
+        }),
         session_env.as_deref(),
         implement_tmpdir.as_deref(),
         None,
@@ -3672,16 +3713,11 @@ fn commit_stage_all(message: &str, session_env: Option<&Path>) -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let output = larch_output_with_session(
-        command([
-            "git",
+        larch_git_command(VerifiedLarchGitRequest::CommitPathspec {
             // The review-fix commit remains path-limited: "git", "commit", "--only", "--pathspec-from-file".
-            "commit",
-            "--only",
-            "--pathspec-from-file",
-            &stage.display().to_string(),
-            "-m",
+            pathspec_from_file: &stage,
             message,
-        ]),
+        }),
         session_env,
         Some(&tmpdir),
         None,
