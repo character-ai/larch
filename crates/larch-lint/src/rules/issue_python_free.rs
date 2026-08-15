@@ -7,14 +7,16 @@
 
 use std::{collections::BTreeSet, path::Path};
 
-use toml::{Value, map::Map};
+use toml::Value;
 
 use crate::{
     Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput,
     command_registry::issue_in_process_python_findings,
 };
 
-use super::python_boundary::{check_python_registry, check_retired_entrypoints};
+use super::python_boundary::{
+    RegistryCommand, check_python_registry, check_retired_entrypoints,
+};
 
 const NAME: &str = "issue-python-free";
 const DESCRIPTION: &str =
@@ -115,56 +117,6 @@ struct RetainedModule {
     path: &'static str,
     planning_issue: i64,
     reason: &'static str,
-}
-
-type RegistryTable = Map<String, Value>;
-
-/// A command-registry row with its selector parsed once for the issue-domain
-/// audit. Keeping this representation local makes the audit's three-way
-/// ownership decision explicit: completed leaf, named hand-off, or stale
-/// umbrella ownership.
-struct RegistryCommand<'a> {
-    table: &'a RegistryTable,
-    domain: &'a str,
-    verb: &'a str,
-    selector: String,
-}
-
-impl<'a> RegistryCommand<'a> {
-    fn parse(value: &'a Value) -> Option<Self> {
-        let table = value.as_table()?;
-        let domain = registry_text(table, "domain");
-        let verb = registry_text(table, "verb");
-        Some(Self {
-            table,
-            domain,
-            verb,
-            selector: [domain, verb].join(" "),
-        })
-    }
-
-    fn text(&self, key: &str) -> Option<&str> {
-        self.table.get(key).and_then(Value::as_str)
-    }
-
-    fn integer(&self, key: &str) -> Option<i64> {
-        self.table.get(key).and_then(Value::as_integer)
-    }
-
-    fn has_final_cutover(&self) -> bool {
-        [
-            ("owner", "rust"),
-            ("implementation_parity", "complete"),
-            ("consumer_cutover", "complete"),
-            ("python_removal", "complete"),
-        ]
-        .into_iter()
-        .all(|(key, expected)| self.text(key) == Some(expected))
-    }
-}
-
-fn registry_text<'a>(table: &'a RegistryTable, key: &str) -> &'a str {
-    table.get(key).and_then(Value::as_str).unwrap_or_default()
 }
 
 impl RetainedModule {

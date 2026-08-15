@@ -1,12 +1,14 @@
 //! Enforce the closed review-command and Python-package boundary for #7679.
 
-use std::{collections::BTreeSet, path::Path};
+use std::{collections::BTreeMap, path::Path};
 
 use toml::Value;
 
 use crate::{
     Finding, LintError, RepoPath, Repository, Rule, RuleMetadata, RuleOutput, command_registry,
 };
+
+use super::python_boundary::RegistryCommand;
 
 const NAME: &str = "review-python-free";
 const DESCRIPTION: &str =
@@ -296,84 +298,59 @@ fn handoff_command(domain: &str, verb: &str) -> Option<HandoffCommand> {
 }
 
 fn check_registry_rows(commands: &[Value], findings: &mut Vec<Finding>) {
-    let mut found = BTreeSet::new();
-    let mut handoffs = BTreeSet::new();
-    for value in commands {
-        let Some(table) = value.as_table() else {
-            continue;
-        };
-        let domain = table
-            .get("domain")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let verb = table
-            .get("verb")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let selector = format!("{domain} {verb}");
-        if let Some(expected) = expected_command(domain, verb) {
-            found.insert(selector.clone());
-            if table.get("owner").and_then(Value::as_str) != Some("rust")
-                || table.get("implementation_parity").and_then(Value::as_str) != Some("complete")
-                || table.get("consumer_cutover").and_then(Value::as_str) != Some("complete")
-                || table.get("python_removal").and_then(Value::as_str) != Some("complete")
-            {
-                findings.push(registry_finding(format!(
-                    "non-final review command row: {selector}; expected Rust ownership with complete parity, cutover, and Python removal"
-                )));
-            }
-            if table.get("migration_issue").and_then(Value::as_integer)
-                != Some(expected.migration_issue)
-            {
-                findings.push(registry_finding(format!(
-                    "review-command migration leaf drift: {selector}; expected #{}",
-                    expected.migration_issue
-                )));
-            }
-            if table.get("planning_issue").and_then(Value::as_integer)
-                != Some(expected.planning_issue)
-            {
-                findings.push(registry_finding(format!(
-                    "review-command planning owner drift: {selector}; expected #{}",
-                    expected.planning_issue
-                )));
-            }
-            continue;
-        }
-        if let Some(handoff) = handoff_command(domain, verb) {
-            handoffs.insert(selector.clone());
-            if table.get("planning_issue").and_then(Value::as_integer)
-                != Some(handoff.planning_issue)
-            {
-                findings.push(registry_finding(format!(
-                    "review-command hand-off drift: {selector}; expected #{}",
-                    handoff.planning_issue
-                )));
-            }
-            continue;
-        }
-        if table.get("planning_issue").and_then(Value::as_integer)
-            == Some(REVIEW_PLANNING_ISSUE)
-        {
-            findings.push(registry_finding(format!(
-                "unclosed #{REVIEW_PLANNING_ISSUE} ledger row: {selector}; name the umbrella that owns its migration"
-            )));
-        }
-    }
-
+    let rows = commands
+        .iter()
+        .filter_map(RegistryCommand::parse)
+        .map(|command| (command.selector.clone(), command))
+        .collect::<BTreeMap<_, _>>();
     for expected in EXPECTED_COMMANDS {
         let selector = expected.selector();
-        if !found.contains(&selector) {
+        let Some(command) = rows.get(&selector) else {
             findings.push(registry_finding(format!(
                 "missing final review command row: {selector}"
+            )));
+            continue;
+        };
+        if !command.has_final_cutover() {
+            findings.push(registry_finding(format!(
+                "non-final review command row: {selector}; expected Rust ownership with complete parity, cutover, and Python removal"
+            )));
+        }
+        if command.integer("migration_issue") != Some(expected.migration_issue) {
+            findings.push(registry_finding(format!(
+                "review-command migration leaf drift: {selector}; expected #{}",
+                expected.migration_issue
+            )));
+        }
+        if command.integer("planning_issue") != Some(expected.planning_issue) {
+            findings.push(registry_finding(format!(
+                "review-command planning owner drift: {selector}; expected #{}",
+                expected.planning_issue
             )));
         }
     }
     for handoff in HANDOFF_COMMANDS {
         let selector = handoff.selector();
-        if !handoffs.contains(&selector) {
+        let Some(command) = rows.get(&selector) else {
             findings.push(registry_finding(format!(
                 "missing review-command hand-off row: {selector}"
+            )));
+            continue;
+        };
+        if command.integer("planning_issue") != Some(handoff.planning_issue) {
+            findings.push(registry_finding(format!(
+                "review-command hand-off drift: {selector}; expected #{}",
+                handoff.planning_issue
+            )));
+        }
+    }
+    for command in rows.values() {
+        if command.integer("planning_issue") == Some(REVIEW_PLANNING_ISSUE)
+            && expected_command(command.domain, command.verb).is_none()
+        {
+            findings.push(registry_finding(format!(
+                "unclosed #{REVIEW_PLANNING_ISSUE} ledger row: {}; name the umbrella that owns its migration",
+                command.selector
             )));
         }
     }
