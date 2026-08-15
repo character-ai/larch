@@ -1600,13 +1600,15 @@ mod loop_implementation {
         argparse_compat::{ParsedCommandLine, missing, parse_required_with_help as parsed, parse_required_with_help_allow_unknown as parsed_known, parse_with_flags, python_repr, usage_error},
         python_verb::run_python_verb,
         runtime_entrypoint::{plugin_root, run_verified_larch, run_verified_larch_with_environment},
+        difficulty_commands::extract_plan_difficulty,
     };
     use larch_adapters::validate_design_tmpdir;
     use larch_core::{
-        ChildEnvironment, CommentPolicy, DuplicatePolicy, EmptyKeyPolicy, KvDocument,
-        ParseOptions, WhitespacePolicy, cleanup_cache_sessions_root, emit_kv,
-        parse_allowlisted_env_line, parse_single_kv_row, python_bigint,
-        validate_progress_run_id,
+        BuildRecord, ChildEnvironment, CommentPolicy, DuplicatePolicy, EmptyKeyPolicy,
+        FLOOR_MANIFEST_RELPATH, KvDocument, ParseOptions, WhitespacePolicy, blank_merge_explicit,
+        build_record, cleanup_cache_sessions_root, emit_kv, load_floor_manifest, load_record_data,
+        merge_existing_record_fields, parse_allowlisted_env_line, parse_single_kv_row, python_bigint,
+        read_rating_file, resolve_panel_tier, validate_progress_run_id, write_record_map,
         private_atomic_write, redact_secrets_only, terminal_plan_trailer_value,
         review::{BoundaryMode, MERGE_KEYS, PlanReviewAggregationOutcome, PlanReviewBallotOutcome, PlanReviewCollectorRecord, PlanReviewManifestSlot, PlanReviewReviewerStatus, PlanReviewRoundArtifacts, PlanReviewRoundInput, PlanReviewRoundState, PlanReviewStructuredFinding, PlanReviewTallyOutcome, PlanReviewVoterOutcome, STEP3_NORMALIZE_ALLOW_KEYS, applied_finding_keys_before, ballot_blocks, finding_dedup_key, merge_already_addressed_finding_keys, normalize_collected_findings, parse_blocks, parse_plan_review_accepted_findings, render_reviewer_status_table, render_reviewer_status_tsv, replace_applied_finding_keys, reviewer_status_rows, run_plan_review_round, step3_loop_status_to_loop_status, step3_next_action, step3_status_from_loop_status},
     };
@@ -1919,7 +1921,13 @@ mod loop_implementation {
 
     fn normalized_tier(value:&str)->String{let value=value.to_ascii_uppercase();if matches!(value.as_str(),"TRIVIAL"|"MODERATE"|"HARD"){value}else{String::new()}}
     fn resolution_persisted(value:&Value)->bool{value.get("override_source").and_then(Value::as_str)==Some("operator")||value.get("audit_evaluated").is_some_and(|v|!v.is_null())||value.get("audit_upgrade").is_some_and(|v|!v.is_null())||value.get("escalations").and_then(Value::as_array).is_some_and(|rows|!rows.is_empty())}
-    fn python_kv(args:Vec<OsString>)->Result<BTreeMap<String,String>,String>{let output=run_python_verb(args,SIMPLE_TIMEOUT)?;if !output.status().success(){let mut message=String::from_utf8_lossy(output.stderr()).trim().to_owned();if message.is_empty(){String::from_utf8_lossy(output.stdout()).trim().clone_into(&mut message);}return Err(message);}Ok(kv_text(&String::from_utf8_lossy(output.stdout())))}
+    fn write_design_record(output:&Path,raw:&Path)->Result<(),String>{
+        let rating=read_rating_file(raw).ok_or_else(||"invalid design rating".to_owned())?;
+        let floors=plugin_root().ok().and_then(|root|load_floor_manifest(&root.join(FLOOR_MANIFEST_RELPATH)).ok()).unwrap_or_default();
+        let record=build_record(BuildRecord{rater:"design",rater_tool:"claude",rater_model:"unknown",design_rating:Some(&rating),implement_rating:None,fallback_rating:None,changed_paths:&[],floors:&floors,panel_skipped:"",audit_upgrade:"",escalations:&[],override_source:"",override_tier:"",panel_tier:"",round_cap:None,codex_model_role:"",audit_evaluated:None,escalated_round:None})?;
+        let merged=merge_existing_record_fields(record,&load_record_data(output),&blank_merge_explicit());
+        write_record_map(output,&merged)
+    }
     fn seed_difficulty(root:&Path)->Result<(),String>{
         let record_path=root.join("difficulty-rating.json");
         if record_path.is_symlink(){return Ok(());}
@@ -1927,25 +1935,23 @@ mod loop_implementation {
         if existing.as_ref().is_some_and(resolution_persisted){return Ok(());}
         let raw=root.join("design-difficulty-rating.raw.json");
         if raw.is_file()&&!raw.is_symlink(){
-            let validated=run_python_verb(vec!["difficulty".into(),"validate-rating".into(),"--input-file".into(),raw.as_os_str().into()],SIMPLE_TIMEOUT)?;
-            if !validated.status().success(){return Ok(());}
-            python_kv(vec!["difficulty".into(),"write-record".into(),"--output".into(),record_path.as_os_str().into(),"--rater".into(),"design".into(),"--rater-tool".into(),"claude".into(),"--rater-model".into(),"unknown".into(),"--design-raw-rating-file".into(),raw.into_os_string()])?;
+            if read_rating_file(&raw).is_none(){return Ok(());}
+            write_design_record(&record_path,&raw)?;
             return Ok(());
         }
         if raw.exists()||raw.is_symlink(){return Ok(());}
         let plan=root.join("plan.txt");
         if !plan.is_file()||plan.is_symlink(){return Ok(());}
-        let metadata=python_kv(vec!["difficulty".into(),"extract-plan-metadata".into(),"--plan-file".into(),plan.into_os_string()])?;
-        let tier=normalized_tier(metadata.get("DESIGN_DIFFICULTY").map_or("",String::as_str));
+        let Ok(extracted)=extract_plan_difficulty(&plan) else {return Ok(());};
+        let tier=normalized_tier(&extracted);
         if tier.is_empty(){return Ok(());}
         let seed_path=root.join(".plan-review-difficulty-seed.json");
         write(root,&seed_path,&format!("{{\n  \"confidence\": \"medium\",\n  \"predicted_tier\": \"{tier}\",\n  \"rationale\": \"design plan metadata\"\n}}\n"))?;
-        let result=python_kv(vec!["difficulty".into(),"write-record".into(),"--output".into(),record_path.as_os_str().into(),"--rater".into(),"design".into(),"--rater-tool".into(),"claude".into(),"--rater-model".into(),"unknown".into(),"--design-raw-rating-file".into(),seed_path.as_os_str().into()]);
+        let result=write_design_record(&record_path,&seed_path);
         remove(&seed_path);
-        result?;
-        Ok(())
+        result
     }
-    fn resolve_difficulty(root:&Path,round:Option<u64>)->Result<(String,bool),String>{seed_difficulty(root)?;let override_tier=serde_json::from_str::<Value>(&read(&root.join("run-params.json"))).ok().and_then(|value|value.get("difficulty_override").and_then(Value::as_str).map(normalized_tier)).unwrap_or_default();let values=python_kv(vec!["difficulty".into(),"resolve-panel".into(),"--record-file".into(),root.join("difficulty-rating.json").into_os_string(),"--override".into(),override_tier.into()])?;if values.get("STATUS").map(String::as_str)!=Some("ok"){return Err(values.get("ERROR").cloned().unwrap_or_else(||"difficulty resolution failed".into()));}let tier=normalized_tier(values.get("PANEL_TIER").map_or("",String::as_str));if tier.is_empty(){return Err("difficulty resolution returned invalid PANEL_TIER".into());}let escalated=if let Some(round)=round{serde_json::from_str::<Value>(&read(&root.join("difficulty-rating.json"))).ok().and_then(|value|value.get("escalations").cloned()).and_then(|value|value.as_array().cloned()).is_some_and(|rows|rows.iter().any(|row|row.get("round").and_then(|value|value.as_u64().or_else(||value.as_str().and_then(|text|text.parse().ok())))==Some(round)))}else{values.get("ESCALATED_ROUND").map(String::as_str)==Some("true")};Ok((tier,escalated))}
+    fn resolve_difficulty(root:&Path,round:Option<u64>)->Result<(String,bool),String>{seed_difficulty(root)?;let override_tier=serde_json::from_str::<Value>(&read(&root.join("run-params.json"))).ok().and_then(|value|value.get("difficulty_override").and_then(Value::as_str).map(normalized_tier)).unwrap_or_default();let resolution=resolve_panel_tier(&root.join("difficulty-rating.json"),&override_tier,None,true,None)?;let tier=normalized_tier(&resolution.panel_tier);if tier.is_empty(){return Err("difficulty resolution returned invalid PANEL_TIER".into());}let escalated=if let Some(round)=round{serde_json::from_str::<Value>(&read(&root.join("difficulty-rating.json"))).ok().and_then(|value|value.get("escalations").cloned()).and_then(|value|value.as_array().cloned()).is_some_and(|rows|rows.iter().any(|row|row.get("round").and_then(|value|value.as_u64().or_else(||value.as_str().and_then(|text|text.parse().ok())))==Some(round)))}else{resolution.escalated_round};Ok((tier,escalated))}
     fn append_escalation(root:&Path,round:u64,from:&str)->Result<(),String>{let path=root.join("difficulty-rating.json");let mut value=serde_json::from_str::<Value>(&read(&path)).ok().filter(Value::is_object).unwrap_or_else(||serde_json::json!({"schema_version":3,"rater":"fallback","rater_tool":"unknown","rater_model":"unknown","predicted_tier":from,"confidence":"medium","rationale":"escalation record","design_tier":null,"implement_tier":null,"floors_applied":[],"override_source":"none","audit_upgrade":null,"panel_skipped":null}));if let Some(object)=value.as_object_mut(){let escalations=object.entry("escalations").or_insert_with(||Value::Array(Vec::new()));if let Some(items)=escalations.as_array_mut(){items.push(serde_json::json!({"round":round,"from_tier":from,"to_tier":"HARD","trigger":"escalated-high-accepted"}));}object.insert("applied_tier".into(),"HARD".into());object.insert("panel_tier".into(),"HARD".into());object.insert("round_cap".into(),2.into());object.insert("codex_model_role".into(),"review".into());object.insert("escalated_round".into(),true.into());}let body=serde_json::to_string_pretty(&value).map_err(|error|error.to_string())?;write(root,&path,&format!("{body}\n"))}
     fn already_addressed_keys(root:&Path)->Vec<String>{let tag=Regex::new(r"(?i)\[ALREADY_ADDRESSED\]").expect("static tag regex");parse_blocks(&read(&root.join("rejected-findings.md")),BoundaryMode::ItemHeading).into_iter().filter(|b|b.kind==larch_core::review::ItemKind::Finding&&tag.is_match(&b.block)).map(|b|finding_dedup_key(&tag.replace_all(&b.block,"")).to_string()).filter(|v|!v.is_empty()).collect()}
     #[must_use] pub fn continuation(arguments:&[OsString])->ExitCode{
