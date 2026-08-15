@@ -194,7 +194,18 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
     run_params_path = design_tmpdir / "run-params.json"
     partition_requested = "false"
     if run_params_path.is_file():
-        read_partition = _run_cli(root, "plan-review", "json-get-bool", "--path", str(run_params_path), "--key", "partition_requested", "--default", "false")
+        read_partition_argv = [
+            str(larch_entrypoint(root)),
+            "plan-review",
+            "json-get-bool",
+            "--path",
+            str(run_params_path),
+            "--key",
+            "partition_requested",
+            "--default",
+            "false",
+        ]
+        read_partition = _run_larch(root, *read_partition_argv[1:])
         if read_partition.returncode == 0:
             partition_requested = (read_partition.stdout or "false").strip() or "false"
 
@@ -350,8 +361,8 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
         flush()
         return step2b5.exit_rc
     if snapshot_original and kvs.get("PLAN_LINES") and kvs.get("DIFF_LINES"):
-        _ = _run_cli(
-            root,
+        drift_baseline_argv = [
+            str(larch_entrypoint(root)),
             "plan-review",
             "drift-baseline",
             "write-once",
@@ -361,7 +372,8 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
             kvs["PLAN_LINES"],
             "--diff-lines",
             kvs["DIFF_LINES"],
-        )
+        ]
+        _ = _run_larch(root, *drift_baseline_argv[1:])
     if kvs["VALIDATE_STATUS"] == "defects-found":
         kvs["PLAN_SIZE_STATUS"] = "skipped-defects"
         flush()

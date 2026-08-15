@@ -131,6 +131,8 @@ def test_postplan_rejects_missing_executable_facets_before_review(
         env: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         del env
+        if args[:2] == ("plan-review", "json-get-bool"):
+            return _completed(args, stdout="false\n")
         assert args[:2] == ("plan-review", "emit")
         return _completed(args, stdout="EMIT_PLAN_STATUS=ok\nDIFF_LINES=12\n")
 

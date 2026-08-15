@@ -8939,7 +8939,7 @@ rust = ["named-block write"]
 path = "python/larch/design/design_postplan.py"
 kind = "python-runtime"
 python = ["plan check-size"]
-rust = ["plan-review emit"]
+rust = ["plan-review drift-baseline", "plan-review emit", "plan-review json-get-bool"]
 
 [[callers]]
 path = "python/larch/design/design_publish.py"
@@ -9017,7 +9017,7 @@ rust = ["stall-recovery chat-print", "stall-recovery classify", "stall-recovery 
 path = "python/larch/design/plan_quality.py"
 kind = "python-runtime"
 python = []
-rust = ["agent cursor-wrap-prompt", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review", "agent run-external-agent", "plan-review gate-b-dedup", "run-log append-failure", "stall-recovery record-escalation", "timing record-vendor-task"]
+rust = ["agent cursor-wrap-prompt", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review", "agent run-external-agent", "plan-review drift-baseline", "plan-review gate-b-dedup", "run-log append-failure", "stall-recovery record-escalation", "timing record-vendor-task"]
 
 [[callers]]
 path = "python/larch/design/plan_scout.py"

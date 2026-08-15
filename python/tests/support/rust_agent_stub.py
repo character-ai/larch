@@ -2141,6 +2141,56 @@ def _plan_block_strip_body(arguments: list[str]) -> int:
     return 0
 
 
+def _plan_review_json_get_bool(arguments: list[str]) -> int:
+    path = _flag(arguments, "--path")
+    key = _flag(arguments, "--key")
+    default = _flag(arguments, "--default", "false")
+    if not path or not key or default not in {"true", "false"}:
+        return 2
+    value = default == "true"
+    source = Path(path)
+    if source.is_file() and not source.is_symlink():
+        try:
+            payload: object = json.loads(source.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict):
+            item = cast("dict[str, object]", payload).get(key)
+            if isinstance(item, bool):
+                value = item
+    print("true" if value else "false")
+    return 0
+
+
+def _plan_review_drift_baseline(arguments: list[str]) -> int:
+    if not arguments or arguments[0] != "write-once":
+        return 2
+    values, switches = _option_values(arguments[1:])
+    if switches or set(values) != {"--design-tmpdir", "--plan-lines", "--diff-lines"}:
+        return 2
+    plan_lines = values["--plan-lines"]
+    diff_lines = values["--diff-lines"]
+    if not plan_lines.isdigit() or not diff_lines.isdigit():
+        return 1
+    root = Path(values["--design-tmpdir"])
+    if not root.is_dir() or root.is_symlink():
+        return 1
+    baseline = root / "drift-baseline.env"
+    if baseline.is_file() and not baseline.is_symlink():
+        return 0
+    baseline.unlink(missing_ok=True)
+    try:
+        _ = baseline.write_text(
+            f"BASELINE_PLAN_LINES={plan_lines}\nBASELINE_DIFF_LINES={diff_lines}\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        result = 1
+    else:
+        result = 0
+    return result
+
+
 def _named_block_write(arguments: list[str]) -> int:
     """Report a completed write without reaching GitHub.
 
@@ -2418,6 +2468,8 @@ def main(arguments: list[str]) -> int:
             ("named-block", "write"): _named_block_write,
             ("plan", "scope-paths"): _plan_scope_paths,
             ("plan-block", "strip-body"): _plan_block_strip_body,
+            ("plan-review", "drift-baseline"): _plan_review_drift_baseline,
+            ("plan-review", "json-get-bool"): _plan_review_json_get_bool,
             ("timing", "mark"): _timing_mark,
             ("timing", "record-round"): _timing_record_round,
             ("timing", "record-vendor-task"): _timing_record_vendor_task,

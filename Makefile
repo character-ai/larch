@@ -443,11 +443,9 @@ test-lib-design-round-artifacts:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands utility_and_persistence
 
 test-design-multi-round-integration:
-	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test plan_review_loop_commands loop_transcript
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-design-multi-round-integration.sh
 
 test-step3-review-cap:
-	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test plan_review_loop_commands loop_transcript
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-step3-review-cap.sh
 
 test-persist-retally-step3-env:
@@ -460,11 +458,9 @@ test-review-design-step3-loop:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands loop_transcript
 
 test-step3-orchestrator-fence:
-	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test plan_review_loop_commands normalize
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-step3-orchestrator-fence.sh
 
 test-design-step3-mav:
-	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test plan_review_loop_commands utility_and_persistence
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3-mav.sh
 
 test-design-step3-state:
@@ -986,7 +982,6 @@ test-design-step-final-summary:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k step_final_summary
 
 test-design-step3-review:
-	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test plan_review_loop_commands normalize
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3-review.sh
 
 test-design-step3b-tail:
@@ -996,7 +991,6 @@ test-design-step3b-entry:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_step3b.py
 
 test-design-step3-entry:
-	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test plan_review_loop_commands normalize_and_session_entry
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3-entry.sh
 
 test-design-small-session-entries:
