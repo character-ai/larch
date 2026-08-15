@@ -2630,6 +2630,25 @@ fn copy_emit_artifacts(destinations: &[PathBuf], artifacts: &[(&Path, &str)]) {
     }
 }
 
+fn reviewer_output_paths(review_tmpdir: &Path) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(review_tmpdir) else {
+        return Vec::new();
+    };
+    let mut paths = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with("-output.txt"))
+        {
+            paths.push(path.display().to_string());
+        }
+    }
+    paths.sort();
+    paths
+}
+
 #[allow(clippy::too_many_lines)] // The summary and copied artifacts must stay in legacy publication order.
 pub fn emit_tally(arguments: &[OsString]) -> ExitCode {
     let request = match emit_request(arguments) {
@@ -2720,20 +2739,7 @@ pub fn emit_tally(arguments: &[OsString]) -> ExitCode {
             return ExitCode::from(1);
         }
     }
-    let mut reviewer_paths = fs::read_dir(&request.review_tmpdir)
-        .ok()
-        .into_iter()
-        .flatten()
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.ends_with("-output.txt"))
-        })
-        .map(|path| path.display().to_string())
-        .collect::<Vec<_>>();
-    reviewer_paths.sort();
+    let reviewer_paths = reviewer_output_paths(&request.review_tmpdir);
     let rounds_completed = parse_ascii_decimal(&request.round).unwrap_or(1);
     let summary = json!({
         "schema_version": 3,

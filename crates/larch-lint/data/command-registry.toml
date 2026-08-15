@@ -10095,7 +10095,7 @@ rust = ["plan-review panel-dispatch"]
 path = "skills/shared/voting-protocol.md"
 kind = "skill"
 python = ["plan-review tally", "render voter"]
-rust = ["agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review", "oos file", "plan-review voter-dispatch", "review tally-code-votes", "voting code-review-classification-header", "voting findings-classification-header"]
+rust = ["agent dispatch-voters", "agent launch-codex-exec", "oos file", "plan-review voter-dispatch", "review tally-code-votes", "voting code-review-classification-header", "voting findings-classification-header"]
 
 [[callers]]
 path = "skills/status/SKILL.md"
