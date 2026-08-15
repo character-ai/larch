@@ -6,8 +6,7 @@
 //! mutation-conflict recovery offline.
 
 use std::{
-    fmt,
-    fs, io,
+    fmt, fs, io,
     path::{Path, PathBuf},
 };
 
@@ -386,8 +385,7 @@ impl DesignSession {
              GATE_C=pass\n\
              PUBLICATION=ready\n",
         )?;
-        self.workspace
-            .create_dir("design-tmpdir/.completed")?;
+        self.workspace.create_dir("design-tmpdir/.completed")?;
         self.workspace
             .write("design-tmpdir/.completed/step-0", b"ok\n")?;
         self.workspace
@@ -461,10 +459,7 @@ impl DesignSession {
         }
         lines.push(String::new());
         let contents = lines.join("\n");
-        let relative = format!(
-            "cache/larch/sessions/current-design-env-{}.sh",
-            self.ppid
-        );
+        let relative = format!("cache/larch/sessions/current-design-env-{}.sh", self.ppid);
         self.workspace.write(&relative, contents.as_bytes())?;
         self.workspace
             .write("design-tmpdir/source-env.sh", contents.as_bytes())?;
@@ -1043,9 +1038,7 @@ mod tests {
                     assert!(!session.issue_body_path().exists());
                     assert!(!session.current_design_env_path().exists());
                 }
-                DesignFixture::Partial
-                | DesignFixture::Conflicting
-                | DesignFixture::Committed => {
+                DesignFixture::Partial | DesignFixture::Conflicting | DesignFixture::Committed => {
                     assert!(session.issue_body_path().exists());
                     assert!(session.current_design_env_path().exists());
                     assert!(session.design_tmpdir().exists());
@@ -1159,7 +1152,12 @@ mod tests {
             200
         );
         assert_eq!(
-            request_status(&stub, "PATCH", "/repos/character-ai/larch/issues/7680", b"{}"),
+            request_status(
+                &stub,
+                "PATCH",
+                "/repos/character-ai/larch/issues/7680",
+                b"{}"
+            ),
             200
         );
         stub.finish().expect("pause consumed");
