@@ -361,9 +361,10 @@ pub fn render_findings_view(arguments: &[OsString]) -> ExitCode {
     if let Some(error) = parsed.error() {
         return usage_error(FINDINGS_VIEW_USAGE, FINDINGS_VIEW_PROGRAM, &error, 2);
     }
-    let view = parsed
-        .positional(1)
-        .map_or_else(|| "all".to_owned(), |value| value.to_string_lossy().into_owned());
+    let view = parsed.positional(1).map_or_else(
+        || "all".to_owned(),
+        |value| value.to_string_lossy().into_owned(),
+    );
     match findings_view_body(&run_dir, &view) {
         Ok(body) => write_stdout(&body),
         Err(message) => {
@@ -410,7 +411,9 @@ fn findings_view_body(run_dir: &Path, view: &str) -> Result<String, String> {
         } else if view != "all" && view != outcome {
             continue;
         }
-        let round_num = row.get("round_num").map_or_else(|| "None".to_owned(), python_str);
+        let round_num = row
+            .get("round_num")
+            .map_or_else(|| "None".to_owned(), python_str);
         let body = match row.get("prose_body") {
             None | Some(Value::Null) => "(no prose body)".to_owned(),
             Some(value) => python_str(value),
@@ -435,7 +438,11 @@ fn is_findings_view_help(argument: &OsString) -> bool {
 const LANE_STATUS_ROWS: &[(&str, &str, &str)] = &[
     ("RESEARCH_ARCH_HEADER", "Architecture", "RESEARCH_ARCH"),
     ("RESEARCH_EDGE_HEADER", "Edge cases", "RESEARCH_EDGE"),
-    ("RESEARCH_EXT_HEADER", "External comparisons", "RESEARCH_EXT"),
+    (
+        "RESEARCH_EXT_HEADER",
+        "External comparisons",
+        "RESEARCH_EXT",
+    ),
     ("RESEARCH_SEC_HEADER", "Security", "RESEARCH_SEC"),
     ("VALIDATION_CODE_HEADER", "Code", "VALIDATION_CODE"),
     ("VALIDATION_CURSOR_HEADER", "Cursor", "VALIDATION_CURSOR"),
@@ -493,7 +500,10 @@ pub fn render_lane_status(arguments: &[OsString]) -> ExitCode {
 }
 
 fn sanitize_reason(value: &str) -> String {
-    let stripped: String = value.chars().filter(|ch| *ch != '=' && *ch != '|').collect();
+    let stripped: String = value
+        .chars()
+        .filter(|ch| *ch != '=' && *ch != '|')
+        .collect();
     let collapsed = collapse_whitespace(&stripped);
     collapsed.chars().take(80).collect()
 }
@@ -600,7 +610,10 @@ fn reviewer_result(arguments: &[OsString]) -> Result<String, ReviewerError> {
     let question = read_nonempty_file_arg(&parsed, "--research-question-file")?;
     let context = read_nonempty_file_arg(&parsed, "--context-file")?;
     let inscope_text = read_nonempty_file_arg(&parsed, "--in-scope-instruction-file")?;
-    let oos_text = match parsed.value("--oos-instruction-file").filter(|value| !value.is_empty()) {
+    let oos_text = match parsed
+        .value("--oos-instruction-file")
+        .filter(|value| !value.is_empty())
+    {
         Some(value) => {
             let path = PathBuf::from(value);
             if !path.is_file() {
@@ -615,7 +628,14 @@ fn reviewer_result(arguments: &[OsString]) -> Result<String, ReviewerError> {
     };
     let root = plugin_root_directory()
         .ok_or_else(|| ReviewerError::Render("cannot resolve the plugin root".to_owned()))?;
-    reviewer_payload(&root, &target, &question, &context, &inscope_text, &oos_text)
+    reviewer_payload(
+        &root,
+        &target,
+        &question,
+        &context,
+        &inscope_text,
+        &oos_text,
+    )
 }
 
 fn read_nonempty_file_arg(
@@ -668,10 +688,12 @@ fn reviewer_payload(
     ]
     .join("\n");
     let body = body.replace("{REVIEW_TARGET}", target);
-    let inscope: Vec<&str> = inscope_text.lines().filter(|line| !line.is_empty()).collect();
+    let inscope: Vec<&str> = inscope_text
+        .lines()
+        .filter(|line| !line.is_empty())
+        .collect();
     let oos: Vec<&str> = oos_text.lines().filter(|line| !line.is_empty()).collect();
-    let body =
-        replace_output_instruction(&body, &inscope, &oos).map_err(ReviewerError::Render)?;
+    let body = replace_output_instruction(&body, &inscope, &oos).map_err(ReviewerError::Render)?;
     if !body.contains(REVIEWER_SENTINEL_TARGET) {
         return Err(ReviewerError::Render(
             "sentinel-override target string not found in archetype".to_owned(),
@@ -688,7 +710,12 @@ fn reviewer_payload(
             unresolved.join(", ")
         )));
     }
-    if body.lines().filter(|line| *line == "{CONTEXT_BLOCK}").count() != 1 {
+    if body
+        .lines()
+        .filter(|line| *line == "{CONTEXT_BLOCK}")
+        .count()
+        != 1
+    {
         return Err(ReviewerError::Render(
             "expected exactly one '{CONTEXT_BLOCK}' marker line at validation time".to_owned(),
         ));
@@ -717,7 +744,10 @@ fn strip_calibration_examples(text: &str) -> String {
     let mut skip = false;
     for line in text.lines() {
         if line.trim_end() == "## Calibration examples"
-            && line.trim_start_matches("## Calibration examples").trim().is_empty()
+            && line
+                .trim_start_matches("## Calibration examples")
+                .trim()
+                .is_empty()
         {
             skip = true;
             continue;

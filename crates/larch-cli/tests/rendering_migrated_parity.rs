@@ -85,7 +85,10 @@ fn parity_case(name: &'static str, arguments: &[&str], seeds: Vec<SeedFile>) -> 
 }
 
 fn run_seed() -> Vec<SeedFile> {
-    vec![SeedFile::text("run/review-findings-full.jsonl", FINDINGS_JSONL)]
+    vec![SeedFile::text(
+        "run/review-findings-full.jsonl",
+        FINDINGS_JSONL,
+    )]
 }
 
 fn reviewer_seed() -> Vec<SeedFile> {
@@ -101,15 +104,31 @@ fn findings_view_and_lane_cases() -> Vec<ParityCase> {
     // Flag-abbreviation parity: the retired argparse owners accepted any
     // unambiguous prefix (`--hel`, `--inp`), so the Rust owner must too.
     vec![
-        parity_case("render-findings-view-help", &["findings-view", "--help"], Vec::new()),
-        parity_case("render-findings-view-no-args", &["findings-view"], Vec::new()),
+        parity_case(
+            "render-findings-view-help",
+            &["findings-view", "--help"],
+            Vec::new(),
+        ),
+        parity_case(
+            "render-findings-view-no-args",
+            &["findings-view"],
+            Vec::new(),
+        ),
         parity_case(
             "render-findings-view-extra-positional",
             &["findings-view", "{sandbox}/run", "all", "extra"],
             run_seed(),
         ),
-        parity_case("render-findings-view-all", &["findings-view", "{sandbox}/run"], run_seed()),
-        parity_case("render-findings-view-oos", &["findings-view", "{sandbox}/run", "oos"], run_seed()),
+        parity_case(
+            "render-findings-view-all",
+            &["findings-view", "{sandbox}/run"],
+            run_seed(),
+        ),
+        parity_case(
+            "render-findings-view-oos",
+            &["findings-view", "{sandbox}/run", "oos"],
+            run_seed(),
+        ),
         parity_case(
             "render-findings-view-unknown-view",
             &["findings-view", "{sandbox}/run", "bogus"],
@@ -125,7 +144,11 @@ fn findings_view_and_lane_cases() -> Vec<ParityCase> {
             &["findings-view", "--hel"],
             Vec::new(),
         ),
-        parity_case("render-lane-status-help", &["lane-status", "--help"], Vec::new()),
+        parity_case(
+            "render-lane-status-help",
+            &["lane-status", "--help"],
+            Vec::new(),
+        ),
         parity_case("render-lane-status-no-input", &["lane-status"], Vec::new()),
         parity_case(
             "render-lane-status-missing-file",
@@ -212,8 +235,16 @@ fn reviewer_cases() -> Vec<ParityCase> {
             reviewer_seed(),
         ),
         parity_case("render-reviewer-success", &reviewer_args, reviewer_seed()),
-        parity_case("render-reviewer-custom-oos", &reviewer_custom, reviewer_seed()),
-        parity_case("render-reviewer-abbreviated-target", &reviewer_abbrev, reviewer_seed()),
+        parity_case(
+            "render-reviewer-custom-oos",
+            &reviewer_custom,
+            reviewer_seed(),
+        ),
+        parity_case(
+            "render-reviewer-abbreviated-target",
+            &reviewer_abbrev,
+            reviewer_seed(),
+        ),
     ]
 }
 
