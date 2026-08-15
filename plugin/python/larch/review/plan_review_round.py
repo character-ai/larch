@@ -292,8 +292,8 @@ def _lazy_materialize_structured_sidecar(*, reviewer_file: str, tool: str) -> Pa
         return None
     suffix = ".tsv" if tool in {"cursor", "codex"} else ".jsonl"
     sidecar = Path(f"{reviewer_file}{suffix}")
-    result = _run_cli(
-        argv=[
+    result = _run_larch(
+        [
             "eval",
             "validate-research-output",
             "--structured-reviewer-mode",

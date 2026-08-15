@@ -100,6 +100,7 @@ mod session_artifact_support;
 mod validate_merged_commands;
 #[rustfmt::skip]
 mod run_log_flush_commands;
+mod eval_commands;
 mod ledger_append;
 mod report_tokens_commands;
 mod research_commands;
@@ -313,6 +314,9 @@ enum Domain {
     /// The `/research` preparation commands: banner, planner, findings, citations.
     #[command(subcommand)]
     Research(ResearchCommand),
+    /// The `/research` evaluation commands: output validation and the eval harness.
+    #[command(subcommand)]
+    Eval(EvalCommand),
     /// CI test-rebalance planning, verification, and checked orchestration.
     #[command(subcommand, name = "rebalance-tests")]
     RebalanceTests(RebalanceTestsCommand),
@@ -578,6 +582,28 @@ impl ResearchCommand {
             Self::RunPlanner(_) => research_commands::run_planner(&arguments),
             Self::RenderFindingsBatch(_) => research_commands::render_findings_batch(&arguments),
             Self::ValidateCitations(_) => research_commands::validate_citations_command(&arguments),
+        }
+    }
+}
+
+#[derive(Subcommand)]
+enum EvalCommand {
+    /// Validate research or reviewer output against the frozen contracts.
+    #[command(name = "validate-research-output", disable_help_flag = true)]
+    ValidateResearchOutput(RawCompatibilityArguments),
+    /// Run the live `/research` evaluation harness.
+    #[command(name = "research", disable_help_flag = true)]
+    Research(RawCompatibilityArguments),
+}
+
+impl EvalCommand {
+    fn run(self) -> ExitCode {
+        let arguments = std::env::args_os().skip(3).collect::<Vec<_>>();
+        match self {
+            Self::ValidateResearchOutput(_) => {
+                eval_commands::validate_research_output_command(&arguments)
+            }
+            Self::Research(_) => eval_commands::eval_research_command(&arguments),
         }
     }
 }
@@ -2191,6 +2217,7 @@ fn run(
             }
         }),
         Domain::Research(command) => Ok(command.run()),
+        Domain::Eval(command) => Ok(command.run()),
         Domain::ReportTokens(command) => Ok(match command {
             ReportTokensCommand::Analyze(arguments) => {
                 report_tokens_commands::analyze(&arguments.arguments)

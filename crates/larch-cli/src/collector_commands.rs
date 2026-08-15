@@ -40,7 +40,7 @@ use serde_json::Value;
 use crate::agent_commands::{AgentRawArguments, SystemWaitHost, WaitBreadcrumbs};
 use crate::git_commands::is_transient_net;
 use crate::launcher_support::{is_non_empty_file, read_text};
-use crate::python_verb::{plugin_root_directory, run_python_verb};
+use crate::python_verb::plugin_root_directory;
 use crate::waterfall_commands::inherited_child_rows;
 
 const PROG: &str = "collect-results";
@@ -73,8 +73,6 @@ const MAX_EXIT_CODE: u32 = 255;
 const EXIT_OUTPUT_EMPTY: i32 = 4;
 /// Validator exit meaning a Cursor lane returned an empty or degraded response.
 const EXIT_VALIDATION_CURSOR_EMPTY: i32 = 5;
-/// Deadline for one still-Python validator invocation.
-const VALIDATOR_TIMEOUT: Duration = Duration::from_secs(900);
 /// Bounded capture for one retry child's discarded streams.
 const RETRY_OUTPUT_LIMIT: usize = 256 * 1024;
 /// Grace period before a retry child's process group is killed.
@@ -1313,24 +1311,13 @@ struct ValidatorResult {
 }
 
 fn run_validator(arguments: &[String]) -> ValidatorResult {
-    let mut argv = vec![
-        OsString::from("eval"),
-        OsString::from("validate-research-output"),
-    ];
-    argv.extend(arguments.iter().map(OsString::from));
-    match run_python_verb(argv, VALIDATOR_TIMEOUT) {
-        Ok(output) => {
-            let mut text = String::from_utf8_lossy(output.stdout()).into_owned();
-            text.push_str(&String::from_utf8_lossy(output.stderr()));
-            ValidatorResult {
-                exit_code: output.status().code().unwrap_or(1),
-                text,
-            }
-        }
-        Err(message) => ValidatorResult {
-            exit_code: 1,
-            text: message,
-        },
+    let argv: Vec<OsString> = arguments.iter().map(OsString::from).collect();
+    let run = crate::eval_commands::validate_captured(&argv);
+    let mut text = run.stdout;
+    text.push_str(&run.stderr);
+    ValidatorResult {
+        exit_code: run.code,
+        text,
     }
 }
 

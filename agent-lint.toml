@@ -180,17 +180,6 @@ suppress = [
 # is referenced only from Makefile (test-render-reviewer-prompt target) and
 #  (sibling contract), matching the
 # same Makefile-only pattern as the other test-* harnesses above.
-#
-# python/cli.py eval research is the opt-in /research evaluation harness
-# (closes #419 under umbrella #413). Referenced only from Makefile
-# (eval-research target — NOT a lint prerequisite) and
-# python/research_eval.py (sibling contract); matches the same
-# Makefile-only pattern as the test-* harnesses.
-# python/test_research_eval.py is the offline structural regression
-# harness for the eval set + harness; referenced only from Makefile
-# (test-eval-set-structure standalone target — also NOT a lint prerequisite,
-# mirroring the runtime harness's opt-in shape) and
-# python/test_research_eval.py (sibling contract).
 exclude = [
   # plugin/ is a generated, byte-for-byte runtime projection of the canonical
   # plugin sources. Scan the canonical paths once; release plugin-runtime
@@ -767,13 +756,6 @@ exclude = [
   # not executable, defines render_lane() and sanitize_reason() consumed by
   # python/cli.py render lane-status via `source`).
   "python/rendering.py",
-  # /research evaluation harness + structural test (closes #419). Both
-  # scripts are referenced only from Makefile (eval-research target,
-  # test-eval-set-structure standalone target — neither is a lint
-  # prerequisite) and from their sibling .md contracts. Same Makefile-only
-  # pattern as the test-* harnesses above.
-  "python/cli.py eval research",
-  "python/test_research_eval.py",
   # issue #3039: Makefile-only harness wired via
   # test-render-final-summary-bash32 (now pytest python/test_design_summary.py).
   "python/test_design_summary.py",

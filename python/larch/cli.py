@@ -314,8 +314,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("scout", "dynamic-archetypes"): ("larch.design.plan_scout", "dynamic_archetypes_main", False),
     ("scout", "plan-archetypes"): ("larch.design.plan_scout", "plan_archetypes_main", False),
     ("scout", "filter-manifest"): ("larch.design.plan_scout", "filter_manifest_main", False),
-    ("eval", "validate-research-output"): ("larch.research.research_eval", "validate_research_output_main", False),
-    ("eval", "research"): ("larch.research.research_eval", "eval_research_main", False),
     ("render", "specialist"): ("larch.rendering.rendering", "render_specialist_main", False),
     ("render", "reviewer"): ("larch.rendering.rendering", "render_reviewer_main", False),
     ("render", "lane-status"): ("larch.rendering.rendering", "render_lane_status_main", False),

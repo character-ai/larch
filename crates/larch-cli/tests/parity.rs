@@ -1274,6 +1274,12 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "research",
         "validate-citations",
     ),
+    CleanInstallCase::new("clean-install-eval-research", "eval", "research"),
+    CleanInstallCase::new(
+        "clean-install-eval-validate-research-output",
+        "eval",
+        "validate-research-output",
+    ),
     CleanInstallCase::new(
         "clean-install-residual-bash-paths",
         "residual-bash",
@@ -9372,4 +9378,191 @@ fn find_executable(name: &str) -> PathBuf {
 
 fn path_text(path: &Path) -> &str {
     path.to_str().expect("fixture path should be UTF-8")
+}
+
+// ---------------------------------------------------------------------------
+// eval validate-research-output / eval research (leaf #8500)
+// ---------------------------------------------------------------------------
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("repo root")
+        .to_path_buf()
+}
+
+fn eval_command(arguments: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_larch"))
+        .args(arguments)
+        .output()
+        .expect("run eval command")
+}
+
+fn exit_code(output: &Output) -> i32 {
+    output.status.code().expect("exit code")
+}
+
+#[test]
+fn eval_validate_research_output_exit_code_matrix() {
+    let dir = TempDir::new().expect("tempdir");
+
+    // Missing file -> 4.
+    let missing = dir.path().join("nope.md");
+    let output = eval_command(&[
+        "eval",
+        "validate-research-output",
+        missing.to_str().expect("path"),
+    ]);
+    assert_eq!(exit_code(&output), 4, "missing file must exit 4");
+
+    // Thin body -> 2.
+    let thin = dir.path().join("thin.md");
+    fs::write(&thin, "one two three\n").expect("write");
+    assert_eq!(
+        exit_code(&eval_command(&[
+            "eval",
+            "validate-research-output",
+            thin.to_str().expect("path"),
+        ])),
+        2,
+    );
+
+    let body: String = std::iter::repeat_n("word", 250)
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    // Enough words, no provenance -> 3.
+    let no_prov = dir.path().join("noprov.md");
+    fs::write(&no_prov, format!("{body}\n")).expect("write");
+    assert_eq!(
+        exit_code(&eval_command(&[
+            "eval",
+            "validate-research-output",
+            no_prov.to_str().expect("path"),
+        ])),
+        3,
+    );
+
+    // Provenance present -> 0.
+    let with_prov = dir.path().join("prov.md");
+    fs::write(&with_prov, format!("{body} https://example.com/x\n")).expect("write");
+    assert_eq!(
+        exit_code(&eval_command(&[
+            "eval",
+            "validate-research-output",
+            with_prov.to_str().expect("path"),
+        ])),
+        0,
+    );
+
+    // Structured reviewer mode -> exit 5 when nothing normalizes.
+    let junk = dir.path().join("junk.md");
+    fs::write(&junk, "not structured at all\n").expect("write");
+    assert_eq!(
+        exit_code(&eval_command(&[
+            "eval",
+            "validate-research-output",
+            "--structured-reviewer-mode",
+            junk.to_str().expect("path"),
+        ])),
+        5,
+    );
+
+    // -h prints usage and exits 0.
+    let help = eval_command(&["eval", "validate-research-output", "-h"]);
+    assert_eq!(exit_code(&help), 0);
+    assert!(String::from_utf8_lossy(&help.stdout).contains("Usage: validate-research-output"));
+}
+
+#[test]
+fn eval_validate_research_output_validation_mode_accepts_sentinel() {
+    let dir = TempDir::new().expect("tempdir");
+    let sentinel = dir.path().join("s.md");
+    fs::write(&sentinel, "NO_ISSUES_FOUND\n").expect("write");
+    assert_eq!(
+        exit_code(&eval_command(&[
+            "eval",
+            "validate-research-output",
+            "--validation-mode",
+            sentinel.to_str().expect("path"),
+        ])),
+        0,
+    );
+}
+
+#[test]
+fn eval_validate_research_output_writes_normalized_wire_file() {
+    let dir = TempDir::new().expect("tempdir");
+    let reviewer = dir.path().join("reviewer.tsv");
+    let header = "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix";
+    fs::write(
+        &reviewer,
+        format!("{header}\n1\tin_scope\tMAJOR\tcompleteness\tsrc/a.rs:1\twhat\tscenario\tfix\n"),
+    )
+    .expect("write");
+    let wire = dir.path().join("out.tsv");
+    let output = eval_command(&[
+        "eval",
+        "validate-research-output",
+        "--structured-reviewer-mode",
+        "--write-structured",
+        wire.to_str().expect("path"),
+        reviewer.to_str().expect("path"),
+    ]);
+    assert_eq!(exit_code(&output), 0);
+    // Column 1 normalizes to "1", severity lowercases, focus canonicalizes.
+    assert_eq!(
+        fs::read_to_string(&wire).expect("wire"),
+        format!("{header}\n1\tin_scope\tmajor\tcode-quality\tsrc/a.rs:1\twhat\tscenario\tfix\n"),
+    );
+}
+
+#[test]
+fn eval_research_smoke_test_reports_pass() {
+    let output = Command::new(env!("CARGO_BIN_EXE_larch"))
+        .args(["eval", "research", "--smoke-test"])
+        .env("CLAUDE_PLUGIN_ROOT", repo_root())
+        .output()
+        .expect("run eval research");
+    assert_eq!(
+        exit_code(&output),
+        0,
+        "smoke test stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("smoke test PASS"),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
+fn eval_research_rejects_bad_timeout() {
+    let output = eval_command(&["eval", "research", "--timeout", "0"]);
+    assert_eq!(exit_code(&output), 2);
+}
+
+#[test]
+fn eval_research_help_exits_zero() {
+    let output = eval_command(&["eval", "research", "--help"]);
+    assert_eq!(exit_code(&output), 0);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Usage: eval research"));
+}
+
+#[test]
+fn eval_research_missing_claude_reports_exit_three() {
+    let output = Command::new(env!("CARGO_BIN_EXE_larch"))
+        .args(["eval", "research"])
+        .env("PATH", "")
+        .env("CLAUDE_PLUGIN_ROOT", repo_root())
+        .output()
+        .expect("run eval research");
+    assert_eq!(exit_code(&output), 3);
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("required tool missing: claude"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

@@ -57,7 +57,7 @@ static VALID_DOI_RE: LazyLock<Regex> = LazyLock::new(|| {
 static BANNER_LINE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^RESEARCH_[A-Z_]+_STATUS=fallback_").expect("static banner regex")
 });
-static FILELINE_RE: LazyLock<Regex> = LazyLock::new(|| {
+pub static FILELINE_RE: LazyLock<Regex> = LazyLock::new(|| {
     let any = file_line_regex("any-re").expect("any-re owner");
     let extensionless = file_line_regex("extensionless-re").expect("extensionless-re owner");
     Regex::new(&format!("{any}|{extensionless}")).expect("composed file-line regex")
@@ -125,7 +125,7 @@ struct CitationLedgerRow {
 /// The rename gives readers either the old or the new bytes, never a partial
 /// file, and the created file keeps the process umask's default mode, matching
 /// the retired Python `larch_io.atomic_write` call that passed no explicit mode.
-fn write_text_atomic(path: &Path, text: &str) -> std::io::Result<()> {
+pub fn write_text_atomic(path: &Path, text: &str) -> std::io::Result<()> {
     if let Some(parent) = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -154,7 +154,7 @@ fn write_text_atomic(path: &Path, text: &str) -> std::io::Result<()> {
 /// validated rather than being refused as unreadable. Reading raw bytes,
 /// decoding lossily, and translating newlines preserves that contract; the
 /// result is byte-identical to `read_to_string` for UTF-8, `\n`-only input.
-fn read_text_lossy(path: &Path) -> std::io::Result<String> {
+pub fn read_text_lossy(path: &Path) -> std::io::Result<String> {
     let bytes = fs::read(path)?;
     let decoded = String::from_utf8_lossy(&bytes);
     Ok(universal_newlines(&decoded).into_owned())
