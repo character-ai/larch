@@ -11,7 +11,7 @@ Post-apply plan-line dedup: whitespace-key collapse with section-aware Constrain
 
 ## Primary caller
 
-`python/plan_review.py` function `_run_post_apply_pipeline` via `$DEDUP_PLAN_LINES_PY`.
+The Rust plan-review post-apply pipeline through `scripts/larch.sh plan-review gate-b-dedup`.
 
 ## Invariants
 
@@ -26,4 +26,4 @@ Post-apply plan-line dedup: whitespace-key collapse with section-aware Constrain
 
 ## Harness
 
-`python/test_plan_review.py` (`make test-plan-review-loop`).
+`crates/larch-cli/tests/plan_review_loop_commands.rs` (`make test-plan-review-loop`).

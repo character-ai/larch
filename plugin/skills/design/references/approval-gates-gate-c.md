@@ -22,7 +22,7 @@ On `resume@4b`, pause recovery, or entry without fresh Step 4 bgjob result captu
 
 Read `SKIP_APPROVE_REQUESTED_GATEC`, rejected-findings marker/path KVs, `GATEC_PREVIEW_PATH`, and optional `DIALECTIC_GATEC_DIGEST_PATH` via `python/cli.py design read-result-env --input "$DESIGN_TMPDIR/.design-step4-tail-result.env"` or final `DONE` stdout. Print regular under-tmp preview/body files only. Do not parse these values from thin tail-launcher stdout.
 
-**Large-plan summary mode**: `python/cli.py plan-review preview` owns threshold parsing, outline caps, fallback preview, and note text for Step 3 and Gate C. Structured **See full plan** MUST `cat` the full `$DESIGN_TMPDIR/plan.txt` into chat and re-fire Gate C by running `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR" --without-see-full-plan --accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`, even if the preview already printed the full plan. If `Other` asks for the full plan, `cat` the full plan and re-fire Gate C with the same rendered option set unchanged.
+**Large-plan summary mode**: `scripts/larch.sh plan-review preview` owns threshold parsing, outline caps, fallback preview, and note text for Step 3 and Gate C. Structured **See full plan** MUST `cat` the full `$DESIGN_TMPDIR/plan.txt` into chat and re-fire Gate C by running `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR" --without-see-full-plan --accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`, even if the preview already printed the full plan. If `Other` asks for the full plan, `cat` the full plan and re-fire Gate C with the same rendered option set unchanged.
 
 After the mandatory preview and before either Prompt or `--skip-approve` breadcrumb, bind `REPO_ROOT` from the Step 0 source env in the same Bash fence before any guideline helper call:
 
@@ -146,23 +146,23 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design render-gate \
 ```
 
 - **Approve final design** or **Approve final design (acknowledge panel failure)**: exit Gate C and proceed to Step 5 finalize: Step 5b OOS filing, Step 5b.5 post-approval architecture diagram, then Step 5c plan write, diagram upsert, `[DESIGNED]` rename, and design log publish.
-- **See full plan**: run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full`, then re-render Gate C with `--without-see-full-plan` and `--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`. Mutate no state and never advance past Gate C. Keep `--panel-failed true` when needed.
+- **See full plan**: run `scripts/larch.sh plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full`, then re-render Gate C with `--without-see-full-plan` and `--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`. Mutate no state and never advance past Gate C. Keep `--panel-failed true` when needed.
 - **Discuss further**: re-enter Gate A (Step 1e). The discussion sub-round writes to `discussion-round2.md`; **Ready for review** re-enters Step 3 with the revised plan, and any settled review path continues through Step 3b, Step 4, and back to Gate C. Do not run Step 5b.5 until a later Gate C **Approve**.
 - **Re-run review panel**: present only when the renderer includes it. **MANDATORY: READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review-runtime.md` completely before invoking `design-step3-entry.sh --reentry`. Re-enter Step 3 with current `plan.txt` after all approved feedback. The round cursor advances at Step 3 entry when `plan-after-round-<cursor>.txt` already exists. Fresh `NEXT_ACTION` routing, Step 3b, Step 4, and Gate C run again. Findings from prior manual review runs are NOT preserved.
 
 **Gate C `Other` dispatch table**:
 
 1. `debate ...` or `debate-this ...` wins over every other interpretation. Write the verbatim Other text to `$DESIGN_TMPDIR/dialectic-manual-request.txt` via the Write tool, invoke `python/cli.py design dialectic-manual --design-tmpdir "$DESIGN_TMPDIR" --request-file "$DESIGN_TMPDIR/dialectic-manual-request.txt"`, print digest or shape-error help, then re-fire the same Gate C prompt. Do not pass operator text through `--request`.
-2. Full-plan phrases such as `full plan` or `show plan` use `python/cli.py plan-review preview --variant full` and re-fire Gate C with the same rendered option set and `--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`.
+2. Full-plan phrases such as `full plan` or `show plan` use `scripts/larch.sh plan-review preview --variant full` and re-fire Gate C with the same rendered option set and `--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`.
 3. Unknown text prints short help listing both shapes, then re-fires Gate C with `--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`.
 
 On-demand debate loops back to the same prompt. With a digest present, **Approve final design** publishes the current `plan.txt`; the panel lean is only a recommendation. Use **Discuss further** to change the plan before approval.
 
 When the latest Step 3 envelope is `panel-failed`, print a mandatory warning before the Gate C prompt stating that every launched reviewer failed and the final approval acknowledges degraded review coverage. Run the renderer with `--panel-failed true` and `--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`. This warning does not apply to `panel-init-failed`, because that status is terminal before Gate C.
 
-If `$DESIGN_TMPDIR/plan.txt` is missing or empty when structured `See full plan` is picked, run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full` so the helper emits the `**⚠ 4b:**` warning, then re-render Gate C with `--without-see-full-plan` and `--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`. Keep `--panel-failed true` when needed. This mutates no state and does not advance past Gate C.
+If `$DESIGN_TMPDIR/plan.txt` is missing or empty when structured `See full plan` is picked, run `scripts/larch.sh plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full` so the helper emits the `**⚠ 4b:**` warning, then re-render Gate C with `--without-see-full-plan` and `--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`. Keep `--panel-failed true` when needed. This mutates no state and does not advance past Gate C.
 
-**Opt-in to see the full plan via `Other`**: `See full plan` is preferred. For full-plan Other text, debate prefixes still win; otherwise run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full` and re-fire the same Gate C `AskUserQuestion` with the **same option set unchanged** and `--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`. Gate C `Other` never cancels `/design`; it only displays debate/full-plan help or output and re-prompts.
+**Opt-in to see the full plan via `Other`**: `See full plan` is preferred. For full-plan Other text, debate prefixes still win; otherwise run `scripts/larch.sh plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full` and re-fire the same Gate C `AskUserQuestion` with the **same option set unchanged** and `--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`. Gate C `Other` never cancels `/design`; it only displays debate/full-plan help or output and re-prompts.
 
 ### Loop exit
 

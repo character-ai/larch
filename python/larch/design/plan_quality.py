@@ -32,7 +32,7 @@ from larch.design import design_pause, plan_grammar
 from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
 from larch.issue import issue_wire
 from larch.core.redact import redact_secrets_only
-from larch.core.repo_roots import consumer_repo_root, larch_entrypoint, larch_entrypoint_env
+from larch.core.repo_roots import consumer_repo_root, larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch.issue.issue_wire import emit_untrusted_file_block
 from larch.state import session_env
 from larch.state.session_env import validate_design_tmpdir
@@ -365,14 +365,11 @@ def _unreadable_marker(design_tmpdir: Path) -> Path:
 
 
 def _drift_baseline_write_once(*, design_tmpdir: Path, plan_lines: int, diff_lines: int) -> bool:
-    # Invoke the drift-baseline CLI verb instead of importing plan_review, to avoid the
-    # design_step2b -> plan_quality -> plan_review import cycle (#4632 adds
-    # plan_review -> design_terminal; main added design_step2b -> plan_quality).
-    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
+    # Keep the migrated mutation behind the verified Rust entrypoint.
+    root = plugin_root()
     proc = subprocess.run(
         [
-            sys.executable,
-            str(cli_py),
+            str(larch_entrypoint(root)),
             "plan-review",
             "drift-baseline",
             "write-once",
@@ -386,6 +383,7 @@ def _drift_baseline_write_once(*, design_tmpdir: Path, plan_lines: int, diff_lin
         text=True,
         capture_output=True,
         check=False,
+        env=larch_entrypoint_env(root),
     )
     return proc.returncode == 0
 

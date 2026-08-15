@@ -258,7 +258,7 @@ step3_review_write_resume_state() {
 
 step3_review_prelaunch_failure() {
   local _reason="${1:-scope-anchor-missing}"
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review prelaunch-failure \
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" plan-review prelaunch-failure \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --reason "$_reason"
 }
@@ -314,7 +314,7 @@ DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
 
 if [ "$READ_RESULT_ENV" = true ]; then
-  exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review normalize-status --design-tmpdir "$DESIGN_TMPDIR" --read-result-env
+  exec "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" plan-review normalize-status --design-tmpdir "$DESIGN_TMPDIR" --read-result-env
 fi
 
 step3_review_validate_resume_state
@@ -378,7 +378,7 @@ _plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XX
 
 set +e
 if [ -n "$STARTING_ROUND" ]; then
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" plan-review run \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --mode loop \
     --starting-round "$STARTING_ROUND" \
@@ -386,7 +386,7 @@ if [ -n "$STARTING_ROUND" ]; then
     --orphan-timeout-s 7200 \
     >"$_plan_review_stdout_file" 2>"${DESIGN_TMPDIR}/plan-review-loop-stderr.log"
 else
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" plan-review run \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --mode loop \
     --new-process-group \
@@ -396,7 +396,7 @@ fi
 _plan_review_rc=$?
 set -e
 _step3_normalize_rc=0
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review normalize-status \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" plan-review normalize-status \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --stdout-file "$_plan_review_stdout_file" \
   --loop-rc "$_plan_review_rc" || _step3_normalize_rc=$?

@@ -53,7 +53,7 @@ unmigrated launcher commands); **R** = residual gap named below.
 | `python/cli.py design log-publish` | — | — | ✅ design | **D** | Stages `*.failure-diag` (redacted); denies raw `*.sidecar.history` / `*.raw.cursor` / `*.raw.claude` / `scout-plan-manifest.json.raw.*`. |
 | `python/larch/report/run_logs.py` | — | — | ✅ implement | **D** | `vendor-failure-diagnostics .txt replace none` slug. |
 | `scripts/larch.sh run-log write-round` | — | — | ✅ implement | **D** | Rust `round_artifact_included` keeps `*.failure-diag` / `*.sidecar.history` / `*.events.history` denied (batch is the sole durable path; F14). |
-| `python/plan_review.py` | ✅ | — | ✅ design | **D** | Preserves `*.failure-diag` in plan-review round snapshots. |
+| `scripts/larch.sh plan-review run` | ✅ | — | ✅ design | **D** | Preserves `*.failure-diag` in plan-review round snapshots. |
 | `skills/implement/scripts/step-7a.sh` | — | — | ✅ | **D** | Pre-ship flush of the vendor-failure batch. |
 | `scripts/larch.sh run-log checkpoint` | — | — | ✅ | **D** | Rust-owned mutable recovery checkpoint. |
 | `scripts/larch.sh run-log refresh` | — | — | ✅ | **D** | Rust-owned CI-retry / rebase pre-push flush. |

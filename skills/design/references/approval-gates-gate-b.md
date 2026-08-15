@@ -10,14 +10,14 @@
 
 ## Gate B: Post-Review Chooser (Step 3.5)
 
-**When**: after Step 3 review completes or the script-internal Step 3 loop bails out. On the happy path, `python/plan_review.py` applies accepted findings in-loop via `python/cli.py plan revise-waterfall --patch-format file-replacement`. Prompt-side Gate B handles `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` and `per-round-approval-required`. `NEXT_ACTION=step3b-bypass` bypasses Step 3.5 before Step 3b. `panel-init-failed` hard-stops before Step 3b.
+**When**: after Step 3 review completes or the script-internal Step 3 loop bails out. On the happy path, the Rust plan-review owner applies accepted findings in-loop via `python/cli.py plan revise-waterfall --patch-format file-replacement`. Prompt-side Gate B handles `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` and `per-round-approval-required`. `NEXT_ACTION=step3b-bypass` bypasses Step 3.5 before Step 3b. `panel-init-failed` hard-stops before Step 3b.
 
 ### Severity classification contract
 
 Gate B severity mode, counts, ordered ids, table rows, and per-finding prompt fields are Python-owned. Use these commands as authority:
 
 - `scripts/larch.sh plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"`
-- `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant gate-b`
+- `scripts/larch.sh plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant gate-b`
 - `scripts/larch.sh plan-review gate-b-finding-line --design-tmpdir "$DESIGN_TMPDIR" --finding-id <N>`
 
 Parse KVs and emit CLI output. Do not re-read or manually classify `### FINDING_N:` blocks.
@@ -36,7 +36,7 @@ When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty, Gate B prints `⏩ 3.5
 
 #### Gate B mode (auto-apply default; `--per-round-approval` for explicit)
 
-Resolve mode only after the zero-findings short-circuit proves at least one accepted in-scope finding remains. The script-internal controller (`python/plan_review.py`) applies accepted findings on the happy path before returning `STEP3_REVIEW_LOOP_STATUS=complete`; Prompt-side Gate B apply runs only on loop bail-outs (`main-agent-apply-required`, `per-round-approval-required`, `postplan-operator-required`). `--manual` / persisted manual mode no longer exists. Select UX from `approve_requested` (bound by the Step 3.5 fence from `run-params.json`; default `false`):
+Resolve mode only after the zero-findings short-circuit proves at least one accepted in-scope finding remains. The Rust script-internal controller applies accepted findings on the happy path before returning `STEP3_REVIEW_LOOP_STATUS=complete`; Prompt-side Gate B apply runs only on loop bail-outs (`main-agent-apply-required`, `per-round-approval-required`, `postplan-operator-required`). `--manual` / persisted manual mode no longer exists. Select UX from `approve_requested` (bound by the Step 3.5 fence from `run-params.json`; default `false`):
 
 - **`approve_requested=false` (default): auto-apply.** Run `python/cli.py design render-gate --gate B --accepted-count "$N" --approve-requested false`, print `AUTO_APPLY_MESSAGE`, then Execute `### Apply-all body` verbatim. Skip the `AskUserQuestion` entirely. No operator prompt fires before the plan is revised.
 - **`approve_requested=true` (`--per-round-approval`): explicit.** Use the deferred explicit-mode reference load after Presentation below. Gate B prompts before any finding changes `plan.txt`, and `approval-gates-explicit.md` loads only after the zero-findings short-circuit and resume idempotency guard prove this entry will prompt.
@@ -66,7 +66,7 @@ After every `BGJOB_STATUS=DONE`, read the result env first. Require `BGJOB_RC=0`
 ### Presentation
 
 1. Run `scripts/larch.sh plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"` and bind counts from stdout KVs.
-2. Run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant gate-b` and emit stdout verbatim. Preview owns the `## Plan Review Findings: Review` header, findings rows, and rejected/OOS context. Do not print that header again in Presentation.
+2. Run `scripts/larch.sh plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant gate-b` and emit stdout verbatim. Preview owns the `## Plan Review Findings: Review` header, findings rows, and rejected/OOS context. Do not print that header again in Presentation.
 
 ### Explicit-mode load gate
 

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
 
 from larch.design import design_dialectic, design_step3b
-from larch.review import plan_review_loop
 
 from test_support import make_design_tmpdir, write_design_source_env
 
@@ -30,9 +30,9 @@ def _probe(value: str, *, rc: int = 0) -> Callable[[Sequence[str]], int]:
     return fake_probe
 
 
-def _finalize(rc: int) -> Callable[[Sequence[str]], int]:
-    def fake_finalize(_argv: Sequence[str]) -> int:
-        return rc
+def _finalize(rc: int) -> Callable[..., subprocess.CompletedProcess[str]]:
+    def fake_finalize(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, rc, stdout="", stderr="")
 
     return fake_finalize
 
@@ -43,7 +43,7 @@ def test_finalize_maps_every_probe_value_and_writes_sidecar(
 ) -> None:
     design = make_design_tmpdir(tmp_path)
     args = _args(design, plugin_root=Path.cwd())
-    monkeypatch.setattr(plan_review_loop, "finalize_plan", _finalize(0))
+    monkeypatch.setattr(design_step3b.subprocess, "run", _finalize(0))
     monkeypatch.setattr(design_dialectic, "gatec_main", _probe(probe))
 
     assert design_step3b.step3b_entry_main([*args, "--mode", "finalize"]) == 0
@@ -61,7 +61,7 @@ def test_finalize_rejects_missing_duplicate_or_malformed_probe_rows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], probe: str,
 ) -> None:
     design = make_design_tmpdir(tmp_path)
-    monkeypatch.setattr(plan_review_loop, "finalize_plan", _finalize(0))
+    monkeypatch.setattr(design_step3b.subprocess, "run", _finalize(0))
     monkeypatch.setattr(design_dialectic, "gatec_main", _probe(probe))
 
     assert design_step3b.step3b_entry_main([*_args(design, plugin_root=Path.cwd()), "--mode", "finalize"]) == 1
@@ -73,7 +73,7 @@ def test_finalize_preserves_child_failure_and_does_not_complete(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:
     design = make_design_tmpdir(tmp_path)
-    monkeypatch.setattr(plan_review_loop, "finalize_plan", _finalize(7))
+    monkeypatch.setattr(design_step3b.subprocess, "run", _finalize(7))
 
     assert design_step3b.step3b_entry_main([*_args(design, plugin_root=Path.cwd()), "--mode", "finalize"]) == 7
     assert "FINALIZE failed" in capsys.readouterr().err
@@ -84,7 +84,7 @@ def test_finalize_probe_failure_keeps_diagnostics_and_does_not_complete(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:
     design = make_design_tmpdir(tmp_path)
-    monkeypatch.setattr(plan_review_loop, "finalize_plan", _finalize(0))
+    monkeypatch.setattr(design_step3b.subprocess, "run", _finalize(0))
     monkeypatch.setattr(design_dialectic, "gatec_main", _probe("probe failure", rc=9))
 
     assert design_step3b.step3b_entry_main([*_args(design, plugin_root=Path.cwd()), "--mode", "finalize"]) == 9
@@ -100,7 +100,7 @@ def test_finalize_fresh_entry_replaces_stale_resume_sidecar(
     completed.mkdir()
     _ = (completed / "step-3b").touch()
     _ = (design / ".step4-mode.env").write_text("STEP4_MODE=background\n", encoding="utf-8")
-    monkeypatch.setattr(plan_review_loop, "finalize_plan", _finalize(0))
+    monkeypatch.setattr(design_step3b.subprocess, "run", _finalize(0))
     monkeypatch.setattr(design_dialectic, "gatec_main", _probe("DIALECTIC_GATEC_DEBATE_REQUIRED=false"))
 
     assert design_step3b.step3b_entry_main([*_args(design, plugin_root=Path.cwd()), "--mode", "entry"]) == 0

@@ -427,7 +427,7 @@ Slot semantics:
   the full 23-column schema width. <!-- lint-literal-counts: allow fixed TSV schema --> A 0-finding or tally-error round may therefore publish a
   header-only TSV.
 
-See [python/plan_review.py](python/plan_review.py)
+See `crates/larch-cli/src/plan_review_commands.rs` in the source repository
 for the authoritative producer contract and harness coverage.
 
 ### design plan-review per-round artifacts

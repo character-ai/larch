@@ -179,7 +179,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-gatec --design-tmpd
 mkdir -p "$DESIGN_TMPDIR/.completed"
 : > "$DESIGN_TMPDIR/.completed/dialectic-gatec-terminal"
 
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review preview \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" plan-review preview \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --variant gatec >"$DESIGN_TMPDIR/gatec-preview.md"
 if [ -f "$DESIGN_TMPDIR/.pause-save-complete" ]; then

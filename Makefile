@@ -108,7 +108,7 @@ test-harnesses: test-harnesses-1 test-harnesses-2
 
 test-harnesses-1: test-hook-anti-read-poll
 
-test-harnesses-2: test-harness-shards-coverage test-prompt-template-invariants test-design-step3-mav test-step3-review-cap test-step3-orchestrator-fence test-file-failure-report-cross-repo test-gate-b-apply-mode test-fluff-analysis test-read-result-env test-voter-calibration test-design-step3-review test-design-step3-entry test-design-multi-round-integration test-sessionstart test-deny-edit-write test-design-step3b-tail test-token-vendor-scrapers test-external-tool-registry test-resolve-upstream-larch-repo test-cache-root-validation test-block-submodule test-cache-key-discipline test-architectural-guidelines-step test-references-headers test-extinct-notification-stack test-pipe-sigpipe-safety test-hook-stop-fail-close test-hook-deny-run-in-background test-quick-mode-docs-sync test-check-stale-plugin oos-disposition-gate-bash-harness test-render-cost-line-callsites test-plan-adequacy-audit write-final-report-bash-harness step-7a-bash-harness test-implement-timing-rehydration test-pause-skill flush-execution-issues-bash-harness test-audit-edit-write test-cleanup-sessionstart test-subskill-anchors test-rejected-analysis test-implement-anti-halt test-sessionstart-statusline test-step-8-oos-checkpoint test-design-clarify test-implement-fence-shape test-legacy-title-prefix-literals-scope test-implement-step2-routing test-triage-structure test-anti-halt test-implement-rebase-macro test-research-angle-prompts test-implement-step8-exit3-first-fixer test-orchestrator-scope-sync test-brainstorm-prompts test-synthesis-subagent test-implement-cleanup-roundtrip test-anti-improvised-wakeup test-implement-relevant-checks-anti-halt test-fluff-analysis-corpus test-implement-positional-issue test-effort-prose
+test-harnesses-2: test-harness-shards-coverage test-prompt-template-invariants test-file-failure-report-cross-repo test-gate-b-apply-mode test-fluff-analysis test-read-result-env test-voter-calibration test-sessionstart test-deny-edit-write test-design-step3b-tail test-token-vendor-scrapers test-external-tool-registry test-resolve-upstream-larch-repo test-cache-root-validation test-block-submodule test-cache-key-discipline test-architectural-guidelines-step test-references-headers test-extinct-notification-stack test-pipe-sigpipe-safety test-hook-stop-fail-close test-hook-deny-run-in-background test-quick-mode-docs-sync test-check-stale-plugin oos-disposition-gate-bash-harness test-render-cost-line-callsites test-plan-adequacy-audit write-final-report-bash-harness step-7a-bash-harness test-implement-timing-rehydration test-pause-skill flush-execution-issues-bash-harness test-audit-edit-write test-cleanup-sessionstart test-subskill-anchors test-rejected-analysis test-implement-anti-halt test-sessionstart-statusline test-step-8-oos-checkpoint test-design-clarify test-implement-fence-shape test-legacy-title-prefix-literals-scope test-implement-step2-routing test-triage-structure test-anti-halt test-implement-rebase-macro test-research-angle-prompts test-implement-step8-exit3-first-fixer test-orchestrator-scope-sync test-brainstorm-prompts test-synthesis-subagent test-implement-cleanup-roundtrip test-anti-improvised-wakeup test-implement-relevant-checks-anti-halt test-fluff-analysis-corpus test-implement-positional-issue test-effort-prose
 
 test-pipe-sigpipe-safety:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
@@ -189,13 +189,13 @@ test-check-scope-reduction-marker:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test dirty_tree scope_
 
 test-plan-review:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k '(drift_baseline and not round_artifact) or compose_attributed_ballot or ballot_neutralization or aggregation_ok or aggregator_status or write_atomic'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands
 
 test-plan-review-panel:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_dispatch
 
 test-plan-review-scope-anchor:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'scope_anchor and not persist_retally'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands utility_and_persistence
 
 test-lib-scope-anchor-handoff:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/rendering/test_rendering.py -q
@@ -267,7 +267,7 @@ test-review-and-fix-step5-loop-timing:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k loop_timing
 
 test-record-plan-review-round-timing:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'design_round_timing or persist_round_start_s'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands utility_and_persistence
 
 
 
@@ -408,7 +408,7 @@ test-trailer-helpers:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k optional_trailer
 
 test-emit-design-plan-preview:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k preview
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands preview_and_finalize
 test-check-plan-size:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k check_plan_size
 
@@ -437,37 +437,42 @@ test-review-findings-classification:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_tally_commands
 
 test-plan-review-loop:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'loop_dedup or migrated_collector or not_substantive_count or round_meta or emit_rejected or run_round_body_subprocess or run_round_body_in_process or (continuation and not step3_state)'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands loop_transcript
 
 test-lib-design-round-artifacts:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k round_artifact
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands utility_and_persistence
 
 test-design-multi-round-integration:
+	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test plan_review_loop_commands loop_transcript
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-design-multi-round-integration.sh
 
 test-step3-review-cap:
+	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test plan_review_loop_commands loop_transcript
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-step3-review-cap.sh
 
 test-persist-retally-step3-env:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k persist_retally
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands utility_and_persistence
 
 test-run-step3-review:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k record_report_evidence
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands loop_transcript
 
 test-review-design-step3-loop:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'legacy_assets_removed or phase_driver_write_result_env_refuses_symlink or step3_loop_persist_envelope or postplan_validator or emits_round_provenance or zero_findings_degraded_stop'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands loop_transcript
 
 test-step3-orchestrator-fence:
+	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test plan_review_loop_commands normalize
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-step3-orchestrator-fence.sh
 
 test-design-step3-mav:
+	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test plan_review_loop_commands utility_and_persistence
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3-mav.sh
 
 test-design-step3-state:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k 'step3_state or step3_normalize or step3_read_result_env'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands step3_state
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands normalize
 
 test-finalize-plan:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_plan_review.py -q -k finalize
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands preview_and_finalize
 
 test-step0b-router-flag-recovery:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k design_route
@@ -981,6 +986,7 @@ test-design-step-final-summary:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k step_final_summary
 
 test-design-step3-review:
+	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test plan_review_loop_commands normalize
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3-review.sh
 
 test-design-step3b-tail:
@@ -990,10 +996,11 @@ test-design-step3b-entry:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_step3b.py
 
 test-design-step3-entry:
+	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test plan_review_loop_commands normalize_and_session_entry
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3-entry.sh
 
 test-design-small-session-entries:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_small_session_entries.py
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands normalize_and_session_entry
 
 test-design-step0-init:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'step0_parse or step0_session or step0_route or step0_init or step0_abort or step0_ap or step0c or step1d7 or step1e or pause_save or bash_quoted or decode_bash_percent_q or degraded_tools or relay_degraded or require_design or resolve_repo or wrapper or core_style_ctx'

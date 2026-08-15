@@ -19,7 +19,7 @@ audit_umbrella.batch_mutation	AuditUmbrellaCommand	immutable snapshot + exact le
 design.decompose.harness_panel	cli.py	offline panel regression coverage	python/cli.py
 design.decompose.harness_agg	cli.py	offline aggregator merge coverage	python/cli.py
 design.decompose.harness_file	cli.py	offline prepare annotate close-original coverage	python/cli.py
-design.plan.preview_emit	Step 3 plan-candidate preview	Gate C final-plan preview	python/larch/review/plan_review_loop.py
+design.plan.preview_emit	Step 3 plan-candidate preview	Gate C final-plan preview	crates/larch-cli/src/plan_review_commands.rs
 design.plan_commands.validate	Tier2+opt-in Tier3	plan fenced bash/sh	python/larch/design/plan_quality.py
 implement.conflict_review.panel	ci-fixer	ci-fixer MODE conflict self-review only	skills/implement/references/conflict-resolution.md
 implement.conflict_review.rounds_max	2 total	resolution-review rounds	agents/ci-fixer.md

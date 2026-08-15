@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import re
+import subprocess
 import sys
 import time
 from enum import StrEnum
@@ -17,8 +19,8 @@ from pathlib import Path
 from collections.abc import Callable, Sequence
 
 from larch import io as larch_io
+from larch.core.repo_roots import larch_entrypoint
 from larch.design import design_dialectic, design_session, plan_grammar
-from larch.review import plan_review_loop
 from larch.state import session_env
 
 
@@ -106,7 +108,19 @@ def _pause_if_requested(*, design_tmpdir: Path) -> int | None:
 def _run_finalize(*, design_tmpdir: Path) -> int:
     stdout_path = design_tmpdir / "step3b-finalize-driver.stdout"
     stderr_path = design_tmpdir / "step3b-finalize-driver.stderr"
-    rc, stdout, stderr = _run_captured(plan_review_loop.finalize_plan, ["--design-tmpdir", str(design_tmpdir)])
+    completed = subprocess.run(
+        [
+            str(larch_entrypoint(os.environ["CLAUDE_PLUGIN_ROOT"])),
+            "plan-review",
+            "finalize",
+            "--design-tmpdir",
+            str(design_tmpdir),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    rc, stdout, stderr = completed.returncode, completed.stdout, completed.stderr
     try:
         _write_capture(path=stdout_path, text=stdout)
         _write_capture(path=stderr_path, text=stderr)

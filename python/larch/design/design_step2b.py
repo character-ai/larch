@@ -22,7 +22,7 @@ from larch.core.ctx import Ctx
 from larch.design import plan_grammar, design_postplan
 from larch.issue import issue_wire
 from larch.core import architectural_guidelines
-from larch.core.repo_roots import consumer_repo_root, larch_entrypoint
+from larch.core.repo_roots import consumer_repo_root, larch_entrypoint, larch_entrypoint_env
 from larch.state.session_env import validate_design_tmpdir
 from larch.review.review_types import FOCUS_AREA_VALUES, render_wire_values
 
@@ -802,11 +802,11 @@ def _warn_step2b_missing_scout_if_needed(*, status_text: str, design_tmpdir: Pat
 
 
 def _print_step2b_plan_review_preview(*, design_tmpdir: Path, plugin_root: Path) -> None:
-    env: dict[str, str] = os.environ.copy()
+    env = larch_entrypoint_env(plugin_root)
     env["LARCH_QUIET_DISABLE"] = "1"
     # lint-subprocess-via-runner: ok Step 2b preview contract pins subprocess.run text mode.
     preview = subprocess.run(
-        [sys.executable, str(plugin_root / "python" / "cli.py"), "plan-review", "preview", "--design-tmpdir", str(design_tmpdir), "--variant", "step2b"],
+        [str(larch_entrypoint(plugin_root)), "plan-review", "preview", "--design-tmpdir", str(design_tmpdir), "--variant", "step2b"],
         capture_output=True,
         text=True,
         env=env,
