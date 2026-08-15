@@ -452,6 +452,7 @@ mod tests {
         );
         check(
             &RestoreRequest {
+                source: None,
                 staged: true,
                 paths: vec![GitPath::new("tracked.txt").unwrap()],
             },
@@ -486,11 +487,21 @@ mod tests {
         );
         check(
             &ApplyRequest {
-                patch: GitPath::new("change.patch").unwrap(),
+                patch: GitFilePath::new("change.patch").unwrap(),
+                cached: false,
                 index: true,
                 check: false,
             },
             &["apply", "--index", "change.patch"],
+        );
+        check(
+            &ApplyRequest {
+                patch: GitFilePath::new("/tmp/change.patch").unwrap(),
+                cached: true,
+                index: false,
+                check: false,
+            },
+            &["apply", "--cached", "/tmp/change.patch"],
         );
         check(
             &CommitRequest {

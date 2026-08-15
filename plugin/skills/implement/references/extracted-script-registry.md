@@ -27,7 +27,7 @@ Prompt-side orchestration steps delegate to these script contracts:
 - `step-8-oos-checkpoint.md`
 - `python/larch/state/closeout.py` (`python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17`, `step-16`, and `step-17`)
 - `step-18.md` (`skills/implement/scripts/step-18.sh`)
-- `python/larch/review/review_and_fix.py` (Step 5 / apply-findings / check-changes / commit-fixes / write-rejected driver)
+- `crates/larch-cli/src/review_and_fix_commands.rs` (Rust Step 5 / apply-findings / check-changes / commit-fixes / write-rejected driver)
 
 **PR-body recovery helper:** use `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr closes-issue` for `Closes #N` extraction.
 

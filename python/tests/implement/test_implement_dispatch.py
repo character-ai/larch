@@ -717,7 +717,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("review-and-fix", "write-loop-identity")][:2] == ("larch.core.process_identity", "write_step5_loop_identity_main")
     assert _REGISTRY[("review-and-fix", "await-loop-identity")][:2] == ("larch.core.process_identity", "await_step5_loop_identity_main")
     assert _REGISTRY[("review-and-fix", "teardown-loop-identity")][:2] == ("larch.core.process_identity", "teardown_step5_loop_identity_main")
-    assert _REGISTRY[("review-and-fix", "normalize-status")][:2] == ("larch.review.review_and_fix", "normalize_status")
+    assert ("review-and-fix", "normalize-status") not in _REGISTRY
     assert _REGISTRY[("implement", "normalize-coder-scout")][:2] == ("larch.implement.implement_dispatch", "normalize_coder_scout_main")
     assert _REGISTRY[("implement", "step-5-review")][:2] == ("larch.implement.implement_dispatch", "step5_review_main")
     assert _REGISTRY[("implement", "step-6-entry")][:2] == ("larch.implement.implement_dispatch", "step6_entry_main")
@@ -4507,6 +4507,7 @@ def _mock_step6_check_changes(
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_capture)
     monkeypatch.setattr(dispatch_commit_route, "_run_cli_capture", fake_capture)
+    monkeypatch.setattr(dispatch_commit_route, "_run_larch_capture", fake_capture)
 
 
 def _step6_worker_main(argv: list[str]) -> int:
@@ -4781,6 +4782,7 @@ def test_step6_entry_force_checks_skips_change_gate_and_never_emits_skip(
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fail_check_changes)
     monkeypatch.setattr(dispatch_commit_route, "_run_cli_capture", fail_check_changes)
+    monkeypatch.setattr(dispatch_commit_route, "_run_larch_capture", fail_check_changes)
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
     monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fake_composite)
 
@@ -6569,12 +6571,13 @@ def _setup_step5_resume(
     monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda args, **_kwargs: subprocess.CompletedProcess(list(args), route_rc, route_stdout, ""))
     resume_calls: list[list[str]] = []
 
-    def fake_forward(args, **_kwargs):  # type: ignore[no-untyped-def]
-        resume_calls.append(list(args))
-        return 0
+    def fake_larch(args, **_kwargs):  # type: ignore[no-untyped-def]
+        argv = list(args)
+        if argv[:2] == ["review-and-fix", "step5"]:
+            resume_calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "", "")
 
-    monkeypatch.setattr(implement_dispatch, "_run_cli_forward", fake_forward)
-    monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", fake_forward)
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_larch", fake_larch)
     monkeypatch.setattr(
         implement_dispatch.subprocess,
         "run",
@@ -7509,13 +7512,13 @@ def test_step5_review_main_defaults_dynamic_cap_to_one(
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.delenv("LARCH_DYNAMIC_ARCHETYPES_MAX", raising=False)
     calls: list[list[str]] = []
-    monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda argv, **_kwargs: subprocess.CompletedProcess(list(argv), 0, "", ""))
+    def fake_larch(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        call = list(argv)
+        if call[:2] == ["review-and-fix", "step5"]:
+            calls.append(call)
+        return subprocess.CompletedProcess(call, 0, "", "")
 
-    def fake_forward(argv: Sequence[str]) -> int:
-        calls.append(list(argv))
-        return 0
-
-    monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", fake_forward)
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_larch", fake_larch)
     rc = _step5_review_worker_main()
     captured = capsys.readouterr()
     assert rc == 0
@@ -7534,8 +7537,7 @@ def test_step5_review_main_accepts_dynamic_boundary_values(
     impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setenv("LARCH_DYNAMIC_ARCHETYPES_MAX", value)
-    monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda argv, **_kwargs: subprocess.CompletedProcess(list(argv), 0, "", ""))
-    monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", lambda _argv: 0)
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_larch", lambda argv, **_kwargs: subprocess.CompletedProcess(list(argv), 0, "", ""))
     assert _step5_review_worker_main() == 0
     assert os.environ["LARCH_DYNAMIC_ARCHETYPES_MAX"] == value
 
@@ -7550,9 +7552,8 @@ def test_step5_review_main_rejects_over_cap_dynamic_values(
     impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setenv("LARCH_DYNAMIC_ARCHETYPES_MAX", value)
-    monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda argv, **_kwargs: subprocess.CompletedProcess(list(argv), 0, "", ""))
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_larch", lambda argv, **_kwargs: subprocess.CompletedProcess(list(argv), 0, "", ""))
     forward_calls: list[Sequence[str]] = []
-    monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", lambda argv: forward_calls.append(argv) or 0)
     rc = _step5_review_worker_main()
     captured = capsys.readouterr()
     assert rc == 2

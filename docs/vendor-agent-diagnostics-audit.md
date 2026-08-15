@@ -67,7 +67,7 @@ unmigrated launcher commands); **R** = residual gap named below.
 | `scripts/larch.sh plan-review voter-dispatch` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter launches inherit the carrier; dropped-slot give-up batch append is residual. |
 | `scripts/larch.sh agent dispatch-voters` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter 1 failure site token: `agent dispatch-voters voter1`. |
 | `scripts/larch.sh agent dispatch-waterfall` | ✅ inherit | ✅ backstop | R batch | **I/R** | Waterfall dropped-slot output-path exposure is residual. |
-| `python/cli.py review-and-fix apply-findings` | ✅ inherit | ✅ backstop | R batch | **I/R** | `run_coder_dispatch_*` give-up inherits; per-tool sink + batch append is residual. |
+| `scripts/larch.sh review-and-fix apply-findings` | ✅ inherit | ✅ backstop | R batch | **I/R** | The Rust repair owner forwards through the typed vendor launchers; per-tool sink + batch append is residual. |
 | `python/cli.py scout dynamic-archetypes` | ✅ inherit | ✅ backstop | R | **I/R** | Cursor tier via `agent launch-review` (**D**), Claude tier via `scripts/larch.sh agent launch-claude-subprocess` (**D**). Tier-specific raw stems + direct-Claude site-aware logging are residual; stale Codex-scout row is the incident's dropped path. |
 | `scripts/generate-code-flow-diagram.sh` | ✅ inherit | R | R | **I/R** | Claude subprocess via `scripts/larch.sh agent launch-claude-subprocess` (carrier saved); `code-flow-diagram.raw.md` site-aware execution-issues + batch is residual. |
 | `python/cli.py checks lint-fix` | ✅ inherit | ✅ backstop | R batch | **I/R** | Codex/Cursor dispatch inherits; per-tool carrier resolve + batch is residual. |

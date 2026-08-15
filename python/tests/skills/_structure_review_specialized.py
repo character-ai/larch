@@ -61,20 +61,28 @@ def run(repo_root: Path) -> list[str]:
 
     review_and_fix = file("skills/review-and-fix")
     if not (review_and_fix / "SKILL.md").is_file(): failures.append("(1b) missing skills/review-and-fix/SKILL.md")
-    if not file("python/larch/review/review_and_fix.py").is_file(): failures.append("(1b) missing python/review_and_fix.py")
+    review_and_fix_commands = file("crates/larch-cli/src/review_and_fix_commands.rs")
+    if not review_and_fix_commands.is_file(): failures.append("(1b) missing Rust review-and-fix command owner")
+    if file("python/larch/review/review_and_fix.py").exists(): failures.append("(1b) superseded Python review-and-fix owner must be removed")
     if not cli.is_file(): failures.append("(1b) missing python/cli.py")
     for needle, label in (
-        ('("review-and-fix", "apply-findings")', "(1b) missing python/cli.py review-and-fix apply-findings registry entry"),
-        ('("review-and-fix", "step5")', "(1b) missing python/cli.py review-and-fix step5 registry entry"),
-        ('("redact", "scrub-submodule-paths")', "(1b) missing python/cli.py redact scrub-submodule-paths registry entry"),
+        ('("review-and-fix", "apply-findings")', "(1b) Python review-and-fix apply-findings registry entry must be removed"),
+        ('("review-and-fix", "step5")', "(1b) Python review-and-fix step5 registry entry must be removed"),
     ):
-        require(cli, needle, label)
-    raf, coder = file("python/larch/review/review_and_fix.py"), file("python/larch/review/coder_runner.py")
-    if not ("launch-codex-exec" in read(raf) or "launch-codex-exec" in read(coder)):
+        if needle in read(cli):
+            failures.append(label)
+    review_and_fix_commands_text = read(review_and_fix_commands)
+    for verb in ("apply-findings", "step5", "commit-fixes", "check-changes", "normalize-status"):
+        if not re.search(rf'#\[command\(\s*name\s*=\s*"{re.escape(verb)}"', review_and_fix_commands_text):
+            failures.append(f"(1b) missing Rust review-and-fix {verb} command")
+    if "launch-codex-exec" not in review_and_fix_commands_text:
         failures.append("(1b) review-and-fix CLI must dispatch Codex coder")
-    if not ('"--tool", "cursor"' in read(raf) or '"--tool", "cursor"' in read(coder)):
+    if not all(
+        needle in review_and_fix_commands_text
+        for needle in ("run_cursor_coder(", "VendorProgram::Cursor")
+    ):
         failures.append("(1b) review-and-fix CLI must dispatch Cursor coder")
-    if "launch-claude-subprocess" in read(raf):
+    if "launch-claude-subprocess" in review_and_fix_commands_text:
         failures.append("(1b) review-and-fix CLI must not dispatch a Claude subagent fallback")
 
     aggregator = file("agents/orchestrator-aggregator.md")

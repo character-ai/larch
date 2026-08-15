@@ -106,6 +106,7 @@ mod eval_commands;
 mod ledger_append;
 mod report_tokens_commands;
 mod research_commands;
+mod review_and_fix_commands;
 mod review_commands;
 mod review_compose_commands;
 mod review_core_commands;
@@ -145,6 +146,7 @@ use git_commands::GitCommand;
 use plan_review_commands::PlanReviewCommand;
 use rebalance_tests::RebalanceTestsCommand;
 use repo_size_commands::RepoCommand;
+use review_and_fix_commands::ReviewAndFixCommand;
 use review_commands::ReviewCommand;
 use slack_commands::SlackCommand;
 use test_shards::TestShardCommand;
@@ -172,6 +174,9 @@ enum Domain {
     /// Review pipeline commands.
     #[command(subcommand)]
     Review(ReviewCommand),
+    /// Repair code-review findings.
+    #[command(subcommand, name = "review-and-fix")]
+    ReviewAndFix(ReviewAndFixCommand),
     /// Plan-review workflow commands.
     #[command(subcommand, name = "plan-review")]
     PlanReview(PlanReviewCommand),
@@ -1833,6 +1838,7 @@ fn run(
     match cli.domain {
         Domain::Agent(command) => Ok(agent_commands::run(command)),
         Domain::Review(command) => Ok(review_commands::run(command)),
+        Domain::ReviewAndFix(command) => Ok(review_and_fix_commands::run(command)),
         Domain::CalibrationReplay(CalibrationReplayCommand::RebuildBallot(arguments)) => Ok(
             calibration_commands::rebuild_ballot_command(&arguments.arguments),
         ),

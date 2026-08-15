@@ -309,11 +309,11 @@ def run(repo_root: Path) -> list[str]:
         retired_step5_entry_md = "step-5-" + "entry.md"
         forbid(skill, retired_step5_entry_sh, "retired step-5-entry.sh call removed from SKILL")
         forbid(skill, retired_step5_entry_md, "retired step-5-entry.md ref removed from SKILL")
-        require("python/larch/review/review_and_fix.py", "--stage-all", "commit-fixes --stage-all")
+        require("crates/larch-cli/src/review_and_fix_commands.rs", "--stage-all", "commit-fixes --stage-all")
         forbid(skill, "review-and-fix commit-fixes <specific-files>", "Step 7 must stage all review fixes")
-        forbid("python/larch/review/review_and_fix.py", '"git", "add", "-A"', "commit-fixes must not stage unrelated paths")
-        forbid("python/larch/review/review_and_fix.py", '"git", "add", "--pathspec-from-file"', "staging owned by commit_main only")
-        require("python/larch/review/review_and_fix.py", '"--only",\n        "--pathspec-from-file"', "commit-fixes pathspec-only commit")
+        forbid("crates/larch-cli/src/review_and_fix_commands.rs", '"git", "add", "-A"', "commit-fixes must not stage unrelated paths")
+        forbid("crates/larch-cli/src/review_and_fix_commands.rs", '"git", "add", "--pathspec-from-file"', "staging owned by commit_main only")
+        require("crates/larch-cli/src/review_and_fix_commands.rs", '"git", "commit", "--only", "--pathspec-from-file"', "commit-fixes pathspec-only commit")
         require("python/larch/implement/dispatch_helpers.py", "LARCH_TIMING_LEDGER", "commit-implementation telemetry self-rehydration")
         require("skills/implement/scripts/step-18.sh", 'implement step-18 "$@"', "step-18 wrapper delegates to Python")
         forbid("skills/implement/scripts/step-18.sh", "print_summary_markers", "step-18 wrapper must not retain finalize helpers")
@@ -1226,7 +1226,7 @@ def run(repo_root: Path) -> list[str]:
             "larch:claude-self-reviewer",
             "self-review mode (Claude subagent)",
             "skills/implement/scripts/run-step-checks.sh --site step5-self-review --commit-site step5-self-review",
-            "python/cli.py review-and-fix write-self-review-tally",
+            "scripts/larch.sh review-and-fix write-self-review-tally",
             "set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18",
             "NEXT_ACTION=main-agent-edit",
             "re-run this same composite launcher with identical argv",

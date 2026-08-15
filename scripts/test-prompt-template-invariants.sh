@@ -119,24 +119,6 @@ fi
 STUB
 chmod +x "$stub_bin/codex" "$stub_bin/cursor" "$stub_bin/claude"
 
-run_external_stub="$TMP/run-external-agent.sh"
-cat > "$run_external_stub" <<'STUB'
-#!/usr/bin/env bash
-out=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --output) out="$2"; shift 2 ;;
-    --timeout|--tool) shift 2 ;;
-    --capture-stdout|--) shift; [[ "${1:-}" == "--" ]] && shift ;;
-    *) shift ;;
-  esac
-done
-[[ -n "$out" ]] || exit 8
-printf 'APPLIED: FINDING_1\n' > "$out"
-printf '0\n' > "$out.done"
-STUB
-chmod +x "$run_external_stub"
-
 # ── review dispatch-panel prompt source assertions ───────────────────────────
 
 DISPATCH_PANEL="$REPO_ROOT/crates/larch-cli/src/review_dispatch_panel_prompt.md"
@@ -207,9 +189,9 @@ retry_prompt=$(find "$plan_voter_tmp" -name '*plan-voter-prompt-retry.txt' -prin
 
 review_tmp="$TMP/review-fix"
 mkdir -p "$review_tmp"
-PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$run_external_stub" \
+PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     LARCH_QUIET_DISABLE=1 \
-    python3 "$REPO_ROOT/python/cli.py" review-and-fix apply-findings \
+    "$REPO_ROOT/scripts/larch.sh" review-and-fix apply-findings \
     --findings-file "$findings_file" \
     --review-tmpdir "$review_tmp" >/dev/null || true
 
