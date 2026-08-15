@@ -302,17 +302,17 @@ fn parse_tsv(text: &str) -> Result<(Vec<String>, Vec<TextRow>), csv::Error> {
         .flexible(true)
         .from_reader(filtered.as_bytes());
     let header: Vec<String> = reader.headers()?.iter().map(str::to_owned).collect();
-    let mut rows = Vec::new();
-    for record in reader.records() {
-        let record = record?;
-        rows.push(
-            header
+    let rows = reader
+        .records()
+        .map(|record| {
+            let record = record?;
+            Ok(header
                 .iter()
                 .enumerate()
                 .map(|(index, key)| (key.clone(), record.get(index).unwrap_or("").to_owned()))
-                .collect(),
-        );
-    }
+                .collect())
+        })
+        .collect::<Result<_, csv::Error>>()?;
     Ok((header, rows))
 }
 
@@ -476,7 +476,7 @@ fn parse_jsonl_source(
         let outcome = legacy_text(first_value(&record, &["outcome", "voting_result"]))
             .trim()
             .to_ascii_lowercase();
-        if !outcome.is_empty() && !matches!(outcome.as_str(), "accepted" | "rejected" | "neutral") {
+        if !matches!(outcome.as_str(), "" | "accepted" | "rejected" | "neutral") {
             malformed_rows += 1;
         }
         parsed.push((

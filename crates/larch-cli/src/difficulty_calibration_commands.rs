@@ -6,7 +6,7 @@ use crate::{
     analysis_state,
     argparse_compat::{parse_required_with_help, write_stdout},
     run_log_commands,
-    run_log_publication_commands::synchronized_corpus_root,
+    run_log_publication_commands::{preflight_error, synchronized_corpus_root},
 };
 
 const PROGRAM: &str = "difficulty-calibration analyze";
@@ -86,10 +86,7 @@ pub fn analyze(arguments: &[OsString]) -> ExitCode {
 fn synchronized_roots() -> Result<(PathBuf, PathBuf), String> {
     let (repo_root, _origin, _environment) =
         run_log_commands::resolve_repository_environment_path(None).map_err(|error| {
-            let message = match error {
-                run_log_commands::PreflightFailure::Configuration(error) => error.to_string(),
-                run_log_commands::PreflightFailure::Provider(error) => error.to_string(),
-            };
+            let message = preflight_error(&error);
             if message.starts_with("could not discover a Git repository root") {
                 "could not discover a Git repository root for run-log synchronization".to_owned()
             } else {
@@ -99,13 +96,8 @@ fn synchronized_roots() -> Result<(PathBuf, PathBuf), String> {
     let repo_root = fs::canonicalize(repo_root).map_err(|_| {
         "could not discover a Git repository root for run-log synchronization".to_owned()
     })?;
-    let storage =
-        run_log_commands::resolve_enabled_storage_path(Some(&repo_root)).map_err(|error| {
-            match error {
-                run_log_commands::PreflightFailure::Configuration(error) => error.to_string(),
-                run_log_commands::PreflightFailure::Provider(error) => error.to_string(),
-            }
-        })?;
+    let storage = run_log_commands::resolve_enabled_storage_path(Some(&repo_root))
+        .map_err(|error| preflight_error(&error))?;
     let log_root = synchronized_corpus_root(&repo_root)?;
     let state_root =
         analysis_state::storage_root(&storage.client_repo, &storage.storage_origin_id())?;

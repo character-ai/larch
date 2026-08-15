@@ -394,7 +394,7 @@ fn print_disabled_sync(resolution: &RunLogStorageResolution) {
     println!("SYNC_OK=true");
 }
 
-fn preflight_error(error: &PreflightFailure) -> String {
+pub fn preflight_error(error: &PreflightFailure) -> String {
     match error {
         PreflightFailure::Configuration(error) => error.to_string(),
         PreflightFailure::Provider(error) => error.to_string(),
