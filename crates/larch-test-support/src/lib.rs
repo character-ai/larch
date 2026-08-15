@@ -1,6 +1,7 @@
 //! Shared, deterministic fixtures for Rust tests in the larch workspace.
 
 mod clock;
+mod design;
 mod environment;
 mod filesystem;
 mod git;
@@ -12,6 +13,11 @@ mod snapshot_util;
 mod vendor;
 
 pub use clock::TestClock;
+pub use design::{
+    DesignEntrySnapshot, DesignFixture, DesignGithubScenario, DesignParityOracle, DesignSession,
+    DesignSessionBuilder, DesignSessionSnapshot, DesignSessionState, DesignStdoutField,
+    DesignStdoutSnapshot,
+};
 pub use environment::TestEnvironment;
 pub use filesystem::TestWorkspace;
 pub use git::{
