@@ -126,7 +126,8 @@ test-reviewer-prune:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_commands reviewer_prune
 
 test-lib-prune-decision:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli review_core_commands
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch review_core_commands
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_core_contract
 
 test-append-tool-failure:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k execution_issues
@@ -726,7 +727,8 @@ test-gather-context:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_commands gather_context
 
 test-review-core:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli review_core_commands
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch review_core_commands
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_core_contract
 
 test-dispatch-panel-core:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_dispatch_panel
@@ -850,7 +852,7 @@ test-compute-pr-line-counts:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k compute_pr_line_counts
 
 test-compose-review-findings:
-	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli review_compose_commands
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_compose_contract
 
 
 

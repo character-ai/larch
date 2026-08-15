@@ -708,3 +708,21 @@ fn reviewer_prune_keeps_the_legacy_manual_option_grammar() {
             "unknown option: --ledger=ledger.tsv\n{usage}\n{usage}\n"
         ));
 }
+
+#[test]
+fn reviewer_failure_threshold_rejects_a_corrupt_manifest() {
+    let fixture = TempDir::new().expect("fixture");
+    let collector = fixture.path().join("collector.env");
+    let manifest = fixture.path().join("manifest.ndjson");
+    write(&collector, "REVIEWER_FILE=review.txt\nSTATUS=OK\n");
+    write(&manifest, "{not-json}\n");
+    larch()
+        .args(["review", "check-reviewer-failure-threshold", "--collector-results-file"])
+        .arg(collector)
+        .args(["--panel", "hard", "--panel-manifest"])
+        .arg(manifest)
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr("review check-reviewer-failure-threshold: --panel-manifest is unreadable or contains invalid JSON\n");
+}

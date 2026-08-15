@@ -11,6 +11,7 @@ use std::{
     env,
     ffi::OsString,
     fs,
+    io::Read as _,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, PoisonError},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -18,7 +19,8 @@ use std::{
 
 use larch_adapters::{
     CursorConfigContext, NoopProcessObserver, PathIntent, TemporaryRoot, TokioProcessRunner,
-    atomic_write_utf8_in, ensure_directory_chain, read_optional_utf8_lossy,
+    atomic_write_bytes_in, atomic_write_utf8_in, ensure_directory_chain, open_confined_read,
+    read_optional_utf8_lossy,
     runtime::{Cancellation, LarchRuntime},
     vendor_auth::{
         CursorPreflightConfig, CursorTokenPreread, VendorAuthContext, cursor_auth_preflight,
@@ -1149,6 +1151,60 @@ pub fn append_confined_checked(path: &Path, text: &str) -> Result<(), String> {
         Err(error) => return Err(error.to_string()),
     };
     write_confined_checked(path, &(existing + text))
+}
+
+/// Copy bytes between confined regular files without following symlinks.
+pub fn copy_confined_checked(source: &Path, destination: &Path) -> Result<(), String> {
+    let source =
+        crate::argparse_compat::absolute_path(source).map_err(|error| error.to_string())?;
+    let source_parent = source
+        .parent()
+        .ok_or_else(|| format!("path is not confinable: {}", source.display()))?;
+    let source_name = source
+        .file_name()
+        .ok_or_else(|| format!("path is not confinable: {}", source.display()))?;
+    let source_root =
+        TemporaryRoot::resolve(Some(source_parent)).map_err(|error| error.to_string())?;
+    let confined = source_root
+        .confine(source_root.path().join(source_name), PathIntent::Read)
+        .map_err(|error| error.to_string())?;
+    let mut file = open_confined_read(&confined).map_err(|error| error.to_string())?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    let destination =
+        crate::argparse_compat::absolute_path(destination).map_err(|error| error.to_string())?;
+    let (root, target) = confined_target(&destination)
+        .ok_or_else(|| format!("path is not confinable: {}", destination.display()))?;
+    atomic_write_bytes_in(&root, &target, &bytes, true, 0o600).map_err(|error| error.to_string())
+}
+
+/// Read an optional confined text file without following symlinks.
+pub fn read_optional_confined_checked(path: &Path) -> Result<String, String> {
+    if path.as_os_str().is_empty() {
+        return Ok(String::new());
+    }
+    let path = crate::argparse_compat::absolute_path(path).map_err(|error| error.to_string())?;
+    match fs::symlink_metadata(&path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),
+        Err(error) => return Err(error.to_string()),
+        Ok(_) => {}
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("path is not confinable: {}", path.display()))?;
+    let name = path
+        .file_name()
+        .ok_or_else(|| format!("path is not confinable: {}", path.display()))?;
+    let root = TemporaryRoot::resolve(Some(parent)).map_err(|error| error.to_string())?;
+    let confined = root
+        .confine(root.path().join(name), PathIntent::Read)
+        .map_err(|error| error.to_string())?;
+    let mut file = open_confined_read(&confined).map_err(|error| error.to_string())?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// Resolve the canonical root and rebuilt path for one confined write.

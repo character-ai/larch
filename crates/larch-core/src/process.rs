@@ -499,6 +499,16 @@ pub enum ChildEnvironment {
     LarchCodexVoteModel,
     /// Optional Cursor model override passed to a nested larch composition.
     LarchCursorModel,
+    /// Disable adaptive reviewer-panel pruning for a nested review round.
+    LarchReviewerPrune,
+    /// Reviewer straggler-cutoff multiplier.
+    LarchReviewerStragglerMultiple,
+    /// Reviewer straggler-cutoff minimum deadline.
+    LarchReviewerStragglerFloorSeconds,
+    /// Reviewer straggler-cutoff maximum deadline.
+    LarchReviewerStragglerMaxSeconds,
+    /// Optional sole-finder scoring bonus.
+    LarchUniqueFinderBonus,
     /// Disable recursive voter-calibration feedback during calibration replay.
     LarchVoterCalibrationFeedback,
     /// Nested reviewer-probe authentication retry limit.
@@ -606,6 +616,11 @@ impl ChildEnvironment {
             Self::LarchCodexReviewModel => env::LARCH_CODEX_REVIEW_MODEL,
             Self::LarchCodexVoteModel => env::LARCH_CODEX_VOTE_MODEL,
             Self::LarchCursorModel => env::LARCH_CURSOR_MODEL,
+            Self::LarchReviewerPrune => "LARCH_REVIEWER_PRUNE",
+            Self::LarchReviewerStragglerMultiple => "LARCH_REVIEWER_STRAGGLER_MULTIPLE",
+            Self::LarchReviewerStragglerFloorSeconds => "LARCH_REVIEWER_STRAGGLER_FLOOR_SECONDS",
+            Self::LarchReviewerStragglerMaxSeconds => "LARCH_REVIEWER_STRAGGLER_MAX_SECONDS",
+            Self::LarchUniqueFinderBonus => "LARCH_UNIQUE_FINDER_BONUS",
             Self::LarchVoterCalibrationFeedback => "LARCH_VOTER_CALIBRATION_FEEDBACK",
             Self::LarchExternalAuthRetries => env::LARCH_EXTERNAL_AUTH_RETRIES,
             Self::LarchExternalHealthCheckTimeout => env::LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT,
