@@ -294,6 +294,11 @@ COMPLETE_UMBRELLA_CI_POLL_INTERVAL_SEC: Final = 300
 COMPLETE_UMBRELLA_CI_TIMEOUT_SEC: Final = 24 * 60 * 60
 COMPLETE_UMBRELLA_CI_LOG_READY_ATTEMPTS: Final = 3
 COMPLETE_UMBRELLA_CI_FIX_ATTEMPTS: Final = 3
+# DIRTY leaf PRs recover by rebasing onto origin/main. Clean rebases stay in
+# the deterministic driver; conflicted rebases hand off to the ship-phase
+# ci-fixer (MODE=conflict). Both loops are fail-closed caps (#8540).
+COMPLETE_UMBRELLA_CONFLICT_FIX_ATTEMPTS: Final = 3
+COMPLETE_UMBRELLA_MAIN_RECONCILE_ATTEMPTS: Final = 3
 COMPLETE_UMBRELLA_ISSUE_CLOSE_POLL_INTERVAL_SEC: Final = 5
 COMPLETE_UMBRELLA_ISSUE_CLOSE_ATTEMPTS: Final = 12
 # A queue can spend substantial time behind earlier entries before its own

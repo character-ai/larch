@@ -2,7 +2,7 @@
 
 **Consumer**: The fourth fresh general-purpose Agent spawned by the `/complete-umbrella` leaf orchestrator.
 
-**Contract**: Route only through the deterministic leaf ship driver, spawn a bounded CI fixer only after an actual failed-check outcome, and verify terminal shipping state.
+**Contract**: Route only through the deterministic leaf ship driver, spawn a bounded CI fixer only after an actual failed-check outcome, spawn a bounded conflict fixer only after a DIRTY-main handoff, and verify terminal shipping state.
 
 **When to load**: **MANDATORY: READ ENTIRE FILE** only for the primary ship phase.
 
@@ -22,16 +22,17 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" complete-umbrella ship-leaf \
   --leaf "<LEAF>"
 ```
 
-The driver owns the deterministic sequence: push, create or verify a PR with the leaf closing link, refresh CI once every 300 seconds, distill a failed run, detect the default-branch merge queue after green checks, enqueue and wait when it is enabled or squash-merge with `--admin --delete-branch` otherwise, verify the merge, retitle the closed leaf `[DONE]`, switch to `main`, fetch and rebase `origin/main`, delete the feature branch, and verify every postcondition.
+The driver owns the deterministic sequence: rebase onto the latest `origin/main` when safe, push, create or verify a PR with the leaf closing link, refresh CI once every 300 seconds, distill a failed run, detect the default-branch merge queue after green checks, enqueue and wait when it is enabled or squash-merge with `--admin --delete-branch` otherwise, verify the merge, retitle the closed leaf `[DONE]`, switch to `main`, fetch and rebase `origin/main`, delete the feature branch, and verify every postcondition. When a CI-green PR is `DIRTY` against `main`, the driver either rebases cleanly itself or hands off `needs_conflict_fix` with `CONFLICT_FILES` while leaving the rebase in progress.
 
 Route only on `SHIP_STATUS`:
 
 - `complete`: run the same command with `--mode verify`. Require another `SHIP_STATUS=complete`.
 - `ci_failed`: require `CI_ERRORS_FILE` to be a regular file below `$SESSION_TMPDIR`. Spawn one fresh general-purpose Agent with only the identifiers from your prompt, the positive fix round, `CI_ERRORS_FILE`, and `PHASE_CONTRACT=$CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/ci-fix.md`. Await its task notification. Require exactly `PHASE_STATUS=complete` and a contained `HANDOFF_FILE`, then rerun ship mode. The driver's persisted state enforces the fix-attempt cap.
+- `needs_conflict_fix`: require the `CONFLICT_FILES` key from the driver stdout (may be empty). Spawn one fresh general-purpose Agent with only the identifiers from your prompt, the positive conflict round, `CONFLICT_FILES`, and `PHASE_CONTRACT=$CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/conflict-fix.md`. Await its task notification. Require exactly `PHASE_STATUS=complete` and a contained `HANDOFF_FILE`. Then re-check the managed line budget and, when `deviation-required`, re-record the durable deviation at the new HEAD exactly as adversarial-review does. Rerun ship mode. The driver's persisted state enforces the conflict-fix attempt cap.
 - `needs-orchestrator-finalize`: do not mutate the issue, retry ship mode, rebase, or spawn a fixer. Write `$SESSION_TMPDIR/ship-summary.md` with only the PR number, PR URL, and `SHIP_STATUS=needs-orchestrator-finalize`, then end with `PHASE_STATUS=needs-orchestrator-finalize` and its contained `HANDOFF_FILE`. Only the top-level complete-umbrella owner may perform the bounded finalization route.
 - Any other value or nonzero exit: fail. Do not repair deterministic shipping state by hand.
 
-Do not poll while the driver runs. Do not spawn a CI fixer when checks are pending or green.
+Do not poll while the driver runs. Do not spawn a CI fixer when checks are pending or green. Do not spawn a conflict fixer unless the driver returned `needs_conflict_fix`.
 
 After verified completion, write `$SESSION_TMPDIR/ship-summary.md` with only the PR number, PR URL, final issue state, final local HEAD, and `SHIP_STATUS=complete`.
 

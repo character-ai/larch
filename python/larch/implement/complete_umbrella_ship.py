@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Final
 
 from larch import io as larch_io
-from larch.core import config, logging_util, proc, redact, retry
+from larch.core import config, logging_util, proc, redact, retry, repo_roots
 from larch.core.proc import CommandResult, Runner
 from larch.errors import ShipError
 from larch.git import gh, git, pr_body, push
@@ -43,6 +43,9 @@ _STATE_KEYS: Final = frozenset(
         "STATUS",
         "CI_ERRORS_FILE",
         "CI_FIX_ATTEMPTS",
+        "CONFLICT_FILES",
+        "CONFLICT_FIX_ATTEMPTS",
+        "MAIN_RECONCILE_ATTEMPTS",
     },
 )
 _STATE_STATUSES: Final = frozenset(
@@ -50,6 +53,7 @@ _STATE_STATUSES: Final = frozenset(
         "prepared",
         "monitoring",
         "ci_failed",
+        "needs_conflict_fix",
         "awaiting_orchestrator_finalize",
         "queued",
         "merged",
@@ -60,6 +64,7 @@ _STATE_STATUSES: Final = frozenset(
 _BRANCH_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 _HEAD_RE: Final = re.compile(r"^[0-9a-f]{40,64}$")
 _CI_ERRORS_RE: Final = re.compile(r"^ci-errors-[0-9]+\.md$")
+_CONFLICT_PATH_RE: Final = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._/-]*$")
 _CHIEF_MIGRATION_UMBRELLA_RE: Final = re.compile(
     r"#[1-9][0-9]*(?![0-9])[^\r\n]{0,160}\[CHIEF[ \t]+UMBRELLA\]",
     re.IGNORECASE,
@@ -94,6 +99,9 @@ class LeafShipState:
     status: str = "prepared"
     ci_errors_file: str = ""
     ci_fix_attempts: int = 0
+    conflict_files: str = ""
+    conflict_fix_attempts: int = 0
+    main_reconcile_attempts: int = 0
 
 
 @dataclass(frozen=True)
@@ -102,6 +110,7 @@ class LeafShipOutcome:
     pr_number: int = 0
     pr_url: str = ""
     ci_errors_file: str = ""
+    conflict_files: str = ""
     detail: str = ""
 
 
@@ -116,6 +125,26 @@ class MergePrOutcome:
     pull_request: gh.PullRequest
     queued: bool = False
     needs_orchestrator_finalize: bool = False
+
+
+@dataclass(frozen=True)
+class ReconcileOutcome:
+    """Result of rebasing the leaf branch onto the latest origin/main."""
+
+    status: str
+    conflict_files: str = ""
+    head_sha: str = ""
+    rebased: bool = False
+
+
+@dataclass(frozen=True)
+class ConflictHandoff:
+    """Branch identity carried into a needs_conflict_fix ship status."""
+
+    conflict_files: str
+    branch: str
+    head_sha: str
+    pull_request: gh.PullRequest | None
 
 
 @dataclass(frozen=True)
@@ -215,6 +244,9 @@ def _state_rows(state: LeafShipState) -> tuple[tuple[str, str], ...]:
         ("STATUS", state.status),
         ("CI_ERRORS_FILE", state.ci_errors_file),
         ("CI_FIX_ATTEMPTS", str(state.ci_fix_attempts)),
+        ("CONFLICT_FILES", state.conflict_files),
+        ("CONFLICT_FIX_ATTEMPTS", str(state.conflict_fix_attempts)),
+        ("MAIN_RECONCILE_ATTEMPTS", str(state.main_reconcile_attempts)),
     )
     return tuple((key, _line_value(value, label=key)) for key, value in values)
 
@@ -269,6 +301,8 @@ def _parse_state(request: LeafShipRequest, text: str) -> LeafShipState:
         leaf = int(value("LEAF"))
         pr_number = int(value("PR_NUMBER") or "0")
         ci_fix_attempts = int(value("CI_FIX_ATTEMPTS"))
+        conflict_fix_attempts = int(value("CONFLICT_FIX_ATTEMPTS"))
+        main_reconcile_attempts = int(value("MAIN_RECONCILE_ATTEMPTS"))
     except ValueError as exc:
         raise ShipError("ship state contains a non-numeric identity") from exc
     state = LeafShipState(
@@ -282,6 +316,9 @@ def _parse_state(request: LeafShipRequest, text: str) -> LeafShipState:
         status=value("STATUS"),
         ci_errors_file=value("CI_ERRORS_FILE"),
         ci_fix_attempts=ci_fix_attempts,
+        conflict_files=value("CONFLICT_FILES"),
+        conflict_fix_attempts=conflict_fix_attempts,
+        main_reconcile_attempts=main_reconcile_attempts,
     )
     _validate_state(request, state)
     return state
@@ -293,6 +330,7 @@ def _validate_state(request: LeafShipRequest, state: LeafShipState) -> None:
     _validate_state_identity(request, state)
     _validate_state_pr(request, state)
     _validate_state_ci(request, state)
+    _validate_state_conflicts(request, state)
 
 
 def _validate_state_identity(request: LeafShipRequest, state: LeafShipState) -> None:
@@ -302,13 +340,51 @@ def _validate_state_identity(request: LeafShipRequest, state: LeafShipState) -> 
         or state.leaf != request.leaf
     ):
         raise ShipError("ship state identity does not match the live leaf")
-    if state.pr_number < 0 or state.ci_fix_attempts < 0:
+    if (
+        state.pr_number < 0
+        or state.ci_fix_attempts < 0
+        or state.conflict_fix_attempts < 0
+        or state.main_reconcile_attempts < 0
+    ):
         raise ShipError("ship state contains an invalid counter")
     if state.ci_fix_attempts > config.COMPLETE_UMBRELLA_CI_FIX_ATTEMPTS:
         raise ShipError("ship state exceeds the CI fix attempt cap")
+    if state.conflict_fix_attempts > config.COMPLETE_UMBRELLA_CONFLICT_FIX_ATTEMPTS:
+        raise ShipError("ship state exceeds the conflict fix attempt cap")
+    if state.main_reconcile_attempts > config.COMPLETE_UMBRELLA_MAIN_RECONCILE_ATTEMPTS:
+        raise ShipError("ship state exceeds the main-reconcile attempt cap")
+
+
+def _expected_pr_url(state: LeafShipState) -> str:
+    return f"https://github.com/{state.repository}/pull/{state.pr_number}"
+
+
+def _validate_branch_and_head(
+    request: LeafShipRequest, state: LeafShipState, *, require_both: bool
+) -> None:
+    if require_both and (not state.branch or not state.head_sha):
+        raise ShipError("conflict ship state lacks branch identity")
+    if state.branch and not _valid_branch(state.branch):
+        raise ShipError("ship state contains an invalid branch")
+    if state.branch and state.branch != _expected_branch(request.leaf):
+        raise ShipError("ship state branch does not match the leaf identity")
+    if state.head_sha and _HEAD_RE.fullmatch(state.head_sha) is None:
+        raise ShipError("ship state contains an invalid head SHA")
+
+
+def _validate_pr_url_pair(state: LeafShipState) -> None:
+    pr_pair = (state.pr_number > 0, bool(state.pr_url))
+    if any(pr_pair) and not all(pr_pair):
+        raise ShipError("ship state contains a partial PR identity")
+    if state.pr_url and state.pr_url != _expected_pr_url(state):
+        raise ShipError("ship state contains an invalid PR URL")
 
 
 def _validate_state_pr(request: LeafShipRequest, state: LeafShipState) -> None:
+    if state.status == "needs_conflict_fix":
+        _validate_branch_and_head(request, state, require_both=True)
+        _validate_pr_url_pair(state)
+        return
     pr_identity = (
         bool(state.branch),
         bool(state.head_sha),
@@ -317,16 +393,8 @@ def _validate_state_pr(request: LeafShipRequest, state: LeafShipState) -> None:
     )
     if any(pr_identity) and not all(pr_identity):
         raise ShipError("ship state contains a partial PR identity")
-    if state.branch and not _valid_branch(state.branch):
-        raise ShipError("ship state contains an invalid branch")
-    if state.branch and state.branch != _expected_branch(request.leaf):
-        raise ShipError("ship state branch does not match the leaf identity")
-    if state.head_sha and _HEAD_RE.fullmatch(state.head_sha) is None:
-        raise ShipError("ship state contains an invalid head SHA")
-    if state.pr_url and state.pr_url != (
-        f"https://github.com/{state.repository}/pull/{state.pr_number}"
-    ):
-        raise ShipError("ship state contains an invalid PR URL")
+    _validate_branch_and_head(request, state, require_both=False)
+    _validate_pr_url_pair(state)
     if state.status != "prepared" and not all(pr_identity):
         raise ShipError("advanced ship state lacks a complete PR identity")
 
@@ -336,6 +404,16 @@ def _validate_state_ci(request: LeafShipRequest, state: LeafShipState) -> None:
         _validate_ci_errors_file(request, state.ci_errors_file)
     elif state.ci_errors_file:
         raise ShipError("non-failed ship state contains a CI errors file")
+
+
+def _validate_state_conflicts(
+    request: LeafShipRequest, state: LeafShipState
+) -> None:
+    del request
+    if state.status == "needs_conflict_fix":
+        _validate_conflict_files(state.conflict_files)
+    elif state.conflict_files:
+        raise ShipError("non-conflict ship state contains conflict files")
 
 
 def _validate_ci_errors_file(request: LeafShipRequest, value: str) -> None:
@@ -353,6 +431,16 @@ def _validate_ci_errors_file(request: LeafShipRequest, value: str) -> None:
         raise ShipError("ship state contains an unsafe CI errors file") from exc
     if not present:
         raise ShipError("ship state CI errors file is missing")
+
+
+def _validate_conflict_files(value: str) -> None:
+    if not value:
+        return
+    paths = value.split(",")
+    if any(not path or _CONFLICT_PATH_RE.fullmatch(path) is None for path in paths):
+        raise ShipError("ship state contains invalid conflict files")
+    if len(set(paths)) != len(paths):
+        raise ShipError("ship state contains duplicate conflict files")
 
 
 def _leaf_prefix(umbrella: int) -> str:
@@ -643,6 +731,8 @@ def prepare_leaf(
 def _push_branch(
     runner: Runner,
     request: LeafShipRequest,
+    *,
+    force: bool = False,
 ) -> tuple[str, str]:
     cwd = str(request.repo_root)
     push.assert_clean_worktree(runner, cwd=cwd)
@@ -650,15 +740,165 @@ def _push_branch(
     if branch != _expected_branch(request.leaf):
         raise ShipError("leaf implementation is not on its exact managed branch")
     head_sha = git.rev_parse(runner, "HEAD", cwd=cwd)
+    remote = git.remote_branch_state(runner, branch, cwd=cwd)
+    use_force = force and remote.state == "present"
 
     def attempt() -> tuple[CommandResult, int, str]:
-        result = git.push_set_upstream(runner, "origin", "HEAD", cwd=cwd)
+        if use_force:
+            result = git.force_push_with_lease(
+                runner, "origin", f"HEAD:refs/heads/{branch}", cwd=cwd
+            )
+        else:
+            result = git.push_set_upstream(runner, "origin", "HEAD", cwd=cwd)
         return result, result.returncode, result.stdout + result.stderr
 
     pushed = retry.with_transient_retry(attempt).value
     if pushed.returncode != 0:
         raise ShipError("feature branch push failed")
     return branch, head_sha
+
+
+def _abort_rebase_idempotent(runner: Runner, *, cwd: str) -> None:
+    if not git.rebase_in_progress(runner, cwd=cwd):
+        return
+    aborted = git.rebase(runner, "--abort", cwd=cwd)
+    if aborted.returncode != 0 and git.rebase_in_progress(runner, cwd=cwd):
+        raise ShipError("could not abort an in-progress rebase")
+
+
+def _normalize_conflict_files(raw: str) -> str:
+    cleaned = raw.strip().replace("\r", "").replace("\n", "")
+    if not cleaned:
+        return ""
+    paths = [part for part in cleaned.split(",") if part]
+    for path in paths:
+        if _CONFLICT_PATH_RE.fullmatch(path) is None:
+            raise ShipError("rebase reported an invalid conflict path")
+    if len(set(paths)) != len(paths):
+        raise ShipError("rebase reported duplicate conflict paths")
+    return ",".join(paths)
+
+
+def _reconcile_onto_main(
+    runner: Runner,
+    request: LeafShipRequest,
+) -> ReconcileOutcome:
+    """Fetch origin/main and rebase the leaf branch, handing conflicts off."""
+    cwd = str(request.repo_root)
+    push.assert_clean_worktree(runner, cwd=cwd)
+    if git.rebase_in_progress(runner, cwd=cwd):
+        raise ShipError("cannot reconcile while a rebase is already in progress")
+    branch = git.current_branch(runner, cwd=cwd)
+    if branch != _expected_branch(request.leaf):
+        raise ShipError("leaf implementation is not on its exact managed branch")
+
+    def fetch_attempt() -> tuple[CommandResult, int, str]:
+        result = git.fetch(runner, "origin", "main", cwd=cwd)
+        return result, result.returncode, result.stdout + result.stderr
+
+    fetched = retry.with_transient_retry(fetch_attempt).value
+    if fetched.returncode != 0:
+        raise ShipError("could not fetch origin/main before leaf reconcile")
+
+    if git.is_ancestor(runner, "origin/main", "HEAD", cwd=cwd):
+        head_sha = git.rev_parse(runner, "HEAD", cwd=cwd)
+        return ReconcileOutcome(status="clean", head_sha=head_sha, rebased=False)
+
+    entrypoint = repo_roots.larch_entrypoint(Path(__file__).resolve().parents[3])
+    rebased = runner.run(
+        [
+            str(entrypoint),
+            "push",
+            "rebase",
+            "--no-push",
+            "--keep-on-conflict",
+            "--base-remote",
+            "origin",
+            "--base-ref",
+            "main",
+        ],
+        cwd=cwd,
+    )
+    if rebased.returncode == 0:
+        head_sha = git.rev_parse(runner, "HEAD", cwd=cwd)
+        if _HEAD_RE.fullmatch(head_sha) is None:
+            raise ShipError("reconcile produced an invalid head SHA")
+        return ReconcileOutcome(status="clean", head_sha=head_sha, rebased=True)
+
+    fields = larch_io.parse_kv(
+        rebased.stdout,
+        duplicate_policy="last",
+        allowed_keys={"CONFLICT_FILES"},
+    )
+    conflict_files = _normalize_conflict_files(fields.get("CONFLICT_FILES", ""))
+    if rebased.returncode == 1 and (
+        conflict_files or git.rebase_in_progress(runner, cwd=cwd)
+    ):
+        return ReconcileOutcome(
+            status="conflict",
+            conflict_files=conflict_files,
+            rebased=True,
+        )
+    _abort_rebase_idempotent(runner, cwd=cwd)
+    return ReconcileOutcome(status="failed")
+
+
+def _force_push_reconciled_head(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    branch: str,
+) -> str:
+    cwd = str(request.repo_root)
+    push.assert_clean_worktree(runner, cwd=cwd)
+    if git.rebase_in_progress(runner, cwd=cwd):
+        raise ShipError("cannot push while a rebase is still in progress")
+    head_sha = git.rev_parse(runner, "HEAD", cwd=cwd)
+    if _HEAD_RE.fullmatch(head_sha) is None:
+        raise ShipError("reconciled head SHA is invalid")
+
+    def attempt() -> tuple[CommandResult, int, str]:
+        result = git.force_push_with_lease(
+            runner, "origin", f"HEAD:refs/heads/{branch}", cwd=cwd
+        )
+        return result, result.returncode, result.stdout + result.stderr
+
+    pushed = retry.with_transient_retry(attempt).value
+    if pushed.returncode != 0:
+        raise ShipError("force-push after main reconcile failed")
+    return head_sha
+
+
+def _conflict_fix_outcome(
+    runner: Runner,
+    request: LeafShipRequest,
+    state: LeafShipState,
+    handoff: ConflictHandoff,
+) -> tuple[LeafShipState, LeafShipOutcome]:
+    if state.conflict_fix_attempts >= config.COMPLETE_UMBRELLA_CONFLICT_FIX_ATTEMPTS:
+        _abort_rebase_idempotent(runner, cwd=str(request.repo_root))
+        raise ShipError("complete-umbrella conflict fix attempt cap reached")
+    pull_request = handoff.pull_request
+    pr_number = pull_request.number if pull_request is not None else state.pr_number
+    pr_url = pull_request.url if pull_request is not None else state.pr_url
+    next_state = replace(
+        state,
+        branch=handoff.branch,
+        head_sha=handoff.head_sha,
+        pr_number=pr_number,
+        pr_url=pr_url,
+        status="needs_conflict_fix",
+        ci_errors_file="",
+        conflict_files=handoff.conflict_files,
+    )
+    _write_state(request, next_state)
+    return next_state, LeafShipOutcome(
+        status="needs_conflict_fix",
+        pr_number=next_state.pr_number,
+        pr_url=next_state.pr_url,
+        conflict_files=handoff.conflict_files,
+        detail="leaf branch conflicts with origin/main; resolve via MODE=conflict",
+    )
 
 
 def _default_pr_body(request: LeafShipRequest) -> str:
@@ -1160,29 +1400,141 @@ def _merged_reentry_state(
         status="merged",
         pr_url=persisted_pr.url,
         ci_errors_file="",
+        conflict_files="",
     )
     _write_state(request, merged)
     return merged
 
 
-def _run_premerge(
+def _require_leaf_head(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    expected_head: str,
+    unchanged_error: str,
+) -> str:
+    cwd = str(request.repo_root)
+    branch = git.current_branch(runner, cwd=cwd)
+    if branch != _expected_branch(request.leaf):
+        raise ShipError("leaf implementation is not on its exact managed branch")
+    head_sha = git.rev_parse(runner, "HEAD", cwd=cwd)
+    if head_sha == expected_head:
+        raise ShipError(unchanged_error)
+    return head_sha
+
+
+def _begin_ci_fix_reentry(
     runner: Runner,
     request: LeafShipRequest,
     state: LeafShipState,
+) -> tuple[LeafShipState, bool]:
+    _ = _require_leaf_head(
+        runner,
+        request,
+        expected_head=state.head_sha,
+        unchanged_error="CI failed but no fixer commit changed the branch head",
+    )
+    if state.ci_fix_attempts >= config.COMPLETE_UMBRELLA_CI_FIX_ATTEMPTS:
+        raise ShipError("complete-umbrella CI fix attempt cap reached")
+    return (
+        replace(
+            state,
+            ci_fix_attempts=state.ci_fix_attempts + 1,
+            conflict_files="",
+        ),
+        True,
+    )
+
+
+def _begin_conflict_fix_reentry(
+    runner: Runner,
+    request: LeafShipRequest,
+    state: LeafShipState,
+) -> tuple[LeafShipState, bool]:
+    cwd = str(request.repo_root)
+    if git.rebase_in_progress(runner, cwd=cwd):
+        raise ShipError("conflict fix left a rebase in progress")
+    _ = _require_leaf_head(
+        runner,
+        request,
+        expected_head=state.head_sha,
+        unchanged_error="conflict fix did not change the branch head",
+    )
+    if state.conflict_fix_attempts >= config.COMPLETE_UMBRELLA_CONFLICT_FIX_ATTEMPTS:
+        raise ShipError("complete-umbrella conflict fix attempt cap reached")
+    return (
+        replace(
+            state,
+            conflict_fix_attempts=state.conflict_fix_attempts + 1,
+            conflict_files="",
+            ci_errors_file="",
+        ),
+        True,
+    )
+
+
+def _handoff_reconcile_conflict(  # noqa: PLR0913 - conflict handoff carries optional live PR/branch identity overlays
+    runner: Runner,
+    request: LeafShipRequest,
+    state: LeafShipState,
+    reconcile: ReconcileOutcome,
     *,
-    sleep_fn: SleepFn,
-) -> tuple[LeafShipState, LeafShipOutcome | None]:
-    branch, head_sha = _push_branch(runner, request)
-    if state.branch and state.branch != branch:
-        raise ShipError("implementation branch changed after leaf preparation")
-    if state.status == "ci_failed":
-        if head_sha == state.head_sha:
-            raise ShipError("CI failed but no fixer commit changed the branch head")
-        if state.ci_fix_attempts >= config.COMPLETE_UMBRELLA_CI_FIX_ATTEMPTS:
-            raise ShipError("complete-umbrella CI fix attempt cap reached")
-        state = replace(state, ci_fix_attempts=state.ci_fix_attempts + 1)
-    pull_request = _ensure_pr(runner, request, branch=branch, state=state)
-    state = replace(
+    pull_request: gh.PullRequest | None = None,
+    branch: str | None = None,
+    head_sha: str | None = None,
+) -> tuple[LeafShipState, LeafShipOutcome]:
+    cwd = str(request.repo_root)
+    live_branch = branch or git.current_branch(runner, cwd=cwd)
+    live_head = head_sha or git.rev_parse(runner, "HEAD", cwd=cwd)
+    live_pr = pull_request
+    if live_pr is None and state.pr_number:
+        live_pr = gh.pr_view(
+            runner,
+            state.pr_number,
+            repo=request.repository,
+            cwd=cwd,
+        )
+    return _conflict_fix_outcome(
+        runner,
+        request,
+        state,
+        ConflictHandoff(
+            conflict_files=reconcile.conflict_files,
+            branch=live_branch,
+            head_sha=live_head,
+            pull_request=live_pr,
+        ),
+    )
+
+
+def _note_clean_reconcile(
+    state: LeafShipState, reconcile: ReconcileOutcome
+) -> tuple[LeafShipState, bool]:
+    if reconcile.status != "clean":
+        raise ShipError("could not reconcile the leaf branch onto origin/main")
+    if not reconcile.rebased:
+        return state, False
+    if state.main_reconcile_attempts >= config.COMPLETE_UMBRELLA_MAIN_RECONCILE_ATTEMPTS:
+        raise ShipError("complete-umbrella main-reconcile attempt cap reached")
+    return (
+        replace(
+            state,
+            main_reconcile_attempts=state.main_reconcile_attempts + 1,
+            conflict_files="",
+        ),
+        True,
+    )
+
+
+def _persist_monitoring_state(
+    request: LeafShipRequest,
+    state: LeafShipState,
+    *,
+    branch: str,
+    head_sha: str,
+    pull_request: gh.PullRequest,
+) -> LeafShipState:
+    next_state = replace(
         state,
         branch=branch,
         head_sha=head_sha,
@@ -1190,33 +1542,90 @@ def _run_premerge(
         pr_url=pull_request.url,
         status="monitoring",
         ci_errors_file="",
+        conflict_files="",
     )
-    _write_state(request, state)
-    ci_wait = _wait_for_ci(
+    _write_state(request, next_state)
+    return next_state
+
+
+def _ci_failure_outcome(
+    runner: Runner,
+    request: LeafShipRequest,
+    state: LeafShipState,
+    *,
+    failed_run_id: str,
+    sleep_fn: SleepFn,
+) -> tuple[LeafShipState, LeafShipOutcome]:
+    errors_file = _distill_ci_failure(
         runner,
         request,
-        pr_number=pull_request.number,
+        run_id=failed_run_id,
         sleep_fn=sleep_fn,
     )
-    if ci_wait.status == "fail":
-        errors_file = _distill_ci_failure(
+    next_state = replace(
+        state,
+        status="ci_failed",
+        ci_errors_file=str(errors_file),
+        conflict_files="",
+    )
+    _write_state(request, next_state)
+    if next_state.ci_fix_attempts >= config.COMPLETE_UMBRELLA_CI_FIX_ATTEMPTS:
+        raise ShipError("complete-umbrella CI fix attempt cap reached after failed CI")
+    return next_state, LeafShipOutcome(
+        status="ci_failed",
+        pr_number=next_state.pr_number,
+        pr_url=next_state.pr_url,
+        ci_errors_file=next_state.ci_errors_file,
+    )
+
+
+def _recover_dirty_pr(  # noqa: PLR0913 - dirty recovery needs the verified PR head identity
+    runner: Runner,
+    request: LeafShipRequest,
+    state: LeafShipState,
+    *,
+    branch: str,
+    head_sha: str,
+    pull_request: gh.PullRequest,
+) -> tuple[LeafShipState, LeafShipOutcome | None, bool]:
+    dirty = _reconcile_onto_main(runner, request)
+    if dirty.status == "conflict":
+        handed = _handoff_reconcile_conflict(
             runner,
             request,
-            run_id=ci_wait.failed_run_id,
-            sleep_fn=sleep_fn,
+            state,
+            dirty,
+            pull_request=pull_request,
+            branch=branch,
+            head_sha=head_sha,
         )
-        state = replace(state, status="ci_failed", ci_errors_file=str(errors_file))
-        _write_state(request, state)
-        if state.ci_fix_attempts >= config.COMPLETE_UMBRELLA_CI_FIX_ATTEMPTS:
-            raise ShipError(
-                "complete-umbrella CI fix attempt cap reached after failed CI"
-            )
-        return state, LeafShipOutcome(
-            status="ci_failed",
-            pr_number=state.pr_number,
-            pr_url=state.pr_url,
-            ci_errors_file=state.ci_errors_file,
-        )
+        return handed[0], handed[1], False
+    if dirty.status != "clean" or not dirty.rebased:
+        raise ShipError("PR is DIRTY but reconcile did not produce a rebased head")
+    if state.main_reconcile_attempts >= config.COMPLETE_UMBRELLA_MAIN_RECONCILE_ATTEMPTS:
+        raise ShipError("complete-umbrella main-reconcile attempt cap reached")
+    new_head = _force_push_reconciled_head(runner, request, branch=branch)
+    next_state = replace(
+        state,
+        head_sha=new_head,
+        status="monitoring",
+        ci_errors_file="",
+        conflict_files="",
+        main_reconcile_attempts=state.main_reconcile_attempts + 1,
+    )
+    _write_state(request, next_state)
+    return next_state, None, True
+
+
+def _finish_merge_attempt(  # noqa: PLR0913 - merge finish needs the verified PR head and sleeper
+    runner: Runner,
+    request: LeafShipRequest,
+    state: LeafShipState,
+    *,
+    pull_request: gh.PullRequest,
+    head_sha: str,
+    sleep_fn: SleepFn,
+) -> tuple[LeafShipState, LeafShipOutcome | None]:
     merge_outcome = _merge_pr(
         runner,
         request,
@@ -1225,37 +1634,118 @@ def _run_premerge(
         sleep_fn=sleep_fn,
     )
     if merge_outcome.needs_orchestrator_finalize:
-        state = replace(
+        waiting = replace(
             state,
             status="awaiting_orchestrator_finalize",
             pr_url=merge_outcome.pull_request.url,
+            conflict_files="",
         )
-        _write_state(request, state)
-        return state, LeafShipOutcome(
+        _write_state(request, waiting)
+        return waiting, LeafShipOutcome(
             status="needs-orchestrator-finalize",
-            pr_number=state.pr_number,
-            pr_url=state.pr_url,
+            pr_number=waiting.pr_number,
+            pr_url=waiting.pr_url,
         )
     if merge_outcome.queued:
-        state = replace(
+        queued = replace(
             state,
             status="queued",
             pr_url=merge_outcome.pull_request.url,
         )
-        _write_state(request, state)
+        _write_state(request, queued)
         return _wait_for_queued_merge(
             runner,
             request,
-            state,
+            queued,
             sleep_fn=sleep_fn,
         ), None
-    state = replace(
+    merged = replace(
         state,
         status="merged",
         pr_url=merge_outcome.pull_request.url,
     )
-    _write_state(request, state)
-    return state, None
+    _write_state(request, merged)
+    return merged, None
+
+
+def _run_premerge(  # noqa: C901 - ship premerge owns reentry, reconcile, CI, dirty recovery, and merge routing
+    runner: Runner,
+    request: LeafShipRequest,
+    state: LeafShipState,
+    *,
+    sleep_fn: SleepFn,
+) -> tuple[LeafShipState, LeafShipOutcome | None]:
+    force_push = False
+    if state.status == "ci_failed":
+        state, force_push = _begin_ci_fix_reentry(runner, request, state)
+    elif state.status == "needs_conflict_fix":
+        state, force_push = _begin_conflict_fix_reentry(runner, request, state)
+
+    for _ in range(config.COMPLETE_UMBRELLA_MAIN_RECONCILE_ATTEMPTS + 1):
+        reconcile = _reconcile_onto_main(runner, request)
+        if reconcile.status == "conflict":
+            return _handoff_reconcile_conflict(runner, request, state, reconcile)
+        state, rebased = _note_clean_reconcile(state, reconcile)
+        if rebased:
+            force_push = True
+
+        branch, head_sha = _push_branch(runner, request, force=force_push)
+        force_push = False
+        if state.branch and state.branch != branch:
+            raise ShipError("implementation branch changed after leaf preparation")
+        pull_request = _ensure_pr(runner, request, branch=branch, state=state)
+        state = _persist_monitoring_state(
+            request,
+            state,
+            branch=branch,
+            head_sha=head_sha,
+            pull_request=pull_request,
+        )
+        ci_wait = _wait_for_ci(
+            runner,
+            request,
+            pr_number=pull_request.number,
+            sleep_fn=sleep_fn,
+        )
+        if ci_wait.status == "fail":
+            return _ci_failure_outcome(
+                runner,
+                request,
+                state,
+                failed_run_id=ci_wait.failed_run_id,
+                sleep_fn=sleep_fn,
+            )
+
+        merge_state = _require_pr_head(
+            runner,
+            request,
+            pr_number=pull_request.number,
+            head_sha=head_sha,
+        )
+        if merge_state.merge_state_status == "DIRTY":
+            state, early, retry = _recover_dirty_pr(
+                runner,
+                request,
+                state,
+                branch=branch,
+                head_sha=head_sha,
+                pull_request=pull_request,
+            )
+            if early is not None:
+                return state, early
+            if retry:
+                continue
+
+        return _finish_merge_attempt(
+            runner,
+            request,
+            state,
+            pull_request=pull_request,
+            head_sha=head_sha,
+            sleep_fn=sleep_fn,
+        )
+
+    raise ShipError("complete-umbrella main-reconcile attempt cap reached")
 
 
 def ship_leaf(
@@ -1297,7 +1787,9 @@ def ship_leaf(
 
     _finish_leaf_issue(runner, request, sleep_fn=sleep_fn)
     _sync_main_and_delete_branch(runner, request, branch=state.branch)
-    state = replace(state, status="finalizing", ci_errors_file="")
+    state = replace(
+        state, status="finalizing", ci_errors_file="", conflict_files=""
+    )
     _write_state(request, state)
     _verify_complete(runner, request, state)
     state = replace(state, status="complete")
@@ -1468,6 +1960,7 @@ def _emit(outcome: LeafShipOutcome) -> None:
     )
     logging_util.emit_kv(key="PR_URL", value=outcome.pr_url)
     logging_util.emit_kv(key="CI_ERRORS_FILE", value=outcome.ci_errors_file)
+    logging_util.emit_kv(key="CONFLICT_FILES", value=outcome.conflict_files)
     logging_util.emit_kv(key="DETAIL", value=_detail(outcome.detail))
 
 

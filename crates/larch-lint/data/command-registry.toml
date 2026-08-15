@@ -9004,6 +9004,12 @@ python = []
 rust = ["git commit", "git rebase-abort", "git stage", "push rebase"]
 
 [[callers]]
+path = "python/larch/implement/complete_umbrella_ship.py"
+kind = "python-runtime"
+python = []
+rust = ["push rebase"]
+
+[[callers]]
 path = "python/larch/implement/dispatch_commit_route.py"
 kind = "python-runtime"
 python = ["implement commit", "review-and-fix commit-fixes"]
@@ -9260,6 +9266,12 @@ path = "skills/complete-umbrella/references/adversarial-review.md"
 kind = "skill"
 python = ["complete-umbrella ship-leaf"]
 rust = ["named-block write"]
+
+[[callers]]
+path = "skills/complete-umbrella/references/conflict-fix.md"
+kind = "skill"
+python = []
+rust = ["git rebase-abort"]
 
 [[callers]]
 path = "skills/complete-umbrella/references/recon-design.md"

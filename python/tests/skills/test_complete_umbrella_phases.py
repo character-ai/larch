@@ -52,8 +52,21 @@ def test_ship_is_deterministic_and_fixer_is_failure_only() -> None:
     assert "`ci_failed`" in ship
     assert "`needs-orchestrator-finalize`" in ship
     assert "Only the top-level complete-umbrella owner" in ship
+    assert "`needs_conflict_fix`" in ship
+    assert "conflict-fix.md" in ship
     assert "Do not spawn a CI fixer when checks are pending or green." in ship
+    assert (
+        "Do not spawn a conflict fixer unless the driver returned `needs_conflict_fix`."
+        in ship
+    )
     assert "The driver's persisted state enforces the fix-attempt cap." in ship
+    assert "The driver's persisted state enforces the conflict-fix attempt cap." in ship
+
+    conflict = _read("conflict-fix.md")
+    assert "SHIP_STATUS=needs_conflict_fix" in conflict
+    assert "MODE=conflict" in conflict
+    assert "caller_kind=ship_pr_pre_push" in conflict
+    assert "larch:ci-fixer" in conflict
 
 
 def test_managed_leaf_phases_persist_and_verify_gate_evidence() -> None:

@@ -134,7 +134,7 @@ Do not reuse an earlier `next.env` or snapshot for another turn.
 
 Before launch, require a clean worktree on branch `main`. Fetch `origin/main`, rebase local `main` onto it, then prove the worktree is still clean and `HEAD` equals `origin/main`. Use `git current-branch` and `git clean-tree --fail-closed` through `scripts/larch.sh`; use non-interactive `git fetch`, `git rebase`, and `git rev-parse` only for the exact sync proof.
 
-The launched leaf child is a thin orchestrator. It reads no repository files itself. It awaits four serial, fresh Agent phases that exchange bounded files below the leaf handoff root. The phase sequence is `recon/design + implement + adversarial review + ship`. The ship phase uses the standalone deterministic driver and creates a nested CI fixer only after a failed check.
+The launched leaf child is a thin orchestrator. It reads no repository files itself. It awaits four serial, fresh Agent phases that exchange bounded files below the leaf handoff root. The phase sequence is `recon/design + implement + adversarial review + ship`. The ship phase uses the standalone deterministic driver and creates a nested CI fixer only after a failed check, or a nested conflict fixer only after a DIRTY-main handoff.
 
 Set `STEP=complete-umbrella-leaf-$NEXT_LEAF`, truncate `$COMPLETE_UMBRELLA_TMPDIR/child-$NEXT_LEAF.env`, then launch:
 
