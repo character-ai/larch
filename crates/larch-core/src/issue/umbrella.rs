@@ -25,7 +25,7 @@ use crate::{
         MalformedLinePolicy, ParseOptions, WhitespacePolicy,
     },
     issue::{
-        UMBRELLA_PREFIX,
+        DONE_PREFIX, IMPLEMENTING_PREFIX, UMBRELLA_PREFIX,
         input::{InputMode, parse_issue_input},
     },
     text::{is_positive_decimal, is_python_whitespace, split_text_lines},
@@ -402,6 +402,20 @@ pub fn is_managed_partition_title(title: &str) -> bool {
 #[must_use]
 pub fn is_umbrella_title(title: &str) -> bool {
     title.starts_with(UMBRELLA_PREFIX.trim_end())
+}
+
+/// Report whether `title` names a controlling umbrella after lifecycle prefixes.
+///
+/// Strips a leading `[IMPLEMENTING]` or `[DONE]` prefix, then accepts either
+/// `[UMBRELLA]` or `[CHIEF UMBRELLA]`. Audit and complete flows use this to
+/// refuse nested umbrella children without treating a chief parent as nesting.
+#[must_use]
+pub fn is_controlling_umbrella_title(title: &str) -> bool {
+    let title = title
+        .strip_prefix(IMPLEMENTING_PREFIX)
+        .or_else(|| title.strip_prefix(DONE_PREFIX))
+        .unwrap_or(title);
+    title.starts_with("[UMBRELLA] ") || title.starts_with("[CHIEF UMBRELLA] ")
 }
 
 /// Report whether `title` has a non-empty title after the exact umbrella prefix.
@@ -1209,9 +1223,10 @@ mod tests {
         PREPARED_DEPENDENCY_CYCLE, PREPARED_PARTITION_TOO_LARGE, ProposalRecord, RemoteLeaf,
         ResolvedLeaf, STALE_PREPARED_PARTITION, UNKNOWN_LEAF_IDENTITY, UmbrellaSnapshot,
         UmbrellaSourceKind, classify_umbrella_source, completion_sentinel_for_record,
-        expected_completion_sentinel, leaf_identity, mark_leaf_in_flight, parse_proposal,
-        prepare_proposal_from_batch, reconcile_in_flight, record_leaf_resolved, render_proposal,
-        render_snapshot, umbrella_leaf_opening_text, validate_final_umbrella, verify_graph_state,
+        expected_completion_sentinel, is_controlling_umbrella_title, leaf_identity,
+        mark_leaf_in_flight, parse_proposal, prepare_proposal_from_batch, reconcile_in_flight,
+        record_leaf_resolved, render_proposal, render_snapshot, umbrella_leaf_opening_text,
+        validate_final_umbrella, verify_graph_state,
     };
 
     fn snapshot() -> UmbrellaSnapshot {
@@ -1265,6 +1280,21 @@ mod tests {
         let rendered = render_proposal(&record());
         assert!(rendered.ends_with("\"version\":1}\n"));
         assert_eq!(parse_proposal(&rendered).expect("record parses"), record());
+    }
+
+    #[test]
+    fn controlling_umbrella_titles_ignore_lifecycle_prefixes() {
+        assert!(is_controlling_umbrella_title("[UMBRELLA] Ship"));
+        assert!(is_controlling_umbrella_title(
+            "[IMPLEMENTING] [UMBRELLA] Ship"
+        ));
+        assert!(is_controlling_umbrella_title(
+            "[DONE] [CHIEF UMBRELLA] Program"
+        ));
+        assert!(!is_controlling_umbrella_title("[LEAF OF 10] Work"));
+        assert!(!is_controlling_umbrella_title(
+            "[IMPLEMENTING] [LEAF OF 10] Work"
+        ));
     }
 
     #[test]

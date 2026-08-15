@@ -78,7 +78,6 @@ fn closed_graph_with_parent_blockers(
 ) -> Vec<IssueServiceExchange> {
     vec![
         response(200, parent),
-        response(404, "{}"),
         response(200, refs(&[(LEAF, 410, "closed")])),
         response(200, refs(parent_blockers)),
         response(200, leaf),
@@ -89,7 +88,6 @@ fn closed_graph_with_parent_blockers(
 fn open_graph(parent: &str, leaf: &str) -> Vec<IssueServiceExchange> {
     vec![
         response(200, parent),
-        response(404, "{}"),
         response(200, refs(&[(LEAF, 410, "open")])),
         response(200, refs(&[(LEAF, 410, "open")])),
         response(200, leaf),
@@ -106,7 +104,7 @@ fn attachment_exchanges(
 ) -> Vec<IssueServiceExchange> {
     vec![
         response(200, parent),
-        response(404, "{}"),
+        response(200, "[]"),
         response(200, leaf),
         response(200, "[]"),
         response(404, "{}"),
@@ -118,7 +116,6 @@ fn attachment_exchanges(
         response(201, "{}"),
         response(200, leaf_ref),
         response(200, parent),
-        response(404, "{}"),
         response(200, leaf_ref),
         response(200, leaf_ref),
         response(200, leaf),
@@ -126,7 +123,7 @@ fn attachment_exchanges(
         response(200, "[]"),
         response(200, leaf_ref),
         response(200, parent),
-        response(404, "{}"),
+        response(200, "[]"),
         response(200, leaf),
         response(200, "[]"),
         response(200, parent_ref),
@@ -134,7 +131,6 @@ fn attachment_exchanges(
         response(200, parent),
         response(200, leaf_ref),
         response(200, parent),
-        response(404, "{}"),
         response(200, leaf_ref),
         response(200, leaf_ref),
         response(200, leaf),
@@ -303,7 +299,7 @@ async fn start_remote_applies_only_the_active_title_transition() {
     );
     let (client, server) = service(vec![
         response(200, &original),
-        response(404, "{}"),
+        response(200, "[]"),
         response(200, &original),
         response(200, &original),
         response(200, &active),
@@ -433,7 +429,7 @@ async fn attachment_stops_when_the_parent_finishes_between_edges() {
     let leaf_ref = refs(&[(GAP, 420, "open")]);
     let (service, server) = service(vec![
         response(200, &active_parent),
-        response(404, "{}"),
+        response(200, "[]"),
         response(200, &leaf),
         response(200, "[]"),
         response(404, "{}"),
@@ -542,7 +538,10 @@ async fn finish_remote_proves_closed_leaves_and_ignores_closed_historical_extra_
             .count(),
         2
     );
-    assert!(String::from_utf8_lossy(&requests[16].body.bytes).contains("completed"));
+    assert!(requests.iter().any(|request| {
+        request.method == "PATCH"
+            && String::from_utf8_lossy(&request.body.bytes).contains("completed")
+    }));
 }
 
 #[tokio::test]
@@ -600,7 +599,6 @@ async fn next_graph_reports_an_open_non_leaf_parent_blocker_separately() {
     );
     let (client, server) = service(vec![
         response(200, &parent),
-        response(404, "{}"),
         response(200, refs(&[(LEAF, 410, "open")])),
         response(200, refs(&[(LEAF, 410, "open"), (GAP, 420, "open")])),
         response(200, &leaf),
@@ -654,7 +652,6 @@ async fn graph_diagnostics_name_closed_leaf_and_failed_lifecycle_invariant() {
     );
     let (client, server) = service(vec![
         response(200, &parent),
-        response(404, "{}"),
         response(200, refs(&[(LEAF, 410, "closed")])),
         response(200, refs(&[(LEAF, 410, "closed")])),
         response(200, &invalid_title),
@@ -679,7 +676,6 @@ async fn graph_diagnostics_name_closed_leaf_and_failed_lifecycle_invariant() {
     );
     let (client, server) = service(vec![
         response(200, &parent),
-        response(404, "{}"),
         response(200, refs(&[(LEAF, 410, "closed")])),
         response(200, refs(&[(LEAF, 410, "closed")])),
         response(200, &invalid_body),
@@ -715,7 +711,6 @@ async fn finish_refuses_a_closed_implementing_leaf_before_mutating_the_parent() 
     );
     let (client, server) = service(vec![
         response(200, &parent),
-        response(404, "{}"),
         response(200, refs(&[(LEAF, 410, "closed")])),
         response(200, refs(&[(LEAF, 410, "closed")])),
         response(200, &stale_leaf),
@@ -799,23 +794,30 @@ async fn remote_graph_checks_reject_incomplete_or_nested_lifecycles() {
         BEFORE,
     );
 
+    let nested_child = issue_json(
+        99,
+        990,
+        "[UMBRELLA] Nested child",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
     let (client, server) = service(vec![
         response(200, &active_parent),
-        response(
-            200,
-            json!({ "number": 1, "id": 10, "state": "open" }).to_string(),
-        ),
+        response(200, refs(&[(99, 990, "open")])),
+        response(200, refs(&[(99, 990, "open")])),
+        response(200, &nested_child),
     ]);
-    assert!(
-        read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA,)
-            .await
-            .is_err()
-    );
+    let Err(nested_error) =
+        read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA).await
+    else {
+        panic!("umbrella children must refuse");
+    };
+    assert_eq!(nested_error, "nested umbrellas are not supported");
     server.join().expect("nested graph stub completed");
 
     let (client, server) = service(vec![
         response(200, &active_parent),
-        response(404, "{}"),
         response(200, refs(&[(LEAF, 410, "open")])),
         response(200, "[]"),
     ]);
@@ -842,7 +844,6 @@ async fn remote_graph_checks_reject_incomplete_or_nested_lifecycles() {
 
     let (client, server) = service(vec![
         response(200, &active_parent),
-        response(404, "{}"),
         response(200, "[]"),
         response(200, "[]"),
     ]);

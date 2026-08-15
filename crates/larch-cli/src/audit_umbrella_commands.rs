@@ -34,12 +34,12 @@ use larch_core::{
     GitHubService, GitHubTransportPolicy, IMPLEMENTING_PREFIX, IssueCreateRequest,
     MAX_AUDIT_LEAVES, MAX_AUDIT_SOURCES, RepositoryRead, Revision, audit_issue_fingerprint,
     audit_leaf_prefix, audit_proposal_existing_numbers, audit_snapshot_sha256,
-    build_audit_proposal, emit_kv, has_umbrella_proposal, mark_audit_graph_in_flight,
-    mark_audit_leaf_in_flight, mark_audit_proposal_complete, parse_audit_ledger,
-    parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved, render_audit_proposal,
-    render_audit_snapshot, replace_audit_issue_fingerprints, triage_label_is_security,
-    triage_text_is_security_sensitive, umbrella_leaf_opening, validate_audit_ledger,
-    validate_audit_proposal_binding,
+    build_audit_proposal, emit_kv, has_umbrella_proposal, is_controlling_umbrella_title,
+    mark_audit_graph_in_flight, mark_audit_leaf_in_flight, mark_audit_proposal_complete,
+    parse_audit_ledger, parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved,
+    render_audit_proposal, render_audit_snapshot, replace_audit_issue_fingerprints,
+    triage_label_is_security, triage_text_is_security_sensitive, umbrella_leaf_opening,
+    validate_audit_ledger, validate_audit_proposal_binding,
 };
 use regex::Regex;
 use std::{
@@ -464,19 +464,6 @@ async fn collect_snapshot_remote(
         .await
         .map_err(|_error| "cannot read umbrella issue".to_owned())?;
     validate_audit_parent(&parent)?;
-    if service
-        .parent_issue(
-            cancellation,
-            repository.owner(),
-            repository.name(),
-            umbrella,
-        )
-        .await
-        .map_err(|_error| "cannot verify umbrella parent relation".to_owned())?
-        .is_some()
-    {
-        return Err("nested umbrellas are not supported".to_owned());
-    }
     let direct = service
         .list_sub_issues(
             cancellation,
@@ -534,6 +521,7 @@ async fn collect_snapshot_remote(
             return Err("referenced issue identity was duplicated".to_owned());
         }
     }
+    require_no_nested_umbrella_children(&issues, &direct_numbers)?;
     build_snapshot(SnapshotSelection {
         repository,
         default_branch: &remote.default_branch,
@@ -736,12 +724,64 @@ fn has_exact_leaf_title(title: &str, umbrella: u64) -> bool {
 }
 
 fn is_controlling_umbrella(issue: &GitHubIssue) -> bool {
-    let title = issue
-        .title
-        .strip_prefix(IMPLEMENTING_PREFIX)
-        .or_else(|| issue.title.strip_prefix(DONE_PREFIX))
-        .unwrap_or(&issue.title);
-    title.starts_with("[UMBRELLA] ") || title.starts_with("[CHIEF UMBRELLA] ")
+    is_controlling_umbrella_title(&issue.title)
+}
+
+/// Refuse an audit target whose direct native children are themselves umbrellas.
+///
+/// Having a parent (for example the chief program umbrella) is allowed. A tree
+/// whose direct leaves carry `[UMBRELLA]` or `[CHIEF UMBRELLA]` titles is not.
+fn require_no_nested_umbrella_children(
+    issues: &BTreeMap<u64, GitHubIssue>,
+    direct_numbers: &BTreeSet<u64>,
+) -> Result<(), String> {
+    for number in direct_numbers {
+        let Some(child) = issues.get(number) else {
+            return Err(format!(
+                "direct child #{number} is missing from the audit snapshot"
+            ));
+        };
+        if is_controlling_umbrella(child) {
+            return Err("nested umbrellas are not supported".to_owned());
+        }
+    }
+    Ok(())
+}
+
+fn audit_issue_title<'a>(
+    number: u64,
+    snapshot: &'a AuditSnapshot,
+    current: &'a BTreeMap<u64, AuditIssue>,
+) -> Option<&'a str> {
+    if let Some(issue) = current.get(&number) {
+        return Some(issue.title.as_str());
+    }
+    if snapshot.umbrella.number == number {
+        return Some(snapshot.umbrella.title.as_str());
+    }
+    snapshot
+        .sources
+        .iter()
+        .find(|source| source.issue.number == number)
+        .map(|source| source.issue.title.as_str())
+}
+
+fn require_no_nested_umbrella_titles(
+    snapshot: &AuditSnapshot,
+    current: &BTreeMap<u64, AuditIssue>,
+    direct_numbers: &BTreeSet<u64>,
+) -> Result<(), String> {
+    for number in direct_numbers {
+        let Some(title) = audit_issue_title(*number, snapshot, current) else {
+            return Err(format!(
+                "direct child #{number} is missing from the audit binding"
+            ));
+        };
+        if is_controlling_umbrella_title(title) {
+            return Err("umbrella became nested after the audit snapshot".to_owned());
+        }
+    }
+    Ok(())
 }
 
 fn validate_audit_parent(parent: &GitHubIssue) -> Result<(), String> {
@@ -1266,19 +1306,6 @@ async fn verify_live_umbrella(
     if audit_issue(&parent)? != *current_parent {
         return Err("umbrella changed during the pre-mutation graph check".to_owned());
     }
-    if service
-        .parent_issue(
-            cancellation,
-            repository.owner(),
-            repository.name(),
-            proposal.umbrella,
-        )
-        .await
-        .map_err(|_error| "cannot re-check umbrella parent relation".to_owned())?
-        .is_some()
-    {
-        return Err("umbrella became nested after the audit snapshot".to_owned());
-    }
     let native = native_leaf_numbers(snapshot);
     let historical_direct = historical_direct_leaf_numbers(snapshot);
     let direct = service
@@ -1304,6 +1331,7 @@ async fn verify_live_umbrella(
             "direct native leaf graph changed outside the persisted audit batch".to_owned(),
         );
     }
+    require_no_nested_umbrella_titles(snapshot, current, &direct)?;
     if require_fresh_fingerprints && fingerprints(current) != proposal.expected_issues {
         return Err("audit-bound issue changed before mutation".to_owned());
     }
@@ -2288,7 +2316,6 @@ mod tests {
         vec![
             response(200, repository_json("main")),
             response(200, parent),
-            response(404, "{}"),
             response(200, refs(&[(11, 111, "open")])),
             response(200, format!("[{parent},{leaf},{control}]")),
         ]
@@ -2801,7 +2828,39 @@ mod tests {
         .expect("remote snapshot");
 
         assert_eq!(snapshot, audit_snapshot());
-        assert_eq!(server.finish().expect("stub completed").len(), 5);
+        assert_eq!(server.finish().expect("stub completed").len(), 4);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_refuses_direct_umbrella_children() {
+        let parent = remote_parent();
+        let nested = issue_json(
+            11,
+            111,
+            "[UMBRELLA] Nested child",
+            "<!-- larch:umbrella-proposal v1 -->\n\n#### Leaf issues\n\n- None yet.\n",
+            "open",
+        );
+        let control = remote_control();
+        let (service, server) = service(vec![
+            response(200, repository_json("main")),
+            response(200, &parent),
+            response(200, refs(&[(11, 111, "open")])),
+            response(200, format!("[{parent},{nested},{control}]")),
+        ]);
+        let cancellation = Cancellation::new();
+        let error = collect_snapshot_remote(
+            &service,
+            &cancellation,
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect_err("umbrella children must refuse");
+        assert_eq!(error, "nested umbrellas are not supported");
+        assert_eq!(server.finish().expect("stub completed").len(), 4);
     }
 
     #[tokio::test]
@@ -2843,7 +2902,6 @@ mod tests {
         let exchanges = vec![
             response(200, repository_json("main")),
             response(200, &parent),
-            response(404, "{}"),
             response(200, refs(&[(11, 111, "open")])),
             response(200, format!("[{parent}]")),
             response(200, &leaf),
@@ -2863,7 +2921,7 @@ mod tests {
         .expect("missing sources read individually");
 
         assert_eq!(snapshot, audit_snapshot());
-        assert_eq!(server.finish().expect("stub completed").len(), 7);
+        assert_eq!(server.finish().expect("stub completed").len(), 6);
     }
 
     #[tokio::test]
@@ -2899,7 +2957,6 @@ mod tests {
             response(200, &leaf),
             response(200, &control),
             response(200, &parent),
-            response(404, "{}"),
             response(200, refs(&[(11, 111, "open")])),
         ]);
         let (service, server) = service(exchanges);
@@ -2925,7 +2982,7 @@ mod tests {
             .await
             .expect("fresh remote proposal");
         assert_eq!(current, current_snapshot_sources(&snapshot));
-        assert_eq!(server.finish().expect("stub completed").len(), 11);
+        assert_eq!(server.finish().expect("stub completed").len(), 9);
     }
 
     #[tokio::test]
@@ -2948,7 +3005,6 @@ mod tests {
             response(200, &leaf),
             response(200, &control),
             response(200, &parent),
-            response(404, "{}"),
             response(200, refs(&[(11, 111, "open")])),
         ]);
         let temporary = tempfile::tempdir().expect("temporary root");
@@ -2970,7 +3026,7 @@ mod tests {
         };
 
         assert!(prepare_remote_apply(&context, &proposal).await.is_ok());
-        assert_eq!(server.finish().expect("stub completed").len(), 6);
+        assert_eq!(server.finish().expect("stub completed").len(), 5);
     }
 
     #[tokio::test]
@@ -3130,13 +3186,11 @@ mod tests {
             response(200, &leaf),
             response(200, &control),
             response(200, &parent),
-            response(404, "{}"),
             response(200, &direct),
             response(200, &parent),
             response(200, &leaf),
             response(200, &control),
             response(200, &parent),
-            response(404, "{}"),
             response(200, &direct),
             response(200, &parent),
             response(200, &leaf),
@@ -3182,7 +3236,7 @@ mod tests {
         assert!(proposal.complete);
         assert_eq!(proposal.graph_state, AuditGraphState::Verified);
         assert!(proposal_path.is_file());
-        assert_eq!(server.finish().expect("stub completed").len(), 35);
+        assert_eq!(server.finish().expect("stub completed").len(), 32);
     }
 
     #[allow(clippy::too_many_lines)] // One ordered exchange sequence proves the graph's remote mutation and read-back.
