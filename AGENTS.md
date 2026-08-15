@@ -6,7 +6,7 @@ This repo **is** the larch Claude Code plugin. Edits ship to consumers. Start wi
 
 The plugin ships the repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, `scripts/`, `.claude-plugin/`. Everything else is supplementary.
 
-`python/` holds stdlib-only runtime modules. Use `python3 python/cli.py ship pr` for the live driver and `python3 python/cli.py report-tokens analyze` for `/report-tokens`. See `python/README.md`, `make py-lint`, and `make py-test`.
+`python/` holds stdlib-only runtime modules. Use `python3 python/cli.py ship pr` for the live driver and `scripts/larch.sh report-tokens analyze` for `/report-tokens`. See `python/README.md`, `make py-lint`, and `make py-test`.
 
 ## Load Semantics
 
