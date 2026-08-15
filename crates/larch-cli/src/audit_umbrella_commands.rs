@@ -22,8 +22,8 @@ use larch_adapters::{
     FetchRequest, GitRef, GitRefspec, GitRemote, GixRepository, PathIntent, TemporaryRoot,
     WorktreeRequest,
     github::{
-        DependencyEdge, LiveMutationRequest, OctocrabGitHubService, SubIssueEdge,
-        check_live_mutation_auth,
+        DependencyEdge, GitHubOperationError, LiveMutationRequest, OctocrabGitHubService,
+        SubIssueEdge, check_live_mutation_auth,
     },
     runtime::Cancellation,
 };
@@ -1412,39 +1412,83 @@ async fn apply_dependencies(
             service,
             cancellation,
             repository,
-            &node_map,
-            dependency,
-            authorization,
-            false,
+            &DependencyMutation {
+                node_map: &node_map,
+                umbrella: proposal.umbrella,
+                dependency,
+                authorization,
+                add: false,
+            },
         )
         .await?;
     }
     for dependency in &proposal.dependencies {
+        // Native attach already wires umbrella <- every direct leaf and
+        // verify_parent_blockers re-proves those edges. Skipping them here
+        // keeps resume idempotent on managed umbrellas that the operator-
+        // facing protected-target mutator would otherwise refuse forever.
+        if is_native_owned_umbrella_blocker(proposal, dependency) {
+            continue;
+        }
         mutate_dependency(
             service,
             cancellation,
             repository,
-            &node_map,
-            dependency,
-            authorization,
-            true,
+            &DependencyMutation {
+                node_map: &node_map,
+                umbrella: proposal.umbrella,
+                dependency,
+                authorization,
+                add: true,
+            },
         )
         .await?;
     }
     Ok(())
 }
 
+/// Declared edges whose dependent is the audited umbrella and whose
+/// prerequisite is a direct audit leaf. The native-graph phase owns these.
+fn is_native_owned_umbrella_blocker(
+    proposal: &AuditProposal,
+    dependency: &AuditDependency,
+) -> bool {
+    match &dependency.dependent {
+        AuditDependencyNode::Existing { number } if *number == proposal.umbrella => {}
+        _ => return false,
+    }
+    match &dependency.prerequisite {
+        AuditDependencyNode::Existing { number } => {
+            proposal.historical_leaf_numbers.contains(number)
+                || proposal.direct_leaf_numbers.contains(number)
+                || proposal
+                    .leaves
+                    .iter()
+                    .any(|leaf| leaf.number == *number && leaf.state == AuditLeafState::Resolved)
+        }
+        AuditDependencyNode::New { identity } => proposal
+            .leaves
+            .iter()
+            .any(|leaf| leaf.identity == *identity),
+    }
+}
+
+struct DependencyMutation<'a> {
+    node_map: &'a BTreeMap<String, (u64, u64)>,
+    umbrella: u64,
+    dependency: &'a AuditDependency,
+    authorization: &'a LiveMutationRequest<'a>,
+    add: bool,
+}
+
 async fn mutate_dependency(
     service: &OctocrabGitHubService,
     cancellation: &Cancellation,
     repository: &GitHubRepositoryRef,
-    node_map: &BTreeMap<String, (u64, u64)>,
-    dependency: &AuditDependency,
-    authorization: &LiveMutationRequest<'_>,
-    add: bool,
+    mutation: &DependencyMutation<'_>,
 ) -> Result<(), String> {
-    let dependent = resolve_node(node_map, &dependency.dependent)?;
-    let prerequisite = resolve_node(node_map, &dependency.prerequisite)?;
+    let dependent = resolve_node(mutation.node_map, &mutation.dependency.dependent)?;
+    let prerequisite = resolve_node(mutation.node_map, &mutation.dependency.prerequisite)?;
     let current = service
         .issue(repository, dependent.0, cancellation)
         .await
@@ -1452,24 +1496,54 @@ async fn mutate_dependency(
     if current.id != dependent.1 || current.state != GitHubIssueState::Open {
         return Err("dependency target changed before mutation".to_owned());
     }
+    // Audit-internal mutations on the audited umbrella use the same trusted
+    // path as attach_issue (`expected_updated_at: None`). Managed umbrellas
+    // always carry lifecycle titles and larch HTML markers, so the operator-
+    // facing protected-target precondition would refuse both fresh adds and
+    // AlreadyInDesiredState resumes.
+    let expected_updated_at = if dependent.0 == mutation.umbrella {
+        None
+    } else {
+        Some(current.updated_at.as_str())
+    };
     let edge = DependencyEdge {
         owner: repository.owner(),
         repo: repository.name(),
         client_issue: dependent.0,
         blocker_id: prerequisite.1,
-        expected_updated_at: Some(&current.updated_at),
+        expected_updated_at,
     };
-    let result = if add {
+    let result = if mutation.add {
         service
-            .add_blocked_by(cancellation, authorization, edge)
+            .add_blocked_by(cancellation, mutation.authorization, edge)
             .await
     } else {
         service
-            .remove_blocked_by(cancellation, authorization, edge)
+            .remove_blocked_by(cancellation, mutation.authorization, edge)
             .await
     };
-    result.map_err(|_error| "dependency mutation was not proven by read-back".to_owned())?;
+    result.map_err(dependency_mutation_error)?;
     Ok(())
+}
+
+fn dependency_mutation_error(error: GitHubOperationError) -> String {
+    match error {
+        GitHubOperationError::ProtectedDependencyTarget => {
+            "dependency mutation refused: protected dependency target".to_owned()
+        }
+        GitHubOperationError::StaleDependencyTarget => {
+            "dependency mutation refused: stale dependency target".to_owned()
+        }
+        GitHubOperationError::SecuritySensitiveDependencyTarget => {
+            "dependency mutation refused: security-sensitive dependency target".to_owned()
+        }
+        GitHubOperationError::Malformed(field)
+            if field.contains("read-back") || field.contains("not reflected") =>
+        {
+            "dependency mutation was not proven by read-back".to_owned()
+        }
+        other => format!("dependency mutation failed: {other}"),
+    }
 }
 
 fn resolve_node(
@@ -2030,18 +2104,22 @@ mod tests {
     use super::{
         ApplyArguments, ApplyContext, AuditUmbrellaCommand, LeafIdentityArguments, ParseArguments,
         PersistProposalArguments, RemoveWorktreeArguments, SnapshotArguments, SnapshotSelection,
-        ValidateLedgerArguments, apply_remote, audit_issue, build_snapshot,
-        collect_snapshot_remote, exact_open_leaf_matches, explicit_leaf_references, fingerprints,
-        has_exact_leaf_title, historical_direct_leaf_numbers, is_controlling_umbrella,
-        is_legacy_managed_umbrella, issue_references, native_leaf_numbers, number_graph_has_cycle,
-        operator_authorization, parse_proposal_draft, parse_repository, parse_umbrella_argument,
-        paths_overlap, persist_refreshed_proposal, prepare_remote_apply, proposal_node_map,
-        reconcile_audit_leaves, reconcile_leaf_relationships, reconcile_open_duplicate_leaves,
-        require_issue, require_operator, resolve_node, run, temporary_root, validate_audit_parent,
-        verify_expected_fingerprints, verify_final_graph, verify_snapshot_source_content,
-        verify_snapshot_sources_fresh,
+        ValidateLedgerArguments, apply_dependencies, apply_remote, audit_issue, build_snapshot,
+        collect_snapshot_remote, dependency_mutation_error, exact_open_leaf_matches,
+        explicit_leaf_references, fingerprints, has_exact_leaf_title,
+        historical_direct_leaf_numbers, is_controlling_umbrella, is_legacy_managed_umbrella,
+        is_native_owned_umbrella_blocker, issue_references, native_leaf_numbers,
+        number_graph_has_cycle, operator_authorization, parse_proposal_draft, parse_repository,
+        parse_umbrella_argument, paths_overlap, persist_refreshed_proposal, prepare_remote_apply,
+        proposal_node_map, reconcile_audit_leaves, reconcile_leaf_relationships,
+        reconcile_open_duplicate_leaves, require_issue, require_operator, resolve_node, run,
+        temporary_root, validate_audit_parent, verify_expected_fingerprints, verify_final_graph,
+        verify_snapshot_source_content, verify_snapshot_sources_fresh,
     };
-    use larch_adapters::{github::OctocrabGitHubService, runtime::Cancellation};
+    use larch_adapters::{
+        github::{GitHubOperationError, OctocrabGitHubService},
+        runtime::Cancellation,
+    };
     use larch_core::{
         AUDIT_LEDGER_VERSION, AUDIT_PROPOSAL_VERSION, AuditDependency, AuditDependencyNode,
         AuditGraphState, AuditIssue, AuditLeaf, AuditLeafDraft, AuditLeafState, AuditLedger,
@@ -3316,5 +3394,205 @@ mod tests {
                     .ends_with("/repos/o/r/issues/11/dependencies/blocked_by")
                 && String::from_utf8_lossy(&request.body.bytes).contains("\"issue_id\":113")
         }));
+    }
+
+    #[test]
+    fn native_owned_umbrella_blockers_are_skipped_from_declared_edges() {
+        let snapshot = audit_snapshot();
+        let ledger = gap_ledger(&snapshot);
+        let mut proposal = gap_proposal(&snapshot, &ledger);
+        let identity = proposal.leaves[0].identity.clone();
+        proposal.leaves[0].state = AuditLeafState::Resolved;
+        proposal.leaves[0].number = 13;
+        proposal.leaves[0].issue_id = 113;
+        proposal.leaves[0].url = "https://github.com/o/r/issues/13".to_owned();
+
+        let umbrella_to_new = AuditDependency {
+            dependent: AuditDependencyNode::Existing { number: 10 },
+            prerequisite: AuditDependencyNode::New {
+                identity: identity.clone(),
+            },
+        };
+        let umbrella_to_old = AuditDependency {
+            dependent: AuditDependencyNode::Existing { number: 10 },
+            prerequisite: AuditDependencyNode::Existing { number: 11 },
+        };
+        let leaf_to_leaf = AuditDependency {
+            dependent: AuditDependencyNode::Existing { number: 11 },
+            prerequisite: AuditDependencyNode::New { identity },
+        };
+        assert!(is_native_owned_umbrella_blocker(&proposal, &umbrella_to_new));
+        assert!(is_native_owned_umbrella_blocker(&proposal, &umbrella_to_old));
+        assert!(!is_native_owned_umbrella_blocker(&proposal, &leaf_to_leaf));
+    }
+
+    #[test]
+    fn dependency_mutation_errors_preserve_refusal_kinds() {
+        assert_eq!(
+            dependency_mutation_error(GitHubOperationError::ProtectedDependencyTarget),
+            "dependency mutation refused: protected dependency target"
+        );
+        assert_eq!(
+            dependency_mutation_error(GitHubOperationError::StaleDependencyTarget),
+            "dependency mutation refused: stale dependency target"
+        );
+        assert_eq!(
+            dependency_mutation_error(GitHubOperationError::SecuritySensitiveDependencyTarget),
+            "dependency mutation refused: security-sensitive dependency target"
+        );
+        assert_eq!(
+            dependency_mutation_error(GitHubOperationError::Malformed(
+                "dependency mutation not reflected in read-back"
+            )),
+            "dependency mutation was not proven by read-back"
+        );
+        assert!(
+            dependency_mutation_error(GitHubOperationError::RateLimited)
+                .starts_with("dependency mutation failed:")
+        );
+    }
+
+    #[tokio::test]
+    async fn declared_umbrella_blockers_are_idempotent_on_managed_umbrellas() {
+        // Reproduces #8560: a managed umbrella carries a lifecycle title and
+        // larch HTML marker, so the operator-facing protected-target mutator
+        // refuses both fresh adds and AlreadyInDesiredState resumes. Declared
+        // umbrella <- direct-leaf edges must therefore be owned by native
+        // attach and skipped here.
+        let snapshot = audit_snapshot();
+        let ledger = gap_ledger(&snapshot);
+        let mut proposal = gap_proposal(&snapshot, &ledger);
+        let identity = proposal.leaves[0].identity.clone();
+        proposal.leaves[0].state = AuditLeafState::Resolved;
+        proposal.leaves[0].number = 13;
+        proposal.leaves[0].issue_id = 113;
+        proposal.leaves[0].url = "https://github.com/o/r/issues/13".to_owned();
+        proposal.dependencies = vec![
+            AuditDependency {
+                dependent: AuditDependencyNode::Existing { number: 10 },
+                prerequisite: AuditDependencyNode::Existing { number: 11 },
+            },
+            AuditDependency {
+                dependent: AuditDependencyNode::Existing { number: 10 },
+                prerequisite: AuditDependencyNode::New {
+                    identity: identity.clone(),
+                },
+            },
+        ];
+        // No remote exchanges: skipped edges must not touch GitHub at all.
+        let (service, server) = service(Vec::new());
+        let cancellation = Cancellation::new();
+        let repository = repository();
+        let authorization = operator_authorization();
+
+        apply_dependencies(
+            &service,
+            &cancellation,
+            &repository,
+            &proposal,
+            &authorization,
+        )
+        .await
+        .expect("native-owned declared umbrella blockers skip without remote work");
+        assert_eq!(server.finish().expect("stub completed").len(), 0);
+    }
+
+    #[tokio::test]
+    async fn audit_umbrella_dependency_removals_use_the_trusted_mutation_path() {
+        let snapshot = audit_snapshot();
+        let ledger = satisfied_ledger(&snapshot);
+        let draft = AuditProposalDraft {
+            version: AUDIT_PROPOSAL_VERSION,
+            leaves: Vec::new(),
+            dependencies: Vec::new(),
+            remove_dependencies: vec![AuditDependency {
+                dependent: AuditDependencyNode::Existing { number: 10 },
+                prerequisite: AuditDependencyNode::Existing { number: 11 },
+            }],
+        };
+        let proposal = build_audit_proposal(&snapshot, &ledger, &draft).expect("proposal");
+        let managed_parent = issue_json(
+            10,
+            110,
+            "[IMPLEMENTING] [UMBRELLA] Fixture",
+            "<!-- larch:umbrella-proposal v1 -->\n\n#### Leaf issues\n\n- #11\n",
+            "open",
+        );
+        let present = refs(&[(11, 111, "open")]);
+        let (service, server) = service(vec![
+            response(200, &managed_parent),
+            response(200, &present),
+            response(204, "{}"),
+            response(200, "[]"),
+        ]);
+        let cancellation = Cancellation::new();
+        let repository = repository();
+        let authorization = operator_authorization();
+
+        apply_dependencies(
+            &service,
+            &cancellation,
+            &repository,
+            &proposal,
+            &authorization,
+        )
+        .await
+        .expect("audit-owned umbrella removals bypass protected-target rules");
+        let requests = server.finish().expect("stub completed");
+        assert_eq!(requests.len(), 4);
+        assert!(requests.iter().any(|request| {
+            request.method == "DELETE"
+                && request
+                    .path
+                    .ends_with("/repos/o/r/issues/10/dependencies/blocked_by/111")
+        }));
+    }
+
+    #[tokio::test]
+    async fn leaf_dependency_mutations_surface_protected_target_refusals() {
+        let snapshot = audit_snapshot();
+        let ledger = gap_ledger(&snapshot);
+        let mut proposal = gap_proposal(&snapshot, &ledger);
+        let identity = proposal.leaves[0].identity.clone();
+        proposal.leaves[0].state = AuditLeafState::Resolved;
+        proposal.leaves[0].number = 13;
+        proposal.leaves[0].issue_id = 113;
+        proposal.leaves[0].url = "https://github.com/o/r/issues/13".to_owned();
+        proposal.dependencies = vec![AuditDependency {
+            dependent: AuditDependencyNode::Existing { number: 11 },
+            prerequisite: AuditDependencyNode::New { identity },
+        }];
+        let protected_leaf = issue_json(
+            11,
+            111,
+            "[IMPLEMENTING] [LEAF OF 10] Existing leaf",
+            &format!(
+                "<!-- larch:plan -->\n{}\n\nExisting scope.\n",
+                umbrella_leaf_opening(10)
+            ),
+            "open",
+        );
+        let (service, server) = service(vec![
+            response(200, &protected_leaf),
+            response(200, &protected_leaf),
+        ]);
+        let cancellation = Cancellation::new();
+        let repository = repository();
+        let authorization = operator_authorization();
+
+        let error = apply_dependencies(
+            &service,
+            &cancellation,
+            &repository,
+            &proposal,
+            &authorization,
+        )
+        .await
+        .expect_err("protected leaf targets must refuse loudly");
+        assert_eq!(
+            error,
+            "dependency mutation refused: protected dependency target"
+        );
+        assert_eq!(server.finish().expect("stub completed").len(), 2);
     }
 }
