@@ -701,6 +701,19 @@ fn owned_run_id(environment: &Environment, tmpdir: &str) -> Option<String> {
         .find(|candidate| validate_progress_run_id(candidate).is_some())
 }
 
+pub fn resolve_owned_run_id(tmpdir: Option<&Path>) -> Option<String> {
+    owned_run_id(
+        &Environment::ambient(),
+        tmpdir.and_then(Path::to_str).unwrap_or(""),
+    )
+}
+
+pub fn resolve_ambient_ledger_path() -> Option<PathBuf> {
+    resolve_ledger_path(None, &Environment::ambient())
+        .ok()
+        .flatten()
+}
+
 fn session_value(text: &str, key: &str) -> String {
     let plain = [key, "="].concat();
     let exported = ["export ", key, "="].concat();

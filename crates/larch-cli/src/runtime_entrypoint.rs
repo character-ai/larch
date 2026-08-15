@@ -44,6 +44,11 @@ const VERIFIED_LARCH_CONTEXT: &[ChildEnvironment] = &[
     ChildEnvironment::LarchCodexReviewModel,
     ChildEnvironment::LarchCodexVoteModel,
     ChildEnvironment::LarchCursorModel,
+    ChildEnvironment::LarchReviewerPrune,
+    ChildEnvironment::LarchReviewerStragglerMultiple,
+    ChildEnvironment::LarchReviewerStragglerFloorSeconds,
+    ChildEnvironment::LarchReviewerStragglerMaxSeconds,
+    ChildEnvironment::LarchUniqueFinderBonus,
     ChildEnvironment::LarchExternalAuthRetries,
     ChildEnvironment::LarchExternalHealthCheckTimeout,
     ChildEnvironment::LarchProbeNegativeTtlSeconds,
@@ -80,6 +85,17 @@ pub fn run_verified_larch(arguments: &[OsString]) -> Result<ProcessOutput, Strin
     run_verified_larch_with_environment(arguments, &[])
 }
 
+/// Run verified larch with a caller-owned deadline for a composed phase.
+///
+/// # Errors
+/// Returns the same resolution and process errors as [`run_verified_larch`].
+pub fn run_verified_larch_with_timeout(
+    arguments: &[OsString],
+    timeout: Duration,
+) -> Result<ProcessOutput, String> {
+    run_verified_larch_with_options(arguments, &[], timeout)
+}
+
 /// Run verified larch with explicitly scoped environment overrides.
 ///
 /// # Errors
@@ -87,6 +103,14 @@ pub fn run_verified_larch(arguments: &[OsString]) -> Result<ProcessOutput, Strin
 pub fn run_verified_larch_with_environment(
     arguments: &[OsString],
     environment: &[(ChildEnvironment, OsString)],
+) -> Result<ProcessOutput, String> {
+    run_verified_larch_with_options(arguments, environment, VERIFIED_LARCH_TIMEOUT)
+}
+
+fn run_verified_larch_with_options(
+    arguments: &[OsString],
+    environment: &[(ChildEnvironment, OsString)],
+    timeout: Duration,
 ) -> Result<ProcessOutput, String> {
     let root = plugin_root()?;
     let script = root.join("scripts").join("larch.sh");
@@ -98,7 +122,7 @@ pub fn run_verified_larch_with_environment(
     let mut request = bounded_request(
         ExternalProgram::Larch(program),
         arguments.iter().cloned(),
-        VERIFIED_LARCH_TIMEOUT,
+        timeout,
         VERIFIED_LARCH_SHUTDOWN_GRACE,
         VERIFIED_LARCH_OUTPUT_LIMIT,
     )?;

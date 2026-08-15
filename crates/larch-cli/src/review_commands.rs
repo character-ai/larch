@@ -784,15 +784,22 @@ fn check_reviewer_failure_threshold(arguments: &[OsString]) -> ExitCode {
     let panel_manifest = match parsed
         .values
         .get("--panel-manifest")
-        .map(PathBuf::from)
-        .filter(|path| path.is_file())
+        .filter(|value| !value.is_empty())
     {
-        Some(path) => {
-            if let Ok(slots) = panel_manifest_slots(&read_file_lossy(&path)) {
+        Some(value) => {
+            let path = PathBuf::from(value);
+            let text = if path.is_symlink() || !path.is_file() {
+                Err(())
+            } else {
+                fs::read(&path)
+                    .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+                    .map_err(|_| ())
+            };
+            if let Ok(slots) = text.and_then(|text| panel_manifest_slots(&text)) {
                 slots
             } else {
                 eprintln!(
-                    "review check-reviewer-failure-threshold: --panel-manifest contains invalid JSON"
+                    "review check-reviewer-failure-threshold: --panel-manifest is unreadable or contains invalid JSON"
                 );
                 return ExitCode::from(1);
             }
