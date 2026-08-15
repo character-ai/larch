@@ -78,17 +78,33 @@ const fn design_tmpdir() -> &'static str {
 
 fn help_and_usage_cases() -> Vec<ParityCase> {
     vec![
-        parity_case("plan-parse-commands-help", &["parse-commands", "--help"], Vec::new()),
-        parity_case("plan-parse-commands-no-args", &["parse-commands"], Vec::new()),
+        parity_case(
+            "plan-parse-commands-help",
+            &["parse-commands", "--help"],
+            Vec::new(),
+        ),
+        parity_case(
+            "plan-parse-commands-no-args",
+            &["parse-commands"],
+            Vec::new(),
+        ),
         parity_case(
             "plan-validate-commands-help",
             &["validate-commands", "--help"],
             Vec::new(),
         ),
-        parity_case("plan-validate-commands-no-args", &["validate-commands"], Vec::new()),
+        parity_case(
+            "plan-validate-commands-no-args",
+            &["validate-commands"],
+            Vec::new(),
+        ),
         parity_case("plan-validate-help", &["validate", "--help"], Vec::new()),
         parity_case("plan-validate-no-args", &["validate"], Vec::new()),
-        parity_case("plan-check-size-help", &["check-size", "--help"], Vec::new()),
+        parity_case(
+            "plan-check-size-help",
+            &["check-size", "--help"],
+            Vec::new(),
+        ),
         parity_case("plan-check-size-no-args", &["check-size"], Vec::new()),
         parity_case(
             "plan-set-oversize-override-help",
@@ -105,13 +121,21 @@ fn help_and_usage_cases() -> Vec<ParityCase> {
             &["revise-waterfall", "--help"],
             Vec::new(),
         ),
-        parity_case("plan-revise-waterfall-no-args", &["revise-waterfall"], Vec::new()),
+        parity_case(
+            "plan-revise-waterfall-no-args",
+            &["revise-waterfall"],
+            Vec::new(),
+        ),
         parity_case(
             "plan-auto-fix-commands-help",
             &["auto-fix-commands", "--help"],
             Vec::new(),
         ),
-        parity_case("plan-auto-fix-commands-no-args", &["auto-fix-commands"], Vec::new()),
+        parity_case(
+            "plan-auto-fix-commands-no-args",
+            &["auto-fix-commands"],
+            Vec::new(),
+        ),
         parity_case(
             "plan-validator-autofix-help",
             &["validator-autofix", "--help"],
@@ -122,13 +146,21 @@ fn help_and_usage_cases() -> Vec<ParityCase> {
             &["optional-trailers", "--help"],
             Vec::new(),
         ),
-        parity_case("plan-optional-trailers-no-args", &["optional-trailers"], Vec::new()),
+        parity_case(
+            "plan-optional-trailers-no-args",
+            &["optional-trailers"],
+            Vec::new(),
+        ),
         parity_case(
             "plan-compose-goals-test-help",
             &["compose-goals-test", "--help"],
             Vec::new(),
         ),
-        parity_case("plan-compose-goals-test-no-args", &["compose-goals-test"], Vec::new()),
+        parity_case(
+            "plan-compose-goals-test-no-args",
+            &["compose-goals-test"],
+            Vec::new(),
+        ),
     ]
 }
 
@@ -221,10 +253,7 @@ fn behavior_cases() -> Vec<ParityCase> {
 #[test]
 fn plan_quality_migrated_verbs_match_frozen_python_reference() {
     let goldens = fixture_directory().join("goldens");
-    for case in help_and_usage_cases()
-        .into_iter()
-        .chain(behavior_cases())
-    {
+    for case in help_and_usage_cases().into_iter().chain(behavior_cases()) {
         assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }

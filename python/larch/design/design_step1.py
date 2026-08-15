@@ -285,17 +285,17 @@ def driver_main(argv: Sequence[str]) -> int:
         else:
             env: dict[str, str] = os.environ.copy()
             env["DESIGN_TMPDIR"] = str(design_tmpdir)
-            command = [sys.executable, str(root / "python" / "cli.py"), "plan", "validate", "--design-tmpdir", str(design_tmpdir), "--repo-root", str(consumer_root), *action_args]
-            proc_out = subprocess.run(command, capture_output=True, text=True, check=False, env=env)
-            if proc_out.stdout:
-                print(proc_out.stdout, end="")
-            if proc_out.returncode != 0:
-                print(f"STEP_FAILED={action} REASON=exit-{proc_out.returncode}")
-                return int(proc_out.returncode)
-            if not no_sentinel:
-                _ = sentinel.write_text("", encoding="utf-8")
-            print(f"STEP_COMPLETED={action}")
-            continue
+            command = [
+                str(larch_entrypoint(root)),
+                "plan",
+                "validate",
+                "--design-tmpdir",
+                str(design_tmpdir),
+                "--repo-root",
+                str(consumer_root),
+                *action_args,
+            ]
+            command_env = larch_entrypoint_env(root, base=env)
         proc_out = subprocess.run(command, capture_output=True, text=True, check=False, env=command_env)
         if proc_out.stdout:
             print(proc_out.stdout, end="")

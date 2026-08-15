@@ -30,9 +30,6 @@ EXPECTED = {
         ("file-oos-annotate", "larch.design.design_oos", "file_oos_annotate_main"),
     )
 }
-PLAN_EXPECTED = {
-    ("plan", "validator-autofix"): ("larch.design.plan_quality", "validator_autofix_main", True),
-}
 AGENT_EXPECTED: dict[tuple[str, str], tuple[str, str]] = {}
 ARCHITECTURAL_ASSESSMENT_EXPECTED = {
     ("architectural-assessment", "materialize"): ("larch.implement.architectural_assessment", "materialize_main"),
@@ -71,9 +68,7 @@ def test_design_port_registry_entries_are_machine_stdout() -> None:
     for key, target in EXPECTED.items():
         assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
         assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
-    for key, target in PLAN_EXPECTED.items():
-        assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
-        assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+    assert ("plan", "validator-autofix") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     assert ("plan-review", "step3b-entry") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     for key, target in AGENT_EXPECTED.items():
         module_name, func_name, _machine_stdout = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]

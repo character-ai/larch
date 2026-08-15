@@ -22,22 +22,6 @@ def _write_fake_cli(path: Path) -> None:
     _ = path.write_text(
         """#!/usr/bin/env python3
 import sys
-args = sys.argv[1:]
-if args[:2] == ["plan-review","emit"]:
-    print("EMIT_PLAN_STATUS=ok")
-    print("DIFF_LINES=12")
-    raise SystemExit(0)
-if args[:2] == ["plan","validate"]:
-    print("VALIDATE_STATUS=defects-found")
-    print("VALIDATE_DEFECT_COUNT=2")
-    raise SystemExit(1)
-if args[:2] == ["plan","check-size"]:
-    print("PLAN_SIZE_STATUS=under-threshold")
-    print("SIZE_TRIGGER_FIRED=false")
-    print("DRIFT_TRIGGER_FIRED=false")
-    print("PLAN_LINES=10")
-    print("DIFF_LINES=12")
-    raise SystemExit(0)
 raise SystemExit(0)
 """,
         encoding="utf-8",
@@ -47,13 +31,27 @@ raise SystemExit(0)
 
 
 def _write_emit_bootstrap(path: Path) -> None:
-    """Write the Rust-owner boundary used by postplan's emit consumer."""
+    """Write the Rust-owner boundary used by postplan plan/plan-review verbs."""
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_text(
         "#!/usr/bin/env bash\n"
+        "if [[ $1 == plan-review && $2 == json-get-bool ]]; then\n"
+        "  printf 'false\\n'\n"
+        "  exit 0\n"
+        "fi\n"
         "if [[ $1 == plan-review && $2 == emit ]]; then\n"
         "  printf 'EMIT_PLAN_STATUS=ok\\nDIFF_LINES=12\\n'\n"
-        "fi\n",
+        "  exit 0\n"
+        "fi\n"
+        "if [[ $1 == plan && $2 == validate ]]; then\n"
+        "  printf 'VALIDATE_STATUS=defects-found\\nVALIDATE_DEFECT_COUNT=2\\n'\n"
+        "  exit 1\n"
+        "fi\n"
+        "if [[ $1 == plan && $2 == check-size ]]; then\n"
+        "  printf 'PLAN_SIZE_STATUS=under-threshold\\nSIZE_TRIGGER_FIRED=false\\nDRIFT_TRIGGER_FIRED=false\\nPLAN_LINES=10\\nDIFF_LINES=12\\n'\n"
+        "  exit 0\n"
+        "fi\n"
+        "exit 0\n",
         encoding="utf-8",
     )
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
@@ -133,8 +131,39 @@ def test_postplan_rejects_missing_executable_facets_before_review(
         del env
         if args[:2] == ("plan-review", "json-get-bool"):
             return _completed(args, stdout="false\n")
-        assert args[:2] == ("plan-review", "emit")
-        return _completed(args, stdout="EMIT_PLAN_STATUS=ok\nDIFF_LINES=12\n")
+        if args[:2] == ("plan-review", "emit"):
+            return _completed(args, stdout="EMIT_PLAN_STATUS=ok\nDIFF_LINES=12\n")
+        if args[:2] == ("plan", "validate"):
+            design = Path(args[args.index("--design-tmpdir") + 1])
+            log = design / "validate-plan-commands.log"
+            _ = log.write_text(
+                "kind=executable-plan-contract token=missing-ordered-implementation\n"
+                "kind=executable-plan-contract token=missing-closed-decisions\n"
+                "kind=executable-plan-contract token=missing-breaking-migration\n",
+                encoding="utf-8",
+            )
+            return _completed(
+                args,
+                rc=1,
+                stdout=(
+                    "VALIDATE_STATUS=defects-found\n"
+                    "VALIDATE_DEFECT_COUNT=3\n"
+                    "VALIDATE_SKIPPED_COUNT=0\n"
+                    "VALIDATE_UNSAFE_TOKEN_COUNT=0\n"
+                    f"VALIDATE_LOG_FILE={log}\n"
+                ),
+            )
+        assert args[:2] == ("plan", "check-size")
+        return _completed(
+            args,
+            stdout=(
+                "PLAN_SIZE_STATUS=ok\n"
+                "SIZE_TRIGGER_FIRED=false\n"
+                "DRIFT_TRIGGER_FIRED=false\n"
+                "PLAN_LINES=10\n"
+                "DIFF_LINES=12\n"
+            ),
+        )
 
     monkeypatch.setattr(design_postplan, "_run_larch", fake_run_larch)
 
@@ -329,18 +358,6 @@ def _write_check_size_failure_cli(path: Path, calls_file: Path) -> None:
     _ = path.write_text(
         """#!/usr/bin/env python3
 import sys
-args = sys.argv[1:]
-if args[:2] == ["plan-review", "emit"]:
-    print("EMIT_PLAN_STATUS=ok")
-    print("DIFF_LINES=12")
-    raise SystemExit(0)
-if args[:2] == ["plan", "validate"]:
-    print("VALIDATE_STATUS=ok")
-    print("VALIDATE_DEFECT_COUNT=0")
-    raise SystemExit(0)
-if args[:2] == ["plan", "check-size"]:
-    print("PLAN_SIZE_STATUS=failed", file=sys.stderr)
-    raise SystemExit(1)
 raise SystemExit(0)
 """,
         encoding="utf-8",
@@ -352,8 +369,8 @@ raise SystemExit(0)
 def _write_append_failure_bootstrap(path: Path, calls_file: Path) -> None:
     """Write a fake verified bootstrap that records `run-log append-failure`.
 
-    `run-log append-failure` is Rust-owned, so the self-log now dispatches
-    through `scripts/larch.sh` rather than the fake `python/cli.py`.
+    Plan validate/check-size and `run-log append-failure` are Rust-owned, so
+    postplan dispatches them through `scripts/larch.sh`.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     calls_path_repr = repr(str(calls_file))
@@ -361,10 +378,20 @@ def _write_append_failure_bootstrap(path: Path, calls_file: Path) -> None:
         f"""#!/usr/bin/env python3
 import sys
 args = sys.argv[1:]
+if args[:2] == ["plan-review", "json-get-bool"]:
+    print("false")
+    raise SystemExit(0)
 if args[:2] == ["plan-review", "emit"]:
     print("EMIT_PLAN_STATUS=ok")
     print("DIFF_LINES=12")
     raise SystemExit(0)
+if args[:2] == ["plan", "validate"]:
+    print("VALIDATE_STATUS=ok")
+    print("VALIDATE_DEFECT_COUNT=0")
+    raise SystemExit(0)
+if args[:2] == ["plan", "check-size"]:
+    print("PLAN_SIZE_STATUS=failed", file=sys.stderr)
+    raise SystemExit(1)
 if args[:2] == ["run-log", "append-failure"]:
     site = args[args.index("--site") + 1] if "--site" in args else ""
     with open({calls_path_repr}, "a", encoding="utf-8") as fh:
@@ -409,9 +436,25 @@ def _write_recording_cli(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_text(
         """#!/usr/bin/env python3
+import sys
+raise SystemExit(0)
+""",
+        encoding="utf-8",
+    )
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    _write_recording_bootstrap(path.parents[1] / "scripts" / "larch.sh")
+
+
+def _write_recording_bootstrap(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_text(
+        """#!/usr/bin/env python3
 import os
 import sys
 args = sys.argv[1:]
+if args[:2] == ["plan-review", "json-get-bool"]:
+    print("false")
+    raise SystemExit(0)
 if args[:2] == ["plan-review", "emit"]:
     print("EMIT_PLAN_STATUS=ok")
     print("DIFF_LINES=12")
@@ -433,7 +476,6 @@ raise SystemExit(0)
         encoding="utf-8",
     )
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
-    _write_emit_bootstrap(path.parents[1] / "scripts" / "larch.sh")
 
 
 def test_postplan_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: Path) -> None:

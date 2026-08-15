@@ -25,7 +25,8 @@ def test_validate_difficulty_metadata(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
     plan.write_text("body\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
     ok, found = plan_quality.validate_difficulty_metadata(plan.read_text(encoding="utf-8"), require=True)
-    assert ok and found == "MODERATE"
+    assert ok
+    assert found == "MODERATE"
 
 
 def test_validate_optional_trailers_preserved(tmp_path: Path) -> None:

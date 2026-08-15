@@ -132,8 +132,8 @@ def _self_log_check_size_failure(root: Path, *, design_tmpdir: Path, rc: int, st
         _ = output_file.write_text(combined, encoding="utf-8")
     except OSError:
         return
-    _ = _run_larch(
-        root,
+    append_argv = [
+        str(larch_entrypoint(root)),
         "run-log",
         "append-failure",
         "--log",
@@ -149,7 +149,8 @@ def _self_log_check_size_failure(root: Path, *, design_tmpdir: Path, rc: int, st
         "--output-file",
         str(output_file),
         "--redact",
-    )
+    ]
+    _ = _run_larch(root, *append_argv[1:])
 
 
 def postplan_emit_main(argv: Sequence[str]) -> int:
@@ -287,8 +288,8 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
     # dual-root existence check in `plan validate` (#4490).
     validate_env["CLAUDE_PLUGIN_ROOT"] = str(root)
     repo_root_arg = consumer_repo_root() or root
-    validate = _run_larch(
-        root,
+    validate_argv = [
+        str(larch_entrypoint(root)),
         "plan",
         "validate",
         "--plan-file",
@@ -298,8 +299,8 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
         "--repo-root",
         str(repo_root_arg),
         "--require-executable-facets",
-        env=validate_env,
-    )
+    ]
+    validate = _run_larch(root, *validate_argv[1:], env=validate_env)
     validate_kv = _parse_kv((validate.stdout or "") + "\n" + (validate.stderr or ""))
     for key in ("VALIDATE_STATUS", "VALIDATE_DEFECT_COUNT", "VALIDATE_SKIPPED_COUNT", "VALIDATE_UNSAFE_TOKEN_COUNT", "VALIDATE_LOG_FILE"):
         if key in validate_kv:
@@ -319,7 +320,14 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
 
     check_size_env: dict[str, str] = os.environ.copy()
     check_size_env["LARCH_QUIET_DISABLE"] = "1"
-    check_size = _run_larch(root, "plan", "check-size", "--design-tmpdir", str(design_tmpdir), env=check_size_env)
+    check_size_argv = [
+        str(larch_entrypoint(root)),
+        "plan",
+        "check-size",
+        "--design-tmpdir",
+        str(design_tmpdir),
+    ]
+    check_size = _run_larch(root, *check_size_argv[1:], env=check_size_env)
     size_kv = _parse_kv((check_size.stdout or "") + "\n" + (check_size.stderr or ""))
     kvs.update({
         "PLAN_SIZE_STATUS": size_kv.get("PLAN_SIZE_STATUS", "failed" if check_size.returncode else "ok"),

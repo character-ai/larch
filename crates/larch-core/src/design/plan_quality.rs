@@ -1073,7 +1073,10 @@ fn is_any_heading(line: &str) -> bool {
 
 fn heading_title(line: &str) -> Option<&str> {
     let trimmed = line.trim_end();
-    let rest = trimmed.strip_prefix("### ").or_else(|| trimmed.strip_prefix("## ")).or_else(|| trimmed.strip_prefix("# "))?;
+    let rest = trimmed
+        .strip_prefix("### ")
+        .or_else(|| trimmed.strip_prefix("## "))
+        .or_else(|| trimmed.strip_prefix("# "))?;
     Some(rest.trim())
 }
 
@@ -1098,7 +1101,9 @@ pub fn set_oversize_override_text(text: &str, remove: bool) -> Result<String, St
         .into_iter()
         .enumerate()
         .filter(|(idx, line)| {
-            !(trailer_start <= *idx && *idx < diff_idx && line.trim_end_matches(['\n', '\r']) == trailer)
+            !(trailer_start <= *idx
+                && *idx < diff_idx
+                && line.trim_end_matches(['\n', '\r']) == trailer)
         })
         .map(|(_idx, line)| line)
         .collect();
@@ -1181,7 +1186,6 @@ pub const fn drift_exceeds(current: i64, baseline: i64, multiple: i64) -> bool {
 pub fn drift_ratio_token(current: i64, baseline: i64) -> String {
     ratio_token(current, baseline)
 }
-
 
 #[cfg(test)]
 mod tests {

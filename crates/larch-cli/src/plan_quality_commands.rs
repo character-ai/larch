@@ -31,8 +31,9 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    env, fs,
+    env,
     ffi::OsString,
+    fs,
     path::{Path, PathBuf},
     process::{Command, ExitCode, Stdio},
 };
@@ -43,7 +44,7 @@ use larch_core::{
     ValidationSummary, assess_plan_size, cleanup_cache_sessions_root, compose_plan_goals_test,
     drift_exceeds, drift_ratio_token, emit_kv, parse_final_trailers, parse_optional_metadata,
     parse_plan_commands, redact_secrets, render_plan_command_tsv, set_oversize_override_text,
-    trailing_plan_difficulty, trailing_plan_metadata_lines, tier_valid,
+    tier_valid, trailing_plan_difficulty, trailing_plan_metadata_lines,
 };
 use regex::Regex;
 
@@ -135,7 +136,8 @@ fn sha256_text(text: &str) -> String {
 /// `plan parse-commands`
 pub fn parse_commands(arguments: &[OsString]) -> ExitCode {
     const PROGRAM: &str = "cli.py plan parse-commands";
-    const USAGE: &str = include_str!("../../../fixtures/rust-parity/plan_quality_help/parse-commands.usage.txt");
+    const USAGE: &str =
+        include_str!("../../../fixtures/rust-parity/plan_quality_help/parse-commands.usage.txt");
     let parsed = match parse_required_with_help(
         arguments,
         PROGRAM,
@@ -159,7 +161,10 @@ pub fn parse_commands(arguments: &[OsString]) -> ExitCode {
     }
     let repo = repo_root_for_plan(
         &plan,
-        parsed.value("--repo-root").map(|value| value.to_string_lossy()).as_deref(),
+        parsed
+            .value("--repo-root")
+            .map(|value| value.to_string_lossy())
+            .as_deref(),
     );
     let plugin = plugin_root();
     let rows = parse_plan_commands(&read_text(&plan), &repo, &plugin);
@@ -382,8 +387,7 @@ fn validate_plan_command_rows(
             skipped_count += 1;
             continue;
         }
-        let (abs_path, existence_defect) =
-            resolve_repo_script(script, &repo, plugin.as_deref());
+        let (abs_path, existence_defect) = resolve_repo_script(script, &repo, plugin.as_deref());
         let Some(abs_path) = abs_path else {
             log.push(format!("DEFECT script={script} kind={existence_defect}"));
             defect_count += 1;
@@ -521,7 +525,8 @@ fn validate_plan_command_rows(
 /// `plan validate-commands`
 pub fn validate_commands(arguments: &[OsString]) -> ExitCode {
     const PROGRAM: &str = "cli.py plan validate-commands";
-    const USAGE: &str = include_str!("../../../fixtures/rust-parity/plan_quality_help/validate-commands.usage.txt");
+    const USAGE: &str =
+        include_str!("../../../fixtures/rust-parity/plan_quality_help/validate-commands.usage.txt");
     if let Some(error) = crate::argparse_compat::choice_error(
         arguments,
         &[
@@ -560,12 +565,18 @@ pub fn validate_commands(arguments: &[OsString]) -> ExitCode {
     let tsv = PathBuf::from(parsed.value("--tsv-file").unwrap_or_default());
     let log_file = PathBuf::from(parsed.value("--log-file").unwrap_or_default());
     if !tsv.is_file() {
-        diagnostic(&format!("validate-commands: unreadable TSV: {}", tsv.display()));
+        diagnostic(&format!(
+            "validate-commands: unreadable TSV: {}",
+            tsv.display()
+        ));
         return ExitCode::from(RC2);
     }
     let repo = repo_root_for_plan(
         tsv.parent().unwrap_or_else(|| Path::new(".")),
-        parsed.value("--repo-root").map(|value| value.to_string_lossy()).as_deref(),
+        parsed
+            .value("--repo-root")
+            .map(|value| value.to_string_lossy())
+            .as_deref(),
     );
     let source_kind = parsed
         .value("--source-kind")
@@ -634,7 +645,8 @@ fn plan_validation_outcome(
 /// `plan validate`
 pub fn validate(arguments: &[OsString]) -> ExitCode {
     const PROGRAM: &str = "cli.py plan validate";
-    const USAGE: &str = include_str!("../../../fixtures/rust-parity/plan_quality_help/validate.usage.txt");
+    const USAGE: &str =
+        include_str!("../../../fixtures/rust-parity/plan_quality_help/validate.usage.txt");
     if let Some(error) = crate::argparse_compat::choice_error(
         arguments,
         &[
@@ -666,12 +678,18 @@ pub fn validate(arguments: &[OsString]) -> ExitCode {
     };
     let plan = PathBuf::from(parsed.value("--plan-file").unwrap_or_default());
     if !plan.is_file() {
-        diagnostic(&format!("validate: unreadable plan file: {}", plan.display()));
+        diagnostic(&format!(
+            "validate: unreadable plan file: {}",
+            plan.display()
+        ));
         return ExitCode::from(RC2);
     }
     let repo = repo_root_for_plan(
         &plan,
-        parsed.value("--repo-root").map(|value| value.to_string_lossy()).as_deref(),
+        parsed
+            .value("--repo-root")
+            .map(|value| value.to_string_lossy())
+            .as_deref(),
     );
     let plugin = plugin_root();
     let source_kind = parsed
@@ -686,15 +704,8 @@ pub fn validate(arguments: &[OsString]) -> ExitCode {
         });
     let plan_text = read_text(&plan);
     let rows = parse_plan_commands(&plan_text, &repo, &plugin);
-    let summary = validate_plan_command_rows(
-        &rows,
-        &repo,
-        None,
-        &source_kind,
-        10.0,
-        10.0,
-        Some(&plugin),
-    );
+    let summary =
+        validate_plan_command_rows(&rows, &repo, None, &source_kind, 10.0, 10.0, Some(&plugin));
     let mut difficulty_defects = 0usize;
     for raw in trailing_plan_metadata_lines(&plan_text) {
         if let Some(value) = raw.strip_prefix("difficulty:") {
@@ -728,23 +739,22 @@ pub fn validate(arguments: &[OsString]) -> ExitCode {
         .map(|value| value.to_string_lossy().into_owned())
         .or_else(|| env::var("DESIGN_TMPDIR").ok())
         .unwrap_or_default();
-    let log_path = if !design_tmpdir_raw.is_empty()
-        && validated_design_tmpdir(&design_tmpdir_raw).is_ok()
-    {
-        let design_tmpdir = PathBuf::from(&design_tmpdir_raw)
-            .canonicalize()
-            .unwrap_or_else(|_| PathBuf::from(&design_tmpdir_raw));
-        let path = design_tmpdir.join("validate-plan-commands.log");
-        let _ = atomic_write(&path, &log_text);
-        path
-    } else {
-        let tmp = env::temp_dir().join(format!(
-            "larch-validate-plan-commands.log.{}",
-            std::process::id()
-        ));
-        let _ = fs::write(&tmp, &log_text);
-        tmp
-    };
+    let log_path =
+        if !design_tmpdir_raw.is_empty() && validated_design_tmpdir(&design_tmpdir_raw).is_ok() {
+            let design_tmpdir = PathBuf::from(&design_tmpdir_raw)
+                .canonicalize()
+                .unwrap_or_else(|_| PathBuf::from(&design_tmpdir_raw));
+            let path = design_tmpdir.join("validate-plan-commands.log");
+            let _ = atomic_write(&path, &log_text);
+            path
+        } else {
+            let tmp = env::temp_dir().join(format!(
+                "larch-validate-plan-commands.log.{}",
+                std::process::id()
+            ));
+            let _ = fs::write(&tmp, &log_text);
+            tmp
+        };
     emit_kv("VALIDATE_LOG_FILE", &log_path.display().to_string());
     ExitCode::SUCCESS
 }
@@ -756,7 +766,9 @@ fn validate_optional_trailer_keys_preserved(plan_file: &Path, keys_file: &Path) 
         .filter(|line| !line.is_empty())
         .map(str::to_owned)
         .collect();
-    expected.iter().all(|key| meta.keys.iter().any(|item| item == key))
+    expected
+        .iter()
+        .all(|key| meta.keys.iter().any(|item| item == key))
 }
 
 fn validate_optional_trailers_preserved(plan_file: &Path, values_file: &Path) -> bool {
@@ -781,7 +793,9 @@ fn validate_optional_trailers_preserved(plan_file: &Path, values_file: &Path) ->
         return false;
     }
     if values_path.is_file() {
-        let current = parse_optional_metadata(&read_text(plan_file)).values.join("\n");
+        let current = parse_optional_metadata(&read_text(plan_file))
+            .values
+            .join("\n");
         let current = if current.is_empty() {
             String::new()
         } else {
@@ -811,7 +825,9 @@ pub fn optional_trailers(arguments: &[OsString]) -> ExitCode {
         "-h" | "--help" => {
             print!(
                 "{}",
-                include_str!("../../../fixtures/rust-parity/plan_quality_help/optional-trailers.txt")
+                include_str!(
+                    "../../../fixtures/rust-parity/plan_quality_help/optional-trailers.txt"
+                )
             );
             return ExitCode::SUCCESS;
         }
@@ -822,7 +838,11 @@ pub fn optional_trailers(arguments: &[OsString]) -> ExitCode {
     }
     let program = format!("cli.py plan optional-trailers {sub}");
     let (options, flags, required) = match sub.as_str() {
-        "has-key" => (["--plan-file", "--key"].as_slice(), [].as_slice(), ["--plan-file", "--key"].as_slice()),
+        "has-key" => (
+            ["--plan-file", "--key"].as_slice(),
+            [].as_slice(),
+            ["--plan-file", "--key"].as_slice(),
+        ),
         "snapshot-keys" | "snapshot-values" => (
             ["--plan-file", "--output"].as_slice(),
             [].as_slice(),
@@ -845,8 +865,12 @@ pub fn optional_trailers(arguments: &[OsString]) -> ExitCode {
         ),
     };
     let usage = format!("usage: {program} [-h]");
-    let parsed = match finish_parse(parse_with_flags(rest, options, flags, 0), &usage, &program, required)
-    {
+    let parsed = match finish_parse(
+        parse_with_flags(rest, options, flags, 0),
+        &usage,
+        &program,
+        required,
+    ) {
         Ok(parsed) => parsed,
         Err(code) => return code,
     };
@@ -890,7 +914,10 @@ pub fn optional_trailers(arguments: &[OsString]) -> ExitCode {
                 meta.values.join("\n") + "\n"
             };
             let _ = atomic_write(&output, &text);
-            let _ = atomic_write(&PathBuf::from(format!("{}.values", output.display())), &val_text);
+            let _ = atomic_write(
+                &PathBuf::from(format!("{}.values", output.display())),
+                &val_text,
+            );
             ExitCode::SUCCESS
         }
         "snapshot-values" => {
@@ -980,7 +1007,9 @@ fn canonical_plan_for_override(
 /// `plan set-oversize-override`
 pub fn set_oversize_override(arguments: &[OsString]) -> ExitCode {
     const PROGRAM: &str = "cli.py plan set-oversize-override";
-    const USAGE: &str = include_str!("../../../fixtures/rust-parity/plan_quality_help/set-oversize-override.usage.txt");
+    const USAGE: &str = include_str!(
+        "../../../fixtures/rust-parity/plan_quality_help/set-oversize-override.usage.txt"
+    );
     let parsed = match parse_required_with_help(
         arguments,
         PROGRAM,
@@ -1060,13 +1089,17 @@ fn plan_counts_from_file(path: &Path) -> Option<(i64, i64)> {
     }
     let trailers = parse_final_trailers(&read_text(path), true);
     let diff_lines = trailers.diff_lines()?;
-    Some((i64::try_from(trailers.start_line.saturating_sub(1)).unwrap_or(0), diff_lines))
+    Some((
+        i64::try_from(trailers.start_line.saturating_sub(1)).unwrap_or(0),
+        diff_lines,
+    ))
 }
 
 /// `plan check-size`
 pub fn check_size(arguments: &[OsString]) -> ExitCode {
     const PROGRAM: &str = "cli.py plan check-size";
-    const USAGE: &str = include_str!("../../../fixtures/rust-parity/plan_quality_help/check-size.usage.txt");
+    const USAGE: &str =
+        include_str!("../../../fixtures/rust-parity/plan_quality_help/check-size.usage.txt");
     let parsed = match parse_required_with_help(
         arguments,
         PROGRAM,
@@ -1322,7 +1355,9 @@ pub fn check_size(arguments: &[OsString]) -> ExitCode {
 /// `plan compose-goals-test`
 pub fn compose_goals_test(arguments: &[OsString]) -> ExitCode {
     const PROGRAM: &str = "cli.py plan compose-goals-test";
-    const USAGE: &str = include_str!("../../../fixtures/rust-parity/plan_quality_help/compose-goals-test.usage.txt");
+    const USAGE: &str = include_str!(
+        "../../../fixtures/rust-parity/plan_quality_help/compose-goals-test.usage.txt"
+    );
     let parsed = match parse_required_with_help(
         arguments,
         PROGRAM,

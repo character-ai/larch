@@ -2132,7 +2132,9 @@ fn run(
             PlanCommand::ValidateCommands(arguments) => {
                 plan_quality_commands::validate_commands(&arguments.arguments)
             }
-            PlanCommand::Validate(arguments) => plan_quality_commands::validate(&arguments.arguments),
+            PlanCommand::Validate(arguments) => {
+                plan_quality_commands::validate(&arguments.arguments)
+            }
             PlanCommand::CheckSize(arguments) => {
                 plan_quality_commands::check_size(&arguments.arguments)
             }
