@@ -653,6 +653,15 @@ enum TokenCommand {
     /// Print the resolved ledger path and its raw rows.
     #[command(disable_help_flag = true)]
     Dump(RawCompatibilityArguments),
+    /// Render a token report from the resolved ledger and transcript.
+    #[command(disable_help_flag = true)]
+    Report(RawCompatibilityArguments),
+    /// Price token buckets and emit the machine-readable cost block.
+    #[command(disable_help_flag = true)]
+    Cost(RawCompatibilityArguments),
+    /// Price token buckets and emit the one-line cost summary.
+    #[command(name = "render-cost-line", disable_help_flag = true)]
+    RenderCostLine(RawCompatibilityArguments),
     /// Write one research/validation lane token sidecar.
     #[command(name = "lane-write", disable_help_flag = true)]
     LaneWrite(RawCompatibilityArguments),
@@ -2261,6 +2270,11 @@ fn run(
                 token_commands::append_record(&arguments.arguments)
             }
             TokenCommand::Dump(arguments) => token_commands::dump(&arguments.arguments),
+            TokenCommand::Report(arguments) => token_commands::report(&arguments.arguments),
+            TokenCommand::Cost(arguments) => token_commands::cost(&arguments.arguments),
+            TokenCommand::RenderCostLine(arguments) => {
+                token_commands::render_cost_line_command(&arguments.arguments)
+            }
             TokenCommand::LaneWrite(arguments) => token_commands::lane_write(&arguments.arguments),
             TokenCommand::LaneReport(arguments) => {
                 token_commands::lane_report(&arguments.arguments)

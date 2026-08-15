@@ -552,7 +552,8 @@ Default `2` (positive integer). `/design` Step 2b.5 compares the current plan an
 and `/report-tokens` USD estimates per lane. The retained
 [`python/larch/report/report_tokens_cost.py`](../python/larch/report/report_tokens_cost.py)
 helper consumes the same override names only for the #7680 `render run-summary`
-compatibility payload and #7684 token/analytics commands:
+compatibility payload and the remaining #7684 analytics. Rust owns `token cost`
+and `token render-cost-line` after #8507:
 
 - **Claude bucket env vars**: `LARCH_CLAUDE_INPUT_RATE_PER_M`, `LARCH_CLAUDE_CACHE_READ_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M`, and `LARCH_CLAUDE_OUTPUT_RATE_PER_M`.
 - **Codex bucket env vars** (`gpt-5.6-sol` default-bucket tokens): `LARCH_CODEX_INPUT_RATE_PER_M`, `LARCH_CODEX_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_OUTPUT_RATE_PER_M`.

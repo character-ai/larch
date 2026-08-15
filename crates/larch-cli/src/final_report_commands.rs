@@ -5,9 +5,9 @@
 //! knowledge sections, `summary-final.md`, the committed run-log copy, the
 //! manifest reconcile, and the tracking-issue upsert.
 //!
-//! Four inputs still have Python owners this leaf does not move: the rendered
-//! token report, PR line counts, the plan-coverage line, and the architectural
-//! assessment sections. Each is reached through the single
+//! Three inputs still have Python owners this leaf does not move: PR line
+//! counts, the plan-coverage line, and the architectural assessment sections.
+//! Each is reached through the single
 //! [`crate::python_verb`] seam rather than a second implementation.
 
 use std::{
@@ -557,7 +557,7 @@ fn cost_fields(
     }
 }
 
-/// Locate the rendered token report, generating one through the Python owner.
+/// Locate the rendered token report, generating one through the Rust owner.
 fn resolve_token_report(implement_tmpdir: &Path, run_dir: &Path) -> Option<PathBuf> {
     for candidate in [
         run_dir.join("token-report.json"),
@@ -573,17 +573,18 @@ fn resolve_token_report(implement_tmpdir: &Path, run_dir: &Path) -> Option<PathB
     }
     let generated = implement_tmpdir.join("token-report-truth.json");
     let arguments: Vec<OsString> = vec![
-        "token".into(),
-        "report".into(),
         "--full".into(),
         "--format".into(),
         "json".into(),
         "--output".into(),
         OsString::from(&generated),
+        "--implement-tmpdir".into(),
+        OsString::from(implement_tmpdir),
     ];
-    match delegate(implement_tmpdir, arguments) {
-        Ok((0, _stdout)) if generated.is_file() => Some(generated),
-        _unavailable => None,
+    if crate::token_commands::report(&arguments) == ExitCode::SUCCESS && generated.is_file() {
+        Some(generated)
+    } else {
+        None
     }
 }
 

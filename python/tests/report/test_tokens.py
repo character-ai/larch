@@ -688,34 +688,6 @@ def test_token_mark_returns_typed_recorded_and_skipped_results(tmp_path: Path) -
 
 
 
-def test_token_report_main_terse_flag(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    ledger, transcript = _token_report_fixtures(tmp_path)
-    rc = tokens.token_report_main(
-        ["--terse", "--ledger", str(ledger), "--transcript", str(transcript)],
-    )
-    assert rc == 0
-    out = capsys.readouterr()
-    assert "Step 2 - implement: claude=100 tokens" in out.out
-
-
-def test_token_report_scrape_mode_confines_outputs(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    session = tmp_path / "session"
-    session.mkdir()
-    outside = tmp_path / "outside.ndjson"
-
-    rc = tokens.token_report_main([
-        "--scrape-run-output", str(outside),
-        "--implement-tmpdir", str(session),
-    ])
-
-    assert rc == 0
-    assert not outside.exists()
-    assert "scrape output must stay" in capsys.readouterr().err
-
-
 def test_token_cli_rejects_invalid_ledger(capsys: pytest.CaptureFixture[str]) -> None:
     pytest.skip("token dump CLI cut over to Rust (#8506); covered by crates/larch-cli/tests/token_commands.rs")
     _ = capsys

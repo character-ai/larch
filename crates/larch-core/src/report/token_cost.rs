@@ -1,9 +1,9 @@
 //! Token cost model, pricing tables, and per-run cost aggregation.
 //!
 //! Library parity for Python `larch.report.report_tokens_cost` and the pricing
-//! re-exports of `larch.report.tokens`. No command changes owner here: Python
-//! keeps `token cost`, `token render-cost-line`, and `report-tokens analyze`
-//! until their cutover leaves move.
+//! re-exports of `larch.report.tokens`. The Rust CLI owns `token cost` and
+//! `token render-cost-line` after #8507; `report-tokens analyze` remains on its
+//! separate cutover path.
 //!
 //! # Pricing data
 //!
@@ -29,8 +29,7 @@
 //! # Command surface
 //!
 //! This layer parses only the pricing flags. Help output, usage text, exit
-//! codes, and the stderr warning belong to the CLI leaf that later takes
-//! `token cost` and `token render-cost-line` from Python.
+//! codes, and the stderr warning belong to the #8507 Rust CLI leaf.
 //!
 //! # Rounding
 //!

@@ -27,7 +27,7 @@ tokens over per-site inline Gantt paragraph scans. The harness rejects
 reintroduced full marker-extraction procedure prose and repeated long
 `Binding: markers ...` restatements in the design skill.
 
-The `python3 python/cli.py token render-cost-line` allowlist remains deliberately
-scoped to the deprecated standalone helper. This harness also negative-greps the
-active SKILL.md files so cost-line-only orchestrator prose cannot be
-reintroduced.
+Rust owns `token render-cost-line` after #8507. The retired standalone-helper
+allowlist remains deliberately scoped to its historical test references. This
+harness also negative-greps the active SKILL.md files so cost-line-only
+orchestrator prose cannot be reintroduced.

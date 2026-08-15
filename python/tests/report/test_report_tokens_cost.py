@@ -24,10 +24,9 @@ from larch.report.report_tokens_cost import (
     env_rate,
     price_run,
     rate_row,
-    render_cost_line_main,
+    render_cost_line_from_args,
     token_cost_argv,
     token_cost_from_args,
-    token_cost_main,
 )
 from larch.core import config as larch_config
 from larch.report.report_tokens_models import RunRecord, VendorTotals
@@ -392,11 +391,9 @@ def test_fallback_cost_uses_component_sums(monkeypatch: pytest.MonkeyPatch) -> N
     assert priced.cursor_cost == 3.0
 
 
-def test_token_cost_cli_emits_kv_grammar(capsys: pytest.CaptureFixture[str]) -> None:
+def test_token_cost_emits_kv_grammar() -> None:
     rates = display_rates(environ={})
-    rc = token_cost_main(["--codex-input-tokens", "1000000", "--codex-output-tokens", "1000000"])
-    assert rc == 0
-    out = capsys.readouterr().out
+    out = token_cost_from_args(["--codex-input-tokens", "1000000", "--codex-output-tokens", "1000000"])
     parsed = dict(line.split("=", 1) for line in out.strip().splitlines() if "=" in line)
     assert parsed["CLAUDE_COST"] == "0.00"
     expected = f"{rates.codex_input + rates.codex_output:.2f}"
@@ -414,35 +411,30 @@ def test_token_cost_cli_emits_kv_grammar(capsys: pytest.CaptureFixture[str]) -> 
     assert lines[6].startswith("TOTAL_COST=")
 
 
-def test_token_cost_cli_prices_mini_at_mini_rates(capsys: pytest.CaptureFixture[str]) -> None:
+def test_token_cost_prices_mini_at_mini_rates() -> None:
     rates = display_rates(environ={})
-    rc = token_cost_main(["--codex-mini-input-tokens", "1000000", "--codex-mini-output-tokens", "1000000"])
-    assert rc == 0
-    parsed = dict(line.split("=", 1) for line in capsys.readouterr().out.strip().splitlines() if "=" in line)
+    out = token_cost_from_args(["--codex-mini-input-tokens", "1000000", "--codex-mini-output-tokens", "1000000"])
+    parsed = dict(line.split("=", 1) for line in out.strip().splitlines() if "=" in line)
     expected = f"{rates.codex_mini_input + rates.codex_mini_output:.2f}"
     assert parsed["CODEX_COST"] == expected
     assert parsed["CODEX_GPT_5_4_MINI_COST"] == expected
     assert parsed["CODEX_GPT_5_5_COST"] == "0.00"
 
 
-def test_render_cost_line_cli_emits_terminal_grammar(capsys: pytest.CaptureFixture[str]) -> None:
-    rc = render_cost_line_main(["--codex-input-tokens", "1000", "--codex-output-tokens", "500"])
-    assert rc == 0
-    out = capsys.readouterr().out
+def test_render_cost_line_emits_terminal_grammar() -> None:
+    out = render_cost_line_from_args(["--codex-input-tokens", "1000", "--codex-output-tokens", "500"])
     assert out.startswith("💰 Cost: TOTAL ~$")
     assert "Codex-5.6 $" in out
     assert "Codex-mini $" in out
     assert "Tokens:" in out
 
 
-def test_render_cost_line_includes_compact_cursor_lanes(capsys: pytest.CaptureFixture[str]) -> None:
-    rc = render_cost_line_main([
+def test_render_cost_line_includes_compact_cursor_lanes() -> None:
+    out = render_cost_line_from_args([
         "--cursor-input-tokens", "1000000",
         "--cursor-grok-input-tokens", "1000000",
     ])
 
-    assert rc == 0
-    out = capsys.readouterr().out
     assert "Cursor $" in out
     assert "(Composer $" in out
     assert ", Grok $" in out
@@ -579,9 +571,9 @@ def test_blended_pricing_override_ladder_uses_vendor_before_legacy_token_rate() 
     assert legacy_claude["CODEX_COST"] == "44.00"
 
 
-def test_4b3c1a5a_repricing_regression(capsys: pytest.CaptureFixture[str]) -> None:
+def test_4b3c1a5a_repricing_regression() -> None:
     rates = display_rates(environ={})
-    rc = token_cost_main([
+    out = token_cost_from_args([
         "--codex-input-tokens", "4580000",
         "--codex-cached-input-tokens", "77100000",
         "--codex-output-tokens", "475000",
@@ -589,8 +581,7 @@ def test_4b3c1a5a_repricing_regression(capsys: pytest.CaptureFixture[str]) -> No
         "--cursor-cache-read-tokens", "89100000",
         "--cursor-output-tokens", "425000",
     ])
-    assert rc == 0
-    parsed = dict(line.split("=", 1) for line in capsys.readouterr().out.strip().splitlines() if "=" in line)
+    parsed = dict(line.split("=", 1) for line in out.strip().splitlines() if "=" in line)
     expected_codex = round(
         ((4_580_000 / 1_000_000) * rates.codex_input)
         + ((77_100_000 / 1_000_000) * rates.codex_cached_input)
@@ -711,15 +702,14 @@ def test_cursor_teams_surcharge_env_override() -> None:
     assert rates.cursor_output == CURSOR_COMPOSER_BASE["output"] + 0.50
 
 
-def test_cursor_non_auto_tokens_price_at_surcharged_rates(capsys: pytest.CaptureFixture[str]) -> None:
+def test_cursor_non_auto_tokens_price_at_surcharged_rates() -> None:
     rates = display_rates(environ={})
-    rc = token_cost_main([
+    out = token_cost_from_args([
         "--cursor-input-tokens", "1000000",
         "--cursor-cache-read-tokens", "1000000",
         "--cursor-output-tokens", "1000000",
     ])
-    assert rc == 0
-    parsed = dict(line.split("=", 1) for line in capsys.readouterr().out.strip().splitlines() if "=" in line)
+    parsed = dict(line.split("=", 1) for line in out.strip().splitlines() if "=" in line)
     expected = f"{rates.cursor_input + rates.cursor_cache_read + rates.cursor_output:.2f}"
     assert parsed["CURSOR_COST"] == expected
 
@@ -766,14 +756,12 @@ def test_token_cost_argv_cursor_without_by_model_falls_back_to_sum_bucket() -> N
     assert argv[argv.index("--cursor-tokens") + 1] == "330"
 
 
-def test_cursor_grok_tokens_price_at_direct_rates(capsys: pytest.CaptureFixture[str]) -> None:
-    rc = token_cost_main([
+def test_cursor_grok_tokens_price_at_direct_rates() -> None:
+    out = token_cost_from_args([
         "--cursor-grok-input-tokens", "1000000",
         "--cursor-grok-cache-read-tokens", "1000000",
         "--cursor-grok-output-tokens", "1000000",
     ])
-    assert rc == 0
-    out = capsys.readouterr().out
     assert "CURSOR_COST=8.50" in out
 
 

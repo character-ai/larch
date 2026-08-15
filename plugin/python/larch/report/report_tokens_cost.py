@@ -796,35 +796,3 @@ def price_run(runner: Runner, *, record: RunRecord, plugin_root: Path | None = N
         total_cost=parsed["TOTAL_COST"],
         priced_by_token_cost=True,
     )
-
-
-def token_cost_main(argv: list[str] | None = None) -> int:
-    args = argv if argv is not None else sys.argv[1:]
-    try:
-        _ = sys.stdout.write(token_cost_from_args(args))
-    except SystemExit as exc:
-        code = 0 if exc.code is None else int(str(exc.code))
-        if code == 0:
-            print("Usage: cli.py token cost [--per-bucket flags...] [--claude-tokens N ...]", file=sys.stderr)
-            return 0
-        return code
-    except ValueError as exc:
-        print(f"token cost: {exc}", file=sys.stderr)
-        return 2
-    return 0
-
-
-def render_cost_line_main(argv: list[str] | None = None) -> int:
-    args = argv if argv is not None else sys.argv[1:]
-    try:
-        _ = sys.stdout.write(render_cost_line_from_args(args))
-    except SystemExit as exc:
-        code = 0 if exc.code is None else int(str(exc.code))
-        if code == 0:
-            print("Usage: cli.py token render-cost-line [--per-bucket flags...] [--quiet-on-empty]", file=sys.stderr)
-            return 0
-        return code
-    except ValueError as exc:
-        print(f"token render-cost-line: {exc}", file=sys.stderr)
-        return 2
-    return 0

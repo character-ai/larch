@@ -371,7 +371,8 @@ fn token_arguments(id: &str) -> &'static [&'static str] {
             "--tool", "claude", "--total-tokens", "1",
         ],
         "clean-install-token-lane-report" => &["--dir", "/tmp"],
-        // dump and any unknown id prove dispatch with zero args.
+        "clean-install-token-render-cost-line" => &["--quiet-on-empty"],
+        // cost, dump, report, and any unknown id prove dispatch with zero args.
         _ => &[],
     }
 }
@@ -1312,6 +1313,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "telemetry-mark",
     ),
     CleanInstallCase::new("clean-install-token-append-record", "token", "append-record"),
+    CleanInstallCase::new("clean-install-token-cost", "token", "cost"),
     CleanInstallCase::new("clean-install-token-dump", "token", "dump"),
     CleanInstallCase::new("clean-install-token-lane-report", "token", "lane-report"),
     CleanInstallCase::new("clean-install-token-lane-write", "token", "lane-write"),
@@ -1357,6 +1359,12 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "token",
         "record-vendor-sidecar",
     ),
+    CleanInstallCase::new(
+        "clean-install-token-render-cost-line",
+        "token",
+        "render-cost-line",
+    ),
+    CleanInstallCase::new("clean-install-token-report", "token", "report"),
     CleanInstallCase::new("clean-install-test-shard-pack", "test-shard", "pack"),
     CleanInstallCase::new(
         "clean-install-test-shard-read-makefile",

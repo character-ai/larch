@@ -7770,11 +7770,13 @@ verb = "cost"
 python_module = "larch.report.tokens"
 python_function = "token_cost_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8507
+clean_install_test = "clean-install-token-cost"
 
 [[commands]]
 domain = "token"
@@ -7964,11 +7966,13 @@ verb = "render-cost-line"
 python_module = "larch.report.tokens"
 python_function = "token_render_cost_line_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8507
+clean_install_test = "clean-install-token-render-cost-line"
 
 [[commands]]
 domain = "token"
@@ -7976,11 +7980,13 @@ verb = "report"
 python_module = "larch.report.tokens"
 python_function = "token_report_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8507
+clean_install_test = "clean-install-token-report"
 
 [[commands]]
 domain = "tracking"

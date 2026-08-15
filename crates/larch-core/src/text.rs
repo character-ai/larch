@@ -449,10 +449,33 @@ pub fn python_str(value: Option<&Value>) -> String {
     }
 }
 
+/// Return whether `value` is a bounded ASCII identifier for a persisted contract.
+///
+/// The base alphabet is ASCII alphanumeric characters plus `_` and `-`.
+/// Callers whose contract permits periods must opt into them explicitly.
+#[must_use]
+pub fn bounded_ascii_identifier(value: &str, allow_dot: bool) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(byte, b'_' | b'-')
+                || (allow_dot && byte == b'.')
+        })
+}
+
 #[cfg(test)]
 mod tests {
     #[rustfmt::skip]
-    use super::{ensure_ascii_json, python_bigint, python_float, split_text_lines, tail_lines, truncate_utf8_bytes};
+    use super::{bounded_ascii_identifier, ensure_ascii_json, python_bigint, python_float, split_text_lines, tail_lines, truncate_utf8_bytes};
+
+    #[test]
+    fn bounded_ascii_identifier_requires_an_explicit_period_contract() {
+        assert!(bounded_ascii_identifier("session-1_2", false));
+        assert!(bounded_ascii_identifier("R-1.part_2", true));
+        assert!(!bounded_ascii_identifier("R-1.part_2", false));
+        assert!(!bounded_ascii_identifier("invalid value", true));
+    }
 
     #[test]
     fn python_number_spellings_keep_unicode_and_default_integer_limit() {

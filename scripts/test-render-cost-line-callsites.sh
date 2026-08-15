@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-render-cost-line-callsites.sh — python3 python/cli.py token render-cost-line is standalone-only post #2714.
+# test-render-cost-line-callsites.sh — Rust owns token render-cost-line after #8507.
 # Literal contract pins intentionally use backticks inside single-quoted grep needles.
 # shellcheck disable=SC2016
 unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
@@ -10,7 +10,7 @@ pass() { printf 'PASS: %s\n' "$1"; }
 
 if git -C "$REPO" grep -rln 'render-cost-line\.sh' -- skills >/dev/null 2>&1; then
     git -C "$REPO" grep -rln 'render-cost-line\.sh' -- skills >&2 || true
-    fail 'skills/** must not reference python3 python/cli.py token render-cost-line'
+    fail 'skills/** must not reference the retired render-cost-line helper'
 fi
 pass 'zero render-cost-line references under skills/'
 
@@ -18,13 +18,13 @@ allowed_re='^(scripts/render-cost-line\.sh|scripts/render-cost-line\.md|scripts/
 while IFS= read -r rel; do
     [[ -n "$rel" ]] || continue
     if ! printf '%s\n' "$rel" | grep -Eq "$allowed_re"; then
-        fail "unexpected python3 python/cli.py token render-cost-line reference in $rel"
+        fail "unexpected retired render-cost-line helper reference in $rel"
     fi
 done < <(git -C "$REPO" grep -rln 'render-cost-line\.sh' -- scripts 2>/dev/null || true)
 pass 'scripts/ render-cost-line references are allowlist-only'
 
 if grep -Fq '💰 Cost:' "$REPO/python/larch/report/tokens.py"; then
-    fail 'python3 python/cli.py token report must not contain 💰 Cost: literal (summary/markdown paths)'
+    fail 'Python token-report helper must not contain 💰 Cost: literal (summary/markdown paths)'
 fi
 pass 'token report implementation has no 💰 Cost: literal'
 

@@ -100,7 +100,8 @@ pub use token_scan::{
     TokenVendor, VendorTotals, build_report_from_ledgers, claude_effective_cache_create,
     claude_usage_rows, effective_vendor_total, full_report, full_report_with_observations,
     ledger_step_marks, ledger_vendor_rows, parse_epoch, read_ledger, read_report_inputs,
-    report_has_numeric_tokens, resolve_run_report, run_log_ledger_path, run_record, safe_int,
-    summary_report, token_phase_rows, token_report_basename, transcript_sources,
-    vendor_totals_from_report,
+    render_token_report_buckets, render_token_report_json, render_token_report_markdown,
+    render_token_report_summary_line, render_token_report_terse, report_has_numeric_tokens,
+    resolve_run_report, run_log_ledger_path, run_record, safe_int, summary_report,
+    token_phase_rows, token_report_basename, transcript_sources, vendor_totals_from_report,
 };
