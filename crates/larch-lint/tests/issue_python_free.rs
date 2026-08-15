@@ -34,7 +34,7 @@ const COMMANDS: [(&str, &str, u64, u64, &str, &str); 3] = [
 
 const HANDOFFS: [(&str, &str, u64); 2] = [
     ("issue", "migration-audit", 7685),
-    ("oos", "serialize", 7679),
+    ("oos", "serialize", 7680),
 ];
 
 fn registry() -> String {

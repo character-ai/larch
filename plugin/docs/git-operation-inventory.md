@@ -99,9 +99,6 @@ python/larch/implement/scope_disposition.py	later-domain	#7681	dynamic
 python/larch/implement/step_7a.py	later-domain	#7681	diff,merge-base
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base
 python/larch/report/storage_config.py	later-domain	#7683	dynamic
-python/larch/review/_raf_util.py	later-domain	#7679	status
-python/larch/review/coder_runner.py	later-domain	#7679	checkout
-python/larch/review/snapshot.py	later-domain	#7679	apply,cat-file,checkout,diff,ls-files,restore
 python/larch/state/finalize.py	later-domain	#7677	branch,check-ref-format,checkout,ls-remote,pull,rev-list,rev-parse,show-ref,stash,symbolic-ref
 scripts/block-submodule-edit.sh	later-domain	#7677	rev-parse
 scripts/check-stale-plugin.sh	later-domain	#7674	rev-parse

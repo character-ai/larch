@@ -1,18 +1,65 @@
 //! Shared evidence helpers for the Python-free command boundary rules.
 //!
-//! `release-python-free` and `reporting-python-free` both prove the same two
-//! facts about a closed command set: no selector is registered in
-//! `python/larch/cli.py`, and no retired module-level entrypoint survives in
-//! the Python module the ledger still records. This module owns that evidence
-//! so neither rule grows a second copy of it.
+//! Closure rules share command-row parsing as well as two Python-retirement
+//! facts: no selector is registered in `python/larch/cli.py`, and no retired
+//! module-level entrypoint survives in the Python module the ledger records.
+//! This module owns that evidence so sibling rules do not duplicate it.
 
 use std::sync::LazyLock;
 
 use regex::Regex;
+use toml::{Value, map::Map};
 
 use crate::{Finding, LintError, RepoPath, Repository};
 
 const PYTHON_REGISTRY_PATH: &str = "python/larch/cli.py";
+
+type RegistryTable = Map<String, Value>;
+
+/// One parsed command-registry row shared by Python-free closure rules.
+pub(super) struct RegistryCommand<'a> {
+    table: &'a RegistryTable,
+    pub(super) domain: &'a str,
+    pub(super) verb: &'a str,
+    pub(super) selector: String,
+}
+
+impl<'a> RegistryCommand<'a> {
+    pub(super) fn parse(value: &'a Value) -> Option<Self> {
+        let table = value.as_table()?;
+        let domain = registry_text(table, "domain");
+        let verb = registry_text(table, "verb");
+        Some(Self {
+            table,
+            domain,
+            verb,
+            selector: [domain, verb].join(" "),
+        })
+    }
+
+    pub(super) fn text(&self, key: &str) -> Option<&str> {
+        self.table.get(key).and_then(Value::as_str)
+    }
+
+    pub(super) fn integer(&self, key: &str) -> Option<i64> {
+        self.table.get(key).and_then(Value::as_integer)
+    }
+
+    pub(super) fn has_final_cutover(&self) -> bool {
+        [
+            ("owner", "rust"),
+            ("implementation_parity", "complete"),
+            ("consumer_cutover", "complete"),
+            ("python_removal", "complete"),
+        ]
+        .into_iter()
+        .all(|(key, expected)| self.text(key) == Some(expected))
+    }
+}
+
+fn registry_text<'a>(table: &'a RegistryTable, key: &str) -> &'a str {
+    table.get(key).and_then(Value::as_str).unwrap_or_default()
+}
 
 static PYTHON_REGISTRATION: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"\(\s*["'](?P<domain>[a-z0-9-]+)["']\s*,\s*["'](?P<verb>[a-z0-9-]+)["']\s*\)\s*:"#)

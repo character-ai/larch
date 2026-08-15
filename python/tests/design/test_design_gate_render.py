@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from larch import cli
-from larch.review.plan_review_common import ROUND_CAP
+from larch.design.design_gate_render import ROUND_CAP
 
 CLI = Path(__file__).resolve().parents[2] / "cli.py"
 

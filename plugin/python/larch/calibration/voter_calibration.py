@@ -16,7 +16,7 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core import repo_roots
 from larch.core.repo_roots import plugin_root as _plugin_root
-from larch.review.review_types import (
+from larch.core.findings import (
     JudgeSeverity,
     ReviewVote,
     code_review_classification_header,

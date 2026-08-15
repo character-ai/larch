@@ -18,15 +18,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import cast
 
-from larch.review import review_pipeline_shared
 from larch.calibration import difficulty
+from larch.calibration import voting
 from larch import io as larch_io
 from larch.core import config
+from larch.core.findings import is_security_block_text, parse_blocks
 from larch.core import logging_util
-from larch.review import plan_review_round
 from larch.report import report_tokens_cost
-from larch.review import voting
-from larch.review.review_types import is_security_block_text, parse_blocks
 
 # Inlined from the retired `larch.rendering.gantt`, whose CLI verb moved to Rust
 # in #8092. The phase-detail report embedded this renderer, so the frozen
@@ -35,6 +33,46 @@ from larch.review.review_types import is_security_block_text, parse_blocks
 _GANTT_DEFAULT_WIDTH = 56
 _GANTT_SECONDS_PER_MINUTE = 60
 TIMING_VENDOR_MIN_COLS = 13
+_SLOT_LABEL_PREFIXES = (
+    ("dyn-cursor-plan-", "Cursor-dyn-"),
+    ("dyn-codex-plan-", "Codex-dyn-"),
+    ("cursor-plan-", "Cursor-"),
+    ("codex-plan-", "Codex-"),
+    ("codex-primary-plan-", "Codex-"),
+)
+
+
+def _slot_human_label(slot: str) -> str:
+    """Frozen copy of the retired plan-review display-label helper."""
+    for prefix, label in _SLOT_LABEL_PREFIXES:
+        if slot.startswith(prefix):
+            return label + slot[len(prefix) :].replace("-", " ").title()
+    return slot
+
+
+def _parse_collector_records(text: str) -> list[dict[str, str]]:
+    """Frozen copy of the retired collector-results record parser."""
+    records: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for line in text.splitlines():
+        if "=" not in line:
+            if not line.strip() and current is not None:
+                records.append(current)
+                current = None
+            continue
+        parsed = larch_io.parse_kv(line, duplicate_policy="first")
+        if not parsed:
+            continue
+        key, value = next(iter(parsed.items()))
+        if key == "REVIEWER_FILE":
+            if current is not None:
+                records.append(current)
+            current = {key: value}
+        elif current is not None:
+            current[key] = value
+    if current is not None:
+        records.append(current)
+    return records
 
 
 @dataclass(frozen=True)
@@ -614,7 +652,7 @@ def _human_attribution_labels(round_dirs: list[Path], *, reviewer_column: str) -
             for row in logging_util.iter_jsonl_dicts(_read_lines_best_effort(manifest)):
                 slot = row.get("slot")
                 if isinstance(slot, str):
-                    add(plan_review_round._slot_human_label(slot))  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+                    add(_slot_human_label(slot))
         lines = _read_lines_best_effort(round_dir / "findings-classification.tsv")
         if not lines:
             continue
@@ -763,7 +801,7 @@ def _executing_tool_by_norm_basename(collector_env: Path) -> dict[str, str]:
     if not collector_env.is_file() or collector_env.is_symlink():
         return {}
     result: dict[str, str] = {}
-    for record in review_pipeline_shared.parse_collector_records("\n".join(_read_lines_best_effort(collector_env))):
+    for record in _parse_collector_records("\n".join(_read_lines_best_effort(collector_env))):
         reviewer_file = record.get("REVIEWER_FILE", "")
         tool = record.get("TOOL", "")
         if reviewer_file and tool and tool != "unknown":
@@ -783,7 +821,7 @@ def _round_collector_tool_by_norm_basename(round_dir: Path) -> dict[str, str]:
 
 
 def _manifest_fallback_base_label(*, slot: str, tool: str) -> str:
-    human_label = plan_review_round._slot_human_label(slot)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    human_label = _slot_human_label(slot)
     if human_label != slot:
         return human_label
     return f"{tool}/{slot}"
@@ -865,7 +903,7 @@ def _apply_fallback_remap(
 
 def _collector_substantive_failure_records(text: str) -> list[tuple[str, str]]:
     records: list[tuple[str, str]] = []
-    parsed = review_pipeline_shared.parse_collector_records(text)
+    parsed = _parse_collector_records(text)
     if not parsed or not any(record.get("STATUS") for record in parsed):
         for block in re.split(r"\n\s*\n", text):
             current: dict[str, str] = {}
@@ -962,7 +1000,7 @@ def _collector_env_paths_for_round(round_dir: Path) -> list[Path]:
 
 def _collector_seen_bases(text: str) -> set[str]:
     seen: set[str] = set()
-    for record in review_pipeline_shared.parse_collector_records(text):
+    for record in _parse_collector_records(text):
         reviewer_file = record.get("REVIEWER_FILE", "")
         if reviewer_file:
             seen.add(_progress_normalize_output_base(Path(reviewer_file).name))
@@ -1775,7 +1813,7 @@ def _design_collector_field(*, round_dir: Path, failure_count: int) -> str:
         collector_env = round_dir.parent.parent / "collector-results.env"
     records: list[str] = []
     collector_text = "\n".join(_read_lines_best_effort(collector_env))
-    for record in review_pipeline_shared.parse_collector_records(collector_text):
+    for record in _parse_collector_records(collector_text):
         status = record.get("STATUS", "")
         if status and status != "OK":
             tool = record.get("TOOL", "")

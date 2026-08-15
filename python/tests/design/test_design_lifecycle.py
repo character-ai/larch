@@ -37,7 +37,6 @@ from larch.design import (
 )
 from larch.design import design_pause
 from larch.design import design_publish
-from larch.review import plan_review_normalize
 from larch.design import plan_quality
 from larch.core import architectural_guidelines
 from larch.core import logging_util
@@ -3917,12 +3916,6 @@ def test_stage_terminal_state_stages_failed_judge_panel_decompose(tmp_path: Path
     state = (tmp_path / "design-failure-terminal-state.env").read_text(encoding="utf-8")
     assert "SITE=decompose-panel" in state
     assert "TRIGGER=decompose-panel-retry-exhausted" in state
-
-
-def test_stage_terminal_state_stages_panel_init_failed_bail(tmp_path: Path) -> None:
-    assert plan_review_normalize.stage_panel_init_failed(design_tmpdir=tmp_path) == 0
-    state = (tmp_path / "design-failure-terminal-state.env").read_text(encoding="utf-8")
-    assert "BAIL_REASON=panel-init-failed" in state
 
 
 def test_stage_terminal_state_main_rejects_disallowed_tmpdir(capsys: pytest.CaptureFixture[str]) -> None:

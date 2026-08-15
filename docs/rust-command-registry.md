@@ -128,12 +128,14 @@ umbrella that owns their remaining consumers:
 | --- | ---: | --- | --- |
 | `execution-issues append`, `flush`, `flush-safety-net`, `refresh` | 4 | #7682 | Migrated by #8176 and completed by corrective leaf #8347, which removed the retained Python mutation and caller paths. |
 | `redact secrets`, `tmpdir-paths`, `scrub-log-secrets`, `scrub-submodule-paths` | 4 | #7681 | Live callers are the `/implement` prompts, the implementer agent base, `review-and-fix`, and the cross-repo failure-report script. |
-| `render reviewer`, `specialist`, `voter`, `findings-view`, `plan-review` | 5 | #7679 | Review-panel and voting prompt renderers, named by #8091 as staying with the review umbrella. |
-| `render lane-status` | 1 | #7679 | Shares the review-rendering owner with the other review-panel renderers. |
+| `render reviewer`, `lane-status`, and `findings-view` | 3 | #7684 | Research and analytical presentation consumers. |
+| `render plan-review` | 1 | #7680 | The remaining consumer is the design workflow. |
+| `render specialist` | 1 | #7681 | The remaining consumer is implementation code review. |
+| `render voter` | 1 | #7686 | Shared design and implementation consumers make this a final-cutover surface. |
 | `render scope-anchor` | 1 | #7680 | Both callers are `/design` Step 3 scripts, and all four `scope-anchor` verbs already sit at #7680. |
 | `render run-summary` | 1 | #7680 | Recorded in the retained-surface table below as a bounded `/design` payload. |
 | `token check-budget`, `compute-pr-line-counts`, `compute-pr-lines` | 3 | #7681 | Step 2 dispatch and PR line counts. |
-| `token claude-source` | 1 | #7679 | Called from `skills/review/SKILL.md`. |
+| `token claude-source` | 1 | #7684 | Read-only token-source analysis used by review reporting. |
 | `token cost`, `token render-cost-line`, `token report` | 3 | #8507 | Rust CLI cutover with caller replacement, Python entrypoint removal, and clean-install coverage. |
 | The remaining 6 `measure-*` `token` verbs | 6 | #7684 | The remaining deterministic analytics and report-input scope. |
 
@@ -178,8 +180,8 @@ the next cutover and does not create a second implementation.
 | Receiving umbrella | Deliberate hand-off |
 | --- | --- |
 | #7678 | No `python/larch/issue/` command survives here. Vendor launch and lane-rendering surfaces remain in the vendor-orchestration umbrella. |
-| #7679 | `oos serialize` and `oos normalize-header`, plus `larch.issue.oos`, remain review-pipeline surfaces. |
-| #7680 | `clarify` stays in the design workflow. `render run-summary` and the retained issue wire, OOS, title, and mutation payload libraries serve that workflow. |
+| #7679 | No pending issue command remains after the #8452 review-boundary audit. |
+| #7680 | `clarify`, `oos serialize`, and `oos normalize-header` stay in the design workflow. `render run-summary` and the retained issue wire, OOS, title, and mutation payload libraries serve that workflow. |
 | #7681 | `tracking post-issue` remains an implementation workflow surface. The former `larch.issue.execution_issues` hand-off ended in #8347. |
 | #7683 | `analyze-issues render-chart` is Rust-owned but remains planned by its reporting leaf #8092; report, diagram, and chart rendering do not return to #7682. |
 | #7684 | Rejected-finding and merged-change analysis commands, the remaining `measure-*` token analytics, and their analytical issue helpers remain research-owned. |
@@ -272,6 +274,34 @@ native graph before any parent mutation, and accepts only the exact
 `[DONE] [LEAF OF N]` terminal title. The core lifecycle test and the remote
 finish test pin that refusal and prove it occurs before a parent mutation.
 
+## Closed #7679 review boundary
+
+`larch lint rule review-python-free` pins the 79 command selectors migrated by
+Issue #7679's executable leaves. That set includes the three calibration-replay
+commands planned by #7684, and every row must retain its exact migration leaf,
+Rust ownership, complete parity, complete consumer cutover, and complete Python
+removal. The rule also rejects any remaining Python source in the retired review
+package and any live Python, skill, hook, or script reference to that package.
+The shared command-registry closure scanner independently rejects a restored
+Python registration, implementation entrypoint, or production caller for the
+76 final rows still planned by #7679.
+
+The audit reassigned 42 pending rows according to their live consumers:
+
+- #7680 owns design assessment reads and persistence, plan-review identity and
+  settlement, OOS serialization, and the plan-review prompt renderer.
+- #7681 owns implementation assessments, review-and-fix identity, and the code
+  specialist renderer.
+- #7684 owns research renderers, findings presentation, and `token
+  claude-source`.
+- #7686 owns the shared voter renderer whose consumers span workflows.
+
+The package deletion does not pretend that compatibility readers are commands.
+`larch.core.findings`, `larch.calibration.voting`,
+`larch.calibration.voter_calibration`, and
+`larch.rendering.findings_ledger` preserve their surviving in-process contracts
+under the receiving umbrellas. None is registered as a migrated review command.
+
 ## State transitions
 
 Keep `owner = "python"` and `consumer_cutover = "pending"` while Python owns
@@ -327,12 +357,12 @@ cutover is named in the last column.
 | `larch.report.run_log_batch` | Parity mirror for bounded local compatibility callers, the historical migration reader, and the Rust test double. It is not a durable run-log writer. | `larch_core::run_log::batch` and Rust `run-log write` / `append`, completed in #8073. |
 | `larch.report.run_log_corpus`, `run_log_publish`, `object_store`, and `storage_config` | Analyzer-side corpus reads plus bounded configuration, path, lock, and error support. The legacy `object_store` adapter has only compatibility/test callers; none is a production archive, sync, lifecycle, or storage-preflight command owner. | Rust archive, publication, sync, and storage-preflight boundary: #8079 and #8080; their analytics callers are #7684. |
 | `larch.report.analysis_state`, `markdown_block`, and `run_log_tolerance` | Local analyzer state, bounded Markdown fragments, and read-only tolerance predicates. They have no #7683 command entrypoint. | Their analytics and audit callers belong to #7684 and #7682. |
-| `larch.report.exec_issue_detail`, `review_phase_detail`, and `design_diagram_log` | Parser and renderer helpers for issue warnings, review-phase rows, and design-diagram diagnostics. They are not durable run-log writers. | Their review, design, and issue callers belong to #7679, #7680, and #7682. |
+| `larch.report.exec_issue_detail`, `review_phase_detail`, and `design_diagram_log` | Parser and renderer helpers for issue warnings, review-phase rows, and design-diagram diagnostics. They are not durable run-log writers. | Their analytical, design, and issue callers belong to #7684, #7680, and #7682. |
 | `larch.report.report_tokens_models`, `report_tokens_scan`, `report_tokens_cost`, and `tokens` | Input, pricing, and state helpers for bounded compatibility consumers and remaining Python token analytics. The seven token measurements are Rust-owned after #8508, and #8507 removed their `token report`, `token cost`, and `token render-cost-line` entrypoints. They do not implement them, `report-tokens analyze`, or a final-report writer. | #7684 owns the remaining token analytics. |
 | `larch.git.pr_body.render_run_summary` and `larch.design.design_summary` | The `render run-summary` compatibility payload for `/design`. It shares the marker grammar but is not an `/implement` final-report fallback. | #7680 owns `render run-summary` and its `/design` caller. |
-| `token claude-source` and `architectural-assessment final-report-sections` | Read-only model fallback and architectural-assessment payloads consumed by Rust `final-report write`. | #7679. |
+| `token claude-source` and `architectural-assessment final-report-sections` | Read-only model fallback and architectural-assessment payloads consumed by Rust `final-report write`. | #7684 and #7681, respectively. |
 | `token compute-pr-line-counts` and `implement scope-disposition summary-line` | PR and plan-coverage payloads consumed by Rust `final-report write`. | #7681. |
-| `larch.rendering.rendering` | Prompt and diagram payload renderers outside the closed commands. | Its exact registry rows belong to #7678, #7679, or #7680; committed-artifact generation is Rust-owned by #8100. |
+| `larch.rendering.rendering` | Prompt and diagram payload renderers outside the closed commands. | Its exact registry rows belong to #7678, #7680, #7681, #7684, or #7686; committed-artifact generation is Rust-owned by #8100. |
 
 Issue 8086 ports the scanning half of the token pipeline: ledger and transcript
 discovery, per-model usage extraction, cache-read and cache-write accounting,
@@ -427,8 +457,8 @@ architectural assessment sections. The last two moved out of the deleted module
 into the Python owners of their dependencies and became verbs there:
 `implement scope-disposition summary-line` (owned by #7681 with the rest of
 `larch.implement.scope_disposition`) and
-`architectural-assessment final-report-sections` (owned by #7679 with the rest
-of `larch.implement.architectural_assessment`). `token claude-source` is a #7679
+`architectural-assessment final-report-sections` (owned by #7681 with the rest
+of `larch.implement.architectural_assessment`). `token claude-source` is a #7684
 fallback reader for a missing manifest. By contrast,
 `tracking-issue upsert-summary` is Rust-owned after the corrected atomic
 cutover in #8346 and is called in process by `final-report write`. Python
@@ -451,7 +481,7 @@ and reference-read normalization. `run-log checkpoint` and `run-log refresh` now
 render in process instead of through the `python_verb` seam, so transcript
 capture no longer spawns a child. The prompt renderers in
 `larch.rendering.rendering` keep their separately registered Python owners
-under #7678, #7679, and #7680. Issue #8100 moved the committed-artifact
+under #7678, #7680, #7681, #7684, and #7686. Issue #8100 moved the committed-artifact
 generator registry to Rust.
 
 Three contract points changed deliberately, each named by the leaf's acceptance.
@@ -507,14 +537,13 @@ command. `larch_core::issue` becomes the single Rust owner of the canonical
 than defining a second record model.
 
 Two commands stay Python-owned deliberately. `oos serialize` and
-`oos normalize-header` are review-pipeline entry points whose remaining Python
-callers live behind `larch.review`, so #7679 migrates them together with
-`larch.review.review_types`; the Rust library parity they need is already here.
-The review pipeline's `finding-heading` and `level-three-heading` block
-boundaries stay with `larch.review.review_types` for the same reason.
+`oos normalize-header` serve the remaining design OOS workflow, so #8452 hands
+them to #7680. The Rust library parity they need is already present. Their
+compatibility `finding-heading` and `level-three-heading` block boundaries now
+live in `larch.core.findings` until final consumer cutover.
 
 `larch_core::text::file_reference_alternatives` is the single owner of the
-reviewer file-reference grammar ported from `larch.review.voting`. The
+reviewer file-reference grammar ported from `larch.calibration.voting`. The
 ground-truth evidence reader and the OOS conflict model both compose it, and
 they differ only in whether extension matching folds case.
 

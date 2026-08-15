@@ -44,8 +44,8 @@ from larch.issue._util import (  # noqa: E402
     parse_iso,
 )
 from larch.report import run_log_corpus  # noqa: E402
-from larch.review import voting  # noqa: E402
-from larch.review.voting import (  # noqa: E402
+from larch.calibration import voting  # noqa: E402
+from larch.calibration.voting import (  # noqa: E402
     classification_tsv_schema_supported,
     compute_voter_agreement,
     compute_voter_severity_distribution,

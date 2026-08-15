@@ -23,8 +23,8 @@ from larch.issue._util import (
 from larch.core import proc
 from larch.git import gh
 from larch.report import run_log_corpus
-from larch.review import voting
-from larch.review.review_types import parse_blocks, parse_canonical_heading
+from larch.calibration import voting
+from larch.core.findings import parse_blocks, parse_canonical_heading
 
 _GITHUB_ISSUE_URL_RE = re.compile(r"https://[^\s|)]+/[^/\s|)]+/[^/\s|)]+/issues/(\d+)")
 _COMBINED_AWAY_MARKER_RE = re.compile(r"<!--\s*larch:combined-away\s+source=#\d+\s+target=#\d+\s*-->", re.I)

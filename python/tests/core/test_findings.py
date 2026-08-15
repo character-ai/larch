@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from larch.review.review_types import (
+from larch.core.findings import (
     FINDING_SCOPE_SET,
     FINDING_SCOPE_VALUES,
     FOCUS_AREA_SET,

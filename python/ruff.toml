@@ -527,19 +527,6 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
-"plan_review_normalize.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-]
-"plan_review_round.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "plan_scout.py" = [
     "C901",
     "PLR0912",
@@ -597,31 +584,6 @@ ignore = [
 "retry.py" = [
     "C901",
     "PLR0911",
-    "PLR0912",
-]
-"_raf_util.py" = [
-    "F401",
-]
-"batch_report.py" = [
-    "C901",
-    "F401",
-]
-"coder_runner.py" = [
-    "F401",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-]
-"round_runner.py" = [
-    "C901",
-    "F401",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"snapshot.py" = [
-    "C901",
-    "F401",
     "PLR0912",
 ]
 "run_log_batch.py" = [
@@ -734,7 +696,7 @@ ignore = [
     "PLR0911",
     "PLR0913",
 ]
-"_voting_calibration.py" = [
+"voter_calibration.py" = [
     "C901",
     "PLR0911",
     "PLR0912",

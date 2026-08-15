@@ -10,12 +10,10 @@
 - `$RANDOM`
 - per-session prompt path variables in implementer launcher `PROMPT` blocks
 - per-session diff/scope paths rendered by `python/cli.py render specialist`
-- review prompt construction delegated through `python/larch/review/review_pipeline.py` and launcher/render helpers
+- review prompt construction delegated through the Rust review dispatcher and launcher/render helpers
 - unstable shell-style tokens in Python prompt construction surfaces:
   - `python/larch/implement/checks_lint_fix.py`
-  - `python/larch/review/coder_runner.py`
   - `crates/larch-cli/src/review_dispatch_panel_prompt.md`
-  - `python/larch/review/round_runner.py`
 
 **Scope**: External-tool prompt construction surfaces only. Runtime timing, logging, temp-file, and process-management shell code is intentionally out of scope unless it is inside a launcher `PROMPT` block, an audited prompt-bearing Markdown file, or one of the explicitly listed Python prompt construction files.
 

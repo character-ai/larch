@@ -8,8 +8,8 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from larch.review import voting
-from larch.review.review_types import is_oos_eligible_block, is_security_block_text, parse_blocks
+from larch.calibration import voting
+from larch.core.findings import is_oos_eligible_block, is_security_block_text, parse_blocks
 
 
 _HEADER_TOKEN_RE = re.compile(r"^###[ \t]+[A-Za-z]+_[0-9]+:")

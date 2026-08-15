@@ -27,7 +27,7 @@ from larch.report.report_tokens_models import (
     safe_int,
     vendor_totals_from_report,
 )
-from larch.review import voting
+from larch.calibration import voting
 
 SKILLS = ("design", "implement", "review")
 TIERS = (difficulty.TRIVIAL, difficulty.MODERATE, difficulty.HARD)

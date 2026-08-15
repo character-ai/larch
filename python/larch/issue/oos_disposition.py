@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from larch.review.review_types import count_non_security_blocks
+from larch.core.findings import count_non_security_blocks
 
 
 @dataclass(frozen=True)

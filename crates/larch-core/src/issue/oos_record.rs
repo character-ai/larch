@@ -3,7 +3,7 @@
 //! An OOS record is a Markdown block a reviewer, a design pass, or an external
 //! implementer wrote. It opens with a canonical `### OOS_<n>: <title>` heading
 //! and runs to the next heading that closes it. Ports the OOS-facing subset of
-//! Python `larch.review.review_types` together with `larch.issue.oos`. This is
+//! Python `larch.core.findings` together with `larch.issue.oos`. This is
 //! the one Rust owner of the canonical block: the manifest, gate, and filer
 //! leaves consume it, and the review pipeline reuses it when its own umbrella
 //! migrates rather than adding a second parser.
@@ -57,7 +57,7 @@ pub struct CanonicalHeading {
 /// Which later heading ends the block a canonical heading opened.
 ///
 /// The review pipeline's `finding-heading` and `level-three-heading` policies
-/// stay with `larch.review.review_types` until the review umbrella migrates;
+/// stay with `larch.core.findings` until the final compatibility cutover;
 /// no OOS consumer asks for them.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum BlockBoundary {

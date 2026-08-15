@@ -17,7 +17,7 @@ from larch.calibration import difficulty
 from larch.core import external_defaults
 from larch.core import logging_util
 from larch.core.repo_roots import larch_entrypoint
-from larch.review.review_types import FOCUS_AREA_SET, FOCUS_AREA_VALUES, render_wire_values
+from larch.core.findings import FOCUS_AREA_SET, FOCUS_AREA_VALUES, render_wire_values
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PLUGIN_ROOT = REPO_ROOT

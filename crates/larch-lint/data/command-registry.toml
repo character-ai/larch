@@ -625,7 +625,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-assessment"
@@ -637,7 +637,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-assessment"
@@ -649,7 +649,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-assessment"
@@ -661,7 +661,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -673,7 +673,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -685,7 +685,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -697,7 +697,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -709,7 +709,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7680
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -721,7 +721,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -733,7 +733,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -745,7 +745,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -757,7 +757,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7680
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -769,7 +769,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7680
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -781,7 +781,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -793,7 +793,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-invariants"
@@ -805,7 +805,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-invariants"
@@ -817,7 +817,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-invariants"
@@ -829,7 +829,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-invariants"
@@ -841,7 +841,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7680
 
 [[commands]]
 domain = "architectural-invariants"
@@ -853,7 +853,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-invariants"
@@ -865,7 +865,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-invariants"
@@ -877,7 +877,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-invariants"
@@ -889,7 +889,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7680
 
 [[commands]]
 domain = "architectural-invariants"
@@ -901,7 +901,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7680
 
 [[commands]]
 domain = "architectural-invariants"
@@ -913,7 +913,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "architectural-invariants"
@@ -925,7 +925,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "audit-runs"
@@ -4618,7 +4618,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7680
 
 [[commands]]
 domain = "oos"
@@ -4630,7 +4630,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7680
 
 [[commands]]
 domain = "plan"
@@ -4842,7 +4842,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7680
 
 [[commands]]
 domain = "plan-review"
@@ -5260,7 +5260,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7680
 
 [[commands]]
 domain = "plan-review"
@@ -5300,7 +5300,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7680
 
 [[commands]]
 domain = "plan-review"
@@ -5326,7 +5326,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7680
 
 [[commands]]
 domain = "plugin"
@@ -5955,7 +5955,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7684
 
 [[commands]]
 domain = "render"
@@ -5967,7 +5967,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7684
 
 [[commands]]
 domain = "render"
@@ -5979,7 +5979,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7680
 
 [[commands]]
 domain = "render"
@@ -5991,7 +5991,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7684
 
 [[commands]]
 domain = "render"
@@ -6027,7 +6027,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "render"
@@ -6039,7 +6039,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7686
 
 [[commands]]
 domain = "repo"
@@ -6331,7 +6331,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "review-and-fix"
@@ -6399,7 +6399,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "review-and-fix"
@@ -6411,7 +6411,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7681
 
 [[commands]]
 domain = "review-and-fix"
@@ -7820,7 +7820,7 @@ owner = "python"
 implementation_parity = "pending"
 consumer_cutover = "pending"
 python_removal = "pending"
-planning_issue = 7679
+planning_issue = 7684
 
 [[commands]]
 domain = "token"
@@ -9187,41 +9187,11 @@ kind = "python-runtime"
 python = []
 rust = ["run-log write-round"]
 
-[[callers]]
-path = "python/larch/review/batch_report.py"
-kind = "python-runtime"
-python = []
-rust = ["review compose-findings", "review reviewer-prune", "run-log write", "run-log write-round", "voting write-tally"]
 
-[[callers]]
-path = "python/larch/review/coder_runner.py"
-kind = "python-runtime"
-python = []
-rust = ["agent cursor-wrap-prompt", "agent launch-claude-review-fix", "agent launch-codex-exec", "agent run-external-agent", "git commit", "timing record-vendor-task"]
 
-[[callers]]
-path = "python/larch/review/dispatch_shared.py"
-kind = "python-runtime"
-python = []
-rust = ["voting voter-status-block"]
 
-[[callers]]
-path = "python/larch/review/plan_review_normalize.py"
-kind = "python-runtime"
-python = []
-rust = ["stall-recovery record-escalation"]
 
-[[callers]]
-path = "python/larch/review/plan_review_round.py"
-kind = "python-runtime"
-python = []
-rust = ["agent compose-collector-failure-log", "plan-review tally"]
 
-[[callers]]
-path = "python/larch/review/round_runner.py"
-kind = "python-runtime"
-python = []
-rust = ["agent dispatch-voters", "git snapshot-untracked", "progress write-implement-round-meta", "review core", "review emit-tally", "review reviewer-prune", "review tally-code-votes"]
 
 [[callers]]
 path = "python/larch/state/closeout.py"
