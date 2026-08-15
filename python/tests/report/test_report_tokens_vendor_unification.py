@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pytest
 
-from larch.calibration import difficulty_calibration as dc
 from larch.report.report_tokens_cost import aggregate_vendor_tokens
 from larch.report.report_tokens_models import (
     VendorName,
@@ -49,19 +45,9 @@ def _cost_total(report: dict[str, object], vendor: VendorName) -> int:
     return aggregate_vendor_tokens(record=_record(report), vendor=vendor)
 
 
-def _calibration_total(report: dict[str, object], tmp_path: Path) -> int:
-    """Token total difficulty calibration computes from the run's token report."""
-    run = tmp_path / "run"
-    run.mkdir()
-    _ = (run / "token-report.json").write_text(json.dumps(report), encoding="utf-8")
-    timing = dc._token_timing("implement", run, dc.AnalyzerState())  # type: ignore[reportPrivateUsage]  # test asserts cross-path agreement via the private timing builder
-    assert timing.token_total is not None
-    return timing.token_total
-
-
 # Shared fixture table: each row names a report shape and the expected effective
-# total per vendor present in it. The same report feeds scan, cost, and
-# calibration so the three must agree on bucket membership and fallback totals.
+# total per vendor present in it. The same report feeds scan and cost so both
+# must agree on bucket membership and fallback totals.
 FIXTURES: list[tuple[str, dict[str, object], dict[VendorName, int]]] = [
     (
         "bucket-only-claude",
@@ -121,22 +107,16 @@ FIXTURES: list[tuple[str, dict[str, object], dict[VendorName, int]]] = [
 
 
 @pytest.mark.parametrize(("name", "report", "expected_per_vendor"), FIXTURES, ids=[row[0] for row in FIXTURES])
-def test_scan_cost_and_calibration_agree_on_vendor_totals(
+def test_scan_and_cost_agree_on_vendor_totals(
     name: str,
     report: dict[str, object],
     expected_per_vendor: dict[VendorName, int],
-    tmp_path: Path,
 ) -> None:
     # Per-vendor: scan-stored total and displayed-cost total must match the
     # expected value and each other.
     for vendor, expected in expected_per_vendor.items():
         assert _scan_total(report, vendor) == expected, f"{name}: scan total for {vendor}"
         assert _cost_total(report, vendor) == expected, f"{name}: cost total for {vendor}"
-    # Calibration sums every vendor lane; for these single-shape fixtures that
-    # equals the sum of the expected per-vendor totals.
-    assert _calibration_total(report, tmp_path) == sum(expected_per_vendor.values()), (
-        f"{name}: calibration token_total"
-    )
 
 
 def test_claude_split_and_legacy_cache_create_resolve_via_shared_helper() -> None:

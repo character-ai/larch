@@ -45,6 +45,7 @@ mod combine_issues_commands;
 mod complete_umbrella_commands;
 mod deps_audit_commands;
 mod developer_tooling_commands;
+mod difficulty_calibration_commands;
 mod difficulty_commands;
 mod dirty_tree_commands;
 mod drafter_commands;
@@ -219,6 +220,9 @@ enum Domain {
     /// Difficulty rating, record, panel, and label commands.
     #[command(subcommand)]
     Difficulty(DifficultyCommand),
+    /// Retrospective predicted-versus-realized difficulty analysis.
+    #[command(subcommand, name = "difficulty-calibration")]
+    DifficultyCalibration(DifficultyCalibrationCommand),
     /// The `/implement` execution-issue ledger lifecycle.
     #[command(subcommand, name = "execution-issues")]
     ExecutionIssues(ExecutionIssuesCommand),
@@ -1254,6 +1258,13 @@ enum DifficultyCommand {
     SyncLabels(RawCompatibilityArguments),
 }
 
+#[derive(Subcommand)]
+enum DifficultyCalibrationCommand {
+    /// Analyze one synchronized or explicitly supplied run-log corpus.
+    #[command(disable_help_flag = true)]
+    Analyze(RawCompatibilityArguments),
+}
+
 impl DifficultyCommand {
     fn run(self) -> ExitCode {
         match self {
@@ -1906,6 +1917,9 @@ fn run(
             }
         }),
         Domain::Difficulty(command) => Ok(command.run()),
+        Domain::DifficultyCalibration(DifficultyCalibrationCommand::Analyze(arguments)) => Ok(
+            difficulty_calibration_commands::analyze(&arguments.arguments),
+        ),
         Domain::Deps(command) => Ok(match command {
             DepsCommand::ResolveRepo(arguments) => {
                 deps_audit_commands::resolve_repo(&arguments.arguments)

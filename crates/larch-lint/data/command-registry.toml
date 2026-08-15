@@ -2831,11 +2831,13 @@ verb = "analyze"
 python_module = "larch.calibration.difficulty_calibration"
 python_function = "analyze_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8502
+clean_install_test = "clean-install-difficulty-calibration-analyze"
 
 [[commands]]
 domain = "dirty-tree"
@@ -9598,8 +9600,8 @@ rust = ["bgjob adapt", "session validate-design-tmpdir"]
 [[callers]]
 path = "skills/difficulty-calibration/SKILL.md"
 kind = "skill"
-python = ["difficulty-calibration analyze"]
-rust = []
+python = []
+rust = ["difficulty-calibration analyze"]
 
 [[callers]]
 path = "skills/fluff-analysis/scripts/fluff-analysis.py"

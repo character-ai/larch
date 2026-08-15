@@ -33,7 +33,7 @@ The analyzer is read-only unless `--out FILE` is provided. It syncs once, then r
 Call the analyzer via the Bash tool, forwarding any flags, then relay its markdown stdout to the user:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" difficulty-calibration analyze [flags]
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" difficulty-calibration analyze [flags]
 ```
 
 Do not re-tally or reformat the analysis in the main agent. The CLI owns extraction, joins, realized-tier math, and rendering.

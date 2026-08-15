@@ -1,4 +1,4 @@
-"""Retrospective difficulty calibration from synchronized larch run logs."""
+"""Frozen Python reference for retrospective difficulty-calibration parity."""
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false
 
 from __future__ import annotations

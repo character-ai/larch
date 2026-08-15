@@ -283,7 +283,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("render", "plan-review"): ("larch.rendering.rendering", "render_plan_review_main", False),
     ("render", "scope-anchor"): ("larch.rendering.rendering", "render_scope_anchor_main", False),
     ("render", "findings-view"): ("larch.rendering.rendering", "render_findings_view_main", False),
-    ("difficulty-calibration", "analyze"): ("larch.calibration.difficulty_calibration", "analyze_main", False),
     ("scope-anchor", "relay-allowed"): ("larch.rendering.rendering", "scope_anchor_relay_allowed_main", False),
     ("scope-anchor", "validate"): ("larch.rendering.rendering", "scope_anchor_validate_main", False),
     ("scope-anchor", "retally-handoff"): ("larch.rendering.rendering", "scope_anchor_retally_handoff_main", False),
