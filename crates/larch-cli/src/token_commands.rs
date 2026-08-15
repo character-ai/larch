@@ -1,8 +1,10 @@
 //! `token` recording and staging verbs.
 //!
-//! Owns ledger mutation, sidecar staging, and research-lane telemetry for the
-//! commands migrated by #8506. Analytical measurement verbs are composed in
-//! `token_measurement_commands`.
+//! Owns ledger mutation, sidecar staging, report rendering, pricing CLI
+//! compatibility, and research-lane telemetry for the commands migrated by
+//! #8506 and #8507. Analytical measurement verbs are composed in
+//! `token_measurement_commands`; remaining analytical verb cutovers stay with
+//! their own leaves.
 
 use std::{
     collections::BTreeMap,
@@ -14,19 +16,33 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use larch_adapters::read_kv_raw;
+use larch_adapters::{
+    ConfinedPath, GixRepository, PathIntent, TemporaryRoot, absolute_lexical,
+    assert_no_symlink_path_or_ancestors, atomic_write_utf8, read_kv_raw, write_confined_file,
+};
 use larch_core::report::{
-    active_ledger_vendor, contains_dotdot, default_ledger_basename, lane_sidecar_body,
-    lane_sidecar_name, mark_line, parse_token_record_sidecar, render_lane_report,
-    resolve_under_roots, sha256_hex, sidecar_ndjson_line, validate_lane_phase,
+    BLENDED_FALLBACK_WARNING, BlockMarkers, TokenCounts, TokenObservations, TokenVendor,
+    active_ledger_vendor, contains_dotdot, default_ledger_basename, display_rates, full_report,
+    lane_sidecar_body, lane_sidecar_name, mark_line, parse_token_record_sidecar, price_counts,
+    read_report_inputs, render_cost_kv, render_cost_line, render_lane_report,
+    render_token_report_buckets, render_token_report_json, render_token_report_markdown,
+    render_token_report_summary_line, render_token_report_terse, replace_markdown_block,
+    resolve_under_roots, sha256_hex, sidecar_ndjson_line, transcript_sources, validate_lane_phase,
     validate_total_tokens, vendor_line,
 };
+use larch_core::{
+    ParseOptions, RepositoryRead, bounded_ascii_identifier, parse_single_kv_row, python_str,
+};
+use serde_json::Value;
 use std::ffi::OsString;
 
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt as _;
 
-use crate::ledger_append::{append_locked_line, restore_owner_only_permissions};
+use crate::{
+    argparse_compat::write_stdout,
+    ledger_append::{append_locked_line, restore_owner_only_permissions},
+};
 
 /// Record one step mark in the resolved token ledger.
 pub fn mark(arguments: &[OsString]) -> ExitCode {
@@ -72,10 +88,12 @@ pub fn record_vendor(arguments: &[OsString]) -> ExitCode {
     };
     let mut vals = VendorValues::default();
     for option in rest.iter().skip(1) {
-        let Some((key, value)) = option.split_once('=') else {
+        let Some(row) = parse_single_kv_row(option, ParseOptions::legacy()) else {
             eprintln!("token record-vendor: unknown argument: {option}");
             return ExitCode::from(1);
         };
+        let key = row.key();
+        let value = row.value();
         match key {
             "raw" => value.clone_into(&mut vals.raw),
             "model" => value.clone_into(&mut vals.model),
@@ -245,6 +263,605 @@ pub fn lane_report(arguments: &[OsString]) -> ExitCode {
             eprintln!("token lane-report: {message}");
             ExitCode::from(1)
         }
+    }
+}
+
+const COST_USAGE: &str = "Usage: cli.py token cost [--per-bucket flags...] [--claude-tokens N ...]";
+const RENDER_COST_LINE_USAGE: &str =
+    "Usage: cli.py token render-cost-line [--per-bucket flags...] [--quiet-on-empty]";
+
+#[derive(Default)]
+struct ReportArguments {
+    mode: Option<String>,
+    format: String,
+    output: Option<PathBuf>,
+    ledger: Option<String>,
+    transcript: Option<PathBuf>,
+    session_dir: Option<PathBuf>,
+    source_file: Option<PathBuf>,
+    implement_tmpdir: Option<PathBuf>,
+    append: Option<PathBuf>,
+    buckets: bool,
+    vendor: Option<String>,
+    scrape_output: Option<PathBuf>,
+    scrape_timing_output: Option<PathBuf>,
+    scrape_sidecars: Vec<(String, PathBuf)>,
+    scrape_timing_sidecars: Vec<(String, PathBuf)>,
+}
+
+/// Render a token report while preserving the historical fail-open envelope.
+pub fn report(arguments: &[OsString]) -> ExitCode {
+    match report_result(arguments) {
+        Ok(status) => status,
+        Err(message) => {
+            eprintln!("Token report unavailable: {message}");
+            ExitCode::SUCCESS
+        }
+    }
+}
+
+/// Render a token report for an in-process caller that needs the failure detail.
+pub fn report_result(arguments: &[OsString]) -> Result<ExitCode, String> {
+    report_inner(arguments)
+}
+
+fn report_inner(arguments: &[OsString]) -> Result<ExitCode, String> {
+    let options = parse_report_arguments(arguments)?;
+    if options.scrape_output.is_some() {
+        scrape_sidecars(&options)?;
+        return Ok(ExitCode::SUCCESS);
+    }
+    let overrides: Vec<(&str, String)> = options
+        .implement_tmpdir
+        .as_ref()
+        .map(|path| vec![("IMPLEMENT_TMPDIR", path.to_string_lossy().into_owned())])
+        .unwrap_or_default();
+    let ledger = resolve_token_ledger_path(options.ledger.as_deref(), &overrides)?
+        .ok_or_else(|| "ledger path unavailable".to_owned())?;
+    let transcript_paths = report_transcript_paths(&options)?;
+    let inputs =
+        read_report_inputs(&ledger, &transcript_paths).map_err(|error| error.to_string())?;
+    if options.buckets {
+        let vendor = options
+            .vendor
+            .as_deref()
+            .and_then(token_vendor)
+            .ok_or_else(|| "unknown vendor".to_owned())?;
+        return Ok(write_stdout(&format!(
+            "{}\n",
+            render_token_report_buckets(&inputs, vendor)
+        )));
+    }
+    let mode = options
+        .mode
+        .as_deref()
+        .ok_or_else(|| "missing report mode".to_owned())?;
+    if !matches!(options.format.as_str(), "json" | "markdown") {
+        return Err(format!("unknown format: {}", options.format));
+    }
+    let rendered = match (mode, options.format.as_str()) {
+        ("summary", "json") => {
+            render_token_report_json(&larch_core::report::summary_report(&inputs))
+                .map_err(|error| error.to_string())?
+        }
+        ("summary", _) => render_token_report_summary_line(&inputs),
+        ("terse", _) => render_token_report_terse(&inputs),
+        ("full", "json") => {
+            render_token_report_json(&full_report(&inputs)).map_err(|error| error.to_string())?
+        }
+        ("full", _) => render_token_report_markdown(&inputs),
+        _ => return Err("missing report mode".to_owned()),
+    };
+    if let Some(target) = options.append.as_deref() {
+        append_report_block(target, &rendered)?;
+    }
+    let text = format!("{rendered}\n");
+    if mode == "full"
+        && let Some(output) = options.output.as_deref()
+    {
+        write_report_output(output, &text)?;
+    } else if options.append.is_none() {
+        return Ok(write_stdout(&text));
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+#[allow(clippy::too_many_lines)] // Legacy flags stay adjacent in parser order for compatibility review.
+fn parse_report_arguments(arguments: &[OsString]) -> Result<ReportArguments, String> {
+    let values: Vec<String> = arguments
+        .iter()
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect();
+    let mut options = ReportArguments {
+        format: "markdown".to_owned(),
+        ..ReportArguments::default()
+    };
+    let mut index = 0;
+    while index < values.len() {
+        let value = &values[index];
+        match value.as_str() {
+            "--since-last-mark" | "--terse" => {
+                options.mode = Some("terse".to_owned());
+                index += 1;
+            }
+            "--summary" => {
+                options.mode = Some("summary".to_owned());
+                index += 1;
+            }
+            "--full" => {
+                options.mode = Some("full".to_owned());
+                index += 1;
+            }
+            "--markdown" => {
+                "markdown".clone_into(&mut options.format);
+                index += 1;
+            }
+            "--format" => {
+                options.format = report_value(&values, index)?;
+                index += 2;
+            }
+            "--output" => {
+                options.output = Some(PathBuf::from(report_value(&values, index)?));
+                index += 2;
+            }
+            "--ledger" => {
+                options.ledger = Some(report_value(&values, index)?);
+                index += 2;
+            }
+            "--transcript" => {
+                options.transcript = Some(PathBuf::from(report_value(&values, index)?));
+                index += 2;
+            }
+            "--session-dir" => {
+                options.session_dir = Some(PathBuf::from(report_value(&values, index)?));
+                index += 2;
+            }
+            "--source-file" => {
+                options.source_file = Some(PathBuf::from(report_value(&values, index)?));
+                index += 2;
+            }
+            "--implement-tmpdir" => {
+                options.implement_tmpdir = Some(PathBuf::from(report_value(&values, index)?));
+                index += 2;
+            }
+            "--append-token-report" => {
+                options.append = Some(PathBuf::from(report_value(&values, index)?));
+                options.mode = Some("full".to_owned());
+                index += 2;
+            }
+            "--buckets" => {
+                options.buckets = true;
+                index += 1;
+            }
+            "--vendor" => {
+                options.vendor = Some(report_value(&values, index)?);
+                index += 2;
+            }
+            "--scrape-sidecar" | "--scrape-timing-sidecar" => {
+                let raw = report_value(&values, index)?;
+                let Some(row) = parse_single_kv_row(&raw, ParseOptions::legacy()) else {
+                    return Err(format!("invalid sidecar: {raw}"));
+                };
+                let tool = row.key();
+                let path = row.value();
+                if tool.is_empty() || path.is_empty() {
+                    return Err(format!("invalid sidecar: {raw}"));
+                }
+                let entry = (tool.to_owned(), PathBuf::from(path));
+                if value == "--scrape-sidecar" {
+                    options.scrape_sidecars.push(entry);
+                } else {
+                    options.scrape_timing_sidecars.push(entry);
+                }
+                index += 2;
+            }
+            "--scrape-run-output" => {
+                options.scrape_output = Some(PathBuf::from(report_value(&values, index)?));
+                index += 2;
+            }
+            "--scrape-timing-output" => {
+                options.scrape_timing_output = Some(PathBuf::from(report_value(&values, index)?));
+                index += 2;
+            }
+            _ => return Err(format!("unknown flag: {value}")),
+        }
+    }
+    Ok(options)
+}
+
+fn report_value(values: &[String], index: usize) -> Result<String, String> {
+    values
+        .get(index + 1)
+        .cloned()
+        .ok_or_else(|| "list index out of range".to_owned())
+}
+
+fn token_vendor(value: &str) -> Option<TokenVendor> {
+    match value {
+        "claude" => Some(TokenVendor::Claude),
+        "codex" => Some(TokenVendor::Codex),
+        "cursor" => Some(TokenVendor::Cursor),
+        "claude_sub" => Some(TokenVendor::ClaudeSub),
+        _ => None,
+    }
+}
+
+fn append_report_block(target: &Path, body: &str) -> Result<(), String> {
+    let target = absolute_lexical(target);
+    assert_no_symlink_path_or_ancestors(&target)?;
+    let parent = target
+        .parent()
+        .ok_or_else(|| "append token report target has no parent".to_owned())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let markers = BlockMarkers::new("token-report-begin", "token-report-end")
+        .map_err(|error| error.to_string())?;
+    let block = format!(
+        "<!-- token-report-begin -->\n## Token Report\n\n{body}\n<!-- token-report-end -->\n"
+    );
+    replace_markdown_block(&target, &block, &markers, "token report")
+        .map_err(|error| error.to_string())?;
+    assert_no_symlink_path_or_ancestors(&target)
+}
+
+fn write_report_output(output: &Path, text: &str) -> Result<(), String> {
+    let output = absolute_lexical(output);
+    assert_no_symlink_path_or_ancestors(&output)?;
+    let parent = output
+        .parent()
+        .ok_or_else(|| "token report output has no parent".to_owned())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    write_confined_file(&output, text, 0o600, "token report")
+}
+
+/// Price token buckets and render the historical key-value output.
+pub fn cost(arguments: &[OsString]) -> ExitCode {
+    render_cost(arguments, false)
+}
+
+/// Price token buckets and render the historical one-line output.
+pub fn render_cost_line_command(arguments: &[OsString]) -> ExitCode {
+    render_cost(arguments, true)
+}
+
+fn render_cost(arguments: &[OsString], line: bool) -> ExitCode {
+    let mut values: Vec<String> = arguments
+        .iter()
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect();
+    let quiet = if line {
+        let quiet = values.iter().any(|value| value == "--quiet-on-empty");
+        values.retain(|value| value != "--quiet-on-empty");
+        quiet
+    } else {
+        false
+    };
+    if values
+        .iter()
+        .any(|value| matches!(value.as_str(), "-h" | "--help"))
+    {
+        eprintln!(
+            "{}",
+            if line {
+                RENDER_COST_LINE_USAGE
+            } else {
+                COST_USAGE
+            }
+        );
+        return ExitCode::SUCCESS;
+    }
+    let (counts, claude_model) = match TokenCounts::from_cost_argv(&values) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            eprintln!(
+                "{}: {error}",
+                if line {
+                    "token render-cost-line"
+                } else {
+                    "token cost"
+                }
+            );
+            return ExitCode::from(2);
+        }
+    };
+    if line && quiet && counts.is_zero() {
+        return ExitCode::SUCCESS;
+    }
+    let environment: BTreeMap<String, String> = env::vars().collect();
+    let mut observations = TokenObservations::default();
+    let rates = display_rates(&environment, &claude_model, &mut observations);
+    let priced = price_counts(&counts, &rates);
+    if priced.blended_fallback {
+        eprintln!("{BLENDED_FALLBACK_WARNING}");
+    }
+    if line {
+        write_stdout(&render_cost_line(&priced))
+    } else {
+        write_stdout(&render_cost_kv(&priced))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ClaudeSource {
+    transcript: PathBuf,
+    session_dir: Option<PathBuf>,
+}
+
+fn report_transcript_paths(options: &ReportArguments) -> Result<Vec<PathBuf>, String> {
+    if let Some(transcript) = options.transcript.as_deref() {
+        return transcript_sources(transcript, options.session_dir.as_deref())
+            .map_err(|error| error.to_string());
+    }
+    let source_file = options
+        .source_file
+        .clone()
+        .or_else(|| env::var_os("LARCH_CLAUDE_SOURCE_FILE").map(PathBuf::from));
+    let source = source_file
+        .as_deref()
+        .and_then(claude_source_from_snapshot)
+        .map_or_else(claude_source_from_project, Ok)?;
+    transcript_sources(&source.transcript, source.session_dir.as_deref())
+        .map_err(|error| error.to_string())
+}
+
+fn claude_source_from_snapshot(source_file: &Path) -> Option<ClaudeSource> {
+    if !source_file.is_file() {
+        return None;
+    }
+    let fields: BTreeMap<String, String> = read_kv_raw(source_file).ok()?.into_iter().collect();
+    let transcript = fields.get("TRANSCRIPT_PATH")?;
+    let session_dir = fields.get("SESSION_DIR")?;
+    let session_uuid = fields.get("SESSION_UUID")?;
+    if !bounded_ascii_identifier(session_uuid, false) {
+        return None;
+    }
+    let transcript = fs::canonicalize(transcript).ok()?;
+    let session_dir = fs::canonicalize(session_dir).ok()?;
+    if !transcript.is_file() {
+        return None;
+    }
+    let under_session = transcript.starts_with(&session_dir);
+    let under_project = claude_project_dir()
+        .ok()
+        .is_some_and(|project_dir| transcript.starts_with(project_dir));
+    if !under_session && !under_project {
+        return None;
+    }
+    Some(ClaudeSource {
+        transcript,
+        session_dir: Some(session_dir),
+    })
+}
+
+fn claude_source_from_project() -> Result<ClaudeSource, String> {
+    let project_dir = claude_project_dir()?;
+    let requested = requested_claude_session();
+    let transcript = if requested.is_empty() {
+        let mut transcripts: Vec<PathBuf> = fs::read_dir(&project_dir)
+            .map_err(|error| error.to_string())?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "jsonl")
+            })
+            .filter(|path| path.is_file())
+            .collect();
+        transcripts.sort_by(|left, right| {
+            let left_time = fs::metadata(left)
+                .and_then(|metadata| metadata.modified())
+                .unwrap_or(SystemTime::UNIX_EPOCH);
+            let right_time = fs::metadata(right)
+                .and_then(|metadata| metadata.modified())
+                .unwrap_or(SystemTime::UNIX_EPOCH);
+            right_time.cmp(&left_time).then_with(|| right.cmp(left))
+        });
+        transcripts
+            .into_iter()
+            .next()
+            .ok_or_else(|| "no Claude transcript jsonl files found".to_owned())?
+    } else {
+        let candidate = project_dir.join(format!("{requested}.jsonl"));
+        if !candidate.is_file() {
+            return Err(format!(
+                "Claude transcript for session {requested} not found"
+            ));
+        }
+        candidate
+    };
+    let session_dir = transcript
+        .file_stem()
+        .map(|name| project_dir.join(name))
+        .ok_or_else(|| "Claude transcript source unavailable".to_owned())?;
+    Ok(ClaudeSource {
+        transcript,
+        session_dir: Some(session_dir),
+    })
+}
+
+fn claude_project_dir() -> Result<PathBuf, String> {
+    let cwd = env::current_dir().map_err(|_| "not inside a git repository".to_owned())?;
+    let repository =
+        GixRepository::discover(&cwd).map_err(|_| "not inside a git repository".to_owned())?;
+    let work_dir = repository
+        .location()
+        .work_dir
+        .ok_or_else(|| "not inside a git repository".to_owned())?;
+    let repo_root = fs::canonicalize(PathBuf::from(
+        String::from_utf8_lossy(work_dir.as_bytes()).into_owned(),
+    ))
+    .map_err(|_| "not inside a git repository".to_owned())?;
+    let home = env::var_os("HOME").ok_or_else(|| "HOME is not set".to_owned())?;
+    let project_dir = PathBuf::from(home)
+        .join(".claude")
+        .join("projects")
+        .join(repo_root.to_string_lossy().replace('/', "-"));
+    if !project_dir.is_dir() {
+        return Err("Claude project directory not found".to_owned());
+    }
+    Ok(project_dir)
+}
+
+fn requested_claude_session() -> String {
+    for key in ["LARCH_CLAUDE_SESSION_ID", "CLAUDE_CODE_SESSION_ID"] {
+        let value = env::var(key).unwrap_or_default();
+        if bounded_ascii_identifier(&value, false) {
+            return value;
+        }
+    }
+    String::new()
+}
+
+fn scrape_sidecars(options: &ReportArguments) -> Result<(), String> {
+    let tmpdir = options
+        .implement_tmpdir
+        .as_deref()
+        .ok_or_else(|| "scrape mode requires --implement-tmpdir".to_owned())?;
+    let root = temporary_root(tmpdir)?;
+    let output = confined_scrape_output(
+        &root,
+        options
+            .scrape_output
+            .as_deref()
+            .ok_or_else(|| "scrape mode requires --implement-tmpdir".to_owned())?,
+    )?;
+    let timing_output = options
+        .scrape_timing_output
+        .as_deref()
+        .map(|path| confined_scrape_output(&root, path))
+        .transpose()?;
+    let token_lines = scrape_token_lines(&options.scrape_sidecars)?;
+    if !token_lines.is_empty() {
+        atomic_write_utf8(&output, &format!("{}\n", token_lines.join("\n")), 0o600)
+            .map_err(|error| error.to_string())?;
+    }
+    if let Some(output) = timing_output {
+        let timing_lines = scrape_timing_lines(&options.scrape_timing_sidecars)?;
+        if !timing_lines.is_empty() {
+            atomic_write_utf8(&output, &format!("{}\n", timing_lines.join("\n")), 0o600)
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn temporary_root(path: &Path) -> Result<TemporaryRoot, String> {
+    let absolute = absolute_lexical(path);
+    assert_no_symlink_path_or_ancestors(&absolute)?;
+    let canonical = fs::canonicalize(&absolute).map_err(|error| error.to_string())?;
+    TemporaryRoot::resolve(Some(&canonical)).map_err(|error| error.to_string())
+}
+
+fn confined_scrape_output(root: &TemporaryRoot, output: &Path) -> Result<ConfinedPath, String> {
+    let absolute = absolute_lexical(output);
+    assert_no_symlink_path_or_ancestors(&absolute)?;
+    let parent = absolute
+        .parent()
+        .ok_or_else(|| "scrape output must stay under --implement-tmpdir".to_owned())?;
+    let parent = fs::canonicalize(parent).map_err(|error| error.to_string())?;
+    if parent != root.path() && !parent.starts_with(root.path()) {
+        return Err("scrape output must stay under --implement-tmpdir".to_owned());
+    }
+    let name = absolute
+        .file_name()
+        .ok_or_else(|| "scrape output must stay under --implement-tmpdir".to_owned())?;
+    root.confine(parent.join(name), PathIntent::Write)
+        .map_err(|error| error.to_string())
+}
+
+fn scrape_token_lines(entries: &[(String, PathBuf)]) -> Result<Vec<String>, String> {
+    let mut lines = Vec::new();
+    for (tool, path) in entries {
+        if !path.is_file() {
+            continue;
+        }
+        let body = fs::read_to_string(path).map_err(|error| error.to_string())?;
+        let Ok(Value::Object(fields)) = serde_json::from_str(&body) else {
+            continue;
+        };
+        let input = sidecar_integer(fields.get("input_tokens"));
+        let output = sidecar_integer(fields.get("output_tokens"));
+        let cache_read = sidecar_integer(fields.get("cache_read_tokens"));
+        let cache_create = sidecar_integer(fields.get("cache_create_tokens"));
+        let mut total = sidecar_integer(fields.get("total_tokens"));
+        if total == 0 {
+            total = input
+                .saturating_add(output)
+                .saturating_add(cache_read)
+                .saturating_add(cache_create);
+        }
+        let has_token_field = [
+            "input_tokens",
+            "output_tokens",
+            "cache_read_tokens",
+            "cache_create_tokens",
+            "total_tokens",
+        ]
+        .iter()
+        .any(|key| fields.contains_key(*key));
+        if total == 0 && !has_token_field {
+            continue;
+        }
+        let mut record = BTreeMap::from([
+            ("cache_create_tokens".to_owned(), Value::from(cache_create)),
+            ("cache_read_tokens".to_owned(), Value::from(cache_read)),
+            ("input_tokens".to_owned(), Value::from(input)),
+            ("output_tokens".to_owned(), Value::from(output)),
+            ("tool".to_owned(), Value::from(tool.clone())),
+            ("total_tokens".to_owned(), Value::from(total)),
+        ]);
+        let model = python_str(fields.get("model"));
+        if !model.is_empty() {
+            let _prior = record.insert("model".to_owned(), Value::from(model));
+        }
+        let record = record.into_iter().collect();
+        lines.push(render_token_report_json(&record).map_err(|error| error.to_string())?);
+    }
+    Ok(lines)
+}
+
+fn scrape_timing_lines(entries: &[(String, PathBuf)]) -> Result<Vec<String>, String> {
+    let mut lines = Vec::new();
+    for (tool, path) in entries {
+        if !path.is_file() {
+            continue;
+        }
+        let body = fs::read_to_string(path).map_err(|error| error.to_string())?;
+        let Ok(Value::Object(fields)) = serde_json::from_str(&body) else {
+            continue;
+        };
+        let duration = fields
+            .get("duration_ms")
+            .or_else(|| fields.get("elapsed_ms"))
+            .and_then(sidecar_duration)
+            .filter(|value| *value > 0);
+        let Some(duration) = duration else {
+            continue;
+        };
+        let record = BTreeMap::from([
+            ("duration_ms".to_owned(), Value::from(duration)),
+            ("tool".to_owned(), Value::from(tool.clone())),
+        ]);
+        let record = record.into_iter().collect();
+        lines.push(render_token_report_json(&record).map_err(|error| error.to_string())?);
+    }
+    Ok(lines)
+}
+
+fn sidecar_integer(value: Option<&Value>) -> i64 {
+    match value {
+        Some(Value::Bool(flag)) => i64::from(*flag),
+        Some(Value::Number(_)) => larch_core::report::safe_int(value, 0),
+        Some(Value::String(text)) => text.trim().parse::<i64>().unwrap_or(0),
+        None | Some(Value::Null | Value::Array(_) | Value::Object(_)) => 0,
+    }
+}
+
+fn sidecar_duration(value: &Value) -> Option<i64> {
+    match value {
+        Value::Bool(flag) => Some(i64::from(*flag)),
+        Value::Number(_) => Some(larch_core::report::safe_int(Some(value), 0)),
+        Value::String(text) => text.trim().parse::<i64>().ok(),
+        Value::Null | Value::Array(_) | Value::Object(_) => None,
     }
 }
 

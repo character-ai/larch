@@ -134,8 +134,8 @@ umbrella that owns their remaining consumers:
 | `render run-summary` | 1 | #7680 | Recorded in the retained-surface table below as a bounded `/design` payload. |
 | `token check-budget`, `compute-pr-line-counts`, `compute-pr-lines` | 3 | #7681 | Step 2 dispatch and PR line counts. |
 | `token claude-source` | 1 | #7679 | Called from `skills/review/SKILL.md`. |
-| `token cost`, `token render-cost-line` | 2 | #7684 | The pricing consumers #8087 and #8088 already deferred there. |
-| The remaining 15 `token` verbs | 15 | #7684 | Research lane capture, ledger dumps, and the `measure-*` analytics, which is #7684's "deterministic models, aggregation, and report inputs" scope. |
+| `token cost`, `token render-cost-line`, `token report` | 3 | #8507 | Rust CLI cutover with caller replacement, Python entrypoint removal, and clean-install coverage. |
+| The remaining 6 `measure-*` `token` verbs | 6 | #7684 | The remaining deterministic analytics and report-input scope. |
 
 Both surfaces this umbrella touched are now closed. #8268 settled the plot
 question #8088 deferred: `report-tokens analyze` renders its trend chart in
@@ -182,7 +182,7 @@ the next cutover and does not create a second implementation.
 | #7680 | `clarify` stays in the design workflow. `render run-summary` and the retained issue wire, OOS, title, and mutation payload libraries serve that workflow. |
 | #7681 | `tracking post-issue` remains an implementation workflow surface. The former `larch.issue.execution_issues` hand-off ended in #8347. |
 | #7683 | `analyze-issues render-chart` is Rust-owned but remains planned by its reporting leaf #8092; report, diagram, and chart rendering do not return to #7682. |
-| #7684 | Rejected-finding and merged-change analysis commands, `token cost`, `token render-cost-line`, and their analytical issue helpers remain research-owned. |
+| #7684 | Rejected-finding and merged-change analysis commands, the remaining `measure-*` token analytics, and their analytical issue helpers remain research-owned. |
 | #7685 | `issue migration-audit` is Rust-owned by #8392. The retained Python governance-gate boundary and its `issue_block` and `open_rows` support remain owned by #7681; #7685 retains no Python issue-module ownership. |
 | #7686 | The final runtime and package retirement sweep owns deletion once no retained consumer remains; it is not an issue-command fallback. |
 
@@ -328,9 +328,9 @@ cutover is named in the last column.
 | `larch.report.run_log_corpus`, `run_log_publish`, `object_store`, and `storage_config` | Analyzer-side corpus reads plus bounded configuration, path, lock, and error support. The legacy `object_store` adapter has only compatibility/test callers; none is a production archive, sync, lifecycle, or storage-preflight command owner. | Rust archive, publication, sync, and storage-preflight boundary: #8079 and #8080; their analytics callers are #7684. |
 | `larch.report.analysis_state`, `markdown_block`, and `run_log_tolerance` | Local analyzer state, bounded Markdown fragments, and read-only tolerance predicates. They have no #7683 command entrypoint. | Their analytics and audit callers belong to #7684 and #7682. |
 | `larch.report.exec_issue_detail`, `review_phase_detail`, and `design_diagram_log` | Parser and renderer helpers for issue warnings, review-phase rows, and design-diagram diagnostics. They are not durable run-log writers. | Their review, design, and issue callers belong to #7679, #7680, and #7682. |
-| `larch.report.report_tokens_models`, `report_tokens_scan`, `report_tokens_cost`, and `tokens` | Input and pricing helpers for still-Python token reporting commands. The seven token measurements are Rust-owned; these modules do not implement them, `report-tokens analyze`, or a final-report writer. | #7684 owns the remaining token reporting, `token cost`, and `token render-cost-line` work. |
+| `larch.report.report_tokens_models`, `report_tokens_scan`, `report_tokens_cost`, and `tokens` | Input, pricing, and state helpers for bounded compatibility consumers and remaining Python token analytics. The seven token measurements are Rust-owned after #8508, and #8507 removed their `token report`, `token cost`, and `token render-cost-line` entrypoints. They do not implement them, `report-tokens analyze`, or a final-report writer. | #7684 owns the remaining token analytics. |
 | `larch.git.pr_body.render_run_summary` and `larch.design.design_summary` | The `render run-summary` compatibility payload for `/design`. It shares the marker grammar but is not an `/implement` final-report fallback. | #7680 owns `render run-summary` and its `/design` caller. |
-| `token report` and `difficulty write-record` | Payloads that Rust flush or final-report code may request through the single `python_verb` seam. Rust controls all durable staging and mutation. `token mark` is Rust-owned in-process (#8506). | #7684. |
+| `difficulty write-record` | Payload that Rust flush code may request through the single `python_verb` seam. Rust controls all durable staging and mutation. `token mark` is Rust-owned in-process (#8506), and #8507 renders `token report` in process. | #7684. |
 | `token claude-source` and `architectural-assessment final-report-sections` | Read-only model fallback and architectural-assessment payloads consumed by Rust `final-report write`. | #7679. |
 | `token compute-pr-line-counts` and `implement scope-disposition summary-line` | PR and plan-coverage payloads consumed by Rust `final-report write`. | #7681. |
 | `larch.rendering.rendering` | Prompt and diagram payload renderers outside the closed commands. | Its exact registry rows belong to #7678, #7679, or #7680; committed-artifact generation is Rust-owned by #8100. |
@@ -360,10 +360,9 @@ rounding, and per-run cost aggregation. It adds no command either.
 and `larch_core::vendor_model` gains the GLM main-agent id and its long-context
 alias. A model priced by another model's rate row, including a display bucket
 that folds one model onto another, is recorded as
-`TokenObservationKind::UnpricedModel` rather than passing silently. Python
-retains `token cost` and `token render-cost-line` as #7684-owned compatibility
-commands; neither is the rate authority for `report-tokens analyze` or
-`final-report`.
+`TokenObservationKind::UnpricedModel` rather than passing silently. The #8507
+Rust CLI owns `token cost` and `token render-cost-line`; neither is the rate
+authority for `report-tokens analyze` or `final-report`.
 
 Issue 8088 moved `report-tokens analyze` to Rust and deleted
 `larch.report.report_tokens_cli`, `report_tokens_render`, `report_tokens_plot`,
@@ -404,7 +403,8 @@ whatever fits the axis, rather than rotating every label 45 degrees.
 
 `report_tokens_cost`, `report_tokens_models`, `report_tokens_scan`, and
 `analysis_state` remain Python helpers for the #7680 compatibility payload and
-the #7684 token/analytics commands. Issue 8090 removed
+the remaining #7684 analytics. Issue #8507 moved `token report`, `token cost`,
+and `token render-cost-line` to Rust. Issue 8090 removed
 `larch.report.final_report` from their consumer set by pricing the terminal
 report through `larch_core::report::token_cost` directly. They are not a Python
 implementation of `/report-tokens` or `final-report`.
@@ -421,10 +421,9 @@ token-pricing-argument derivations. The command layer reuses
 `larch_adapters::stall_recovery` for the normalized outcome, and
 `larch_adapters::run_log_manifest` for the terminal manifest stamp.
 
-Four inputs keep Python owners this leaf does not move, and each is reached
-through the one `python_verb` seam rather than a second implementation: the
-rendered token report (`token report`, #7684), PR line counts
-(`token compute-pr-line-counts`, #7681), the plan-coverage line, and the
+Three inputs keep Python owners this leaf does not move, and each is reached
+through the one `python_verb` seam rather than a second implementation: PR line
+counts (`token compute-pr-line-counts`, #7681), the plan-coverage line, and the
 architectural assessment sections. The last two moved out of the deleted module
 into the Python owners of their dependencies and became verbs there:
 `implement scope-disposition summary-line` (owned by #7681 with the rest of

@@ -2,8 +2,8 @@
 //!
 //! Library parity for Python `larch.report.report_tokens_scan`,
 //! `larch.report.report_tokens_models`, and the extraction half of
-//! `larch.report.tokens`. The Rust report analyzer and token measurement
-//! commands share this extraction owner.
+//! `larch.report.tokens`. The Rust report analyzer, token measurement commands,
+//! and #8507 `token report` share these extraction and rendering primitives.
 //!
 //! # Memory bound
 //!
@@ -34,6 +34,7 @@ use crate::vendor_model::{
     claude_sub_default_model, normalize_claude_ledger_model,
 };
 use crate::vendor_usage::json_usage_number;
+use crate::{OrderedJson, ensure_ascii_json, python_json_dumps};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
@@ -1198,6 +1199,163 @@ pub fn summary_report(inputs: &TokenReportInputs) -> Map<String, Value> {
         let _prior = data.insert(key.to_owned(), value);
     }
     data
+}
+
+/// Render the human-readable summary line for a token report.
+#[must_use]
+pub fn render_token_report_summary_line(inputs: &TokenReportInputs) -> String {
+    let data = summary_report(inputs);
+    let lane_total = |name: &str| {
+        data.get(name)
+            .and_then(Value::as_object)
+            .map_or(0, |fields| {
+                fields.values().map(|value| safe_int(Some(value), 0)).sum()
+            })
+    };
+    let token_k = |value: i64| (value + 500) / 1_000;
+    format!(
+        "Tokens: {}k, Claude: {}k | Codex: {}k | Cursor: {}k | Claude (subprocess): {}k",
+        token_k(safe_int(data.get("token_total"), 0)),
+        token_k(lane_total("claude")),
+        token_k(lane_total("codex")),
+        token_k(lane_total("cursor")),
+        token_k(lane_total("claude_sub")),
+    )
+}
+
+/// Render the since-last-mark token report line.
+#[must_use]
+pub fn render_token_report_terse(inputs: &TokenReportInputs) -> String {
+    let Some(last) = inputs.marks.last() else {
+        return String::new();
+    };
+    let claude = UsageTally::of(slice_rows(&inputs.claude, last.ts, None));
+    let vendor: i64 = slice_rows(&inputs.vendor, last.ts, None)
+        .into_iter()
+        .map(TokenUsageRow::effective_total)
+        .sum();
+    format!(
+        "{}: claude={} tokens; vendor={vendor}",
+        last.step, claude.total
+    )
+}
+
+/// Render the selected vendor's machine-readable token bucket line.
+#[must_use]
+pub fn render_token_report_buckets(inputs: &TokenReportInputs, vendor: TokenVendor) -> String {
+    let data = full_report(inputs);
+    let bucket = data
+        .get(&format!("BUCKETS_{}", vendor.as_str()))
+        .and_then(Value::as_object);
+    let field = |name: &str| bucket.map_or(0, |values| safe_int(values.get(name), 0));
+    match vendor {
+        TokenVendor::Claude | TokenVendor::ClaudeSub => format!(
+            "INPUT={} CACHE_READ={} CACHE_WRITE_5M={} CACHE_WRITE_1H={} OUTPUT={}",
+            field("input"),
+            field("cache_read"),
+            field("cache_create_5m"),
+            field("cache_create_1h"),
+            field("output"),
+        ),
+        TokenVendor::Codex => format!(
+            "INPUT={} CACHED_INPUT={} OUTPUT={}",
+            field("input"),
+            field("cached_input"),
+            field("output"),
+        ),
+        TokenVendor::Cursor => format!(
+            "INPUT={} CACHE_READ={} OUTPUT={}",
+            field("input"),
+            field("cache_read"),
+            field("output"),
+        ),
+    }
+}
+
+/// Render a report object with Python json.dumps spacing, ordering, and escapes.
+///
+/// # Errors
+/// Returns a serialization error when a report string cannot be encoded as JSON.
+pub fn render_token_report_json(data: &Map<String, Value>) -> Result<String, serde_json::Error> {
+    python_json_dumps(&ordered_json(&Value::Object(data.clone())))
+        .map(|text| ensure_ascii_json(&text))
+}
+
+fn ordered_json(value: &Value) -> OrderedJson {
+    match value {
+        Value::Null => OrderedJson::Null,
+        Value::Bool(value) => OrderedJson::Bool(*value),
+        Value::Number(value) => OrderedJson::Number(value.clone()),
+        Value::String(value) => OrderedJson::String(value.clone()),
+        Value::Array(values) => OrderedJson::Array(values.iter().map(ordered_json).collect()),
+        Value::Object(values) => OrderedJson::Object(
+            values
+                .iter()
+                .map(|(key, value)| (key.clone(), ordered_json(value)))
+                .collect(),
+        ),
+    }
+}
+
+/// Render the complete Markdown token report.
+#[must_use]
+pub fn render_token_report_markdown(inputs: &TokenReportInputs) -> String {
+    let markdown_cell = |value: &str| value.replace('|', "\\|").replace(['\r', '\n'], " ");
+    let mut parts = vec![
+        "### Claude\n\n| Step | Skill | Claude Input | Claude Cache Read | Claude Cache Create | Claude Output |\n| --- | --- | ---: | ---: | ---: | ---: |".to_owned(),
+    ];
+    for (index, mark) in inputs.marks.iter().enumerate() {
+        let end = inputs.marks.get(index + 1).map(|next| next.ts);
+        let totals = UsageTally::of(slice_rows(&inputs.claude, mark.ts, end));
+        parts.push(format!(
+            "| {} | **step total** | {} | {} | {} | {} |",
+            markdown_cell(&mark.step),
+            totals.input,
+            totals.cache_read,
+            totals.cache_create,
+            totals.output,
+        ));
+    }
+    let first = inputs.marks.first().map_or(0.0, |mark| mark.ts);
+    let totals = UsageTally::of(slice_rows(&inputs.claude, first, None));
+    parts.push(format!(
+        "| **Grand total** |  | {} | {} | {} | {} |",
+        totals.input, totals.cache_read, totals.cache_create, totals.output
+    ));
+    for name in vendor_lane_names(inputs) {
+        let label = match name.as_str() {
+            "codex" => "Codex",
+            "cursor" => "Cursor",
+            "claude_sub" => "Claude (subprocess)",
+            _ => name.as_str(),
+        };
+        let rows: Vec<&TokenUsageRow> = inputs
+            .vendor
+            .iter()
+            .filter(|row| row.vendor == name)
+            .collect();
+        parts.push(format!(
+            "\n### {}\n\n| Step | Skill | Input | Output | Total |\n| --- | --- | ---: | ---: | ---: |",
+            markdown_cell(label)
+        ));
+        for (index, mark) in inputs.marks.iter().enumerate() {
+            let end = inputs.marks.get(index + 1).map(|next| next.ts);
+            let totals = UsageTally::of(slice_rows(rows.iter().copied(), mark.ts, end));
+            parts.push(format!(
+                "| {} | **step total** | {} | {} | {} |",
+                markdown_cell(&mark.step),
+                totals.input,
+                totals.output,
+                totals.total,
+            ));
+        }
+        let totals = UsageTally::of(slice_rows(rows.iter().copied(), first, None));
+        parts.push(format!(
+            "| **Grand total** |  | {} | {} | {} |",
+            totals.input, totals.output, totals.total
+        ));
+    }
+    parts.join("\n")
 }
 
 /// Aggregate committed token ledgers into the canonical full-report shape.

@@ -6,7 +6,7 @@
 //! requirement ledger, and corrective batch the audit produced.
 
 use crate::{
-    OrderedJson,
+    OrderedJson, bounded_ascii_identifier,
     issue::{triage_text_is_security_sensitive, umbrella_leaf_opening_text},
 };
 use chrono::DateTime;
@@ -369,7 +369,7 @@ pub fn validate_audit_ledger(
     let mut covered = BTreeSet::new();
     let mut summary = AuditLedgerSummary::default();
     for entry in &ledger.entries {
-        if !valid_identifier(&entry.id)
+        if !bounded_ascii_identifier(&entry.id, true)
             || !entry_ids.insert(entry.id.as_str())
             || !expected_source_ids.contains(entry.source_id.as_str())
             || !valid_single_line(&entry.requirement, 8 * 1024)
@@ -867,7 +867,10 @@ fn validate_leaf_draft(leaf: &AuditLeafDraft, umbrella: u64) -> Result<(), Audit
         || !has_numbered_scope(&leaf.body)
         || leaf.gap_ids.is_empty()
         || leaf.gap_ids.len() > MAX_AUDIT_REQUIREMENTS
-        || leaf.gap_ids.iter().any(|id| !valid_identifier(id))
+        || leaf
+            .gap_ids
+            .iter()
+            .any(|id| !bounded_ascii_identifier(id, true))
         || normalized_strings(&leaf.gap_ids) != leaf.gap_ids
         || security_sensitive
     {
@@ -1232,14 +1235,6 @@ fn valid_role(value: &str) -> bool {
         value,
         "umbrella" | "native" | "explicit" | "title" | "backlink" | "control"
     )
-}
-
-fn valid_identifier(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 128
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
 fn valid_single_line(value: &str, limit: usize) -> bool {
@@ -1932,8 +1927,8 @@ mod tests {
         assert!(!valid_timestamp("not-a-timestamp"));
         assert!(valid_source_id("leaf:41"));
         assert!(!valid_source_id("leaf:0"));
-        assert!(valid_identifier("R-1.part_2"));
-        assert!(!valid_identifier("R 1"));
+        assert!(bounded_ascii_identifier("R-1.part_2", true));
+        assert!(!bounded_ascii_identifier("R 1", true));
         assert!(valid_text("one\nline", 32));
         assert!(!valid_text("", 32));
         assert!(valid_optional_text("", 32));

@@ -1,8 +1,9 @@
 //! Atomic checkpoint, refresh, transcript, and terminal-snapshot orchestration.
 //!
 //! The four public selectors in this module own the mutable run-log flush. A
-//! flush may ask still-Python sibling renderers for report payloads, while the
-//! Rust owner performs batch staging and every manifest transition.
+//! flush may ask the remaining Python difficulty renderer for a payload, while
+//! the Rust owner performs report rendering, batch staging, and every manifest
+//! transition.
 #![allow(clippy::possible_missing_else)] // Compact independent phases are sequential, not branches.
 use std::{
     collections::BTreeMap, env, ffi::OsString, fs, path::{Path, PathBuf}, process::ExitCode,
@@ -596,7 +597,7 @@ fn render_ledger_reports(context: &FlushContext, strict: bool) -> Result<(), Str
         os("--implement-tmpdir"), context.tmpdir.as_os_str().to_owned(),
     ]; if !context.source_file.is_empty() {
         token_args.extend([os("--source-file"), os(&context.source_file)]);
-    } let token_result = run_python_verb(token_args, PYTHON_TIMEOUT);
+    } let token_result = crate::token_commands::report_result(&token_args[2..]);
     let timing_ledger = if context.timing_ledger.is_empty() {
         context.tmpdir.join("timing-ledger.tsv")
     } else {
@@ -614,9 +615,15 @@ fn render_ledger_reports(context: &FlushContext, strict: bool) -> Result<(), Str
         timing_args.extend([os("--test-now"), value]);
     } let timing_result = crate::timing_commands::render_report_arguments(&timing_args);
     let mut errors = Vec::new(); if strict {
-        if let Some(message) = renderer_failure("token report render failed", token_result.as_ref())
-        {
-            errors.push(message);
+        match token_result.as_ref() {
+            Err(message) => errors.push(format!(
+                "token report render failed: {}",
+                safe_detail(message)
+            )),
+            Ok(status) if *status != ExitCode::SUCCESS => {
+                errors.push("token report render failed".to_owned());
+            }
+            Ok(_) => {}
         } if let Err(message) = timing_result.as_ref() {
             errors.push(format!("timing report render failed: {message}"));
         }
@@ -627,8 +634,14 @@ fn render_ledger_reports(context: &FlushContext, strict: bool) -> Result<(), Str
             errors.push(format!("token report staging failed: {message}"));
         }
     } else if strict {
-        errors.push(report_error(
-            "token-report.json source was not produced", token_result.as_ref(),
+        errors.push(token_result.as_ref().err().map_or_else(
+            || "token-report.json source was not produced".to_owned(),
+            |message| {
+                format!(
+                    "token-report.json source was not produced: {}",
+                    safe_detail(message)
+                )
+            },
         ));
     } if timing_output.is_file() {
         if let Err(message) = stage_replace_batch(
@@ -644,30 +657,6 @@ fn render_ledger_reports(context: &FlushContext, strict: bool) -> Result<(), Str
     } if strict && !errors.is_empty() {
         return Err(errors.join("; "));
     } Ok(())
-}
-
-fn renderer_failure(
-    label: &str, result: Result<&larch_core::ProcessOutput, &String>,
-) -> Option<String> {
-    match result {
-        Err(message) => Some(format!("{label}: {message}")),
-        Ok(output) if !output.status().success()
-            || String::from_utf8_lossy(output.stderr()).contains(" report unavailable:") => {
-            Some(format!("{label}: {}", safe_process_error(output)))
-        } Ok(_output) => None,
-    }
-}
-
-fn report_error(fallback: &str, result: Result<&larch_core::ProcessOutput, &String>) -> String {
-    result.map_or_else(
-        |message| format!("{fallback}: {message}"), |output| {
-            let detail = safe_process_error(output); if detail.is_empty() {
-                fallback.to_owned()
-            } else {
-                format!("{fallback}: {detail}")
-            }
-        },
-    )
 }
 
 fn token_ledger_path(context: &FlushContext) -> PathBuf {
@@ -723,10 +712,17 @@ fn render_derived_reports(context: &FlushContext) -> Result<(), String> {
                 os(option), OsString::from(format!("{tool}={}", path.display())),
             ]);
         }
-    } let output = run_python_verb(arguments, PYTHON_TIMEOUT)?; if !output.status().success() {
-        return Err(format!(
-            "derived token/timing refresh failed: {}", safe_process_error(&output)
-        ));
+    } match crate::token_commands::report_result(&arguments[2..]) {
+        Err(message) => {
+            return Err(format!(
+                "derived token/timing refresh failed: {}",
+                safe_detail(&message)
+            ));
+        }
+        Ok(status) if status != ExitCode::SUCCESS => {
+            return Err("derived token/timing refresh failed".to_owned());
+        }
+        Ok(_) => {}
     } for (source, name) in [
         (token_output, "token-report.ndjson"), (timing_output, "timing-report.ndjson"),
     ] {
@@ -1074,19 +1070,6 @@ fn record_terminal_failure(context: &FlushContext, message: &str) {
 /// Reduce one local error message to a redacted, bounded, single-line detail.
 fn safe_detail(message: &str) -> String {
     one_line(redact(message).text(), 300)
-}
-
-fn safe_process_error(output: &larch_core::ProcessOutput) -> String {
-    let raw = if output.stderr().is_empty() {
-        output.stdout()
-    } else {
-        output.stderr()
-    }; let safe = redact(&String::from_utf8_lossy(raw)); let detail = one_line(safe.text(), 300);
-    if detail.is_empty() {
-        "process exited non-zero with no detail".to_owned()
-    } else {
-        detail
-    }
 }
 
 fn read_key(path: &Path, key: &str) -> String {

@@ -66,6 +66,7 @@ crates/larch-cli/src/session_closeout_commands.rs	git-cli	#7671	typed-cli,typed-
 crates/larch-cli/src/session_setup_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/stall_recovery_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/stall_recovery_reporting.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/token_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/token_measurement_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/triage_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked-paths

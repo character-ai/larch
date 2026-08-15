@@ -385,12 +385,14 @@ pub use report::{
     ledger_vendor_rows, load_issue_detail_groups, normalize_body_for_hash, parse_epoch,
     parse_markdown_execution_issues, parse_preterminal_outcome_label, price_counts, price_run,
     python_round, rate_row, read_ledger, read_report_inputs, render_cost_kv, render_cost_line,
-    render_issue_detail_block, render_session_transcript, replace_markdown_block,
-    replace_markdown_block_with_warn, report_has_numeric_tokens, resolve_run_report,
-    round_number_from_path, run_log_batch_spec, run_log_batch_specs, run_log_ledger_path,
-    run_record, run_started_at_without_manifest, safe_int, sanitize_diagram_capture,
-    strip_diagram_sections, structured_body_dedupe_keys, summary_report, token_phase_rows,
-    token_report_basename, transcript_sources, vendor_totals_from_report,
+    render_issue_detail_block, render_session_transcript, render_token_report_buckets,
+    render_token_report_json, render_token_report_markdown, render_token_report_summary_line,
+    render_token_report_terse, replace_markdown_block, replace_markdown_block_with_warn,
+    report_has_numeric_tokens, resolve_run_report, round_number_from_path, run_log_batch_spec,
+    run_log_batch_specs, run_log_ledger_path, run_record, run_started_at_without_manifest,
+    safe_int, sanitize_diagram_capture, strip_diagram_sections, structured_body_dedupe_keys,
+    summary_report, token_phase_rows, token_report_basename, transcript_sources,
+    vendor_totals_from_report,
 };
 pub use retry::{
     AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,
@@ -470,10 +472,10 @@ pub use test_shards::{
     read_makefile_shards, rewrite_makefile_shards,
 };
 pub use text::{
-    balanced_fence_line_indices, ensure_ascii_json, file_line_regex, is_positive_decimal,
-    is_python_whitespace, positive_integer, python_bigint, python_float, python_int, python_str,
-    split_lines_keep_ends, split_text_lines, tail_lines, trim_python_whitespace,
-    truncate_utf8_bytes, universal_newlines, unsigned_integer,
+    balanced_fence_line_indices, bounded_ascii_identifier, ensure_ascii_json, file_line_regex,
+    is_positive_decimal, is_python_whitespace, positive_integer, python_bigint, python_float,
+    python_int, python_str, split_lines_keep_ends, split_text_lines, tail_lines,
+    trim_python_whitespace, truncate_utf8_bytes, universal_newlines, unsigned_integer,
 };
 pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};
 pub use upgrade_larch::{

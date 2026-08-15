@@ -8,6 +8,13 @@ use std::{
 
 use assert_cmd::Command as AssertCommand;
 
+const TOKEN_REPORT_LEDGER: &str =
+    include_str!("../../larch-core/tests/fixtures/token_scan/ledger.jsonl");
+const TOKEN_REPORT_TRANSCRIPT: &str =
+    include_str!("../../larch-core/tests/fixtures/token_scan/transcript.jsonl");
+const TOKEN_REPORT_FULL: &str =
+    include_str!("../../larch-core/tests/fixtures/token_scan/full-report.json");
+
 struct Fixture {
     _directory: tempfile::TempDir,
     tmpdir: PathBuf,
@@ -28,6 +35,14 @@ impl Fixture {
         self.tmpdir.join("token-ledger.jsonl")
     }
 
+    fn report_sources(&self) -> (PathBuf, PathBuf) {
+        let ledger = self.tmpdir.join("report-ledger.jsonl");
+        let transcript = self.tmpdir.join("report-transcript.jsonl");
+        fs::write(&ledger, TOKEN_REPORT_LEDGER).expect("report ledger");
+        fs::write(&transcript, TOKEN_REPORT_TRANSCRIPT).expect("report transcript");
+        (ledger, transcript)
+    }
+
     fn run(&self, arguments: &[&str]) -> Output {
         let mut command = AssertCommand::cargo_bin("larch").expect("larch binary should build");
         command
@@ -39,6 +54,9 @@ impl Fixture {
             .env_remove("RESEARCH_TMPDIR")
             .env_remove("SESSION_ENV_PATH")
             .env_remove("LARCH_TOKEN_SESSION_ID")
+            .env_remove("LARCH_CLAUDE_SOURCE_FILE")
+            .env_remove("LARCH_CLAUDE_SESSION_ID")
+            .env_remove("CLAUDE_CODE_SESSION_ID")
             .arg("token")
             .args(arguments);
         command.output().expect("token command should launch")
@@ -273,13 +291,14 @@ fn record_vendor_appends_codex_row() {
         "cache_read=1",
         "cache_create=2",
         "total=12",
-        "raw=codex_review",
+        "raw=codex=review",
         "model=gpt-5",
     ]);
     assert!(output.status.success(), "{}", stderr(&output));
     let text = fs::read_to_string(fixture.ledger()).expect("ledger");
     assert!(text.contains("\"vendor\":\"codex\""), "{text}");
     assert!(text.contains("\"total\":12"), "{text}");
+    assert!(text.contains("\"raw\":\"codex=review\""), "{text}");
     assert!(text.contains("\"model\":\"gpt-5\""), "{text}");
 }
 
@@ -424,6 +443,156 @@ README.md\ttier-3-other\t0\t0\t0\t0\n"
 }
 
 #[test]
+fn report_renders_recorded_json_markdown_and_compact_modes() {
+    let fixture = Fixture::new();
+    let (ledger, transcript) = fixture.report_sources();
+    let ledger = ledger.to_str().expect("ledger utf8");
+    let transcript = transcript.to_str().expect("transcript utf8");
+
+    let full = fixture.run(&[
+        "report",
+        "--full",
+        "--format",
+        "json",
+        "--ledger",
+        ledger,
+        "--transcript",
+        transcript,
+    ]);
+    assert!(full.status.success(), "{}", stderr(&full));
+    let expected: serde_json::Value =
+        serde_json::from_str(TOKEN_REPORT_FULL).expect("recorded full report");
+    let actual: serde_json::Value =
+        serde_json::from_str(&stdout(&full)).expect("rendered full report");
+    assert_eq!(actual, expected);
+    assert!(stdout(&full).contains("\\u2014"), "{}", stdout(&full));
+
+    let markdown = fixture.run(&[
+        "report",
+        "--full",
+        "--markdown",
+        "--ledger",
+        ledger,
+        "--transcript",
+        transcript,
+    ]);
+    assert!(markdown.status.success(), "{}", stderr(&markdown));
+    assert!(
+        stdout(&markdown).contains("| **Grand total** |  | 1007 | 13 | 1521 |"),
+        "{}",
+        stdout(&markdown)
+    );
+
+    let summary = fixture.run(&[
+        "report",
+        "--summary",
+        "--ledger",
+        ledger,
+        "--transcript",
+        transcript,
+    ]);
+    assert_eq!(
+        stdout(&summary),
+        "Tokens: 2k, Claude: 0k | Codex: 2k | Cursor: 0k | Claude (subprocess): 0k\n"
+    );
+    let ignored_vendor = fixture.run(&[
+        "report",
+        "--summary",
+        "--vendor",
+        "unused",
+        "--ledger",
+        ledger,
+        "--transcript",
+        transcript,
+    ]);
+    assert!(
+        ignored_vendor.status.success(),
+        "{}",
+        stderr(&ignored_vendor)
+    );
+    assert_eq!(stdout(&ignored_vendor), stdout(&summary));
+    let terse = fixture.run(&[
+        "report",
+        "--terse",
+        "--ledger",
+        ledger,
+        "--transcript",
+        transcript,
+    ]);
+    assert_eq!(
+        stdout(&terse),
+        "Step 5 — code review: claude=0 tokens; vendor=145\n"
+    );
+    let buckets = fixture.run(&[
+        "report",
+        "--buckets",
+        "--vendor",
+        "codex",
+        "--ledger",
+        ledger,
+        "--transcript",
+        transcript,
+    ]);
+    assert_eq!(stdout(&buckets), "INPUT=1007 CACHED_INPUT=501 OUTPUT=13\n");
+}
+
+#[test]
+fn report_writes_output_and_replaces_append_block() {
+    let fixture = Fixture::new();
+    let (ledger, transcript) = fixture.report_sources();
+    let output = fixture.tmpdir.join("rendered.json");
+    let body = fixture.tmpdir.join("body.md");
+    fs::write(&body, "before\n").expect("body");
+    let arguments = [
+        "report".to_owned(),
+        "--full".to_owned(),
+        "--format".to_owned(),
+        "json".to_owned(),
+        "--ledger".to_owned(),
+        ledger.to_string_lossy().into_owned(),
+        "--transcript".to_owned(),
+        transcript.to_string_lossy().into_owned(),
+        "--output".to_owned(),
+        output.to_string_lossy().into_owned(),
+        "--append-token-report".to_owned(),
+        body.to_string_lossy().into_owned(),
+    ];
+    let refs: Vec<&str> = arguments.iter().map(String::as_str).collect();
+    let first = fixture.run(&refs);
+    assert!(first.status.success(), "{}", stderr(&first));
+    assert!(stdout(&first).is_empty(), "{}", stdout(&first));
+    let rendered: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&output).expect("output")).expect("json output");
+    assert!(rendered.get("BUCKETS_codex").is_some());
+    let repeated = fixture.run(&refs);
+    assert!(repeated.status.success(), "{}", stderr(&repeated));
+    let body = fs::read_to_string(&body).expect("appended body");
+    assert_eq!(
+        body.matches("<!-- token-report-begin -->").count(),
+        1,
+        "{body}"
+    );
+    assert!(body.contains("## Token Report"), "{body}");
+}
+
+#[test]
+fn report_preserves_fail_open_unavailable_envelope() {
+    let fixture = Fixture::new();
+    let missing = fixture.tmpdir.join("missing-ledger.jsonl");
+    let output = fixture.run(&[
+        "report",
+        "--ledger",
+        missing.to_str().expect("missing utf8"),
+    ]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(
+        stderr(&output).starts_with("Token report unavailable: "),
+        "{}",
+        stderr(&output)
+    );
+}
+
+#[test]
 fn corpus_measurements_preserve_disabled_storage_refusal() {
     let fixture = MeasurementFixture::new();
     fixture.disable_storage();
@@ -445,4 +614,197 @@ fn corpus_measurements_preserve_disabled_storage_refusal() {
         };
         assert_eq!(stderr(&output), format!("{prefix}{refusal}"), "{verb}");
     }
+}
+
+#[test]
+fn report_replays_a_validated_source_snapshot() {
+    let fixture = Fixture::new();
+    let (ledger, transcript) = fixture.report_sources();
+    let source = fixture.tmpdir.join("claude-source.env");
+    fs::write(
+        &source,
+        format!(
+            "TRANSCRIPT_PATH={}\nSESSION_DIR={}\nSESSION_UUID=fixture-session\n",
+            transcript.display(),
+            fixture.tmpdir.display()
+        ),
+    )
+    .expect("source snapshot");
+    let output = fixture.run(&[
+        "report",
+        "--summary",
+        "--ledger",
+        ledger.to_str().expect("ledger utf8"),
+        "--source-file",
+        source.to_str().expect("source utf8"),
+    ]);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        stdout(&output),
+        "Tokens: 2k, Claude: 0k | Codex: 2k | Cursor: 0k | Claude (subprocess): 0k\n"
+    );
+}
+
+#[test]
+fn report_scrape_normalizes_confined_token_and_timing_sidecars() {
+    let fixture = Fixture::new();
+    let sidecar = fixture.tmpdir.join("side=car.json");
+    let timing = fixture.tmpdir.join("timing.json");
+    let token_output = fixture.tmpdir.join("token.ndjson");
+    let timing_output = fixture.tmpdir.join("timing.ndjson");
+    fs::write(
+        &sidecar,
+        r#"{"input_tokens":1,"output_tokens":2,"cache_read_tokens":3,"cache_create_tokens":4,"model":"gpt"}"#,
+    )
+    .expect("token sidecar");
+    fs::write(&timing, r#"{"duration_ms":20}"#).expect("timing sidecar");
+    let arguments = [
+        "report".to_owned(),
+        "--scrape-run-output".to_owned(),
+        token_output.to_string_lossy().into_owned(),
+        "--scrape-timing-output".to_owned(),
+        timing_output.to_string_lossy().into_owned(),
+        "--implement-tmpdir".to_owned(),
+        fixture.tmpdir.to_string_lossy().into_owned(),
+        "--scrape-sidecar".to_owned(),
+        format!("codex={}", sidecar.display()),
+        "--scrape-timing-sidecar".to_owned(),
+        format!("codex={}", timing.display()),
+    ];
+    let refs: Vec<&str> = arguments.iter().map(String::as_str).collect();
+    let output = fixture.run(&refs);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        fs::read_to_string(token_output).expect("normalized token sidecar"),
+        "{\"cache_create_tokens\": 4, \"cache_read_tokens\": 3, \"input_tokens\": 1, \"model\": \"gpt\", \"output_tokens\": 2, \"tool\": \"codex\", \"total_tokens\": 10}\n"
+    );
+    assert_eq!(
+        fs::read_to_string(timing_output).expect("normalized timing sidecar"),
+        "{\"duration_ms\": 20, \"tool\": \"codex\"}\n"
+    );
+
+    let malformed_integer = fixture.tmpdir.join("malformed-integer.json");
+    let malformed_output = fixture.tmpdir.join("malformed-integer.ndjson");
+    fs::write(
+        &malformed_integer,
+        r#"{"input_tokens":"1.5","output_tokens":"2","cache_read_tokens":"1,000","model":false}"#,
+    )
+    .expect("malformed integer sidecar");
+    let arguments = [
+        "report".to_owned(),
+        "--scrape-run-output".to_owned(),
+        malformed_output.to_string_lossy().into_owned(),
+        "--implement-tmpdir".to_owned(),
+        fixture.tmpdir.to_string_lossy().into_owned(),
+        "--scrape-sidecar".to_owned(),
+        format!("cursor={}", malformed_integer.display()),
+    ];
+    let refs: Vec<&str> = arguments.iter().map(String::as_str).collect();
+    let output = fixture.run(&refs);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        fs::read_to_string(malformed_output).expect("normalized malformed integer sidecar"),
+        "{\"cache_create_tokens\": 0, \"cache_read_tokens\": 0, \"input_tokens\": 0, \"output_tokens\": 2, \"tool\": \"cursor\", \"total_tokens\": 2}\n"
+    );
+
+    let outside = fixture
+        .tmpdir
+        .parent()
+        .expect("temporary root parent")
+        .join(format!(
+            "outside-token-{}.ndjson",
+            fixture
+                .tmpdir
+                .file_name()
+                .and_then(|name| name.to_str())
+                .expect("temporary root name")
+        ));
+    let arguments = [
+        "report".to_owned(),
+        "--scrape-run-output".to_owned(),
+        outside.to_string_lossy().into_owned(),
+        "--implement-tmpdir".to_owned(),
+        fixture.tmpdir.to_string_lossy().into_owned(),
+    ];
+    let refs: Vec<&str> = arguments.iter().map(String::as_str).collect();
+    let refused = fixture.run(&refs);
+    assert!(refused.status.success(), "{}", stderr(&refused));
+    assert!(!outside.exists());
+    assert!(
+        stderr(&refused).contains("scrape output must stay under --implement-tmpdir"),
+        "{}",
+        stderr(&refused)
+    );
+}
+
+#[test]
+fn report_scrape_ignores_timing_sidecars_without_a_timing_output() {
+    let fixture = Fixture::new();
+    let ignored_timing = fixture.tmpdir.join("ignored-timing.json");
+    fs::write(&ignored_timing, [0xff_u8]).expect("invalid UTF-8 timing sidecar");
+    let ignored_token_output = fixture.tmpdir.join("ignored-timing-token.ndjson");
+    let arguments = [
+        "report".to_owned(),
+        "--scrape-run-output".to_owned(),
+        ignored_token_output.to_string_lossy().into_owned(),
+        "--implement-tmpdir".to_owned(),
+        fixture.tmpdir.to_string_lossy().into_owned(),
+        "--scrape-timing-sidecar".to_owned(),
+        format!("cursor={}", ignored_timing.display()),
+    ];
+    let refs: Vec<&str> = arguments.iter().map(String::as_str).collect();
+    let ignored = fixture.run(&refs);
+    assert!(ignored.status.success(), "{}", stderr(&ignored));
+    assert!(stderr(&ignored).is_empty(), "{}", stderr(&ignored));
+    assert!(!ignored_token_output.exists());
+}
+
+#[test]
+fn cost_and_render_cost_line_preserve_cli_contracts() {
+    let fixture = Fixture::new();
+    let cost = fixture.run(&[
+        "cost",
+        "--codex-input-tokens",
+        "1000",
+        "--codex-cached-input-tokens",
+        "500",
+        "--codex-output-tokens",
+        "250",
+    ]);
+    assert!(cost.status.success(), "{}", stderr(&cost));
+    assert!(
+        stdout(&cost).starts_with("CLAUDE_COST="),
+        "{}",
+        stdout(&cost)
+    );
+    assert!(
+        stdout(&cost).contains("TOTAL_TOKENS=1750\n"),
+        "{}",
+        stdout(&cost)
+    );
+    assert!(!stderr(&cost).contains("blended rate"), "{}", stderr(&cost));
+
+    let line = fixture.run(&[
+        "render-cost-line",
+        "--codex-input-tokens",
+        "1000",
+        "--codex-output-tokens",
+        "500",
+    ]);
+    assert!(line.status.success(), "{}", stderr(&line));
+    assert!(
+        stdout(&line).starts_with("💰 Cost: TOTAL ~$"),
+        "{}",
+        stdout(&line)
+    );
+    let quiet = fixture.run(&["render-cost-line", "--quiet-on-empty"]);
+    assert!(quiet.status.success(), "{}", stderr(&quiet));
+    assert!(stdout(&quiet).is_empty(), "{}", stdout(&quiet));
+    let invalid = fixture.run(&["cost", "--unknown-tokens", "1"]);
+    assert_eq!(invalid.status.code(), Some(2));
+    assert!(
+        stderr(&invalid).contains("token cost: unknown or incomplete flag"),
+        "{}",
+        stderr(&invalid)
+    );
 }

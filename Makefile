@@ -240,7 +240,7 @@ test-token-ledger:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k ledger
 
 test-token-report:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k token_report
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test token_commands report_
 
 test-token-report-dedup:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k dedupe
@@ -255,7 +255,7 @@ test-render-cost-line-callsites:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-render-cost-line-callsites.sh
 
 test-token-report-summary-format:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k 'not (compute_pr_line_counts or claude_source or ledger or tally or dedupe or token_report)'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test token_commands report_renders_recorded_json_markdown_and_compact_modes
 
 test-timing-ledger:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_timing.py -q
@@ -688,13 +688,13 @@ write-final-report-bash-harness:
 	$(HARNESS_MARK) --label $@ -- bash skills/implement/scripts/test-write-final-report.sh
 
 test-token-cost:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k token_cost
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test token_commands cost_and_render_cost_line_preserve_cli_contracts
 
 lint-retired-scripts:
 	cargo run --quiet --locked --package larch-cli -- lint rule retired-scripts
 
 test-render-cost-line:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_report_tokens_cost.py -q -k render_cost_line
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test token_commands cost_and_render_cost_line_preserve_cli_contracts
 
 test-implement-cleanup-script:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_finalize.py -q -k 'cleanup and not cleanup_target_ok'
