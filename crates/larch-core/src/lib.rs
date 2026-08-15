@@ -10,6 +10,8 @@ mod ci_timing;
 mod complete_umbrella;
 mod config;
 mod context;
+/// Design-domain plan grammar and plan-quality analysis core (#8575).
+pub mod design;
 mod difficulty;
 mod difficulty_calibration;
 mod env_file;
@@ -138,6 +140,19 @@ pub use complete_umbrella::{
 pub use config::{GIT_COMMIT_CO_AUTHORED_BY_TRAILER, env};
 
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
+pub use design::{
+    CANONICAL_TRAILER_ORDER, FORCE_PLAN_CONTRACT_ERROR, FIRM_HEADING_KINDS, HEADING_KINDS,
+    M1_DEFECT_TOKENS, M2_DEFECT_TOKENS, OPTIONAL_SIZE_TRAILER_KEYS, OVERSIZE_OVERRIDE_OPERATOR,
+    PLAN_COMMAND_TSV_HEADER, PLAN_DEFECT_ORDER, PLAN_SIZE_MAX_DIFF_ADDED, PLAN_SIZE_MAX_DIFF_LINES,
+    PLAN_SIZE_MAX_FIRM_HEADINGS, PLAN_SIZE_MAX_PLAN_BODY_LINES, PLAN_SIZE_MAX_SURFACES,
+    TRAILER_KEYS, HeadingEvent, HeadingKind, HeadingMatch, OptionalMetadata, PlanCommandRow,
+    PlanSizeAssessment, PlanTrailers, PlanValidationResult, TrailerKey, TrailerMatch, TrailerValue,
+    assess_plan_size, compose_trailer_lines, firm_heading_count, firm_heading_paths, grammar_prompt,
+    is_fence_marker, iter_firm_headings, iter_heading_events, iter_plan_headings, iter_trailer_lines,
+    match_heading, match_trailer_line, parse_final_trailers, parse_optional_metadata,
+    parse_plan_commands, plan_surfaces, render_plan_command_tsv, validate_difficulty_metadata,
+    validate_plan_contract,
+};
 pub use difficulty::{
     AUDIT_DENOMINATOR, BuildRecord, CODEX_MODEL_ROLE, CONFIDENCES, DifficultyFloor,
     DifficultyRating, FLOOR_MANIFEST_RELPATH, FloorMatch, FloorResult, HARD, MODERATE,
