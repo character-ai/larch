@@ -566,7 +566,7 @@ def test_step5_write_loop_identity_uses_implement_sidecar(monkeypatch, tmp_path:
         123,
         123,
         "Fri Jul 3 17:01:02 2026",
-        "/usr/bin/python3 /repo/python/cli.py review-and-fix step5",
+        "/repo/scripts/larch.sh review-and-fix step5",
         "review-and-fix step5",
     )
     monkeypatch.setattr(process_identity, "_read_stable_process_identity", lambda **_kwargs: recorded)

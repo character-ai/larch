@@ -45,7 +45,7 @@ Normal review artifacts record successful completion.
 5. Emit self-review Step 5 run-log artifacts so final report and `audit_runs` Step 5 detection treat a clean self-review as review ran. The CLI reconciles accepted and rejected counts from durable self-review artifacts under `$IMPLEMENT_TMPDIR`. This verb is best effort: writer failure records a Warnings entry in `$IMPLEMENT_TMPDIR/execution-issues.md` and returns `0`, so it never blocks Step 6.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py review-and-fix write-self-review-tally --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" review-and-fix write-self-review-tally --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID"
 ```
 
 6. Proceed directly to `### Cross-Skill Presence Propagation` in `skills/implement/SKILL.md`, then `### Track Rejected Code Review Findings` in `skills/implement/SKILL.md`, then Step 6, same chain as `STEP5_REVIEW_STATUS=complete`. Set `FILES_CHANGED_HINT=true` if `SELF_REVIEW_FIXES=true` or fixes were committed by the composite, otherwise `false`.

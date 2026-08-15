@@ -1174,6 +1174,46 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "tally-code-votes",
     ),
     CleanInstallCase::new(
+        "clean-install-review-and-fix-apply-findings",
+        "review-and-fix",
+        "apply-findings",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-and-fix-check-changes",
+        "review-and-fix",
+        "check-changes",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-and-fix-commit-fixes",
+        "review-and-fix",
+        "commit-fixes",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-and-fix-normalize-status",
+        "review-and-fix",
+        "normalize-status",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-and-fix-step5",
+        "review-and-fix",
+        "step5",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-and-fix-write-pre-self-review-snapshot",
+        "review-and-fix",
+        "write-pre-self-review-snapshot",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-and-fix-write-rejected",
+        "review-and-fix",
+        "write-rejected",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-and-fix-write-self-review-tally",
+        "review-and-fix",
+        "write-self-review-tally",
+    ),
+    CleanInstallCase::new(
         "clean-install-agent-parse-codex-usage",
         "agent",
         "parse-codex-usage",

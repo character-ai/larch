@@ -343,10 +343,6 @@ exclude = [
   "python/cli.py pr create-branch",
   "python/pr.py",
   "python/design_step_log.py",
-  # Step 5 launcher harness is Makefile-only; runtime reachability is through
-  # the SKILL.md invocation of python/cli.py review-and-fix step5.
-  "python/test_review_and_fix.py",
-  "python/test_review_and_fix.py",
   # The failed-jobs classifier is invoked by ship-pr and Makefile-only tests;
   # agent-lint does not follow those Python CLI edges.
   "python/cli.py ci failed-jobs",
@@ -578,18 +574,6 @@ exclude = [
   # audit for legacy bracket literals (Makefile test-legacy-title-prefix-literals-scope).
   "scripts/test-legacy-title-prefix-literals-scope.sh",
   "python/forked_repo.py",
-  # python/test_review_and_fix.py is the offline
-  # regression harness for python/cli.py review-and-fix check-changes
-  # (closes #651 — fixes the false-positive where any pre-existing untracked
-  # file flipped FILES_CHANGED=true; later extended for issues #695 and #1485).
-  # Cases pin the regression behavior, the empty-vs-missing baseline-state
-  # distinction, the dash-prefixed-filename safety, and the GIT_PROBE_FAILED /
-  # --strict fail-closed mode. The harness is referenced only from Makefile
-  # (test-check-review-changes target) and
-  # python/test_review_and_fix.py (sibling contract),
-  # matching the same Makefile-only pattern as the other test-* harnesses
-  # above. Both the .sh and the .md are excluded.
-  "python/test_review_and_fix.py",
   # skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh is
   # callouts in skills/implement/SKILL.md (issue #1381). Referenced only from
   # Makefile (test-implement-relevant-checks-anti-halt target) and the sibling
@@ -789,8 +773,6 @@ exclude = [
   "python/admission.py",
   "scripts/test-token-vendor-scrapers.md",
   "skills/research/scripts/test-research-angle-prompts.md",
-  "python/test_review_and_fix.py",
-  "python/test_review_and_fix.py",
   "skills/implement/scripts/test-implement-relevant-checks-anti-halt.md",
   "skills/design/scripts/dedup-plan-lines.md",
   "scripts/test-external-tool-registry.md",
@@ -909,12 +891,9 @@ exclude = [
   # referenced from Makefile targets in test-harnesses-2 and from sibling
   # contracts, not from runtime skill prose.
   "python/test_implement_dispatch.py",
-  "python/test_review_and_fix.py",
   "python/test_pr_body.py",
   "skills/implement/scripts/test-refresh-execution-issues.sh",
   "skills/implement/scripts/test-refresh-execution-issues.md",
-  "python/test_review_and_fix.py",
-  "python/test_review_and_fix.py",
   "skills/implement/scripts/test-write-final-report.sh",
   "skills/implement/scripts/test-write-final-report.md",
   "skills/implement/scripts/test-step-18.md",

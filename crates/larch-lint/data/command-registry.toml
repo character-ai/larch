@@ -6313,11 +6313,13 @@ verb = "apply-findings"
 python_module = "larch.review.review_and_fix"
 python_function = "apply_findings"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8451
+clean_install_test = "clean-install-review-and-fix-apply-findings"
 
 [[commands]]
 domain = "review-and-fix"
@@ -6337,11 +6339,13 @@ verb = "check-changes"
 python_module = "larch.review.review_and_fix"
 python_function = "check_changes"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8451
+clean_install_test = "clean-install-review-and-fix-check-changes"
 
 [[commands]]
 domain = "review-and-fix"
@@ -6349,11 +6353,13 @@ verb = "commit-fixes"
 python_module = "larch.review.review_and_fix"
 python_function = "commit_fixes"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8451
+clean_install_test = "clean-install-review-and-fix-commit-fixes"
 
 [[commands]]
 domain = "review-and-fix"
@@ -6361,11 +6367,13 @@ verb = "normalize-status"
 python_module = "larch.review.review_and_fix"
 python_function = "normalize_status"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8451
+clean_install_test = "clean-install-review-and-fix-normalize-status"
 
 [[commands]]
 domain = "review-and-fix"
@@ -6373,11 +6381,13 @@ verb = "step5"
 python_module = "larch.review.review_and_fix"
 python_function = "step5"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8451
+clean_install_test = "clean-install-review-and-fix-step5"
 
 [[commands]]
 domain = "review-and-fix"
@@ -6409,11 +6419,13 @@ verb = "write-pre-self-review-snapshot"
 python_module = "larch.review.review_and_fix"
 python_function = "write_pre_self_review_snapshot"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8451
+clean_install_test = "clean-install-review-and-fix-write-pre-self-review-snapshot"
 
 [[commands]]
 domain = "review-and-fix"
@@ -6421,11 +6433,13 @@ verb = "write-rejected"
 python_module = "larch.review.review_and_fix"
 python_function = "write_rejected"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8451
+clean_install_test = "clean-install-review-and-fix-write-rejected"
 
 [[commands]]
 domain = "review-and-fix"
@@ -6433,11 +6447,13 @@ verb = "write-self-review-tally"
 python_module = "larch.review.review_and_fix"
 python_function = "write_self_review_tally"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8451
+clean_install_test = "clean-install-review-and-fix-write-self-review-tally"
 
 [[commands]]
 domain = "run-log"
@@ -8880,8 +8896,8 @@ rust = ["push branch"]
 [[callers]]
 path = "agents/claude-self-reviewer.md"
 kind = "agent"
-python = ["review-and-fix write-pre-self-review-snapshot"]
-rust = []
+python = []
+rust = ["review-and-fix write-pre-self-review-snapshot"]
 
 [[callers]]
 path = "python/larch/agents/_auth.py"
@@ -9090,8 +9106,8 @@ rust = ["push rebase"]
 [[callers]]
 path = "python/larch/implement/dispatch_commit_route.py"
 kind = "python-runtime"
-python = ["implement commit", "review-and-fix commit-fixes"]
-rust = ["bgjob adapt", "dirty-tree scope-check"]
+python = ["implement commit"]
+rust = ["bgjob adapt", "dirty-tree scope-check", "review-and-fix check-changes", "review-and-fix commit-fixes", "review-and-fix step5"]
 
 [[callers]]
 path = "python/larch/implement/dispatch_helpers.py"
@@ -9202,12 +9218,6 @@ python = []
 rust = ["agent compose-collector-failure-log", "plan-review tally"]
 
 [[callers]]
-path = "python/larch/review/review_and_fix.py"
-kind = "python-runtime"
-python = []
-rust = ["git commit", "run-log write", "stall-recovery record-escalation", "timing mark", "token mark", "voting write-tally"]
-
-[[callers]]
 path = "python/larch/review/round_runner.py"
 kind = "python-runtime"
 python = []
@@ -9217,7 +9227,7 @@ rust = ["agent dispatch-voters", "git snapshot-untracked", "progress write-imple
 path = "python/larch/state/closeout.py"
 kind = "python-runtime"
 python = []
-rust = ["final-report write", "run-log append-failure", "slack issue-announce", "timing telemetry-mark"]
+rust = ["final-report write", "review-and-fix write-rejected", "run-log append-failure", "slack issue-announce", "timing telemetry-mark"]
 
 [[callers]]
 path = "python/larch/state/session_env.py"
@@ -9702,8 +9712,8 @@ rust = ["git rebase-abort", "push checkpoint-probe", "push rebase"]
 [[callers]]
 path = "skills/implement/references/self-review.md"
 kind = "skill"
-python = ["review-and-fix write-self-review-tally"]
-rust = ["bgjob wait", "timing telemetry-mark"]
+python = []
+rust = ["bgjob wait", "review-and-fix write-self-review-tally", "timing telemetry-mark"]
 
 [[callers]]
 path = "skills/implement/references/ship-pr-exit-matrix.md"
@@ -9744,8 +9754,8 @@ rust = []
 [[callers]]
 path = "skills/implement/references/step5-review-branches.md"
 kind = "skill"
-python = ["implement clone-tag", "review-and-fix step5", "ship seed-initial-state"]
-rust = ["bgjob wait", "review tally-code-votes"]
+python = ["implement clone-tag", "ship seed-initial-state"]
+rust = ["bgjob wait", "review tally-code-votes", "review-and-fix step5"]
 
 [[callers]]
 path = "skills/implement/references/umbrella-partition.md"
@@ -10116,14 +10126,14 @@ rust = ["agent collect-results", "agent cursor-auth-preflight", "agent cursor-wr
 [[callers]]
 path = "skills/review-and-fix/SKILL.md"
 kind = "skill"
-python = ["checks run-relevant", "redact scrub-submodule-paths", "review-and-fix apply-findings", "review-and-fix step5"]
-rust = ["review compose-findings", "review core", "timing record-round"]
+python = ["checks run-relevant", "redact scrub-submodule-paths"]
+rust = ["review compose-findings", "review core", "review-and-fix apply-findings", "review-and-fix step5", "timing record-round"]
 
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["checks run-relevant", "render specialist", "render voter", "review-and-fix step5", "scout dynamic-archetypes", "token claude-source"]
-rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review aggregate-findings", "review check-reviewer-failure-threshold", "review collect-findings", "review core", "review dispatch-panel", "review emit-tally", "review gather-context", "review log-phase", "review prune-nit-findings", "review reviewer-prune", "review tally-code-votes", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir", "session setup"]
+python = ["checks run-relevant", "render specialist", "render voter", "scout dynamic-archetypes", "token claude-source"]
+rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review aggregate-findings", "review check-reviewer-failure-threshold", "review collect-findings", "review core", "review dispatch-panel", "review emit-tally", "review gather-context", "review log-phase", "review prune-nit-findings", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir", "session setup"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"

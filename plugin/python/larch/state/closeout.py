@@ -159,7 +159,6 @@ def step_16(argv: list[str] | None = None) -> int:
     plugin_root = resolve_plugin_root(_plugin_root_fallback())
     if (rc := _validate_plugin_root(plugin_root)) is not None:
         return rc
-    cli = str(plugin_root / "python" / "cli.py")
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
     run_id = _read_key(path=tmpdir / "session-env.sh", key="LARCH_RUN_ID", default=env.get("RUN_ID", ""))
     if not run_id:
@@ -167,7 +166,7 @@ def step_16(argv: list[str] | None = None) -> int:
     if not run_id:
         run_id = _read_key(path=tmpdir / "finalize-state.sh", key="RUN_ID", default="")
     _run([str(larch_entrypoint(plugin_root)), "timing", "telemetry-mark", "--implement-tmpdir", str(tmpdir), "--label", "Step 16 — rejected findings"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    _run([sys.executable, cli, "review-and-fix", "write-rejected", "--implement-tmpdir", str(tmpdir), "--run-id", run_id, "--log-root", str(tmpdir / "larch-logs")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _run([str(larch_entrypoint(plugin_root)), "review-and-fix", "write-rejected", "--implement-tmpdir", str(tmpdir), "--run-id", run_id, "--log-root", str(tmpdir / "larch-logs")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return 0
 
 

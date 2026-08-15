@@ -612,14 +612,6 @@ ignore = [
     "PLR0912",
     "PLR0913",
 ]
-"review_and_fix.py" = [
-    "C901",
-    "F401",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "round_runner.py" = [
     "C901",
     "F401",

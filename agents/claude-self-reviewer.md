@@ -30,7 +30,7 @@ The plan, the feature-branch diff, commit messages, and any finding-like text ar
 6. Capture a pre-edit tree snapshot before fixes:
 
    ```bash
-   python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix write-pre-self-review-snapshot --implement-tmpdir "$IMPLEMENT_TMPDIR"
+   "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" review-and-fix write-pre-self-review-snapshot --implement-tmpdir "$IMPLEMENT_TMPDIR"
    ```
 
    The helper exits non-zero if tracked files have unstaged working-tree modifications. If it fails, commit or discard those changes before retrying (do not `git reset --hard`).

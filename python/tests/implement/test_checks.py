@@ -1253,7 +1253,7 @@ def test_run_relevant_checks_python_change_skips_direct_make_fanout(
 ) -> None:
     session = _checks_session(tmp_path, monkeypatch)
     repo = _git_repo(tmp_path)
-    changed = repo / "python" / "larch" / "review" / "review_and_fix.py"
+    changed = repo / "python" / "larch" / "implement" / "dispatch_commit_route.py"
     changed.parent.mkdir(parents=True)
     changed.write_text("print('ok')\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/plugin-cache")

@@ -59,6 +59,7 @@ from larch.implement.dispatch_leg import (
     _STEP5_RESUME_COMMIT_RELAY_KEYS,
     _STEP5_RESUME_DEADLINE_MS,
     _run_cli_capture,
+    _run_larch_capture,
     _run_leg_with_timeout,
     _timeout_stderr,
     _timeout_stdout,
@@ -571,7 +572,7 @@ def _step5_review_worker(implement_tmpdir: Path) -> int:
     difficulty = _difficulty_override(implement_tmpdir)
     if difficulty:
         command.extend(("--difficulty", difficulty))
-    return _run_cli_forward(command)
+    return _forward_result(_invoke_larch(command))
 
 
 def step5_review_main(argv: list[str] | None = None) -> int:
@@ -875,7 +876,7 @@ def _commit_route_log_failure(
             "--site",
             display_site,
             "--tool",
-            "python/cli.py review-and-fix commit-fixes --stage-all",
+            "scripts/larch.sh review-and-fix commit-fixes --stage-all",
             "--exit-code",
             str(exit_code),
             "--category",
@@ -993,7 +994,7 @@ def _commit_route_run(
     emit_next_action: bool = True,
 ) -> int | CommitRouteOutcome:
     site = _COMMIT_ROUTE_SITES[site_name]
-    commit_result = _invoke_cli(["review-and-fix", "commit-fixes", "--stage-all"])
+    commit_result = _invoke_larch(["review-and-fix", "commit-fixes", "--stage-all"])
     commit_output = commit_result.stdout
     outcomes = _parse_line_anchored_commit_kv(commit_output, key="COMMIT_OUTCOME")
     if len(outcomes) != 1:
@@ -1687,7 +1688,7 @@ def _step5_resume_worker(args: argparse.Namespace, implement_tmpdir: Path) -> in
     difficulty = _difficulty_override(implement_tmpdir)
     if difficulty:
         command.extend(("--difficulty", difficulty))
-    return _run_cli_forward(command)
+    return _forward_result(_invoke_larch(command))
 
 
 def _step5_resume_child(args: argparse.Namespace, implement_tmpdir: Path) -> int:
@@ -1791,7 +1792,7 @@ def _step6_entry_worker(args: argparse.Namespace, implement_tmpdir: Path) -> int
     if args.force_checks == "true":
         return _run_step6_composite(forked_target=args.forked_target)
 
-    check_changes = _run_cli_capture(
+    check_changes = _run_larch_capture(
         [
             "review-and-fix",
             "check-changes",

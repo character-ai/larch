@@ -262,10 +262,10 @@ test-timing-ledger:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_timing.py -q
 
 test-review-and-fix-record-timing:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k step5_round_timing
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_and_fix_commands
 
 test-review-and-fix-step5-loop-timing:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k loop_timing
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_and_fix_commands
 
 test-record-plan-review-round-timing:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands utility_and_persistence
@@ -670,13 +670,13 @@ test-commit-implementation:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_implement_dispatch.py -q -k commit_main
 
 test-review-and-fix-commit-fixes:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k commit_fixes
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_and_fix_commands self_review_snapshot_commits_only_its_delta
 
 test-generate-code-flow-diagram:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k generate_code_flow
 
 test-review-and-fix-write-rejected:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k write_rejected
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_and_fix_commands
 
 test-slack-issue-announce:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k slack_issue_announce
@@ -756,7 +756,8 @@ test-dispatch-plan-voters:
 	$(HARNESS_MARK) --label $@ -- env LARCH_BINARY=target/debug/larch bash scripts/test-plan-review-dispatch.sh
 
 test-prompt-template-invariants:
-	$(HARNESS_MARK) --label $@ -- bash scripts/test-prompt-template-invariants.sh
+	cargo build --locked --package larch-cli
+	$(HARNESS_MARK) --label $@ -- env LARCH_BINARY="$(CURDIR)/target/debug/larch" bash scripts/test-prompt-template-invariants.sh
 
 
 test-collect-findings:
@@ -785,26 +786,25 @@ test-emit-tally:
 test-log-phase:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_tally_commands log_phase
 
-# test-review-and-fix runs all sections sequentially (local-dev convenience, NOT a test-harnesses
-# prerequisite — see CARVE_OUTS in scripts/test-harness-shards-coverage.sh). CI uses the four
-# section targets below instead: dispatch, convergence, parsers, and step5-starting-round.
+# test-review-and-fix is a local convenience target (not a test-harnesses
+# prerequisite — see CARVE_OUTS in scripts/test-harness-shards-coverage.sh).
 test-review-and-fix:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_and_fix_commands
 
 test-review-and-fix-dispatch:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k dispatch
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_and_fix_commands
 
 test-review-and-fix-convergence:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k convergence
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_and_fix_commands
 
 test-review-and-fix-parsers:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k parsers
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_and_fix_commands
 
 test-review-and-fix-step5-starting-round:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k starting_round
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_and_fix_commands step5_preflight_failure_persists_the_stall_envelope
 
 test-review-and-fix-step5:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k step5
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_and_fix_commands step5_preflight_failure_persists_the_stall_envelope
 
 test-synthesis-subagent:
 	$(HARNESS_MARK) --label $@ -- bash skills/research/scripts/test-synthesis-subagent.sh
@@ -861,7 +861,7 @@ test-compose-review-findings:
 
 
 test-review-and-fix-check-changes:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/review/test_review_and_fix.py -q -k check_changes
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_and_fix_commands
 
 test-check-mid-run-dirty-tree:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test dirty_tree
@@ -955,7 +955,7 @@ actionlint:
 	pre-commit run actionlint --all-files
 
 agent-lint:
-	pre-commit run agent-lint --all-files
+	pre-commit run --hook-stage manual agent-lint --all-files
 
 agnix:
 	pre-commit run agnix --all-files
