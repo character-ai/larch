@@ -303,15 +303,7 @@ fn emit_next(arguments: &NextArguments, graph: &GraphState) -> Result<(), String
     {
         return Err("parent must be open with the [IMPLEMENTING] prefix".to_owned());
     }
-    let selection_input = graph
-        .leaves
-        .iter()
-        .map(|leaf| CompleteUmbrellaLeaf {
-            number: leaf.issue.number,
-            open: leaf.issue.state == GitHubIssueState::Open,
-            open_blockers: leaf.open_blockers.clone(),
-        })
-        .collect::<Vec<_>>();
+    let selection_input = selection_leaves(&graph.leaves);
     let selection = select_complete_umbrella_leaf(&selection_input, &graph.open_orphan_blockers);
     write_audit_snapshot(arguments, graph)?;
     for (key, value) in next_action_fields(&selection) {
@@ -328,6 +320,18 @@ fn emit_next(arguments: &NextArguments, graph: &GraphState) -> Result<(), String
     );
     emit_kv("SNAPSHOT_WRITTEN", "true");
     Ok(())
+}
+
+fn selection_leaves(leaves: &[LeafState]) -> Vec<CompleteUmbrellaLeaf> {
+    leaves
+        .iter()
+        .map(|leaf| CompleteUmbrellaLeaf {
+            number: leaf.issue.number,
+            open: leaf.issue.state == GitHubIssueState::Open,
+            implementing: leaf.issue.title.starts_with(IMPLEMENTING_PREFIX),
+            open_blockers: leaf.open_blockers.clone(),
+        })
+        .collect()
 }
 
 fn next_action_fields(selection: &CompleteUmbrellaNext) -> Vec<(&'static str, String)> {

@@ -15,6 +15,7 @@ pub const COMPLETE_UMBRELLA_CHILD_NEEDS_ORCHESTRATOR_FINALIZE: &str =
 pub struct CompleteUmbrellaLeaf {
     pub number: u64,
     pub open: bool,
+    pub implementing: bool,
     pub open_blockers: Vec<u64>,
 }
 
@@ -31,8 +32,8 @@ pub enum CompleteUmbrellaNext {
 ///
 /// An open parent blocker that is not a direct leaf stops scheduling before
 /// leaf-dependency deadlock handling. Closed leaves do not participate. No
-/// open leaves advances to the audit. Open leaves with no runnable member
-/// produce a stable deadlock result.
+/// open leaves advances to the audit. Active leaves do not launch again, but
+/// remain open so they produce a stable deadlock result instead of an audit.
 #[must_use]
 pub fn select_complete_umbrella_leaf(
     leaves: &[CompleteUmbrellaLeaf],
@@ -46,7 +47,7 @@ pub fn select_complete_umbrella_leaf(
     }
     if let Some(number) = leaves
         .iter()
-        .filter(|leaf| leaf.open && leaf.open_blockers.is_empty())
+        .filter(|leaf| leaf.open && !leaf.implementing && leaf.open_blockers.is_empty())
         .map(|leaf| leaf.number)
         .min()
     {
@@ -238,16 +239,19 @@ mod tests {
             CompleteUmbrellaLeaf {
                 number: 14,
                 open: true,
+                implementing: false,
                 open_blockers: Vec::new(),
             },
             CompleteUmbrellaLeaf {
                 number: 8,
                 open: true,
+                implementing: false,
                 open_blockers: vec![3],
             },
             CompleteUmbrellaLeaf {
                 number: 11,
                 open: true,
+                implementing: false,
                 open_blockers: Vec::new(),
             },
         ];
@@ -264,6 +268,7 @@ mod tests {
                 &[CompleteUmbrellaLeaf {
                     number: 5,
                     open: false,
+                    implementing: false,
                     open_blockers: Vec::new(),
                 }],
                 &[],
@@ -276,11 +281,13 @@ mod tests {
                     CompleteUmbrellaLeaf {
                         number: 9,
                         open: true,
+                        implementing: false,
                         open_blockers: vec![10],
                     },
                     CompleteUmbrellaLeaf {
                         number: 7,
                         open: true,
+                        implementing: false,
                         open_blockers: vec![9],
                     },
                 ],
@@ -297,11 +304,38 @@ mod tests {
                 &[CompleteUmbrellaLeaf {
                     number: 5,
                     open: false,
+                    implementing: false,
                     open_blockers: Vec::new(),
                 }],
                 &[12, 7, 12],
             ),
             CompleteUmbrellaNext::OrphanBlocked(vec![7, 12])
+        );
+    }
+
+    #[test]
+    fn selection_skips_active_leaves_without_auditing_them_as_complete() {
+        let active_and_runnable = [
+            CompleteUmbrellaLeaf {
+                number: 5,
+                open: true,
+                implementing: true,
+                open_blockers: Vec::new(),
+            },
+            CompleteUmbrellaLeaf {
+                number: 9,
+                open: true,
+                implementing: false,
+                open_blockers: Vec::new(),
+            },
+        ];
+        assert_eq!(
+            select_complete_umbrella_leaf(&active_and_runnable, &[]),
+            CompleteUmbrellaNext::Launch(9)
+        );
+        assert_eq!(
+            select_complete_umbrella_leaf(&active_and_runnable[..1], &[]),
+            CompleteUmbrellaNext::Deadlocked(vec![5])
         );
     }
 
