@@ -1369,14 +1369,59 @@ const fn is_empty_merge_value(value: &Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        AUDIT_DENOMINATOR, DifficultyFloor, HARD, MODERATE, RUBRIC, TRIVIAL, bump_for_confidence,
-        difficulty_line, label_for_tier, load_floor_manifest, match_floors, maybe_audit_upgrade,
-        normalize_tier, plan_difficulty, sanitize_rationale, tier_max, trailing_plan_difficulty,
-        validate_rating_object,
+        AUDIT_DENOMINATOR, BuildRecord, DifficultyFloor, HARD, MODERATE, RUBRIC, SCHEMA_VERSION,
+        TRIVIAL, blank_merge_explicit, build_record, bump_for_confidence, codex_review_model_role,
+        difficulty_line, dump_record, known_labels, label_for_tier, load_floor_manifest,
+        load_record_data, match_floors, maybe_audit_upgrade, merge_existing_record_fields,
+        next_tier, normalize_tier, panel_shape_for_tier, plan_difficulty, rating_from_tier,
+        read_changed_paths, read_rating_file, refresh_existing_record, resolve_panel_tier,
+        sanitize_rationale, threshold_panel_for_tier, tier_ceiling, tier_max, tier_rank,
+        tier_valid, trailing_plan_difficulty, trailing_plan_metadata_lines, validate_rating_object,
+        write_record_map,
     };
-    use serde_json::json;
+    use serde_json::{Map, json};
     use std::path::Path;
     use tempfile::TempDir;
+
+    fn rating(tier: &str, confidence: &str, rationale: &str) -> super::DifficultyRating {
+        validate_rating_object(&json!({
+            "predicted_tier": tier,
+            "confidence": confidence,
+            "rationale": rationale,
+        }))
+        .expect("rating")
+    }
+
+    fn record_input<'a>(
+        rater: &'a str,
+        design: Option<&'a super::DifficultyRating>,
+        implement: Option<&'a super::DifficultyRating>,
+        fallback: Option<&'a super::DifficultyRating>,
+        paths: &'a [String],
+        floors: &'a [DifficultyFloor],
+        override_tier: &'a str,
+    ) -> BuildRecord<'a> {
+        BuildRecord {
+            rater,
+            rater_tool: "claude",
+            rater_model: "sonnet",
+            design_rating: design,
+            implement_rating: implement,
+            fallback_rating: fallback,
+            changed_paths: paths,
+            floors,
+            panel_skipped: "",
+            audit_upgrade: "",
+            escalations: &[],
+            override_source: "",
+            override_tier,
+            panel_tier: "",
+            round_cap: None,
+            codex_model_role: "",
+            audit_evaluated: None,
+            escalated_round: None,
+        }
+    }
 
     #[test]
     fn low_confidence_bumps_and_sanitizes() {
@@ -1451,5 +1496,276 @@ mod tests {
         assert!(rows.iter().any(|row| row.glob == "hooks/**"));
         let dir = TempDir::new().expect("temp");
         assert!(load_floor_manifest(&dir.path().join("missing.tsv")).is_err());
+    }
+
+    #[test]
+    fn validate_rating_rejects_invalid_tiers() {
+        for tier in ["", "EASY", "harder"] {
+            assert!(
+                validate_rating_object(&json!({
+                    "predicted_tier": tier,
+                    "confidence": "medium",
+                    "rationale": "x",
+                }))
+                .is_err(),
+                "{tier}"
+            );
+        }
+        assert!(!tier_valid("EASY"));
+        assert!(read_rating_file(Path::new("/no/such/rating.json")).is_none());
+        assert!(rating_from_tier("EASY", "x").is_none());
+        assert_eq!(
+            rating_from_tier(HARD, "wire")
+                .expect("rating")
+                .predicted_tier,
+            HARD
+        );
+    }
+
+    #[test]
+    fn build_record_applies_floors_and_ignores_weaker_fallback() {
+        let floors = [DifficultyFloor {
+            glob: "hooks/**".to_owned(),
+            floor: MODERATE.to_owned(),
+            reason: "hook".to_owned(),
+        }];
+        let implement = rating("TRIVIAL", "high", "small hook edit");
+        let paths = ["hooks/pre-tool-use.sh".to_owned()];
+        let raised = build_record(record_input(
+            "implement",
+            None,
+            Some(&implement),
+            None,
+            &paths,
+            &floors,
+            "",
+        ))
+        .expect("record");
+        assert_eq!(raised["predicted_tier"], json!(TRIVIAL));
+        assert_eq!(raised["applied_tier"], json!(MODERATE));
+        assert_eq!(raised["override_source"], json!("floor"));
+        assert_eq!(raised["schema_version"], json!(SCHEMA_VERSION));
+
+        let design = rating("TRIVIAL", "high", "small doc edit");
+        let fallback = rating("MODERATE", "medium", "recovery fallback");
+        let kept = build_record(record_input(
+            "fallback",
+            Some(&design),
+            None,
+            Some(&fallback),
+            &[],
+            &[],
+            "",
+        ))
+        .expect("record");
+        assert_eq!(kept["predicted_tier"], json!(TRIVIAL));
+        assert_eq!(kept["applied_tier"], json!(TRIVIAL));
+        assert_eq!(kept["override_source"], json!("none"));
+        assert!(build_record(record_input("design", None, None, None, &[], &[], "")).is_err());
+    }
+
+    #[test]
+    fn write_and_refresh_records_round_trip() {
+        let dir = TempDir::new().expect("temp");
+        let path = dir.path().join("difficulty-rating.json");
+        let design = rating("MODERATE", "medium", "plan changes workflow");
+        let record = build_record(record_input(
+            "design",
+            Some(&design),
+            None,
+            None,
+            &[],
+            &[],
+            "",
+        ))
+        .expect("record");
+        write_record_map(&path, &record).expect("write");
+        let data = load_record_data(&path);
+        assert_eq!(data["design_tier"], json!(MODERATE));
+        assert_eq!(data["applied_tier"], json!(MODERATE));
+        assert!(dump_record(&data).contains("MODERATE"));
+
+        let floors = [DifficultyFloor {
+            glob: "hooks/**".to_owned(),
+            floor: MODERATE.to_owned(),
+            reason: "hook".to_owned(),
+        }];
+        let implement = rating("TRIVIAL", "high", "small");
+        write_record_map(
+            &path,
+            &build_record(record_input(
+                "implement",
+                None,
+                Some(&implement),
+                None,
+                &[],
+                &[],
+                "",
+            ))
+            .expect("seed"),
+        )
+        .expect("seed");
+        let refreshed =
+            refresh_existing_record(&path, &["hooks/pre-tool-use.sh".to_owned()], &floors)
+                .expect("refresh");
+        assert_eq!(refreshed["override_source"], json!("floor"));
+        assert!(load_record_data(&dir.path().join("missing.json")).is_empty());
+        assert!(read_changed_paths(None).is_empty());
+        let list = dir.path().join("paths.txt");
+        std::fs::write(&list, "hooks/a.sh\n\nskills/x.md\n").expect("paths");
+        assert_eq!(
+            read_changed_paths(Some(&list)),
+            vec!["hooks/a.sh".to_owned(), "skills/x.md".to_owned()]
+        );
+        let nul = dir.path().join("nul.txt");
+        std::fs::write(&nul, b"hooks/a.sh\0skills/x.md\0").expect("nul");
+        assert_eq!(
+            read_changed_paths(Some(&nul)),
+            vec!["hooks/a.sh".to_owned(), "skills/x.md".to_owned()]
+        );
+        let rating_path = dir.path().join("rating.json");
+        std::fs::write(
+            &rating_path,
+            json!({
+                "predicted_tier": "HARD",
+                "confidence": "high",
+                "rationale": "wide"
+            })
+            .to_string(),
+        )
+        .expect("rating file");
+        assert_eq!(
+            read_rating_file(&rating_path)
+                .expect("rating")
+                .predicted_tier,
+            HARD
+        );
+        let bad_floors = dir.path().join("floors.tsv");
+        std::fs::write(&bad_floors, "glob\tfloor\treason\nhooks/**\tEASY\thook\n")
+            .expect("bad floors");
+        assert!(load_floor_manifest(&bad_floors).is_err());
+        std::fs::write(&bad_floors, "only-one-column\n").expect("short floors");
+        assert!(load_floor_manifest(&bad_floors).is_err());
+    }
+
+    #[test]
+    fn operator_override_and_panel_resolution_upgrade() {
+        let dir = TempDir::new().expect("temp");
+        let path = dir.path().join("difficulty-rating.json");
+        let implement = rating("TRIVIAL", "high", "small");
+        let record = build_record(record_input(
+            "implement",
+            None,
+            Some(&implement),
+            None,
+            &["hooks/pre-tool-use.sh".to_owned()],
+            &[DifficultyFloor {
+                glob: "hooks/**".to_owned(),
+                floor: MODERATE.to_owned(),
+                reason: "hook".to_owned(),
+            }],
+            "TRIVIAL",
+        ))
+        .expect("record");
+        write_record_map(&path, &record).expect("write");
+        let resolved = resolve_panel_tier(&path, "TRIVIAL", Some(1), true, None).expect("resolve");
+        let data = load_record_data(&path);
+        assert_eq!(resolved.panel_tier, HARD);
+        assert!(resolved.audit_upgrade);
+        assert_eq!(data["override_source"], json!("operator"));
+        assert_eq!(data["audit_upgrade"], json!("true"));
+
+        let recomputed = resolve_panel_tier(&path, "HARD", Some(1), true, None).expect("recompute");
+        assert_eq!(recomputed.panel_tier, HARD);
+        assert_eq!(recomputed.codex_model_role, codex_review_model_role(HARD));
+    }
+
+    #[test]
+    fn merge_preserves_resolution_and_clamps_helpers() {
+        assert_eq!(tier_ceiling(TRIVIAL), 2);
+        assert_eq!(tier_ceiling(HARD), 2);
+        assert_eq!(panel_shape_for_tier(TRIVIAL), "singles");
+        assert_eq!(threshold_panel_for_tier(MODERATE), "hard");
+        assert_eq!(next_tier(TRIVIAL), MODERATE);
+        assert_eq!(next_tier(HARD), HARD);
+        assert_eq!(tier_rank(MODERATE).expect("rank"), 1);
+        assert!(known_labels().contains(&"difficulty:hard".to_owned()));
+        assert_eq!(codex_review_model_role(HARD), "review");
+
+        let fallback = rating("MODERATE", "medium", "new");
+        let built = build_record(record_input(
+            "implement",
+            None,
+            None,
+            Some(&fallback),
+            &[],
+            &[],
+            "",
+        ))
+        .expect("built");
+        let mut existing = Map::new();
+        let _ = existing.insert("override_source".to_owned(), json!("operator"));
+        let _ = existing.insert("audit_upgrade".to_owned(), json!("true"));
+        let _ = existing.insert("panel_tier".to_owned(), json!("HARD"));
+        let _ = existing.insert("round_cap".to_owned(), json!(3));
+        let _ = existing.insert(
+            "escalations".to_owned(),
+            json!([{"round": 2, "from_tier": "MODERATE", "to_tier": "HARD", "trigger": "bulk-skip"}]),
+        );
+        let merged = merge_existing_record_fields(built, &existing, &blank_merge_explicit());
+        assert_eq!(merged["override_source"], json!("operator"));
+        assert_eq!(merged["audit_upgrade"], json!("true"));
+        assert_eq!(merged["panel_tier"], json!("HARD"));
+        assert_eq!(merged["round_cap"], json!(2));
+    }
+
+    #[test]
+    fn trailer_metadata_and_difficulty_line_extras() {
+        let contiguous = "body\ndiff_added: 8\nnot trailer\ndifficulty: MODERATE\ndiff_lines: 9\n";
+        assert_eq!(
+            trailing_plan_metadata_lines(contiguous),
+            vec![
+                "difficulty: MODERATE".to_owned(),
+                "diff_lines: 9".to_owned()
+            ]
+        );
+        let full = "body\nreview_status: complete\nrounds_completed: 2\ndifficulty: MODERATE\noversize_override: operator\ndiff_lines: 9\n";
+        let lines = trailing_plan_metadata_lines(full);
+        assert!(lines.iter().any(|line| line.starts_with("review_status:")));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("oversize_override:"))
+        );
+        assert_eq!(
+            plan_difficulty(
+                "## Plan\nbody\ndifficulty: MODERATE\n\n## Acceptance\nok\n\ndiff_lines: 9\n"
+            ),
+            MODERATE
+        );
+        assert_eq!(
+            plan_difficulty(
+                "difficulty: TRIVIAL\nbody\ndifficulty: HARD\n\n## Acceptance\nok\n\ndiff_lines: 9\n"
+            ),
+            HARD
+        );
+        assert_eq!(
+            plan_difficulty(
+                "difficulty: MODERATE\nbody\n\ndifficulty: EASY\nconfidence: high\ndiff_lines: 9\n"
+            ),
+            ""
+        );
+
+        let mut data = serde_json::Map::new();
+        let _ = data.insert("predicted_tier".to_owned(), json!("TRIVIAL"));
+        let _ = data.insert("floors_applied".to_owned(), json!([{"glob": "hooks/**"}]));
+        let _ = data.insert("override_source".to_owned(), json!("operator"));
+        let _ = data.insert("panel_skipped".to_owned(), json!("no-panel"));
+        let _ = data.insert("audit_upgrade".to_owned(), json!("true"));
+        let line = difficulty_line(&data);
+        assert!(line.contains("floor checked"));
+        assert!(line.contains("override operator"));
+        assert!(line.contains("panel skipped: no-panel"));
+        assert!(line.contains("audit true"));
     }
 }

@@ -420,3 +420,223 @@ fn sync_labels_invalid_tier_matches_the_frozen_python_oracle() {
         ]),
     );
 }
+
+#[test]
+fn extract_plan_metadata_errors_when_the_plan_is_missing() {
+    let output = larch(&[
+        "difficulty",
+        "extract-plan-metadata",
+        "--plan-file",
+        "/no/such/plan.txt",
+    ]);
+    assert_eq!(code(&output), 2);
+    assert!(stdout(&output).contains("STATUS=error"));
+}
+
+#[test]
+fn write_record_applies_changed_path_floors_and_refresh() {
+    let dir = TempDir::new().expect("tempdir");
+    let record = dir.path().join("difficulty-rating.json");
+    let paths = dir.path().join("changed.txt");
+    fs::write(&paths, "hooks/pre-tool-use.sh\n").expect("paths");
+    let output = larch(&[
+        "difficulty",
+        "write-record",
+        "--output",
+        record.to_str().expect("utf8"),
+        "--rater",
+        "implement",
+        "--fallback-tier",
+        "TRIVIAL",
+        "--fallback-rationale",
+        "tiny hook",
+        "--changed-paths-file",
+        paths.to_str().expect("utf8"),
+    ]);
+    assert_eq!(code(&output), 0, "{}", stdout(&output));
+    let data: Value =
+        serde_json::from_str(&fs::read_to_string(&record).expect("read")).expect("json");
+    assert_eq!(data["applied_tier"], "MODERATE");
+    assert_eq!(data["override_source"], "floor");
+
+    let refreshed = larch(&[
+        "difficulty",
+        "write-record",
+        "--output",
+        record.to_str().expect("utf8"),
+        "--refresh-existing",
+        "--changed-paths-file",
+        paths.to_str().expect("utf8"),
+    ]);
+    assert_eq!(code(&refreshed), 0, "{}", stdout(&refreshed));
+}
+
+#[test]
+fn validate_rating_writes_an_output_file() {
+    let dir = TempDir::new().expect("tempdir");
+    let input = dir.path().join("rating.json");
+    let output_file = dir.path().join("out.json");
+    fs::write(
+        &input,
+        json!({
+            "predicted_tier": "trivial",
+            "confidence": "low",
+            "rationale": "small"
+        })
+        .to_string(),
+    )
+    .expect("write rating");
+    let output = larch(&[
+        "difficulty",
+        "validate-rating",
+        "--input-file",
+        input.to_str().expect("utf8"),
+        "--output-file",
+        output_file.to_str().expect("utf8"),
+    ]);
+    assert_eq!(code(&output), 0, "{}", stdout(&output));
+    let data: Value =
+        serde_json::from_str(&fs::read_to_string(&output_file).expect("read")).expect("json");
+    assert_eq!(data["adjusted_tier"], "MODERATE");
+}
+
+#[test]
+fn resolve_panel_rejects_an_invalid_override() {
+    let dir = TempDir::new().expect("tempdir");
+    let record = dir.path().join("difficulty-rating.json");
+    fs::write(&record, "{}").expect("record");
+    let output = larch(&[
+        "difficulty",
+        "resolve-panel",
+        "--record-file",
+        record.to_str().expect("utf8"),
+        "--override",
+        "EASY",
+    ]);
+    assert_eq!(code(&output), 2);
+    assert!(stdout(&output).contains("ERROR=invalid-override"));
+}
+
+#[test]
+fn write_record_honors_explicit_resolution_flags() {
+    let dir = TempDir::new().expect("tempdir");
+    let record = dir.path().join("difficulty-rating.json");
+    let output = larch(&[
+        "difficulty",
+        "write-record",
+        "--output",
+        record.to_str().expect("utf8"),
+        "--rater",
+        "design",
+        "--design-tier",
+        "TRIVIAL",
+        "--fallback-tier",
+        "MODERATE",
+        "--panel-skipped",
+        "no-panel",
+        "--audit-upgrade",
+        "true",
+        "--override-tier",
+        "TRIVIAL",
+        "--panel-tier",
+        "HARD",
+        "--round-cap",
+        "1",
+        "--codex-model-role",
+        "review",
+        "--audit-evaluated",
+        "true",
+        "--escalated-round",
+        "false",
+    ]);
+    assert_eq!(code(&output), 0, "{}", stdout(&output));
+    let data: Value =
+        serde_json::from_str(&fs::read_to_string(&record).expect("read")).expect("json");
+    assert_eq!(data["override_source"], "operator");
+    assert_eq!(data["applied_tier"], "HARD");
+    assert_eq!(data["panel_tier"], "HARD");
+    assert_eq!(data["round_cap"], 1);
+    assert_eq!(data["panel_skipped"], "no-panel");
+}
+
+#[test]
+fn resolve_panel_audit_roll_upgrades_to_hard() {
+    let dir = TempDir::new().expect("tempdir");
+    let record = dir.path().join("difficulty-rating.json");
+    let written = larch(&[
+        "difficulty",
+        "write-record",
+        "--output",
+        record.to_str().expect("utf8"),
+        "--rater",
+        "implement",
+        "--fallback-tier",
+        "TRIVIAL",
+        "--fallback-rationale",
+        "tiny",
+    ]);
+    assert_eq!(code(&written), 0, "{}", stdout(&written));
+    let output = larch(&[
+        "difficulty",
+        "resolve-panel",
+        "--record-file",
+        record.to_str().expect("utf8"),
+        "--audit-roll",
+        "1",
+    ]);
+    assert_eq!(code(&output), 0, "{}", stdout(&output));
+    assert!(stdout(&output).contains("PANEL_TIER=HARD"));
+    assert!(stdout(&output).contains("AUDIT_UPGRADE=true"));
+}
+
+#[test]
+fn write_record_refresh_reads_git_changed_paths() {
+    let dir = TempDir::new().expect("tempdir");
+    let root = dir.path();
+    git(root, &["init", "--quiet"]);
+    git(root, &["config", "user.email", "larch@example.com"]);
+    git(root, &["config", "user.name", "Larch Test"]);
+    fs::write(root.join("README"), "seed\n").expect("readme");
+    git(root, &["add", "README"]);
+    git(root, &["commit", "-q", "-m", "seed"]);
+    fs::create_dir_all(root.join("hooks")).expect("hooks");
+    fs::write(root.join("hooks/pre-tool-use.sh"), "echo\n").expect("hook");
+    git(root, &["add", "hooks/pre-tool-use.sh"]);
+    let record = root.join("difficulty-rating.json");
+    let seed = larch(&[
+        "difficulty",
+        "write-record",
+        "--output",
+        record.to_str().expect("utf8"),
+        "--rater",
+        "implement",
+        "--fallback-tier",
+        "TRIVIAL",
+        "--fallback-rationale",
+        "tiny",
+    ]);
+    assert_eq!(code(&seed), 0, "{}", stdout(&seed));
+    let refreshed = larch(&[
+        "difficulty",
+        "write-record",
+        "--output",
+        record.to_str().expect("utf8"),
+        "--refresh-existing",
+        "--refresh-repo-root",
+        root.to_str().expect("utf8"),
+    ]);
+    assert_eq!(code(&refreshed), 0, "{}", stdout(&refreshed));
+    let data: Value =
+        serde_json::from_str(&fs::read_to_string(&record).expect("read")).expect("json");
+    assert_eq!(data["applied_tier"], "MODERATE");
+    assert_eq!(data["override_source"], "floor");
+}
+
+fn git(root: &Path, args: &[&str]) {
+    let status = ProcessCommand::new("git") // lint-subprocess-via-runner: ok test-only Git fixture
+        .args(args)
+        .current_dir(root)
+        .status()
+        .expect("git");
+    assert!(status.success(), "git {args:?} failed");
+}
