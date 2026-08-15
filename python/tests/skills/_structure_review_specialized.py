@@ -71,13 +71,18 @@ def run(repo_root: Path) -> list[str]:
     ):
         if needle in read(cli):
             failures.append(label)
+    review_and_fix_commands_text = read(review_and_fix_commands)
     for verb in ("apply-findings", "step5", "commit-fixes", "check-changes", "normalize-status"):
-        require(review_and_fix_commands, f'#[command(name = "{verb}"', f"(1b) missing Rust review-and-fix {verb} command")
-    if "launch-codex-exec" not in read(review_and_fix_commands):
+        if not re.search(rf'#\[command\(\s*name\s*=\s*"{re.escape(verb)}"', review_and_fix_commands_text):
+            failures.append(f"(1b) missing Rust review-and-fix {verb} command")
+    if "launch-codex-exec" not in review_and_fix_commands_text:
         failures.append("(1b) review-and-fix CLI must dispatch Codex coder")
-    if '"--tool", "cursor"' not in read(review_and_fix_commands):
+    if not all(
+        needle in review_and_fix_commands_text
+        for needle in ("run_cursor_coder(", "VendorProgram::Cursor")
+    ):
         failures.append("(1b) review-and-fix CLI must dispatch Cursor coder")
-    if "launch-claude-subprocess" in read(review_and_fix_commands):
+    if "launch-claude-subprocess" in review_and_fix_commands_text:
         failures.append("(1b) review-and-fix CLI must not dispatch a Claude subagent fallback")
 
     aggregator = file("agents/orchestrator-aggregator.md")
