@@ -5951,11 +5951,13 @@ verb = "findings-view"
 python_module = "larch.rendering.rendering"
 python_function = "render_findings_view_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8556
+clean_install_test = "clean-install-render-findings-view"
 
 [[commands]]
 domain = "render"
@@ -5963,11 +5965,13 @@ verb = "lane-status"
 python_module = "larch.rendering.rendering"
 python_function = "render_lane_status_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8556
+clean_install_test = "clean-install-render-lane-status"
 
 [[commands]]
 domain = "render"
@@ -5987,11 +5991,13 @@ verb = "reviewer"
 python_module = "larch.rendering.rendering"
 python_function = "render_reviewer_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8556
+clean_install_test = "clean-install-render-reviewer"
 
 [[commands]]
 domain = "render"
@@ -10062,8 +10068,8 @@ rust = ["report-tokens analyze"]
 [[callers]]
 path = "skills/research/SKILL.md"
 kind = "skill"
-python = ["render lane-status"]
-rust = ["agent degraded-tools-gate", "git branch-info", "research banner", "research render-findings-batch", "research run-planner", "research validate-citations", "session cleanup-tmpdir", "session setup", "token lane-report", "token lane-write", "verify skill-called"]
+python = []
+rust = ["agent degraded-tools-gate", "git branch-info", "render lane-status", "research banner", "research render-findings-batch", "research run-planner", "research validate-citations", "session cleanup-tmpdir", "session setup", "token lane-report", "token lane-write", "verify skill-called"]
 
 [[callers]]
 path = "skills/research/references/citation-validation-phase.md"
@@ -10092,8 +10098,8 @@ rust = ["agent collect-results", "agent launch-codex-exec", "bgjob start", "bgjo
 [[callers]]
 path = "skills/research/references/validation-phase.md"
 kind = "skill"
-python = ["render reviewer"]
-rust = ["agent collect-results", "agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent launch-codex-exec", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait", "research banner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
+python = []
+rust = ["agent collect-results", "agent cursor-auth-preflight", "agent cursor-wrap-prompt", "agent launch-codex-exec", "agent model-args", "agent run-external-agent", "bgjob start", "bgjob wait", "render reviewer", "research banner", "token append-record", "token lane-write", "token record-vendor-sidecar"]
 
 [[callers]]
 path = "skills/review-and-fix/SKILL.md"
