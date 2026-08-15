@@ -277,7 +277,7 @@ finish test pin that refusal and prove it occurs before a parent mutation.
 ## Closed #7679 review boundary
 
 `larch lint rule review-python-free` pins the 79 command selectors migrated by
-#7679's executable leaves. That set includes the three calibration-replay
+Issue #7679's executable leaves. That set includes the three calibration-replay
 commands planned by #7684, and every row must retain its exact migration leaf,
 Rust ownership, complete parity, complete consumer cutover, and complete Python
 removal. The rule also rejects any remaining Python source in the retired review
