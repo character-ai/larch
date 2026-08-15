@@ -5,8 +5,6 @@ from pathlib import Path
 
 from larch.design import plan_quality
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-
 
 def test_parse_optional_metadata_keys_and_values() -> None:
     plan_text = "body\ndiff_added: 1\ndiff_deleted: 2\nmechanical_churn: true\ndiff_lines: 3\n"
@@ -23,7 +21,7 @@ def test_parse_optional_metadata_requires_diff_lines() -> None:
 
 def test_validate_difficulty_metadata(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
-    plan.write_text("body\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
+    _ = plan.write_text("body\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
     ok, found = plan_quality.validate_difficulty_metadata(plan.read_text(encoding="utf-8"), require=True)
     assert ok
     assert found == "MODERATE"
@@ -31,17 +29,17 @@ def test_validate_difficulty_metadata(tmp_path: Path) -> None:
 
 def test_validate_optional_trailers_preserved(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
-    plan.write_text("body\ndiff_added: 1\ndiff_lines: 2\n", encoding="utf-8")
+    _ = plan.write_text("body\ndiff_added: 1\ndiff_lines: 2\n", encoding="utf-8")
     keys = tmp_path / "keys"
-    keys.write_text("diff_added\n", encoding="utf-8")
+    _ = keys.write_text("diff_added\n", encoding="utf-8")
     values = tmp_path / "keys.values"
-    values.write_text("diff_added=1\n", encoding="utf-8")
+    _ = values.write_text("diff_added=1\n", encoding="utf-8")
     assert plan_quality.validate_optional_trailers_preserved(plan_file=plan, values_file=values)
 
 
 def test_validate_optional_trailers_missing_key(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
-    plan.write_text("body\ndiff_lines: 2\n", encoding="utf-8")
+    _ = plan.write_text("body\ndiff_lines: 2\n", encoding="utf-8")
     keys = tmp_path / "keys"
-    keys.write_text("diff_added\n", encoding="utf-8")
+    _ = keys.write_text("diff_added\n", encoding="utf-8")
     assert not plan_quality.validate_optional_trailers_preserved(plan_file=plan, values_file=keys)
