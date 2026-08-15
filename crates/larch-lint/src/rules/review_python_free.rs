@@ -77,9 +77,9 @@ impl HandoffCommand {
 
 /// Every command migrated by an executable leaf of #7679.
 const EXPECTED_COMMANDS: [ExpectedCommand; 79] = [
-    ExpectedCommand::new("calibration-replay", "rebuild-ballot", 8439, 7684),
-    ExpectedCommand::new("calibration-replay", "run-replay", 8439, 7684),
-    ExpectedCommand::new("calibration-replay", "validate-manifest", 8439, 7684),
+    ExpectedCommand::new("calibration-replay", "rebuild-ballot", 8439, 7679),
+    ExpectedCommand::new("calibration-replay", "run-replay", 8439, 7679),
+    ExpectedCommand::new("calibration-replay", "validate-manifest", 8439, 7679),
     ExpectedCommand::new("plan-review", "continuation", 8449, 7679),
     ExpectedCommand::new("plan-review", "drift-baseline", 8449, 7679),
     ExpectedCommand::new("plan-review", "emit", 8448, 7679),

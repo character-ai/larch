@@ -278,13 +278,13 @@ finish test pin that refusal and prove it occurs before a parent mutation.
 
 `larch lint rule review-python-free` pins the 79 command selectors migrated by
 Issue #7679's executable leaves. That set includes the three calibration-replay
-commands planned by #7684, and every row must retain its exact migration leaf,
-Rust ownership, complete parity, complete consumer cutover, and complete Python
-removal. The rule also rejects any remaining Python source in the retired review
-package and any live Python, skill, hook, or script reference to that package.
-The shared command-registry closure scanner independently rejects a restored
-Python registration, implementation entrypoint, or production caller for the
-76 final rows still planned by #7679.
+commands migrated by #8439 under #7679, and every row must retain its exact
+migration leaf, Rust ownership, complete parity, complete consumer cutover, and
+complete Python removal. The rule also rejects any remaining Python source in
+the retired review package and any live Python, skill, hook, or script
+reference to that package. The shared command-registry closure scanner
+independently rejects a restored Python registration, implementation
+entrypoint, or production caller for the 79 final rows planned by #7679.
 
 The audit reassigned 42 pending rows according to their live consumers:
 

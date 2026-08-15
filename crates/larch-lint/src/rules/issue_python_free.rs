@@ -262,7 +262,7 @@ const GOVERNANCE_GATE_LIBRARY: &str =
 /// The package initializer is structural. Every other issue module at any
 /// depth must name both its receiving umbrella and its behaviorally distinct
 /// reason for remaining in Python.
-const RETAINED_MODULES: [RetainedModule; 18] = [
+const RETAINED_MODULES: [RetainedModule; 17] = [
     RetainedModule::new("python/larch/issue/_ground_truth.py", 7684, RESEARCH_LIBRARY),
     RetainedModule::new("python/larch/issue/_oos.py", 7684, RESEARCH_LIBRARY),
     RetainedModule::new("python/larch/issue/_report.py", 7684, RESEARCH_LIBRARY),
@@ -290,7 +290,6 @@ const RETAINED_MODULES: [RetainedModule; 18] = [
         7681,
         GOVERNANCE_GATE_LIBRARY,
     ),
-    RetainedModule::new("python/larch/issue/rejected_analysis.py", 7684, RESEARCH_LIBRARY),
     RetainedModule::new("python/larch/issue/title_match.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/tracking_issue.py", 7681, IMPLEMENT_LIBRARY),
 ];

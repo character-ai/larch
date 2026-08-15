@@ -88,9 +88,9 @@ change spawning, panel thresholds, token allocation, or reviewer/proposer points
   metrics.
 - Implement false-negative rows are built before `render()` from per-run
   classification TSVs. `render()` receives them through `i_fn_rows`.
-- The implement join is round- and token-aware, mirroring
-  `rejected_analysis._lookup_jsonl_record()`. TSV `FINDING_*` ids do not need to
-  equal JSONL `REJ_*` ids when the prose carries the linked finding token.
+- The implement join is round- and token-aware via local
+  `_lookup_jsonl_record()`. TSV `FINDING_*` ids do not need to equal JSONL
+  `REJ_*` ids when the prose carries the linked finding token.
 - Eligibility excludes OOS ids, scope-drift deferred rows with `scope` of `oos`,
   `out_of_scope`, or `out-of-scope`, and non-countable verdicts such as
   `out_of_scope` and `exonerated`. The countable set is `accepted`, `neutral`,
