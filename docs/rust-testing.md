@@ -34,6 +34,10 @@ crate-local tests where the dependency graph permits it.
 - `RunLogTree::builder` creates isolated run-log staging, cache, pending, and
   object-store doubles. `RunLogFixture` names the historical and durability
   corpora used by reporting parity tests.
+- `DesignSession::builder` creates isolated design sessions with env files,
+  plan wire, clarify/pause bodies, and design run-log staging.
+  `DesignFixture` names absent, partial, conflicting, and committed states for
+  the #7680 design migration.
 
 Never call `set_current_dir`, `set_var`, or `remove_var` in a test. Do not use a
 shared fixed path, port, clock, response queue, or mutable static. Give each
@@ -193,6 +197,32 @@ finish the stub so unconsumed exchanges fail the test.
 cycle because it exists only in the dev graph, and no release build links the
 fixture crate. Add issue-domain golden bytes to the graph fixtures rather than
 re-declaring wire bodies in each crate's tests.
+
+## Design fixtures and parity
+
+`larch-test-support` owns the offline design-domain fixtures for #7680.
+`DesignSession::builder` creates an owned session under a private temporary
+root. Named `DesignFixture` values cover absent, partial, conflicting, and
+committed shapes with PID-keyed `current-design-env-$PPID.sh` files, step result
+envs, issue bodies carrying plan blocks, named blocks, clarify threads, and
+pause pointers per `docs/issue-anchored-plan.md`, plan-grammar documents, and
+design run-log staging trees under `larch-logs/design/<run-id>/`.
+
+`DesignSessionSnapshot::capture` records bounded, stable session semantics:
+state, ppid, issue number, repository slug, run id, and redacted file entries.
+It replaces owned roots, design tmpdirs, repository slugs, run ids, and issue
+numbers with stable markers, and redacts credential-bearing lines and GitHub
+tokens. `DesignStdoutSnapshot::capture` preserves ordered `KEY=value` fields
+while separately normalizing prose. Use `DesignParityOracle` to compare either
+kind of snapshot and report only changed channels. Review every changed
+semantic field before accepting a parity result.
+
+`DesignGithubScenario` builds recorded `IssueServiceExchange` queues for the
+design clarify round-trip, pause save/load path, and label mutation-conflict
+retry. It starts the existing loopback `IssueServiceStub`; it is not a second
+GitHub client and never contacts a non-loopback address. Always finish the stub
+so unconsumed exchanges fail the test. Fixture code must not call
+`set_current_dir`, `set_var`, or `remove_var`.
 
 ## Test boundaries
 
