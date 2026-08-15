@@ -20,7 +20,7 @@ fn python_decimal_digit(character: char) -> Option<u32> {
         .find_map(|zero| (code >= *zero && code < *zero + 10).then(|| code - *zero))
 }
 
-/// Escape non-ASCII scalars in already-serialized JSON text.
+/// Escape scalars Python's `ensure_ascii=True` encoder does in serialized JSON.
 ///
 /// Python's JSON output uses ASCII `\\u` escapes, including UTF-16 surrogate
 /// pairs for supplementary-plane characters. Keep that post-serialization
@@ -29,7 +29,10 @@ fn python_decimal_digit(character: char) -> Option<u32> {
 pub fn ensure_ascii_json(text: &str) -> String {
     let mut output = String::with_capacity(text.len());
     for character in text.chars() {
-        if character.is_ascii() {
+        // Python's `ensure_ascii=True` also escapes DEL, even though it is an
+        // ASCII scalar. `serde_json` leaves it literal, so preserve the Python
+        // wire format for callers that start with a Rust-serialized document.
+        if character.is_ascii() && character != '\u{007f}' {
             output.push(character);
             continue;
         }
@@ -490,6 +493,7 @@ mod tests {
             ensure_ascii_json("\"café🙂\""),
             "\"caf\\u00e9\\ud83d\\ude42\""
         );
+        assert_eq!(ensure_ascii_json("\"\u{007f}\""), "\"\\u007f\"");
     }
 
     #[test]

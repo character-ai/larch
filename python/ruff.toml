@@ -318,12 +318,6 @@ ignore = [
     "PLR0912",
     "PLR0915",
 ]
-"compose_review.py" = [
-    "C901",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "decompose.py" = [
     "C901",
     "PLR0912",
@@ -637,13 +631,6 @@ ignore = [
     "C901",
     "F401",
     "PLR0912",
-]
-"review_core_body.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
 ]
 "run_log_batch.py" = [
     "C901",

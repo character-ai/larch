@@ -126,7 +126,7 @@ test-reviewer-prune:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_commands reviewer_prune
 
 test-lib-prune-decision:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'prune and not reviewer_prune'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli review_core_commands
 
 test-append-tool-failure:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k execution_issues
@@ -723,10 +723,10 @@ test-review-structure:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'review_structure' -q
 
 test-gather-context:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k gather_context
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_commands gather_context
 
 test-review-core:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k '(review_core or write_proposer_sidecar) and not prune'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli review_core_commands
 
 test-dispatch-panel-core:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_dispatch_panel
@@ -772,7 +772,6 @@ test-tally-code-votes:
 .PHONY: test-check-reviewer-failure-threshold
 test-check-reviewer-failure-threshold:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_commands reviewer_failure_threshold
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k 'python_surface_does_not_import_agents_waterfall or static_coverage_reason'
 
 .PHONY: test-dispatch-code-voters
 test-dispatch-code-voters:
@@ -851,7 +850,7 @@ test-compute-pr-line-counts:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k compute_pr_line_counts
 
 test-compose-review-findings:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/review/test_compose_review.py
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli review_compose_commands
 
 
 

@@ -105,6 +105,8 @@ mod ledger_append;
 mod report_tokens_commands;
 mod research_commands;
 mod review_commands;
+mod review_compose_commands;
+mod review_core_commands;
 mod review_dispatch_panel;
 mod review_findings_commands;
 mod review_tally_commands;

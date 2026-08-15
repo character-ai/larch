@@ -33,8 +33,8 @@ pub use findings_ledger::{
 pub use pipeline::{
     GATHER_CONTEXT_USAGE, GatherContextArgumentError, GatherContextArguments, GatherContextMode,
     GatherContextParse, description_path_matches, description_tokens, normalize_output_base,
-    parse_collector_records, parse_gather_context_arguments, positive_integer,
-    valid_relative_review_path,
+    parse_collector_records, parse_gather_context_arguments, parse_legacy_collector_blocks,
+    positive_integer, valid_relative_review_path,
 };
 pub use plan_review::{
     MERGE_KEYS, NON_NIT_CONTINUE_THRESHOLD, PER_REVIEWER_OOS_PROPOSAL_CAP,

@@ -170,7 +170,7 @@ def _compose_review_findings_output(*, impl_tmpdir: Path, output: Path) -> bool:
     args = ["--implement-tmpdir", str(impl_tmpdir), "--issue", "0", "--output", str(output)]
     if design_dir.is_dir():
         args = ["--design-artifacts-dir", str(design_dir), *args]
-    result = _run(["python3", str(_PY_CLI), "review", "compose-findings", *args])
+    result = _run([str(larch_entrypoint(_PLUGIN_ROOT)), "review", "compose-findings", *args])
     return result.returncode == 0 and output.is_file()
 
 
