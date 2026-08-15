@@ -1009,7 +1009,7 @@ for arg in "$@"; do
   prev="$arg"
 done
 pid_path="$(dirname "$out")/child.pid"
-pid_tmp="${pid_path}.$$"
+pid_tmp="$pid_path.$$"
 printf '%s\n' "$$" > "$pid_tmp"
 mv "$pid_tmp" "$pid_path"
 sleep 120
