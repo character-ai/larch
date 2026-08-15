@@ -32,17 +32,8 @@ pub struct LockedMarker {
     pub snapshot: StateSnapshot,
 }
 
-/// Resolve `$XDG_STATE_HOME/larch/analysis-state/v2/<client>/<origin>/<relpath>`.
-pub fn marker_path(root: &Path, relpath: &str) -> Result<PathBuf, String> {
-    let storage =
-        crate::run_log_commands::resolve_enabled_storage_path(Some(root)).map_err(|error| {
-            match error {
-                crate::run_log_commands::PreflightFailure::Configuration(error) => {
-                    error.to_string()
-                }
-                crate::run_log_commands::PreflightFailure::Provider(error) => error.to_string(),
-            }
-        })?;
+/// Resolve `$XDG_STATE_HOME/larch/analysis-state/v2/<client>/<origin>`.
+pub fn storage_root(client_repo: &str, storage_origin_id: &str) -> Result<PathBuf, String> {
     let home = env::var_os("XDG_STATE_HOME")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
@@ -56,12 +47,24 @@ pub fn marker_path(root: &Path, relpath: &str) -> Result<PathBuf, String> {
         return Err("analysis state home must be an absolute path".to_owned());
     }
     let home = fs::canonicalize(&home).unwrap_or(home);
-    let storage_origin_id = storage.storage_origin_id();
     Ok(home
         .join("larch/analysis-state/v2")
-        .join(storage.client_repo)
-        .join(storage_origin_id)
-        .join(relpath))
+        .join(client_repo)
+        .join(storage_origin_id))
+}
+
+/// Resolve `$XDG_STATE_HOME/larch/analysis-state/v2/<client>/<origin>/<relpath>`.
+pub fn marker_path(root: &Path, relpath: &str) -> Result<PathBuf, String> {
+    let storage =
+        crate::run_log_commands::resolve_enabled_storage_path(Some(root)).map_err(|error| {
+            match error {
+                crate::run_log_commands::PreflightFailure::Configuration(error) => {
+                    error.to_string()
+                }
+                crate::run_log_commands::PreflightFailure::Provider(error) => error.to_string(),
+            }
+        })?;
+    storage_root(&storage.client_repo, &storage.storage_origin_id()).map(|root| root.join(relpath))
 }
 
 /// Read a regular marker file without following a swapped inode.

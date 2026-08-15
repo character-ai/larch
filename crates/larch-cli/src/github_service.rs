@@ -66,11 +66,26 @@ pub async fn list_exhaustive_issues(
     cancellation: &Cancellation,
     repository: &GitHubRepositoryRef,
 ) -> Result<Vec<GitHubIssue>, String> {
+    list_exhaustive_issues_for_state(service, cancellation, repository, GitHubIssueState::All).await
+}
+
+/// List complete issue history for one state admitted by the transport policy.
+///
+/// # Errors
+///
+/// Returns an error when GitHub rejects the list request or the bounded
+/// transport cannot provide a complete history.
+pub async fn list_exhaustive_issues_for_state(
+    service: &OctocrabGitHubService,
+    cancellation: &Cancellation,
+    repository: &GitHubRepositoryRef,
+    state: GitHubIssueState,
+) -> Result<Vec<GitHubIssue>, String> {
     let listed = service
         .list_issues(
             &GitHubIssueList {
                 repo: repository.clone(),
-                state: GitHubIssueState::All,
+                state,
                 labels: Vec::new(),
                 limit: service.transport_policy().limits().items(),
                 mode: GitHubIssueListMode::Exhaustive,

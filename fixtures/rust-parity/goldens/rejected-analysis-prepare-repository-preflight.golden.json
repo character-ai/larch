@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "rejected-analysis prepare: could not discover a Git repository root\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

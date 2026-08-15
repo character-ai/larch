@@ -719,6 +719,16 @@ impl RunLogFileIter {
             entries: VecDeque::new(),
         }
     }
+
+    /// Stream safe regular files below one directory.
+    #[must_use]
+    pub fn from_directory(run_dir: &Path) -> Self {
+        let mut files = Self::new(run_dir);
+        if let Ok(root) = fs::canonicalize(run_dir) {
+            files.contain_root = root;
+        }
+        files
+    }
 }
 impl Iterator for RunLogFileIter {
     type Item = PathBuf;

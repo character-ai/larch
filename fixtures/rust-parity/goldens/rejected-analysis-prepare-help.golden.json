@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: rejected-analysis prepare [-h] --days DAYS [--log-root LOG_ROOT] [--work-dir WORK_DIR] [--verify-cap VERIFY_CAP]\n\noptions:\n  -h, --help            show this help message and exit\n  --days DAYS, --n DAYS\n  --log-root LOG_ROOT   offline fixture corpus override; default synchronizes\n                        the current repository cache\n  --work-dir WORK_DIR\n  --verify-cap VERIFY_CAP\n"
+  }
+}

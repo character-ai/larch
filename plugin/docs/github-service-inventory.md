@@ -125,7 +125,7 @@ issue-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682,#7685	complete	c
 issue-backlog-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
 issue-backlog-comments	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues run
 issue-backlog-closure-references	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
-issues	crates/larch-adapters/src/github_rest.rs	rust	#7685	complete	complete	complete	issue migration-audit
+issues	crates/larch-adapters/src/github_rest.rs	rust	#7685,#7684	complete	complete	complete	issue migration-audit,rejected-analysis prepare
 audit-report-issues	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	audit-runs bugs-backlog-nudge,audit-runs close-priors
 audit-pull-requests	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	audit-runs map-runs,audit-runs preflight,audit-runs resolve-prs
 rebalance-pull-requests	crates/larch-adapters/src/github/operations.rs	rust	#7685	complete	complete	complete	issue migration-audit,rebalance-tests run

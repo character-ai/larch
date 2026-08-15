@@ -1,430 +1,217 @@
-# ruff: noqa: FLY002, FBT003
 # pyright: reportUnusedCallResult=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-
-from larch.errors import ShipError
+from larch import cli
 from larch.issue import rejected_analysis as ra
-from larch.report import run_log_corpus
-from larch.review import voting
-from tests.support.review_wire import code_review_classification_row
 
 
-def _started() -> str:
-    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def _write_implement_fixture(root: Path, *, run_id: str = "RUN-1", finding_id: str = "FINDING_1", json_id: str = "REJ_CR1_1", concern: str = "Missing required check", path: str = "python/foo.py:12", vote1: str = "YES", vote2: str = "NO", severity1: str = "major", scope: str = "") -> Path:
-    run = root / "larch-logs" / "implement" / run_id
-    round_dir = run / "round-1"
-    round_dir.mkdir(parents=True)
-    (run / "manifest.json").write_text(json.dumps({"started_at": _started(), "skill": "implement"}), encoding="utf-8")
-    (round_dir / "review-findings-full.jsonl").write_text(
-        json.dumps(
-            {
-                "id": json_id,
-                "phase": "code-review",
-                "outcome": "rejected",
-                "round_num": "1",
-                "reviewer_slots": ["cursor-specialist"],
-                "prose_body": f"### {finding_id}: {concern}\n- **Location**: {path}\n- **Concern**: {concern}\n",
-            }
-        )
-        + "\n",
+def _write_json_lines(path: Path, rows: list[dict[str, object]]) -> None:
+    path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
         encoding="utf-8",
     )
-    header = voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
-    row = code_review_classification_row(
-        finding_id,
-        "rejected",
-        reviewer="cursor-specialist",
-        vote1=vote1,
-        severity1=severity1,
-        vote2=vote2,
-        scope=scope,
+
+
+def _write_rust_work_dir(work_dir: Path, state_root: Path) -> dict[str, object]:
+    """Seed the exact work-directory model consumed from Rust prepare/ingest."""
+    work_dir.mkdir()
+    candidate: dict[str, object] = {
+        "candidate_id": "C1",
+        "finding_hash": "finding-hash",
+        "concern_hash": "concern-hash",
+        "prompt_path": str(work_dir / "verify-C1.md"),
+        "finding": {
+            "finding_hash": "finding-hash",
+            "concern_hash": "concern-hash",
+            "source_skill": "implement",
+            "run_id": "RUN-1",
+            "round_num": "1",
+            "canonical_finding_id": "FINDING_1",
+            "synthetic_id": "REJ_CR1_1",
+            "reviewer_slots": ["cursor-specialist"],
+            "dissenting_slots": ["cursor"],
+            "file_path": "python/foo.py",
+            "line_hint": "12",
+            "concern": "Missing required check",
+            "prose_body": "### FINDING_1: Missing required check\n",
+            "classification_row": {},
+            "vote_split": {
+                "yes_votes": 1,
+                "no_votes": 2,
+                "yes_slots": ["cursor"],
+                "no_slots": ["codex", "claude"],
+                "high_severity": True,
+            },
+            "started_at": "2026-08-14T12:00:00Z",
+            "demoted_later_touched": False,
+        },
+    }
+    (work_dir / "candidates.json").write_text(
+        json.dumps([candidate], indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
-    (round_dir / "findings-classification.tsv").write_text(header + "\n" + row + "\n", encoding="utf-8")
-    return run
-
-
-def test_extractors_and_hash_are_stable_without_filesystem_probe(tmp_path: Path) -> None:
-    prose = """### FINDING_7:   Missing   required check
-- **File**: `python/foo.py:12-14`
-- **Location**: `docs/other.md:9`
-- **Concern**: Missing   required check
-"""
-    row = {"file": "", "location": ""}
-    assert ra.extract_concern(prose, row) == "Missing required check"
-    assert ra.extract_target_path(prose, row, tmp_path) == "python/foo.py"
-    assert ra.extract_line_hint(prose, row, "python/foo.py") == "12"
-    finding = ra.RejectedFinding(
-        finding_hash="",
-        concern_hash="",
-        source_skill="implement",
-        run_id="RUN-A",
-        round_num="1",
-        canonical_finding_id="FINDING_7",
-        synthetic_id="REJ_CR1_7",
-        reviewer_slots=("reviewer",),
-        dissenting_slots=("v1",),
-        file_path="python/foo.py",
-        line_hint="12",
-        concern="Missing required check",
-        prose_body=prose,
-        classification_row={},
-        vote_split=ra.VoteSplit(1, 2, ("v1",), ("v2", "v3"), True),
-        started_at=_started(),
+    (work_dir / "verdicts.jsonl").write_text("", encoding="utf-8")
+    (work_dir / ra.INGEST_STATUS_FILE).write_text("", encoding="utf-8")
+    (work_dir / "ledger-pending.tsv").write_text(
+        "\t".join(ra.LEDGER_COLUMNS) + "\n",
+        encoding="utf-8",
     )
-    first = ra.compute_finding_hash(finding)
-    (tmp_path / "python").mkdir()
-    (tmp_path / "python" / "foo.py").write_text("print('x')\n", encoding="utf-8")
-    changed_metadata = ra.RejectedFinding(**{**finding.__dict__, "run_id": "RUN-B", "round_num": "3", "canonical_finding_id": "FINDING_99", "synthetic_id": "REJ_CR3_99", "line_hint": "14"})
-    assert ra.compute_finding_hash(changed_metadata) == first
+    (work_dir / "repo-root.txt").write_text(str(state_root) + "\n", encoding="utf-8")
+    (work_dir / "state-root.txt").write_text(str(state_root) + "\n", encoding="utf-8")
+    return candidate
 
 
-def test_prepare_default_synced_corpus_matches_explicit_fixture(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _ = _write_implement_fixture(tmp_path)
-    log_root = tmp_path / "larch-logs"
-    explicit = ra.prepare(
-        days=7,
-        log_root=log_root,
-        work_dir=tmp_path / "explicit-work",
-        repo_root=tmp_path,
-        open_issues=[],
+def _write_confirmed_rust_ingest(work_dir: Path) -> None:
+    _write_json_lines(
+        work_dir / "verdicts.jsonl",
+        [
+            {
+                "candidate_id": "C1",
+                "finding_hash": "finding-hash",
+                "status": "confirmed",
+                "current_location": "python/foo.py:13",
+                "evidence": "Current code still omits the check.",
+                "dirty_tree": False,
+            }
+        ],
     )
-    sync_calls = 0
-
-    def _sync(*, repo_root: Path) -> Path:
-        nonlocal sync_calls
-        assert repo_root == tmp_path
-        sync_calls += 1
-        return log_root
-
-    def _repo_root(_start: Path | str | None = None) -> Path:
-        return tmp_path
-
-    monkeypatch.setattr(ra.repo_roots, "consumer_repo_root", _repo_root)
-    monkeypatch.setattr(ra.run_log_corpus, "synchronized_repository_log_root", _sync)
-    synced = ra.prepare(
-        days=7,
-        work_dir=tmp_path / "synced-work",
-        repo_root=tmp_path,
-        open_issues=[],
+    _write_json_lines(
+        work_dir / ra.INGEST_STATUS_FILE,
+        [
+            {
+                "schema_version": 1,
+                "candidate_id": "C1",
+                "finding_hash": "finding-hash",
+                "status": "ingested",
+                "disposition": "confirmed",
+                "launcher_exit": 0,
+                "output_path": str(work_dir / "verdict-C1.txt"),
+            }
+        ],
     )
 
-    assert synced.stats == explicit.stats
-    assert [candidate.finding for candidate in synced.candidates] == [
-        candidate.finding for candidate in explicit.candidates
-    ]
-    assert sync_calls == 1
+
+def test_rust_owned_prepare_and_ingest_have_no_python_entrypoints() -> None:
+    assert ("rejected-analysis", "prepare") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert ("rejected-analysis", "ingest-verdict") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert not hasattr(ra, "prepare")
+    assert not hasattr(ra, "prepare_main")
+    assert not hasattr(ra, "ingest_verdict")
+    assert not hasattr(ra, "ingest_verdict_main")
 
 
-def test_prepare_main_log_root_bypasses_repository_storage(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    log_root = tmp_path / "offline-logs"
-    log_root.mkdir()
+def test_finalize_and_record_consume_rust_wire_artifacts(tmp_path: Path) -> None:
     work_dir = tmp_path / "work"
+    _write_rust_work_dir(work_dir, tmp_path)
+    _write_confirmed_rust_ingest(work_dir)
 
-    def repo_root(_start: Path | str | None = None) -> Path:
-        return tmp_path
+    finalized = ra.finalize(work_dir=work_dir)
 
-    def no_open_issues(
-        *_args: object,
-        **_kwargs: object,
-    ) -> list[ra.OpenIssue]:
-        return []
-
-    monkeypatch.setattr(
-        ra.repo_roots,
-        "consumer_repo_root",
-        repo_root,
-    )
-    monkeypatch.setattr(ra, "_query_open_issues", no_open_issues)
-
-    def fail_storage(**_kwargs: object) -> None:
-        raise AssertionError("offline --log-root must not load repository storage")
-
-    monkeypatch.setattr(
-        ra.storage_config,
-        "load_tool_repository_storage",
-        fail_storage,
-    )
-
-    assert (
-        ra.prepare_main(
-            [
-                "--days",
-                "7",
-                "--log-root",
-                str(log_root),
-                "--work-dir",
-                str(work_dir),
-            ]
-        )
-        == 0
-    )
-    assert (work_dir / "state-root.txt").read_text(encoding="utf-8").strip() == str(
-        tmp_path
-    )
-
-
-def test_prepare_keeps_one_yes_and_ledgers_zero_yes_oos_and_duplicates(tmp_path: Path) -> None:
-    _write_implement_fixture(tmp_path, run_id="RUN-A", finding_id="FINDING_1", json_id="REJ_CR1_1", concern="Missing required check", path="python/foo.py:12")
-    _write_implement_fixture(tmp_path, run_id="RUN-B", finding_id="FINDING_2", json_id="REJ_CR1_2", concern="Zero yes concern", path="python/bar.py:5", vote1="NO", vote2="NO")
-    _write_implement_fixture(tmp_path, run_id="RUN-C", finding_id="OOS_1", json_id="OOS_1", concern="Deferred concern", path="python/oos.py:1", scope="oos")
-    _write_implement_fixture(tmp_path, run_id="RUN-D", finding_id="FINDING_3", json_id="REJ_CR1_3", concern="Missing required check", path="python/foo.py:12", severity1="minor")
-    result = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
-    assert result.verify_count == 1
-    prompt = Path(result.candidates[0].prompt_path).read_text(encoding="utf-8")
-    assert "Return one JSON object only" in prompt
-    assert "python/foo.py" in prompt
-    pending = result.ledger_pending_file.read_text(encoding="utf-8")
-    assert "dismissed:zero-yes" in pending
-    assert "dismissed:oos-deferred" in pending
-    assert "dismissed:near-duplicate" in pending
-
-
-def test_prepare_scans_review_layout_and_excludes_security(tmp_path: Path) -> None:
-    run = tmp_path / "larch-logs" / "review" / "REV-1"
-    run.mkdir(parents=True)
-    (run / "manifest.json").write_text(json.dumps({"started_at": _started()}), encoding="utf-8")
-    (run / "review-findings.ndjson").write_text(
-        json.dumps(
-            {
-                "id": "REJ_CR1_4",
-                "phase": "code-review",
-                "outcome": "rejected",
-                "prose_body": "### FINDING_4: Credential exposure\n- **File**: python/secret.py:3\n- **Concern**: credential exposure leaks a token\n",
-            }
-        )
-        + "\n",
+    assert finalized.confirmed_count == 1
+    assert "Dissenting voter(s):" in finalized.issue_batch_file.read_text(encoding="utf-8")
+    issue_output = work_dir / "issue.stdout.txt"
+    issue_output.write_text(
+        "ISSUES_CREATED=1\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=0\n"
+        "ISSUE_1_NUMBER=123\nISSUE_1_URL=https://example.invalid/123\n",
         encoding="utf-8",
     )
-    header = voting.CODE_REVIEW_FINDINGS_CLASSIFICATION_HEADER
-    row = "\t".join(["FINDING_4", "reviewer", "rejected", "YES", "true", "major", "good", "false", "cursor", "NO", "true", "minor", "good", "false", "codex", "NO", "true", "minor", "good", "false", "claude", ""])
-    (run / "review-findings-classification-round-1.tsv").write_text(header + "\n" + row + "\n", encoding="utf-8")
-    result = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
-    assert result.verify_count == 0
-    assert "dismissed:security-sensitive" in result.ledger_pending_file.read_text(encoding="utf-8")
+    recorded = ra.record(
+        work_dir=work_dir,
+        issue_output=issue_output,
+        issue_verified=True,
+        repo_root=tmp_path,
+        state_root=tmp_path,
+    )
 
-
-def test_ingest_finalize_and_record_confirmed_and_launch_failed_retryable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.chdir(tmp_path)
-    _write_implement_fixture(tmp_path)
-    prep = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
-    candidate = prep.candidates[0]
-    output = tmp_path / "work" / "verdict-C1.txt"
-    output.write_text(json.dumps({"status": "confirmed", "current_location": "python/foo.py:13", "evidence": "Current code still omits the check."}), encoding="utf-8")
-    Path(str(output) + ".dirty-tree").write_text("STATUS=clean\n", encoding="utf-8")
-    result = ra.ingest_verdict(work_dir=prep.work_dir, candidate_id=candidate.candidate_id, output=output, launcher_exit=0)
-    assert result.status == "ingested"
-    final = ra.finalize(work_dir=prep.work_dir)
-    assert final.confirmed_count == 1
-    assert "Dissenting voter(s):" in final.issue_batch_file.read_text(encoding="utf-8")
-    issue_stdout = tmp_path / "work" / "issue.stdout.txt"
-    issue_stdout.write_text("ISSUES_CREATED=1\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=0\nISSUE_1_NUMBER=123\nISSUE_1_URL=https://example.invalid/123\n", encoding="utf-8")
-    record = ra.record(work_dir=prep.work_dir, issue_output=issue_stdout, issue_verified=True, repo_root=tmp_path)
-    assert record.rc == 0
+    assert recorded.rc == 0
     ledger = (tmp_path / ra.LEDGER_PATH).read_text(encoding="utf-8")
     assert "filed-as" in ledger
     assert "123" in ledger
 
 
-def test_ingest_status_launch_failed_is_not_ledgers_as_verification_failed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.chdir(tmp_path)
-    _write_implement_fixture(tmp_path)
-    prep = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
-    candidate = prep.candidates[0]
-    result = ra.ingest_verdict(work_dir=prep.work_dir, candidate_id=candidate.candidate_id, output=tmp_path / "missing.txt", launcher_exit=1)
-    assert result.status == "launch-failed"
-    final = ra.finalize(work_dir=prep.work_dir)
-    assert final.launch_failures == 1
-    record = ra.record(work_dir=prep.work_dir, launch_failures=1, repo_root=tmp_path)
-    assert record.rc == 1
+def test_launch_failed_rust_ingest_status_remains_retryable(tmp_path: Path) -> None:
+    work_dir = tmp_path / "work"
+    _write_rust_work_dir(work_dir, tmp_path)
+    _write_json_lines(
+        work_dir / ra.INGEST_STATUS_FILE,
+        [
+            {
+                "schema_version": 1,
+                "candidate_id": "C1",
+                "finding_hash": "finding-hash",
+                "status": "launch-failed",
+                "disposition": "",
+                "launcher_exit": 1,
+                "output_path": str(work_dir / "verdict-C1.txt"),
+            }
+        ],
+    )
+
+    finalized = ra.finalize(work_dir=work_dir)
+    recorded = ra.record(
+        work_dir=work_dir,
+        launch_failures=0,
+        repo_root=tmp_path,
+        state_root=tmp_path,
+    )
+
+    assert finalized.launch_failures == 1
+    assert recorded.rc == 1
     ledger = (tmp_path / ra.LEDGER_PATH).read_text(encoding="utf-8")
-    assert candidate.finding_hash not in ledger
+    assert "finding-hash" not in ledger
     assert "dismissed:verification-failed" not in ledger
 
 
-def test_record_partial_issue_failure_still_files_resolved_clusters(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.chdir(tmp_path)
-    _write_implement_fixture(tmp_path)
-    prep = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
-    candidate = prep.candidates[0]
-    output = tmp_path / "work" / "verdict-C1.txt"
-    output.write_text(json.dumps({"status": "confirmed", "current_location": "python/foo.py:13", "evidence": "Current code still omits the check."}), encoding="utf-8")
-    Path(str(output) + ".dirty-tree").write_text("STATUS=clean\n", encoding="utf-8")
-    ra.ingest_verdict(work_dir=prep.work_dir, candidate_id=candidate.candidate_id, output=output, launcher_exit=0)
-    ra.finalize(work_dir=prep.work_dir)
-    issue_stdout = tmp_path / "work" / "issue.stdout.txt"
-    issue_stdout.write_text("ISSUES_CREATED=1\nISSUES_FAILED=1\nISSUES_DEDUPLICATED=0\nISSUE_1_NUMBER=123\nISSUE_1_URL=https://example.invalid/123\n", encoding="utf-8")
-    record = ra.record(work_dir=prep.work_dir, issue_output=issue_stdout, issue_verified=True, issues_failed=1, repo_root=tmp_path)
-    assert record.rc == 1
-    ledger = (tmp_path / ra.LEDGER_PATH).read_text(encoding="utf-8")
-    assert "filed-as" in ledger
-    assert "123" in ledger
+def test_dirty_tree_rust_ingest_status_is_not_published_to_sidecar(tmp_path: Path) -> None:
+    work_dir = tmp_path / "work"
+    _write_rust_work_dir(work_dir, tmp_path)
+    _write_json_lines(
+        work_dir / ra.INGEST_STATUS_FILE,
+        [
+            {
+                "schema_version": 1,
+                "candidate_id": "C1",
+                "finding_hash": "finding-hash",
+                "status": "dirty-tree",
+                "disposition": "dismissed:dirty-tree",
+                "launcher_exit": 0,
+                "output_path": str(work_dir / "verdict-C1.txt"),
+            }
+        ],
+    )
+
+    _ = ra.finalize(work_dir=work_dir)
+    _ = ra.record(work_dir=work_dir, repo_root=tmp_path, state_root=tmp_path)
+
+    sidecar = tmp_path / ra.VERDICT_SIDECAR
+    assert not sidecar.is_file() or "finding-hash" not in sidecar.read_text(encoding="utf-8")
 
 
-def test_record_reuses_work_dir_pending_precedence_over_dismissed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.chdir(tmp_path)
-    _write_implement_fixture(tmp_path)
-    prep = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
-    candidate = prep.candidates[0]
-    pending = prep.ledger_pending_file
-    ra._write_pending_tsv(pending, [ra._ledger_entry(candidate.finding, verdict="dismissed", disposition="dismissed:verification-failed")])  # type: ignore[reportPrivateUsage]
-    output = tmp_path / "work" / "verdict-C1.txt"
-    output.write_text(json.dumps({"status": "confirmed", "current_location": "python/foo.py:13", "evidence": "Current code still omits the check."}), encoding="utf-8")
-    Path(str(output) + ".dirty-tree").write_text("STATUS=clean\n", encoding="utf-8")
-    ra.ingest_verdict(work_dir=prep.work_dir, candidate_id=candidate.candidate_id, output=output, launcher_exit=0)
-    ra.finalize(work_dir=prep.work_dir)
-    issue_stdout = tmp_path / "work" / "issue.stdout.txt"
-    issue_stdout.write_text("ISSUES_CREATED=1\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=0\nISSUE_1_NUMBER=456\nISSUE_1_URL=https://example.invalid/456\n", encoding="utf-8")
-    record = ra.record(work_dir=prep.work_dir, issue_output=issue_stdout, issue_verified=True, repo_root=tmp_path)
-    assert record.rc == 0
+def test_record_prefers_filed_rows_from_rust_wire_work_dir(tmp_path: Path) -> None:
+    work_dir = tmp_path / "work"
+    _write_rust_work_dir(work_dir, tmp_path)
+    _write_confirmed_rust_ingest(work_dir)
+    _ = ra.finalize(work_dir=work_dir)
+    issue_output = work_dir / "issue.stdout.txt"
+    issue_output.write_text(
+        "ISSUES_CREATED=1\nISSUES_FAILED=1\nISSUES_DEDUPLICATED=0\n"
+        "ISSUE_1_NUMBER=456\nISSUE_1_URL=https://example.invalid/456\n",
+        encoding="utf-8",
+    )
+
+    recorded = ra.record(
+        work_dir=work_dir,
+        issue_output=issue_output,
+        issue_verified=True,
+        issues_failed=1,
+        repo_root=tmp_path,
+        state_root=tmp_path,
+    )
+
+    assert recorded.rc == 1
     ledger = (tmp_path / ra.LEDGER_PATH).read_text(encoding="utf-8")
     assert "filed-as" in ledger
     assert "456" in ledger
-    assert ledger.count(candidate.finding_hash) == 1
-
-
-def test_path_token_rejects_symbol_backticks(tmp_path: Path) -> None:
-    prose = """### FINDING_3: Symbol before path
-- **Concern**: `record()` should check `foo_bar` in `python/foo.py:12`
-"""
-    row = {"file": "", "location": ""}
-    assert ra.extract_target_path(prose, row, tmp_path) == "python/foo.py"
-
-
-def test_record_derives_launch_failures_from_ingest_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.chdir(tmp_path)
-    _write_implement_fixture(tmp_path)
-    prep = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
-    candidate = prep.candidates[0]
-    ra.ingest_verdict(work_dir=prep.work_dir, candidate_id=candidate.candidate_id, output=tmp_path / "missing.txt", launcher_exit=1)
-    ra.finalize(work_dir=prep.work_dir)
-    record = ra.record(work_dir=prep.work_dir, launch_failures=0, repo_root=tmp_path)
-    assert record.rc == 1
-
-
-def test_dirty_tree_verdict_not_written_to_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.chdir(tmp_path)
-    _write_implement_fixture(tmp_path)
-    prep = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
-    candidate = prep.candidates[0]
-    output = tmp_path / "work" / "verdict-C1.txt"
-    output.write_text("{}", encoding="utf-8")
-    Path(str(output) + ".dirty-tree").write_text("STATUS=dirty\n", encoding="utf-8")
-    result = ra.ingest_verdict(work_dir=prep.work_dir, candidate_id=candidate.candidate_id, output=output, launcher_exit=0)
-    assert result.status == "dirty-tree"
-    ra.finalize(work_dir=prep.work_dir)
-    ra.record(work_dir=prep.work_dir, repo_root=tmp_path)
-    sidecar = tmp_path / ra.VERDICT_SIDECAR
-    assert not sidecar.is_file() or candidate.finding_hash not in sidecar.read_text(encoding="utf-8")
-
-
-def test_record_partial_issue_failure_commits_safe_rows_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.chdir(tmp_path)
-    _write_implement_fixture(tmp_path, run_id="RUN-Z", finding_id="FINDING_9", json_id="REJ_CR1_9", concern="Zero yes", path="python/z.py:1", vote1="NO", vote2="NO")
-    prep = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
-    final = ra.finalize(work_dir=prep.work_dir)
-    assert final.confirmed_count == 0
-    record = ra.record(work_dir=prep.work_dir, issue_verified=False, issues_failed=1, repo_root=tmp_path)
-    assert record.rc == 1
-    ledger = (tmp_path / ra.LEDGER_PATH).read_text(encoding="utf-8")
-    assert "dismissed:zero-yes" in ledger
-
-
-def test_prepare_skips_symlinked_run_dirs(tmp_path: Path) -> None:
-    _write_implement_fixture(tmp_path, run_id="RUN-REAL", finding_id="FINDING_1", json_id="REJ_CR1_1")
-    logs = tmp_path / "larch-logs" / "implement"
-    linked = logs / "RUN-LINK"
-    linked.symlink_to(logs / "RUN-REAL")
-    result = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
-    assert result.stats.runs_seen == 1
-
-
-def test_prepare_skips_escaping_child_directory(tmp_path: Path) -> None:
-    run = _write_implement_fixture(tmp_path, run_id="RUN-REAL", finding_id="FINDING_1", json_id="REJ_CR1_1")
-    outside = tmp_path / "outside-round"
-    outside.mkdir()
-    _ = (outside / "findings-classification.tsv").write_text("untrusted\n", encoding="utf-8")
-    (run / "round-escape").symlink_to(outside, target_is_directory=True)
-
-    result = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
-
-    assert result.stats.runs_seen == 1
-    assert result.verify_count == 1
-
-
-def test_run_started_at_updated_at_and_first_valid_stop(tmp_path: Path) -> None:
-    run = tmp_path / "run"
-    run.mkdir()
-    (run / "manifest.json").write_text(json.dumps({"updated_at": "2026-02-01T00:00:00Z"}), encoding="utf-8")
-    (run / "run-manifest.json").write_text(json.dumps({"started_at": "2026-03-01T00:00:00Z"}), encoding="utf-8")
-    assert ra._run_started_at(run) == "2026-02-01T00:00:00Z"  # pyright: ignore[reportPrivateUsage]
-
-    empty = tmp_path / "empty"
-    empty.mkdir()
-    (empty / "manifest.json").write_text(json.dumps({"started_at": "", "updated_at": ""}), encoding="utf-8")
-    (empty / "run-manifest.json").write_text(json.dumps({"started_at": "2026-04-01T00:00:00Z"}), encoding="utf-8")
-    assert ra._run_started_at(empty) == ""  # pyright: ignore[reportPrivateUsage]
-
-
-def test_classification_paths_are_lexical(tmp_path: Path) -> None:
-    run = tmp_path / "run"
-    for round_num in (10, 2):
-        round_dir = run / f"round-{round_num}"
-        round_dir.mkdir(parents=True)
-        (round_dir / "findings-classification.tsv").write_text("h\n", encoding="utf-8")
-    paths = run_log_corpus.classification_tsv_paths("implement", run, round_sort="lexical")
-    assert [path.parent.name for path in paths] == ["round-10", "round-2"]
-    assert ra._round_from_path(paths[0]) == "10"  # pyright: ignore[reportPrivateUsage]
-
-
-def test_query_open_issues_uses_shared_wrapper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    seen: dict[str, object] = {}
-
-    def fake_resolve(_runner, *, cwd=None):
-        seen["cwd"] = cwd
-        return "o/r"
-
-    def fake_list(_runner, *, repo, state, fields, limit, **_kwargs):
-        seen["repo"] = repo
-        seen["state"] = state
-        seen["fields"] = tuple(fields)
-        seen["limit"] = limit
-        return [
-            {"number": 1, "title": "open", "body": "b", "url": "https://github.com/o/r/issues/1", "state": "OPEN"},
-            {"number": 2, "title": "closed-ish", "body": "b", "url": "u2", "state": "CLOSED"},
-            "skip",
-        ]
-
-    monkeypatch.setattr(ra.gh, "resolve_repo", fake_resolve)
-    monkeypatch.setattr(ra.gh, "issue_list_read", fake_list)
-    issues = ra._query_open_issues(object(), repo_root=tmp_path)  # pyright: ignore[reportPrivateUsage]
-    assert [issue.number for issue in issues] == ["1"]
-    assert issues[0].url == "https://github.com/o/r/issues/1"
-    assert seen == {
-        "cwd": str(tmp_path),
-        "repo": "o/r",
-        "state": "open",
-        "fields": ("number", "title", "body", "url", "state"),
-        "limit": 100000,
-    }
-
-
-def test_query_open_issues_translates_ship_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ra.gh, "resolve_repo", lambda *_a, **_k: "o/r")  # pyright: ignore[reportUnknownLambdaType]
-    monkeypatch.setattr(ra.gh, "issue_list_read", lambda *_a, **_k: (_ for _ in ()).throw(ShipError("boom")))  # pyright: ignore[reportUnknownLambdaType]
-    with pytest.raises(ra.RejectedAnalysisError, match="open issue snapshot failed"):
-        ra._query_open_issues(object(), repo_root=tmp_path)  # pyright: ignore[reportPrivateUsage]
