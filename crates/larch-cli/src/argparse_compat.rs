@@ -133,7 +133,49 @@ pub fn parse_required_with_help(
 ) -> Result<ParsedCommandLine, ExitCode> {
     let mut all_flags = flags.to_vec();
     all_flags.extend(["-h", "--help"]);
-    let parsed = parse_with_flags(arguments, values, &all_flags, 0);
+    parse_required_with_help_mode(
+        parse_with_flags(arguments, values, &all_flags, 0),
+        program,
+        usage,
+        help,
+        required,
+        true,
+    )
+}
+
+/// Parse a compatibility surface that accepts future caller-owned options.
+///
+/// Help, missing values, and required options retain the shared `argparse`
+/// ordering, while surplus options remain available for wrapper evolution.
+pub fn parse_required_with_help_allow_unknown(
+    arguments: &[OsString],
+    program: &str,
+    usage: &str,
+    help: &str,
+    values: &[&'static str],
+    flags: &[&'static str],
+    required: &[&str],
+) -> Result<ParsedCommandLine, ExitCode> {
+    let mut all_flags = flags.to_vec();
+    all_flags.extend(["-h", "--help"]);
+    parse_required_with_help_mode(
+        parse_with_flags(arguments, values, &all_flags, 0),
+        program,
+        usage,
+        help,
+        required,
+        false,
+    )
+}
+
+fn parse_required_with_help_mode(
+    parsed: ParsedCommandLine,
+    program: &str,
+    usage: &str,
+    help: &str,
+    required: &[&str],
+    reject_unknown: bool,
+) -> Result<ParsedCommandLine, ExitCode> {
     if parsed.flag("-h") || parsed.flag("--help") {
         println!("{help}");
         return Err(ExitCode::SUCCESS);
@@ -148,7 +190,7 @@ pub fn parse_required_with_help(
     if states.iter().any(|(_, present)| !present) {
         return Err(usage_error(usage, program, &missing(&states), 2));
     }
-    if let Some(error) = parsed.error() {
+    if reject_unknown && let Some(error) = parsed.error() {
         return Err(usage_error(usage, program, &error, 2));
     }
     Ok(parsed)
