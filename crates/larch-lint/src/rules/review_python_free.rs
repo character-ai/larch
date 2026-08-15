@@ -159,7 +159,7 @@ const EXPECTED_COMMANDS: [ExpectedCommand; 79] = [
 ];
 
 /// Pending commands that the closeout audit assigned to their live consumer.
-const HANDOFF_COMMANDS: [HandoffCommand; 42] = [
+const HANDOFF_COMMANDS: [HandoffCommand; 41] = [
     HandoffCommand::new("architectural-assessment", "final-report-sections", 7681),
     HandoffCommand::new("architectural-assessment", "materialize", 7681),
     HandoffCommand::new("architectural-assessment", "sanitize-detail", 7681),
@@ -201,7 +201,6 @@ const HANDOFF_COMMANDS: [HandoffCommand; 42] = [
     HandoffCommand::new("review-and-fix", "await-loop-identity", 7681),
     HandoffCommand::new("review-and-fix", "teardown-loop-identity", 7681),
     HandoffCommand::new("review-and-fix", "write-loop-identity", 7681),
-    HandoffCommand::new("token", "claude-source", 7684),
 ];
 
 pub static METADATA: RuleMetadata = RuleMetadata::new(

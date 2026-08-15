@@ -1879,22 +1879,6 @@ def token_check_budget_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def token_claude_source_main(argv: list[str] | None = None) -> int:
-    args = list(argv if argv is not None else sys.argv[1:])
-    snap = Path(args[0]) if args else None
-    result = token_claude_source(claude_source_file=snap)
-    if result.available:
-        print(f"TRANSCRIPT_PATH={result.transcript_path}")
-        if result.session_dir is not None:
-            print(f"SESSION_DIR={result.session_dir}")
-        if result.session_uuid:
-            print(f"SESSION_UUID={result.session_uuid}")
-        return 0
-    print("STATUS=unavailable")
-    print(f"REASON={result.reason}")
-    return 1
-
-
 def token_cost_from_args(argv: list[str], *, env: Mapping[str, str] | None = None) -> str:
     from larch.report.report_tokens_cost import token_cost_from_args as main
     return main(argv, env=env)

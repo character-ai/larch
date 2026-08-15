@@ -10,7 +10,6 @@ use crate::{
     bootstrap_support::{valid_run_id, write_session_text},
     child_process::run_host_utility,
     progress_commands,
-    python_verb::run_python_verb,
     runtime_entrypoint::{plugin_root, run_verified_larch},
     session_env_commands,
 };
@@ -771,24 +770,18 @@ fn write_claude_source_snapshot(state: &BootstrapState) {
     }) {
         return;
     }
-    let Ok(output) = run_python_verb(
-        [OsString::from("token"), OsString::from("claude-source")],
-        Duration::from_secs(120),
-    ) else {
+    let Ok(source) = crate::token_commands::resolve_claude_source(None) else {
         return;
     };
-    if !output.status().success() {
-        return;
-    }
-    let values = parse_kv(&String::from_utf8_lossy(output.stdout()));
-    let transcript = value(&values, "TRANSCRIPT_PATH", "");
-    if transcript.is_empty() {
-        return;
-    }
     let text = format!(
-        "TRANSCRIPT_PATH={transcript}\nSESSION_DIR={}\nSESSION_UUID={}\n",
-        value(&values, "SESSION_DIR", ""),
-        value(&values, "SESSION_UUID", ""),
+        "TRANSCRIPT_PATH={}\nSESSION_DIR={}\nSESSION_UUID={}\n",
+        source.transcript.display(),
+        source
+            .session_dir
+            .as_deref()
+            .map(|dir| dir.display().to_string())
+            .unwrap_or_default(),
+        source.session_uuid,
     );
     let _ignored = write_session_text(&state.implement_tmpdir, "claude-source.env", &text, 0o600);
 }

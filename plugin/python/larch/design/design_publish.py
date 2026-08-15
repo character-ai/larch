@@ -831,7 +831,7 @@ def _fetch_claude_source_snapshot(
     warning_step_label: str,
 ) -> Path | None:
     result = proc.run(
-        [sys.executable, str(plugin_root / "python" / "cli.py"), "token", "claude-source"],
+        [str(larch_entrypoint(plugin_root)), "token", "claude-source"],
     )
     if result.returncode != 0 or "TRANSCRIPT_PATH=" not in result.stdout:
         _append_transcript_warning(

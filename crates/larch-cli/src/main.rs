@@ -656,6 +656,9 @@ enum TokenCommand {
     /// Record one step mark in the resolved token ledger.
     #[command(disable_help_flag = true)]
     Mark(RawCompatibilityArguments),
+    /// Resolve and print the active Claude transcript source.
+    #[command(name = "claude-source", disable_help_flag = true)]
+    ClaudeSource(RawCompatibilityArguments),
     /// Record one vendor usage row in the resolved token ledger.
     #[command(name = "record-vendor", disable_help_flag = true)]
     RecordVendor(RawCompatibilityArguments),
@@ -2346,6 +2349,9 @@ fn run(
         }),
         Domain::Token(command) => Ok(match command {
             TokenCommand::Mark(arguments) => token_commands::mark(&arguments.arguments),
+            TokenCommand::ClaudeSource(arguments) => {
+                token_commands::claude_source(&arguments.arguments)
+            }
             TokenCommand::RecordVendor(arguments) => {
                 token_commands::record_vendor(&arguments.arguments)
             }

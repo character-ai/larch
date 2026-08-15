@@ -7816,11 +7816,13 @@ verb = "claude-source"
 python_module = "larch.report.tokens"
 python_function = "token_claude_source_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7684
+migration_issue = 8557
+clean_install_test = "clean-install-token-claude-source"
 
 [[commands]]
 domain = "token"
@@ -8981,7 +8983,7 @@ rust = ["plan-review drift-baseline", "plan-review emit", "plan-review json-get-
 path = "python/larch/design/design_publish.py"
 kind = "python-runtime"
 python = ["diagrams upsert"]
-rust = ["difficulty sync-labels", "difficulty write-record", "named-block write", "run-log append-failure", "run-log write", "session write-design-env", "tracking-issue rename"]
+rust = ["difficulty sync-labels", "difficulty write-record", "named-block write", "run-log append-failure", "run-log write", "session write-design-env", "token claude-source", "tracking-issue rename"]
 
 [[callers]]
 path = "python/larch/design/design_router.py"
@@ -10102,8 +10104,8 @@ rust = ["review compose-findings", "review core", "review-and-fix apply-findings
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["checks run-relevant", "render specialist", "render voter", "scout dynamic-archetypes", "token claude-source"]
-rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review aggregate-findings", "review check-reviewer-failure-threshold", "review collect-findings", "review core", "review dispatch-panel", "review emit-tally", "review gather-context", "review log-phase", "review prune-nit-findings", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir", "session setup"]
+python = ["checks run-relevant", "render specialist", "render voter", "scout dynamic-archetypes"]
+rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review aggregate-findings", "review check-reviewer-failure-threshold", "review collect-findings", "review core", "review dispatch-panel", "review emit-tally", "review gather-context", "review log-phase", "review prune-nit-findings", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir", "session setup", "token claude-source"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"

@@ -360,7 +360,7 @@ cutover is named in the last column.
 | `larch.report.exec_issue_detail`, `review_phase_detail`, and `design_diagram_log` | Parser and renderer helpers for issue warnings, review-phase rows, and design-diagram diagnostics. They are not durable run-log writers. | Their analytical, design, and issue callers belong to #7684, #7680, and #7682. |
 | `larch.report.report_tokens_models`, `report_tokens_scan`, `report_tokens_cost`, and `tokens` | Input, pricing, and state helpers for bounded compatibility consumers and remaining Python token analytics. The seven token measurements are Rust-owned after #8508, and #8507 removed their `token report`, `token cost`, and `token render-cost-line` entrypoints. They do not implement them, `report-tokens analyze`, or a final-report writer. | #7684 owns the remaining token analytics. |
 | `larch.git.pr_body.render_run_summary` and `larch.design.design_summary` | The `render run-summary` compatibility payload for `/design`. It shares the marker grammar but is not an `/implement` final-report fallback. | #7680 owns `render run-summary` and its `/design` caller. |
-| `token claude-source` and `architectural-assessment final-report-sections` | Read-only model fallback and architectural-assessment payloads consumed by Rust `final-report write`. | #7684 and #7681, respectively. |
+| `architectural-assessment final-report-sections` | Read-only architectural-assessment payload consumed by Rust `final-report write`. | #7681. |
 | `token compute-pr-line-counts` and `implement scope-disposition summary-line` | PR and plan-coverage payloads consumed by Rust `final-report write`. | #7681. |
 | `larch.rendering.rendering` | Prompt and diagram payload renderers outside the closed commands. | Its exact registry rows belong to #7678, #7680, #7681, #7684, or #7686; committed-artifact generation is Rust-owned by #8100. |
 
@@ -458,10 +458,10 @@ into the Python owners of their dependencies and became verbs there:
 `implement scope-disposition summary-line` (owned by #7681 with the rest of
 `larch.implement.scope_disposition`) and
 `architectural-assessment final-report-sections` (owned by #7681 with the rest
-of `larch.implement.architectural_assessment`). `token claude-source` is a #7684
-fallback reader for a missing manifest. By contrast,
-`tracking-issue upsert-summary` is Rust-owned after the corrected atomic
-cutover in #8346 and is called in process by `final-report write`. Python
+of `larch.implement.architectural_assessment`). `token claude-source` was a #7684
+fallback reader for a missing manifest until #8557 completed its atomic cutover;
+like `tracking-issue upsert-summary` after the corrected atomic cutover in #8346,
+it is now Rust-owned and called in process by `final-report write`. Python
 workflow consumers use typed `rust_runtime` wrappers that enter through
 `scripts/larch.sh`. Neither path adds a second implementation: the logic has
 exactly one Rust home.

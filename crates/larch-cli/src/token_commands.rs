@@ -581,9 +581,52 @@ fn render_cost(arguments: &[OsString], line: bool) -> ExitCode {
 }
 
 #[derive(Clone, Debug)]
-struct ClaudeSource {
-    transcript: PathBuf,
-    session_dir: Option<PathBuf>,
+pub struct ClaudeSource {
+    pub transcript: PathBuf,
+    pub session_dir: Option<PathBuf>,
+    pub session_uuid: String,
+}
+
+/// Resolve the active Claude transcript source in-process.
+///
+/// Mirrors the retired `token claude-source` Python verb: an explicit source
+/// snapshot (positional argument or `LARCH_CLAUDE_SOURCE_FILE`) takes priority,
+/// falling back to scanning the Claude project directory. In-process callers use
+/// this instead of spawning the former Python child (#8557).
+pub fn resolve_claude_source(source_file: Option<PathBuf>) -> Result<ClaudeSource, String> {
+    let source_file =
+        source_file.or_else(|| env::var_os("LARCH_CLAUDE_SOURCE_FILE").map(PathBuf::from));
+    source_file
+        .as_deref()
+        .and_then(claude_source_from_snapshot)
+        .map_or_else(claude_source_from_project, Ok)
+}
+
+/// Resolve and print the active Claude transcript source as KV stdout.
+///
+/// Migrated from the retired `token claude-source` Python verb (#8557): prints
+/// `TRANSCRIPT_PATH`, then `SESSION_DIR` and `SESSION_UUID` when present, exiting
+/// zero; on failure prints `STATUS=unavailable` with the reason and exits one.
+pub fn claude_source(arguments: &[OsString]) -> ExitCode {
+    let source_file = arguments.first().map(PathBuf::from);
+    match resolve_claude_source(source_file) {
+        Ok(source) => {
+            let mut lines = vec![format!("TRANSCRIPT_PATH={}", source.transcript.display())];
+            if let Some(session_dir) = &source.session_dir {
+                lines.push(format!("SESSION_DIR={}", session_dir.display()));
+            }
+            if !source.session_uuid.is_empty() {
+                lines.push(format!("SESSION_UUID={}", source.session_uuid));
+            }
+            let mut rendered = lines.join("\n");
+            rendered.push('\n');
+            write_stdout(&rendered)
+        }
+        Err(reason) => {
+            let _ = write_stdout(&format!("STATUS=unavailable\nREASON={reason}\n"));
+            ExitCode::from(1)
+        }
+    }
 }
 
 fn report_transcript_paths(options: &ReportArguments) -> Result<Vec<PathBuf>, String> {
@@ -591,16 +634,35 @@ fn report_transcript_paths(options: &ReportArguments) -> Result<Vec<PathBuf>, St
         return transcript_sources(transcript, options.session_dir.as_deref())
             .map_err(|error| error.to_string());
     }
-    let source_file = options
-        .source_file
-        .clone()
-        .or_else(|| env::var_os("LARCH_CLAUDE_SOURCE_FILE").map(PathBuf::from));
-    let source = source_file
-        .as_deref()
-        .and_then(claude_source_from_snapshot)
-        .map_or_else(claude_source_from_project, Ok)?;
+    let source = resolve_claude_source(options.source_file.clone())?;
     transcript_sources(&source.transcript, source.session_dir.as_deref())
         .map_err(|error| error.to_string())
+}
+
+/// Resolve a path the way Python's non-strict `Path.resolve()` does.
+///
+/// Canonicalizes the deepest existing ancestor (following symlinks) and
+/// re-appends the missing tail. Unlike `fs::canonicalize`, the path itself need
+/// not exist, matching the retired Python `_validate_snapshot_replay`, which
+/// resolves a `SESSION_DIR` that a bootstrap snapshot names before its session
+/// directory is created.
+fn resolve_lenient(path: &Path) -> PathBuf {
+    for ancestor in path.ancestors() {
+        if let Ok(canonical) = fs::canonicalize(ancestor) {
+            let tail = path
+                .strip_prefix(ancestor)
+                .unwrap_or_else(|_| Path::new(""));
+            // Joining an empty tail would append a trailing separator; a fully
+            // existing path resolves to the canonical form with no trailing slash,
+            // matching Python's `Path.resolve()`.
+            return if tail.as_os_str().is_empty() {
+                canonical
+            } else {
+                canonical.join(tail)
+            };
+        }
+    }
+    absolute_lexical(path)
 }
 
 fn claude_source_from_snapshot(source_file: &Path) -> Option<ClaudeSource> {
@@ -615,7 +677,7 @@ fn claude_source_from_snapshot(source_file: &Path) -> Option<ClaudeSource> {
         return None;
     }
     let transcript = fs::canonicalize(transcript).ok()?;
-    let session_dir = fs::canonicalize(session_dir).ok()?;
+    let session_dir = resolve_lenient(Path::new(session_dir));
     if !transcript.is_file() {
         return None;
     }
@@ -629,6 +691,7 @@ fn claude_source_from_snapshot(source_file: &Path) -> Option<ClaudeSource> {
     Some(ClaudeSource {
         transcript,
         session_dir: Some(session_dir),
+        session_uuid: session_uuid.clone(),
     })
 }
 
@@ -668,13 +731,15 @@ fn claude_source_from_project() -> Result<ClaudeSource, String> {
         }
         candidate
     };
-    let session_dir = transcript
+    let stem = transcript
         .file_stem()
-        .map(|name| project_dir.join(name))
         .ok_or_else(|| "Claude transcript source unavailable".to_owned())?;
+    let session_uuid = stem.to_string_lossy().into_owned();
+    let session_dir = project_dir.join(stem);
     Ok(ClaudeSource {
         transcript,
         session_dir: Some(session_dir),
+        session_uuid,
     })
 }
 

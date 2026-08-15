@@ -70,6 +70,10 @@ impl CleanInstallCase {
             // its historical raw compatibility parser, so the same token is a
             // deterministic usage refusal that proves verified dispatch.
             | "clean-install-audit-runs-pacific-timestamp"
+            // `token claude-source` resolves no Claude project directory under the
+            // fixture home, so it reports its `STATUS=unavailable` exit after
+            // proving verified dispatch.
+            | "clean-install-token-claude-source"
             | "clean-install-session-local-cleanup" => 1,
             "clean-install-admission-preflight" => 3,
             "clean-install-token-measure-cache-efficiency"
@@ -1397,6 +1401,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "telemetry-mark",
     ),
     CleanInstallCase::new("clean-install-token-append-record", "token", "append-record"),
+    CleanInstallCase::new("clean-install-token-claude-source", "token", "claude-source"),
     CleanInstallCase::new("clean-install-token-cost", "token", "cost"),
     CleanInstallCase::new("clean-install-token-dump", "token", "dump"),
     CleanInstallCase::new("clean-install-token-lane-report", "token", "lane-report"),
