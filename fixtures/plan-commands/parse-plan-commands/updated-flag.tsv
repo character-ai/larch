@@ -1,0 +1,3 @@
+row_type	source_line	script_path	flag	flag_value	note	cmd_uid
+updated_flag	6	fixtures/plan-commands/validate-plan-commands/demo-stdout-help.sh	known-flag			
+invocation	9	fixtures/plan-commands/validate-plan-commands/demo-stdout-help.sh	known-flag	x		1

@@ -1225,9 +1225,11 @@ closure-max-content-tokens = 26303
 # Issue #7942 removes later content-reduction slack from that declared set.
 # Issue #8462 documents bgjob FINAL_SUMMARY_READY readiness alongside markers.
 # Issue #8449's Rust cutover increases the measured conditional closure by five tokens.
+# Issue #8576 retargets plan CLI citations to scripts/larch.sh (slightly longer than
+# python/cli.py), adding eight measured conditional tokens.
 conditional-max-lines = 779
-conditional-max-tokens = 19674
-conditional-max-content-tokens = 19603
+conditional-max-tokens = 19682
+conditional-max-content-tokens = 19611
 
 [[lint.prompt-source-budgets]]
 name = "implement"

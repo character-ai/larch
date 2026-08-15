@@ -228,7 +228,7 @@ so unconsumed exchanges fail the test. Fixture code must not call
 ported in #8575: heading and trailer parsing, M1/M2 validation with injected
 tracked paths, optional metadata, size-trigger assessment, and plan-command
 extraction. Golden parity for command extraction reuses
-`skills/design/scripts/fixtures/parse-plan-commands`. Later command leaves
+`fixtures/plan-commands/parse-plan-commands`. Later command leaves
 register CLI verbs; this core stays network-free and filesystem-bounded.
 
 ## Test boundaries

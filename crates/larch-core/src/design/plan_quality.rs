@@ -1270,7 +1270,7 @@ mod tests {
     #[test]
     fn parse_plan_commands_golden_fixtures_match_python() {
         let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../skills/design/scripts/fixtures/parse-plan-commands");
+            .join("../../fixtures/plan-commands/parse-plan-commands");
         let mut pairs = Vec::new();
         for entry in fs::read_dir(&fixture_dir).expect("fixtures dir") {
             let entry = entry.expect("entry");

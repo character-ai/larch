@@ -672,7 +672,7 @@ Branch on `_autofix_status` per `validator-failure.md`. If auto-repair does not 
 
 **Plan helper contracts**:
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py design driver`: ACTION dispatcher; sibling `design-driver.md`.
-- `scripts/larch.sh plan parse-commands` (also `validate-commands`, `validate`, `validator-autofix`, `check-size`, `set-oversize-override`): plan handling; Rust owner in `crates/larch-cli/src/plan_quality_commands.rs` / `plan_quality_revise_commands.rs`; parity harness `crates/larch-cli/tests/plan_quality_migrated_parity.rs`.
+- `scripts/larch.sh plan parse-commands` (also `validate-commands`, `validate`, `validator-autofix`, `check-size`, `set-oversize-override`): Rust owner `plan_quality_commands.rs` / `plan_quality_revise_commands.rs`; parity `plan_quality_migrated_parity.rs`.
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py design postplan-emit`: Step 2b post-plan driver; implementation `${CLAUDE_PLUGIN_ROOT}/python/larch/design/design_postplan.py`; harness `${CLAUDE_PLUGIN_ROOT}/python/tests/design/test_design_postplan.py`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dry-runnable-scripts.tsv`: Tier 3 opt-in registry; docs `dry-runnable-scripts.md`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh plan-review emit`, `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh plan-review tally`, `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh plan-review finalize`, `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh plan-review snapshot-pre-review`, `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh plan-review filter-gate-b-skipped`, and `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh plan-review persist-accepted-audit`: Step 3 emit, tally, finalize, snapshot, skip-filter, and audit persistence; Rust implementation `crates/larch-cli/src/plan_review_commands.rs` and harnesses under `crates/larch-cli/tests/`.
