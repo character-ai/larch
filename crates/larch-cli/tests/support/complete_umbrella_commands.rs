@@ -611,15 +611,7 @@ async fn next_graph_reports_an_open_non_leaf_parent_blocker_separately() {
         .expect("valid direct leaf with a separately reported parent blocker");
     assert_eq!(graph.open_orphan_blockers, vec![GAP]);
     let selection = select_complete_umbrella_leaf(
-        &graph
-            .leaves
-            .iter()
-            .map(|leaf| CompleteUmbrellaLeaf {
-                number: leaf.issue.number,
-                open: leaf.issue.state == GitHubIssueState::Open,
-                open_blockers: leaf.open_blockers.clone(),
-            })
-            .collect::<Vec<_>>(),
+        &selection_leaves(&graph.leaves),
         &graph.open_orphan_blockers,
     );
     assert_eq!(
@@ -894,6 +886,19 @@ fn next_snapshot_covers_launch_audit_orphan_deadlock_and_inactive_refusal() {
         output_root: directory.path().to_path_buf(),
         output: directory.path().join(name),
     };
+
+    let mut active = leaf(42, GitHubIssueState::Open, Vec::new());
+    active.issue.title = format!("{IMPLEMENTING_PREFIX}[LEAF OF 40] Leaf 42");
+    let active_input = selection_leaves(&[active]);
+    let active_selection = select_complete_umbrella_leaf(&active_input, &[]);
+    assert_eq!(active_selection, CompleteUmbrellaNext::Deadlocked(vec![42]));
+    assert_eq!(
+        next_action_fields(&active_selection),
+        vec![
+            ("NEXT_ACTION", "deadlock".to_owned()),
+            ("BLOCKED_LEAVES", "42".to_owned()),
+        ]
+    );
 
     emit_next(
         &arguments("launch.json"),
