@@ -503,9 +503,9 @@ pub use test_shards::{
     read_makefile_shards, rewrite_makefile_shards,
 };
 pub use text::{
-    balanced_fence_line_indices, bounded_ascii_identifier, ensure_ascii_json, file_line_regex,
-    is_positive_decimal, is_python_whitespace, positive_integer, python_bigint, python_float,
-    python_int, python_str, split_lines_keep_ends, split_text_lines, tail_lines,
+    balanced_fence_line_indices, bounded_ascii_identifier, ensure_ascii_json, fence_marker,
+    file_line_regex, is_positive_decimal, is_python_whitespace, positive_integer, python_bigint,
+    python_float, python_int, python_str, split_lines_keep_ends, split_text_lines, tail_lines,
     trim_python_whitespace, truncate_utf8_bytes, universal_newlines, unsigned_integer,
 };
 pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};

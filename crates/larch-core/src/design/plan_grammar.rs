@@ -5,7 +5,7 @@
 //! checks) live here. Callers keep policy decisions such as whether an
 //! operator-authored oversize override is trusted.
 
-use crate::{balanced_fence_line_indices, glob_matches, trim_python_whitespace};
+use crate::{balanced_fence_line_indices, fence_marker, glob_matches, trim_python_whitespace};
 use regex::Regex;
 use std::{
     collections::{BTreeSet, HashSet},
@@ -768,78 +768,7 @@ fn glob_matches_tracked(
     pattern: &str,
     tracked: &HashSet<String, impl std::hash::BuildHasher>,
 ) -> bool {
-    tracked.iter().any(|path| {
-        fnmatchcase(path, pattern) || (!pattern.contains('[') && glob_matches(path, pattern))
-    })
-}
-
-fn fnmatchcase(name: &str, pattern: &str) -> bool {
-    let name_chars: Vec<char> = name.chars().collect();
-    let pattern_chars: Vec<char> = pattern.chars().collect();
-    let (mut name_index, mut pattern_index) = (0_usize, 0_usize);
-    let (mut star, mut resume) = (None::<usize>, 0_usize);
-    while name_index < name_chars.len() {
-        if let Some(next) = glob_atom_end(&pattern_chars, pattern_index, name_chars[name_index]) {
-            name_index += 1;
-            pattern_index = next;
-        } else if pattern_chars.get(pattern_index) == Some(&'*') {
-            star = Some(pattern_index);
-            pattern_index += 1;
-            resume = name_index;
-        } else if let Some(index) = star {
-            pattern_index = index + 1;
-            resume += 1;
-            name_index = resume;
-        } else {
-            return false;
-        }
-    }
-    while pattern_chars.get(pattern_index) == Some(&'*') {
-        pattern_index += 1;
-    }
-    pattern_index == pattern_chars.len()
-}
-
-fn glob_atom_end(pattern: &[char], index: usize, value: char) -> Option<usize> {
-    match pattern.get(index) {
-        Some('?') => Some(index + 1),
-        Some('[') => match glob_class(pattern, index, value) {
-            Some((end, true)) => Some(end),
-            Some(_) => None,
-            None => (value == '[').then_some(index + 1),
-        },
-        Some(expected) if *expected == value => Some(index + 1),
-        _ => None,
-    }
-}
-
-fn glob_class(pattern: &[char], index: usize, value: char) -> Option<(usize, bool)> {
-    let mut start = index + 1;
-    let negated = matches!(pattern.get(start), Some('!' | '^'));
-    if negated {
-        start += 1;
-    }
-    let mut cursor = start;
-    let mut matched = false;
-    while cursor < pattern.len() {
-        if pattern[cursor] == ']' && cursor > start {
-            return Some((cursor + 1, matched != negated));
-        }
-        if cursor + 2 < pattern.len() && pattern[cursor + 1] == '-' && pattern[cursor + 2] != ']' {
-            let low = pattern[cursor];
-            let high = pattern[cursor + 2];
-            if (low..=high).contains(&value) {
-                matched = true;
-            }
-            cursor += 3;
-            continue;
-        }
-        if pattern[cursor] == value {
-            matched = true;
-        }
-        cursor += 1;
-    }
-    None
+    tracked.iter().any(|path| glob_matches(path, pattern))
 }
 
 fn m2_path_defects(
@@ -891,21 +820,6 @@ fn is_generic_level_two(line: &str) -> bool {
         return false;
     }
     rest.is_empty() || rest.starts_with([' ', '\t'])
-}
-
-fn fence_marker(line: &str) -> Option<(char, usize, &str)> {
-    let marker = line.chars().next()?;
-    if marker != '`' && marker != '~' {
-        return None;
-    }
-    let length = line
-        .chars()
-        .take_while(|character| *character == marker)
-        .count();
-    if length < 3 {
-        return None;
-    }
-    Some((marker, length, &line[length..]))
 }
 
 #[cfg(test)]

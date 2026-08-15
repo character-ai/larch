@@ -129,33 +129,69 @@ const DEBUG_GLOBS: &[&str] = &[
     "*-output-*.txt.cap-hit",
 ];
 
-/// Case-sensitive `fnmatch` for the `*` and `?` wildcards used by these tables.
+/// Case-sensitive `fnmatch` for `*`, `?`, and `[...]` character classes.
 #[must_use]
 pub fn glob_matches(name: &str, pattern: &str) -> bool {
-    let name: Vec<char> = name.chars().collect();
-    let pattern: Vec<char> = pattern.chars().collect();
-    let (mut n, mut p) = (0_usize, 0_usize);
+    let name_chars: Vec<char> = name.chars().collect();
+    let pattern_chars: Vec<char> = pattern.chars().collect();
+    let (mut name_index, mut pattern_index) = (0_usize, 0_usize);
     let (mut star, mut resume) = (None::<usize>, 0_usize);
-    while n < name.len() {
-        if p < pattern.len() && (pattern[p] == '?' || pattern[p] == name[n]) {
-            n += 1;
-            p += 1;
-        } else if p < pattern.len() && pattern[p] == '*' {
-            star = Some(p);
-            resume = n;
-            p += 1;
+    while name_index < name_chars.len() {
+        if let Some(next) = glob_atom_end(&pattern_chars, pattern_index, name_chars[name_index]) {
+            name_index += 1;
+            pattern_index = next;
+        } else if pattern_chars.get(pattern_index) == Some(&'*') {
+            star = Some(pattern_index);
+            pattern_index += 1;
+            resume = name_index;
         } else if let Some(index) = star {
-            p = index + 1;
+            pattern_index = index + 1;
             resume += 1;
-            n = resume;
+            name_index = resume;
         } else {
             return false;
         }
     }
-    while p < pattern.len() && pattern[p] == '*' {
-        p += 1;
+    while pattern_chars.get(pattern_index) == Some(&'*') {
+        pattern_index += 1;
     }
-    p == pattern.len()
+    pattern_index == pattern_chars.len()
+}
+
+fn glob_atom_end(pattern: &[char], index: usize, value: char) -> Option<usize> {
+    match pattern.get(index) {
+        Some('?') => Some(index + 1),
+        Some('[') => match glob_class(pattern, index, value) {
+            Some((end, true)) => Some(end),
+            Some(_) => None,
+            None => (value == '[').then_some(index + 1),
+        },
+        Some(expected) if *expected == value => Some(index + 1),
+        _ => None,
+    }
+}
+
+fn glob_class(pattern: &[char], index: usize, value: char) -> Option<(usize, bool)> {
+    let mut start = index + 1;
+    let negated = pattern.get(start) == Some(&'!');
+    start += usize::from(negated);
+    let mut end = start + usize::from(pattern.get(start) == Some(&']'));
+    while end < pattern.len() && pattern[end] != ']' {
+        end += 1;
+    }
+    (end < pattern.len()).then_some(())?;
+    let mut cursor = start;
+    let mut matched = false;
+    while cursor < end {
+        if cursor + 2 < end && pattern[cursor + 1] == '-' {
+            matched |= pattern[cursor] <= value && value <= pattern[cursor + 2];
+            cursor += 3;
+        } else {
+            matched |= pattern[cursor] == value;
+            cursor += 1;
+        }
+    }
+    Some((end + 1, matched != negated))
 }
 
 fn matches_any(name: &str, patterns: &[&str]) -> bool {

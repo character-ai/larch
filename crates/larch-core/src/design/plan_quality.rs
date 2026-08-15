@@ -916,18 +916,19 @@ fn parse_command_segment(
             k += 1;
             continue;
         }
-        let (flag, value) = if let Some((flag, value)) = body.split_once('=') {
-            (flag.to_owned(), value.to_owned())
-        } else {
-            let mut value = String::new();
-            if k + 1 < toks.len() {
-                let nxt = normalize_token(&toks[k + 1], repo_root, plugin_root);
-                if !nxt.is_empty() && !nxt.starts_with('-') {
-                    value = nxt;
-                    k += 1;
+        let (flag, value) = match body.find('=') {
+            Some(index) => (body[..index].to_owned(), body[index + 1..].to_owned()),
+            None => {
+                let mut value = String::new();
+                if k + 1 < toks.len() {
+                    let nxt = normalize_token(&toks[k + 1], repo_root, plugin_root);
+                    if !nxt.is_empty() && !nxt.starts_with('-') {
+                        value = nxt;
+                        k += 1;
+                    }
                 }
+                (body.to_owned(), value)
             }
-            (body.to_owned(), value)
         };
         if bad_field(&flag) || bad_field(&value) {
             emit_parse_note(rows, source_line, "charset-violation");
