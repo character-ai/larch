@@ -32,7 +32,7 @@ from larch.design import design_pause, plan_grammar
 from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
 from larch.issue import issue_wire
 from larch.core.redact import redact_secrets_only
-from larch.core.repo_roots import consumer_repo_root, larch_entrypoint
+from larch.core.repo_roots import consumer_repo_root, larch_entrypoint, larch_entrypoint_env
 from larch.issue.issue_wire import emit_untrusted_file_block
 from larch.state import session_env
 from larch.state.session_env import validate_design_tmpdir
@@ -1450,8 +1450,9 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
     gate_b_cmd = (
         [gate_b_override]
         if gate_b_override
-        else [sys.executable, str(plugin / "python" / "cli.py"), "plan-review", "gate-b-dedup"]
+        else [str(larch_entrypoint(plugin)), "plan-review", "gate-b-dedup"]
     )
+    gate_b_env = None if gate_b_override else larch_entrypoint_env(plugin)
     validate_sh = os.environ.get("LARCH_AUTOFIX_VALIDATE_PLAN_SH")
     validator_cli = (
         [validate_sh, "--plan-file", str(plan), "--repo-root", str(validate_repo)]
@@ -1481,7 +1482,7 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
         repo_before = run_dir / "repo-before.status-z"
         repo_after = run_dir / "repo-after.status-z"
         if plan.name == "plan.txt":
-            snapshot = subprocess.run([*gate_b_cmd, "--design-tmpdir", str(design_tmpdir), "--snapshot-trailers"], capture_output=True, text=True, check=False)
+            snapshot = subprocess.run([*gate_b_cmd, "--design-tmpdir", str(design_tmpdir), "--snapshot-trailers"], capture_output=True, text=True, check=False, env=gate_b_env)
             (run_dir / "trailer-snapshot.log").write_text(snapshot.stdout + snapshot.stderr, encoding="utf-8")
             if snapshot.returncode != 0:
                 shutil.copy2(backup, plan)
@@ -1527,7 +1528,7 @@ def auto_fix_plan_commands_main(argv: list[str]) -> int:
             final_status = "dispatch-failed"
             continue
         if plan.name == "plan.txt":
-            dedup = subprocess.run([*gate_b_cmd, "--design-tmpdir", str(design_tmpdir), "--dedup"], check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            dedup = subprocess.run([*gate_b_cmd, "--design-tmpdir", str(design_tmpdir), "--dedup"], check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=gate_b_env)
             _atomic_write(path=run_dir / "dedup.log", text=dedup.stdout)
             if dedup.returncode != 0:
                 shutil.copy2(backup, plan)

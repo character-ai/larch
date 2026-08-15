@@ -1528,7 +1528,7 @@ fn trim_decimal(mut value: String) -> String {
     value
 }
 #[rustfmt::skip]
-fn format_score(value: f64) -> String { if value == 0.0 { "0".to_owned() } else if value.fract() == 0.0 { format!("{value:.0}") } else if !value.is_finite() { value.to_string().to_ascii_lowercase() } else { let scientific = format!("{value:.5e}"); let (mantissa, raw_exponent) = scientific.split_once('e').expect("Rust scientific float formatting includes an exponent"); let exponent = raw_exponent.parse::<i32>().expect("Rust scientific float formatting uses a decimal exponent"); if (-4..6).contains(&exponent) { let decimal_places = usize::try_from(5 - exponent).unwrap_or(0); trim_decimal(format!("{value:.decimal_places$}")) } else { format!("{}e{exponent:+03}", trim_decimal(mantissa.to_owned())) } } }
+pub fn format_score(value: f64) -> String { if value == 0.0 { "0".to_owned() } else if value.fract() == 0.0 { format!("{value:.0}") } else if !value.is_finite() { value.to_string().to_ascii_lowercase() } else { let scientific = format!("{value:.5e}"); let (mantissa, raw_exponent) = scientific.split_once('e').expect("Rust scientific float formatting includes an exponent"); let exponent = raw_exponent.parse::<i32>().expect("Rust scientific float formatting uses a decimal exponent"); if (-4..6).contains(&exponent) { let decimal_places = usize::try_from(5 - exponent).unwrap_or(0); trim_decimal(format!("{value:.decimal_places$}")) } else { format!("{}e{exponent:+03}", trim_decimal(mantissa.to_owned())) } } }
 
 #[must_use]
 #[allow(clippy::too_many_lines)] // Validation and rendering stay one atomic output transaction.

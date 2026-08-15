@@ -144,7 +144,10 @@ def test_compose_findings_oos_missing_scratch_dir_fails_closed(
     assert "review scratch directory is required before tempfile staging" in text
 
 
-def test_compose_findings_design_gate_b_skip_and_accepted_all_precedence(tmp_path: Path) -> None:
+def test_compose_findings_design_gate_b_skip_and_accepted_all_precedence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     design = tmp_path / "design-map"
     _ = (design / "plan-review" / "round-1").mkdir(parents=True)
     _ = (design / "accepted-plan-findings.md").write_text(
@@ -175,18 +178,28 @@ def test_compose_findings_design_gate_b_skip_and_accepted_all_precedence(tmp_pat
     )
     output = tmp_path / "design.jsonl"
 
-    result = run_review(
-        "compose-findings",
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        accepted_path = Path(argv[argv.index("--accepted") + 1])
+        filtered = accepted_path.read_text(encoding="utf-8").split("\n### FINDING_3:", maxsplit=1)[0] + "\n"
+        return subprocess.CompletedProcess(argv, 0, stdout=filtered, stderr="")
+
+    monkeypatch.setattr(compose_review.subprocess, "run", fake_run)
+    rc = compose_review.compose_findings(
+        [
         "--design-artifacts-dir",
         str(design),
         "--issue",
         "3776",
         "--output",
         str(output),
+        ]
     )
 
-    assert result.returncode == 0, result.stderr
-    assert "FINDINGS_TOTAL=1" in result.stdout
+    assert rc == 0
+    assert calls[0][1:3] == ["plan-review", "filter-gate-b-skipped"]
     assert _record_field_by_id(output, "FINDING_1", "phase") == ""
     assert _record_field_by_id(output, "FINDING_3", "phase") == ""
     assert "FINDING_2" in output.read_text(encoding="utf-8")

@@ -526,30 +526,44 @@ def test_design_route_malformed_plan_is_not_already_planned(
     assert "ROUTE=proceed" in result.stdout
 
 
-def test_design_driver_emit_plan_is_rerunnable(tmp_path: Path) -> None:
+def test_design_driver_emit_plan_is_rerunnable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     design = tmp_path / "design"
     design.mkdir()
     _ = (design / "plan.txt").write_text(plan_body(header="# Plan", diff_lines=5), encoding="utf-8")
     actions = tmp_path / "actions.txt"
-    _ = actions.write_text("ACTION=EMIT_PLAN\nACTION=FINALIZE\n", encoding="utf-8")
-    first = subprocess.run(
-        [sys.executable, str(CLI), "design", "driver", "--design-tmpdir", str(design), "--action-file", str(actions)],
-        capture_output=True,
-        text=True,
-        check=False,
+    _ = actions.write_text(
+        "ACTION=EMIT_PLAN\nACTION=TALLY --ballot-file ballot.md\nACTION=FINALIZE\n",
+        encoding="utf-8",
     )
-    assert first.returncode == 0
-    assert "STEP_COMPLETED=FINALIZE" in first.stdout
+    calls: list[tuple[list[str], dict[str, str] | None]] = []
+
+    def fake_run(
+        command: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        environment = kwargs.get("env")
+        calls.append((command, cast("dict[str, str]", environment) if isinstance(environment, dict) else None))
+        stdout = "EMIT_PLAN_STATUS=ok\nDIFF_LINES=5\n" if command[1:3] == ["plan-review", "emit"] else ""
+        return subprocess.CompletedProcess(command, 0, stdout, "")
+
+    monkeypatch.setattr(design_step1.subprocess, "run", fake_run)
+    args = ["--design-tmpdir", str(design), "--action-file", str(actions)]
+    assert design_step1.driver_main(args) == 0
+    assert "STEP_COMPLETED=FINALIZE" in capsys.readouterr().out
+    review_calls = [call for call in calls if call[0][1:2] == ["plan-review"]]
+    assert review_calls[0][0][1:3] == ["plan-review", "emit"]
+    assert review_calls[0][1] is not None
+    assert review_calls[1][0][1:3] == ["plan-review", "tally"]
+    assert review_calls[1][1] is not None
     _ = (design / "plan.txt").write_text(plan_body(header="# Plan", diff_lines=9), encoding="utf-8")
-    second = subprocess.run(
-        [sys.executable, str(CLI), "design", "driver", "--design-tmpdir", str(design), "--action-file", str(actions)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert second.returncode == 0
-    assert "STEP_STARTED=EMIT_PLAN" in second.stdout
-    assert "STEP_SKIPPED=FINALIZE REASON=already-completed" in second.stdout
+    assert design_step1.driver_main(args) == 0
+    second = capsys.readouterr().out
+    assert "STEP_STARTED=EMIT_PLAN" in second
+    assert "STEP_SKIPPED=FINALIZE REASON=already-completed" in second
 
 
 

@@ -22,8 +22,8 @@ use larch_core::{
     is_security_block_text, normalize_oos_block_header, parse_oos_blocks,
     review::{
         ItemContext, LedgerRow, VoteCell, alias_ballot_id, code_review_classification_header,
-        ledger_root, normalize_output_base, parse_judge_vote_text, reviewer_for_block_text,
-        run_items, write_round,
+        ledger_root, normalize_output_base, parse_judge_vote_text, proposer_map_item_mismatch,
+        reviewer_for_block_text, run_items, write_round,
     },
     serialize_accepted_oos,
 };
@@ -553,20 +553,8 @@ fn validate_proposer_map_for_neutralized_ballot(
         .keys()
         .cloned()
         .collect::<BTreeSet<_>>();
-    if ballot_ids != map_ids {
-        let missing = ballot_ids.difference(&map_ids).cloned().collect::<Vec<_>>();
-        let extra = map_ids.difference(&ballot_ids).cloned().collect::<Vec<_>>();
-        let mut details = Vec::new();
-        if !missing.is_empty() {
-            details.push(format!("missing item(s): {}", missing.join(", ")));
-        }
-        if !extra.is_empty() {
-            details.push(format!("extra item(s): {}", extra.join(", ")));
-        }
-        return Err(format!(
-            "proposer map item mismatch ({})",
-            details.join("; ")
-        ));
+    if let Some(error) = proposer_map_item_mismatch(&ballot_ids, &map_ids) {
+        return Err(error);
     }
     for (item, (reviewer, _line)) in &proposer_map.entries {
         if reviewer.trim().is_empty() || reviewer_is_neutral(reviewer) {

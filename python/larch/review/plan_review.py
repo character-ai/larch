@@ -2,10 +2,9 @@
 
 Thin facade — implementation is split across sibling modules:
   plan_review_common   — constants, data classes, I/O helpers, _run_command
-  plan_review_gate_b   — Gate B severity classification and display
   plan_review_normalize — Step 3 result-env normalization and escalation recording
-  plan_review_findings  — cross-round applied-finding ledger and rejected-findings emit
-  plan_review_loop      — envelope persistence, plan emit/preview, state, timing, continuation
+  plan_review_findings  — cross-round applied-finding ledger
+  plan_review_loop      — envelope persistence, preview, state, timing, continuation
 """
 
 from __future__ import annotations
@@ -63,16 +62,11 @@ from larch.review.plan_review_findings import _read_already_addressed_finding_ke
 from larch.review.plan_review_findings import _record_already_addressed_finding_keys  # noqa: F401  # pylint: disable=unused-import
 from larch.review.plan_review_findings import REJECTED_FINDINGS_REPORT_ANNOTATION  # noqa: F401  # pylint: disable=unused-import
 from larch.review.plan_review_findings import REJECTED_FINDINGS_REPORT_HEADING  # noqa: F401  # pylint: disable=unused-import
-from larch.review.plan_review_findings import emit_rejected_findings
 from larch.review.plan_review_loop import (
     _read_bool_param,
     _read_phase,
     emit_design_plan_preview,
-    emit_plan,
     finalize_plan,
-    gate_b_counts,
-    gate_b_dedup_plan,
-    gate_b_finding_line,
     persist_design_round_start_s,
     persist_retally_step3_env,
     plan_review_continuation,
@@ -82,7 +76,6 @@ from larch.review.plan_review_loop import (
     step3_loop_emit_envelope,
     step3_loop_persist_envelope,
     step3_state,
-    tally_plan_review,
 )
 from larch.review.plan_review_normalize import _step3_next_action  # noqa: F401  # pylint: disable=unused-import
 from larch.review.plan_review_normalize import _step3_persist_next_action  # noqa: F401  # pylint: disable=unused-import
@@ -214,7 +207,7 @@ def _run_dedup(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
     if override:
         base = [override]
     else:
-        base = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "plan-review", "gate-b-dedup"]
+        base = [str(larch_entrypoint(_plugin_root())), "plan-review", "gate-b-dedup"]
     _progress_note(step="3", text=f"round {round_num}: plan-review dedup running", tmpdir=tmpdir)
     proc = _run_command(argv=[*base, "--design-tmpdir", str(tmpdir), "--snapshot-trailers"])
     rc = proc.returncode
@@ -976,32 +969,12 @@ def step3_gate_b_bypass_main(argv: list[str] | None = None) -> int:
 # *_main entry points — wired by cli.py dispatch table
 # ---------------------------------------------------------------------------
 
-def tally_main(argv: list[str] | None = None) -> int:
-    return tally_plan_review(argv or [])
-
-
-def emit_main(argv: list[str] | None = None) -> int:
-    return emit_plan(argv or [])
-
-
 def finalize_main(argv: list[str] | None = None) -> int:
     return finalize_plan(argv or [])
 
 
 def preview_main(argv: list[str] | None = None) -> int:
     return emit_design_plan_preview(argv or [])
-
-
-def gate_b_counts_main(argv: list[str] | None = None) -> int:
-    return gate_b_counts(argv or [])
-
-
-def gate_b_finding_line_main(argv: list[str] | None = None) -> int:
-    return gate_b_finding_line(argv or [])
-
-
-def gate_b_dedup_main(argv: list[str] | None = None) -> int:
-    return gate_b_dedup_plan(argv or [])
 
 
 def persist_retally_env_main(argv: list[str] | None = None) -> int:
@@ -1051,10 +1024,6 @@ def step3_mav_main(argv: list[str] | None = None) -> int:
 
 def step3b_tail_main(argv: list[str] | None = None) -> int:
     return _delegate_step3_script(script_name="design-step3b-tail.sh", argv=argv or [])
-
-
-def emit_rejected_main(argv: list[str] | None = None) -> int:
-    return emit_rejected_findings(argv or [])
 
 
 def normalize_status_main(argv: list[str] | None = None) -> int:

@@ -4854,11 +4854,13 @@ verb = "emit"
 python_module = "larch.review.plan_review"
 python_function = "emit_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8448
+clean_install_test = "clean-install-plan-review-emit"
 
 [[commands]]
 domain = "plan-review"
@@ -4866,11 +4868,13 @@ verb = "emit-rejected"
 python_module = "larch.review.plan_review"
 python_function = "emit_rejected_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8448
+clean_install_test = "clean-install-plan-review-emit-rejected"
 
 [[commands]]
 domain = "plan-review"
@@ -4878,11 +4882,13 @@ verb = "filter-gate-b-skipped"
 python_module = "larch.review.plan_review_accepted_audit"
 python_function = "filter_gate_b_skipped_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8448
+clean_install_test = "clean-install-plan-review-filter-gate-b-skipped"
 
 [[commands]]
 domain = "plan-review"
@@ -4902,11 +4908,13 @@ verb = "gate-b-counts"
 python_module = "larch.review.plan_review"
 python_function = "gate_b_counts_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8448
+clean_install_test = "clean-install-plan-review-gate-b-counts"
 
 [[commands]]
 domain = "plan-review"
@@ -4914,11 +4922,13 @@ verb = "gate-b-dedup"
 python_module = "larch.review.plan_review"
 python_function = "gate_b_dedup_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8448
+clean_install_test = "clean-install-plan-review-gate-b-dedup"
 
 [[commands]]
 domain = "plan-review"
@@ -4926,11 +4936,13 @@ verb = "gate-b-finding-line"
 python_module = "larch.review.plan_review"
 python_function = "gate_b_finding_line_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8448
+clean_install_test = "clean-install-plan-review-gate-b-finding-line"
 
 [[commands]]
 domain = "plan-review"
@@ -4976,11 +4988,13 @@ verb = "persist-accepted-audit"
 python_module = "larch.review.plan_review_accepted_audit"
 python_function = "persist_accepted_audit_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8448
+clean_install_test = "clean-install-plan-review-persist-accepted-audit"
 
 [[commands]]
 domain = "plan-review"
@@ -5084,11 +5098,13 @@ verb = "snapshot-pre-review"
 python_module = "larch.review.plan_review_accepted_audit"
 python_function = "snapshot_pre_review_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8448
+clean_install_test = "clean-install-plan-review-snapshot-pre-review"
 
 [[commands]]
 domain = "plan-review"
@@ -5204,11 +5220,13 @@ verb = "tally"
 python_module = "larch.review.plan_review"
 python_function = "tally_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7679
+migration_issue = 8448
+clean_install_test = "clean-install-plan-review-tally"
 
 [[commands]]
 domain = "plan-review"
@@ -8865,7 +8883,7 @@ rust = ["named-block write"]
 path = "python/larch/design/design_postplan.py"
 kind = "python-runtime"
 python = ["plan check-size"]
-rust = []
+rust = ["plan-review emit"]
 
 [[callers]]
 path = "python/larch/design/design_publish.py"
@@ -8886,6 +8904,12 @@ python = []
 rust = ["timing mark"]
 
 [[callers]]
+path = "python/larch/design/design_settle.py"
+kind = "python-runtime"
+python = []
+rust = ["plan-review gate-b-dedup"]
+
+[[callers]]
 path = "python/larch/design/design_step0.py"
 kind = "python-runtime"
 python = ["plan check-size"]
@@ -8895,7 +8919,7 @@ rust = ["agent check-reviewers", "agent degraded-tools-gate", "progress install-
 path = "python/larch/design/design_step1.py"
 kind = "python-runtime"
 python = []
-rust = ["agent collect-results", "dirty-tree checkpoint", "timing mark"]
+rust = ["agent collect-results", "dirty-tree checkpoint", "plan-review emit", "plan-review tally", "timing mark"]
 
 [[callers]]
 path = "python/larch/design/design_step2b.py"
@@ -8931,7 +8955,7 @@ rust = ["stall-recovery chat-print", "stall-recovery classify", "stall-recovery 
 path = "python/larch/design/plan_quality.py"
 kind = "python-runtime"
 python = []
-rust = ["agent cursor-wrap-prompt", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review", "agent run-external-agent", "run-log append-failure", "stall-recovery record-escalation", "timing record-vendor-task"]
+rust = ["agent cursor-wrap-prompt", "agent launch-claude-review", "agent launch-codex-exec", "agent launch-review", "agent run-external-agent", "plan-review gate-b-dedup", "run-log append-failure", "stall-recovery record-escalation", "timing record-vendor-task"]
 
 [[callers]]
 path = "python/larch/design/plan_scout.py"
@@ -9072,6 +9096,12 @@ python = []
 rust = ["agent cursor-wrap-prompt", "agent launch-claude-review-fix", "agent launch-codex-exec", "agent run-external-agent", "git commit", "timing record-vendor-task"]
 
 [[callers]]
+path = "python/larch/review/compose_review.py"
+kind = "python-runtime"
+python = []
+rust = ["plan-review filter-gate-b-skipped"]
+
+[[callers]]
 path = "python/larch/review/dispatch_shared.py"
 kind = "python-runtime"
 python = []
@@ -9081,7 +9111,13 @@ rust = ["voting voter-status-block"]
 path = "python/larch/review/plan_review.py"
 kind = "python-runtime"
 python = []
-rust = ["plan-block strip-body", "progress write-design-round-meta"]
+rust = ["plan-block strip-body", "plan-review gate-b-dedup", "progress write-design-round-meta"]
+
+[[callers]]
+path = "python/larch/review/plan_review_loop.py"
+kind = "python-runtime"
+python = []
+rust = ["plan-review gate-b-counts"]
 
 [[callers]]
 path = "python/larch/review/plan_review_normalize.py"
@@ -9093,7 +9129,7 @@ rust = ["stall-recovery record-escalation"]
 path = "python/larch/review/plan_review_round.py"
 kind = "python-runtime"
 python = []
-rust = ["agent compose-collector-failure-log"]
+rust = ["agent compose-collector-failure-log", "plan-review tally"]
 
 [[callers]]
 path = "python/larch/review/review_and_fix.py"
@@ -9248,14 +9284,14 @@ rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps 
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally"]
-rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "named-block write", "plan-review panel-dispatch", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
+python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "mermaid sanitize", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review finalize", "plan-review normalize-status", "plan-review preview", "plan-review run", "plan-review step3-gate-b-bypass", "plan-review step3-state"]
+rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "dirty-tree checkpoint", "named-block write", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review gate-b-dedup", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review snapshot-pre-review", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
 kind = "skill"
-python = ["plan-review gate-b-counts", "plan-review gate-b-finding-line"]
-rust = []
+python = []
+rust = ["plan-review gate-b-counts", "plan-review gate-b-finding-line"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-gate-a.md"
@@ -9266,14 +9302,14 @@ rust = []
 [[callers]]
 path = "skills/design/references/approval-gates-gate-b.md"
 kind = "skill"
-python = ["design postplan-emit", "design render-gate", "design step2b-postplan", "design step35-settle", "plan check-size", "plan revise-waterfall", "plan-review gate-b-counts", "plan-review gate-b-finding-line", "plan-review preview"]
-rust = []
+python = ["design postplan-emit", "design render-gate", "design step2b-postplan", "design step35-settle", "plan check-size", "plan revise-waterfall", "plan-review preview"]
+rust = ["plan-review gate-b-counts", "plan-review gate-b-finding-line"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-gate-c.md"
 kind = "skill"
-python = ["architectural-guidelines persist-design-assessment", "architectural-guidelines present-note", "architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design dialectic-manual", "design read-result-env", "design render-gate", "design step35-settle", "plan-review filter-gate-b-skipped", "plan-review preview"]
-rust = []
+python = ["architectural-guidelines persist-design-assessment", "architectural-guidelines present-note", "architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design dialectic-manual", "design read-result-env", "design render-gate", "design step35-settle", "plan-review preview"]
+rust = ["plan-review filter-gate-b-skipped"]
 
 [[callers]]
 path = "skills/design/references/approval-gates.md"
@@ -9308,8 +9344,8 @@ rust = ["agent launch-claude-subprocess"]
 [[callers]]
 path = "skills/design/references/discussion-rounds.md"
 kind = "skill"
-python = ["design step2b-postplan", "design step35-settle", "plan-review gate-b-dedup"]
-rust = []
+python = ["design step2b-postplan", "design step35-settle"]
+rust = ["plan-review gate-b-dedup"]
 
 [[callers]]
 path = "skills/design/references/finalize-step5-failures.md"
@@ -9380,8 +9416,8 @@ rust = ["named-block write", "run-log append-failure"]
 [[callers]]
 path = "skills/design/scripts/check-plan-size.md"
 kind = "skill"
-python = ["plan check-size", "plan optional-trailers", "plan-review emit"]
-rust = []
+python = ["plan check-size", "plan optional-trailers"]
+rust = ["plan-review emit"]
 
 [[callers]]
 path = "skills/design/scripts/design-clarify.md"
@@ -9404,8 +9440,8 @@ rust = []
 [[callers]]
 path = "skills/design/scripts/design-step3-entry.sh"
 kind = "skill"
-python = ["plan-review prelaunch-failure", "plan-review snapshot-pre-review", "plan-review step3-entry-preview", "plan-review step3-entry-state", "scope-anchor validate"]
-rust = ["plan-block strip-body", "session validate-design-tmpdir"]
+python = ["plan-review prelaunch-failure", "plan-review step3-entry-preview", "plan-review step3-entry-state", "scope-anchor validate"]
+rust = ["plan-block strip-body", "plan-review snapshot-pre-review", "session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-mav.md"
@@ -9440,8 +9476,8 @@ rust = ["session require-plugin-root", "timing mark"]
 [[callers]]
 path = "skills/design/scripts/design-step3b-tail.sh"
 kind = "skill"
-python = ["design dialectic-gatec", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview"]
-rust = ["bgjob adapt", "session validate-design-tmpdir", "timing mark"]
+python = ["design dialectic-gatec", "design driver", "design pause-save", "plan-review preview"]
+rust = ["bgjob adapt", "plan-review emit-rejected", "session validate-design-tmpdir", "timing mark"]
 
 [[callers]]
 path = "skills/design/scripts/design-step5b-annotate.md"
@@ -10106,8 +10142,8 @@ rust = ["plan-review panel-dispatch"]
 [[callers]]
 path = "skills/shared/voting-protocol.md"
 kind = "skill"
-python = ["plan-review tally", "render voter"]
-rust = ["agent dispatch-voters", "agent launch-codex-exec", "oos file", "plan-review voter-dispatch", "review tally-code-votes", "voting code-review-classification-header", "voting findings-classification-header"]
+python = ["render voter"]
+rust = ["agent dispatch-voters", "agent launch-codex-exec", "oos file", "plan-review tally", "plan-review voter-dispatch", "review tally-code-votes", "voting code-review-classification-header", "voting findings-classification-header"]
 
 [[callers]]
 path = "skills/status/SKILL.md"

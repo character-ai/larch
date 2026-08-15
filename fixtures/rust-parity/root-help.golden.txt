@@ -6,7 +6,7 @@ Commands:
   admission           `/implement` entry admission, preflight, and fork bootstrap
   agent               Vendor-agent launch and diagnostic commands
   review              Review pipeline commands
-  plan-review         Plan-review panel and voter dispatch commands
+  plan-review         Plan-review workflow commands
   alias               Alias generation and target-resolution helpers
   blocker             Issue blocker discovery
   block-issue         Native issue blocked-by dependency mutations

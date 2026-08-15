@@ -33,14 +33,6 @@ EXPECTED = {
 PLAN_EXPECTED = {
     ("plan", "validator-autofix"): ("larch.design.plan_quality", "validator_autofix_main", True),
 }
-PLAN_REVIEW_EXPECTED = {
-    ("plan-review", verb): (module, func)
-    for verb, module, func in (
-        ("snapshot-pre-review", "larch.review.plan_review_accepted_audit", "snapshot_pre_review_main"),
-        ("filter-gate-b-skipped", "larch.review.plan_review_accepted_audit", "filter_gate_b_skipped_main"),
-        ("persist-accepted-audit", "larch.review.plan_review_accepted_audit", "persist_accepted_audit_main"),
-    )
-}
 AGENT_EXPECTED: dict[tuple[str, str], tuple[str, str]] = {}
 ARCHITECTURAL_ASSESSMENT_EXPECTED = {
     ("architectural-assessment", "materialize"): ("larch.implement.architectural_assessment", "materialize_main"),
@@ -82,12 +74,7 @@ def test_design_port_registry_entries_are_machine_stdout() -> None:
     for key, target in PLAN_EXPECTED.items():
         assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
         assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
-    for key, target in PLAN_REVIEW_EXPECTED.items():
-        module_name, func_name, _machine_stdout = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]
-        assert (module_name, func_name) == target
     assert ("plan-review", "step3b-entry") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
-    assert ("plan-review", "filter-gate-b-skipped") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
-    assert ("plan-review", "persist-accepted-audit") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
     for key, target in AGENT_EXPECTED.items():
         module_name, func_name, _machine_stdout = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]
         assert (module_name, func_name) == target

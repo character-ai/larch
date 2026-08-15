@@ -129,7 +129,7 @@ proptest! {
             "### FINDING_1: a\n- **Location**: \n- **Location**: loc-{suffix}\n- **Concern**: same\n"
         );
         let key = finding_dedup_key(&block);
-        prop_assert_eq!(key, format!("\u{1f}same"));
+        prop_assert_eq!(key, "same");
     }
 
     #[test]

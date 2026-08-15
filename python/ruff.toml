@@ -558,12 +558,6 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
-"plan_review_tally.py" = [
-    "C901",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "plan_scout.py" = [
     "C901",
     "PLR0912",

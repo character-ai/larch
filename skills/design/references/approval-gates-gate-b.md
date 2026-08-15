@@ -16,9 +16,9 @@
 
 Gate B severity mode, counts, ordered ids, table rows, and per-finding prompt fields are Python-owned. Use these commands as authority:
 
-- `python/cli.py plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"`
+- `scripts/larch.sh plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"`
 - `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant gate-b`
-- `python/cli.py plan-review gate-b-finding-line --design-tmpdir "$DESIGN_TMPDIR" --finding-id <N>`
+- `scripts/larch.sh plan-review gate-b-finding-line --design-tmpdir "$DESIGN_TMPDIR" --finding-id <N>`
 
 Parse KVs and emit CLI output. Do not re-read or manually classify `### FINDING_N:` blocks.
 
@@ -65,7 +65,7 @@ After every `BGJOB_STATUS=DONE`, read the result env first. Require `BGJOB_RC=0`
 
 ### Presentation
 
-1. Run `python/cli.py plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"` and bind counts from stdout KVs.
+1. Run `scripts/larch.sh plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"` and bind counts from stdout KVs.
 2. Run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant gate-b` and emit stdout verbatim. Preview owns the `## Plan Review Findings: Review` header, findings rows, and rejected/OOS context. Do not print that header again in Presentation.
 
 ### Explicit-mode load gate

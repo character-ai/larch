@@ -71,6 +71,29 @@ if [[ "\${1:-}" == voting && "\${2:-}" == findings-classification-header ]]; the
     printf 'finding_id\tfinding_reviewers\tvoting_result\n'
     exit 0
 fi
+if [[ "\${1:-}" == plan-review && "\${2:-}" == tally ]]; then
+    shift 2
+    ballot="" design="" voter="" classification=""
+    while [[ \$# -gt 0 ]]; do
+        case "\$1" in
+            --ballot-file) ballot="\$2"; shift 2 ;;
+            --design-tmpdir) design="\$2"; shift 2 ;;
+            --voter) voter="\${2#*:}"; shift 2 ;;
+            --findings-classification-out) classification="\$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    : >"\$design/accepted-plan-findings.md"
+    : >"\$design/rejected-findings.md"
+    : >"\$design/oos.md"
+    if grep -Eq '^FINDING_1:[[:space:]]*YES' "\$voter"; then
+        cp "\$ballot" "\$design/accepted-plan-findings.md"
+    fi
+    printf 'finding_id\tfinding_reviewers\tvoting_result\n' >"\$classification"
+    printf '# Plan Review Voting Tally\n' >"\$design/voting-tally.md"
+    printf 'TALLY_PLAN_REVIEW_STATUS=ok\nVOTING_TALLY_FILE=%s/voting-tally.md\n' "\$design"
+    exit 0
+fi
 exit 2
 EOF2
 chmod +x "$LARCH_BINARY"

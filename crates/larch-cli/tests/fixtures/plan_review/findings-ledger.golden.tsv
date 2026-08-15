@@ -1,0 +1,4 @@
+round	finding_id	title	file_line	outcome	vote_tally	reason
+1	FINDING_1	Parser contract	src/parser.rs:12	accepted	YES=3/3	Primary code path accepts malformed input.
+1	FINDING_2	Naming cleanup	rs	rejected	YES=0/3	Naming style could be clearer.
+1	OOS_1	Follow-up docs	cs	oos	YES=2/3	Missing required documentation contract downstream.
