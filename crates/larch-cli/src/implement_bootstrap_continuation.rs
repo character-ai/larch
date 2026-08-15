@@ -11,12 +11,16 @@ use crate::{
     bootstrap_support::{remove_session_file, valid_run_id, write_session_text},
     dirty_tree_commands,
     final_report_commands::run_log_reference,
-    github_repository_resolution, push_network,
+    github_repository_resolution,
+    launcher_support::{
+        confine_regular_read_checked, read_confined_bytes_checked as read_confined_bytes,
+    },
+    push_network,
     runtime_entrypoint::run_verified_larch,
 };
 use larch_adapters::{
     CheckoutRequest, FetchRequest, GitCli, GitCliPolicy, GitRef, GitRefspec, GitRemote,
-    GixRepository, PathIntent, TemporaryRoot, TokioProcessRunner, open_confined_read,
+    GixRepository, TemporaryRoot, TokioProcessRunner,
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
@@ -28,7 +32,6 @@ use std::{
     collections::BTreeMap,
     ffi::OsString,
     fs,
-    io::Read as _,
     path::{Path, PathBuf},
     process::ExitCode,
     time::Duration,
@@ -2267,27 +2270,6 @@ fn read_regular_text(path: &Path) -> Result<String, String> {
     read_confined_bytes(path).map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
 
-fn read_confined_bytes(path: &Path) -> Result<Vec<u8>, String> {
-    if !path.is_absolute() {
-        return Err(format!("{}: path must be absolute", path.display()));
-    }
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("{}: path has no parent", path.display()))?;
-    let root = TemporaryRoot::resolve(Some(parent)).map_err(|error| error.to_string())?;
-    let name = path
-        .file_name()
-        .ok_or_else(|| format!("{}: path has no filename", path.display()))?;
-    let confined = root
-        .confine(root.path().join(name), PathIntent::Read)
-        .map_err(|error| error.to_string())?;
-    let mut file = open_confined_read(&confined).map_err(|error| error.to_string())?;
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)
-        .map_err(|error| format!("{}: {error}", path.display()))?;
-    Ok(bytes)
-}
-
 fn regular_file(path: &Path) -> bool {
     safe_regular_file_present(path).unwrap_or(false)
 }
@@ -2296,21 +2278,15 @@ fn safe_regular_file_present(path: &Path) -> Result<bool, String> {
     if !path.is_absolute() {
         return Err(format!("{}: path must be absolute", path.display()));
     }
-    let Some(parent) = path.parent() else {
+    if path.parent().is_none() {
         return Err(format!("{}: path has no parent", path.display()));
-    };
+    }
     match fs::symlink_metadata(path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
         Err(error) => return Err(format!("{}: {error}", path.display())),
         Ok(_) => {}
     }
-    let root = TemporaryRoot::resolve(Some(parent)).map_err(|error| error.to_string())?;
-    let name = path
-        .file_name()
-        .ok_or_else(|| format!("{}: path has no filename", path.display()))?;
-    root.confine(root.path().join(name), PathIntent::Read)
-        .map(|_| true)
-        .map_err(|error| error.to_string())
+    confine_regular_read_checked(path).map(|_| true)
 }
 
 fn output_values(output: &ProcessOutput) -> BTreeMap<String, String> {
