@@ -1,0 +1,1 @@
+usage: cli.py plan validate-commands [-h] --tsv-file TSV_FILE --log-file LOG_FILE [--dry-runnable-registry DRY_RUNNABLE_REGISTRY] [--source-kind {plan,composed}] [--help-timeout HELP_TIMEOUT] [--dry-run-timeout DRY_RUN_TIMEOUT] [--repo-root REPO_ROOT]

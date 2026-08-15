@@ -141,7 +141,7 @@ def _self_log_check_size_failure(root: Path, *, design_tmpdir: Path, rc: int, st
         "--site",
         site,
         "--tool",
-        "python/cli.py plan check-size",
+        "scripts/larch.sh plan check-size",
         "--exit-code",
         str(rc),
         "--category",
@@ -287,7 +287,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
     # dual-root existence check in `plan validate` (#4490).
     validate_env["CLAUDE_PLUGIN_ROOT"] = str(root)
     repo_root_arg = consumer_repo_root() or root
-    validate = _run_cli(
+    validate = _run_larch(
         root,
         "plan",
         "validate",
@@ -319,7 +319,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
 
     check_size_env: dict[str, str] = os.environ.copy()
     check_size_env["LARCH_QUIET_DISABLE"] = "1"
-    check_size = _run_cli(root, "plan", "check-size", "--design-tmpdir", str(design_tmpdir), env=check_size_env)
+    check_size = _run_larch(root, "plan", "check-size", "--design-tmpdir", str(design_tmpdir), env=check_size_env)
     size_kv = _parse_kv((check_size.stdout or "") + "\n" + (check_size.stderr or ""))
     kvs.update({
         "PLAN_SIZE_STATUS": size_kv.get("PLAN_SIZE_STATUS", "failed" if check_size.returncode else "ok"),

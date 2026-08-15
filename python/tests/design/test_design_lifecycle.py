@@ -37,7 +37,6 @@ from larch.design import (
 )
 from larch.design import design_pause
 from larch.design import design_publish
-from larch.design import plan_quality
 from larch.core import architectural_guidelines
 from larch.core import logging_util
 from larch.core.proc import CommandResult
@@ -3183,11 +3182,10 @@ def test_step2b_postplan_nonfatal_rc_10_exits_zero_and_emits_rows(tmp_path: Path
 
 
 def test_step2b5_echoes_check_size_stdout_and_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    def fake_check(_argv: list[str]) -> int:
-        print("PLAN_SIZE_STATUS=failed")
-        return 7
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args=[], returncode=7, stdout="PLAN_SIZE_STATUS=failed\n", stderr="")
 
-    monkeypatch.setattr(plan_quality, "check_plan_size_main", fake_check)
+    monkeypatch.setattr(design_step5c.subprocess, "run", fake_run)
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path.cwd()))
     rc = design_step5c.step2b5_main([])
@@ -3199,11 +3197,10 @@ def test_step2b5_echoes_check_size_stdout_and_rc(tmp_path: Path, monkeypatch: py
 
 
 def test_step2b5_self_logs_on_rc2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    def fake_check(_argv: list[str]) -> int:
-        print("PLAN_SIZE_STATUS=missing-diff-lines")
-        return 2
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args=[], returncode=2, stdout="PLAN_SIZE_STATUS=missing-diff-lines\n", stderr="")
 
-    monkeypatch.setattr(plan_quality, "check_plan_size_main", fake_check)
+    monkeypatch.setattr(design_step5c.subprocess, "run", fake_run)
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
     rc = design_step5c.step2b5_main([])
@@ -3216,15 +3213,14 @@ def test_step2b5_self_logs_on_rc2(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert validation_log.read_text(encoding="utf-8") == "PLAN_SIZE_STATUS=missing-diff-lines\n"
     issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
     assert "design Step 2b.5" in issues
-    assert "python/cli.py plan check-size" in issues
+    assert "plan check-size" in issues
 
 
 def test_step2b5_self_logs_on_rc3(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_check(_argv: list[str]) -> int:
-        print("usage: missing plan", file=sys.stderr)
-        return 3
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args=[], returncode=3, stdout="", stderr="usage: missing plan\n")
 
-    monkeypatch.setattr(plan_quality, "check_plan_size_main", fake_check)
+    monkeypatch.setattr(design_step5c.subprocess, "run", fake_run)
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
     rc = design_step5c.step2b5_main([])
@@ -3233,15 +3229,14 @@ def test_step2b5_self_logs_on_rc3(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert validation_log.read_text(encoding="utf-8") == "usage: missing plan\n"
     issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
     assert "design Step 2b.5" in issues
-    assert "python/cli.py plan check-size" in issues
+    assert "plan check-size" in issues
 
 
 def test_step2b5_no_log_on_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    def fake_check(_argv: list[str]) -> int:
-        print("PLAN_SIZE_STATUS=ok")
-        return 0
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="PLAN_SIZE_STATUS=ok\n", stderr="")
 
-    monkeypatch.setattr(plan_quality, "check_plan_size_main", fake_check)
+    monkeypatch.setattr(design_step5c.subprocess, "run", fake_run)
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
     rc = design_step5c.step2b5_main([])
@@ -3436,12 +3431,12 @@ def test_step2b5_pause_short_circuit_skips_check_size(tmp_path: Path, monkeypatc
     monkeypatch.setenv("ISSUE_NUMBER", "42")
     called = False
 
-    def fake_check(_argv: list[str]) -> int:
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
         nonlocal called
         called = True
-        return 0
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(plan_quality, "check_plan_size_main", fake_check)
+    monkeypatch.setattr(design_step5c.subprocess, "run", fake_run)
     monkeypatch.setattr(design_step5c, "_call_pause_save", lambda **_kw: 11)  # type: ignore[arg-type]
     rc = design_step5c.step2b5_main([])
     assert rc == 11

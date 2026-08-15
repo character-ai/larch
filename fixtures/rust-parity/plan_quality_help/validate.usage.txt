@@ -1,0 +1,1 @@
+usage: cli.py plan validate [-h] --plan-file PLAN_FILE [--repo-root REPO_ROOT] [--source-kind {plan,composed}] [--design-tmpdir DESIGN_TMPDIR] [--require-executable-facets]

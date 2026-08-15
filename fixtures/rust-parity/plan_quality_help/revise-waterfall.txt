@@ -1,0 +1,15 @@
+usage: cli.py plan revise-waterfall [-h] --design-tmpdir DESIGN_TMPDIR --plan-file PLAN_FILE --findings-file FINDINGS_FILE --feature-file FEATURE_FILE --round-num ROUND_NUM [--codex-present {,true,false}] [--cursor-present {,true,false}] [--codex-binary-found {,true,false}] [--cursor-binary-found {,true,false}] [--timeout TIMEOUT] [--patch-format {unified-diff,file-replacement}]
+
+options:
+  -h, --help            show this help message and exit
+  --design-tmpdir DESIGN_TMPDIR
+  --plan-file PLAN_FILE
+  --findings-file FINDINGS_FILE
+  --feature-file FEATURE_FILE
+  --round-num ROUND_NUM
+  --codex-present {,true,false}
+  --cursor-present {,true,false}
+  --codex-binary-found {,true,false}
+  --cursor-binary-found {,true,false}
+  --timeout TIMEOUT
+  --patch-format {unified-diff,file-replacement}

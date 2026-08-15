@@ -10,7 +10,7 @@
 
 ## Gate B: Post-Review Chooser (Step 3.5)
 
-**When**: after Step 3 review completes or the script-internal Step 3 loop bails out. On the happy path, the Rust plan-review owner applies accepted findings in-loop via `python/cli.py plan revise-waterfall --patch-format file-replacement`. Prompt-side Gate B handles `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` and `per-round-approval-required`. `NEXT_ACTION=step3b-bypass` bypasses Step 3.5 before Step 3b. `panel-init-failed` hard-stops before Step 3b.
+**When**: after Step 3 review completes or the script-internal Step 3 loop bails out. On the happy path, the Rust plan-review owner applies accepted findings in-loop via `scripts/larch.sh plan revise-waterfall --patch-format file-replacement`. Prompt-side Gate B handles `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` and `per-round-approval-required`. `NEXT_ACTION=step3b-bypass` bypasses Step 3.5 before Step 3b. `panel-init-failed` hard-stops before Step 3b.
 
 ### Severity classification contract
 
@@ -108,6 +108,6 @@ After the chosen findings have been applied to `plan.txt` (full accepted set or 
 
 ### Gate B plan revision and Step 2b.5
 
-Gate B's plan revision may branch the merged driver fence. `--partition` maps to Split-path with no prompt. Hard triggers are body `> 800`, firm headings `> 25`, surfaces `> 4`, or `diff_added > 2000` / fallback `diff_lines > 1500`; `mechanical_churn: true` softens only the diff trigger. `SIZE_TRIGGER_FIRED=true` enters the unified Split-path directly. Its single question owns Partition, Override, and Other/chat. Override writes the oversize trailer, deletes `composed-plan.md`, and writes postplan completion. Drift is advisory. Standalone Step 2b.5 is only for Override-after-defects and recovery. Contract: `python/cli.py plan check-size`.
+Gate B's plan revision may branch the merged driver fence. `--partition` maps to Split-path with no prompt. Hard triggers are body `> 800`, firm headings `> 25`, surfaces `> 4`, or `diff_added > 2000` / fallback `diff_lines > 1500`; `mechanical_churn: true` softens only the diff trigger. `SIZE_TRIGGER_FIRED=true` enters the unified Split-path directly. Its single question owns Partition, Override, and Other/chat. Override writes the oversize trailer, deletes `composed-plan.md`, and writes postplan completion. Drift is advisory. Standalone Step 2b.5 is only for Override-after-defects and recovery. Contract: `scripts/larch.sh plan check-size`.
 
 ---

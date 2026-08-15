@@ -1,0 +1,7 @@
+usage: cli.py plan set-oversize-override [-h] --design-tmpdir DESIGN_TMPDIR [--plan-file PLAN_FILE] [--remove]
+
+options:
+  -h, --help            show this help message and exit
+  --design-tmpdir DESIGN_TMPDIR
+  --plan-file PLAN_FILE
+  --remove

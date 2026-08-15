@@ -304,11 +304,10 @@ def test_step2b5_and_postplan_emit_action_parity(
     monkeypatch.setenv("DESIGN_TMPDIR", str(design_direct))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "plugin-direct"))
 
-    def fake_check(_argv: list[str]) -> int:
-        print(check_size_stdout, end="")
-        return check_size_rc
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(args=[], returncode=check_size_rc, stdout=check_size_stdout, stderr="")
 
-    monkeypatch.setattr(design_step5c.plan_quality, "check_plan_size_main", fake_check)
+    monkeypatch.setattr(design_step5c.subprocess, "run", fake_run)
     monkeypatch.setattr(design_step5c, "_step2b5_self_log", lambda **_kw: None)  # type: ignore[arg-type]
     direct_rc = design_step5c.step2b5_main([])
     direct_stdout = capsys.readouterr().out

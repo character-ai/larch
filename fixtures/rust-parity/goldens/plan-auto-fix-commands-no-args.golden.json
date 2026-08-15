@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: cli.py plan auto-fix-commands [-h] --design-tmpdir DESIGN_TMPDIR --plan-file PLAN_FILE [--codex-present {,true,false}] [--cursor-present {,true,false}] [--codex-available {true,false}] [--cursor-available {true,false}] [--codex-binary-found {,true,false}] [--cursor-binary-found {,true,false}] [--repo-root REPO_ROOT] [--max-attempts MAX_ATTEMPTS] [--site SITE] [--timeout TIMEOUT] [--require-executable-facets]\ncli.py plan auto-fix-commands: error: the following arguments are required: --design-tmpdir, --plan-file\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}
