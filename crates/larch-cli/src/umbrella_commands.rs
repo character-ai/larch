@@ -39,7 +39,7 @@ use crate::{
 };
 use larch_adapters::{
     ConfinedPath, PathIntent, TemporaryRoot, atomic_write_utf8,
-    github::{IssueMutationOwner, OctocrabGitHubService},
+    github::{DependencyRef, IssueMutationOwner, OctocrabGitHubService},
     read_utf8,
     runtime::Cancellation,
 };
@@ -48,9 +48,9 @@ use larch_core::{
     IssueMutationRequest, ProposalRecord, RemoteLeaf, ResolvedLeaf, UMBRELLA_PROPOSAL_TOKEN,
     UmbrellaSnapshot, check_leaf_cap, classify_umbrella_source, completion_sentinel_for_record,
     emit_kv, expected_completion_sentinel, is_managed_partition_title, is_positive_decimal,
-    is_umbrella_leaf_title, is_umbrella_title, mark_leaf_in_flight, parse_proposal,
-    prepare_proposal_from_batch, reconcile_in_flight, record_leaf_resolved, render_proposal,
-    render_snapshot, validate_final_umbrella, verify_graph_state,
+    is_umbrella_title, mark_leaf_in_flight, parse_proposal, prepare_proposal_from_batch,
+    reconcile_in_flight, record_leaf_resolved, render_proposal, render_snapshot,
+    validate_final_umbrella, verify_graph_state,
 };
 use serde_json::Value;
 use std::{
@@ -66,6 +66,8 @@ use std::{
 const EXIT_REFUSED: u8 = 2;
 /// Mode bits a published record and snapshot carry.
 const RECORD_MODE: u32 = 0o600;
+/// Stable refusal emitted when a record-less umbrella is still blocked.
+const OPEN_BLOCKERS: &str = "open-blockers";
 
 const PREPARE_USAGE: &str = "Usage: umbrella prepare --repo OWNER/REPO --issue N --output PATH [--managed-partition true|false]";
 const PERSIST_PROPOSAL_USAGE: &str = "Usage: umbrella persist-proposal (--proposal PATH --output PATH | --snapshot PATH --prepared-root PATH --prepared-input PATH --prepared-deps PATH --completion-sentinel PATH --output-root PATH --output PATH --issue-input-output PATH --deps-output PATH)\n--proposal must name a ProposalRecord JSON object with umbrella, repository, expected_updated_at, common_context, and non-empty leaves; see larch_core::issue::umbrella::ProposalRecord.";
@@ -244,6 +246,9 @@ impl SnapshotSource for LiveSnapshotSource {
             Err(ServiceFailure::Operation(reason)) if reason == "invalid-read-back" => {
                 return Err("invalid-read-back");
             }
+            Err(ServiceFailure::Operation(reason)) if reason == OPEN_BLOCKERS => {
+                return Err(OPEN_BLOCKERS);
+            }
             Err(ServiceFailure::Setup(_) | ServiceFailure::Operation(_)) => {
                 return Err("read-failed");
             }
@@ -294,9 +299,12 @@ async fn read_source_snapshot(
     })
 }
 
-/// Prove a record-less umbrella has no larch-owned graph state that makes
-/// adoption ambiguous. Ordinary prerequisite blockers are preserved: they are
-/// not evidence of a prior `/umbrella` run.
+/// Prove a record-less umbrella has no graph state that blocks its adoption.
+///
+/// Closed blockers are already satisfied and need no inspection. An open
+/// blocker means the umbrella is not ready, while direct children make the
+/// graph incompatible. Dependency metadata supplies those facts, so this must
+/// never fetch a blocker issue or its body.
 async fn adoption_graph_is_unambiguous(
     service: &OctocrabGitHubService,
     cancellation: &Cancellation,
@@ -314,18 +322,8 @@ async fn adoption_graph_is_unambiguous(
         .list_blocked_by(cancellation, reference.owner(), reference.name(), umbrella)
         .await
         .map_err(|error| error.to_string())?;
-    let umbrella = umbrella.to_string();
-    for blocker in blockers {
-        let issue = read_issue(service, cancellation, reference, blocker.issue_number()).await?;
-        if issue.is_pull_request
-            || issue.number != blocker.issue_number()
-            || issue.id != blocker.issue_id()
-        {
-            return Ok(false);
-        }
-        if is_umbrella_leaf_title(&issue.title, &umbrella) {
-            return Ok(false);
-        }
+    if blockers.iter().any(DependencyRef::is_open) {
+        return Err(OPEN_BLOCKERS.to_owned());
     }
     Ok(true)
 }
@@ -1150,11 +1148,11 @@ fn check_completion(
 #[cfg(test)]
 mod tests {
     use super::{
-        CompletionPaths, SnapshotRead, SnapshotSource, UmbrellaMutation, UmbrellaMutationMode,
-        absolute, candidate_issue, check_completion, load_record, mark_in_flight, mutate,
-        mutate_with, parse_values, persist_prepared_proposal, persist_proposal, prepare,
-        prepare_with, reconcile, reconcile_in_flight_command, record_resolved, resolve_into,
-        row_number, verify, verify_completion, verify_graph,
+        CompletionPaths, LiveSnapshotSource, OPEN_BLOCKERS, SnapshotRead, SnapshotSource,
+        UmbrellaMutation, UmbrellaMutationMode, absolute, candidate_issue, check_completion,
+        load_record, mark_in_flight, mutate, mutate_with, parse_values, persist_prepared_proposal,
+        persist_proposal, prepare, prepare_with, reconcile, reconcile_in_flight_command,
+        record_resolved, resolve_into, row_number, verify, verify_completion, verify_graph,
     };
     use crate::github_service::with_test_github_service;
     use larch_adapters::github::OctocrabGitHubService;
@@ -1434,7 +1432,7 @@ mod tests {
     }
 
     #[test]
-    fn live_preparation_adopts_only_a_recordless_umbrella_with_an_unambiguous_graph() {
+    fn live_preparation_adopts_only_a_recordless_umbrella_without_children_or_open_blockers() {
         let (_directory, output) = snapshot_output();
         let source = issue_response(12, 120, "[UMBRELLA] External split", "External context.");
 
@@ -1464,8 +1462,29 @@ mod tests {
         );
         server.join().expect("empty graph was fully read");
 
-        let ordinary_blocker =
-            issue_response(34, 340, "[UMBRELLA] Existing prerequisite", "Context.");
+        let (github, server) = service([
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/12",
+                200,
+                source.to_string(),
+            )
+            .expect("source response"),
+            IssueServiceExchange::json("GET", "/repos/owner/repo/issues/12/sub_issues", 200, "[]")
+                .expect("empty children response"),
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/12/dependencies/blocked_by",
+                200,
+                "[{\"number\":34,\"id\":340,\"state\":\"closed\"}]",
+            )
+            .expect("closed blocker response"),
+        ]);
+        assert_eq!(prepare_live(github, &output), ExitCode::SUCCESS);
+        server
+            .join()
+            .expect("closed blocker is satisfied without a blocker read");
+
         let (github, server) = service([
             IssueServiceExchange::json(
                 "GET",
@@ -1482,19 +1501,15 @@ mod tests {
                 200,
                 "[{\"number\":34,\"id\":340,\"state\":\"open\"}]",
             )
-            .expect("ordinary blocker response"),
-            IssueServiceExchange::json(
-                "GET",
-                "/repos/owner/repo/issues/34",
-                200,
-                ordinary_blocker.to_string(),
-            )
-            .expect("ordinary blocker read"),
+            .expect("open blocker response"),
         ]);
-        assert_eq!(prepare_live(github, &output), ExitCode::SUCCESS);
+        match with_test_github_service(github, || LiveSnapshotSource.read("owner/repo", "12")) {
+            Err(reason) => assert_eq!(reason, OPEN_BLOCKERS),
+            Ok(_) => panic!("an open blocker must refuse adoption"),
+        }
         server
             .join()
-            .expect("ordinary prerequisite blocker stays compatible");
+            .expect("open blocker refuses before any blocker read");
 
         let direct_child = serde_json::json!([{ "number": 34, "id": 340, "state": "open" }]);
         let (github, server) = service([
@@ -1515,30 +1530,6 @@ mod tests {
         ]);
         assert_eq!(prepare_live(github, &output), ExitCode::from(2));
         server.join().expect("direct child was fully read");
-
-        let leaf = issue_response(34, 340, "[LEAF OF 12] Existing leaf", "Leaf context.");
-        let (github, server) = service([
-            IssueServiceExchange::json(
-                "GET",
-                "/repos/owner/repo/issues/12",
-                200,
-                source.to_string(),
-            )
-            .expect("source response"),
-            IssueServiceExchange::json("GET", "/repos/owner/repo/issues/12/sub_issues", 200, "[]")
-                .expect("empty children response"),
-            IssueServiceExchange::json(
-                "GET",
-                "/repos/owner/repo/issues/12/dependencies/blocked_by",
-                200,
-                "[{\"number\":34,\"id\":340,\"state\":\"open\"}]",
-            )
-            .expect("blocker response"),
-            IssueServiceExchange::json("GET", "/repos/owner/repo/issues/34", 200, leaf.to_string())
-                .expect("leaf response"),
-        ]);
-        assert_eq!(prepare_live(github, &output), ExitCode::from(2));
-        server.join().expect("leaf blocker was fully read");
     }
 
     #[test]
