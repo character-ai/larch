@@ -64,7 +64,7 @@ def old_logical_commands(body):
 def old_target_kind(cmd):
     if 'python/cli.py' in cmd and 'pr closes-issue' in cmd:
         return 'structured-invocation'
-    if 'python/cli.py' in cmd and 'implement preflight' in cmd:
+    if 'larch.sh' in cmd and 'implement preflight' in cmd:
         return 'preflight-helper'
     if ('python/cli.py' in cmd or 'larch.sh' in cmd) and 'plan-block read' in cmd:
         return 'preflight-plan-direct'
@@ -117,10 +117,10 @@ def validate_preflight_helper(start, end, body, commands, cmd):
         errors.append(f'fence {start}-{end}: preflight-helper missing canonical plugin-root.env guard')
     if has_root_fallback(body):
         errors.append(f'fence {start}-{end}: preflight-helper must not use a plugin-root fallback')
-    if cmd.count('python/cli.py') != 1 or 'implement preflight' not in cmd:
-        errors.append(f'fence {start}-{end}: preflight-helper must invoke python/cli.py implement preflight exactly once')
+    if cmd.count('larch.sh') != 1 or 'implement preflight' not in cmd:
+        errors.append(f'fence {start}-{end}: preflight-helper must invoke scripts/larch.sh implement preflight exactly once')
     required = [
-        'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement preflight',
+        '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" implement preflight',
         '--issue "$TARGET_ISSUE_NUMBER"',
         '--preflight-tmpdir "$PREFLIGHT_TMPDIR"',
         'preflight_args=(',

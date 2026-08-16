@@ -6,7 +6,6 @@ import errno
 import fcntl
 import json
 import os
-import shlex
 import signal
 import subprocess
 import sys
@@ -694,7 +693,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "commit-route")][:2] == ("larch.implement.implement_dispatch", "commit_route_main")
     assert _REGISTRY[("implement", "checks-commit-route")][:2] == ("larch.implement.implement_dispatch", "checks_commit_route_main")
     assert _REGISTRY[("implement", "checks-step5-resume")][:2] == ("larch.implement.implement_dispatch", "checks_step5_resume_main")
-    assert _REGISTRY[("implement", "clone-tag")][:2] == ("larch.implement.implement_dispatch", "clone_tag_main")
+    assert ("implement", "clone-tag") not in _REGISTRY
     assert _REGISTRY[("ship", "normalize-assessment-handoff")][:2] == ("larch.implement.implement_dispatch", "ship_normalize_assessment_handoff_main")
     assert _REGISTRY[("implement", "kill-active-leg")][:2] == ("larch.implement.implement_dispatch", "kill_active_leg_main")
     assert _REGISTRY[("plan-review", "write-loop-identity")][:2] == ("larch.core.process_identity", "write_loop_identity_main")
@@ -703,7 +702,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("review-and-fix", "await-loop-identity")][:2] == ("larch.core.process_identity", "await_step5_loop_identity_main")
     assert _REGISTRY[("review-and-fix", "teardown-loop-identity")][:2] == ("larch.core.process_identity", "teardown_step5_loop_identity_main")
     assert ("review-and-fix", "normalize-status") not in _REGISTRY
-    assert _REGISTRY[("implement", "normalize-coder-scout")][:2] == ("larch.implement.implement_dispatch", "normalize_coder_scout_main")
+    assert ("implement", "normalize-coder-scout") not in _REGISTRY
     assert _REGISTRY[("implement", "step-5-review")][:2] == ("larch.implement.implement_dispatch", "step5_review_main")
     assert _REGISTRY[("implement", "step-6-entry")][:2] == ("larch.implement.implement_dispatch", "step6_entry_main")
     assert _REGISTRY[("implement", "step-8-ship")][:2] == ("larch.implement.implement_dispatch", "step8_ship_main")
@@ -724,53 +723,6 @@ def test_external_implementer_prompt_path_is_outside_agent_namespace(tmp_path: P
     assert dispatch_step2._external_implementer_prompt_path(plugin_root=tmp_path, tool_tag=tool) == (
         tmp_path / "skills" / "implement" / "prompts" / f"{tool}-implementer.md"
     )
-
-
-def test_normalize_coder_scout_empty_tmpdir_argv_falls_back_to_env(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    source = tmp / "scout.raw.json"
-    source.write_text('{"archetypes":[]}\n', encoding="utf-8")
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    seen: dict[str, Path] = {}
-
-    def fake_normalize_coder_scout(*, tmpdir: Path, input_path: Path, producer: str = "external") -> str:
-        seen["tmpdir"] = tmpdir
-        seen["input_path"] = input_path
-        assert producer == "external"
-        return "ok"
-
-    monkeypatch.setattr(dispatch_manifest, "normalize_coder_scout", fake_normalize_coder_scout)
-
-    assert implement_dispatch.normalize_coder_scout_main(["--tmpdir", "", "--input", str(source)]) == 0
-
-    assert seen == {"tmpdir": tmp, "input_path": source}
-    assert f"SCOUT_CODER_MANIFEST={tmp / 'scout-coder-manifest.json'}" in capsys.readouterr().out
-
-
-def test_normalize_coder_scout_root_relative_argv_rebases_to_tmpdir(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    source = tmp / "scout-coder-manifest.raw.json"
-    source.write_text('{"archetypes":[]}\n', encoding="utf-8")
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    seen: dict[str, Path] = {}
-
-    def fake_normalize_coder_scout(*, tmpdir: Path, input_path: Path, producer: str = "external") -> str:
-        _ = producer
-        seen["tmpdir"] = tmpdir
-        seen["input_path"] = input_path
-        return "ok"
-
-    monkeypatch.setattr(dispatch_manifest, "normalize_coder_scout", fake_normalize_coder_scout)
-
-    assert implement_dispatch.normalize_coder_scout_main(["--tmpdir", "", "--input", "/scout-coder-manifest.raw.json"]) == 0
-    assert seen == {"tmpdir": tmp, "input_path": source}
 
 
 def test_resolve_tmpdir_path_empty_uses_default(tmp_path: Path) -> None:
@@ -2758,48 +2710,6 @@ def test_step8_oos_checkpoint_nonzero_preserves_child_written_stderr_log(
 
     assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=2\nNEXT_ACTION=stall\n"
     assert (tmp / "oos-disposition-checkpoint.stderr.log").read_text(encoding="utf-8") == "child validation detail\n"
-
-
-def _parse_clone_tag_env(out: str) -> dict[str, str]:
-    lines = out.splitlines()
-    assert [line.split("=", 1)[0] for line in lines] == [
-        "CLONE_TAG_FULL",
-        "EXPECTED_TMPDIR_BASENAME_PREFIX",
-    ]
-    parsed: dict[str, str] = {}
-    for line in lines:
-        fields = shlex.split(line)
-        assert len(fields) == 1
-        key, value = fields[0].split("=", 1)
-        parsed[key] = value
-    return parsed
-
-
-def test_clone_tag_cli_passes_clone_tag_through_with_shell_quoting(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    value = "tag with spaces; $(echo nope) 'quoted'"
-    monkeypatch.setenv("CLONE_TAG", value)
-
-    assert implement_dispatch.clone_tag_main([]) == 0
-
-    parsed = _parse_clone_tag_env(capsys.readouterr().out)
-    assert parsed == {
-        "CLONE_TAG_FULL": value,
-        "EXPECTED_TMPDIR_BASENAME_PREFIX": f"claude-implement-{value}-",
-    }
-
-
-def test_clone_tag_cli_derives_from_logical_pwd(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.delenv("CLONE_TAG", raising=False)
-    monkeypatch.setenv("PWD", "/logical/repo with spaces!")
-
-    assert implement_dispatch.clone_tag_main([]) == 0
-
-    parsed = _parse_clone_tag_env(capsys.readouterr().out)
-    assert parsed["CLONE_TAG_FULL"] == "repo_with_spaces_"
-    assert parsed["EXPECTED_TMPDIR_BASENAME_PREFIX"] == "claude-implement-repo_with_spaces_-"
 
 
 def test_clone_tag_derivation_truncates_sanitized_bytes(monkeypatch: pytest.MonkeyPatch) -> None:

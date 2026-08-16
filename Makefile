@@ -529,7 +529,7 @@ test-plan-adequacy-audit:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-plan-adequacy-audit.sh
 
 test-implement-preflight:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_preflight.py -q
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test implement_admission_migrated_parity
 
 test-implement-positional-issue:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-positional-issue.sh

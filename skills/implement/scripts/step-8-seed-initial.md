@@ -8,7 +8,7 @@ The pre-driver Step 8 path in `skills/implement/SKILL.md` calls this wrapper wit
 
 ## Inputs
 
-The wrapper requires `IMPLEMENT_TMPDIR`. It rehydrates `CLAUDE_PLUGIN_ROOT` from `plugin-root.env`, derives `EXPECTED_TMPDIR_BASENAME_PREFIX` with a fail-closed `python/cli.py implement clone-tag` capture before `eval` and a `: "${EXPECTED_TMPDIR_BASENAME_PREFIX:?}"` guard, and reads durable inputs from `$IMPLEMENT_TMPDIR/bootstrap-routing.env`, `$IMPLEMENT_TMPDIR/ship-seed-input.env`, `$IMPLEMENT_TMPDIR/session-env.sh`, `$IMPLEMENT_TMPDIR/parent-issue.md`, and `$IMPLEMENT_TMPDIR/session-id`.
+The wrapper requires `IMPLEMENT_TMPDIR`. It rehydrates `CLAUDE_PLUGIN_ROOT` from `plugin-root.env`, derives `EXPECTED_TMPDIR_BASENAME_PREFIX` with a fail-closed `scripts/larch.sh implement clone-tag` capture before `eval` and a `: "${EXPECTED_TMPDIR_BASENAME_PREFIX:?}"` guard, and reads durable inputs from `$IMPLEMENT_TMPDIR/bootstrap-routing.env`, `$IMPLEMENT_TMPDIR/ship-seed-input.env`, `$IMPLEMENT_TMPDIR/session-env.sh`, `$IMPLEMENT_TMPDIR/parent-issue.md`, and `$IMPLEMENT_TMPDIR/session-id`.
 
 Source order is fixed:
 
@@ -37,7 +37,7 @@ The Step 5 missing-state path may pass `--stall-tracking`, `--stall-step`, `--ba
 
 ## Delegation
 
-The wrapper invokes exactly one Python seeder line internally: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship seed-initial-state`, including `--expected-tmpdir-basename-prefix "$EXPECTED_TMPDIR_BASENAME_PREFIX"` from the `python/cli.py implement clone-tag` capture.
+The wrapper invokes exactly one Python seeder line internally: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship seed-initial-state`, including `--expected-tmpdir-basename-prefix "$EXPECTED_TMPDIR_BASENAME_PREFIX"` from the `scripts/larch.sh implement clone-tag` capture.
 
 Do not put multi-line seeder examples, line continuations, inline `if`, or direct `python/cli.py ship seed-initial-state` invocations in `SKILL.md`. Argv assembly lives here.
 

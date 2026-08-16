@@ -2062,6 +2062,14 @@ fn is_machine_comment(body: &str) -> bool {
         || first.starts_with("<!-- larch:implement-anchor v1 ")
 }
 
+/// Read one adoption sentinel for a composing command in this crate.
+///
+/// A missing, unreadable, or malformed sentinel carries no adopted identity, so
+/// the caller resumes from its other durable sources instead of refusing.
+pub fn adoption_sentinel_identity(path: &Path) -> Option<(String, String, String)> {
+    read_sentinel(path.to_str()?).ok()
+}
+
 /// Read one adoption sentinel's three fields, refusing a malformed value.
 fn read_sentinel(path: &str) -> Result<(String, String, String), Refusal> {
     if !Path::new(path).is_file() {

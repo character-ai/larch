@@ -23,8 +23,8 @@ use larch_core::{
 use crate::{
     argparse_compat::{choice_error, parse_required_with_help, usage_error},
     child_process::{bounded_request_in, run_bounded},
+    implement_child_seam::resolve_plugin_root,
     python_verb::{publish_session_environment, run_python_verb},
-    runtime_entrypoint::plugin_root,
 };
 
 const RECOVERY_PROG: &str = "cli.py implement recovery-paths";
@@ -55,7 +55,6 @@ type LarchHook = std::sync::Arc<
 std::thread_local! {
     static TEST_PYTHON: std::cell::RefCell<Option<PythonHook>> = const { std::cell::RefCell::new(None) };
     static TEST_LARCH: std::cell::RefCell<Option<LarchHook>> = const { std::cell::RefCell::new(None) };
-    static TEST_PLUGIN_ROOT: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
 }
 
 fn delegate_python(arguments: impl IntoIterator<Item = OsString>) -> Result<ProcessOutput, String> {
@@ -77,14 +76,6 @@ fn delegate_verified_larch(
         return hook(cwd, root, args);
     }
     run_verified_larch_in(cwd, root, args)
-}
-
-fn resolve_plugin_root() -> Result<PathBuf, String> {
-    #[cfg(test)]
-    if let Some(root) = TEST_PLUGIN_ROOT.with(|slot| slot.borrow().clone()) {
-        return Ok(root);
-    }
-    plugin_root()
 }
 
 /// `implement recovery-paths` compatibility command.
@@ -881,10 +872,10 @@ fn stderr_or_stdout(output: &ProcessOutput) -> String {
 mod tests {
     use super::{
         CHECKS_FP, CHECKS_HEAD, CHECKS_SCHEMA, IDENTITY_FAILED, LaunchIdentity, TEST_LARCH,
-        TEST_PLUGIN_ROOT, TEST_PYTHON, format_rows, integrity_rows, kv_value, opt_string,
-        prepare_checks_rejoin, publish_identity_child, publish_rows, run_child, run_parent,
-        run_step_checks, safe_merge_env, session_key, status_byte, stdout_is_merge_rows,
-        terminal_action_in_output, unlink_safe,
+        TEST_PYTHON, format_rows, integrity_rows, kv_value, opt_string, prepare_checks_rejoin,
+        publish_identity_child, publish_rows, run_child, run_parent, run_step_checks,
+        safe_merge_env, session_key, status_byte, stdout_is_merge_rows, terminal_action_in_output,
+        unlink_safe,
     };
     use larch_core::{ChangeKind, ProcessOutput, ProcessStatus};
     use std::{
@@ -927,7 +918,7 @@ mod tests {
     fn clear_hooks() {
         TEST_PYTHON.with(|slot| *slot.borrow_mut() = None);
         TEST_LARCH.with(|slot| *slot.borrow_mut() = None);
-        TEST_PLUGIN_ROOT.with(|slot| *slot.borrow_mut() = None);
+        crate::implement_child_seam::clear_hooks();
     }
 
     fn identity(repo: &Path) -> LaunchIdentity {
@@ -1268,7 +1259,7 @@ mod tests {
         fs::create_dir_all(tmp.join("bgjob")).expect("bgjob");
         let repo_display = repo.display().to_string();
         let plugin = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        TEST_PLUGIN_ROOT.with(|slot| *slot.borrow_mut() = Some(plugin));
+        crate::implement_child_seam::declare_plugin_root(&plugin);
         install_python(move |args| {
             if args_contain(args, "resolve-repo-root") {
                 Ok(output(0, &format!("REPO_ROOT={repo_display}\n")))

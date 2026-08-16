@@ -749,7 +749,6 @@
   "tests/implement/test_implement_shell_scripts.py::test_step19_restore_stall_step_mismatch": 1,
   "tests/implement/test_implement_shell_scripts.py::test_step8_child_passes_merge_result_env_to_ship": 2,
   "tests/implement/test_implement_shell_scripts.py::test_step8_child_setup_failure_does_not_write_handoff_sidecars": 2,
-  "tests/implement/test_implement_shell_scripts.py::test_step8_clone_cli_derives_sanitized_prefix_from_pwd": 1,
   "tests/implement/test_implement_shell_scripts.py::test_step8_dynamic_child_guard_phantom_driver_order": 3,
   "tests/implement/test_implement_shell_scripts.py::test_step8_dynamic_foreground_launcher_fresh_start": 2,
   "tests/implement/test_implement_shell_scripts.py::test_step8_guard_new_python": 4,

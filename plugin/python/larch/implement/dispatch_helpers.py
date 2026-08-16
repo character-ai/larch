@@ -3,11 +3,9 @@
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import hashlib
 import os
-import shlex
 import shutil
 import subprocess
 import sys
@@ -463,16 +461,6 @@ def _derive_clone_tag_full(env: Mapping[str, str] | None = None) -> str:
 
 def _clone_expected_tmpdir_prefix() -> str:
     return f"claude-implement-{_derive_clone_tag_full()}-"
-
-
-def clone_tag_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py implement clone-tag")
-    parser.parse_args(argv)
-    clone_tag_full = _derive_clone_tag_full()
-    expected_prefix = f"claude-implement-{clone_tag_full}-"
-    print(f"CLONE_TAG_FULL={shlex.quote(clone_tag_full)}")
-    print(f"EXPECTED_TMPDIR_BASENAME_PREFIX={shlex.quote(expected_prefix)}")
-    return 0
 
 
 def _run_cli_forward(args: Sequence[str], *, cwd: Path | None = None, env: dict[str, str] | None = None) -> int:

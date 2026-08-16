@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import json
 import os
@@ -15,7 +14,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from larch import io as larch_io
-from larch.core import config
 from larch.core import redact
 from larch.calibration import difficulty
 from larch.implement.dispatch_helpers import (
@@ -25,8 +23,6 @@ from larch.implement.dispatch_helpers import (
     _invoke_cli,
     _invoke_larch,
     _parse_kv,
-    _rehydrate_plugin_root,
-    resolve_tmpdir_path,
     _write_bytes_atomic,
     _write_prelaunch_digests,
     _write_text_atomic,
@@ -107,10 +103,6 @@ def _clear_external_scout_state(tmpdir: Path) -> None:
     ):
         with contextlib.suppress(OSError):
             path.unlink()
-
-
-def _resolve_tmpdir_path(*, tmpdir: Path, raw: str, default_relpath: str) -> Path:
-    return resolve_tmpdir_path(tmpdir=tmpdir, raw=raw, default_relpath=default_relpath)
 
 
 def _submodule_roots(repo: Path) -> list[str]:
@@ -287,45 +279,6 @@ def normalize_coder_scout(
         tmpdir=tmpdir, status=status, manifest=scout_manifest, producer=producer
     )
     return status
-
-
-def normalize_coder_scout_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py implement normalize-coder-scout")
-    parser.add_argument("--tmpdir", default="")
-    parser.add_argument("--input", default="")
-    parser.add_argument(
-        "--producer", choices=("external", "main-agent", "subagent"), default="external"
-    )
-    args = parser.parse_args(argv)
-    raw_tmpdir = args.tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
-    if not raw_tmpdir:
-        print(
-            "implement normalize-coder-scout: --tmpdir is required or IMPLEMENT_TMPDIR must be set",
-            file=sys.stderr,
-        )
-        return 2
-    tmpdir = Path(raw_tmpdir)
-    if not tmpdir.is_dir():
-        print(
-            f"implement normalize-coder-scout: --tmpdir not a directory: {tmpdir}",
-            file=sys.stderr,
-        )
-        return 2
-    _rehydrate_plugin_root(tmpdir)
-    status = normalize_coder_scout(
-        tmpdir=tmpdir,
-        input_path=_resolve_tmpdir_path(
-            tmpdir=tmpdir,
-            raw=args.input,
-            default_relpath="scout-coder-manifest.raw.json",
-        ),
-        producer=args.producer,
-    )
-    _emit_kv(key="SCOUT_CODER_STATUS", value=status)
-    _emit_kv(
-        key="SCOUT_CODER_MANIFEST", value=str(tmpdir / "scout-coder-manifest.json")
-    )
-    return 0
 
 
 def _read_prelaunch_index_nonempty(st: DispatchState) -> str:

@@ -20,7 +20,6 @@ Commands:
   audit-umbrella          Audit one managed umbrella and reconcile its exhaustive corrective batch
   combine-issues          Combine related issues while preserving their dependency graph
   dirty-tree              Working-tree checkpoint and scope compatibility commands
-  implement               `/implement` dispatch helpers: recovery paths and step checks
   deps                    The `/deps` open-issue dependency audit: reads, plan, and one apply
   difficulty              Difficulty rating, record, panel, and label commands
   difficulty-calibration  Retrospective predicted-versus-realized difficulty analysis
@@ -29,6 +28,7 @@ Commands:
   example                 Non-production commands that exercise dispatcher wiring
   git                     Local Git repository commands
   hook                    Advisory Claude Code hook commands
+  implement               `/implement` bootstrap, preflight, scout, recovery, and step checks
   issue                   GitHub issue reads and issue-body wire helpers
   plan-block              The `larch:plan` issue-body block carrying the `/design` handoff
   status                  Inspect the installed larch and external tool health
