@@ -33,6 +33,7 @@ from larch.implement.dispatch_helpers import (
     PORCELAIN_MIN_PARTS,
     SUMMARY_BULLETS_MAX,
 )
+from larch.implement.dispatch_recovery import RecoveryPorcelainInputs, compute_recovery_paths
 
 
 # Mutable state: scout_status / baseline_sha / spawn_branch are filled in as dispatch proceeds.

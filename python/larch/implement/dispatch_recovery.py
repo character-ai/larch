@@ -105,7 +105,9 @@ def _collect_recovery_candidates(
     for status, rel in sorted(post.tuples, key=lambda item: item[1]):
         if _rel_under_tmp(rel, tmp_rel):
             continue
-        include = _recovery_path_included(status=status, rel=rel, pre=pre, digests=digests, repo_root=repo_root)
+        include = _recovery_path_included(
+            status=status, rel=rel, pre=pre, digests=digests, repo_root=repo_root
+        )
         if include and rel not in candidates:
             candidates.append(rel)
     return candidates
@@ -122,14 +124,23 @@ def compute_recovery_paths(
     post = _parse_porcelain_z(porcelain.postlaunch_porcelain)
     digests = _load_digest_map(porcelain.prelaunch_digests)
     tmp_rel = _tmpdir_rel_in_repo(repo_root, tmpdir)
-    candidates = _collect_recovery_candidates(repo_root=repo_root, tmp_rel=tmp_rel, pre=pre, post=post, digests=digests)
-    _write_bytes_atomic(path=out_file, data=b"".join(p.encode("utf-8", "surrogateescape") + b"\0" for p in candidates))
+    candidates = _collect_recovery_candidates(
+        repo_root=repo_root, tmp_rel=tmp_rel, pre=pre, post=post, digests=digests
+    )
+    _write_bytes_atomic(
+        path=out_file,
+        data=b"".join(p.encode("utf-8", "surrogateescape") + b"\0" for p in candidates),
+    )
     return bool(candidates)
 
 
 def _commit_usage_fail(error: str) -> int:
-    _err("Usage: implement commit --message MSG [--pathspec-from-file PATH [--pathspec-file-nul]] [files...]")
-    _err("HINT: --stage-all belongs to review-and-fix commit-fixes (Step 5 review fixes); implementation commits name specific files or use --pathspec-from-file.")
+    _err(
+        "Usage: implement commit --message MSG [--pathspec-from-file PATH [--pathspec-file-nul]] [files...]"
+    )
+    _err(
+        "HINT: --stage-all belongs to review-and-fix commit-fixes (Step 5 review fixes); implementation commits name specific files or use --pathspec-from-file."
+    )
     _emit_kv(key="COMMITTED", value="false")
     _emit_kv(key="SHA", value="")
     _emit_kv(key="ERROR", value=error)
@@ -137,7 +148,14 @@ def _commit_usage_fail(error: str) -> int:
 
 
 def _scan_commit_argv(argv_list: list[str]) -> int | None:
-    known_flags = {"--message", "-m", "--pathspec-from-file", "--pathspec-file-nul", "--help", "-h"}
+    known_flags = {
+        "--message",
+        "-m",
+        "--pathspec-from-file",
+        "--pathspec-file-nul",
+        "--help",
+        "-h",
+    }
     idx = 0
     while idx < len(argv_list):
         arg = argv_list[idx]
@@ -159,9 +177,17 @@ def _scan_commit_argv(argv_list: list[str]) -> int | None:
 
 
 def _rehydrate_commit_session_from_tmpdir() -> None:
-    env_file = Path(os.environ.get("IMPLEMENT_TMPDIR", "")) / "session-env.sh" if os.environ.get("IMPLEMENT_TMPDIR") else None
+    env_file = (
+        Path(os.environ.get("IMPLEMENT_TMPDIR", "")) / "session-env.sh"
+        if os.environ.get("IMPLEMENT_TMPDIR")
+        else None
+    )
     if env_file and env_file.is_file():
-        for key in ("LARCH_TOKEN_SESSION_ID", "LARCH_CLAUDE_SOURCE_FILE", "LARCH_TIMING_LEDGER"):
+        for key in (
+            "LARCH_TOKEN_SESSION_ID",
+            "LARCH_CLAUDE_SOURCE_FILE",
+            "LARCH_TIMING_LEDGER",
+        ):
             if not os.environ.get(key):
                 value = _session_get(file=env_file, key=key, default="")
                 if value:
@@ -175,7 +201,9 @@ def _mark_commit_timing() -> None:
     _invoke_cli(["timing", "mark", "Step 4 — commit implementation"], env=env)
 
 
-def _invoke_cli(args: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def _invoke_cli(
+    args: list[str], *, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     """Invoke one Rust-owned command through the verified bootstrap script."""
     return subprocess.run(
         [str(larch_entrypoint(_current_cli_path().parents[1])), *args],
@@ -187,7 +215,13 @@ def _invoke_cli(args: list[str], *, env: dict[str, str] | None = None) -> subpro
 
 
 def _build_commit_args(args: argparse.Namespace) -> list[str]:
-    commit_args = [str(larch_entrypoint(_current_cli_path().parents[1])), "git", "commit", "-m", args.message]
+    commit_args = [
+        str(larch_entrypoint(_current_cli_path().parents[1])),
+        "git",
+        "commit",
+        "-m",
+        args.message,
+    ]
     if args.pathspec_from_file:
         commit_args.extend(["--only", "--pathspec-from-file", args.pathspec_from_file])
         if args.pathspec_file_nul:

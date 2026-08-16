@@ -12,11 +12,12 @@ use std::{
 
 use larch_adapters::{GixRepository, SystemProcessIdentityHost};
 use larch_core::{
-    CHECKS_TERMINAL_ACTIONS, ChildEnvironment, DuplicatePolicy, ExternalProgram, KvDocument,
-    LarchProgram, ParseOptions, ProcessOutput, RecoveryPorcelainInputs, StatusOptions, bgjob_dir,
-    child_liveness, compute_recovery_paths, daemon_liveness, ensure_under, log_paths,
-    owner_pid_candidate, private_atomic_write, read_for, resolve_run_id, resolve_step_and_budget,
-    resolve_tmpdir_path, result_env_path, validate_merge_result_env, write_bytes_atomic,
+    CHECKS_TERMINAL_ACTIONS, ChildEnvironment, CommentPolicy, DuplicateInputPolicy, DuplicatePolicy,
+    ExternalProgram, KvDocument, LarchProgram, ParseOptions, ProcessOutput,
+    RecoveryPorcelainInputs, StatusOptions, bgjob_dir, child_liveness, compute_recovery_paths,
+    daemon_liveness, ensure_under, log_paths, owner_pid_candidate, private_atomic_write, read_for,
+    resolve_run_id, resolve_step_and_budget, resolve_tmpdir_path, result_env_path,
+    validate_merge_result_env, write_bytes_atomic,
 };
 
 use crate::{
@@ -447,8 +448,7 @@ fn checks_launch_identity(tmpdir: &Path) -> Result<LaunchIdentity, String> {
     }
     let resolve_text = String::from_utf8_lossy(resolve.stdout()).into_owned();
     let repo_root = kv_value(&resolve_text, "REPO_ROOT")
-        .ok_or_else(|| "REPO_ROOT missing from resolve-repo-root".to_owned())?
-        .to_owned();
+        .ok_or_else(|| "REPO_ROOT missing from resolve-repo-root".to_owned())?;
     compute_identity(Path::new(&repo_root))
 }
 
@@ -468,13 +468,9 @@ fn compute_identity(repo_root: &Path) -> Result<LaunchIdentity, String> {
     }
     let text = String::from_utf8_lossy(output.stdout());
     Ok(LaunchIdentity {
-        head_sha: kv_value(&text, CHECKS_HEAD)
-            .ok_or("missing head")?
-            .to_owned(),
-        tree_fp: kv_value(&text, CHECKS_FP).ok_or("missing fp")?.to_owned(),
-        schema: kv_value(&text, CHECKS_SCHEMA)
-            .ok_or("missing schema")?
-            .to_owned(),
+        head_sha: kv_value(&text, CHECKS_HEAD).ok_or("missing head")?,
+        tree_fp: kv_value(&text, CHECKS_FP).ok_or("missing fp")?,
+        schema: kv_value(&text, CHECKS_SCHEMA).ok_or("missing schema")?,
         repo_root: repo_root.to_path_buf(),
     })
 }
@@ -591,7 +587,7 @@ fn classify(
     let text = String::from_utf8_lossy(output.stdout());
     if let Some(state) = kv_value(&text, "STATE") {
         let reason = kv_value(&text, "REASON").unwrap_or_default();
-        return Ok((state.to_owned(), reason));
+        return Ok((state, reason));
     }
     if output.status().code() == Some(2) {
         return Err(stderr_or_stdout(&output));
@@ -638,12 +634,10 @@ fn publish_rows(tmpdir: &Path, merge_env: &Path, text: &str) -> Result<(), Strin
 }
 
 fn stdout_is_merge_rows(text: &str) -> bool {
-    text.lines().filter(|line| !line.is_empty()).all(|line| {
-        line.split_once('=').is_some_and(|(key, _)| {
-            key.chars()
-                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
-        })
-    })
+    let mut options = ParseOptions::environment();
+    options.duplicates = DuplicateInputPolicy::Allow;
+    options.comments = CommentPolicy::Keep;
+    KvDocument::parse(text, options).is_ok()
 }
 
 fn terminal_action_in_output(text: &str) -> bool {
@@ -715,7 +709,7 @@ fn capture_postlaunch_porcelain(repo_root: &Path, tmpdir: &Path) -> u8 {
     0
 }
 
-fn status_byte(kind: larch_core::ChangeKind) -> u8 {
+const fn status_byte(kind: larch_core::ChangeKind) -> u8 {
     match kind {
         larch_core::ChangeKind::Added => b'A',
         larch_core::ChangeKind::Deleted => b'D',
