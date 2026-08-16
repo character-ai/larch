@@ -78,7 +78,10 @@ impl CleanInstallCase {
             // clean-install `--help` token reads as an invalid flag and the verb
             // reports its own breadcrumb refusal exit.
             | "clean-install-render-lane-status"
-            | "clean-install-session-local-cleanup" => 1,
+            | "clean-install-session-local-cleanup"
+            // `plan validator-autofix` refuses missing `DESIGN_TMPDIR` before
+            // `--help`, matching the frozen Python wrapper order.
+            | "clean-install-plan-validator-autofix" => 1,
             "clean-install-admission-preflight" => 3,
             "clean-install-token-measure-cache-efficiency"
             | "clean-install-token-measure-checks-digest-savings"
