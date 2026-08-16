@@ -79,20 +79,27 @@ pub(crate) fn plugin_root_for_commands() -> PathBuf {
 }
 
 fn validated_design_tmpdir(raw: &str) -> Result<PathBuf, String> {
-    validate_design_tmpdir(
-        raw,
-        env::var_os("TMPDIR").as_deref(),
-        &cleanup_cache_sessions_root(
-            env::var_os("XDG_CACHE_HOME").as_deref(),
-            env::var_os("HOME").as_deref(),
-        ),
-    )?;
-    fs::canonicalize(raw).map_err(|error| error.to_string())
+    let tmpdir = env::var_os("TMPDIR");
+    let cache_root = cleanup_cache_sessions_root(
+        env::var_os("XDG_CACHE_HOME").as_deref(),
+        env::var_os("HOME").as_deref(),
+    );
+    validate_design_tmpdir(raw, tmpdir.as_deref(), &cache_root)?;
+    fs::canonicalize(PathBuf::from(raw)).map_err(|error| error.to_string())
 }
 
 /// Design-tmpdir validation for sibling plan-quality command modules.
 pub(crate) fn validated_design_tmpdir_for_commands(raw: &str) -> Result<PathBuf, String> {
     validated_design_tmpdir(raw)
+}
+
+/// Capture stdout+stderr text and exit code from a finished process.
+pub(crate) fn captured_process_text(output: std::process::Output) -> (i32, String) {
+    (
+        output.status.code().unwrap_or(1),
+        String::from_utf8_lossy(&output.stdout).into_owned()
+            + &String::from_utf8_lossy(&output.stderr),
+    )
 }
 
 fn repo_root_from(start: &Path) -> PathBuf {
@@ -394,7 +401,7 @@ fn validate_plan_command_rows(
             continue;
         };
         if !help_cache.contains_key(script) {
-            let mut command = Command::new(&abs_path);
+            let mut command = Command::new(&abs_path); // lint-subprocess-via-runner: ok plan-command help probes arbitrary consumer scripts without a typed owner
             command.arg("--help").env("LARCH_QUIET_DISABLE", "1");
             let output = command
                 .stdout(Stdio::piped())
@@ -464,7 +471,7 @@ fn validate_plan_command_rows(
             unsafe_count += 1;
             continue;
         }
-        let mut command = Command::new(&argv[0]);
+        let mut command = Command::new(&argv[0]); // lint-subprocess-via-runner: ok plan-command dry-run probes arbitrary consumer scripts without a typed owner
         command.args(&argv[1..]).current_dir(&repo);
         command.env_clear();
         for key in ["PATH", "HOME", "TMPDIR", "USER", "LOGNAME", "LANG"] {
@@ -484,11 +491,7 @@ fn validate_plan_command_rows(
         }
         let _ = dry_run_timeout;
         let (dry_rc, cap) = match command.output() {
-            Ok(output) => (
-                output.status.code().unwrap_or(1),
-                String::from_utf8_lossy(&output.stdout).into_owned()
-                    + &String::from_utf8_lossy(&output.stderr),
-            ),
+            Ok(output) => captured_process_text(output),
             Err(_) => (127, String::new()),
         };
         log.push(format!("TIER3_CAPTURE script={script} exit={dry_rc}"));

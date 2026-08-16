@@ -42,12 +42,15 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     argparse_compat::parse_required_with_help,
+    git_command_runtime::GitCommandRuntime,
     oos_commands::atomic_write,
     plan_quality_commands::{
-        plugin_root_for_commands, repo_root_from_path, validated_design_tmpdir_for_commands,
+        captured_process_text, plugin_root_for_commands, repo_root_from_path,
+        validated_design_tmpdir_for_commands,
     },
     runtime_entrypoint::{run_verified_larch, run_verified_larch_with_timeout},
 };
+use larch_adapters::{ApplyRequest, GitFilePath};
 
 const RC2: u8 = 2;
 
@@ -71,7 +74,7 @@ fn binary_arg(value: &str, binary: &str) -> String {
     if value == "true" || value == "false" {
         return value.to_owned();
     }
-    if Command::new("which")
+    if Command::new("which") // lint-subprocess-via-runner: ok binary presence probe has no typed host utility owner
         .arg(binary)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -278,11 +281,11 @@ fn emit_plan_gate(design_tmpdir: &Path, plugin: &Path) -> bool {
         if parts.is_empty() {
             return false;
         }
-        let mut command = Command::new(parts.remove(0));
+        let mut command = Command::new(parts.remove(0)); // lint-subprocess-via-runner: ok retained design-driver harness override has no typed executable owner
         command.args(parts);
         command
     } else {
-        let mut command = Command::new("python3");
+        let mut command = Command::new("python3"); // lint-subprocess-via-runner: ok design driver emit remains Python-owned during plan-quality cutover
         command
             .arg(plugin.join("python/cli.py"))
             .arg("design")
@@ -669,7 +672,7 @@ fn run_revise_attempt(
         .first()
         .is_some_and(|argument| Path::new(argument).is_file())
     {
-        Command::new(&args[0])
+        Command::new(&args[0]) // lint-subprocess-via-runner: ok retained plan-revise harness override has no typed executable owner
             .args(&args[1..])
             .status()
             .map(|status| status.code().unwrap_or(1))
@@ -703,12 +706,25 @@ fn run_revise_attempt(
             restore();
             return false;
         }
-        let apply = Command::new("git")
-            .args(["apply", "--recount", "--whitespace=nowarn"])
-            .arg(&patch_path)
-            .current_dir(plan.parent().unwrap_or_else(|| Path::new(".")))
-            .output();
-        if !apply.map(|output| output.status.success()).unwrap_or(false) {
+        let apply_ok = match (
+            GitCommandRuntime::for_repository(plan.parent().unwrap_or_else(|| Path::new("."))),
+            GitFilePath::new(patch_path.as_os_str()),
+        ) {
+            (Ok(runtime), Ok(patch)) => runtime
+                .runtime
+                .block_on(runtime.git_cli().apply(
+                    ApplyRequest {
+                        patch,
+                        cached: false,
+                        index: false,
+                        check: false,
+                    },
+                    &runtime.cancellation,
+                ))
+                .is_ok(),
+            _ => false,
+        };
+        if !apply_ok {
             set_status(statuses, "apply-failed");
             restore();
             return false;
@@ -903,7 +919,7 @@ pub fn auto_fix_commands(arguments: &[OsString]) -> ExitCode {
         };
         let _ = atomic_write(&prompt, &prompt_body);
         let mut dispatch_rc = if let Ok(override_sh) = env::var("LARCH_AUTOFIX_DISPATCH_SH") {
-            Command::new(override_sh)
+            Command::new(override_sh) // lint-subprocess-via-runner: ok retained autofix dispatch harness override has no typed executable owner
                 .args([
                     "--vendor",
                     vendor,
@@ -983,7 +999,7 @@ pub fn auto_fix_commands(arguments: &[OsString]) -> ExitCode {
             validate_args.push("--require-executable-facets".into());
         }
         let (val_rc, val_out) = if let Ok(script) = env::var("LARCH_AUTOFIX_VALIDATE_PLAN_SH") {
-            match Command::new(script)
+            match Command::new(script) // lint-subprocess-via-runner: ok retained autofix validate harness override has no typed executable owner
                 .args([
                     "--plan-file",
                     &plan.display().to_string(),
@@ -992,11 +1008,7 @@ pub fn auto_fix_commands(arguments: &[OsString]) -> ExitCode {
                 ])
                 .output()
             {
-                Ok(output) => (
-                    output.status.code().unwrap_or(1),
-                    String::from_utf8_lossy(&output.stdout).into_owned()
-                        + &String::from_utf8_lossy(&output.stderr),
-                ),
+                Ok(output) => captured_process_text(output),
                 Err(_) => (1, String::new()),
             }
         } else {

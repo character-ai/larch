@@ -80,7 +80,6 @@ python/larch/core/forked_repo.py	later-domain	#7682	config,ls-remote,merge-base,
 python/larch/core/redact.py	later-domain	#7686	submodule
 python/larch/design/design_log_publish_flow.py	later-domain	#7680	dynamic
 python/larch/design/design_step2b.py	later-domain	#7680	dynamic
-python/larch/design/plan_quality.py	later-domain	#7680	apply
 python/larch/git/gh.py	later-domain	#7676	remote
 python/larch/git/git.py	later-domain	#7681	add,branch,checkout,commit,diff,diff-tree,fetch,log,ls-files,ls-remote,ls-tree,merge-base,push,rebase,reset,restore,rev-list,rev-parse,rm,show,show-ref,status,symbolic-ref
 python/larch/git/merge.py	later-domain	#7681	fetch,log,show
