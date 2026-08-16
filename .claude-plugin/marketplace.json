@@ -13,7 +13,7 @@
         "path": "plugin",
         "ref": "stable"
       },
-      "description": "Multi-agent workflow automation for Claude Code: design, code review, implementation, PR automation, `/deps` issue dependency audits, and `/bug` issue-report filing with collaborative reviewers (Claude subagents + Codex + Cursor).",
+      "description": "Multi-agent workflow automation for Claude Code: design, code review, implementation, PR automation, `/deps` issue dependency audits, and `/file-bug` issue-report filing with collaborative reviewers (Claude subagents + Codex + Cursor).",
       "category": "development"
     }
   ]

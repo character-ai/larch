@@ -36,7 +36,7 @@ permissions or hooks only to silence the compatibility warning.
 - [`/alias`](#alias)
 - [`/audit-umbrella`](#audit-umbrella)
 - [`/block-issue`](#block-issue)
-- [`/bug`](#bug)
+- [`/file-bug`](#file-bug)
 - [`/cleanup`](#cleanup)
 - [`/combine-issues`](#combine-issues)
 - [`/complete-umbrella`](#complete-umbrella)
@@ -83,11 +83,11 @@ Example with `--private` or in a consumer repo: `/alias i implement --merge` cre
 
 Express a native GitHub blocked-by relationship between two issues using the `addBlockedBy` GraphQL mutation. ISSUE_A is marked as blocked by ISSUE_B. Repo is auto-detected from `gh repo view` when `--repo` is omitted. Live mutation requires `--operator-invoked`. Triage-controlled calls also require the target's expected timestamp, recheck security and protected lifecycle state immediately before mutation, verify the exact relation, and return a fresh timestamp.
 
-### `/bug`
+### `/file-bug`
 
 **Arguments**: `[--urgent] <bug description>`
 
-**Source**: [`skills/bug/SKILL.md`](../skills/bug/SKILL.md)
+**Source**: [`skills/file-bug/SKILL.md`](../skills/file-bug/SKILL.md)
 
 Investigate a user-described bug inline, compose a detailed issue body, then delegate creation to `/issue` with dedup enabled. This skill is for issue filing only: it reads the repo with `Read`/`Grep`/`Glob` and safe read-only `Bash`, never edits it, and writes scratch artifacts only under a `/tmp` `$BUG_TMPDIR`. The `--urgent` flag changes the title prefix to `[BUG] (URGENT)`. After `$BUG_TMPDIR` exists, `/bug` writes a fresh `bug-*` activation sentinel so the `Write` hook permits only scratch paths (canonical `/tmp` or the larch cache sessions root) while active. If the report looks like a **security vulnerability** (or might be), it aborts before filing and points at `SECURITY.md` responsible disclosure. The composed body uses a fixed ten-heading template (Summary, Original report, Reproduction scenario, Expected, Observed, Root cause analysis, Evidence, Affected files, Suggested fix(es), Open questions) and is sanitized before write.
 
@@ -229,7 +229,7 @@ Create or resume a flat `[UMBRELLA]` issue from an open issue number or a verbal
 
 **Source**: [`skills/issue/SKILL.md`](../skills/issue/SKILL.md)
 
-Create one or more GitHub issues with LLM-based semantic duplicate detection. Supports single mode (free-form description) and batch mode (`--input-file`). 2-phase dedup against open + recently-closed issues (default 90-day window). Both the Phase 1 Tier-1 title triage and the Phase 2 semantic reasoning run inside a read-only in-session `larch:issue-dedup` verdict subagent (`agents/issue-dedup.md`, tools `Read`/`Grep`/`Glob` only) that receives snapshot, body, and corpus **paths** from the orchestrator and whose emitted verdict and dependency-edge lines still pass the unchanged deterministic validation pipeline. `--no-dedup` skips the entire dedup + dependency analysis pipeline and creates all items directly — useful for archival issues (e.g., `/research` reports) where each run produces genuinely different content. `--no-dep-llm` keeps dedup but skips the LLM dependency-detection pass. `--title-prefix`, `--label`, `--body-file`, `--blocked-by-issue`, `--intra-batch-deps-file`, and `--sentinel-file` are used primarily by calling skills such as `/design` Step 5b and `/bug` that file issues in batch or wire dependencies. `/implement` Step 9a.1 is not an `/issue` caller; its accepted-OOS path is Rust-owned behind `scripts/larch.sh oos file`.
+Create one or more GitHub issues with LLM-based semantic duplicate detection. Supports single mode (free-form description) and batch mode (`--input-file`). 2-phase dedup against open + recently-closed issues (default 90-day window). Both the Phase 1 Tier-1 title triage and the Phase 2 semantic reasoning run inside a read-only in-session `larch:issue-dedup` verdict subagent (`agents/issue-dedup.md`, tools `Read`/`Grep`/`Glob` only) that receives snapshot, body, and corpus **paths** from the orchestrator and whose emitted verdict and dependency-edge lines still pass the unchanged deterministic validation pipeline. `--no-dedup` skips the entire dedup + dependency analysis pipeline and creates all items directly — useful for archival issues (e.g., `/research` reports) where each run produces genuinely different content. `--no-dep-llm` keeps dedup but skips the LLM dependency-detection pass. `--title-prefix`, `--label`, `--body-file`, `--blocked-by-issue`, `--intra-batch-deps-file`, and `--sentinel-file` are used primarily by calling skills such as `/design` Step 5b and `/file-bug` that file issues in batch or wire dependencies. `/implement` Step 9a.1 is not an `/issue` caller; its accepted-OOS path is Rust-owned behind `scripts/larch.sh oos file`.
 
 **Default-on inter-issue blocker-dependency analysis** (issue #546): unless `--no-dedup` is set, every invocation analyzes the new item(s) against existing OPEN issues and applies hard GitHub-native blocker dependencies via the Issue Dependencies REST API on detected pairs (merge-conflict risk or "must land first"). Hard-fail with retries (3 tries, 10s/30s sleeps); on retry exhaustion the failed item is rolled back (orphan close) — when multiple items are processed, unrelated items continue — and the run exits non-zero if any item failed, yielding a clean "create-then-close" recovery rather than a dangling issue with missing dependency wiring.
 
@@ -279,7 +279,7 @@ Every mutation compares the target's exact `updatedAt`, then re-reads the change
 
 Terminal machine output is `TRIAGE_VERDICT=<valid|already-fixed|duplicate|invalid|inconclusive>`, `ISSUE_UPDATED=<true|false>`, and a bounded `TRIAGE_FAILURE=<reason>`.
 
-This differs from `/bug`, which investigates a user description and files a new issue; `/research`, which produces a broader research report; and `/design`, which authors the implementation plan after the diagnosis is ready.
+This differs from `/file-bug`, which investigates a user description and files a new issue; `/research`, which produces a broader research report; and `/design`, which authors the implementation plan after the diagnosis is ready.
 
 ### `/research`
 

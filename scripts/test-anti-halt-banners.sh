@@ -36,7 +36,7 @@ ORCHESTRATORS=(
   "skills/review/SKILL.md"
   "skills/alias/SKILL.md"  # has Step 4 post-delegation verification
   "skills/research/SKILL.md"  # may invoke /issue via the Skill tool and continue to report/cleanup
-  "skills/bug/SKILL.md"  # invokes /issue via the Skill tool and continues to verify/cleanup/report
+  "skills/file-bug/SKILL.md"  # invokes /issue via the Skill tool and continues to verify/cleanup/report
   "skills/triage/SKILL.md"  # invokes /block-issue and /issue, then verifies and cleans up
   "skills/umbrella/SKILL.md"  # invokes /issue and verifies its sentinel before graph wiring
   "skills/complete-umbrella/SKILL.md"  # invokes /issue for audit gaps, then verifies and attaches

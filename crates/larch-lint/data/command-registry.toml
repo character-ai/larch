@@ -9314,7 +9314,7 @@ python = []
 rust = ["block-issue add-blocked-by"]
 
 [[callers]]
-path = "skills/bug/SKILL.md"
+path = "skills/file-bug/SKILL.md"
 kind = "skill"
 python = []
 rust = ["verify skill-called"]

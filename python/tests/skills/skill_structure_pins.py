@@ -1,7 +1,7 @@
 """Immutable skill-structure pin tables.
 
 Simple contains/absent/count/ordered/adjacent-pair contracts for design and
-umbrella live here. Alias, bug, learn-from-bugs, implement, research, and review
+umbrella live here. Alias, file-bug, learn-from-bugs, implement, research, and review
 structure contracts are covered by complete specialized ports in sibling modules
 (executable loops, CLI lints, proximity windows, and regex-BRE semantics).
 """
@@ -507,7 +507,7 @@ validate_pin_table(ALL_PINS)
 # Focused Make -k expressions: pins use skill- prefix; specialized tests use test_<skill>_structure
 FOCUSED_SELECTION: Final[dict[str, str]] = {
     "alias": "alias_structure",
-    "bug": "bug_structure",
+    "file-bug": "file_bug_structure",
     "design": "design_structure_pin or design_structure_specialized",
     "implement": "implement_structure",
     "learn-from-bugs": "learn_from_bugs_structure",
@@ -517,7 +517,7 @@ FOCUSED_SELECTION: Final[dict[str, str]] = {
 
 FOCUSED_TARGETS: Final[dict[str, str]] = {
     "alias": "test-alias-structure",
-    "bug": "test-bug-structure",
+    "file-bug": "test-file-bug-structure",
     "design": "test-design-structure",
     "implement": "test-implement-structure",
     "learn-from-bugs": "test-learn-from-bugs-structure",
@@ -527,7 +527,7 @@ FOCUSED_TARGETS: Final[dict[str, str]] = {
 
 SPECIALIZED_MODULES: Final[dict[str, str]] = {
     "alias": "_structure_alias_specialized",
-    "bug": "_structure_bug_specialized",
+    "file-bug": "_structure_file_bug_specialized",
     "design": "_structure_design_specialized",
     "implement": "_structure_implement_specialized",
     "learn-from-bugs": "_structure_learn_from_bugs_specialized",

@@ -48,7 +48,7 @@ a fixed repository-wide count.
 
 | Concern | Live entry points | Required destination |
 |---------|-------------------|----------------------|
-| Vulnerability disclosure | `skills/bug/SKILL.md`, `skills/triage/SKILL.md` | Root `SECURITY.md`; keep the no-public-issue instruction inline |
+| Vulnerability disclosure | `skills/file-bug/SKILL.md`, `skills/triage/SKILL.md` | Root `SECURITY.md`; keep the no-public-issue instruction inline |
 | Installation and runtime loading | `docs/installation-and-setup.md`, `.claude-plugin/marketplace.json`, `crates/larch-cli/src/release_plugin_runtime.rs` | Root policy and all focused references ship in `plugin/` |
 | Runtime security decisions | Shipped Markdown under `skills/` | The focused reference that owns the behavior in the installed plugin |
 | Contributor policy | `AGENTS.md`, `docs/preparing-your-repo.md` | Root policy for disclosure and scope; focused references for technical behavior; this index for ownership |

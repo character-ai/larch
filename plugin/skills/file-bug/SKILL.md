@@ -1,7 +1,7 @@
 ---
 
-# larch-run-lifecycle: shared-v1 skill=bug
-name: bug
+# larch-run-lifecycle: shared-v1 skill=file-bug
+name: file-bug
 description: "Use when filing, investigating, or root-causing a software bug. Reads the repo, drafts a detailed GitHub issue, and invokes /issue with dedup enabled."
 argument-hint: "[--urgent] <bug description>"
 allowed-tools: Bash, Read, Grep, Glob, Write, Skill
@@ -10,13 +10,13 @@ hooks:
     - matcher: "Write"
       hooks:
         - type: command
-          command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh bug"
+          command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh file-bug"
           timeout: 5
 ---
 
-**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `bug`.**
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `file-bug`.**
 
-# Bug Skill
+# File-Bug Skill
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
@@ -46,7 +46,7 @@ Trim `$ARGUMENTS` mentally. Remove one or more leading `--urgent` tokens before 
 If the remaining description is empty or whitespace-only, print:
 
 ```text
-**⚠ /bug: bug description is required. Aborting.**
+**⚠ /file-bug: bug description is required. Aborting.**
 ```
 
 Stop before creating any temp directory.
@@ -54,7 +54,7 @@ Stop before creating any temp directory.
 **Security triage (mandatory).** After validating input, assess whether `$ARGUMENTS` describes a **security vulnerability** (exploitable weakness, credential exposure, auth bypass, injection, RCE, etc.) rather than ordinary functional breakage. If the report is security-sensitive, or if you are uncertain whether it is security-sensitive, **do not proceed**. Print:
 
 ```text
-**⚠ /bug: this report appears to describe a security vulnerability. Do not file a public GitHub issue. Report it responsibly per SECURITY.md (email disclosure). Aborting before /issue.**
+**⚠ /file-bug: this report appears to describe a security vulnerability. Do not file a public GitHub issue. Report it responsibly per SECURITY.md (email disclosure). Aborting before /issue.**
 ```
 
 Stop before creating any temp directory. See `${CLAUDE_PLUGIN_ROOT}/SECURITY.md` § Reporting a Vulnerability.
@@ -75,14 +75,14 @@ Activate the `Write` hook after `$BUG_TMPDIR` exists and before the first `Write
 
 ```bash
 if [[ -z "${XDG_CACHE_HOME:-}" && -z "${HOME:-}" ]]; then
-  echo "**⚠ /bug: failed to activate Write hook. Aborting.**"
+  echo "**⚠ /file-bug: failed to activate Write hook. Aborting.**"
   rm -rf "$BUG_TMPDIR"
   exit 1
 fi
 BUG_DENY_ACTIVE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/larch/deny-edit-write-active"
-BUG_DENY_ACTIVE_SENTINEL="$BUG_DENY_ACTIVE_DIR/bug-$PPID"
+BUG_DENY_ACTIVE_SENTINEL="$BUG_DENY_ACTIVE_DIR/file-bug-$PPID"
 if ! mkdir -p "$BUG_DENY_ACTIVE_DIR" || ! : > "$BUG_DENY_ACTIVE_SENTINEL"; then
-  echo "**⚠ /bug: failed to activate Write hook. Aborting.**"
+  echo "**⚠ /file-bug: failed to activate Write hook. Aborting.**"
   rm -rf "$BUG_TMPDIR"
   exit 1
 fi
@@ -162,7 +162,7 @@ The body should give `/design` enough context to produce a good implementation p
 **Security re-check (mandatory, fail-closed).** Immediately before any `/issue` Skill-tool call, re-assess whether the bug report or investigation results describe a **security vulnerability** (exploitable weakness, credential exposure, auth bypass, injection, RCE, etc.) rather than ordinary functional breakage. If the report is security-sensitive, or if you are uncertain whether it is security-sensitive, **do not call** `/issue`. Print:
 
 ```text
-**⚠ /bug: this report appears to describe a security vulnerability. Do not file a public GitHub issue. Report it responsibly per SECURITY.md (email disclosure). Aborting before /issue.**
+**⚠ /file-bug: this report appears to describe a security vulnerability. Do not file a public GitHub issue. Report it responsibly per SECURITY.md (email disclosure). Aborting before /issue.**
 ```
 
 Remove `"$BUG_DENY_ACTIVE_SENTINEL"` and `$BUG_TMPDIR`, then stop. Do not run Steps 6 or 7. See `${CLAUDE_PLUGIN_ROOT}/SECURITY.md` § Reporting a Vulnerability.
