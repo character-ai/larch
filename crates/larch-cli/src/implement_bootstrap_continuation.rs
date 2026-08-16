@@ -25,8 +25,8 @@ use larch_adapters::{
 };
 use larch_core::{
     CodexGateMessage, CrStrip, DegradedToolsResult, DuplicatePolicy, KvDocument, ParseOptions,
-    ProcessOutput, RepositoryRead, Revision, compose_plan_goals_test, redact,
-    role_default, single_line as core_single_line,
+    ProcessOutput, RepositoryRead, Revision, compose_plan_goals_test, redact, role_default,
+    single_line as core_single_line,
 };
 use sha2::{Digest as _, Sha256};
 use std::{
