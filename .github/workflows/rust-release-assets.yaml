@@ -69,7 +69,9 @@ jobs:
     needs: metadata
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 35
+    # Three cold, uncached release/test compiles of the (Rust-migration-grown)
+    # workspace on macOS now exceed the former 35-minute cap; give headroom.
+    timeout-minutes: 60
     permissions:
       contents: read
       id-token: write
@@ -96,6 +98,21 @@ jobs:
           rustup target add "${{ matrix.target }}"
           cargo --version
           rustc --version --verbose
+      - name: Cache Rust build
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          # GitHub cache entries are immutable. Include Rust sources so a
+          # successful Rust change publishes its updated workspace binaries.
+          # restore-keys warm the host and target-triple build dirs from the
+          # most recent macOS build even when the exact source hash misses.
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-${{ hashFiles('crates/**/*.rs') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'crates/**/Cargo.toml', 'Makefile') }}-
+            cargo-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-
       - name: Verify checkout identity
         shell: bash
         env:
