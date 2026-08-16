@@ -109,28 +109,12 @@ def test_checks_commit_route_step3_does_not_touch_legacy_sidecars(
     assert rc == 0
 
 
-def test_run_step_checks_main_leaves_non_step3_sites_unmarked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    plugin_root = Path(__file__).resolve().parents[3]
-
-    def fake_run_cli_forward(args: Sequence[str], **_kwargs: object) -> int:
-        assert list(args) == [
-            "checks",
-            "run-relevant",
-            "--site",
-            "step5",
-            "--tmpdir",
-            str(tmp),
-            "--repo-root",
-            str(plugin_root),
-        ]
-        return 0
-
-    monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", fake_run_cli_forward)
-
-    args = argparse.Namespace(site="step5", commit_site="", rebase_checkpoint_4r=False, forked_target="false")
-    assert dispatch_commit_route._run_step_checks_worker(args, tmp, plugin_root) == 0
+def test_checks_step_for_site_preserves_budgets() -> None:
+    assert dispatch_commit_route._checks_step_for_site("step3") == ("implement-step3-checks", 15600)  # pyright: ignore[reportPrivateUsage]
+    assert dispatch_commit_route._checks_step_for_site("step5-self-review") == (  # pyright: ignore[reportPrivateUsage]
+        "implement-checks-step5-self-review",
+        14700,
+    )
 
 
 def test_step5_handoff_timing_uses_rust_owner_and_keeps_round_idempotent(
@@ -704,7 +688,7 @@ def test_stamp_step9a1_routes_through_rust_manifest_owner(
 def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "step2-dispatch")][:2] == ("larch.implement.implement_dispatch", "step2_dispatch_main")
     assert _REGISTRY[("implement", "run-dispatch")][:2] == ("larch.implement.implement_dispatch", "run_dispatch_main")
-    assert _REGISTRY[("implement", "recovery-paths")][:2] == ("larch.implement.implement_dispatch", "recovery_paths_main")
+    assert ("implement", "recovery-paths") not in _REGISTRY
     assert _REGISTRY[("implement", "commit")][:2] == ("larch.implement.implement_dispatch", "commit_main")
     assert _REGISTRY[("implement", "commit-route")][:2] == ("larch.implement.implement_dispatch", "commit_route_main")
     assert _REGISTRY[("implement", "checks-commit-route")][:2] == ("larch.implement.implement_dispatch", "checks_commit_route_main")
@@ -727,7 +711,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
         "step_18_gate_logs_flush_main",
     )
     assert _REGISTRY[("implement", "step-19")][:2] == ("larch.implement.implement_dispatch", "step_19_main")
-    assert _REGISTRY[("implement", "run-step-checks")][:2] == ("larch.implement.implement_dispatch", "run_step_checks_main")
+    assert ("implement", "run-step-checks") not in _REGISTRY
     assert _REGISTRY[("ship", "pre-driver")][:2] == ("larch.implement.implement_dispatch", "ship_pre_driver_main")
     assert _REGISTRY[("ship", "pre-fix-rebase")][:2] == ("larch.implement.implement_dispatch", "ship_pre_fix_rebase_main")
     assert _REGISTRY[("ship", "route-exit")][:2] == ("larch.implement.implement_dispatch", "ship_route_exit_main")
@@ -788,113 +772,22 @@ def test_normalize_coder_scout_root_relative_argv_rebases_to_tmpdir(
     assert seen == {"tmpdir": tmp, "input_path": source}
 
 
-def test_recovery_paths_empty_tmpdir_argv_falls_back_to_env(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_resolve_tmpdir_path_empty_uses_default(tmp_path: Path) -> None:
     tmp = make_implement_tmpdir(tmp_path)
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    pre = tmp / "pre.nul"
-    post = tmp / "post.nul"
-    digests = tmp / "digests.txt"
-    out = tmp / "paths.nul"
-    for path in (pre, post, digests):
-        path.write_bytes(b"")
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    seen: dict[str, Path] = {}
+    from larch.implement.dispatch_helpers import resolve_tmpdir_path
 
-    def fake_compute_recovery_paths(
-        *,
-        repo_root: Path,
-        tmpdir: Path,
-        porcelain: implement_dispatch.RecoveryPorcelainInputs,
-        out_file: Path,
-    ) -> bool:
-        _ = porcelain
-        seen["repo_root"] = repo_root
-        seen["tmpdir"] = tmpdir
-        seen["out_file"] = out_file
-        return True
-
-    monkeypatch.setattr(dispatch_recovery, "compute_recovery_paths", fake_compute_recovery_paths)
-
-    rc = implement_dispatch.recovery_paths_main([
-        "--repo-root",
-        str(repo),
-        "--tmpdir",
-        "",
-        "--prelaunch-porcelain",
-        str(pre),
-        "--postlaunch-porcelain",
-        str(post),
-        "--prelaunch-digests",
-        str(digests),
-        "--out-file",
-        str(out),
-    ])
-
-    assert rc == 0
-    assert seen == {"repo_root": repo, "tmpdir": tmp, "out_file": out}
+    assert resolve_tmpdir_path(tmpdir=tmp, raw="", default_relpath="paths.nul") == tmp / "paths.nul"
 
 
-def test_recovery_paths_root_relative_argv_rebases_to_tmpdir(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_resolve_tmpdir_path_root_relative_argv_rebases_to_tmpdir(tmp_path: Path) -> None:
     tmp = make_implement_tmpdir(tmp_path)
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    pre = tmp / "step2-prelaunch-porcelain.nul"
-    post = tmp / "step2-postlaunch-porcelain.nul"
-    digests = tmp / "step2-prelaunch-content-digests.txt"
-    out = tmp / "step2-recovery-paths.nul"
-    for path in (pre, post, digests):
-        path.write_bytes(b"")
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    seen: dict[str, Path] = {}
+    from larch.implement.dispatch_helpers import resolve_tmpdir_path
 
-    def fake_compute_recovery_paths(
-        *,
-        repo_root: Path,
-        tmpdir: Path,
-        porcelain: implement_dispatch.RecoveryPorcelainInputs,
-        out_file: Path,
-    ) -> bool:
-        seen["repo_root"] = repo_root
-        seen["tmpdir"] = tmpdir
-        seen["prelaunch_porcelain"] = porcelain.prelaunch_porcelain
-        seen["postlaunch_porcelain"] = porcelain.postlaunch_porcelain
-        seen["prelaunch_digests"] = porcelain.prelaunch_digests
-        seen["out_file"] = out_file
-        return True
-
-    monkeypatch.setattr(dispatch_recovery, "compute_recovery_paths", fake_compute_recovery_paths)
-
-    rc = implement_dispatch.recovery_paths_main([
-        "--repo-root",
-        str(repo),
-        "--tmpdir",
-        "",
-        "--prelaunch-porcelain",
-        "/step2-prelaunch-porcelain.nul",
-        "--postlaunch-porcelain",
-        "/step2-postlaunch-porcelain.nul",
-        "--prelaunch-digests",
-        "/step2-prelaunch-content-digests.txt",
-        "--out-file",
-        "/step2-recovery-paths.nul",
-    ])
-
-    assert rc == 0
-    assert seen == {
-        "repo_root": repo,
-        "tmpdir": tmp,
-        "prelaunch_porcelain": pre,
-        "postlaunch_porcelain": post,
-        "prelaunch_digests": digests,
-        "out_file": out,
-    }
+    assert resolve_tmpdir_path(
+        tmpdir=tmp,
+        raw="/step2-recovery-paths.nul",
+        default_relpath="default.nul",
+    ) == tmp / "step2-recovery-paths.nul"
 
 
 def _write_ship_handoff(tmp: Path, rc: int, payload: dict[str, object]) -> None:

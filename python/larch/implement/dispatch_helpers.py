@@ -337,7 +337,7 @@ def _derive_pathspec_via_recovery_paths(
     rc = _capture_postlaunch_porcelain(repo_root=repo_root, implement_tmpdir=implement_tmpdir)
     if rc != 0:
         return rc
-    result = _invoke_cli(
+    result = _invoke_larch(
         [
             "implement",
             "recovery-paths",

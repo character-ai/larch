@@ -66,7 +66,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ),
     ("implement", "step2-dispatch"): ("larch.implement.implement_dispatch", "step2_dispatch_main", False),
     ("implement", "run-dispatch"): ("larch.implement.implement_dispatch", "run_dispatch_main", False),
-    ("implement", "recovery-paths"): ("larch.implement.implement_dispatch", "recovery_paths_main", False),
     ("implement", "commit"): ("larch.implement.implement_dispatch", "commit_main", False),
     ("implement", "commit-route"): ("larch.implement.implement_dispatch", "commit_route_main", True),
     ("implement", "scope-disposition"): ("larch.implement.scope_disposition", "scope_disposition_main", True),
@@ -88,7 +87,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("implement", "step-18"): ("larch.implement.implement_dispatch", "step_18_main", True),
     ("implement", "step-18-gate-logs-flush"): ("larch.implement.implement_dispatch", "step_18_gate_logs_flush_main", True),
     ("implement", "step-19"): ("larch.implement.implement_dispatch", "step_19_main", True),
-    ("implement", "run-step-checks"): ("larch.implement.implement_dispatch", "run_step_checks_main", False),
     ("implement", "checks-result-identity"): (
         "larch.implement.checks_result_identity",
         "checks_result_identity_main",

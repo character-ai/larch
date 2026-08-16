@@ -165,7 +165,6 @@ from larch.implement.dispatch_commit_route import (
     checks_commit_route_main,
     checks_step5_resume_main,
     commit_route_main,
-    run_step_checks_main,
     step5_resume_main,
     step5_review_main,
     step6_entry_main,
@@ -227,7 +226,6 @@ from larch.implement.dispatch_recovery import (
     _commit_usage_fail,
     compute_recovery_paths,
     commit_main,
-    recovery_paths_main,
 )
 
 # --- manifest, DispatchState, normalize-coder-scout ---

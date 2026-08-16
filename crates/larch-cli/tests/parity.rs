@@ -1546,6 +1546,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "scope-marker",
     ),
     CleanInstallCase::new(
+        "clean-install-implement-recovery-paths",
+        "implement",
+        "recovery-paths",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-run-step-checks",
+        "implement",
+        "run-step-checks",
+    ),
+    CleanInstallCase::new(
         "clean-install-gh-agnix-ensure-label",
         "gh",
         "agnix-ensure-label",

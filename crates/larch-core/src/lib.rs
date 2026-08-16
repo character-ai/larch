@@ -12,6 +12,8 @@ mod config;
 mod context;
 /// Design-domain plan grammar and plan-quality analysis core (#8575).
 pub mod design;
+/// `/implement` dispatch shared helpers, recovery paths, and step-checks mapping (#8610).
+pub mod implement;
 mod difficulty;
 mod difficulty_calibration;
 mod env_file;
@@ -154,6 +156,13 @@ pub use design::{
     parse_final_trailers, parse_optional_metadata, parse_plan_commands, plan_surfaces,
     render_plan_command_tsv, set_oversize_override_text, validate_difficulty_metadata,
     validate_plan_contract,
+};
+pub use implement::{
+    CHECKS_TERMINAL_ACTIONS, DispatchState, RecoveryParse, RecoveryPorcelainInputs, STEP6_CHECKS_STEP,
+    StepChecksSite, checks_step_for_site, clear_external_scout_paths, compute_recovery_paths,
+    load_digest_map, manifest_legacy_fingerprint, parse_porcelain_z, path_under_submodule,
+    public_args_for_site, rel_under_tmp, resolve_step_and_budget, resolve_step_name,
+    resolve_tmpdir_path, sha256_file, tmpdir_rel_in_repo, write_bytes_atomic, write_digest_map,
 };
 pub use difficulty::{
     AUDIT_DENOMINATOR, BuildRecord, CODEX_MODEL_ROLE, CONFIDENCES, DifficultyFloor,

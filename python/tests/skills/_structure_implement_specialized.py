@@ -289,7 +289,7 @@ def run(repo_root: Path) -> list[str]:
 
         # Python owns the converted adapters; their Bash siblings remain thin delegates.
         require("python/larch/implement/dispatch_commit_route.py", "step5_review_main", "Step 5 review Python adapter present")
-        require("python/larch/implement/dispatch_commit_route.py", "run_step_checks_main", "checks Python adapter present")
+        require("python/larch/implement/dispatch_commit_route.py", "_checks_step_for_site", "checks site mapping present")
         require("python/larch/implement/dispatch_commit_route.py", "_live_registry_entry", "checks live-job reuse stays Python-owned")
         require("python/larch/implement/dispatch_commit_route.py", "validate_child_identity", "checks child identity validation stays Python-owned")
         require("python/larch/implement/dispatch_commit_route.py", "step6_entry_main", "Step 6 Python adapter present")

@@ -1,0 +1,811 @@
+//! Rust owners for `implement recovery-paths` and `implement run-step-checks`.
+
+use std::{
+    env,
+    ffi::{OsStr, OsString},
+    fs,
+    io::Write as _,
+    path::{Path, PathBuf},
+    process::{Command, ExitCode},
+    time::Duration,
+};
+
+use larch_adapters::SystemProcessIdentityHost;
+use larch_core::{
+    ChildEnvironment, ExternalProgram, KvDocument, LarchProgram, ParseOptions, ProcessOutput,
+    RecoveryPorcelainInputs, CHECKS_TERMINAL_ACTIONS, bgjob_dir, child_liveness,
+    compute_recovery_paths, daemon_liveness, ensure_under, log_paths, owner_pid_candidate,
+    private_atomic_write, read_for, resolve_run_id, resolve_step_and_budget, resolve_tmpdir_path,
+    result_env_path, validate_merge_result_env, write_bytes_atomic,
+};
+
+use crate::{
+    argparse_compat::{choice_error, parse_required_with_help, usage_error},
+    child_process::{bounded_request_in, run_bounded},
+    python_verb::{publish_session_environment, run_python_verb},
+    runtime_entrypoint::plugin_root,
+};
+
+const RECOVERY_PROG: &str = "cli.py implement recovery-paths";
+const RECOVERY_USAGE: &str = "usage: cli.py implement recovery-paths [-h] --repo-root REPO_ROOT\n                                       [--tmpdir TMPDIR]\n                                       [--capture-postlaunch]\n                                       [--prelaunch-porcelain PRELAUNCH_PORCELAIN]\n                                       [--postlaunch-porcelain POSTLAUNCH_PORCELAIN]\n                                       [--prelaunch-digests PRELAUNCH_DIGESTS]\n                                       [--out-file OUT_FILE]\n";
+const RECOVERY_HELP: &str = "usage: cli.py implement recovery-paths [-h] --repo-root REPO_ROOT\n                                       [--tmpdir TMPDIR]\n                                       [--capture-postlaunch]\n                                       [--prelaunch-porcelain PRELAUNCH_PORCELAIN]\n                                       [--postlaunch-porcelain POSTLAUNCH_PORCELAIN]\n                                       [--prelaunch-digests PRELAUNCH_DIGESTS]\n                                       [--out-file OUT_FILE]\n\noptions:\n  -h, --help            show this help message and exit\n  --repo-root REPO_ROOT\n  --tmpdir TMPDIR\n  --capture-postlaunch\n  --prelaunch-porcelain PRELAUNCH_PORCELAIN\n  --postlaunch-porcelain POSTLAUNCH_PORCELAIN\n  --prelaunch-digests PRELAUNCH_DIGESTS\n  --out-file OUT_FILE\n";
+const STEP_PROG: &str = "cli.py implement run-step-checks";
+const STEP_USAGE: &str = "usage: cli.py implement run-step-checks [-h] --site SITE\n                                        [--commit-site COMMIT_SITE]\n                                        [--forked-target {true,false}]\n                                        [--rebase-checkpoint-4r]\n                                        [--bgjob-child]\n                                        [--merge-result-env MERGE_RESULT_ENV]\n                                        [--repo-root REPO_ROOT]\n                                        [--launch-head LAUNCH_HEAD]\n                                        [--launch-fp LAUNCH_FP]\n                                        [--launch-schema LAUNCH_SCHEMA]\n";
+const STEP_HELP: &str = "usage: cli.py implement run-step-checks [-h] --site SITE\n                                        [--commit-site COMMIT_SITE]\n                                        [--forked-target {true,false}]\n                                        [--rebase-checkpoint-4r]\n                                        [--bgjob-child]\n                                        [--merge-result-env MERGE_RESULT_ENV]\n                                        [--repo-root REPO_ROOT]\n                                        [--launch-head LAUNCH_HEAD]\n                                        [--launch-fp LAUNCH_FP]\n                                        [--launch-schema LAUNCH_SCHEMA]\n\noptions:\n  -h, --help            show this help message and exit\n  --site SITE\n  --commit-site COMMIT_SITE\n  --forked-target {true,false}\n  --rebase-checkpoint-4r\n  --bgjob-child\n  --merge-result-env MERGE_RESULT_ENV\n  --repo-root REPO_ROOT\n  --launch-head LAUNCH_HEAD\n  --launch-fp LAUNCH_FP\n  --launch-schema LAUNCH_SCHEMA\n";
+
+const PYTHON_TIMEOUT: Duration = Duration::from_secs(600);
+const ADAPT_TIMEOUT: Duration = Duration::from_secs(600);
+const ADAPT_GRACE: Duration = Duration::from_secs(5);
+const ADAPT_OUTPUT_LIMIT: usize = 256 * 1024;
+const CHECKS_HEAD: &str = "CHECKS_INPUT_HEAD_SHA";
+const CHECKS_FP: &str = "CHECKS_INPUT_TREE_FP";
+const CHECKS_SCHEMA: &str = "CHECKS_INPUT_FP_SCHEMA";
+const IDENTITY_FAILED: &str = "identity-integrity-failed";
+
+/// `implement recovery-paths` compatibility command.
+pub fn recovery_paths(arguments: &[OsString]) -> ExitCode {
+    let parsed = match parse_required_with_help(
+        arguments,
+        RECOVERY_PROG,
+        RECOVERY_USAGE,
+        RECOVERY_HELP,
+        &[
+            "--repo-root",
+            "--tmpdir",
+            "--prelaunch-porcelain",
+            "--postlaunch-porcelain",
+            "--prelaunch-digests",
+            "--out-file",
+        ],
+        &["--capture-postlaunch"],
+        &["--repo-root"],
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let repo_root = PathBuf::from(parsed.value("--repo-root").unwrap_or_default());
+    let raw_tmpdir = parsed
+        .value("--tmpdir")
+        .map(|v| v.to_string_lossy().into_owned())
+        .filter(|v| !v.is_empty())
+        .or_else(|| env::var("IMPLEMENT_TMPDIR").ok().filter(|v| !v.is_empty()));
+    let Some(raw_tmpdir) = raw_tmpdir else {
+        eprintln!("implement recovery-paths: --tmpdir is required or IMPLEMENT_TMPDIR must be set");
+        return ExitCode::from(2);
+    };
+    let tmpdir = PathBuf::from(raw_tmpdir);
+    if parsed.flag("--capture-postlaunch") {
+        let rc = capture_postlaunch_porcelain(&repo_root, &tmpdir);
+        if rc != 0 {
+            return ExitCode::from(rc);
+        }
+    }
+    let porcelain = RecoveryPorcelainInputs {
+        prelaunch_porcelain: resolve_tmpdir_path(
+            &tmpdir,
+            &opt_string(parsed.value("--prelaunch-porcelain")),
+            "step2-prelaunch-porcelain.nul",
+        ),
+        postlaunch_porcelain: resolve_tmpdir_path(
+            &tmpdir,
+            &opt_string(parsed.value("--postlaunch-porcelain")),
+            "step2-postlaunch-porcelain.nul",
+        ),
+        prelaunch_digests: resolve_tmpdir_path(
+            &tmpdir,
+            &opt_string(parsed.value("--prelaunch-digests")),
+            "step2-prelaunch-content-digests.txt",
+        ),
+    };
+    let out_file = resolve_tmpdir_path(
+        &tmpdir,
+        &opt_string(parsed.value("--out-file")),
+        "step2-recovery-paths.nul",
+    );
+    match compute_recovery_paths(&repo_root, &tmpdir, &porcelain, &out_file) {
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::from(1),
+        Err(error) => {
+            eprintln!("implement recovery-paths: {error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+/// `implement run-step-checks` compatibility command.
+pub fn run_step_checks(arguments: &[OsString]) -> ExitCode {
+    if let Some(error) = choice_error(
+        arguments,
+        &[
+            "--site",
+            "--commit-site",
+            "--forked-target",
+            "--merge-result-env",
+            "--repo-root",
+            "--launch-head",
+            "--launch-fp",
+            "--launch-schema",
+            "--rebase-checkpoint-4r",
+            "--bgjob-child",
+            "-h",
+            "--help",
+        ],
+        &[("--forked-target", &["true", "false"])],
+    ) {
+        return usage_error(STEP_USAGE, STEP_PROG, &error, 2);
+    }
+    let parsed = match parse_required_with_help(
+        arguments,
+        STEP_PROG,
+        STEP_USAGE,
+        STEP_HELP,
+        &[
+            "--site",
+            "--commit-site",
+            "--forked-target",
+            "--merge-result-env",
+            "--repo-root",
+            "--launch-head",
+            "--launch-fp",
+            "--launch-schema",
+        ],
+        &["--rebase-checkpoint-4r", "--bgjob-child"],
+        &["--site"],
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let forked = {
+        let raw = opt_string(parsed.value("--forked-target"));
+        if raw.is_empty() {
+            "false".to_owned()
+        } else {
+            raw
+        }
+    };
+    let Ok(tmpdir) = tmpdir_from_env() else {
+        return ExitCode::from(2);
+    };
+    rehydrate_session(&tmpdir);
+    let site = opt_string(parsed.value("--site"));
+    let (step, budget_s) = resolve_step_and_budget(&site);
+    let commit_site = opt_string(parsed.value("--commit-site"));
+    let rebase = parsed.flag("--rebase-checkpoint-4r");
+    if parsed.flag("--bgjob-child") {
+        return run_child(
+            &tmpdir,
+            &step,
+            &site,
+            &commit_site,
+            &forked,
+            rebase,
+            &opt_string(parsed.value("--merge-result-env")),
+            &opt_string(parsed.value("--repo-root")),
+            &opt_string(parsed.value("--launch-head")),
+            &opt_string(parsed.value("--launch-fp")),
+            &opt_string(parsed.value("--launch-schema")),
+        )
+        .unwrap_or_else(|_| ExitCode::from(2));
+    }
+    match run_parent(&tmpdir, &step, budget_s, &site, &commit_site, &forked, rebase) {
+        Ok(code) => code,
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn run_parent(
+    tmpdir: &Path,
+    step: &str,
+    budget_s: u32,
+    site: &str,
+    commit_site: &str,
+    forked: &str,
+    rebase: bool,
+) -> Result<ExitCode, String> {
+    let identity = checks_launch_identity(tmpdir)?;
+    let merge_raw = tmpdir.join("bgjob").join(format!("{step}.merge.env"));
+    let merge_env = safe_merge_env(tmpdir, &merge_raw)?;
+    prepare_checks_rejoin(tmpdir, step, &merge_env, &identity)?;
+    let mut public: Vec<OsString> = vec!["--site".into(), site.into()];
+    if !commit_site.is_empty() {
+        public.extend(["--commit-site".into(), commit_site.into()]);
+    }
+    public.extend(["--forked-target".into(), forked.into()]);
+    if rebase {
+        public.push("--rebase-checkpoint-4r".into());
+    }
+    public.extend([
+        "--repo-root".into(),
+        identity.repo_root.clone().into(),
+        "--launch-head".into(),
+        identity.head_sha.clone().into(),
+        "--launch-fp".into(),
+        identity.tree_fp.clone().into(),
+        "--launch-schema".into(),
+        identity.schema.clone().into(),
+    ]);
+    let root = plugin_root()?;
+    let entry = root.join("scripts").join("larch.sh");
+    let clone = env::current_dir().map_err(|e| e.to_string())?;
+    let run_id = resolve_run_id("", tmpdir, &clone);
+    let (log_dir, _, _) = log_paths(tmpdir, None, step).map_err(|e| e.to_string())?;
+    let owner_pid = owner_pid_string();
+    let mut argv: Vec<OsString> = vec![
+        "bgjob".into(),
+        "adapt".into(),
+        "--step".into(),
+        step.into(),
+        "--tmpdir".into(),
+        tmpdir.as_os_str().into(),
+        "--run-id".into(),
+        run_id.into(),
+        "--budget-s".into(),
+        budget_s.to_string().into(),
+        "--log-dir".into(),
+        log_dir.into(),
+    ];
+    if !owner_pid.is_empty() {
+        argv.extend(["--owner-pid".into(), owner_pid.into()]);
+    }
+    argv.extend([
+        "--merge-result-env".into(),
+        merge_env.into(),
+        "--initial-merge-row".into(),
+        format!("{CHECKS_HEAD}={}", identity.head_sha).into(),
+        "--initial-merge-row".into(),
+        format!("{CHECKS_FP}={}", identity.tree_fp).into(),
+        "--initial-merge-row".into(),
+        format!("{CHECKS_SCHEMA}={}", identity.schema).into(),
+        "--".into(),
+        entry.into(),
+        "implement".into(),
+        "run-step-checks".into(),
+    ]);
+    argv.extend(public);
+    let output = run_verified_larch_in(&identity.repo_root, &root, &argv)?;
+    forward_output(&output);
+    Ok(ExitCode::from(u8::try_from(output.status().code().unwrap_or(1)).unwrap_or(1)))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_child(
+    tmpdir: &Path,
+    step: &str,
+    site: &str,
+    commit_site: &str,
+    forked: &str,
+    rebase: bool,
+    merge_raw: &str,
+    repo_root: &str,
+    launch_head: &str,
+    launch_fp: &str,
+    launch_schema: &str,
+) -> Result<ExitCode, String> {
+    let merge_env = safe_merge_env(tmpdir, Path::new(merge_raw))?;
+    if repo_root.is_empty() || launch_head.is_empty() || launch_fp.is_empty() || launch_schema.is_empty()
+    {
+        return Err("launch identity args required in child mode".into());
+    }
+    let launch = LaunchIdentity {
+        head_sha: launch_head.to_owned(),
+        tree_fp: launch_fp.to_owned(),
+        schema: launch_schema.to_owned(),
+        repo_root: PathBuf::from(repo_root),
+    };
+    publish_session_environment(vec![
+        (ChildEnvironment::RepoRoot, launch.repo_root.as_os_str().into()),
+        (
+            ChildEnvironment::ClaudeProjectDir,
+            launch.repo_root.as_os_str().into(),
+        ),
+        (ChildEnvironment::ImplementTmpdir, tmpdir.as_os_str().into()),
+    ]);
+    publish_identity_child(
+        tmpdir,
+        step,
+        &merge_env,
+        &launch,
+        !commit_site.is_empty(),
+        || run_step_checks_worker(site, commit_site, forked, rebase, tmpdir, &launch.repo_root),
+    )
+}
+
+fn publish_identity_child(
+    tmpdir: &Path,
+    step: &str,
+    merge_env: &Path,
+    launch: &LaunchIdentity,
+    allow_post_mutation: bool,
+    worker: impl FnOnce() -> Result<(i32, String), String>,
+) -> Result<ExitCode, String> {
+    if validate_child_identity(launch).is_err() {
+        publish_rows(
+            tmpdir,
+            merge_env,
+            &integrity_rows(step, "pre-checks-identity-mismatch"),
+        )?;
+        return Ok(ExitCode::from(1));
+    }
+    let (rc, output) = worker()?;
+    let final_identity = if allow_post_mutation && terminal_action_in_output(&output) {
+        compute_identity(&launch.repo_root)?
+    } else if validate_child_identity(launch).is_ok() {
+        launch.clone()
+    } else {
+        publish_rows(
+            tmpdir,
+            merge_env,
+            &integrity_rows(step, "pre-publish-identity-mismatch"),
+        )?;
+        return Ok(ExitCode::from(1));
+    };
+    let mut merged = output.clone();
+    if !merged.is_empty() && !merged.ends_with('\n') {
+        merged.push('\n');
+    }
+    merged.push_str(&format_rows(&final_identity.as_rows()));
+    publish_rows(tmpdir, merge_env, &merged)?;
+    print!("{output}");
+    let _ = std::io::stdout().flush();
+    Ok(ExitCode::from(u8::try_from(rc).unwrap_or(1)))
+}
+
+fn run_step_checks_worker(
+    site: &str,
+    commit_site: &str,
+    forked: &str,
+    rebase: bool,
+    tmpdir: &Path,
+    repo_root: &Path,
+) -> Result<(i32, String), String> {
+    let output = if commit_site.is_empty() {
+        run_python_verb(
+            [
+                OsString::from("checks"),
+                OsString::from("run-relevant"),
+                OsString::from("--site"),
+                OsString::from(site),
+                OsString::from("--tmpdir"),
+                tmpdir.as_os_str().to_owned(),
+                OsString::from("--repo-root"),
+                repo_root.as_os_str().to_owned(),
+            ],
+            PYTHON_TIMEOUT,
+        )?
+    } else {
+        let mut args = vec![
+            OsString::from("implement"),
+            OsString::from("checks-commit-route"),
+            OsString::from("--checks-site"),
+            OsString::from(site),
+            OsString::from("--commit-site"),
+            OsString::from(commit_site),
+        ];
+        if rebase {
+            args.push(OsString::from("--rebase-checkpoint-4r"));
+        }
+        args.extend([OsString::from("--forked-target"), OsString::from(forked)]);
+        run_python_verb(args, PYTHON_TIMEOUT)?
+    };
+    let text = String::from_utf8_lossy(output.stdout()).into_owned();
+    if !output.stderr().is_empty() {
+        let _ = std::io::stderr().write_all(output.stderr());
+    }
+    Ok((output.status().code().unwrap_or(1), text))
+}
+
+#[derive(Clone)]
+struct LaunchIdentity {
+    head_sha: String,
+    tree_fp: String,
+    schema: String,
+    repo_root: PathBuf,
+}
+
+impl LaunchIdentity {
+    fn as_rows(&self) -> Vec<(String, String)> {
+        vec![
+            (CHECKS_HEAD.to_owned(), self.head_sha.clone()),
+            (CHECKS_FP.to_owned(), self.tree_fp.clone()),
+            (CHECKS_SCHEMA.to_owned(), self.schema.clone()),
+        ]
+    }
+}
+
+fn checks_launch_identity(tmpdir: &Path) -> Result<LaunchIdentity, String> {
+    let resolve = run_python_verb(
+        [
+            OsString::from("implement"),
+            OsString::from("checks-result-identity"),
+            OsString::from("resolve-repo-root"),
+            OsString::from("--implement-tmpdir"),
+            tmpdir.as_os_str().to_owned(),
+        ],
+        PYTHON_TIMEOUT,
+    )?;
+    if !resolve.status().success() {
+        return Err(stderr_or_stdout(&resolve));
+    }
+    let resolve_text = String::from_utf8_lossy(resolve.stdout()).into_owned();
+    let repo_root = kv_value(&resolve_text, "REPO_ROOT")
+        .ok_or_else(|| "REPO_ROOT missing from resolve-repo-root".to_owned())?
+        .to_owned();
+    compute_identity(Path::new(&repo_root))
+}
+
+fn compute_identity(repo_root: &Path) -> Result<LaunchIdentity, String> {
+    let output = run_python_verb(
+        [
+            OsString::from("implement"),
+            OsString::from("checks-result-identity"),
+            OsString::from("compute"),
+            OsString::from("--repo-root"),
+            repo_root.as_os_str().to_owned(),
+        ],
+        PYTHON_TIMEOUT,
+    )?;
+    if !output.status().success() {
+        return Err(stderr_or_stdout(&output));
+    }
+    let text = String::from_utf8_lossy(output.stdout());
+    Ok(LaunchIdentity {
+        head_sha: kv_value(&text, CHECKS_HEAD)
+            .ok_or("missing head")?
+            .to_owned(),
+        tree_fp: kv_value(&text, CHECKS_FP).ok_or("missing fp")?.to_owned(),
+        schema: kv_value(&text, CHECKS_SCHEMA)
+            .ok_or("missing schema")?
+            .to_owned(),
+        repo_root: repo_root.to_path_buf(),
+    })
+}
+
+fn validate_child_identity(launch: &LaunchIdentity) -> Result<(), String> {
+    let output = run_python_verb(
+        [
+            OsString::from("implement"),
+            OsString::from("checks-result-identity"),
+            OsString::from("validate-child"),
+            OsString::from("--repo-root"),
+            launch.repo_root.as_os_str().to_owned(),
+            OsString::from("--expected-head"),
+            OsString::from(&launch.head_sha),
+            OsString::from("--expected-fp"),
+            OsString::from(&launch.tree_fp),
+            OsString::from("--expected-schema"),
+            OsString::from(&launch.schema),
+        ],
+        PYTHON_TIMEOUT,
+    )?;
+    if output.status().success() {
+        Ok(())
+    } else {
+        Err(stderr_or_stdout(&output))
+    }
+}
+
+fn prepare_checks_rejoin(
+    tmpdir: &Path,
+    step: &str,
+    merge_env: &Path,
+    identity: &LaunchIdentity,
+) -> Result<(), String> {
+    let result_env = result_env_path(tmpdir, step).map_err(|e| e.to_string())?;
+    let host = SystemProcessIdentityHost::new();
+    let live = read_for(tmpdir, step, None)
+        .ok()
+        .and_then(|(_, entry)| entry)
+        .filter(|entry| daemon_liveness(&host, entry).live || child_liveness(&host, entry).live);
+    if live.is_some() {
+        let (seed, _) = classify(
+            identity,
+            "live-seed",
+            &[
+                ("--merge-env", merge_env.as_os_str()),
+                ("--result-env", result_env.as_os_str()),
+                ("--step", OsStr::new(step)),
+            ],
+        )?;
+        if seed != "matching" {
+            return Err(format!("live checks job identity mismatch: {seed}"));
+        }
+        let (completed, _) = classify_completed(identity, &result_env, step)?;
+        // Live jobs: clear only stale/incomplete/unsafe completed residue; never
+        // fail closed on an unsafe prior result while the daemon is still live.
+        if completed != "matching" && completed != "absent" {
+            unlink_safe(&result_env, tmpdir)?;
+        }
+        return Ok(());
+    }
+    let (completed, reason) = classify_completed(identity, &result_env, step)?;
+    if completed == "matching" {
+        return Ok(());
+    }
+    if completed == "unsafe" {
+        return Err(if reason.is_empty() {
+            "unsafe checks result env".into()
+        } else {
+            reason
+        });
+    }
+    unlink_safe(&result_env, tmpdir)?;
+    unlink_safe(merge_env, tmpdir)?;
+    Ok(())
+}
+
+fn classify_completed(
+    identity: &LaunchIdentity,
+    result_env: &Path,
+    step: &str,
+) -> Result<(String, String), String> {
+    let actions = CHECKS_TERMINAL_ACTIONS.join(",");
+    classify(
+        identity,
+        "completed",
+        &[
+            ("--result-env", result_env.as_os_str()),
+            ("--step", OsStr::new(step)),
+            ("--terminal-actions", OsStr::new(actions.as_str())),
+        ],
+    )
+}
+
+fn classify(
+    identity: &LaunchIdentity,
+    mode: &str,
+    extras: &[(&str, &OsStr)],
+) -> Result<(String, String), String> {
+    let mut args = vec![
+        OsString::from("implement"),
+        OsString::from("checks-result-identity"),
+        OsString::from("classify"),
+        OsString::from("--repo-root"),
+        identity.repo_root.as_os_str().to_owned(),
+        OsString::from("--mode"),
+        OsString::from(mode),
+    ];
+    for (flag, value) in extras {
+        args.push(OsString::from(*flag));
+        args.push((*value).to_owned());
+    }
+    let output = run_python_verb(args, PYTHON_TIMEOUT)?;
+    let text = String::from_utf8_lossy(output.stdout());
+    if let Some(state) = kv_value(&text, "STATE") {
+        let reason = kv_value(&text, "REASON").unwrap_or("").to_owned();
+        return Ok((state.to_owned(), reason));
+    }
+    if output.status().code() == Some(2) {
+        return Err(stderr_or_stdout(&output));
+    }
+    Ok(("incomplete".to_owned(), String::new()))
+}
+
+fn safe_merge_env(tmpdir: &Path, raw: &Path) -> Result<PathBuf, String> {
+    if let Ok(root) = bgjob_dir(tmpdir)
+        && raw.parent().is_some_and(|parent| {
+            fs::canonicalize(parent).ok() == fs::canonicalize(&root).ok()
+        })
+    {
+        let _ = fs::create_dir_all(&root);
+    }
+    validate_merge_result_env(raw, tmpdir).map_err(|e| e.to_string())
+}
+
+fn unlink_safe(path: &Path, root: &Path) -> Result<(), String> {
+    if let Ok(meta) = fs::symlink_metadata(path)
+        && (meta.file_type().is_symlink() || !meta.is_file())
+    {
+        return Err("unsafe result file".into());
+    }
+    let _ = ensure_under(path, root, "result file").map_err(|e| e.to_string())?;
+    let _ = fs::remove_file(path);
+    if path.exists() || path.is_symlink() {
+        return Err("result file clear failed".into());
+    }
+    Ok(())
+}
+
+fn publish_rows(tmpdir: &Path, merge_env: &Path, text: &str) -> Result<(), String> {
+    if !stdout_is_merge_rows(text) {
+        return Err("child output is not a KV stream".into());
+    }
+    let safe = safe_merge_env(tmpdir, merge_env)?;
+    let body = if text.is_empty() || text.ends_with('\n') {
+        text.to_owned()
+    } else {
+        format!("{text}\n")
+    };
+    private_atomic_write(&safe, &body, tmpdir).map_err(|e| e.to_string())
+}
+
+fn stdout_is_merge_rows(text: &str) -> bool {
+    text.lines().filter(|line| !line.is_empty()).all(|line| {
+        line.split_once('=')
+            .is_some_and(|(key, _)| {
+                key.chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+            })
+    })
+}
+
+fn terminal_action_in_output(text: &str) -> bool {
+    let Ok(document) = KvDocument::parse(text, ParseOptions::legacy()) else {
+        return false;
+    };
+    document
+        .select_all()
+        .get("NEXT_ACTION")
+        .into_iter()
+        .flatten()
+        .any(|value| CHECKS_TERMINAL_ACTIONS.contains(&value.as_str()))
+}
+
+fn integrity_rows(step: &str, reason: &str) -> String {
+    format_rows(&[
+        ("STEP".into(), step.into()),
+        ("BGJOB_RC".into(), "1".into()),
+        ("NEXT_ACTION".into(), IDENTITY_FAILED.into()),
+        ("FAILURE_REASON".into(), reason.replace(['\n', '\r'], " ")),
+    ])
+}
+
+fn format_rows(rows: &[(String, String)]) -> String {
+    let mut out = String::new();
+    for (key, value) in rows {
+        out.push_str(key);
+        out.push('=');
+        out.push_str(value);
+        out.push('\n');
+    }
+    out
+}
+
+fn capture_postlaunch_porcelain(repo_root: &Path, tmpdir: &Path) -> u8 {
+    let out = tmpdir.join("step2-postlaunch-porcelain.nul");
+    let Ok(output) = Command::new("git")
+        .args([
+            "-C",
+            &repo_root.display().to_string(),
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+        ])
+        .output()
+    else {
+        return 1;
+    };
+    if !output.status.success() {
+        return u8::try_from(output.status.code().unwrap_or(1)).unwrap_or(1);
+    }
+    if write_bytes_atomic(&out, &output.stdout).is_err() {
+        return 1;
+    }
+    0
+}
+
+fn rehydrate_session(tmpdir: &Path) {
+    let mut rows = Vec::new();
+    if env::var_os("CLAUDE_PLUGIN_ROOT").is_none()
+        && let Some(root) = session_key(tmpdir, "plugin-root.env", "CLAUDE_PLUGIN_ROOT")
+            .or_else(|| session_key(tmpdir, "session-env.sh", "LARCH_CLAUDE_PLUGIN_ROOT"))
+    {
+        rows.push((ChildEnvironment::ClaudePluginRoot, OsString::from(root)));
+    }
+    for (env_key, child_key) in [
+        ("LARCH_TOKEN_SESSION_ID", ChildEnvironment::LarchTokenSessionId),
+        (
+            "LARCH_CLAUDE_SOURCE_FILE",
+            ChildEnvironment::LarchClaudeSourceFile,
+        ),
+        ("LARCH_TIMING_LEDGER", ChildEnvironment::LarchTimingLedger),
+    ] {
+        if env::var_os(env_key).is_none()
+            && let Some(value) = session_key(tmpdir, "session-env.sh", env_key)
+        {
+            rows.push((child_key, OsString::from(value)));
+        }
+    }
+    rows.push((ChildEnvironment::ImplementTmpdir, tmpdir.as_os_str().into()));
+    publish_session_environment(rows);
+}
+
+fn session_key(tmpdir: &Path, file: &str, key: &str) -> Option<String> {
+    let text = fs::read_to_string(tmpdir.join(file)).ok()?;
+    for line in text.lines() {
+        let line = line.trim_start_matches("export ").trim();
+        if let Some(rest) = line.strip_prefix(&format!("{key}=")) {
+            return Some(rest.trim().trim_matches(['\'', '"']).to_owned());
+        }
+    }
+    None
+}
+
+fn tmpdir_from_env() -> Result<PathBuf, ()> {
+    let raw = env::var("IMPLEMENT_TMPDIR").unwrap_or_default();
+    if raw.is_empty() {
+        eprintln!("IMPLEMENT_TMPDIR required");
+        return Err(());
+    }
+    Ok(PathBuf::from(raw))
+}
+
+fn owner_pid_string() -> String {
+    env::var("LARCH_CLAUDE_PID")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .or_else(|| owner_pid_candidate("").filter(|v| !v.is_empty()))
+        .unwrap_or_else(|| {
+            #[cfg(unix)]
+            {
+                nix::unistd::getppid().as_raw().to_string()
+            }
+            #[cfg(not(unix))]
+            {
+                String::new()
+            }
+        })
+}
+
+fn run_verified_larch_in(
+    cwd: &Path,
+    root: &Path,
+    args: &[OsString],
+) -> Result<ProcessOutput, String> {
+    let program = LarchProgram::bootstrap(root)
+        .map_err(|error| format!("could not select verified larch entrypoint: {error}"))?;
+    let mut request = bounded_request_in(
+        ExternalProgram::Larch(program),
+        args.iter().cloned(),
+        cwd,
+        ADAPT_TIMEOUT,
+        ADAPT_GRACE,
+        ADAPT_OUTPUT_LIMIT,
+    )?;
+    request = request.with_environment(
+        ChildEnvironment::ClaudePluginRoot,
+        root.as_os_str().to_owned(),
+    );
+    request = request.with_environment(
+        ChildEnvironment::ImplementTmpdir,
+        env::var_os("IMPLEMENT_TMPDIR").unwrap_or_default(),
+    );
+    request = request.with_environment(
+        ChildEnvironment::RepoRoot,
+        cwd.as_os_str().to_owned(),
+    );
+    run_bounded(request).map_err(|error| format!("could not start verified larch: {error}"))
+}
+
+fn forward_output(output: &ProcessOutput) {
+    let _ = std::io::stdout().write_all(output.stdout());
+    let _ = std::io::stdout().flush();
+    if !output.stderr().is_empty() {
+        let _ = std::io::stderr().write_all(output.stderr());
+    }
+}
+
+fn opt_string(value: Option<&OsStr>) -> String {
+    value
+        .map(|v| v.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+fn kv_value<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+    text.lines().find_map(|line| {
+        line.strip_prefix(key)
+            .and_then(|rest| rest.strip_prefix('='))
+    })
+}
+
+fn stderr_or_stdout(output: &ProcessOutput) -> String {
+    let err = String::from_utf8_lossy(output.stderr());
+    if err.trim().is_empty() {
+        String::from_utf8_lossy(output.stdout()).into_owned()
+    } else {
+        err.into_owned()
+    }
+}

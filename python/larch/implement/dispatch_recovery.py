@@ -1,30 +1,29 @@
 # pyright: reportUnusedFunction=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportPrivateUsage=false
-"""Recovery paths computation and implement-commit entrypoint."""
+"""Recovery-path CLI consumer and implement-commit entrypoint.
+
+Recovery-path computation is Rust-owned (`implement recovery-paths`). This
+module keeps a thin typed wrapper for still-Python dispatch callers plus the
+Python-owned `implement commit` command.
+"""
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import os
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from larch.core import config
 from larch.core import logging_util
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.implement.dispatch_helpers import (
-    RecoveryParse,
-    _capture_postlaunch_porcelain,
     _current_cli_path,
     _emit_kv,
     _err,
-    _parse_porcelain_z,
+    _invoke_larch,
     _run,
-    resolve_tmpdir_path,
     _session_get,
-    _write_bytes_atomic,
 )
 
 
@@ -35,79 +34,6 @@ class RecoveryPorcelainInputs:
     prelaunch_digests: Path
 
 
-def _resolve_tmpdir_path(*, tmpdir: Path, raw: str, default_relpath: str) -> Path:
-    return resolve_tmpdir_path(tmpdir=tmpdir, raw=raw, default_relpath=default_relpath)
-
-
-def _load_digest_map(path: Path) -> dict[str, str]:
-    digests: dict[str, str] = {}
-    if not path.exists():
-        return digests
-    for line in path.read_text(encoding="utf-8", errors="surrogateescape").splitlines():
-        if "\t" in line:
-            digest, rel = line.split("\t", 1)
-            digests[rel] = digest
-    return digests
-
-
-def _tmpdir_rel_in_repo(repo_root: Path, tmpdir: Path) -> str | None:
-    try:
-        repo_real = repo_root.resolve()
-        tmp_real = tmpdir.resolve()
-        if tmp_real == repo_real:
-            return "."
-        tmp_real.relative_to(repo_real)
-        return os.path.relpath(tmp_real, repo_real)
-    except (OSError, ValueError):
-        return None
-
-
-def _rel_under_tmp(rel: str, tmp_rel: str | None) -> bool:
-    if tmp_rel is None:
-        return False
-    return rel == tmp_rel or rel.startswith(tmp_rel.rstrip("/") + "/")
-
-
-def _sha256_file(repo_root: Path, rel: str) -> str:
-    try:
-        return hashlib.sha256((repo_root / rel).read_bytes()).hexdigest()
-    except OSError:
-        return "missing"
-
-
-def _recovery_path_included(
-    *,
-    status: str,
-    rel: str,
-    pre: RecoveryParse,
-    digests: dict[str, str],
-    repo_root: Path,
-) -> bool:
-    if (status, rel) not in pre.tuples:
-        return True
-    if rel in pre.paths:
-        return _sha256_file(repo_root, rel) != digests.get(rel, "")
-    return False
-
-
-def _collect_recovery_candidates(
-    *,
-    repo_root: Path,
-    tmp_rel: str | None,
-    pre: RecoveryParse,
-    post: RecoveryParse,
-    digests: dict[str, str],
-) -> list[str]:
-    candidates: list[str] = []
-    for status, rel in sorted(post.tuples, key=lambda item: item[1]):
-        if _rel_under_tmp(rel, tmp_rel):
-            continue
-        include = _recovery_path_included(status=status, rel=rel, pre=pre, digests=digests, repo_root=repo_root)
-        if include and rel not in candidates:
-            candidates.append(rel)
-    return candidates
-
-
 def compute_recovery_paths(
     *,
     repo_root: Path,
@@ -115,47 +41,30 @@ def compute_recovery_paths(
     porcelain: RecoveryPorcelainInputs,
     out_file: Path,
 ) -> bool:
-    pre = _parse_porcelain_z(porcelain.prelaunch_porcelain)
-    post = _parse_porcelain_z(porcelain.postlaunch_porcelain)
-    digests = _load_digest_map(porcelain.prelaunch_digests)
-    tmp_rel = _tmpdir_rel_in_repo(repo_root, tmpdir)
-    candidates = _collect_recovery_candidates(repo_root=repo_root, tmp_rel=tmp_rel, pre=pre, post=post, digests=digests)
-    _write_bytes_atomic(path=out_file, data=b"".join(p.encode("utf-8", "surrogateescape") + b"\0" for p in candidates))
-    return bool(candidates)
+    """Rust-owned recovery-path computation via ``scripts/larch.sh``.
 
-
-def recovery_paths_main(argv: list[str] | None = None) -> int:
-    logging_util.quiet_init(argv0="cli.py")
-    parser = argparse.ArgumentParser(prog="cli.py implement recovery-paths")
-    parser.add_argument("--repo-root", required=True)
-    parser.add_argument("--tmpdir", default="")
-    parser.add_argument("--capture-postlaunch", action="store_true")
-    parser.add_argument("--prelaunch-porcelain", default="")
-    parser.add_argument("--postlaunch-porcelain", default="")
-    parser.add_argument("--prelaunch-digests", default="")
-    parser.add_argument("--out-file", default="")
-    args = parser.parse_args(argv)
-    repo_root = Path(args.repo_root)
-    raw_tmpdir = args.tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
-    if not raw_tmpdir:
-        _err("implement recovery-paths: --tmpdir is required or IMPLEMENT_TMPDIR must be set")
-        return 2
-    tmpdir = Path(raw_tmpdir)
-    if args.capture_postlaunch:
-        rc = _capture_postlaunch_porcelain(repo_root=repo_root, implement_tmpdir=tmpdir)
-        if rc != 0:
-            return rc
-    ok = compute_recovery_paths(
-        repo_root=repo_root,
-        tmpdir=tmpdir,
-        porcelain=RecoveryPorcelainInputs(
-            prelaunch_porcelain=_resolve_tmpdir_path(tmpdir=tmpdir, raw=args.prelaunch_porcelain, default_relpath="step2-prelaunch-porcelain.nul"),
-            postlaunch_porcelain=_resolve_tmpdir_path(tmpdir=tmpdir, raw=args.postlaunch_porcelain, default_relpath="step2-postlaunch-porcelain.nul"),
-            prelaunch_digests=_resolve_tmpdir_path(tmpdir=tmpdir, raw=args.prelaunch_digests, default_relpath="step2-prelaunch-content-digests.txt"),
-        ),
-        out_file=_resolve_tmpdir_path(tmpdir=tmpdir, raw=args.out_file, default_relpath="step2-recovery-paths.nul"),
+    Returns True when at least one candidate path was written (CLI rc 0).
+    """
+    result = _invoke_larch(
+        [
+            "implement",
+            "recovery-paths",
+            "--repo-root",
+            str(repo_root),
+            "--tmpdir",
+            str(tmpdir),
+            "--prelaunch-porcelain",
+            str(porcelain.prelaunch_porcelain),
+            "--postlaunch-porcelain",
+            str(porcelain.postlaunch_porcelain),
+            "--prelaunch-digests",
+            str(porcelain.prelaunch_digests),
+            "--out-file",
+            str(out_file),
+        ],
+        cwd=repo_root,
     )
-    return 0 if ok else 1
+    return result.returncode == 0
 
 
 def _commit_usage_fail(error: str) -> int:

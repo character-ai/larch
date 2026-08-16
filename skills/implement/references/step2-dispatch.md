@@ -124,7 +124,7 @@ External implementer launches use a fixed 7200-second wall-clock timeout. `skill
 - `python/test_implement_dispatch.py` — the offline harness; any new outcome / reason token must be exercised.
 - `scripts/larch.sh plan scope-paths` — shared `## Files to modify/create` scope grammar used by recovery plan-scope alignment.
 - `scripts/larch.sh dirty-tree scope-check` — fail-closed recovery scope verifier for malformed-manifest preservation.
-- `python/cli.py implement recovery-paths` — shared recovery-delta recompute helper used by the dispatcher and Step 2.4 recovery path; `--capture-postlaunch` refreshes the postlaunch porcelain before diffing for orchestrator-owned fallback pathspecs.
+- `scripts/larch.sh implement recovery-paths` — shared recovery-delta recompute helper used by the dispatcher and Step 2.4 recovery path; `--capture-postlaunch` refreshes the postlaunch porcelain before diffing for orchestrator-owned fallback pathspecs.
 - `scripts/external-tool-registry.md` — update its "Sourced by" list when this script's source-list status changes.
 
 **Makefile wiring**: `python3 -m pytest python/test_implement_dispatch.py` (added in the same change that introduces the harness).
