@@ -337,27 +337,17 @@ def _manifest_invalid_bail_reason(*, st: DispatchState, status: str, raw_obj: ob
         return "manifest-schema-invalid"
     post = _git(st.repo_root, "status", "--porcelain=v1", "-z", "--untracked-files=all", binary=True).stdout
     _write_bytes_atomic(path=st.postlaunch_porcelain, data=cast("bytes", post))
-    result = _invoke_larch(
-        [
-            "implement",
-            "recovery-paths",
-            "--repo-root",
-            str(st.repo_root),
-            "--tmpdir",
-            str(st.tmpdir),
-            "--prelaunch-porcelain",
-            str(st.prelaunch_porcelain),
-            "--postlaunch-porcelain",
-            str(st.postlaunch_porcelain),
-            "--prelaunch-digests",
-            str(st.prelaunch_digests),
-            "--out-file",
-            str(st.recovery_paths_file),
-        ],
-        cwd=st.repo_root,
+    ok = compute_recovery_paths(
+        repo_root=st.repo_root,
+        tmpdir=st.tmpdir,
+        porcelain=RecoveryPorcelainInputs(
+            prelaunch_porcelain=st.prelaunch_porcelain,
+            postlaunch_porcelain=st.postlaunch_porcelain,
+            prelaunch_digests=st.prelaunch_digests,
+        ),
+        out_file=st.recovery_paths_file,
     )
-    # rc==0: candidates found; rc==1: empty (bail); other: treat as empty/bail.
-    if result.returncode != 0:
+    if not ok:
         return "manifest-schema-invalid"
     if not _recovery_paths_submodule_clean(st):
         return "submodule-dirty"

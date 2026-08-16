@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import types
 from pathlib import Path
 
 import pytest
@@ -73,8 +74,6 @@ def test_relay_scope_coverage_passes_none_manifest_when_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """claude_fallback / --self-implement runs have no manifest.json by design."""
-    import types
-
     impl, repo = _session(tmp_path, monkeypatch)
     _ = (impl / "plan.txt").write_text("plan\n", encoding="utf-8")
     _ = (impl / "step2-baseline.txt").write_text("BASE\n", encoding="utf-8")

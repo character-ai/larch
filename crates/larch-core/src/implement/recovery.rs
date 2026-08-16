@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use super::helpers::{
-    load_digest_map, parse_porcelain_z, rel_under_tmp, sha256_file, tmpdir_rel_in_repo,
-    write_bytes_atomic, RecoveryParse,
+    RecoveryParse, load_digest_map, parse_porcelain_z, rel_under_tmp, sha256_file,
+    tmpdir_rel_in_repo, write_bytes_atomic,
 };
 
 /// Porcelain and digest inputs for recovery-path filtering.
@@ -105,8 +105,11 @@ mod tests {
         let digests = tmp.join("digests.txt");
         let out = tmp.join("out.nul");
         write_bytes_atomic(&pre, b" M same.txt\0?? kept.txt\0").expect("pre");
-        write_bytes_atomic(&post, b" M same.txt\0?? kept.txt\0?? .tmp/noise.txt\0 M changed.txt\0")
-            .expect("post");
+        write_bytes_atomic(
+            &post,
+            b" M same.txt\0?? kept.txt\0?? .tmp/noise.txt\0 M changed.txt\0",
+        )
+        .expect("post");
         fs::write(repo.join("changed.txt"), b"after").expect("changed");
         let digest = crate::implement::helpers::sha256_file(&repo, "same.txt");
         fs::write(&digests, format!("{digest}\tsame.txt\n")).expect("digests");

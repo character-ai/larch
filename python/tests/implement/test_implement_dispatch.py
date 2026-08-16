@@ -38,6 +38,7 @@ from larch.implement import (
     dispatch_recovery,
     self_edit_log,
 )
+from larch.implement.dispatch_helpers import resolve_tmpdir_path
 from larch.core import config
 from larch.calibration import difficulty
 from larch.core.proc import CommandResult
@@ -774,14 +775,12 @@ def test_normalize_coder_scout_root_relative_argv_rebases_to_tmpdir(
 
 def test_resolve_tmpdir_path_empty_uses_default(tmp_path: Path) -> None:
     tmp = make_implement_tmpdir(tmp_path)
-    from larch.implement.dispatch_helpers import resolve_tmpdir_path
 
     assert resolve_tmpdir_path(tmpdir=tmp, raw="", default_relpath="paths.nul") == tmp / "paths.nul"
 
 
 def test_resolve_tmpdir_path_root_relative_argv_rebases_to_tmpdir(tmp_path: Path) -> None:
     tmp = make_implement_tmpdir(tmp_path)
-    from larch.implement.dispatch_helpers import resolve_tmpdir_path
 
     assert resolve_tmpdir_path(
         tmpdir=tmp,

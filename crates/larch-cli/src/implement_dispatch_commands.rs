@@ -6,17 +6,17 @@ use std::{
     fs,
     io::Write as _,
     path::{Path, PathBuf},
-    process::{Command, ExitCode},
+    process::ExitCode,
     time::Duration,
 };
 
-use larch_adapters::SystemProcessIdentityHost;
+use larch_adapters::{GixRepository, SystemProcessIdentityHost};
 use larch_core::{
-    ChildEnvironment, ExternalProgram, KvDocument, LarchProgram, ParseOptions, ProcessOutput,
-    RecoveryPorcelainInputs, CHECKS_TERMINAL_ACTIONS, bgjob_dir, child_liveness,
-    compute_recovery_paths, daemon_liveness, ensure_under, log_paths, owner_pid_candidate,
-    private_atomic_write, read_for, resolve_run_id, resolve_step_and_budget, resolve_tmpdir_path,
-    result_env_path, validate_merge_result_env, write_bytes_atomic,
+    CHECKS_TERMINAL_ACTIONS, ChildEnvironment, DuplicatePolicy, ExternalProgram, KvDocument,
+    LarchProgram, ParseOptions, ProcessOutput, RecoveryPorcelainInputs, StatusOptions, bgjob_dir,
+    child_liveness, compute_recovery_paths, daemon_liveness, ensure_under, log_paths,
+    owner_pid_candidate, private_atomic_write, read_for, resolve_run_id, resolve_step_and_budget,
+    resolve_tmpdir_path, result_env_path, validate_merge_result_env, write_bytes_atomic,
 };
 
 use crate::{
@@ -187,7 +187,15 @@ pub fn run_step_checks(arguments: &[OsString]) -> ExitCode {
         )
         .unwrap_or_else(|_| ExitCode::from(2));
     }
-    match run_parent(&tmpdir, &step, budget_s, &site, &commit_site, &forked, rebase) {
+    match run_parent(
+        &tmpdir,
+        &step,
+        budget_s,
+        &site,
+        &commit_site,
+        &forked,
+        rebase,
+    ) {
         Ok(code) => code,
         Err(error) => {
             eprintln!("{error}");
@@ -267,7 +275,9 @@ fn run_parent(
     argv.extend(public);
     let output = run_verified_larch_in(&identity.repo_root, &root, &argv)?;
     forward_output(&output);
-    Ok(ExitCode::from(u8::try_from(output.status().code().unwrap_or(1)).unwrap_or(1)))
+    Ok(ExitCode::from(
+        u8::try_from(output.status().code().unwrap_or(1)).unwrap_or(1),
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -285,7 +295,10 @@ fn run_child(
     launch_schema: &str,
 ) -> Result<ExitCode, String> {
     let merge_env = safe_merge_env(tmpdir, Path::new(merge_raw))?;
-    if repo_root.is_empty() || launch_head.is_empty() || launch_fp.is_empty() || launch_schema.is_empty()
+    if repo_root.is_empty()
+        || launch_head.is_empty()
+        || launch_fp.is_empty()
+        || launch_schema.is_empty()
     {
         return Err("launch identity args required in child mode".into());
     }
@@ -296,7 +309,10 @@ fn run_child(
         repo_root: PathBuf::from(repo_root),
     };
     publish_session_environment(vec![
-        (ChildEnvironment::RepoRoot, launch.repo_root.as_os_str().into()),
+        (
+            ChildEnvironment::RepoRoot,
+            launch.repo_root.as_os_str().into(),
+        ),
         (
             ChildEnvironment::ClaudeProjectDir,
             launch.repo_root.as_os_str().into(),
@@ -574,7 +590,7 @@ fn classify(
     let output = run_python_verb(args, PYTHON_TIMEOUT)?;
     let text = String::from_utf8_lossy(output.stdout());
     if let Some(state) = kv_value(&text, "STATE") {
-        let reason = kv_value(&text, "REASON").unwrap_or("").to_owned();
+        let reason = kv_value(&text, "REASON").unwrap_or_default();
         return Ok((state.to_owned(), reason));
     }
     if output.status().code() == Some(2) {
@@ -585,9 +601,9 @@ fn classify(
 
 fn safe_merge_env(tmpdir: &Path, raw: &Path) -> Result<PathBuf, String> {
     if let Ok(root) = bgjob_dir(tmpdir)
-        && raw.parent().is_some_and(|parent| {
-            fs::canonicalize(parent).ok() == fs::canonicalize(&root).ok()
-        })
+        && raw
+            .parent()
+            .is_some_and(|parent| fs::canonicalize(parent).ok() == fs::canonicalize(&root).ok())
     {
         let _ = fs::create_dir_all(&root);
     }
@@ -623,11 +639,10 @@ fn publish_rows(tmpdir: &Path, merge_env: &Path, text: &str) -> Result<(), Strin
 
 fn stdout_is_merge_rows(text: &str) -> bool {
     text.lines().filter(|line| !line.is_empty()).all(|line| {
-        line.split_once('=')
-            .is_some_and(|(key, _)| {
-                key.chars()
-                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
-            })
+        line.split_once('=').is_some_and(|(key, _)| {
+            key.chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        })
     })
 }
 
@@ -665,26 +680,50 @@ fn format_rows(rows: &[(String, String)]) -> String {
 
 fn capture_postlaunch_porcelain(repo_root: &Path, tmpdir: &Path) -> u8 {
     let out = tmpdir.join("step2-postlaunch-porcelain.nul");
-    let Ok(output) = Command::new("git")
-        .args([
-            "-C",
-            &repo_root.display().to_string(),
-            "status",
-            "--porcelain=v1",
-            "-z",
-            "--untracked-files=all",
-        ])
-        .output()
-    else {
+    let Ok(repository) = GixRepository::open(repo_root) else {
         return 1;
     };
-    if !output.status.success() {
-        return u8::try_from(output.status.code().unwrap_or(1)).unwrap_or(1);
+    let Ok(status) = repository.local_status(&StatusOptions {
+        include_untracked: true,
+        ..StatusOptions::default()
+    }) else {
+        return 1;
+    };
+    let mut data = Vec::new();
+    // Mirror git porcelain -z: XY + space + path + NUL (+ rename source for R/C).
+    let mut rows = std::collections::BTreeMap::<Vec<u8>, [u8; 2]>::new();
+    for change in status.tree_to_index.entries() {
+        rows.entry(change.path.as_bytes().to_vec())
+            .or_insert([b' ', b' '])[0] = status_byte(change.kind);
     }
-    if write_bytes_atomic(&out, &output.stdout).is_err() {
+    for change in status.index_to_worktree.entries() {
+        rows.entry(change.path.as_bytes().to_vec())
+            .or_insert([b' ', b' '])[1] = status_byte(change.kind);
+    }
+    for path in &status.untracked {
+        rows.insert(path.as_bytes().to_vec(), [b'?', b'?']);
+    }
+    for (path, code) in rows {
+        data.extend_from_slice(&code);
+        data.push(b' ');
+        data.extend_from_slice(&path);
+        data.push(0);
+    }
+    if write_bytes_atomic(&out, &data).is_err() {
         return 1;
     }
     0
+}
+
+fn status_byte(kind: larch_core::ChangeKind) -> u8 {
+    match kind {
+        larch_core::ChangeKind::Added => b'A',
+        larch_core::ChangeKind::Deleted => b'D',
+        larch_core::ChangeKind::Modified | larch_core::ChangeKind::SubmoduleModified => b'M',
+        larch_core::ChangeKind::TypeChanged => b'T',
+        larch_core::ChangeKind::Renamed => b'R',
+        larch_core::ChangeKind::Copied => b'C',
+    }
 }
 
 fn rehydrate_session(tmpdir: &Path) {
@@ -696,7 +735,10 @@ fn rehydrate_session(tmpdir: &Path) {
         rows.push((ChildEnvironment::ClaudePluginRoot, OsString::from(root)));
     }
     for (env_key, child_key) in [
-        ("LARCH_TOKEN_SESSION_ID", ChildEnvironment::LarchTokenSessionId),
+        (
+            "LARCH_TOKEN_SESSION_ID",
+            ChildEnvironment::LarchTokenSessionId,
+        ),
         (
             "LARCH_CLAUDE_SOURCE_FILE",
             ChildEnvironment::LarchClaudeSourceFile,
@@ -773,10 +815,7 @@ fn run_verified_larch_in(
         ChildEnvironment::ImplementTmpdir,
         env::var_os("IMPLEMENT_TMPDIR").unwrap_or_default(),
     );
-    request = request.with_environment(
-        ChildEnvironment::RepoRoot,
-        cwd.as_os_str().to_owned(),
-    );
+    request = request.with_environment(ChildEnvironment::RepoRoot, cwd.as_os_str().to_owned());
     run_bounded(request).map_err(|error| format!("could not start verified larch: {error}"))
 }
 
@@ -794,11 +833,13 @@ fn opt_string(value: Option<&OsStr>) -> String {
         .unwrap_or_default()
 }
 
-fn kv_value<'a>(text: &'a str, key: &str) -> Option<&'a str> {
-    text.lines().find_map(|line| {
-        line.strip_prefix(key)
-            .and_then(|rest| rest.strip_prefix('='))
-    })
+fn kv_value(text: &str, key: &str) -> Option<String> {
+    let document = KvDocument::parse(text, ParseOptions::legacy()).ok()?;
+    document
+        .select(DuplicatePolicy::First)
+        .get(key)
+        .filter(|value| !value.is_empty())
+        .cloned()
 }
 
 fn stderr_or_stdout(output: &ProcessOutput) -> String {

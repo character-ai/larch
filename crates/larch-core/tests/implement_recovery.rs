@@ -53,5 +53,9 @@ fn rename_source_is_parsed_as_delete() {
     write_bytes_atomic(&path, b"R  new.txt\0old.txt\0").expect("write");
     let parsed = parse_porcelain_z(&path);
     assert!(parsed.paths.contains("old.txt"));
-    assert!(parsed.tuples.contains(&("D ".to_owned(), "old.txt".to_owned())));
+    assert!(
+        parsed
+            .tuples
+            .contains(&("D ".to_owned(), "old.txt".to_owned()))
+    );
 }
