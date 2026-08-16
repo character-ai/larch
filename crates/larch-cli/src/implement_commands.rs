@@ -931,12 +931,12 @@ pub fn read_kv_or(path: &Path, key: &str, default: &str) -> String {
 
 /// Read one `KEY=value` row from a captured `KEY=value` stream.
 ///
-/// Last duplicate wins, matching `larch.io.parse_kv` without `first_wins`.
+/// First duplicate wins, matching the retired bootstrap `_parse_kv(...,
+/// first_wins=True)` contract used by Step 0 composition.
 pub fn kv_value(text: &str, key: &str) -> String {
     let prefix = format!("{key}=");
     text.lines()
-        .filter_map(|line| line.strip_prefix(&prefix))
-        .next_back()
+        .find_map(|line| line.strip_prefix(&prefix))
         .unwrap_or_default()
         .to_owned()
 }
