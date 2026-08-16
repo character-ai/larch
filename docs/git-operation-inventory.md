@@ -43,6 +43,7 @@ crates/larch-cli/src/drafter_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/git_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/github_repository_resolution.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/implement_bootstrap_continuation.rs	git-cli	#7671	typed-cli,typed-read
+crates/larch-cli/src/implement_dispatch_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/launcher_support.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/learn_from_bugs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/migration_audit_commands.rs	git-cli	#7671	typed-cli,typed-read

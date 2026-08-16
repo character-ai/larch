@@ -61,6 +61,7 @@ mod gitleaks;
 mod hook_commands;
 mod html;
 pub(crate) mod implement_bootstrap_continuation;
+mod implement_dispatch_commands;
 mod implement_launcher_commands;
 mod issue_commands;
 mod issue_create_commands;
@@ -221,6 +222,9 @@ enum Domain {
     /// Working-tree checkpoint and scope compatibility commands.
     #[command(subcommand)]
     DirtyTree(DirtyTreeCommand),
+    /// `/implement` dispatch helpers: recovery paths and step checks.
+    #[command(subcommand)]
+    Implement(ImplementCommand),
     /// The `/deps` open-issue dependency audit: reads, plan, and one apply.
     #[command(subcommand)]
     Deps(DepsCommand),
@@ -1359,6 +1363,16 @@ enum DirtyTreeCommand {
     ScopeMarker(RawCompatibilityArguments),
 }
 
+#[derive(Subcommand)]
+enum ImplementCommand {
+    /// Compute NUL-delimited recovery paths against the prelaunch baseline.
+    #[command(name = "recovery-paths", disable_help_flag = true)]
+    RecoveryPaths(RawCompatibilityArguments),
+    /// Launch or rejoin the per-site checks bgjob composite.
+    #[command(name = "run-step-checks", disable_help_flag = true)]
+    RunStepChecks(RawCompatibilityArguments),
+}
+
 #[derive(Args)]
 #[command(trailing_var_arg = true)]
 struct RawCompatibilityArguments {
@@ -1955,6 +1969,14 @@ fn run(
             DirtyTreeCommand::ScopeMarker(arguments) => {
                 let raw = dirty_tree_raw_arguments("scope-marker");
                 dirty_tree_commands::scope_marker(raw.as_deref().unwrap_or(&arguments.arguments))
+            }
+        }),
+        Domain::Implement(command) => Ok(match command {
+            ImplementCommand::RecoveryPaths(arguments) => {
+                implement_dispatch_commands::recovery_paths(&arguments.arguments)
+            }
+            ImplementCommand::RunStepChecks(arguments) => {
+                implement_dispatch_commands::run_step_checks(&arguments.arguments)
             }
         }),
         Domain::Oos(command) => Ok(match command {

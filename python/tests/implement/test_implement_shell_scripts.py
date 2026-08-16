@@ -34,6 +34,9 @@ _STEP5_WRAPPERS = (
     "step-5-review.sh",
     "step-5-resume.sh",
     "step-6-entry.sh",
+)
+
+_STEP5_RUST_WRAPPERS = (
     "run-step-checks.sh",
 )
 
@@ -454,7 +457,7 @@ def _run_step8(
     return _run_bash(_STEP8_HELPER, env=env, args=args)
 
 
-@pytest.mark.parametrize("wrapper", _STEP5_WRAPPERS, ids=_STEP5_WRAPPERS)
+@pytest.mark.parametrize("wrapper", _STEP5_WRAPPERS + _STEP5_RUST_WRAPPERS, ids=_STEP5_WRAPPERS + _STEP5_RUST_WRAPPERS)
 def test_step5_wrapper_shape_set_euo_pipefail(wrapper: str) -> None:
     assert "set -euo pipefail" in _wrapper_source(wrapper)
 
@@ -464,12 +467,17 @@ def test_step5_wrapper_shape_exec_python_implement(wrapper: str) -> None:
     assert 'exec python3 "$PLUGIN_ROOT/python/cli.py" implement' in _wrapper_source(wrapper)
 
 
-@pytest.mark.parametrize("wrapper", _STEP5_WRAPPERS, ids=_STEP5_WRAPPERS)
+@pytest.mark.parametrize("wrapper", _STEP5_RUST_WRAPPERS, ids=_STEP5_RUST_WRAPPERS)
+def test_step5_wrapper_shape_exec_larch_implement(wrapper: str) -> None:
+    assert 'exec "$PLUGIN_ROOT/scripts/larch.sh" implement' in _wrapper_source(wrapper)
+
+
+@pytest.mark.parametrize("wrapper", _STEP5_WRAPPERS + _STEP5_RUST_WRAPPERS, ids=_STEP5_WRAPPERS + _STEP5_RUST_WRAPPERS)
 def test_step5_wrapper_shape_no_bgjob_start(wrapper: str) -> None:
     assert "bgjob start" not in _wrapper_source(wrapper)
 
 
-@pytest.mark.parametrize("wrapper", _STEP5_WRAPPERS, ids=_STEP5_WRAPPERS)
+@pytest.mark.parametrize("wrapper", _STEP5_WRAPPERS + _STEP5_RUST_WRAPPERS, ids=_STEP5_WRAPPERS + _STEP5_RUST_WRAPPERS)
 def test_step5_wrapper_shape_no_registry(wrapper: str) -> None:
     assert "registry" not in _wrapper_source(wrapper)
 

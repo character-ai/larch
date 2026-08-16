@@ -416,7 +416,7 @@ If `scout-coder-manifest.raw.json` is absent, still run the helper with that exp
 After implementation and `normalize-coder-scout`, ensure redacted Step 4 commit text exists at `$IMPLEMENT_TMPDIR/implementation-commit-message.txt` (the Claude-fallback subagent writes it on `complete`). Derive `$IMPLEMENT_TMPDIR/implementation-commit-paths.nul` from a fresh postlaunch capture with:
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement recovery-paths --repo-root "$REPO_ROOT" --tmpdir "$IMPLEMENT_TMPDIR" --capture-postlaunch --prelaunch-porcelain "$IMPLEMENT_TMPDIR/step2-prelaunch-porcelain.nul" --postlaunch-porcelain "$IMPLEMENT_TMPDIR/step2-postlaunch-porcelain.nul" --prelaunch-digests "$IMPLEMENT_TMPDIR/step2-prelaunch-content-digests.txt" --out-file "$IMPLEMENT_TMPDIR/implementation-commit-paths.nul"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh implement recovery-paths --repo-root "$REPO_ROOT" --tmpdir "$IMPLEMENT_TMPDIR" --capture-postlaunch --prelaunch-porcelain "$IMPLEMENT_TMPDIR/step2-prelaunch-porcelain.nul" --postlaunch-porcelain "$IMPLEMENT_TMPDIR/step2-postlaunch-porcelain.nul" --prelaunch-digests "$IMPLEMENT_TMPDIR/step2-prelaunch-content-digests.txt" --out-file "$IMPLEMENT_TMPDIR/implementation-commit-paths.nul"
 ```
 
 Before re-launching the checks-repair composite after repair edits, refresh the postlaunch porcelain, pathspec, and commit message.
