@@ -255,8 +255,8 @@ def test_alias_structure_specialized() -> None:
     assert not fails, fails
 
 
-def test_bug_structure_specialized() -> None:
-    fails = _run_specialized("bug")
+def test_file_bug_structure_specialized() -> None:
+    fails = _run_specialized("file-bug")
     assert not fails, fails
 
 
@@ -291,7 +291,7 @@ def test_review_structure_specialized() -> None:
 
 SPECIALIZED_LABEL_OWNERS: dict[str, str] = {
     "alias": "test_alias_structure_specialized",
-    "bug": "test_bug_structure_specialized",
+    "file-bug": "test_file_bug_structure_specialized",
     "design": "test_design_structure_specialized",
     "implement": "test_implement_structure_specialized",
     "learn-from-bugs": "test_learn_from_bugs_structure_specialized",

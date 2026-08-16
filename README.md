@@ -6,7 +6,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 ## Primary Flow
 
-1. Create an issue describing the task/problem with `/issue` or `/bug`, or manually
+1. Create an issue describing the task/problem with `/issue` or `/file-bug`, or manually
 2. Verify an existing report with `/triage` when its diagnosis needs evidence before planning
 3. For contested or open-ended work, use `/debate` to produce a three-vendor proposal
 4. Design it with `/design` (the detailed reviewed design is stored in the issue)
@@ -14,7 +14,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 ## Support Skills
 
-- Manage issues and their dependencies: `/issue`, `/umbrella`, `/complete-umbrella`, `/audit-umbrella`, `/bug`, `/triage`, `/combine-issues`, `/block-issue`, `/deps`
+- Manage issues and their dependencies: `/issue`, `/umbrella`, `/complete-umbrella`, `/audit-umbrella`, `/file-bug`, `/triage`, `/combine-issues`, `/block-issue`, `/deps`
 - Various analysis tools: `/report-tokens`, `/fluff-analysis`, `/difficulty-calibration`, `/rejected-analysis`, `/analyze-issues`, `/audit-runs`
 - `larch` management: `/status`, `/upgrade-larch`, `/larch-size`
 
@@ -86,7 +86,7 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
     <tr><td colspan="2">Express and verify a native GitHub blocked-by relationship between two issues using the <code>addBlockedBy</code> GraphQL mutation. Live mutation requires explicit operator invocation. Triage-controlled calls add exact target freshness, protected-state, security, relation read-back, and fresh-timestamp checks.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
-      <td><a href="docs/skills.md#bug"><code>/bug</code></a></td>
+      <td><a href="docs/skills.md#file-bug"><code>/file-bug</code></a></td>
       <td><code>[--urgent] &lt;bug description&gt;</code></td>
     </tr>
     <tr><td colspan="2">Investigate a user-described bug read-only, compose a detailed issue body, then file it via <code>/issue</code> with dedup enabled. <code>--urgent</code> changes the title prefix. Aborts to <code>SECURITY.md</code> disclosure if the report looks security-sensitive; never edits the repo.</td></tr>

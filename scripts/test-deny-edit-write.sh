@@ -177,7 +177,7 @@ mkdir -p "$NONTMP_CACHE_ROOT/larch/deny-edit-write-active"
 : > "$NONTMP_CACHE_ROOT/larch/deny-edit-write-active/research-$$"
 
 # T2c — Write under the larch cache sessions root allows (session-setup
-# tmpdirs, e.g. nested /issue under /bug or /research).
+# tmpdirs, e.g. nested /issue under /file-bug or /research).
 SESSIONS_DIR="$NONTMP_CACHE_ROOT/larch/sessions/claude-issue-tag-abc123"
 mkdir -p "$SESSIONS_DIR"
 INVOKE_CACHE_ROOT="$NONTMP_CACHE_ROOT"
@@ -261,13 +261,13 @@ assert_allow "T11b stale /tmp path" research "{\"tool_input\":{\"file_path\":\"$
 # T12 — token scoping keeps consumers independent.
 reset_activation
 activate research
-assert_allow "T12 research sentinel does not activate bug token" bug "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+assert_allow "T12 research sentinel does not activate file-bug token" file-bug "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
 reset_activation
-activate bug
-assert_allow "T12b bug sentinel does not activate research token" research "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+activate file-bug
+assert_allow "T12b file-bug sentinel does not activate research token" research "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
 assert_allow "T12c tokenless invocation stays inactive" "" "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
 assert_allow "T12d unrecognized token stays inactive" unknown "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
-assert_deny "T12e bug token denies with bug sentinel" bug "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+assert_deny "T12e file-bug token denies with file-bug sentinel" file-bug "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
 
 # T12f — triage has an independent activation token and the same /tmp policy.
 reset_activation

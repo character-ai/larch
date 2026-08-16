@@ -1,6 +1,6 @@
 # scripts/deny-edit-write.sh — contract
 
-`scripts/deny-edit-write.sh` is a token-gated PreToolUse hook used by `/research`, `/audit-umbrella`, `/bug`, `/triage`, `/umbrella`, `/complete-umbrella`, and `/debate`. Each consumer passes its skill name as the recognized first argument.
+`scripts/deny-edit-write.sh` is a token-gated PreToolUse hook used by `/research`, `/audit-umbrella`, `/file-bug`, `/triage`, `/umbrella`, `/complete-umbrella`, and `/debate`. Each consumer passes its skill name as the recognized first argument.
 
 ## Activation gate
 

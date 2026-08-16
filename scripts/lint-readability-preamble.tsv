@@ -16,7 +16,7 @@ skills/design/references/plan-review.md	orchestrator-inline	0
 skills/design/references/plan-review-runtime.md	external-prompt	1	plan-review
 skills/alias/SKILL.md	orchestrator-inline	1		
 skills/block-issue/SKILL.md	orchestrator-inline	1		
-skills/bug/SKILL.md	orchestrator-inline	1		
+skills/file-bug/SKILL.md	orchestrator-inline	1		
 skills/cleanup/SKILL.md	orchestrator-inline	1		
 skills/combine-issues/SKILL.md	orchestrator-inline	1		
 skills/deps/SKILL.md	orchestrator-inline	1		
