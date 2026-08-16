@@ -31,6 +31,7 @@ const SESSION_ACTIVITY_LOCK_RELATIVE: &str =
 const STALL_RECOVERY_ATTEMPT_LOCK_NAME: &str = ".stall-recovery-attempts.lock";
 static RFC3339_UTC: OnceLock<Regex> = OnceLock::new();
 static PROCESS_IDENTITY: OnceLock<Regex> = OnceLock::new();
+static REFRESH_EPOCH: OnceLock<Regex> = OnceLock::new();
 static STATUSLINE_STAMP: OnceLock<Regex> = OnceLock::new();
 static CHOOSE_FROM: OnceLock<Regex> = OnceLock::new();
 const BLOCKED_ENVIRONMENT_KEYS: &[&str] = &[
@@ -642,9 +643,14 @@ fn normalize_text(text: &str, sandbox_root: &Path, rules: &[NormalizationRule]) 
             NormalizationRule::Rfc3339Utc => rfc3339_utc_pattern()
                 .replace_all(&normalized, "<TIMESTAMP>")
                 .into_owned(),
-            NormalizationRule::ProcessIdentity => process_identity_pattern()
-                .replace_all(&normalized, "${1}=<PID>")
-                .into_owned(),
+            NormalizationRule::ProcessIdentity => {
+                let with_pids = process_identity_pattern()
+                    .replace_all(&normalized, "${1}=<PID>")
+                    .into_owned();
+                refresh_epoch_pattern()
+                    .replace_all(&with_pids, "REFRESH_EPOCH=<EPOCH>")
+                    .into_owned()
+            }
             NormalizationRule::StatuslineStamp => statusline_stamp_pattern()
                 .replace_all(&normalized, "larch <STAMP>:")
                 .into_owned(),
@@ -671,8 +677,15 @@ fn rfc3339_utc_pattern() -> &'static Regex {
 
 fn process_identity_pattern() -> &'static Regex {
     PROCESS_IDENTITY.get_or_init(|| {
-        Regex::new(r"\b(pid|ppid)=\d+")
+        Regex::new(r"(?i)\b(pid|ppid|waiter_pid)=\d+")
             .expect("process identity normalization regex should compile")
+    })
+}
+
+fn refresh_epoch_pattern() -> &'static Regex {
+    REFRESH_EPOCH.get_or_init(|| {
+        Regex::new(r"\bREFRESH_EPOCH=\d+")
+            .expect("refresh epoch normalization regex should compile")
     })
 }
 

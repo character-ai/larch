@@ -2259,7 +2259,7 @@ fn bgjob_commands_have_frozen_black_box_parity() {
                 completed_result,
             )],
             side_effect_records: Vec::new(),
-            normalization: Vec::new(),
+            normalization: vec![NormalizationRule::ProcessIdentity],
         },
         ParityCase {
             name: "bgjob-status-empty-registry",

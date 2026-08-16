@@ -9,8 +9,10 @@ retired.
 
 from __future__ import annotations
 
-from pathlib import Path
+import os
 import sys
+import time
+from pathlib import Path
 
 
 def _value(arguments: list[str], name: str) -> str:
@@ -21,7 +23,14 @@ def _value(arguments: list[str], name: str) -> str:
 def _wait(arguments: list[str]) -> int:
     step = _value(arguments, "--step")
     tmpdir = Path(_value(arguments, "--tmpdir"))
-    rows = (tmpdir / "bgjob" / f"{step}.result.env").read_text(encoding="utf-8")
+    bgjob_dir = tmpdir / "bgjob"
+    bgjob_dir.mkdir(parents=True, exist_ok=True)
+    # Mirror Rust wait's session lease so black-box parity stays aligned (#8639).
+    (bgjob_dir / f"{step}.wait-lease.env").write_text(
+        f"REFRESH_EPOCH={int(time.time())}\nWAITER_PID={os.getpid()}\n",
+        encoding="utf-8",
+    )
+    rows = (bgjob_dir / f"{step}.result.env").read_text(encoding="utf-8")
     sys.stdout.write("BGJOB_STATUS=DONE\n")
     sys.stdout.write(rows)
     return 0
