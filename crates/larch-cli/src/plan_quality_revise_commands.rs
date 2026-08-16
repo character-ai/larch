@@ -1008,7 +1008,7 @@ pub fn auto_fix_commands(arguments: &[OsString]) -> ExitCode {
                 ])
                 .output()
             {
-                Ok(output) => captured_process_text(output),
+                Ok(output) => captured_process_text(&output),
                 Err(_) => (1, String::new()),
             }
         } else {
@@ -1242,4 +1242,244 @@ pub fn validator_autofix(arguments: &[OsString]) -> ExitCode {
     emit_kv("FIXED_BY", &fixed_by);
     emit_kv("ORIGINAL_VALIDATE_LOG_FILE", &log_file);
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        sync::atomic::{AtomicU64, Ordering},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn unique_root(label: &str) -> PathBuf {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let root = PathBuf::from("/tmp").join(format!(
+            "larch-pqr-{label}-{}-{nanos}-{n}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("create root");
+        root
+    }
+
+    fn mini_plan() -> &'static str {
+        "### NEW: fixture\n\n1. Touch `scripts/noop.sh`.\n\ndifficulty: HARD\nmechanical_churn: false\ndiff_lines: 1\n"
+    }
+
+    #[test]
+    fn revise_helper_utilities() {
+        assert_eq!(slug_token("Hello World!!"), "Hello_World");
+        assert_eq!(slug_token("@@@"), "site");
+        assert_eq!(tier4_rank("ok"), 5);
+        assert_eq!(tier4_rank("invalid-patch"), 4);
+        assert_eq!(tier4_rank("no-patch"), 3);
+        assert_eq!(tier4_rank("skipped-binary-missing"), 2);
+        assert_eq!(tier4_rank("other"), 1);
+        assert_eq!(merge_tier4("no-patch", "ok"), "ok");
+        assert_eq!(merge_tier4("ok", "no-patch"), "ok");
+        assert_eq!(binary_arg("true", "does-not-matter"), "true");
+        assert_eq!(binary_arg("false", "does-not-matter"), "false");
+
+        let root = unique_root("helpers");
+        let plan = root.join("plan.txt");
+        fs::write(&plan, mini_plan()).expect("plan");
+        assert_eq!(sha256_file(&plan).len(), 64);
+        assert!(canonical_existing_file(&plan).is_ok());
+        assert!(canonical_existing_file(&root.join("missing")).is_err());
+        assert!(heading_count(&plan) >= 1);
+
+        let keys = root.join("keys");
+        fs::write(&keys, "difficulty\nmechanical_churn\n").expect("keys");
+        assert!(validate_optional_keys(&plan, &keys));
+        fs::write(&keys, "missing-key\n").expect("bad keys");
+        assert!(!validate_optional_keys(&plan, &keys));
+
+        let replacement =
+            extract_file_replacement("## Plan\n### NEW: a\n\nbody\n\ndiff_lines: 1\n");
+        assert!(replacement.contains("diff_lines: 1"));
+        assert!(extract_file_replacement("no plan here").is_empty());
+
+        let patch =
+            extract_unified_diff("--- a/plan.txt\n+++ b/plan.txt\n@@\n-a\n+b\n```\ntrailer\n");
+        assert!(validate_unified_headers(&patch));
+        assert!(!validate_unified_headers("bad"));
+        assert!(extract_unified_diff("no diff").is_empty());
+
+        let findings = root.join("findings.md");
+        let feature = root.join("feature.txt");
+        fs::write(&findings, "finding\n").expect("findings");
+        fs::write(&feature, "feature\n").expect("feature");
+        let prompt = compose_revise_prompt(&plan, &findings, &feature, &keys, "unified-diff");
+        assert!(prompt.contains("unified diff"));
+        let prompt2 = compose_revise_prompt(&plan, &findings, &feature, &keys, "file-replacement");
+        assert!(prompt2.contains("## Plan"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn revise_waterfall_skips_missing_binaries() {
+        let root = unique_root("revise");
+        let plan = root.join("plan.txt");
+        let findings = root.join("findings.md");
+        let feature = root.join("feature.txt");
+        fs::write(&plan, mini_plan()).expect("plan");
+        fs::write(&findings, "finding\n").expect("findings");
+        fs::write(&feature, "feature\n").expect("feature");
+        assert_eq!(
+            revise_waterfall(&[
+                "--design-tmpdir".into(),
+                root.as_os_str().into(),
+                "--plan-file".into(),
+                plan.as_os_str().into(),
+                "--findings-file".into(),
+                findings.as_os_str().into(),
+                "--feature-file".into(),
+                feature.as_os_str().into(),
+                "--round-num".into(),
+                "1".into(),
+                "--codex-binary-found".into(),
+                "false".into(),
+                "--cursor-binary-found".into(),
+                "false".into(),
+                "--timeout".into(),
+                "1".into(),
+            ]),
+            ExitCode::SUCCESS
+        );
+        let env_path = root
+            .join("plan-review")
+            .join("round-1")
+            .join("revise")
+            .join("revise.env");
+        let env_text = fs::read_to_string(&env_path).expect("revise.env");
+        assert!(env_text.contains("REVISE_STATUS="));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn auto_fix_commands_empty_plan_and_unavailable_vendors() {
+        let root = unique_root("autofix");
+        let plan = root.join("plan.txt");
+        fs::write(&plan, "").expect("empty");
+        assert_eq!(
+            auto_fix_commands(&[
+                "--design-tmpdir".into(),
+                root.as_os_str().into(),
+                "--plan-file".into(),
+                plan.as_os_str().into(),
+            ]),
+            ExitCode::SUCCESS
+        );
+        fs::write(&plan, mini_plan()).expect("plan");
+        assert_eq!(
+            auto_fix_commands(&[
+                "--design-tmpdir".into(),
+                root.as_os_str().into(),
+                "--plan-file".into(),
+                plan.as_os_str().into(),
+                "--codex-binary-found".into(),
+                "false".into(),
+                "--cursor-binary-found".into(),
+                "false".into(),
+            ]),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            auto_fix_commands(&[
+                "--design-tmpdir".into(),
+                root.as_os_str().into(),
+                "--plan-file".into(),
+                root.join("missing.txt").as_os_str().into(),
+            ]),
+            ExitCode::from(RC2)
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn validator_autofix_requires_design_tmpdir() {
+        if env::var_os("DESIGN_TMPDIR").is_some_and(|value| !value.is_empty()) {
+            return;
+        }
+        assert_eq!(validator_autofix(&[]), ExitCode::from(1));
+        assert_eq!(validator_autofix(&["--help".into()]), ExitCode::from(1));
+        assert_eq!(
+            validator_autofix(&["--operator-cancel".into()]),
+            ExitCode::from(1)
+        );
+    }
+
+    #[test]
+    fn run_revise_attempt_skips_missing_binaries() {
+        let root = unique_root("attempt");
+        let plan = root.join("plan.txt");
+        let findings = root.join("findings.md");
+        let feature = root.join("feature.txt");
+        let keys = root.join("keys");
+        let revise_dir = root.join("revise");
+        fs::create_dir_all(&revise_dir).expect("revise dir");
+        fs::write(&plan, mini_plan()).expect("plan");
+        fs::write(&findings, "f\n").expect("findings");
+        fs::write(&feature, "feat\n").expect("feature");
+        fs::write(&keys, "").expect("keys");
+        let mut statuses = BTreeMap::new();
+        let mut winner = String::new();
+        let mut winner_output = String::new();
+        let restore = || {};
+        assert!(!run_revise_attempt(
+            1,
+            "codex",
+            "unified-diff",
+            &plan,
+            &findings,
+            &feature,
+            &keys,
+            &revise_dir,
+            &root,
+            &root,
+            1,
+            "false",
+            "false",
+            1,
+            &mut statuses,
+            &mut winner,
+            &mut winner_output,
+            &restore,
+        ));
+        assert_eq!(
+            statuses.get(&1).map(String::as_str),
+            Some("skipped-binary-missing")
+        );
+        assert!(!run_revise_attempt(
+            2,
+            "cursor",
+            "file-replacement",
+            &plan,
+            &findings,
+            &feature,
+            &keys,
+            &revise_dir,
+            &root,
+            &root,
+            1,
+            "false",
+            "false",
+            1,
+            &mut statuses,
+            &mut winner,
+            &mut winner_output,
+            &restore,
+        ));
+        assert_eq!(
+            statuses.get(&2).map(String::as_str),
+            Some("skipped-binary-missing")
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
 }

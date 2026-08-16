@@ -94,7 +94,7 @@ pub(crate) fn validated_design_tmpdir_for_commands(raw: &str) -> Result<PathBuf,
 }
 
 /// Capture stdout+stderr text and exit code from a finished process.
-pub(crate) fn captured_process_text(output: std::process::Output) -> (i32, String) {
+pub(crate) fn captured_process_text(output: &std::process::Output) -> (i32, String) {
     (
         output.status.code().unwrap_or(1),
         String::from_utf8_lossy(&output.stdout).into_owned()
@@ -491,7 +491,7 @@ fn validate_plan_command_rows(
         }
         let _ = dry_run_timeout;
         let (dry_rc, cap) = match command.output() {
-            Ok(output) => captured_process_text(output),
+            Ok(output) => captured_process_text(&output),
             Err(_) => (127, String::new()),
         };
         log.push(format!("TIER3_CAPTURE script={script} exit={dry_rc}"));
@@ -1419,4 +1419,542 @@ pub fn compose_goals_test(arguments: &[OsString]) -> ExitCode {
         .unwrap_or_default();
     print!("{}", compose_plan_goals_test(&text, &goal));
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        os::unix::fs::PermissionsExt,
+        sync::atomic::{AtomicU64, Ordering},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn unique_root(label: &str) -> PathBuf {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let root = PathBuf::from("/tmp").join(format!(
+            "larch-pq-{label}-{}-{nanos}-{n}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("create root");
+        root
+    }
+
+    fn write_exec(path: &Path, body: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("mkdir");
+        }
+        fs::write(path, body).expect("write");
+        let mut perms = fs::metadata(path).expect("meta").permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(path, perms).expect("chmod");
+    }
+
+    fn mini_plan() -> &'static str {
+        "### NEW: fixture\n\n1. Touch `scripts/noop.sh`.\n\ndifficulty: HARD\nmechanical_churn: false\ndiff_lines: 1\n"
+    }
+
+    #[test]
+    fn helper_path_and_flag_utilities() {
+        assert!(is_repo_script("scripts/a.sh"));
+        assert!(is_repo_script("./scripts/a.sh"));
+        assert!(is_repo_script("skills/x/scripts/a.sh"));
+        assert!(is_repo_script(".claude/skills/x/scripts/a.sh"));
+        assert!(!is_repo_script("../scripts/a.sh"));
+        assert!(!is_repo_script("docs/a.sh"));
+        assert_eq!(canonical_script_path("././scripts/a.sh"), "scripts/a.sh");
+        assert!(distinct_flag_in_help("foo", "usage --foo bar"));
+        assert!(distinct_flag_in_help("foo", "flags: --foo, --bar"));
+        assert!(!distinct_flag_in_help("foo", "prefix--foo-bar"));
+        assert!(!distinct_flag_in_help("zzz", "no flags here"));
+        assert!(unsafe_token("a`b"));
+        assert!(unsafe_token("../x"));
+        assert!(!unsafe_token("safe-value"));
+
+        let rows = vec![
+            PlanCommandRow {
+                row_type: "new_script".into(),
+                source_line: 1,
+                script_path: "./scripts/new.sh".into(),
+                flag: String::new(),
+                flag_value: String::new(),
+                note: String::new(),
+                cmd_uid: "u1".into(),
+            },
+            PlanCommandRow {
+                row_type: "updated_flag".into(),
+                source_line: 2,
+                script_path: "scripts/old.sh".into(),
+                flag: "verbose".into(),
+                flag_value: String::new(),
+                note: String::new(),
+                cmd_uid: "u2".into(),
+            },
+        ];
+        assert!(is_new_script(&rows, "scripts/new.sh"));
+        assert!(allow_flag(&rows, "./scripts/old.sh", "verbose"));
+        assert!(!allow_flag(&rows, "scripts/old.sh", "quiet"));
+        assert_eq!(
+            redact_capture(Path::new("/tmp"), &"x".repeat(10)),
+            "x".repeat(10)
+        );
+        assert_eq!(sha256_text("abc").len(), 64);
+
+        let root = unique_root("helpers");
+        let nested = root.join("sub").join("leaf");
+        fs::create_dir_all(&nested).expect("nested");
+        fs::write(nested.join(".git"), "gitdir: ..\n").expect("git marker");
+        assert_eq!(repo_root_from(&nested), nested);
+        assert_eq!(
+            repo_root_for_plan(&nested.join("plan.txt"), Some(root.to_str().unwrap())),
+            root.canonicalize().unwrap_or_else(|_| root.clone())
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn read_tsv_registry_and_resolve_script() {
+        let root = unique_root("tsv");
+        let tsv = root.join("commands.tsv");
+        fs::write(
+            &tsv,
+            "type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid\n\
+invocation\t10\tscripts/demo.sh\thelp\t\t\tu1\n\
+invocation_no_flags\t11\tscripts/demo.sh\t\t\t\tu2\n",
+        )
+        .expect("tsv");
+        let rows = read_tsv(&tsv);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].script_path, "scripts/demo.sh");
+        assert_eq!(rows[0].flag, "help");
+
+        let registry = root.join("hooks.tsv");
+        fs::write(
+            &registry,
+            "script\thook\nscripts/demo.sh\t--validate-only\nscripts/dry.sh\tLARCH_DRY_RUN=1\n",
+        )
+        .expect("registry");
+        let hooks = registry_hooks(&registry);
+        assert_eq!(
+            hooks.get("scripts/demo.sh").map(String::as_str),
+            Some("--validate-only")
+        );
+        assert!(registry_hooks(&root.join("missing.tsv")).is_empty());
+
+        write_exec(
+            &root.join("scripts/demo.sh"),
+            "#!/bin/sh\necho 'usage --help --mode'\nexit 0\n",
+        );
+        let repo = root.canonicalize().expect("canonicalize root");
+        let (resolved, defect) = resolve_repo_script("scripts/demo.sh", &repo, None);
+        assert!(resolved.is_some());
+        assert!(defect.is_empty());
+        let (missing, defect) = resolve_repo_script("scripts/nope.sh", &repo, None);
+        assert!(missing.is_none());
+        assert_eq!(defect, "non-canonical-path");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn validate_plan_command_rows_covers_skip_defect_and_tier3() {
+        let root = unique_root("validate-rows");
+        write_exec(
+            &root.join("scripts/demo.sh"),
+            "#!/bin/sh\nif [ \"$1\" = --help ]; then echo 'usage --mode --help'; exit 0; fi\nif [ \"$1\" = --validate-only ]; then exit 0; fi\nexit 1\n",
+        );
+        write_exec(
+            &root.join("scripts/new.sh"),
+            "#!/bin/sh\necho help\nexit 0\n",
+        );
+        write_exec(&root.join("scripts/badhelp.sh"), "#!/bin/sh\nexit 99\n");
+        write_exec(
+            &root.join("scripts/weird.sh"),
+            "#!/bin/sh\necho 'usage --x'\nexit 0\n",
+        );
+        let registry = root.join("scripts/dry-runnable-scripts.tsv");
+        fs::write(
+            &registry,
+            "script\thook\nscripts/demo.sh\t--validate-only\nscripts/badhelp.sh\t--validate-only\nscripts/weird.sh\tOTHER\n",
+        )
+        .expect("registry");
+        let rows = vec![
+            PlanCommandRow {
+                row_type: "new_script".into(),
+                source_line: 1,
+                script_path: "scripts/new.sh".into(),
+                flag: String::new(),
+                flag_value: String::new(),
+                note: String::new(),
+                cmd_uid: "n1".into(),
+            },
+            PlanCommandRow {
+                row_type: "invocation".into(),
+                source_line: 2,
+                script_path: "scripts/new.sh".into(),
+                flag: "mode".into(),
+                flag_value: String::new(),
+                note: String::new(),
+                cmd_uid: "i-new".into(),
+            },
+            PlanCommandRow {
+                row_type: "invocation".into(),
+                source_line: 3,
+                script_path: "scripts/demo.sh".into(),
+                flag: "mode".into(),
+                flag_value: String::new(),
+                note: String::new(),
+                cmd_uid: "i-demo".into(),
+            },
+            PlanCommandRow {
+                row_type: "invocation".into(),
+                source_line: 4,
+                script_path: "scripts/missing.sh".into(),
+                flag: "x".into(),
+                flag_value: String::new(),
+                note: String::new(),
+                cmd_uid: "i-miss".into(),
+            },
+            PlanCommandRow {
+                row_type: "invocation".into(),
+                source_line: 5,
+                script_path: "scripts/badhelp.sh".into(),
+                flag: "mode".into(),
+                flag_value: String::new(),
+                note: String::new(),
+                cmd_uid: "i-bad".into(),
+            },
+            PlanCommandRow {
+                row_type: "invocation".into(),
+                source_line: 6,
+                script_path: "scripts/weird.sh".into(),
+                flag: "x".into(),
+                flag_value: "ok".into(),
+                note: String::new(),
+                cmd_uid: "i-weird".into(),
+            },
+            PlanCommandRow {
+                row_type: "invocation".into(),
+                source_line: 7,
+                script_path: "scripts/demo.sh".into(),
+                flag: "mode".into(),
+                flag_value: "`unsafe`".into(),
+                note: String::new(),
+                cmd_uid: "i-unsafe".into(),
+            },
+            PlanCommandRow {
+                row_type: "invocation_no_flags".into(),
+                source_line: 8,
+                script_path: "scripts/demo.sh".into(),
+                flag: String::new(),
+                flag_value: String::new(),
+                note: String::new(),
+                cmd_uid: "i-none".into(),
+            },
+            PlanCommandRow {
+                row_type: "updated_flag".into(),
+                source_line: 9,
+                script_path: "scripts/demo.sh".into(),
+                flag: "mode".into(),
+                flag_value: String::new(),
+                note: String::new(),
+                cmd_uid: "u1".into(),
+            },
+        ];
+        let summary =
+            validate_plan_command_rows(&rows, &root, Some(&registry), "plan", 1.0, 1.0, None);
+        assert!(summary.log_text.contains("SKIPPED"));
+        assert!(summary.log_text.contains("DEFECT"));
+        assert!(summary.defect_count >= 1);
+
+        let composed =
+            validate_plan_command_rows(&rows, &root, Some(&registry), "composed", 1.0, 1.0, None);
+        assert!(composed.log_text.contains("VALIDATE_STATUS="));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn plan_validation_outcome_and_optional_trailers() {
+        let summary = ValidationSummary {
+            status: "ok".into(),
+            defect_count: 0,
+            skipped_count: 0,
+            unsafe_token_count: 0,
+            log_text: "ok\n".into(),
+        };
+        let (status, total, log) = plan_validation_outcome(&summary, 1, "body\n", false);
+        assert_eq!(status, "defects-found");
+        assert_eq!(total, 1);
+        assert!(log.contains("difficulty-metadata"));
+
+        let root = unique_root("trailers");
+        let plan = root.join("plan.txt");
+        fs::write(
+            &plan,
+            "body\ndifficulty: HARD\ndiff_added: 1\nmechanical_churn: false\noversize_override: operator\ndiff_lines: 1\n",
+        )
+        .expect("plan");
+        let keys = root.join("keys");
+        fs::write(
+            &keys,
+            "difficulty\ndiff_added\nmechanical_churn\noversize_override\n",
+        )
+        .expect("keys");
+        assert!(validate_optional_trailer_keys_preserved(&plan, &keys));
+        let values = root.join("keys.values");
+        let meta = parse_optional_metadata(&read_text(&plan));
+        fs::write(&values, meta.values.join("\n") + "\n").expect("values");
+        assert!(validate_optional_trailers_preserved(&plan, &values));
+        assert!(validate_optional_trailers_preserved(&plan, &keys));
+        let absent = root.join("absent-keys");
+        fs::write(&absent, "not-present-in-plan\n").expect("absent keys");
+        assert!(!validate_optional_trailer_keys_preserved(&plan, &absent));
+
+        assert_eq!(
+            optional_trailers(&[
+                "parse".into(),
+                "--plan-file".into(),
+                plan.as_os_str().into(),
+            ]),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            optional_trailers(&["keys".into(), "--plan-file".into(), plan.as_os_str().into()]),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            optional_trailers(&[
+                "values".into(),
+                "--plan-file".into(),
+                plan.as_os_str().into()
+            ]),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            optional_trailers(&[
+                "has-key".into(),
+                "--plan-file".into(),
+                plan.as_os_str().into(),
+                "--key".into(),
+                "diff_added".into(),
+            ]),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            optional_trailers(&[
+                "has-key".into(),
+                "--plan-file".into(),
+                plan.as_os_str().into(),
+                "--key".into(),
+                "nope".into(),
+            ]),
+            ExitCode::FAILURE
+        );
+        let snap = root.join("snap");
+        assert_eq!(
+            optional_trailers(&[
+                "snapshot-keys".into(),
+                "--plan-file".into(),
+                plan.as_os_str().into(),
+                "--output".into(),
+                snap.as_os_str().into(),
+            ]),
+            ExitCode::SUCCESS
+        );
+        assert!(snap.is_file());
+        assert_eq!(
+            optional_trailers(&[
+                "snapshot-values".into(),
+                "--plan-file".into(),
+                plan.as_os_str().into(),
+                "--output".into(),
+                root.join("vals").as_os_str().into(),
+            ]),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            optional_trailers(&[
+                "validate-keys".into(),
+                "--plan-file".into(),
+                plan.as_os_str().into(),
+                "--keys-file".into(),
+                keys.as_os_str().into(),
+            ]),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            optional_trailers(&[
+                "validate-values".into(),
+                "--plan-file".into(),
+                plan.as_os_str().into(),
+                "--values-file".into(),
+                values.as_os_str().into(),
+            ]),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(optional_trailers(&["--help".into()]), ExitCode::SUCCESS);
+        assert_eq!(optional_trailers(&[]), ExitCode::from(RC2));
+        assert_eq!(optional_trailers(&["bogus".into()]), ExitCode::from(RC2));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn oversize_authority_and_set_override_check_size_paths() {
+        let root = unique_root("size");
+        let plan = root.join("plan.txt");
+        fs::write(&plan, mini_plan()).expect("plan");
+        assert!(trusted_oversize_override(&root, &read_text(&plan)).is_none());
+        let with_override = set_oversize_override_text(&read_text(&plan), false).expect("override");
+        fs::write(&plan, &with_override).expect("rewrite");
+        sync_oversize_override_authority(&root, &plan);
+        assert_eq!(
+            trusted_oversize_override(&root, &with_override).as_deref(),
+            Some(OVERSIZE_OVERRIDE_OPERATOR)
+        );
+        let design = root.canonicalize().expect("canonicalize design");
+        let plan = design.join("plan.txt");
+        assert!(canonical_plan_for_override(&design, None).is_ok());
+        assert!(canonical_plan_for_override(&design, Some(plan.to_str().unwrap())).is_ok());
+        assert!(canonical_plan_for_override(&design, Some("/tmp")).is_err());
+
+        assert_eq!(
+            set_oversize_override(&["--design-tmpdir".into(), design.as_os_str().into(),]),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            check_size(&["--design-tmpdir".into(), design.as_os_str().into(),]),
+            ExitCode::SUCCESS
+        );
+        let empty = unique_root("size-empty");
+        assert_eq!(
+            check_size(&["--design-tmpdir".into(), empty.as_os_str().into(),]),
+            ExitCode::from(RC2)
+        );
+        let bad = unique_root("size-bad");
+        fs::write(
+            bad.join("plan.txt"),
+            "### NEW: x\n\nbody\n\nno trailer here\n",
+        )
+        .expect("bad plan");
+        assert_eq!(
+            check_size(&["--design-tmpdir".into(), bad.as_os_str().into()]),
+            ExitCode::from(RC2)
+        );
+        let base = unique_root("size-base");
+        fs::write(base.join("plan.txt"), mini_plan()).expect("plan");
+        fs::write(
+            base.join("drift-baseline.env"),
+            "BASELINE_PLAN_LINES=1\nBASELINE_DIFF_LINES=1\n",
+        )
+        .expect("baseline");
+        assert_eq!(
+            check_size(&["--design-tmpdir".into(), base.as_os_str().into()]),
+            ExitCode::SUCCESS
+        );
+        let counts = plan_counts_from_file(&base.join("plan.txt")).expect("counts");
+        assert_eq!(counts.1, 1);
+        assert!(counts.0 >= 1);
+        assert!(plan_counts_from_file(&base.join("missing")).is_none());
+
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&empty);
+        let _ = fs::remove_dir_all(&bad);
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn parse_validate_and_compose_entrypoints() {
+        let root = unique_root("entry");
+        let plan = root.join("plan.txt");
+        let body = format!(
+            "{}\n{}",
+            "x".repeat(64),
+            "### NEW: fixture\n\n1. Touch `scripts/noop.sh`.\n\ndifficulty: HARD\nmechanical_churn: false\ndiff_lines: 1\n"
+        );
+        fs::write(&plan, &body).expect("plan");
+        let out = root.join("out.tsv");
+        assert_eq!(
+            parse_commands(&[
+                "--plan-file".into(),
+                plan.as_os_str().into(),
+                "--output".into(),
+                out.as_os_str().into(),
+                "--repo-root".into(),
+                root.as_os_str().into(),
+            ]),
+            ExitCode::SUCCESS
+        );
+        assert!(out.is_file());
+
+        let log = root.join("validate.log");
+        let tsv = root.join("commands.tsv");
+        fs::write(
+            &tsv,
+            "type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid\n",
+        )
+        .expect("tsv");
+        assert_eq!(
+            validate_commands(&[
+                "--tsv-file".into(),
+                tsv.as_os_str().into(),
+                "--log-file".into(),
+                log.as_os_str().into(),
+                "--repo-root".into(),
+                root.as_os_str().into(),
+            ]),
+            ExitCode::SUCCESS
+        );
+        assert!(log.is_file());
+
+        assert_eq!(
+            validate(&[
+                "--plan-file".into(),
+                plan.as_os_str().into(),
+                "--repo-root".into(),
+                root.as_os_str().into(),
+                "--design-tmpdir".into(),
+                root.as_os_str().into(),
+            ]),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            compose_goals_test(&[
+                "--plan-file".into(),
+                plan.as_os_str().into(),
+                "--goal-text".into(),
+                "goal".into(),
+            ]),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            compose_goals_test(&[
+                "--plan-file".into(),
+                root.join("missing").as_os_str().into()
+            ]),
+            ExitCode::from(RC2)
+        );
+        let short = root.join("short.txt");
+        fs::write(&short, "too-short").expect("short");
+        assert_eq!(
+            compose_goals_test(&["--plan-file".into(), short.as_os_str().into()]),
+            ExitCode::from(RC2)
+        );
+        let pointer = root.join("pointer.txt");
+        fs::write(&pointer, format!("see plan.txt\n{}\n", "y".repeat(64))).expect("pointer");
+        assert_eq!(
+            compose_goals_test(&["--plan-file".into(), pointer.as_os_str().into()]),
+            ExitCode::from(RC2)
+        );
+        assert_eq!(
+            captured_process_text(&Command::new("true").output().expect("true")).0,
+            0
+        );
+        assert_eq!(plugin_root_for_commands(), plugin_root());
+        let _ = fs::remove_dir_all(&root);
+    }
 }
