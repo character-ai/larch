@@ -660,8 +660,22 @@ async fn next_excludes_closed_leaves_with_stale_or_arbitrary_titles() {
     );
     let (client, server) = service(vec![
         response(200, &parent),
-        response(200, refs(&[(LEAF, 410, "closed"), (GAP, 420, "closed"), (43, 430, "open")])),
-        response(200, refs(&[(LEAF, 410, "closed"), (GAP, 420, "closed"), (43, 430, "open")])),
+        response(
+            200,
+            refs(&[
+                (LEAF, 410, "closed"),
+                (GAP, 420, "closed"),
+                (43, 430, "open"),
+            ]),
+        ),
+        response(
+            200,
+            refs(&[
+                (LEAF, 410, "closed"),
+                (GAP, 420, "closed"),
+                (43, 430, "open"),
+            ]),
+        ),
         response(200, &stale_implementing),
         response(200, "[]"),
         response(200, &arbitrary_closed),
@@ -686,7 +700,9 @@ async fn next_excludes_closed_leaves_with_stale_or_arbitrary_titles() {
             ("NEXT_LEAF", "43".to_owned()),
         ]
     );
-    server.join().expect("stale closed leaf graph stub completed");
+    server
+        .join()
+        .expect("stale closed leaf graph stub completed");
 }
 
 #[tokio::test]
