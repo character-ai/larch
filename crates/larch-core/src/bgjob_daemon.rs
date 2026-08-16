@@ -30,6 +30,12 @@ pub const BGJOB_STARTUP_GRACE_S: i64 = 25;
 pub const BGJOB_STARTUP_ACK_TIMEOUT_S: f64 = 25.0;
 /// Seconds an unvalidatable owner keeps its job alive before orphaning.
 pub const BGJOB_OWNER_GRACE_S: f64 = 120.0;
+/// Seconds a foreground-wait lease stays fresh after its last refresh (#8639).
+///
+/// Sized above one wait chunk plus the owner grace so an orchestrator can
+/// return `WAIT`, re-enter an identical `bgjob wait`, and still protect the
+/// child when the start-time owner PID was an ephemeral tool shell.
+pub const BGJOB_WAIT_LEASE_TTL_S: f64 = 390.0;
 /// Consecutive owner-validation failures required before the grace clock starts.
 pub const BGJOB_OWNER_VALIDATION_FAILURE_THRESHOLD: u32 = 3;
 /// Seconds between daemon monitor polls.

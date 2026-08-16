@@ -2,9 +2,9 @@
 
 Use this contract for long-running larch helpers that have migrated off Claude background launches.
 
-1. Launch with `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start --step <step> --tmpdir "$TMPDIR" --budget-s <seconds> -- <command...>` from a foreground Bash tool call. The only harness-visible stdout from the launcher is `BGJOB_STATUS=STARTED STEP=<step> PGID=<n>`.
+1. Launch with `LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start --step <step> --tmpdir "$TMPDIR" --budget-s <seconds> -- <command...>` from a foreground Bash tool call when the harness has not already exported a durable `LARCH_CLAUDE_PID` / `CLAUDE_PID` / `LARCH_BGJOB_OWNER_PID`. `$PPID` must be the durable agent-session parent, never a nested one-shot wrapper that exits after `STARTED`. The only harness-visible stdout from the launcher is `BGJOB_STATUS=STARTED STEP=<step> PGID=<n>`.
 2. If the child writes step result KVs for the orchestrator to consume, truncate or recreate that merge-input env immediately before every `bgjob start`, then pass it with `--merge-result-env <path>`. A stale env from a prior attempt must never satisfy a fresh wait's required-key gate.
-3. Then call `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob wait --step <step> --tmpdir "$TMPDIR" --max-wait-s 270` with tool timeout `330000`. Only wait after the matching launch printed `BGJOB_STATUS=STARTED STEP=<step> PGID=<n>`; if the launch did not print that marker, route directly to the step's failure or stall handling instead of waiting.
+3. Then call `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob wait --step <step> --tmpdir "$TMPDIR" --max-wait-s 270` with tool timeout `330000`. Only wait after the matching launch printed `BGJOB_STATUS=STARTED STEP=<step> PGID=<n>`; if the launch did not print that marker, route directly to the step's failure or stall handling instead of waiting. Each wait poll refreshes a session-local wait lease; while that lease is fresh, the daemon will not orphan the child solely because the start-time owner PID exited (#8639).
 4. If wait prints `BGJOB_STATUS=WAIT`, including `BGJOB_RECOVERY=retryable`, the next action is another identical `bgjob wait`. A retryable recovery retains its durable registry record and is not terminal `DEAD`. Do not emit prose, read task output, use Monitor, call TaskOutput, or sleep between waits.
 5. If wait prints `BGJOB_STATUS=DEAD`, route through the step's existing failure or stall handling.
 6. If wait prints `BGJOB_STATUS=DONE`, read the full KV block and the result env at `$TMPDIR/bgjob/<step>.result.env` before continuing. The result env is the completion source of truth. Continue normal branch handling only when `BGJOB_RC=0` and the step's required KVs are present in the final wait output and/or result env. Treat `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, any other non-zero `BGJOB_RC`, or missing required KVs as step failure or stall.
@@ -15,7 +15,7 @@ Never treat the `bgjob wait` shell exit code, `BGJOB_STATUS=DONE` alone, launche
 
 ```bash
 : >"$IMPLEMENT_TMPDIR/.step-5-review-merge.env"
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start \
+LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start \
   --step implement-step5-review \
   --tmpdir "$IMPLEMENT_TMPDIR" \
   --budget-s 21600 \

@@ -91,3 +91,16 @@ def test_top_level_routes_stale_budget_evidence_to_the_parent_finalizer() -> Non
     assert "--mode finalize-budget-deviation" in skill
     assert "active plan lease" in skill
     assert "only the plan record's measured base SHA, head SHA, and count" in skill
+
+
+def test_leaf_bgjob_start_binds_durable_session_owner() -> None:
+    skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start' in skill
+    assert "wait lease" in skill
+    wait_contract = (
+        REPO_ROOT / "skills" / "shared" / "bgjob-wait.md"
+    ).read_text(encoding="utf-8")
+    assert 'LARCH_CLAUDE_PID="$PPID"' in wait_contract
+    assert "wait lease" in wait_contract

@@ -139,7 +139,7 @@ The launched leaf child is a thin orchestrator. It reads no repository files its
 Set `STEP=complete-umbrella-leaf-$NEXT_LEAF`, truncate `$COMPLETE_UMBRELLA_TMPDIR/child-$NEXT_LEAF.env`, then launch:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start \
+LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start \
   --step "$STEP" \
   --tmpdir "$COMPLETE_UMBRELLA_TMPDIR" \
   --budget-s 90000 \
@@ -156,6 +156,8 @@ Set `STEP=complete-umbrella-leaf-$NEXT_LEAF`, truncate `$COMPLETE_UMBRELLA_TMPDI
     --result-env "$COMPLETE_UMBRELLA_TMPDIR/child-$NEXT_LEAF.env"
 # lint-consecutive-bash: ok bgjob launch must return STARTED before the separate repeated-wait fence
 ```
+
+`$PPID` must be the durable agent-session parent, not a nested one-shot wrapper shell. Prefer the ambient harness `LARCH_CLAUDE_PID` / `CLAUDE_PID` when already set. Active `bgjob wait` also refreshes a wait lease that keeps the leaf alive if that start-time owner later exits (#8639).
 
 Require the exact `BGJOB_STATUS=STARTED` marker for `STEP`. Wait only with:
 

@@ -39,6 +39,10 @@ pub const BGJOB_STARTUP_ENV_SUFFIX: &str = ".startup.env";
 pub const BGJOB_INPUT_FP_SUFFIX: &str = ".input-fp";
 /// Durable worker-completion witness suffix.
 pub const BGJOB_WORKER_STATUS_SUFFIX: &str = ".worker-status.env";
+/// Foreground-wait lease suffix. An active `bgjob wait` refreshes this file so
+/// the daemon does not orphan a live job merely because the start-time session
+/// owner PID exited (#8639).
+pub const BGJOB_WAIT_LEASE_SUFFIX: &str = ".wait-lease.env";
 /// Environment override for the durable registry root.
 pub const ENV_BGJOB_REGISTRY_ROOT: &str = "LARCH_BGJOB_REGISTRY_ROOT";
 /// Debug-build-only directory used by deterministic bgjob lifecycle tests.
@@ -584,6 +588,75 @@ pub fn startup_env_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError
         &root,
         "startup env",
     )
+}
+
+/// Return the foreground-wait lease path for `step`.
+///
+/// # Errors
+///
+/// Returns an error when `tmpdir` or `step` is unsafe.
+pub fn wait_lease_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError> {
+    let step = validate_slug(step, "step")?;
+    let root = bgjob_dir(tmpdir)?;
+    ensure_under(
+        &root.join(format!("{step}{BGJOB_WAIT_LEASE_SUFFIX}")),
+        &root,
+        "wait lease",
+    )
+}
+
+/// Refresh the foreground-wait lease that keeps a live job from orphaning.
+///
+/// # Errors
+///
+/// Returns an error when the path is unsafe or the atomic write fails.
+pub fn refresh_wait_lease(tmpdir: &Path, step: &str) -> Result<(), BgjobError> {
+    let path = wait_lease_path(tmpdir, step)?;
+    let root = bgjob_dir(tmpdir)?;
+    let _ = fs::create_dir_all(&root);
+    let epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| BgjobError::Io(error.to_string()))?
+        .as_secs();
+    private_atomic_write(
+        &path,
+        &format!("REFRESH_EPOCH={epoch}\nWAITER_PID={}\n", process::id()),
+        &root,
+    )
+}
+
+/// Return whether `step` has a wait lease fresher than `ttl_s`.
+#[must_use]
+pub fn wait_lease_is_fresh(tmpdir: &Path, step: &str, ttl_s: f64) -> bool {
+    if !ttl_s.is_finite() || ttl_s <= 0.0 {
+        return false;
+    }
+    let Ok(path) = wait_lease_path(tmpdir, step) else {
+        return false;
+    };
+    let Ok(text) = fs::read_to_string(&path) else {
+        return false;
+    };
+    let Ok(document) = KvDocument::parse(&text, ParseOptions::legacy()) else {
+        return false;
+    };
+    let Some(raw) = document
+        .rows()
+        .iter()
+        .rev()
+        .find(|row| row.key() == "REFRESH_EPOCH")
+        .map(|row| row.value().to_owned())
+    else {
+        return false;
+    };
+    let Ok(epoch) = raw.parse::<u64>() else {
+        return false;
+    };
+    let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+        return false;
+    };
+    let age = now.saturating_sub(Duration::from_secs(epoch));
+    age <= Duration::from_secs_f64(ttl_s)
 }
 
 /// Return the durable completion-transaction descriptor path for `step`.
@@ -2188,12 +2261,13 @@ mod tests {
         default_run_id, ensure_directory, ensure_under, entry_expired, epoch_now, expand_home,
         finish_completion_transaction, has_live_entry_at, identity_rows, iter_entries_at,
         log_paths, parse_identity, prepare_completion_transaction, private_atomic_write,
-        read_completion_transaction, read_entry, read_recovery_lease, registry_path,
-        reject_line_value, release_recovery_claim, render_rows, resolve_candidate, resolve_run_id,
-        resolved_directory, result_env_path, set_recovery_lease_fault, startup_env_path,
-        temporary_path, unlink_entry, validate_initial_merge_rows, validate_merge_result_env,
-        validate_parent_chain, validate_run_id, validate_slug, validate_terminal_stdout_key,
-        validated_path, write_entry_at,
+        read_completion_transaction, read_entry, read_recovery_lease, refresh_wait_lease,
+        registry_path, reject_line_value, release_recovery_claim, render_rows, resolve_candidate,
+        resolve_run_id, resolved_directory, result_env_path, set_recovery_lease_fault,
+        startup_env_path, temporary_path, unlink_entry, validate_initial_merge_rows,
+        validate_merge_result_env, validate_parent_chain, validate_run_id, validate_slug,
+        validate_terminal_stdout_key, validated_path, wait_lease_is_fresh, wait_lease_path,
+        write_entry_at,
     };
     use crate::{
         IdentityProbeOutput, ProcessBirthIdentity, ProcessBirthIdentityProbeOutput,
@@ -2428,6 +2502,21 @@ mod tests {
                 .expect("path")
                 .ends_with(format!("demo-step{BGJOB_RESULT_ENV_SUFFIX}"))
         );
+    }
+
+    #[test]
+    fn wait_lease_refresh_is_fresh_until_ttl_expires() {
+        let sandbox = tempfile::tempdir().expect("tempdir");
+        let tmpdir = sandbox.path();
+        assert!(!wait_lease_is_fresh(tmpdir, "lease-step", 30.0));
+        refresh_wait_lease(tmpdir, "lease-step").expect("refresh");
+        assert!(wait_lease_is_fresh(tmpdir, "lease-step", 30.0));
+        assert!(
+            wait_lease_path(tmpdir, "lease-step")
+                .expect("lease path")
+                .ends_with("lease-step.wait-lease.env")
+        );
+        assert!(!wait_lease_is_fresh(tmpdir, "lease-step", 0.0));
     }
 
     #[test]
