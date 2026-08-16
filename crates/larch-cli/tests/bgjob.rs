@@ -1151,10 +1151,46 @@ fn owner_death_reports_orphaned() {
     owner.kill().expect("kill owner");
     owner.wait().expect("reap owner");
 
+    // Let the daemon pass owner grace without an active wait lease (#8639).
+    sleep(Duration::from_secs(1));
     let settled = wait_until_settled(&sandbox, "owner-death", &tmpdir);
     assert!(settled.contains("BGJOB_STATUS=DONE"), "{settled:?}");
     assert!(settled.contains("BGJOB_RC=orphaned"), "{settled:?}");
     assert_group_gone(started_pgid(&stdout, "owner-death"), "owner death");
+}
+
+#[test]
+fn active_wait_lease_keeps_job_alive_after_owner_death() {
+    let mut sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("wait-lease-keeps");
+    let owner_pid = sandbox.sleeper();
+    let stdout = start(
+        &sandbox,
+        "wait-lease-keeps",
+        &tmpdir,
+        "60",
+        owner_pid,
+        &["/bin/sh", "-c", "exec sleep 2"],
+    );
+    assert!(started_pgid(&stdout, "wait-lease-keeps") > 0);
+
+    let owner = sandbox
+        .children
+        .iter_mut()
+        .find(|child| i32::try_from(child.id()).expect("pid") == owner_pid)
+        .expect("owner child");
+    owner.kill().expect("kill owner");
+    owner.wait().expect("reap owner");
+
+    // Continuous wait refreshes the lease so the ephemeral owner cannot orphan
+    // a still-polled child (#8639).
+    let settled = wait_until_settled(&sandbox, "wait-lease-keeps", &tmpdir);
+    assert!(settled.contains("BGJOB_STATUS=DONE"), "{settled:?}");
+    assert!(settled.contains("BGJOB_RC=0"), "{settled:?}");
+    assert!(
+        !settled.contains("BGJOB_RC=orphaned"),
+        "active wait still orphaned: {settled:?}"
+    );
 }
 
 #[test]

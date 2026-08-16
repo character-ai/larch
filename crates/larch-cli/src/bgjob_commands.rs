@@ -16,19 +16,20 @@ use larch_adapters::{
 use larch_core::{
     BGJOB_RC_ORPHANED, BGJOB_RC_TIMEOUT, BGJOB_STATUS_DEAD, BGJOB_STATUS_DONE, BGJOB_STATUS_KEY,
     BGJOB_STATUS_STARTED, BGJOB_STATUS_WAIT, BGJOB_WAIT_HARD_DEADLINE_GRACE_S,
-    BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec, OwnerIdentity, OwnerValidationState,
-    ProcessBirthIdentity, ProcessIdentityHost, ProcessIdentityValidationPolicy,
-    RecordedProcessIdentity, RegistryEntry, ValidationResult, bgjob_dir, check_owner_validation,
-    checked_dir, child_liveness, clear_completion_residue, collect_process_group_members_checked,
-    confirm_process_group_absent, daemon_liveness, daemon_poll_interval_s, ensure_under, epoch_now,
-    finish_completion_transaction, iter_entries, log_paths, log_tail, merge_rows, ordered_rows,
-    orphan_diagnostic, owner_grace_s, owner_pid_candidate, phase_barrier,
-    prepare_completion_transaction, private_atomic_write, read_entry, read_for,
-    read_merge_result_env, read_process_identity, registry_path, render_rows, resolve_run_id,
-    result_env_path, result_rows, startup_ack_timeout_s, startup_env_path, startup_in_progress,
-    startup_rows, terminate_validated_process_group_with_policy, unlink_entry,
-    validate_merge_result_env, validate_run_id, validate_slug, validate_terminal_stdout_key,
-    validate_timing_overrides, worker_status_path, write_entry,
+    BGJOB_WAIT_LEASE_TTL_S, BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec, OwnerIdentity,
+    OwnerValidationState, ProcessBirthIdentity, ProcessIdentityHost,
+    ProcessIdentityValidationPolicy, RecordedProcessIdentity, RegistryEntry, ValidationResult,
+    bgjob_dir, check_owner_validation, checked_dir, child_liveness, clear_completion_residue,
+    collect_process_group_members_checked, confirm_process_group_absent, daemon_liveness,
+    daemon_poll_interval_s, ensure_under, epoch_now, finish_completion_transaction, iter_entries,
+    log_paths, log_tail, merge_rows, ordered_rows, orphan_diagnostic, owner_grace_s,
+    owner_pid_candidate, phase_barrier, prepare_completion_transaction, private_atomic_write,
+    read_entry, read_for, read_merge_result_env, read_process_identity, refresh_wait_lease,
+    registry_path, render_rows, resolve_run_id, result_env_path, result_rows,
+    startup_ack_timeout_s, startup_env_path, startup_in_progress, startup_rows,
+    terminate_validated_process_group_with_policy, unlink_entry, validate_merge_result_env,
+    validate_run_id, validate_slug, validate_terminal_stdout_key, validate_timing_overrides,
+    wait_lease_is_fresh, worker_status_path, write_entry,
 };
 use nix::{
     sys::signal::{Signal, killpg},
@@ -1137,6 +1138,14 @@ fn monitor(
         );
         owner_state = step.state;
         if let (true, Some(validation)) = (step.orphaned, step.validation.as_ref()) {
+            // An active foreground wait refreshes a lease under the session
+            // tmpdir. Keep the child alive while that lease is fresh so an
+            // ephemeral start-shell owner (#8639) cannot orphan a still-waited
+            // job. When wait stops, the lease ages out and orphaning resumes.
+            if wait_lease_is_fresh(&spec.tmpdir, &spec.step, BGJOB_WAIT_LEASE_TTL_S) {
+                thread::sleep(poll);
+                continue;
+            }
             append_orphan_diagnostic(spec, validation, owner_state.failure_count);
             break MonitorTerminal::Teardown(BGJOB_RC_ORPHANED);
         }
@@ -1305,6 +1314,9 @@ fn wait_once(parsed: &WaitArguments) -> Result<String, String> {
         if Instant::now() >= hard_deadline {
             return Err("hard-deadline".to_owned());
         }
+        // Refresh before every poll so an ephemeral start-time owner cannot
+        // orphan a job the orchestrator is still waiting on (#8639).
+        refresh_wait_lease(&tmpdir, &step).map_err(|error| one_line(&error))?;
         if let Some(rows) = read_completed_result(&tmpdir, &result_path, &step) {
             return Ok(done_rows(&rows));
         }
