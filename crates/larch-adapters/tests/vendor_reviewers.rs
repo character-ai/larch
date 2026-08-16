@@ -5,7 +5,8 @@ use larch_adapters::{
     runtime::LarchRuntime,
     vendor_auth::ProbeCache,
     vendor_reviewers::{
-        CheckReviewersContext, check_reviewers, prepare_codex_home, run_cursor_model_list,
+        CheckReviewersContext, CursorModelListContext, check_reviewers, prepare_codex_home,
+        run_cursor_model_list,
     },
 };
 use larch_core::{
@@ -145,6 +146,22 @@ fn run_check(
     )
 }
 
+const fn model_list_context<'a>(
+    root: &'a TemporaryRoot,
+    home: &'a Path,
+    working_directory: &'a Path,
+) -> CursorModelListContext<'a> {
+    CursorModelListContext {
+        temporary_root: root,
+        home,
+        working_directory,
+        user: Some("ada"),
+        cursor_api_key: Some(SECRET),
+        platform: "Linux",
+        caller: "test cursor model list",
+    }
+}
+
 #[test]
 fn missing_binaries_report_all_false_without_spawning() {
     let temp = tempfile::tempdir().expect("temp");
@@ -247,6 +264,8 @@ fn cursor_probe_success_marks_present_and_writes_stamp() {
 fn cursor_model_list_timeout_and_list_failed_shapes() {
     let temp = tempfile::tempdir().expect("temp");
     let workdir = fs::canonicalize(temp.path()).expect("canonical");
+    let root = temporary_root(temp.path());
+    let home = tempfile::tempdir().expect("home");
     let runtime = LarchRuntime::current_thread().expect("runtime");
 
     let timed_out = FakeProcessRunner::new([Err(ProcessError::new(
@@ -256,7 +275,7 @@ fn cursor_model_list_timeout_and_list_failed_shapes() {
     ))]);
     let timeout_outcome = runtime.block_on(run_cursor_model_list(
         &timed_out,
-        &workdir,
+        model_list_context(&root, home.path(), &workdir),
         Duration::from_secs(1),
         &NeverCancelled,
     ));
@@ -278,7 +297,7 @@ fn cursor_model_list_timeout_and_list_failed_shapes() {
         .build())]);
     let failed_outcome = runtime.block_on(run_cursor_model_list(
         &failed,
-        &workdir,
+        model_list_context(&root, home.path(), &workdir),
         Duration::from_secs(1),
         &NeverCancelled,
     ));
@@ -301,13 +320,32 @@ fn cursor_model_list_timeout_and_list_failed_shapes() {
         .build())]);
     let ok_outcome = runtime.block_on(run_cursor_model_list(
         &ok,
-        &workdir,
+        model_list_context(&root, home.path(), &workdir),
         Duration::from_secs(1),
         &NeverCancelled,
     ));
     assert_eq!(ok_outcome.returncode, 0);
     assert!(!ok_outcome.timed_out);
     assert!(ok_outcome.stdout.contains(CURSOR_MODEL_LIST_HEADER));
+    let request = &ok.requests()[0];
+    assert!(
+        request
+            .environment()
+            .iter()
+            .any(|(key, value)| { *key == ChildEnvironment::CursorApiKey && value == SECRET })
+    );
+    assert!(
+        request
+            .environment()
+            .iter()
+            .any(|(key, _)| *key == ChildEnvironment::CursorConfigDir)
+    );
+    assert!(
+        request
+            .environment()
+            .iter()
+            .any(|(key, _)| *key == ChildEnvironment::NoOpenBrowser)
+    );
 }
 
 #[test]
@@ -633,6 +671,8 @@ fn cursor_probe_auth_failure_marks_absent() {
 fn cursor_model_list_spawn_error_is_non_timeout_failure() {
     let temp = tempfile::tempdir().expect("temp");
     let workdir = fs::canonicalize(temp.path()).expect("canonical");
+    let root = temporary_root(temp.path());
+    let home = tempfile::tempdir().expect("home");
     let runtime = LarchRuntime::current_thread().expect("runtime");
     let runner = FakeProcessRunner::new([Err(ProcessError::new(
         ProcessErrorKind::Spawn,
@@ -641,7 +681,7 @@ fn cursor_model_list_spawn_error_is_non_timeout_failure() {
     ))]);
     let outcome = runtime.block_on(run_cursor_model_list(
         &runner,
-        &workdir,
+        model_list_context(&root, home.path(), &workdir),
         Duration::from_secs(1),
         &NeverCancelled,
     ));

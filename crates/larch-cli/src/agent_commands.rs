@@ -28,7 +28,7 @@ use larch_adapters::{
     runtime::{Cancellation, LarchRuntime},
     vendor_auth::ProbeCache,
     vendor_diagnostics::{parse_codex_usage_file, write_collector_failure_log},
-    vendor_reviewers::CheckReviewersContext,
+    vendor_reviewers::{CheckReviewersContext, CursorModelListContext},
 };
 use larch_core::{
     CODEX_REVIEW_MODEL_DEFAULT, CheckReviewersConfig, CodexGateMessage, CodexModelRole, Commit,
@@ -590,10 +590,28 @@ fn resolve_model_pins_command(arguments: &ResolveModelPinsArguments) -> ExitCode
                 .ok()
                 .as_deref(),
         ));
+        let Some(temporary_root) = probe_temporary_root() else {
+            eprintln!("{caller}: could not resolve the temporary root");
+            return ExitCode::from(1);
+        };
+        let Some(home) = env::var_os(env_names::HOME).map(PathBuf::from) else {
+            eprintln!("{caller}: HOME is unset");
+            return ExitCode::from(1);
+        };
+        let user = env::var(env_names::USER).ok();
+        let cursor_api_key = env::var(env_names::CURSOR_API_KEY).ok();
         let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
         Some(runtime.block_on(run_cursor_model_list(
             &runner,
-            &working_directory,
+            CursorModelListContext {
+                temporary_root: &temporary_root,
+                home: &home,
+                working_directory: &working_directory,
+                user: user.as_deref(),
+                cursor_api_key: cursor_api_key.as_deref(),
+                platform: platform_name(),
+                caller,
+            },
             timeout,
             &Cancellation::new(),
         )))

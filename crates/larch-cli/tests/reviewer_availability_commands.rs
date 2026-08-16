@@ -4,7 +4,8 @@
 use assert_cmd::Command as AssertCommand;
 use larch_adapters::{TemporaryRoot, vendor_auth::ProbeCache};
 use larch_core::{
-    CODEX_REVIEW_MODEL_DEFAULT, CodexEnvAuth, ProbeTtl, codex_probe_identity, detect_codex_cli_gate,
+    CODEX_REVIEW_MODEL_DEFAULT, CodexEnvAuth, ProbeTtl, codex_probe_identity, cursor_pinned_models,
+    detect_codex_cli_gate,
 };
 use predicates::prelude::*;
 use std::{fs, os::unix::fs::PermissionsExt, path::Path};
@@ -14,9 +15,13 @@ fn larch() -> AssertCommand {
 }
 
 fn make_executable(dir: &Path, name: &str) {
+    make_executable_with_body(dir, name, "#!/bin/sh\nexit 0\n");
+}
+
+fn make_executable_with_body(dir: &Path, name: &str, body: &str) {
     fs::create_dir_all(dir).expect("bin dir");
     let path = dir.join(name);
-    fs::write(&path, b"#!/bin/sh\nexit 0\n").expect("write binary");
+    fs::write(&path, body).expect("write binary");
     let mut permissions = fs::metadata(&path).expect("meta").permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(&path, permissions).expect("chmod");
@@ -345,4 +350,40 @@ fn resolve_model_pins_codex_unverifiable_when_codex_ok() {
         .success()
         .stdout(predicate::str::contains("CODEX_MODEL_PINS=unverifiable"))
         .stdout(predicate::str::contains("codex has no model-list surface"));
+}
+
+#[test]
+fn resolve_model_pins_passes_cursor_credentials_to_the_model_list_child() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let temporary_root = fs::canonicalize(fixture.path()).expect("canonical temporary root");
+    let home = tempfile::tempdir().expect("home");
+    let bin = fixture.path().join("bin");
+    let mut model_list = String::from("Available models\n");
+    for pin in cursor_pinned_models() {
+        model_list.push_str(pin.model_id);
+        model_list.push_str(" - fixture\n");
+    }
+    let script = format!(
+        "#!/bin/sh\nif [ \"${{CURSOR_API_KEY:-}}\" != \"test-cursor-token\" ] || [ \"${{NO_OPEN_BROWSER:-}}\" != \"1\" ] || [ -z \"${{CURSOR_CONFIG_DIR:-}}\" ]; then\n  printf '%s\\n' 'Authentication required.' >&2\n  exit 1\nfi\nprintf '%s' '{model_list}'\n"
+    );
+    make_executable_with_body(&bin, "cursor", &script);
+
+    larch()
+        .env_clear()
+        .env("PATH", &bin)
+        .env("HOME", home.path())
+        .env("TMPDIR", &temporary_root)
+        .env("USER", "larch-test")
+        .env("CURSOR_API_KEY", "test-cursor-token")
+        .args([
+            "agent",
+            "resolve-model-pins",
+            "--codex-state",
+            "ok",
+            "--cursor-state",
+            "ok",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("CURSOR_MODEL_PINS=ok"));
 }

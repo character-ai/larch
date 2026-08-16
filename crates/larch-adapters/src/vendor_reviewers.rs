@@ -69,6 +69,25 @@ pub struct CheckReviewersContext<'a> {
     pub env_map: &'a BTreeMap<String, String>,
 }
 
+/// Resolved inputs for one authenticated Cursor model-list run.
+#[derive(Clone, Copy, Debug)]
+pub struct CursorModelListContext<'a> {
+    /// Temporary root owning the isolated Cursor configuration directory.
+    pub temporary_root: &'a TemporaryRoot,
+    /// Operator home used to source the Cursor CLI configuration.
+    pub home: &'a Path,
+    /// Absolute working directory for the model-list child.
+    pub working_directory: &'a Path,
+    /// Optional user component for the shared vendor startup lock.
+    pub user: Option<&'a str>,
+    /// Optional live `CURSOR_API_KEY` for Cursor preflight and injection.
+    pub cursor_api_key: Option<&'a str>,
+    /// `uname`-style platform name (`Darwin`, `Linux`, …).
+    pub platform: &'a str,
+    /// Stable caller identity for Cursor preflight diagnostics.
+    pub caller: &'a str,
+}
+
 /// Probe Codex and Cursor availability, reusing fresh stamps when present.
 pub async fn check_reviewers<R: ExternalProcessRunner>(
     runner: &R,
@@ -112,7 +131,48 @@ pub async fn check_reviewers<R: ExternalProcessRunner>(
 /// Spawn `cursor agent models` and capture the list outcome.
 pub async fn run_cursor_model_list<R: ExternalProcessRunner>(
     runner: &R,
+    context: CursorModelListContext<'_>,
+    timeout: Duration,
+    cancellation: &dyn ProcessCancellation,
+) -> CursorModelListOutcome {
+    let preflight_config = CursorPreflightConfig::from_values(
+        context.platform,
+        context.cursor_api_key,
+        context.caller,
+    );
+    let startup_lock = startup_lock(VendorProgram::Cursor, context.platform, context.user);
+    let auth_context = VendorAuthContext {
+        temporary_root: context.temporary_root,
+        startup_lock: &startup_lock,
+        working_directory: context.working_directory,
+    };
+    let prepared = prepare_cursor_probe_session(
+        runner,
+        &preflight_config,
+        auth_context,
+        context.home,
+        cancellation,
+    )
+    .await;
+    let Some(session) = prepared.session else {
+        return cursor_model_list_session_failure();
+    };
+    let outcome = run_cursor_model_list_in_session(
+        runner,
+        context.working_directory,
+        &session,
+        timeout,
+        cancellation,
+    )
+    .await;
+    let _ = session.close();
+    outcome
+}
+
+async fn run_cursor_model_list_in_session<R: ExternalProcessRunner>(
+    runner: &R,
     working_directory: &Path,
+    session: &CursorProbeSession,
     timeout: Duration,
     cancellation: &dyn ProcessCancellation,
 ) -> CursorModelListOutcome {
@@ -131,6 +191,10 @@ pub async fn run_cursor_model_list<R: ExternalProcessRunner>(
             timed_out: false,
         };
     };
+    let mut request = request;
+    for (key, value) in session.child_environment() {
+        request = request.with_environment(key, value);
+    }
     match runner.run(request, cancellation).await {
         Ok(output) => CursorModelListOutcome {
             returncode: output.status().code().unwrap_or(1),
@@ -150,6 +214,15 @@ pub async fn run_cursor_model_list<R: ExternalProcessRunner>(
             stderr: String::new(),
             timed_out: false,
         },
+    }
+}
+
+fn cursor_model_list_session_failure() -> CursorModelListOutcome {
+    CursorModelListOutcome {
+        returncode: 1,
+        stdout: String::new(),
+        stderr: "cursor model-list could not prepare an authenticated session\n".to_owned(),
+        timed_out: false,
     }
 }
 
@@ -208,28 +281,25 @@ async fn probe_cursor<R: ExternalProcessRunner>(
         context.cursor_api_key,
         "agent check-reviewers",
     );
-    let startup_lock = startup_lock(VendorProgram::Cursor, context);
+    let startup_lock = startup_lock(VendorProgram::Cursor, context.platform, context.user);
     let auth_context = VendorAuthContext {
         temporary_root: context.temporary_root,
         startup_lock: &startup_lock,
         working_directory: context.working_directory,
     };
-    let preflight =
-        cursor_auth_preflight(runner, &preflight_config, auth_context, cancellation).await;
+    let prepared = prepare_cursor_probe_session(
+        runner,
+        &preflight_config,
+        auth_context,
+        context.home,
+        cancellation,
+    )
+    .await;
     let mut retry_limits = config.retry_limits;
-    if !preflight.ok || preflight.rc == CURSOR_PREFLIGHT_AUTH_RC {
+    if !prepared.preflight.ok || prepared.preflight.rc == CURSOR_PREFLIGHT_AUTH_RC {
         retry_limits = retry_limits.after_failed_preflight();
     }
-
-    let preread =
-        cursor_preread_service_token(runner, &preflight_config, auth_context, cancellation).await;
-    let CursorTokenPreread::Proceed(credential) = preread else {
-        let _ = cache.write_verdict("cursor", false);
-        return (false, false);
-    };
-
-    let Ok(session) = CursorProbeSession::open(context.temporary_root, context.home, credential)
-    else {
+    let Some(session) = prepared.session else {
         let _ = cache.write_verdict("cursor", false);
         return (false, false);
     };
@@ -371,7 +441,7 @@ async fn probe_codex<R: ExternalProcessRunner>(
         return (false, false, None);
     }
 
-    let startup_lock = startup_lock(VendorProgram::Codex, context);
+    let startup_lock = startup_lock(VendorProgram::Codex, context.platform, context.user);
     let mut loop_state = CodexProbeLoop::new(config.retry_limits);
     let (conclusion, gate_detail) = loop {
         let attempt = run_one_codex_probe(
@@ -473,26 +543,38 @@ async fn run_one_codex_probe<R: ExternalProcessRunner>(
     CodexProbeAttempt::from_exit(probe_attempt_rc(exit_code, timed_out, verdict))
 }
 
-fn startup_lock(program: VendorProgram, context: CheckReviewersContext<'_>) -> StartupLockConfig {
-    StartupLockConfig::from_values(
-        program,
-        context.platform,
-        context.user,
-        None,
-        None,
-        Some("0"),
+struct PreparedCursorProbeSession {
+    preflight: larch_core::ReviewAuthVerdict,
+    session: Option<CursorProbeSession>,
+}
+
+async fn prepare_cursor_probe_session<R: ExternalProcessRunner>(
+    runner: &R,
+    preflight_config: &CursorPreflightConfig,
+    auth_context: VendorAuthContext<'_>,
+    home: &Path,
+    cancellation: &dyn ProcessCancellation,
+) -> PreparedCursorProbeSession {
+    let preflight =
+        cursor_auth_preflight(runner, preflight_config, auth_context, cancellation).await;
+    let preread =
+        cursor_preread_service_token(runner, preflight_config, auth_context, cancellation).await;
+    let session = match preread {
+        CursorTokenPreread::Proceed(credential) => {
+            CursorProbeSession::open(auth_context.temporary_root, home, credential).ok()
+        }
+        CursorTokenPreread::Unreadable => None,
+    };
+    PreparedCursorProbeSession { preflight, session }
+}
+
+fn startup_lock(program: VendorProgram, platform: &str, user: Option<&str>) -> StartupLockConfig {
+    StartupLockConfig::from_values(program, platform, user, None, None, Some("0")).unwrap_or_else(
+        |_| {
+            StartupLockConfig::from_values(program, platform, Some("larch"), None, None, Some("0"))
+                .expect("fallback startup lock config")
+        },
     )
-    .unwrap_or_else(|_| {
-        StartupLockConfig::from_values(
-            program,
-            context.platform,
-            Some("larch"),
-            None,
-            None,
-            Some("0"),
-        )
-        .expect("fallback startup lock config")
-    })
 }
 
 fn strip_codex_config(text: &str) -> String {
