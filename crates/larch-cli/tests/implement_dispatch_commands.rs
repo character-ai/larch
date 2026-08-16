@@ -107,3 +107,66 @@ fn run_step_checks_help_exits_zero() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("--site"));
 }
+
+#[test]
+fn recovery_paths_help_exits_zero() {
+    let output = larch(&["implement", "recovery-paths", "--help"]);
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("--repo-root"));
+}
+
+#[test]
+fn recovery_paths_capture_postlaunch_writes_porcelain() {
+    let root = TempDir::new().expect("temp");
+    let repo = root.path().join("repo");
+    let tmp = root.path().join("tmp");
+    fs::create_dir_all(&repo).expect("repo");
+    fs::create_dir_all(&tmp).expect("tmp");
+    let init = std::process::Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(&repo)
+        .status()
+        .expect("git init");
+    assert!(init.success());
+    fs::write(repo.join("tracked.txt"), b"body").expect("file");
+    let add = std::process::Command::new("git")
+        .args(["add", "tracked.txt"])
+        .current_dir(&repo)
+        .status()
+        .expect("git add");
+    assert!(add.success());
+    let commit = std::process::Command::new("git")
+        .args([
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-qm",
+            "init",
+        ])
+        .current_dir(&repo)
+        .status()
+        .expect("git commit");
+    assert!(commit.success());
+    fs::write(repo.join("new.txt"), b"new").expect("untracked");
+    for name in [
+        "step2-prelaunch-porcelain.nul",
+        "step2-prelaunch-content-digests.txt",
+    ] {
+        fs::write(tmp.join(name), b"").expect("fixture");
+    }
+    let output = larch(&[
+        "implement",
+        "recovery-paths",
+        "--repo-root",
+        repo.to_str().expect("utf8"),
+        "--tmpdir",
+        tmp.to_str().expect("utf8"),
+        "--capture-postlaunch",
+    ]);
+    assert_eq!(output.status.code(), Some(0));
+    let porcelain = fs::read(tmp.join("step2-postlaunch-porcelain.nul")).expect("porcelain");
+    assert!(porcelain.windows(7).any(|w| w == b"new.txt"));
+}

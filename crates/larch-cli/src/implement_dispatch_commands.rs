@@ -844,3 +844,115 @@ fn stderr_or_stdout(output: &ProcessOutput) -> String {
         err.into_owned()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        IDENTITY_FAILED, format_rows, integrity_rows, kv_value, opt_string, publish_rows,
+        session_key, status_byte, stdout_is_merge_rows, terminal_action_in_output, unlink_safe,
+    };
+    use larch_core::ChangeKind;
+    use std::{ffi::OsStr, fs};
+    use tempfile::TempDir;
+
+    #[test]
+    fn merge_rows_accept_environment_keys_and_reject_noise() {
+        assert!(stdout_is_merge_rows("STEP=step3\nBGJOB_RC=0\n"));
+        assert!(stdout_is_merge_rows("A=1\nA=2\n"));
+        assert!(!stdout_is_merge_rows("not a kv line\n"));
+        assert!(!stdout_is_merge_rows("bad-key=1\n"));
+    }
+
+    #[test]
+    fn terminal_action_detects_known_next_actions() {
+        assert!(terminal_action_in_output("NEXT_ACTION=continue\n"));
+        assert!(terminal_action_in_output("NEXT_ACTION=stall\n"));
+        assert!(!terminal_action_in_output("NEXT_ACTION=unknown\n"));
+        assert!(!terminal_action_in_output("STEP=only\n"));
+    }
+
+    #[test]
+    fn integrity_rows_sanitize_newlines() {
+        let rows = integrity_rows("implement-step3-checks", "bad\nreason\rhere");
+        assert!(rows.contains("STEP=implement-step3-checks\n"));
+        assert!(rows.contains(&format!("NEXT_ACTION={IDENTITY_FAILED}\n")));
+        assert!(rows.contains("FAILURE_REASON=bad reason here\n"));
+        assert!(!rows.contains('\r'));
+    }
+
+    #[test]
+    fn format_rows_emits_trailing_newlines() {
+        assert_eq!(
+            format_rows(&[("A".into(), "1".into()), ("B".into(), "2".into())]),
+            "A=1\nB=2\n"
+        );
+    }
+
+    #[test]
+    fn status_byte_covers_change_kinds() {
+        assert_eq!(status_byte(ChangeKind::Added), b'A');
+        assert_eq!(status_byte(ChangeKind::Deleted), b'D');
+        assert_eq!(status_byte(ChangeKind::Modified), b'M');
+        assert_eq!(status_byte(ChangeKind::SubmoduleModified), b'M');
+        assert_eq!(status_byte(ChangeKind::TypeChanged), b'T');
+        assert_eq!(status_byte(ChangeKind::Renamed), b'R');
+        assert_eq!(status_byte(ChangeKind::Copied), b'C');
+    }
+
+    #[test]
+    fn kv_value_reads_first_nonempty() {
+        assert_eq!(
+            kv_value("FOO=kept\nFOO=later\n", "FOO").as_deref(),
+            Some("kept")
+        );
+        assert_eq!(kv_value("FOO=\n", "FOO"), None);
+        assert_eq!(kv_value("BAR=1\n", "FOO"), None);
+    }
+
+    #[test]
+    fn opt_string_defaults_empty() {
+        assert_eq!(opt_string(None), "");
+        assert_eq!(opt_string(Some(OsStr::new("x"))), "x");
+    }
+
+    #[test]
+    fn session_key_parses_export_and_plain_assignments() {
+        let root = TempDir::new().expect("temp");
+        let path = root.path().join("session-env.sh");
+        fs::write(
+            &path,
+            "export CLAUDE_PLUGIN_ROOT='/plugins/larch'\nLARCH_TOKEN_SESSION_ID=\"abc\"\n",
+        )
+        .expect("write");
+        assert_eq!(
+            session_key(root.path(), "session-env.sh", "CLAUDE_PLUGIN_ROOT").as_deref(),
+            Some("/plugins/larch")
+        );
+        assert_eq!(
+            session_key(root.path(), "session-env.sh", "LARCH_TOKEN_SESSION_ID").as_deref(),
+            Some("abc")
+        );
+        assert_eq!(session_key(root.path(), "session-env.sh", "MISSING"), None);
+    }
+
+    #[test]
+    fn publish_rows_and_unlink_round_trip() {
+        let root = TempDir::new().expect("temp");
+        let merge = root.path().join("merge.env");
+        publish_rows(root.path(), &merge, "STEP=step3\nBGJOB_RC=0").expect("publish");
+        assert_eq!(
+            fs::read_to_string(&merge).expect("read"),
+            "STEP=step3\nBGJOB_RC=0\n"
+        );
+        unlink_safe(&merge, root.path()).expect("unlink");
+        assert!(!merge.exists());
+    }
+
+    #[test]
+    fn publish_rows_rejects_non_kv() {
+        let root = TempDir::new().expect("temp");
+        let merge = root.path().join("merge.env");
+        let err = publish_rows(root.path(), &merge, "not-kv").expect_err("reject");
+        assert!(err.contains("KV stream"));
+    }
+}

@@ -43,7 +43,6 @@ from larch.implement.dispatch_helpers import (
     _rehydrate_larch_triplet,
     _rehydrate_plugin_root,
     _run,
-    _run_cli_forward,
     _tmpdir_from_env,
     _write_bytes_atomic,
     _write_text_atomic,

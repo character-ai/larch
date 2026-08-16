@@ -92,14 +92,33 @@ mod tests {
     #[test]
     fn submodule_prefix_matching() {
         assert!(path_under_submodule("vendor/foo", ["vendor"]));
+        assert!(path_under_submodule("vendor", ["vendor"]));
         assert!(!path_under_submodule("vendored/x", ["vendor"]));
+        assert!(!path_under_submodule("vendor/foo", [""]));
     }
 
     #[test]
     fn legacy_fingerprint_requires_closed_key_set() {
         assert!(manifest_legacy_fingerprint(&json!({"status": "complete"})));
+        assert!(manifest_legacy_fingerprint(&json!({
+            "status": "complete",
+            "summary": [],
+            "checks": {}
+        })));
         assert!(!manifest_legacy_fingerprint(
             &json!({"status": "complete", "schema_version": 1})
         ));
+        assert!(!manifest_legacy_fingerprint(&json!(["not", "object"])));
+    }
+
+    #[test]
+    fn clear_external_scout_paths_are_tmpdir_relative() {
+        let paths = clear_external_scout_paths(Path::new("/tmp/impl"));
+        assert!(paths.iter().all(|path| path.starts_with("/tmp/impl")));
+        assert!(
+            paths
+                .iter()
+                .any(|path| path.ends_with("scout-coder-manifest.json"))
+        );
     }
 }

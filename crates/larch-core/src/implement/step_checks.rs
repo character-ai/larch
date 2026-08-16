@@ -80,8 +80,37 @@ mod tests {
             ("implement-checks-step5-self-review".into(), 14_700)
         );
         assert_eq!(
+            resolve_step_and_budget("step6"),
+            (STEP6_CHECKS_STEP.into(), 10_800)
+        );
+        assert_eq!(
             resolve_step_and_budget("custom"),
             ("implement-checks-custom".into(), 10_800)
+        );
+    }
+
+    #[test]
+    fn public_args_include_optional_flags() {
+        assert_eq!(
+            public_args_for_site("step3", "commit-a", "true", true),
+            vec![
+                "--site".to_owned(),
+                "step3".to_owned(),
+                "--commit-site".to_owned(),
+                "commit-a".to_owned(),
+                "--forked-target".to_owned(),
+                "true".to_owned(),
+                "--rebase-checkpoint-4r".to_owned(),
+            ]
+        );
+        assert_eq!(
+            public_args_for_site("step6", "", "false", false),
+            vec![
+                "--site".to_owned(),
+                "step6".to_owned(),
+                "--forked-target".to_owned(),
+                "false".to_owned(),
+            ]
         );
     }
 }
