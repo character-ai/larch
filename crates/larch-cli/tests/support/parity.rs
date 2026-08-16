@@ -560,6 +560,69 @@ fn choose_from_pattern() -> &'static Regex {
     })
 }
 
+/// Collapse an `argparse` option invocation that repeats one shared metavar into
+/// the single-trailing-metavar form Python 3.13 introduced.
+///
+/// For an option with several strings sharing one metavar, `argparse` ≤3.12
+/// renders the invocation as `--days DAYS, --n DAYS` while 3.13 renders
+/// `--days, --n DAYS`. The Rust CLI mimics the ≤3.12 form. Like usage wrapping and
+/// choose-from quoting, this is `argparse` presentation that varies with the live
+/// Python on the runner, not a behavioral difference, so the oracle rewrites every
+/// such invocation to the collapsed 3.13 form before comparing. This runs
+/// unconditionally because the metavar spelling is never a meaningful parity
+/// signal.
+fn collapse_option_metavars(text: &str) -> String {
+    // Split on `\n` only (not `str::lines`, which drops the `\r` of a `\r\n`
+    // ending) so lines this normalizer leaves alone keep their exact bytes.
+    text.split('\n')
+        .map(collapse_metavars_in_line)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Rewrite one option-help line's invocation from the repeated-metavar form to the
+/// collapsed form. Non-option lines and invocations that do not repeat a single
+/// shared metavar are returned unchanged.
+fn collapse_metavars_in_line(line: &str) -> String {
+    let indent_len = line.len() - line.trim_start().len();
+    let (indent, rest) = line.split_at(indent_len);
+    // argparse separates the option invocation from its help text with at least
+    // two spaces. Only the invocation is rewritten; the help column is verbatim.
+    let (invocation, help) = rest
+        .find("  ")
+        .map_or((rest, ""), |offset| rest.split_at(offset));
+    collapse_invocation(invocation).map_or_else(
+        || line.to_owned(),
+        |collapsed| format!("{indent}{collapsed}{help}"),
+    )
+}
+
+/// Collapse `--opt META, --alias META` into `--opt, --alias META`. Returns `None`
+/// unless the text is a comma-separated list of two or more option strings that
+/// each carry the same non-empty metavar.
+fn collapse_invocation(invocation: &str) -> Option<String> {
+    let items: Vec<&str> = invocation.split(", ").collect();
+    if items.len() < 2 {
+        return None;
+    }
+    let mut options = Vec::with_capacity(items.len());
+    let mut shared_metavar: Option<&str> = None;
+    for item in &items {
+        let (option, metavar) = item.split_once(' ')?;
+        if !option.starts_with('-') || metavar.is_empty() || metavar.contains(' ') {
+            return None;
+        }
+        match shared_metavar {
+            None => shared_metavar = Some(metavar),
+            Some(existing) if existing == metavar => {}
+            Some(_) => return None,
+        }
+        options.push(option);
+    }
+    let metavar = shared_metavar?;
+    Some(format!("{} {metavar}", options.join(", ")))
+}
+
 fn normalize_text(text: &str, sandbox_root: &Path, rules: &[NormalizationRule]) -> String {
     let mut normalized = text.to_owned();
     for rule in rules {
@@ -587,7 +650,9 @@ fn normalize_text(text: &str, sandbox_root: &Path, rules: &[NormalizationRule]) 
                 .into_owned(),
         };
     }
-    normalize_choose_from(&collapse_usage_wrapping(&normalized))
+    collapse_option_metavars(&normalize_choose_from(&collapse_usage_wrapping(
+        &normalized,
+    )))
 }
 
 fn statusline_stamp_pattern() -> &'static Regex {
@@ -807,6 +872,28 @@ mod tests {
         );
 
         assert_eq!(normalized, "<SANDBOX>/out at <TIMESTAMP>; keep 2026-07-18");
+    }
+
+    #[test]
+    fn option_metavars_collapse_across_argparse_versions() {
+        // Python ≤3.12 repeats the shared metavar after each option string; 3.13
+        // shows it once. Both must normalize to the same collapsed text.
+        let legacy = normalize_text(
+            "options:\n  -h, --help            show this help message and exit\n  --days DAYS, --n DAYS\n  --log-root LOG_ROOT   corpus override\n",
+            Path::new("/tmp/case"),
+            &[],
+        );
+        let modern = normalize_text(
+            "options:\n  -h, --help            show this help message and exit\n  --days, --n DAYS\n  --log-root LOG_ROOT   corpus override\n",
+            Path::new("/tmp/case"),
+            &[],
+        );
+
+        assert_eq!(legacy, modern);
+        assert!(legacy.contains("  --days, --n DAYS\n"));
+        // Option strings without a shared metavar stay byte-identical.
+        assert!(legacy.contains("  -h, --help            show this help message and exit\n"));
+        assert!(legacy.contains("  --log-root LOG_ROOT   corpus override\n"));
     }
 
     #[test]
