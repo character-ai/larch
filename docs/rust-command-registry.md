@@ -268,11 +268,12 @@ in its closing PR. `N/A` means the leaf has no production GitHub call.
 | #8349 | In-process and nested-module ownership lint | PR #8376 | N/A |
 | #8350 | Terminal metadata, graph, and provenance closeout | Closing PR for #8350 | A |
 
-`complete-umbrella finish` now exposes a specific refusal when a closed direct
-leaf still has an `[IMPLEMENTING]` title. It reads and validates the complete
-native graph before any parent mutation, and accepts only the exact
-`[DONE] [LEAF OF N]` terminal title. The core lifecycle test and the remote
-finish test pin that refusal and prove it occurs before a parent mutation.
+`complete-umbrella` graph reads treat every CLOSED direct leaf as resolved and
+exclude it from candidacy, without requiring an exact `[DONE] [LEAF OF N]`
+title. Open leaves still need a valid lifecycle title and first-line body.
+`verify-child` keeps the strict `[DONE]` assertion for the leaf the run just
+shipped. `finish` still requires every direct leaf to be closed before any
+parent mutation, but closed-leaf title drift no longer refuses completion.
 
 ## Closed #7679 review boundary
 

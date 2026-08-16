@@ -845,7 +845,15 @@ async fn read_graph(
         if is_controlling_umbrella_title(&issue.title) {
             return Err("nested umbrellas are not supported".to_owned());
         }
-        validate_complete_umbrella_leaf(&issue, umbrella)?;
+        // Closed leaves are already resolved: exclude them from candidacy and
+        // do not fail closed on lifecycle-title drift. Strict [DONE] identity
+        // remains on verify-child for the leaf this run just shipped, and on
+        // open-leaf validation below.
+        if issue.state == GitHubIssueState::Open {
+            validate_complete_umbrella_leaf(&issue, umbrella)?;
+        } else if issue.is_pull_request {
+            return Err(format!("direct child #{} is a pull request", issue.number));
+        }
         if issue.id != reference.issue_id() {
             return Err("direct leaf identity changed during graph read".to_owned());
         }
