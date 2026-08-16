@@ -35,9 +35,9 @@ use crate::{
     blocker_commands::resolve_repo_for,
     github_service::{ServiceFailure, with_github_service},
     implement_bootstrap_continuation::resolve_revision_sha,
+    implement_child_seam::{delegate_larch_with_environment, delegate_python, resolve_plugin_root},
     implement_commands::{kv_value, read_kv_first, write_atomic},
-    python_verb::{publish_session_environment, run_python_verb},
-    runtime_entrypoint::{plugin_root, run_verified_larch_with_environment},
+    python_verb::publish_session_environment,
 };
 
 const PROGRAM: &str = "cli.py implement preflight";
@@ -86,6 +86,12 @@ const MAIN_HEALTH_STATUS_ORDER: [&str; 5] = ["pass", "fail", "pending", "error",
 const MAIN_HEALTH_DETAIL_MAX_CHARS: usize = 240;
 /// Deadline for each still-Python sibling Preflight composes.
 const PYTHON_SIBLING_TIMEOUT: Duration = Duration::from_secs(120);
+
+#[cfg(test)]
+std::thread_local! {
+    /// A declared substitute for the repository root the base scope resolves in.
+    static TEST_REPO_ROOT: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
 
 /// Verify admission, extract the plan, and probe main's CI health.
 pub fn preflight(arguments: &[OsString]) -> ExitCode {
@@ -154,7 +160,7 @@ fn run(request: &Request) -> ExitCode {
         return refuse("preflight tmpdir is not writable.");
     }
     let _removed = fs::remove_file(&probe);
-    if !plugin_root().is_ok_and(|root| root.join("python").join("cli.py").is_file()) {
+    if !resolve_plugin_root().is_ok_and(|root| root.join("python").join("cli.py").is_file()) {
         return refuse("cannot resolve CLAUDE_PLUGIN_ROOT/python/cli.py.");
     }
     let environment = session_environment();
@@ -515,7 +521,7 @@ fn governance(request: &Request, body: &str, repo_root: &Path) -> Result<Receipt
         &base_target_sha,
     );
     argv.push(OsString::from("--preflight-envelope"));
-    let Ok(output) = run_python_verb(argv, PYTHON_SIBLING_TIMEOUT) else {
+    let Ok(output) = delegate_python(argv, PYTHON_SIBLING_TIMEOUT) else {
         return Err(refuse_governance_read("cannot start issue governance-gate"));
     };
     let envelope = String::from_utf8_lossy(output.stdout()).into_owned();
@@ -701,8 +707,8 @@ fn read_main_health(request: &Request) -> Vec<(&'static str, String)> {
         return main_health_error("repo resolution failed");
     };
     // `ci main-health` remains Python-owned, so its status policy has one owner.
-    let output = run_python_verb(
-        [
+    let output = delegate_python(
+        vec![
             OsString::from("ci"),
             OsString::from("main-health"),
             OsString::from("--repo"),
@@ -862,7 +868,7 @@ fn capture(
     environment: &[(ChildEnvironment, OsString)],
     name: &str,
 ) -> (i32, String) {
-    let result = run_verified_larch_with_environment(arguments, environment);
+    let result = delegate_larch_with_environment(arguments, environment);
     let (code, stdout, stderr) = match &result {
         Ok(output) => (
             output.status().code().unwrap_or(1),
@@ -921,6 +927,10 @@ pub fn governance_gate_argv(
 fn repo_root() -> PathBuf {
     use std::os::unix::ffi::OsStringExt as _;
 
+    #[cfg(test)]
+    if let Some(root) = TEST_REPO_ROOT.with(|slot| slot.borrow().clone()) {
+        return root;
+    }
     let cwd = env::current_dir().unwrap_or_default();
     GixRepository::discover(&cwd)
         .ok()
@@ -935,10 +945,1045 @@ fn repo_root() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        MAIN_HEALTH_DETAIL_MAX_CHARS, envelope_error, main_health_error,
-        malformed_terminal_metadata, sha1_hex,
+        MAIN_HEALTH_DETAIL_MAX_CHARS, Request, TEST_REPO_ROOT, admit, append_bypass, bypass_count,
+        bypass_count as bypass_records, capture, emit_success_envelope, envelope_error,
+        envelope_value, extract_plan, governance, governance_gate_argv, load_tracked_paths,
+        main_health_error, main_health_rows, malformed_terminal_metadata, materialize_issue,
+        plan_metadata, preflight, read_main_health, read_plan_block, refuse, repo_root, run,
+        sha1_hex, trailer_value,
     };
-    use std::path::Path;
+    use crate::{
+        github_service::with_test_github_service,
+        implement_child_seam::{declare_plugin_root, install_larch, install_python},
+    };
+    use larch_adapters::github::OctocrabGitHubService;
+    use larch_core::{ProcessOutput, ProcessStatus, TrailerKey};
+    use larch_test_support::{GitFixture, GitRepository, IssueServiceExchange, IssueServiceStub};
+    use serde_json::{Value, json};
+    use std::{
+        collections::HashSet,
+        ffi::OsString,
+        fs,
+        path::{Path, PathBuf},
+        process::ExitCode,
+        sync::Arc,
+    };
+    use tempfile::TempDir;
+
+    /// The plan text every plan-contract fixture in this module reuses.
+    const VALID_PLAN: &str = concat!(
+        "## Plan\n\n",
+        "### Closed decisions and ownership\n\n",
+        "- Extend preflight only.\n\n",
+        "### Ordered implementation\n\n",
+        "1. Validate the contract.\n",
+        "2. Wire callers.\n\n",
+        "## Files to modify/create\n\n",
+        "### UPDATED: Cargo.toml\n\n",
+        "## Acceptance\n\n",
+        "- Contract holds.\n\n",
+        "## Breaking changes and migration\n\n",
+        "None.\n\n",
+        "difficulty: HARD\n",
+        "diff_lines: 42\n",
+    );
+
+    /// Read the exit code one refusing Preflight step published.
+    ///
+    /// Several steps return a success value that does not implement `Debug`,
+    /// so the shared `expect_err` spelling is unavailable here.
+    trait Refusal {
+        fn refusal(self) -> ExitCode;
+    }
+
+    impl<T> Refusal for Result<T, ExitCode> {
+        fn refusal(self) -> ExitCode {
+            match self {
+                Ok(_value) => panic!("the step must refuse"),
+                Err(code) => code,
+            }
+        }
+    }
+
+    fn plan_body(plan: &str) -> String {
+        format!("Preamble.\n\n<!-- larch:plan:start -->\n{plan}<!-- larch:plan:end -->\n")
+    }
+
+    fn receipt_line() -> String {
+        format!(
+            "<!-- larch:plan-receipt v1 plan_sha256={} base_sha={} blockers_sha256={} owners_sha256={} -->",
+            "a".repeat(64),
+            "b".repeat(40),
+            "c".repeat(64),
+            "d".repeat(64)
+        )
+    }
+
+    fn output(code: i32, stdout: &str, stderr: &str) -> ProcessOutput {
+        ProcessOutput::new(
+            ProcessStatus::new(code == 0, Some(code)),
+            stdout.as_bytes().to_vec(),
+            stderr.as_bytes().to_vec(),
+            false,
+            false,
+        )
+    }
+
+    fn declare_repo_root(root: &Path) {
+        TEST_REPO_ROOT.with(|slot| *slot.borrow_mut() = Some(root.to_path_buf()));
+    }
+
+    fn clear_hooks() {
+        crate::implement_child_seam::clear_hooks();
+        TEST_REPO_ROOT.with(|slot| *slot.borrow_mut() = None);
+    }
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    fn request(tmpdir: &Path, force: bool) -> Request {
+        Request {
+            issue: "12".to_owned(),
+            repo: "owner/repo".to_owned(),
+            force,
+            tmpdir: tmpdir.to_path_buf(),
+        }
+    }
+
+    fn arguments(values: &[&str]) -> Vec<OsString> {
+        values.iter().map(OsString::from).collect()
+    }
+
+    /// Build one complete typed issue response for the loopback GitHub service.
+    fn issue_response(number: u64, title: &str, body: &str) -> Value {
+        let mut value: Value = serde_json::from_str(include_str!(
+            "../../larch-adapters/fixtures/github_issue.json"
+        ))
+        .expect("valid issue fixture");
+        value["id"] = json!(number * 10);
+        value["number"] = json!(number);
+        value["title"] = json!(title);
+        value["body"] = json!(body);
+        value["state"] = json!("open");
+        value["url"] = json!(format!(
+            "https://example.test/repos/owner/repo/issues/{number}"
+        ));
+        value["repository_url"] = json!("https://example.test/repos/owner/repo");
+        value["html_url"] = json!(format!("https://github.com/owner/repo/issues/{number}"));
+        value["labels"] = json!([]);
+        value["updated_at"] = json!("2026-08-03T00:00:00Z");
+        value
+    }
+
+    /// Start one loopback-only typed GitHub service for a command unit test.
+    fn service(
+        exchanges: impl IntoIterator<Item = IssueServiceExchange>,
+    ) -> (
+        Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync>,
+        IssueServiceStub,
+    ) {
+        let server = IssueServiceStub::start(exchanges).expect("start issue service stub");
+        let base_url = server.base_url().to_owned();
+        let factory: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+            Arc::new(move || OctocrabGitHubService::with_test_base(&base_url));
+        (factory, server)
+    }
+
+    /// Build a repository whose declared upstream base scope is readable.
+    fn upstream_repository() -> GitRepository {
+        let repository = GitRepository::builder(GitFixture::Refs)
+            .build()
+            .expect("git refs fixture");
+        let updated = repository
+            .git(["update-ref", "refs/remotes/upstream/main", "HEAD"])
+            .expect("update upstream ref");
+        assert!(updated.success(), "upstream ref must be created");
+        repository
+    }
+
+    #[test]
+    fn the_command_line_admits_only_a_positive_issue_number() {
+        assert_eq!(preflight(&arguments(&["--help"])), ExitCode::SUCCESS);
+        assert_eq!(preflight(&[]), ExitCode::from(2));
+        assert_eq!(preflight(&arguments(&["--issue", "12"])), ExitCode::from(2));
+        for issue in ["0", "abc", "-1", ""] {
+            assert_eq!(
+                preflight(&arguments(&[
+                    "--issue",
+                    issue,
+                    "--preflight-tmpdir",
+                    "/tmp/preflight"
+                ])),
+                ExitCode::from(2),
+                "{issue}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unusable_tmpdir_or_plugin_root_refuses_before_any_child() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let blocker = root.path().join("blocker");
+        fs::write(&blocker, "").expect("blocker");
+        install_larch(|_arguments, _environment| panic!("a refusal must not compose a child"));
+
+        assert_eq!(
+            run(&request(&blocker.join("nested"), false)),
+            ExitCode::from(2)
+        );
+        declare_plugin_root(root.path());
+        assert_eq!(
+            run(&request(&root.path().join("preflight"), false)),
+            ExitCode::from(2)
+        );
+        assert_eq!(refuse("message."), ExitCode::from(2));
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_passing_gate_reports_its_resume_state() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        install_larch(|arguments, _environment| {
+            assert_eq!(arguments[0], OsString::from("admission"));
+            Ok(output(0, "ADMISSION_RESULT=pass\nRESUME=true\n", ""))
+        });
+
+        let admission = admit(&request(root.path(), false), &[]).expect("admitted");
+
+        assert_eq!(admission.result, "pass");
+        assert_eq!(admission.resume, "true");
+        assert!(root.path().join("admission.stdout").is_file());
+        assert!(root.path().join("admission.stderr").is_file());
+        clear_hooks();
+    }
+
+    #[test]
+    fn every_refused_admission_reports_the_field_its_refusal_explains() {
+        for stdout in [
+            "ADMISSION_ERROR=gh unavailable\n",
+            "ADMISSION_RESULT=missing-designed-prefix\nTITLE=Fix the gate\n",
+            "ADMISSION_RESULT=managed-prefix\nTITLE=Umbrella leaf\n",
+            "ADMISSION_RESULT=report-title\nTITLE=Report\n",
+            "ADMISSION_RESULT=has-blockers\nBLOCKERS=7,8\n",
+            "ADMISSION_RESULT=closed\n",
+            "",
+        ] {
+            clear_hooks();
+            let root = TempDir::new().expect("temp");
+            let body = stdout.to_owned();
+            install_larch(move |_arguments, _environment| Ok(output(1, &body, "")));
+
+            let refused = admit(&request(root.path(), false), &[]).refusal();
+
+            assert_eq!(refused, ExitCode::from(2), "{stdout}");
+            clear_hooks();
+        }
+    }
+
+    #[test]
+    fn a_passing_gate_with_a_non_pass_result_still_refuses() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        install_larch(|_arguments, _environment| Ok(output(0, "ADMISSION_RESULT=resume\n", "")));
+
+        assert_eq!(
+            admit(&request(root.path(), false), &[]).refusal(),
+            ExitCode::from(2)
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn force_bypasses_only_a_missing_designed_prefix() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        install_larch(|_arguments, _environment| {
+            Ok(output(
+                1,
+                "ADMISSION_RESULT=missing-designed-prefix\nTITLE=Fix the gate\nRESUME=false\n",
+                "",
+            ))
+        });
+
+        let admission = admit(&request(root.path(), true), &[]).expect("bypassed");
+
+        assert_eq!(admission.result, "missing-designed-prefix");
+        assert_eq!(admission.resume, "false");
+        assert_eq!(bypass_count(root.path()), 1);
+        clear_hooks();
+    }
+
+    #[test]
+    fn an_unwritable_bypass_log_refuses_the_forced_run() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        fs::create_dir(root.path().join("force-bypass.log")).expect("blocking directory");
+        install_larch(|_arguments, _environment| {
+            Ok(output(1, "ADMISSION_RESULT=missing-designed-prefix\n", ""))
+        });
+
+        assert_eq!(
+            admit(&request(root.path(), true), &[]).refusal(),
+            ExitCode::from(2)
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_bypass_log_counts_only_the_records_it_holds() {
+        let root = TempDir::new().expect("temp");
+
+        assert_eq!(bypass_records(root.path()), 0);
+        append_bypass(root.path(), "missing-designed-prefix", "12").expect("first");
+        append_bypass(root.path(), "missing-designed-prefix", "13").expect("second");
+        assert_eq!(bypass_records(root.path()), 2);
+        let log = fs::read_to_string(root.path().join("force-bypass.log")).expect("log");
+        assert!(log.contains("BYPASS kind=missing-designed-prefix issue=13\n"));
+    }
+
+    #[test]
+    fn an_unstartable_child_is_captured_as_a_failed_diagnostic() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        install_larch(|_arguments, _environment| Err("cannot start verified larch".to_owned()));
+
+        let (code, stdout) = capture(
+            &request(root.path(), false),
+            &arguments(&["admission", "gate"]),
+            &[],
+            "admission",
+        );
+
+        assert_eq!(code, 1);
+        assert!(stdout.is_empty());
+        assert!(
+            fs::read_to_string(root.path().join("admission.stderr"))
+                .expect("stderr")
+                .contains("cannot start verified larch")
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_malformed_plan_block_read_is_a_contract_defect_not_a_failed_read() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let plan = root.path().join("plan-from-issue.txt");
+
+        install_larch(|_arguments, _environment| Ok(output(0, "BLOCK_PRESENT=true\n", "")));
+        read_plan_block(&request(root.path(), false), &[], &plan).expect("read");
+
+        install_larch(|_arguments, _environment| Ok(output(1, "MALFORMED=unbalanced\n", "")));
+        read_plan_block(&request(root.path(), false), &[], &plan).expect("malformed is a defect");
+
+        install_larch(|_arguments, _environment| Ok(output(2, "", "boom\n")));
+        assert_eq!(
+            read_plan_block(&request(root.path(), false), &[], &plan).refusal(),
+            ExitCode::from(2)
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn the_issue_snapshot_is_frozen_before_any_later_step() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let path = root.path().join("issue.json");
+        let title = "[DESIGNED] Fix the gate";
+        let (github, server) = service([IssueServiceExchange::json(
+            "GET",
+            "/repos/owner/repo/issues/12",
+            200,
+            serde_json::to_vec(&issue_response(12, title, "Body text.")).expect("issue body"),
+        )
+        .expect("issue response")]);
+
+        let snapshot = with_test_github_service(github, || {
+            materialize_issue(&request(root.path(), false), &path)
+        })
+        .expect("snapshot");
+
+        assert_eq!(snapshot.title, title);
+        assert_eq!(snapshot.body, "Body text.");
+        let rendered = fs::read_to_string(&path).expect("issue json");
+        assert!(rendered.contains("\"number\":12"));
+        assert!(rendered.ends_with('\n'));
+        server.join().expect("one issue read");
+        clear_hooks();
+    }
+
+    #[test]
+    fn an_unreadable_issue_refuses_after_persisting_its_diagnostic() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let path = root.path().join("issue.json");
+        let (github, server) = service([IssueServiceExchange::json(
+            "GET",
+            "/repos/owner/repo/issues/12",
+            404,
+            b"{\"message\":\"Not Found\"}".to_vec(),
+        )
+        .expect("missing issue response")]);
+
+        let refused = with_test_github_service(github, || {
+            materialize_issue(&request(root.path(), false), &path)
+        })
+        .refusal();
+
+        assert_eq!(refused, ExitCode::from(2));
+        assert!(
+            !fs::read_to_string(root.path().join("gh-issue-view.stderr"))
+                .expect("stderr")
+                .is_empty()
+        );
+        let _ = server.join();
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_closed_issue_renders_its_state_and_labels() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let path = root.path().join("issue.json");
+        let mut response = issue_response(12, "[DESIGNED] Fix", "Body.");
+        response["state"] = json!("closed");
+        response["labels"] = json!([{
+            "id": 1,
+            "node_id": "L_1",
+            "url": "https://example.test/repos/owner/repo/labels/bug",
+            "name": "bug",
+            "description": "A defect",
+            "color": "ff0000",
+            "default": false,
+        }]);
+        let (github, server) = service([IssueServiceExchange::json(
+            "GET",
+            "/repos/owner/repo/issues/12",
+            200,
+            serde_json::to_vec(&response).expect("issue body"),
+        )
+        .expect("issue response")]);
+
+        with_test_github_service(github, || {
+            materialize_issue(&request(root.path(), false), &path)
+        })
+        .expect("snapshot");
+
+        let rendered = fs::read_to_string(&path).expect("issue json");
+        assert!(rendered.contains("\"state\":\"CLOSED\""));
+        assert!(rendered.contains("\"name\":\"bug\""));
+        server.join().expect("one issue read");
+        clear_hooks();
+    }
+
+    #[test]
+    fn the_tracked_path_set_comes_from_the_live_index() {
+        let root = repo_root();
+        let tracked = load_tracked_paths(&root).expect("tracked paths");
+
+        assert!(tracked.contains("Cargo.toml"));
+        assert!(load_tracked_paths(Path::new("/nonexistent-preflight-repo")).is_err());
+    }
+
+    #[test]
+    fn only_a_contract_clean_plan_block_is_frozen() {
+        let root = TempDir::new().expect("temp");
+        let repository = repo_root();
+        let tracked = load_tracked_paths(&repository).expect("tracked paths");
+        let plan_path = root.path().join("plan-from-issue.txt");
+        let subject = request(root.path(), false);
+
+        let extracted = extract_plan(
+            &subject,
+            &plan_body(VALID_PLAN),
+            &repository,
+            &tracked,
+            &plan_path,
+        )
+        .expect("extracted");
+        assert_eq!(extracted, VALID_PLAN);
+        assert_eq!(
+            fs::read_to_string(&plan_path).expect("frozen plan"),
+            VALID_PLAN
+        );
+
+        for body in [
+            "no plan block here".to_owned(),
+            plan_body("### UPDATED: Cargo.toml\n"),
+            "<!-- larch:plan:start -->\nunterminated\n".to_owned(),
+        ] {
+            assert_eq!(
+                extract_plan(&subject, &body, &repository, &tracked, &plan_path).refusal(),
+                ExitCode::from(2),
+                "{body}"
+            );
+        }
+        assert_eq!(
+            extract_plan(
+                &request(root.path(), true),
+                "no plan block here",
+                &repository,
+                &tracked,
+                &plan_path
+            )
+            .refusal(),
+            ExitCode::from(2)
+        );
+        let unwritable = HashSet::from(["Cargo.toml".to_owned()]);
+        assert_eq!(
+            extract_plan(
+                &subject,
+                &plan_body(VALID_PLAN),
+                &repository,
+                &unwritable,
+                root.path()
+            )
+            .refusal(),
+            ExitCode::from(2)
+        );
+    }
+
+    #[test]
+    fn an_unreadable_base_scope_refuses_migration_governance() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        install_python(|_arguments| panic!("an unreadable base scope must not reach the gate"));
+
+        assert_eq!(
+            governance(&request(root.path(), false), "body", root.path()).refusal(),
+            ExitCode::from(2)
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_clean_governance_verdict_reports_its_report_only_warnings() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let repository = upstream_repository();
+        install_python(|arguments| {
+            assert!(arguments.contains(&OsString::from("--preflight-envelope")));
+            Ok(output(
+                0,
+                "SEMANTIC_REASONS=\nREPORT_ONLY_COUNT=1\nREPORT_ONLY_0=stale-owner-row\nCLEANUP_0=larch deps prune\n",
+                "",
+            ))
+        });
+
+        let scope = governance(&request(root.path(), false), "body", repository.root())
+            .expect("clean verdict");
+
+        assert!(!scope.revalidation);
+        assert!(scope.previous_base_sha.is_empty());
+        assert!(root.path().join("governance-body.md").is_file());
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_semantic_reason_authorizes_a_scoped_receipt_refresh() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let repository = upstream_repository();
+        install_python(|_arguments| Ok(output(0, "SEMANTIC_REASONS=plan-paths-moved\n", "")));
+        let body = format!("Preamble.\n{}\n", receipt_line());
+
+        let scope = governance(&request(root.path(), false), &body, repository.root())
+            .expect("semantic verdict");
+
+        assert!(scope.revalidation);
+        assert_eq!(scope.previous_base_sha, "b".repeat(40));
+        assert_eq!(scope.target_base_sha.len(), 40);
+
+        assert_eq!(
+            governance(
+                &request(root.path(), false),
+                "no receipt",
+                repository.root()
+            )
+            .refusal(),
+            ExitCode::from(2)
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_blocking_governance_verdict_prints_its_remediation() {
+        for reasons in [
+            larch_core::REASON_STALE_PLAN_BODY,
+            "plan-base-scope-unavailable",
+            "unmapped-reason",
+        ] {
+            clear_hooks();
+            let root = TempDir::new().expect("temp");
+            let repository = upstream_repository();
+            let envelope = format!("REFUSAL_TEXT=**❌ blocked.**\nBLOCKING_REASONS={reasons}\n");
+            install_python(move |_arguments| Ok(output(1, &envelope, "")));
+
+            assert_eq!(
+                governance(&request(root.path(), false), "body", repository.root()).refusal(),
+                ExitCode::from(2),
+                "{reasons}"
+            );
+            clear_hooks();
+        }
+    }
+
+    #[test]
+    fn an_unreadable_governance_envelope_refuses() {
+        for envelope in [("ENVELOPE_ERROR=gate crashed\n", 0), ("", 1)] {
+            clear_hooks();
+            let root = TempDir::new().expect("temp");
+            let repository = upstream_repository();
+            let (stdout, code) = envelope;
+            let body = stdout.to_owned();
+            install_python(move |_arguments| Ok(output(code, &body, "")));
+
+            assert_eq!(
+                governance(&request(root.path(), false), "body", repository.root()).refusal(),
+                ExitCode::from(2),
+                "{stdout}"
+            );
+            clear_hooks();
+        }
+
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let repository = upstream_repository();
+        install_python(|_arguments| Err("cannot start issue governance-gate".to_owned()));
+        assert_eq!(
+            governance(&request(root.path(), false), "body", repository.root()).refusal(),
+            ExitCode::from(2)
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn the_governance_gate_argv_names_every_declared_input() {
+        let argv = governance_gate_argv(
+            "12",
+            "owner/repo",
+            Path::new("/tmp/body.md"),
+            Path::new("/repo"),
+            "abc123",
+        );
+
+        assert_eq!(
+            argv,
+            arguments(&[
+                "issue",
+                "governance-gate",
+                "--issue",
+                "12",
+                "--repo",
+                "owner/repo",
+                "--body-file",
+                "/tmp/body.md",
+                "--repo-root",
+                "/repo",
+                "--head-sha",
+                "abc123",
+            ])
+        );
+    }
+
+    #[test]
+    fn plan_metadata_refuses_an_unreviewed_or_malformed_plan() {
+        let root = TempDir::new().expect("temp");
+        let subject = request(root.path(), false);
+
+        assert_eq!(plan_metadata(&subject, VALID_PLAN).expect("tier"), "HARD");
+        assert_eq!(
+            plan_metadata(&subject, "### NEW: a\ndiff_lines: 10\n").expect("no tier"),
+            ""
+        );
+        for plan in [
+            "### NEW: a\ndifficulty: NOPE!!\ndiff_lines: 10\n",
+            "### NEW: a\nreview_status: panel-init-failed\ndiff_lines: 10\n",
+            "### NEW: a\nreview_status: panel-skipped\ndiff_lines: 10\n",
+            "### NEW: a\nrounds_completed: 0\ndiff_lines: 10\n",
+        ] {
+            assert_eq!(
+                plan_metadata(&subject, plan).refusal(),
+                ExitCode::from(2),
+                "{plan}"
+            );
+        }
+        assert_eq!(
+            plan_metadata(
+                &subject,
+                "### NEW: a\nrounds_completed: 2\ndiff_lines: 10\n"
+            )
+            .expect("reviewed"),
+            ""
+        );
+        assert_eq!(trailer_value("### NEW: a\n", TrailerKey::Difficulty), "");
+    }
+
+    #[test]
+    fn a_recognized_prefix_above_diff_lines_reads_as_malformed() {
+        assert_eq!(
+            malformed_terminal_metadata("### NEW: a\ndifficulty: NOPE!!\ndiff_lines: 10\n"),
+            Some("difficulty: NOPE!!".to_owned())
+        );
+        assert_eq!(
+            malformed_terminal_metadata("### NEW: a\ndifficulty: TRIVIAL\ndiff_lines: 10\n"),
+            None
+        );
+        assert_eq!(malformed_terminal_metadata("### NEW: a\n"), None);
+        assert_eq!(malformed_terminal_metadata(""), None);
+    }
+
+    #[test]
+    fn main_health_reports_the_python_owners_verdict() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        install_python(|arguments| {
+            assert!(arguments.contains(&OsString::from("main-health")));
+            Ok(output(
+                0,
+                "MAIN_CI_STATUS=pass\nMAIN_FAILED_RUN_ID=\nMAIN_HEALTH_HEAD_SHA=abc\nMAIN_HEALTH_DETAIL=green\n",
+                "",
+            ))
+        });
+
+        let rows = main_health_rows(&request(root.path(), false));
+
+        assert_eq!(rows[0], ("MAIN_CI_STATUS", "pass".to_owned()));
+        assert_eq!(rows[2], ("MAIN_HEALTH_HEAD_SHA", "abc".to_owned()));
+        assert_eq!(
+            fs::read_to_string(root.path().join("main-health.env")).expect("env"),
+            "MAIN_CI_STATUS=pass\nMAIN_FAILED_RUN_ID=\nMAIN_HEALTH_HEAD_SHA=abc\nMAIN_HEALTH_DETAIL=green\n"
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn every_main_health_failure_degrades_to_one_error_row() {
+        let root = TempDir::new().expect("temp");
+        let subject = request(root.path(), false);
+
+        clear_hooks();
+        install_python(|_arguments| Ok(output(0, "MAIN_CI_STATUS=pass\n", "")));
+        assert_eq!(
+            read_main_health(&subject)[0],
+            ("MAIN_CI_STATUS", "error".to_owned())
+        );
+
+        install_python(|_arguments| Ok(output(3, "", "probe exploded\n")));
+        assert!(read_main_health(&subject)[3].1.contains("probe exploded"));
+
+        install_python(|_arguments| Ok(output(3, "", "")));
+        assert!(read_main_health(&subject)[3].1.contains('3'));
+
+        install_python(|_arguments| Err("cannot start ci main-health".to_owned()));
+        assert!(read_main_health(&subject)[3].1.contains("cannot start"));
+        clear_hooks();
+    }
+
+    #[test]
+    fn an_unwritable_health_file_degrades_the_probe() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        fs::create_dir(root.path().join("main-health.env")).expect("blocking directory");
+        install_python(|_arguments| {
+            Ok(output(
+                0,
+                "MAIN_CI_STATUS=pass\nMAIN_FAILED_RUN_ID=\nMAIN_HEALTH_HEAD_SHA=abc\nMAIN_HEALTH_DETAIL=green\n",
+                "",
+            ))
+        });
+
+        let rows = main_health_rows(&request(root.path(), false));
+
+        assert_eq!(rows[0], ("MAIN_CI_STATUS", "error".to_owned()));
+        assert!(rows[3].1.contains("cannot write main-health.env"));
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_health_probe_failure_degrades_to_a_bounded_error_row() {
+        let rows = main_health_error(&"detail ".repeat(200));
+
+        assert_eq!(rows[0], ("MAIN_CI_STATUS", "error".to_owned()));
+        assert!(rows[3].1.len() <= MAIN_HEALTH_DETAIL_MAX_CHARS);
+    }
+
+    #[test]
+    fn a_contract_clean_envelope_is_published_in_its_declared_order() {
+        let root = TempDir::new().expect("temp");
+        let plan = root.path().join("plan-from-issue.txt");
+        let issue_json = root.path().join("issue.json");
+        fs::write(&plan, VALID_PLAN).expect("plan");
+        fs::write(&issue_json, "{}\n").expect("issue json");
+        let published = rows(&[
+            ("PLAN_PATH", &plan.to_string_lossy()),
+            ("ISSUE_JSON_PATH", &issue_json.to_string_lossy()),
+        ]);
+
+        assert_eq!(
+            emit_success_envelope(&published, &plan, &issue_json),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(envelope_value(&published, "MAIN_CI_STATUS"), "pass");
+        assert_eq!(envelope_value(&published, "ABSENT"), "");
+
+        let revalidated = rows(&[
+            ("PLAN_PATH", &plan.to_string_lossy()),
+            ("ISSUE_JSON_PATH", &issue_json.to_string_lossy()),
+            ("PLAN_RECEIPT_SCOPE_REVALIDATION", "true"),
+            ("PLAN_RECEIPT_PREVIOUS_BASE_SHA", &"a".repeat(40)),
+            ("PLAN_RECEIPT_TARGET_BASE_SHA", &"b".repeat(40)),
+        ]);
+        assert_eq!(
+            emit_success_envelope(&revalidated, &plan, &issue_json),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            emit_success_envelope(&rows(&[]), &plan, &issue_json),
+            ExitCode::from(2)
+        );
+    }
+
+    #[test]
+    fn the_envelope_self_check_reports_every_broken_rule() {
+        let root = TempDir::new().expect("temp");
+        let plan = root.path().join("plan-from-issue.txt");
+        let issue_json = root.path().join("issue.json");
+        fs::write(&plan, VALID_PLAN).expect("plan");
+        let readable = |overrides: &[(&str, &str)]| {
+            let mut base = vec![
+                ("PLAN_PATH", plan.to_string_lossy().into_owned()),
+                ("ISSUE_JSON_PATH", issue_json.to_string_lossy().into_owned()),
+            ];
+            base.extend(
+                overrides
+                    .iter()
+                    .map(|(key, value)| (*key, (*value).to_owned())),
+            );
+            let pairs: Vec<(&str, &str)> = base
+                .iter()
+                .map(|(key, value)| (*key, value.as_str()))
+                .collect();
+            rows(&pairs)
+        };
+
+        assert_eq!(
+            envelope_error(&readable(&[]), &plan, &issue_json),
+            Some("ISSUE_JSON_PATH must be readable".to_owned())
+        );
+        fs::write(&issue_json, "{}\n").expect("issue json");
+        assert_eq!(envelope_error(&readable(&[]), &plan, &issue_json), None);
+
+        let mut duplicated = readable(&[]);
+        duplicated.push(("RESUME", "true".to_owned()));
+        assert_eq!(
+            envelope_error(&duplicated, &plan, &issue_json),
+            Some("duplicate key RESUME".to_owned())
+        );
+        let short: Vec<(&str, String)> = readable(&[])
+            .into_iter()
+            .filter(|(key, _value)| *key != "DESIGN_DIFFICULTY")
+            .collect();
+        assert_eq!(
+            envelope_error(&short, &plan, &issue_json),
+            Some("missing key DESIGN_DIFFICULTY".to_owned())
+        );
+
+        for (overrides, expected) in [
+            (vec![("BYPASS_COUNT", "")], "BYPASS_COUNT must be numeric"),
+            (
+                vec![("BYPASS_COUNT", "many")],
+                "BYPASS_COUNT must be numeric",
+            ),
+            (
+                vec![("PLAN_RECEIPT_SCOPE_REVALIDATION", "maybe")],
+                "PLAN_RECEIPT_SCOPE_REVALIDATION must be true or false",
+            ),
+            (
+                vec![("PLAN_RECEIPT_SCOPE_REVALIDATION", "true")],
+                "receipt scope revalidation requires two SHA values",
+            ),
+            (
+                vec![("PLAN_RECEIPT_PREVIOUS_BASE_SHA", "abc")],
+                "receipt scope SHA values require revalidation",
+            ),
+            (
+                vec![("MAIN_CI_STATUS", "unknown")],
+                "MAIN_CI_STATUS must be pass, fail, pending, error, or skip",
+            ),
+            (
+                vec![("MAIN_HEALTH_DETAIL", "line\nbreak")],
+                "MAIN_HEALTH_DETAIL must be single-line",
+            ),
+        ] {
+            assert_eq!(
+                envelope_error(&readable(&overrides), &plan, &issue_json),
+                Some(expected.to_owned()),
+                "{overrides:?}"
+            );
+        }
+        assert_eq!(
+            envelope_error(
+                &readable(&[]),
+                Path::new("/elsewhere/plan.txt"),
+                &issue_json
+            ),
+            Some("PLAN_PATH must match preflight tmpdir".to_owned())
+        );
+        assert_eq!(
+            envelope_error(&readable(&[]), &plan, Path::new("/elsewhere/issue.json")),
+            Some("ISSUE_JSON_PATH must match preflight tmpdir".to_owned())
+        );
+    }
+
+    #[test]
+    fn preflight_refuses_an_issue_whose_plan_block_is_absent() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        declare_plugin_root(&workspace_root());
+        install_larch(|_arguments, _environment| {
+            Ok(output(0, "ADMISSION_RESULT=pass\nRESUME=false\n", ""))
+        });
+        install_python(|_arguments| panic!("a plan defect must refuse before governance"));
+        let (github, server) = service([IssueServiceExchange::json(
+            "GET",
+            "/repos/owner/repo/issues/12",
+            200,
+            serde_json::to_vec(&issue_response(12, "[DESIGNED] Fix", "No plan block."))
+                .expect("issue body"),
+        )
+        .expect("issue response")]);
+
+        let code = with_test_github_service(github, || {
+            run(&request(&root.path().join("preflight"), false))
+        });
+
+        assert_eq!(code, ExitCode::from(2));
+        assert!(root.path().join("preflight").join("issue.json").is_file());
+        server.join().expect("one issue read");
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_clean_preflight_publishes_its_whole_success_envelope() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let repository = upstream_repository();
+        let tmpdir = root.path().join("preflight");
+        declare_plugin_root(&workspace_root());
+        declare_repo_root(repository.root());
+        install_larch(|_arguments, _environment| {
+            Ok(output(0, "ADMISSION_RESULT=pass\nRESUME=false\n", ""))
+        });
+        install_python(|arguments| {
+            if arguments.contains(&OsString::from("main-health")) {
+                return Ok(output(
+                    0,
+                    "MAIN_CI_STATUS=pass\nMAIN_FAILED_RUN_ID=\nMAIN_HEALTH_HEAD_SHA=abc\nMAIN_HEALTH_DETAIL=green\n",
+                    "",
+                ));
+            }
+            Ok(output(0, "SEMANTIC_REASONS=\nREPORT_ONLY_COUNT=0\n", ""))
+        });
+        let plan = VALID_PLAN.replace("Cargo.toml", "tracked.txt");
+        let (github, server) = service([IssueServiceExchange::json(
+            "GET",
+            "/repos/owner/repo/issues/12",
+            200,
+            serde_json::to_vec(&issue_response(
+                12,
+                "[DESIGNED] Fix the gate",
+                &plan_body(&plan),
+            ))
+            .expect("issue body"),
+        )
+        .expect("issue response")]);
+
+        let code = with_test_github_service(github, || run(&request(&tmpdir, false)));
+
+        assert_eq!(code, ExitCode::SUCCESS);
+        assert_eq!(
+            fs::read_to_string(tmpdir.join("plan-from-issue.txt")).expect("frozen plan"),
+            plan
+        );
+        assert!(tmpdir.join("main-health.env").is_file());
+        server.join().expect("one issue read");
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_validated_command_line_reaches_the_preflight_run() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        declare_plugin_root(root.path());
+
+        assert_eq!(
+            preflight(&arguments(&[
+                "--issue",
+                "12",
+                "--repo",
+                "owner/repo",
+                "--force",
+                "--preflight-tmpdir",
+                root.path().join("preflight").to_str().expect("utf8"),
+            ])),
+            ExitCode::from(2)
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn an_unwritable_tmpdir_refuses_each_artifact_it_cannot_publish() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let blocker = root.path().join("blocker");
+        fs::write(&blocker, "").expect("blocker");
+        let subject = request(&blocker.join("nested"), false);
+        let repository = upstream_repository();
+        let (github, server) = service([IssueServiceExchange::json(
+            "GET",
+            "/repos/owner/repo/issues/12",
+            200,
+            serde_json::to_vec(&issue_response(12, "Title", "Body.")).expect("issue body"),
+        )
+        .expect("issue response")]);
+
+        let refused = with_test_github_service(github, || {
+            materialize_issue(&subject, &blocker.join("nested").join("issue.json"))
+        })
+        .refusal();
+
+        assert_eq!(refused, ExitCode::from(2));
+        assert_eq!(
+            governance(&subject, "body", repository.root()).refusal(),
+            ExitCode::from(2)
+        );
+        server.join().expect("one issue read");
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_child_without_a_declared_repository_omits_the_repo_pair() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let subject = Request {
+            issue: "12".to_owned(),
+            repo: String::new(),
+            force: false,
+            tmpdir: root.path().to_path_buf(),
+        };
+        install_larch(|arguments, _environment| {
+            assert!(!arguments.contains(&OsString::from("--repo")));
+            Ok(output(0, "BLOCK_PRESENT=true\n", ""))
+        });
+
+        read_plan_block(&subject, &[], &root.path().join("plan-from-issue.txt")).expect("read");
+        assert!(subject.repo_arguments().is_empty());
+        clear_hooks();
+    }
 
     fn rows(overrides: &[(&str, &str)]) -> Vec<(&'static str, String)> {
         let mut rows: Vec<(&'static str, String)> = super::SUCCESS_ENVELOPE_KEYS
@@ -998,28 +2043,5 @@ mod tests {
         assert!(sha1_hex(&"a".repeat(40)));
         assert!(!sha1_hex(&"A".repeat(40)));
         assert!(!sha1_hex("abc"));
-    }
-
-    #[test]
-    fn only_a_recognized_prefix_above_diff_lines_reads_as_malformed() {
-        let malformed = "### NEW: a\ndifficulty: NOPE!!\ndiff_lines: 10\n";
-
-        assert_eq!(
-            malformed_terminal_metadata(malformed),
-            Some("difficulty: NOPE!!".to_owned())
-        );
-        assert_eq!(
-            malformed_terminal_metadata("### NEW: a\ndifficulty: TRIVIAL\ndiff_lines: 10\n"),
-            None
-        );
-        assert_eq!(malformed_terminal_metadata("### NEW: a\n"), None);
-    }
-
-    #[test]
-    fn a_health_probe_failure_degrades_to_a_bounded_error_row() {
-        let rows = main_health_error(&"detail ".repeat(200));
-
-        assert_eq!(rows[0], ("MAIN_CI_STATUS", "error".to_owned()));
-        assert!(rows[3].1.len() <= MAIN_HEALTH_DETAIL_MAX_CHARS);
     }
 }

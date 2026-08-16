@@ -27,9 +27,8 @@ use crate::{
     argparse_compat::{
         ParsedCommandLine, choice_error, parse_with_flags, usage_error, write_stdout,
     },
+    implement_child_seam::{delegate_larch_with_environment, delegate_python},
     oos_commands::atomic_write,
-    python_verb::run_python_verb,
-    runtime_entrypoint::{run_verified_larch, run_verified_larch_with_environment},
     tracking_issue_commands::adoption_sentinel_identity,
 };
 
@@ -134,6 +133,40 @@ const BOOTSTRAP_HELP: &str = concat!(
     "  --mode {initial,resume}\n",
 );
 
+#[cfg(test)]
+std::thread_local! {
+    /// A declared substitute for the exported implement tmpdir, present or absent.
+    static TEST_TMPDIR: std::cell::RefCell<Option<DeclaredTmpdir>> = const { std::cell::RefCell::new(None) };
+}
+
+/// One test build's substitute for the exported implement tmpdir.
+#[cfg(test)]
+#[derive(Clone)]
+enum DeclaredTmpdir {
+    Absent,
+    Present(PathBuf),
+}
+
+/// Run one already-owned larch command through the verified bootstrap.
+fn delegate_larch(arguments: &[OsString]) -> Result<ProcessOutput, String> {
+    delegate_larch_with_environment(arguments, &[])
+}
+
+/// Read the exported implement tmpdir, treating an empty value as absent.
+fn implement_tmpdir_env() -> Option<PathBuf> {
+    #[cfg(test)]
+    if let Some(declared) = TEST_TMPDIR.with(|slot| slot.borrow().clone()) {
+        return match declared {
+            DeclaredTmpdir::Absent => None,
+            DeclaredTmpdir::Present(tmpdir) => Some(tmpdir),
+        };
+    }
+    env::var("IMPLEMENT_TMPDIR")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
 /// Emit this clone's tag and the implement tmpdir prefix derived from it.
 pub fn clone_tag(arguments: &[OsString]) -> ExitCode {
     let parsed = parse_with_flags(arguments, &[], &HELP_FLAGS, 0);
@@ -232,9 +265,9 @@ pub fn step0_degraded_gate(arguments: &[OsString]) -> ExitCode {
     }
     // The retired owner probed twice: a cold vendor CLI can fail its first
     // authentication handshake and succeed immediately afterwards.
-    let mut probe = run_verified_larch(&check);
+    let mut probe = delegate_larch(&check);
     if !probe.as_ref().is_ok_and(|output| output.status().success()) {
-        probe = run_verified_larch(&check);
+        probe = delegate_larch(&check);
     }
     let probed = probe.map_or_else(|_error| String::new(), |output| stdout_text(&output));
     forward_verified_larch(&[
@@ -284,10 +317,7 @@ pub fn step0_bootstrap(arguments: &[OsString]) -> ExitCode {
         Ok(request) => request,
         Err(code) => return code,
     };
-    let implement_tmpdir = env::var("IMPLEMENT_TMPDIR")
-        .ok()
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from);
+    let implement_tmpdir = implement_tmpdir_env();
     if request.mode == "resume" {
         let Some(tmpdir) = implement_tmpdir.as_deref() else {
             eprintln!("bootstrap invoke: --mode resume requires exported IMPLEMENT_TMPDIR");
@@ -315,7 +345,7 @@ pub fn step0_bootstrap(arguments: &[OsString]) -> ExitCode {
     if request.non_interactive.is_empty() {
         request.non_interactive = resolve_non_interactive(&environment);
     }
-    let Ok(result) = run_verified_larch_with_environment(&request.invoke_arguments(), &environment)
+    let Ok(result) = delegate_larch_with_environment(&request.invoke_arguments(), &environment)
     else {
         eprintln!("step-0-bootstrap: could not start bootstrap invoke");
         return ExitCode::from(1);
@@ -451,8 +481,7 @@ impl BootstrapRequest {
     /// stdout: the reviewed child-environment allowlist carries neither, and
     /// no composed child reads them.
     fn apply_fork_env(&mut self) -> Option<ExitCode> {
-        let Ok(result) =
-            run_verified_larch(&[OsString::from("admission"), OsString::from("fork-env")])
+        let Ok(result) = delegate_larch(&[OsString::from("admission"), OsString::from("fork-env")])
         else {
             eprintln!("step-0-bootstrap: could not start admission fork-env");
             return Some(ExitCode::from(1));
@@ -581,7 +610,7 @@ impl BootstrapRequest {
             arguments.push(OsString::from("--lifecycle-parent-context"));
             arguments.push(OsString::from(self.lifecycle_parent_context.clone()));
         }
-        let Ok(lifecycle) = run_verified_larch_with_environment(&arguments, environment) else {
+        let Ok(lifecycle) = delegate_larch_with_environment(&arguments, environment) else {
             stderr.push_str("step-0-bootstrap: could not start run-log lifecycle-start\n");
             return 1;
         };
@@ -645,7 +674,7 @@ fn resolve_non_interactive(environment: &[(ChildEnvironment, OsString)]) -> Stri
         OsString::from("bootstrap"),
         OsString::from("resolve-non-interactive"),
     ];
-    let resolved = run_verified_larch_with_environment(&arguments, environment)
+    let resolved = delegate_larch_with_environment(&arguments, environment)
         .map_or_else(|_error| String::new(), |output| stdout_text(&output));
     if resolved.trim() == "true" {
         "true".to_owned()
@@ -698,12 +727,11 @@ fn option_or_env(parsed: &ParsedCommandLine, option: &str, variable: &str) -> St
 
 /// Resolve the required implement tmpdir, refusing an unset environment.
 fn tmpdir_from_env() -> Option<PathBuf> {
-    let raw = env::var("IMPLEMENT_TMPDIR").unwrap_or_default();
-    if raw.is_empty() {
+    let tmpdir = implement_tmpdir_env();
+    if tmpdir.is_none() {
         eprintln!("IMPLEMENT_TMPDIR required");
-        return None;
     }
-    Some(PathBuf::from(raw))
+    tmpdir
 }
 
 /// Confine one caller-supplied artifact path beneath the implement tmpdir.
@@ -732,8 +760,8 @@ fn normalize_scout_manifest(tmpdir: &Path, input: &Path, producer: &str) -> Stri
     if let Some(raw_count) = archetype_count(input) {
         // `scout filter-manifest` remains Python-owned, so the budget rule it
         // enforces keeps its single owner.
-        let filter = run_python_verb(
-            [
+        let filter = delegate_python(
+            vec![
                 OsString::from("scout"),
                 OsString::from("filter-manifest"),
                 input.as_os_str().to_owned(),
@@ -948,7 +976,7 @@ fn on_path(binary: &str) -> bool {
 
 /// Run one already-owned command and forward its complete contract.
 fn forward_verified_larch(arguments: &[OsString]) -> ExitCode {
-    let Ok(result) = run_verified_larch(arguments) else {
+    let Ok(result) = delegate_larch(arguments) else {
         eprintln!("step-0-degraded-gate: could not start the degraded-tools gate");
         return ExitCode::from(1);
     };
@@ -1000,8 +1028,901 @@ pub fn write_atomic(path: &Path, text: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{kv_value, pwd_basename, read_kv_or, resolve_tmpdir_path};
-    use std::path::{Path, PathBuf};
+    use super::{
+        DeclaredTmpdir, HELP_FLAGS, SCOUT_OPTIONS, TEST_TMPDIR, adopt_boolean, adopt_seed,
+        archetype_count, claude_pid, clone_tag, derive_clone_tag_full, first_nonempty,
+        forward_verified_larch, kv_value, normalize_coder_scout, normalize_scout_manifest, on_path,
+        option_or_env, pwd_basename, read_kv_or, resolve_non_interactive, resolve_tmpdir_path,
+        sentinel_identity, session_child_environment, step0_bootstrap, step0_degraded_gate,
+        write_atomic, write_streams,
+    };
+    use crate::{
+        argparse_compat::parse_with_flags,
+        implement_child_seam::{install_larch, install_python},
+    };
+    use larch_core::{ChildEnvironment, ProcessOutput, ProcessStatus};
+    use std::{
+        ffi::OsString,
+        fs,
+        path::{Path, PathBuf},
+        process::ExitCode,
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicUsize, Ordering},
+        },
+    };
+    use tempfile::TempDir;
+
+    /// Every argument line one composed child observed, in call order.
+    type Calls = Arc<Mutex<Vec<Vec<String>>>>;
+
+    fn arguments(values: &[&str]) -> Vec<OsString> {
+        values.iter().map(OsString::from).collect()
+    }
+
+    fn output(code: i32, stdout: &str) -> ProcessOutput {
+        ProcessOutput::new(
+            ProcessStatus::new(code == 0, Some(code)),
+            stdout.as_bytes().to_vec(),
+            Vec::new(),
+            false,
+            false,
+        )
+    }
+
+    fn declare_tmpdir(tmpdir: Option<&Path>) {
+        let declared = tmpdir.map_or(DeclaredTmpdir::Absent, |path| {
+            DeclaredTmpdir::Present(path.to_path_buf())
+        });
+        TEST_TMPDIR.with(|slot| *slot.borrow_mut() = Some(declared));
+    }
+
+    fn clear_hooks() {
+        crate::implement_child_seam::clear_hooks();
+        TEST_TMPDIR.with(|slot| *slot.borrow_mut() = None);
+    }
+
+    fn recorder() -> Calls {
+        Arc::new(Mutex::new(Vec::new()))
+    }
+
+    fn record(calls: &Calls, args: &[OsString]) {
+        let call: Vec<String> = args
+            .iter()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect();
+        calls.lock().expect("calls").push(call);
+    }
+
+    /// Return the value following `flag` on the recorded call to `subcommand`,
+    /// which is how each composed child's contract is asserted here.
+    fn recorded_value(calls: &Calls, subcommand: &str, flag: &str) -> Option<String> {
+        let recorded = calls.lock().expect("calls").clone();
+        let call = recorded
+            .iter()
+            .find(|call| call.get(1) == Some(&subcommand.to_owned()))?;
+        let index = call.iter().position(|argument| argument == flag)?;
+        call.get(index + 1).cloned()
+    }
+
+    fn verbs(calls: &Calls) -> Vec<String> {
+        calls
+            .lock()
+            .expect("calls")
+            .iter()
+            .map(|call| call.join(" "))
+            .collect()
+    }
+
+    /// Answer the Step 0 children an initial bootstrap composes.
+    fn initial_bootstrap_hook(
+        calls: &Calls,
+        invoke_stdout: String,
+        lifecycle_stdout: String,
+        lifecycle_code: i32,
+    ) -> impl Fn(&[OsString], &[(ChildEnvironment, OsString)]) -> Result<ProcessOutput, String>
+    + Send
+    + Sync
+    + 'static {
+        let calls = Arc::clone(calls);
+        move |args, _environment| {
+            record(&calls, args);
+            match args.first().map(|verb| verb.to_string_lossy().into_owned()) {
+                Some(verb) if verb == "bootstrap" => Ok(output(0, &invoke_stdout)),
+                Some(verb) if verb == "run-log" => Ok(output(lifecycle_code, &lifecycle_stdout)),
+                _other => Err(format!("unexpected larch call: {args:?}")),
+            }
+        }
+    }
+
+    #[test]
+    fn clone_tag_publishes_a_tag_and_its_tmpdir_prefix() {
+        assert_eq!(clone_tag(&[]), ExitCode::SUCCESS);
+        assert_eq!(clone_tag(&arguments(&["--help"])), ExitCode::SUCCESS);
+        assert_eq!(clone_tag(&arguments(&["-h"])), ExitCode::SUCCESS);
+        assert_eq!(clone_tag(&arguments(&["surplus"])), ExitCode::from(2));
+        assert_eq!(clone_tag(&arguments(&["--help=1"])), ExitCode::from(2));
+        assert!(!derive_clone_tag_full().is_empty());
+    }
+
+    #[test]
+    fn normalize_coder_scout_refuses_a_malformed_command_line() {
+        assert_eq!(
+            normalize_coder_scout(&arguments(&["--help"])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            normalize_coder_scout(&arguments(&["--producer", "bogus"])),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            normalize_coder_scout(&arguments(&["--tmpdir"])),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            normalize_coder_scout(&arguments(&["--tmpdir", "/tmp", "surplus"])),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            normalize_coder_scout(&arguments(&[
+                "--tmpdir",
+                "/nonexistent-implement-tmpdir/absent"
+            ])),
+            ExitCode::from(2)
+        );
+    }
+
+    #[test]
+    fn normalize_coder_scout_publishes_a_filtered_manifest() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let raw = root.path().join("scout-coder-manifest.raw.json");
+        fs::write(&raw, "{\"archetypes\":[{\"id\":\"dyn-reuse\"}]}\n").expect("raw");
+        install_python(|args| {
+            let filtered = PathBuf::from(&args[3]);
+            fs::write(&filtered, "{\"archetypes\":[{\"id\":\"dyn-reuse\"}]}\n").expect("filtered");
+            Ok(output(0, "SCOUT_STATUS=ok\n"))
+        });
+
+        let code = normalize_coder_scout(&arguments(&[
+            "--tmpdir",
+            root.path().to_str().expect("utf8"),
+            "--producer",
+            "subagent",
+        ]));
+
+        assert_eq!(code, ExitCode::SUCCESS);
+        let manifest = fs::read_to_string(root.path().join("scout-coder-manifest.json"))
+            .expect("published manifest");
+        assert!(manifest.contains("dyn-reuse"));
+        assert!(
+            root.path()
+                .join("step2-external-scout-eligible.txt")
+                .is_file()
+        );
+        let status = fs::read_to_string(root.path().join("step2-scout-coder-status.env"))
+            .expect("status env");
+        assert!(status.contains("SCOUT_CODER_STATUS=ok\n"));
+        assert!(status.contains("SCOUT_CODER_PRODUCER=subagent\n"));
+        clear_hooks();
+    }
+
+    #[test]
+    fn an_empty_raw_manifest_still_normalizes() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let raw = root.path().join("raw.json");
+        fs::write(&raw, "{\"archetypes\":[]}\n").expect("raw");
+        install_python(|args| {
+            fs::write(PathBuf::from(&args[3]), "{\"archetypes\":[]}\n").expect("filtered");
+            Ok(output(0, "SCOUT_STATUS=empty\n"))
+        });
+
+        assert_eq!(
+            normalize_scout_manifest(root.path(), &raw, "external"),
+            "ok"
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn every_refusing_producer_warns_and_writes_an_empty_manifest() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let marker = root.path().join("step2-external-scout-eligible.txt");
+        fs::write(&marker, "eligible\n").expect("stale marker");
+        let missing = root.path().join("absent.json");
+
+        for producer in ["external", "main-agent", "subagent"] {
+            assert_eq!(
+                normalize_scout_manifest(root.path(), &missing, producer),
+                "missing-or-invalid"
+            );
+        }
+
+        assert!(!marker.exists());
+        assert_eq!(
+            fs::read_to_string(root.path().join("scout-coder-manifest.json")).expect("manifest"),
+            "{\"archetypes\":[]}\n"
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_failed_or_empty_filter_refuses_the_coder_manifest() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let raw = root.path().join("raw.json");
+        fs::write(&raw, "{\"archetypes\":[{\"id\":\"a\"}]}\n").expect("raw");
+
+        install_python(|_args| Ok(output(1, "")));
+        assert_eq!(
+            normalize_scout_manifest(root.path(), &raw, "external"),
+            "missing-or-invalid"
+        );
+
+        install_python(|args| {
+            fs::write(PathBuf::from(&args[3]), "{\"archetypes\":[]}\n").expect("filtered");
+            Ok(output(0, "SCOUT_STATUS=ok\n"))
+        });
+        assert_eq!(
+            normalize_scout_manifest(root.path(), &raw, "external"),
+            "missing-or-invalid"
+        );
+
+        install_python(|_args| Err("cannot start scout filter-manifest".to_owned()));
+        assert_eq!(
+            normalize_scout_manifest(root.path(), &raw, "external"),
+            "missing-or-invalid"
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn archetype_count_reads_only_a_declared_array() {
+        let root = TempDir::new().expect("temp");
+        let valid = root.path().join("valid.json");
+        fs::write(&valid, "{\"archetypes\":[1,2,3]}").expect("valid");
+        let malformed = root.path().join("malformed.json");
+        fs::write(&malformed, "not json").expect("malformed");
+        let shapeless = root.path().join("shapeless.json");
+        fs::write(&shapeless, "{\"archetypes\":{}}").expect("shapeless");
+
+        assert_eq!(archetype_count(&valid), Some(3));
+        assert_eq!(archetype_count(&malformed), None);
+        assert_eq!(archetype_count(&shapeless), None);
+        assert_eq!(archetype_count(&root.path().join("absent.json")), None);
+    }
+
+    #[test]
+    fn step0_bootstrap_refuses_a_malformed_command_line() {
+        clear_hooks();
+        declare_tmpdir(None);
+
+        assert_eq!(step0_bootstrap(&arguments(&["--help"])), ExitCode::SUCCESS);
+        assert_eq!(step0_bootstrap(&[]), ExitCode::from(2));
+        assert_eq!(
+            step0_bootstrap(&arguments(&["--mode", "bogus"])),
+            ExitCode::from(2)
+        );
+        assert_eq!(step0_bootstrap(&arguments(&["--mode"])), ExitCode::from(2));
+        assert_eq!(
+            step0_bootstrap(&arguments(&["--mode", "initial", "surplus"])),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            step0_bootstrap(&arguments(&[
+                "--mode",
+                "initial",
+                "--force-requested",
+                "maybe"
+            ])),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            step0_bootstrap(&arguments(&["--mode", "initial", "--difficulty", "EPIC"])),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            step0_bootstrap(&arguments(&["--mode", "resume"])),
+            ExitCode::from(2)
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn an_initial_bootstrap_adopts_the_run_lifecycle() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        declare_tmpdir(Some(root.path()));
+        let calls = recorder();
+        install_larch(initial_bootstrap_hook(
+            &calls,
+            format!(
+                "RUN_ID=run-1\nISSUE_NUMBER=42\nIMPLEMENT_TMPDIR={}\nREPO_UNAVAILABLE=false\n",
+                root.path().display()
+            ),
+            "LIFECYCLE_STARTED=true\nRUN_LOG_STORAGE=enabled\nSTORAGE_PREFLIGHT=ok\n".to_owned(),
+            0,
+        ));
+
+        let code = step0_bootstrap(&arguments(&[
+            "--mode",
+            "initial",
+            "--issue-number",
+            "42",
+            "--non-interactive",
+            "true",
+            "--difficulty",
+            "MODERATE",
+            "--preflight-tmpdir",
+            "/tmp/preflight-42",
+            "--lifecycle-parent-context",
+            "umbrella-7",
+        ]));
+
+        assert_eq!(code, ExitCode::SUCCESS);
+        assert_eq!(
+            recorded_value(&calls, "invoke", "--issue-number").as_deref(),
+            Some("42")
+        );
+        assert_eq!(
+            recorded_value(&calls, "invoke", "--difficulty").as_deref(),
+            Some("MODERATE")
+        );
+        assert_eq!(
+            recorded_value(&calls, "invoke", "--force-requested").as_deref(),
+            Some("false")
+        );
+        assert_eq!(
+            recorded_value(&calls, "lifecycle-start", "--lifecycle-parent-context").as_deref(),
+            Some("umbrella-7")
+        );
+        assert_eq!(
+            fs::read_to_string(root.path().join("preflight-tmpdir.env")).expect("pointer"),
+            "PREFLIGHT_TMPDIR=/tmp/preflight-42\n"
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_disabled_log_commit_or_unavailable_repo_skips_the_lifecycle() {
+        for (flag, invoke_stdout) in [
+            ("--no-logs-commit", "RUN_ID=run-2\nREPO_UNAVAILABLE=false\n"),
+            ("--merge-requested", "RUN_ID=run-2\nREPO_UNAVAILABLE=true\n"),
+        ] {
+            clear_hooks();
+            declare_tmpdir(None);
+            let calls = recorder();
+            install_larch(initial_bootstrap_hook(
+                &calls,
+                invoke_stdout.to_owned(),
+                String::new(),
+                0,
+            ));
+
+            let code = step0_bootstrap(&arguments(&[
+                "--mode",
+                "initial",
+                "--issue-number",
+                "9",
+                "--non-interactive",
+                "false",
+                flag,
+                "true",
+            ]));
+
+            assert_eq!(code, ExitCode::SUCCESS);
+            assert_eq!(verbs(&calls).len(), 1, "{flag} must skip the lifecycle");
+            clear_hooks();
+        }
+    }
+
+    #[test]
+    fn an_invalid_storage_state_or_failed_lifecycle_fails_closed() {
+        for (lifecycle_stdout, lifecycle_code, expected) in [
+            (
+                "LIFECYCLE_STARTED=false\nRUN_LOG_STORAGE=enabled\nSTORAGE_PREFLIGHT=ok\n",
+                0,
+                1,
+            ),
+            (
+                "LIFECYCLE_STARTED=true\nRUN_LOG_STORAGE=enabled\nSTORAGE_PREFLIGHT=broken\n",
+                0,
+                1,
+            ),
+            ("", 3, 3),
+        ] {
+            clear_hooks();
+            declare_tmpdir(None);
+            let calls = recorder();
+            install_larch(initial_bootstrap_hook(
+                &calls,
+                "RUN_ID=run-3\nISSUE_NUMBER=8\nREPO_UNAVAILABLE=false\n".to_owned(),
+                lifecycle_stdout.to_owned(),
+                lifecycle_code,
+            ));
+
+            let code = step0_bootstrap(&arguments(&[
+                "--mode",
+                "initial",
+                "--issue-number",
+                "8",
+                "--non-interactive",
+                "true",
+            ]));
+
+            assert_eq!(code, ExitCode::from(expected), "{lifecycle_stdout}");
+            clear_hooks();
+        }
+    }
+
+    #[test]
+    fn a_disabled_storage_backend_is_a_valid_lifecycle_state() {
+        clear_hooks();
+        declare_tmpdir(None);
+        let calls = recorder();
+        install_larch(initial_bootstrap_hook(
+            &calls,
+            "RUN_ID=run-4\nISSUE_NUMBER=5\nREPO_UNAVAILABLE=false\n".to_owned(),
+            "LIFECYCLE_STARTED=true\nRUN_LOG_STORAGE=disabled\nSTORAGE_PREFLIGHT=skipped-disabled\n"
+                .to_owned(),
+            0,
+        ));
+
+        let code = step0_bootstrap(&arguments(&[
+            "--mode",
+            "initial",
+            "--issue-number",
+            "5",
+            "--non-interactive",
+            "true",
+        ]));
+
+        assert_eq!(code, ExitCode::SUCCESS);
+        clear_hooks();
+    }
+
+    #[test]
+    fn an_unstartable_child_reports_a_launch_failure() {
+        clear_hooks();
+        declare_tmpdir(None);
+        install_larch(|args, _environment| {
+            if args.first().is_some_and(|verb| verb == "run-log") {
+                return Err("cannot start run-log".to_owned());
+            }
+            Ok(output(0, "RUN_ID=run-5\nREPO_UNAVAILABLE=false\n"))
+        });
+        assert_eq!(
+            step0_bootstrap(&arguments(&[
+                "--mode",
+                "initial",
+                "--issue-number",
+                "5",
+                "--non-interactive",
+                "true"
+            ])),
+            ExitCode::from(1)
+        );
+
+        install_larch(|_args, _environment| Err("cannot start bootstrap invoke".to_owned()));
+        assert_eq!(
+            step0_bootstrap(&arguments(&[
+                "--mode",
+                "initial",
+                "--issue-number",
+                "5",
+                "--non-interactive",
+                "true"
+            ])),
+            ExitCode::from(1)
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_resume_rehydrates_every_absent_flag_from_its_own_artifact() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        fs::write(
+            root.path().join("session-env.sh"),
+            "FORKED_TARGET=false\nISSUE_NUMBER=11\nRUN_ID=run-session\nLARCH_TOKEN_SESSION_ID=tok-1\nLARCH_TIMING_LEDGER=/ledger\n",
+        )
+        .expect("session");
+        fs::write(
+            root.path().join("run-flags.sh"),
+            "FORCE_REQUESTED=true\nSELF_REVIEW_REQUESTED=false\nSELF_IMPLEMENT_REQUESTED=true\n",
+        )
+        .expect("run flags");
+        fs::write(
+            root.path().join("ship-seed-input.env"),
+            "MERGE=true\nDRAFT=false\n",
+        )
+        .expect("seed");
+        fs::write(
+            root.path().join("preflight-tmpdir.env"),
+            "PREFLIGHT_TMPDIR=/tmp/preflight-resume\n",
+        )
+        .expect("preflight pointer");
+        fs::write(
+            root.path().join("parent-issue.md"),
+            "ISSUE_NUMBER=99\nRUN_ID=run-99\nADOPTED=true\n",
+        )
+        .expect("sentinel");
+        declare_tmpdir(Some(root.path()));
+        let calls = recorder();
+        install_larch(initial_bootstrap_hook(
+            &calls,
+            "REPO_UNAVAILABLE=false\n".to_owned(),
+            String::new(),
+            0,
+        ));
+
+        let code = step0_bootstrap(&arguments(&[
+            "--mode",
+            "resume",
+            "--non-interactive",
+            "true",
+            "--no-logs-commit",
+            "true",
+        ]));
+
+        assert_eq!(code, ExitCode::SUCCESS);
+        for (flag, expected) in [
+            ("--issue-number", "99"),
+            ("--run-id", "run-99"),
+            ("--preflight-tmpdir", "/tmp/preflight-resume"),
+            ("--forked-target", "false"),
+            ("--force-requested", "true"),
+            ("--self-review-requested", "false"),
+            ("--self-implement-requested", "true"),
+            ("--merge-requested", "true"),
+            ("--draft-requested", "false"),
+            ("--no-admin-fallback", "false"),
+        ] {
+            assert_eq!(
+                recorded_value(&calls, "invoke", flag).as_deref(),
+                Some(expected),
+                "{flag}"
+            );
+        }
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_resume_without_a_sentinel_falls_back_to_the_session_identity() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        fs::write(
+            root.path().join("session-env.sh"),
+            "ISSUE_NUMBER=11\nRUN_ID=run-session\n",
+        )
+        .expect("session");
+        declare_tmpdir(Some(root.path()));
+        let calls = recorder();
+        install_larch(initial_bootstrap_hook(
+            &calls,
+            "REPO_UNAVAILABLE=true\n".to_owned(),
+            String::new(),
+            0,
+        ));
+
+        assert_eq!(
+            step0_bootstrap(&arguments(&[
+                "--mode",
+                "resume",
+                "--non-interactive",
+                "true"
+            ])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            recorded_value(&calls, "invoke", "--issue-number").as_deref(),
+            Some("11")
+        );
+        assert_eq!(
+            recorded_value(&calls, "invoke", "--run-id").as_deref(),
+            Some("run-session")
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_forked_target_adopts_the_fork_identity_before_invoking() {
+        clear_hooks();
+        declare_tmpdir(None);
+        let calls = recorder();
+        let recorded = Arc::clone(&calls);
+        install_larch(move |args, _environment| {
+            record(&recorded, args);
+            if args.first().is_some_and(|verb| verb == "admission") {
+                return Ok(output(
+                    0,
+                    "CALLER_ENV_PATH=/tmp/caller.env\nUPSTREAM_REPO=agent-sh/agnix\nFORKED_TARGET=true",
+                ));
+            }
+            Ok(output(0, "REPO_UNAVAILABLE=true\n"))
+        });
+
+        let code = step0_bootstrap(&arguments(&[
+            "--mode",
+            "initial",
+            "--issue-number",
+            "3",
+            "--forked-target",
+            "true",
+            "--non-interactive",
+            "true",
+        ]));
+
+        assert_eq!(code, ExitCode::SUCCESS);
+        assert_eq!(
+            recorded_value(&calls, "invoke", "--upstream-repo").as_deref(),
+            Some("agent-sh/agnix")
+        );
+        assert_eq!(
+            recorded_value(&calls, "invoke", "--caller-env").as_deref(),
+            Some("/tmp/caller.env")
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn a_refused_fork_env_forwards_its_own_contract() {
+        clear_hooks();
+        declare_tmpdir(None);
+        install_larch(|args, _environment| {
+            if args.first().is_some_and(|verb| verb == "admission") {
+                return Ok(output(3, "FORK_ERROR=no-upstream\n"));
+            }
+            panic!("a refused fork identity must not reach bootstrap invoke");
+        });
+        assert_eq!(
+            step0_bootstrap(&arguments(&[
+                "--mode",
+                "initial",
+                "--forked-target",
+                "true",
+                "--non-interactive",
+                "true"
+            ])),
+            ExitCode::from(3)
+        );
+
+        install_larch(|_args, _environment| Err("cannot start admission fork-env".to_owned()));
+        assert_eq!(
+            step0_bootstrap(&arguments(&[
+                "--mode",
+                "initial",
+                "--forked-target",
+                "true",
+                "--non-interactive",
+                "true"
+            ])),
+            ExitCode::from(1)
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn an_absent_non_interactive_flag_is_resolved_by_the_bootstrap_owner() {
+        clear_hooks();
+        declare_tmpdir(None);
+        let calls = recorder();
+        let recorded = Arc::clone(&calls);
+        install_larch(move |args, _environment| {
+            record(&recorded, args);
+            if args
+                .get(1)
+                .is_some_and(|verb| verb == "resolve-non-interactive")
+            {
+                return Ok(output(0, "true\n"));
+            }
+            Ok(output(0, "REPO_UNAVAILABLE=true\n"))
+        });
+
+        assert_eq!(
+            step0_bootstrap(&arguments(&["--mode", "initial", "--issue-number", "4"])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            recorded_value(&calls, "invoke", "--non-interactive").as_deref(),
+            Some("true")
+        );
+
+        install_larch(|_args, _environment| Err("cannot start resolve".to_owned()));
+        assert_eq!(resolve_non_interactive(&[]), "false");
+        clear_hooks();
+    }
+
+    #[test]
+    fn an_unwritable_preflight_pointer_refuses_the_bootstrap() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        fs::write(root.path().join("preflight-tmpdir.env"), "").expect("blocking file");
+        let blocked = root.path().join("preflight-tmpdir.env").join("nested");
+        declare_tmpdir(Some(&blocked));
+        install_larch(|_args, _environment| panic!("a refused pointer must not invoke bootstrap"));
+
+        assert_eq!(
+            step0_bootstrap(&arguments(&[
+                "--mode",
+                "initial",
+                "--preflight-tmpdir",
+                "/tmp/preflight",
+                "--non-interactive",
+                "true"
+            ])),
+            ExitCode::from(2)
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn the_degraded_gate_probes_twice_then_forwards_the_shared_gate() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        fs::write(
+            root.path().join("session-env.sh"),
+            "CODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=false\n",
+        )
+        .expect("session");
+        declare_tmpdir(Some(root.path()));
+        let calls = recorder();
+        let recorded = Arc::clone(&calls);
+        let probes = Arc::new(AtomicUsize::new(0));
+        install_larch(move |args, _environment| {
+            record(&recorded, args);
+            if args.get(1).is_some_and(|verb| verb == "check-reviewers") {
+                return if probes.fetch_add(1, Ordering::SeqCst) == 0 {
+                    Ok(output(1, ""))
+                } else {
+                    Ok(output(0, "CODEX_PRESENT=true\nCURSOR_PRESENT=false\n"))
+                };
+            }
+            Ok(output(0, "DEGRADED_GATE=pass\n"))
+        });
+
+        assert_eq!(step0_degraded_gate(&[]), ExitCode::SUCCESS);
+        assert_eq!(
+            recorded_value(&calls, "degraded-tools-gate", "--codex-present").as_deref(),
+            Some("true")
+        );
+        assert_eq!(
+            recorded_value(&calls, "degraded-tools-gate", "--codex-binary-found").as_deref(),
+            Some("true")
+        );
+        assert_eq!(
+            verbs(&calls)
+                .iter()
+                .filter(|call| call.contains("check-reviewers"))
+                .count(),
+            2
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn the_degraded_gate_refuses_without_a_session_and_forwards_a_launch_failure() {
+        clear_hooks();
+        declare_tmpdir(None);
+        assert_eq!(step0_degraded_gate(&[]), ExitCode::from(2));
+        assert_eq!(
+            step0_degraded_gate(&arguments(&["--help"])),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            step0_degraded_gate(&arguments(&["surplus"])),
+            ExitCode::from(2)
+        );
+
+        install_larch(|_args, _environment| Err("cannot start the gate".to_owned()));
+        assert_eq!(
+            forward_verified_larch(&arguments(&["agent", "degraded-tools-gate"])),
+            ExitCode::from(1)
+        );
+        clear_hooks();
+    }
+
+    #[test]
+    fn resume_helpers_adopt_only_the_values_their_artifacts_declare() {
+        let root = TempDir::new().expect("temp");
+        let flags = root.path().join("run-flags.sh");
+        fs::write(&flags, "FORCE_REQUESTED=true\nBROKEN=maybe\n").expect("flags");
+
+        let mut slot = String::new();
+        adopt_boolean(&mut slot, &flags, "FORCE_REQUESTED");
+        assert_eq!(slot, "true");
+        let mut supplied = "false".to_owned();
+        adopt_boolean(&mut supplied, &flags, "FORCE_REQUESTED");
+        assert_eq!(supplied, "false");
+        let mut unparsed = String::new();
+        adopt_boolean(&mut unparsed, &flags, "BROKEN");
+        assert_eq!(unparsed, "");
+
+        let mut seed = String::new();
+        adopt_seed(&mut seed, &flags, "MERGE");
+        assert_eq!(seed, "false");
+        let mut present = String::new();
+        adopt_seed(&mut present, &flags, "FORCE_REQUESTED");
+        assert_eq!(present, "true");
+
+        assert_eq!(first_nonempty("a", "b"), "a");
+        assert_eq!(first_nonempty("", "b"), "b");
+    }
+
+    #[test]
+    fn a_sentinel_carries_an_identity_only_when_it_parses() {
+        let root = TempDir::new().expect("temp");
+        let sentinel = root.path().join("parent-issue.md");
+        assert_eq!(sentinel_identity(&sentinel), (String::new(), String::new()));
+        fs::write(&sentinel, "ISSUE_NUMBER=7\nRUN_ID=run-7\nADOPTED=true\n").expect("sentinel");
+        assert_eq!(
+            sentinel_identity(&sentinel),
+            ("7".to_owned(), "run-7".to_owned())
+        );
+        fs::write(&sentinel, "ISSUE_NUMBER=not-a-number\n").expect("malformed");
+        assert_eq!(sentinel_identity(&sentinel), (String::new(), String::new()));
+    }
+
+    #[test]
+    fn the_session_environment_publishes_the_identity_children_observe() {
+        let root = TempDir::new().expect("temp");
+        fs::write(
+            root.path().join("session-env.sh"),
+            "LARCH_TOKEN_SESSION_ID=tok-2\nLARCH_CLAUDE_SOURCE_FILE=/src\nLARCH_TIMING_LEDGER=/ledger\n",
+        )
+        .expect("session");
+
+        let rows = session_child_environment(Some(root.path()));
+
+        assert!(
+            rows.iter()
+                .any(|(key, _value)| *key == ChildEnvironment::LarchClaudePid)
+        );
+        assert!(session_child_environment(None).len() == 1);
+        assert!(!claude_pid().is_empty());
+        let _reachable = on_path("sh");
+    }
+
+    #[test]
+    fn write_atomic_reports_the_path_it_could_not_publish() {
+        let root = TempDir::new().expect("temp");
+        let blocker = root.path().join("blocker");
+        fs::write(&blocker, "").expect("blocker");
+
+        assert!(write_atomic(&root.path().join("nested/file.txt"), "body\n").is_ok());
+        assert_eq!(
+            fs::read_to_string(root.path().join("nested/file.txt")).expect("published"),
+            "body\n"
+        );
+        let refused = write_atomic(&blocker.join("nested/file.txt"), "body\n")
+            .expect_err("a file cannot become a directory");
+        assert!(refused.starts_with("cannot create "));
+        let unwritable =
+            write_atomic(root.path(), "body\n").expect_err("a directory cannot be published over");
+        assert!(unwritable.starts_with("cannot publish "));
+    }
+
+    #[test]
+    fn an_option_falls_back_to_its_declared_environment_variable() {
+        let parsed = parse_with_flags(
+            &arguments(&["--tmpdir", "/declared"]),
+            &SCOUT_OPTIONS,
+            &HELP_FLAGS,
+            0,
+        );
+
+        assert_eq!(
+            option_or_env(&parsed, "--tmpdir", "IMPLEMENT_TMPDIR"),
+            "/declared"
+        );
+        assert_eq!(
+            option_or_env(&parsed, "--input", "LARCH_UNSET_TEST_VARIABLE"),
+            ""
+        );
+        write_streams("", "");
+    }
 
     #[test]
     fn pwd_basename_matches_the_bash_boundary() {

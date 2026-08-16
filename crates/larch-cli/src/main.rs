@@ -61,6 +61,7 @@ mod gitleaks;
 mod hook_commands;
 mod html;
 pub(crate) mod implement_bootstrap_continuation;
+mod implement_child_seam;
 mod implement_commands;
 mod implement_dispatch_commands;
 mod implement_launcher_commands;
