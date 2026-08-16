@@ -9,6 +9,7 @@ import contextlib
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -31,7 +32,6 @@ from larch.design.design_core import (
 )
 from larch.design.design_session import (
     _call_pause_save,
-    _capture_stdout_stderr,
     _design_require_plugin_root,
     _design_tmpdir,
     _parse_common_wrapper_args,
@@ -51,7 +51,9 @@ from larch.design.design_terminal import (
     stage_terminal_state_core,
 )
 from larch.design.design_summary import resolve_summary_mode
-from larch.design import plan_grammar, plan_quality
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
+from larch.design import plan_grammar
+
 
 def step2b5_main(argv: Sequence[str]) -> int:
     try:
@@ -73,7 +75,23 @@ def step2b5_main(argv: Sequence[str]) -> int:
     old_quiet = os.environ.get("LARCH_QUIET_DISABLE")
     os.environ["LARCH_QUIET_DISABLE"] = "1"
     try:
-        rc, out = _capture_stdout_stderr(callable_obj=plan_quality.check_plan_size_main, argv=["--design-tmpdir", str(design_tmpdir)], stderr_path=stderr_tmp)
+        proc = subprocess.run(
+            [
+                str(larch_entrypoint(plugin_root)),
+                "plan",
+                "check-size",
+                "--design-tmpdir",
+                str(design_tmpdir),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=larch_entrypoint_env(plugin_root),
+        )
+        rc = proc.returncode
+        out = proc.stdout or ""
+        if proc.stderr:
+            stderr_tmp.write_text(proc.stderr, encoding="utf-8")
     finally:
         if old_quiet is None:
             os.environ.pop("LARCH_QUIET_DISABLE", None)

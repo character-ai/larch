@@ -1,0 +1,7 @@
+usage: cli.py plan optional-trailers [-h] {parse,keys,values,has-key,snapshot-keys,snapshot-values,validate-keys,validate-values} ...
+
+positional arguments:
+  {parse,keys,values,has-key,snapshot-keys,snapshot-values,validate-keys,validate-values}
+
+options:
+  -h, --help            show this help message and exit

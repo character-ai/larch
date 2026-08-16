@@ -25,7 +25,8 @@ use larch_adapters::{
 };
 use larch_core::{
     CodexGateMessage, CrStrip, DegradedToolsResult, DuplicatePolicy, KvDocument, ParseOptions,
-    ProcessOutput, RepositoryRead, Revision, redact, role_default, single_line as core_single_line,
+    ProcessOutput, RepositoryRead, Revision, compose_plan_goals_test, redact, role_default,
+    single_line as core_single_line,
 };
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -1149,91 +1150,6 @@ fn write_plan_artifacts(
     publish_plan_review_tally(state, options);
     upsert_plan_summary(state, options);
     Ok(())
-}
-
-fn compose_plan_goals_test(plan_text: &str, goal: &str) -> String {
-    let lines: Vec<&str> = plan_text.lines().collect();
-    let test_start = lines.iter().position(|line| is_test_plan_heading(line));
-    let (body, tests): (&[&str], Vec<&str>) = test_start.map_or_else(
-        || (&lines[..], vec!["(no test plan section in plan-file)"]),
-        |start| {
-            let end = lines
-                .iter()
-                .enumerate()
-                .skip(start + 1)
-                .find_map(|(index, line)| is_any_heading(line).then_some(index))
-                .unwrap_or(lines.len());
-            (&lines[..start], lines[start + 1..end].to_vec())
-        },
-    );
-    let mut implementation = Vec::new();
-    let mut saw_implementation = false;
-    let mut pending_alternate = false;
-    for line in body {
-        if !saw_implementation && is_implementation_plan_heading(line) {
-            saw_implementation = true;
-            pending_alternate = true;
-            continue;
-        }
-        if pending_alternate {
-            if line.trim().is_empty() {
-                continue;
-            }
-            if is_plain_plan_heading(line) {
-                pending_alternate = false;
-                continue;
-            }
-            pending_alternate = false;
-        }
-        implementation.push(*line);
-    }
-    format!(
-        "## Goal\n{goal}\n\n## Implementation Plan\n{}\n\n## Test plan\n{}\n",
-        implementation.join("\n"),
-        tests.join("\n"),
-    )
-}
-
-fn is_test_plan_heading(line: &str) -> bool {
-    [
-        "Test Plan",
-        "Tests",
-        "Testing",
-        "Verification",
-        "Test Strategy",
-        "Verification Strategy",
-    ]
-    .iter()
-    .any(|name| is_heading_named_case_insensitive(line, name))
-}
-
-fn is_implementation_plan_heading(line: &str) -> bool {
-    is_heading_named_case_insensitive(line, "Implementation Plan")
-}
-
-fn is_plain_plan_heading(line: &str) -> bool {
-    is_heading_named_case_insensitive(line, "Plan")
-}
-
-fn is_heading_named_case_insensitive(line: &str, expected: &str) -> bool {
-    let trimmed = line.trim_end();
-    let hashes = trimmed.bytes().take_while(|byte| *byte == b'#').count();
-    (1..=3).contains(&hashes)
-        && trimmed
-            .as_bytes()
-            .get(hashes)
-            .is_some_and(u8::is_ascii_whitespace)
-        && trimmed[hashes..].trim().eq_ignore_ascii_case(expected)
-}
-
-fn is_any_heading(line: &str) -> bool {
-    let trimmed = line.trim_start();
-    let hashes = trimmed.bytes().take_while(|byte| *byte == b'#').count();
-    (1..=3).contains(&hashes)
-        && trimmed
-            .as_bytes()
-            .get(hashes)
-            .is_some_and(u8::is_ascii_whitespace)
 }
 
 fn upsert_plan_summary(state: &BootstrapState, options: &BootstrapOptions) {

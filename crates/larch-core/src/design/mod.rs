@@ -19,6 +19,8 @@ pub use plan_quality::{
     HEADER as PLAN_COMMAND_TSV_HEADER, OVERSIZE_OVERRIDE_OPERATOR, OptionalMetadata,
     PLAN_SIZE_MAX_DIFF_ADDED, PLAN_SIZE_MAX_DIFF_LINES, PLAN_SIZE_MAX_FIRM_HEADINGS,
     PLAN_SIZE_MAX_PLAN_BODY_LINES, PLAN_SIZE_MAX_SURFACES, PlanCommandRow, PlanSizeAssessment,
-    assess_plan_size, firm_heading_count, firm_heading_paths, parse_optional_metadata,
-    parse_plan_commands, plan_surfaces, render_plan_command_tsv, validate_difficulty_metadata,
+    ValidationSummary, assess_plan_size, compose_plan_goals_test, drift_exceeds, drift_ratio_token,
+    firm_heading_count, firm_heading_paths, parse_optional_metadata, parse_plan_commands,
+    plan_surfaces, render_plan_command_tsv, set_oversize_override_text,
+    validate_difficulty_metadata,
 };

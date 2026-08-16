@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: cli.py plan validate-commands [-h] --tsv-file TSV_FILE --log-file LOG_FILE [--dry-runnable-registry DRY_RUNNABLE_REGISTRY] [--source-kind {plan,composed}] [--help-timeout HELP_TIMEOUT] [--dry-run-timeout DRY_RUN_TIMEOUT] [--repo-root REPO_ROOT]\n\noptions:\n  -h, --help            show this help message and exit\n  --tsv-file TSV_FILE\n  --log-file LOG_FILE\n  --dry-runnable-registry DRY_RUNNABLE_REGISTRY\n  --source-kind {plan,composed}\n  --help-timeout HELP_TIMEOUT\n  --dry-run-timeout DRY_RUN_TIMEOUT\n  --repo-root REPO_ROOT\n"
+  }
+}

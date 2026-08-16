@@ -818,7 +818,7 @@ def _step2b5_self_log(*, plugin_root: Path, design_tmpdir: Path, rc: int, stdout
         output_file.write_text(combined, encoding="utf-8")
     except OSError:
         return
-    _append_failure(plugin_root=plugin_root, design_tmpdir=design_tmpdir, site="design Step 2b.5", tool="python/cli.py plan check-size", exit_code=rc, category="Warnings", output_file=output_file)
+    _append_failure(plugin_root=plugin_root, design_tmpdir=design_tmpdir, site="design Step 2b.5", tool="scripts/larch.sh plan check-size", exit_code=rc, category="Warnings", output_file=output_file)
 
 
 def step0_clarify_hard_halt_main(argv: Sequence[str]) -> int:

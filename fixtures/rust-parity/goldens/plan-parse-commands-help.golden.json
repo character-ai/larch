@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: cli.py plan parse-commands [-h] --plan-file PLAN_FILE --output OUTPUT [--repo-root REPO_ROOT]\n\noptions:\n  -h, --help            show this help message and exit\n  --plan-file PLAN_FILE\n  --output OUTPUT\n  --repo-root REPO_ROOT\n"
+  }
+}

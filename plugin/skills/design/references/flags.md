@@ -28,17 +28,17 @@ Step 0-pre validation and positional classification use `python/cli.py design pa
 
 ## Plan-size thresholds (Step 2b.5)
 
-**Merged post-plan sites** (initial Step 2b, Gate B shared post-apply, discussion-round2 / Gate A after-discussion re-emit) call `python/cli.py design postplan-emit --with-plan-size`. It runs `python/cli.py plan check-size` and maps verdicts to thin-fence exit codes (`0`, `10`, `11`, `12`, `13`, `14`, `1`, `2`). **`python/cli.py plan check-size` remains standalone** for retained Step 2b.5 paths.
+**Merged post-plan sites** (initial Step 2b, Gate B shared post-apply, discussion-round2 / Gate A after-discussion re-emit) call `python/cli.py design postplan-emit --with-plan-size`. It runs `scripts/larch.sh plan check-size` and maps verdicts to thin-fence exit codes (`0`, `10`, `11`, `12`, `13`, `14`, `1`, `2`). **`scripts/larch.sh plan check-size` remains standalone** for retained Step 2b.5 paths.
 
 **Site-aware hard prompts**: all size-triggered paths use the unified Split-path question with Partition, Override, and Other/chat.
 
 ### `LARCH_DESIGN_DRIFT_MULTIPLE`
 
-Default `2` (positive integer; invalid values fall back to `2`). `python/cli.py plan check-size` compares current plan and diff lines with `drift-baseline.env`; drift fires when either ratio exceeds the multiple. Merged `python/cli.py design postplan-emit --with-plan-size` logs to `execution-issues.md` and exits `0` after hard-size and partition checks; drift no longer prompts or halts.
+Default `2` (positive integer; invalid values fall back to `2`). `scripts/larch.sh plan check-size` compares current plan and diff lines with `drift-baseline.env`; drift fires when either ratio exceeds the multiple. Merged `python/cli.py design postplan-emit --with-plan-size` logs to `execution-issues.md` and exits `0` after hard-size and partition checks; drift no longer prompts or halts.
 
 Merged fence pause-save preludes and `_postplan_rc=11` `exec` arms thread `${REPO:+--repo "$REPO"}`; `python/cli.py design postplan-emit` is not passed `--repo`.
 
-Mechanical evaluation lives in `python/cli.py plan check-size` (sibling `check-plan-size.md`). Thresholds use **strict `>`**: 800 lines does **not** trip; 801 does.
+Mechanical evaluation lives in `scripts/larch.sh plan check-size` (sibling `check-plan-size.md`). Thresholds use **strict `>`**: 800 lines does **not** trip; 801 does.
 
 The historical **ownership-domains** sprawl heuristic is **not** part of L1; it is intentionally omitted (Round 1 decision on issue #2670).
 
@@ -64,7 +64,7 @@ If the panel fails, Step 3 skips Gate B and proceeds to Step 3b, the Step 3b com
 
 The helper emits reason tokens in threshold order: `plan-body-lines`, diff reason, `firm-headings`, `surfaces`.
 
-## `python/cli.py plan check-size` contract (summary)
+## `scripts/larch.sh plan check-size` contract (summary)
 
 - **Input**: `$DESIGN_TMPDIR/plan.txt` (or `--plan-file`) with a **final non-empty** `diff_lines: <N>` trailer matching `emit-plan.sh` grammar. Optional `diff_added:`, `diff_deleted:`, `mechanical_churn:`, and `oversize_override: operator` trailers MAY appear in the final contiguous metadata block above `diff_lines:` (strict full-line regexes; see `check-plan-size.md`). Numeric legacy `mechanical_churn:` values normalize to `true`; drafters emit only `true` or `false`.
 - **Machine output**: size/diff counts, `FIRM_HEADINGS`, `SURFACES_TOUCHED`, `OVERSIZE_OVERRIDE`, advisory and trigger KVs, and `PLAN_SIZE_STATUS=ok`. `PLAN_LINES` excludes recognized optional metadata trailers. On validation failure only: `PLAN_SIZE_STATUS=missing-plan` or `missing-diff-lines`.

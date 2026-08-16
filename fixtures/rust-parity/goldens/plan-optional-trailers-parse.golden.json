@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    ".home/.cache/larch/sessions/plan-quality-parity/plan.txt": {
+      "text": "### NEW: fixture\n\n1. Touch `scripts/noop.sh`.\n\ndiff_lines: 1\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "0\n-\n-\nfalse\n-\n"
+  }
+}

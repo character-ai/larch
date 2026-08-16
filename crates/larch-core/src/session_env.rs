@@ -326,7 +326,7 @@ pub fn design_run_launcher_text(pid: &str, plugin_root: &str) -> String {
             "    exec python3 \"$PLUGIN_ROOT/python/cli.py\" design step6-cleanup --session-env-path \"$SESSION_ENV_PATH\" --claude-pid \"$CLAUDE_PID\" \"$@\"\n",
             "    ;;\n",
             "  design-step-validator-autofix.sh)\n",
-            "    exec python3 \"$PLUGIN_ROOT/python/cli.py\" plan validator-autofix --session-env-path \"$SESSION_ENV_PATH\" --claude-pid \"$CLAUDE_PID\" \"$@\"\n",
+            "    exec \"$PLUGIN_ROOT/scripts/larch.sh\" plan validator-autofix --session-env-path \"$SESSION_ENV_PATH\" --claude-pid \"$CLAUDE_PID\" \"$@\"\n",
             "    ;;\n",
             "  design-stage-terminal-state.sh)\n",
             "    exec python3 \"$PLUGIN_ROOT/python/cli.py\" design stage-terminal-state \"$@\"\n",

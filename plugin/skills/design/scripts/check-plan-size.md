@@ -1,6 +1,6 @@
 # skills/design/scripts/check-plan-size.md
 
-Mechanical plan-size detector for `/design` **Step 2b.5** (issue #2670). Runtime owner: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan check-size` (implementation: [`python/plan_quality.py`](../../../python/plan_quality.py)). Threshold semantics are normatively documented in [`skills/design/references/flags.md`](../references/flags.md).
+Mechanical plan-size detector for `/design` **Step 2b.5** (issue #2670). Runtime owner: `scripts/larch.sh plan check-size` (Rust: `crates/larch-cli/src/plan_quality_commands.rs`). Threshold semantics are normatively documented in [`skills/design/references/flags.md`](../references/flags.md).
 
 ## argv
 
@@ -26,7 +26,7 @@ Designers MAY append these lines in the **final contiguous metadata block** imme
 | `mechanical_churn: true\|false` | `^mechanical_churn: (true\|false)$`; numeric legacy values are normalized to `true` for resilience |
 | `oversize_override: operator` | `^oversize_override: operator$`; explicit override |
 
-Parsing rules (implemented in `plan_quality.parse_optional_metadata`; CLI surface: `python/cli.py plan optional-trailers`):
+Parsing rules (implemented in `plan_quality.parse_optional_metadata`; CLI surface: `scripts/larch.sh plan optional-trailers`):
 
 - Scan upward from the line above `diff_lines:`; the block contains only strict trailer lines matching the regexes above.
 - Stop at the first line above `diff_lines:` that is **not** one of those regexes (including blank lines).

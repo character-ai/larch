@@ -78,7 +78,10 @@ impl CleanInstallCase {
             // clean-install `--help` token reads as an invalid flag and the verb
             // reports its own breadcrumb refusal exit.
             | "clean-install-render-lane-status"
-            | "clean-install-session-local-cleanup" => 1,
+            | "clean-install-session-local-cleanup"
+            // `plan validator-autofix` refuses missing `DESIGN_TMPDIR` before
+            // `--help`, matching the frozen Python wrapper order.
+            | "clean-install-plan-validator-autofix" => 1,
             "clean-install-admission-preflight" => 3,
             "clean-install-token-measure-cache-efficiency"
             | "clean-install-token-measure-checks-digest-savings"
@@ -803,6 +806,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-named-block-write", "named-block", "write"),
     CleanInstallCase::new("clean-install-plan-scope-paths", "plan", "scope-paths"),
+    CleanInstallCase::new("clean-install-plan-auto-fix-commands", "plan", "auto-fix-commands"),
+    CleanInstallCase::new("clean-install-plan-check-size", "plan", "check-size"),
+    CleanInstallCase::new("clean-install-plan-compose-goals-test", "plan", "compose-goals-test"),
+    CleanInstallCase::new("clean-install-plan-optional-trailers", "plan", "optional-trailers"),
+    CleanInstallCase::new("clean-install-plan-parse-commands", "plan", "parse-commands"),
+    CleanInstallCase::new("clean-install-plan-revise-waterfall", "plan", "revise-waterfall"),
+    CleanInstallCase::new("clean-install-plan-set-oversize-override", "plan", "set-oversize-override"),
+    CleanInstallCase::new("clean-install-plan-validate", "plan", "validate"),
+    CleanInstallCase::new("clean-install-plan-validate-commands", "plan", "validate-commands"),
+    CleanInstallCase::new("clean-install-plan-validator-autofix", "plan", "validator-autofix"),
     CleanInstallCase::new(
         "clean-install-plan-review-panel-dispatch",
         "plan-review",

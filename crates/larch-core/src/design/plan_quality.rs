@@ -12,8 +12,8 @@
 )]
 
 use crate::design::plan_grammar::{
-    self, HeadingKind, TrailerKey, TrailerValue, iter_firm_headings, match_heading,
-    parse_final_trailers,
+    self, HeadingKind, OPTIONAL_SIZE_TRAILER_KEYS, TrailerKey, TrailerValue, iter_firm_headings,
+    match_heading, match_trailer_line, parse_final_trailers,
 };
 use crate::{balanced_fence_line_indices, difficulty};
 use regex::Regex;
@@ -985,6 +985,208 @@ fn process_fence(
     }
 }
 
+/// Summary of plan-command validation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ValidationSummary {
+    /// Overall status token (`ok` or `defects-found`).
+    pub status: String,
+    /// Count of defect rows.
+    pub defect_count: usize,
+    /// Count of skipped rows.
+    pub skipped_count: usize,
+    /// Count of unsafe-token defects.
+    pub unsafe_token_count: usize,
+    /// Full log text including the summary line.
+    pub log_text: String,
+}
+
+/// Compose the plan-goals-test markdown document.
+#[must_use]
+pub fn compose_plan_goals_test(plan_text: &str, goal_text: &str) -> String {
+    let lines: Vec<&str> = plan_text.lines().collect();
+    let test_start = lines.iter().position(|line| is_test_plan_heading(line));
+    let (body, tests): (&[&str], Vec<&str>) = match test_start {
+        None => (&lines[..], vec!["(no test plan section in plan-file)"]),
+        Some(start) => {
+            let end = lines
+                .iter()
+                .enumerate()
+                .skip(start + 1)
+                .find_map(|(index, line)| is_any_heading(line).then_some(index))
+                .unwrap_or(lines.len());
+            (&lines[..start], lines[start + 1..end].to_vec())
+        }
+    };
+    let mut implementation = Vec::new();
+    let mut saw_implementation = false;
+    let mut pending_alternate = false;
+    for line in body {
+        if !saw_implementation && is_implementation_plan_heading(line) {
+            saw_implementation = true;
+            pending_alternate = true;
+            continue;
+        }
+        if pending_alternate {
+            if line.trim().is_empty() {
+                continue;
+            }
+            if is_plain_plan_heading(line) {
+                pending_alternate = false;
+                continue;
+            }
+            pending_alternate = false;
+        }
+        implementation.push(*line);
+    }
+    format!(
+        "## Goal\n{goal_text}\n\n## Implementation Plan\n{}\n\n## Test plan\n{}\n",
+        implementation.join("\n"),
+        tests.join("\n"),
+    )
+}
+
+fn is_test_plan_heading(line: &str) -> bool {
+    heading_title(line).is_some_and(|title| {
+        matches!(
+            title.to_ascii_lowercase().as_str(),
+            "test plan"
+                | "tests"
+                | "testing"
+                | "verification"
+                | "test strategy"
+                | "verification strategy"
+        )
+    })
+}
+
+fn is_implementation_plan_heading(line: &str) -> bool {
+    heading_title(line).is_some_and(|title| title.eq_ignore_ascii_case("Implementation Plan"))
+}
+
+fn is_plain_plan_heading(line: &str) -> bool {
+    heading_title(line).is_some_and(|title| title.eq_ignore_ascii_case("Plan"))
+}
+
+fn is_any_heading(line: &str) -> bool {
+    heading_title(line).is_some()
+}
+
+fn heading_title(line: &str) -> Option<&str> {
+    let trimmed = line.trim_end();
+    let rest = trimmed
+        .strip_prefix("### ")
+        .or_else(|| trimmed.strip_prefix("## "))
+        .or_else(|| trimmed.strip_prefix("# "))?;
+    Some(rest.trim())
+}
+
+/// Insert or remove the trusted oversize override trailer above terminal `diff_lines`.
+///
+/// # Errors
+///
+/// Returns an error when the plan is empty, contains CR, or lacks a terminal
+/// `diff_lines` trailer.
+pub fn set_oversize_override_text(text: &str, remove: bool) -> Result<String, String> {
+    if text.contains('\r') {
+        return Err("plan file must not contain carriage returns".to_owned());
+    }
+    let mut lines: Vec<String> = text.split_inclusive('\n').map(str::to_owned).collect();
+    if lines.is_empty() {
+        return Err("plan file is empty".to_owned());
+    }
+    let trailer = format!("oversize_override: {OVERSIZE_OVERRIDE_OPERATOR}");
+    let mut diff_idx = last_diff_lines_index(&lines)?;
+    let trailer_start = override_trailer_start(&lines, diff_idx, &trailer);
+    lines = lines
+        .into_iter()
+        .enumerate()
+        .filter(|(idx, line)| {
+            !(trailer_start <= *idx
+                && *idx < diff_idx
+                && line.trim_end_matches(['\n', '\r']) == trailer)
+        })
+        .map(|(_idx, line)| line)
+        .collect();
+    diff_idx = last_diff_lines_index(&lines)?;
+    if !remove {
+        lines.insert(diff_idx, format!("{trailer}\n"));
+    }
+    Ok(lines.concat())
+}
+
+fn last_diff_lines_index(lines: &[String]) -> Result<usize, String> {
+    let joined = lines.concat();
+    let trailers = parse_final_trailers(&joined, true);
+    if trailers.matches.is_empty() {
+        return Err("missing terminal diff_lines trailer".to_owned());
+    }
+    Ok(trailers.start_line + trailers.matches.len() - 2)
+}
+
+fn override_trailer_start(lines: &[String], diff_idx: usize, trailer: &str) -> usize {
+    let mut trailer_start = diff_idx;
+    for idx in (0..diff_idx).rev() {
+        let stripped = lines[idx].trim_end_matches(['\n', '\r']);
+        if stripped == trailer {
+            trailer_start = idx;
+            continue;
+        }
+        if let Some(matched) = match_trailer_line(stripped)
+            && (matched.key == TrailerKey::Difficulty
+                || OPTIONAL_SIZE_TRAILER_KEYS
+                    .iter()
+                    .any(|key| *key == matched.key.as_str()))
+        {
+            trailer_start = idx;
+            continue;
+        }
+        break;
+    }
+    trailer_start
+}
+
+fn ratio_token(current: i64, baseline: i64) -> String {
+    if baseline == 0 {
+        return if current > 0 {
+            "inf".to_owned()
+        } else {
+            "1".to_owned()
+        };
+    }
+    if current % baseline == 0 {
+        return (current / baseline).to_string();
+    }
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        reason = "parity with Python float ratio rendering"
+    )]
+    {
+        let value = current as f64 / baseline as f64;
+        let rendered = format!("{value:.2}");
+        rendered
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_owned()
+    }
+}
+
+/// Whether drift exceeds `baseline * multiple`, matching Python check-size.
+#[must_use]
+pub const fn drift_exceeds(current: i64, baseline: i64, multiple: i64) -> bool {
+    if baseline == 0 {
+        current > 0
+    } else {
+        current > baseline * multiple
+    }
+}
+
+/// Render the drift ratio token used by `plan check-size`.
+#[must_use]
+pub fn drift_ratio_token(current: i64, baseline: i64) -> String {
+    ratio_token(current, baseline)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1072,7 +1274,7 @@ mod tests {
     #[test]
     fn parse_plan_commands_golden_fixtures_match_python() {
         let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../skills/design/scripts/fixtures/parse-plan-commands");
+            .join("../../fixtures/plan-commands/parse-plan-commands");
         let mut pairs = Vec::new();
         for entry in fs::read_dir(&fixture_dir).expect("fixtures dir") {
             let entry = entry.expect("entry");

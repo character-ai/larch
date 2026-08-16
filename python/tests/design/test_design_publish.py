@@ -2400,11 +2400,11 @@ def test_publish_refreshes_composed_plan_before_size_guard(tmp_path: Path, capsy
     (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     (design / "plan.txt").write_text(
-        "## Plan\n\nBody.\n\n## Testing strategy\n\nRun tests.\n\ndifficulty: MODERATE\ndiff_lines: 12\n",
+        "## Plan\n\nBody.\n\n## Testing strategy\n\nRun tests.\n\noversize_override: operator\ndifficulty: MODERATE\ndiff_lines: 12\n",
         encoding="utf-8",
     )
     (design / "composed-plan.md").write_text("# stale\n", encoding="utf-8")
-    assert design_step5c.plan_quality.set_oversize_override_main(["--design-tmpdir", str(design)]) == 0
+    (design / ".oversize-override-authority").write_text("operator\n", encoding="utf-8")
     old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     old_size = os.environ.get("FAKE_CLI_SIZE_TRIGGER_FIRED")
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)

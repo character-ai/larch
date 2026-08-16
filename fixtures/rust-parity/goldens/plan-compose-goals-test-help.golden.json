@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: cli.py plan compose-goals-test [-h] --plan-file PLAN_FILE [--goal-text GOAL_TEXT]\n\noptions:\n  -h, --help            show this help message and exit\n  --plan-file PLAN_FILE\n  --goal-text GOAL_TEXT\n"
+  }
+}

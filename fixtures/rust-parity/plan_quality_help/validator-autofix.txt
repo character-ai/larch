@@ -1,0 +1,1 @@
+design-step-validator-autofix.sh: DESIGN_TMPDIR required

@@ -62,6 +62,41 @@ if [[ "\${1:-}" == bootstrap && "\${2:-}" == self-check ]]; then
   printf '%s\n' '{"schema_version":1,"version":"$PLUGIN_VERSION","target":"$LARCH_TARGET"}'
   exit 0
 fi
+if [[ "\${1:-}" == plan-review && "\${2:-}" == json-get-bool ]]; then
+  printf 'false\n'
+  exit 0
+fi
+if [[ "\${1:-}" == plan && "\${2:-}" == validate ]]; then
+  printf '%s\n' 'VALIDATE_STATUS=ok' 'VALIDATE_DEFECT_COUNT=0' 'VALIDATE_SKIPPED_COUNT=0' 'VALIDATE_UNSAFE_TOKEN_COUNT=0'
+  exit 0
+fi
+if [[ "\${1:-}" == plan && "\${2:-}" == check-size ]]; then
+  shift 2
+  design=""
+  while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+      --design-tmpdir) design="\$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  plan_lines=\$(wc -l <"\$design/plan.txt" | tr -d ' ')
+  diff_lines=\$(awk '/^diff_lines: [0-9]+\$/ { value=\$2 } END { print value+0 }' "\$design/plan.txt")
+  size_trigger=false
+  drift_trigger=false
+  if [[ "\$plan_lines" -ge 800 ]]; then
+    size_trigger=true
+  fi
+  if [[ -f "\$design/drift-baseline.env" ]]; then
+    baseline_plan=\$(awk -F= '\$1=="BASELINE_PLAN_LINES" { print \$2+0 }' "\$design/drift-baseline.env")
+    multiple=\${LARCH_DESIGN_DRIFT_MULTIPLE:-2}
+    if [[ "\$baseline_plan" -gt 0 && "\$plan_lines" -ge \$((baseline_plan * multiple)) ]]; then
+      drift_trigger=true
+    fi
+  fi
+  printf 'PLAN_SIZE_STATUS=ok\nSIZE_TRIGGER_FIRED=%s\nDRIFT_TRIGGER_FIRED=%s\nPLAN_LINES=%s\nDIFF_LINES=%s\n' \
+    "\$size_trigger" "\$drift_trigger" "\$plan_lines" "\$diff_lines"
+  exit 0
+fi
 if [[ "\${1:-}" == plan-review && "\${2:-}" == gate-b-dedup ]]; then
   shift 2
   design="" snapshot=false dedup=false

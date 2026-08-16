@@ -1,3 +1,0 @@
-row_type	source_line	script_path	flag	flag_value	note	cmd_uid
-updated_flag	6	skills/design/scripts/fixtures/validate-plan-commands/demo-stdout-help.sh	known-flag			
-invocation	9	skills/design/scripts/fixtures/validate-plan-commands/demo-stdout-help.sh	known-flag	x		1

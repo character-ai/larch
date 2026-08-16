@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: cli.py plan check-size [-h] --design-tmpdir DESIGN_TMPDIR [--plan-file PLAN_FILE]\n\noptions:\n  -h, --help            show this help message and exit\n  --design-tmpdir DESIGN_TMPDIR\n  --plan-file PLAN_FILE\n"
+  }
+}

@@ -1,0 +1,17 @@
+usage: cli.py plan auto-fix-commands [-h] --design-tmpdir DESIGN_TMPDIR --plan-file PLAN_FILE [--codex-present {,true,false}] [--cursor-present {,true,false}] [--codex-available {true,false}] [--cursor-available {true,false}] [--codex-binary-found {,true,false}] [--cursor-binary-found {,true,false}] [--repo-root REPO_ROOT] [--max-attempts MAX_ATTEMPTS] [--site SITE] [--timeout TIMEOUT] [--require-executable-facets]
+
+options:
+  -h, --help            show this help message and exit
+  --design-tmpdir DESIGN_TMPDIR
+  --plan-file PLAN_FILE
+  --codex-present {,true,false}
+  --cursor-present {,true,false}
+  --codex-available {true,false}
+  --cursor-available {true,false}
+  --codex-binary-found {,true,false}
+  --cursor-binary-found {,true,false}
+  --repo-root REPO_ROOT
+  --max-attempts MAX_ATTEMPTS
+  --site SITE
+  --timeout TIMEOUT
+  --require-executable-facets

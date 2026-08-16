@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: cli.py plan revise-waterfall [-h] --design-tmpdir DESIGN_TMPDIR --plan-file PLAN_FILE --findings-file FINDINGS_FILE --feature-file FEATURE_FILE --round-num ROUND_NUM [--codex-present {,true,false}] [--cursor-present {,true,false}] [--codex-binary-found {,true,false}] [--cursor-binary-found {,true,false}] [--timeout TIMEOUT] [--patch-format {unified-diff,file-replacement}]\n\noptions:\n  -h, --help            show this help message and exit\n  --design-tmpdir DESIGN_TMPDIR\n  --plan-file PLAN_FILE\n  --findings-file FINDINGS_FILE\n  --feature-file FEATURE_FILE\n  --round-num ROUND_NUM\n  --codex-present {,true,false}\n  --cursor-present {,true,false}\n  --codex-binary-found {,true,false}\n  --cursor-binary-found {,true,false}\n  --timeout TIMEOUT\n  --patch-format {unified-diff,file-replacement}\n"
+  }
+}

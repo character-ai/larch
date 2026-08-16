@@ -306,12 +306,12 @@ Most release helpers remain behind `python/cli.py`. Every audit-runs verb is Rus
 ### Plan-quality domain migration
 
 - Added `python/plan_quality.py` under the existing `plan` CLI domain for command parsing, validation, plan-size checks, revision, auto-fix, optional trailers, and plan-goals composition.
-- Surviving Bash callers invoke `python3 python/cli.py plan ...` directly. No shim layer is added.
+- Surviving Bash callers invoke `python3 scripts/larch.sh plan ...` directly. No shim layer is added.
 - Drift baseline write-once moved to `scripts/larch.sh plan-review drift-baseline`; see **C3a1 design plan-review cutover** below.
 - `plan validate` preserves `VALIDATE_LOG_FILE`: it writes `$DESIGN_TMPDIR/validate-plan-commands.log` when possible, otherwise a stable temp log.
 - `python/cli.py design driver` bootstraps `PLUGIN_ROOT` when `CLAUDE_PLUGIN_ROOT` is unset.
 - Step 3 keeps `RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH` as an override while defaulting to `plan revise-waterfall`.
-- `scripts/python/cli.py plan step1-log` defaults to `plan compose-goals-test` without a retired executable guard.
+- `scripts/scripts/larch.sh plan step1-log` defaults to `plan compose-goals-test` without a retired executable guard.
 - Absorbed shell harness targets now select `python/test_plan_quality.py`; survivor harnesses remain for shell call sites.
 
 ### C3c design decomposition and scout cutover
@@ -344,7 +344,7 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 
 ### G5 design Step 2 drafter and validator cutover
 
-- Step 2a, Step 2b drafter/prelude, Step 2b postplan, Step 2b.5, and validator-autofix bodies now run in-process through `python/cli.py design ...` and `python/cli.py plan validator-autofix`.
+- Step 2a, Step 2b drafter/prelude, Step 2b postplan, Step 2b.5, and validator-autofix bodies now run in-process through `python/cli.py design ...` and `scripts/larch.sh plan validator-autofix`.
 - The design launcher maps the retired wrapper names to CLI verbs with `"$@"` forwarding so launcher-owned session rehydration and caller flags are preserved.
 - The shared postplan helper calls `postplan_emit_main` and `pause_save_main` in-process. Rehydration exports merged session keys to `os.environ` before those calls.
 - The thin-wrapper rc contract is preserved: nonfatal postplan outcomes emit stdout rows and exit 0, fatal emit rc `1` or `2` maps to process exit 1, and pause paths `sys.exit` after pause-save.

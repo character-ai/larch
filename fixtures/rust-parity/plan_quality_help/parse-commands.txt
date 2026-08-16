@@ -1,0 +1,7 @@
+usage: cli.py plan parse-commands [-h] --plan-file PLAN_FILE --output OUTPUT [--repo-root REPO_ROOT]
+
+options:
+  -h, --help            show this help message and exit
+  --plan-file PLAN_FILE
+  --output OUTPUT
+  --repo-root REPO_ROOT

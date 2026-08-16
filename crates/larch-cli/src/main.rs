@@ -74,6 +74,8 @@ mod learn_from_bugs_commands;
 mod migration_audit_commands;
 mod oos_commands;
 mod oos_file_commands;
+mod plan_quality_commands;
+mod plan_quality_revise_commands;
 mod plan_review_commands;
 mod progress_commands;
 mod push_network;
@@ -1011,6 +1013,36 @@ enum PlanCommand {
     /// Publish the scope paths one implementation plan declares.
     #[command(name = "scope-paths", disable_help_flag = true)]
     ScopePaths(RawCompatibilityArguments),
+    /// Parse fenced plan commands into a TSV table.
+    #[command(name = "parse-commands", disable_help_flag = true)]
+    ParseCommands(RawCompatibilityArguments),
+    /// Validate a plan-command TSV table.
+    #[command(name = "validate-commands", disable_help_flag = true)]
+    ValidateCommands(RawCompatibilityArguments),
+    /// Validate one plan document end-to-end.
+    #[command(disable_help_flag = true)]
+    Validate(RawCompatibilityArguments),
+    /// Measure plan size and drift against the design baseline.
+    #[command(name = "check-size", disable_help_flag = true)]
+    CheckSize(RawCompatibilityArguments),
+    /// Write or remove the trusted oversize override trailer.
+    #[command(name = "set-oversize-override", disable_help_flag = true)]
+    SetOversizeOverride(RawCompatibilityArguments),
+    /// Revise plan.txt through the vendor waterfall.
+    #[command(name = "revise-waterfall", disable_help_flag = true)]
+    ReviseWaterfall(RawCompatibilityArguments),
+    /// Auto-fix plan-command validation defects.
+    #[command(name = "auto-fix-commands", disable_help_flag = true)]
+    AutoFixCommands(RawCompatibilityArguments),
+    /// Coordinate one validator autofix cycle.
+    #[command(name = "validator-autofix", disable_help_flag = true)]
+    ValidatorAutofix(RawCompatibilityArguments),
+    /// Read or snapshot optional plan size trailers.
+    #[command(name = "optional-trailers", disable_help_flag = true)]
+    OptionalTrailers(RawCompatibilityArguments),
+    /// Compose the plan-goals-test markdown document.
+    #[command(name = "compose-goals-test", disable_help_flag = true)]
+    ComposeGoalsTest(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -1849,7 +1881,7 @@ fn run_session(command: SessionCommand) -> ExitCode {
     }
 }
 
-#[allow(clippy::too_many_lines)] // Domain dispatch enumerates every Rust-owned command pair.
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)] // Domain dispatch enumerates every Rust-owned command pair.
 fn run(
     cli: Cli,
     metadata: larch_core::BuildMetadata,
@@ -2090,9 +2122,41 @@ fn run(
         Domain::NamedBlock(NamedBlockCommand::Write(arguments)) => {
             Ok(issue_wire_commands::named_block_write(&arguments.arguments))
         }
-        Domain::Plan(PlanCommand::ScopePaths(arguments)) => {
-            Ok(issue_wire_commands::scope_paths(&arguments.arguments))
-        }
+        Domain::Plan(command) => Ok(match command {
+            PlanCommand::ScopePaths(arguments) => {
+                issue_wire_commands::scope_paths(&arguments.arguments)
+            }
+            PlanCommand::ParseCommands(arguments) => {
+                plan_quality_commands::parse_commands(&arguments.arguments)
+            }
+            PlanCommand::ValidateCommands(arguments) => {
+                plan_quality_commands::validate_commands(&arguments.arguments)
+            }
+            PlanCommand::Validate(arguments) => {
+                plan_quality_commands::validate(&arguments.arguments)
+            }
+            PlanCommand::CheckSize(arguments) => {
+                plan_quality_commands::check_size(&arguments.arguments)
+            }
+            PlanCommand::SetOversizeOverride(arguments) => {
+                plan_quality_commands::set_oversize_override(&arguments.arguments)
+            }
+            PlanCommand::ReviseWaterfall(arguments) => {
+                plan_quality_revise_commands::revise_waterfall(&arguments.arguments)
+            }
+            PlanCommand::AutoFixCommands(arguments) => {
+                plan_quality_revise_commands::auto_fix_commands(&arguments.arguments)
+            }
+            PlanCommand::ValidatorAutofix(arguments) => {
+                plan_quality_revise_commands::validator_autofix(&arguments.arguments)
+            }
+            PlanCommand::OptionalTrailers(arguments) => {
+                plan_quality_commands::optional_trailers(&arguments.arguments)
+            }
+            PlanCommand::ComposeGoalsTest(arguments) => {
+                plan_quality_commands::compose_goals_test(&arguments.arguments)
+            }
+        }),
         Domain::TrackingIssue(command) => Ok(match command {
             TrackingIssueCommand::Read(arguments) => {
                 tracking_issue_commands::read(&arguments.arguments)
