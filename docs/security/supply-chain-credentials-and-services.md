@@ -452,10 +452,13 @@ against the canonical gate renderer on read, so a hand-edited or corrupted
 cache entry cannot inject operator-facing text into the degraded-tools
 explanation.
 
-Isolation for a Cursor probe is owned by `CursorProbeSession`, which holds the
-private configuration directory and the resolved credential together. Both are
-released when the session value is dropped, so success, failure, timeout, and
-cancellation take one cleanup path.
+Isolation for Cursor probes and `cursor agent models` is owned by
+`CursorProbeSession`, which holds the private configuration directory and the
+resolved credential together. Both are released when the session value is
+dropped, so success, failure, timeout, and cancellation take one cleanup path.
+The model-list child receives the same typed credential overlay as a reviewer
+probe. It never inherits a Cursor credential through the broad child
+environment allowlist.
 
 ### Slack issue-announce webhook transport
 
