@@ -5,14 +5,14 @@ Structural harness for `/implement` prompt Bash fences. It parses `skills/implem
 ## Invariants
 
 - Exactly two pre-bootstrap call sites keep the old plugin-root guard shape:
-  - the single Preflight `python/cli.py implement preflight` helper fence;
+  - the single Preflight `scripts/larch.sh implement preflight` helper fence;
   - Step 0 initial bootstrap.
 
 The dirty-tree recovery resume fence moved to `skills/implement/references/bootstrap-recovery.md`. The `pr closes-issue` pin fence moved to `skills/implement/references/extracted-script-registry.md`.
 - The Preflight helper replaces the two prior direct `plan-block read` anchors.
 - The `preflight-helper` fence may use Bash 3.2 indexed-array argv construction.
 - The `preflight-helper` fence is exempt from the one-logical-command check but must contain exactly one helper invocation.
-- The helper is invoked through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement preflight`.
+- The helper is invoked through `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" implement preflight`.
 - Direct Preflight `plan-block read` and `gh issue view` Bash fences are forbidden, whichever entrypoint spells the command.
 - Old-shape pre-bootstrap fences other than `preflight-helper` must contain exactly one logical command after the guard, allowed `larch-run.sh --print-plugin-root` fallback, exports, comments, and blank lines are removed.
 - Every post-Step-0 fence is exactly one nonblank, noncomment physical line.

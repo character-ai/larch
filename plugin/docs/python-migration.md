@@ -44,6 +44,27 @@ selector, runtime fallback, or staged consumer split. The storage contract in
 `docs/run-log-archive.md` survives the owner change; the Python implementation
 does not.
 
+### Implement bootstrap and preflight cutover
+
+Issue #8609 moved exactly five commands to Rust: `implement clone-tag`,
+`implement normalize-coder-scout`, `implement step-0-degraded-gate`,
+`implement step-0-bootstrap`, and `implement preflight`. Callers enter through
+`scripts/larch.sh`, `python/larch/implement/dispatch_bootstrap.py` and
+`python/larch/implement/preflight.py` are deleted, the `clone_tag_main` and
+`normalize_coder_scout_main` CLI entry points are removed, and the registry
+milestones are complete. `crates/larch-cli/src/implement_commands.rs` owns the
+four bootstrap-side verbs and `crates/larch-cli/src/implement_preflight_commands.rs`
+owns preflight.
+
+`dispatch_helpers.py` and `dispatch_manifest.py` stay: `dispatch_ship.py` still
+calls `_clone_expected_tmpdir_prefix`, and Step 2 still calls the in-process
+`normalize_coder_scout()` library function. Preflight reads issues through the
+Octocrab `GitHubService` per the #7672 spike instead of shelling out to
+`gh issue view`, and resolves the repository root through `gix` per #7671.
+Three siblings remain Python and are invoked through `python_verb`:
+`issue governance-gate` (extended additively with `--preflight-envelope`),
+`scout filter-manifest`, and `ci main-health`.
+
 ### Stall-recovery mixed-runtime cutover
 
 Issue #8064 moved exactly six commands to Rust: `clear-stall`,

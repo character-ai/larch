@@ -484,6 +484,8 @@ pub enum ChildEnvironment {
     ClaudeProjectDir,
     /// Explicit repository root used by nested session setup.
     RepoRoot,
+    /// Run identity a composing command learned from its session artifacts.
+    RunId,
     ClaudeSubprocessHookExempt,
     /// Disables quiet stream routing inside a delegated larch verb.
     LarchQuietDisable,
@@ -608,6 +610,7 @@ impl ChildEnvironment {
             Self::LarchClaudePid => crate::ENV_LARCH_CLAUDE_PID,
             Self::ClaudeProjectDir => "CLAUDE_PROJECT_DIR",
             Self::RepoRoot => env::REPO_ROOT,
+            Self::RunId => "RUN_ID",
             Self::ClaudeSubprocessHookExempt => env::LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT,
             Self::LarchQuietDisable => "LARCH_QUIET_DISABLE",
             Self::LarchCodexEffort => env::LARCH_CODEX_EFFORT,

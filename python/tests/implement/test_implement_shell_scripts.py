@@ -639,29 +639,6 @@ def test_step8_child_setup_failure_does_not_write_handoff_sidecars(tmp_path: Pat
     assert result.stdout == "", "child: setup failure stdout empty"
 
 
-def test_step8_clone_cli_derives_sanitized_prefix_from_pwd(tmp_path: Path) -> None:
-    spaced = tmp_path / "repo with spaces"
-    spaced.mkdir()
-    pwd = str(spaced.resolve())
-    result = subprocess.run(
-        [_REAL_PYTHON, str(_CLI), "implement", "clone-tag"],
-        cwd=spaced,
-        env={
-            **os.environ,
-            "PYTHONPATH": str(_REPO / "python"),
-            "CLAUDE_PLUGIN_ROOT": str(_REPO),
-            "CLONE_TAG": "",
-            "PWD": pwd,
-        },
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert "EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-repo_with_spaces-" in result.stdout, (
-        "clone CLI: derives sanitized prefix from PWD"
-    )
-
-
 def test_step8_seeder_argv_forwarding(tmp_path: Path) -> None:
     seed_tmp = tmp_path / "seed"
     codex_out = seed_tmp / "codex-step2-out"

@@ -61,8 +61,10 @@ mod gitleaks;
 mod hook_commands;
 mod html;
 pub(crate) mod implement_bootstrap_continuation;
+mod implement_commands;
 mod implement_dispatch_commands;
 mod implement_launcher_commands;
+mod implement_preflight_commands;
 mod issue_commands;
 mod issue_create_commands;
 mod issue_dependency_commands;
@@ -222,9 +224,6 @@ enum Domain {
     /// Working-tree checkpoint and scope compatibility commands.
     #[command(subcommand)]
     DirtyTree(DirtyTreeCommand),
-    /// `/implement` dispatch helpers: recovery paths and step checks.
-    #[command(subcommand)]
-    Implement(ImplementCommand),
     /// The `/deps` open-issue dependency audit: reads, plan, and one apply.
     #[command(subcommand)]
     Deps(DepsCommand),
@@ -249,6 +248,9 @@ enum Domain {
     /// Advisory Claude Code hook commands.
     #[command(subcommand)]
     Hook(HookCommand),
+    /// `/implement` bootstrap, preflight, scout, recovery, and step checks.
+    #[command(subcommand)]
+    Implement(ImplementCommand),
     /// GitHub issue reads and issue-body wire helpers.
     #[command(subcommand)]
     Issue(IssueCommand),
@@ -924,6 +926,31 @@ enum AdmissionCommand {
 }
 
 #[derive(Subcommand)]
+enum ImplementCommand {
+    /// Emit this clone's tag and its expected implement tmpdir prefix.
+    #[command(name = "clone-tag", disable_help_flag = true)]
+    CloneTag(RawCompatibilityArguments),
+    /// Normalize a coder-produced dynamic-archetype manifest for Step 5.
+    #[command(name = "normalize-coder-scout", disable_help_flag = true)]
+    NormalizeCoderScout(RawCompatibilityArguments),
+    /// Verify admission, extract the plan, and probe main's CI health.
+    #[command(disable_help_flag = true)]
+    Preflight(RawCompatibilityArguments),
+    /// Compute NUL-delimited recovery paths against the prelaunch baseline.
+    #[command(name = "recovery-paths", disable_help_flag = true)]
+    RecoveryPaths(RawCompatibilityArguments),
+    /// Launch or rejoin the per-site checks bgjob composite.
+    #[command(name = "run-step-checks", disable_help_flag = true)]
+    RunStepChecks(RawCompatibilityArguments),
+    /// Validate Step 0 flags, rehydrate a resume, and adopt the run lifecycle.
+    #[command(name = "step-0-bootstrap", disable_help_flag = true)]
+    Step0Bootstrap(RawCompatibilityArguments),
+    /// Probe the vendor reviewers and forward the degraded-tools gate.
+    #[command(name = "step-0-degraded-gate", disable_help_flag = true)]
+    Step0DegradedGate(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
 enum BlockerCommand {
     /// Emit the space-joined open blockers for one issue.
     #[command(disable_help_flag = true)]
@@ -1361,16 +1388,6 @@ enum DirtyTreeCommand {
     /// Detect a scope-reduction review marker.
     #[command(disable_help_flag = true)]
     ScopeMarker(RawCompatibilityArguments),
-}
-
-#[derive(Subcommand)]
-enum ImplementCommand {
-    /// Compute NUL-delimited recovery paths against the prelaunch baseline.
-    #[command(name = "recovery-paths", disable_help_flag = true)]
-    RecoveryPaths(RawCompatibilityArguments),
-    /// Launch or rejoin the per-site checks bgjob composite.
-    #[command(name = "run-step-checks", disable_help_flag = true)]
-    RunStepChecks(RawCompatibilityArguments),
 }
 
 #[derive(Args)]
@@ -1971,14 +1988,6 @@ fn run(
                 dirty_tree_commands::scope_marker(raw.as_deref().unwrap_or(&arguments.arguments))
             }
         }),
-        Domain::Implement(command) => Ok(match command {
-            ImplementCommand::RecoveryPaths(arguments) => {
-                implement_dispatch_commands::recovery_paths(&arguments.arguments)
-            }
-            ImplementCommand::RunStepChecks(arguments) => {
-                implement_dispatch_commands::run_step_checks(&arguments.arguments)
-            }
-        }),
         Domain::Oos(command) => Ok(match command {
             OosCommand::MaterializeManifest(arguments) => {
                 oos_commands::materialize_manifest(&arguments.arguments)
@@ -2073,6 +2082,29 @@ fn run(
         Domain::Admission(AdmissionCommand::Preflight(arguments)) => {
             Ok(admission_commands::preflight(&arguments.arguments))
         }
+        Domain::Implement(command) => Ok(match command {
+            ImplementCommand::CloneTag(arguments) => {
+                implement_commands::clone_tag(&arguments.arguments)
+            }
+            ImplementCommand::NormalizeCoderScout(arguments) => {
+                implement_commands::normalize_coder_scout(&arguments.arguments)
+            }
+            ImplementCommand::Preflight(arguments) => {
+                implement_preflight_commands::preflight(&arguments.arguments)
+            }
+            ImplementCommand::RecoveryPaths(arguments) => {
+                implement_dispatch_commands::recovery_paths(&arguments.arguments)
+            }
+            ImplementCommand::RunStepChecks(arguments) => {
+                implement_dispatch_commands::run_step_checks(&arguments.arguments)
+            }
+            ImplementCommand::Step0Bootstrap(arguments) => {
+                implement_commands::step0_bootstrap(&arguments.arguments)
+            }
+            ImplementCommand::Step0DegradedGate(arguments) => {
+                implement_commands::step0_degraded_gate(&arguments.arguments)
+            }
+        }),
         Domain::Blocker(BlockerCommand::AllOpen(arguments)) => {
             Ok(blocker_commands::all_open(&arguments.arguments))
         }

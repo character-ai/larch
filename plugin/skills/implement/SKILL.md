@@ -20,7 +20,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 End-to-end: fetch the vetted `larch:plan`, materialize artifacts, implement, validate, commit, review, ship the PR, monitor CI, and clean up. With `--merge`: also run CI+rebase+merge, delete the local branch, verify main, and have the active Step 8+ driver checkpoint the run-log manifest plus `scripts/larch.sh final-report write` before exit. The tmpdir/tracking summary may reflect `MERGE_RESULT` without any post-merge `git commit` (NEVER #16). Step 18 owns the complete terminal snapshot and publication. Step 19 owns cleanup.
 
-**Protocol Execution Directive.** You are the `/implement` orchestrator. After flag parsing and mutual-exclusion checks, your FIRST external actions MUST be: (1) when `forked_target=true`, run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" admission fork-env` once and parse `UPSTREAM_REPO` plus sibling fork KV lines from stdout; (2) run exactly one `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement preflight` call as the sole mechanical surface for Preflight items 1-3, passing `--repo "$UPSTREAM_REPO"` when forked; (3) after prompt-side Preflight judgment, run Step 0 unchanged through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh --mode initial`. Prompt-side judgment starts only after helper exit `0`. Item 4 is the main-agent plan-adequacy audit when `force_requested=false`; force skips it and proceeds to item 6. Item 6 remains the semantic materiality judgment after `AUDIT=pass` or force skip. When `forked_target=true` and `UPSTREAM_REPO` is already set from (1), **do not** re-run `scripts/larch.sh admission fork-env`; reuse the fork metadata to avoid a second bootstrap tmpdir.
+**Protocol Execution Directive.** You are the `/implement` orchestrator. After flag parsing and mutual-exclusion checks, your FIRST external actions MUST be: (1) when `forked_target=true`, run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" admission fork-env` once and parse `UPSTREAM_REPO` plus sibling fork KV lines from stdout; (2) run exactly one `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" implement preflight` call as the sole mechanical surface for Preflight items 1-3, passing `--repo "$UPSTREAM_REPO"` when forked; (3) after prompt-side Preflight judgment, run Step 0 unchanged through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh --mode initial`. Prompt-side judgment starts only after helper exit `0`. Item 4 is the main-agent plan-adequacy audit when `force_requested=false`; force skips it and proceeds to item 6. Item 6 remains the semantic materiality judgment after `AUDIT=pass` or force skip. When `forked_target=true` and `UPSTREAM_REPO` is already set from (1), **do not** re-run `scripts/larch.sh admission fork-env`; reuse the fork metadata to avoid a second bootstrap tmpdir.
 
 **Anti-halt continuation reminder.** After each child `Skill` call (`/review`, `/issue`, `/implement`) and each numbered or sub-step `Bash` helper, including `python/cli.py checks run-relevant`, IMMEDIATELY continue to this skill's NEXT numbered step. Do NOT stop on cleanup output, Bash stdout, status, summary, handoff, recap, or "returning to parent" prose. For bgjob-migrated steps, `WAIT` means the next action is another identical `bgjob wait`; after final `DONE`, parse required KVs from the last `DONE` stdout and `$IMPLEMENT_TMPDIR/bgjob/<step>.result.env`. Applies from Preflight through Step 19 except explicit non-sequential directives in THIS file (`skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). Every relevant-checks helper call is covered. **Critical boundary: Step 9b PR creation → Step 10 CI monitor immediately; PR creation is NOT the end.** **Critical boundary: when the active Step 8+ driver (`python3 …/python/cli.py ship pr`) exits, route only from process exit code + JSON stdout per the Python driver selector; do not parse `ship-pr-state.sh` or the retired bash exit matrix.** **Critical boundary: after `route-exit` emits `NEXT_ACTION=ci-fix`, do NOT end the turn; run the ci-fix repair procedure in the same turn.** **Critical boundary: after preflight audit passes (`AUDIT=pass`), continue through Preflight items 6-7, then run Step 0 `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh --mode initial`; do NOT end the turn on the audit-pass envelope. Critical boundary: after the force plan-adequacy audit skip breadcrumb prints, continue through Preflight items 6–7, then run Step 0; do NOT halt waiting for an `AUDIT=pass` envelope on the force skip path.** **Terminal boundary: the combined Step 16-17 wrapper only captures a pending final-report body; Step 18 terminalizes and publishes logs, Step 19 cleans up and relays the teardown tail, then the selected final-report body is the last plain-chat text with no following tool call.** → shared/subskill-invocation.md#anti-halt
 
@@ -189,7 +189,7 @@ Run **before Step 0** after `TARGET_ISSUE_NUMBER` is known and flag mutex checks
 
 **Force mode (`--force`)**: when `force_requested=true`, read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/force-mode.md` completely before applying force behavior. Inline item 4 remains authoritative for the skip breadcrumb and no-read / no-audit-file / no-bypass-log contract.
 
-1. **Mechanical Preflight helper (items 1-3)** — `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement preflight` is the sole mechanical Preflight surface for admission, issue fetch, plan extraction, force missing/malformed fallback composition, and zero-review provenance refusal (`panel-init-failed`, `panel-skipped`, `rounds_completed: 0`). Invoke it through the Python CLI:
+1. **Mechanical Preflight helper (items 1-3)** — `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" implement preflight` is the sole mechanical Preflight surface for admission, issue fetch, plan extraction, force missing/malformed fallback composition, and zero-review provenance refusal (`panel-init-failed`, `panel-skipped`, `rounds_completed: 0`). Invoke it through the verified larch entrypoint:
    ```bash
    [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
    export IMPLEMENT_TMPDIR
@@ -202,7 +202,7 @@ Run **before Step 0** after `TARGET_ISSUE_NUMBER` is known and flag mutex checks
      preflight_args=("${preflight_args[@]}" --force)
    fi
 
-   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement preflight "${preflight_args[@]}"
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" implement preflight "${preflight_args[@]}"
    ```
    The helper writes `$PREFLIGHT_TMPDIR/issue.json`, `$PREFLIGHT_TMPDIR/plan-from-issue.txt`, and `$PREFLIGHT_TMPDIR/force-bypass.log` only for bypasses.
 
@@ -210,7 +210,7 @@ Run **before Step 0** after `TARGET_ISSUE_NUMBER` is known and flag mutex checks
    - Capture stdout from the Bash tool result.
    - On non-zero exit, abort before item 4 and preserve the helper's exit semantics.
    - Do not parse or require an envelope on non-zero exit.
-   - On exit `0`, parse the validated success envelope; `python/cli.py implement preflight` self-validates the success envelope and exits `2` before success parsing when malformed.
+   - On exit `0`, parse the validated success envelope; `scripts/larch.sh implement preflight` self-validates the success envelope and exits `2` before success parsing when malformed.
    - Parse one `KEY=value` record per line.
    - Split each envelope line at the first `=` only and preserve the remaining value verbatim.
    - Ignore non-envelope warning or prose lines that do not begin with an allowed envelope key plus `=`.
@@ -408,7 +408,7 @@ Claude-fallback subagent implementation is not complete until the difficulty rat
 **Pinned normalization fence (required, nonblocking)**: immediately after implementation and before Step 3, run exactly this one-line launcher fence:
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement normalize-coder-scout --tmpdir "$IMPLEMENT_TMPDIR" --input "$IMPLEMENT_TMPDIR/scout-coder-manifest.raw.json" --producer subagent
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh implement normalize-coder-scout --tmpdir "$IMPLEMENT_TMPDIR" --input "$IMPLEMENT_TMPDIR/scout-coder-manifest.raw.json" --producer subagent
 ```
 
 If `scout-coder-manifest.raw.json` is absent, still run the helper with that expected path so it writes `missing-or-invalid` and an empty manifest. Invalid manifest output is nonblocking but loud. This fence is mandatory on every Claude-fallback path, including `--force`, `--self-implement`, explicit `--coder claude`, and both-tools-unavailable fallback. External `STATUS=complete` is unchanged; the dispatcher normalizes after a complete manifest.

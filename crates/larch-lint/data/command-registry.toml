@@ -3666,11 +3666,13 @@ verb = "clone-tag"
 python_module = "larch.implement.implement_dispatch"
 python_function = "clone_tag_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8609
+clean_install_test = "clean-install-implement-clone-tag"
 
 [[commands]]
 domain = "implement"
@@ -3714,11 +3716,13 @@ verb = "normalize-coder-scout"
 python_module = "larch.implement.implement_dispatch"
 python_function = "normalize_coder_scout_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8609
+clean_install_test = "clean-install-implement-normalize-coder-scout"
 
 [[commands]]
 domain = "implement"
@@ -3726,11 +3730,13 @@ verb = "preflight"
 python_module = "larch.implement.preflight"
 python_function = "preflight_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8609
+clean_install_test = "clean-install-implement-preflight"
 
 [[commands]]
 domain = "implement"
@@ -3790,11 +3796,13 @@ verb = "step-0-bootstrap"
 python_module = "larch.implement.implement_dispatch"
 python_function = "step0_bootstrap_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8609
+clean_install_test = "clean-install-implement-step-0-bootstrap"
 
 [[commands]]
 domain = "implement"
@@ -3802,11 +3810,13 @@ verb = "step-0-degraded-gate"
 python_module = "larch.implement.implement_dispatch"
 python_function = "step0_degraded_gate_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8609
+clean_install_test = "clean-install-implement-step-0-degraded-gate"
 
 [[commands]]
 domain = "implement"
@@ -9166,12 +9176,6 @@ python = []
 rust = ["stall-recovery normalize-outcome"]
 
 [[callers]]
-path = "python/larch/implement/preflight.py"
-kind = "python-runtime"
-python = []
-rust = ["admission gate", "gh resolve-repo", "plan-block read"]
-
-[[callers]]
 path = "python/larch/implement/ship_recovery.py"
 kind = "python-runtime"
 python = []
@@ -9624,8 +9628,8 @@ rust = ["voting compose-tally-record"]
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["architectural-assessment materialize", "architectural-assessment submit", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue"]
-rust = ["admission fork-env", "admission gate", "bgjob wait", "bootstrap invoke", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement recovery-paths", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
+python = ["architectural-assessment materialize", "architectural-assessment submit", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "implement commit", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue"]
+rust = ["admission fork-env", "admission gate", "bgjob wait", "bootstrap invoke", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -9702,8 +9706,8 @@ rust = ["git phantom-probe", "push checkpoint-probe"]
 [[callers]]
 path = "skills/implement/references/preflight-plan-audit.md"
 kind = "skill"
-python = ["clarify comment-post", "clarify label", "clarify state", "implement preflight", "redact secrets"]
-rust = []
+python = ["clarify comment-post", "clarify label", "clarify state", "redact secrets"]
+rust = ["implement preflight"]
 
 [[callers]]
 path = "skills/implement/references/rebase-checkpoint-routing.md"
@@ -9744,8 +9748,8 @@ rust = []
 [[callers]]
 path = "skills/implement/references/step2-dispatch.md"
 kind = "skill"
-python = ["implement commit", "implement normalize-coder-scout", "implement run-dispatch", "implement step2-dispatch", "redact secrets", "token check-budget"]
-rust = ["agent launch-codex-implement", "bgjob wait", "dirty-tree scope-check", "git commit", "implement recovery-paths", "plan scope-paths", "run-log checkpoint", "token mark"]
+python = ["implement commit", "implement run-dispatch", "implement step2-dispatch", "redact secrets", "token check-budget"]
+rust = ["agent launch-codex-implement", "bgjob wait", "dirty-tree scope-check", "git commit", "implement normalize-coder-scout", "implement recovery-paths", "plan scope-paths", "run-log checkpoint", "token mark"]
 
 [[callers]]
 path = "skills/implement/references/step2-main-health-fix.md"
@@ -9756,8 +9760,8 @@ rust = []
 [[callers]]
 path = "skills/implement/references/step5-review-branches.md"
 kind = "skill"
-python = ["implement clone-tag", "ship seed-initial-state"]
-rust = ["bgjob wait", "review tally-code-votes", "review-and-fix step5"]
+python = ["ship seed-initial-state"]
+rust = ["bgjob wait", "implement clone-tag", "review tally-code-votes", "review-and-fix step5"]
 
 [[callers]]
 path = "skills/implement/references/umbrella-partition.md"
@@ -9876,14 +9880,14 @@ rust = ["admission fork-env", "bootstrap invoke"]
 [[callers]]
 path = "skills/implement/scripts/step-0-bootstrap.sh"
 kind = "skill"
-python = ["implement step-0-bootstrap"]
-rust = []
+python = []
+rust = ["implement step-0-bootstrap"]
 
 [[callers]]
 path = "skills/implement/scripts/step-0-degraded-gate.sh"
 kind = "skill"
-python = ["implement step-0-degraded-gate"]
-rust = []
+python = []
+rust = ["implement step-0-degraded-gate"]
 
 [[callers]]
 path = "skills/implement/scripts/step-18.md"
@@ -9990,8 +9994,8 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/step-8-seed-initial.md"
 kind = "skill"
-python = ["implement clone-tag", "ship seed-initial-state"]
-rust = []
+python = ["ship seed-initial-state"]
+rust = ["implement clone-tag"]
 
 [[callers]]
 path = "skills/implement/scripts/step-8-seed-initial.sh"
@@ -10002,8 +10006,8 @@ rust = []
 [[callers]]
 path = "skills/implement/scripts/step-8-ship.md"
 kind = "skill"
-python = ["implement clone-tag", "ship pr"]
-rust = ["bgjob adapt", "oos file"]
+python = ["ship pr"]
+rust = ["bgjob adapt", "implement clone-tag", "oos file"]
 
 [[callers]]
 path = "skills/implement/scripts/step-8-ship.sh"

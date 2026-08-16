@@ -766,6 +766,23 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "block-issue",
         "remove-blocked-by",
     ),
+    CleanInstallCase::new("clean-install-implement-clone-tag", "implement", "clone-tag"),
+    CleanInstallCase::new(
+        "clean-install-implement-normalize-coder-scout",
+        "implement",
+        "normalize-coder-scout",
+    ),
+    CleanInstallCase::new("clean-install-implement-preflight", "implement", "preflight"),
+    CleanInstallCase::new(
+        "clean-install-implement-step-0-bootstrap",
+        "implement",
+        "step-0-bootstrap",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-step-0-degraded-gate",
+        "implement",
+        "step-0-degraded-gate",
+    ),
     CleanInstallCase::new(
         "clean-install-issue-add-blocked-by",
         "issue",

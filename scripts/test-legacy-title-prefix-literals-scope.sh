@@ -13,7 +13,6 @@ ALLOW=(
   agents/_implementer-base.md
   skills/implement/prompts/codex-implementer.md
   skills/implement/prompts/cursor-implementer.md
-  python/larch/implement/preflight.py
   python/test_deps_audit.py
   SECURITY.md
   docs/linting.md

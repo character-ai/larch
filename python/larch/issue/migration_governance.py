@@ -1388,6 +1388,40 @@ def refresh_rust_line_budget_deviation(
     return "".join(lines)
 
 
+def _envelope_line(value: str) -> str:
+    """Collapse one envelope value so it cannot break the KEY=value grammar."""
+    return " ".join(value.replace("\r", " ").replace("\n", " ").split())
+
+
+def _preflight_envelope_rows(verdict: GovernanceGateVerdict) -> list[str]:
+    """Render the Preflight machine envelope for the Rust Preflight owner.
+
+    Preflight needs more than the pass/fail bit that Step 0 consumes: it must
+    know whether the refusal is a conditional semantic revalidation, which
+    receipt tokens motivated it, and which report-only owner findings to warn
+    about.  Policy stays here; the caller only prints operator prose.
+    """
+    report_only = list(verdict.owners.report_only)
+    rows = [
+        f"GOVERNANCE_OK={str(verdict.ok).lower()}",
+        "PERMITS_SEMANTIC_REVALIDATION="
+        f"{str(verdict.permits_preflight_semantic_revalidation).lower()}",
+        "SEMANTIC_REASONS="
+        f"{','.join(verdict.freshness.semantic_revalidation_reasons)}",
+        f"BLOCKING_REASONS={','.join(verdict.blocking_reasons)}",
+        f"REPORT_ONLY_COUNT={len(report_only)}",
+    ]
+    for index, (token, command) in enumerate(
+        zip(report_only, verdict.owners.cleanup_commands, strict=True)
+    ):
+        rows.append(f"REPORT_ONLY_{index}={_envelope_line(token)}")
+        rows.append(f"CLEANUP_{index}={_envelope_line(command)}")
+    if not verdict.ok and not verdict.permits_preflight_semantic_revalidation:
+        refusal = format_gate_refusal(site="/implement preflight", verdict=verdict)
+        rows.append(f"REFUSAL_TEXT={_envelope_line(refusal)}")
+    return rows
+
+
 def governance_gate_main(argv: list[str]) -> int:
     """Evaluate one existing governance gate for a Rust-owned caller.
 
@@ -1401,6 +1435,8 @@ def governance_gate_main(argv: list[str]) -> int:
     _ = parser.add_argument("--body-file", required=True)
     _ = parser.add_argument("--repo-root", required=True)
     _ = parser.add_argument("--head-sha", required=True)
+    _ = parser.add_argument("--preflight-envelope", action="store_true")
+    preflight_envelope = "--preflight-envelope" in argv
     try:
         args = parser.parse_args(argv)
         issue = str(args.issue)
@@ -1430,8 +1466,16 @@ def governance_gate_main(argv: list[str]) -> int:
     except (GovernanceGateError, ShipError, OSError, ValueError) as exc:
         detail = redact.redact_secrets_only(str(exc)).replace("\n", " ").strip()
         print("GOVERNANCE_OK=false")
+        if preflight_envelope:
+            print(f"ENVELOPE_ERROR={_envelope_line(detail)[:500]}")
         print(f"ERROR: governance-gate: {detail[:500]}", file=sys.stderr)
         return config.EXIT_USAGE
+    if preflight_envelope:
+        for row in _preflight_envelope_rows(verdict):
+            print(row)
+        if verdict.ok or verdict.permits_preflight_semantic_revalidation:
+            return config.EXIT_OK
+        return config.EXIT_INTERNAL_ERROR
     print(f"GOVERNANCE_OK={str(verdict.ok).lower()}")
     if verdict.ok:
         return config.EXIT_OK

@@ -1324,20 +1324,9 @@ fn governance_gate(
     head_sha: &str,
 ) -> bool {
     let Ok(output) = crate::python_verb::run_python_verb(
-        [
-            OsString::from("issue"),
-            OsString::from("governance-gate"),
-            OsString::from("--issue"),
-            OsString::from(issue),
-            OsString::from("--repo"),
-            OsString::from(repository),
-            OsString::from("--body-file"),
-            body_file.as_os_str().to_owned(),
-            OsString::from("--repo-root"),
-            repo_root.as_os_str().to_owned(),
-            OsString::from("--head-sha"),
-            OsString::from(head_sha),
-        ],
+        crate::implement_preflight_commands::governance_gate_argv(
+            issue, repository, body_file, repo_root, head_sha,
+        ),
         Duration::from_secs(120),
     ) else {
         return false;
@@ -1374,7 +1363,8 @@ fn preflight_labels_sha256(value: Option<&serde_json::Value>) -> Result<String, 
     Ok(format!("{:x}", digest.finalize()))
 }
 
-fn resolve_revision_sha(repo_root: &Path, revision: &str) -> Result<String, String> {
+/// Resolve one declared base scope through `gix` (issue #7671).
+pub fn resolve_revision_sha(repo_root: &Path, revision: &str) -> Result<String, String> {
     let repository = GixRepository::open(repo_root).map_err(|error| error.to_string())?;
     repository
         .resolve_revision(&Revision::new(revision.as_bytes().to_vec()))

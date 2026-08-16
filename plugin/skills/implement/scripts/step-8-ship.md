@@ -1,6 +1,6 @@
 # step-8-ship.sh
 
-Step 8+ Python ship-driver bgjob launcher. Foreground mode starts or rejoins bgjob step `implement-step8-ship`; child mode rehydrates durable ship argv from `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, derives `EXPECTED_TMPDIR_BASENAME_PREFIX` through fail-closed `python/cli.py implement clone-tag` capture, delegates the Python 3.11 guard to `step-8-python-guard.sh`, runs the advisory `8-pre-ship` phantom probe, and invokes `python/cli.py ship pr` with the canonical argv.
+Step 8+ Python ship-driver bgjob launcher. Foreground mode starts or rejoins bgjob step `implement-step8-ship`; child mode rehydrates durable ship argv from `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, derives `EXPECTED_TMPDIR_BASENAME_PREFIX` through fail-closed `scripts/larch.sh implement clone-tag` capture, delegates the Python 3.11 guard to `step-8-python-guard.sh`, runs the advisory `8-pre-ship` phantom probe, and invokes `python/cli.py ship pr` with the canonical argv.
 
 ## Caller
 
@@ -19,7 +19,7 @@ Result-env publication is fail-closed: a result write failure gives the bgjob no
 - Bash 3.2 portable; no associative arrays or namerefs.
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
 - Self-rehydrates `BRANCH_NAME`, `ISSUE_NUMBER`, `RUN_ID`, `REPO`, `MERGE`, `DRAFT`, `FORKED_TARGET`, `REPO_UNAVAILABLE`, `MANIFEST_PATH`, `TOOL_LABEL`, `NO_ADMIN_FALLBACK`, and `NO_LOGS_COMMIT` from `ship-pr-state.sh` before invoking the active driver.
-- `EXPECTED_TMPDIR_BASENAME_PREFIX` comes from `python/cli.py implement clone-tag`; the ship wrapper and initial state seeder must share the same prefix.
+- `EXPECTED_TMPDIR_BASENAME_PREFIX` comes from `scripts/larch.sh implement clone-tag`; the ship wrapper and initial state seeder must share the same prefix.
 - `ship pr` owns the ship-outcome wire format; Bash neither captures nor parses it.
 - `bgjob adapt` refuses a second start when an identity-valid `implement-step8-ship` job is live and replaces only a completed result on a deliberate reship.
 - Guard or setup failures without a ship outcome do not reach `route-exit`; they use the existing bgjob failure branch.

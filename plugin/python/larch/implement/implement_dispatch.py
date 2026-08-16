@@ -64,7 +64,6 @@ from larch.implement.dispatch_helpers import (
     _write_prelaunch_digests,
     _write_step2_telemetry_sentinel,
     _write_text_atomic,
-    clone_tag_main,
 )
 
 # --- leg execution and process management ---
@@ -107,12 +106,6 @@ from larch.implement.dispatch_leg import (
     _timeout_stderr,
     _timeout_stdout,
     kill_active_leg_main,
-)
-
-# --- step 0 bootstrap ---
-from larch.implement.dispatch_bootstrap import (
-    step0_bootstrap_main,
-    step0_degraded_gate_main,
 )
 
 # --- ship seed and step 2 post-dispatch ---
@@ -251,7 +244,6 @@ from larch.implement.dispatch_manifest import (
     _write_coder_scout_status,
     _write_prelaunch_baseline,
     normalize_coder_scout,
-    normalize_coder_scout_main,
 )
 
 # --- step 2 dispatch ---

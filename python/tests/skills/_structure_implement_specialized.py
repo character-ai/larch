@@ -182,40 +182,49 @@ def run(repo_root: Path) -> list[str]:
             require(skill, script, f"SKILL old-shape wrapper {script}")
         require("skills/implement/references/bootstrap-recovery.md", 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume', "bootstrap-recovery relocated resume wrapper")
 
-        # Collapsed Preflight helper surface.
+        # Collapsed Preflight helper surface, now owned by Rust per issue #8609.
+        preflight_owner = "crates/larch-cli/src/implement_preflight_commands.rs"
+        for path in [
+            preflight_owner,
+            "crates/larch-cli/tests/implement_admission_migrated_parity.rs",
+        ]:
+            if not Path(path).is_file():
+                checks.append(f"missing {path}")
         for path in [
             "python/larch/implement/preflight.py",
             "python/tests/implement/test_preflight.py",
         ]:
-            if not Path(path).is_file():
-                checks.append(f"missing {path}")
-        require(skill, 'python/cli.py" implement preflight', "SKILL implement preflight CLI reference")
-        require(skill, 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement preflight', "SKILL implement preflight Python invocation")
+            if Path(path).is_file():
+                checks.append(f"retired Python preflight owner still present: {path}")
+        require(skill, 'scripts/larch.sh" implement preflight', "SKILL implement preflight CLI reference")
+        require(skill, '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" implement preflight', "SKILL implement preflight verified invocation")
         require(skill, "$PREFLIGHT_TMPDIR/issue.json", "SKILL preflight issue json path")
         require(skill, "$PREFLIGHT_TMPDIR/plan-from-issue.txt", "SKILL preflight plan path")
         require(skill, "PLAN_PATH", "SKILL PLAN_PATH envelope binding")
         require(skill, "ISSUE_JSON_PATH", "SKILL ISSUE_JSON_PATH envelope binding")
         require(skill, "one `KEY=value` record per line", "SKILL one-record envelope")
         require(skill, "Split each envelope line at the first `=` only", "SKILL first-equals parser")
-        require(skill, "`python/cli.py implement preflight` self-validates the success envelope and exits `2` before success parsing when malformed.", "SKILL Python preflight self-validation")
+        require(skill, "`scripts/larch.sh implement preflight` self-validates the success envelope and exits `2` before success parsing when malformed.", "SKILL preflight self-validation")
         require(skill, "On non-zero exit, abort before item 4", "SKILL nonzero preflight abort")
         require(skill, "Do not parse or require an envelope on non-zero exit.", "SKILL no exit2 envelope parse")
         require(skill, "Run `admission fork-env`, then the preflight helper, then Step 0 bootstrap.", "SKILL forked ordering")
-        require("python/larch/implement/preflight.py", "SUCCESS_ENVELOPE_KEYS", "preflight success envelope key tuple")
-        require("python/larch/implement/preflight.py", "def _validate_success_envelope", "preflight validation helper")
-        require("python/larch/implement/preflight.py", "duplicate key", "preflight duplicate key validation")
-        require("python/larch/implement/preflight.py", "RESUME must be true or false", "preflight resume validation")
-        require("python/larch/implement/preflight.py", "BYPASS_COUNT must be numeric", "preflight bypass count validation")
-        require("python/larch/implement/preflight.py", '"ADMISSION_RESULT"', "preflight emits admission result")
-        require("python/larch/implement/preflight.py", '"RESUME"', "preflight emits resume")
-        require("python/larch/implement/preflight.py", '"PLAN_PATH"', "preflight emits plan path")
-        require("python/larch/implement/preflight.py", '"ISSUE_JSON_PATH"', "preflight emits issue json path")
-        require("python/larch/implement/preflight.py", '"BYPASS_COUNT"', "preflight emits bypass count")
-        require("python/larch/implement/preflight.py", "force-bypass.log", "preflight bypass log destination")
-        require("python/larch/implement/preflight.py", "json.load", "preflight uses stdlib json")
-        require("python/tests/implement/test_preflight.py", "test_preflight_success_emits_kv_and_forwards_repo", "preflight test success coverage")
-        require("python/tests/implement/test_preflight.py", "test_preflight_force_missing_plan_refuses_without_fallback", "preflight test force coverage")
-        require("python/tests/implement/test_preflight.py", "test_preflight_force_short_flag_missing_plan_refuses_without_fallback", "preflight test -f coverage")
+        require(preflight_owner, "SUCCESS_ENVELOPE_KEYS", "preflight success envelope key list")
+        require(preflight_owner, "fn envelope_error", "preflight validation helper")
+        require(preflight_owner, "duplicate key", "preflight duplicate key validation")
+        require(preflight_owner, "RESUME must be true or false", "preflight resume validation")
+        require(preflight_owner, "BYPASS_COUNT must be numeric", "preflight bypass count validation")
+        require(preflight_owner, '"ADMISSION_RESULT"', "preflight emits admission result")
+        require(preflight_owner, '"RESUME"', "preflight emits resume")
+        require(preflight_owner, '"PLAN_PATH"', "preflight emits plan path")
+        require(preflight_owner, '"ISSUE_JSON_PATH"', "preflight emits issue json path")
+        require(preflight_owner, '"BYPASS_COUNT"', "preflight emits bypass count")
+        require(preflight_owner, "force-bypass.log", "preflight bypass log destination")
+        preflight_test = "crates/larch-cli/tests/implement_admission_migrated_parity.rs"
+        require(preflight_test, "fn preflight_serves_its_help_text_on_stdout", "preflight test success coverage")
+        require(preflight_test, "fn preflight_refuses_a_non_numeric_issue", "preflight test force coverage")
+        require(preflight_test, "fn test_preflight_force_short_flag_missing_plan_refuses_without_fallback", "preflight test -f coverage")
+        require(preflight_owner, "serde_json", "preflight uses the shared json owner")
+        require(preflight_owner, "with_github_service", "preflight reads the issue through the Octocrab service")
         require(skill, "`--force` and `-f` both set `force_requested=true`", "SKILL -f alias parse rule")
         require(skill, "`--force` / `-f` and `--draft` together", "SKILL -f draft mutex wording")
         require("skills/im/SKILL.md", "`--force`, `-f`", "im SKILL forwards -f alias")
@@ -340,13 +349,14 @@ def run(repo_root: Path) -> list[str]:
         forbid("skills/implement/scripts/step-18.sh", 'cleanup.sh" --help', "step-18 must not resurrect cleanup smoke")
         forbid("skills/implement/scripts/step-18.sh", "token report --full", "step-18 must not resurrect full token report")
         forbid("skills/implement/scripts/step-18.sh", "Step 18 — cleanup", "step-18 must not resurrect cleanup telemetry mark")
-        require("skills/implement/scripts/step-0-bootstrap.sh", 'implement step-0-bootstrap "$@"', "step-0 bootstrap wrapper delegates to Python")
+        require("skills/implement/scripts/step-0-bootstrap.sh", 'implement step-0-bootstrap "$@"', "step-0 bootstrap wrapper delegates to larch")
         forbid("skills/implement/scripts/step-0-bootstrap.sh", "rehydrate_plugin_root", "step-0 bootstrap wrapper must not retain rehydrate helpers")
-        require("python/larch/implement/dispatch_bootstrap.py", "def step0_bootstrap_main", "step-0 bootstrap Python entry present")
-        require("python/larch/implement/dispatch_bootstrap.py", "preflight-tmpdir.env", "step-0 preflight tmpdir resume persistence in Python")
-        require("python/larch/implement/dispatch_bootstrap.py", "FORKED_TARGET", "step-0 resume fork metadata rehydration in Python")
-        require("python/larch/implement/dispatch_bootstrap.py", "CALLER_ENV_PATH", "step-0 fork metadata caller-env parse in Python")
-        require("python/larch/implement/dispatch_bootstrap.py", "UPSTREAM_REPO", "step-0 fork metadata upstream parse in Python")
+        step0_owner = "crates/larch-cli/src/implement_commands.rs"
+        require(step0_owner, "pub fn step0_bootstrap", "step-0 bootstrap Rust entry present")
+        require(step0_owner, "preflight-tmpdir.env", "step-0 preflight tmpdir resume persistence in Rust")
+        require(step0_owner, "FORKED_TARGET", "step-0 resume fork metadata rehydration in Rust")
+        require(step0_owner, "CALLER_ENV_PATH", "step-0 fork metadata caller-env parse in Rust")
+        require(step0_owner, "UPSTREAM_REPO", "step-0 fork metadata upstream parse in Rust")
         require("crates/larch-cli/src/bootstrap_commands.rs", "preflight-tmpdir.env", "Rust bootstrap preflight tmpdir persistence")
         require("skills/implement/scripts/step-8-ship.sh", 'implement step-8-ship "$@"', "step-8 ship wrapper delegates to Python")
         forbid("skills/implement/scripts/step-8-ship.sh", "read_state_key", "step-8 ship wrapper must not retain state rehydration")
@@ -354,11 +364,11 @@ def run(repo_root: Path) -> list[str]:
         require("skills/implement/scripts/step-8-python-guard.sh", '"outcome":"STALLED"', "step-8 shared stalled JSON stdout")
         require("skills/implement/scripts/step-8-python-guard.sh", "exit 4", "step-8 shared stale-python exit 4")
         require("python/larch/implement/dispatch_ship.py", "step8_python_guard_main", "step-8 ship delegates python guard in Python")
-        require("python/larch/implement/dispatch_helpers.py", "def clone_tag_main", "implement clone-tag CLI handler")
+        require("crates/larch-cli/src/implement_commands.rs", "pub fn clone_tag", "implement clone-tag CLI handler")
         require("python/larch/implement/dispatch_ship.py", '"ship", "pr"', "step-8 python ship invocation")
         require("python/larch/implement/dispatch_ship.py", "replace_completed_result=True", "step-8 bgjob replace-completed-result")
         require("skills/implement/scripts/step-8-seed-initial.sh", 'implement step-8-seed-initial "$@"', "step-8 seed wrapper delegates to Python")
-        require("skills/implement/scripts/step-0-degraded-gate.sh", 'implement step-0-degraded-gate "$@"', "step-0 degraded-gate wrapper delegates to Python")
+        require("skills/implement/scripts/step-0-degraded-gate.sh", 'implement step-0-degraded-gate "$@"', "step-0 degraded-gate wrapper delegates to larch")
         require("python/larch/cli.py", '("ship", "pre-driver"): ("larch.implement.implement_dispatch", "ship_pre_driver_main", True)', "ship pre-driver CLI registry")
         require("python/larch/cli.py", '"ship_pre_driver_main", True),', "ship pre-driver machine stdout contract")
         require("python/larch/cli.py", "NEXT_ACTION=stall", "ship pre-driver pre-version stall fast path")
@@ -381,7 +391,7 @@ def run(repo_root: Path) -> list[str]:
         forbid(skill, launcher + "skills/implement/scripts/step-8-python-guard.sh", "SKILL standalone step-8 guard fence removed")
         forbid(skill, launcher + "skills/implement/scripts/step-8-seed-initial.sh", "SKILL standalone step-8 seeder fence removed")
         forbid(skill, launcher + 'python/cli.py oos file --implement-tmpdir "$IMPLEMENT_TMPDIR"', "SKILL standalone pre-driver oos fence removed")
-        require("python/larch/implement/dispatch_bootstrap.py", "LARCH_CLAUDE_PID", "step-0 wrapper claude pid export in Python")
+        require("crates/larch-cli/src/implement_commands.rs", "LARCH_CLAUDE_PID", "step-0 wrapper claude pid export in Rust")
         require(skill, "python/cli.py ship seed-initial-state", "ship state initial seeder authority")
         require("python/larch/implement/dispatch_ship.py", "--no-admin-fallback", "ship state no-admin fallback seeder argv")
         require("python/larch/implement/ship_state.py", "NO_ADMIN_FALLBACK", "ship state no-admin fallback allowed key")
@@ -703,14 +713,14 @@ def run(repo_root: Path) -> list[str]:
         forbid(skill, "python/cli.py implement checks-commit-route --checks-site step6", "SKILL old Step 6 checks-commit-route launcher removed")
         forbid(skill, "branch on envelope `ROUTE=` and `REBASE_RC=` from the Step 0 bootstrap stdout envelope", "SKILL absorbed 1.r direct ROUTE branch removed")
         for needle in [
-            '"agent", "degraded-tools-gate"',
+            '"degraded-tools-gate"',
             "--codex-present",
             "--cursor-present",
-            '"agent", "check-reviewers"',
+            '"check-reviewers"',
             "CODEX_BINARY_FOUND",
             "CURSOR_BINARY_FOUND",
         ]:
-            require("python/larch/implement/dispatch_bootstrap.py", needle, f"step-0-degraded-gate legacy {needle}")
+            require("crates/larch-cli/src/implement_commands.rs", needle, f"step-0-degraded-gate composed {needle}")
         require("skills/implement/scripts/step-0-degraded-gate.sh", 'implement step-0-degraded-gate "$@"', "step-0 degraded-gate thin wrapper delegates")
         forbid("skills/implement/scripts/step-0-degraded-gate.sh", "degraded-tools-gate", "step-0 degraded-gate wrapper must not retain gate body")
         require("python/larch/implement/dispatch_commit_route.py", "_step5_resume_commit_phase", "step-5-resume commit routing stays Python-owned")
@@ -1256,7 +1266,7 @@ def run(repo_root: Path) -> list[str]:
         forbid(skill, "implementing with main agent.**", "SKILL must not advertise main-agent Claude-fallback edits")
         forbid(skill, "**Architectural knowledge on Claude fallback**", "SKILL must not instruct main-agent architectural reads on Claude fallback")
         forbid(skill, "**Main-agent Claude-fallback branch**", "SKILL must not keep a main-agent Claude-fallback edit branch")
-        require("python/larch/implement/dispatch_manifest.py", 'choices=("external", "main-agent", "subagent")', "normalize-coder-scout accepts producer subagent")
+        require("crates/larch-cli/src/implement_commands.rs", '["external", "main-agent", "subagent"]', "normalize-coder-scout accepts producer subagent")
 
         # Step 4 skip prose must reference implement commit, not git-commit.sh.
         require(skill, "Skip the `implement commit` invocation.", "Step 4 skip prose references implement commit")
@@ -1295,4 +1305,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 392
+LEGACY_ASSERTION_LABEL_COUNT = 393
