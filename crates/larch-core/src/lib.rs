@@ -10,6 +10,8 @@ mod ci_timing;
 mod complete_umbrella;
 mod config;
 mod context;
+/// Debate-domain protocol vocabulary, ledger grammar, and fingerprints (#8597).
+pub mod debate;
 /// Design-domain plan grammar and plan-quality analysis core (#8575).
 pub mod design;
 mod difficulty;

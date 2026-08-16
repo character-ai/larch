@@ -231,6 +231,15 @@ extraction. Golden parity for command extraction reuses
 `fixtures/plan-commands/parse-plan-commands`. Later command leaves
 register CLI verbs; this core stays network-free and filesystem-bounded.
 
+`larch_core::debate` owns the debate protocol vocabulary ported in #8597:
+wire constants and enums, lexical validators, slot-ledger row grammar with
+exact rejection-reason tokens, concession citation classification, and reason
+normalization plus fingerprints. Inline tests mirror the executable-contract
+cases from `python/tests/debate/test_protocol.py` and pin Python-computed
+golden fingerprint fixtures for byte parity. The still-Python debate commands
+keep `python/larch/debate/protocol.py` live; this core is network-free and
+filesystem-free.
+
 ## Test boundaries
 
 - Unit tests live in a crate-local `#[cfg(test)]` module. They cover private
