@@ -43,6 +43,50 @@ const CHECKS_FP: &str = "CHECKS_INPUT_TREE_FP";
 const CHECKS_SCHEMA: &str = "CHECKS_INPUT_FP_SCHEMA";
 const IDENTITY_FAILED: &str = "identity-integrity-failed";
 
+#[cfg(test)]
+type PythonHook =
+    std::sync::Arc<dyn Fn(&[OsString]) -> Result<ProcessOutput, String> + Send + Sync>;
+#[cfg(test)]
+type LarchHook = std::sync::Arc<
+    dyn Fn(&Path, &Path, &[OsString]) -> Result<ProcessOutput, String> + Send + Sync,
+>;
+
+#[cfg(test)]
+std::thread_local! {
+    static TEST_PYTHON: std::cell::RefCell<Option<PythonHook>> = const { std::cell::RefCell::new(None) };
+    static TEST_LARCH: std::cell::RefCell<Option<LarchHook>> = const { std::cell::RefCell::new(None) };
+    static TEST_PLUGIN_ROOT: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+fn delegate_python(arguments: impl IntoIterator<Item = OsString>) -> Result<ProcessOutput, String> {
+    let args: Vec<OsString> = arguments.into_iter().collect();
+    #[cfg(test)]
+    if let Some(hook) = TEST_PYTHON.with(|slot| slot.borrow().clone()) {
+        return hook(&args);
+    }
+    run_python_verb(args, PYTHON_TIMEOUT)
+}
+
+fn delegate_verified_larch(
+    cwd: &Path,
+    root: &Path,
+    args: &[OsString],
+) -> Result<ProcessOutput, String> {
+    #[cfg(test)]
+    if let Some(hook) = TEST_LARCH.with(|slot| slot.borrow().clone()) {
+        return hook(cwd, root, args);
+    }
+    run_verified_larch_in(cwd, root, args)
+}
+
+fn resolve_plugin_root() -> Result<PathBuf, String> {
+    #[cfg(test)]
+    if let Some(root) = TEST_PLUGIN_ROOT.with(|slot| slot.borrow().clone()) {
+        return Ok(root);
+    }
+    plugin_root()
+}
+
 /// `implement recovery-paths` compatibility command.
 pub fn recovery_paths(arguments: &[OsString]) -> ExitCode {
     let parsed = match parse_required_with_help(
@@ -236,7 +280,7 @@ fn run_parent(
         "--launch-schema".into(),
         identity.schema.clone().into(),
     ]);
-    let root = plugin_root()?;
+    let root = resolve_plugin_root()?;
     let entry = root.join("scripts").join("larch.sh");
     let clone = env::current_dir().map_err(|e| e.to_string())?;
     let run_id = resolve_run_id("", tmpdir, &clone);
@@ -274,7 +318,7 @@ fn run_parent(
         "run-step-checks".into(),
     ]);
     argv.extend(public);
-    let output = run_verified_larch_in(&identity.repo_root, &root, &argv)?;
+    let output = delegate_verified_larch(&identity.repo_root, &root, &argv)?;
     forward_output(&output);
     Ok(ExitCode::from(
         u8::try_from(output.status().code().unwrap_or(1)).unwrap_or(1),
@@ -379,19 +423,16 @@ fn run_step_checks_worker(
     repo_root: &Path,
 ) -> Result<(i32, String), String> {
     let output = if commit_site.is_empty() {
-        run_python_verb(
-            [
-                OsString::from("checks"),
-                OsString::from("run-relevant"),
-                OsString::from("--site"),
-                OsString::from(site),
-                OsString::from("--tmpdir"),
-                tmpdir.as_os_str().to_owned(),
-                OsString::from("--repo-root"),
-                repo_root.as_os_str().to_owned(),
-            ],
-            PYTHON_TIMEOUT,
-        )?
+        delegate_python([
+            OsString::from("checks"),
+            OsString::from("run-relevant"),
+            OsString::from("--site"),
+            OsString::from(site),
+            OsString::from("--tmpdir"),
+            tmpdir.as_os_str().to_owned(),
+            OsString::from("--repo-root"),
+            repo_root.as_os_str().to_owned(),
+        ])?
     } else {
         let mut args = vec![
             OsString::from("implement"),
@@ -405,7 +446,7 @@ fn run_step_checks_worker(
             args.push(OsString::from("--rebase-checkpoint-4r"));
         }
         args.extend([OsString::from("--forked-target"), OsString::from(forked)]);
-        run_python_verb(args, PYTHON_TIMEOUT)?
+        delegate_python(args)?
     };
     let text = String::from_utf8_lossy(output.stdout()).into_owned();
     if !output.stderr().is_empty() {
@@ -433,16 +474,13 @@ impl LaunchIdentity {
 }
 
 fn checks_launch_identity(tmpdir: &Path) -> Result<LaunchIdentity, String> {
-    let resolve = run_python_verb(
-        [
-            OsString::from("implement"),
-            OsString::from("checks-result-identity"),
-            OsString::from("resolve-repo-root"),
-            OsString::from("--implement-tmpdir"),
-            tmpdir.as_os_str().to_owned(),
-        ],
-        PYTHON_TIMEOUT,
-    )?;
+    let resolve = delegate_python([
+        OsString::from("implement"),
+        OsString::from("checks-result-identity"),
+        OsString::from("resolve-repo-root"),
+        OsString::from("--implement-tmpdir"),
+        tmpdir.as_os_str().to_owned(),
+    ])?;
     if !resolve.status().success() {
         return Err(stderr_or_stdout(&resolve));
     }
@@ -453,16 +491,13 @@ fn checks_launch_identity(tmpdir: &Path) -> Result<LaunchIdentity, String> {
 }
 
 fn compute_identity(repo_root: &Path) -> Result<LaunchIdentity, String> {
-    let output = run_python_verb(
-        [
-            OsString::from("implement"),
-            OsString::from("checks-result-identity"),
-            OsString::from("compute"),
-            OsString::from("--repo-root"),
-            repo_root.as_os_str().to_owned(),
-        ],
-        PYTHON_TIMEOUT,
-    )?;
+    let output = delegate_python([
+        OsString::from("implement"),
+        OsString::from("checks-result-identity"),
+        OsString::from("compute"),
+        OsString::from("--repo-root"),
+        repo_root.as_os_str().to_owned(),
+    ])?;
     if !output.status().success() {
         return Err(stderr_or_stdout(&output));
     }
@@ -476,22 +511,19 @@ fn compute_identity(repo_root: &Path) -> Result<LaunchIdentity, String> {
 }
 
 fn validate_child_identity(launch: &LaunchIdentity) -> Result<(), String> {
-    let output = run_python_verb(
-        [
-            OsString::from("implement"),
-            OsString::from("checks-result-identity"),
-            OsString::from("validate-child"),
-            OsString::from("--repo-root"),
-            launch.repo_root.as_os_str().to_owned(),
-            OsString::from("--expected-head"),
-            OsString::from(&launch.head_sha),
-            OsString::from("--expected-fp"),
-            OsString::from(&launch.tree_fp),
-            OsString::from("--expected-schema"),
-            OsString::from(&launch.schema),
-        ],
-        PYTHON_TIMEOUT,
-    )?;
+    let output = delegate_python([
+        OsString::from("implement"),
+        OsString::from("checks-result-identity"),
+        OsString::from("validate-child"),
+        OsString::from("--repo-root"),
+        launch.repo_root.as_os_str().to_owned(),
+        OsString::from("--expected-head"),
+        OsString::from(&launch.head_sha),
+        OsString::from("--expected-fp"),
+        OsString::from(&launch.tree_fp),
+        OsString::from("--expected-schema"),
+        OsString::from(&launch.schema),
+    ])?;
     if output.status().success() {
         Ok(())
     } else {
@@ -583,7 +615,7 @@ fn classify(
         args.push(OsString::from(*flag));
         args.push((*value).to_owned());
     }
-    let output = run_python_verb(args, PYTHON_TIMEOUT)?;
+    let output = delegate_python(args)?;
     let text = String::from_utf8_lossy(output.stdout());
     if let Some(state) = kv_value(&text, "STATE") {
         let reason = kv_value(&text, "REASON").unwrap_or_default();
@@ -848,12 +880,68 @@ fn stderr_or_stdout(output: &ProcessOutput) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        IDENTITY_FAILED, format_rows, integrity_rows, kv_value, opt_string, publish_rows,
-        session_key, status_byte, stdout_is_merge_rows, terminal_action_in_output, unlink_safe,
+        CHECKS_FP, CHECKS_HEAD, CHECKS_SCHEMA, IDENTITY_FAILED, LaunchIdentity, TEST_LARCH,
+        TEST_PLUGIN_ROOT, TEST_PYTHON, format_rows, integrity_rows, kv_value, opt_string,
+        prepare_checks_rejoin, publish_identity_child, publish_rows, run_child, run_parent,
+        run_step_checks, safe_merge_env, session_key, status_byte, stdout_is_merge_rows,
+        terminal_action_in_output, unlink_safe,
     };
-    use larch_core::ChangeKind;
-    use std::{ffi::OsStr, fs};
+    use larch_core::{ChangeKind, ProcessOutput, ProcessStatus};
+    use std::{
+        ffi::{OsStr, OsString},
+        fs,
+        path::{Path, PathBuf},
+        sync::Arc,
+    };
     use tempfile::TempDir;
+
+    fn output(code: i32, stdout: &str) -> ProcessOutput {
+        ProcessOutput::new(
+            ProcessStatus::new(code == 0, Some(code)),
+            stdout.as_bytes().to_vec(),
+            Vec::new(),
+            false,
+            false,
+        )
+    }
+
+    fn install_python(
+        hook: impl Fn(&[OsString]) -> Result<ProcessOutput, String> + Send + Sync + 'static,
+    ) {
+        TEST_PYTHON.with(|slot| {
+            *slot.borrow_mut() = Some(Arc::new(hook));
+        });
+    }
+
+    fn install_larch(
+        hook: impl Fn(&Path, &Path, &[OsString]) -> Result<ProcessOutput, String>
+        + Send
+        + Sync
+        + 'static,
+    ) {
+        TEST_LARCH.with(|slot| {
+            *slot.borrow_mut() = Some(Arc::new(hook));
+        });
+    }
+
+    fn clear_hooks() {
+        TEST_PYTHON.with(|slot| *slot.borrow_mut() = None);
+        TEST_LARCH.with(|slot| *slot.borrow_mut() = None);
+        TEST_PLUGIN_ROOT.with(|slot| *slot.borrow_mut() = None);
+    }
+
+    fn identity(repo: &Path) -> LaunchIdentity {
+        LaunchIdentity {
+            head_sha: "abc123".into(),
+            tree_fp: "fp1".into(),
+            schema: "v1".into(),
+            repo_root: repo.to_path_buf(),
+        }
+    }
+
+    fn args_contain(args: &[OsString], needle: &str) -> bool {
+        args.iter().any(|arg| arg == needle)
+    }
 
     #[test]
     fn merge_rows_accept_environment_keys_and_reject_noise() {
@@ -954,5 +1042,275 @@ mod tests {
         let merge = root.path().join("merge.env");
         let err = publish_rows(root.path(), &merge, "not-kv").expect_err("reject");
         assert!(err.contains("KV stream"));
+    }
+
+    #[test]
+    fn launch_identity_rows_and_safe_merge_env() {
+        let root = TempDir::new().expect("temp");
+        let id = identity(root.path());
+        let rows = id.as_rows();
+        assert_eq!(rows[0].0, CHECKS_HEAD);
+        assert_eq!(rows[1].0, CHECKS_FP);
+        assert_eq!(rows[2].0, CHECKS_SCHEMA);
+        let merge = root.path().join("bgjob").join("step.merge.env");
+        let safe = safe_merge_env(root.path(), &merge).expect("safe");
+        assert_eq!(
+            safe.file_name().and_then(|name| name.to_str()),
+            Some("step.merge.env")
+        );
+    }
+
+    #[test]
+    fn prepare_checks_rejoin_absent_clears_merge_and_result() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let tmp = root.path().join("tmp");
+        fs::create_dir_all(tmp.join("bgjob")).expect("bgjob");
+        let merge = tmp.join("bgjob").join("implement-step3-checks.merge.env");
+        fs::write(&merge, "X=1\n").expect("merge");
+        let result = tmp.join("bgjob").join("implement-step3-checks.result.env");
+        fs::write(&result, "Y=1\n").expect("result");
+        install_python(|args| {
+            assert!(args_contain(args, "classify"));
+            Ok(output(0, "STATE=absent\nREASON=\n"))
+        });
+        prepare_checks_rejoin(
+            &tmp,
+            "implement-step3-checks",
+            &merge,
+            &identity(root.path()),
+        )
+        .expect("rejoin");
+        assert!(!merge.exists());
+        assert!(!result.exists());
+        clear_hooks();
+    }
+
+    #[test]
+    fn prepare_checks_rejoin_matching_keeps_artifacts() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let tmp = root.path().join("tmp");
+        fs::create_dir_all(tmp.join("bgjob")).expect("bgjob");
+        let merge = tmp.join("bgjob").join("implement-step3-checks.merge.env");
+        fs::write(&merge, "X=1\n").expect("merge");
+        install_python(|_| Ok(output(0, "STATE=matching\nREASON=\n")));
+        prepare_checks_rejoin(
+            &tmp,
+            "implement-step3-checks",
+            &merge,
+            &identity(root.path()),
+        )
+        .expect("rejoin");
+        assert!(merge.exists());
+        clear_hooks();
+    }
+
+    #[test]
+    fn prepare_checks_rejoin_unsafe_fails() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let tmp = root.path().join("tmp");
+        fs::create_dir_all(tmp.join("bgjob")).expect("bgjob");
+        let merge = tmp.join("bgjob").join("implement-step3-checks.merge.env");
+        install_python(|_| Ok(output(0, "STATE=unsafe\nREASON=bad-result\n")));
+        let err = prepare_checks_rejoin(
+            &tmp,
+            "implement-step3-checks",
+            &merge,
+            &identity(root.path()),
+        )
+        .expect_err("unsafe");
+        assert!(err.contains("bad-result"));
+        clear_hooks();
+    }
+
+    #[test]
+    fn publish_identity_child_publishes_worker_rows() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let tmp = root.path().join("tmp");
+        fs::create_dir_all(&tmp).expect("tmp");
+        let merge = tmp.join("merge.env");
+        let launch = identity(root.path());
+        install_python(|args| {
+            if args_contain(args, "validate-child") {
+                Ok(output(0, "MATCH=true\n"))
+            } else {
+                Err("unexpected".into())
+            }
+        });
+        let code = publish_identity_child(
+            &tmp,
+            "implement-step3-checks",
+            &merge,
+            &launch,
+            false,
+            || {
+                Ok((
+                    0,
+                    "NEXT_ACTION=continue\nSTEP=implement-step3-checks\n".into(),
+                ))
+            },
+        )
+        .expect("publish");
+        assert_eq!(code, std::process::ExitCode::SUCCESS);
+        let body = fs::read_to_string(&merge).expect("merge");
+        assert!(body.contains("NEXT_ACTION=continue"));
+        assert!(body.contains(CHECKS_HEAD));
+        clear_hooks();
+    }
+
+    #[test]
+    fn publish_identity_child_pre_checks_mismatch_writes_integrity() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let tmp = root.path().join("tmp");
+        fs::create_dir_all(&tmp).expect("tmp");
+        let merge = tmp.join("merge.env");
+        install_python(|_| Ok(output(1, "ERROR=mismatch\n")));
+        let code = publish_identity_child(
+            &tmp,
+            "implement-step3-checks",
+            &merge,
+            &identity(root.path()),
+            false,
+            || panic!("worker must not run"),
+        )
+        .expect("publish");
+        assert_eq!(code, std::process::ExitCode::from(1));
+        let body = fs::read_to_string(&merge).expect("merge");
+        assert!(body.contains(IDENTITY_FAILED));
+        clear_hooks();
+    }
+
+    #[test]
+    fn run_child_drives_checks_run_relevant() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let tmp = root.path().join("tmp");
+        fs::create_dir_all(tmp.join("bgjob")).expect("bgjob");
+        let merge = tmp.join("bgjob").join("child.merge.env");
+        install_python(|args| {
+            if args_contain(args, "validate-child") {
+                Ok(output(0, "MATCH=true\n"))
+            } else if args_contain(args, "run-relevant") {
+                Ok(output(0, "NEXT_ACTION=continue\n"))
+            } else {
+                Err(format!("unexpected args: {args:?}"))
+            }
+        });
+        let code = run_child(
+            &tmp,
+            "implement-step3-checks",
+            "step3",
+            "",
+            "false",
+            false,
+            merge.to_str().expect("utf8"),
+            root.path().to_str().expect("utf8"),
+            "abc123",
+            "fp1",
+            "v1",
+        )
+        .expect("child");
+        assert_eq!(code, std::process::ExitCode::SUCCESS);
+        clear_hooks();
+    }
+
+    #[test]
+    fn run_child_commit_route_passes_rebase_flag() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let tmp = root.path().join("tmp");
+        fs::create_dir_all(tmp.join("bgjob")).expect("bgjob");
+        let merge = tmp.join("bgjob").join("child.merge.env");
+        install_python(|args| {
+            if args_contain(args, "validate-child") {
+                Ok(output(0, "MATCH=true\n"))
+            } else if args_contain(args, "checks-commit-route") {
+                assert!(args_contain(args, "--rebase-checkpoint-4r"));
+                Ok(output(0, "NEXT_ACTION=continue\n"))
+            } else if args_contain(args, "compute") {
+                Ok(output(
+                    0,
+                    &format!("{CHECKS_HEAD}=abc123\n{CHECKS_FP}=fp1\n{CHECKS_SCHEMA}=v1\n"),
+                ))
+            } else {
+                Err(format!("unexpected args: {args:?}"))
+            }
+        });
+        let code = run_child(
+            &tmp,
+            "implement-step3-checks",
+            "step3",
+            "commit-site",
+            "true",
+            true,
+            merge.to_str().expect("utf8"),
+            root.path().to_str().expect("utf8"),
+            "abc123",
+            "fp1",
+            "v1",
+        )
+        .expect("child");
+        assert_eq!(code, std::process::ExitCode::SUCCESS);
+        clear_hooks();
+    }
+
+    #[test]
+    fn run_parent_adapts_bgjob_with_launch_identity() {
+        clear_hooks();
+        let root = TempDir::new().expect("temp");
+        let repo = root.path().join("repo");
+        let tmp = root.path().join("tmp");
+        fs::create_dir_all(&repo).expect("repo");
+        fs::create_dir_all(tmp.join("bgjob")).expect("bgjob");
+        let repo_display = repo.display().to_string();
+        let plugin = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        TEST_PLUGIN_ROOT.with(|slot| *slot.borrow_mut() = Some(plugin));
+        install_python(move |args| {
+            if args_contain(args, "resolve-repo-root") {
+                Ok(output(0, &format!("REPO_ROOT={repo_display}\n")))
+            } else if args_contain(args, "compute") {
+                Ok(output(
+                    0,
+                    &format!("{CHECKS_HEAD}=abc\n{CHECKS_FP}=fp\n{CHECKS_SCHEMA}=v1\n"),
+                ))
+            } else if args_contain(args, "classify") {
+                Ok(output(0, "STATE=absent\nREASON=\n"))
+            } else {
+                Err(format!("unexpected python: {args:?}"))
+            }
+        });
+        install_larch(|_cwd, _root, args| {
+            assert!(args_contain(args, "bgjob"));
+            assert!(args_contain(args, "adapt"));
+            assert!(args_contain(args, "run-step-checks"));
+            Ok(output(0, "NEXT_ACTION=continue\n"))
+        });
+        let code = run_parent(
+            &tmp,
+            "implement-step3-checks",
+            10,
+            "step3",
+            "commit-a",
+            "false",
+            true,
+        )
+        .expect("parent");
+        assert_eq!(code, std::process::ExitCode::SUCCESS);
+        clear_hooks();
+    }
+
+    #[test]
+    fn run_step_checks_invalid_forked_target_exits_two() {
+        let code = run_step_checks(&[
+            OsString::from("--site"),
+            OsString::from("step3"),
+            OsString::from("--forked-target"),
+            OsString::from("maybe"),
+        ]);
+        assert_eq!(code, std::process::ExitCode::from(2));
     }
 }
