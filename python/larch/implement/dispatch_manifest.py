@@ -33,7 +33,10 @@ from larch.implement.dispatch_helpers import (
     PORCELAIN_MIN_PARTS,
     SUMMARY_BULLETS_MAX,
 )
-from larch.implement.dispatch_recovery import RecoveryPorcelainInputs, compute_recovery_paths
+from larch.implement.dispatch_recovery import (
+    RecoveryPorcelainInputs,
+    compute_recovery_paths,
+)
 
 
 # Mutable state: scout_status / baseline_sha / spawn_branch are filled in as dispatch proceeds.
@@ -133,7 +136,14 @@ def _post_implementer_safety_reason(st: DispatchState) -> str:
         return "submodule-dirty"
     roots = _submodule_roots(st.repo_root)
     if roots:
-        raw = _git(st.repo_root, "status", "--porcelain=v1", "-z", "--ignore-submodules=none", binary=True)
+        raw = _git(
+            st.repo_root,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--ignore-submodules=none",
+            binary=True,
+        )
         if raw.returncode != 0:
             return "submodule-dirty"
         for rec in raw.stdout.split(b"\0"):
@@ -152,10 +162,23 @@ def _post_implementer_safety_reason(st: DispatchState) -> str:
 def _write_prelaunch_baseline(st: DispatchState) -> None:
     if st.answers_file is not None or st.prelaunch_porcelain.exists():
         return
-    raw = _git(st.repo_root, "status", "--porcelain=v1", "-z", "--untracked-files=all", binary=True).stdout
+    raw = _git(
+        st.repo_root,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        binary=True,
+    ).stdout
     _write_bytes_atomic(path=st.prelaunch_porcelain, data=cast("bytes", raw))
-    index_nonempty = _git(st.repo_root, "diff", "--cached", "--quiet", "--no-ext-diff").returncode != 0
-    _write_text_atomic(path=st.prelaunch_index_flag, text=f"PRELAUNCH_INDEX_NONEMPTY={str(index_nonempty).lower()}\n")
+    index_nonempty = (
+        _git(st.repo_root, "diff", "--cached", "--quiet", "--no-ext-diff").returncode
+        != 0
+    )
+    _write_text_atomic(
+        path=st.prelaunch_index_flag,
+        text=f"PRELAUNCH_INDEX_NONEMPTY={str(index_nonempty).lower()}\n",
+    )
     _write_prelaunch_digests(
         repo_root=st.repo_root,
         porcelain_file=st.prelaunch_porcelain,
@@ -164,7 +187,11 @@ def _write_prelaunch_baseline(st: DispatchState) -> None:
 
 
 def _manifest_legacy_fingerprint(obj: object) -> bool:
-    return isinstance(obj, dict) and "schema_version" not in obj and set(obj.keys()) <= {"status", "summary", "checks"}
+    return (
+        isinstance(obj, dict)
+        and "schema_version" not in obj
+        and set(obj.keys()) <= {"status", "summary", "checks"}
+    )
 
 
 def _json_load(path: Path) -> object | None:
@@ -181,7 +208,9 @@ def _coder_scout_archetype_count(path: Path) -> int | None:
     return len(obj["archetypes"])
 
 
-def _write_coder_scout_status(*, tmpdir: Path, status: str, manifest: Path, producer: str) -> None:
+def _write_coder_scout_status(
+    *, tmpdir: Path, status: str, manifest: Path, producer: str
+) -> None:
     _write_text_atomic(
         path=tmpdir / "step2-scout-coder-status.env",
         text=f"SCOUT_CODER_STATUS={status}\n"
@@ -192,8 +221,10 @@ def _write_coder_scout_status(*, tmpdir: Path, status: str, manifest: Path, prod
 
 def _warn_invalid_coder_scout(producer: str) -> None:
     producer_label = (
-        "main agent" if producer == "main-agent"
-        else "Claude subagent" if producer == "subagent"
+        "main agent"
+        if producer == "main-agent"
+        else "Claude subagent"
+        if producer == "subagent"
         else "external coder"
     )
     print(
@@ -231,7 +262,11 @@ def normalize_coder_scout(
             kv = _parse_kv(result.stdout)
             filtered_count = _coder_scout_archetype_count(filtered_tmp)
             filter_status = kv.get("SCOUT_STATUS", "")
-            filter_ok = result.returncode == 0 and filter_status in {"ok", "empty"} and filtered_count is not None
+            filter_ok = (
+                result.returncode == 0
+                and filter_status in {"ok", "empty"}
+                and filtered_count is not None
+            )
             if filter_ok and (raw_count == 0 or (filtered_count or 0) > 0):
                 status = "ok"
                 filtered_tmp.replace(scout_manifest)
@@ -248,7 +283,9 @@ def normalize_coder_scout(
         with contextlib.suppress(OSError):
             marker.unlink()
         _warn_invalid_coder_scout(producer)
-    _write_coder_scout_status(tmpdir=tmpdir, status=status, manifest=scout_manifest, producer=producer)
+    _write_coder_scout_status(
+        tmpdir=tmpdir, status=status, manifest=scout_manifest, producer=producer
+    )
     return status
 
 
@@ -256,24 +293,38 @@ def normalize_coder_scout_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py implement normalize-coder-scout")
     parser.add_argument("--tmpdir", default="")
     parser.add_argument("--input", default="")
-    parser.add_argument("--producer", choices=("external", "main-agent", "subagent"), default="external")
+    parser.add_argument(
+        "--producer", choices=("external", "main-agent", "subagent"), default="external"
+    )
     args = parser.parse_args(argv)
     raw_tmpdir = args.tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if not raw_tmpdir:
-        print("implement normalize-coder-scout: --tmpdir is required or IMPLEMENT_TMPDIR must be set", file=sys.stderr)
+        print(
+            "implement normalize-coder-scout: --tmpdir is required or IMPLEMENT_TMPDIR must be set",
+            file=sys.stderr,
+        )
         return 2
     tmpdir = Path(raw_tmpdir)
     if not tmpdir.is_dir():
-        print(f"implement normalize-coder-scout: --tmpdir not a directory: {tmpdir}", file=sys.stderr)
+        print(
+            f"implement normalize-coder-scout: --tmpdir not a directory: {tmpdir}",
+            file=sys.stderr,
+        )
         return 2
     _rehydrate_plugin_root(tmpdir)
     status = normalize_coder_scout(
         tmpdir=tmpdir,
-        input_path=_resolve_tmpdir_path(tmpdir=tmpdir, raw=args.input, default_relpath="scout-coder-manifest.raw.json"),
+        input_path=_resolve_tmpdir_path(
+            tmpdir=tmpdir,
+            raw=args.input,
+            default_relpath="scout-coder-manifest.raw.json",
+        ),
         producer=args.producer,
     )
     _emit_kv(key="SCOUT_CODER_STATUS", value=status)
-    _emit_kv(key="SCOUT_CODER_MANIFEST", value=str(tmpdir / "scout-coder-manifest.json"))
+    _emit_kv(
+        key="SCOUT_CODER_MANIFEST", value=str(tmpdir / "scout-coder-manifest.json")
+    )
     return 0
 
 
@@ -329,14 +380,25 @@ def _finalize_manifest_invalid_recovery(st: DispatchState) -> None:
     _clear_external_scout_state(st.tmpdir)
 
 
-def _manifest_invalid_bail_reason(*, st: DispatchState, status: str, raw_obj: object | None) -> str | None:
+def _manifest_invalid_bail_reason(
+    *, st: DispatchState, status: str, raw_obj: object | None
+) -> str | None:
     if not isinstance(raw_obj, dict):
         return "manifest-schema-invalid"
-    if status != "complete" and not (status == "" and _manifest_legacy_fingerprint(raw_obj)):
+    if status != "complete" and not (
+        status == "" and _manifest_legacy_fingerprint(raw_obj)
+    ):
         return "manifest-schema-invalid"
     if _read_prelaunch_index_nonempty(st) == "true":
         return "manifest-schema-invalid"
-    post = _git(st.repo_root, "status", "--porcelain=v1", "-z", "--untracked-files=all", binary=True).stdout
+    post = _git(
+        st.repo_root,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        binary=True,
+    ).stdout
     _write_bytes_atomic(path=st.postlaunch_porcelain, data=cast("bytes", post))
     ok = compute_recovery_paths(
         repo_root=st.repo_root,
@@ -355,8 +417,12 @@ def _manifest_invalid_bail_reason(*, st: DispatchState, status: str, raw_obj: ob
     return _post_implementer_safety_reason(st) or None
 
 
-def _emit_manifest_invalid_or_recover(*, st: DispatchState, status: str, raw_obj: object | None) -> int:
-    if (bail := _manifest_invalid_bail_reason(st=st, status=status, raw_obj=raw_obj)) is not None:
+def _emit_manifest_invalid_or_recover(
+    *, st: DispatchState, status: str, raw_obj: object | None
+) -> int:
+    if (
+        bail := _manifest_invalid_bail_reason(st=st, status=status, raw_obj=raw_obj)
+    ) is not None:
         return st.emit_bailed(bail)
     _finalize_manifest_invalid_recovery(st)
     return 0
@@ -364,7 +430,11 @@ def _emit_manifest_invalid_or_recover(*, st: DispatchState, status: str, raw_obj
 
 def _manifest_complete_salvageable(path: Path) -> bool:
     obj = _json_load(path)
-    return isinstance(obj, dict) and str(obj.get("schema_version", "")) == "1" and obj.get("status") == "complete"
+    return (
+        isinstance(obj, dict)
+        and str(obj.get("schema_version", "")) == "1"
+        and obj.get("status") == "complete"
+    )
 
 
 def _normalize_scout(st: DispatchState) -> None:
@@ -382,9 +452,16 @@ def _validate_manifest_paths(*, st: DispatchState, obj: dict[str, Any]) -> str:
         for item in obj.get("files_touched", [])
         if isinstance(item, dict) and isinstance(item.get("path"), str)
     ]
-    paths.extend(item for item in obj.get("tests_added_or_modified", []) if isinstance(item, str))
+    paths.extend(
+        item for item in obj.get("tests_added_or_modified", []) if isinstance(item, str)
+    )
     for p in paths:
-        if "\x00" in p or p.startswith("/") or ".." in p or _path_under_submodule(rel=p, roots=roots):
+        if (
+            "\x00" in p
+            or p.startswith("/")
+            or ".." in p
+            or _path_under_submodule(rel=p, roots=roots)
+        ):
             return "protected-path-modified"
     return ""
 
@@ -401,7 +478,10 @@ def _complete_schema_valid(obj: dict[str, Any]) -> bool:
     return (
         isinstance(obj.get("files_touched"), list)
         and len(obj["files_touched"]) > 0
-        and all(isinstance(item, dict) and isinstance(item.get("path"), str) for item in obj["files_touched"])
+        and all(
+            isinstance(item, dict) and isinstance(item.get("path"), str)
+            for item in obj["files_touched"]
+        )
         and isinstance(obj.get("commit_message"), str)
         and len(obj["commit_message"]) > 0
         and isinstance(obj.get("summary_bullets"), list)
@@ -417,13 +497,19 @@ def _sanitize_architectural_acknowledgment(value: object) -> str:
     if not isinstance(value, str):
         return ""
     text = re.sub(r"[\r\n]+", " ", value)
-    text = re.sub(r"\s+", " ", "".join(ch for ch in text if ch >= " " and ch != "\x7f")).strip()
+    text = re.sub(
+        r"\s+", " ", "".join(ch for ch in text if ch >= " " and ch != "\x7f")
+    ).strip()
     return redact.redact_secrets_only(text).strip()[:500]
 
 
 def _require_architectural_acknowledgment(manifest: dict[str, Any]) -> bool:
     """Return true when the manifest carries a non-empty visible architecture acknowledgment."""
-    return bool(_sanitize_architectural_acknowledgment(manifest.get("architectural_acknowledgment")))
+    return bool(
+        _sanitize_architectural_acknowledgment(
+            manifest.get("architectural_acknowledgment")
+        )
+    )
 
 
 def _sanitize_manifest_obj(obj: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
@@ -432,10 +518,17 @@ def _sanitize_manifest_obj(obj: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
         if isinstance(sanitized.get(key), str):
             sanitized[key] = redact.redact_secrets_only(sanitized[key])
     if "architectural_acknowledgment" in sanitized:
-        sanitized["architectural_acknowledgment"] = _sanitize_architectural_acknowledgment(sanitized.get("architectural_acknowledgment"))
+        sanitized["architectural_acknowledgment"] = (
+            _sanitize_architectural_acknowledgment(
+                sanitized.get("architectural_acknowledgment")
+            )
+        )
     for key in ("summary_bullets", "todos_left"):
         if isinstance(sanitized.get(key), list):
-            sanitized[key] = [redact.redact_secrets_only(v) if isinstance(v, str) else v for v in sanitized[key]]
+            sanitized[key] = [
+                redact.redact_secrets_only(v) if isinstance(v, str) else v
+                for v in sanitized[key]
+            ]
     if isinstance(sanitized.get("difficulty"), dict):
         try:
             rating = difficulty.validate_rating_object(sanitized["difficulty"])
@@ -461,27 +554,34 @@ def _sanitize_manifest_obj(obj: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
     return sanitized
 
 
-def _append_materialize_oos_failure(*, st: DispatchState, log: Path, exit_code: int) -> None:
-    _invoke_larch([
-        "run-log",
-        "append-failure",
-        "--log",
-        str(st.tmpdir / "execution-issues.md"),
-        "--site",
-        "step2-materialize-manifest-oos",
-        "--tool",
-        "larch oos materialize-manifest",
-        "--exit-code",
-        str(exit_code),
-        "--category",
-        "Tool Failures",
-        "--output-file",
-        str(log),
-        "--redact",
-    ], cwd=st.repo_root)
+def _append_materialize_oos_failure(
+    *, st: DispatchState, log: Path, exit_code: int
+) -> None:
+    _invoke_larch(
+        [
+            "run-log",
+            "append-failure",
+            "--log",
+            str(st.tmpdir / "execution-issues.md"),
+            "--site",
+            "step2-materialize-manifest-oos",
+            "--tool",
+            "larch oos materialize-manifest",
+            "--exit-code",
+            str(exit_code),
+            "--category",
+            "Tool Failures",
+            "--output-file",
+            str(log),
+            "--redact",
+        ],
+        cwd=st.repo_root,
+    )
 
 
-def _oos_materialize_should_bail(*, count_rc: int, count_str: str, oos_nonempty: bool, materialize_failed: bool) -> bool:
+def _oos_materialize_should_bail(
+    *, count_rc: int, count_str: str, oos_nonempty: bool, materialize_failed: bool
+) -> bool:
     if count_rc != 0:
         return True
     if materialize_failed and count_str.isdigit() and int(count_str) > 0:
@@ -489,7 +589,9 @@ def _oos_materialize_should_bail(*, count_rc: int, count_str: str, oos_nonempty:
     return materialize_failed and oos_nonempty
 
 
-def _materialize_oos(st: DispatchState, *, oos_observations_nonempty: bool = False) -> str:
+def _materialize_oos(
+    st: DispatchState, *, oos_observations_nonempty: bool = False
+) -> str:
     log = st.tmpdir / "materialize-manifest-oos.log"
     log.write_text("", encoding="utf-8")
     count_rc = 0

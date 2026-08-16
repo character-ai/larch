@@ -12,8 +12,8 @@ use std::{
 
 use larch_adapters::{GixRepository, SystemProcessIdentityHost};
 use larch_core::{
-    CHECKS_TERMINAL_ACTIONS, ChildEnvironment, CommentPolicy, DuplicateInputPolicy, DuplicatePolicy,
-    ExternalProgram, KvDocument, LarchProgram, ParseOptions, ProcessOutput,
+    CHECKS_TERMINAL_ACTIONS, ChildEnvironment, CommentPolicy, DuplicateInputPolicy,
+    DuplicatePolicy, ExternalProgram, KvDocument, LarchProgram, ParseOptions, ProcessOutput,
     RecoveryPorcelainInputs, StatusOptions, bgjob_dir, child_liveness, compute_recovery_paths,
     daemon_liveness, ensure_under, log_paths, owner_pid_candidate, private_atomic_write, read_for,
     resolve_run_id, resolve_step_and_budget, resolve_tmpdir_path, result_env_path,
