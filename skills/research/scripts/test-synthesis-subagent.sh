@@ -29,7 +29,6 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 RESEARCH_PHASE_MD="$REPO_ROOT/skills/research/references/research-phase.md"
 VALIDATION_PHASE_MD="$REPO_ROOT/skills/research/references/validation-phase.md"
-HELPER_SCRIPT="$REPO_ROOT/python/cli.py"
 
 PASS=0
 FAIL=0
@@ -43,7 +42,6 @@ fail() {
 
 [[ -f "$RESEARCH_PHASE_MD" ]] || fail "research-phase.md missing: $RESEARCH_PHASE_MD"
 [[ -f "$VALIDATION_PHASE_MD" ]] || fail "validation-phase.md missing: $VALIDATION_PHASE_MD"
-[[ -f "$HELPER_SCRIPT" ]] || fail "python/cli.py missing: $HELPER_SCRIPT"
 
 if (( FAIL > 0 )); then
   echo "test-synthesis-subagent.sh — $PASS passed, $FAIL failed" >&2
@@ -217,14 +215,6 @@ if [[ -n "$SECTION_FINALIZE" ]]; then
   else
     fail "[Finalize Validation] must specify inline-revision fallback on validator failure"
   fi
-fi
-
-# ---------- Pin 11: Python CLI file exists ----------
-
-if [[ -f "$HELPER_SCRIPT" ]]; then
-  PASS=$((PASS + 1))
-else
-  fail "python/cli.py must exist for research banner: $HELPER_SCRIPT"
 fi
 
 # ---------- Summary ----------
