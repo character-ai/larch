@@ -625,7 +625,88 @@ async fn next_graph_reports_an_open_non_leaf_parent_blocker_separately() {
 }
 
 #[tokio::test]
-async fn graph_diagnostics_name_closed_leaf_and_failed_lifecycle_invariant() {
+async fn next_excludes_closed_leaves_with_stale_or_arbitrary_titles() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let stale_implementing = issue_json(
+        LEAF,
+        410,
+        "[IMPLEMENTING] [LEAF OF 40] Already shipped",
+        &format!("{}\n\nDone.", umbrella_leaf_opening(UMBRELLA)),
+        "closed",
+        BEFORE,
+    );
+    let arbitrary_closed = issue_json(
+        GAP,
+        420,
+        "Finished without a lifecycle prefix",
+        "Wrong first line\n\nStill closed.",
+        "closed",
+        BEFORE,
+    );
+    let open_leaf = issue_json(
+        43,
+        430,
+        "[LEAF OF 40] Still open",
+        &format!("{}\n\nWork remains.", umbrella_leaf_opening(UMBRELLA)),
+        "open",
+        BEFORE,
+    );
+    let (client, server) = service(vec![
+        response(200, &parent),
+        response(
+            200,
+            refs(&[
+                (LEAF, 410, "closed"),
+                (GAP, 420, "closed"),
+                (43, 430, "open"),
+            ]),
+        ),
+        response(
+            200,
+            refs(&[
+                (LEAF, 410, "closed"),
+                (GAP, 420, "closed"),
+                (43, 430, "open"),
+            ]),
+        ),
+        response(200, &stale_implementing),
+        response(200, "[]"),
+        response(200, &arbitrary_closed),
+        response(200, "[]"),
+        response(200, &open_leaf),
+        response(200, "[]"),
+        response(200, "[]"),
+    ]);
+
+    let graph = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA)
+        .await
+        .expect("closed title drift must not abort next enumeration");
+    assert_eq!(graph.leaves.len(), 3);
+    let selection = select_complete_umbrella_leaf(
+        &selection_leaves(&graph.leaves),
+        &graph.open_orphan_blockers,
+    );
+    assert_eq!(
+        next_action_fields(&selection),
+        vec![
+            ("NEXT_ACTION", "launch".to_owned()),
+            ("NEXT_LEAF", "43".to_owned()),
+        ]
+    );
+    server
+        .join()
+        .expect("stale closed leaf graph stub completed");
+}
+
+#[tokio::test]
+async fn graph_diagnostics_still_name_open_leaf_lifecycle_failures() {
     let parent = issue_json(
         UMBRELLA,
         400,
@@ -637,61 +718,77 @@ async fn graph_diagnostics_name_closed_leaf_and_failed_lifecycle_invariant() {
     let invalid_title = issue_json(
         LEAF,
         410,
-        "[IMPLEMENTING] [LEAF OF 40] Implement it",
-        &format!("{}\n\nDone.", umbrella_leaf_opening(UMBRELLA)),
-        "closed",
+        "[DONE] [LEAF OF 40] Still open",
+        &format!("{}\n\nWork remains.", umbrella_leaf_opening(UMBRELLA)),
+        "open",
         BEFORE,
     );
     let (client, server) = service(vec![
         response(200, &parent),
-        response(200, refs(&[(LEAF, 410, "closed")])),
-        response(200, refs(&[(LEAF, 410, "closed")])),
+        response(200, refs(&[(LEAF, 410, "open")])),
+        response(200, refs(&[(LEAF, 410, "open")])),
         response(200, &invalid_title),
     ]);
     let Err(error) = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA).await
     else {
-        panic!("closed leaf title must remain exact");
+        panic!("open leaf title must remain exact");
     };
     assert_eq!(
         error,
-        "direct leaf #41 is closed without the exact [DONE] lifecycle title"
+        "direct leaf #41 violates the exact lifecycle-title invariant"
     );
-    server.join().expect("title stub completed");
+    server.join().expect("open title stub completed");
 
     let invalid_body = issue_json(
         LEAF,
         410,
-        "[DONE] [LEAF OF 40] Implement it",
-        "Wrong first line\n\nDone.",
-        "closed",
+        "[LEAF OF 40] Still open",
+        "Wrong first line\n\nWork remains.",
+        "open",
         BEFORE,
     );
     let (client, server) = service(vec![
         response(200, &parent),
-        response(200, refs(&[(LEAF, 410, "closed")])),
-        response(200, refs(&[(LEAF, 410, "closed")])),
+        response(200, refs(&[(LEAF, 410, "open")])),
+        response(200, refs(&[(LEAF, 410, "open")])),
         response(200, &invalid_body),
     ]);
     let Err(error) = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA).await
     else {
-        panic!("closed leaf body must retain the exact opening");
+        panic!("open leaf body must retain the exact opening");
     };
     assert_eq!(
         error,
         "direct leaf #41 violates the exact first-line body invariant"
     );
-    server.join().expect("body stub completed");
+    server.join().expect("open body stub completed");
 }
 
 #[tokio::test]
-async fn finish_refuses_a_closed_implementing_leaf_before_mutating_the_parent() {
-    let parent = issue_json(
+async fn finish_accepts_closed_leaves_with_stale_implementing_titles() {
+    let active_parent = issue_json(
         UMBRELLA,
         400,
         "[IMPLEMENTING] [UMBRELLA] Ship it",
         PROPOSAL_BODY,
         "open",
         BEFORE,
+    );
+    let done_parent = issue_json(
+        UMBRELLA,
+        400,
+        "[DONE] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        AFTER,
+    );
+    let closed_parent = issue_json(
+        UMBRELLA,
+        400,
+        "[DONE] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "closed",
+        CLOSED_AT,
     );
     let stale_leaf = issue_json(
         LEAF,
@@ -701,23 +798,27 @@ async fn finish_refuses_a_closed_implementing_leaf_before_mutating_the_parent() 
         "closed",
         BEFORE,
     );
-    let (client, server) = service(vec![
-        response(200, &parent),
-        response(200, refs(&[(LEAF, 410, "closed")])),
-        response(200, refs(&[(LEAF, 410, "closed")])),
-        response(200, &stale_leaf),
+    let mut exchanges = closed_graph(&active_parent, &stale_leaf);
+    exchanges.extend([
+        response(200, &active_parent),
+        response(200, &active_parent),
+        response(200, &done_parent),
+        response(200, &done_parent),
     ]);
+    exchanges.extend(closed_graph(&done_parent, &stale_leaf));
+    exchanges.push(response(200, &closed_parent));
+    exchanges.extend(closed_graph(&closed_parent, &stale_leaf));
+    let (service, server) = service(exchanges);
 
-    let error = finish_remote(&client, &Cancellation::new(), &repository(), UMBRELLA)
+    finish_remote(&service, &Cancellation::new(), &repository(), UMBRELLA)
         .await
-        .expect_err("terminal title drift must stop completion");
-    assert_eq!(
-        error,
-        "direct leaf #41 is closed without the exact [DONE] lifecycle title"
-    );
-    server
-        .join()
-        .expect("completion stopped before a parent mutation request");
+        .expect("stale closed leaf titles must not block finish");
+
+    let requests = server.finish().expect("stub completed");
+    assert!(requests.iter().any(|request| {
+        request.method == "PATCH"
+            && String::from_utf8_lossy(&request.body.bytes).contains("completed")
+    }));
 }
 
 #[tokio::test]
@@ -749,6 +850,41 @@ async fn child_verification_reads_the_fresh_closed_graph() {
         .await
         .expect("verified child");
     server.join().expect("stub completed");
+}
+
+#[tokio::test]
+async fn child_verification_still_requires_exact_done_title_on_the_shipped_leaf() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let stale_leaf = issue_json(
+        LEAF,
+        410,
+        "[IMPLEMENTING] [LEAF OF 40] Implement it",
+        &format!("{}\n\nDone.", umbrella_leaf_opening(UMBRELLA)),
+        "closed",
+        BEFORE,
+    );
+    let (service, server) = service(closed_graph(&parent, &stale_leaf));
+    let arguments = LeafArguments {
+        repository: String::from("o/r"),
+        umbrella: UMBRELLA,
+        leaf: LEAF,
+    };
+
+    let error = verify_child_remote(&service, &Cancellation::new(), &repository(), &arguments)
+        .await
+        .expect_err("verify-child must keep the exact [DONE] assertion");
+    assert_eq!(
+        error,
+        "child must be closed with the exact [DONE] leaf prefix"
+    );
+    server.join().expect("stale verify-child stub completed");
 }
 
 #[tokio::test]
