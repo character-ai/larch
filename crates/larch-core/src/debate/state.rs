@@ -488,12 +488,11 @@ fn needles(values: &BTreeMap<String, String>) -> Vec<&str> {
 // ---------------------------------------------------------------------------
 
 fn string_map_value(values: &BTreeMap<String, String>) -> Value {
-    Value::Object(
-        values
-            .iter()
-            .map(|(key, value)| (key.clone(), Value::String(value.clone())))
-            .collect(),
-    )
+    let mut object = Map::new();
+    for (key, value) in values {
+        object.insert(key.clone(), Value::String(value.clone()));
+    }
+    Value::Object(object)
 }
 
 fn encode_row(row: &LedgerRow) -> Value {
