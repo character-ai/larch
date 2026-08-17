@@ -234,10 +234,13 @@ register CLI verbs; this core stays network-free and filesystem-bounded.
 `larch_core::debate` owns the debate protocol vocabulary ported in #8597:
 wire constants and enums, lexical validators, slot-ledger row grammar with
 exact rejection-reason tokens, concession citation classification, and reason
-normalization plus fingerprints. Inline tests mirror the executable-contract
-cases from `python/tests/debate/test_protocol.py` and pin Python-computed
-golden fingerprint fixtures for byte parity. The still-Python debate commands
-keep `python/larch/debate/protocol.py` live; this core is network-free and
+normalization plus fingerprints. Leaf #8598 adds the state half: round-state
+assembly, point resolution, stalemate detection, adjudication records, and the
+proposal transition machine. Inline tests mirror the executable-contract cases
+from `python/tests/debate/test_protocol.py`, including the transition and
+stalemate rejection tokens, and pin Python-computed golden fingerprint fixtures
+for byte parity. The still-Python debate commands keep
+`python/larch/debate/protocol.py` live; this core is network-free and
 filesystem-free.
 
 ## Test boundaries
