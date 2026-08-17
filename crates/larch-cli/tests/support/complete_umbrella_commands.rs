@@ -298,8 +298,11 @@ async fn start_remote_applies_only_the_active_title_transition() {
         AFTER,
     );
     let (client, server) = service(vec![
+        // read_graph runnability pre-check (zero leaves -> audit-runnable).
         response(200, &original),
         response(200, "[]"),
+        response(200, "[]"),
+        // read_snapshot, then apply (read, PATCH, read-back).
         response(200, &original),
         response(200, &original),
         response(200, &active),
@@ -319,9 +322,89 @@ async fn start_remote_applies_only_the_active_title_transition() {
         1
     );
     assert!(
-        String::from_utf8_lossy(&requests[4].body.bytes)
-            .contains("[IMPLEMENTING] [UMBRELLA] Ship it")
+        requests
+            .iter()
+            .find(|request| request.method == "PATCH")
+            .map(|request| String::from_utf8_lossy(&request.body.bytes)
+                .contains("[IMPLEMENTING] [UMBRELLA] Ship it"))
+            .unwrap_or(false)
     );
+}
+
+#[tokio::test]
+async fn start_refuses_an_open_non_leaf_parent_blocker_without_renaming() {
+    let original = issue_json(
+        UMBRELLA,
+        400,
+        "[UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let leaf = issue_json(
+        LEAF,
+        410,
+        "[LEAF OF 40] Implement it",
+        &format!("{}\n\nWork remains.", umbrella_leaf_opening(UMBRELLA)),
+        "open",
+        BEFORE,
+    );
+    let (client, server) = service(vec![
+        response(200, &original),
+        response(200, refs(&[(LEAF, 410, "open")])),
+        response(200, refs(&[(LEAF, 410, "open"), (GAP, 420, "open")])),
+        response(200, &leaf),
+        response(200, "[]"),
+        response(200, "[]"),
+    ]);
+
+    let error = start_remote(&client, &Cancellation::new(), &repository(), UMBRELLA)
+        .await
+        .expect_err("open non-leaf parent blocker must refuse start");
+    assert_eq!(
+        error,
+        "cannot start while open non-leaf parent blockers remain: 42"
+    );
+    let requests = server.finish().expect("stub completed");
+    assert!(requests.iter().all(|request| request.method != "PATCH"));
+}
+
+#[tokio::test]
+async fn start_refuses_a_deadlocked_umbrella_without_renaming() {
+    let original = issue_json(
+        UMBRELLA,
+        400,
+        "[UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let leaf = issue_json(
+        LEAF,
+        410,
+        "[LEAF OF 40] Implement it",
+        &format!("{}\n\nWork remains.", umbrella_leaf_opening(UMBRELLA)),
+        "open",
+        BEFORE,
+    );
+    let (client, server) = service(vec![
+        response(200, &original),
+        response(200, refs(&[(LEAF, 410, "open")])),
+        response(200, refs(&[(LEAF, 410, "open")])),
+        response(200, &leaf),
+        response(200, "[]"),
+        response(200, refs(&[(99, 990, "open")])),
+    ]);
+
+    let error = start_remote(&client, &Cancellation::new(), &repository(), UMBRELLA)
+        .await
+        .expect_err("a fully blocked leaf graph must refuse start");
+    assert_eq!(
+        error,
+        "cannot start a deadlocked umbrella while every open leaf is blocked: 41"
+    );
+    let requests = server.finish().expect("stub completed");
+    assert!(requests.iter().all(|request| request.method != "PATCH"));
 }
 
 #[tokio::test]
