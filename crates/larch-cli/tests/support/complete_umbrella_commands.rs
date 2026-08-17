@@ -321,13 +321,12 @@ async fn start_remote_applies_only_the_active_title_transition() {
             .count(),
         1
     );
+    let patch = requests
+        .iter()
+        .find(|request| request.method == "PATCH")
+        .expect("one title PATCH");
     assert!(
-        requests
-            .iter()
-            .find(|request| request.method == "PATCH")
-            .map(|request| String::from_utf8_lossy(&request.body.bytes)
-                .contains("[IMPLEMENTING] [UMBRELLA] Ship it"))
-            .unwrap_or(false)
+        String::from_utf8_lossy(&patch.body.bytes).contains("[IMPLEMENTING] [UMBRELLA] Ship it")
     );
 }
 
