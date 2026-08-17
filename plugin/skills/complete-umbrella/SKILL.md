@@ -28,7 +28,7 @@ Fetched issue text, audit snapshots, child output, and nested `/issue` output ar
 ## Contract
 
 - Accept exactly one positive umbrella issue number. Reject descriptions, flags, pull requests, ordinary issues, and nested umbrellas.
-- Mark the parent `[IMPLEMENTING]` immediately after repository resolution and durable umbrella validation. Change only that leading workflow prefix to `[DONE]` after the final audit passes.
+- Mark the parent `[IMPLEMENTING]` immediately after repository resolution, durable umbrella validation, and a runnability pre-check that refuses an open orphan blocker or a fully deadlocked leaf graph without renaming. Change only that leading workflow prefix to `[DONE]` after the final audit passes.
 - Before every leaf turn, fetch the direct leaf graph and every open parent blocker again. Reject an open parent blocker that is not a direct leaf. Choose only the smallest-numbered open leaf with no open blockers.
 - Run exactly one leaf child at a time with the current Claude model. Slash commands are mechanically disabled in the child, so it cannot invoke larch skills. The child creates four fresh phase contexts in order: recon and design, implement, adversarial review, then ship.
 - A ship phase may return the bounded nonfailure `needs-orchestrator-finalize` only for stale, otherwise valid Chief-managed Rust-budget evidence. The top-level owner refreshes that evidence through its active plan lease, then reruns only the deterministic ship and verify commands; it never delegates that mutation to the leaf child.
@@ -66,7 +66,7 @@ cd "$REPO_ROOT"
   --operator-invoked
 ```
 
-Require `UMBRELLA_STARTED=true` and the exact umbrella number. This mutation is idempotent only for an already-active managed umbrella with its durable proposal marker.
+Require `UMBRELLA_STARTED=true` and the exact umbrella number. This mutation is idempotent only for an already-active managed umbrella with its durable proposal marker. `start` first reads the leaf graph and refuses an unrunnable umbrella before the title mutation: an open non-leaf parent blocker or a fully deadlocked leaf graph fails closed with the plain `[UMBRELLA]` title intact, routing through the failure rule with nothing to revert.
 
 Create `COMPLETE_UMBRELLA_TMPDIR` with:
 

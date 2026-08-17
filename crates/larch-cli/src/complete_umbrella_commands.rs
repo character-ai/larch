@@ -259,12 +259,17 @@ async fn start_remote(
     repository: &GitHubRepositoryRef,
     issue: u64,
 ) -> Result<(), String> {
-    let parent = service
-        .issue(repository, issue, cancellation)
-        .await
-        .map_err(|error| error.to_string())?;
-    validate_complete_umbrella_parent(&parent, true)?;
-    require_top_level_umbrella(service, cancellation, repository, issue).await?;
+    // Read the full leaf graph and confirm the umbrella is runnable before any
+    // title mutation. A blocked (open non-leaf parent blocker) or deadlocked
+    // (every open leaf blocked) umbrella keeps its plain [UMBRELLA] title
+    // instead of stranding [IMPLEMENTING] with zero work and no active run
+    // (#8663). read_graph also rejects nested umbrellas, subsuming the standalone
+    // require_top_level_umbrella pre-check.
+    let graph = read_graph(service, cancellation, repository, issue).await?;
+    if graph.parent.state != GitHubIssueState::Open {
+        return Err("umbrella target is not open".to_owned());
+    }
+    require_runnable_umbrella(&graph)?;
     let owner = IssueMutationOwner::new(service);
     let before = owner
         .read_snapshot(repository, issue, cancellation)
@@ -941,6 +946,23 @@ async fn read_open_orphan_blockers(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect())
+}
+
+fn require_runnable_umbrella(graph: &GraphState) -> Result<(), String> {
+    match select_complete_umbrella_leaf(
+        &selection_leaves(&graph.leaves),
+        &graph.open_orphan_blockers,
+    ) {
+        CompleteUmbrellaNext::Launch(_) | CompleteUmbrellaNext::Audit => Ok(()),
+        CompleteUmbrellaNext::OrphanBlocked(issues) => Err(format!(
+            "cannot start while open non-leaf parent blockers remain: {}",
+            join_numbers(&issues)
+        )),
+        CompleteUmbrellaNext::Deadlocked(issues) => Err(format!(
+            "cannot start a deadlocked umbrella while every open leaf is blocked: {}",
+            join_numbers(&issues)
+        )),
+    }
 }
 
 fn require_no_open_orphan_blockers(graph: &GraphState) -> Result<(), String> {
