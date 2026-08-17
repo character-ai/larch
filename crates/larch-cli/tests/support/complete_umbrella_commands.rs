@@ -211,7 +211,7 @@ fn command_dispatch_rejects_invalid_inputs_before_remote_work() {
 }
 
 #[test]
-fn child_terminal_status_accepts_only_bounded_success_markers() {
+fn child_terminal_status_accepts_only_complete_success_marker() {
     assert_eq!(
         child_terminal_status("summary\nCOMPLETE_UMBRELLA_CHILD_STATUS=complete\n"),
         Some(ChildResultStatus::Complete)
@@ -220,13 +220,9 @@ fn child_terminal_status_accepts_only_bounded_success_markers() {
         child_terminal_status(
             "summary\nCOMPLETE_UMBRELLA_CHILD_STATUS=needs-orchestrator-finalize\n"
         ),
-        Some(ChildResultStatus::NeedsOrchestratorFinalize)
+        None
     );
-    assert_eq!(
-        ChildResultStatus::NeedsOrchestratorFinalize.value(),
-        "needs-orchestrator-finalize"
-    );
-    assert!(ChildResultStatus::NeedsOrchestratorFinalize.envelope_complete());
+    assert!(ChildResultStatus::Complete.envelope_complete());
     assert!(!ChildResultStatus::Failed.envelope_complete());
     assert_eq!(
         child_terminal_status("COMPLETE_UMBRELLA_CHILD_STATUS=failed\n"),

@@ -353,19 +353,10 @@ def test_rust_line_budget_parses_git_rename_numstat_output(tmp_path: Path) -> No
     assert budget.added_lines == 5
 
 
-def test_rust_line_budget_reports_over_limit_and_blocks_merge(
+def test_rust_line_budget_reports_over_limit_as_an_advisory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     request = _request(tmp_path)
-    issue = leaf_ship.issue_mutation.IssueSnapshot(
-        repository="owner/repo",
-        issue="42",
-        title="[IMPLEMENTING] [LEAF OF 40] Fixture",
-        body=_plan_body(_valid_plan_inner()),
-        labels=frozenset(),
-        state="OPEN",
-        updated_at="2026-08-09T00:00:00Z",
-    )
     monkeypatch.setattr(
         leaf_ship,
         "_is_chief_migration_umbrella",
@@ -377,110 +368,20 @@ def test_rust_line_budget_reports_over_limit_and_blocks_merge(
         lambda *_args, **_kwargs: leaf_ship.RustLineBudget("b" * 40, _HEAD, 1501),
     )
     monkeypatch.setattr(
-        leaf_ship.issue_mutation, "read_snapshot", lambda *_args, **_kwargs: issue
+        leaf_ship.issue_mutation,
+        "read_snapshot",
+        lambda *_args, **_kwargs: pytest.fail(
+            "the advisory budget check must not read issue-authored deviation data"
+        ),
     )
 
     outcome = leaf_ship._rust_line_budget_outcome(
         RecordingRunner(), request, head_sha=_HEAD
     )
-    assert outcome.status == "deviation-required"
+    assert outcome.status == "over-limit"
     assert outcome.budget is not None
     assert outcome.budget.added_lines > config.MANAGED_LEAF_RUST_LINE_LIMIT
 
-    with pytest.raises(leaf_ship.ShipError, match="exceeds the Rust line budget"):
-        _ = leaf_ship._needs_orchestrator_budget_finalization(
-            RecordingRunner(), request, head_sha=_HEAD
-        )
-
-
-def test_rust_line_budget_accepts_an_exact_durable_deviation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    request = _request(tmp_path)
-    plan = _valid_plan_inner().replace(
-        "diff_lines: 1\n",
-        "## Rust line budget deviation\n\n"
-        "- Split decision: retain this leaf as one PR\n"
-        "- Rationale: The atomic compatibility repair cannot split safely.\n"
-        f"- Base SHA: {'b' * 40}\n"
-        f"- Head SHA: {_HEAD}\n"
-        "- Added non-generated Rust lines: 1501\n\n"
-        "diff_lines: 1\n",
-    )
-    issue = leaf_ship.issue_mutation.IssueSnapshot(
-        repository="owner/repo",
-        issue="42",
-        title="[IMPLEMENTING] [LEAF OF 40] Fixture",
-        body=_plan_body(plan),
-        labels=frozenset(),
-        state="OPEN",
-        updated_at="2026-08-09T00:00:00Z",
-    )
-    monkeypatch.setattr(
-        leaf_ship,
-        "_is_chief_migration_umbrella",
-        lambda *_args, **_kwargs: True,
-    )
-    monkeypatch.setattr(
-        leaf_ship,
-        "_measure_rust_line_budget",
-        lambda *_args, **_kwargs: leaf_ship.RustLineBudget("b" * 40, _HEAD, 1501),
-    )
-    monkeypatch.setattr(
-        leaf_ship.issue_mutation, "read_snapshot", lambda *_args, **_kwargs: issue
-    )
-
-    outcome = leaf_ship._rust_line_budget_outcome(
-        RecordingRunner(), request, head_sha=_HEAD
-    )
-
-    assert outcome.status == "deviation-recorded"
-
-
-def test_rust_line_budget_retains_a_valid_but_stale_deviation_for_parent_handoff(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    request = _request(tmp_path)
-    plan = _valid_plan_inner().replace(
-        "diff_lines: 1\n",
-        "## Rust line budget deviation\n\n"
-        "- Split decision: retain this leaf as one PR\n"
-        "- Rationale: The atomic compatibility repair cannot split safely.\n"
-        f"- Base SHA: {'b' * 40}\n"
-        f"- Head SHA: {'c' * 40}\n"
-        "- Added non-generated Rust lines: 1501\n\n"
-        "diff_lines: 1\n",
-    )
-    issue = leaf_ship.issue_mutation.IssueSnapshot(
-        repository="owner/repo",
-        issue="42",
-        title="[IMPLEMENTING] [LEAF OF 40] Fixture",
-        body=_plan_body(plan),
-        labels=frozenset(),
-        state="OPEN",
-        updated_at="2026-08-09T00:00:00Z",
-    )
-    monkeypatch.setattr(
-        leaf_ship,
-        "_is_chief_migration_umbrella",
-        lambda *_args, **_kwargs: True,
-    )
-    monkeypatch.setattr(
-        leaf_ship,
-        "_measure_rust_line_budget",
-        lambda *_args, **_kwargs: leaf_ship.RustLineBudget("b" * 40, _HEAD, 1501),
-    )
-    monkeypatch.setattr(
-        leaf_ship.issue_mutation, "read_snapshot", lambda *_args, **_kwargs: issue
-    )
-
-    outcome = leaf_ship._rust_line_budget_outcome(
-        RecordingRunner(), request, head_sha=_HEAD
-    )
-
-    assert outcome.status == "deviation-required"
-    assert outcome.deviation is not None
-    assert outcome.deviation.head_sha == "c" * 40
 
 
 def test_state_parser_rejects_duplicate_and_stale_identity(tmp_path: Path) -> None:
@@ -584,6 +485,7 @@ def test_merge_queue_submission_omits_admin_strategy_and_branch_deletion(
 ) -> None:
     request = _request(tmp_path)
     calls: list[dict[str, object]] = []
+    warnings: list[str] = []
     monkeypatch.setattr(
         leaf_ship.gh,
         "pr_merge_state",
@@ -599,9 +501,11 @@ def test_merge_queue_submission_omits_admin_strategy_and_branch_deletion(
         leaf_ship,
         "_rust_line_budget_outcome",
         lambda *_args, **_kwargs: leaf_ship.RustLineBudgetOutcome(
-            status="within-limit"
+            status="over-limit",
+            budget=leaf_ship.RustLineBudget("b" * 40, _HEAD, 1501),
         ),
     )
+    monkeypatch.setattr(leaf_ship.logging_util, "diagnostic", warnings.append)
     monkeypatch.setattr(
         leaf_ship.gh,
         "default_branch_merge_queue_enabled",
@@ -640,13 +544,19 @@ def test_merge_queue_submission_omits_admin_strategy_and_branch_deletion(
             "cwd": str(tmp_path),
         },
     ]
+    assert warnings == [
+        "WARNING: managed Chief leaf #42, PR #77, exceeds the Rust line budget "
+        "(1501 added non-generated Rust lines; limit 1500); continuing with warning."
+    ]
 
 
-def test_merge_refuses_an_over_limit_managed_leaf_before_admin_merge(
+def test_merge_warns_and_continues_an_over_limit_managed_leaf(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     request = _request(tmp_path)
+    warnings: list[str] = []
+    calls: list[tuple[str, object]] = []
     monkeypatch.setattr(
         leaf_ship.gh,
         "pr_merge_state",
@@ -666,62 +576,30 @@ def test_merge_refuses_an_over_limit_managed_leaf_before_admin_merge(
         leaf_ship,
         "_rust_line_budget_outcome",
         lambda *_args, **_kwargs: leaf_ship.RustLineBudgetOutcome(
-            status="deviation-required",
+            status="over-limit",
             budget=leaf_ship.RustLineBudget("b" * 40, _HEAD, 1501),
         ),
     )
+    monkeypatch.setattr(leaf_ship.logging_util, "diagnostic", warnings.append)
+    monkeypatch.setattr(
+        leaf_ship.gh,
+        "default_branch_merge_queue_enabled",
+        lambda *_args, **_kwargs: False,
+    )
+
+    def merge(*_args: object, **kwargs: object) -> CommandResult:
+        calls.extend(sorted(kwargs.items()))
+        return CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01)
+
     monkeypatch.setattr(
         leaf_ship.gh,
         "pr_merge",
-        lambda *_args, **_kwargs: pytest.fail("admin merge must not run"),
-    )
-
-    with pytest.raises(leaf_ship.ShipError, match="exceeds the Rust line budget"):
-        _ = leaf_ship._merge_pr(
-            RecordingRunner(),
-            request,
-            pull_request=_pr(),
-            head_sha=_HEAD,
-            sleep_fn=lambda _delay: None,
-        )
-
-
-def test_merge_hands_a_valid_stale_deviation_to_the_parent_without_merging(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    request = _request(tmp_path)
-    monkeypatch.setattr(
-        leaf_ship.gh,
-        "pr_merge_state",
-        lambda *_args, **_kwargs: gh.MergeState("CLEAN", _HEAD),
+        merge,
     )
     monkeypatch.setattr(
         leaf_ship.gh,
-        "pr_checks_all_pass",
-        lambda *_args, **_kwargs: True,
-    )
-    monkeypatch.setattr(leaf_ship.gh, "pr_base_ref", lambda *_args, **_kwargs: "main")
-    stale = leaf_ship.migration_governance.RustLineBudgetDeviation(
-        split_decision="retain this leaf as one PR",
-        rationale="Atomic compatibility repair.",
-        base_sha="b" * 40,
-        head_sha="c" * 40,
-        added_lines=1501,
-    )
-    monkeypatch.setattr(
-        leaf_ship,
-        "_rust_line_budget_outcome",
-        lambda *_args, **_kwargs: leaf_ship.RustLineBudgetOutcome(
-            status="deviation-required",
-            budget=leaf_ship.RustLineBudget("b" * 40, _HEAD, 1501),
-            deviation=stale,
-        ),
-    )
-    monkeypatch.setattr(
-        leaf_ship.gh,
-        "pr_merge",
-        lambda *_args, **_kwargs: pytest.fail("stale evidence must not submit a merge"),
+        "pr_view",
+        lambda *_args, **_kwargs: _pr(state="MERGED"),
     )
 
     outcome = leaf_ship._merge_pr(
@@ -732,8 +610,13 @@ def test_merge_hands_a_valid_stale_deviation_to_the_parent_without_merging(
         sleep_fn=lambda _delay: None,
     )
 
-    assert outcome.needs_orchestrator_finalize is True
+    assert outcome.pull_request.state == "MERGED"
     assert outcome.queued is False
+    assert ("admin", True) in calls
+    assert warnings == [
+        "WARNING: managed Chief leaf #42, PR #77, exceeds the Rust line budget "
+        "(1501 added non-generated Rust lines; limit 1500); continuing with warning."
+    ]
 
 
 def test_merge_rechecks_the_main_base_before_admin_merge(
@@ -884,223 +767,6 @@ def test_ship_ci_failure_stops_before_merge_and_hands_off_bounded_digest(
     assert persisted is not None
     assert persisted.status == "ci_failed"
     assert persisted.ci_errors_file == str(errors_file)
-
-
-def test_ship_persists_parent_finalization_handoff_without_postmerge_mutations(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    request = _request(tmp_path)
-    leaf_ship._write_state(
-        request,
-        leaf_ship.LeafShipState(repository="owner/repo", umbrella=40, leaf=42),
-    )
-    _stub_happy_ship(monkeypatch, wait=leaf_ship.CiWaitOutcome(status="pass"))
-    monkeypatch.setattr(
-        leaf_ship,
-        "_merge_pr",
-        lambda *_args, **_kwargs: leaf_ship.MergePrOutcome(
-            pull_request=_pr(),
-            needs_orchestrator_finalize=True,
-        ),
-    )
-    monkeypatch.setattr(
-        leaf_ship,
-        "_finish_leaf_issue",
-        lambda *_args, **_kwargs: pytest.fail(
-            "parent finalization precedes postmerge work"
-        ),
-    )
-    monkeypatch.setattr(
-        leaf_ship,
-        "_sync_main_and_delete_branch",
-        lambda *_args, **_kwargs: pytest.fail("parent finalization precedes cleanup"),
-    )
-
-    outcome = leaf_ship.ship_leaf(
-        RecordingRunner(), request, sleep_fn=lambda _delay: None
-    )
-
-    assert outcome.status == "needs-orchestrator-finalize"
-    persisted = leaf_ship._read_state(request)
-    assert persisted is not None
-    assert persisted.status == "awaiting_orchestrator_finalize"
-
-
-def test_parent_finalizer_refreshes_only_stale_measurements_with_its_plan_lease(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    request = _request(tmp_path)
-    leaf_ship._write_state(
-        request,
-        leaf_ship.LeafShipState(
-            repository="owner/repo",
-            umbrella=40,
-            leaf=42,
-            branch="complete-umbrella/leaf-42",
-            head_sha=_HEAD,
-            pr_number=77,
-            pr_url=_pr().url,
-            status="awaiting_orchestrator_finalize",
-        ),
-    )
-    plan = _valid_plan_inner().replace(
-        "diff_lines: 1\n",
-        "## Rust line budget deviation\n\n"
-        "- Split decision: retain this leaf as one PR\n"
-        "- Rationale: The atomic compatibility repair cannot split safely.\n"
-        f"- Base SHA: {'b' * 40}\n"
-        f"- Head SHA: {'c' * 40}\n"
-        "- Added non-generated Rust lines: 1501\n\n"
-        "diff_lines: 1\n",
-    )
-    snapshot = leaf_ship.issue_mutation.IssueSnapshot(
-        repository="owner/repo",
-        issue="42",
-        title="[IMPLEMENTING] [LEAF OF 40] Fixture",
-        body=_plan_body(plan) + "\nUnrelated body text.\n",
-        labels=frozenset(),
-        state="OPEN",
-        updated_at="2026-08-09T00:00:00Z",
-    )
-    budget = leaf_ship.RustLineBudget("d" * 40, _HEAD, 1503)
-    stale = leaf_ship.migration_governance.RustLineBudgetDeviation(
-        split_decision="retain this leaf as one PR",
-        rationale="The atomic compatibility repair cannot split safely.",
-        base_sha="b" * 40,
-        head_sha="c" * 40,
-        added_lines=1501,
-    )
-    outcomes = iter(
-        (
-            leaf_ship.RustLineBudgetOutcome(
-                status="deviation-required", budget=budget, deviation=stale
-            ),
-            leaf_ship.RustLineBudgetOutcome(
-                status="deviation-recorded", budget=budget, deviation=stale
-            ),
-        )
-    )
-    captured: dict[str, object] = {}
-    monkeypatch.setattr(
-        leaf_ship.push, "assert_clean_worktree", lambda *_args, **_kwargs: None
-    )
-    monkeypatch.setattr(
-        leaf_ship.git,
-        "current_branch",
-        lambda *_args, **_kwargs: "complete-umbrella/leaf-42",
-    )
-    monkeypatch.setattr(leaf_ship.git, "rev_parse", lambda *_args, **_kwargs: _HEAD)
-    monkeypatch.setattr(leaf_ship.gh, "pr_view", lambda *_args, **_kwargs: _pr())
-    monkeypatch.setattr(leaf_ship.gh, "pr_base_ref", lambda *_args, **_kwargs: "main")
-    monkeypatch.setattr(
-        leaf_ship.gh,
-        "pr_merge_state",
-        lambda *_args, **_kwargs: gh.MergeState("CLEAN", _HEAD),
-    )
-    monkeypatch.setattr(
-        leaf_ship.gh,
-        "pr_checks_all_pass",
-        lambda *_args, **_kwargs: True,
-    )
-    monkeypatch.setattr(leaf_ship, "_ensure_pr_body", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(
-        leaf_ship,
-        "_rust_line_budget_outcome",
-        lambda *_args, **_kwargs: next(outcomes),
-    )
-    monkeypatch.setattr(
-        leaf_ship.issue_mutation,
-        "read_snapshot",
-        lambda *_args, **_kwargs: snapshot,
-    )
-    lease = leaf_ship.issue_mutation.ImplementationLease("run-8539", "plan")
-    monkeypatch.setattr(
-        leaf_ship.issue_wire, "named_block_lease", lambda **_kwargs: lease
-    )
-
-    def apply(_runner: object, mutation: object, *, cwd: str | None = None) -> object:
-        assert isinstance(mutation, leaf_ship.issue_mutation.IssueMutationRequest)
-        assert cwd == str(tmp_path)
-        captured["mutation"] = mutation
-        after = replace(
-            snapshot, body=mutation.body or "", updated_at="2026-08-09T00:00:01Z"
-        )
-        return leaf_ship.issue_mutation.VerifiedIssueMutation(
-            before=snapshot,
-            after=after,
-            fields=mutation.fields,
-        )
-
-    monkeypatch.setattr(leaf_ship.issue_mutation, "apply", apply)
-
-    outcome = leaf_ship.finalize_budget_deviation(RecordingRunner(), request)
-
-    assert outcome.status == "recorded"
-    mutation = captured["mutation"]
-    assert isinstance(mutation, leaf_ship.issue_mutation.IssueMutationRequest)
-    assert mutation.lease == lease
-    assert mutation.fields == frozenset(
-        {leaf_ship.issue_mutation.MutationField.NAMED_BLOCK}
-    )
-    assert mutation.body is not None
-    assert mutation.body.endswith("\nUnrelated body text.\n")
-    refreshed_inner, malformed = leaf_ship.issue_blocks.parse_named_block(
-        body=mutation.body, marker="plan"
-    )
-    assert malformed == ""
-    assert refreshed_inner is not None
-    refreshed = leaf_ship.migration_governance.parse_rust_line_budget_deviation(
-        plan_inner=refreshed_inner
-    )
-    assert refreshed.deviation is not None
-    assert refreshed.deviation.base_sha == "d" * 40
-    assert refreshed.deviation.head_sha == _HEAD
-    assert refreshed.deviation.added_lines == 1503
-
-
-def test_parent_budget_refresh_refuses_a_closed_leaf_before_any_plan_write(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    request = _request(tmp_path)
-    plan = _valid_plan_inner().replace(
-        "diff_lines: 1\n",
-        "## Rust line budget deviation\n\n"
-        "- Split decision: retain this leaf as one PR\n"
-        "- Rationale: The atomic compatibility repair cannot split safely.\n"
-        f"- Base SHA: {'b' * 40}\n"
-        f"- Head SHA: {_HEAD}\n"
-        "- Added non-generated Rust lines: 1501\n\n"
-        "diff_lines: 1\n",
-    )
-    snapshot = leaf_ship.issue_mutation.IssueSnapshot(
-        repository="owner/repo",
-        issue="42",
-        title="[DONE] [LEAF OF 40] Fixture",
-        body=_plan_body(plan),
-        labels=frozenset(),
-        state="CLOSED",
-        updated_at="2026-08-09T00:00:00Z",
-    )
-    monkeypatch.setattr(
-        leaf_ship.issue_mutation,
-        "read_snapshot",
-        lambda *_args, **_kwargs: snapshot,
-    )
-    monkeypatch.setattr(
-        leaf_ship.issue_mutation,
-        "apply",
-        lambda *_args, **_kwargs: pytest.fail("closed leaf must not be mutated"),
-    )
-
-    with pytest.raises(leaf_ship.ShipError, match="non-open leaf"):
-        _ = leaf_ship._refresh_stale_budget_deviation(
-            RecordingRunner(),
-            request,
-            budget=leaf_ship.RustLineBudget("b" * 40, _HEAD, 1501),
-        )
 
 
 def test_merged_reentry_never_replays_premerge_mutations(

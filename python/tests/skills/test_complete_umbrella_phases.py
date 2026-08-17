@@ -50,8 +50,7 @@ def test_ship_is_deterministic_and_fixer_is_failure_only() -> None:
     assert "complete-umbrella ship-leaf" in ship
     assert "refresh CI once every 300 seconds" in ship
     assert "`ci_failed`" in ship
-    assert "`needs-orchestrator-finalize`" in ship
-    assert "Only the top-level complete-umbrella owner" in ship
+    assert "needs-orchestrator-finalize" not in ship
     assert "`needs_conflict_fix`" in ship
     assert "conflict-fix.md" in ship
     assert "Do not spawn a CI fixer when checks are pending or green." in ship
@@ -78,19 +77,19 @@ def test_managed_leaf_phases_persist_and_verify_gate_evidence() -> None:
 
     review = _read("adversarial-review.md")
     assert "--mode line-budget" in review
-    assert "RUST_LINE_BUDGET_STATUS=deviation-required" in review
-    assert "RUST_LINE_BUDGET_STATUS=deviation-recorded" in review
-    assert "Publish the complete updated plan" in review
+    assert "RUST_LINE_BUDGET_STATUS=over-limit" in review
+    assert "automatic continue-with-warning path" in review
+    assert "do not edit or publish the" in review
 
 
-def test_top_level_routes_stale_budget_evidence_to_the_parent_finalizer() -> None:
+def test_top_level_continues_after_an_over_limit_budget_warning() -> None:
     skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
         encoding="utf-8"
     )
-    assert "CHILD_STATUS=needs-orchestrator-finalize" in skill
-    assert "--mode finalize-budget-deviation" in skill
-    assert "active plan lease" in skill
-    assert "only the plan record's measured base SHA, head SHA, and count" in skill
+    assert "needs-orchestrator-finalize" not in skill
+    assert "finalize-budget-deviation" not in skill
+    assert "independently measured advisory" in skill
+    assert "continues through the ordinary merge path" in skill
 
 
 def test_leaf_bgjob_start_binds_durable_session_owner() -> None:
