@@ -43,6 +43,7 @@ nix.workspace = true
 assert_cmd.workspace = true
 larch-adapters = { workspace = true, features = ["test-support"] }
 larch-test-support.workspace = true
+nix.workspace = true
 octocrab.workspace = true
 predicates.workspace = true
 regex.workspace = true
