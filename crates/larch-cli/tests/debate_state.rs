@@ -21,7 +21,10 @@ fn seed_root(fixture: &str) -> TempDir {
 
 fn fixture_fingerprint(fixture: &str) -> String {
     let value: Value = serde_json::from_str(fixture).expect("fixture json");
-    value["fingerprint"].as_str().expect("fingerprint").to_owned()
+    value["fingerprint"]
+        .as_str()
+        .expect("fingerprint")
+        .to_owned()
 }
 
 fn state_bytes(root: &Path) -> String {
@@ -123,6 +126,11 @@ mod lock {
         let error = lock_state(dir.path()).expect_err("symlinked lock");
         assert_eq!(error.class(), StateErrorClass::PersistenceFailure);
         assert_eq!(error.exit_code(), 5);
-        assert!(fs::symlink_metadata(&lock).expect("lstat").file_type().is_symlink());
+        assert!(
+            fs::symlink_metadata(&lock)
+                .expect("lstat")
+                .file_type()
+                .is_symlink()
+        );
     }
 }

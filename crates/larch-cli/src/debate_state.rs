@@ -15,7 +15,9 @@ use std::os::unix::fs::OpenOptionsExt as _;
 #[cfg(unix)]
 use nix::fcntl::{Flock, FlockArg};
 
-use larch_adapters::{PathIntent, TemporaryRoot, atomic_write_utf8_in, ensure_directory_chain, read_utf8};
+use larch_adapters::{
+    PathIntent, TemporaryRoot, atomic_write_utf8_in, ensure_directory_chain, read_utf8,
+};
 use larch_core::debate::state::{
     STATE_FILENAME, STATE_LOCK_FILENAME, StateError, StoredState, decode_state, encode_state,
     state_with_fingerprint,
@@ -39,7 +41,8 @@ pub fn load_state(root: &Path) -> Result<StoredState, StateError> {
     let confined = trusted
         .confine(&target, PathIntent::Read)
         .map_err(|_error| StateError::corrupt("state file missing or unsafe"))?;
-    let text = read_utf8(&confined).map_err(|_error| StateError::corrupt("unable to read state"))?;
+    let text =
+        read_utf8(&confined).map_err(|_error| StateError::corrupt("unable to read state"))?;
     decode_state(&text)
 }
 
@@ -90,7 +93,9 @@ pub fn lock_state(root: &Path) -> Result<Flock<fs::File>, StateError> {
         .metadata()
         .map_err(|_error| StateError::persistence("unable to acquire debate state lock"))?;
     if !metadata.file_type().is_file() {
-        return Err(StateError::persistence("refusing non-regular debate state lock"));
+        return Err(StateError::persistence(
+            "refusing non-regular debate state lock",
+        ));
     }
     Flock::lock(file, FlockArg::LockExclusive)
         .map_err(|(_file, _error)| StateError::persistence("unable to acquire debate state lock"))

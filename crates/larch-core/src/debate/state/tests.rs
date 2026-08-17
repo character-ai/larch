@@ -52,8 +52,8 @@ fn session_handles() -> BTreeMap<String, VendorSessionHandle> {
 fn cursor_binding(needles: &[&str]) -> SlotLedgerBinding {
     let reason = "adopt approach cursor";
     let fingerprint = protocol::fingerprint_reason(reason, needles).expect("fingerprint");
-    let ledger = protocol::parse_slot_ledger(&format!("POINT POINT_1 HOLD {reason}"))
-        .expect("ledger");
+    let ledger =
+        protocol::parse_slot_ledger(&format!("POINT POINT_1 HOLD {reason}")).expect("ledger");
     SlotLedgerBinding::new(Participant::Cursor, ledger, vec![fingerprint], needles)
         .expect("binding")
 }
@@ -170,7 +170,10 @@ fn rejects_invalid_json() {
 
 #[test]
 fn rejects_a_non_object_document() {
-    assert_eq!(decode_state("[]").expect_err("array").class(), StateErrorClass::CorruptState);
+    assert_eq!(
+        decode_state("[]").expect_err("array").class(),
+        StateErrorClass::CorruptState
+    );
 }
 
 #[test]
@@ -192,7 +195,10 @@ fn rejects_an_unsupported_schema_version() {
     let mut value = parse(&encode_state(&build_state()));
     value["schema_version"] = json!(3);
     let text = resign(value);
-    assert_eq!(decode_state(&text).expect_err("schema").class(), StateErrorClass::CorruptState);
+    assert_eq!(
+        decode_state(&text).expect_err("schema").class(),
+        StateErrorClass::CorruptState
+    );
 }
 
 #[test]

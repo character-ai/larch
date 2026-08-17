@@ -56,7 +56,8 @@ const STATE_KEYS: [&str; 6] = [
     "active_round",
     "drops",
 ];
-const PROPOSAL_LEGACY_KEYS: [&str; 5] = ["points", "phase", "terminal", "run_local_values", "rounds"];
+const PROPOSAL_LEGACY_KEYS: [&str; 5] =
+    ["points", "phase", "terminal", "run_local_values", "rounds"];
 const PROPOSAL_CURRENT_KEYS: [&str; 7] = [
     "points",
     "phase",
@@ -433,7 +434,11 @@ fn as_json_int(value: &Value) -> Result<i64, StateError> {
     match value {
         Value::Number(number) => number
             .as_i64()
-            .or_else(|| number.as_u64().and_then(|unsigned| i64::try_from(unsigned).ok()))
+            .or_else(|| {
+                number
+                    .as_u64()
+                    .and_then(|unsigned| i64::try_from(unsigned).ok())
+            })
             .ok_or_else(|| StateError::corrupt("expected a JSON integer")),
         _ => Err(StateError::corrupt("expected a JSON integer")),
     }
@@ -551,7 +556,11 @@ fn encode_proposal(proposal: &ProposalState, run_local_values: &BTreeMap<String,
         .collect();
     let rounds: Vec<Value> = proposal.rounds().iter().map(encode_round).collect();
     let disputes: Vec<Value> = proposal.disputes().iter().map(encode_dispute).collect();
-    let adjudications: Vec<Value> = proposal.adjudications().iter().map(encode_adjudication).collect();
+    let adjudications: Vec<Value> = proposal
+        .adjudications()
+        .iter()
+        .map(encode_adjudication)
+        .collect();
     serde_json::json!({
         "points": points,
         "phase": proposal.phase().map(NonterminalPhase::as_str),
@@ -710,7 +719,9 @@ pub fn require_fingerprint(state: &StoredState, expected: &str) -> Result<(), St
     if expected == state.fingerprint {
         Ok(())
     } else {
-        Err(StateError::stale("expected fingerprint does not match state"))
+        Err(StateError::stale(
+            "expected fingerprint does not match state",
+        ))
     }
 }
 
@@ -747,7 +758,8 @@ fn decode_binding(raw: &Value, run_local_values: &[&str]) -> Result<SlotLedgerBi
         .collect::<Result<_, _>>()?;
 
     let participant = protocol::parse_slot(slot).map_err(corrupt_from)?;
-    SlotLedgerBinding::new(participant, ledger, fingerprints, run_local_values).map_err(corrupt_from)
+    SlotLedgerBinding::new(participant, ledger, fingerprints, run_local_values)
+        .map_err(corrupt_from)
 }
 
 fn decode_dispute(raw: &Value) -> Result<Dispute, StateError> {
@@ -771,7 +783,8 @@ fn decode_adjudication(raw: &Value) -> Result<AdjudicationRecord, StateError> {
     if decision == AdjudicationDecision::Selected.as_str() {
         require_exact_keys(object, &["point", "decision", "selected_position"])?;
         let position = as_str(field(object, "selected_position")?)?;
-        let record = SelectedAdjudication::new(point_id, position.to_owned()).map_err(corrupt_from)?;
+        let record =
+            SelectedAdjudication::new(point_id, position.to_owned()).map_err(corrupt_from)?;
         return Ok(AdjudicationRecord::Selected(record));
     }
     if decision == AdjudicationDecision::Split.as_str() {
@@ -786,7 +799,8 @@ fn decode_adjudication(raw: &Value) -> Result<AdjudicationRecord, StateError> {
 }
 
 fn decode_point_id(number: i64) -> Result<PointId, StateError> {
-    let narrowed = u16::try_from(number).map_err(|_error| StateError::corrupt("point out of range"))?;
+    let narrowed =
+        u16::try_from(number).map_err(|_error| StateError::corrupt("point out of range"))?;
     PointId::new(narrowed).map_err(corrupt_from)
 }
 
@@ -813,14 +827,11 @@ fn replay_rounds(
             .iter()
             .map(|binding| decode_binding(binding, &borrowed))
             .collect::<Result<_, _>>()?;
-        let round = RoundState::new(decode_round_number(number)?, bindings).map_err(corrupt_from)?;
-        proposal = protocol::transition(
-            &proposal,
-            TransitionAction::SubmitRound,
-            Some(&round),
-            None,
-        )
-        .map_err(corrupt_from)?;
+        let round =
+            RoundState::new(decode_round_number(number)?, bindings).map_err(corrupt_from)?;
+        proposal =
+            protocol::transition(&proposal, TransitionAction::SubmitRound, Some(&round), None)
+                .map_err(corrupt_from)?;
     }
     Ok(proposal)
 }
@@ -835,7 +846,10 @@ fn decode_proposal_records(
     }
     let disputes_raw = as_array(field(object, "disputes")?)?;
     let adjudications_raw = as_array(field(object, "adjudications")?)?;
-    let disputes: Vec<Dispute> = disputes_raw.iter().map(decode_dispute).collect::<Result<_, _>>()?;
+    let disputes: Vec<Dispute> = disputes_raw
+        .iter()
+        .map(decode_dispute)
+        .collect::<Result<_, _>>()?;
     let adjudications: Vec<AdjudicationRecord> = adjudications_raw
         .iter()
         .map(decode_adjudication)
@@ -851,7 +865,8 @@ fn replay_terminal(
 ) -> Result<ProposalState, StateError> {
     match terminal {
         Some(token) if token == TerminalOutcome::Aborted.as_str() => {
-            protocol::transition(&proposal, TransitionAction::Abort, None, None).map_err(corrupt_from)
+            protocol::transition(&proposal, TransitionAction::Abort, None, None)
+                .map_err(corrupt_from)
         }
         Some(token) if token == TerminalOutcome::Stalemate.as_str() => {
             protocol::transition(&proposal, TransitionAction::DeclareStalemate, None, None)
@@ -864,8 +879,13 @@ fn replay_terminal(
             if proposal.phase().is_none() {
                 return Ok(proposal);
             }
-            protocol::transition(&proposal, TransitionAction::Adjudicate, None, Some(adjudications))
-                .map_err(corrupt_from)
+            protocol::transition(
+                &proposal,
+                TransitionAction::Adjudicate,
+                None,
+                Some(adjudications),
+            )
+            .map_err(corrupt_from)
         }
         _ => Ok(proposal),
     }
@@ -911,7 +931,14 @@ fn decode_proposal(
     let (disputes, adjudications) = decode_proposal_records(object, schema_version)?;
     let proposal = replay_terminal(replayed, terminal.as_deref(), &adjudications)?;
 
-    verify_replay(&proposal, phase.as_deref(), terminal.as_deref(), schema_version, &disputes, &adjudications)?;
+    verify_replay(
+        &proposal,
+        phase.as_deref(),
+        terminal.as_deref(),
+        schema_version,
+        &disputes,
+        &adjudications,
+    )?;
     Ok((proposal, values))
 }
 
@@ -932,7 +959,9 @@ fn verify_replay(
     if schema_version == STATE_SCHEMA_VERSION
         && (proposal.disputes() != disputes || proposal.adjudications() != adjudications)
     {
-        return Err(StateError::corrupt("persisted records disagree with replay"));
+        return Err(StateError::corrupt(
+            "persisted records disagree with replay",
+        ));
     }
     Ok(())
 }
@@ -1045,7 +1074,10 @@ fn decode_live_slots(value: &Value) -> Result<Vec<String>, StateError> {
     Ok(live)
 }
 
-fn decode_active(raw: &Value, values: &BTreeMap<String, String>) -> Result<Option<ActiveRound>, StateError> {
+fn decode_active(
+    raw: &Value,
+    values: &BTreeMap<String, String>,
+) -> Result<Option<ActiveRound>, StateError> {
     if raw.is_null() {
         return Ok(None);
     }
@@ -1135,7 +1167,8 @@ fn decode_drop(raw: &Value) -> Result<DropRecord, StateError> {
 pub fn decode_state(text: &str) -> Result<StoredState, StateError> {
     let raw = strict_parse(text)?;
     let object = as_object(&raw).map_err(|_error| StateError::corrupt("unknown state fields"))?;
-    require_exact_keys(object, &STATE_KEYS).map_err(|_error| StateError::corrupt("unknown state fields"))?;
+    require_exact_keys(object, &STATE_KEYS)
+        .map_err(|_error| StateError::corrupt("unknown state fields"))?;
 
     let schema_version = as_json_int(field(object, "schema_version")?)
         .map_err(|_error| StateError::corrupt("unsupported state schema"))?;
@@ -1147,7 +1180,9 @@ pub fn decode_state(text: &str) -> Result<StoredState, StateError> {
         .to_owned();
 
     if canonical_json(&raw) != text || fingerprint_payload(&raw) != fingerprint {
-        return Err(StateError::corrupt("noncanonical or stale state fingerprint"));
+        return Err(StateError::corrupt(
+            "noncanonical or stale state fingerprint",
+        ));
     }
 
     let initialization = decode_initialization(field(object, "initialization")?)?;

@@ -11,9 +11,9 @@ pub mod state;
 pub use state::{
     ABSENT_FINGERPRINT, ActiveRound, DropRecord, EXIT_CORRUPT_STATE, EXIT_PERSISTENCE_FAILURE,
     EXIT_STALE_FINGERPRINT, EXIT_VALIDATION, InitializationContext, MailboxEntry, ParticipantSlot,
-    RestoreMetadata, STATE_FILENAME, STATE_LOCK_FILENAME, STATE_SCHEMA_VERSION, StateError,
-    StateErrorClass, StoredState, SUPPORTED_STATE_SCHEMA_VERSIONS, decode_state, encode_state,
-    require_fingerprint, state_with_fingerprint,
+    RestoreMetadata, STATE_FILENAME, STATE_LOCK_FILENAME, STATE_SCHEMA_VERSION,
+    SUPPORTED_STATE_SCHEMA_VERSIONS, StateError, StateErrorClass, StoredState, decode_state,
+    encode_state, require_fingerprint, state_with_fingerprint,
 };
 
 pub use protocol::{
