@@ -192,12 +192,11 @@ For a `/complete-umbrella` parent that names a Chief umbrella, recon/design
 writes a valid issue-anchored plan before the prepare driver can move a leaf to
 `[IMPLEMENTING]`. The managed ship driver counts merge-base-to-head added
 non-generated Rust lines, including tests, immediately before queue submission
-or direct admin merge. A
-leaf above 1,500 lines needs a durable plan-recorded `retain this leaf as one
-PR` split decision, rationale, base/head SHAs, and count; otherwise the merge
-stops. The audit records closed historical leaves as report-only plan or
-Rust-budget evidence, never by fabricating a retrospective plan, approval, or
-deviation. See [Issue-Anchored Plan](issue-anchored-plan.md#managed-chief-migration-leaf-gate)
+or direct admin merge. A leaf above 1,500 lines emits an independently measured
+continue-with-warning advisory naming the leaf, PR, count, and limit; it does not
+stop the merge or require a plan mutation. The audit records closed historical
+leaves as report-only plan or Rust-budget evidence, never by fabricating a
+retrospective plan, approval, or deviation. See [Issue-Anchored Plan](issue-anchored-plan.md#managed-chief-migration-leaf-gate)
 for the exact count and evidence wire contract.
 
 Scheduled automation may archive the JSON and project it into one marker-keyed

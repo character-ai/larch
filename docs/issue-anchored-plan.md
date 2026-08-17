@@ -77,8 +77,16 @@ numstat additions. It excludes a Rust source only when one of `@generated`,
 the generated-source convention used by the Rust duplicate-code rule. The
 limit is 1,500 added non-generated Rust lines.
 
-An over-limit managed PR cannot merge without this one plan section, whose
-values must exactly match the measured base SHA, head SHA, and count:
+An over-limit managed PR continues through the normal ship path with an
+automatic warning. The line-budget command reports `over-limit` with the
+independently measured base SHA, head SHA, count, and limit. Adversarial review
+records that warning, and the ship driver repeats the measurement after green
+CI and emits a warning that names the leaf, PR, count, and limit immediately
+before queue submission or direct merge. No plan lease or issue mutation is
+required for that continue-with-warning path.
+
+An optional durable plan section may still document a split decision for audit
+purposes. When present, its values use this shape:
 
 ```text
 ## Rust line budget deviation
@@ -90,20 +98,10 @@ values must exactly match the measured base SHA, head SHA, and count:
 - Added non-generated Rust lines: <N>
 ```
 
-The only merge-authorizing split decision is `retain this leaf as one PR`; a
-decision to split requires reducing the branch before retrying. The
-adversarial-review phase writes this section through the canonical named-block
-owner and rechecks it. The ship driver repeats the check at the merge boundary.
-If a CI-fix commit makes an otherwise valid record stale, the leaf ship phase
-returns a bounded `needs-orchestrator-finalize` handoff without mutating the
-issue. Only the top-level `/complete-umbrella` owner may remeasure the recorded
-clean branch and open PR after rechecking its exact head, `main` base, CLEAN
-merge state, green checks, closing link, and active plan lease. It changes only
-the record's `Base SHA`, `Head SHA`, and added-line count through the canonical
-named-block compare-and-swap with read-back, then reruns the ordinary ship gate,
-which still requires an exact match. Missing, malformed, or self-authored new
-decisions remain refusals; this route does not loosen the gate or authorize a
-leaf child to refresh its own evidence.
+This optional record neither authorizes nor refuses a merge, so a stale,
+missing, or malformed record cannot block the managed workflow. It remains
+useful as historical evidence; the read-only migration audit continues to
+report explicit records without creating or refreshing them.
 Historical leaves are never mutated to add a plan, approval, or deviation. The
 read-only migration audit reports their available plan and Rust-budget evidence
 separately from current gate findings.
@@ -438,10 +436,10 @@ operator-visible “finish the existing clarify thread first” outcome instead
 
 - Do **not** hand-edit `session-env.sh` or `finalize-state.sh` from orchestrator
   prose — sanctioned writers only (`skills/implement/SKILL.md` NEVER #13–#14).
-- Plan body updates belong to `/design` (`scripts/larch.sh named-block write --marker plan`) except for
-  the complete-umbrella stale-budget finalization above and mechanical merges
-  documented elsewhere; avoid concurrent manual edits to the same `larch:plan`
-  markers while a run holds `IMPLEMENTING` on the tracking issue.
+- Plan body updates belong to `/design` (`scripts/larch.sh named-block write --marker plan`)
+  except for mechanical merges documented elsewhere; avoid concurrent manual
+  edits to the same `larch:plan` markers while a run holds `IMPLEMENTING` on
+  the tracking issue.
 
 | `STATE` value | Meaning |
 |---|---|

@@ -35,7 +35,7 @@ Route only on `FIXER_RESULT`:
 - `resolved`: require that no rebase remains in progress. Do not push. Continue below.
 - `needs-operator` or `bail`, or an unparseable trailer: run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" git rebase-abort` idempotently, then fail this phase.
 
-After `resolved`, regenerate any derived artifacts the conflict resolution required (for example a golden `--help` fixture after an `include_str!` change). Stage and commit those regenerations only when the worktree is dirty from that regeneration. Do not push. Do not merge. Do not edit the tracking issue in this phase; the ship phase re-records a drifted Rust line-budget deviation after you return.
+After `resolved`, regenerate any derived artifacts the conflict resolution required (for example a golden `--help` fixture after an `include_str!` change). Stage and commit those regenerations only when the worktree is dirty from that regeneration. Do not push. Do not merge. Do not edit the tracking issue in this phase; the ship phase remeasures the Rust line budget and emits an advisory warning if it is over the limit.
 
 Write `$SESSION_TMPDIR/conflict-fix-round-<N>.md` with the conflict paths, fixer summary, any regeneration commit SHA, and the final local HEAD. Keep it below 2,000 tokens.
 

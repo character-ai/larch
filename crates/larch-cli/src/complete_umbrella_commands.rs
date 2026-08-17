@@ -21,10 +21,9 @@ use larch_adapters::{
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
-    COMPLETE_UMBRELLA_CHILD_COMPLETE, COMPLETE_UMBRELLA_CHILD_NEEDS_ORCHESTRATOR_FINALIZE,
-    ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext, DONE_PREFIX,
-    ExternalProcessRunner, ExternalProgram, GitHubCloseReason, GitHubIssue, GitHubIssueState,
-    GitHubRepositoryRef, GitHubService, IMPLEMENTING_PREFIX, IssueMutationField,
+    COMPLETE_UMBRELLA_CHILD_COMPLETE, ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext,
+    DONE_PREFIX, ExternalProcessRunner, ExternalProgram, GitHubCloseReason, GitHubIssue,
+    GitHubIssueState, GitHubRepositoryRef, GitHubService, IMPLEMENTING_PREFIX, IssueMutationField,
     IssueMutationRequest, ProcessRequest, VendorLaunchRequest, VendorProgram, build_claude_argv,
     complete_umbrella_child_prompt, complete_umbrella_done_title, complete_umbrella_start_title,
     emit_kv, has_umbrella_proposal, is_controlling_umbrella_title, parse_claude_envelope, redact,
@@ -47,7 +46,6 @@ const CHILD_OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ChildResultStatus {
     Complete,
-    NeedsOrchestratorFinalize,
     Failed,
 }
 
@@ -55,13 +53,12 @@ impl ChildResultStatus {
     const fn value(self) -> &'static str {
         match self {
             Self::Complete => "complete",
-            Self::NeedsOrchestratorFinalize => "needs-orchestrator-finalize",
             Self::Failed => "failed",
         }
     }
 
     const fn envelope_complete(self) -> bool {
-        !matches!(self, Self::Failed)
+        matches!(self, Self::Complete)
     }
 }
 
@@ -73,9 +70,6 @@ fn child_terminal_status(text: &str) -> Option<ChildResultStatus> {
         .trim();
     match marker {
         COMPLETE_UMBRELLA_CHILD_COMPLETE => Some(ChildResultStatus::Complete),
-        COMPLETE_UMBRELLA_CHILD_NEEDS_ORCHESTRATOR_FINALIZE => {
-            Some(ChildResultStatus::NeedsOrchestratorFinalize)
-        }
         _ => None,
     }
 }

@@ -9334,14 +9334,14 @@ rust = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues cl
 [[callers]]
 path = "skills/complete-umbrella/SKILL.md"
 kind = "skill"
-python = ["complete-umbrella ship-leaf"]
+python = []
 rust = ["agent read-claude-model", "bgjob start", "bgjob wait", "gh resolve-repo", "kv get", "session cleanup-tmpdir", "session setup", "verify skill-called"]
 
 [[callers]]
 path = "skills/complete-umbrella/references/adversarial-review.md"
 kind = "skill"
 python = ["complete-umbrella ship-leaf"]
-rust = ["named-block write"]
+rust = []
 
 [[callers]]
 path = "skills/complete-umbrella/references/conflict-fix.md"
