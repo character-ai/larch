@@ -243,6 +243,21 @@ for byte parity. The still-Python debate commands keep
 `python/larch/debate/protocol.py` live; this core is network-free and
 filesystem-free.
 
+Leaf #8599 ports the state store. `larch_core::debate::state` owns canonical
+JSON, strict duplicate-rejecting parsing, payload fingerprints, schema
+versioning, every encode and decode codec, and the pure `decode_state` and
+`encode_state` pair with an exit-code-bearing `StateError`. The effectful
+`load_state`, `write_state`, and the `O_NOFOLLOW` flock live in
+`larch_cli::debate_state`, reusing the `larch-adapters` trusted-root
+confinement and the `analysis_state` lock precedent. Integration tests in
+`crates/larch-cli/tests/debate_state.rs` load recorded Python state fixtures
+under `crates/larch-cli/tests/fixtures/debate_state/` (`state-v2.json`,
+`state-v2-active.json`, and `state-v1.json`), assert a byte-identical schema-2
+round trip and the schema-1 migration to the current schema, and cover the lock
+refusing a non-regular or symlinked path plus the stale-fingerprint exit code.
+Run `cargo test -p larch-core debate` and `cargo test -p larch-cli
+debate_state`.
+
 ## Test boundaries
 
 - Unit tests live in a crate-local `#[cfg(test)]` module. They cover private
