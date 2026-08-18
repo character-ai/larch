@@ -17,7 +17,7 @@ from collections.abc import Mapping, Sequence
 from larch import io as larch_io
 from larch.core.repo_roots import consumer_repo_root, larch_entrypoint, larch_entrypoint_env
 
-from larch.design.design_router import _extract_args, _normalize_step, _parse_stdout_kv
+from larch.design.design_core import _extract_args, _normalize_step, _parse_stdout_kv
 from larch.design.design_step0 import (
     _append_failure,
     _derive_binary_found,

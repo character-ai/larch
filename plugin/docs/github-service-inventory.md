@@ -124,6 +124,15 @@ cannot name them; their adapter owners are the already-listed
 `crates/larch-adapters/src/github/operations.rs`, and
 `crates/larch-adapters/src/github/issue_mutation.rs` rows.
 
+The #8577 cutover moved `design parse-flags`, `design route`, and
+`design init-runparams` to Rust. The first two reach no GitHub service (route's
+title predicates run in-process and its pause bridge delegates to the
+Python-owned `design pause-load`), so they left the `pull-requests` row without
+joining another. `design init-runparams` drives the shared tracking rename in
+process, so it joined the `tracking-issue-lifecycle` row; the remaining
+Python design verbs are enumerated on the `pull-requests` row instead of
+claiming the whole domain.
+
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
 ```text
@@ -153,12 +162,12 @@ pull-request-implement-dispatch	crates/larch-adapters/src/github/operations.rs	r
 pull-request-implement-migrated	crates/larch-adapters/src/github/operations.rs	rust	#7681	complete	complete	complete	implement clone-tag,implement normalize-coder-scout,implement preflight,implement step-0-bootstrap,implement step-0-degraded-gate
 pull-request-implement-retired	crates/larch-adapters/src/github/operations.rs	retired	#7681	not-applicable	complete	complete	implement step-18-gate-finalize
 pull-request-implement-terminal	crates/larch-adapters/src/github/operations.rs	python	#7995	pending	pending	pending	implement step-18-gate-logs-flush,implement step-19
-pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	pending	pending	pending	ci behind-count,ci decide,ci distill-log,ci failed-jobs,ci main-health,ci rerun-failed,ci status,ci wait,design *,pr *,ship *
+pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	pending	pending	pending	ci behind-count,ci decide,ci distill-log,ci failed-jobs,ci main-health,ci rerun-failed,ci status,ci wait,design clarify,design dialectic-clear-stale,design dialectic-gatec,design dialectic-manual,design dialectic-promote-candidates,design dialectic-validate-candidates,design dialectic-write-candidates,design driver,design failure-report,design file-oos-annotate,design file-oos-prepare,design log-publish,design pause-load,design pause-save,design postplan-emit,design prelude,design publish,design read-result-env,design render-final-summary,design render-gate,design settle-next-action,design stage-terminal-state,design step-final-summary,design step0-abort-cleanup,design step0-ap-continue,design step0-clarify-hard-halt,design step0-init,design step0-parse,design step0-route,design step0-session,design step0c,design step1d5,design step1d7,design step1e-reentry,design step2b-drafter,design step2b-postplan,design step2b5,design step3-continuation-entry,design step35-settle,design step3b-entry,design step5b-annotate,design step5b-prepare,design step5c,design step6,design step6-cleanup,design step6-prelude,pr *,ship *
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
 repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676	complete	complete	complete	gh remote-repo,gh resolve-repo
 tracking-issue-comment-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	tracking-issue append-comment,tracking-issue read,tracking-issue upsert-summary
 tracking-issue-comment-mutations	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	tracking-issue append-comment,tracking-issue upsert-summary
-tracking-issue-lifecycle	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	tracking-issue create-issue,tracking-issue mark-false-positive,tracking-issue rename
+tracking-issue-lifecycle	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7680,#7682	complete	complete	complete	design init-runparams,tracking-issue create-issue,tracking-issue mark-false-positive,tracking-issue rename
 umbrella-conversion	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	umbrella mutate
 ```
 <!-- github-service-ownership:end -->

@@ -324,9 +324,10 @@ fn expand_user(raw: &str) -> PathBuf {
 }
 
 /// Resolve a path the way Python's non-strict `Path.resolve()` does for the
-/// cases this analyzer meets: canonicalize when the path exists, else
-/// canonicalize the deepest existing ancestor and keep the remainder.
-fn resolve_like_python(path: &Path) -> PathBuf {
+/// cases this analyzer and the design router meet: canonicalize when the path
+/// exists, else canonicalize the deepest existing ancestor and keep the
+/// remainder.
+pub fn resolve_like_python(path: &Path) -> PathBuf {
     if let Ok(resolved) = fs::canonicalize(path) {
         return resolved;
     }

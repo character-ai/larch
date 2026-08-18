@@ -5,13 +5,13 @@
 
 **When to load**: only when a `/design` flow needs background detail beyond `SKILL.md`'s compact flag table. Do not load at invocation start just to parse flags.
 
-**Binding convention**: `python/cli.py design parse-flags` owns validation and positional binding. `SKILL.md`'s compact flag table is the user-facing index.
+**Binding convention**: `scripts/larch.sh design parse-flags` owns validation and positional binding. `SKILL.md`'s compact flag table is the user-facing index.
 
 ---
 
 ## Public `/design` flags
 
-Step 0-pre validation and positional classification use `python/cli.py design parse-flags`.
+Step 0-pre validation and positional classification use `scripts/larch.sh design parse-flags`.
 
 - `--no-dedup`: forward to `/larch:issue` on verbal-create path. Default `false`.
 - `--run-id <ID>`: stable run id. Default empty.
@@ -24,7 +24,7 @@ Step 0-pre validation and positional classification use `python/cli.py design pa
 
 `scripts/larch.sh session write-run-params` writes schema v3 `run-params.json` with `partition_requested`, `brainstorm_requested`, `approve_requested`, and `skip_approve_requested` booleans. `skip_approve_requested` defaults to `false` and gates Step 1d.7 and Step 4b Gate C.
 
-**Positional tail**: after flags, argv is `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first). An all-digit first positional becomes `POSITIONAL_VALUE`; parsing continues, so valid flags on either side of the issue id are honored and unknown/forbidden trailing flags still error. Later non-flag tokens after an issue id are ignored. A non-digit first positional stops flag parsing and starts literal verbal text. `--` stops flag parsing: the next all-digit token becomes the issue id; otherwise the rest becomes literal verbal text. See `python/larch/design/design_argv.py`.
+**Positional tail**: after flags, argv is `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first). An all-digit first positional becomes `POSITIONAL_VALUE`; parsing continues, so valid flags on either side of the issue id are honored and unknown/forbidden trailing flags still error. Later non-flag tokens after an issue id are ignored. A non-digit first positional stops flag parsing and starts literal verbal text. `--` stops flag parsing: the next all-digit token becomes the issue id; otherwise the rest becomes literal verbal text. See `crates/larch-cli/src/design_commands.rs`.
 
 ## Plan-size thresholds (Step 2b.5)
 

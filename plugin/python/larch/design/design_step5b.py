@@ -14,8 +14,7 @@ from larch.core import architectural_guidelines
 from larch.design import design_oos
 from larch.core.repo_roots import consumer_repo_root
 
-from larch.design.design_core import _append_failure
-from larch.design.design_router import _parse_stdout_kv
+from larch.design.design_core import _append_failure, _parse_stdout_kv
 from larch.design.design_session import (
     _call_pause_save,
     _capture_stdout_stderr,

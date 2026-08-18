@@ -249,6 +249,46 @@ def _cli_cmd(plugin_root: Path, *args: str) -> list[str]:
     return [sys.executable, str(plugin_root / "python" / "cli.py"), *args]
 
 
+# Shared private helpers absorbed from the retired design_router.py (#8577);
+# the route/init-runparams verbs themselves are Rust-owned in
+# crates/larch-cli/src/design_commands.rs.
+
+
+def _usage() -> None:
+    print(
+        "usage: read-result-env.sh --input PATH [--fallback-input PATH] --allow KEY ... --output PATH",
+        file=sys.stderr,
+    )
+
+
+def _write_kv_file(*, path: Path, rows: list[tuple[str, str]]) -> bool:
+    try:
+        larch_io.write_kvs(path=path, values=rows, atomic=False, create_parent=False)
+    except OSError:
+        return False
+    return True
+
+
+def _parse_stdout_kv(text: str) -> dict[str, list[str]]:
+    return larch_io.parse_kv(
+        text,
+        duplicate_policy="all",
+        skip_empty_key=True,
+    )
+
+
+def _normalize_step(value: str) -> str:
+    lowered = value.lower()
+    return "".join(ch if (ch.isalnum() or ch in "._-") else "-" for ch in lowered)
+
+
+def _extract_args(line: str) -> str:
+    marker = " ARGS="
+    if marker not in line:
+        return ""
+    return line.split(marker, 1)[1]
+
+
 @dataclass(frozen=True)
 class FailureLogRequest:
     """One structured request to record a design execution failure."""

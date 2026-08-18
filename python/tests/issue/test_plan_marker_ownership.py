@@ -16,9 +16,10 @@ PLAN_MARKERS: Final = (
     "<!-- larch:plan:end -->",
 )
 EXCLUDED_PARTS: Final = frozenset({"tests", "fixtures", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache"})
+# The plan-block presence probe moved with `design route` to the Rust owner
+# (crates/larch-cli/src/design_commands.rs, larch-core parse_named_block).
 REQUIRED_HELPER_CALLS: Final = (
     (Path("design/decompose.py"), "compose_named_block"),
-    (Path("design/design_router.py"), "parse_named_block"),
 )
 
 
@@ -98,8 +99,8 @@ def test_ownership_guard_reports_hardcoded_markers_and_ignores_fixtures(tmp_path
 
 def test_ownership_guard_reports_missing_shared_helper_call(tmp_path: Path) -> None:
     _write_required_consumers(tmp_path)
-    _write(tmp_path / "design/design_router.py", "issue_wire.compose_named_block()\n")
+    _write(tmp_path / "design/decompose.py", "issue_wire.parse_named_block()\n")
 
     violations: list[str] = _ownership_violations(tmp_path)
 
-    assert violations == ["design/design_router.py: missing call issue_wire.parse_named_block"]
+    assert violations == ["design/decompose.py: missing call issue_wire.compose_named_block"]

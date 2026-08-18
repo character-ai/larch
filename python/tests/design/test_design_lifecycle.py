@@ -401,129 +401,6 @@ def test_design_read_result_env_prefers_step4_tail_bgjob_result(tmp_path: Path) 
     assert "GATEC_PREVIEW_PATH='/tmp/bgjob'" in text
 
 
-def test_design_route_merges_flags_for_already_planned(tmp_path: Path) -> None:
-    body = tmp_path / "issue-body.md"
-    _ = body.write_text("x\n<!-- larch:plan:start -->\nplan\n<!-- larch:plan:end -->\n", encoding="utf-8")
-    run_params = tmp_path / "run-params.json"
-    _ = run_params.write_text(
-        '{"partition_requested": false, "brainstorm_requested": false, "approve_requested": false, "skip_approve_requested": false}\n',
-        encoding="utf-8",
-    )
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(CLI),
-            "design",
-            "route",
-            "--design-tmpdir",
-            str(tmp_path),
-            "--issue",
-            "42",
-            "--issue-title",
-            "Feature request",
-            "--issue-body-file",
-            str(body),
-            "--has-clarify-label",
-            "false",
-            "--claude-pid",
-            "123",
-            "--session-id",
-            "run-1",
-            "--partition-requested",
-            "true",
-            "--approve-requested",
-            "true",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0
-    assert "ROUTE=already-planned" in result.stdout
-    merged = json.loads(run_params.read_text(encoding="utf-8"))
-    assert merged["partition_requested"] is True
-    assert merged["approve_requested"] is True
-
-
-def _design_route(
-    tmp_path: Path,
-    *,
-    body_text: str,
-    has_clarify_label: str = "false",
-) -> subprocess.CompletedProcess[str]:
-    body = tmp_path / "issue-body.md"
-    _ = body.write_text(body_text, encoding="utf-8")
-    run_params = tmp_path / "run-params.json"
-    _ = run_params.write_text(
-        '{"partition_requested": false, "brainstorm_requested": false, '
-        '"approve_requested": false, "skip_approve_requested": false}\n',
-        encoding="utf-8",
-    )
-    return subprocess.run(
-        [
-            sys.executable,
-            str(CLI),
-            "design",
-            "route",
-            "--design-tmpdir",
-            str(tmp_path),
-            "--issue",
-            "42",
-            "--issue-title",
-            "Feature request",
-            "--issue-body-file",
-            str(body),
-            "--has-clarify-label",
-            has_clarify_label,
-            "--claude-pid",
-            "123",
-            "--session-id",
-            "run-1",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-
-def test_design_route_whitespace_tolerant_plan_is_already_planned(tmp_path: Path) -> None:
-    result = _design_route(
-        tmp_path,
-        body_text="x\n  <!--   larch:plan:start   -->  \nplan\n  <!--   larch:plan:end   -->\n",
-    )
-    assert result.returncode == 0
-    assert "ROUTE=already-planned" in result.stdout
-
-
-def test_design_route_empty_valid_plan_block_is_already_planned(tmp_path: Path) -> None:
-    result = _design_route(
-        tmp_path,
-        body_text="x\n<!-- larch:plan:start -->\n<!-- larch:plan:end -->\n",
-    )
-    assert result.returncode == 0
-    assert "ROUTE=already-planned" in result.stdout
-
-
-@pytest.mark.parametrize(
-    "body_text",
-    [
-        "x\n<!-- larch:plan:start -->\nplan only\n",
-        "x\n<!-- larch:plan:\nstart -->\nplan\n<!-- larch:plan:end -->\n",
-        "x\n<!-- larch:plan:end -->\nplan\n<!-- larch:plan:start -->\n",
-        "x\n<!-- larch:plan:start -->\nfirst\n<!-- larch:plan:end -->\n<!-- larch:plan:start -->\nsecond\n<!-- larch:plan:end -->\n",
-        "x\n<!-- LARCH:PLAN:START -->\nplan\n<!-- LARCH:PLAN:END -->\n",
-        "x\nsee <!-- larch:plan:start --> in prose\nand <!-- larch:plan:end --> too\n",
-    ],
-)
-def test_design_route_malformed_plan_is_not_already_planned(
-    tmp_path: Path, body_text: str
-) -> None:
-    result = _design_route(tmp_path, body_text=body_text)
-    assert result.returncode == 0
-    assert "ROUTE=already-planned" not in result.stdout
-    assert "ROUTE=proceed" in result.stdout
-
-
 def test_design_driver_emit_plan_is_rerunnable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -568,21 +445,31 @@ def test_design_driver_emit_plan_is_rerunnable(
 
 
 
-def run_design_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    merged = {**os.environ, "LARCH_QUIET_DISABLE": "1", "CLAUDE_PLUGIN_ROOT": str(CLI.parent.parent)}
-    if env:
-        merged.update(env)
-    return subprocess.run([sys.executable, str(CLI), "design", *args], capture_output=True, text=True, check=False, env=merged)
+def _fake_parse_argv_result(
+    monkeypatch: pytest.MonkeyPatch, data: dict[str, str]
+) -> None:
+    """Stand in for the Rust-owned `design parse-flags` child (#8577)."""
+
+    def fake_parse(*_args: object, **_kwargs: object) -> tuple[int, dict[str, str], str]:
+        return (0, dict(data), "")
+
+    monkeypatch.setattr(design_step0_env, "_run_parse_argv", fake_parse)
 
 
-def test_step0_parse_writes_bash_quoted_cache_and_round_trips_verbal(tmp_path: Path) -> None:
+def test_step0_parse_writes_bash_quoted_cache_and_round_trips_verbal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     home = tmp_path / "home"
     home.mkdir()
-    result = run_design_cli("step0-parse", "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--", "--brainstorm", "hello world", env={"HOME": str(home)})
-    assert result.returncode == 0, result.stderr
-    assert "BRAINSTORM_REQUESTED=true" in result.stdout
-    assert "POSITIONAL_KIND=verbal" in result.stdout
-    assert "POSITIONAL_VALUE=hello world" in result.stdout
+    monkeypatch.setenv("HOME", str(home))
+    _fake_parse_argv_result(
+        monkeypatch,
+        {"brainstorm_requested": "true", "POSITIONAL_KIND": "verbal", "POSITIONAL_VALUE": "hello world"},
+    )
+    rc = design_step0_env.step0_parse_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--", "--brainstorm", "hello world"])
+    assert rc == 0
+    stdout = capsys.readouterr().out
+    assert "BRAINSTORM_REQUESTED=true" in stdout
+    assert "POSITIONAL_KIND=verbal" in stdout
+    assert "POSITIONAL_VALUE=hello world" in stdout
     cache = home / ".cache" / "larch" / "sessions" / "step0-parsed-123.env"
     text = cache.read_text(encoding="utf-8")
     assert "POSITIONAL_VALUE=hello\\ world" in text
@@ -601,12 +488,18 @@ def test_decode_bash_percent_q_malformed_utf8_byte_escape_is_safe() -> None:
     assert design_step0_env._decode_bash_percent_q("$'\\377'") == "ÿ"  # pyright: ignore[reportPrivateUsage]
 
 
-def test_step0_parse_rejects_template_literal(tmp_path: Path) -> None:
+def test_step0_parse_rejects_template_literal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     home = tmp_path / "home"
     home.mkdir()
-    result = run_design_cli("step0-parse", "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--", "${PUBLIC_ARGV_WORDS}", env={"HOME": str(home)})
-    assert result.returncode == 1
-    assert "skill loader did not expand public argv words" in result.stderr
+    monkeypatch.setenv("HOME", str(home))
+    _fake_parse_argv_result(
+        monkeypatch,
+        {"POSITIONAL_KIND": "verbal", "POSITIONAL_VALUE": "${PUBLIC_ARGV_WORDS}"},
+    )
+    with pytest.raises(SystemExit) as exc:
+        _ = design_step0_env.step0_parse_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--", "${PUBLIC_ARGV_WORDS}"])
+    assert exc.value.code == 1
+    assert "skill loader did not expand public argv words" in capsys.readouterr().err
 
 
 def test_step0c_pause_save_precedes_result_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -660,21 +553,19 @@ def test_bash_quoted_env_round_trips_metacharacters(tmp_path: Path, value: str) 
     assert loaded["POSITIONAL_VALUE"] == value
 
 
-def test_step0_parse_allows_verbal_containing_public_argv_words_substring(tmp_path: Path) -> None:
+def test_step0_parse_allows_verbal_containing_public_argv_words_substring(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     home = tmp_path / "home"
     home.mkdir()
-    result = run_design_cli(
-        "step0-parse",
-        "--claude-pid",
-        "123",
-        "--plugin-root",
-        str(CLI.parent.parent),
-        "--",
-        "feature about PUBLIC_ARGV_WORDS in description",
-        env={"HOME": str(home)},
+    monkeypatch.setenv("HOME", str(home))
+    _fake_parse_argv_result(
+        monkeypatch,
+        {"POSITIONAL_KIND": "verbal", "POSITIONAL_VALUE": "feature about PUBLIC_ARGV_WORDS in description"},
     )
-    assert result.returncode == 0, result.stderr
-    assert "POSITIONAL_KIND=verbal" in result.stdout
+    rc = design_step0_env.step0_parse_main(
+        ["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--", "feature about PUBLIC_ARGV_WORDS in description"]
+    )
+    assert rc == 0
+    assert "POSITIONAL_KIND=verbal" in capsys.readouterr().out
 
 
 def test_pause_save_main_accepts_wrapper_argv_without_cli_prefix(tmp_path: Path) -> None:
@@ -1395,10 +1286,10 @@ def test_step0_route_forwards_router_flags(tmp_path: Path, monkeypatch: pytest.M
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         captured.append(list(cmd))
-        if cmd[2:4] == ["design", "route"]:
+        if cmd[1:3] == ["design", "route"]:
             (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
             return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
-        if cmd[2:4] == ["design", "init-runparams"]:
+        if cmd[1:3] == ["design", "init-runparams"]:
             _write_ok_init_result(design, brainstorm_requested=True)
             return subprocess.CompletedProcess(cmd, 0, "INIT_STATUS=ok\nRENAMED=false\n", "")
         return subprocess.CompletedProcess(cmd, 0, "", "")
@@ -2081,10 +1972,10 @@ def test_step0_route_enables_brainstorm_from_prefix(tmp_path: Path, monkeypatch:
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", ISSUE_TITLE="Brainstorm: feature", HAS_CLARIFY_LABEL="false", REPO="owner/repo")
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        if cmd[2:4] == ["design", "route"]:
+        if cmd[1:3] == ["design", "route"]:
             (design / ".design-route-result.env").write_text("ROUTE=proceed\nBRAINSTORM_PREFIX=true\n", encoding="utf-8")
             return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\nBRAINSTORM_PREFIX=true\n", "")
-        if cmd[2:4] == ["design", "init-runparams"]:
+        if cmd[1:3] == ["design", "init-runparams"]:
             assert "--brainstorm-requested" in cmd
             assert cmd[cmd.index("--brainstorm-requested") + 1] == "true"
             _write_ok_init_result(design, brainstorm_requested=True)
@@ -2129,11 +2020,11 @@ def test_step0_route_proceed_folds_init_after_route_state(tmp_path: Path, monkey
     stdout = StringIO()
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        if cmd[2:4] == ["design", "route"]:
+        if cmd[1:3] == ["design", "route"]:
             calls.append("route")
             (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
             return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
-        if cmd[2:4] == ["design", "init-runparams"]:
+        if cmd[1:3] == ["design", "init-runparams"]:
             calls.append("init")
             assert (design / ".design-step0-route-state.env").is_file()
             assert "ROUTE=proceed" not in stdout.getvalue()
@@ -2167,10 +2058,10 @@ def test_step0_route_non_proceed_routes_do_not_init(route: str, tmp_path: Path, 
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         nonlocal init_called
-        if cmd[2:4] == ["design", "route"]:
+        if cmd[1:3] == ["design", "route"]:
             (design / ".design-route-result.env").write_text(f"ROUTE={route}\n", encoding="utf-8")
             return subprocess.CompletedProcess(cmd, 0, f"ROUTE={route}\n", "")
-        if cmd[2:4] == ["design", "init-runparams"]:
+        if cmd[1:3] == ["design", "init-runparams"]:
             init_called = True
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
@@ -2209,7 +2100,7 @@ def test_step0_route_resume_rehydrates_source_env_from_route_state(tmp_path: Pat
     route_commands: list[list[str]] = []
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        if cmd[2:4] == ["design", "route"]:
+        if cmd[1:3] == ["design", "route"]:
             route_commands.append(list(cmd))
             (design / ".design-route-result.env").write_text("ROUTE=resume@2a\nMARKER_CLEARED=step-2a\n", encoding="utf-8")
             return subprocess.CompletedProcess(cmd, 0, "ROUTE=resume@2a\nMARKER_CLEARED=step-2a\n", "")
@@ -2259,7 +2150,7 @@ def test_step0_route_resume_rehydrates_source_env_from_ctx_env(tmp_path: Path, m
     )
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        if cmd[2:4] == ["design", "route"]:
+        if cmd[1:3] == ["design", "route"]:
             (design / ".design-route-result.env").write_text("ROUTE=resume@2a\n", encoding="utf-8")
             return subprocess.CompletedProcess(cmd, 0, "ROUTE=resume@2a\n", "")
         return subprocess.CompletedProcess(cmd, 0, "", "")
@@ -2312,7 +2203,7 @@ def test_step0_route_cancel_rehydrates_source_env_for_terminal_summary(
     refresh_commands: list[list[str]] = []
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        if cmd[2:4] == ["design", "route"]:
+        if cmd[1:3] == ["design", "route"]:
             (design / ".design-route-result.env").write_text(
                 f"ROUTE={route}\n", encoding="utf-8"
             )
@@ -2361,13 +2252,13 @@ def test_step0_route_explicit_issue_ignores_stale_route_state_repo(tmp_path: Pat
     init_commands: list[list[str]] = []
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        if cmd[2:4] == ["design", "route"]:
+        if cmd[1:3] == ["design", "route"]:
             route_commands.append(list(cmd))
             assert cmd[cmd.index("--issue") + 1] == "77"
             assert cmd[cmd.index("--repo") + 1] == "new/repo"
             (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
             return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
-        if cmd[2:4] == ["design", "init-runparams"]:
+        if cmd[1:3] == ["design", "init-runparams"]:
             init_commands.append(list(cmd))
             assert cmd[cmd.index("--issue") + 1] == "77"
             assert cmd[cmd.index("--repo") + 1] == "new/repo"
@@ -2405,7 +2296,7 @@ def test_step0_route_resume_recovers_issue_number_with_ambient_repo(tmp_path: Pa
     refresh_commands: list[list[str]] = []
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        if cmd[2:4] == ["design", "route"]:
+        if cmd[1:3] == ["design", "route"]:
             route_commands.append(list(cmd))
             assert cmd[cmd.index("--issue") + 1] == "42"
             assert cmd[cmd.index("--repo") + 1] == "ambient/repo"
@@ -2441,10 +2332,10 @@ def test_step0_route_proceed_init_failure_keeps_state_and_hides_route(tmp_path: 
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", ISSUE_TITLE="Title", HAS_CLARIFY_LABEL="false", REPO="owner/repo")
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        if cmd[2:4] == ["design", "route"]:
+        if cmd[1:3] == ["design", "route"]:
             (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
             return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
-        if cmd[2:4] == ["design", "init-runparams"]:
+        if cmd[1:3] == ["design", "init-runparams"]:
             assert (design / ".design-step0-route-state.env").is_file()
             (design / ".design-init-runparams-result.env").write_text("INIT_STATUS=env-refresh-failed\nRUN_PARAMS_PATH=\n", encoding="utf-8")
             return subprocess.CompletedProcess(cmd, 1, "", "design-init-runparams.sh: failed\n")
@@ -2470,11 +2361,11 @@ def test_step0_route_proceed_pre_init_pause_hides_route_and_init(tmp_path: Path,
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         nonlocal init_called
-        if cmd[2:4] == ["design", "route"]:
+        if cmd[1:3] == ["design", "route"]:
             (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
             (design / ".pause-requested").write_text("", encoding="utf-8")
             return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
-        if cmd[2:4] == ["design", "init-runparams"]:
+        if cmd[1:3] == ["design", "init-runparams"]:
             init_called = True
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
@@ -2539,10 +2430,10 @@ def test_step0_route_preserves_pre_set_repo(tmp_path: Path, monkeypatch: pytest.
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         captured.append(list(cmd))
-        if cmd[2:4] == ["design", "route"]:
+        if cmd[1:3] == ["design", "route"]:
             (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
             return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
-        if cmd[2:4] == ["design", "init-runparams"]:
+        if cmd[1:3] == ["design", "init-runparams"]:
             _write_ok_init_result(design)
             return subprocess.CompletedProcess(cmd, 0, "INIT_STATUS=ok\nRENAMED=false\n", "")
         return subprocess.CompletedProcess(cmd, 0, "", "")

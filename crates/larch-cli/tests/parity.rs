@@ -82,7 +82,11 @@ impl CleanInstallCase {
             // `plan validator-autofix` refuses missing `DESIGN_TMPDIR` before
             // `--help`, matching the frozen Python wrapper order.
             | "clean-install-plan-validator-autofix" => 1,
-            "clean-install-admission-preflight" => 3,
+            // `design parse-flags` owns the frozen Step 0-pre grammar: the
+            // clean-install `--help` token is an unrecognized public flag and
+            // refuses with the Python validation exit code, matching the
+            // admission preflight's own refusal exit.
+            "clean-install-admission-preflight" | "clean-install-design-parse-flags" => 3,
             "clean-install-token-measure-cache-efficiency"
             | "clean-install-token-measure-checks-digest-savings"
             | "clean-install-token-measure-panel-cost"
@@ -780,6 +784,13 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "title-transition",
     ),
     CleanInstallCase::new("clean-install-deps-apply", "deps", "apply"),
+    CleanInstallCase::new(
+        "clean-install-design-init-runparams",
+        "design",
+        "init-runparams",
+    ),
+    CleanInstallCase::new("clean-install-design-parse-flags", "design", "parse-flags"),
+    CleanInstallCase::new("clean-install-design-route", "design", "route"),
     CleanInstallCase::new("clean-install-deps-explicit-refs", "deps", "explicit-refs"),
     CleanInstallCase::new("clean-install-deps-fetch", "deps", "fetch"),
     CleanInstallCase::new("clean-install-deps-plan", "deps", "plan"),

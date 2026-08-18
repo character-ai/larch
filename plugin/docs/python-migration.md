@@ -402,9 +402,16 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 
 ### C3b design lifecycle direct CLI
 
-- `/design` lifecycle wrappers now call `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design <verb>` for argv parsing, routing, run-params init, postplan emission, publish, pause/resume, log publish, final summary, and OOS filing.
+- `/design` lifecycle wrappers now call `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design <verb>` for postplan emission, publish, pause/resume, log publish, final summary, and OOS filing. Argv parsing, routing, and run-params init moved to Rust; see **Design argv, route, and run-params cutover** below.
 - Pause/resume marker bytes and `docs/issue-anchored-plan.md` payload fields remain compatible with in-progress sessions.
 - `scripts/read-result-env.sh` now delegates allowlisted sourceable output generation to `python/design_terminal.py`.
+
+### Design argv, route, and run-params cutover
+
+- `design parse-flags`, `design route`, and `design init-runparams` flipped owner to `crates/larch-cli/src/design_commands.rs` in one PR (#8577). Callers reach them through `scripts/larch.sh design ...`; `design_step0.py` and `design_step0_env.py` invoke the verified bootstrap directly.
+- `design_argv.py` and `design_router.py` are removed. `design_core.py` absorbed the shared private router helpers (`_usage`, `_parse_stdout_kv`, `_write_kv_file`, `_extract_args`, `_normalize_step`) that the surviving design modules import; `design_core.py` itself retires with leaves 8578-8592.
+- Route title filtering calls the larch-core title predicates in-process, so the Python `TITLE_FILTER_REASON=error` subprocess-failure branch is retired; `lifecycle` and `archival` reasons keep the stdout grammar. `design pause-load` stays Python-owned until leaf #8589 and is bridged through `run_python_verb`.
+- Frozen parity references live at `fixtures/rust-parity/design_router_frozen/` behind `fixtures/rust-parity/design_router_migrated_reference.py`, exercised by `crates/larch-cli/tests/design_router_migrated_parity.rs` with goldens under `fixtures/rust-parity/goldens/design-*.golden.json`.
 
 ### C1a5 waterfall dispatcher
 

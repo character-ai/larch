@@ -1,0 +1,11 @@
+{
+  "exit_code": 3,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "VALIDATION_ERROR=--partition\nERROR_MESSAGE=**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.** --partition\n"
+  }
+}
