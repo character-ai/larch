@@ -157,6 +157,19 @@ Direct `bin/larch` execution stays outside this umbrella's surfaces. The
 `skills/`, `.claude/skills/`, `agents/`, `hooks/`, and `scripts/*.sh`, and no
 tracked file in those roots references the binary.
 
+### Closed #7684 analytics boundary
+
+`larch lint rule analytics-7684-closure` closes the evidence loop for #7684.
+It reuses the command-registry closure projection for every #7684 row, the
+retained issue-module ownership table, and the canonical GitHub-service and
+Git inventory parsers. It fails closed on incomplete phases, missing or
+umbrella migration leaves, restored Python registration, entrypoint, caller,
+or retained-module ownership, and incomplete inventory evidence. Its
+syntax-aware prompt check requires `/fluff-analysis` and `/voter-calibration`
+to invoke their `scripts/larch.sh` Rust owners and rejects the retired
+standalone Python analyzer paths. The generated plugin projection is validated
+separately with `release plugin-runtime --check`.
+
 ## Closed #7682 issue-domain boundary
 
 `larch lint rule issue-python-free` is the mechanical closeout for #7682. It
