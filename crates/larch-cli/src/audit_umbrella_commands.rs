@@ -29,17 +29,17 @@ use larch_adapters::{
 };
 use larch_core::{
     AUDIT_PROPOSAL_VERSION, AuditDependency, AuditDependencyNode, AuditGraphState, AuditIssue,
-    AuditIssueFingerprint, AuditLeafState, AuditLedger, AuditProposal, AuditProposalDraft,
-    AuditSnapshot, AuditSource, DONE_PREFIX, GitHubIssue, GitHubIssueState, GitHubRepositoryRef,
-    GitHubService, GitHubTransportPolicy, IMPLEMENTING_PREFIX, IssueCreateRequest,
-    MAX_AUDIT_LEAVES, MAX_AUDIT_SOURCES, RepositoryRead, Revision, audit_issue_fingerprint,
-    audit_leaf_prefix, audit_proposal_existing_numbers, audit_snapshot_sha256,
-    build_audit_proposal, emit_kv, has_umbrella_proposal, is_controlling_umbrella_title,
-    mark_audit_graph_in_flight, mark_audit_leaf_in_flight, mark_audit_proposal_complete,
-    parse_audit_ledger, parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved,
-    render_audit_proposal, render_audit_snapshot, replace_audit_issue_fingerprints,
-    triage_label_is_security, triage_text_is_security_sensitive, umbrella_leaf_opening,
-    validate_audit_ledger, validate_audit_proposal_binding,
+    AuditIssueFingerprint, AuditLeafState, AuditLedger, AuditLedgerViolation, AuditProposal,
+    AuditProposalDraft, AuditSnapshot, AuditSource, DONE_PREFIX, GitHubIssue, GitHubIssueState,
+    GitHubRepositoryRef, GitHubService, GitHubTransportPolicy, IMPLEMENTING_PREFIX,
+    IssueCreateRequest, MAX_AUDIT_LEAVES, MAX_AUDIT_SOURCES, RepositoryRead, Revision,
+    audit_issue_fingerprint, audit_leaf_prefix, audit_proposal_existing_numbers,
+    audit_snapshot_sha256, build_audit_proposal, diagnose_audit_ledger, emit_kv,
+    has_umbrella_proposal, is_controlling_umbrella_title, mark_audit_graph_in_flight,
+    mark_audit_leaf_in_flight, mark_audit_proposal_complete, parse_audit_ledger,
+    parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved, render_audit_proposal,
+    render_audit_snapshot, replace_audit_issue_fingerprints, triage_label_is_security,
+    triage_text_is_security_sensitive, umbrella_leaf_opening, validate_audit_proposal_binding,
 };
 use regex::Regex;
 use std::{
@@ -300,13 +300,39 @@ fn validate_ledger(arguments: &ValidateLedgerArguments) -> Result<(), String> {
     let root = temporary_root(&arguments.root, "--root")?;
     let snapshot = read_snapshot(&arguments.snapshot, &arguments.root, &root)?;
     let ledger = read_ledger(&arguments.ledger, &arguments.root, &root)?;
-    let summary =
-        validate_audit_ledger(&snapshot, &ledger).map_err(|error| error.reason().to_owned())?;
+    let summary = match diagnose_audit_ledger(&snapshot, &ledger) {
+        Ok(summary) => summary,
+        Err(violation) => {
+            let entry = violation
+                .entry_id()
+                .map(|id| format!(" entry={}", sanitize_entry_id(id)))
+                .unwrap_or_default();
+            let coverage = match violation {
+                AuditLedgerViolation::Coverage { uncovered, unknown } => {
+                    format!(" uncovered={uncovered} unknown={unknown}")
+                }
+                _ => String::new(),
+            };
+            eprintln!(
+                "audit-umbrella: ledger-violation constraint={}{entry}{coverage}",
+                violation.constraint()
+            );
+            return Err(violation.refusal().reason().to_owned());
+        }
+    };
     emit_kv("AUDIT_LEDGER_VALID", "true");
     emit_kv("AUDIT_REQUIREMENT_COUNT", &summary.total.to_string());
     emit_kv("AUDIT_GAP_COUNT", &summary.gaps.to_string());
     emit_kv("AUDIT_BLOCKED_COUNT", &summary.blocked.to_string());
     Ok(())
+}
+
+/// Bound an untrusted entry id to printable ASCII before it reaches a log line.
+fn sanitize_entry_id(id: &str) -> String {
+    id.chars()
+        .filter(char::is_ascii_graphic)
+        .take(128)
+        .collect()
 }
 
 fn persist_proposal(arguments: &PersistProposalArguments) -> Result<(), String> {
