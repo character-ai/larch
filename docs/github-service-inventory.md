@@ -109,6 +109,21 @@ verb reads only its supplied snapshot and therefore has no GitHub-service row.
 closure cutover. The advisory is read-only; prior closure uses the shared typed
 issue-mutation owner for authorization and close read-back.
 
+The #8673 cutover completed the audit-runs GitHub surface with five Rust-born
+verbs in `crates/larch-cli/src/audit_runs_commands.rs`: `issue-search`
+(typed issue search with local audit-title exclusion), `fix-merge` (typed
+issue read plus the bounded merged-main history from the operations adapter),
+`label-check` (typed label list with an exact local match), `version-window`
+(local typed Git history only; no GitHub service), and `comment` (the shared
+issue-mutation owner's authorized, redacted, read-back-verified comment
+publication). These verbs were born Rust-owned with no Python predecessor, so
+the command registry — a Python-migration ledger requiring Python target
+metadata — carries no rows for them, and the matrix's linted command selectors
+cannot name them; their adapter owners are the already-listed
+`crates/larch-adapters/src/github_rest.rs`,
+`crates/larch-adapters/src/github/operations.rs`, and
+`crates/larch-adapters/src/github/issue_mutation.rs` rows.
+
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
 ```text

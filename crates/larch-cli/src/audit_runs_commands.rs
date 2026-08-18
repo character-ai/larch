@@ -45,10 +45,10 @@ use larch_adapters::{
     runtime::Cancellation,
 };
 use larch_core::{
-    AssessmentKind, BUG_PREFIX, CompletenessOutcome, GitHubCloseReason, GitHubIssueBodyMode,
-    GitHubIssueList, GitHubIssueListMode, GitHubIssueSearch, GitHubIssueState,
-    GitHubOperationErrorKind, GitHubService, Head, ReachabilityContext, RepositoryRead, Revision,
-    RunLogCorpus, bug_title_match, glob_matches, scan_required_files, single_line,
+    AssessmentKind, BUG_PREFIX, CompletenessOutcome, GitHubCloseReason, GitHubIssue,
+    GitHubIssueBodyMode, GitHubIssueList, GitHubIssueListMode, GitHubIssueSearch, GitHubIssueState,
+    GitHubOperationErrorKind, GitHubService, GitPath, Head, ReachabilityContext, RepositoryRead,
+    Revision, RunLogCorpus, bug_title_match, glob_matches, scan_required_files, single_line,
     validate_ship_outcome_record,
 };
 use regex::Regex;
@@ -142,6 +142,17 @@ fn audit_help(verb: &str) -> ExitCode {
         }
         "close-priors" => {
             "usage: cli.py audit-runs close-priors [-h] --skill SKILL --new-issue-number NEW_ISSUE_NUMBER [--repo REPO] [--operator-invoked]"
+        }
+        "issue-search" => {
+            "usage: cli.py audit-runs issue-search [-h] --repo REPO --keywords KEYWORDS"
+        }
+        "fix-merge" => "usage: cli.py audit-runs fix-merge [-h] --repo REPO --issue ISSUE",
+        "version-window" => {
+            "usage: cli.py audit-runs version-window [-h] --repo-root REPO_ROOT --after AFTER [--audited-versions AUDITED_VERSIONS]"
+        }
+        "label-check" => "usage: cli.py audit-runs label-check [-h] --repo REPO --label LABEL",
+        "comment" => {
+            "usage: cli.py audit-runs comment [-h] --repo REPO --issue ISSUE --body-file BODY_FILE [--operator-invoked]"
         }
         _ => "usage: cli.py audit-runs [options]",
     };
@@ -712,6 +723,687 @@ pub fn close_priors(arguments: &[OsString]) -> ExitCode {
         ClosePriorsOutcome::Failed { number, reason } => {
             println!("CLOSE_FAILED={number}\tREASON={reason}");
             ExitCode::SUCCESS
+        }
+    }
+}
+
+/// Bounded first-parent window the version-window walk inspects from `HEAD`.
+const VERSION_WINDOW_COMMIT_LIMIT: usize = 4000;
+const PLUGIN_MANIFEST_PATH: &str = ".claude-plugin/plugin.json";
+const BUMP_SUBJECT_NEEDLE: &str = "Bump version";
+
+const fn issue_state_wire(state: GitHubIssueState) -> &'static str {
+    match state {
+        GitHubIssueState::Open => "open",
+        GitHubIssueState::Closed => "closed",
+        GitHubIssueState::All => "unknown",
+    }
+}
+
+fn audit_report_family_title(title: &str) -> bool {
+    AUDIT_IMPLEMENT_TITLE_RE.is_match(title) || AUDIT_DESIGN_TITLE_RE.is_match(title)
+}
+
+async fn issue_search_remote<S: GitHubService + ?Sized>(
+    service: &S,
+    cancellation: &Cancellation,
+    repository: &larch_core::GitHubRepositoryRef,
+    keywords: &str,
+) -> Result<Vec<GitHubIssue>, String> {
+    let request = GitHubIssueSearch {
+        repo: repository.clone(),
+        query: keywords.to_owned(),
+        limit: service.transport_policy().limits().items(),
+    };
+    let rows = service
+        .search_issues(&request, cancellation)
+        .await
+        .map_err(|error| format!("gh issue list failed: {error}"))?;
+    // GitHub search is only a recall filter: the exclusion predicate is
+    // re-applied locally so ranking or index drift cannot flip a
+    // classification. Only audit-report family titles and pull-request rows
+    // are dropped; `[IMPLEMENTING]` titles never match either family regex
+    // and are always retained for the augmentation route.
+    Ok(rows
+        .into_iter()
+        .filter(|issue| !issue.is_pull_request && !audit_report_family_title(&issue.title))
+        .collect())
+}
+
+/// Search open and closed issues for proposal classification, excluding only
+/// audit-report noise locally.
+#[must_use]
+pub fn issue_search(arguments: &[OsString]) -> ExitCode {
+    if wants_help(arguments) {
+        return audit_help("issue-search");
+    }
+    const USAGE: &str =
+        "usage: cli.py audit-runs issue-search [-h] --repo REPO --keywords KEYWORDS";
+    const PROGRAM: &str = "cli.py audit-runs issue-search";
+    let parsed = match parsed_or_usage_without_abbreviation(
+        arguments,
+        &["--repo", "--keywords"],
+        USAGE,
+        PROGRAM,
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let required = [
+        ("--repo", parsed.value("--repo").is_some()),
+        ("--keywords", parsed.value("--keywords").is_some()),
+    ];
+    if required.iter().any(|(_, present)| !present) {
+        return usage_error(USAGE, PROGRAM, &missing(&required), 2);
+    }
+    let repo = string_option(&parsed, "--repo");
+    if !LEGACY_REPOSITORY_RE.is_match(&repo) {
+        eprintln!("{PROGRAM}: --repo must be OWNER/REPO");
+        return ExitCode::from(2);
+    }
+    let keywords = string_option(&parsed, "--keywords");
+    if keywords.trim().is_empty() {
+        return usage_error(USAGE, PROGRAM, "--keywords must be non-empty", 2);
+    }
+    let repository = match repository_ref(&repo) {
+        Ok(repository) => repository,
+        Err(()) => {
+            eprintln!("{PROGRAM}: --repo must be OWNER/REPO");
+            return ExitCode::from(2);
+        }
+    };
+    let result = with_github_service(async |service, cancellation| {
+        issue_search_remote(service, cancellation, &repository, &keywords).await
+    });
+    let matches = match result {
+        Ok(matches) => matches,
+        Err(error) => {
+            println!("ISSUE_SEARCH_FAILED=true");
+            println!(
+                "REASON={}",
+                flat_error(&error.into_detail(), AUDIT_ERROR_CHARS)
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    println!("MATCH_COUNT={}", matches.len());
+    for issue in matches {
+        println!(
+            "MATCH={}\t{}\t{}\t{}",
+            issue.number,
+            issue_state_wire(issue.state),
+            single_line(&issue.closed_at),
+            single_line(&issue.title)
+        );
+    }
+    ExitCode::SUCCESS
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct FixMergeOutcome {
+    matched: Option<(u64, String)>,
+    ambiguous: bool,
+    candidates: Vec<u64>,
+}
+
+struct FixMergeReport {
+    created_at: String,
+    closed_at: String,
+    outcome: FixMergeOutcome,
+}
+
+fn issue_mention_regexes(issue: u64) -> (Regex, Regex) {
+    let mention = Regex::new(&format!(r"#{issue}\b")).expect("issue mention regex");
+    let closing = Regex::new(&format!(
+        r"(?i)\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?):?\s+#{issue}\b"
+    ))
+    .expect("closing reference regex");
+    (mention, closing)
+}
+
+fn fix_merge_result(pull: &AuditPullRequest, candidates: Vec<u64>) -> FixMergeOutcome {
+    FixMergeOutcome {
+        matched: Some((pull.number, pull.merged_at.clone().unwrap_or_default())),
+        ambiguous: false,
+        candidates,
+    }
+}
+
+/// Apply the skill's normative disambiguation to the referencing merged PRs.
+///
+/// Order: explicit closing reference, smallest positive `mergedAt - createdAt`
+/// delta, then latest `mergedAt` when no candidate strictly follows creation.
+/// An unresolvable tie is reported as ambiguous instead of being suppressed.
+fn fix_merge_disposition(
+    pulls: &[AuditPullRequest],
+    issue: u64,
+    created_at: &str,
+) -> FixMergeOutcome {
+    let (mention, closing) = issue_mention_regexes(issue);
+    let referencing = pulls
+        .iter()
+        .filter(|pull| pull.merged_at.is_some())
+        .filter(|pull| mention.is_match(&pull.title) || mention.is_match(&pull.body))
+        .collect::<Vec<_>>();
+    let closing_refs = referencing
+        .iter()
+        .copied()
+        .filter(|pull| closing.is_match(&pull.title) || closing.is_match(&pull.body))
+        .collect::<Vec<_>>();
+    let pool = if closing_refs.is_empty() {
+        referencing
+    } else {
+        closing_refs
+    };
+    let candidates = pool.iter().map(|pull| pull.number).collect::<Vec<_>>();
+    if pool.is_empty() {
+        return FixMergeOutcome {
+            matched: None,
+            ambiguous: false,
+            candidates,
+        };
+    }
+    if pool.len() == 1 {
+        return fix_merge_result(pool[0], candidates);
+    }
+    let merged_instant =
+        |pull: &AuditPullRequest| pull.merged_at.as_deref().and_then(parse_utc_instant);
+    if let Some(created) = parse_utc_instant(created_at) {
+        let positive = pool
+            .iter()
+            .copied()
+            .filter(|pull| merged_instant(pull).is_some_and(|merged| merged > created))
+            .collect::<Vec<_>>();
+        if !positive.is_empty() {
+            // The smallest positive delta is the earliest merge after creation.
+            let best = positive
+                .iter()
+                .copied()
+                .min_by_key(|pull| merged_instant(pull))
+                .expect("non-empty positive candidate set");
+            let tied = positive
+                .iter()
+                .filter(|pull| merged_instant(pull) == merged_instant(best))
+                .count();
+            if tied == 1 {
+                return fix_merge_result(best, candidates);
+            }
+            return FixMergeOutcome {
+                matched: None,
+                ambiguous: true,
+                candidates,
+            };
+        }
+    }
+    let best = pool
+        .iter()
+        .copied()
+        .max_by(|left, right| left.merged_at.cmp(&right.merged_at))
+        .expect("non-empty candidate pool");
+    let tied = pool
+        .iter()
+        .filter(|pull| pull.merged_at == best.merged_at)
+        .count();
+    if tied == 1 {
+        fix_merge_result(best, candidates)
+    } else {
+        FixMergeOutcome {
+            matched: None,
+            ambiguous: true,
+            candidates,
+        }
+    }
+}
+
+async fn fix_merge_remote<S: AuditRunsService + GitHubService + ?Sized>(
+    service: &S,
+    cancellation: &Cancellation,
+    repo: &larch_core::GitHubRepositoryRef,
+    issue: u64,
+) -> Result<FixMergeReport, String> {
+    let details = service
+        .issue(repo, issue, cancellation)
+        .await
+        .map_err(|error| format!("gh issue view failed: {error}"))?;
+    let pulls = service
+        .list_audit_merged_main_pull_requests(cancellation, repo.owner(), repo.name())
+        .await
+        .map_err(|error| format!("gh pr list failed: {error}"))?;
+    let outcome = fix_merge_disposition(&pulls, issue, &details.created_at);
+    Ok(FixMergeReport {
+        created_at: details.created_at,
+        closed_at: details.closed_at,
+        outcome,
+    })
+}
+
+fn print_fix_merge(report: &FixMergeReport) {
+    println!("ISSUE_CREATED_AT={}", single_line(&report.created_at));
+    println!("ISSUE_CLOSED_AT={}", single_line(&report.closed_at));
+    match &report.outcome.matched {
+        Some((number, merged_at)) => {
+            println!("MATCHED_PR={number}");
+            println!("MERGED_AT={}", single_line(merged_at));
+        }
+        None => {
+            println!("MATCHED_PR=unknown");
+            println!("MERGED_AT=unknown");
+        }
+    }
+    println!("AMBIGUOUS={}", report.outcome.ambiguous);
+    println!(
+        "CANDIDATES={}",
+        report
+            .outcome
+            .candidates
+            .iter()
+            .map(u64::to_string)
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+}
+
+/// Resolve which merged-to-main PR fixed one issue, plus the issue's timing.
+///
+/// The merged-PR history read is bounded, so a fix PR older than the window
+/// degrades to the zero-candidate `MATCHED_PR=unknown` path — the same
+/// timing-only fallback the skill takes when no PR references the issue.
+#[must_use]
+pub fn fix_merge(arguments: &[OsString]) -> ExitCode {
+    if wants_help(arguments) {
+        return audit_help("fix-merge");
+    }
+    const USAGE: &str = "usage: cli.py audit-runs fix-merge [-h] --repo REPO --issue ISSUE";
+    const PROGRAM: &str = "cli.py audit-runs fix-merge";
+    let parsed = match parsed_or_usage_without_abbreviation(
+        arguments,
+        &["--repo", "--issue"],
+        USAGE,
+        PROGRAM,
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let required = [
+        ("--repo", parsed.value("--repo").is_some()),
+        ("--issue", parsed.value("--issue").is_some()),
+    ];
+    if required.iter().any(|(_, present)| !present) {
+        return usage_error(USAGE, PROGRAM, &missing(&required), 2);
+    }
+    let repo = string_option(&parsed, "--repo");
+    let repository = match repository_ref(&repo) {
+        Ok(repository) => repository,
+        Err(()) => {
+            eprintln!("{PROGRAM}: --repo must be OWNER/REPO");
+            return ExitCode::from(2);
+        }
+    };
+    let Some(issue) = parse_uint(&string_option(&parsed, "--issue")) else {
+        return usage_error(USAGE, PROGRAM, "--issue must be a positive integer", 2);
+    };
+    let result = with_github_service(async |service, cancellation| {
+        fix_merge_remote(service, cancellation, &repository, issue).await
+    });
+    match result {
+        Ok(report) => {
+            print_fix_merge(&report);
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            println!("FIX_MERGE_FAILED=true");
+            println!(
+                "REASON={}",
+                flat_error(&error.into_detail(), AUDIT_ERROR_CHARS)
+            );
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Strictly normalize one dotted version for the version-window comparison.
+///
+/// Strips a single leading `v`, trims ASCII whitespace, and requires exactly
+/// three integer components. This is deliberately distinct from the loose
+/// [`version_numbers`] sibling below (G-Dup-1 deviation note): that helper
+/// orders arbitrary strings for the cache-freshness lens, while this contract
+/// is strict-or-`unknown` so an unparseable version can never suppress a
+/// proposal.
+fn strict_window_version(value: &str) -> Option<(u64, u64, u64)> {
+    let trimmed = value.trim();
+    let trimmed = trimmed.strip_prefix('v').unwrap_or(trimmed);
+    strict_version_tuple(trimmed)
+}
+
+fn commit_touches_manifest(
+    repository: &GixRepository,
+    commit: &larch_core::Commit,
+) -> Result<bool, String> {
+    let Some(parent) = commit.parents.first() else {
+        // A root commit "touches" the manifest exactly when it introduces it,
+        // matching `git log -- <path>` semantics for the initial commit.
+        return Ok(repository
+            .blob_at_commit(&commit.id, &GitPath::new(PLUGIN_MANIFEST_PATH))
+            .map_err(|_| "manifest blob read failed".to_owned())?
+            .is_some());
+    };
+    let parent_commit = repository
+        .walk_commits(parent, 1)
+        .map_err(|_| "parent commit read failed".to_owned())?
+        .into_iter()
+        .next()
+        .ok_or_else(|| "parent commit read failed".to_owned())?;
+    let changes = repository
+        .tree_changes(&parent_commit.tree, &commit.tree)
+        .map_err(|_| "tree comparison failed".to_owned())?;
+    Ok(changes
+        .paths()
+        .any(|path| path.as_bytes() == PLUGIN_MANIFEST_PATH.as_bytes()))
+}
+
+/// The earliest first-parent bump commit strictly after `after`, if any.
+fn version_window_bump(
+    repository: &GixRepository,
+    after_epoch: i64,
+) -> Result<Option<larch_core::Commit>, String> {
+    let head = repository
+        .resolve_revision(&Revision::new("HEAD"))
+        .map_err(|_| "HEAD is not resolvable".to_owned())?;
+    let mut current = head;
+    let mut earliest: Option<larch_core::Commit> = None;
+    for _ in 0..VERSION_WINDOW_COMMIT_LIMIT {
+        let commit = repository
+            .walk_commits(&current, 1)
+            .map_err(|_| "commit walk failed".to_owned())?
+            .into_iter()
+            .next()
+            .ok_or_else(|| "commit walk failed".to_owned())?;
+        let next = commit.parents.first().cloned();
+        let subject = String::from_utf8_lossy(&commit.subject).into_owned();
+        if subject.contains(BUMP_SUBJECT_NEEDLE)
+            && crate::analyze_bugs_sweep::committer_time(repository, &commit.id)
+                .is_ok_and(|time| time > after_epoch)
+            && commit_touches_manifest(repository, &commit)?
+        {
+            // The walk is newest-first, so the last hit is the earliest bump.
+            earliest = Some(commit);
+        }
+        match next {
+            Some(parent) => current = parent,
+            None => break,
+        }
+    }
+    Ok(earliest)
+}
+
+fn manifest_version_at(repository: &GixRepository, commit: &larch_core::Commit) -> Option<String> {
+    let blob = repository
+        .blob_at_commit(&commit.id, &GitPath::new(PLUGIN_MANIFEST_PATH))
+        .ok()??;
+    let manifest: Value = serde_json::from_slice(&blob).ok()?;
+    manifest
+        .get("version")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+}
+
+/// `skip` only when the shipped fix provably post-dates every audited run.
+///
+/// Any parse failure or unknown on either side proposes, mirroring the
+/// skill's normative unknown-proposes rule.
+fn version_window_decision(shipped: Option<(u64, u64, u64)>, audited: &str) -> bool {
+    let Some(shipped) = shipped else {
+        return false;
+    };
+    let versions = audited
+        .split(',')
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(strict_window_version)
+        .collect::<Option<Vec<_>>>();
+    match versions {
+        Some(versions) if !versions.is_empty() => versions.iter().all(|version| shipped > *version),
+        _ => false,
+    }
+}
+
+/// Resolve the first plugin-version bump after an instant from local history.
+#[must_use]
+pub fn version_window(arguments: &[OsString]) -> ExitCode {
+    if wants_help(arguments) {
+        return audit_help("version-window");
+    }
+    const USAGE: &str = "usage: cli.py audit-runs version-window [-h] --repo-root REPO_ROOT --after AFTER [--audited-versions AUDITED_VERSIONS]";
+    const PROGRAM: &str = "cli.py audit-runs version-window";
+    let parsed = match parsed_or_usage_without_abbreviation(
+        arguments,
+        &["--repo-root", "--after", "--audited-versions"],
+        USAGE,
+        PROGRAM,
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let required = [
+        ("--repo-root", parsed.value("--repo-root").is_some()),
+        ("--after", parsed.value("--after").is_some()),
+    ];
+    if required.iter().any(|(_, present)| !present) {
+        return usage_error(USAGE, PROGRAM, &missing(&required), 2);
+    }
+    let Some(after) = parse_utc_instant(&string_option(&parsed, "--after")) else {
+        return usage_error(USAGE, PROGRAM, "--after must be an ISO-8601 instant", 2);
+    };
+    let root = PathBuf::from(string_option(&parsed, "--repo-root"));
+    let repository = match GixRepository::discover(&root) {
+        Ok(repository) => repository,
+        Err(_) => {
+            println!("VERSION_WINDOW_FAILED=true");
+            println!("REASON=--repo-root is not a Git repository");
+            return ExitCode::FAILURE;
+        }
+    };
+    let bump = match version_window_bump(&repository, after.timestamp()) {
+        Ok(bump) => bump,
+        Err(reason) => {
+            println!("VERSION_WINDOW_FAILED=true");
+            println!("REASON={}", flat_error(&reason, AUDIT_ERROR_CHARS));
+            return ExitCode::FAILURE;
+        }
+    };
+    let shipped = bump.as_ref().and_then(|commit| {
+        manifest_version_at(&repository, commit)
+            .as_deref()
+            .and_then(strict_window_version)
+    });
+    match &bump {
+        Some(commit) => println!("BUMP_SHA={}", commit.id.to_hex()),
+        None => println!("BUMP_SHA=none"),
+    }
+    match shipped {
+        Some((major, minor, patch)) => println!("FIX_SHIPPED_VERSION={major}.{minor}.{patch}"),
+        None => println!("FIX_SHIPPED_VERSION=unknown"),
+    }
+    if let Some(audited) = parsed.value("--audited-versions") {
+        let skip = version_window_decision(shipped, &audited.to_string_lossy());
+        println!("IN_SCOPE={}", !skip);
+        println!("DECISION={}", if skip { "skip" } else { "propose" });
+    }
+    ExitCode::SUCCESS
+}
+
+async fn label_present_remote<S: GitHubService + ?Sized>(
+    service: &S,
+    cancellation: &Cancellation,
+    repository: &larch_core::GitHubRepositoryRef,
+    label: &str,
+) -> Result<bool, String> {
+    let labels = service
+        .list_labels(repository, cancellation)
+        .await
+        .map_err(|error| format!("gh label list failed: {error}"))?;
+    // GitHub's label search is substring recall; the precondition is an
+    // exact, case-sensitive local match (G-Ext-3).
+    Ok(labels.iter().any(|candidate| candidate.name == label))
+}
+
+/// Check whether one label exists in the repository, matched exactly.
+#[must_use]
+pub fn label_check(arguments: &[OsString]) -> ExitCode {
+    if wants_help(arguments) {
+        return audit_help("label-check");
+    }
+    const USAGE: &str = "usage: cli.py audit-runs label-check [-h] --repo REPO --label LABEL";
+    const PROGRAM: &str = "cli.py audit-runs label-check";
+    let parsed = match parsed_or_usage_without_abbreviation(
+        arguments,
+        &["--repo", "--label"],
+        USAGE,
+        PROGRAM,
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let required = [
+        ("--repo", parsed.value("--repo").is_some()),
+        ("--label", parsed.value("--label").is_some()),
+    ];
+    if required.iter().any(|(_, present)| !present) {
+        return usage_error(USAGE, PROGRAM, &missing(&required), 2);
+    }
+    let repo = string_option(&parsed, "--repo");
+    let repository = match repository_ref(&repo) {
+        Ok(repository) => repository,
+        Err(()) => {
+            eprintln!("{PROGRAM}: --repo must be OWNER/REPO");
+            return ExitCode::from(2);
+        }
+    };
+    let label = string_option(&parsed, "--label");
+    if label.is_empty() {
+        return usage_error(USAGE, PROGRAM, "--label must be non-empty", 2);
+    }
+    let result = with_github_service(async |service, cancellation| {
+        label_present_remote(service, cancellation, &repository, &label).await
+    });
+    match result {
+        Ok(present) => {
+            println!("LABEL_PRESENT={present}");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            println!("LABEL_CHECK_FAILED=true");
+            println!(
+                "REASON={}",
+                flat_error(&error.into_detail(), AUDIT_ERROR_CHARS)
+            );
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn comment_remote(
+    service: &OctocrabGitHubService,
+    cancellation: &Cancellation,
+    authorization: &LiveMutationRequest<'_>,
+    repository: &larch_core::GitHubRepositoryRef,
+    issue: u64,
+    body: &str,
+) -> Result<String, String> {
+    let owner = IssueMutationOwner::new(service);
+    owner
+        .create_comment(cancellation, authorization, repository, issue, body)
+        .await
+        .map(|comment| comment.url)
+        .map_err(|error| error.reason().to_owned())
+}
+
+/// Post one supplementary comment through the shared issue-mutation owner.
+///
+/// Requires `--operator-invoked` and refuses before any network access
+/// without it. The owner applies authorization, outbound redaction, and an
+/// exact comment read-back.
+#[must_use]
+pub fn comment(arguments: &[OsString]) -> ExitCode {
+    if wants_help(arguments) {
+        return audit_help("comment");
+    }
+    const USAGE: &str = "usage: cli.py audit-runs comment [-h] --repo REPO --issue ISSUE --body-file BODY_FILE [--operator-invoked]";
+    const PROGRAM: &str = "cli.py audit-runs comment";
+    let parsed = match parsed_or_usage(
+        arguments,
+        &["--repo", "--issue", "--body-file"],
+        &["--operator-invoked"],
+        USAGE,
+        PROGRAM,
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let required = [
+        ("--repo", parsed.value("--repo").is_some()),
+        ("--issue", parsed.value("--issue").is_some()),
+        ("--body-file", parsed.value("--body-file").is_some()),
+    ];
+    if required.iter().any(|(_, present)| !present) {
+        return usage_error(USAGE, PROGRAM, &missing(&required), 2);
+    }
+    let authorization = authorization_request("", "", "", parsed.flag("--operator-invoked"));
+    if let Err(reason) = authorized(&authorization) {
+        println!("COMMENT_REFUSED=true");
+        println!("REASON={MUTATION_REFUSAL_REASON}:{reason}");
+        return ExitCode::from(EXIT_MUTATION_REFUSED);
+    }
+    let repo = string_option(&parsed, "--repo");
+    let repository = match repository_ref(&repo) {
+        Ok(repository) => repository,
+        Err(()) => {
+            eprintln!("{PROGRAM}: --repo must be OWNER/REPO");
+            return ExitCode::from(2);
+        }
+    };
+    let Some(issue) = parse_uint(&string_option(&parsed, "--issue")) else {
+        return usage_error(USAGE, PROGRAM, "--issue must be a positive integer", 2);
+    };
+    let body_file = PathBuf::from(string_option(&parsed, "--body-file"));
+    let body = match fs::read_to_string(&body_file) {
+        Ok(body) => body,
+        Err(error) => {
+            println!("COMMENT_FAILED=true");
+            println!(
+                "REASON={}",
+                flat_error(
+                    &format!("cannot read --body-file: {error}"),
+                    AUDIT_ERROR_CHARS
+                )
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    let result = with_github_service(async |service, cancellation| {
+        comment_remote(
+            service,
+            cancellation,
+            &authorization,
+            &repository,
+            issue,
+            &body,
+        )
+        .await
+    });
+    match result {
+        Ok(url) => {
+            println!("COMMENT_POSTED=true");
+            println!("COMMENT_URL={}", single_line(&url));
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            println!("COMMENT_FAILED=true");
+            println!(
+                "REASON={}",
+                flat_error(&error.into_detail(), AUDIT_ERROR_CHARS)
+            );
+            ExitCode::FAILURE
         }
     }
 }

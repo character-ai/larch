@@ -1178,6 +1178,342 @@ fn resolve_command_prints_the_typed_last_pr_result() {
     assert_eq!(server.finish().expect("recorded requests").len(), 1);
 }
 
+fn merged_pull(number: u64, title: &str, body: &str, merged_at: &str) -> AuditPullRequest {
+    AuditPullRequest {
+        number,
+        title: title.to_owned(),
+        body: body.to_owned(),
+        base_ref: "main".to_owned(),
+        merged_at: Some(merged_at.to_owned()),
+    }
+}
+
+#[test]
+fn issue_search_excludes_audit_noise_and_keeps_implementing_titles() {
+    let audit = audit_issue(
+        5,
+        "[Implement Run Logs Audit 2026-08-01 Report] PRs #1-#2",
+        "",
+    );
+    let design_audit = audit_issue(6, "[Design Run Logs Audit 2026-08-01 Report] PRs #3-#4", "");
+    let implementing = open_audit_issue(7, "[IMPLEMENTING] [BUG] EXON rows misclassified");
+    let plain = audit_issue(8, "[BUG] EXON rows misclassified", "");
+    let mut pull_request = audit_issue(9, "[BUG] EXON fix PR", "");
+    pull_request["pull_request"] = json!({
+        "url": "https://api.github.com/repos/o/r/pulls/9",
+        "html_url": "https://github.com/o/r/pull/9",
+        "diff_url": "https://github.com/o/r/pull/9.diff",
+        "patch_url": "https://github.com/o/r/pull/9.patch",
+    });
+    let server = IssueServiceStub::start([IssueServiceExchange::any_json(
+        200,
+        json!({
+            "total_count": 5,
+            "incomplete_results": false,
+            "items": [audit, design_audit, implementing, plain, pull_request],
+        })
+        .to_string(),
+    )
+    .expect("search response")])
+    .expect("GitHub loopback");
+    let service = loopback_service(server.base_url().to_owned());
+    with_test_github_service(service, || {
+        let repository = repository_ref("o/r").expect("repository ref");
+        let matches = with_github_service(async |service, cancellation| {
+            issue_search_remote(service, cancellation, &repository, "EXON misclassified").await
+        })
+        .expect("typed search succeeds");
+        assert_eq!(
+            matches.iter().map(|issue| issue.number).collect::<Vec<_>>(),
+            [7, 8]
+        );
+        assert_eq!(issue_state_wire(matches[0].state), "open");
+        assert_eq!(issue_state_wire(matches[1].state), "closed");
+        assert_eq!(matches[1].closed_at, "2026-08-09T12:00:00Z");
+    });
+    assert_eq!(server.finish().expect("recorded requests").len(), 1);
+
+    let failing = IssueServiceStub::start([
+        IssueServiceExchange::any_json(422, "{}").expect("search failure")
+    ])
+    .expect("GitHub loopback");
+    let service = loopback_service(failing.base_url().to_owned());
+    with_test_github_service(service, || {
+        let repository = repository_ref("o/r").expect("repository ref");
+        let error = with_github_service(async |service, cancellation| {
+            issue_search_remote(service, cancellation, &repository, "EXON").await
+        })
+        .expect_err("degraded read must fail");
+        assert!(error.into_detail().contains("gh issue list failed"));
+    });
+    let _ = failing.finish();
+}
+
+#[test]
+fn fix_merge_disposition_applies_the_normative_order() {
+    // An explicit closing reference beats a plain mention, whatever merges later.
+    let outcome = fix_merge_disposition(
+        &[
+            merged_pull(
+                5,
+                "follow-up",
+                "Refs #12 for context",
+                "2026-08-09T15:00:00Z",
+            ),
+            merged_pull(7, "the fix", "Fixes #12", "2026-08-09T10:00:00Z"),
+        ],
+        12,
+        "2026-08-09T09:00:00Z",
+    );
+    assert_eq!(
+        outcome.matched,
+        Some((7, "2026-08-09T10:00:00Z".to_owned()))
+    );
+    assert!(!outcome.ambiguous);
+    assert_eq!(outcome.candidates, [7]);
+
+    // Among tied closing references, the smallest positive delta wins.
+    let outcome = fix_merge_disposition(
+        &[
+            merged_pull(8, "early fix", "Closes #12", "2026-08-09T11:00:00Z"),
+            merged_pull(9, "late fix", "Resolved #12", "2026-08-09T12:00:00Z"),
+        ],
+        12,
+        "2026-08-09T10:00:00Z",
+    );
+    assert_eq!(
+        outcome.matched,
+        Some((8, "2026-08-09T11:00:00Z".to_owned()))
+    );
+    assert_eq!(outcome.candidates, [8, 9]);
+
+    // No candidate strictly after creation falls back to the latest merge.
+    let outcome = fix_merge_disposition(
+        &[
+            merged_pull(3, "older", "Fixes #12", "2026-08-09T10:00:00Z"),
+            merged_pull(4, "newer", "Fixes #12", "2026-08-09T11:00:00Z"),
+        ],
+        12,
+        "2026-08-09T13:00:00Z",
+    );
+    assert_eq!(
+        outcome.matched,
+        Some((4, "2026-08-09T11:00:00Z".to_owned()))
+    );
+
+    // An unresolvable tie is reported, never silently suppressed.
+    let outcome = fix_merge_disposition(
+        &[
+            merged_pull(3, "one", "Fixes #12", "2026-08-09T11:00:00Z"),
+            merged_pull(4, "two", "Fixes #12", "2026-08-09T11:00:00Z"),
+        ],
+        12,
+        "2026-08-09T10:00:00Z",
+    );
+    assert_eq!(outcome.matched, None);
+    assert!(outcome.ambiguous);
+    assert_eq!(outcome.candidates, [3, 4]);
+
+    // A plain mention still counts when no explicit closing reference exists,
+    // and `#12` never matches `#123`.
+    let outcome = fix_merge_disposition(
+        &[
+            merged_pull(5, "mention only", "see #12", "2026-08-09T11:00:00Z"),
+            merged_pull(6, "other issue", "Fixes #123", "2026-08-09T11:30:00Z"),
+        ],
+        12,
+        "2026-08-09T10:00:00Z",
+    );
+    assert_eq!(
+        outcome.matched,
+        Some((5, "2026-08-09T11:00:00Z".to_owned()))
+    );
+
+    // Zero candidates leaves the skill on its timing-only fallback.
+    let outcome = fix_merge_disposition(
+        &[merged_pull(
+            6,
+            "unrelated",
+            "Fixes #99",
+            "2026-08-09T11:00:00Z",
+        )],
+        12,
+        "2026-08-09T10:00:00Z",
+    );
+    assert_eq!(outcome.matched, None);
+    assert!(!outcome.ambiguous);
+    assert!(outcome.candidates.is_empty());
+}
+
+#[test]
+fn fix_merge_remote_reads_issue_timing_and_the_bounded_merge_history() {
+    let mut issue = audit_issue(12, "[BUG] EXON rows misclassified", "");
+    issue["created_at"] = json!("2026-08-09T09:00:00Z");
+    let pulls = json!([
+        audit_pull_request(7, "the fix", "Fixes #12", Some("2026-08-09T10:00:00Z")),
+        audit_pull_request(9, "unrelated", "Fixes #99", Some("2026-08-09T11:00:00Z")),
+    ]);
+    let server = IssueServiceStub::start([
+        IssueServiceExchange::any_json(200, issue.to_string()).expect("issue response"),
+        IssueServiceExchange::any_json(200, pulls.to_string()).expect("pull listing"),
+    ])
+    .expect("GitHub loopback");
+    let service = loopback_service(server.base_url().to_owned());
+    with_test_github_service(service, || {
+        let repository = repository_ref("o/r").expect("repository ref");
+        let report = with_github_service(async |service, cancellation| {
+            fix_merge_remote(service, cancellation, &repository, 12).await
+        })
+        .expect("typed reads succeed");
+        assert_eq!(report.created_at, "2026-08-09T09:00:00Z");
+        assert_eq!(report.closed_at, "2026-08-09T12:00:00Z");
+        assert_eq!(
+            report.outcome.matched,
+            Some((7, "2026-08-09T10:00:00Z".to_owned()))
+        );
+        assert!(!report.outcome.ambiguous);
+        assert_eq!(report.outcome.candidates, [7]);
+    });
+    let requests = server.finish().expect("recorded requests");
+    assert_eq!(requests.len(), 2);
+    assert!(requests.iter().all(|request| request.method == "GET"));
+}
+
+#[test]
+fn comment_refuses_without_authorization_before_any_network() {
+    // No loopback service exists here, so any network attempt would fail loudly.
+    assert_eq!(
+        comment(&arguments(&[
+            "--repo",
+            "o/r",
+            "--issue",
+            "7",
+            "--body-file",
+            "missing.md",
+        ])),
+        ExitCode::from(EXIT_MUTATION_REFUSED)
+    );
+}
+
+#[test]
+fn comment_proves_the_exact_read_back_and_reports_write_failures() {
+    let body = "**Additional data from PRs #1-#2:** recurrence noted\n";
+    let posted = audit_comment(body);
+    let server = IssueServiceStub::start([
+        IssueServiceExchange::any_json(201, posted.to_string()).expect("comment response"),
+        IssueServiceExchange::any_json(200, json!([posted]).to_string()).expect("comment list"),
+    ])
+    .expect("GitHub loopback");
+    let service = loopback_service(server.base_url().to_owned());
+    with_test_github_service(service, || {
+        let repository = repository_ref("o/r").expect("repository ref");
+        let authorization = authorization_request("", "", "", true);
+        let url = with_github_service(async |service, cancellation| {
+            comment_remote(service, cancellation, &authorization, &repository, 7, body).await
+        })
+        .expect("verified comment succeeds");
+        assert_eq!(url, "https://github.com/o/r/issues/7#issuecomment-11");
+    });
+    let requests = server.finish().expect("recorded requests");
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].method, "POST");
+    assert_eq!(requests[1].method, "GET");
+    let sent: Value = serde_json::from_slice(&requests[0].body.bytes).expect("comment JSON");
+    assert_eq!(sent["body"], body);
+
+    let failing =
+        IssueServiceStub::start(
+            [IssueServiceExchange::any_json(422, "{}").expect("write failure")],
+        )
+        .expect("GitHub loopback");
+    let service = loopback_service(failing.base_url().to_owned());
+    with_test_github_service(service, || {
+        let repository = repository_ref("o/r").expect("repository ref");
+        let authorization = authorization_request("", "", "", true);
+        let error = with_github_service(async |service, cancellation| {
+            comment_remote(
+                service,
+                cancellation,
+                &authorization,
+                &repository,
+                7,
+                "body",
+            )
+            .await
+        })
+        .expect_err("failed write must surface");
+        assert_eq!(error.into_detail(), "comment-write-failed");
+    });
+    let _ = failing.finish();
+}
+
+#[test]
+fn label_check_requires_an_exact_case_sensitive_match() {
+    let labels = json!([{
+        "id": 9,
+        "node_id": "L_9",
+        "url": "https://api.github.com/repos/o/r/labels/audit-report",
+        "name": "audit-report",
+        "description": "Audit reports",
+        "color": "ededed",
+        "default": false,
+    }]);
+    let server = IssueServiceStub::start([
+        IssueServiceExchange::any_json(200, labels.to_string()).expect("label list"),
+        IssueServiceExchange::any_json(200, labels.to_string()).expect("label list"),
+    ])
+    .expect("GitHub loopback");
+    let service = loopback_service(server.base_url().to_owned());
+    with_test_github_service(service, || {
+        let repository = repository_ref("o/r").expect("repository ref");
+        let present = |label: &str| {
+            with_github_service(async |service, cancellation| {
+                label_present_remote(service, cancellation, &repository, label).await
+            })
+            .expect("typed label list succeeds")
+        };
+        assert!(present("audit-report"));
+        assert!(!present("Audit-Report"));
+    });
+    assert_eq!(server.finish().expect("recorded requests").len(), 2);
+
+    let failing =
+        IssueServiceStub::start([IssueServiceExchange::any_json(422, "{}").expect("list failure")])
+            .expect("GitHub loopback");
+    let service = loopback_service(failing.base_url().to_owned());
+    with_test_github_service(service, || {
+        let repository = repository_ref("o/r").expect("repository ref");
+        let error = with_github_service(async |service, cancellation| {
+            label_present_remote(service, cancellation, &repository, "audit-report").await
+        })
+        .expect_err("failed read must surface");
+        assert!(error.into_detail().contains("gh label list failed"));
+    });
+    let _ = failing.finish();
+}
+
+#[test]
+fn version_helpers_keep_the_strict_window_contract() {
+    assert_eq!(strict_window_version("35.0.0"), Some((35, 0, 0)));
+    assert_eq!(strict_window_version("v35.0.0"), Some((35, 0, 0)));
+    assert_eq!(strict_window_version("  35.0.0  "), Some((35, 0, 0)));
+    assert_eq!(strict_window_version("34.0.0-rc1"), None);
+    assert_eq!(strict_window_version("1.2"), None);
+    assert_eq!(strict_window_version("1.2.3.4"), None);
+    assert_eq!(strict_window_version("vv1.2.3"), None);
+
+    // Numeric per-component comparison, never a naive string sort.
+    assert!(version_window_decision(Some((1, 10, 0)), "1.9.999"));
+    assert!(version_window_decision(Some((35, 0, 0)), "34.0.0, 34.0.1"));
+    // Overlap with any audited run stays in scope.
+    assert!(!version_window_decision(Some((35, 0, 0)), "34.0.0,35.0.0"));
+    // A parse gap on either side proposes.
+    assert!(!version_window_decision(Some((35, 0, 0)), "34.0.0-rc1"));
+    assert!(!version_window_decision(None, "34.0.0"));
+    // An empty audited set cannot prove post-dating.
+    assert!(!version_window_decision(Some((35, 0, 0)), ""));
+}
+
 #[test]
 fn typed_audit_resolution_rejects_each_ambiguous_or_incomplete_range() {
     let prior = audit_issue(

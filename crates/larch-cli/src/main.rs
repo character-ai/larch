@@ -802,6 +802,21 @@ enum AuditRunsCommand {
     /// Close one unambiguous prior audit report with verified read-back.
     #[command(name = "close-priors", disable_help_flag = true)]
     ClosePriors(RawCompatibilityArguments),
+    /// Search issues for proposal classification with local audit-title exclusion.
+    #[command(name = "issue-search", disable_help_flag = true)]
+    IssueSearch(RawCompatibilityArguments),
+    /// Resolve the merged PR that fixed one issue, plus the issue timing.
+    #[command(name = "fix-merge", disable_help_flag = true)]
+    FixMerge(RawCompatibilityArguments),
+    /// Resolve the first plugin-version bump after an instant from local history.
+    #[command(name = "version-window", disable_help_flag = true)]
+    VersionWindow(RawCompatibilityArguments),
+    /// Check one repository label with an exact local match.
+    #[command(name = "label-check", disable_help_flag = true)]
+    LabelCheck(RawCompatibilityArguments),
+    /// Post one supplementary comment through the shared issue-mutation owner.
+    #[command(disable_help_flag = true)]
+    Comment(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2431,6 +2446,21 @@ fn run(
             }
             AuditRunsCommand::ClosePriors(arguments) => {
                 audit_runs_commands::close_priors(&arguments.arguments)
+            }
+            AuditRunsCommand::IssueSearch(arguments) => {
+                audit_runs_commands::issue_search(&arguments.arguments)
+            }
+            AuditRunsCommand::FixMerge(arguments) => {
+                audit_runs_commands::fix_merge(&arguments.arguments)
+            }
+            AuditRunsCommand::VersionWindow(arguments) => {
+                audit_runs_commands::version_window(&arguments.arguments)
+            }
+            AuditRunsCommand::LabelCheck(arguments) => {
+                audit_runs_commands::label_check(&arguments.arguments)
+            }
+            AuditRunsCommand::Comment(arguments) => {
+                audit_runs_commands::comment(&arguments.arguments)
             }
         }),
         Domain::AnalyzeBugs(command) => Ok(match command {

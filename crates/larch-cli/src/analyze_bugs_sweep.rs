@@ -1220,7 +1220,7 @@ fn subject_and_time(repository: &GixRepository, sha: &str) -> Result<(String, i6
     ))
 }
 
-fn committer_time(repository: &GixRepository, id: &ObjectId) -> Result<i64, String> {
+pub fn committer_time(repository: &GixRepository, id: &ObjectId) -> Result<i64, String> {
     let object = repository
         .object(id)
         .map_err(|_| "malformed commit timestamp".to_owned())?

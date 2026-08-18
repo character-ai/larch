@@ -56,8 +56,7 @@ const STAGED_GUIDELINES_PATH: &str =
     "skills/implement/scripts/step-architectural-guidelines-write-staged.sh";
 const MAKEFILE_PATH: &str = "Makefile";
 const PRE_COMMIT_PATH: &str = ".pre-commit-config.yaml";
-const OTHER_DOMAIN_SKILL_PREFIXES: [&str; 2] =
-    [".claude/skills/audit-runs/", ".claude/skills/release/"];
+const OTHER_DOMAIN_SKILL_PREFIXES: [&str; 1] = [".claude/skills/release/"];
 
 /// Child-process executables a Rust crate already owns. Vendor products stay
 /// permitted; only explicit, manifest-backed boundary exceptions remain.
@@ -663,6 +662,9 @@ mod tests {
         assert!(is_developer_tooling_surface("scripts/example.sh"));
         assert!(is_developer_tooling_surface(
             ".claude/skills/larch-size/SKILL.md"
+        ));
+        assert!(is_developer_tooling_surface(
+            ".claude/skills/audit-runs/SKILL.md"
         ));
         assert!(!is_developer_tooling_surface("scripts/test-example.sh"));
         assert!(!is_developer_tooling_surface(
