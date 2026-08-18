@@ -139,6 +139,25 @@ def _drive_stalemate(root: Path) -> ProposalState:
     return state
 
 
+def _adjudicate(
+    root: Path, state: ProposalState, records: Sequence[protocol.AdjudicationRecord]
+) -> ProposalState:
+    """Adjudicate directly through the protocol machine.
+
+    ``adjudicate`` and ``adjudication-preview`` are Rust-owned after #8602, so
+    retained synthesize/publish-prepare tests assemble an adjudicated proposal
+    here rather than through the removed Python command.
+    """
+    proposal = protocol.transition(
+        state.proposal,
+        protocol.TransitionAction.ADJUDICATE,
+        adjudications=tuple(records),
+    )
+    return orchestrator.write_state(
+        root, ProposalState(state.initialization, proposal, state.active_round, state.drops)
+    )
+
+
 def _command_result(*, argv: Sequence[str], stdout: str, returncode: int = 0) -> proc.CommandResult:
     return proc.CommandResult(
         argv=tuple(argv),
@@ -199,7 +218,7 @@ def test_state_lock_refuses_a_non_regular_lock_path(tmp_path: Path) -> None:
     os.mkfifo(lock)
     try:
         with pytest.raises(DebateError) as excinfo:
-            _ = orchestrator.adjudication_preview(root=tmp_path, expected_fingerprint=state.fingerprint)
+            _ = orchestrator.publish_prepare(root=tmp_path, expected_fingerprint=state.fingerprint)
         assert excinfo.value.exit_code == config.DEBATE_EXIT_PERSISTENCE_FAILURE
     finally:
         lock.unlink()
@@ -214,150 +233,19 @@ def test_state_lock_refuses_a_symlinked_lock_path(tmp_path: Path) -> None:
     lock.symlink_to(target)
 
     with pytest.raises(DebateError) as excinfo:
-        _ = orchestrator.adjudication_preview(root=tmp_path, expected_fingerprint=state.fingerprint)
+        _ = orchestrator.publish_prepare(root=tmp_path, expected_fingerprint=state.fingerprint)
 
     assert excinfo.value.exit_code == config.DEBATE_EXIT_PERSISTENCE_FAILURE
     assert stat.S_ISLNK(lock.lstat().st_mode)
 
 
-def test_operator_adjudication_requires_exact_decision_coverage(tmp_path: Path) -> None:
-    state = _drive_stalemate(tmp_path)
-    decisions = tmp_path / "decisions.tsv"
-    _ = decisions.write_text("POINT_1\tSELECTED\tadopt approach cursor\n", encoding="utf-8")
-
-    updated, tally = orchestrator.adjudicate(
-        root=tmp_path,
-        expected_fingerprint=state.fingerprint,
-        decisions_file=decisions,
-    )
-
-    assert tally is None
-    assert updated.proposal.terminal_outcome is protocol.TerminalOutcome.CONVERGED
-    assert isinstance(updated.proposal.adjudications[0], protocol.SelectedAdjudication)
-    assert orchestrator.load_state(tmp_path).proposal == updated.proposal
-
-
-@pytest.mark.parametrize(
-    "contents",
-    [
-        "",
-        "POINT_1\tSELECTED\tadopt approach cursor\nPOINT_2\tSELECTED\textra\n",
-        "POINT_1\tSELECTED\tadopt approach cursor\nPOINT_1\tSELECTED\tadopt approach codex\n",
-        "POINT_2\tSELECTED\tforeign\n",
-        "POINT_1\tSELECTED\tfirst line\nsecond line\n",
-        "POINT_1\tSELECTED\t### NEW: forbidden\n",
-    ],
-)
-def test_operator_adjudication_rejects_invalid_handoffs(tmp_path: Path, contents: str) -> None:
-    state = _drive_stalemate(tmp_path)
-    decisions = tmp_path / "decisions.tsv"
-    _ = decisions.write_text(contents, encoding="utf-8")
-
-    with pytest.raises(DebateError) as excinfo:
-        _ = orchestrator.adjudicate(
-            root=tmp_path,
-            expected_fingerprint=state.fingerprint,
-            decisions_file=decisions,
-        )
-
-    assert excinfo.value.exit_code == config.DEBATE_EXIT_ADJUDICATION_FAILURE
-    assert orchestrator.load_state(tmp_path).fingerprint == state.fingerprint
-
-
-def test_autonomous_adjudication_uses_dispatch_voters_and_writes_local_tally(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    state = _drive_stalemate(tmp_path)
-    calls: list[list[str]] = []
-    original_run = proc.run
-
-    def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
-        if list(argv[1:3]) != ["agent", "dispatch-voters"]:
-            return original_run(argv)
-        calls.append(list(argv))
-        voter_root = tmp_path / config.DEBATE_STALEMATE_VOTER_DIRNAME
-        voter = voter_root / "voter-1.txt"
-        paths = voter_root / "voter-paths.txt"
-        _ = voter.write_text("FINDING_1: YES\nFINDING_2: NO\n", encoding="utf-8")
-        _ = paths.write_text(f"{voter}\n", encoding="utf-8")
-        return _command_result(
-            argv=argv,
-            stdout=f"VOTER_PATHS_FILE={paths}\nDISPATCH_OK=true\n",
-        )
-
-    monkeypatch.setattr(orchestrator.proc, "run", fake_run)
-    updated, tally = orchestrator.adjudicate(
-        root=tmp_path,
-        expected_fingerprint=state.fingerprint,
-        vote_stalemates=True,
-    )
-
-    assert calls
-    assert tally is not None
-    assert updated.proposal.terminal_outcome is protocol.TerminalOutcome.CONVERGED
-    tally_text = tally.read_text(encoding="utf-8")
-    assert "adopt approach cursor" in tally_text
-    assert str(tmp_path) not in tally_text
-    durable = next((tmp_path / "logs").rglob("debate-stalemate-tally.json"))
-    assert str(tmp_path) not in durable.read_text(encoding="utf-8")
-
-
-def test_autonomous_empty_panel_is_both_viable_without_operator_fallback(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    state = _drive_stalemate(tmp_path)
-
-    def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
-        paths = tmp_path / config.DEBATE_STALEMATE_VOTER_DIRNAME / "voter-paths.txt"
-        _ = paths.write_text("", encoding="utf-8")
-        return _command_result(
-            argv=argv,
-            stdout=f"VOTER_PATHS_FILE={paths}\nDISPATCH_OK=true\n",
-        )
-
-    monkeypatch.setattr(orchestrator.proc, "run", fake_run)
-    updated, tally = orchestrator.adjudicate(
-        root=tmp_path,
-        expected_fingerprint=state.fingerprint,
-        vote_stalemates=True,
-    )
-
-    assert tally is not None
-    assert updated.proposal.terminal_outcome is protocol.TerminalOutcome.BOTH_VIABLE
-    assert isinstance(updated.proposal.adjudications[0], protocol.SplitAdjudication)
-    assert orchestrator.load_state(tmp_path).proposal == updated.proposal
-
-
-def test_autonomous_adjudication_rejects_malformed_success_dispatch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    state = _drive_stalemate(tmp_path)
-
-    def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
-        return _command_result(argv=argv, stdout="DISPATCH_OK=true\n")
-
-    monkeypatch.setattr(orchestrator.proc, "run", fake_run)
-    with pytest.raises(DebateError) as excinfo:
-        _ = orchestrator.adjudicate(
-            root=tmp_path,
-            expected_fingerprint=state.fingerprint,
-            vote_stalemates=True,
-        )
-
-    assert excinfo.value.exit_code == config.DEBATE_EXIT_ADJUDICATION_FAILURE
-    assert orchestrator.load_state(tmp_path).fingerprint == state.fingerprint
-
-
 def _adjudicated_state(root: Path) -> ProposalState:
     state = _drive_stalemate(root)
-    decisions = root / "decisions.tsv"
-    _ = decisions.write_text("POINT_1\tSELECTED\tadopt approach cursor\n", encoding="utf-8")
-    updated, _ = orchestrator.adjudicate(
-        root=root,
-        expected_fingerprint=state.fingerprint,
-        decisions_file=decisions,
+    return _adjudicate(
+        root,
+        state,
+        (protocol.SelectedAdjudication(protocol.PointId(1), "adopt approach cursor"),),
     )
-    return updated
 
 
 def test_synthesize_redacts_and_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -520,32 +408,7 @@ def test_publish_prepare_is_local_and_idempotent(
 def test_new_debate_verbs_emit_machine_envelopes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    state = _drive_stalemate(tmp_path)
-    assert orchestrator.adjudication_preview_main(
-        ["--debate-tmpdir", str(tmp_path), "--expected-fingerprint", state.fingerprint]
-    ) == 0
-    preview_envelope = json.loads(capsys.readouterr().out)
-    assert preview_envelope["operation"] == "adjudication-preview"
-    preview = json.loads(Path(preview_envelope["artifact_path"]).read_text(encoding="utf-8"))
-    assert preview["points"][0]["point"] == "POINT_1"
-    assert preview["points"][0]["positions"] == [
-        "adopt approach cursor",
-        "adopt approach codex",
-    ]
-    decisions = tmp_path / "decisions.tsv"
-    _ = decisions.write_text("POINT_1\tSELECTED\tadopt approach cursor\n", encoding="utf-8")
-
-    assert orchestrator.adjudicate_main(
-        [
-            "--debate-tmpdir", str(tmp_path),
-            "--expected-fingerprint", state.fingerprint,
-            "--decisions-file", str(decisions),
-        ]
-    ) == 0
-    adjudication = json.loads(capsys.readouterr().out)
-    assert adjudication["ok"] is True
-    assert adjudication["operation"] == "adjudicate"
-    state = orchestrator.load_state(tmp_path)
+    state = _adjudicated_state(tmp_path)
     original_run = proc.run
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
@@ -580,24 +443,16 @@ def test_new_debate_verbs_emit_distinct_failure_classes(
 ) -> None:
     state = _drive_stalemate(tmp_path)
 
-    assert orchestrator.adjudicate_main(
-        ["--debate-tmpdir", str(tmp_path), "--expected-fingerprint", state.fingerprint]
-    ) == config.DEBATE_EXIT_ADJUDICATION_FAILURE
-    adjudication = json.loads(capsys.readouterr().out)
-    assert adjudication["error_class"] == config.DEBATE_ERROR_ADJUDICATION_REJECTED
-
     assert orchestrator.synthesize_main(
         ["--debate-tmpdir", str(tmp_path), "--expected-fingerprint", state.fingerprint]
     ) == config.DEBATE_EXIT_SYNTHESIS_EXHAUSTED
     synthesis = json.loads(capsys.readouterr().out)
     assert synthesis["error_class"] == config.DEBATE_ERROR_SYNTHESIS_EXHAUSTED
 
-    decisions = tmp_path / "decisions.tsv"
-    _ = decisions.write_text("POINT_1\tSELECTED\tadopt approach cursor\n", encoding="utf-8")
-    state, _ = orchestrator.adjudicate(
-        root=tmp_path,
-        expected_fingerprint=state.fingerprint,
-        decisions_file=decisions,
+    state = _adjudicate(
+        tmp_path,
+        state,
+        (protocol.SelectedAdjudication(protocol.PointId(1), "adopt approach cursor"),),
     )
     assert orchestrator.publish_prepare_main(
         ["--debate-tmpdir", str(tmp_path), "--expected-fingerprint", state.fingerprint]

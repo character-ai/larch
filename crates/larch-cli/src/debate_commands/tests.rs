@@ -10,13 +10,18 @@ mod debate_commands_tests {
     #![allow(clippy::similar_names, clippy::redundant_clone)]
 
     use super::super::{
-        DebateError, InitInputs, TurnOutcome, TurnRequest, default_runner, envelope, initialize,
-        input_file_runner, parse_args, point_values, run_abort, run_record_turn, run_round_prep,
-        strict_bool,
+        AdjudicateArgs, AdjudicationBackend, DebateError, InitInputs, TurnOutcome, TurnRequest,
+        default_runner, envelope, initialize, input_file_runner, one_dispatch_value, parse_args,
+        parse_operator_adjudication_row, point_values, run_abort, run_adjudicate,
+        run_adjudication_preview, run_record_turn, run_round_prep, strict_bool, voter_paths,
     };
     use larch_adapters::TemporaryRoot;
     use larch_core::VendorSessionHandle;
-    use larch_core::debate::{ParticipantSlot, PointId, StoredState, decode_state, encode_state};
+    use larch_core::debate::{
+        NonterminalPhase, ParticipantSlot, PointId, ReasonFingerprint, RoundNumber, RoundState,
+        SLOT_ORDER, SlotLedgerBinding, StoredState, TerminalOutcome, TransitionAction,
+        decode_state, encode_state, fingerprint_reason, parse_slot, parse_slot_ledger, transition,
+    };
     use std::collections::BTreeMap;
     use std::ffi::OsString;
     use std::path::{Path, PathBuf};
@@ -91,7 +96,7 @@ mod debate_commands_tests {
     #[test]
     fn init_produces_blind_round_1_envelope_and_canonical_state() {
         let (debate, state) = seed_init();
-        let env = envelope(true, "init", Some(&state), None, None);
+        let env = envelope(true, "init", Some(&state), None, None, None);
         assert_eq!(
             env,
             format!(
@@ -145,7 +150,7 @@ mod debate_commands_tests {
                 "prompt mismatch for {slot}"
             );
         }
-        let env = envelope(true, "round-prep", Some(&rp_state), None, None);
+        let env = envelope(true, "round-prep", Some(&rp_state), None, None, None);
         assert!(env.contains("\"operation\":\"round-prep\""));
         assert!(env.contains("\"phase\":\"BLIND_ROUND_1\""));
     }
@@ -369,7 +374,7 @@ mod debate_commands_tests {
                 .map(larch_core::debate::TerminalOutcome::as_str),
             Some("CONVERGED")
         );
-        let env = envelope(true, "record-turn", Some(&second.state), None, None);
+        let env = envelope(true, "record-turn", Some(&second.state), None, None, None);
         assert!(env.contains("\"terminal_outcome\":\"CONVERGED\""));
         assert!(env.contains("\"ok\":true"));
         assert!(env.contains("\"slot_result\":null"));
@@ -403,6 +408,7 @@ mod debate_commands_tests {
             Some(&outcome.state),
             outcome.slot_result,
             outcome.slot_result,
+            None,
         );
         assert!(env.contains("\"slot_result\":\"runner_failure\""));
         assert!(env.contains("\"error_class\":\"runner_failure\""));
@@ -542,5 +548,335 @@ mod debate_commands_tests {
         let error = run_abort(&abort_args(&debate, &fingerprint)).expect_err("conflict");
         assert_eq!(error.error_class, "persistence_failure");
         assert_eq!(error.exit_code, 5);
+    }
+
+    // -----------------------------------------------------------------------
+    // adjudication-preview and adjudicate parity
+    // -----------------------------------------------------------------------
+
+    /// Submit one HOLD round directly through the protocol machine (mirrors the
+    /// Python `_submit_round` test helper for a two-slot live panel).
+    fn submit_hold_round(debate: &Path, round_number: i64) -> StoredState {
+        let state = larch_cli::debate_state::load_state(debate).expect("load state");
+        let needles: Vec<&str> = state
+            .proposal
+            .run_local_values()
+            .iter()
+            .map(String::as_str)
+            .collect();
+        let positions = [
+            ("cursor", "adopt approach cursor"),
+            ("codex", "adopt approach codex"),
+        ];
+        let mut bindings: Vec<SlotLedgerBinding> = Vec::new();
+        for slot in SLOT_ORDER {
+            if let Some((_, reason)) = positions.iter().find(|(name, _)| *name == slot) {
+                let ledger =
+                    parse_slot_ledger(&format!("POINT POINT_1 HOLD {reason}")).expect("ledger");
+                let fingerprints: Vec<ReasonFingerprint> = ledger
+                    .rows
+                    .iter()
+                    .map(|row| fingerprint_reason(&row.reason, &needles))
+                    .collect::<Result<_, _>>()
+                    .expect("fingerprints");
+                let participant = parse_slot(slot).expect("slot");
+                bindings.push(
+                    SlotLedgerBinding::new(participant, ledger, fingerprints, &needles)
+                        .expect("binding"),
+                );
+            }
+        }
+        let number = if round_number == 1 {
+            RoundNumber::Round1
+        } else {
+            RoundNumber::Round2
+        };
+        let round = RoundState::new(number, bindings).expect("round");
+        let proposal = transition(
+            &state.proposal,
+            TransitionAction::SubmitRound,
+            Some(&round),
+            None,
+        )
+        .expect("submit round");
+        let stored = StoredState {
+            proposal,
+            active_round: None,
+            fingerprint: String::new(),
+            ..state
+        };
+        larch_cli::debate_state::write_state(debate, &stored).expect("write state")
+    }
+
+    /// Seed an initialized debate driven to `AWAITING_ADJUDICATION` over one
+    /// unresolved point with two competing HOLD positions.
+    fn seed_stalemate() -> (PathBuf, String) {
+        let debate = unique_dir("root");
+        let work = unique_dir("work");
+        let log = unique_dir("log");
+        let mut inputs = init_inputs(&debate, &work, &log);
+        inputs.claude = false;
+        inputs.point_universe = vec![PointId::new(1).unwrap()];
+        let _state = initialize(&inputs, &fake_bootstrap).expect("init succeeds");
+        let _round_one = submit_hold_round(&debate, 1);
+        let state = submit_hold_round(&debate, 2);
+        assert_eq!(
+            state.proposal.phase(),
+            Some(NonterminalPhase::AwaitingAdjudication)
+        );
+        (debate, state.fingerprint)
+    }
+
+    fn adjudicate_args(
+        debate: &Path,
+        fingerprint: &str,
+        decisions_file: Option<&Path>,
+        vote_stalemates: bool,
+    ) -> AdjudicateArgs {
+        AdjudicateArgs {
+            debate_tmpdir: debate.to_string_lossy().into_owned(),
+            expected_fingerprint: fingerprint.to_owned(),
+            decisions_file: decisions_file.map(|path| path.to_string_lossy().into_owned()),
+            vote_stalemates,
+        }
+    }
+
+    fn panic_dispatch(
+        _root: &Path,
+        _state: &StoredState,
+        _ballot: &Path,
+    ) -> Result<(Vec<PathBuf>, String), DebateError> {
+        panic!("operator adjudication must not dispatch voters");
+    }
+
+    fn panic_run_log(_state: &StoredState, _input: &Path) -> Result<(), DebateError> {
+        panic!("operator adjudication must not write a run log");
+    }
+
+    #[test]
+    fn adjudication_preview_writes_canonical_bytes() {
+        let (debate, fingerprint) = seed_stalemate();
+        let parsed = BTreeMap::from([
+            (
+                "--debate-tmpdir".to_owned(),
+                debate.to_string_lossy().into_owned(),
+            ),
+            ("--expected-fingerprint".to_owned(), fingerprint.clone()),
+        ]);
+        let (state, artifact) = run_adjudication_preview(&parsed).expect("preview succeeds");
+        // Preview never mutates the debate state.
+        assert_eq!(state.fingerprint, fingerprint);
+        let bytes = std::fs::read_to_string(&artifact).expect("preview artifact");
+        assert_eq!(
+            bytes,
+            "{\"points\":[{\"point\":\"POINT_1\",\"positions\":[\"adopt approach cursor\",\"adopt approach codex\"]}]}\n"
+        );
+        let env = envelope(
+            true,
+            "adjudication-preview",
+            Some(&state),
+            None,
+            None,
+            Some(&artifact),
+        );
+        assert!(env.contains(&format!("\"artifact_path\":\"{}\"", artifact.display())));
+        assert!(env.contains("\"operation\":\"adjudication-preview\""));
+    }
+
+    /// Write a decisions handoff under the canonical debate root so confinement
+    /// accepts it even when the OS temp dir is symlinked (macOS `/var`).
+    fn write_decisions(debate: &Path, contents: &str) -> PathBuf {
+        let root = TemporaryRoot::resolve(Some(debate)).expect("root");
+        let decisions = root.path().join("decisions.tsv");
+        std::fs::write(&decisions, contents).expect("decisions");
+        decisions
+    }
+
+    #[test]
+    fn operator_adjudicate_reaches_converged() {
+        let (debate, fingerprint) = seed_stalemate();
+        let decisions = write_decisions(&debate, "POINT_1\tSELECTED\tadopt approach cursor\n");
+        let backend = AdjudicationBackend {
+            dispatch: &panic_dispatch,
+            run_log: &panic_run_log,
+        };
+        let (state, tally) = run_adjudicate(
+            &adjudicate_args(&debate, &fingerprint, Some(&decisions), false),
+            &backend,
+        )
+        .expect("operator adjudicate");
+        assert!(tally.is_none());
+        assert_eq!(
+            state
+                .proposal
+                .terminal_outcome()
+                .map(TerminalOutcome::as_str),
+            Some("CONVERGED")
+        );
+        // The persisted state advances to the adjudicated proposal.
+        let reloaded = larch_cli::debate_state::load_state(&debate).expect("reload");
+        assert_eq!(reloaded.fingerprint, state.fingerprint);
+        let env = envelope(true, "adjudicate", Some(&state), None, None, None);
+        assert!(env.contains("\"artifact_path\":null"));
+        assert!(env.contains("\"operation\":\"adjudicate\""));
+    }
+
+    #[test]
+    fn operator_adjudicate_rejects_malformed_handoff() {
+        let (debate, fingerprint) = seed_stalemate();
+        let decisions = write_decisions(&debate, "POINT_2\tSELECTED\tforeign\n");
+        let backend = AdjudicationBackend {
+            dispatch: &panic_dispatch,
+            run_log: &panic_run_log,
+        };
+        let error = run_adjudicate(
+            &adjudicate_args(&debate, &fingerprint, Some(&decisions), false),
+            &backend,
+        )
+        .expect_err("must reject");
+        assert_eq!(error.error_class, "adjudication_rejected");
+        assert_eq!(error.exit_code, 8);
+        let reloaded = larch_cli::debate_state::load_state(&debate).expect("reload");
+        assert_eq!(reloaded.fingerprint, fingerprint);
+    }
+
+    #[test]
+    fn autonomous_adjudicate_dispatch_and_tally() {
+        let (debate, fingerprint) = seed_stalemate();
+        let dispatch = |root_path: &Path,
+                        _state: &StoredState,
+                        _ballot: &Path|
+         -> Result<(Vec<PathBuf>, String), DebateError> {
+            let voter_dir = root_path.join("stalemate-voters");
+            std::fs::write(
+                voter_dir.join("voter-1.txt"),
+                "FINDING_1: YES\nFINDING_2: NO\n",
+            )
+            .expect("voter output");
+            Ok((
+                vec![PathBuf::from("voter-1.txt")],
+                "DISPATCH_OK=true\n".to_owned(),
+            ))
+        };
+        let run_log = |_state: &StoredState, _input: &Path| -> Result<(), DebateError> { Ok(()) };
+        let backend = AdjudicationBackend {
+            dispatch: &dispatch,
+            run_log: &run_log,
+        };
+        let (state, tally) = run_adjudicate(
+            &adjudicate_args(&debate, &fingerprint, None, true),
+            &backend,
+        )
+        .expect("autonomous adjudicate");
+        assert_eq!(
+            state
+                .proposal
+                .terminal_outcome()
+                .map(TerminalOutcome::as_str),
+            Some("CONVERGED")
+        );
+        let tally_path = tally.expect("tally artifact");
+        let tally_text = std::fs::read_to_string(&tally_path).expect("tally file");
+        assert!(tally_text.contains("adopt approach cursor"));
+        // The tally never leaks the debate tmpdir path.
+        assert!(!tally_text.contains(&debate.to_string_lossy().into_owned()));
+        let env = envelope(
+            true,
+            "adjudicate",
+            Some(&state),
+            None,
+            None,
+            Some(&tally_path),
+        );
+        assert!(env.contains(&format!("\"artifact_path\":\"{}\"", tally_path.display())));
+    }
+
+    #[test]
+    fn autonomous_empty_panel_is_both_viable() {
+        let (debate, fingerprint) = seed_stalemate();
+        let dispatch = |_root: &Path,
+                        _state: &StoredState,
+                        _ballot: &Path|
+         -> Result<(Vec<PathBuf>, String), DebateError> {
+            Ok((Vec::new(), "DISPATCH_OK=true\n".to_owned()))
+        };
+        let run_log = |_state: &StoredState, _input: &Path| -> Result<(), DebateError> { Ok(()) };
+        let backend = AdjudicationBackend {
+            dispatch: &dispatch,
+            run_log: &run_log,
+        };
+        let (state, tally) = run_adjudicate(
+            &adjudicate_args(&debate, &fingerprint, None, true),
+            &backend,
+        )
+        .expect("autonomous adjudicate");
+        assert!(tally.is_some());
+        assert_eq!(
+            state
+                .proposal
+                .terminal_outcome()
+                .map(TerminalOutcome::as_str),
+            Some("BOTH_VIABLE")
+        );
+    }
+
+    #[test]
+    fn autonomous_rejects_dispatch_failure() {
+        let (debate, fingerprint) = seed_stalemate();
+        let dispatch = |_root: &Path,
+                        _state: &StoredState,
+                        _ballot: &Path|
+         -> Result<(Vec<PathBuf>, String), DebateError> {
+            Err(DebateError::adjudication_rejected())
+        };
+        let run_log = |_state: &StoredState, _input: &Path| -> Result<(), DebateError> {
+            panic!("dispatch failure must abort before the run log")
+        };
+        let backend = AdjudicationBackend {
+            dispatch: &dispatch,
+            run_log: &run_log,
+        };
+        let error = run_adjudicate(
+            &adjudicate_args(&debate, &fingerprint, None, true),
+            &backend,
+        )
+        .expect_err("must reject");
+        assert_eq!(error.error_class, "adjudication_rejected");
+        let reloaded = larch_cli::debate_state::load_state(&debate).expect("reload");
+        assert_eq!(reloaded.fingerprint, fingerprint);
+    }
+
+    #[test]
+    fn adjudicate_rejects_mutually_exclusive_modes() {
+        let (debate, fingerprint) = seed_stalemate();
+        let decisions = write_decisions(&debate, "POINT_1\tSELECTED\tadopt approach cursor\n");
+        let backend = AdjudicationBackend {
+            dispatch: &panic_dispatch,
+            run_log: &panic_run_log,
+        };
+        let error = run_adjudicate(
+            &adjudicate_args(&debate, &fingerprint, Some(&decisions), true),
+            &backend,
+        )
+        .expect_err("mutually exclusive");
+        assert_eq!(error.error_class, "adjudication_rejected");
+    }
+
+    #[test]
+    fn operator_row_and_dispatch_kv_parse() {
+        assert!(parse_operator_adjudication_row("POINT_1\tSELECTED").is_err());
+        assert!(parse_operator_adjudication_row("POINT_1\tSPLIT\tfirst\tsecond").is_ok());
+        assert!(parse_operator_adjudication_row("POINT_0\tSELECTED\tx").is_err());
+        assert_eq!(one_dispatch_value("K=v\n", "K"), Some("v".to_owned()));
+        assert_eq!(one_dispatch_value("K=v\nK=w\n", "K"), None);
+        assert_eq!(one_dispatch_value("", "K"), None);
+    }
+
+    #[test]
+    fn voter_paths_requires_paths_file_key() {
+        let dir = unique_dir("voters");
+        let root = TemporaryRoot::resolve(Some(&dir)).expect("root");
+        let error = voter_paths(&root, "DISPATCH_OK=true\n").expect_err("missing key");
+        assert_eq!(error.error_class, "adjudication_rejected");
     }
 }

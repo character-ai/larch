@@ -1058,6 +1058,12 @@ enum DebateCommand {
     /// Abort a debate and write the tracking-issue restore handoff.
     #[command(disable_help_flag = true)]
     Abort(RawCompatibilityArguments),
+    /// Write the redacted operator adjudication preview.
+    #[command(name = "adjudication-preview", disable_help_flag = true)]
+    AdjudicationPreview(RawCompatibilityArguments),
+    /// Adjudicate unresolved points via operator decisions or voter tally.
+    #[command(name = "adjudicate", disable_help_flag = true)]
+    Adjudicate(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2038,6 +2044,12 @@ fn run(
                 debate_commands::record_turn(&arguments.arguments)
             }
             DebateCommand::Abort(arguments) => debate_commands::abort(&arguments.arguments),
+            DebateCommand::AdjudicationPreview(arguments) => {
+                debate_commands::adjudication_preview(&arguments.arguments)
+            }
+            DebateCommand::Adjudicate(arguments) => {
+                debate_commands::adjudicate(&arguments.arguments)
+            }
         }),
         Domain::Deps(command) => Ok(match command {
             DepsCommand::ResolveRepo(arguments) => {
