@@ -32,6 +32,7 @@ use larch_core::report::{
 };
 use larch_core::{
     ParseOptions, RepositoryRead, bounded_ascii_identifier, parse_single_kv_row, python_str,
+    sorted_paths_with_name_prefix,
 };
 use serde_json::Value;
 use std::ffi::OsString;
@@ -1116,18 +1117,12 @@ fn report_lane(root: &Path) -> Result<String, String> {
         BTreeMap::from([("research", 0), ("validation", 0)]);
     let mut unknown: BTreeMap<&'static str, u64> =
         BTreeMap::from([("research", 0), ("validation", 0)]);
-    let mut entries = fs::read_dir(root)
-        .map_err(|error| error.to_string())?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("lane-tokens-"))
-                && path.extension().is_some_and(|ext| ext == "txt")
-        })
-        .collect::<Vec<_>>();
-    entries.sort();
+    let entries = sorted_paths_with_name_prefix(
+        fs::read_dir(root).map_err(|error| error.to_string())?,
+        "lane-tokens-",
+    )
+    .into_iter()
+    .filter(|path| path.extension().is_some_and(|ext| ext == "txt"));
     for sidecar in entries {
         let Ok(rows) = read_kv_raw(&sidecar) else {
             continue;

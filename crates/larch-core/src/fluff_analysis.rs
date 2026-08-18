@@ -233,14 +233,7 @@ pub fn parse_larch_version_tuple(raw: &str) -> Option<(u64, u64, u64)> {
 // --------------------------------------------------------------------------
 
 fn py_truthy(value: &Value) -> bool {
-    match value {
-        Value::Null | Value::Bool(false) => false,
-        Value::Bool(true) => true,
-        Value::Number(number) => number.as_f64().is_some_and(|value| value != 0.0),
-        Value::String(text) => !text.is_empty(),
-        Value::Array(items) => !items.is_empty(),
-        Value::Object(fields) => !fields.is_empty(),
-    }
+    crate::review::python_truthy_of_json(value)
 }
 
 fn py_str(value: &Value) -> String {
@@ -924,21 +917,27 @@ fn round_from_text(text: &str) -> String {
         .map_or_else(String::new, |captures| captures[1].to_owned())
 }
 
-fn round_dir_names(run_dir: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = fs::read_dir(run_dir) else {
-        return Vec::new();
-    };
+/// Return the sorted direct-child paths whose file name starts with `prefix`.
+#[must_use]
+pub fn sorted_paths_with_name_prefix(entries: fs::ReadDir, prefix: &str) -> Vec<PathBuf> {
     let mut paths: Vec<PathBuf> = entries
         .filter_map(Result::ok)
         .map(|entry| entry.path())
         .filter(|path| {
             path.file_name()
                 .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("round-"))
+                .is_some_and(|name| name.starts_with(prefix))
         })
         .collect();
     paths.sort();
     paths
+}
+
+fn round_dir_names(run_dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(run_dir) else {
+        return Vec::new();
+    };
+    sorted_paths_with_name_prefix(entries, "round-")
 }
 
 fn run_has_multiple_rounds(run_dir: &Path) -> bool {
@@ -1364,17 +1363,7 @@ fn session_design_dirs(sessions_dir: &Path) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(sessions_dir) else {
         return Vec::new();
     };
-    let mut paths: Vec<PathBuf> = entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("claude-design-"))
-        })
-        .collect();
-    paths.sort();
-    paths
+    sorted_paths_with_name_prefix(entries, "claude-design-")
 }
 
 fn file_mtime_seconds(path: &Path) -> Option<f64> {

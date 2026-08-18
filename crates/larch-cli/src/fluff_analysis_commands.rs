@@ -10,9 +10,8 @@ use std::{env, ffi::OsString, fs, path::PathBuf, process::ExitCode};
 use larch_core::{FluffOptions, parse_cutoff_text, parse_larch_version_tuple};
 
 use crate::{
-    argparse_compat::{parse_with_flags, python_repr, usage_error, write_stdout},
-    run_log_commands,
-    run_log_publication_commands::{preflight_error, synchronized_corpus_root},
+    argparse_compat::{optional_out_path, parse_with_flags, python_repr, usage_error, write_stdout},
+    run_log_publication_commands::{synchronized_corpus_root, synchronized_repository_root},
 };
 
 const PROGRAM: &str = "fluff-analysis analyze";
@@ -124,11 +123,7 @@ pub fn analyze(arguments: &[OsString]) -> ExitCode {
         post_only_tags: parsed.flag("--post-only-tags"),
     });
 
-    let output = parsed
-        .value("--out")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from);
-    let Some(output) = output else {
+    let Some(output) = optional_out_path(&parsed) else {
         return write_stdout(&report);
     };
     if let Err(error) = fs::write(&output, report) {
@@ -243,19 +238,7 @@ fn default_sessions_dir() -> PathBuf {
 }
 
 fn default_log_root() -> Result<PathBuf, String> {
-    let (repo_root, _origin, _environment) =
-        run_log_commands::resolve_repository_environment_path(None).map_err(|error| {
-            let message = preflight_error(&error);
-            if message.starts_with("could not discover a Git repository root") {
-                "could not discover a Git repository root for run-log synchronization".to_owned()
-            } else {
-                message
-            }
-        })?;
-    let repo_root = fs::canonicalize(repo_root).map_err(|_| {
-        "could not discover a Git repository root for run-log synchronization".to_owned()
-    })?;
-    synchronized_corpus_root(&repo_root)
+    synchronized_corpus_root(&synchronized_repository_root()?)
 }
 
 #[cfg(test)]

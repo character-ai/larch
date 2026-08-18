@@ -2418,14 +2418,7 @@ fn version_numbers(value: &str) -> Vec<u64> {
 }
 
 fn strict_version_tuple(value: &str) -> Option<(u64, u64, u64)> {
-    let captures = Regex::new(r"^(\d+)\.(\d+)\.(\d+)$")
-        .expect("strict version regex")
-        .captures(value.trim())?;
-    Some((
-        captures[1].parse().ok()?,
-        captures[2].parse().ok()?,
-        captures[3].parse().ok()?,
-    ))
+    larch_core::parse_larch_version_tuple(value)
 }
 
 fn changelog_scan(run_dir: &Path, pr: u64, name: &str) -> Value {

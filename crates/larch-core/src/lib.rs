@@ -190,7 +190,7 @@ pub use external_defaults::{
 };
 pub use fluff_analysis::{
     FluffOptions, PyTimestamp, fluff_analysis_report, parse_cutoff_text, parse_larch_version_tuple,
-    parse_python_isoformat,
+    parse_python_isoformat, sorted_paths_with_name_prefix,
 };
 pub use git::{
     Change, ChangeKind, ChangeSet, Commit, ConfigKey, ConfigScope, ConfigValue, ConflictKind,

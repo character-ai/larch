@@ -75,7 +75,8 @@ pub use types::{
     code_review_classification_required_fields, count_non_security_blocks, finding_dedup_key,
     finding_scope_set, focus_area_set, is_canonical_heading, is_oos_eligible_block,
     is_security_block_text, parse_blocks, parse_canonical_heading, parse_findings,
-    parse_findings_text, python_str_of_json, read_finding_text, render_wire_values,
+    parse_findings_text, python_str_of_json, python_truthy_of_json, read_finding_text,
+    render_wire_values,
 };
 pub use voting::{
     FINDINGS_CLASSIFICATION_HEADER, ParsedJudgeVote, TallyRecordFields, accept_finding,
