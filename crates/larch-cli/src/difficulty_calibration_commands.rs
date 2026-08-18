@@ -4,7 +4,9 @@ use std::{collections::BTreeMap, env, ffi::OsString, path::PathBuf, process::Exi
 
 use crate::{
     analysis_state,
-    argparse_compat::{optional_out_path, parse_required_with_help, write_report_file, write_stdout},
+    argparse_compat::{
+        optional_out_path, parse_required_with_help, write_report_file, write_stdout,
+    },
     run_log_commands,
     run_log_publication_commands::{
         preflight_error, synchronized_corpus_root, synchronized_repository_root,

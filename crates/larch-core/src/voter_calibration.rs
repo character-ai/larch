@@ -223,8 +223,7 @@ pub fn classification_tsv_schema_supported(text: &str, panel_kind: &str) -> bool
     if header.is_empty() {
         return false;
     }
-    let header_set: std::collections::BTreeSet<&str> =
-        header.iter().map(String::as_str).collect();
+    let header_set: std::collections::BTreeSet<&str> = header.iter().map(String::as_str).collect();
     match panel.as_str() {
         "design" => DESIGN_REQUIRED
             .iter()
@@ -232,7 +231,9 @@ pub fn classification_tsv_schema_supported(text: &str, panel_kind: &str) -> bool
         "code-review" => {
             let compact = code_review_classification_required_fields(false, false);
             let tool = code_review_classification_required_fields(true, true);
-            compact.iter().all(|field| header_set.contains(field.as_str()))
+            compact
+                .iter()
+                .all(|field| header_set.contains(field.as_str()))
                 || tool.iter().all(|field| header_set.contains(field.as_str()))
         }
         _ => false,
@@ -275,8 +276,7 @@ fn classification_row_preps(text: &str, panel_kind: &str) -> Vec<RowPrep> {
     if header.is_empty() {
         return Vec::new();
     }
-    let header_set: std::collections::BTreeSet<&str> =
-        header.iter().map(String::as_str).collect();
+    let header_set: std::collections::BTreeSet<&str> = header.iter().map(String::as_str).collect();
     let label_compact = panel == "code-review"
         && !(1..=3).any(|pos| header_set.contains(format!("v{pos}_tool").as_str()));
     rows.into_iter()
@@ -285,7 +285,9 @@ fn classification_row_preps(text: &str, panel_kind: &str) -> Vec<RowPrep> {
                 .map(|pos| {
                     (
                         voter_label(&row, pos, &panel, label_compact),
-                        row.get(&format!("v{pos}_vote")).cloned().unwrap_or_default(),
+                        row.get(&format!("v{pos}_vote"))
+                            .cloned()
+                            .unwrap_or_default(),
                     )
                 })
                 .collect();
@@ -360,11 +362,7 @@ pub fn voter_agreement_row_from_panel(
 pub fn voter_agreement_rows_from_tsv(text: &str, panel_kind: &str) -> VoterAgreementTsvParse {
     let mut parse = VoterAgreementTsvParse::default();
     for prep in classification_row_preps(text, panel_kind) {
-        let voting_result = prep
-            .row
-            .get("voting_result")
-            .cloned()
-            .unwrap_or_default();
+        let voting_result = prep.row.get("voting_result").cloned().unwrap_or_default();
         if let Some(row) = voter_agreement_row_from_panel(
             &voting_result,
             &prep.voter_votes,
@@ -560,8 +558,10 @@ pub fn compute_voter_severity_distribution(
             #[allow(clippy::cast_precision_loss)] // Vote counts stay far below 2^52.
             let high_rate = record.major as f64 / record.valid_yes_severity_count as f64;
             record.high_rate = Some(high_rate);
-            record.calibration_score =
-                Some(severity_calibration_score(high_rate, high_severity_threshold));
+            record.calibration_score = Some(severity_calibration_score(
+                high_rate,
+                high_severity_threshold,
+            ));
             record.uncalibrated = high_rate > high_severity_threshold;
         }
     }
@@ -1088,7 +1088,8 @@ mod tests {
 
     #[test]
     fn oos_scoped_rows_stay_out_of_false_negative_totals() {
-        let header = "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv2_vote\tv3_vote\tscope";
+        let header =
+            "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv2_vote\tv3_vote\tscope";
         let text = format!(
             "{header}\nF1\tR\tneutral\tYES\tNO\tNO\t\nF2\tR\tneutral\tYES\tNO\tNO\toos\nOOS_3\tR\tneutral\tYES\tNO\tNO\t\n"
         );

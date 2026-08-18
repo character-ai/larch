@@ -28,7 +28,7 @@ use larch_core::{
 use crate::{
     analyze_issues_commands::{
         AnalysisIssue, FiledOos, fetch, fetch_filed_issue_details, fetch_incentive_issue,
-        filed_oos_records, ground_truth_report, load_issues,
+        filed_oos_records, ground_truth_report, load_issues, merge_issue_detail,
     },
     argparse_compat::{
         parse_python_int, parse_with_flags, python_repr, usage_error, write_report_file,
@@ -137,7 +137,11 @@ pub fn analyze(arguments: &[OsString]) -> ExitCode {
     emit_report(&options.out, &report)
 }
 
-fn era_report(options: &AnalyzeOptions, log_root: &Path, discovered: &[DiscoveredFile]) -> ExitCode {
+fn era_report(
+    options: &AnalyzeOptions,
+    log_root: &Path,
+    discovered: &[DiscoveredFile],
+) -> ExitCode {
     let boundary = match resolve_era_boundary(options) {
         Ok(boundary) => boundary,
         Err(code) => return code,
@@ -355,7 +359,8 @@ fn discover(log_root: &Path) -> Vec<DiscoveredFile> {
         ("review", "code-review"),
     ] {
         let corpus = RunLogCorpus::new(log_root.join(skill));
-        for (run_dir, path) in corpus.classification_paths_without_manifest(skill, RunLogRoundSort::Lexical)
+        for (run_dir, path) in
+            corpus.classification_paths_without_manifest(skill, RunLogRoundSort::Lexical)
         {
             files.push(DiscoveredFile {
                 panel,
@@ -581,8 +586,7 @@ fn load_filed_issue_details(
         std::io::ErrorKind::PermissionDenied => "PermissionError",
         _ => "OSError",
     })?;
-    let value: serde_json::Value =
-        serde_json::from_slice(&bytes).map_err(|_| "JSONDecodeError")?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| "JSONDecodeError")?;
     let Some(rows) = value.as_object() else {
         return Err("SystemExit");
     };
@@ -630,10 +634,7 @@ fn load_realized_outcomes_section(
         {
             continue;
         }
-        let Some(number) = record
-            .number
-            .or_else(|| number_from_issue_url(&record.url))
-        else {
+        let Some(number) = record.number.or_else(|| number_from_issue_url(&record.url)) else {
             continue;
         };
         let _ = candidate_numbers.insert(number);
@@ -683,16 +684,12 @@ fn load_realized_outcomes_section(
                 details = loaded_details;
             }
             Err(name) => {
-                return realized_outcomes_skip(&format!(
-                    "filed_issue_details_unavailable:{name}"
-                ));
+                return realized_outcomes_skip(&format!("filed_issue_details_unavailable:{name}"));
             }
         }
     }
-    if issues.is_empty() && !details.is_empty() {
-        issues = details.values().cloned().collect();
-    }
-    if issues.is_empty() && details.is_empty() {
+    issues = merge_filed_details(&issues, &details);
+    if issues.is_empty() {
         let targeted = if targeted_fetch_degraded.is_some() {
             "targeted_fetch_failed"
         } else {
@@ -710,6 +707,34 @@ fn load_realized_outcomes_section(
     )
 }
 
+/// Fold targeted filed-issue details into the bulk snapshot the way the frozen
+/// Python `_merged_issue_index` did: a detail wins field-wise for its own
+/// number, and a detail-only number joins the corpus. Without this the
+/// targeted fetch would pay for issues the report never sees.
+fn merge_filed_details(
+    bulk: &[AnalysisIssue],
+    details: &BTreeMap<u64, AnalysisIssue>,
+) -> Vec<AnalysisIssue> {
+    let mut merged: Vec<AnalysisIssue> = bulk
+        .iter()
+        .map(|issue| {
+            details.get(&issue.summary.number).map_or_else(
+                || issue.clone(),
+                |detail| merge_issue_detail(Some(issue), detail),
+            )
+        })
+        .collect();
+    let known: std::collections::BTreeSet<u64> =
+        bulk.iter().map(|issue| issue.summary.number).collect();
+    merged.extend(
+        details
+            .iter()
+            .filter(|(number, _detail)| !known.contains(number))
+            .map(|(_number, detail)| detail.clone()),
+    );
+    merged
+}
+
 /// Normalize a raw `--out` argument the way `str(pathlib.Path(raw))` does.
 fn python_path_display(raw: &str) -> String {
     let absolute = raw.starts_with('/');
@@ -718,7 +743,11 @@ fn python_path_display(raw: &str) -> String {
         .filter(|segment| !segment.is_empty() && *segment != ".")
         .collect();
     if segments.is_empty() {
-        return if absolute { "/".to_owned() } else { ".".to_owned() };
+        return if absolute {
+            "/".to_owned()
+        } else {
+            ".".to_owned()
+        };
     }
     let joined = segments.join("/");
     if absolute {
@@ -740,16 +769,18 @@ fn emit_report(out: &str, report: &str) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoundaryOutcome, date_shape_matches, parse_python_float, python_isoformat_z,
-        python_path_display, repo_from_issue_url, resolve_era_boundary_auto,
+        BoundaryOutcome, date_shape_matches, merge_filed_details, parse_python_float,
+        python_isoformat_z, python_path_display, repo_from_issue_url, resolve_era_boundary_auto,
         resolve_incentive_repo,
     };
+    use crate::analyze_issues_commands::AnalysisIssue;
     use crate::argparse_compat::parse_python_int;
     use crate::github_service::with_test_github_service;
     use chrono::{TimeZone as _, Utc};
     use larch_adapters::github::OctocrabGitHubService;
     use larch_test_support::{IssueServiceExchange, IssueServiceStub};
     use serde_json::json;
+    use std::collections::BTreeMap;
     use std::sync::Arc;
 
     fn incentive_fixture(state: &str, closed_at: Option<&str>) -> serde_json::Value {
@@ -791,9 +822,7 @@ mod tests {
         .expect("closure exchange")
     }
 
-    fn boundary_with_service(
-        exchanges: Vec<IssueServiceExchange>,
-    ) -> (BoundaryOutcome, usize) {
+    fn boundary_with_service(exchanges: Vec<IssueServiceExchange>) -> (BoundaryOutcome, usize) {
         let server = IssueServiceStub::start(exchanges).expect("server");
         let base = server.base_url().to_owned();
         let service: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
@@ -917,7 +946,47 @@ mod tests {
             repo_from_issue_url("https://GitHub.com/Example/Larch/Issues/5461"),
             Some("Example/Larch".to_owned())
         );
-        assert_eq!(repo_from_issue_url("https://github.com/example/larch/pull/1"), None);
+        assert_eq!(
+            repo_from_issue_url("https://github.com/example/larch/pull/1"),
+            None
+        );
+    }
+
+    #[test]
+    fn targeted_details_reach_the_realized_outcome_corpus() {
+        let bulk = vec![
+            AnalysisIssue::from_value(&json!({"number": 1, "title": "bulk one", "state": "OPEN"}))
+                .expect("bulk issue"),
+        ];
+        let mut details: BTreeMap<u64, AnalysisIssue> = BTreeMap::new();
+        let _ = details.insert(
+            1,
+            AnalysisIssue::from_value(&json!({"number": 1, "state": "CLOSED"}))
+                .expect("targeted detail"),
+        );
+        let _ = details.insert(
+            7,
+            AnalysisIssue::from_value(&json!({"number": 7, "title": "detail only"}))
+                .expect("detail-only issue"),
+        );
+
+        let merged = merge_filed_details(&bulk, &details);
+
+        let numbers: Vec<u64> = merged.iter().map(|issue| issue.summary.number).collect();
+        assert_eq!(
+            numbers,
+            [1, 7],
+            "a detail-only filed issue joins the corpus"
+        );
+        assert_eq!(
+            merged[0].summary.title, "bulk one",
+            "a field the targeted response omitted keeps the bulk value"
+        );
+        assert_eq!(
+            merged[0].summary.state,
+            larch_core::IssueLifecycle::Closed,
+            "the targeted response wins for the fields it supplied"
+        );
     }
 
     #[test]

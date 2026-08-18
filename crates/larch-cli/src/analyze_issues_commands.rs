@@ -1919,7 +1919,10 @@ fn fate_adjusted_oos(
     lines.join("\n")
 }
 
-fn merge_issue_detail(current: Option<&AnalysisIssue>, detail: &AnalysisIssue) -> AnalysisIssue {
+pub fn merge_issue_detail(
+    current: Option<&AnalysisIssue>,
+    detail: &AnalysisIssue,
+) -> AnalysisIssue {
     let Some(current) = current else {
         return detail.clone();
     };

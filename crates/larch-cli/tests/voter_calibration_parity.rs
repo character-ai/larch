@@ -440,7 +440,12 @@ fn voter_calibration_analyze_has_frozen_black_box_parity() {
         ),
         parity_case(
             "voter-calibration-out",
-            &["--log-root", "{sandbox}/logs", "--out", "{sandbox}/report.md"],
+            &[
+                "--log-root",
+                "{sandbox}/logs",
+                "--out",
+                "{sandbox}/report.md",
+            ],
             core.clone(),
             &fixtures,
         ),
