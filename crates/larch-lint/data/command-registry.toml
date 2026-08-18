@@ -8597,6 +8597,20 @@ clean_install_test = "clean-install-verify-skill-called"
 
 [[commands]]
 domain = "voter-calibration"
+verb = "analyze"
+python_module = "voter_calibration"
+python_function = "main"
+machine_stdout = false
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7684
+migration_issue = 8672
+clean_install_test = "clean-install-voter-calibration-analyze"
+
+[[commands]]
+domain = "voter-calibration"
 verb = "snapshot"
 python_module = "larch.review.voting"
 python_function = "voter_calibration_snapshot_main"
@@ -10300,7 +10314,7 @@ python = []
 rust = ["upgrade-larch run"]
 
 [[callers]]
-path = "skills/voter-calibration/scripts/voter-calibration.py"
+path = "skills/voter-calibration/SKILL.md"
 kind = "skill"
 python = []
-rust = ["analyze-issues fetch"]
+rust = ["voter-calibration analyze"]

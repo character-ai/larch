@@ -108,8 +108,8 @@ static REVIEWER_LINE: LazyLock<Regex> = LazyLock::new(|| {
 static PRIVATE_WRITE_NONCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug)]
-struct AnalysisIssue {
-    summary: IssueSummary,
+pub struct AnalysisIssue {
+    pub summary: IssueSummary,
     url: String,
     comments: Vec<String>,
     fetch_failed: bool,
@@ -118,7 +118,7 @@ struct AnalysisIssue {
 }
 
 impl AnalysisIssue {
-    fn from_value(value: &Value) -> Option<Self> {
+    pub fn from_value(value: &Value) -> Option<Self> {
         let summary = IssueSummary::from_json(value)?;
         let object = value.as_object()?;
         let url = string(object, "url");
@@ -767,7 +767,7 @@ fn failed_filed_issue(number: u64) -> AnalysisIssue {
         .expect("a positive targeted issue number is always a valid summary")
 }
 
-fn fetch_filed_issue_details(
+pub fn fetch_filed_issue_details(
     repo: &str,
     records: &[FiledOos],
     bulk_issues: &[AnalysisIssue],
@@ -861,7 +861,7 @@ fn fetch_filed_issue_details(
     }
 }
 
-fn fetch_incentive_issue(repo: &str) -> Option<AnalysisIssue> {
+pub fn fetch_incentive_issue(repo: &str) -> Option<AnalysisIssue> {
     let reference = repository_ref(repo).ok()?;
     let wanted = BTreeSet::from([INCENTIVE_ISSUE]);
     with_github_service(async |service, cancellation| {
@@ -951,7 +951,7 @@ fn private_write(path: &Path, text: &str) -> Result<(), String> {
     outcome
 }
 
-fn load_issues(path: &Path, lenient: bool) -> Result<Vec<AnalysisIssue>, String> {
+pub fn load_issues(path: &Path, lenient: bool) -> Result<Vec<AnalysisIssue>, String> {
     if path.as_os_str().is_empty() {
         return Ok(Vec::new());
     }
@@ -1802,10 +1802,10 @@ fn render_high_risk_oos(issues: &[AnalysisIssue], top_k: usize) -> String {
 }
 
 #[derive(Clone)]
-struct FiledOos {
+pub struct FiledOos {
     identity: String,
-    number: Option<u64>,
-    url: String,
+    pub number: Option<u64>,
+    pub url: String,
     reviewers: Vec<String>,
 }
 
@@ -2025,7 +2025,7 @@ fn classify_fate(issue: &AnalysisIssue) -> (&'static str, usize, usize, bool) {
     ("provisional unknown", 1, 1, false)
 }
 
-fn filed_oos_records(log_root: &Path) -> Vec<FiledOos> {
+pub fn filed_oos_records(log_root: &Path) -> Vec<FiledOos> {
     let mut records = Vec::new();
     for event in RunLogCorpus::new(log_root).select(RunLogSelection::all()) {
         let RunLogCorpusEvent::Run(run) = event else {
@@ -2146,7 +2146,7 @@ fn github_repo_from_issue_url(url: &str) -> Option<&str> {
     (!repo.is_empty() && !tail.is_empty()).then_some(repo)
 }
 
-struct VerdictReport {
+pub struct VerdictReport {
     qualifying_runs: usize,
     required_runs: usize,
     since_date: String,
@@ -2162,7 +2162,7 @@ struct VerdictReport {
     clippy::too_many_lines,
     reason = "the report's stable Markdown layout keeps diagnostics and tables together"
 )]
-fn ground_truth_report(
+pub fn ground_truth_report(
     issues: &[AnalysisIssue],
     log_root: &Path,
     degradation: Option<&str>,

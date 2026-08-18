@@ -115,4 +115,3 @@ skills/rejected-analysis/scripts/rejected-analysis.sh
 skills/rejected-analysis/scripts/test-rejected-analysis.sh
 skills/research/scripts/test-research-angle-prompts.sh
 skills/research/scripts/test-synthesis-subagent.sh
-skills/voter-calibration/scripts/test-voter-calibration.sh

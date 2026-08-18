@@ -151,7 +151,7 @@ test-difficulty-calibration:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test difficulty_calibration_parity
 
 test-voter-calibration:
-	$(HARNESS_MARK) --label $@ -- bash skills/voter-calibration/scripts/test-voter-calibration.sh
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test voter_calibration_parity
 
 test-fluff-analysis-corpus:
 	$(HARNESS_MARK) --label $@ -- bash skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh

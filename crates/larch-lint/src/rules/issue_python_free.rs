@@ -250,8 +250,6 @@ const HANDOFF_COMMANDS: [HandoffCommand; 14] = [
     HandoffCommand::new("tracking", "post-issue", 7681),
 ];
 
-const RESEARCH_LIBRARY: &str =
-    "issue analysis library retained for the research and analytics umbrella";
 const DESIGN_LIBRARY: &str =
     "issue wire or payload library retained for the design workflow umbrella";
 const IMPLEMENT_LIBRARY: &str =
@@ -262,11 +260,7 @@ const GOVERNANCE_GATE_LIBRARY: &str =
 /// The package initializer is structural. Every other issue module at any
 /// depth must name both its receiving umbrella and its behaviorally distinct
 /// reason for remaining in Python.
-const RETAINED_MODULES: [RetainedModule; 17] = [
-    RetainedModule::new("python/larch/issue/_ground_truth.py", 7684, RESEARCH_LIBRARY),
-    RetainedModule::new("python/larch/issue/_oos.py", 7684, RESEARCH_LIBRARY),
-    RetainedModule::new("python/larch/issue/_report.py", 7684, RESEARCH_LIBRARY),
-    RetainedModule::new("python/larch/issue/_util.py", 7684, RESEARCH_LIBRARY),
+const RETAINED_MODULES: [RetainedModule; 13] = [
     RetainedModule::new("python/larch/issue/file_oos.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new(
         "python/larch/issue/issue_block.py",

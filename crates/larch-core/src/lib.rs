@@ -67,6 +67,7 @@ mod vendor_diagnostics;
 mod vendor_failure;
 mod vendor_model;
 mod vendor_usage;
+mod voter_calibration;
 
 pub use admission::{
     DESIGNED_PREFIX, GateDecision, MANAGED_PREFIXES, entry_gate, has_designed_prefix,
@@ -191,6 +192,11 @@ pub use external_defaults::{
 pub use fluff_analysis::{
     FluffOptions, PyTimestamp, fluff_analysis_report, parse_cutoff_text, parse_larch_version_tuple,
     parse_python_isoformat, sorted_paths_with_name_prefix,
+};
+pub use voter_calibration::{
+    EraBoundaryDisplay, VoterCalibrationCorpus, render_era_boundary_unavailable,
+    render_voter_calibration_era_report, render_voter_calibration_report,
+    voter_agreement_row_from_panel,
 };
 pub use git::{
     Change, ChangeKind, ChangeSet, Commit, ConfigKey, ConfigScope, ConfigValue, ConflictKind,
@@ -441,8 +447,8 @@ pub use report::{
     render_token_report_json, render_token_report_markdown, render_token_report_summary_line,
     render_token_report_terse, replace_markdown_block, replace_markdown_block_with_warn,
     report_has_numeric_tokens, resolve_run_report, round_number_from_path, run_log_batch_spec,
-    run_log_batch_specs, run_log_ledger_path, run_record, run_started_at_without_manifest,
-    safe_int, sanitize_diagram_capture, strip_diagram_sections, structured_body_dedupe_keys,
+    run_log_batch_specs, run_log_ledger_path, run_record, run_started_at_strict,
+    run_started_at_without_manifest, safe_int, sanitize_diagram_capture, strip_diagram_sections, structured_body_dedupe_keys,
     summary_report, token_phase_rows, token_report_basename, transcript_sources,
     vendor_totals_from_report,
 };

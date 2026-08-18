@@ -1,0 +1,30 @@
+{
+  "exit_code": 0,
+  "files": {
+    "logs-fn/design/run-fallback/manifest.json": {
+      "text": "{\"started_at\": \"2026-06-27T00:00:00Z\", \"issue_number\": 4242}\n"
+    },
+    "logs-fn/design/run-fallback/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv2_vote\tv3_vote\tscope\nFINDING_FB\tR\tneutral\tYES\tNO\tNO\t\n"
+    },
+    "logs-fn/design/run-scope/manifest.json": {
+      "text": "{\"started_at\": \"2026-06-27T00:00:00Z\", \"issue_number\": 4242}\n"
+    },
+    "logs-fn/design/run-scope/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\tscope\nFINDING_SCOPE\tR\tneutral\tYES\t\tmajor\t\t\tscoped-out\tNO\t\tnit\t\t\tpeer\tNO\t\tnit\t\t\tthird\tmajor\toos\n"
+    },
+    "logs-fn/review/run-compact/manifest.json": {
+      "text": "{\"started_at\": \"2026-06-27T00:00:00Z\", \"issue_number\": 4242}\n"
+    },
+    "logs-fn/review/run-compact/review-findings-classification-round-1.tsv": {
+      "text": "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\nFINDING_N\tR\tneutral\tYES\t\tmajor\t\t\tNO\t\tnit\t\t\tYES\t\tmajor\t\t\nFINDING_R\tR\trejected\tYES\t\tmajor\t\t\tNO\t\tnit\t\t\tNO\t\tnit\t\t\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "# Voter Calibration Report\n\n## Corpus\n\n- Log root: `<SANDBOX>/logs-fn`\n- Classification TSV files scanned: 3\n- Malformed or unsupported TSV files skipped: 0\n- Malformed data rows dropped: 0\n- Ineligible panels excluded: 3\n- Qualifying accepted/rejected panels: 1\n\n## Agreement Table\n\n| Panel | Voter | Eligible | Agree | Disagree | Missing | Agreement | Outlier |\n|---|---|---:|---:|---:|---:|---:|---|\n| code-review | v1 | 1 | 0 | 1 | 0 | 0.000 | true |\n| code-review | v2 | 1 | 1 | 0 | 0 | 1.000 | false |\n| code-review | v3 | 1 | 1 | 0 | 0 | 1.000 | false |\n\n## Voter Severity Scoreboard\n\n| Panel | Voter | YES Votes | Major | Minor | Nit | Missing Severity | High Rate | Calibration Score | Uncalibrated |\n|---|---|---:|---:|---:|---:|---:|---:|---:|---|\n| code-review | v1 | 1 | 1 | 0 | 0 | 0 | 1.000 | 0.000 | true |\n| code-review | v2 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |\n| code-review | v3 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |\n\n\n## Global Voter Agreement\n\n| Panel | Voter | Eligible | Agree | Disagree | Missing | Agreement | Outlier |\n|---|---|---:|---:|---:|---:|---:|---|\n| global | v1 | 1 | 0 | 1 | 0 | 0.000 | true |\n| global | v2 | 1 | 1 | 0 | 0 | 1.000 | false |\n| global | v3 | 1 | 1 | 0 | 0 | 1.000 | false |\n\n## Voter Severity Scoreboard\n\n| Panel | Voter | YES Votes | Major | Minor | Nit | Missing Severity | High Rate | Calibration Score | Uncalibrated |\n|---|---|---:|---:|---:|---:|---:|---:|---:|---|\n| global | v1 | 1 | 1 | 0 | 0 | 0 | 1.000 | 0.000 | true |\n| global | v2 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |\n| global | v3 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |\n\n\n## Chronic Outliers (threshold < 0.50, min votes 1)\n\n| Panel | Voter | Eligible | Agree | Disagree | Missing | Agreement | Outlier |\n|---|---|---:|---:|---:|---:|---:|---|\n| code-review | v1 | 1 | 0 | 1 | 0 | 0.000 | true |\n| global | v1 | 1 | 0 | 1 | 0 | 0.000 | true |\n\n## Missing Vote Table\n\n| Panel | Voter | Eligible | Agree | Disagree | Missing | Agreement | Outlier |\n|---|---|---:|---:|---:|---:|---:|---|\n| code-review | v1 | 1 | 0 | 1 | 0 | 0.000 | true |\n| code-review | v2 | 1 | 1 | 0 | 0 | 1.000 | false |\n| code-review | v3 | 1 | 1 | 0 | 0 | 1.000 | false |\n\n## Per-voter False-negative YES Rate\n\n| Panel | Voter | YES Votes | Neutral YES | Rejected YES | False-negative YES | False-negative YES Rate |\n|---|---|---:|---:|---:|---:|---:|\n| code-review | v1 | 2 | 1 | 1 | 2 | 1.000 |\n| code-review | v2 | 0 | 0 | 0 | 0 | n/a |\n| code-review | v3 | 1 | 1 | 0 | 1 | 1.000 |\n| design | codex-plan-fidelity | 0 | 0 | 0 | 0 | n/a |\n| design | codex-pragmatism | 0 | 0 | 0 | 0 | n/a |\n| design | codex-validity | 1 | 1 | 0 | 1 | 1.000 |\n| global | codex-plan-fidelity | 0 | 0 | 0 | 0 | n/a |\n| global | codex-pragmatism | 0 | 0 | 0 | 0 | n/a |\n| global | codex-validity | 1 | 1 | 0 | 1 | 1.000 |\n| global | v1 | 2 | 1 | 1 | 2 | 1.000 |\n| global | v2 | 0 | 0 | 0 | 0 | n/a |\n| global | v3 | 1 | 1 | 0 | 1 | 1.000 |\n\n## Notes\n\n- Neutral panel verdicts are excluded from agreement denominators.\n- Single-voter and zero-voter panels are excluded because agreement is undefined.\n- Empty, missing, and `JUDGE_ERROR` voter cells count as missing, not disagreement.\n- `agreement_rate` uses `agree / (agree + disagree)`; missing votes are excluded.\n- Severity calibration counts only YES votes with valid severity buckets; missing and invalid severities are reported separately.\n- The severity scoreboard emits a voter-side Calibration Score from the High Rate threshold excess.\n- False-negative YES totals include neutral and rejected eligible panels, while agreement denominators still exclude neutral panels.\n- This report is diagnostic only. Agreement, severity calibration, and false-negative diagnostics do not affect reviewer/proposer points, spawning, thresholds, tokens, or live panel verdicts.\n"
+  }
+}

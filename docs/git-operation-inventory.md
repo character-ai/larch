@@ -110,7 +110,6 @@ skills/implement/references/step2-dispatch.md	later-domain	#7681	commit
 skills/implement/scripts/generate-code-flow-diagram.sh	later-domain	#7681	diff,merge-base,rev-parse
 skills/implement/scripts/oos-disposition-gate.md	later-domain	#7681	merge-base
 skills/implement/scripts/step-architectural-guidelines-write-staged.sh	later-domain	#7681	rev-parse
-skills/voter-calibration/scripts/voter-calibration.py	later-domain	#7684	dynamic
 ```
 <!-- git-ownership-matrix:end -->
 <!-- markdownlint-enable MD010 -->

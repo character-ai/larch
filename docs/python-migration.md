@@ -141,6 +141,26 @@ used by those compatibility callers. The legacy `object_store.py` adapter is
 for compatibility/test callers only. The offline adapter double covers
 retry/resume, redaction before egress, and cold/warm sync.
 
+**The `/voter-calibration` analyzer cut over in #8672.** `voter-calibration
+analyze` is Rust-owned: `crates/larch-core/src/voter_calibration.rs` owns TSV
+schema detection, the shared agreement and severity math, false-negative YES
+rates, and rendering behind
+`crates/larch-cli/src/voter_calibration_commands.rs`, which also owns era
+segmentation and optional realized-outcome enrichment by reusing the
+analyze-issues typed fetch, filed-OOS, and ground-truth report owners. The leaf
+deleted the standalone `skills/voter-calibration/scripts/voter-calibration.py`
+and the four retained `larch.issue` analytics modules (`_ground_truth`, `_oos`,
+`_report`, `_util`), frozen verbatim under
+`fixtures/rust-parity/voter_calibration_frozen/` behind the
+`fixtures/rust-parity/voter_calibration_reference.py` loader, and replaced the
+synthetic bash harness with the black-box parity suite
+`crates/larch-cli/tests/voter_calibration_parity.rs`. Two deliberate
+differences from the retired Python: repository identity comes from `--repo`
+or gix-typed ambient origin resolution (the plugin-root `git config` probe
+collapsed with the Rust binary), and the optional ground-truth enrichment
+section reuses the shipped Rust `analyze-issues` owner, whose corpus scan and
+outcome-bucket heuristics supersede the retired Python module's.
+
 **The `/fluff-analysis` analyzer cut over in #8671.** `fluff-analysis analyze`
 is Rust-owned: `crates/larch-core/src/fluff_analysis.rs` owns extraction, the
 multi-label classifier, assessment and ship-outcome coverage, false-negative
@@ -348,7 +368,7 @@ Most release helpers remain behind `python/cli.py`. Every audit-runs verb is Rus
 - Tracking issue read/write/summary verbs live behind `scripts/larch.sh tracking-issue ...` in Rust (#8346). Typed wrappers in `python/larch/core/rust_runtime.py` replace the former in-process Python workflow entry points, including local sentinel reads, and external command consumers keep entering through the same script. `final-report write` calls the same Rust tracking owner in process so its own output contract remains isolated. `python/larch/issue/tracking_issue.py` keeps only pure PR-footer helpers.
 - The four `execution-issues` verbs live behind `scripts/larch.sh execution-issues ...` in Rust (#8176, completed by #8347). The shared Rust run-log entry owner serializes category-keyed Markdown chunk deduplication, atomic live-ledger replacement, and lock-protected compare-and-clear after a flush so a concurrent append remains pending. Typed wrappers in `python/larch/core/rust_runtime.py` replaced every in-process Python caller, and `python/larch/issue/execution_issues.py` is gone. `flush` and `flush-safety-net` re-enter `scripts/larch.sh` for the batch append, and `refresh` re-enters it for `tracking-issue upsert-summary`, so each child's `KEY=value` rows land in the caller's capture file instead of the verb's own contract stream.
 - The five OOS batch verbs live behind `scripts/larch.sh oos ...` in Rust (#8178): `materialize-manifest`, `issue-cap`, `file-conflict-deps`, `disposition-gate`, and `disposition-checkpoint`. `crates/larch-cli/src/oos_commands.rs` owns the drivers; `oos_batch`, `oos_conflict`, `oos_disposition`, and `oos_record` in `larch_core::issue` own their composition and policy. The rejected-marker reader #8177 left split is reconciled in `larch_core::issue::oos_disposition`; see `docs/rust-command-registry.md`.
-- `oos file`, the post-ship accepted-OOS filing driver, lives behind `scripts/larch.sh oos file` in Rust (#8179). `larch_core::issue::oos_filing` owns the stable-identity model, the sentinel and run-log records, and the body-splitting rules; `crates/larch-cli/src/oos_file_commands.rs` owns the driver behind one `FilingGateway` seam. `python/larch/issue/oos_filer.py` is gone: retained #7684 `larch.issue._oos` owns the three identity helpers it borrowed, and the retained #7681 `larch.implement.dispatch_ship` workflow owns Step 8 checkpoint routing and post-pass bookkeeping.
+- `oos file`, the post-ship accepted-OOS filing driver, lives behind `scripts/larch.sh oos file` in Rust (#8179). `larch_core::issue::oos_filing` owns the stable-identity model, the sentinel and run-log records, and the body-splitting rules; `crates/larch-cli/src/oos_file_commands.rs` owns the driver behind one `FilingGateway` seam. `python/larch/issue/oos_filer.py` is gone: the three identity helpers it borrowed lived in `larch.issue._oos` until #8672 retired that module, and the retained #7681 `larch.implement.dispatch_ship` workflow owns Step 8 checkpoint routing and post-pass bookkeeping.
 - `python/larch/issue/file_oos.py` is not a live command implementation or fallback. Its surviving in-process consumers use OOS block parsing and counting for the design workflow, title normalization for compatibility analysis, and run-id resolution for Step 8 bookkeeping. The receiving umbrella for this retained issue/OOS library is #7680, as recorded by `larch lint rule issue-python-free`; later library cutover does not return command ownership to Python.
 - The six dependency-audit verbs live behind `scripts/larch.sh deps ...` in Rust (#8180): `resolve-repo`, `fetch`, `explicit-refs`, `write-proposals`, `plan`, and `apply`. `larch_core::issue::deps_audit` owns the grouping rules, the untrusted prose scans, the plan the operator approves, and the apply-time revalidation; `crates/larch-cli/src/deps_audit_commands.rs` owns the six drivers behind one `DepsGateway` seam.
 - The ten combine-issues verbs live behind `scripts/larch.sh combine-issues ...` in Rust (#8181): `fetch`, `fetch-deps`, `list-open`, `close-eligible`, `plan-inherited`, `prose-audit`, `plan-audit`, `apply`, `close-sources`, and `close-stale`. `crates/larch-cli/src/combine_issues_commands.rs` owns their JSON planning contracts and typed GitHub effects; `IssueMutationOwner` owns issue creation and closure, while the typed dependency adapter proves re-added native blocker edges. `python/larch/issue/combine_issues.py` and its Python blocker parser are gone. `python/larch/issue/open_rows.py` remains only as #7681 governance-gate support.

@@ -59,7 +59,7 @@ pub use run_log_corpus::{
     RunLogFileIter, RunLogManifest, RunLogRoundSort, RunLogRun, RunLogSelection, RunLogTimeWindow,
     RunLogTimeWindowError, manifest_only_larch_version, manifest_only_started_at_text,
     parse_preterminal_outcome_label, round_number_from_path, run_log_batch_spec,
-    run_log_batch_specs, run_started_at_without_manifest,
+    run_log_batch_specs, run_started_at_strict, run_started_at_without_manifest,
 };
 pub use run_summary::{
     GLM_TOKEN_TO_PLAN_DIVISOR, RunSummaryCost, RunSummaryFields, RunSummaryIdentity,

@@ -203,11 +203,11 @@ The report includes corpus and degraded-input counters, confusion matrices by sk
 
 ### `/voter-calibration`
 
-**Arguments**: `[--log-root DIR] [--min-votes N] [--outlier-threshold R] [--high-severity-threshold R] [--out FILE]`
+**Arguments**: `[--log-root DIR] [--min-votes N] [--outlier-threshold R] [--high-severity-threshold R] [--era {all,pre,post}] [--era-since-date YYYY-MM-DD] [--realized-outcomes] [--repo OWNER/NAME] [--filed-issue-details-json PATH] [--out FILE]`
 
 **Source**: [`skills/voter-calibration/SKILL.md`](../skills/voter-calibration/SKILL.md)
 
-Measure voter agreement, severity spread, Calibration Score, and chronic outlier voters from classification TSVs in the synchronized run-log cache. It is diagnostic only and does not affect live routing or verdicts.
+Measure voter agreement, severity spread, Calibration Score, and chronic outlier voters from classification TSVs in the synchronized run-log cache. The analyzer is Rust-owned behind `scripts/larch.sh voter-calibration analyze` (`crates/larch-core/src/voter_calibration.rs` plus `crates/larch-cli/src/voter_calibration_commands.rs`). The core report uses panel self-agreement only; the optional `--realized-outcomes` flag appends a diagnostic-only ground-truth section from filed OOS issue fate. It is diagnostic only and does not affect live routing or verdicts.
 
 ### `/implement`
 

@@ -865,49 +865,30 @@ struct VoterObservation {
     missing: usize,
 }
 
-fn normalized_vote(value: &str) -> String {
-    match value.trim().to_ascii_uppercase().as_str() {
-        "YES" => "YES".to_owned(),
-        "NO" | "EXONERATE" => "NO".to_owned(),
-        _ => String::new(),
-    }
-}
-
+/// Build per-voter observations through the shared per-finding agreement
+/// owner (`larch_core::voter_calibration`), which the `/voter-calibration`
+/// analyzer also consumes.
 fn agreement_observations(
     result: &str,
     voter_votes: &[(String, String)],
     severities: &[String],
 ) -> Vec<VoterObservation> {
-    if !["accepted", "rejected"].contains(&result.trim().to_ascii_lowercase().as_str()) {
-        return Vec::new();
-    }
-    if voter_votes
-        .iter()
-        .filter(|(_, vote)| !normalized_vote(vote).is_empty())
-        .count()
-        < 2
-    {
-        return Vec::new();
-    }
-    voter_votes
-        .iter()
-        .enumerate()
-        .filter(|(_, (label, _))| !label.trim().is_empty())
-        .map(|(index, (label, raw_vote))| {
-            let vote = normalized_vote(raw_vote);
-            let agrees =
-                (result == "accepted" && vote == "YES") || (result == "rejected" && vote == "NO");
-            VoterObservation {
-                panel: "code-review".to_owned(),
-                voter: label.trim().to_owned(),
-                severity: severities.get(index).cloned().unwrap_or_default(),
-                agree: usize::from(!vote.is_empty() && agrees),
-                disagree: usize::from(!vote.is_empty() && !agrees),
-                missing: usize::from(vote.is_empty()),
-                vote,
-            }
+    larch_core::voter_agreement_row_from_panel(result, voter_votes, "code-review", severities)
+        .map(|row| {
+            row.voters
+                .into_iter()
+                .map(|voter| VoterObservation {
+                    panel: row.panel.clone(),
+                    voter: voter.voter,
+                    severity: voter.severity,
+                    agree: voter.agree,
+                    disagree: voter.disagree,
+                    missing: voter.missing,
+                    vote: voter.vote,
+                })
+                .collect()
         })
-        .collect()
+        .unwrap_or_default()
 }
 
 #[derive(Default)]
