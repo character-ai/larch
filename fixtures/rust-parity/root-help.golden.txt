@@ -19,6 +19,7 @@ Commands:
   complete-umbrella       Serially complete and audit every direct leaf of one umbrella issue
   audit-umbrella          Audit one managed umbrella and reconcile its exhaustive corrective batch
   combine-issues          Combine related issues while preserving their dependency graph
+  debate                  Durable two-round debate protocol commands
   dirty-tree              Working-tree checkpoint and scope compatibility commands
   deps                    The `/deps` open-issue dependency audit: reads, plan, and one apply
   difficulty              Difficulty rating, record, panel, and label commands
