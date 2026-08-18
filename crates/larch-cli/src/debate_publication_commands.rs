@@ -184,10 +184,7 @@ pub fn comment_verify(arguments: &[OsString]) -> ExitCode {
 fn success_envelope(operation: &str, extra: Vec<(&str, Value)>) -> String {
     let mut object = Map::new();
     let _ = object.insert("ok".to_owned(), Value::Bool(true));
-    let _ = object.insert(
-        "operation".to_owned(),
-        Value::String(operation.to_owned()),
-    );
+    let _ = object.insert("operation".to_owned(), Value::String(operation.to_owned()));
     let _ = object.insert("error_class".to_owned(), Value::Null);
     for (key, value) in extra {
         let _ = object.insert(key.to_owned(), value);
@@ -199,10 +196,7 @@ fn success_envelope(operation: &str, extra: Vec<(&str, Value)>) -> String {
 fn error_envelope(operation: &str, error_class: &str) -> String {
     let mut object = Map::new();
     let _ = object.insert("ok".to_owned(), Value::Bool(false));
-    let _ = object.insert(
-        "operation".to_owned(),
-        Value::String(operation.to_owned()),
-    );
+    let _ = object.insert("operation".to_owned(), Value::String(operation.to_owned()));
     let _ = object.insert(
         "error_class".to_owned(),
         Value::String(error_class.to_owned()),
@@ -216,21 +210,34 @@ fn error_envelope(operation: &str, error_class: &str) -> String {
 
 fn run_issue_prepare(arguments: &[OsString]) -> Result<Prepared, ()> {
     let parsed = parse_args(arguments, &["--debate-tmpdir", "--repo", "--issue"])?;
-    prepare_issue(value(&parsed, "--debate-tmpdir")?, value(&parsed, "--repo")?, value(&parsed, "--issue")?)
+    prepare_issue(
+        value(&parsed, "--debate-tmpdir")?,
+        value(&parsed, "--repo")?,
+        value(&parsed, "--issue")?,
+    )
 }
 
 fn run_title_transition(arguments: &[OsString]) -> Result<(bool, bool, String), ()> {
     let parsed = parse_args(arguments, &["--debate-tmpdir", "--mode"])?;
-    transition_title(value(&parsed, "--debate-tmpdir")?, value(&parsed, "--mode")?)
+    transition_title(
+        value(&parsed, "--debate-tmpdir")?,
+        value(&parsed, "--mode")?,
+    )
 }
 
 fn run_proposal_link(arguments: &[OsString]) -> Result<PathBuf, ()> {
     let parsed = parse_args(arguments, &["--debate-tmpdir", "--body-file"])?;
-    link_proposal_body(value(&parsed, "--debate-tmpdir")?, value(&parsed, "--body-file")?)
+    link_proposal_body(
+        value(&parsed, "--debate-tmpdir")?,
+        value(&parsed, "--body-file")?,
+    )
 }
 
 fn run_comment_verify(arguments: &[OsString]) -> Result<String, ()> {
-    let parsed = parse_args(arguments, &["--debate-tmpdir", "--marker", "--content-file"])?;
+    let parsed = parse_args(
+        arguments,
+        &["--debate-tmpdir", "--marker", "--content-file"],
+    )?;
     verify_comment(
         value(&parsed, "--debate-tmpdir")?,
         value(&parsed, "--marker")?,
@@ -380,7 +387,10 @@ fn verify_comment(debate_tmpdir: &str, marker: &str, content_file: &str) -> Resu
     if matches.len() != 1
         || matches[0].1 != expected
         || matches[0].0.is_empty()
-        || !matches[0].0.chars().all(|character| character.is_ascii_digit())
+        || !matches[0]
+            .0
+            .chars()
+            .all(|character| character.is_ascii_digit())
     {
         return Err(());
     }
@@ -394,7 +404,9 @@ fn verify_comment(debate_tmpdir: &str, marker: &str, content_file: &str) -> Resu
 /// Redact, normalize, and byte-bound the subject (mirrors `_bounded_subject`).
 fn bounded_subject(issue: &str, title: &str, body: &str) -> Result<String, ()> {
     let raw = format!("# Debate subject\n\nSource issue #{issue}: {title}\n\n{body}");
-    let mut clean = redact_outbound(&raw).replace('\r', "\n").replace('\u{0}', "");
+    let mut clean = redact_outbound(&raw)
+        .replace('\r', "\n")
+        .replace('\u{0}', "");
     if clean.len() > DEBATE_SUBJECT_MAX_BYTES {
         let mut cut = DEBATE_SUBJECT_MAX_BYTES - SUBJECT_TRUNCATION_SUFFIX.len();
         while !clean.is_char_boundary(cut) {
@@ -553,7 +565,9 @@ fn read_under_root(
 ) -> Result<String, ()> {
     let absolute = lexical_absolute(supplied);
     let relative = absolute.strip_prefix(root_abs).map_err(|_error| ())?;
-    let confined = root.confine(relative, PathIntent::Read).map_err(|_error| ())?;
+    let confined = root
+        .confine(relative, PathIntent::Read)
+        .map_err(|_error| ())?;
     let text = read_utf8(&confined).map_err(|_error| ())?;
     if reject_cr && text.contains('\r') {
         return Err(());
@@ -584,7 +598,10 @@ fn read_snapshot(repository: &str, issue: &str) -> Result<IssueMutationSnapshot,
 }
 
 /// Apply a freshness-checked TITLE-only mutation through the shared owner.
-fn apply_title(snapshot: &IssueMutationSnapshot, target: &str) -> Result<VerifiedIssueMutation, ()> {
+fn apply_title(
+    snapshot: &IssueMutationSnapshot,
+    target: &str,
+) -> Result<VerifiedIssueMutation, ()> {
     let request = IssueMutationRequest {
         repository: snapshot.repository.clone(),
         issue: snapshot.issue,
@@ -648,7 +665,12 @@ fn parse_args(arguments: &[OsString], known: &[&str]) -> Result<BTreeMap<String,
             value
         } else {
             index += 1;
-            arguments.get(index).ok_or(())?.to_str().ok_or(())?.to_owned()
+            arguments
+                .get(index)
+                .ok_or(())?
+                .to_str()
+                .ok_or(())?
+                .to_owned()
         };
         let _ = parsed.insert(flag.to_owned(), value);
         index += 1;

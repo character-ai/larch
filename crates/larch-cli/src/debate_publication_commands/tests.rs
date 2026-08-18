@@ -47,7 +47,12 @@ mod publication_tests {
         value.to_string()
     }
 
-    fn issue_exchange(title: &str, body: &str, state: &str, updated_at: &str) -> IssueServiceExchange {
+    fn issue_exchange(
+        title: &str,
+        body: &str,
+        state: &str,
+        updated_at: &str,
+    ) -> IssueServiceExchange {
         IssueServiceExchange::any_json(200, issue_json(title, body, state, updated_at))
             .expect("valid issue response")
     }
@@ -129,8 +134,8 @@ mod publication_tests {
             "[DEBATED] Choose a queue design"
         );
 
-        let metadata_bytes = fs::read_to_string(root.path().join("debate-source.json"))
-            .expect("read metadata");
+        let metadata_bytes =
+            fs::read_to_string(root.path().join("debate-source.json")).expect("read metadata");
         assert_eq!(
             metadata_bytes,
             concat!(
@@ -144,8 +149,8 @@ mod publication_tests {
             )
         );
 
-        let subject = fs::read_to_string(root.path().join("debate-subject.md"))
-            .expect("read subject");
+        let subject =
+            fs::read_to_string(root.path().join("debate-subject.md")).expect("read subject");
         assert!(subject.starts_with("# Debate subject\n"));
         assert!(subject.contains("Compare bounded and unbounded queues."));
 
@@ -170,7 +175,10 @@ mod publication_tests {
                     "subject_path",
                     Value::String(prepared.subject_path.to_string_lossy().into_owned()),
                 ),
-                ("source_issue", Value::String(prepared.metadata.issue.clone())),
+                (
+                    "source_issue",
+                    Value::String(prepared.metadata.issue.clone()),
+                ),
                 (
                     "source_url",
                     Value::String(prepared.metadata.issue_url.clone()),
@@ -183,8 +191,12 @@ mod publication_tests {
     #[test]
     fn issue_prepare_refuses_a_closed_source() {
         let root = TempDir::new().expect("tempdir");
-        let (factory, _server) =
-            service(vec![issue_exchange(ORIGINAL_TITLE, "Body.", "closed", PREPARED_AT)]);
+        let (factory, _server) = service(vec![issue_exchange(
+            ORIGINAL_TITLE,
+            "Body.",
+            "closed",
+            PREPARED_AT,
+        )]);
         let refused = with_test_github_service(factory, || {
             run_issue_prepare(&arguments(&[
                 "--debate-tmpdir",
@@ -335,8 +347,7 @@ mod publication_tests {
         let body = format!(
             "{marker}\n\nThe debate ended before proposal publication. No outcome was adopted."
         );
-        let (factory, server) =
-            service(vec![comments_exchange(json!([comment_json(91, &body)]))]);
+        let (factory, server) = service(vec![comments_exchange(json!([comment_json(91, &body)]))]);
 
         let comment_id = with_test_github_service(factory, || {
             run_comment_verify(&arguments(&[
