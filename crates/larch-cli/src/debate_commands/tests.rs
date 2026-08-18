@@ -11,10 +11,8 @@ use super::{
     DebateError, InitInputs, envelope, initialize, parse_args, point_values, run_round_prep,
     strict_bool,
 };
-use larch_core::debate::{
-    ParticipantSlot, PointId, StoredState, decode_state, encode_state,
-};
 use larch_core::VendorSessionHandle;
+use larch_core::debate::{ParticipantSlot, PointId, StoredState, decode_state, encode_state};
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -52,10 +50,8 @@ fn fake_bootstrap(
     match slot.tool.as_str() {
         "cursor" => VendorSessionHandle::create("cursor", "chat-abc123")
             .map_err(|_error| DebateError::runner_failure()),
-        "codex" => {
-            VendorSessionHandle::create("codex", "123e4567-e89b-12d3-a456-426614174000")
-                .map_err(|_error| DebateError::runner_failure())
-        }
+        "codex" => VendorSessionHandle::create("codex", "123e4567-e89b-12d3-a456-426614174000")
+            .map_err(|_error| DebateError::runner_failure()),
         other => panic!("unexpected bootstrap slot {other}"),
     }
 }
@@ -123,7 +119,10 @@ fn round_prep_writes_byte_exact_prompts_and_active_round() {
             "--debate-tmpdir".to_owned(),
             debate.to_string_lossy().into_owned(),
         ),
-        ("--expected-fingerprint".to_owned(), state.fingerprint.clone()),
+        (
+            "--expected-fingerprint".to_owned(),
+            state.fingerprint.clone(),
+        ),
         ("--round".to_owned(), "1".to_owned()),
     ]);
     let rp_state = run_round_prep(&parsed).expect("round-prep succeeds");
@@ -202,10 +201,7 @@ fn round_prep_rejects_stale_fingerprint_and_double_prep() {
             "--debate-tmpdir".to_owned(),
             debate.to_string_lossy().into_owned(),
         ),
-        (
-            "--expected-fingerprint".to_owned(),
-            "0".repeat(64),
-        ),
+        ("--expected-fingerprint".to_owned(), "0".repeat(64)),
         ("--round".to_owned(), "1".to_owned()),
     ]);
     let error = run_round_prep(&stale).expect_err("stale fingerprint");
@@ -217,7 +213,10 @@ fn round_prep_rejects_stale_fingerprint_and_double_prep() {
             "--debate-tmpdir".to_owned(),
             debate.to_string_lossy().into_owned(),
         ),
-        ("--expected-fingerprint".to_owned(), state.fingerprint.clone()),
+        (
+            "--expected-fingerprint".to_owned(),
+            state.fingerprint.clone(),
+        ),
         ("--round".to_owned(), "1".to_owned()),
     ]);
     let prepared = run_round_prep(&good).expect("first prep");
@@ -245,7 +244,10 @@ fn round_prep_rejects_unadmitted_round() {
             "--debate-tmpdir".to_owned(),
             debate.to_string_lossy().into_owned(),
         ),
-        ("--expected-fingerprint".to_owned(), state.fingerprint.clone()),
+        (
+            "--expected-fingerprint".to_owned(),
+            state.fingerprint.clone(),
+        ),
         ("--round".to_owned(), "2".to_owned()),
     ]);
     let error = run_round_prep(&parsed).expect_err("round 2 not admitted before round 1");

@@ -75,9 +75,7 @@ pub fn subject_block(encoded: &str) -> Result<String, StateError> {
         .ok_or_else(|| StateError::corrupt("persisted debate subject is invalid"))?;
     let text = String::from_utf8(decoded.clone())
         .map_err(|_error| StateError::corrupt("persisted debate subject is invalid"))?;
-    if text.is_empty()
-        || text.contains(['\r', '\u{0}'])
-        || decoded.len() > DEBATE_SUBJECT_MAX_BYTES
+    if text.is_empty() || text.contains(['\r', '\u{0}']) || decoded.len() > DEBATE_SUBJECT_MAX_BYTES
     {
         return Err(StateError::corrupt("persisted debate subject is invalid"));
     }
@@ -164,7 +162,8 @@ pub fn turn_prompt(
         .iter()
         .map(|entry| Value::Object(entry.clone()))
         .collect();
-    let mailbox_line = serde_json::to_string(&Value::Array(entries)).unwrap_or_else(|_| "[]".to_owned());
+    let mailbox_line =
+        serde_json::to_string(&Value::Array(entries)).unwrap_or_else(|_| "[]".to_owned());
     Ok(format!(
         "debate-protocol-version: {PROTOCOL_VERSION}\n\
 slot: {slot}\n\
@@ -181,8 +180,7 @@ mailbox: {mailbox_line}\n\
 // Standard base64 (RFC 4648) with strict decode, matching Python b64.
 // ---------------------------------------------------------------------------
 
-const B64_ALPHABET: &[u8; 64] =
-    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const B64_ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /// Encode bytes as standard padded base64.
 #[must_use]
@@ -363,7 +361,10 @@ where <action> is one of: AGREE | CONCEDE | HOLD.";
 
     #[test]
     fn model_args_pins_flags_per_tool() {
-        assert_eq!(model_args("cursor", "").expect("empty"), Vec::<String>::new());
+        assert_eq!(
+            model_args("cursor", "").expect("empty"),
+            Vec::<String>::new()
+        );
         assert_eq!(
             model_args("cursor", "cursor-grok-4.6-high").expect("cursor"),
             vec!["--model".to_owned(), "cursor-grok-4.6-high".to_owned()]

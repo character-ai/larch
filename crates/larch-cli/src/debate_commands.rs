@@ -36,9 +36,7 @@ use larch_core::{
 };
 use serde_json::{Map, Value};
 
-use crate::external_agent::{
-    ExternalAgentLaunch, ExternalAgentRouting, run_external_agent_launch,
-};
+use crate::external_agent::{ExternalAgentLaunch, ExternalAgentRouting, run_external_agent_launch};
 
 /// Debate envelope schema version (mirrors `config.DEBATE_ENVELOPE_SCHEMA_VERSION`).
 const ENVELOPE_SCHEMA_VERSION: i64 = 2;
@@ -109,8 +107,10 @@ impl From<StateError> for DebateError {
 }
 
 /// A subprocess-slot session bootstrapper, injected for tests.
-type Bootstrapper<'a> =
-    &'a dyn Fn(&ParticipantSlot, &InitializationContext) -> Result<VendorSessionHandle, DebateError>;
+type Bootstrapper<'a> = &'a dyn Fn(
+    &ParticipantSlot,
+    &InitializationContext,
+) -> Result<VendorSessionHandle, DebateError>;
 
 // ---------------------------------------------------------------------------
 // Public command entry points
@@ -263,7 +263,9 @@ fn parse_args(
         } else {
             index += 1;
             let next = arguments.get(index).ok_or_else(DebateError::validation)?;
-            next.to_str().ok_or_else(DebateError::validation)?.to_owned()
+            next.to_str()
+                .ok_or_else(DebateError::validation)?
+                .to_owned()
         };
         let _ = parsed.insert(flag.to_owned(), value);
         index += 1;
@@ -389,7 +391,8 @@ fn run_init(
 
 /// Read the subject file confined to the debate root, rejecting CR.
 fn read_subject(debate_tmpdir: &str, subject_file: &str) -> Result<String, DebateError> {
-    let debate_root = ensure_trusted_root(debate_tmpdir).map_err(|_error| DebateError::validation())?;
+    let debate_root =
+        ensure_trusted_root(debate_tmpdir).map_err(|_error| DebateError::validation())?;
     let confined = debate_root
         .confine(subject_file, PathIntent::Read)
         .map_err(|_error| DebateError::validation())?;
@@ -468,9 +471,9 @@ fn initialize(
     if missing.len() >= UNAVAILABLE_VENDOR_LIMIT {
         return Err(DebateError::validation());
     }
-    let warning = missing
-        .first()
-        .map_or(String::new(), |slot| format!("unavailable vendor: {}", slot.slot));
+    let warning = missing.first().map_or(String::new(), |slot| {
+        format!("unavailable vendor: {}", slot.slot)
+    });
 
     let mut values = inputs.run_local_values.clone();
     if values.contains_key(DEBATE_SUBJECT_VALUE_KEY) {
@@ -524,8 +527,8 @@ fn initialize(
     context.session_handles = handles;
 
     let needles: Vec<&str> = values.values().map(String::as_str).collect();
-    let proposal =
-        new_proposal(&inputs.point_universe, &needles).map_err(|_error| DebateError::validation())?;
+    let proposal = new_proposal(&inputs.point_universe, &needles)
+        .map_err(|_error| DebateError::validation())?;
     let stored = StoredState {
         initialization: context,
         proposal,
@@ -534,7 +537,10 @@ fn initialize(
         drops: Vec::new(),
         fingerprint: String::new(),
     };
-    Ok(larch_cli::debate_state::write_state(&debate_root_path, &stored)?)
+    Ok(larch_cli::debate_state::write_state(
+        &debate_root_path,
+        &stored,
+    )?)
 }
 
 /// Fixed debate seating with availability applied, asserting protocol order.
@@ -652,7 +658,10 @@ fn run_round_prep(parsed: &BTreeMap<String, String>) -> Result<StoredState, Deba
         fingerprint: String::new(),
         ..state
     };
-    Ok(larch_cli::debate_state::write_state(&debate_root_path, &stored)?)
+    Ok(larch_cli::debate_state::write_state(
+        &debate_root_path,
+        &stored,
+    )?)
 }
 
 // ---------------------------------------------------------------------------
@@ -684,7 +693,8 @@ fn load_source_metadata(
     // Canonical-path check: the supplied file must be exactly root/debate-source.json.
     let supplied = lexical_absolute(metadata_file);
     let expected = root.path().join(SOURCE_METADATA_FILENAME);
-    if supplied != expected && supplied != lexical_absolute(debate_tmpdir).join(SOURCE_METADATA_FILENAME)
+    if supplied != expected
+        && supplied != lexical_absolute(debate_tmpdir).join(SOURCE_METADATA_FILENAME)
     {
         return Err(DebateError::validation());
     }
@@ -753,10 +763,9 @@ fn default_bootstrapper(
                 output.display().to_string(),
                 bootstrap_prompt(slot, &context.point_universe),
             );
-            request.model_args =
-                model_args(&slot.tool, &slot.model).map_err(DebateError::from)?;
-            let built =
-                build_codex_session_argv(&request).map_err(|_error| DebateError::runner_failure())?;
+            request.model_args = model_args(&slot.tool, &slot.model).map_err(DebateError::from)?;
+            let built = build_codex_session_argv(&request)
+                .map_err(|_error| DebateError::runner_failure())?;
             (VendorProgram::Codex, built.full_argv())
         }
         _ => return Err(DebateError::unsupported_transport()),
