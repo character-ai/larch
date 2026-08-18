@@ -1,8 +1,24 @@
-"""Design route main and init-runparams helpers."""
+"""Frozen pre-cutover design route main and init-runparams helpers (#8577).
+
+Verbatim copy of the retired python/larch/design/design_router.py with two
+documented adjustments for this location (precedent: commit f0b7a6ec3 and the
+fluff_analysis_reference LARCH_BINARY routing):
+
+1. The `design pause-load` command path was ``parents[2] / "cli.py"`` from
+   python/larch/design/; this file sits at fixtures/rust-parity/
+   design_router_frozen/, so ``parents[2]`` is ``fixtures/`` and the frozen
+   copy uses ``parents[3] / "python" / "cli.py"`` (still the repository root).
+2. Subprocesses that ran through ``repo_roots.larch_entrypoint`` (issue
+   title-eligibility, session write-design-env, tracking-issue rename, session
+   write-run-params) prefer the harness-provided larch binary (``LARCH_BINARY``
+   env, exported by the parity test as ``CARGO_BIN_EXE_larch``) because
+   ``scripts/larch.sh`` refuses to run from an unbuilt git checkout.
+"""
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportPrivateUsage=false, reportUnusedFunction=false
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +27,11 @@ from collections.abc import Sequence
 from larch import io as larch_io
 from larch.core import repo_roots
 from larch.issue import issue_wire
+
+
+def _entrypoint(root: Path) -> str:
+    """Documented adjustment 2: prefer the harness-provided larch binary."""
+    return os.environ.get("LARCH_BINARY") or str(repo_roots.larch_entrypoint(root))
 
 
 def _usage() -> None:
@@ -86,7 +107,8 @@ def route_main(argv: Sequence[str]) -> int:
 
     body = issue_body_file.read_text(encoding="utf-8", errors="replace")
     if "<!-- larch:design-pause:start -->" in body:
-        pause_cmd = [sys.executable, str(Path(__file__).resolve().parents[2] / "cli.py"), "design", "pause-load", "--design-tmpdir", str(design_tmpdir), "--issue", required["--issue"]]
+        # Documented adjustment 1: parents[3] is the repository root here.
+        pause_cmd = [sys.executable, str(Path(__file__).resolve().parents[3] / "python" / "cli.py"), "design", "pause-load", "--design-tmpdir", str(design_tmpdir), "--issue", required["--issue"]]
         if optional["--repo"]:
             pause_cmd.extend(["--repo", optional["--repo"]])
         pause = subprocess.run(pause_cmd, capture_output=True, text=True, check=False)
@@ -108,7 +130,7 @@ def route_main(argv: Sequence[str]) -> int:
         has_clarify = required["--has-clarify-label"] == "true"
         has_plan = issue_wire.parse_named_block(body=body, marker="plan")[0] is not None
         title_cmd = [
-            str(repo_roots.larch_entrypoint(Path(__file__).resolve().parents[3])),
+            _entrypoint(Path(__file__).resolve().parents[3]),
             "issue",
             "title-eligibility",
             f"--title={required['--issue-title']}",
@@ -208,7 +230,7 @@ def init_runparams_main(argv: Sequence[str]) -> int:
 
     write_design = subprocess.run(
         [
-            str(repo_roots.larch_entrypoint(root)),
+            _entrypoint(root),
             "session",
             "write-design-env",
             "--output",
@@ -235,7 +257,7 @@ def init_runparams_main(argv: Sequence[str]) -> int:
 
     rename = subprocess.run(
         [
-            str(repo_roots.larch_entrypoint(root)),
+            _entrypoint(root),
             "tracking-issue",
             "rename",
             "--issue",
@@ -261,7 +283,7 @@ def init_runparams_main(argv: Sequence[str]) -> int:
 
     write_params = subprocess.run(
         [
-            str(repo_roots.larch_entrypoint(root)),
+            _entrypoint(root),
             "session",
             "write-run-params",
             "--partition-requested",

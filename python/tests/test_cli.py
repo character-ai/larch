@@ -291,8 +291,8 @@ def test_design_kv_entrypoint_disables_inherited_quiet(monkeypatch: pytest.Monke
     monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
     monkeypatch.setenv("LARCH_QUIET_PID", "999999")
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.design.design_argv": MagicMock(parse_flags_main=mock_main)}):
-        rc = cli.main(["design", "parse-flags", "--help"])
+    with patch.dict("sys.modules", {"larch.design.design_step0_env": MagicMock(step0_parse_main=mock_main)}):
+        rc = cli.main(["design", "step0-parse", "--help"])
     assert rc == 0
     assert os.environ["LARCH_QUIET_DISABLE"] == "1"
 

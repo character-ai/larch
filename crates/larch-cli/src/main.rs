@@ -46,6 +46,7 @@ mod complete_umbrella_commands;
 mod debate_commands;
 mod debate_publication_commands;
 mod deps_audit_commands;
+mod design_commands;
 mod developer_tooling_commands;
 mod difficulty_calibration_commands;
 mod difficulty_commands;
@@ -236,6 +237,9 @@ enum Domain {
     /// The `/deps` open-issue dependency audit: reads, plan, and one apply.
     #[command(subcommand)]
     Deps(DepsCommand),
+    /// `/design` Step 0 argv parsing, routing, and run-params initialization.
+    #[command(subcommand)]
+    Design(DesignCommand),
     /// Difficulty rating, record, panel, and label commands.
     #[command(subcommand)]
     Difficulty(DifficultyCommand),
@@ -1122,6 +1126,32 @@ enum DebateCommand {
     /// Verify one source comment's exact redacted postcondition by read-back.
     #[command(name = "comment-verify", disable_help_flag = true)]
     CommentVerify(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum DesignCommand {
+    /// Validate the public `/design` argv and bind its flags.
+    #[command(name = "parse-flags", disable_help_flag = true)]
+    ParseFlags(RawCompatibilityArguments),
+    /// Decide the Step 0b route for one issue.
+    #[command(disable_help_flag = true)]
+    Route(RawCompatibilityArguments),
+    /// Refresh the session env, apply the `[DESIGNING]` rename, and write run-params.
+    #[command(name = "init-runparams", disable_help_flag = true)]
+    InitRunparams(RawCompatibilityArguments),
+}
+
+impl DesignCommand {
+    fn run(self) -> ExitCode {
+        // Raw argv, not the clap-parsed compatibility vector: the Python
+        // grammar treats `--` as a meaningful token, and clap would eat it.
+        let arguments = std::env::args_os().skip(3).collect::<Vec<_>>();
+        match self {
+            Self::ParseFlags(_) => design_commands::parse_flags(&arguments),
+            Self::Route(_) => design_commands::route(&arguments),
+            Self::InitRunparams(_) => design_commands::init_runparams(&arguments),
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -2323,6 +2353,7 @@ fn run(
         Domain::NamedBlock(NamedBlockCommand::Write(arguments)) => {
             Ok(issue_wire_commands::named_block_write(&arguments.arguments))
         }
+        Domain::Design(command) => Ok(command.run()),
         Domain::Plan(command) => Ok(match command {
             PlanCommand::ScopePaths(arguments) => {
                 issue_wire_commands::scope_paths(&arguments.arguments)

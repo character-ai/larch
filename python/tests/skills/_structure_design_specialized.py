@@ -74,7 +74,7 @@ def run(repo_root: Path) -> list[str]:
     lifecycle_paths = (
         "python/larch/design/design_core.py",
         "python/larch/design/design_session.py", "python/larch/design/design_terminal.py",
-        "python/larch/design/design_router.py", "python/larch/design/design_step0_env.py",
+        "python/larch/design/design_step0_env.py",
         "python/larch/design/design_step0.py", "python/larch/design/design_step1.py",
         "python/larch/design/design_step2b.py", "python/larch/design/design_step5c.py",
         "python/larch/design/design_step6.py", "python/larch/design/design_step5b.py",

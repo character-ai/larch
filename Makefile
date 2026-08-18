@@ -37,7 +37,7 @@ HARNESS_MARK ?= sh -c 'timer=target/harness-mark/larch-harness-mark; LARCH_HARNE
 .PHONY: test-design-pause-resume
 .PHONY: test-design-step1d5 test-design-log-ship
 .PHONY: test-review-design-step3-loop
-.PHONY: test-read-result-env test-parse-design-argv
+.PHONY: test-read-result-env
 .PHONY: test-launch-codex-exec test-launch-drafters test-launch-ci-fixers test-implement-launchers
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state test-design-step3-mav
 .PHONY: test-no-grouped-reuse-guard test-review-and-fix-record-timing test-review-and-fix-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus test-voter-calibration test-difficulty-calibration
@@ -380,10 +380,6 @@ test-design-postplan-emit:
 
 test-read-result-env:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-read-result-env.sh
-
-test-parse-design-argv:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_argv.py
-
 
 test-invoke-plan-validator:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k validate_plan

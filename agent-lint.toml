@@ -1227,9 +1227,11 @@ closure-max-content-tokens = 26303
 # Issue #8449's Rust cutover increases the measured conditional closure by five tokens.
 # Issue #8576 retargets plan CLI citations to scripts/larch.sh (slightly longer than
 # python/cli.py), adding eight measured conditional tokens.
+# Issue #8577 retargets the design parse-flags/route/init-runparams citations to
+# scripts/larch.sh the same way, adding three measured conditional tokens.
 conditional-max-lines = 779
-conditional-max-tokens = 19682
-conditional-max-content-tokens = 19611
+conditional-max-tokens = 19685
+conditional-max-content-tokens = 19613
 
 [[lint.prompt-source-budgets]]
 name = "implement"

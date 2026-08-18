@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from larch.design import design_core
-from larch.design import design_router
 
 
 def test_env_readers_keep_last_non_empty_duplicate(tmp_path: Path) -> None:
@@ -20,6 +19,22 @@ def test_env_readers_keep_last_non_empty_duplicate(tmp_path: Path) -> None:
 
 
 def test_router_stdout_codec_preserves_duplicate_order() -> None:
-    assert design_router._parse_stdout_kv("STEP=old\nSTEP=latest\n") == {  # pyright: ignore[reportPrivateUsage]
+    assert design_core._parse_stdout_kv("STEP=old\nSTEP=latest\n") == {  # pyright: ignore[reportPrivateUsage]
         "STEP": ["old", "latest"]
     }
+
+
+def test_router_stdout_codec_preserves_first_occurrence_order() -> None:
+    result = design_core._parse_stdout_kv("B=1\nA=2\nB=3\nA=4\n")  # pyright: ignore[reportPrivateUsage]
+    assert list(result.keys()) == ["B", "A"]
+    assert result["B"] == ["1", "3"]
+    assert result["A"] == ["2", "4"]
+
+
+def test_router_stdout_codec_skips_lines_without_equals() -> None:
+    assert design_core._parse_stdout_kv("NOEQUALS\nKEY=val\n\n") == {"KEY": ["val"]}  # pyright: ignore[reportPrivateUsage]
+
+
+def test_router_stdout_codec_handles_embedded_equals() -> None:
+    result = design_core._parse_stdout_kv("URL=https://example.com/?a=1\n")  # pyright: ignore[reportPrivateUsage]
+    assert result["URL"] == ["https://example.com/?a=1"]

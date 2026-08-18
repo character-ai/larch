@@ -23,8 +23,13 @@ from larch.design import design_pause
 from larch.git import gh
 from larch.core import config, proc, rust_runtime
 
-from larch.design.design_core import _capture_contract_stream_to_paths, _cli_cmd, _append_failure
-from larch.design.design_router import _parse_stdout_kv, _write_kv_file
+from larch.design.design_core import (
+    _append_failure,
+    _capture_contract_stream_to_paths,
+    _cli_cmd,
+    _parse_stdout_kv,
+    _write_kv_file,
+)
 from larch.design.design_step0_env import (
     _emit_parse_kvs,
     _emit_step0_init_rows,
@@ -497,8 +502,8 @@ def _materialize_step0_feature_description(*, design_tmpdir: Path, env: Mapping[
 
 
 def _step0_init_driver_cmd(*, plugin_root: Path, design_tmpdir: Path, env: Mapping[str, str], claude_pid: str) -> list[str]:
-    cmd = _cli_cmd(
-        plugin_root,
+    cmd = [
+        str(repo_roots.larch_entrypoint(plugin_root)),
         "design",
         "init-runparams",
         "--design-tmpdir",
@@ -519,7 +524,7 @@ def _step0_init_driver_cmd(*, plugin_root: Path, design_tmpdir: Path, env: Mappi
         env.get("skip_approve_requested", "false"),
         "--difficulty",
         env.get("difficulty", ""),
-    )
+    ]
     if env.get("REPO"):
         cmd.extend(["--repo", env["REPO"]])
     return cmd
@@ -694,8 +699,8 @@ def step0_route_main(argv: Sequence[str]) -> int:
     with tempfile.NamedTemporaryFile(prefix="larch-route-stdout.", delete=False, mode="w+", encoding="utf-8", dir=design_tmpdir) as capture:
         capture_path = Path(capture.name)
     try:
-        route_cmd = _cli_cmd(
-            plugin_root,
+        route_cmd = [
+            str(repo_roots.larch_entrypoint(plugin_root)),
             "design",
             "route",
             "--design-tmpdir",
@@ -722,7 +727,7 @@ def step0_route_main(argv: Sequence[str]) -> int:
             env.get("skip_approve_requested", "false"),
             "--difficulty",
             env.get("difficulty", ""),
-        )
+        ]
         if env.get("REPO"):
             route_cmd.extend(["--repo", env["REPO"]])
         proc = subprocess.run(route_cmd, capture_output=True, text=True, check=False)

@@ -1122,6 +1122,29 @@ pub fn rename(arguments: &[OsString]) -> ExitCode {
     )
 }
 
+/// In-process seam for `design init-runparams`: one plain `[DESIGNING]`
+/// rename with live effects, returning the read-back renamed flag.
+///
+/// # Errors
+/// Returns the refusal detail; the caller maps any error to its warn branch.
+pub fn rename_designing_live(issue: &str, repository: Option<&str>) -> Result<bool, String> {
+    rename_with(
+        &LiveEffects,
+        issue,
+        "designing",
+        repository,
+        "",
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .map(|(renamed, _title)| renamed)
+    .map_err(|refusal| refusal.envelope().0)
+}
+
 /// Decide the new title, then apply it as a plain or lease-bound write.
 #[allow(clippy::too_many_arguments)] // Mirrors the public rename option surface at the effects seam.
 fn rename_with(

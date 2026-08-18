@@ -15,6 +15,7 @@ from pathlib import Path
 from collections.abc import Iterable, Mapping, Sequence
 
 from larch import io as larch_io
+from larch.core import repo_roots
 from larch.state import session_env
 
 _SUBPROCESS_RUN = subprocess.run
@@ -362,7 +363,7 @@ def _run_parse_argv(*, public_argv: Sequence[str], plugin_root: Path, claude_pid
         out_path = Path(out.name)
     try:
         proc = subprocess.run(
-            [sys.executable, str(plugin_root / "python" / "cli.py"), "design", "parse-flags", "--output", str(out_path), *public_argv],
+            [str(repo_roots.larch_entrypoint(plugin_root)), "design", "parse-flags", "--output", str(out_path), *public_argv],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,

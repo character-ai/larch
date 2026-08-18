@@ -22,6 +22,7 @@ Commands:
   debate                  Durable two-round debate protocol commands
   dirty-tree              Working-tree checkpoint and scope compatibility commands
   deps                    The `/deps` open-issue dependency audit: reads, plan, and one apply
+  design                  `/design` Step 0 argv parsing, routing, and run-params initialization
   difficulty              Difficulty rating, record, panel, and label commands
   difficulty-calibration  Retrospective predicted-versus-realized difficulty analysis
   execution-issues        The `/implement` execution-issue ledger lifecycle

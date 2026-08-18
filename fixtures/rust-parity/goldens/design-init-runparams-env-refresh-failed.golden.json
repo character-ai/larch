@@ -1,0 +1,18 @@
+{
+  "exit_code": 1,
+  "files": {
+    ".home/.cache/larch/sessions/design-router-parity/.design-init-runparams-result.env": {
+      "text": "INIT_STATUS=env-refresh-failed\nRUN_PARAMS_PATH=<SANDBOX>/.home/.cache/larch/sessions/design-router-parity/run-params.json\n"
+    },
+    ".home/.cache/larch/sessions/design-router-parity/issue-body.txt": {
+      "text": "## Fixture issue\n\nJust prose.\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "ERROR=Invalid --session-id: must match ^[A-Za-z0-9_.-]{1,128}$\n"
+  },
+  "stdout": {
+    "text": "INIT_STATUS=env-refresh-failed\n"
+  }
+}
