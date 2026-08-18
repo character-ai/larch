@@ -19,7 +19,6 @@ Keep the block tab-separated and sort each row's operation names.
 <!-- git-ownership-matrix:start -->
 ```text
 surface	owner	issue	operations
-.claude/skills/audit-runs/SKILL.md	later-domain	#7684	log,show
 .claude/skills/release/SKILL.md	later-domain	#7674	add,checkout,commit,fetch,merge,merge-base,rev-parse
 .pre-commit-config.yaml	later-domain	#7686	rev-parse
 agents/_implementer-base.md	later-domain	#7678	commit

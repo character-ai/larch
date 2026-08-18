@@ -238,6 +238,267 @@ fn title_matching_nudge_and_prior_close_keep_their_command_wires() {
 }
 
 #[test]
+fn cutover_verbs_keep_usage_and_refusal_wires() {
+    // issue-search: missing required option is a usage error.
+    let missing = larch()
+        .args(["audit-runs", "issue-search", "--repo", "o/r"])
+        .output()
+        .expect("issue-search command");
+    assert_eq!(missing.status.code(), Some(2));
+    assert!(
+        String::from_utf8(missing.stderr)
+            .expect("UTF-8 stderr")
+            .contains("--keywords")
+    );
+
+    // fix-merge: a malformed --repo shape is rejected before any network.
+    let bad_repo = larch()
+        .args([
+            "audit-runs",
+            "fix-merge",
+            "--repo",
+            "not-a-repository",
+            "--issue",
+            "12",
+        ])
+        .output()
+        .expect("fix-merge command");
+    assert_eq!(bad_repo.status.code(), Some(2));
+    assert!(
+        String::from_utf8(bad_repo.stderr)
+            .expect("UTF-8 stderr")
+            .contains("--repo must be OWNER/REPO")
+    );
+
+    // label-check: both options are required.
+    let no_label = larch()
+        .args(["audit-runs", "label-check", "--repo", "o/r"])
+        .output()
+        .expect("label-check command");
+    assert_eq!(no_label.status.code(), Some(2));
+
+    // version-window: the instant must parse before any repository access.
+    let bad_after = larch()
+        .args([
+            "audit-runs",
+            "version-window",
+            "--repo-root",
+            ".",
+            "--after",
+            "not-an-instant",
+        ])
+        .output()
+        .expect("version-window command");
+    assert_eq!(bad_after.status.code(), Some(2));
+    assert!(
+        String::from_utf8(bad_after.stderr)
+            .expect("UTF-8 stderr")
+            .contains("--after must be an ISO-8601 instant")
+    );
+
+    // comment: omitting --operator-invoked refuses before body or network.
+    let refused = larch()
+        .args([
+            "audit-runs",
+            "comment",
+            "--repo",
+            "o/r",
+            "--issue",
+            "7",
+            "--body-file",
+            "missing-body.md",
+        ])
+        .output()
+        .expect("comment command");
+    assert_eq!(refused.status.code(), Some(5));
+    assert_eq!(
+        String::from_utf8(refused.stdout).expect("UTF-8 comment output"),
+        "COMMENT_REFUSED=true\nREASON=unauthorized-mutation:unauthorized-mutation\n"
+    );
+}
+
+fn fixture_git(root: &Path, date: &str, args: &[&str]) {
+    let status = Command::new("git")
+        .args([
+            "-c",
+            "user.email=audit@test",
+            "-c",
+            "user.name=audit",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(args)
+        .env("GIT_AUTHOR_DATE", date)
+        .env("GIT_COMMITTER_DATE", date)
+        .current_dir(root)
+        .status()
+        .expect("git command");
+    assert!(status.success(), "git {args:?} failed");
+}
+
+fn write_manifest(root: &Path, version: &str) {
+    fs::create_dir_all(root.join(".claude-plugin")).expect("manifest directory");
+    fs::write(
+        root.join(".claude-plugin/plugin.json"),
+        format!("{{\"name\":\"larch\",\"version\":\"{version}\"}}\n"),
+    )
+    .expect("manifest");
+}
+
+#[test]
+fn version_window_resolves_the_first_bump_after_the_instant() {
+    let sandbox = TempDir::new().expect("sandbox");
+    let root = sandbox.path();
+    fixture_git(root, "2026-08-01T00:00:00Z", &["init", "-q"]);
+    write_manifest(root, "34.0.0");
+    fixture_git(root, "2026-08-01T00:00:00Z", &["add", "."]);
+    fixture_git(
+        root,
+        "2026-08-01T00:00:00Z",
+        &["commit", "-qm", "Bump version to 34.0.0"],
+    );
+    write_manifest(root, "35.0.0");
+    fixture_git(root, "2026-08-03T00:00:00Z", &["add", "."]);
+    fixture_git(
+        root,
+        "2026-08-03T00:00:00Z",
+        &["commit", "-qm", "Bump version to 35.0.0"],
+    );
+    fs::write(root.join("unrelated.txt"), "no manifest change\n").expect("unrelated file");
+    fixture_git(root, "2026-08-04T00:00:00Z", &["add", "."]);
+    fixture_git(
+        root,
+        "2026-08-04T00:00:00Z",
+        &[
+            "commit",
+            "-qm",
+            "Bump version prose without a manifest change",
+        ],
+    );
+    write_manifest(root, "36.0.0");
+    fixture_git(root, "2026-08-05T00:00:00Z", &["add", "."]);
+    fixture_git(
+        root,
+        "2026-08-05T00:00:00Z",
+        &["commit", "-qm", "Bump version to 36.0.0"],
+    );
+
+    // The earliest bump strictly after the instant wins, not the newest one.
+    let output = larch()
+        .args(["audit-runs", "version-window", "--repo-root"])
+        .arg(root)
+        .args([
+            "--after",
+            "2026-08-02T00:00:00Z",
+            "--audited-versions",
+            "34.0.0,34.0.1",
+        ])
+        .output()
+        .expect("version-window command");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("UTF-8 output");
+    assert!(stdout.contains("BUMP_SHA="), "missing BUMP_SHA: {stdout}");
+    assert!(
+        !stdout.contains("BUMP_SHA=none"),
+        "unexpected none: {stdout}"
+    );
+    assert!(
+        stdout.contains("FIX_SHIPPED_VERSION=35.0.0"),
+        "wrong shipped version: {stdout}"
+    );
+    assert!(stdout.contains("IN_SCOPE=false\nDECISION=skip\n"));
+
+    // Overlap with an audited version keeps the finding in scope.
+    let output = larch()
+        .args(["audit-runs", "version-window", "--repo-root"])
+        .arg(root)
+        .args([
+            "--after",
+            "2026-08-02T00:00:00Z",
+            "--audited-versions",
+            "34.0.0,35.0.0",
+        ])
+        .output()
+        .expect("version-window command");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("UTF-8 output");
+    assert!(stdout.contains("IN_SCOPE=true\nDECISION=propose\n"));
+
+    // No bump after the instant reports unknown without a decision override.
+    let output = larch()
+        .args(["audit-runs", "version-window", "--repo-root"])
+        .arg(root)
+        .args([
+            "--after",
+            "2026-08-09T00:00:00Z",
+            "--audited-versions",
+            "34.0.0",
+        ])
+        .output()
+        .expect("version-window command");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("UTF-8 output");
+    assert!(stdout.contains("BUMP_SHA=none\nFIX_SHIPPED_VERSION=unknown\n"));
+    assert!(stdout.contains("IN_SCOPE=true\nDECISION=propose\n"));
+}
+
+#[test]
+fn version_window_reports_unknown_for_malformed_manifest_versions() {
+    let sandbox = TempDir::new().expect("sandbox");
+    let root = sandbox.path();
+    fixture_git(root, "2026-08-01T00:00:00Z", &["init", "-q"]);
+    fs::create_dir_all(root.join(".claude-plugin")).expect("manifest directory");
+    fs::write(
+        root.join(".claude-plugin/plugin.json"),
+        "{\"name\":\"larch\",\"version\":\"35.0.0-rc1\"}\n",
+    )
+    .expect("manifest");
+    fixture_git(root, "2026-08-03T00:00:00Z", &["add", "."]);
+    fixture_git(
+        root,
+        "2026-08-03T00:00:00Z",
+        &["commit", "-qm", "Bump version to 35.0.0-rc1"],
+    );
+
+    // A pre-release suffix fails the strict parse: unknown, therefore propose.
+    let output = larch()
+        .args(["audit-runs", "version-window", "--repo-root"])
+        .arg(root)
+        .args([
+            "--after",
+            "2026-08-02T00:00:00Z",
+            "--audited-versions",
+            "34.0.0",
+        ])
+        .output()
+        .expect("version-window command");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("UTF-8 output");
+    assert!(
+        !stdout.contains("BUMP_SHA=none"),
+        "bump must resolve: {stdout}"
+    );
+    assert!(stdout.contains("FIX_SHIPPED_VERSION=unknown"));
+    assert!(stdout.contains("IN_SCOPE=true\nDECISION=propose\n"));
+
+    // A missing repository is a distinct failure wire. The plain directory
+    // lives in its own sandbox so discovery cannot climb into the fixture repo.
+    let plain = TempDir::new().expect("plain sandbox");
+    let output = larch()
+        .args(["audit-runs", "version-window", "--repo-root"])
+        .arg(plain.path())
+        .args(["--after", "2026-08-02T00:00:00Z"])
+        .output()
+        .expect("version-window command");
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8(output.stdout)
+            .expect("UTF-8 output")
+            .contains("VERSION_WINDOW_FAILED=true")
+    );
+}
+
+#[test]
 #[allow(clippy::too_many_lines)] // One archived run covers each published scanner contract.
 fn scan_and_counter_cover_present_artifacts_and_all_counter_outcomes() {
     let sandbox = TempDir::new().expect("sandbox");

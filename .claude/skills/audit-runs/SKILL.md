@@ -25,7 +25,7 @@ This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped wit
 
 ### Args
 
-- `--skill <name>` (**required**): which skill’s run logs to audit. Closed enum: `design` or `implement`. Reject missing or out-of-enum values before any side effect (no `gh` call, no tmpdir). Parse from argv before preflight.
+- `--skill <name>` (**required**): which skill’s run logs to audit. Closed enum: `design` or `implement`. Reject missing or out-of-enum values before any side effect (no GitHub call, no tmpdir). Parse from argv before preflight.
 - `<verbal-description>` (optional positional): when present, describes which PRs to audit. When omitted or empty, treat as `since last audit` (same error paths as that form). Supported forms:
   - `last N PRs` — N most-recently-merged PRs targeting `main`
   - `since last audit` — PRs merged after the prior audit report's `audited_pr_range.last`; error if no prior report exists or no new PRs have merged (do NOT file an empty report)
@@ -73,7 +73,7 @@ Read `PR_LIST`, `PR_COUNT`, `IMPLICIT_SINCE_LAST_AUDIT`, `PRIOR_REPORT_NUMBER`, 
 
 ## Scan Registry
 
-The scan list is externalized in `.claude/skills/audit-runs/scans-$SKILL.tsv` (one row per scan: `name`, `type`, `pattern`, `expected_outcome`, `severity`). JSON emission, category filtering, and scan implementations live in `crates/larch-cli/src/audit_runs_commands.rs` behind `scripts/larch.sh audit-runs scan-run`; Rust unit and parity coverage owns the wire. **Adding a scan** requires coordinated updates: (1) a new `scans-$SKILL.tsv` row in the relevant per-skill registry, (2) matching Rust scan logic, (3) any Rust counter wiring when the scan feeds cumulative totals, (4) this `SKILL.md` scan table if the operator-facing baseline changes, and (5) hermetic Rust coverage for the new NDJSON shape and counter path. **Plan fidelity**: substantive changes to that surface (new counters, new cumulative YAML keys, or registry-wide behavior) should be tracked in their own issue/PR when they go beyond a routine scan-row + test update. Routine `changelog-rebase-conflicts` / `changelog_rebase_conflicts` / `ns_retries_cursor_specialist` wiring is part of this skill’s maintained baseline, not an ad-hoc add-on. **Operator parity with run-log audit-title hygiene on `main`**: audit-title and search-exclusion work assumes run logs and issue titles stay aligned with the same `^\[(Run Logs Audit |Implement Run Logs Audit |Design Run Logs Audit ).* Report\]` title regex used by the audit-report writer; the pre-lock `python3 "$PWD/python/cli.py" git check-main-sync` probe uses the locally cached `origin/main` ref (no fetch). If the probe fails with `SYNC_STATUS=probe-error`, operators must `git fetch origin main` before locking. This is the same freshness requirement as the audit-report title migration. Treat main-sync as a first-class preflight gate next to audit-title hygiene, not an undocumented side effect.
+The scan list is externalized in `.claude/skills/audit-runs/scans-$SKILL.tsv` (one row per scan: `name`, `type`, `pattern`, `expected_outcome`, `severity`). JSON emission, category filtering, and scan implementations live in `crates/larch-cli/src/audit_runs_commands.rs` behind `scripts/larch.sh audit-runs scan-run`; Rust unit and parity coverage owns the wire. **Adding a scan** requires coordinated updates: (1) a new `scans-$SKILL.tsv` row in the relevant per-skill registry, (2) matching Rust scan logic, (3) any Rust counter wiring when the scan feeds cumulative totals, (4) this `SKILL.md` scan table if the operator-facing baseline changes, and (5) hermetic Rust coverage for the new NDJSON shape and counter path. **Plan fidelity**: substantive changes to that surface (new counters, new cumulative YAML keys, or registry-wide behavior) should be tracked in their own issue/PR when they go beyond a routine scan-row + test update. Routine `changelog-rebase-conflicts` / `changelog_rebase_conflicts` / `ns_retries_cursor_specialist` wiring is part of this skill’s maintained baseline, not an ad-hoc add-on. **Operator parity with run-log audit-title hygiene on `main`**: audit-title and search-exclusion work assumes run logs and issue titles stay aligned with the same `^\[(Run Logs Audit |Implement Run Logs Audit |Design Run Logs Audit ).* Report\]` title regex used by the audit-report writer; the pre-lock `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" git check-main-sync` probe (KV stdout: `SYNC_STATUS=not-main|ok|blocked|probe-error`, plus optional `AHEAD_COUNT` and `ERROR`) uses the locally cached `origin/main` ref (no fetch). If the probe fails with `SYNC_STATUS=probe-error`, operators must refresh the cached ref with a manual `git fetch origin main` before locking. This is the same freshness requirement as the audit-report title migration. Treat main-sync as a first-class preflight gate next to audit-title hygiene, not an undocumented side effect.
 
 Read the registry at runtime:
 ```bash
@@ -99,7 +99,7 @@ Implement currently uses the full table below. Design currently uses `cache-fres
 | Changelog rebase/conflicts (heuristic) | `execution-issues.ndjson` bodies mentioning changelog + rebase/conflict | `execution-issues.ndjson` |
 | Coder tool | `CODER_TOOL` field | `round-*/coder.env` |
 | Trailing-content NO_ISSUES_FOUND | `reviewer_signals[].first_pass_trailing_content == true` (`result:"skip"` when carrier missing; legacy `*-first-pass.txt` no longer primary) | `round-*/round-meta.json` |
-| OOS silent drop | accepted non-security `### OOS_` blocks vs filed GitHub URLs, Inline-triage commit lines, and rejected-OOS markers in `oos-issues.ndjson` | `oos-accepted-*.md`, `oos-issues*.ndjson`, `oos-issues-created.md`, git log on run-log repo root |
+| OOS silent drop | accepted non-security `### OOS_` blocks vs filed GitHub URLs, Inline-triage commit lines, and rejected-OOS markers in `oos-issues.ndjson` | `oos-accepted-*.md`, `oos-issues*.ndjson`, `oos-issues-created.md`, typed commit history of the run-log repo root |
 
 ## Scanning
 
@@ -127,38 +127,44 @@ Then for each PR row in the TSV:
 
 Read `scan-results-*.ndjson` files as NDJSON (one JSON object per scan per line). Each line’s `result` is not limited to pass/fail: treat **`informational`**, **`skip`**, and **`error`** as first-class outcomes when writing the report (for example `cache-freshness` behind current vs missing inputs vs manifest/registry drift). Contract: `scripts/larch.sh audit-runs scan-run`.
 
-**Cross-cutting checks (NDJSON + operator judgment):** the synthetic `cross-cutting` object (and `cache-freshness` / manifest fields) flags **manifest integrity** — empty `ended_at` / `pr_number`, and `manifest_pr_number_mismatch_with_audited_pr` / legacy `self_deploying_gap` when `manifest.json`’s `pr_number` disagrees with the audited PR (run-log vs merge skew / self-deploying version gaps). When `run_version < current_version`, `cache-freshness` emits **`result: informational`** (not `fail`): treat it as a self-deploying lens on the batch, not a defect signal versus the fix stream. **`proposed_new_issues` / `proposed_augmentations`** must be reconciled against **actually filed or closed** bug issues after the report (per **Post-report user prompt**); do not assume a proposal row implies an open issue without `gh` verification.
+**Cross-cutting checks (NDJSON + operator judgment):** the synthetic `cross-cutting` object (and `cache-freshness` / manifest fields) flags **manifest integrity** — empty `ended_at` / `pr_number`, and `manifest_pr_number_mismatch_with_audited_pr` / legacy `self_deploying_gap` when `manifest.json`’s `pr_number` disagrees with the audited PR (run-log vs merge skew / self-deploying version gaps). When `run_version < current_version`, `cache-freshness` emits **`result: informational`** (not `fail`): treat it as a self-deploying lens on the batch, not a defect signal versus the fix stream. **`proposed_new_issues` / `proposed_augmentations`** must be reconciled against **actually filed or closed** bug issues after the report (per **Post-report user prompt**); do not assume a proposal row implies an open issue without live verification through `scripts/larch.sh audit-runs issue-search`.
 
 ## Proposed bug-issue actions
 
 At scan time, **only** record findings as proposals. **Never** auto-file a bug issue and **never** auto-post augmentation comments during the scan.
 
-- **`proposed_new_issues`**: findings that warrant a new bug issue after classification: no matching **open** issue, and when the only matches are **closed**, the version-window check (below) does not suppress the proposal. When searching, exclude only audit-report noise by reusing `scripts/larch.sh audit-runs title-match` (all three audit-report families). **Do not** exclude `[IMPLEMENTING]` — those issues are open and match the search; route those hits to **`proposed_augmentations`** instead. Always present in the audit-report frontmatter (possibly empty).
+- **`proposed_new_issues`**: findings that warrant a new bug issue after classification: no matching **open** issue, and when the only matches are **closed**, the version-window check (below) does not suppress the proposal. When searching, use `scripts/larch.sh audit-runs issue-search`, which excludes only audit-report noise locally (all three audit-report families, the same regexes as `audit-runs title-match`). It **never** excludes `[IMPLEMENTING]` — those issues are open and match the search; route those hits to **`proposed_augmentations`** instead. Always present in the audit-report frontmatter (possibly empty).
 - **`proposed_augmentations`**: findings that match at least one **open** issue (same keyword search). This includes titles beginning with `[IMPLEMENTING]` (still open on GitHub). Always present in the audit-report frontmatter (possibly empty).
 
 For each finding, classify it into one of these two lists using GitHub + repo history; do not file or comment until after the post-report user prompt below.
 
 1. **Search issues (open + closed):**
    ```bash
-   gh issue list --state all --repo <repo> --search "<finding keywords>" --json number,title,state,closedAt
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-runs issue-search \
+     --repo "<repo>" --keywords "<finding keywords>"
    ```
+   Stdout is KV-shaped: `MATCH_COUNT=N`, then one `MATCH=<number>\t<state>\t<closedAt>\t<title>` row per surviving hit (empty `closedAt` for open issues). The helper drops pull-request rows and audit-report-family titles locally; `[IMPLEMENTING]` titles are always retained. On `ISSUE_SEARCH_FAILED=true`, surface `REASON=` and fail the classification loudly — do not classify from a partial search.
 2. **Open matches** (including `[IMPLEMENTING] …` titles): **`proposed_augmentations`**. In **`## Open issues snapshot`**, when an augmented issue’s title starts with `[IMPLEMENTING]`, note that the finding **recurred in this batch (pre-fix)** for that issue number.
 3. **Closed matches only** (no open match for this finding): apply the **version-window** check before proposing `proposed_new_issues`:
-   - Resolve fix merge time: prefer `gh pr list --state merged --search "closes #<N>" --repo <repo> --json number,mergedAt,title,body` and pick **one** merged PR you attribute to the fix (see **PR disambiguation** below). If that query returns **no** candidates, fall back to `gh issue view <N> --json closedAt,createdAt` for timing only and set `matched_pr` / merge metadata to unknown in your notes / `version_window_checks` rationale.
-   - **PR disambiguation (normative):** When multiple merged PRs match the search, prefer the PR whose `body`/`title` contains an explicit closing reference for `#<N>` (`closes`, `fixes`, `resolved`, case-insensitive). If still tied, prefer the PR with `mergedAt` closest **after** the issue `createdAt` (smallest positive delta). **If no candidate has `mergedAt` strictly after `createdAt`**, use the candidate with the latest `mergedAt` (ISO-8601 timestamps sort lexicographically). If still ambiguous, **do not** silently suppress: treat as **in-scope** (`decision: propose`, `in_scope: true`) and record both PR numbers plus a one-line operator rationale in the audit-report prose (or in the `finding` slug row’s implied narrative). When the search returns **zero** PRs, use issue `closedAt` only; keep `fix_shipped_in: unknown` unless you can attribute a merge elsewhere.
-   - Find the next plugin version shipped after that instant (file-shaped contract, not subject-line guessing alone):
+   - Resolve fix merge time:
      ```bash
-     git log --oneline --grep="Bump version" --after="<mergedAt-or-closedAt-ISO>" --reverse -- .claude-plugin/plugin.json | head -1
+     "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-runs fix-merge \
+       --repo "<repo>" --issue <N>
      ```
-     Let `BUMP_SHA` be that commit hash (first field of the line). Read the shipped plugin version from the tree at that commit:
+     Read `ISSUE_CREATED_AT=`, `ISSUE_CLOSED_AT=`, `MATCHED_PR=`, `MERGED_AT=`, `AMBIGUOUS=`, and `CANDIDATES=` from KV stdout. The helper reads the issue timing and the bounded merged-to-main PR history, keeps PRs referencing `#<N>`, and applies **PR disambiguation** below to pick **one** merged PR attributed to the fix. `MATCHED_PR=unknown` with `AMBIGUOUS=false` (zero candidates — including a fix PR older than the bounded history window, the documented degraded read) means: fall back to issue timing only (`ISSUE_CLOSED_AT`) and set `matched_pr` / merge metadata to unknown in your notes / `version_window_checks` rationale.
+   - **PR disambiguation (normative, implemented by `audit-runs fix-merge`):** When multiple merged PRs match, the helper prefers the PR whose `body`/`title` contains an explicit closing reference for `#<N>` (`closes`, `fixes`, `resolved`, case-insensitive). If still tied, it prefers the PR with `mergedAt` closest **after** the issue `createdAt` (smallest positive delta). **If no candidate has `mergedAt` strictly after `createdAt`**, it uses the candidate with the latest `mergedAt`. If still ambiguous, it emits `AMBIGUOUS=true` with every surviving candidate in `CANDIDATES=` — **do not** silently suppress: treat as **in-scope** (`decision: propose`, `in_scope: true`) and record both PR numbers plus a one-line operator rationale in the audit-report prose (or in the `finding` slug row’s implied narrative). When `MATCHED_PR=unknown`, use issue `closedAt` only; keep `fix_shipped_in: unknown` unless you can attribute a merge elsewhere.
+   - Find the next plugin version shipped after that instant and apply the version-window rule (file-shaped contract, not subject-line guessing alone):
      ```bash
-     git show "$BUMP_SHA:.claude-plugin/plugin.json" | jq -r '.version // empty'
+     "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-runs version-window \
+       --repo-root "$PWD" --after "<mergedAt-or-closedAt-ISO>" \
+       --audited-versions "<comma-separated manifest.json::larch_version values for this batch>"
      ```
-     **Normalize** the returned dotted version for comparisons: strip a single leading `v`, trim ASCII whitespace, require three **integer** components `MAJOR.MINOR.PATCH`, then compare **numerically per component** (so `1.10.0` is greater than `1.9.999`; do **not** use naive string sort on the dotted token). If **no** bump commit exists after that instant **or** `.version` is empty, set `fix_shipped_in: unknown` — **do not** skip the proposal solely for missing bump metadata (treat as in-scope for recurrence unless other reasoning applies).
-   - If either `fix_shipped_version` or an audited `larch_version` fails that three-integer parse (for example `34.0.0-rc1`, extra dotted segments, or odd strings), treat that side as `unknown` for the inequality: you cannot prove the fix is strictly newer than **every** audited run, so **do not** apply closed-only suppression on that basis alone — **propose** and record the parse gap in `version_window_checks`.
-   - Compare `fix_shipped_version` (parsed semantic version, or `unknown`) against each audited run’s `manifest.json::larch_version` from this batch’s run-map / scan inputs (normalize each batch version the same way).
-   - If `fix_shipped_version` is known and **strictly greater than** every audited `larch_version`, the fix post-dates all audited runs → **do not** propose a new issue for this closed-only match.
-   - If `fix_shipped_version` is `unknown`, **or** `fix_shipped_version ≤` any audited `larch_version`, the closed fix was in scope for at least one run → propose **`proposed_new_issues`** (recurrence).
+     Read `BUMP_SHA=` (`none` when no bump commit follows the instant), `FIX_SHIPPED_VERSION=` (`X.Y.Z` or `unknown`), `IN_SCOPE=`, and `DECISION=skip|propose` from KV stdout. The helper walks local first-parent history for the **earliest** commit after the instant whose subject contains `Bump version` and which changes `.claude-plugin/plugin.json`, reads `.version` from that commit's tree, and normalizes strictly: strip a single leading `v`, trim ASCII whitespace, require three **integer** components `MAJOR.MINOR.PATCH`, then compare **numerically per component** (so `1.10.0` is greater than `1.9.999`; never a naive string sort on the dotted token).
+   - The helper's `DECISION` implements the normative rule; the semantics stay binding:
+     - If **no** bump commit exists after that instant **or** `.version` is empty or malformed, `FIX_SHIPPED_VERSION=unknown` and `DECISION=propose` — **do not** skip the proposal solely for missing bump metadata (treat as in-scope for recurrence unless other reasoning applies). Record `fix_shipped_in: unknown`.
+     - If either `FIX_SHIPPED_VERSION` or an audited `larch_version` fails the three-integer parse (for example `34.0.0-rc1`, extra dotted segments, or odd strings), that side is `unknown` for the inequality: you cannot prove the fix is strictly newer than **every** audited run, so `DECISION=propose` — record the parse gap in `version_window_checks`.
+     - `DECISION=skip` (`IN_SCOPE=false`) only when `FIX_SHIPPED_VERSION` is known and **strictly greater than** every audited `larch_version` from this batch's run-map / scan inputs — the fix post-dates all audited runs, so **do not** propose a new issue for this closed-only match.
+     - Otherwise (`FIX_SHIPPED_VERSION=unknown`, **or** `FIX_SHIPPED_VERSION ≤` any audited `larch_version`) the closed fix was in scope for at least one run → propose **`proposed_new_issues`** (recurrence).
 4. **Record** each closed-issue evaluation in **`version_window_checks`** (see **Frontmatter**). Use `version_window_checks: []` when no closed issue was evaluated for any finding.
 
 **Precedence:** any **open** match for the finding → `proposed_augmentations` only (even if older closed duplicates exist).
@@ -170,7 +176,7 @@ After the audit report issue is filed and prior reports are handled per **Close 
 1. Print the **full audit-report body** verbatim to chat (the same markdown submitted as the issue body), then print the **audit-report URL**.
 2. **Zero-findings short-circuit**: if `proposed_new_issues` and `proposed_augmentations` are both empty, state `No findings — no bug issues to file.` and exit — do **not** ask the 3-way question.
 3. **Otherwise**, ask the operator a 3-way question: (1) file/augment all, (2) discuss specific findings first, or (3) skip filing. Act on the response:
-   - **File/augment all**: file new issues via `/larch:issue` (dedup ON); post augmentation comments with `gh issue comment <N> --repo "<repo>" --body-file "$TMPDIR/audit-augment-<N>.md"` (write the **Augmentation comment shape** markdown to that file first — same `--body-file` pattern as `issue create-one`; do not pass multi-line tables through an inline `--body` string).
+   - **File/augment all**: file new issues via `/larch:issue` (dedup ON); post augmentation comments with `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-runs comment --repo "<repo>" --issue <N> --body-file "$TMPDIR/audit-augment-<N>.md" --operator-invoked` (write the **Augmentation comment shape** markdown to that file first — same `--body-file` pattern as `issue create-one`; do not pass multi-line tables inline). The `--operator-invoked` flag is required; the shared issue-mutation owner authorizes, redacts, and read-back-verifies the comment. Read `COMMENT_POSTED=true` + `COMMENT_URL=` from KV stdout; on `COMMENT_FAILED=true`, surface `REASON=` to the operator — augmentation failures stay visible.
    - **Discuss first**: wait for operator direction; file or augment per finding only as approved.
    - **Skip filing**: exit cleanly; the audit report already captures proposed findings for the historical record.
 
@@ -198,10 +204,12 @@ After the audit report issue is filed and prior reports are handled per **Close 
    ```
 
    ```bash
-   gh issue comment "$AUDIT_REPORT_NUMBER" --repo "<repo>" --body-file "$TMPDIR/session-summary.md"
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-runs comment \
+     --repo "<repo>" --issue "$AUDIT_REPORT_NUMBER" \
+     --body-file "$TMPDIR/session-summary.md" --operator-invoked
    ```
 
-   **When** this step runs, even **skip-filing** should populate the tables with **skipped** rows (useful operator history). Omit empty **Augmentations** table section when there were no augmentation rows. If `gh issue comment` fails, print stderr to chat but **do not** fail the overall audit run (this comment is supplementary).
+   **When** this step runs, even **skip-filing** should populate the tables with **skipped** rows (useful operator history). Omit empty **Augmentations** table section when there were no augmentation rows. If the comment fails (`COMMENT_FAILED=true` or a refusal), print its `REASON=` to chat but **do not** fail the overall audit run (this comment is supplementary, best-effort).
 
 The audit report issue is **never** edited after creation (chain-of-history).
 
@@ -238,13 +246,20 @@ Contracts: `scripts/larch.sh audit-runs pacific-timestamp`, `scripts/larch.sh au
 
 ### Label
 
-`audit-report` (must exist in the repo; verify via `gh label list --search 'audit-report'` before filing)
+`audit-report` (must exist in the repo; verify before filing):
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-runs label-check \
+  --repo "<repo>" --label audit-report
+```
+
+Require `LABEL_PRESENT=true` (exact, case-sensitive local match). On `LABEL_PRESENT=false` or `LABEL_CHECK_FAILED=true`, stop before filing.
 
 ### Filing Method
 
 Use `issue create-one` directly (bypasses the batch parser's `###` heading-trap):
 ```bash
-python3 "$PWD/python/cli.py" issue create-one \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" issue create-one \
   --title "<title>" \
   --body-file "$TMPDIR/audit-report-body.md" \
   --label "audit-report" \
@@ -252,7 +267,7 @@ python3 "$PWD/python/cli.py" issue create-one \
   --operator-invoked
 ```
 
-The `--operator-invoked` flag is required for direct operator-invoked filing. Do not omit it.
+The `--operator-invoked` flag is required for direct operator-invoked filing. Do not omit it. Read `ISSUE_NUMBER=` (plus `ISSUE_URL=`) from KV stdout; `ISSUE_FAILED=true` + `ISSUE_ERROR=` reports a failed filing.
 
 ### Counter Computation
 
@@ -341,7 +356,7 @@ After the new audit report is filed:
   --operator-invoked
 ```
 
-The `--operator-invoked` flag is required. Omitting it causes a refusal before any `gh` call.
+The `--operator-invoked` flag is required. Omitting it causes a refusal before any network call.
 
 Stdout is KV-shaped. A verified close emits `CLOSED_NUMBER=<N>`. A close failure can still exit `0` while emitting `CLOSE_FAILED=<N>` then a **TAB**-separated `REASON=...` continuation on the same line. If the bounded issue list fails up front, the CLI prints `ISSUE_LIST_FAILED=true` plus `REASON=...` and exits non-zero. If more than one matching prior is found, it refuses before any comment or close with `CLOSE_PRIORS_REFUSED=true`, `REASON=ambiguous-match`, and the mutation-refusal exit code. The shared issue-mutation owner authorizes the mutation and verifies the comment and close read-back. After any `scripts/larch.sh audit-runs close-priors` invocation, scan stdout for `CLOSE_FAILED=` / `ISSUE_LIST_FAILED=` / `CLOSE_PRIORS_REFUSED=` even when the exit code is `0`. Do not treat `CLOSED_NUMBER=` as unconditional full success.
 
@@ -379,15 +394,17 @@ scripts/larch.sh audit-runs map-runs --skill $SKILL → run-map.tsv
 for each PR:
   scripts/larch.sh audit-runs scan-run --skill $SKILL → scan-results-NNNN.ndjson
 scripts/larch.sh audit-runs compute-counters    → COUNTERS_OUT (KV lines on stdout; treat as counters input)
-[LLM: classify proposed_new_issues / proposed_augmentations via gh issue search (open+closed), version-window reasoning, and version_window_checks]
+scripts/larch.sh audit-runs issue-search / fix-merge / version-window → classification KV inputs
+[LLM: classify proposed_new_issues / proposed_augmentations from those KV outputs and record version_window_checks]
 scripts/larch.sh audit-runs pacific-timestamp → PACIFIC_TIMESTAMP (extract from stdout KV)
 scripts/larch.sh audit-runs title --skill $SKILL → TITLE
 [LLM: write report prose — Summary, Delta, Per-PR findings, Open issues, Scan results table
        reading from COUNTERS_OUT + scan-results-*.ndjson as structured input]
-issue create-one                → file audit report
+scripts/larch.sh audit-runs label-check → LABEL_PRESENT=true precondition
+scripts/larch.sh issue create-one → file audit report
 scripts/larch.sh audit-runs close-priors --skill $SKILL → close one unambiguous prior audit-report issue for this skill
 [LLM: post-report 3-way question if proposed issues exist — or zero-findings short-circuit when both proposal lists are empty]
-[LLM: if audit-report issue number exists: post session-summary comment on that issue; else skip (no report filed)]
+[LLM: if audit-report issue number exists: post session-summary via scripts/larch.sh audit-runs comment; else skip (no report filed)]
 ```
 
 ## Scripts
@@ -402,7 +419,12 @@ scripts/larch.sh audit-runs close-priors --skill $SKILL → close one unambiguou
 - `scripts/larch.sh audit-runs pacific-timestamp`: portable Pacific timestamp
 - `scripts/larch.sh audit-runs title`: generate report title string
 - `scripts/larch.sh audit-runs close-priors`: close one unambiguous prior audit-report issue
-- `crates/larch-cli/tests/audit_runs.rs`: Rust audit scan, counter, timestamp, title, advisory, and closure wire coverage
+- `scripts/larch.sh audit-runs issue-search`: open+closed proposal-classification search with local audit-title exclusion
+- `scripts/larch.sh audit-runs fix-merge`: fix-PR disambiguation plus issue timing (KV output)
+- `scripts/larch.sh audit-runs version-window`: earliest post-instant plugin bump plus the strict version-window decision
+- `scripts/larch.sh audit-runs label-check`: exact `audit-report` label precondition
+- `scripts/larch.sh audit-runs comment`: authorized, redacted, read-back-verified supplementary comment
+- `crates/larch-cli/tests/audit_runs.rs`: Rust audit scan, counter, timestamp, title, advisory, closure, and cutover-verb wire coverage
 
 ## Anti-patterns
 

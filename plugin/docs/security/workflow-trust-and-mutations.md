@@ -303,6 +303,14 @@ refuses without commenting or closing when more than one matching prior report
 is present. Its one permitted close goes through that same owner and emits a
 verified close result only after the comment and closed-state read-backs. The
 related backlog advisory is read-only and never posts a comment.
+`audit-runs comment`, the skill's supplementary augmentation and
+session-summary mutation, requires `--operator-invoked` and refuses before any
+network access without it; the post itself goes through the same shared
+issue-mutation owner, which authorizes, redacts outbound text, and proves the
+exact comment body by read-back. The remaining audit-runs helpers —
+`issue-search`, `label-check`, `fix-merge`'s issue-timing and merged-PR reads,
+and the local `version-window` Git-history walk — are read-only and perform no
+mutation.
 
 ### Local mutation safety
 

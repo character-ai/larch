@@ -281,6 +281,61 @@ fn rust_owned_python_rejects_retained_developer_prompt() {
         .stderr(predicate::str::is_empty());
 }
 
+#[test]
+fn audit_runs_skill_is_no_longer_exempt_from_developer_tooling_guards() {
+    // Regression for the observed stale-command defect: the audit-runs skill
+    // kept prescribing the retired `python/cli.py git check-main-sync` route
+    // and a raw `gh issue list` fence while its prefix exemption hid both.
+    let repository = TempRepo::new();
+    write_rust_owned_registry(&repository, "git", "check-main-sync");
+    repository.write(
+        ".claude/skills/audit-runs/SKILL.md",
+        b"Probe with `python3 \"$PWD/python/cli.py\" git check-main-sync`.\n\n```bash\ngh issue list --state all --repo o/r --search \"keywords\"\n```\n",
+    );
+    repository.commit_all();
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-rust-owned-python"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            ".claude/skills/audit-runs/SKILL.md:1: developer tooling invokes python/cli.py git check-main-sync; command registry marks it Rust-owned",
+        ))
+        .stderr(predicate::str::is_empty());
+
+    TempRepo::command_from(repository.path())
+        .args(["rule", "developer-tooling-crate-process"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(
+            ".claude/skills/audit-runs/SKILL.md:4: developer tooling spawns gh; a Rust crate already provides this capability",
+        ))
+        .stderr(predicate::str::is_empty());
+}
+
+#[test]
+fn audit_runs_skill_passes_when_it_calls_only_the_rust_owners() {
+    let repository = TempRepo::new();
+    write_rust_owned_registry(&repository, "git", "check-main-sync");
+    repository.write(
+        ".claude/skills/audit-runs/SKILL.md",
+        b"```bash\n\"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh\" git check-main-sync\n\"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh\" audit-runs issue-search --repo o/r --keywords \"words\"\n```\n",
+    );
+    repository.commit_all();
+
+    for rule in [
+        "developer-tooling-rust-owned-python",
+        "developer-tooling-crate-process",
+    ] {
+        TempRepo::command_from(repository.path())
+            .args(["rule", rule])
+            .assert()
+            .success()
+            .stdout(predicate::str::is_empty())
+            .stderr(predicate::str::is_empty());
+    }
+}
+
 fn inventory(extra: &str) -> String {
     format!(
         "# Git operation inventory\n\n<!-- git-ownership-matrix:start -->\n```text\nsurface\towner\tissue\toperations\n{extra}```\n<!-- git-ownership-matrix:end -->\n"
