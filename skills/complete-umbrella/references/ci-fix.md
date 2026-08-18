@@ -16,9 +16,9 @@ Do not push, merge, edit an issue, or open a pull request. Stage only intended f
 
 Write `$SESSION_TMPDIR/ci-fix-round-<N>.md` with the failure signature, changed paths, commit SHA, and checks. Keep it below 2,000 tokens.
 
-End with:
+End with only:
 
 ```text
 PHASE_STATUS=complete
-HANDOFF_FILE=<absolute path to ci-fix-round-<N>.md>
+HANDOFF_FILE=ci-fix-round-<N>.md
 ```

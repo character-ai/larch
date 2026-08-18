@@ -27,17 +27,17 @@ The driver owns the deterministic sequence: rebase onto the latest `origin/main`
 Route only on `SHIP_STATUS`:
 
 - `complete`: run the same command with `--mode verify`. Require another `SHIP_STATUS=complete`.
-- `ci_failed`: require `CI_ERRORS_FILE` to be a regular file below `$SESSION_TMPDIR`. Spawn one fresh general-purpose Agent with only the identifiers from your prompt, the positive fix round, `CI_ERRORS_FILE`, and `PHASE_CONTRACT=$CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/ci-fix.md`. Await its task notification. Require exactly `PHASE_STATUS=complete` and a contained `HANDOFF_FILE`, then rerun ship mode. The driver's persisted state enforces the fix-attempt cap.
-- `needs_conflict_fix`: require the `CONFLICT_FILES` key from the driver stdout (may be empty). Spawn one fresh general-purpose Agent with only the identifiers from your prompt, the positive conflict round, `CONFLICT_FILES`, and `PHASE_CONTRACT=$CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/conflict-fix.md`. Await its task notification. Require exactly `PHASE_STATUS=complete` and a contained `HANDOFF_FILE`, then rerun ship mode. The driver's persisted state enforces the conflict-fix attempt cap.
+- `ci_failed`: require `CI_ERRORS_FILE` to be a regular file below `$SESSION_TMPDIR`. Spawn one fresh general-purpose Agent with only the identifiers from your prompt, the positive fix round, `CI_ERRORS_FILE`, and `PHASE_CONTRACT=$CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/ci-fix.md`. Await its task notification. Accept when `PHASE_STATUS=complete` is present in the returned text and `$SESSION_TMPDIR/ci-fix-round-<N>.md` exists as a regular file; ignore surrounding narration and cosmetic `HANDOFF_FILE` path slips. On a missing status or missing handoff file, re-spawn that fixer in a fresh context up to two additional times, then fail. Then rerun ship mode. The driver's persisted state enforces the fix-attempt cap.
+- `needs_conflict_fix`: require the `CONFLICT_FILES` key from the driver stdout (may be empty). Spawn one fresh general-purpose Agent with only the identifiers from your prompt, the positive conflict round, `CONFLICT_FILES`, and `PHASE_CONTRACT=$CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/conflict-fix.md`. Await its task notification. Accept when `PHASE_STATUS=complete` is present in the returned text and `$SESSION_TMPDIR/conflict-fix-round-<N>.md` exists as a regular file; ignore surrounding narration and cosmetic `HANDOFF_FILE` path slips. On a missing status or missing handoff file, re-spawn that fixer in a fresh context up to two additional times, then fail. Then rerun ship mode. The driver's persisted state enforces the conflict-fix attempt cap.
 - Any other value or nonzero exit: fail. Do not repair deterministic shipping state by hand.
 
 Do not poll while the driver runs. Do not spawn a CI fixer when checks are pending or green. Do not spawn a conflict fixer unless the driver returned `needs_conflict_fix`.
 
 After verified completion, write `$SESSION_TMPDIR/ship-summary.md` with only the PR number, PR URL, final issue state, final local HEAD, and `SHIP_STATUS=complete`.
 
-After verified completion, end with:
+After verified completion, end with only:
 
 ```text
 PHASE_STATUS=complete
-HANDOFF_FILE=<absolute path to ship-summary.md>
+HANDOFF_FILE=ship-summary.md
 ```

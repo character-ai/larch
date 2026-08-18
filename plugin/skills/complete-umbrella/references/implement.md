@@ -21,9 +21,9 @@ Write these artifacts below `$SESSION_TMPDIR`:
 - `implementation.diff`: the complete `git diff main...HEAD`, redirected to the file instead of returned in tool output.
 - `implementation-summary.md`: the branch, full commit SHA, changed paths, and checks run. Keep it below 2,000 tokens.
 
-End with:
+End with only:
 
 ```text
 PHASE_STATUS=complete
-HANDOFF_FILE=<absolute path to implementation-summary.md>
+HANDOFF_FILE=implementation-summary.md
 ```
