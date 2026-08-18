@@ -14,14 +14,12 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("debate", "abort"): ("larch.debate.orchestrator", "abort_main", True),
     ("debate", "adjudicate"): ("larch.debate.orchestrator", "adjudicate_main", True),
     ("debate", "adjudication-preview"): ("larch.debate.orchestrator", "adjudication_preview_main", True),
     ("debate", "comment-verify"): ("larch.debate.publication", "comment_verify_main", True),
     ("debate", "issue-prepare"): ("larch.debate.publication", "issue_prepare_main", True),
     ("debate", "proposal-link"): ("larch.debate.publication", "proposal_link_main", True),
     ("debate", "publish-prepare"): ("larch.debate.orchestrator", "publish_prepare_main", True),
-    ("debate", "record-turn"): ("larch.debate.orchestrator", "record_turn_main", True),
     ("debate", "synthesize"): ("larch.debate.orchestrator", "synthesize_main", True),
     ("debate", "title-transition"): ("larch.debate.publication", "title_transition_main", True),
     ("checks", "run-relevant"): ("larch.implement.checks", "checks_run_relevant_main", True),

@@ -10,9 +10,11 @@ mod debate_commands_tests {
     #![allow(clippy::similar_names, clippy::redundant_clone)]
 
     use super::super::{
-        DebateError, InitInputs, envelope, initialize, parse_args, point_values, run_round_prep,
+        DebateError, InitInputs, TurnOutcome, TurnRequest, default_runner, envelope, initialize,
+        input_file_runner, parse_args, point_values, run_abort, run_record_turn, run_round_prep,
         strict_bool,
     };
+    use larch_adapters::TemporaryRoot;
     use larch_core::VendorSessionHandle;
     use larch_core::debate::{ParticipantSlot, PointId, StoredState, decode_state, encode_state};
     use std::collections::BTreeMap;
@@ -89,7 +91,7 @@ mod debate_commands_tests {
     #[test]
     fn init_produces_blind_round_1_envelope_and_canonical_state() {
         let (debate, state) = seed_init();
-        let env = envelope(true, "init", Some(&state), None);
+        let env = envelope(true, "init", Some(&state), None, None);
         assert_eq!(
             env,
             format!(
@@ -143,7 +145,7 @@ mod debate_commands_tests {
                 "prompt mismatch for {slot}"
             );
         }
-        let env = envelope(true, "round-prep", Some(&rp_state), None);
+        let env = envelope(true, "round-prep", Some(&rp_state), None, None);
         assert!(env.contains("\"operation\":\"round-prep\""));
         assert!(env.contains("\"phase\":\"BLIND_ROUND_1\""));
     }
@@ -282,5 +284,263 @@ mod debate_commands_tests {
         assert!(strict_bool("true").expect("true"));
         assert!(!strict_bool("false").expect("false"));
         assert!(strict_bool("yes").is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // record-turn and abort parity
+    // -----------------------------------------------------------------------
+
+    const AGREE_LEDGER: &str =
+        "POINT POINT_1 AGREE first reason\nPOINT POINT_2 AGREE second reason";
+
+    /// Seed an initialized, round-1-prepared debate and return its fingerprint.
+    ///
+    /// `claude` toggles the third (agent-tool) slot; with it unavailable the
+    /// live panel is exactly `cursor` and `codex`.
+    fn seed_prepared(claude: bool) -> (PathBuf, String) {
+        let debate = unique_dir("root");
+        let work = unique_dir("work");
+        let log = unique_dir("log");
+        let mut inputs = init_inputs(&debate, &work, &log);
+        inputs.claude = claude;
+        let state = initialize(&inputs, &fake_bootstrap).expect("init succeeds");
+        let parsed = BTreeMap::from([
+            (
+                "--debate-tmpdir".to_owned(),
+                debate.to_string_lossy().into_owned(),
+            ),
+            ("--expected-fingerprint".to_owned(), state.fingerprint),
+            ("--round".to_owned(), "1".to_owned()),
+        ]);
+        let prepared = run_round_prep(&parsed).expect("round-prep");
+        (debate, prepared.fingerprint)
+    }
+
+    fn record_turn_args(
+        debate: &Path,
+        fingerprint: &str,
+        round: i64,
+        slot: &str,
+    ) -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (
+                "--debate-tmpdir".to_owned(),
+                debate.to_string_lossy().into_owned(),
+            ),
+            ("--expected-fingerprint".to_owned(), fingerprint.to_owned()),
+            ("--round".to_owned(), round.to_string()),
+            ("--slot".to_owned(), slot.to_owned()),
+        ])
+    }
+
+    /// A fake runner writing a fixed all-AGREE ledger to the turn output.
+    fn agree_runner(request: &TurnRequest) -> TurnOutcome {
+        std::fs::write(&request.output, AGREE_LEDGER).expect("write ledger");
+        TurnOutcome::success(request.output.clone())
+    }
+
+    #[test]
+    fn record_turn_drives_round_one_to_converged() {
+        let (debate, fingerprint) = seed_prepared(false);
+        // First live slot: cursor. The round stays open.
+        let first = run_record_turn(
+            &record_turn_args(&debate, &fingerprint, 1, "cursor"),
+            &agree_runner,
+        )
+        .expect("cursor turn");
+        assert_eq!(first.slot_result, None);
+        assert_eq!(first.exit_code, 0);
+        assert!(first.state.active_round.is_some());
+        assert_ne!(first.state.fingerprint, fingerprint);
+        // Second (last) live slot: codex. SUBMIT_ROUND -> CONVERGED.
+        let second = run_record_turn(
+            &record_turn_args(&debate, &first.state.fingerprint, 1, "codex"),
+            &agree_runner,
+        )
+        .expect("codex turn");
+        assert_eq!(second.slot_result, None);
+        assert!(second.state.active_round.is_none());
+        assert_eq!(second.state.proposal.phase(), None);
+        assert_eq!(
+            second
+                .state
+                .proposal
+                .terminal_outcome()
+                .map(larch_core::debate::TerminalOutcome::as_str),
+            Some("CONVERGED")
+        );
+        let env = envelope(true, "record-turn", Some(&second.state), None, None);
+        assert!(env.contains("\"terminal_outcome\":\"CONVERGED\""));
+        assert!(env.contains("\"ok\":true"));
+        assert!(env.contains("\"slot_result\":null"));
+    }
+
+    #[test]
+    fn record_turn_runner_failure_drops_and_aborts() {
+        let (debate, fingerprint) = seed_prepared(false);
+        let runner = |_request: &TurnRequest| TurnOutcome::drop("runner_failure");
+        let outcome = run_record_turn(
+            &record_turn_args(&debate, &fingerprint, 1, "cursor"),
+            &runner,
+        )
+        .expect("drop envelope");
+        assert_eq!(outcome.slot_result, Some("runner_failure"));
+        assert_eq!(outcome.exit_code, 6);
+        // Dropping cursor leaves one live slot (< floor), so the debate aborts.
+        assert_eq!(
+            outcome
+                .state
+                .proposal
+                .terminal_outcome()
+                .map(larch_core::debate::TerminalOutcome::as_str),
+            Some("ABORTED")
+        );
+        assert_eq!(outcome.state.drops.len(), 1);
+        assert_eq!(outcome.state.drops[0].slot, "cursor");
+        let env = envelope(
+            false,
+            "record-turn",
+            Some(&outcome.state),
+            outcome.slot_result,
+            outcome.slot_result,
+        );
+        assert!(env.contains("\"slot_result\":\"runner_failure\""));
+        assert!(env.contains("\"error_class\":\"runner_failure\""));
+    }
+
+    #[test]
+    fn record_turn_protocol_rejection_on_unparsable_output() {
+        let (debate, fingerprint) = seed_prepared(false);
+        let runner = |request: &TurnRequest| {
+            std::fs::write(&request.output, "not a valid ledger").expect("write");
+            TurnOutcome::success(request.output.clone())
+        };
+        let outcome = run_record_turn(
+            &record_turn_args(&debate, &fingerprint, 1, "cursor"),
+            &runner,
+        )
+        .expect("drop envelope");
+        assert_eq!(outcome.slot_result, Some("protocol_rejection"));
+        assert_eq!(outcome.exit_code, 2);
+    }
+
+    #[test]
+    fn default_runner_rejects_missing_handle() {
+        let request = TurnRequest {
+            prompt: String::new(),
+            workdir: PathBuf::from("/tmp"),
+            output: PathBuf::from("/tmp/turn.out"),
+            session_handle: None,
+            model: String::new(),
+        };
+        let outcome = default_runner(&request);
+        assert!(!outcome.ok);
+        assert_eq!(outcome.error_class, Some("unsupported_transport"));
+    }
+
+    #[test]
+    fn record_turn_input_file_drives_claude_slot() {
+        let (debate, fingerprint) = seed_prepared(true);
+        let after_cursor = run_record_turn(
+            &record_turn_args(&debate, &fingerprint, 1, "cursor"),
+            &agree_runner,
+        )
+        .expect("cursor turn")
+        .state
+        .fingerprint;
+        let after_codex = run_record_turn(
+            &record_turn_args(&debate, &after_cursor, 1, "codex"),
+            &agree_runner,
+        )
+        .expect("codex turn")
+        .state
+        .fingerprint;
+        // claude is the last pending slot, driven through the confined input file.
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        let input = root.path().join("claude-input.txt");
+        std::fs::write(&input, AGREE_LEDGER).expect("write input");
+        let input_str = input.to_string_lossy().into_owned();
+        let runner = |request: &TurnRequest| input_file_runner(&root, &input_str, request);
+        let outcome = run_record_turn(
+            &record_turn_args(&debate, &after_codex, 1, "claude"),
+            &runner,
+        )
+        .expect("claude turn");
+        assert_eq!(outcome.slot_result, None);
+        assert!(outcome.state.active_round.is_none());
+        assert_eq!(
+            outcome
+                .state
+                .proposal
+                .terminal_outcome()
+                .map(larch_core::debate::TerminalOutcome::as_str),
+            Some("CONVERGED")
+        );
+    }
+
+    #[test]
+    fn record_turn_refuses_stale_and_out_of_order() {
+        let (debate, fingerprint) = seed_prepared(true);
+        let stale = record_turn_args(&debate, &"0".repeat(64), 1, "cursor");
+        let error = run_record_turn(&stale, &agree_runner).expect_err("stale");
+        assert_eq!(error.error_class, "stale_fingerprint");
+        assert_eq!(error.exit_code, 3);
+
+        // claude is not the first pending slot.
+        let out_of_order = record_turn_args(&debate, &fingerprint, 1, "claude");
+        let error = run_record_turn(&out_of_order, &agree_runner).expect_err("out of order");
+        assert_eq!(error.error_class, "validation");
+        assert_eq!(error.exit_code, 2);
+
+        // Round 2 is not the admitted round while round 1 is active.
+        let bad_round = record_turn_args(&debate, &fingerprint, 2, "cursor");
+        let error = run_record_turn(&bad_round, &agree_runner).expect_err("bad round");
+        assert_eq!(error.error_class, "validation");
+    }
+
+    fn abort_args(debate: &Path, fingerprint: &str) -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (
+                "--debate-tmpdir".to_owned(),
+                debate.to_string_lossy().into_owned(),
+            ),
+            ("--expected-fingerprint".to_owned(), fingerprint.to_owned()),
+        ])
+    }
+
+    #[test]
+    fn abort_writes_restore_handoff_idempotently() {
+        let (debate, fingerprint) = seed_prepared(true);
+        let state = run_abort(&abort_args(&debate, &fingerprint)).expect("abort succeeds");
+        assert_eq!(
+            state
+                .proposal
+                .terminal_outcome()
+                .map(larch_core::debate::TerminalOutcome::as_str),
+            Some("ABORTED")
+        );
+        let handoff = debate.join("abort-restore.env");
+        let bytes = std::fs::read_to_string(&handoff).expect("handoff");
+        assert_eq!(
+            bytes,
+            format!(
+                "RESTORE_ISSUE_NUMBER=42\nRESTORE_ORIGINAL_TITLE=Orig Title\nRESTORE_TITLE=[DEBATING] Orig Title\nSOURCE_FINGERPRINT={}\n",
+                state.fingerprint
+            )
+        );
+        // A second abort with the new fingerprint re-writes identical bytes.
+        let again = run_abort(&abort_args(&debate, &state.fingerprint)).expect("second abort");
+        assert_eq!(again.fingerprint, state.fingerprint);
+        assert_eq!(std::fs::read_to_string(&handoff).expect("handoff2"), bytes);
+    }
+
+    #[test]
+    fn abort_conflicting_handoff_is_persistence_failure() {
+        let (debate, fingerprint) = seed_prepared(true);
+        let handoff = debate.join("abort-restore.env");
+        std::fs::write(&handoff, "RESTORE_ISSUE_NUMBER=different\n").expect("seed conflict");
+        let error = run_abort(&abort_args(&debate, &fingerprint)).expect_err("conflict");
+        assert_eq!(error.error_class, "persistence_failure");
+        assert_eq!(error.exit_code, 5);
     }
 }

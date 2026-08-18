@@ -1052,6 +1052,12 @@ enum DebateCommand {
     /// Prepare one negotiation round: seating, mailboxes, and turn prompts.
     #[command(name = "round-prep", disable_help_flag = true)]
     RoundPrep(RawCompatibilityArguments),
+    /// Record one live slot's turn: run the vendor and bind the ledger.
+    #[command(name = "record-turn", disable_help_flag = true)]
+    RecordTurn(RawCompatibilityArguments),
+    /// Abort a debate and write the tracking-issue restore handoff.
+    #[command(disable_help_flag = true)]
+    Abort(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2028,6 +2034,10 @@ fn run(
             DebateCommand::RoundPrep(arguments) => {
                 debate_commands::round_prep(&arguments.arguments)
             }
+            DebateCommand::RecordTurn(arguments) => {
+                debate_commands::record_turn(&arguments.arguments)
+            }
+            DebateCommand::Abort(arguments) => debate_commands::abort(&arguments.arguments),
         }),
         Domain::Deps(command) => Ok(match command {
             DepsCommand::ResolveRepo(arguments) => {
