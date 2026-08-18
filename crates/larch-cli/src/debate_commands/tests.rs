@@ -98,7 +98,8 @@ mod debate_commands_tests {
             )
         );
         // The written state re-decodes and re-encodes byte for byte.
-        let written = std::fs::read_to_string(debate.join("debate-state.json")).expect("state file");
+        let written =
+            std::fs::read_to_string(debate.join("debate-state.json")).expect("state file");
         let decoded = decode_state(&written).expect("decode");
         assert_eq!(encode_state(&decoded), written);
         assert_eq!(decoded.fingerprint, state.fingerprint);
