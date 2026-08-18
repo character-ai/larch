@@ -21,10 +21,7 @@ from larch.debate.orchestrator import (
     ProposalState,
     TurnRequest,
     TurnResult,
-    default_bootstrapper,
-    initialize,
     record_turn,
-    round_prep,
     turn_prompt,
 )
 
@@ -35,29 +32,72 @@ _CURSOR_CHAT_ID = "chat-0123456789abcdef"
 _CODEX_SESSION_ID = "6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d"
 
 
-def _fake_bootstrapper(slot: ParticipantSlot, context: InitializationContext) -> VendorSessionHandle:
-    _ = context
-    session_id = _CURSOR_CHAT_ID if slot.tool == "cursor" else _CODEX_SESSION_ID
-    return VendorSessionHandle.create(vendor=slot.tool, session_id=session_id)
+def _initialize(
+    root: Path,
+    *,
+    cursor_present: bool = True,
+    codex_present: bool = True,
+    claude_present: bool = False,
+    run_local_values: dict[str, str] | None = None,
+    subject: str = "# Subject\n\nChoose a safe implementation.",
+) -> ProposalState:
+    """Build an initial debate state directly.
+
+    ``debate init`` and ``debate round-prep`` are Rust-owned after #8600, so
+    these tests exercise the still-Python commands (record-turn, adjudicate,
+    synthesize, publish-prepare, abort) against a state assembled here rather
+    than through the removed Python builders.
+    """
+    (root / "logs").mkdir(exist_ok=True)
+    base = {"run": "local"} if run_local_values is None else run_local_values
+    values = dict(sorted(base.items()))
+    values[config.DEBATE_SUBJECT_VALUE_KEY] = base64.b64encode(subject.encode("utf-8")).decode("ascii")
+    values = dict(sorted(values.items()))
+    availability = {"cursor": cursor_present, "codex": codex_present, "claude": claude_present}
+    seats = (
+        ("cursor", "cursor", "subprocess", config.DEBATE_CURSOR_MODEL),
+        ("codex", "codex", "subprocess", config.DEBATE_CODEX_MODEL),
+        ("claude", "claude", "agent-tool", config.DEBATE_CLAUDE_MODEL),
+    )
+    slots = tuple(
+        ParticipantSlot(slot, tool, transport, availability[tool], model)
+        for slot, tool, transport, model in seats
+    )
+    handles: dict[str, VendorSessionHandle] = {}
+    for slot in slots:
+        if slot.available and slot.transport == "subprocess":
+            session_id = _CURSOR_CHAT_ID if slot.tool == "cursor" else _CODEX_SESSION_ID
+            handles[slot.slot] = VendorSessionHandle.create(vendor=slot.tool, session_id=session_id)
+    restore = orchestrator.RestoreMetadata("1", "old", "new")
+    context = InitializationContext(
+        (1,), values, str(Path.cwd()), str(root / "logs"), "test-run", slots, restore, handles, ""
+    )
+    proposal = protocol.new_proposal((protocol.PointId(1),), run_local_values=values)
+    state = orchestrator.write_state(root, ProposalState(context, proposal, None))
+    # Materialize the per-debate lock file so lock-path tests can mutate it.
+    with orchestrator._StateLock(orchestrator._trusted_root(root)):  # pyright: ignore[reportPrivateUsage]  # test scaffolding for the still-Python state lock
+        pass
+    return state
 
 
-def _initialize(root: Path) -> ProposalState:
-    return initialize(
-        root=root,
-        expected_fingerprint="ABSENT",
-        repo_workdir=str(Path.cwd()),
-        log_root=str(root / "logs"),
-        run_id="test-run",
-        point_universe=(protocol.PointId(1),),
-        run_local_values={"run": "local"},
-        cursor_present=True,
-        codex_present=True,
-        claude_present=False,
-        restore_issue_number="1",
-        restore_original_title="old",
-        restore_title="new",
-        subject="# Subject\n\nChoose a safe implementation.",
-        bootstrapper=_fake_bootstrapper,
+def _round_prep(root: Path, state: ProposalState, round_number: int) -> ProposalState:
+    """Prepare one negotiation round directly (round-prep is Rust-owned)."""
+    live = tuple(slot.slot for slot in state.initialization.slots if slot.available)
+    previous = state.proposal.rounds[-1] if state.proposal.rounds else None
+    mailboxes: dict[str, tuple[dict[str, object], ...]] = {}
+    for slot in live:
+        mailboxes[slot] = (
+            ()
+            if previous is None
+            else tuple(
+                orchestrator._encode_binding(binding)  # pyright: ignore[reportPrivateUsage]  # mailbox delta reuses the persisted binding encoder
+                for binding in previous.bindings
+                if binding.slot.value != slot
+            )
+        )
+    active = orchestrator.ActiveRound(round_number, True, mailboxes, live, live)  # noqa: FBT003 - frozen active-round constructor mirrors the persisted positional schema
+    return orchestrator.write_state(
+        root, ProposalState(state.initialization, state.proposal, active, state.drops)
     )
 
 
@@ -74,11 +114,7 @@ def _drive_stalemate(root: Path) -> ProposalState:
         return TurnResult(ok=True, output=request.output)
 
     for round_number in (1, 2):
-        state = round_prep(
-            root=root,
-            expected_fingerprint=state.fingerprint,
-            round_number=round_number,
-        )
+        state = _round_prep(root, state, round_number)
         for slot in ("cursor", "codex"):
             state, error = record_turn(
                 root=root,
@@ -106,12 +142,7 @@ def test_canonical_state_and_turn_progression(tmp_path: Path) -> None:
     state = _initialize(tmp_path)
     payload = json.loads((tmp_path / "debate-state.json").read_text(encoding="utf-8"))
     assert payload["fingerprint"] == state.fingerprint
-    state = round_prep(root=tmp_path, expected_fingerprint=state.fingerprint, round_number=1)
-    prompt_path = tmp_path / config.DEBATE_TURN_PROMPT_FILENAME_TEMPLATE.format(
-        slot="cursor", round_number=1
-    )
-    assert prompt_path.is_file()
-    assert "<debate-subject-base64>" in prompt_path.read_text(encoding="utf-8")
+    state = _round_prep(tmp_path, state, 1)
 
     def runner(request: TurnRequest) -> TurnResult:
         output = request.output
@@ -130,8 +161,6 @@ def test_subject_is_bound_into_first_turn_and_synthesis_inputs(tmp_path: Path) -
     state = _initialize(tmp_path)
     encoded = state.initialization.run_local_values[config.DEBATE_SUBJECT_VALUE_KEY]
     assert base64.b64decode(encoded).decode() == "# Subject\n\nChoose a safe implementation."
-    slot = next(item for item in state.initialization.slots if item.slot == "cursor")
-    assert encoded not in orchestrator.bootstrap_prompt(slot, state.initialization)
     first_prompt = turn_prompt(
         slot="cursor",
         round_number=1,
@@ -153,24 +182,10 @@ def test_subject_is_bound_into_first_turn_and_synthesis_inputs(tmp_path: Path) -
 
 
 def test_cli_ingests_claude_ledger_from_a_bounded_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    state = initialize(
-        root=tmp_path,
-        expected_fingerprint="ABSENT",
-        repo_workdir=str(Path.cwd()),
-        log_root=str(tmp_path / "logs"),
-        run_id="test-run",
-        point_universe=(protocol.PointId(1),),
-        run_local_values={},
-        cursor_present=True,
-        codex_present=True,
-        claude_present=True,
-        restore_issue_number="1",
-        restore_original_title="old",
-        restore_title="new",
-        subject="Choose one approach.",
-        bootstrapper=_fake_bootstrapper,
+    state = _initialize(
+        tmp_path, claude_present=True, run_local_values={}, subject="Choose one approach."
     )
-    state = round_prep(root=tmp_path, expected_fingerprint=state.fingerprint, round_number=1)
+    state = _round_prep(tmp_path, state, 1)
 
     def runner(request: TurnRequest) -> TurnResult:
         _ = request.output.write_text("POINT POINT_1 HOLD keep evaluating", encoding="utf-8")
@@ -209,7 +224,7 @@ def test_cli_ingests_claude_ledger_from_a_bounded_file(tmp_path: Path, capsys: p
 
 def test_non_utf8_turn_output_becomes_a_protocol_drop(tmp_path: Path) -> None:
     state = _initialize(tmp_path)
-    state = round_prep(root=tmp_path, expected_fingerprint=state.fingerprint, round_number=1)
+    state = _round_prep(tmp_path, state, 1)
 
     def runner(request: TurnRequest) -> TurnResult:
         _ = request.output.write_bytes(b"\xff")
@@ -229,7 +244,7 @@ def test_non_utf8_turn_output_becomes_a_protocol_drop(tmp_path: Path) -> None:
 
 def test_stale_mutation_does_not_change_state(tmp_path: Path) -> None:
     state = _initialize(tmp_path)
-    next_state = round_prep(root=tmp_path, expected_fingerprint=state.fingerprint, round_number=1)
+    next_state = _round_prep(tmp_path, state, 1)
     assert next_state.fingerprint != state.fingerprint
 
 
@@ -291,57 +306,6 @@ def _argv(call: dict[str, object]) -> Sequence[str]:
     tokens = call["cmd"]
     assert isinstance(tokens, list)
     return [str(token) for token in tokens]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
-
-
-def test_default_bootstrapper_creates_cursor_session_from_structured_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    handle = VendorSessionHandle.create(vendor="cursor", session_id=_CURSOR_CHAT_ID)
-    fake = _FakeRun(handle=handle, stdout_text=json.dumps({"chatId": _CURSOR_CHAT_ID}) + "\n")
-    monkeypatch.setattr(_run_external, "run_external_agent", fake)
-    logs = tmp_path / "logs"
-    logs.mkdir()
-    context = InitializationContext((1,), {}, str(tmp_path), str(logs), "run", (), orchestrator.RestoreMetadata("1", "a", "b"))
-    slot = ParticipantSlot("cursor", "cursor", "subprocess", available=True)
-
-    created = default_bootstrapper(slot, context)
-
-    assert created.session_id == _CURSOR_CHAT_ID
-    assert _argv(fake.calls[0]) == ["cursor", "agent", "create-chat"]
-    assert fake.calls[0]["capture_session_handle"] is True
-
-
-def test_default_bootstrapper_fails_closed_without_a_handle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_run_external, "run_external_agent", _FakeRun(handle=None))
-    logs = tmp_path / "logs"
-    logs.mkdir()
-    context = InitializationContext((1,), {}, str(tmp_path), str(logs), "run", (), orchestrator.RestoreMetadata("1", "a", "b"))
-
-    with pytest.raises(DebateError) as excinfo:
-        _ = default_bootstrapper(ParticipantSlot("codex", "codex", "subprocess", available=True), context)
-
-    assert excinfo.value.exit_code == config.DEBATE_EXIT_RUNNER_FAILURE
-
-
-def test_default_bootstrapper_applies_the_codex_debate_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    handle = VendorSessionHandle.create(vendor="codex", session_id=_CODEX_SESSION_ID)
-    fake = _FakeRun(handle=handle)
-    monkeypatch.setattr(_run_external, "run_external_agent", fake)
-    logs = tmp_path / "logs"
-    logs.mkdir()
-    context = InitializationContext((1,), {}, str(tmp_path), str(logs), "run", (), orchestrator.RestoreMetadata("1", "a", "b"))
-
-    _ = default_bootstrapper(
-        ParticipantSlot(
-            "codex",
-            "codex",
-            "subprocess",
-            available=True,
-            model=config.DEBATE_CODEX_MODEL,
-        ),
-        context,
-    )
-
-    argv = _argv(fake.calls[0])
-    assert argv[argv.index("-m") + 1] == config.DEBATE_CODEX_MODEL
 
 
 def test_default_runner_rejects_claude_before_any_launch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -440,7 +404,7 @@ def test_state_lock_refuses_a_non_regular_lock_path(tmp_path: Path) -> None:
     os.mkfifo(lock)
     try:
         with pytest.raises(DebateError) as excinfo:
-            _ = round_prep(root=tmp_path, expected_fingerprint=state.fingerprint, round_number=1)
+            _ = orchestrator.abort(root=tmp_path, expected_fingerprint=state.fingerprint)
         assert excinfo.value.exit_code == config.DEBATE_EXIT_PERSISTENCE_FAILURE
     finally:
         lock.unlink()
@@ -455,7 +419,7 @@ def test_state_lock_refuses_a_symlinked_lock_path(tmp_path: Path) -> None:
     lock.symlink_to(target)
 
     with pytest.raises(DebateError) as excinfo:
-        _ = round_prep(root=tmp_path, expected_fingerprint=state.fingerprint, round_number=1)
+        _ = orchestrator.abort(root=tmp_path, expected_fingerprint=state.fingerprint)
 
     assert excinfo.value.exit_code == config.DEBATE_EXIT_PERSISTENCE_FAILURE
     assert stat.S_ISLNK(lock.lstat().st_mode)

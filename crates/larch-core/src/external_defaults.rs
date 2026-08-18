@@ -334,6 +334,48 @@ pub fn role_default(role_id: &str) -> Result<&'static RoleDefault, ExternalDefau
         .ok_or_else(|| ExternalDefaultError::new(format!("unknown role: {role_id}")))
 }
 
+/// One fixed debate panel seat: slot, vendor tool, transport, and model pin.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DebateSeat {
+    /// Slot name in `SLOT_ORDER`.
+    pub slot: &'static str,
+    /// Vendor tool.
+    pub tool: &'static str,
+    /// Launch transport.
+    pub transport: &'static str,
+    /// Model pin.
+    pub model: &'static str,
+}
+
+/// Fixed `debate.panel` seating in protocol slot order.
+///
+/// Mirrors the `config.py` `debate.panel` `RoleDefault.slots` (Cursor and Codex
+/// subprocess, Claude agent-tool) that Python `orchestrator._slots` consumed via
+/// `external_defaults.slot_defaults`.
+#[must_use]
+pub const fn debate_panel_seating() -> [DebateSeat; 3] {
+    [
+        DebateSeat {
+            slot: "cursor",
+            tool: "cursor",
+            transport: "subprocess",
+            model: crate::DEBATE_CURSOR_MODEL,
+        },
+        DebateSeat {
+            slot: "codex",
+            tool: "codex",
+            transport: "subprocess",
+            model: crate::DEBATE_CODEX_MODEL,
+        },
+        DebateSeat {
+            slot: "claude",
+            tool: "claude",
+            transport: "agent-tool",
+            model: crate::DEBATE_CLAUDE_MODEL,
+        },
+    ]
+}
+
 /// Return every role that has a documentation phase.
 #[must_use]
 pub fn doc_rows() -> Vec<&'static RoleDefault> {

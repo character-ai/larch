@@ -16,3 +16,9 @@ crates/larch-core/tests/fixtures/review/plan_review_normalized_findings.golden.m
 # review_dispatch_panel_prompt.md is a byte-exact runtime prompt template.
 # Its intentional H1-to-H3 sequence is part of the rendered reviewer contract.
 crates/larch-cli/src/review_dispatch_panel_prompt.md
+
+# The debate_commands fixtures are byte-exact rendered debate turn-prompt parity
+# fixtures compared verbatim by crates/larch-cli/src/debate_commands/tests.rs.
+# They intentionally omit the trailing newline to match the rendered prompt bytes
+# and must not be edited to satisfy lint rules.
+crates/larch-cli/tests/fixtures/debate_commands/

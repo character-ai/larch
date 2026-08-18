@@ -43,6 +43,7 @@ mod cleanup_commands;
 mod collector_commands;
 mod combine_issues_commands;
 mod complete_umbrella_commands;
+mod debate_commands;
 mod deps_audit_commands;
 mod developer_tooling_commands;
 mod difficulty_calibration_commands;
@@ -222,6 +223,9 @@ enum Domain {
     /// Combine related issues while preserving their dependency graph.
     #[command(subcommand, name = "combine-issues")]
     CombineIssues(CombineIssuesCommand),
+    /// Durable two-round debate protocol commands.
+    #[command(subcommand)]
+    Debate(DebateCommand),
     /// Working-tree checkpoint and scope compatibility commands.
     #[command(subcommand)]
     DirtyTree(DirtyTreeCommand),
@@ -1038,6 +1042,16 @@ enum NamedBlockCommand {
     /// Write, replace, or delete one named issue-body block.
     #[command(disable_help_flag = true)]
     Write(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum DebateCommand {
+    /// Initialize a debate: seat the panel and persist the first state.
+    #[command(disable_help_flag = true)]
+    Init(RawCompatibilityArguments),
+    /// Prepare one negotiation round: seating, mailboxes, and turn prompts.
+    #[command(name = "round-prep", disable_help_flag = true)]
+    RoundPrep(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2009,6 +2023,12 @@ fn run(
         Domain::DifficultyCalibration(DifficultyCalibrationCommand::Analyze(arguments)) => Ok(
             difficulty_calibration_commands::analyze(&arguments.arguments),
         ),
+        Domain::Debate(command) => Ok(match command {
+            DebateCommand::Init(arguments) => debate_commands::init(&arguments.arguments),
+            DebateCommand::RoundPrep(arguments) => {
+                debate_commands::round_prep(&arguments.arguments)
+            }
+        }),
         Domain::Deps(command) => Ok(match command {
             DepsCommand::ResolveRepo(arguments) => {
                 deps_audit_commands::resolve_repo(&arguments.arguments)

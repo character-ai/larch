@@ -1,4 +1,4 @@
-debate.panel	debate.panel	persistent Cursor subprocess + Codex subprocess + Claude Agent session	python/larch/debate/orchestrator.py
+debate.panel	debate.panel	persistent Cursor subprocess + Codex subprocess + Claude Agent session	crates/larch-core/src/external_defaults.rs
 debate.rounds	two-round debate protocol	blind position round + validated mailbox negotiation round	python/larch/debate/orchestrator.py
 debate.adjudication	AskUserQuestion	default operator decisions or autonomous anonymized voter panel	skills/debate/SKILL.md
 debate.publication	/issue	verified source creation + proposal filing + bidirectional links	skills/debate/SKILL.md
