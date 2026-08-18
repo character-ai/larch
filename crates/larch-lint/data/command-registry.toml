@@ -9421,7 +9421,7 @@ rust = []
 path = "skills/debate/SKILL.md"
 kind = "skill"
 python = []
-rust = ["debate abort", "debate adjudicate", "debate adjudication-preview", "debate comment-verify", "debate init", "debate issue-prepare", "debate proposal-link", "debate publish-prepare", "debate record-turn", "debate round-prep", "debate synthesize", "debate title-transition", "run-log lifecycle-start", "session setup", "tracking-issue upsert-summary", "untrusted file-block", "verify skill-called"]
+rust = ["debate abort", "debate adjudicate", "debate adjudication-preview", "debate comment-verify", "debate init", "debate issue-prepare", "debate proposal-link", "debate publish-prepare", "debate synthesize", "debate title-transition", "run-log lifecycle-start", "session setup", "tracking-issue upsert-summary", "untrusted file-block", "verify skill-called"]
 
 [[callers]]
 path = "skills/deps/SKILL.md"
