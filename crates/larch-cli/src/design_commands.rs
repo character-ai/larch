@@ -23,8 +23,8 @@ use std::{
 };
 
 use larch_core::{
-    OrderedJson, ParseOptions, ensure_ascii_json, parse_named_block, parse_single_kv_row,
-    title_has_archival_report_prefix, title_lifecycle_reject_marker, title_starts_with_brainstorm,
+    OrderedJson, ensure_ascii_json, parse_named_block, title_has_archival_report_prefix,
+    title_lifecycle_reject_marker, title_starts_with_brainstorm,
 };
 
 use crate::{
@@ -400,17 +400,26 @@ pub fn parse_flags(arguments: &[OsString]) -> ExitCode {
 // ---------------------------------------------------------------------------
 
 /// Parse `KEY=value` stdout rows in order, skipping empty keys, matching the
-/// Python `larch_io.parse_kv(duplicate_policy="all", skip_empty_key=True)`.
+/// Python `larch_io.parse_kv(duplicate_policy="all", skip_empty_key=True)`:
+/// LF-split with CRLF framing stripped on non-final lines, first `=` splits,
+/// and a lone CR stays part of the value.
 fn parse_stdout_kv(text: &str) -> Vec<(String, String)> {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let final_index = lines.len().saturating_sub(1);
     let mut rows = Vec::new();
-    for raw in text.split('\n') {
-        let Some(row) = parse_single_kv_row(raw, ParseOptions::legacy()) else {
+    for (index, line) in lines.iter().enumerate() {
+        let line = if index < final_index {
+            line.strip_suffix('\r').unwrap_or(line)
+        } else {
+            line
+        };
+        let Some((key, value)) = line.split_once('=') else {
             continue;
         };
-        if row.key().is_empty() {
+        if key.is_empty() {
             continue;
         }
-        rows.push((row.key().to_owned(), row.value().to_owned()));
+        rows.push((key.to_owned(), value.to_owned()));
     }
     rows
 }
@@ -1096,6 +1105,21 @@ mod tests {
                 ("STEP".to_owned(), "old".to_owned()),
                 ("STEP".to_owned(), "latest".to_owned()),
                 ("WARN".to_owned(), "w1".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn stdout_kv_parsing_strips_crlf_framing_and_keeps_lone_cr_in_values() {
+        // Matches Python `larch_io._line_iter`: the CR before an LF is
+        // framing; a lone CR is value data.
+        let rows = parse_stdout_kv("LOAD_OK=true\r\nWARN=has\rcarriage\nSTEP=step-3");
+        assert_eq!(
+            rows,
+            vec![
+                ("LOAD_OK".to_owned(), "true".to_owned()),
+                ("WARN".to_owned(), "has\rcarriage".to_owned()),
+                ("STEP".to_owned(), "step-3".to_owned()),
             ]
         );
     }
