@@ -19,8 +19,8 @@ mod debate_commands_tests {
     use larch_core::VendorSessionHandle;
     use larch_core::debate::{
         NonterminalPhase, ParticipantSlot, PointId, ReasonFingerprint, RoundNumber, RoundState,
-        SLOT_ORDER, SlotLedgerBinding, StoredState, TerminalOutcome, TransitionAction, decode_state,
-        encode_state, fingerprint_reason, parse_slot, parse_slot_ledger, transition,
+        SLOT_ORDER, SlotLedgerBinding, StoredState, TerminalOutcome, TransitionAction,
+        decode_state, encode_state, fingerprint_reason, parse_slot, parse_slot_ledger, transition,
     };
     use std::collections::BTreeMap;
     use std::ffi::OsString;
@@ -592,8 +592,13 @@ mod debate_commands_tests {
             RoundNumber::Round2
         };
         let round = RoundState::new(number, bindings).expect("round");
-        let proposal = transition(&state.proposal, TransitionAction::SubmitRound, Some(&round), None)
-            .expect("submit round");
+        let proposal = transition(
+            &state.proposal,
+            TransitionAction::SubmitRound,
+            Some(&round),
+            None,
+        )
+        .expect("submit round");
         let stored = StoredState {
             proposal,
             active_round: None,
@@ -702,7 +707,10 @@ mod debate_commands_tests {
         .expect("operator adjudicate");
         assert!(tally.is_none());
         assert_eq!(
-            state.proposal.terminal_outcome().map(TerminalOutcome::as_str),
+            state
+                .proposal
+                .terminal_outcome()
+                .map(TerminalOutcome::as_str),
             Some("CONVERGED")
         );
         // The persisted state advances to the adjudicated proposal.
@@ -745,7 +753,10 @@ mod debate_commands_tests {
                 "FINDING_1: YES\nFINDING_2: NO\n",
             )
             .expect("voter output");
-            Ok((vec![PathBuf::from("voter-1.txt")], "DISPATCH_OK=true\n".to_owned()))
+            Ok((
+                vec![PathBuf::from("voter-1.txt")],
+                "DISPATCH_OK=true\n".to_owned(),
+            ))
         };
         let run_log = |_state: &StoredState, _input: &Path| -> Result<(), DebateError> { Ok(()) };
         let backend = AdjudicationBackend {
@@ -758,7 +769,10 @@ mod debate_commands_tests {
         )
         .expect("autonomous adjudicate");
         assert_eq!(
-            state.proposal.terminal_outcome().map(TerminalOutcome::as_str),
+            state
+                .proposal
+                .terminal_outcome()
+                .map(TerminalOutcome::as_str),
             Some("CONVERGED")
         );
         let tally_path = tally.expect("tally artifact");
@@ -766,7 +780,14 @@ mod debate_commands_tests {
         assert!(tally_text.contains("adopt approach cursor"));
         // The tally never leaks the debate tmpdir path.
         assert!(!tally_text.contains(&debate.to_string_lossy().into_owned()));
-        let env = envelope(true, "adjudicate", Some(&state), None, None, Some(&tally_path));
+        let env = envelope(
+            true,
+            "adjudicate",
+            Some(&state),
+            None,
+            None,
+            Some(&tally_path),
+        );
         assert!(env.contains(&format!("\"artifact_path\":\"{}\"", tally_path.display())));
     }
 
@@ -791,7 +812,10 @@ mod debate_commands_tests {
         .expect("autonomous adjudicate");
         assert!(tally.is_some());
         assert_eq!(
-            state.proposal.terminal_outcome().map(TerminalOutcome::as_str),
+            state
+                .proposal
+                .terminal_outcome()
+                .map(TerminalOutcome::as_str),
             Some("BOTH_VIABLE")
         );
     }

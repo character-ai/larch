@@ -27,12 +27,12 @@ use larch_adapters::{
 use larch_core::debate::{
     ABSENT_FINGERPRINT, ActiveRound, AdjudicationDecision, AdjudicationRecord,
     DEBATE_SUBJECT_MAX_BYTES, DEBATE_SUBJECT_VALUE_KEY, DropRecord, InitializationContext,
-    LIVE_PANEL_MINIMUM, MailboxEntry, NonterminalPhase, ParticipantSlot, PointId, ReasonFingerprint,
-    RestoreMetadata, RoundNumber, RoundState, SLOT_ORDER, STATE_FILENAME, SelectedAdjudication,
-    SlotLedgerBinding, SplitAdjudication, StateError, StoredState, TransitionAction, base64_encode,
-    bootstrap_prompt, fingerprint_reason, is_safe_line, mailbox_entry, model_args, new_proposal,
-    parse_slot, parse_slot_ledger, require_fingerprint, transition, turn_prompt, unresolved_points,
-    validate_adjudication_set,
+    LIVE_PANEL_MINIMUM, MailboxEntry, NonterminalPhase, ParticipantSlot, PointId,
+    ReasonFingerprint, RestoreMetadata, RoundNumber, RoundState, SLOT_ORDER, STATE_FILENAME,
+    SelectedAdjudication, SlotLedgerBinding, SplitAdjudication, StateError, StoredState,
+    TransitionAction, base64_encode, bootstrap_prompt, fingerprint_reason, is_safe_line,
+    mailbox_entry, model_args, new_proposal, parse_slot, parse_slot_ledger, require_fingerprint,
+    transition, turn_prompt, unresolved_points, validate_adjudication_set,
 };
 use larch_core::review::{classify_result, vote_for_id_text};
 use larch_core::{
@@ -338,7 +338,14 @@ fn finish_artifact(
         Ok((state, artifact)) => {
             println!(
                 "{}",
-                envelope(true, operation, Some(&state), None, None, artifact.as_deref())
+                envelope(
+                    true,
+                    operation,
+                    Some(&state),
+                    None,
+                    None,
+                    artifact.as_deref()
+                )
             );
             ExitCode::SUCCESS
         }
@@ -439,7 +446,9 @@ fn envelope(
     );
     let _ = object.insert(
         "artifact_path".to_owned(),
-        artifact_path.map_or(Value::Null, |path| Value::String(path.display().to_string())),
+        artifact_path.map_or(Value::Null, |path| {
+            Value::String(path.display().to_string())
+        }),
     );
     serde_json::to_string(&Value::Object(object)).unwrap_or_default()
 }
@@ -1684,8 +1693,7 @@ fn write_owned_text(
     let confined = root
         .confine(&target, PathIntent::Write)
         .map_err(|_error| error.clone())?;
-    atomic_write_utf8_in(root, confined.path(), content, false, 0o600)
-        .map_err(|_error| error)?;
+    atomic_write_utf8_in(root, confined.path(), content, false, 0o600).map_err(|_error| error)?;
     Ok(target)
 }
 
@@ -1728,8 +1736,9 @@ fn parse_operator_adjudication_row(row: &str) -> Result<AdjudicationRecord, Deba
         return Ok(AdjudicationRecord::Selected(record));
     }
     if decision == AdjudicationDecision::Split.as_str() && positions.len() == SPLIT_POSITION_COUNT {
-        let record = SplitAdjudication::new(point, positions[0].to_owned(), positions[1].to_owned())
-            .map_err(|_error| DebateError::adjudication_rejected())?;
+        let record =
+            SplitAdjudication::new(point, positions[0].to_owned(), positions[1].to_owned())
+                .map_err(|_error| DebateError::adjudication_rejected())?;
         return Ok(AdjudicationRecord::Split(record));
     }
     Err(DebateError::adjudication_rejected())
@@ -1914,8 +1923,8 @@ fn voter_paths(voter_root: &TemporaryRoot, output: &str) -> Result<Vec<PathBuf>,
             return Err(DebateError::adjudication_rejected());
         }
         let candidate = PathBuf::from(raw_path);
-        let text =
-            read_confined_lossy(voter_root, &candidate).ok_or_else(DebateError::adjudication_rejected)?;
+        let text = read_confined_lossy(voter_root, &candidate)
+            .ok_or_else(DebateError::adjudication_rejected)?;
         if seen.contains(&candidate) {
             return Err(DebateError::adjudication_rejected());
         }
@@ -1971,12 +1980,13 @@ fn default_dispatch(
     .into_iter()
     .map(OsString::from)
     .collect();
-    let output =
-        match run_verified_larch_with_timeout(&arguments, Duration::from_secs(VENDOR_TIMEOUT_SECONDS))
-        {
-            Ok(output) => output,
-            Err(_error) => return Ok((Vec::new(), String::new())),
-        };
+    let output = match run_verified_larch_with_timeout(
+        &arguments,
+        Duration::from_secs(VENDOR_TIMEOUT_SECONDS),
+    ) {
+        Ok(output) => output,
+        Err(_error) => return Ok((Vec::new(), String::new())),
+    };
     let stdout = String::from_utf8_lossy(output.stdout()).into_owned();
     if !output.status().success()
         || one_dispatch_value(&stdout, "DISPATCH_OK").as_deref() != Some("true")
@@ -2024,7 +2034,10 @@ fn voter_slot_rows(output: &str) -> Vec<Value> {
             .map(|number| {
                 let mut row = Map::new();
                 let _ = row.insert("slot".to_owned(), Value::String(format!("voter-{number}")));
-                let _ = row.insert("status".to_owned(), Value::String("dispatch-failed".to_owned()));
+                let _ = row.insert(
+                    "status".to_owned(),
+                    Value::String("dispatch-failed".to_owned()),
+                );
                 Value::Object(row)
             })
             .collect();
@@ -2034,9 +2047,10 @@ fn voter_slot_rows(output: &str) -> Vec<Value> {
         let mut status = one_dispatch_value(output, &format!("VOTER_{number}_STATUS"))
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| "unknown".to_owned());
-        let mut parse_rate = one_dispatch_value(output, &format!("VOTER_{number}_PARSE_RATE_STATUS"))
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| "unknown".to_owned());
+        let mut parse_rate =
+            one_dispatch_value(output, &format!("VOTER_{number}_PARSE_RATE_STATUS"))
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "unknown".to_owned());
         if !is_safe_line(&status) || !is_safe_line(&parse_rate) {
             "invalid".clone_into(&mut status);
             "invalid".clone_into(&mut parse_rate);
@@ -2065,8 +2079,8 @@ fn candidate_tally(
         // Read each external file once through the confined descriptor, then
         // give the shared parser that immutable text (mirrors Python's
         // same-UID-swap avoidance).
-        let text =
-            read_confined_lossy(voter_root, voter_file).ok_or_else(DebateError::adjudication_rejected)?;
+        let text = read_confined_lossy(voter_root, voter_file)
+            .ok_or_else(DebateError::adjudication_rejected)?;
         match vote_for_id_text(&candidate.ballot_id, &text, "") {
             "YES" => yes += 1,
             "NO" => no += 1,
@@ -2080,11 +2094,17 @@ fn candidate_tally(
         "ballot_id".to_owned(),
         Value::String(candidate.ballot_id.clone()),
     );
-    let _ = row.insert("option".to_owned(), Value::String(candidate.option.to_owned()));
+    let _ = row.insert(
+        "option".to_owned(),
+        Value::String(candidate.option.to_owned()),
+    );
     let _ = row.insert("position".to_owned(), Value::String(position));
     let _ = row.insert("yes".to_owned(), Value::Number(yes.into()));
     let _ = row.insert("no".to_owned(), Value::Number(no.into()));
-    let _ = row.insert("eligible".to_owned(), Value::Number(voter_files.len().into()));
+    let _ = row.insert(
+        "eligible".to_owned(),
+        Value::Number(voter_files.len().into()),
+    );
     let _ = row.insert(
         "classification".to_owned(),
         Value::String(classification.to_owned()),
@@ -2148,7 +2168,10 @@ fn automated_adjudications(
                 .map_err(|_error| DebateError::adjudication_rejected())?;
             let _ = records.insert(point.number(), AdjudicationRecord::Selected(record));
         } else {
-            let _ = choices.insert(point.number(), (point, options[0].clone(), options[1].clone()));
+            let _ = choices.insert(
+                point.number(),
+                (point, options[0].clone(), options[1].clone()),
+            );
         }
     }
 
@@ -2178,7 +2201,10 @@ fn automated_adjudications(
 
     let mut tally_points: Vec<Value> = Vec::new();
     for &point in unresolved {
-        let rows = candidate_rows.get(&point.number()).cloned().unwrap_or_default();
+        let rows = candidate_rows
+            .get(&point.number())
+            .cloned()
+            .unwrap_or_default();
         if rows.is_empty() {
             let selected = records
                 .get(&point.number())
@@ -2324,8 +2350,13 @@ fn run_adjudicate(
     }
     let mut tally_path: Option<PathBuf> = None;
     let records = if args.vote_stalemates {
-        let (records, tally) =
-            automated_adjudications(&debate_root, &debate_root_path, &state, &unresolved, backend)?;
+        let (records, tally) = automated_adjudications(
+            &debate_root,
+            &debate_root_path,
+            &state,
+            &unresolved,
+            backend,
+        )?;
         let _ = write_owned_text(
             &debate_root,
             STALEMATE_TALLY_FILENAME,
