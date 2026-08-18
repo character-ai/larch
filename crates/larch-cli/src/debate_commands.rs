@@ -642,8 +642,8 @@ fn finish_round_external(outcome: Result<RoundExternalOutcome, DebateError>) -> 
                 .iter()
                 .map(|op| {
                     let mut object = Map::new();
-                    let _ = object
-                        .insert("operation".to_owned(), Value::String(op.operation.clone()));
+                    let _ =
+                        object.insert("operation".to_owned(), Value::String(op.operation.clone()));
                     let _ = object.insert("ok".to_owned(), Value::Bool(op.ok));
                     let _ = object.insert(
                         "fingerprint".to_owned(),
@@ -1712,17 +1712,18 @@ fn run_round_external(
 
     // The external slots to record, in canonical `SLOT_ORDER`, restricted to the
     // live panel that `round-prep` seated (claude is recorded by round-ingest).
-    let external: Vec<String> = current_state.active_round.as_ref().map_or_else(
-        Vec::new,
-        |active| {
-            active
-                .live_slots
-                .iter()
-                .filter(|slot| slot.as_str() == "cursor" || slot.as_str() == "codex")
-                .cloned()
-                .collect()
-        },
-    );
+    let external: Vec<String> =
+        current_state
+            .active_round
+            .as_ref()
+            .map_or_else(Vec::new, |active| {
+                active
+                    .live_slots
+                    .iter()
+                    .filter(|slot| slot.as_str() == "cursor" || slot.as_str() == "codex")
+                    .cloned()
+                    .collect()
+            });
 
     let mut operations: Vec<OpRecord> = Vec::new();
     let mut exit_code = 0;
@@ -1763,7 +1764,8 @@ fn run_round_external(
         }
     }
 
-    let claude_prompt_path = debate_root_path.join(format!("claude-round-{round_number}-prompt.md"));
+    let claude_prompt_path =
+        debate_root_path.join(format!("claude-round-{round_number}-prompt.md"));
     Ok(RoundExternalOutcome {
         state: current_state,
         operations,
@@ -1785,8 +1787,8 @@ fn run_round_ingest(parsed: &BTreeMap<String, String>) -> Result<RoundIngestOutc
 
     // Step 1: record the claude turn through the confined input-file runner,
     // mirroring the `record-turn --slot claude --input-file` branch.
-    let root =
-        TemporaryRoot::resolve(Some(&debate_root_path)).map_err(|_error| DebateError::persistence())?;
+    let root = TemporaryRoot::resolve(Some(&debate_root_path))
+        .map_err(|_error| DebateError::persistence())?;
     let rt_parsed = BTreeMap::from([
         ("--debate-tmpdir".to_owned(), debate_tmpdir.clone()),
         (
@@ -1893,7 +1895,12 @@ fn round_drop_classes(state: &StoredState, round_number: i64) -> Vec<(String, St
         .filter(|drop| drop.round_number == round_number)
         .map(|drop| (drop.slot.clone(), drop.reason.clone()))
         .collect();
-    let slot_rank = |slot: &str| SLOT_ORDER.iter().position(|item| *item == slot).unwrap_or(SLOT_ORDER.len());
+    let slot_rank = |slot: &str| {
+        SLOT_ORDER
+            .iter()
+            .position(|item| *item == slot)
+            .unwrap_or(SLOT_ORDER.len())
+    };
     drops.sort_by_key(|(slot, _)| slot_rank(slot));
     drops
 }

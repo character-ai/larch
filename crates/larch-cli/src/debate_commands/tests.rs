@@ -18,20 +18,20 @@ mod debate_commands_tests {
         run_synthesize, strict_bool, synthesis_input, voter_paths,
     };
     use crate::github_service::with_test_github_service;
-    use larch_adapters::github::OctocrabGitHubService;
-    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
-    use serde_json::json;
-    use std::sync::Arc;
     use larch_adapters::TemporaryRoot;
+    use larch_adapters::github::OctocrabGitHubService;
     use larch_core::VendorSessionHandle;
     use larch_core::debate::{
         NonterminalPhase, ParticipantSlot, PointId, ReasonFingerprint, RoundNumber, RoundState,
         SLOT_ORDER, SlotLedgerBinding, StoredState, TerminalOutcome, TransitionAction,
         decode_state, encode_state, fingerprint_reason, parse_slot, parse_slot_ledger, transition,
     };
+    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
+    use serde_json::json;
     use std::collections::BTreeMap;
     use std::ffi::OsString;
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1194,7 +1194,11 @@ mod debate_commands_tests {
         let active = outcome.state.active_round.as_ref().expect("active round");
         assert_eq!(active.pending_slots, vec!["claude"]);
         assert!(outcome.state.proposal.terminal_outcome().is_none());
-        assert!(outcome.claude_prompt_path.ends_with("claude-round-1-prompt.md"));
+        assert!(
+            outcome
+                .claude_prompt_path
+                .ends_with("claude-round-1-prompt.md")
+        );
     }
 
     #[test]
@@ -1286,11 +1290,13 @@ mod debate_commands_tests {
     #[test]
     fn round_ingest_records_claude_composes_digest_upserts_and_verifies() {
         let (debate, fingerprint) = seed_prepared(true);
-        let after_cursor =
-            run_record_turn(&record_turn_args(&debate, &fingerprint, 1, "cursor"), &agree_runner)
-                .expect("cursor")
-                .state
-                .fingerprint;
+        let after_cursor = run_record_turn(
+            &record_turn_args(&debate, &fingerprint, 1, "cursor"),
+            &agree_runner,
+        )
+        .expect("cursor")
+        .state
+        .fingerprint;
         let after_codex = run_record_turn(
             &record_turn_args(&debate, &after_cursor, 1, "codex"),
             &agree_runner,
@@ -1306,11 +1312,7 @@ mod debate_commands_tests {
 
         let digest = compose_round_digest(
             1,
-            &[
-                "cursor".to_owned(),
-                "codex".to_owned(),
-                "claude".to_owned(),
-            ],
+            &["cursor".to_owned(), "codex".to_owned(), "claude".to_owned()],
             &[],
         );
         let marker = "<!-- larch:debate-round runid=run-1 round=1 -->";
@@ -1362,11 +1364,13 @@ mod debate_commands_tests {
     #[test]
     fn round_ingest_claude_protocol_rejection_surfaces_drop_without_mutation() {
         let (debate, fingerprint) = seed_prepared(true);
-        let after_cursor =
-            run_record_turn(&record_turn_args(&debate, &fingerprint, 1, "cursor"), &agree_runner)
-                .expect("cursor")
-                .state
-                .fingerprint;
+        let after_cursor = run_record_turn(
+            &record_turn_args(&debate, &fingerprint, 1, "cursor"),
+            &agree_runner,
+        )
+        .expect("cursor")
+        .state
+        .fingerprint;
         let after_codex = run_record_turn(
             &record_turn_args(&debate, &after_cursor, 1, "codex"),
             &agree_runner,
