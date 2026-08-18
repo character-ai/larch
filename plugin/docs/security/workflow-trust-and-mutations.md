@@ -912,9 +912,10 @@ read-only `debater` Agent session and continues only through `SendMessage`; its
 exact final ledger enters the protocol through a contained, bounded input file.
 A dropped slot is recorded before panel membership changes.
 
-The protocol verbs do not mutate GitHub. `python/larch/debate/publication.py`
-owns the public title lifecycle through the shared issue-mutation compare-and-
-swap and read-back boundary. Preparation snapshots one open, unowned source;
+The protocol verbs do not mutate GitHub.
+`crates/larch-cli/src/debate_publication_commands.rs` owns the public title
+lifecycle through the shared issue-mutation compare-and-swap and read-back
+boundary. Preparation snapshots one open, unowned source;
 start requires the unchanged snapshot; finish accepts only its exact
 `[DEBATING]` title; restore changes only that same title and skips a foreign
 replacement. Missing `SendMessage`, two unavailable external vendors, and
