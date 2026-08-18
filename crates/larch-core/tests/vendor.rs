@@ -5,8 +5,8 @@ use larch_core::{
     VendorSessionErrorKind, VendorSessionHandle, build_claude_argv, build_codex_argv,
     build_codex_resume_argv, build_codex_session_argv, build_cursor_argv,
     build_cursor_create_chat_argv, build_cursor_resume_argv, build_vendor_registry,
-    codex_auth_args, codex_env_auth_from_key, extract_model_from_argv, parse_claude_envelope,
-    trust_config_arg,
+    codex_auth_args, codex_env_auth_from_key, extract_model_from_argv,
+    is_transient_claude_api_error, parse_claude_envelope, trust_config_arg,
 };
 use std::collections::BTreeSet;
 
@@ -654,6 +654,12 @@ fn claude_envelope_statuses_match_recorded_fixtures() {
             assert!(parsed.is_error);
         }
     }
+    let with_reason = parse_claude_envelope(
+        "{\"is_error\":true,\"terminal_reason\":\"api_error\",\"result\":\"ENOTFOUND\"}\n",
+    );
+    assert_eq!(with_reason.status, ClaudeEnvelopeStatus::IsError);
+    assert_eq!(with_reason.terminal_reason, "api_error");
+    assert!(is_transient_claude_api_error(&with_reason));
 }
 
 #[test]

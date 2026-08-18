@@ -91,6 +91,8 @@ pub struct VendorParsedResult {
     pub raw: String,
     /// Whether the envelope declared `is_error`.
     pub is_error: bool,
+    /// Claude `terminal_reason` when present (including `is_error` envelopes).
+    pub terminal_reason: String,
 }
 
 /// Injectable lifecycle hooks. Behavior is wired in the launch-lifecycle leaf.

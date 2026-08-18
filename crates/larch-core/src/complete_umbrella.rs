@@ -102,10 +102,35 @@ pub fn has_umbrella_proposal(body: &str) -> bool {
     body.contains(UMBRELLA_PROPOSAL_MARKER)
 }
 
+/// Wire token for a child that died on a transient Claude API / connectivity blip.
+pub const COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API: &str = "transient-api";
+
 /// Exact title prefix required for one direct leaf.
 #[must_use]
 pub fn umbrella_leaf_prefix(umbrella: u64) -> String {
     format!("[LEAF OF {umbrella}] ")
+}
+
+/// Return the idle `[LEAF OF N]` title for an active or already-idle managed leaf.
+///
+/// # Errors
+/// Rejects titles that are not an open-leaf lifecycle shape for `umbrella`.
+pub fn complete_umbrella_relaunch_title(
+    title: &str,
+    umbrella: u64,
+) -> Result<String, &'static str> {
+    let prefix = umbrella_leaf_prefix(umbrella);
+    let active = format!("{IMPLEMENTING_PREFIX}{prefix}");
+    if let Some(rest) = title.strip_prefix(&active) {
+        if rest.trim().is_empty() {
+            return Err("leaf title payload is empty");
+        }
+        return Ok(format!("{prefix}{rest}"));
+    }
+    if has_title_payload(title, &prefix) {
+        return Ok(title.to_owned());
+    }
+    Err("leaf title is not an active or idle managed leaf")
 }
 
 /// Exact first body line required for one direct leaf.
@@ -202,6 +227,8 @@ pub fn complete_umbrella_child_prompt(
          Spawn exactly four primary general-purpose Agent subagents, one at a time, in this order: recon-design, implement, adversarial-review, ship. Every call must create a genuinely fresh context. Each Agent call runs to completion and returns its result to you inline; read that returned result directly. As soon as one phase returns its successful result, call the next phase's Agent in the same continuous turn. Do not end your turn between phases and do not wait for any separate task notification. Never use Monitor, TaskOutput, background Bash, sleep, or a polling loop. A phase may spawn the conditional CI fixer authorized by its trusted contract; that does not make the primary phases concurrent.\n\
          \n\
          Give each primary Agent only these trusted identifiers: REPOSITORY={repository}, UMBRELLA={umbrella}, LEAF={leaf}, REPO_ROOT=current working directory, HANDOFF_ROOT={handoff_root} (the exact value of $SESSION_TMPDIR), and its PHASE_CONTRACT path. The paths, in order, are $CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/recon-design.md, $CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/implement.md, $CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/adversarial-review.md, and $CLAUDE_PLUGIN_ROOT/skills/complete-umbrella/references/ship.md. Tell the Agent to read its complete trusted phase contract before acting. Do not pass one phase's returned prose to another. Every phase must return exactly PHASE_STATUS=complete and HANDOFF_FILE=<absolute path>. Reject a longer response or a path outside HANDOFF_ROOT.\n\
+         \n\
+         Before spawning a phase, use Bash only to inspect HANDOFF_ROOT for durable prior progress from a crashed earlier child (for example `test -f` on design-brief.md, complete-umbrella-ship.env, implementation-summary.md, and review-summary.md). Do not use Bash to inspect or edit the repository for this resume check. Skip recon-design when design-brief.md and complete-umbrella-ship.env with STATUS=prepared already exist. Skip implement when implementation-summary.md exists and the leaf branch already carries the intended feature commits. Skip adversarial-review when review-summary.md exists. Resume at the first incomplete phase and keep using the existing handoff files. Never discard a completed phase's artifacts solely to restart from recon-design.\n\
          \n\
          Make optimal evidence-based decisions and do not ask the operator questions. On an unrecoverable failure or malformed phase result, stop with one concise line and end with COMPLETE_UMBRELLA_CHILD_STATUS=failed. Only after the ship phase verifies every remote and local postcondition, end with COMPLETE_UMBRELLA_CHILD_STATUS=complete."
     )
@@ -375,9 +402,26 @@ mod tests {
         assert!(prompt.contains("references/recon-design.md"));
         assert!(prompt.contains("references/adversarial-review.md"));
         assert!(prompt.contains("PHASE_STATUS=complete"));
+        assert!(prompt.contains("Resume at the first incomplete phase"));
         assert!(!prompt.contains("needs-orchestrator-finalize"));
         assert!(!prompt.contains("Read both leaf issue"));
         assert!(prompt.contains(COMPLETE_UMBRELLA_CHILD_COMPLETE));
+    }
+
+    #[test]
+    fn relaunch_title_strips_only_the_active_workflow_prefix() {
+        let idle = "[LEAF OF 5] Task";
+        let active = format!("{IMPLEMENTING_PREFIX}{idle}");
+        assert_eq!(
+            complete_umbrella_relaunch_title(&active, 5).expect("relaunch"),
+            idle
+        );
+        assert_eq!(
+            complete_umbrella_relaunch_title(idle, 5).expect("idempotent"),
+            idle
+        );
+        assert!(complete_umbrella_relaunch_title("[DONE] [LEAF OF 5] Task", 5).is_err());
+        assert!(complete_umbrella_relaunch_title("[LEAF OF 6] Task", 5).is_err());
     }
 
     #[test]
