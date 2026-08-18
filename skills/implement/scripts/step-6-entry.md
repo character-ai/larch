@@ -1,6 +1,6 @@
 # step-6-entry.sh
 
-Step 6 review boundary bgjob launcher. The foreground wrapper resolves persisted `REPO_ROOT`, computes a checks-input identity, applies identity-aware live and completed rejoin for `implement-step6-checks`, seeds the merge-result env with that identity, and starts `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement step-6-entry` as a bgjob.
+Step 6 review boundary bgjob launcher. The foreground wrapper resolves persisted `REPO_ROOT`, computes a checks-input identity, applies identity-aware live and completed rejoin for `implement-step6-checks`, seeds the merge-result env with that identity, and starts `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" implement step-6-entry` as a bgjob.
 
 ## Caller
 

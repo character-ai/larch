@@ -9238,12 +9238,6 @@ python = []
 rust = ["run-log manifest"]
 
 [[callers]]
-path = "python/larch/implement/step_7a.py"
-kind = "python-runtime"
-python = []
-rust = ["bgjob start", "timing mark", "token mark"]
-
-[[callers]]
 path = "python/larch/rendering/rendering.py"
 kind = "python-runtime"
 python = []
@@ -9769,7 +9763,7 @@ rust = ["implement preflight"]
 path = "skills/implement/references/rebase-checkpoint-routing.md"
 kind = "skill"
 python = []
-rust = ["git rebase-abort", "implement step-7a", "push checkpoint-probe", "push rebase"]
+rust = ["git rebase-abort", "push checkpoint-probe", "push rebase"]
 
 [[callers]]
 path = "skills/implement/references/self-review.md"

@@ -273,6 +273,34 @@ fn run_parent(
         "--launch-schema".into(),
         identity.schema.clone().into(),
     ]);
+    run_bgjob_adapt(
+        tmpdir,
+        step,
+        budget_s,
+        "run-step-checks",
+        &merge_env,
+        &identity.as_rows(),
+        &public,
+        Some(&identity.repo_root),
+    )
+}
+
+/// Launch the shared `bgjob adapt` wrapper for a step's verified larch verb.
+///
+/// Builds the canonical `bgjob adapt ... -- larch.sh implement <verb> <args>`
+/// argv, delegates through the verified bootstrap, forwards captured output, and
+/// returns the child's exit code as an [`ExitCode`].
+#[allow(clippy::too_many_arguments)]
+pub fn run_bgjob_adapt(
+    tmpdir: &Path,
+    step: &str,
+    budget_s: u32,
+    verb: &str,
+    merge_env: &Path,
+    initial_merge_rows: &[(String, String)],
+    public_args: &[OsString],
+    repo_root: Option<&Path>,
+) -> Result<ExitCode, String> {
     let root = resolve_plugin_root()?;
     let entry = root.join("scripts").join("larch.sh");
     let clone = env::current_dir().map_err(|e| e.to_string())?;
@@ -296,22 +324,22 @@ fn run_parent(
     if !owner_pid.is_empty() {
         argv.extend(["--owner-pid".into(), owner_pid.into()]);
     }
+    argv.extend(["--merge-result-env".into(), merge_env.as_os_str().into()]);
+    for (key, value) in initial_merge_rows {
+        argv.extend([
+            "--initial-merge-row".into(),
+            format!("{key}={value}").into(),
+        ]);
+    }
     argv.extend([
-        "--merge-result-env".into(),
-        merge_env.into(),
-        "--initial-merge-row".into(),
-        format!("{CHECKS_HEAD}={}", identity.head_sha).into(),
-        "--initial-merge-row".into(),
-        format!("{CHECKS_FP}={}", identity.tree_fp).into(),
-        "--initial-merge-row".into(),
-        format!("{CHECKS_SCHEMA}={}", identity.schema).into(),
         "--".into(),
-        entry.into(),
+        entry.into_os_string(),
         "implement".into(),
-        "run-step-checks".into(),
+        verb.into(),
     ]);
-    argv.extend(public);
-    let output = delegate_verified_larch(&identity.repo_root, &root, &argv)?;
+    argv.extend(public_args.iter().cloned());
+    let cwd = repo_root.unwrap_or(&clone);
+    let output = delegate_verified_larch(cwd, &root, &argv)?;
     forward_output(&output);
     Ok(ExitCode::from(
         u8::try_from(output.status().code().unwrap_or(1)).unwrap_or(1),
@@ -346,6 +374,19 @@ fn run_child(
         schema: launch_schema.to_owned(),
         repo_root: PathBuf::from(repo_root),
     };
+    publish_child_session(&launch, tmpdir);
+    publish_identity_child(
+        tmpdir,
+        step,
+        &merge_env,
+        &launch,
+        !commit_site.is_empty(),
+        || run_step_checks_worker(site, commit_site, forked, rebase, tmpdir, &launch.repo_root),
+    )
+}
+
+/// Publish the child's repo-root and tmpdir into the verified session env.
+pub fn publish_child_session(launch: &LaunchIdentity, tmpdir: &Path) {
     publish_session_environment(vec![
         (
             ChildEnvironment::RepoRoot,
@@ -357,14 +398,6 @@ fn run_child(
         ),
         (ChildEnvironment::ImplementTmpdir, tmpdir.as_os_str().into()),
     ]);
-    publish_identity_child(
-        tmpdir,
-        step,
-        &merge_env,
-        &launch,
-        !commit_site.is_empty(),
-        || run_step_checks_worker(site, commit_site, forked, rebase, tmpdir, &launch.repo_root),
-    )
 }
 
 pub fn publish_identity_child(
@@ -466,14 +499,19 @@ impl LaunchIdentity {
     }
 }
 
-pub fn checks_launch_identity(tmpdir: &Path) -> Result<LaunchIdentity, String> {
-    let resolve = delegate_python([
+/// Delegate `implement checks-result-identity resolve-repo-root` for a tmpdir.
+pub fn resolve_repo_root_output(tmpdir: &Path) -> Result<ProcessOutput, String> {
+    delegate_python([
         OsString::from("implement"),
         OsString::from("checks-result-identity"),
         OsString::from("resolve-repo-root"),
         OsString::from("--implement-tmpdir"),
         tmpdir.as_os_str().to_owned(),
-    ])?;
+    ])
+}
+
+pub fn checks_launch_identity(tmpdir: &Path) -> Result<LaunchIdentity, String> {
+    let resolve = resolve_repo_root_output(tmpdir)?;
     if !resolve.status().success() {
         return Err(stderr_or_stdout(&resolve));
     }
@@ -631,12 +669,18 @@ pub fn safe_merge_env(tmpdir: &Path, raw: &Path) -> Result<PathBuf, String> {
     validate_merge_result_env(raw, tmpdir).map_err(|e| e.to_string())
 }
 
-pub fn unlink_safe(path: &Path, root: &Path) -> Result<(), String> {
+/// Reject a symlink or non-regular file before it is read or unlinked.
+pub fn ensure_safe_regular_file(path: &Path) -> Result<(), String> {
     if let Ok(meta) = fs::symlink_metadata(path)
         && (meta.file_type().is_symlink() || !meta.is_file())
     {
         return Err("unsafe result file".into());
     }
+    Ok(())
+}
+
+pub fn unlink_safe(path: &Path, root: &Path) -> Result<(), String> {
+    ensure_safe_regular_file(path)?;
     let _ = ensure_under(path, root, "result file").map_err(|e| e.to_string())?;
     let _ = fs::remove_file(path);
     if path.exists() || path.is_symlink() {
@@ -745,7 +789,7 @@ const fn status_byte(kind: larch_core::ChangeKind) -> u8 {
     }
 }
 
-fn rehydrate_session(tmpdir: &Path) {
+pub fn rehydrate_session(tmpdir: &Path) {
     let mut rows = Vec::new();
     if env::var_os("CLAUDE_PLUGIN_ROOT").is_none()
         && let Some(root) = session_key(tmpdir, "plugin-root.env", "CLAUDE_PLUGIN_ROOT")
@@ -785,7 +829,7 @@ fn session_key(tmpdir: &Path, file: &str, key: &str) -> Option<String> {
     None
 }
 
-fn tmpdir_from_env() -> Result<PathBuf, ()> {
+pub fn tmpdir_from_env() -> Result<PathBuf, ()> {
     let raw = env::var("IMPLEMENT_TMPDIR").unwrap_or_default();
     if raw.is_empty() {
         eprintln!("IMPLEMENT_TMPDIR required");
@@ -816,6 +860,16 @@ fn run_verified_larch_in(
     root: &Path,
     args: &[OsString],
 ) -> Result<ProcessOutput, String> {
+    run_verified_larch_env_in(cwd, root, args, &[])
+}
+
+/// Run a verified larch verb with the standard child env plus caller extras.
+pub fn run_verified_larch_env_in(
+    cwd: &Path,
+    root: &Path,
+    args: &[OsString],
+    extra: &[(ChildEnvironment, OsString)],
+) -> Result<ProcessOutput, String> {
     let program = LarchProgram::bootstrap(root)
         .map_err(|error| format!("could not select verified larch entrypoint: {error}"))?;
     let mut request = bounded_request_in(
@@ -835,10 +889,13 @@ fn run_verified_larch_in(
         env::var_os("IMPLEMENT_TMPDIR").unwrap_or_default(),
     );
     request = request.with_environment(ChildEnvironment::RepoRoot, cwd.as_os_str().to_owned());
+    for (key, value) in extra {
+        request = request.with_environment(*key, value.clone());
+    }
     run_bounded(request).map_err(|error| format!("could not start verified larch: {error}"))
 }
 
-fn forward_output(output: &ProcessOutput) {
+pub fn forward_output(output: &ProcessOutput) {
     let _ = std::io::stdout().write_all(output.stdout());
     let _ = std::io::stdout().flush();
     if !output.stderr().is_empty() {

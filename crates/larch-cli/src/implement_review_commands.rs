@@ -12,25 +12,25 @@ use std::{
     io::Write as _,
     path::{Path, PathBuf},
     process::ExitCode,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use larch_adapters::GixRepository;
 use larch_core::{
-    ChildEnvironment, ExternalProgram, LarchProgram, ProcessOutput, RepositoryRead, Revision,
-    log_paths, resolve_run_id, result_env_path, write_bytes_atomic,
+    ChildEnvironment, DuplicatePolicy, KvDocument, ParseOptions, ProcessOutput, RepositoryRead,
+    Revision, parse_single_kv_row, result_env_path, write_bytes_atomic,
 };
 
 use crate::{
     argparse_compat::{choice_error, parse_required_with_help, usage_error},
-    child_process::{bounded_request_in, run_bounded},
     implement_child_seam::resolve_plugin_root,
     implement_dispatch_commands::{
         LaunchIdentity, checks_launch_identity, delegate_python, delegate_verified_larch,
-        format_rows, opt_string, owner_pid_string, prepare_checks_rejoin, publish_identity_child,
-        publish_rows, safe_merge_env, unlink_safe,
+        ensure_safe_regular_file, format_rows, forward_output, opt_string, prepare_checks_rejoin,
+        publish_child_session, publish_identity_child, publish_rows, rehydrate_session,
+        resolve_repo_root_output, run_bgjob_adapt, run_verified_larch_env_in, safe_merge_env,
+        tmpdir_from_env, unlink_safe,
     },
-    python_verb::publish_session_environment,
 };
 
 const STEP5_REVIEW_STEP: &str = "implement-step5-review";
@@ -58,10 +58,6 @@ const STEP5_RESULT_ENVELOPE_KEYS: &[&str] = &[
 const STEP5_RESUME_COMMIT_RELAY_KEYS: &[&str] =
     &["COMMITTED", "ERROR", "SHA", "COMMIT_OUTCOME", "NEXT_ACTION"];
 
-const ADAPT_TIMEOUT: Duration = Duration::from_secs(600);
-const ADAPT_GRACE: Duration = Duration::from_secs(5);
-const ADAPT_OUTPUT_LIMIT: usize = 256 * 1024;
-
 // ---------------------------------------------------------------------------
 // step-5-review
 // ---------------------------------------------------------------------------
@@ -87,7 +83,7 @@ pub fn step5_review(arguments: &[OsString]) -> ExitCode {
     let Ok(tmpdir) = tmpdir_from_env() else {
         return ExitCode::from(2);
     };
-    rehydrate(&tmpdir);
+    rehydrate_session(&tmpdir);
     if parsed.flag("--bgjob-child") {
         let merge_raw = opt_string(parsed.value("--merge-result-env"));
         if merge_raw.is_empty() {
@@ -195,7 +191,7 @@ pub fn step5_resume(arguments: &[OsString]) -> ExitCode {
     let Ok(tmpdir) = tmpdir_from_env() else {
         return ExitCode::from(2);
     };
-    rehydrate(&tmpdir);
+    rehydrate_session(&tmpdir);
     let checks_site = opt_string(parsed.value("--checks-site"));
     let ready_to_commit = parsed.flag("--ready-to-commit");
     let bgjob_child = parsed.flag("--bgjob-child");
@@ -376,7 +372,7 @@ pub fn checks_step5_resume(arguments: &[OsString]) -> ExitCode {
     let Ok(tmpdir) = tmpdir_from_env() else {
         return ExitCode::from(2);
     };
-    rehydrate(&tmpdir);
+    rehydrate_session(&tmpdir);
     let checks_site = opt_string(parsed.value("--checks-site"));
     let (rc, output) = run_checks_step5_resume(&tmpdir, &checks_site, &final_round_num);
     print!("{output}");
@@ -499,7 +495,7 @@ pub fn step6_entry(arguments: &[OsString]) -> ExitCode {
     let Ok(tmpdir) = tmpdir_from_env() else {
         return ExitCode::from(2);
     };
-    rehydrate(&tmpdir);
+    rehydrate_session(&tmpdir);
     if parsed.flag("--bgjob-child") {
         let result = (|| -> Result<ExitCode, String> {
             let merge_env = safe_merge_env(
@@ -512,17 +508,7 @@ pub fn step6_entry(arguments: &[OsString]) -> ExitCode {
                 &opt_string(parsed.value("--launch-fp")),
                 &opt_string(parsed.value("--launch-schema")),
             )?;
-            publish_session_environment(vec![
-                (
-                    ChildEnvironment::RepoRoot,
-                    launch.repo_root.as_os_str().into(),
-                ),
-                (
-                    ChildEnvironment::ClaudeProjectDir,
-                    launch.repo_root.as_os_str().into(),
-                ),
-                (ChildEnvironment::ImplementTmpdir, tmpdir.as_os_str().into()),
-            ]);
+            publish_child_session(&launch, &tmpdir);
             publish_identity_child(
                 &tmpdir,
                 STEP6_CHECKS_STEP,
@@ -843,11 +829,7 @@ fn launch_step7a_bgjob(tmpdir: &Path, args: &Step7aArgs) -> ExitCode {
     larch(&command).map_or_else(
         |_| ExitCode::from(2),
         |output| {
-            let _ = std::io::stdout().write_all(output.stdout());
-            let _ = std::io::stdout().flush();
-            if !output.stderr().is_empty() {
-                let _ = std::io::stderr().write_all(output.stderr());
-            }
+            forward_output(&output);
             exit_code(output.status().code().unwrap_or(1))
         },
     )
@@ -1039,7 +1021,7 @@ fn emit_final(
         ("STEP_7A_BAIL_REASON", bail),
         ("REBASE_OUTCOME", rebase_outcome),
     ] {
-        emit_kv(key, value, rows);
+        emit_result_kv(key, value, rows);
     }
 }
 
@@ -1318,11 +1300,7 @@ fn publish_step5_child(tmpdir: &Path, merge_env_raw: &str, output: &str) -> bool
 }
 
 fn read_result_rows(path: &Path, tmpdir: &Path) -> Result<Option<HashMap<String, String>>, String> {
-    if let Ok(meta) = fs::symlink_metadata(path)
-        && (meta.file_type().is_symlink() || !meta.is_file())
-    {
-        return Err("unsafe result file".into());
-    }
+    ensure_safe_regular_file(path)?;
     let _ = larch_core::ensure_under(path, tmpdir, "result file").map_err(|e| e.to_string())?;
     if !path.exists() {
         return Ok(None);
@@ -1331,16 +1309,11 @@ fn read_result_rows(path: &Path, tmpdir: &Path) -> Result<Option<HashMap<String,
     if text.contains('\r') {
         return Err("carriage return in result env".into());
     }
+    let document = KvDocument::parse(&text, ParseOptions::legacy()).map_err(|e| e.to_string())?;
     let mut rows = HashMap::new();
-    for line in text.lines() {
-        if let Some((key, value)) = line.split_once('=')
-            && !key.is_empty()
-            && key
-                .bytes()
-                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
-            && !rows.contains_key(key)
-        {
-            rows.insert(key.to_owned(), value.to_owned());
+    for (key, value) in document.select(DuplicatePolicy::First) {
+        if is_environment_key(&key) {
+            rows.insert(key, value);
         }
     }
     Ok(Some(rows))
@@ -1351,13 +1324,7 @@ fn read_result_rows(path: &Path, tmpdir: &Path) -> Result<Option<HashMap<String,
 // ---------------------------------------------------------------------------
 
 fn resolve_session_repo_root(tmpdir: &Path) -> Result<PathBuf, String> {
-    let output = delegate_python([
-        OsString::from("implement"),
-        OsString::from("checks-result-identity"),
-        OsString::from("resolve-repo-root"),
-        OsString::from("--implement-tmpdir"),
-        tmpdir.as_os_str().to_owned(),
-    ])?;
+    let output = resolve_repo_root_output(tmpdir)?;
     if !output.status().success() {
         let err = String::from_utf8_lossy(output.stderr());
         let message = if err.trim().is_empty() {
@@ -1655,54 +1622,16 @@ struct AdapterSpec {
 }
 
 fn run_adapter(spec: &AdapterSpec) -> Result<ExitCode, String> {
-    let root = resolve_plugin_root()?;
-    let entry = root.join("scripts").join("larch.sh");
-    let clone = env::current_dir().map_err(|e| e.to_string())?;
-    let run_id = resolve_run_id("", &spec.tmpdir, &clone);
-    let (log_dir, _, _) = log_paths(&spec.tmpdir, None, spec.step).map_err(|e| e.to_string())?;
-    let owner_pid = owner_pid_string();
-    let mut argv: Vec<OsString> = vec![
-        "bgjob".into(),
-        "adapt".into(),
-        "--step".into(),
-        spec.step.into(),
-        "--tmpdir".into(),
-        spec.tmpdir.as_os_str().into(),
-        "--run-id".into(),
-        run_id.into(),
-        "--budget-s".into(),
-        spec.budget_s.to_string().into(),
-        "--log-dir".into(),
-        log_dir.into(),
-    ];
-    if !owner_pid.is_empty() {
-        argv.extend(["--owner-pid".into(), owner_pid.into()]);
-    }
-    argv.extend([
-        "--merge-result-env".into(),
-        spec.merge_env.as_os_str().into(),
-    ]);
-    for (key, value) in &spec.initial_merge_rows {
-        argv.extend([
-            "--initial-merge-row".into(),
-            format!("{key}={value}").into(),
-        ]);
-    }
-    argv.extend([
-        "--".into(),
-        entry.into_os_string(),
-        "implement".into(),
-        spec.verb.into(),
-    ]);
-    argv.extend(spec.public_args.iter().cloned());
-    let cwd = spec.repo_root.clone().unwrap_or(clone);
-    let output = delegate_verified_larch(&cwd, &root, &argv)?;
-    let _ = std::io::stdout().write_all(output.stdout());
-    let _ = std::io::stdout().flush();
-    if !output.stderr().is_empty() {
-        let _ = std::io::stderr().write_all(output.stderr());
-    }
-    Ok(exit_code(output.status().code().unwrap_or(1)))
+    run_bgjob_adapt(
+        &spec.tmpdir,
+        spec.step,
+        spec.budget_s,
+        spec.verb,
+        &spec.merge_env,
+        &spec.initial_merge_rows,
+        &spec.public_args,
+        spec.repo_root.as_deref(),
+    )
 }
 
 fn run_parent_flow(build: impl FnOnce() -> Result<ExitCode, String>) -> ExitCode {
@@ -1733,29 +1662,7 @@ fn larch_env(
 ) -> Result<ProcessOutput, String> {
     let root = resolve_plugin_root()?;
     let cwd = env::current_dir().map_err(|e| e.to_string())?;
-    let program = LarchProgram::bootstrap(&root)
-        .map_err(|error| format!("could not select verified larch entrypoint: {error}"))?;
-    let mut request = bounded_request_in(
-        ExternalProgram::Larch(program),
-        args.iter().cloned(),
-        &cwd,
-        ADAPT_TIMEOUT,
-        ADAPT_GRACE,
-        ADAPT_OUTPUT_LIMIT,
-    )?;
-    request = request.with_environment(
-        ChildEnvironment::ClaudePluginRoot,
-        root.as_os_str().to_owned(),
-    );
-    request = request.with_environment(
-        ChildEnvironment::ImplementTmpdir,
-        env::var_os("IMPLEMENT_TMPDIR").unwrap_or_default(),
-    );
-    request = request.with_environment(ChildEnvironment::RepoRoot, cwd.as_os_str().to_owned());
-    for (key, value) in extra {
-        request = request.with_environment(*key, value.clone());
-    }
-    run_bounded(request).map_err(|error| format!("could not start verified larch: {error}"))
+    run_verified_larch_env_in(&cwd, &root, args, extra)
 }
 
 /// Mirror the Python `_forward_result` capture: return the child's exit code and
@@ -1787,21 +1694,21 @@ fn parse_line_anchored(stdout: &str, key: &str) -> Vec<String> {
 }
 
 fn relay_commit_kvs(commit_output: &str, include_next_action: bool) -> String {
+    let Ok(document) = KvDocument::parse(commit_output, ParseOptions::legacy()) else {
+        return String::new();
+    };
     let mut out = String::new();
-    for line in commit_output.lines() {
-        let Some((key, _)) = line.split_once('=') else {
-            continue;
-        };
-        if key.is_empty() {
-            continue;
-        }
-        if !STEP5_RESUME_COMMIT_RELAY_KEYS.contains(&key) {
+    for row in document.rows() {
+        let key = row.key();
+        if key.is_empty() || !STEP5_RESUME_COMMIT_RELAY_KEYS.contains(&key) {
             continue;
         }
         if !include_next_action && key == "NEXT_ACTION" {
             continue;
         }
-        out.push_str(line);
+        out.push_str(key);
+        out.push('=');
+        out.push_str(row.value());
         out.push('\n');
     }
     out
@@ -1812,26 +1719,27 @@ fn emit_line(line: &str, rows: &mut Vec<(String, String)>) {
     println!("{line}");
 }
 
-fn emit_kv(key: &str, value: &str, rows: &mut Vec<(String, String)>) {
+fn emit_result_kv(key: &str, value: &str, rows: &mut Vec<(String, String)>) {
     let line = format!("{key}={value}");
     record_result_line(&line, rows);
     println!("{line}");
 }
 
 fn record_result_line(line: &str, rows: &mut Vec<(String, String)>) {
-    if line.contains('\n') || line.contains('\r') {
-        return;
-    }
-    let Some((key, value)) = line.split_once('=') else {
+    let Some(row) = parse_single_kv_row(line, ParseOptions::legacy()) else {
         return;
     };
-    if !key.is_empty()
+    if is_environment_key(row.key()) {
+        rows.push((row.key().to_owned(), row.value().to_owned()));
+    }
+}
+
+/// Accept only shell-environment keys: uppercase ASCII, digits, and underscore.
+fn is_environment_key(key: &str) -> bool {
+    !key.is_empty()
         && key
             .bytes()
             .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
-    {
-        rows.push((key.to_owned(), value.to_owned()));
-    }
 }
 
 fn flush_result_env(merge_env: Option<&Path>, rows: &[(String, String)]) {
@@ -1909,49 +1817,6 @@ fn has_symlink_ancestor(path: &Path) -> bool {
         return true;
     }
     path.ancestors().skip(1).any(Path::is_symlink)
-}
-
-fn tmpdir_from_env() -> Result<PathBuf, ()> {
-    let raw = env::var("IMPLEMENT_TMPDIR").unwrap_or_default();
-    if raw.is_empty() {
-        eprintln!("IMPLEMENT_TMPDIR required");
-        return Err(());
-    }
-    Ok(PathBuf::from(raw))
-}
-
-fn rehydrate(tmpdir: &Path) {
-    let mut rows = Vec::new();
-    if env::var_os("CLAUDE_PLUGIN_ROOT").is_none()
-        && let Some(root) = session_value(tmpdir, "plugin-root.env", "CLAUDE_PLUGIN_ROOT")
-            .or_else(|| session_value(tmpdir, "session-env.sh", "LARCH_CLAUDE_PLUGIN_ROOT"))
-    {
-        rows.push((ChildEnvironment::ClaudePluginRoot, OsString::from(root)));
-    }
-    for (env_key, child_key) in [
-        (
-            "LARCH_TOKEN_SESSION_ID",
-            ChildEnvironment::LarchTokenSessionId,
-        ),
-        (
-            "LARCH_CLAUDE_SOURCE_FILE",
-            ChildEnvironment::LarchClaudeSourceFile,
-        ),
-        ("LARCH_TIMING_LEDGER", ChildEnvironment::LarchTimingLedger),
-    ] {
-        if env::var_os(env_key).is_none()
-            && let Some(value) = session_value(tmpdir, "session-env.sh", env_key)
-        {
-            rows.push((child_key, OsString::from(value)));
-        }
-    }
-    rows.push((ChildEnvironment::ImplementTmpdir, tmpdir.as_os_str().into()));
-    publish_session_environment(rows);
-}
-
-fn session_value(tmpdir: &Path, file: &str, key: &str) -> Option<String> {
-    let value = read_kv_file(&tmpdir.join(file), key);
-    if value.is_empty() { None } else { Some(value) }
 }
 
 fn is_digits(value: &str) -> bool {
