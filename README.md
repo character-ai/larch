@@ -149,7 +149,7 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#fluff-analysis"><code>/fluff-analysis</code></a></td>
       <td><code>[--include-in-progress] [--cutoff ISO8601] [--since-version X.Y.Z] [--min-group N] [--log-root DIR] [--out FILE]</code></td>
     </tr>
-    <tr><td colspan="2">Characterize review <strong>fluff</strong> from the synchronized run-log cache. Analyze which <code>/design</code> and <code>/implement</code> suggestions get rejected, deferred to OOS, or accepted but low-value, then print data-driven recommendations.</td></tr>
+    <tr><td colspan="2">Characterize review <strong>fluff</strong> from the synchronized run-log cache through its Rust-owned <code>scripts/larch.sh</code> command. Analyze which <code>/design</code> and <code>/implement</code> suggestions get rejected, deferred to OOS, or accepted but low-value, then print data-driven recommendations.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#implement"><code>/implement</code></a></td>
@@ -233,7 +233,7 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#voter-calibration"><code>/voter-calibration</code></a></td>
       <td><code>[--log-root DIR] [--min-votes N] [--outlier-threshold R] [--high-severity-threshold R] [--out FILE]</code></td>
     </tr>
-    <tr><td colspan="2">Measure voter agreement and chronic outlier voters from the synchronized run-log cache. Diagnostic only; does not affect spawning, thresholds, tokens, or reviewer points.</td></tr>
+    <tr><td colspan="2">Measure voter agreement and chronic outlier voters from the synchronized run-log cache through its Rust-owned <code>scripts/larch.sh</code> command. Diagnostic only; does not affect spawning, thresholds, tokens, or reviewer points.</td></tr>
   </tbody>
 </table>
 

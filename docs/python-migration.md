@@ -196,6 +196,16 @@ onto `scripts/larch.sh`, and retired the analyzer's
 `voting compose-tally-record` subprocess seam in favor of the in-process core
 call.
 
+**The #7684 analytics closure stays mechanically guarded.**
+`analytics-7684-closure` reuses the command registry and service/Git inventory
+parsers to reject incomplete rows, missing or umbrella migration leaves,
+restored Python registrations, entrypoints, callers, or retained #7684 module
+ownership. It syntax-parses the `/fluff-analysis` and `/voter-calibration`
+prompt command fences so their only shipped analyzer owner remains
+`scripts/larch.sh`; the retired standalone Python analyzer paths are rejected.
+Missing or malformed closure evidence fails the rule. The plugin copy is a
+generated projection and is checked with `release plugin-runtime --check`.
+
 **Breadcrumb publication cut over in #8074.** `run-log publish-breadcrumbs` is
 Rust-owned. `larch_adapters::run_lifecycle::publish_breadcrumbs` is the single
 owner: the already-migrated lifecycle terminalizer calls it directly, and

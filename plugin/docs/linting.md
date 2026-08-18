@@ -152,6 +152,26 @@ The focused lint validates `clean_install_test` references against the shared
 parity matrix. Use `larch lint command-registry audit --input INPUT.json` for
 typed issue-to-registry parity evidence.
 
+### Analytics migration closure
+
+`analytics-7684-closure` independently proves that every #7684
+command-registry row is complete with an exact leaf, no retained Python
+registration, entrypoint, or production caller remains, and the canonical
+GitHub-service and Git inventory parsers have no unresolved #7684 rows. It
+also parses the shipped `/fluff-analysis` and `/voter-calibration` command
+fences, requiring their `scripts/larch.sh` Rust owner and rejecting either
+retired standalone Python analyzer. Missing or malformed ledger evidence is an
+error. `release plugin-runtime --check` verifies the generated plugin
+projection of those prompt sources.
+
+For analytics #7684 closure changes, run:
+
+```bash
+cargo test --locked --package larch-lint --test analytics_7684_closure
+cargo run --quiet --locked --package larch-cli -- lint rule analytics-7684-closure
+cargo run --quiet --locked --package larch-cli -- release plugin-runtime --check
+```
+
 ### Python lint and type checks
 
 `make py-lint` runs Ruff followed by Pyright. CI runs Ruff through the

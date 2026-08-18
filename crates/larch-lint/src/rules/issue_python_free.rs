@@ -748,6 +748,7 @@ mod tests {
             retained_module_owner("python/larch/issue/open_rows.py"),
             Some(7681)
         );
+        assert!(retained_module_paths_for_issue(7684).is_empty());
         assert!(retained_module_paths_for_issue(7685).is_empty());
     }
 }

@@ -657,6 +657,22 @@ pub fn planning_issue_closure_findings(
     Ok(findings)
 }
 
+/// Return whether the ownership ledger has at least one row for one planning issue.
+///
+/// Closure rules use this parsed projection to avoid treating unrelated fixture
+/// repositories as if they had opted into a particular migration boundary.
+pub fn planning_issue_has_command_rows(
+    repository: &Repository,
+    planning_issue: u64,
+) -> Result<bool, LintError> {
+    let analysis = repository.command_registry_analysis();
+    let ledger = analysis.ledger(repository)?;
+    Ok(ledger
+        .commands
+        .iter()
+        .any(|record| record.planning_issue == planning_issue))
+}
+
 /// Extract `domain verb` selectors that follow a `python/cli.py` marker.
 ///
 /// Shared with developer-tooling guards so Makefile, workflow, pre-commit, and
