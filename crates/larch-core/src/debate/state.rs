@@ -691,6 +691,19 @@ fn encode_state_value(state: &StoredState) -> Value {
     })
 }
 
+/// Encode one slot binding as a mailbox entry object.
+///
+/// The persisted mailbox carries the same `{slot, rows, fingerprints}` object
+/// that [`encode_binding`] produces, so `round-prep` reuses this owner rather
+/// than re-deriving the shape.
+#[must_use]
+pub fn encode_binding_entry(binding: &SlotLedgerBinding) -> Map<String, Value> {
+    match encode_binding(binding) {
+        Value::Object(map) => map,
+        _ => Map::new(),
+    }
+}
+
 /// Encode a persisted state as canonical JSON at the current schema version.
 #[must_use]
 pub fn encode_state(state: &StoredState) -> String {

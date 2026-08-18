@@ -131,7 +131,7 @@ Print the canonical separator and `> **🔶 /debate 2: initialize**`.
 Initialize the durable protocol before changing the issue title. This is the final missing-vendor and external-session bootstrap gate:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate init \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate init \
   --debate-tmpdir "$DEBATE_TMPDIR" --expected-fingerprint ABSENT \
   --repo-workdir "$REPO_ROOT" --log-root "$LOG_ROOT" --run-id "$RUN_ID" \
   --point-universe-json '[1]' \
@@ -161,7 +161,7 @@ Run rounds 1 and 2 in order, stopping early only when a validated operation enve
 1. Prepare the round with the current fingerprint:
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate round-prep \
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate round-prep \
      --debate-tmpdir "$DEBATE_TMPDIR" --expected-fingerprint "$FINGERPRINT" \
      --round "$ROUND"
    ```

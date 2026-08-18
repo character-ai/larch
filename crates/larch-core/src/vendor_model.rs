@@ -21,6 +21,8 @@ pub const DEBATE_CODEX_MODEL: &str = CODEX_DEFAULT_MODEL;
 pub const DEBATE_CURSOR_MODEL: &str = CURSOR_GROK_4_6_HIGH_MODEL;
 /// Claude Opus model id recorded in token ledgers.
 pub const CLAUDE_OPUS_4_8_MODEL: &str = "claude-opus-4-8";
+/// Debate Claude slot model pin.
+pub const DEBATE_CLAUDE_MODEL: &str = CLAUDE_OPUS_4_8_MODEL;
 /// Claude Sonnet model id recorded in token ledgers.
 pub const CLAUDE_SONNET_4_6_MODEL: &str = "claude-sonnet-4-6";
 /// Claude Sonnet long-context alias recorded in token ledgers.

@@ -1869,11 +1869,13 @@ verb = "init"
 python_module = "larch.debate.orchestrator"
 python_function = "init_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 8043
+migration_issue = 8600
+clean_install_test = "clean-install-debate-init"
 
 [[commands]]
 domain = "debate"
@@ -1929,11 +1931,13 @@ verb = "round-prep"
 python_module = "larch.debate.orchestrator"
 python_function = "round_prep_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 8043
+migration_issue = 8600
+clean_install_test = "clean-install-debate-round-prep"
 
 [[commands]]
 domain = "debate"
@@ -9364,8 +9368,8 @@ rust = []
 [[callers]]
 path = "skills/debate/SKILL.md"
 kind = "skill"
-python = ["debate abort", "debate adjudicate", "debate adjudication-preview", "debate comment-verify", "debate init", "debate issue-prepare", "debate proposal-link", "debate publish-prepare", "debate record-turn", "debate round-prep", "debate synthesize", "debate title-transition"]
-rust = ["run-log lifecycle-start", "session setup", "tracking-issue upsert-summary", "untrusted file-block", "verify skill-called"]
+python = ["debate abort", "debate adjudicate", "debate adjudication-preview", "debate comment-verify", "debate issue-prepare", "debate proposal-link", "debate publish-prepare", "debate record-turn", "debate synthesize", "debate title-transition"]
+rust = ["debate init", "debate round-prep", "run-log lifecycle-start", "session setup", "tracking-issue upsert-summary", "untrusted file-block", "verify skill-called"]
 
 [[callers]]
 path = "skills/deps/SKILL.md"

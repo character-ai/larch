@@ -184,8 +184,8 @@ pub use error::{
     EnvironmentalFailure, ErrorCategory, FailureKind, InternalDefect, LarchError, OperatorError,
 };
 pub use external_defaults::{
-    ExternalDefaultError, ResolveResult, RoleDefault, RoleKind, doc_rows, parse_bool_flag,
-    resolve_vendor, role_default,
+    DebateSeat, ExternalDefaultError, ResolveResult, RoleDefault, RoleKind, debate_panel_seating,
+    doc_rows, parse_bool_flag, resolve_vendor, role_default,
 };
 pub use git::{
     Change, ChangeKind, ChangeSet, Commit, ConfigKey, ConfigScope, ConfigValue, ConflictKind,
@@ -539,7 +539,8 @@ pub use vendor::{
     CURSOR_PREFLIGHT_AUTH_RC, CURSOR_PREREAD_FAIL_MSG, CURSOR_PREREAD_FAIL_RC, CapHitArtifacts,
     CheckReviewersConfig, CheckReviewersResult, ClaudeEnvelopeStatus, CodexEnvAuth,
     CodexGateMessage, CodexProbeAttempt, CodexProbeLoop, CodexPromptSentinelRead,
-    CodexPromptSidecarArgs, CodexReviewAuthPort, CodexSessionParseError, CursorCredential,
+    CodexPromptSidecarArgs, CodexReviewAuthPort, CodexSessionParseError,
+    CursorCreateChatParseError, CursorCredential,
     CursorModelListOutcome, CursorPreflightFailure, CursorProbeLoop, CursorResultWrite,
     CursorReviewAuthPort, CursorStallRecord, DEFAULT_CURSOR_LAUNCH_JITTER_MS,
     DIALECTIC_RAW_PENDING_FILE, DRAFTER_REASON_ABSENT, DegradedToolsResult,
@@ -580,7 +581,8 @@ pub use vendor::{
     ingest_launcher_token_sidecar, is_cursor_empty_result, keychain_credential, launch_tier,
     list_failed_detail, model_list_timeout_seconds, norm_bool, norm_tristate, ordered_tiers,
     outcome_exit_code, parse_claude_envelope, parse_codex_gate_detail, parse_codex_session_id,
-    parse_cursor_model_list, parse_drafter_output, plan_capture_cursor_dirty_baseline,
+    parse_cursor_create_chat_id, parse_cursor_model_list, parse_drafter_output,
+    plan_capture_cursor_dirty_baseline,
     plan_contains_standalone_scout_manifest, plan_cursor_result_write, plan_retry_artifact_reset,
     plan_stream_reset, probe_attempt_rc, probe_cache_user, probe_stamp_contents,
     probe_stamp_file_name, python_json_dumps, read_codex_prompt_sentinel, render_cap_hit_artifacts,
@@ -615,7 +617,8 @@ pub use vendor_model::{
     CLAUDE_OPUS_4_8_MODEL, CLAUDE_SONNET_4_6_1M_MODEL, CLAUDE_SONNET_4_6_MODEL,
     CODEX_DEFAULT_MODEL, CODEX_FIX_MODEL_DEFAULT, CODEX_REVIEW_MODEL_DEFAULT,
     CODEX_VOTE_MODEL_DEFAULT, CURSOR_DEFAULT_MODEL, CURSOR_GROK_4_6_HIGH_MODEL, CodexModelRole,
-    DEBATE_CODEX_MODEL, DEBATE_CURSOR_MODEL, ModelArgError, ModelArgResult, ModelTool,
+    DEBATE_CLAUDE_MODEL, DEBATE_CODEX_MODEL, DEBATE_CURSOR_MODEL, ModelArgError, ModelArgResult,
+    ModelTool,
     canonicalize_glm_main_model, claude_model_from_transcript, claude_sub_default_model,
     is_posix_cntrl, normalize_claude_ledger_model, resolve_model_args,
     transcript_path_from_claude_source, validate_emitted_token,

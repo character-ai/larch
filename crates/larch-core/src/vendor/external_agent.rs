@@ -258,6 +258,85 @@ pub fn parse_codex_session_id(text: &str) -> Result<VendorSessionHandle, CodexSe
     found.ok_or(CodexSessionParseError::MissingThreadStarted)
 }
 
+/// Why a Cursor `create-chat` output cannot produce one unambiguous chat id.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CursorCreateChatParseError {
+    /// One line was not a valid structured JSON object.
+    MalformedRecord,
+    /// A record declared a `chatId`/`chat_id` that was not one valid string.
+    InvalidChatId,
+    /// The stream declared two create-chat records.
+    DuplicateRecord,
+    /// No create-chat record was present.
+    MissingRecord,
+}
+
+impl fmt::Display for CursorCreateChatParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::MalformedRecord => "malformed cursor create-chat record",
+            Self::InvalidChatId => "cursor create-chat record has invalid chat id",
+            Self::DuplicateRecord => "duplicate cursor create-chat records",
+            Self::MissingRecord => "cursor create-chat record missing",
+        })
+    }
+}
+
+impl Error for CursorCreateChatParseError {}
+
+/// Return one validated Cursor chat id declared by a create-chat record, if any.
+fn cursor_create_chat_id_in(line: &str) -> Result<Option<String>, CursorCreateChatParseError> {
+    let value: Value =
+        serde_json::from_str(line).map_err(|_error| CursorCreateChatParseError::MalformedRecord)?;
+    let Value::Object(object) = value else {
+        return Err(CursorCreateChatParseError::MalformedRecord);
+    };
+    let present: Vec<&Value> = ["chatId", "chat_id"]
+        .iter()
+        .filter_map(|key| object.get(*key))
+        .collect();
+    if present.is_empty() {
+        return Ok(None);
+    }
+    if present.len() != 1 {
+        return Err(CursorCreateChatParseError::InvalidChatId);
+    }
+    let id = present[0]
+        .as_str()
+        .ok_or(CursorCreateChatParseError::InvalidChatId)?;
+    let handle = VendorSessionHandle::create("cursor", id)
+        .map_err(|_error| CursorCreateChatParseError::InvalidChatId)?;
+    Ok(Some(handle.session_id().to_owned()))
+}
+
+/// Parse exactly one validated Cursor chat id from create-chat JSON output.
+///
+/// Cursor documents this command as a structured record, not prose. Accepts its
+/// two field spellings (`chatId`/`chat_id`) used by released clients, but never
+/// substring-scans stdout or accepts a duplicate record: both would make a
+/// resumed debate session ambiguous.
+///
+/// # Errors
+///
+/// Returns a stable error for malformed records, an invalid chat id, duplicate
+/// records, or a missing record.
+pub fn parse_cursor_create_chat_id(text: &str) -> Result<String, CursorCreateChatParseError> {
+    let mut found: Option<String> = None;
+    for line in text.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Some(candidate) = cursor_create_chat_id_in(line)? else {
+            continue;
+        };
+        if found.is_some() {
+            return Err(CursorCreateChatParseError::DuplicateRecord);
+        }
+        found = Some(candidate);
+    }
+    found.ok_or(CursorCreateChatParseError::MissingRecord)
+}
+
 /// Return a bounded redacted excerpt only when a genuine Codex policy rejection is present.
 ///
 /// Successful command output carried in `aggregated_output` is removed from the
