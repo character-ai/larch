@@ -10,11 +10,11 @@ mod debate_commands_tests {
     #![allow(clippy::similar_names, clippy::redundant_clone)]
 
     use super::super::{
-        AdjudicateArgs, AdjudicationBackend, DebateError, InitInputs, SynthesisBackend, TurnOutcome,
-        TurnRequest, default_runner, envelope, initialize, input_file_runner, one_dispatch_value,
-        parse_args, parse_operator_adjudication_row, point_values, proposal_parts, run_abort,
-        run_adjudicate, run_adjudication_preview, run_publish_prepare, run_record_turn,
-        run_round_prep, run_synthesize, strict_bool, synthesis_input, voter_paths,
+        AdjudicateArgs, AdjudicationBackend, DebateError, InitInputs, SynthesisBackend,
+        TurnOutcome, TurnRequest, default_runner, envelope, initialize, input_file_runner,
+        one_dispatch_value, parse_args, parse_operator_adjudication_row, point_values,
+        proposal_parts, run_abort, run_adjudicate, run_adjudication_preview, run_publish_prepare,
+        run_record_turn, run_round_prep, run_synthesize, strict_bool, synthesis_input, voter_paths,
     };
     use larch_adapters::TemporaryRoot;
     use larch_core::VendorSessionHandle;
@@ -896,7 +896,10 @@ mod debate_commands_tests {
         )
         .expect("operator adjudicate");
         assert_eq!(
-            state.proposal.terminal_outcome().map(TerminalOutcome::as_str),
+            state
+                .proposal
+                .terminal_outcome()
+                .map(TerminalOutcome::as_str),
             Some("CONVERGED")
         );
         (debate, state.fingerprint)
@@ -972,12 +975,19 @@ mod debate_commands_tests {
             std::fs::read_to_string(&body_path).expect("body"),
             "Body text here.\n"
         );
-        let marker = std::fs::read_to_string(root.path().join("synthesis-complete.json"))
-            .expect("marker");
+        let marker =
+            std::fs::read_to_string(root.path().join("synthesis-complete.json")).expect("marker");
         assert!(marker.contains(&format!("\"source_fingerprint\":\"{fingerprint}\"")));
         assert!(marker.ends_with("}\n"));
         // A machine envelope on the success path pins the shape reviewers read.
-        let env = envelope(true, "synthesize", Some(&state), None, None, Some(&body_path));
+        let env = envelope(
+            true,
+            "synthesize",
+            Some(&state),
+            None,
+            None,
+            Some(&body_path),
+        );
         assert!(env.contains("\"ok\":true"));
         assert!(env.contains(&format!("\"fingerprint\":\"{fingerprint}\"")));
         assert!(env.contains("\"terminal_outcome\":\"CONVERGED\""));
@@ -1003,7 +1013,8 @@ mod debate_commands_tests {
             run_log: &ok_run_log,
         };
         let (_state, body_path) =
-            run_synthesize(&synthesize_parsed(&debate, &fingerprint), &backend).expect("synthesize");
+            run_synthesize(&synthesize_parsed(&debate, &fingerprint), &backend)
+                .expect("synthesize");
         let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
         assert_eq!(
             std::fs::read_to_string(root.path().join("proposal-title.txt")).expect("title"),
@@ -1054,7 +1065,9 @@ mod debate_commands_tests {
         let dispatch = |_root: &Path,
                         _state: &StoredState,
                         _manifest: &Path|
-         -> Result<(bool, String), DebateError> { Ok((false, "DISPATCH_OK=false\n".to_owned())) };
+         -> Result<(bool, String), DebateError> {
+            Ok((false, "DISPATCH_OK=false\n".to_owned()))
+        };
         let backend = SynthesisBackend {
             dispatch: &dispatch,
             run_log: &ok_run_log,
@@ -1091,7 +1104,8 @@ mod debate_commands_tests {
         assert!(handoff.contains("CROSS_LINK_ISSUE_NUMBER=42\n"));
         assert!(handoff.ends_with(&format!("SOURCE_FINGERPRINT={fingerprint}\n")));
         // A second call reproduces the same handoff idempotently.
-        let (_again, again_path) = run_publish_prepare(&parsed).expect("idempotent publish-prepare");
+        let (_again, again_path) =
+            run_publish_prepare(&parsed).expect("idempotent publish-prepare");
         assert_eq!(again_path, handoff_path);
     }
 
