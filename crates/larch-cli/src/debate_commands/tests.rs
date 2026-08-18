@@ -10,10 +10,11 @@ mod debate_commands_tests {
     #![allow(clippy::similar_names, clippy::redundant_clone)]
 
     use super::super::{
-        AdjudicateArgs, AdjudicationBackend, DebateError, InitInputs, TurnOutcome, TurnRequest,
-        default_runner, envelope, initialize, input_file_runner, one_dispatch_value, parse_args,
-        parse_operator_adjudication_row, point_values, run_abort, run_adjudicate,
-        run_adjudication_preview, run_record_turn, run_round_prep, strict_bool, voter_paths,
+        AdjudicateArgs, AdjudicationBackend, DebateError, InitInputs, SynthesisBackend,
+        TurnOutcome, TurnRequest, default_runner, envelope, initialize, input_file_runner,
+        one_dispatch_value, parse_args, parse_operator_adjudication_row, point_values,
+        proposal_parts, run_abort, run_adjudicate, run_adjudication_preview, run_publish_prepare,
+        run_record_turn, run_round_prep, run_synthesize, strict_bool, synthesis_input, voter_paths,
     };
     use larch_adapters::TemporaryRoot;
     use larch_core::VendorSessionHandle;
@@ -878,5 +879,252 @@ mod debate_commands_tests {
         let root = TemporaryRoot::resolve(Some(&dir)).expect("root");
         let error = voter_paths(&root, "DISPATCH_OK=true\n").expect_err("missing key");
         assert_eq!(error.error_class, "adjudication_rejected");
+    }
+
+    /// Seed a debate driven to a terminal `CONVERGED` outcome with the subject
+    /// bound, ready for synthesis. Returns the debate root and its fingerprint.
+    fn seed_converged() -> (PathBuf, String) {
+        let (debate, fingerprint) = seed_stalemate();
+        let decisions = write_decisions(&debate, "POINT_1\tSELECTED\tadopt approach cursor\n");
+        let backend = AdjudicationBackend {
+            dispatch: &panic_dispatch,
+            run_log: &panic_run_log,
+        };
+        let (state, _tally) = run_adjudicate(
+            &adjudicate_args(&debate, &fingerprint, Some(&decisions), false),
+            &backend,
+        )
+        .expect("operator adjudicate");
+        assert_eq!(
+            state
+                .proposal
+                .terminal_outcome()
+                .map(TerminalOutcome::as_str),
+            Some("CONVERGED")
+        );
+        (debate, state.fingerprint)
+    }
+
+    fn synthesize_parsed(debate: &Path, fingerprint: &str) -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (
+                "--debate-tmpdir".to_owned(),
+                debate.to_string_lossy().into_owned(),
+            ),
+            ("--expected-fingerprint".to_owned(), fingerprint.to_owned()),
+        ])
+    }
+
+    /// A synthesizer that writes `body` under the debate root and reports the
+    /// single output path through the dispatcher stdout contract.
+    fn writing_dispatch(
+        body: &'static str,
+    ) -> impl Fn(&Path, &StoredState, &Path) -> Result<(bool, String), DebateError> {
+        move |root_path: &Path, _state: &StoredState, _manifest: &Path| {
+            std::fs::write(root_path.join("synthesizer-output.md"), body).expect("output");
+            std::fs::write(root_path.join("all-outputs.txt"), "synthesizer-output.md\n")
+                .expect("paths");
+            Ok((
+                true,
+                "ALL_OUTPUT_FILES_PATH=all-outputs.txt\nDISPATCH_OK=true\n".to_owned(),
+            ))
+        }
+    }
+
+    #[allow(clippy::unnecessary_wraps)] // Must match the run_log field's fallible signature shared with panic_run_log.
+    fn ok_run_log(_state: &StoredState, _input: &Path) -> Result<(), DebateError> {
+        Ok(())
+    }
+
+    fn panic_synthesis_dispatch(
+        _root: &Path,
+        _state: &StoredState,
+        _manifest: &Path,
+    ) -> Result<(bool, String), DebateError> {
+        panic!("a completed synthesis must not re-dispatch the synthesizer");
+    }
+
+    #[test]
+    fn synthesis_input_binds_subject_and_terminal() {
+        let (debate, _fingerprint) = seed_converged();
+        let state = larch_cli::debate_state::load_state(&debate).expect("load");
+        let input = synthesis_input(&state).expect("synthesis input");
+        assert!(input.contains("\"subject\":\"Should we adopt approach A?\""));
+        assert!(input.contains("\"terminal_outcome\":\"CONVERGED\""));
+        assert!(input.contains("\"selected_position\":\"adopt approach cursor\""));
+    }
+
+    #[test]
+    fn synthesize_writes_redacted_artifacts_and_is_idempotent() {
+        let (debate, fingerprint) = seed_converged();
+        let dispatch = writing_dispatch("# My Title\n\nBody text here.\n");
+        let backend = SynthesisBackend {
+            dispatch: &dispatch,
+            run_log: &ok_run_log,
+        };
+        let parsed = synthesize_parsed(&debate, &fingerprint);
+        let (state, body_path) = run_synthesize(&parsed, &backend).expect("synthesize");
+        // Synthesize never mutates the debate state or its fingerprint.
+        assert_eq!(state.fingerprint, fingerprint);
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        assert_eq!(body_path, root.path().join("proposal-body.md"));
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("proposal-title.txt")).expect("title"),
+            "[PROPOSAL] My Title\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&body_path).expect("body"),
+            "Body text here.\n"
+        );
+        let marker =
+            std::fs::read_to_string(root.path().join("synthesis-complete.json")).expect("marker");
+        assert!(marker.contains(&format!("\"source_fingerprint\":\"{fingerprint}\"")));
+        assert!(marker.ends_with("}\n"));
+        // A machine envelope on the success path pins the shape reviewers read.
+        let env = envelope(
+            true,
+            "synthesize",
+            Some(&state),
+            None,
+            None,
+            Some(&body_path),
+        );
+        assert!(env.contains("\"ok\":true"));
+        assert!(env.contains(&format!("\"fingerprint\":\"{fingerprint}\"")));
+        assert!(env.contains("\"terminal_outcome\":\"CONVERGED\""));
+        assert!(env.contains(&format!("\"artifact_path\":\"{}\"", body_path.display())));
+        assert!(env.contains("\"operation\":\"synthesize\""));
+
+        // The second call must hit the marker without re-dispatching.
+        let backend = SynthesisBackend {
+            dispatch: &panic_synthesis_dispatch,
+            run_log: &ok_run_log,
+        };
+        let (again, again_path) = run_synthesize(&parsed, &backend).expect("idempotent synthesize");
+        assert_eq!(again.fingerprint, fingerprint);
+        assert_eq!(again_path, body_path);
+    }
+
+    #[test]
+    fn synthesize_normalizes_case_variant_prefix() {
+        let (debate, fingerprint) = seed_converged();
+        let dispatch = writing_dispatch("# [proposal] Real Title\n\nProposal body.\n");
+        let backend = SynthesisBackend {
+            dispatch: &dispatch,
+            run_log: &ok_run_log,
+        };
+        let (_state, body_path) =
+            run_synthesize(&synthesize_parsed(&debate, &fingerprint), &backend)
+                .expect("synthesize");
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("proposal-title.txt")).expect("title"),
+            "[PROPOSAL] Real Title\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&body_path).expect("body"),
+            "Proposal body.\n"
+        );
+    }
+
+    #[test]
+    fn synthesize_rejects_plan_grammar_retriably() {
+        let (debate, fingerprint) = seed_converged();
+        let dispatch = writing_dispatch("# Title\n\n### NEW: something\ndiff_lines: 3\n");
+        let backend = SynthesisBackend {
+            dispatch: &dispatch,
+            run_log: &ok_run_log,
+        };
+        let error = run_synthesize(&synthesize_parsed(&debate, &fingerprint), &backend)
+            .expect_err("plan grammar rejected");
+        assert_eq!(error.error_class, "synthesis_exhausted");
+        assert_eq!(error.exit_code, 9);
+        // No marker is written, so the operation stays retriable.
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        assert!(!root.path().join("synthesis-complete.json").exists());
+        let reloaded = larch_cli::debate_state::load_state(&debate).expect("reload");
+        assert_eq!(reloaded.fingerprint, fingerprint);
+    }
+
+    #[test]
+    fn synthesize_rejects_option_shaped_title() {
+        let (debate, fingerprint) = seed_converged();
+        let dispatch = writing_dispatch("# - dashed title\n\nbody\n");
+        let backend = SynthesisBackend {
+            dispatch: &dispatch,
+            run_log: &ok_run_log,
+        };
+        let error = run_synthesize(&synthesize_parsed(&debate, &fingerprint), &backend)
+            .expect_err("option-shaped title rejected");
+        assert_eq!(error.error_class, "synthesis_exhausted");
+        assert_eq!(error.exit_code, 9);
+    }
+
+    #[test]
+    fn synthesize_waterfall_exhaustion_is_retriable() {
+        let (debate, fingerprint) = seed_converged();
+        let dispatch = |_root: &Path,
+                        _state: &StoredState,
+                        _manifest: &Path|
+         -> Result<(bool, String), DebateError> {
+            Ok((false, "DISPATCH_OK=false\n".to_owned()))
+        };
+        let backend = SynthesisBackend {
+            dispatch: &dispatch,
+            run_log: &ok_run_log,
+        };
+        let error = run_synthesize(&synthesize_parsed(&debate, &fingerprint), &backend)
+            .expect_err("waterfall exhausted");
+        assert_eq!(error.error_class, "synthesis_exhausted");
+        assert_eq!(error.exit_code, 9);
+        let reloaded = larch_cli::debate_state::load_state(&debate).expect("reload");
+        assert_eq!(reloaded.fingerprint, fingerprint);
+    }
+
+    #[test]
+    fn publish_prepare_writes_handoff_and_is_idempotent() {
+        let (debate, fingerprint) = seed_converged();
+        let dispatch = writing_dispatch("# My Title\n\nBody text here.\n");
+        let backend = SynthesisBackend {
+            dispatch: &dispatch,
+            run_log: &ok_run_log,
+        };
+        let parsed = synthesize_parsed(&debate, &fingerprint);
+        let (_state, body_path) = run_synthesize(&parsed, &backend).expect("synthesize");
+        let (state, handoff_path) = run_publish_prepare(&parsed).expect("publish-prepare");
+        assert_eq!(state.fingerprint, fingerprint);
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        assert_eq!(handoff_path, root.path().join("publish-prepare.env"));
+        let handoff = std::fs::read_to_string(&handoff_path).expect("handoff");
+        assert!(handoff.contains(&format!("BODY_FILE={}\n", body_path.display())));
+        assert!(handoff.contains(&format!(
+            "TITLE_FILE={}\n",
+            root.path().join("proposal-title.txt").display()
+        )));
+        assert!(handoff.contains("SOURCE_ISSUE_NUMBER=42\n"));
+        assert!(handoff.contains("CROSS_LINK_ISSUE_NUMBER=42\n"));
+        assert!(handoff.ends_with(&format!("SOURCE_FINGERPRINT={fingerprint}\n")));
+        // A second call reproduces the same handoff idempotently.
+        let (_again, again_path) =
+            run_publish_prepare(&parsed).expect("idempotent publish-prepare");
+        assert_eq!(again_path, handoff_path);
+    }
+
+    #[test]
+    fn publish_prepare_without_synthesis_is_publication_failure() {
+        let (debate, fingerprint) = seed_converged();
+        let error = run_publish_prepare(&synthesize_parsed(&debate, &fingerprint))
+            .expect_err("no synthesized proposal");
+        assert_eq!(error.error_class, "publication_failure");
+        assert_eq!(error.exit_code, 10);
+    }
+
+    #[test]
+    fn proposal_parts_rejects_missing_title() {
+        let error = proposal_parts("no title line\n").expect_err("missing title");
+        assert_eq!(error.error_class, "synthesis_exhausted");
+        let (title, body) = proposal_parts("# Clean Title\n\nClean body.\n").expect("valid");
+        assert_eq!(title, "Clean Title");
+        assert_eq!(body, "Clean body.");
     }
 }

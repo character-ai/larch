@@ -17,8 +17,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("debate", "comment-verify"): ("larch.debate.publication", "comment_verify_main", True),
     ("debate", "issue-prepare"): ("larch.debate.publication", "issue_prepare_main", True),
     ("debate", "proposal-link"): ("larch.debate.publication", "proposal_link_main", True),
-    ("debate", "publish-prepare"): ("larch.debate.orchestrator", "publish_prepare_main", True),
-    ("debate", "synthesize"): ("larch.debate.orchestrator", "synthesize_main", True),
     ("debate", "title-transition"): ("larch.debate.publication", "title_transition_main", True),
     ("checks", "run-relevant"): ("larch.implement.checks", "checks_run_relevant_main", True),
     ("checks", "fixer-evidence"): ("larch.implement.checks", "checks_fixer_evidence_main", True),

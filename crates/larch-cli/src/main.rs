@@ -1064,6 +1064,12 @@ enum DebateCommand {
     /// Adjudicate unresolved points via operator decisions or voter tally.
     #[command(name = "adjudicate", disable_help_flag = true)]
     Adjudicate(RawCompatibilityArguments),
+    /// Synthesize a converged debate into one redacted proposal.
+    #[command(disable_help_flag = true)]
+    Synthesize(RawCompatibilityArguments),
+    /// Write the idempotent local proposal-publication handoff.
+    #[command(name = "publish-prepare", disable_help_flag = true)]
+    PublishPrepare(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2049,6 +2055,12 @@ fn run(
             }
             DebateCommand::Adjudicate(arguments) => {
                 debate_commands::adjudicate(&arguments.arguments)
+            }
+            DebateCommand::Synthesize(arguments) => {
+                debate_commands::synthesize(&arguments.arguments)
+            }
+            DebateCommand::PublishPrepare(arguments) => {
+                debate_commands::publish_prepare(&arguments.arguments)
             }
         }),
         Domain::Deps(command) => Ok(match command {
