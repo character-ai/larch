@@ -140,6 +140,7 @@ mod token_measurement_commands;
 mod tracking_issue_commands;
 mod triage_commands;
 mod umbrella_commands;
+mod voter_calibration_commands;
 mod voter_dispatch_commands;
 mod voting_commands;
 mod waterfall_commands;
@@ -389,7 +390,7 @@ enum Domain {
     /// Vote parsing, tally state, panel rendering, and parse-rate checks.
     #[command(subcommand)]
     Voting(VotingCommand),
-    /// Voter calibration snapshot commands.
+    /// Voter calibration snapshot and analyzer commands.
     #[command(subcommand, name = "voter-calibration")]
     VoterCalibration(VoterCalibrationCommand),
     /// Upgrade the installed larch plugin and executable.
@@ -411,6 +412,9 @@ enum CalibrationReplayCommand {
 enum VoterCalibrationCommand {
     #[command(disable_help_flag = true)]
     Snapshot(RawCompatibilityArguments),
+    /// Analyze voter agreement and severity calibration over one corpus.
+    #[command(disable_help_flag = true)]
+    Analyze(RawCompatibilityArguments),
 }
 
 macro_rules! voting_commands {
@@ -1990,6 +1994,9 @@ fn run(
         Domain::VoterCalibration(VoterCalibrationCommand::Snapshot(arguments)) => Ok(
             calibration_commands::voter_calibration_snapshot(&arguments.arguments),
         ),
+        Domain::VoterCalibration(VoterCalibrationCommand::Analyze(arguments)) => {
+            Ok(voter_calibration_commands::analyze(&arguments.arguments))
+        }
         Domain::PlanReview(command) => Ok(plan_review_commands::run(command)),
         Domain::Alias(command) => Ok(developer_tooling_commands::run_alias(command)),
         Domain::Bootstrap(BootstrapCommand::Invoke(arguments)) => {

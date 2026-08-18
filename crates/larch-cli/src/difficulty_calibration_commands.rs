@@ -1,10 +1,12 @@
 //! Rust owner for retrospective difficulty calibration.
 
-use std::{collections::BTreeMap, env, ffi::OsString, fs, path::PathBuf, process::ExitCode};
+use std::{collections::BTreeMap, env, ffi::OsString, path::PathBuf, process::ExitCode};
 
 use crate::{
     analysis_state,
-    argparse_compat::{optional_out_path, parse_required_with_help, write_stdout},
+    argparse_compat::{
+        optional_out_path, parse_required_with_help, write_report_file, write_stdout,
+    },
     run_log_commands,
     run_log_publication_commands::{
         preflight_error, synchronized_corpus_root, synchronized_repository_root,
@@ -65,20 +67,7 @@ pub fn analyze(arguments: &[OsString]) -> ExitCode {
     let Some(output) = optional_out_path(&parsed) else {
         return write_stdout(&report);
     };
-    if let Some(parent) = output
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        && let Err(error) = fs::create_dir_all(parent)
-    {
-        eprintln!("{error}");
-        return ExitCode::FAILURE;
-    }
-    if let Err(error) = fs::write(&output, report) {
-        eprintln!("{error}");
-        return ExitCode::FAILURE;
-    }
-    println!("REPORT_FILE={}", output.display());
-    ExitCode::SUCCESS
+    write_report_file(&output, &report)
 }
 
 fn synchronized_roots() -> Result<(PathBuf, PathBuf), String> {

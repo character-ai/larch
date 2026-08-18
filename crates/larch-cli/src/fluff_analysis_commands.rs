@@ -201,35 +201,10 @@ fn parse_time_option(raw: Option<String>) -> Option<larch_core::PyTimestamp> {
     parsed
 }
 
-/// Parse an integer the way Python `int(str)` does: surrounding whitespace,
-/// an optional sign, and single underscores between digits. Values beyond
-/// `u64` saturate; negative values clamp through the caller's `max(1, …)`.
+/// Parse an integer the way Python `int(str)` does through the shared signed
+/// parser. Negative values clamp to `0` for the caller's `max(1, …)`.
 fn parse_python_int(raw: &str) -> Option<u64> {
-    let text = raw.trim();
-    let (negative, digits) = text
-        .strip_prefix(['+', '-'])
-        .map_or((false, text), |rest| (text.starts_with('-'), rest));
-    if digits.is_empty() || digits.starts_with('_') || digits.ends_with('_') {
-        return None;
-    }
-    let mut value: u64 = 0;
-    let mut previous_underscore = false;
-    for byte in digits.bytes() {
-        match byte {
-            b'0'..=b'9' => {
-                previous_underscore = false;
-                value = value
-                    .saturating_mul(10)
-                    .saturating_add(u64::from(byte - b'0'));
-            }
-            b'_' if !previous_underscore => previous_underscore = true,
-            _ => return None,
-        }
-    }
-    if previous_underscore {
-        return None;
-    }
-    Some(if negative { 0 } else { value })
+    crate::argparse_compat::parse_python_int(raw).map(|value| u64::try_from(value).unwrap_or(0))
 }
 
 fn default_sessions_dir() -> PathBuf {

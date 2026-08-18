@@ -117,7 +117,7 @@ A voter agrees when `accepted` pairs with `YES`, or `rejected` pairs with `NO`. 
 
 Chronic outliers are flagged when `eligible >= min_votes` and `agreement_rate < outlier_threshold`. The shared defaults are `min_votes=20` and `outlier_threshold=0.50`. Low-sample voters are never flagged.
 
-Live `voting-tally.md` scoreboards and `/voter-calibration` cached-log analysis use the same `voter_agreement_row_from_panel` and `compute_voter_agreement` math.
+Live `voting-tally.md` scoreboards and `/voter-calibration` cached-log analysis share the same per-finding agreement semantics. The Rust owners are `crates/larch-cli/src/review_tally_commands.rs` for the live tally and `crates/larch-core/src/voter_calibration.rs` (`voter_agreement_row_from_panel` and `compute_voter_agreement` ports) for the cached-log analyzer.
 
 `/rejected-analysis` emits verified false-negative labels through
 `rejected-analysis/verdicts.tsv` in repository-scoped analyzer state for

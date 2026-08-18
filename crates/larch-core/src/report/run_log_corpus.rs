@@ -950,6 +950,25 @@ fn manifest_only_string_field(run_dir: &Path, key: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Read a run's `started_at` strictly: no `updated_at` fallback, and an empty
+/// or invalid candidate continues to the next allowed manifest.
+///
+/// This is the Python `run_started_at(run_dir, allow_updated_at_fallback=False,
+/// continue_on_empty=True)` shape the voter-calibration era segmentation needs
+/// for pre-manifest corpora.
+#[must_use]
+pub fn run_started_at_strict(run_dir: &Path) -> Option<DateTime<Utc>> {
+    for name in ["manifest.json", "run-manifest.json"] {
+        let Some(metadata) = load_metadata_candidate(&run_dir.join(name)) else {
+            continue;
+        };
+        if let TimestampRead::Value(value) = metadata.timestamp(&["started_at"]) {
+            return Some(value);
+        }
+    }
+    None
+}
+
 /// Read a historical run's start time without requiring a modern manifest.
 #[must_use]
 pub fn run_started_at_without_manifest(run_dir: &Path) -> Option<DateTime<Utc>> {

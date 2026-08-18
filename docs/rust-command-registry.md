@@ -519,9 +519,9 @@ exited on an uncaught traceback, for an unreadable path, non-UTF-8 bytes, or a
 non-integer bucket value.
 
 `larch.rendering.render_chart` keeps only its pure `render_chart` function.
-`larch.issue._ground_truth` still imports title helpers from
-`larch.issue._report`, but #8183 moves `analyze-issues {fetch,run,analyze}` to
-Rust and deletes its Python command owner. The Rust analyzer renders its growth
+Issue #8183 moved `analyze-issues {fetch,run,analyze}` to Rust and deleted its
+Python command owner; #8672 later retired the `larch.issue._ground_truth` /
+`_report` analytics modules entirely. The Rust analyzer renders its growth
 section through `larch_core::report::growth_chart`; the residual Python helper
 is not an `analyze-issues` command surface. `larch.report.design_diagram_log`
 likewise stays until #7680 moves `design publish` and #7681 moves the `pr`
@@ -567,9 +567,9 @@ through the typed Rust mutation path without invoking `/issue`.
 `larch_core::issue::oos_filing` owns stable filing identities and durable
 records. The behavioral authority is `oos_file_commands::tests` plus the shared
 core OOS tests. The former `larch.issue.oos_filer` command owner is gone;
-retained #7680 `larch.issue.file_oos`, #7684 `larch.issue._oos`, and #7681
-`larch.implement.dispatch_ship` keep only their distinct in-process parsing,
-identity, workflow-routing, and post-checkpoint responsibilities.
+retained #7680 `larch.issue.file_oos` and #7681 `larch.implement.dispatch_ship`
+keep only their distinct in-process parsing, identity, workflow-routing, and
+post-checkpoint responsibilities (#8672 retired `larch.issue._oos`).
 
 Issue 8165 ports the named-block grammar, the `larch:plan` marker, title
 eligibility and matching, the open-issue row model, and the untrusted content

@@ -1245,10 +1245,7 @@ fn later_domain_issue(path: &str) -> u64 {
         || path == "Makefile"
     {
         7685
-    } else if path.contains("fluff-analysis")
-        || path.contains("voter-calibration")
-        || path.contains("audit-runs")
-    {
+    } else if path.contains("fluff-analysis") || path.contains("audit-runs") {
         7684
     } else {
         7686

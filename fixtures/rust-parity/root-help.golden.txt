@@ -74,7 +74,7 @@ Commands:
   push                    Push commands with typed Git network operations
   run-log                 Committed run-log identity and layout helpers
   voting                  Vote parsing, tally state, panel rendering, and parse-rate checks
-  voter-calibration       Voter calibration snapshot commands
+  voter-calibration       Voter calibration snapshot and analyzer commands
   upgrade-larch           Upgrade the installed larch plugin and executable
   help                    Print this message or the help of the given subcommand(s)
 

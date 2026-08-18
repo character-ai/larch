@@ -1990,6 +1990,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "snapshot",
     ),
     CleanInstallCase::new(
+        "clean-install-voter-calibration-analyze",
+        "voter-calibration",
+        "analyze",
+    ),
+    CleanInstallCase::new(
         "clean-install-voting-compose-tally-record",
         "voting",
         "compose-tally-record",

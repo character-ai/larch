@@ -550,6 +550,56 @@ pub fn optional_out_path(parsed: &ParsedCommandLine) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+/// Write a report to `output`, creating parents, then print `REPORT_FILE=`.
+pub fn write_report_file(output: &Path, report: &str) -> ExitCode {
+    if let Some(parent) = output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        && let Err(error) = std::fs::create_dir_all(parent)
+    {
+        eprintln!("{error}");
+        return ExitCode::FAILURE;
+    }
+    if let Err(error) = std::fs::write(output, report) {
+        eprintln!("{error}");
+        return ExitCode::FAILURE;
+    }
+    println!("REPORT_FILE={}", output.display());
+    ExitCode::SUCCESS
+}
+
+/// Parse a signed integer the way Python `int(str)` does: surrounding
+/// whitespace, an optional sign, and single underscores between digits.
+/// Magnitudes beyond `i64` saturate.
+#[must_use]
+pub fn parse_python_int(raw: &str) -> Option<i64> {
+    let text = raw.trim();
+    let (negative, digits) = text
+        .strip_prefix(['+', '-'])
+        .map_or((false, text), |rest| (text.starts_with('-'), rest));
+    if digits.is_empty() || digits.starts_with('_') || digits.ends_with('_') {
+        return None;
+    }
+    let mut value: i64 = 0;
+    let mut previous_underscore = false;
+    for byte in digits.bytes() {
+        match byte {
+            b'0'..=b'9' => {
+                previous_underscore = false;
+                value = value
+                    .saturating_mul(10)
+                    .saturating_add(i64::from(byte - b'0'));
+            }
+            b'_' if !previous_underscore => previous_underscore = true,
+            _ => return None,
+        }
+    }
+    if previous_underscore {
+        return None;
+    }
+    Some(if negative { -value } else { value })
+}
+
 /// Write exact text to stdout, reporting a broken pipe as a failure exit.
 pub fn write_stdout(text: &str) -> ExitCode {
     if io::stdout().lock().write_all(text.as_bytes()).is_ok() {

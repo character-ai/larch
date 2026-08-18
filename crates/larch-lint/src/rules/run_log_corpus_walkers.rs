@@ -54,10 +54,7 @@ const DESCRIPTION: &str = "Reject raw committed run-log corpus walkers outside t
 const RUST_SCOPE_INCLUDE: &str = "crates/*/src/**/*.rs";
 const LINTER_CRATE_EXCLUDE: &str = "crates/larch-lint/**";
 const OWNER_SUFFIX: &str = "report/run_log_corpus.rs";
-const PYTHON_SCOPE_INCLUDES: [&str; 2] = [
-    "python/**/*.py",
-    "skills/voter-calibration/scripts/voter-calibration.py",
-];
+const PYTHON_SCOPE_INCLUDES: [&str; 1] = ["python/**/*.py"];
 const PYTHON_OWNER: &str = "python/larch/report/run_log_corpus.py";
 const PYTHON_EXEMPTIONS: [&str; 0] = [];
 const SUPPRESSION_TOKEN: &str = "lint-run-log-corpus-walkers";

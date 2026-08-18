@@ -671,7 +671,9 @@ def _load_realized_outcomes_section(*, log_root: Path, repo_override: str, filed
     return markdown
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(prog="voter-calibration")
+    # Frozen-reference adjustment: the live Rust owner is the `voter-calibration
+    # analyze` subcommand, so the frozen argparse prog matches that spelling.
+    parser = argparse.ArgumentParser(prog="voter-calibration analyze")
     parser.add_argument("--log-root", default="")
     parser.add_argument("--min-votes", type=int, default=20)
     parser.add_argument("--outlier-threshold", type=float, default=0.50)
