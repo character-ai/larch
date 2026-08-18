@@ -1127,10 +1127,7 @@ pub fn rename(arguments: &[OsString]) -> ExitCode {
 ///
 /// # Errors
 /// Returns the refusal detail; the caller maps any error to its warn branch.
-pub fn rename_designing_live(
-    issue: &str,
-    repository: Option<&str>,
-) -> Result<bool, String> {
+pub fn rename_designing_live(issue: &str, repository: Option<&str>) -> Result<bool, String> {
     rename_with(
         &LiveEffects,
         issue,
