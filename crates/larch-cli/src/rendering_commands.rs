@@ -23,7 +23,7 @@ use larch_core::{
         gantt::{self, MAX_WIDTH},
         growth_chart,
     },
-    review::{python_str_of_json, render_wire_values},
+    review::{python_str_of_json, python_truthy_of_json, render_wire_values},
 };
 use regex::Regex;
 use serde_json::Value;
@@ -772,14 +772,7 @@ fn is_level_two_heading(line: &str) -> bool {
 }
 
 fn python_truthy(value: &Value) -> bool {
-    match value {
-        Value::Null => false,
-        Value::Bool(flag) => *flag,
-        Value::Number(number) => number.as_f64().is_some_and(|value| value != 0.0),
-        Value::String(text) => !text.is_empty(),
-        Value::Array(items) => !items.is_empty(),
-        Value::Object(entries) => !entries.is_empty(),
-    }
+    python_truthy_of_json(value)
 }
 
 /// Generate or verify one committed developer artifact.

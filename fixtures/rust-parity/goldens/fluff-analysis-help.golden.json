@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: fluff-analysis analyze [-h] [--log-root LOG_ROOT] [--sessions-dir SESSIONS_DIR] [--include-in-progress] [--inprogress-since INPROGRESS_SINCE] [--cutoff CUTOFF] [--since-version X.Y.Z] [--min-group MIN_GROUP] [--out OUT] [--post-only-tags]\n\nAnalyze review fluff from synchronized larch run logs.\n\noptions:\n  -h, --help            show this help message and exit\n  --log-root LOG_ROOT   offline fixture corpus override; default synchronizes\n                        the current repository cache\n  --sessions-dir SESSIONS_DIR\n                        larch session cache dir (for --include-in-progress)\n  --include-in-progress\n                        also read in-progress design session temp dirs (racy\n                        snapshot)\n  --inprogress-since INPROGRESS_SINCE\n                        ISO8601 lower bound for in-progress session mtime\n  --cutoff CUTOFF       ISO8601 timestamp enabling a pre/post comparison\n                        section\n  --since-version X.Y.Z\n                        larch_version threshold enabling version-based\n                        pre/post comparison\n  --min-group MIN_GROUP\n                        minimum findings for a semantic group to appear\n                        (default 20)\n  --out OUT             write report to FILE instead of stdout\n  --post-only-tags      compute semantic tags only for post-cutoff/version\n                        records; pre-period records get empty tags (faster\n                        corpus scans)\n"
+  }
+}

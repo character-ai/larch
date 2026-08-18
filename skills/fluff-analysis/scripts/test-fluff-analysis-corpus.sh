@@ -4,8 +4,9 @@ unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDI
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-ANALYZER="$SCRIPT_DIR/fluff-analysis.py"
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+: "${CLAUDE_PLUGIN_ROOT:=$(cd "$SCRIPT_DIR/../../.." && pwd)}"
+export CLAUDE_PLUGIN_ROOT
 LOG_ROOT="$ROOT/larch-logs"
 
 if [[ ! -d "$LOG_ROOT/implement" ]]; then
@@ -28,7 +29,7 @@ fi
 
 REPORT_FILE=$(mktemp "${TMPDIR:-/tmp}/fluff-corpus-report.XXXXXX")
 trap 'rm -f "$REPORT_FILE"' EXIT
-python3 "$ANALYZER" --log-root "$LOG_ROOT" --since-version 49.0.0 --min-group 1 --post-only-tags > "$REPORT_FILE"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" fluff-analysis analyze --log-root "$LOG_ROOT" --since-version 49.0.0 --min-group 1 --post-only-tags > "$REPORT_FILE"
 REPORT=$(cat "$REPORT_FILE")
 if [[ "$REPORT" == *"| post | nit | 0 |"* || "$REPORT" != *"| post | nit |"* ]]; then
     echo "SKIP: no v>=49 post nit corpus slice" >&2

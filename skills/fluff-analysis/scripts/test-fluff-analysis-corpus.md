@@ -26,5 +26,5 @@ an empty corpus.
 
 ## Primary
 
-`skills/fluff-analysis/scripts/fluff-analysis.py` — the analyzer invoked by
-this test.
+`scripts/larch.sh fluff-analysis analyze` — the Rust-owned analyzer
+(`crates/larch-core/src/fluff_analysis.rs`) invoked by this test.

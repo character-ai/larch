@@ -340,6 +340,20 @@ pub fn python_str_of_json(value: &serde_json::Value) -> String {
     }
 }
 
+/// Return whether a decoded JSON value is truthy the way Python's `if value`
+/// is, so wire consumers ported from Python keep byte-compatible branching.
+#[must_use]
+pub fn python_truthy_of_json(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Null => false,
+        serde_json::Value::Bool(flag) => *flag,
+        serde_json::Value::Number(number) => number.as_f64().is_some_and(|value| value != 0.0),
+        serde_json::Value::String(text) => !text.is_empty(),
+        serde_json::Value::Array(items) => !items.is_empty(),
+        serde_json::Value::Object(entries) => !entries.is_empty(),
+    }
+}
+
 /// Parse an exact canonical heading, keeping the ordinal losslessly.
 #[must_use]
 pub fn parse_canonical_heading(line: &str) -> Option<CanonicalHeading> {

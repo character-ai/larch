@@ -294,6 +294,26 @@ LARCH_STORAGE_BASE_URI ({})",
     sync_with_store(&homes, storage, &environment).map(|result| result.corpus_root)
 }
 
+/// Resolve and canonicalize the repository root for run-log synchronization.
+///
+/// # Errors
+/// Returns the shared discovery refusal for an unresolvable or
+/// non-canonicalizable repository root.
+pub fn synchronized_repository_root() -> Result<PathBuf, String> {
+    let (repo_root, _origin, _environment) =
+        resolve_repository_environment_path(None).map_err(|error| {
+            let message = preflight_error(&error);
+            if message.starts_with("could not discover a Git repository root") {
+                "could not discover a Git repository root for run-log synchronization".to_owned()
+            } else {
+                message
+            }
+        })?;
+    std::fs::canonicalize(repo_root).map_err(|_| {
+        "could not discover a Git repository root for run-log synchronization".to_owned()
+    })
+}
+
 fn sync_outcome(result: Result<RepositorySyncResult, String>) -> ExitCode {
     match result {
         Ok(result) => {

@@ -55,6 +55,7 @@ mod execution_issue_commands;
 mod external_agent;
 mod external_defaults_commands;
 pub(crate) mod final_report_commands;
+mod fluff_analysis_commands;
 mod git_command_runtime;
 mod git_commands;
 mod github_repository_resolution;
@@ -248,6 +249,9 @@ enum Domain {
     /// Non-production commands that exercise dispatcher wiring.
     #[command(subcommand)]
     Example(ExampleCommand),
+    /// The `/fluff-analysis` review-fluff report.
+    #[command(subcommand, name = "fluff-analysis")]
+    FluffAnalysis(FluffAnalysisCommand),
     /// Local Git repository commands.
     #[command(subcommand)]
     Git(GitSubcommand),
@@ -1398,6 +1402,13 @@ enum DifficultyCalibrationCommand {
     Analyze(RawCompatibilityArguments),
 }
 
+#[derive(Subcommand)]
+enum FluffAnalysisCommand {
+    /// Analyze review fluff over one synchronized or explicit run-log corpus.
+    #[command(disable_help_flag = true)]
+    Analyze(RawCompatibilityArguments),
+}
+
 impl DifficultyCommand {
     fn run(self) -> ExitCode {
         match self {
@@ -2054,6 +2065,9 @@ fn run(
         Domain::DifficultyCalibration(DifficultyCalibrationCommand::Analyze(arguments)) => Ok(
             difficulty_calibration_commands::analyze(&arguments.arguments),
         ),
+        Domain::FluffAnalysis(FluffAnalysisCommand::Analyze(arguments)) => {
+            Ok(fluff_analysis_commands::analyze(&arguments.arguments))
+        }
         Domain::Debate(command) => Ok(match command {
             DebateCommand::Init(arguments) => debate_commands::init(&arguments.arguments),
             DebateCommand::RoundPrep(arguments) => {

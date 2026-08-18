@@ -27,6 +27,7 @@ Commands:
   execution-issues        The `/implement` execution-issue ledger lifecycle
   external-defaults       External tool default readers
   example                 Non-production commands that exercise dispatcher wiring
+  fluff-analysis          The `/fluff-analysis` review-fluff report
   git                     Local Git repository commands
   hook                    Advisory Claude Code hook commands
   implement               `/implement` bootstrap, preflight, scout, recovery, and step checks

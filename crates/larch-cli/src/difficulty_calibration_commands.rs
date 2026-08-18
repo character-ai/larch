@@ -4,9 +4,11 @@ use std::{collections::BTreeMap, env, ffi::OsString, fs, path::PathBuf, process:
 
 use crate::{
     analysis_state,
-    argparse_compat::{parse_required_with_help, write_stdout},
+    argparse_compat::{optional_out_path, parse_required_with_help, write_stdout},
     run_log_commands,
-    run_log_publication_commands::{preflight_error, synchronized_corpus_root},
+    run_log_publication_commands::{
+        preflight_error, synchronized_corpus_root, synchronized_repository_root,
+    },
 };
 
 const PROGRAM: &str = "difficulty-calibration analyze";
@@ -60,11 +62,7 @@ pub fn analyze(arguments: &[OsString]) -> ExitCode {
 
     let environment: BTreeMap<String, String> = env::vars().collect();
     let report = larch_core::difficulty_calibration_report(&log_root, &state_root, &environment);
-    let output = parsed
-        .value("--out")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from);
-    let Some(output) = output else {
+    let Some(output) = optional_out_path(&parsed) else {
         return write_stdout(&report);
     };
     if let Some(parent) = output
@@ -84,18 +82,7 @@ pub fn analyze(arguments: &[OsString]) -> ExitCode {
 }
 
 fn synchronized_roots() -> Result<(PathBuf, PathBuf), String> {
-    let (repo_root, _origin, _environment) =
-        run_log_commands::resolve_repository_environment_path(None).map_err(|error| {
-            let message = preflight_error(&error);
-            if message.starts_with("could not discover a Git repository root") {
-                "could not discover a Git repository root for run-log synchronization".to_owned()
-            } else {
-                message
-            }
-        })?;
-    let repo_root = fs::canonicalize(repo_root).map_err(|_| {
-        "could not discover a Git repository root for run-log synchronization".to_owned()
-    })?;
+    let repo_root = synchronized_repository_root()?;
     let storage = run_log_commands::resolve_enabled_storage_path(Some(&repo_root))
         .map_err(|error| preflight_error(&error))?;
     let log_root = synchronized_corpus_root(&repo_root)?;

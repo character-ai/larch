@@ -907,7 +907,6 @@
   "tests/rendering/test_rendering.py::test_rendering_helper_imports_are_cycle_free": 1,
   "tests/report/test_analysis_state.py::test_concurrent_stale_writer_is_rejected": 4,
   "tests/report/test_progress_statusline.py::test_sessionstart_statusline_harness": 2,
-  "tests/report/test_read_only_analyzer_sync.py::test_default_synced_corpus_matches_explicit_fixture[fixture_fluff_analysis-skills/fluff-analysis/scripts/fluff-analysis.py]": 2,
   "tests/report/test_read_only_analyzer_sync.py::test_default_synced_corpus_matches_explicit_fixture[fixture_voter_calibration-skills/voter-calibration/scripts/voter-calibration.py]": 2,
   "tests/report/test_run_logs.py::test_debate_batches_round_trip_append_and_replace": 3,
   "tests/report/test_run_logs.py::test_debate_batches_validate_malformed_json": 3,

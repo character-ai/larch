@@ -3074,6 +3074,20 @@ migration_issue = 8090
 clean_install_test = "clean-install-final-report-write"
 
 [[commands]]
+domain = "fluff-analysis"
+verb = "analyze"
+python_module = "fluff_analysis"
+python_function = "main"
+machine_stdout = false
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7684
+migration_issue = 8671
+clean_install_test = "clean-install-fluff-analysis-analyze"
+
+[[commands]]
 domain = "forked-repo"
 verb = "setup"
 python_module = "larch.core.forked_repo"
@@ -9638,10 +9652,10 @@ python = []
 rust = ["difficulty-calibration analyze"]
 
 [[callers]]
-path = "skills/fluff-analysis/scripts/fluff-analysis.py"
+path = "skills/fluff-analysis/SKILL.md"
 kind = "skill"
 python = []
-rust = ["voting compose-tally-record"]
+rust = ["fluff-analysis analyze"]
 
 [[callers]]
 path = "skills/implement/SKILL.md"

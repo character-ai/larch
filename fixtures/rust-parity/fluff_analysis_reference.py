@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Characterize review "fluff" from synchronized larch run logs.
+"""Frozen Python reference for fluff-analysis parity.
+
+Verbatim copy of the retired skills/fluff-analysis/scripts/fluff-analysis.py
+with only the sys.path bootstrap adjusted for this location, the self-review
+subprocess routed at the harness-provided larch binary (LARCH_BINARY env,
+exported by the parity test as CARGO_BIN_EXE_larch), and the argparse
+``prog`` pinned to ``fluff-analysis analyze`` so usage/help lines match the
+Rust surface.
+
+Characterize review "fluff" from synchronized larch run logs.
 
 Reads synchronized design + implement run logs (and, optionally, in-progress design
 session temp dirs), normalizes every review finding into one record stream, and
@@ -25,7 +34,7 @@ import re
 import sys
 from pathlib import Path
 
-repo_root = Path(__file__).resolve().parents[3]
+repo_root = Path(__file__).resolve().parents[2]
 python_dir = repo_root / "python"
 if str(python_dir) not in sys.path:
     sys.path.insert(0, str(python_dir))
@@ -597,9 +606,10 @@ def _extract_one_implement_run(args):
 
 def _self_review_tally_records(run_dir, run_id, larch_version, period):
     tally_file = os.path.join(run_dir, "code-review-tally.json")
+    larch_binary = os.environ.get("LARCH_BINARY") or str(repo_roots.larch_entrypoint(repo_root))
     try:
         result = proc.run([
-            str(repo_roots.larch_entrypoint(repo_root)), "voting", "compose-tally-record",
+            larch_binary, "voting", "compose-tally-record",
             "--self-review-tally-file", tally_file,
         ])
     except (OSError, RuntimeError, ValueError):
@@ -1492,7 +1502,10 @@ def selected_log_root(raw_log_root):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Analyze review fluff from synchronized larch run logs.")
+    parser = argparse.ArgumentParser(
+        prog="fluff-analysis analyze",
+        description="Analyze review fluff from synchronized larch run logs.",
+    )
     parser.add_argument("--log-root", default=None,
                         help="offline fixture corpus override; default synchronizes the current repository cache")
     parser.add_argument("--sessions-dir", default=os.path.expanduser("~/.cache/larch/sessions"),

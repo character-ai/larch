@@ -1591,6 +1591,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "analyze",
     ),
     CleanInstallCase::new(
+        "clean-install-fluff-analysis-analyze",
+        "fluff-analysis",
+        "analyze",
+    ),
+    CleanInstallCase::new(
         "clean-install-render-findings-view",
         "render",
         "findings-view",

@@ -19,6 +19,7 @@ mod difficulty_calibration;
 mod env_file;
 mod error;
 mod external_defaults;
+mod fluff_analysis;
 mod git;
 mod github;
 mod github_actions;
@@ -186,6 +187,10 @@ pub use error::{
 pub use external_defaults::{
     DebateSeat, ExternalDefaultError, ResolveResult, RoleDefault, RoleKind, debate_panel_seating,
     doc_rows, parse_bool_flag, resolve_vendor, role_default,
+};
+pub use fluff_analysis::{
+    FluffOptions, PyTimestamp, fluff_analysis_report, parse_cutoff_text, parse_larch_version_tuple,
+    parse_python_isoformat, sorted_paths_with_name_prefix,
 };
 pub use git::{
     Change, ChangeKind, ChangeSet, Commit, ConfigKey, ConfigScope, ConfigValue, ConflictKind,
@@ -428,7 +433,8 @@ pub use report::{
     claude_usage_rows, count_issue_groups, count_load_result, cursor_buckets_are_detailed,
     display_rates, effective_vendor_total, exact_rate_row, execution_issue_identity, fallback_cost,
     format_money, full_report, full_report_with_observations, ledger_step_marks,
-    ledger_vendor_rows, load_issue_detail_groups, normalize_body_for_hash, parse_epoch,
+    ledger_vendor_rows, load_issue_detail_groups, manifest_only_larch_version,
+    manifest_only_started_at_text, normalize_body_for_hash, parse_epoch,
     parse_markdown_execution_issues, parse_preterminal_outcome_label, price_counts, price_run,
     python_round, rate_row, read_ledger, read_report_inputs, render_cost_kv, render_cost_line,
     render_issue_detail_block, render_session_transcript, render_token_report_buckets,
@@ -459,17 +465,17 @@ pub use run_log::{
     LifecycleOutcome, ManifestDocument, ManifestFormatVersion, ManifestReadError,
     ManifestReadErrorKind, ManifestRecord, ManifestUpdate, ManifestV2Seed, ManifestWriteError,
     ReachabilityContext, RecordLabels, RedactionRefusal, ResidualSecretError, RoundNumber,
-    RoundNumberError, RunLogLayout, RunLogSlug, RunLogSlugError, RunLogSlugErrorKind, Sanitizer,
-    UNIVERSAL_EXECUTION_ISSUES, UNIVERSAL_FINAL_REPORT, UNIVERSAL_SESSION_TRANSCRIPT,
-    batch_contains_all_sections, compose_execution_issue, compose_failure_entry, condition_reached,
-    execution_issue_body_keys, execution_issue_chunks, execution_issue_records,
-    execution_issue_sections, existing_execution_issue_keys, failure_retry_suffix,
-    final_summary_terminal_heading, first_nonempty_line, glob_matches, implementation_plan_body,
-    is_round_sidecar_file, lookup_batch, manifest_pr_evidence_matches, normalize_run_log_text,
-    normalized_body_sha256, redact_batch_payload, round_artifact_included, scan_required_files,
-    stage_round_artifact, stale_bail_heading_with_pr_evidence, terminal_bail_skip_signal,
-    validate_batch_payload, validate_failure_counts, validate_run_log_slug,
-    validate_ship_outcome_record,
+    RoundNumberError, RunLogLayout, RunLogSlug, RunLogSlugError, RunLogSlugErrorKind,
+    SHIP_OUTCOME_CUTOVER_VERSION, Sanitizer, UNIVERSAL_EXECUTION_ISSUES, UNIVERSAL_FINAL_REPORT,
+    UNIVERSAL_SESSION_TRANSCRIPT, batch_contains_all_sections, compose_execution_issue,
+    compose_failure_entry, condition_reached, execution_issue_body_keys, execution_issue_chunks,
+    execution_issue_records, execution_issue_sections, existing_execution_issue_keys,
+    failure_retry_suffix, final_summary_terminal_heading, first_nonempty_line, glob_matches,
+    implementation_plan_body, is_round_sidecar_file, lookup_batch, manifest_pr_evidence_matches,
+    normalize_run_log_text, normalized_body_sha256, redact_batch_payload, round_artifact_included,
+    scan_required_files, stage_round_artifact, stale_bail_heading_with_pr_evidence,
+    terminal_bail_skip_signal, validate_batch_payload, validate_failure_counts,
+    validate_run_log_slug, validate_ship_outcome_record,
 };
 pub use session_env::{
     DIFFICULTY_CHOICES, MAX_PATH_VALUE_LEN, RESTORE_FINALIZE_KEYS, RUN_FLAG_KEYS, RunParams,

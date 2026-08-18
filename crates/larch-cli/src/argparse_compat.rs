@@ -541,6 +541,15 @@ pub fn python_repr(value: &str) -> String {
     output
 }
 
+/// Resolve a nonempty `--out` option to the report output path.
+#[must_use]
+pub fn optional_out_path(parsed: &ParsedCommandLine) -> Option<PathBuf> {
+    parsed
+        .value("--out")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
 /// Write exact text to stdout, reporting a broken pipe as a failure exit.
 pub fn write_stdout(text: &str) -> ExitCode {
     if io::stdout().lock().write_all(text.as_bytes()).is_ok() {
