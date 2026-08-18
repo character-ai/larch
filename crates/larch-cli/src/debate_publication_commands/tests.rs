@@ -73,7 +73,7 @@ mod publication_tests {
         })
     }
 
-    fn comments_exchange(comments: Value) -> IssueServiceExchange {
+    fn comments_exchange(comments: &Value) -> IssueServiceExchange {
         IssueServiceExchange::any_json(200, comments.to_string()).expect("valid comments response")
     }
 
@@ -347,7 +347,7 @@ mod publication_tests {
         let body = format!(
             "{marker}\n\nThe debate ended before proposal publication. No outcome was adopted."
         );
-        let (factory, server) = service(vec![comments_exchange(json!([comment_json(91, &body)]))]);
+        let (factory, server) = service(vec![comments_exchange(&json!([comment_json(91, &body)]))]);
 
         let comment_id = with_test_github_service(factory, || {
             run_comment_verify(&arguments(&[
@@ -371,7 +371,7 @@ mod publication_tests {
         let marker = "<!-- larch:debate-proposal runid=test-run -->";
         let content_path = root.path().join("proposal-comment.md");
         fs::write(&content_path, "Proposal: #18\n").expect("write content");
-        let (factory, _server) = service(vec![comments_exchange(json!([comment_json(
+        let (factory, _server) = service(vec![comments_exchange(&json!([comment_json(
             92,
             &format!("{marker}\n\nforeign")
         )]))]);
