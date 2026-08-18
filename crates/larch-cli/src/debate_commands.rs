@@ -545,13 +545,48 @@ fn envelope(
 
 /// Parse `--flag value` / `--flag=value` pairs; any deviation is a validation
 /// failure, mirroring Python `argparse`'s `SystemExit` envelope path.
+/// Parse `--flag value` / `--flag=value` pairs for a closed known-flag set.
+pub fn parse_known_flags(
+    arguments: &[OsString],
+    known: &[&str],
+) -> Result<BTreeMap<String, String>, ()> {
+    let mut parsed: BTreeMap<String, String> = BTreeMap::new();
+    let mut index = 0;
+    while index < arguments.len() {
+        let token = arguments[index].to_str().ok_or(())?;
+        if !token.starts_with("--") {
+            return Err(());
+        }
+        let (flag, inline) = match token.split_once('=') {
+            Some((flag, value)) => (flag, Some(value.to_owned())),
+            None => (token, None),
+        };
+        if !known.contains(&flag) {
+            return Err(());
+        }
+        let value = if let Some(value) = inline {
+            value
+        } else {
+            index += 1;
+            arguments
+                .get(index)
+                .ok_or(())?
+                .to_str()
+                .ok_or(())?
+                .to_owned()
+        };
+        let _ = parsed.insert(flag.to_owned(), value);
+        index += 1;
+    }
+    Ok(parsed)
+}
+
 fn parse_args(
     arguments: &[OsString],
     known: &[&str],
     required: &[&str],
 ) -> Result<BTreeMap<String, String>, DebateError> {
-    let parsed = larch_cli::debate_state::parse_known_flags(arguments, known)
-        .map_err(|()| DebateError::validation())?;
+    let parsed = parse_known_flags(arguments, known).map_err(|()| DebateError::validation())?;
     for name in required {
         if !parsed.contains_key(*name) {
             return Err(DebateError::validation());

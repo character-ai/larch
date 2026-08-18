@@ -43,9 +43,9 @@ const PROPOSAL_BODY_FILENAME: &str = "proposal-body.md";
 /// Backlinked proposal body (`config.DEBATE_LINKED_PROPOSAL_BODY_FILENAME`).
 const LINKED_PROPOSAL_BODY_FILENAME: &str = "proposal-linked-body.md";
 /// Lifecycle prefix for a debate in progress (`config.DEBATE_TITLE_PREFIX_BY_STATE`).
-pub(crate) const DEBATING_PREFIX: &str = "[DEBATING] ";
+pub const DEBATING_PREFIX: &str = "[DEBATING] ";
 /// Lifecycle prefix for a concluded debate (`config.DEBATE_TITLE_PREFIX_BY_STATE`).
-pub(crate) const DEBATED_PREFIX: &str = "[DEBATED] ";
+pub const DEBATED_PREFIX: &str = "[DEBATED] ";
 /// Maximum lifecycle title length in characters (`config.TRACKING_TITLE_MAX_LEN`).
 const TRACKING_TITLE_MAX_LEN: usize = 256;
 /// Required opening of a debate comment marker.
@@ -641,7 +641,7 @@ fn list_comments(repository: &str, issue: &str) -> Result<Vec<GitHubComment>, ()
 /// Parse `--flag value` / `--flag=value` pairs; any deviation, unknown flag, or
 /// missing required flag is a failure, mirroring Python `argparse`'s exit path.
 fn parse_args(arguments: &[OsString], known: &[&str]) -> Result<BTreeMap<String, String>, ()> {
-    let parsed = larch_cli::debate_state::parse_known_flags(arguments, known)?;
+    let parsed = crate::debate_commands::parse_known_flags(arguments, known)?;
     for name in known {
         if !parsed.contains_key(*name) {
             return Err(());
