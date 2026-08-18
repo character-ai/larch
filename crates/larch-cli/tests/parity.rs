@@ -169,6 +169,8 @@ impl CleanInstallCase {
             // treats the clean-install `--help` token as an unknown flag and
             // emits its validation envelope with the argparse usage exit code.
             | "clean-install-debate-abort"
+            | "clean-install-debate-adjudicate"
+            | "clean-install-debate-adjudication-preview"
             | "clean-install-debate-init"
             | "clean-install-debate-record-turn"
             | "clean-install-debate-round-prep"
@@ -732,6 +734,12 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "prose-audit",
     ),
     CleanInstallCase::new("clean-install-debate-abort", "debate", "abort"),
+    CleanInstallCase::new("clean-install-debate-adjudicate", "debate", "adjudicate"),
+    CleanInstallCase::new(
+        "clean-install-debate-adjudication-preview",
+        "debate",
+        "adjudication-preview",
+    ),
     CleanInstallCase::new("clean-install-debate-init", "debate", "init"),
     CleanInstallCase::new("clean-install-debate-record-turn", "debate", "record-turn"),
     CleanInstallCase::new("clean-install-debate-round-prep", "debate", "round-prep"),

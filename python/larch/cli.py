@@ -14,8 +14,6 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("debate", "adjudicate"): ("larch.debate.orchestrator", "adjudicate_main", True),
-    ("debate", "adjudication-preview"): ("larch.debate.orchestrator", "adjudication_preview_main", True),
     ("debate", "comment-verify"): ("larch.debate.publication", "comment_verify_main", True),
     ("debate", "issue-prepare"): ("larch.debate.publication", "issue_prepare_main", True),
     ("debate", "proposal-link"): ("larch.debate.publication", "proposal_link_main", True),

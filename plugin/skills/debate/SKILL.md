@@ -210,7 +210,7 @@ Skip this step only when the last validated envelope is already terminal. When i
 - Autonomous mode runs:
 
   ```bash
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate adjudicate \
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate adjudicate \
     --debate-tmpdir "$DEBATE_TMPDIR" --expected-fingerprint "$FINGERPRINT" \
     --vote-stalemates
   ```
@@ -219,7 +219,7 @@ Skip this step only when the last validated envelope is already terminal. When i
 - Default mode first runs:
 
   ```bash
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate adjudication-preview \
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate adjudication-preview \
     --debate-tmpdir "$DEBATE_TMPDIR" --expected-fingerprint "$FINGERPRINT"
   # lint-consecutive-bash: ok the preview envelope must validate before wrapping its untrusted artifact
   ```
@@ -234,7 +234,7 @@ Skip this step only when the last validated envelope is already terminal. When i
   Inspect only the wrapped artifact. For every point, ask one `AskUserQuestion` with the two bounded positions and a both-viable choice. Write exactly one TSV row per point to `$DEBATE_TMPDIR/operator-decisions.tsv`: a selected position uses `POINT_N<TAB>SELECTED<TAB>position`; both viable uses `POINT_N<TAB>SPLIT<TAB>position-a<TAB>position-b`. Then run with the unchanged preview fingerprint:
 
   ```bash
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate adjudicate \
+  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate adjudicate \
     --debate-tmpdir "$DEBATE_TMPDIR" --expected-fingerprint "$FINGERPRINT" \
     --decisions-file "$DEBATE_TMPDIR/operator-decisions.tsv"
   ```
