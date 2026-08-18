@@ -931,6 +931,7 @@ mod debate_commands_tests {
         }
     }
 
+    #[allow(clippy::unnecessary_wraps)] // Must match the run_log field's fallible signature shared with panic_run_log.
     fn ok_run_log(_state: &StoredState, _input: &Path) -> Result<(), DebateError> {
         Ok(())
     }
