@@ -43,10 +43,12 @@ if errors:
     sys.exit(1)
 PY
 
-# Invariant B: the Python Step 5 adapter and the Step 18 wrapper own telemetry.
-command grep -Fq '_rehydrate_larch_triplet(implement_tmpdir)' python/larch/implement/dispatch_commit_route.py || fail 'Step 5 Python adapter does not rehydrate telemetry keys'
-command grep -Fq 'rust_runtime.timing_mark(' python/larch/implement/dispatch_commit_route.py || fail 'Step 5 Python adapter does not call the Rust timing owner'
-command grep -Fq 'label="Step 5: review handoff"' python/larch/implement/dispatch_commit_route.py || fail 'Step 5 Python adapter does not mark implement timing'
+# Invariant B: the Python commit-route adapter rehydrates telemetry, the Rust
+# Step 5 review owner marks the review-handoff timing, and the Step 18 wrapper
+# owns closing telemetry.
+command grep -Fq '_rehydrate_larch_triplet(implement_tmpdir)' python/larch/implement/dispatch_commit_route.py || fail 'commit-route Python adapter does not rehydrate telemetry keys'
+command grep -Fq 'fn record_step5_handoff_timing' crates/larch-cli/src/implement_review_commands.rs || fail 'Rust Step 5 review owner does not mark review-handoff timing'
+command grep -Fq 'OsString::from("Step 5: review handoff")' crates/larch-cli/src/implement_review_commands.rs || fail 'Rust Step 5 review owner does not mark implement timing'
 command grep -Fq 'LARCH_TIMING_LEDGER' python/larch/implement/dispatch_helpers.py || fail 'dispatch_helpers does not resolve LARCH_TIMING_LEDGER'
 command grep -Fq '_rehydrate_larch_triplet(implement_tmpdir)' python/larch/implement/dispatch_step18.py || fail 'step-18 Python does not rehydrate telemetry keys'
 command grep -Fq '"LARCH_TIMING_SKILL": "implement"' python/larch/implement/dispatch_step18.py || fail 'step-18 Python does not mark implement timing'
@@ -114,12 +116,12 @@ command grep -Fq 'implement step-18 "$@"' skills/implement/scripts/step-18.sh ||
 command grep -Fq 'implement step-19 "$@"' skills/implement/scripts/step-19.sh || fail 'step-19.sh must remain a thin Python delegate'
 
 # Invariant F (#4286): round timing duplicate probe returns success when the row exists.
-step5_resume="python/larch/implement/dispatch_commit_route.py"
-python3 - "$step5_resume" <<'PY'
+step5_owner="crates/larch-cli/src/implement_review_commands.rs"
+python3 - "$step5_owner" <<'PY'
 from pathlib import Path
 import sys
 text = Path(sys.argv[1]).read_text()
-required = 'if _step5_round_timing_row_exists(cols, round_decimal=round_decimal, start_s=start_s):'
+required = 'cols[4] == "Step 5 — code review"'
 forbidden = 'END { exit found }'
 errors = []
 if required not in text:

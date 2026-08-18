@@ -4017,10 +4017,6 @@ def _mock_composite_continue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *,
     return impl
 
 
-def _completed(args: Sequence[str], stdout: str, stderr: str = "", rc: int = 0) -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(list(args), rc, stdout, stderr)
-
-
 def test_run_relevant_checks_for_site_does_not_allow_skip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
