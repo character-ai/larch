@@ -8,7 +8,7 @@ The smoke tests only the wrapper contract:
 
 1. Repository-root fallback when `CLAUDE_PLUGIN_ROOT` is unset.
 2. Explicit `CLAUDE_PLUGIN_ROOT` selection.
-3. Exact `python/cli.py implement step-7a` routing and argument forwarding.
+3. Exact `scripts/larch.sh implement step-7a` routing and argument forwarding.
 4. Stdout, stderr, and exit-status passthrough.
 
 ## Behavioral authority

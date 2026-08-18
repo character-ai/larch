@@ -57,7 +57,9 @@ std::thread_local! {
     static TEST_LARCH: std::cell::RefCell<Option<LarchHook>> = const { std::cell::RefCell::new(None) };
 }
 
-fn delegate_python(arguments: impl IntoIterator<Item = OsString>) -> Result<ProcessOutput, String> {
+pub fn delegate_python(
+    arguments: impl IntoIterator<Item = OsString>,
+) -> Result<ProcessOutput, String> {
     let args: Vec<OsString> = arguments.into_iter().collect();
     #[cfg(test)]
     if let Some(hook) = TEST_PYTHON.with(|slot| slot.borrow().clone()) {
@@ -66,7 +68,7 @@ fn delegate_python(arguments: impl IntoIterator<Item = OsString>) -> Result<Proc
     run_python_verb(args, PYTHON_TIMEOUT)
 }
 
-fn delegate_verified_larch(
+pub fn delegate_verified_larch(
     cwd: &Path,
     root: &Path,
     args: &[OsString],
@@ -365,7 +367,7 @@ fn run_child(
     )
 }
 
-fn publish_identity_child(
+pub fn publish_identity_child(
     tmpdir: &Path,
     step: &str,
     merge_env: &Path,
@@ -447,15 +449,15 @@ fn run_step_checks_worker(
 }
 
 #[derive(Clone)]
-struct LaunchIdentity {
-    head_sha: String,
-    tree_fp: String,
-    schema: String,
-    repo_root: PathBuf,
+pub struct LaunchIdentity {
+    pub head_sha: String,
+    pub tree_fp: String,
+    pub schema: String,
+    pub repo_root: PathBuf,
 }
 
 impl LaunchIdentity {
-    fn as_rows(&self) -> Vec<(String, String)> {
+    pub fn as_rows(&self) -> Vec<(String, String)> {
         vec![
             (CHECKS_HEAD.to_owned(), self.head_sha.clone()),
             (CHECKS_FP.to_owned(), self.tree_fp.clone()),
@@ -464,7 +466,7 @@ impl LaunchIdentity {
     }
 }
 
-fn checks_launch_identity(tmpdir: &Path) -> Result<LaunchIdentity, String> {
+pub fn checks_launch_identity(tmpdir: &Path) -> Result<LaunchIdentity, String> {
     let resolve = delegate_python([
         OsString::from("implement"),
         OsString::from("checks-result-identity"),
@@ -522,7 +524,7 @@ fn validate_child_identity(launch: &LaunchIdentity) -> Result<(), String> {
     }
 }
 
-fn prepare_checks_rejoin(
+pub fn prepare_checks_rejoin(
     tmpdir: &Path,
     step: &str,
     merge_env: &Path,
@@ -618,7 +620,7 @@ fn classify(
     Ok(("incomplete".to_owned(), String::new()))
 }
 
-fn safe_merge_env(tmpdir: &Path, raw: &Path) -> Result<PathBuf, String> {
+pub fn safe_merge_env(tmpdir: &Path, raw: &Path) -> Result<PathBuf, String> {
     if let Ok(root) = bgjob_dir(tmpdir)
         && raw
             .parent()
@@ -629,7 +631,7 @@ fn safe_merge_env(tmpdir: &Path, raw: &Path) -> Result<PathBuf, String> {
     validate_merge_result_env(raw, tmpdir).map_err(|e| e.to_string())
 }
 
-fn unlink_safe(path: &Path, root: &Path) -> Result<(), String> {
+pub fn unlink_safe(path: &Path, root: &Path) -> Result<(), String> {
     if let Ok(meta) = fs::symlink_metadata(path)
         && (meta.file_type().is_symlink() || !meta.is_file())
     {
@@ -643,7 +645,7 @@ fn unlink_safe(path: &Path, root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn publish_rows(tmpdir: &Path, merge_env: &Path, text: &str) -> Result<(), String> {
+pub fn publish_rows(tmpdir: &Path, merge_env: &Path, text: &str) -> Result<(), String> {
     if !stdout_is_merge_rows(text) {
         return Err("child output is not a KV stream".into());
     }
@@ -684,7 +686,7 @@ fn integrity_rows(step: &str, reason: &str) -> String {
     ])
 }
 
-fn format_rows(rows: &[(String, String)]) -> String {
+pub fn format_rows(rows: &[(String, String)]) -> String {
     let mut out = String::new();
     for (key, value) in rows {
         out.push_str(key);
@@ -792,7 +794,7 @@ fn tmpdir_from_env() -> Result<PathBuf, ()> {
     Ok(PathBuf::from(raw))
 }
 
-fn owner_pid_string() -> String {
+pub fn owner_pid_string() -> String {
     env::var("LARCH_CLAUDE_PID")
         .ok()
         .filter(|v| !v.is_empty())
@@ -844,7 +846,7 @@ fn forward_output(output: &ProcessOutput) {
     }
 }
 
-fn opt_string(value: Option<&OsStr>) -> String {
+pub fn opt_string(value: Option<&OsStr>) -> String {
     value
         .map(|v| v.to_string_lossy().into_owned())
         .unwrap_or_default()

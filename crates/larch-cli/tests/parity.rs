@@ -177,7 +177,11 @@ impl CleanInstallCase {
             | "clean-install-debate-record-turn"
             | "clean-install-debate-round-prep"
             | "clean-install-debate-synthesize"
-            | "clean-install-voting-write-tally" => 2,
+            | "clean-install-voting-write-tally"
+            // `implement step-7a` catches its argparse SystemExit — including the
+            // `--help` action — and emits the seven-key bail envelope with the
+            // argparse usage exit code instead of printing help.
+            | "clean-install-implement-step-7a" => 2,
             // The three remaining publication verbs mirror the retired Python
             // module, which caught the argparse `SystemExit` and emitted each
             // verb's own publication-failure envelope, so the clean-install
@@ -1631,6 +1635,31 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-implement-run-step-checks",
         "implement",
         "run-step-checks",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-checks-step5-resume",
+        "implement",
+        "checks-step5-resume",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-step-5-resume",
+        "implement",
+        "step-5-resume",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-step-5-review",
+        "implement",
+        "step-5-review",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-step-6-entry",
+        "implement",
+        "step-6-entry",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-step-7a",
+        "implement",
+        "step-7a",
     ),
     CleanInstallCase::new(
         "clean-install-gh-agnix-ensure-label",

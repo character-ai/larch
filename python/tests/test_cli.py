@@ -321,7 +321,6 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
         ),
         (["ship", "reconcile-manual-merge"], "larch.implement.ship_recovery", "reconcile_manual_merge_main"),
         (["implement", "commit-route"], "larch.implement.implement_dispatch", "commit_route_main"),
-        (["implement", "step-6-entry"], "larch.implement.implement_dispatch", "step6_entry_main"),
         (["implement", "step-8-oos-checkpoint"], "larch.implement.implement_dispatch", "step8_oos_checkpoint_main"),
         (
             ["implement", "step-18-gate-logs-flush"],

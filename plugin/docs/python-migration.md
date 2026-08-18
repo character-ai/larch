@@ -65,6 +65,28 @@ Three siblings remain Python and are invoked through `python_verb`:
 `issue governance-gate` (extended additively with `--preflight-envelope`),
 `scout filter-manifest`, and `ci main-health`.
 
+### Implement Step 5-7a review-routing cutover
+
+Issue #8613 moved five commands to Rust: `implement step-5-review`,
+`implement step-5-resume`, `implement checks-step5-resume`,
+`implement step-6-entry`, and `implement step-7a`. Callers enter through
+`scripts/larch.sh`; the four `.sh` wrappers and the inline `step-7a` launch fence
+delegate to the verified bootstrap, and the registry milestones are complete.
+`crates/larch-cli/src/implement_review_commands.rs` owns all five verbs, reusing
+the #8610 bgjob/identity/rejoin infrastructure in
+`crates/larch-cli/src/implement_dispatch_commands.rs` and delegating the
+still-Python composites (`implement commit-route`, `implement checks-commit-route`,
+`checks run-relevant`, `implement step-8-seed-initial`, `diagram code-flow`,
+`diagrams upsert`) plus the already-Rust verbs (`review-and-fix step5`,
+`review-and-fix check-changes`, `push checkpoint-probe`, `execution-issues flush`,
+`timing`). `python/larch/implement/step_7a.py` is deleted, and the four entry
+points plus their exclusive helpers are removed from
+`python/larch/implement/dispatch_commit_route.py`. That module stays because the
+still-Python commit-route/step8-guard family (`commit`, `commit-route`,
+`checks-commit-route`, `step-8-python-guard`) shares its helpers, and
+`dispatch_ship.py` still imports `BgjobRequest`, `_bgjob_spec`, `_run_adapter`, and
+`_safe_merge_env` for `implement step-8-ship`.
+
 ### Stall-recovery mixed-runtime cutover
 
 Issue #8064 moved exactly six commands to Rust: `clear-stall`,

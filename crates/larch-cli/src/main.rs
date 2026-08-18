@@ -69,6 +69,7 @@ mod implement_commands;
 mod implement_dispatch_commands;
 mod implement_launcher_commands;
 mod implement_preflight_commands;
+mod implement_review_commands;
 mod issue_commands;
 mod issue_create_commands;
 mod issue_dependency_commands;
@@ -941,6 +942,9 @@ enum AdmissionCommand {
 
 #[derive(Subcommand)]
 enum ImplementCommand {
+    /// Run the Step 5 checks front-half then forward the resume leg.
+    #[command(name = "checks-step5-resume", disable_help_flag = true)]
+    ChecksStep5Resume(RawCompatibilityArguments),
     /// Emit this clone's tag and its expected implement tmpdir prefix.
     #[command(name = "clone-tag", disable_help_flag = true)]
     CloneTag(RawCompatibilityArguments),
@@ -962,6 +966,18 @@ enum ImplementCommand {
     /// Probe the vendor reviewers and forward the degraded-tools gate.
     #[command(name = "step-0-degraded-gate", disable_help_flag = true)]
     Step0DegradedGate(RawCompatibilityArguments),
+    /// Launch or rejoin the Step 5 resume bgjob leg.
+    #[command(name = "step-5-resume", disable_help_flag = true)]
+    Step5Resume(RawCompatibilityArguments),
+    /// Launch or rejoin the Step 5 review bgjob leg.
+    #[command(name = "step-5-review", disable_help_flag = true)]
+    Step5Review(RawCompatibilityArguments),
+    /// Launch or rejoin the Step 6 review-change-detection bgjob leg.
+    #[command(name = "step-6-entry", disable_help_flag = true)]
+    Step6Entry(RawCompatibilityArguments),
+    /// Launch or run the Step 7a pre-ship checkpoint and code-flow diagram.
+    #[command(name = "step-7a", disable_help_flag = true)]
+    Step7a(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2184,6 +2200,9 @@ fn run(
             Ok(admission_commands::preflight(&arguments.arguments))
         }
         Domain::Implement(command) => Ok(match command {
+            ImplementCommand::ChecksStep5Resume(arguments) => {
+                implement_review_commands::checks_step5_resume(&arguments.arguments)
+            }
             ImplementCommand::CloneTag(arguments) => {
                 implement_commands::clone_tag(&arguments.arguments)
             }
@@ -2204,6 +2223,18 @@ fn run(
             }
             ImplementCommand::Step0DegradedGate(arguments) => {
                 implement_commands::step0_degraded_gate(&arguments.arguments)
+            }
+            ImplementCommand::Step5Resume(arguments) => {
+                implement_review_commands::step5_resume(&arguments.arguments)
+            }
+            ImplementCommand::Step5Review(arguments) => {
+                implement_review_commands::step5_review(&arguments.arguments)
+            }
+            ImplementCommand::Step6Entry(arguments) => {
+                implement_review_commands::step6_entry(&arguments.arguments)
+            }
+            ImplementCommand::Step7a(arguments) => {
+                implement_review_commands::step7a(&arguments.arguments)
             }
         }),
         Domain::Blocker(BlockerCommand::AllOpen(arguments)) => {

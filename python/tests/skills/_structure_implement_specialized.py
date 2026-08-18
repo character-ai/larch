@@ -252,7 +252,7 @@ def run(repo_root: Path) -> list[str]:
             'skills/implement/scripts/step-5-resume.sh --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"',
             'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only',
             'skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"',
-            'python/cli.py implement step-7a --bgjob-launch true --implement-tmpdir "$IMPLEMENT_TMPDIR"',
+            'scripts/larch.sh implement step-7a --bgjob-launch true --implement-tmpdir "$IMPLEMENT_TMPDIR"',
             "python/cli.py ship pre-driver",
             "skills/implement/scripts/step-8-ship.sh",
             "skills/implement/scripts/step-8-oos-checkpoint.sh",
@@ -297,12 +297,7 @@ def run(repo_root: Path) -> list[str]:
             if sh.is_file() and not os.access(sh, os.X_OK): checks.append(f"{sh} is not executable")
 
         # Python owns the converted adapters; their Bash siblings remain thin delegates.
-        require("python/larch/implement/dispatch_commit_route.py", "step5_review_main", "Step 5 review Python adapter present")
         require("python/larch/implement/dispatch_commit_route.py", "_checks_step_for_site", "checks site mapping present")
-        require("python/larch/implement/dispatch_commit_route.py", "_live_registry_entry", "checks live-job reuse stays Python-owned")
-        require("python/larch/implement/dispatch_commit_route.py", "validate_child_identity", "checks child identity validation stays Python-owned")
-        require("python/larch/implement/dispatch_commit_route.py", "step6_entry_main", "Step 6 Python adapter present")
-        require("python/larch/implement/dispatch_commit_route.py", "skip-to-7a", "Step 6 preserves skip-to-7a terminal action")
         require("python/larch/implement/dispatch_commit_route.py", "--repo-root", "commit-route forwards --repo-root to checks run-relevant")
         require("python/larch/implement/dispatch_commit_route.py", "_session_validated_repo_root", "commit-route validates persisted REPO_ROOT")
         require("python/larch/implement/checks_result_identity.py", "CHECKS_TERMINAL_ACTIONS", "checks identity helper uses shared terminal-action set")
@@ -404,7 +399,7 @@ def run(repo_root: Path) -> list[str]:
             (launcher + "skills/implement/scripts/step-5-review.sh", "implement-step5-review"),
             (launcher + "skills/implement/scripts/step-5-resume.sh --checks-site step5-review-fixes", "implement-step5-resume"),
             (launcher + "skills/implement/scripts/step-6-entry.sh", "implement-step6-checks"),
-            (launcher + "python/cli.py implement step-7a --bgjob-launch true", "implement-step7a"),
+            (launcher + "scripts/larch.sh implement step-7a --bgjob-launch true", "implement-step7a"),
         ]:
             require_near(skill, script, "Bgjob foreground launch required", f"bgjob launch pin for {script}", 1400)
             require_near(skill, script, f"BGJOB_STATUS=STARTED STEP={step} PGID=<n>", f"bgjob started stdout pin for {script}", 1400)
@@ -723,7 +718,6 @@ def run(repo_root: Path) -> list[str]:
             require("crates/larch-cli/src/implement_commands.rs", needle, f"step-0-degraded-gate composed {needle}")
         require("skills/implement/scripts/step-0-degraded-gate.sh", 'implement step-0-degraded-gate "$@"', "step-0 degraded-gate thin wrapper delegates")
         forbid("skills/implement/scripts/step-0-degraded-gate.sh", "degraded-tools-gate", "step-0 degraded-gate wrapper must not retain gate body")
-        require("python/larch/implement/dispatch_commit_route.py", "_step5_resume_commit_phase", "step-5-resume commit routing stays Python-owned")
         require("python/larch/implement/dispatch_commit_route.py", "_parse_line_anchored_commit_kv", "step-5-resume parses commit KVs line-anchored")
         require("python/larch/implement/dispatch_commit_route.py", "_relay_commit_kvs", "step-5-resume relays the commit envelope")
         forbid("skills/implement/scripts/step-5-resume.sh", "commit-route --site", "step-5-resume wrapper must not retain commit routing")
@@ -1305,4 +1299,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 393
+LEGACY_ASSERTION_LABEL_COUNT = 387
