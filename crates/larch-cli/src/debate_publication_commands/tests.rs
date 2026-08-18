@@ -9,8 +9,8 @@
 #[cfg(test)]
 mod publication_tests {
     use super::super::{
-        error_envelope, run_comment_verify, run_issue_prepare, run_proposal_link,
-        run_title_transition, success_envelope,
+        DEBATED_PREFIX, DEBATING_PREFIX, error_envelope, run_comment_verify, run_issue_prepare,
+        run_proposal_link, run_title_transition, success_envelope,
     };
     use crate::github_service::with_test_github_service;
     use larch_adapters::github::OctocrabGitHubService;
@@ -41,8 +41,8 @@ mod publication_tests {
         value["state"] = json!(state);
         value["labels"] = json!([]);
         value["updated_at"] = json!(updated_at);
-        value["url"] = json!("https://api.github.com/repos/owner/repo/issues/17");
-        value["repository_url"] = json!("https://api.github.com/repos/owner/repo");
+        // Keep fixture service hosts inside crates/larch-adapters/; only rewrite
+        // identity fields the publication verbs assert on.
         value["html_url"] = json!("https://github.com/owner/repo/issues/17");
         value.to_string()
     }
@@ -64,7 +64,7 @@ mod publication_tests {
         json!({
             "id": id,
             "node_id": format!("C_{id}"),
-            "url": format!("https://api.github.com/repos/owner/repo/issues/comments/{id}"),
+            "url": format!("https://example.test/repos/owner/repo/issues/comments/{id}"),
             "html_url": format!("https://github.com/owner/repo/issues/17#issuecomment-{id}"),
             "body": body,
             "user": user,
@@ -127,11 +127,11 @@ mod publication_tests {
 
         assert_eq!(
             prepared.metadata.debating_title,
-            "[DEBATING] Choose a queue design"
+            format!("{DEBATING_PREFIX}{ORIGINAL_TITLE}")
         );
         assert_eq!(
             prepared.metadata.debated_title,
-            "[DEBATED] Choose a queue design"
+            format!("{DEBATED_PREFIX}{ORIGINAL_TITLE}")
         );
 
         let metadata_bytes =

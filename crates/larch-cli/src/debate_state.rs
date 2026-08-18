@@ -6,6 +6,8 @@
 //! validation is delegated to `larch_core::debate::state`; this module owns
 //! only the trusted-root confinement, the atomic write, and the flock.
 
+use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
 use std::path::Path;
 
@@ -99,4 +101,44 @@ pub fn lock_state(root: &Path) -> Result<Flock<fs::File>, StateError> {
     }
     Flock::lock(file, FlockArg::LockExclusive)
         .map_err(|(_file, _error)| StateError::persistence("unable to acquire debate state lock"))
+}
+
+/// Parse `--flag value` / `--flag=value` pairs for a closed known-flag set.
+///
+/// Unknown flags, non-flag tokens, missing values, and non-UTF-8 tokens fail.
+/// Required-flag checks stay with the caller so init-style and publication-style
+/// required sets can differ.
+pub fn parse_known_flags(
+    arguments: &[OsString],
+    known: &[&str],
+) -> Result<BTreeMap<String, String>, ()> {
+    let mut parsed: BTreeMap<String, String> = BTreeMap::new();
+    let mut index = 0;
+    while index < arguments.len() {
+        let token = arguments[index].to_str().ok_or(())?;
+        if !token.starts_with("--") {
+            return Err(());
+        }
+        let (flag, inline) = match token.split_once('=') {
+            Some((flag, value)) => (flag, Some(value.to_owned())),
+            None => (token, None),
+        };
+        if !known.contains(&flag) {
+            return Err(());
+        }
+        let value = if let Some(value) = inline {
+            value
+        } else {
+            index += 1;
+            arguments
+                .get(index)
+                .ok_or(())?
+                .to_str()
+                .ok_or(())?
+                .to_owned()
+        };
+        let _ = parsed.insert(flag.to_owned(), value);
+        index += 1;
+    }
+    Ok(parsed)
 }

@@ -19,7 +19,8 @@ use std::process::ExitCode;
 
 use larch_adapters::github::IssueMutationOwner;
 use larch_adapters::{
-    ConfinedPath, PathIntent, TemporaryRoot, atomic_write_utf8, ensure_directory_chain, read_utf8,
+    ConfinedPath, PathIntent, TemporaryRoot, absolute_lexical, atomic_write_utf8,
+    ensure_directory_chain, read_utf8,
 };
 use larch_core::debate::DEBATE_SUBJECT_MAX_BYTES;
 use larch_core::{
@@ -42,9 +43,9 @@ const PROPOSAL_BODY_FILENAME: &str = "proposal-body.md";
 /// Backlinked proposal body (`config.DEBATE_LINKED_PROPOSAL_BODY_FILENAME`).
 const LINKED_PROPOSAL_BODY_FILENAME: &str = "proposal-linked-body.md";
 /// Lifecycle prefix for a debate in progress (`config.DEBATE_TITLE_PREFIX_BY_STATE`).
-const DEBATING_PREFIX: &str = "[DEBATING] ";
+pub(crate) const DEBATING_PREFIX: &str = "[DEBATING] ";
 /// Lifecycle prefix for a concluded debate (`config.DEBATE_TITLE_PREFIX_BY_STATE`).
-const DEBATED_PREFIX: &str = "[DEBATED] ";
+pub(crate) const DEBATED_PREFIX: &str = "[DEBATED] ";
 /// Maximum lifecycle title length in characters (`config.TRACKING_TITLE_MAX_LEN`).
 const TRACKING_TITLE_MAX_LEN: usize = 256;
 /// Required opening of a debate comment marker.
@@ -522,14 +523,7 @@ fn read_metadata(root: &TemporaryRoot) -> Result<SourceMetadata, ()> {
 
 /// Resolve a caller path to an absolute lexical path (relative → cwd-joined).
 fn lexical_absolute(path: &str) -> PathBuf {
-    let candidate = PathBuf::from(path);
-    if candidate.is_absolute() {
-        candidate
-    } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_error| PathBuf::from("."))
-            .join(candidate)
-    }
+    absolute_lexical(Path::new(path))
 }
 
 /// Atomically write one file confined to `root` by its known relative name.
@@ -647,34 +641,7 @@ fn list_comments(repository: &str, issue: &str) -> Result<Vec<GitHubComment>, ()
 /// Parse `--flag value` / `--flag=value` pairs; any deviation, unknown flag, or
 /// missing required flag is a failure, mirroring Python `argparse`'s exit path.
 fn parse_args(arguments: &[OsString], known: &[&str]) -> Result<BTreeMap<String, String>, ()> {
-    let mut parsed: BTreeMap<String, String> = BTreeMap::new();
-    let mut index = 0;
-    while index < arguments.len() {
-        let token = arguments[index].to_str().ok_or(())?;
-        if !token.starts_with("--") {
-            return Err(());
-        }
-        let (flag, inline) = match token.split_once('=') {
-            Some((flag, value)) => (flag, Some(value.to_owned())),
-            None => (token, None),
-        };
-        if !known.contains(&flag) {
-            return Err(());
-        }
-        let value = if let Some(value) = inline {
-            value
-        } else {
-            index += 1;
-            arguments
-                .get(index)
-                .ok_or(())?
-                .to_str()
-                .ok_or(())?
-                .to_owned()
-        };
-        let _ = parsed.insert(flag.to_owned(), value);
-        index += 1;
-    }
+    let parsed = larch_cli::debate_state::parse_known_flags(arguments, known)?;
     for name in known {
         if !parsed.contains_key(*name) {
             return Err(());
