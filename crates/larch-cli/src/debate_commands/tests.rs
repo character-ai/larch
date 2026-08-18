@@ -362,7 +362,11 @@ mod debate_commands_tests {
         assert!(second.state.active_round.is_none());
         assert_eq!(second.state.proposal.phase(), None);
         assert_eq!(
-            second.state.proposal.terminal_outcome().map(|o| o.as_str()),
+            second
+                .state
+                .proposal
+                .terminal_outcome()
+                .map(larch_core::debate::TerminalOutcome::as_str),
             Some("CONVERGED")
         );
         let env = envelope(true, "record-turn", Some(&second.state), None, None);
@@ -388,7 +392,7 @@ mod debate_commands_tests {
                 .state
                 .proposal
                 .terminal_outcome()
-                .map(|o| o.as_str()),
+                .map(larch_core::debate::TerminalOutcome::as_str),
             Some("ABORTED")
         );
         assert_eq!(outcome.state.drops.len(), 1);
@@ -469,7 +473,7 @@ mod debate_commands_tests {
                 .state
                 .proposal
                 .terminal_outcome()
-                .map(|o| o.as_str()),
+                .map(larch_core::debate::TerminalOutcome::as_str),
             Some("CONVERGED")
         );
     }
@@ -509,7 +513,10 @@ mod debate_commands_tests {
         let (debate, fingerprint) = seed_prepared(true);
         let state = run_abort(&abort_args(&debate, &fingerprint)).expect("abort succeeds");
         assert_eq!(
-            state.proposal.terminal_outcome().map(|o| o.as_str()),
+            state
+                .proposal
+                .terminal_outcome()
+                .map(larch_core::debate::TerminalOutcome::as_str),
             Some("ABORTED")
         );
         let handoff = debate.join("abort-restore.env");
