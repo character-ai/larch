@@ -45,9 +45,9 @@ Any other output or nonzero exit is a hard stop.
 
 Regenerate `$SESSION_TMPDIR/implementation.diff` from the final `git diff main...HEAD`. Write `$SESSION_TMPDIR/review-summary.md` with findings, fixes, stale-caller results, parity-success evidence, final HEAD, Rust line-budget status/count, and checks. Keep it below 2,000 tokens.
 
-End with:
+End with only:
 
 ```text
 PHASE_STATUS=complete
-HANDOFF_FILE=<absolute path to review-summary.md>
+HANDOFF_FILE=review-summary.md
 ```

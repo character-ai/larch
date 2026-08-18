@@ -92,6 +92,32 @@ def test_top_level_continues_after_an_over_limit_budget_warning() -> None:
     assert "continues through the ordinary merge path" in skill
 
 
+def test_phase_return_contract_uses_basename_handoffs() -> None:
+    common = _read("phase-common.md")
+    assert "Prefer `HANDOFF_FILE=<basename under $SESSION_TMPDIR>`" in common
+    assert "Do not echo driver stdout, `SHIP_STATUS`" in common
+
+    recon = _read("recon-design.md")
+    assert "HANDOFF_FILE=design-brief.md" in recon
+    assert "Do not echo `SHIP_STATUS`" in recon
+    assert "<absolute path to design-brief.md>" not in recon
+
+    for phase, basename in (
+        ("implement.md", "implementation-summary.md"),
+        ("adversarial-review.md", "review-summary.md"),
+        ("ship.md", "ship-summary.md"),
+        ("ci-fix.md", "ci-fix-round-<N>.md"),
+        ("conflict-fix.md", "conflict-fix-round-<N>.md"),
+    ):
+        text = _read(phase)
+        assert f"HANDOFF_FILE={basename}" in text
+        assert "<absolute path" not in text
+
+    ship = _read("ship.md")
+    assert "ignore surrounding narration and cosmetic `HANDOFF_FILE` path slips" in ship
+    assert "re-spawn that fixer in a fresh context up to two additional times" in ship
+
+
 def test_leaf_bgjob_start_binds_durable_session_owner() -> None:
     skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
         encoding="utf-8"

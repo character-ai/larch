@@ -43,13 +43,14 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" complete-umbrella ship-leaf \
 
 Require `SHIP_STATUS=prepared`. For an umbrella that declares a Chief umbrella,
 this verifies the live plan before it adds `[IMPLEMENTING]`; it changes no other
-title bytes.
+title bytes. Do not echo `SHIP_STATUS` or any prepare-driver output in your final
+response.
 
 Keep the brief concrete. Do not copy issue bodies into it. The next phase must be able to implement from the brief and `leaf-issue.md` without broad exploration.
 
-End with:
+End with only:
 
 ```text
 PHASE_STATUS=complete
-HANDOFF_FILE=<absolute path to design-brief.md>
+HANDOFF_FILE=design-brief.md
 ```

@@ -39,9 +39,9 @@ After `resolved`, regenerate any derived artifacts the conflict resolution requi
 
 Write `$SESSION_TMPDIR/conflict-fix-round-<N>.md` with the conflict paths, fixer summary, any regeneration commit SHA, and the final local HEAD. Keep it below 2,000 tokens.
 
-End with:
+End with only:
 
 ```text
 PHASE_STATUS=complete
-HANDOFF_FILE=<absolute path to conflict-fix-round-<N>.md>
+HANDOFF_FILE=conflict-fix-round-<N>.md
 ```
