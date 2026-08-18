@@ -2,9 +2,11 @@
 """Frozen Python reference for fluff-analysis parity.
 
 Verbatim copy of the retired skills/fluff-analysis/scripts/fluff-analysis.py
-with only the sys.path bootstrap adjusted for this location and the
-self-review subprocess routed at the harness-provided larch binary
-(LARCH_BINARY env, exported by the parity test as CARGO_BIN_EXE_larch).
+with only the sys.path bootstrap adjusted for this location, the self-review
+subprocess routed at the harness-provided larch binary (LARCH_BINARY env,
+exported by the parity test as CARGO_BIN_EXE_larch), and the argparse
+``prog`` pinned to ``fluff-analysis analyze`` so usage/help lines match the
+Rust surface.
 
 Characterize review "fluff" from synchronized larch run logs.
 
