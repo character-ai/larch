@@ -1079,10 +1079,10 @@ mod tests {
 
     #[test]
     fn calibration_score_declines_linearly_and_never_divides_by_zero() {
-        assert_eq!(severity_calibration_score(0.9, 0.9), 1.0);
+        assert!((severity_calibration_score(0.9, 0.9) - 1.0).abs() < 1e-9);
         assert!((severity_calibration_score(0.95, 0.9) - 0.5).abs() < 1e-9);
-        assert_eq!(severity_calibration_score(1.0, 0.9), 0.0);
-        assert_eq!(severity_calibration_score(1.0, 1.0), 1.0);
+        assert!(severity_calibration_score(1.0, 0.9).abs() < 1e-9);
+        assert!((severity_calibration_score(1.0, 1.0) - 1.0).abs() < 1e-9);
         assert!((severity_calibration_score(0.4, -1.0) - 0.6).abs() < 1e-9);
     }
 

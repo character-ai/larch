@@ -800,7 +800,7 @@ mod tests {
         issue
     }
 
-    fn closure_exchange(references: serde_json::Value) -> IssueServiceExchange {
+    fn closure_exchange(references: &serde_json::Value) -> IssueServiceExchange {
         IssueServiceExchange::json(
             "POST",
             "/graphql",
@@ -840,7 +840,7 @@ mod tests {
                 incentive_fixture("closed", Some("2026-06-26T12:30:00Z")).to_string(),
             )
             .expect("issue exchange"),
-            closure_exchange(json!([{"url": "https://github.com/o/r/pull/1"}])),
+            closure_exchange(&json!([{"url": "https://github.com/o/r/pull/1"}])),
         ]);
 
         assert_eq!(outcome.repo.as_deref(), Some("o/r"));
@@ -857,7 +857,7 @@ mod tests {
         let (outcome, _requests) = boundary_with_service(vec![
             IssueServiceExchange::any_json(200, incentive_fixture("open", None).to_string())
                 .expect("issue exchange"),
-            closure_exchange(json!([])),
+            closure_exchange(&json!([])),
         ]);
 
         assert!(outcome.boundary.is_none());
@@ -869,7 +869,7 @@ mod tests {
         let (outcome, _requests) = boundary_with_service(vec![
             IssueServiceExchange::any_json(200, incentive_fixture("closed", None).to_string())
                 .expect("issue exchange"),
-            closure_exchange(json!([{"url": "https://github.com/o/r/pull/1"}])),
+            closure_exchange(&json!([{"url": "https://github.com/o/r/pull/1"}])),
         ]);
 
         assert!(outcome.boundary.is_none());

@@ -519,8 +519,8 @@ exited on an uncaught traceback, for an unreadable path, non-UTF-8 bytes, or a
 non-integer bucket value.
 
 `larch.rendering.render_chart` keeps only its pure `render_chart` function.
-#8183 moved `analyze-issues {fetch,run,analyze}` to Rust and deleted its Python
-command owner; #8672 later retired the `larch.issue._ground_truth` /
+Issue #8183 moved `analyze-issues {fetch,run,analyze}` to Rust and deleted its
+Python command owner; #8672 later retired the `larch.issue._ground_truth` /
 `_report` analytics modules entirely. The Rust analyzer renders its growth
 section through `larch_core::report::growth_chart`; the residual Python helper
 is not an `analyze-issues` command surface. `larch.report.design_diagram_log`
