@@ -52,7 +52,9 @@ def test_persistent_panel_and_claude_ingestion_are_explicit() -> None:
     assert "spawn exactly one `larch:debater`" in text
     assert "continue that same agent with `SendMessage`" in text
     assert "Do not fresh-spawn the Claude leg" in text
-    assert "--slot claude --input-file" in text
+    assert "debate round-external" in text
+    assert "debate round-ingest" in text
+    assert "--claude-input-file" in text
     assert "Never use an ambient last-session selector" in text
     assert "<slot>-round-<ROUND>-prompt.md" in text
     assert "DEBATE_DENY_ACTIVE_SENTINEL=%s" in text
@@ -101,7 +103,9 @@ def test_abort_is_owned_idempotent_and_sanitized() -> None:
     assert "<!-- larch:debate-aborted runid=$RUN_ID -->" in text
     assert "The debate ended before proposal publication. No outcome was adopted." in text
     assert "Upsert identity makes retries update the same comment" in text
-    assert text.count("debate comment-verify") == 3
+    # Round-digest verification now lives inside `debate round-ingest`; only the
+    # proposal (Step 5) and aborted (Step 6) verifications remain in the SKILL.
+    assert text.count("debate comment-verify") == 2
 
 
 def test_debater_agent_is_read_only_and_fails_closed() -> None:

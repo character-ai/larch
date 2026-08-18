@@ -332,6 +332,50 @@ pub fn record_turn(arguments: &[OsString]) -> ExitCode {
     finish_turn(run_record_turn(&parsed, &default_runner))
 }
 
+/// `debate round-external`
+///
+/// Composite of `round-prep` plus one `record-turn` per live external slot
+/// (cursor, then codex), threading fingerprints in-process.
+#[must_use]
+pub fn round_external(arguments: &[OsString]) -> ExitCode {
+    let parsed = match parse_args(
+        arguments,
+        &["--debate-tmpdir", "--expected-fingerprint", "--round"],
+        &["--debate-tmpdir", "--expected-fingerprint", "--round"],
+    ) {
+        Ok(parsed) => parsed,
+        Err(error) => return finish_round_external(Err(error)),
+    };
+    finish_round_external(run_round_external(&parsed, &default_runner))
+}
+
+/// `debate round-ingest`
+///
+/// Composite of the claude `record-turn` plus the deterministic round-digest
+/// compose, in-process upsert, and read-back verify.
+#[must_use]
+pub fn round_ingest(arguments: &[OsString]) -> ExitCode {
+    let parsed = match parse_args(
+        arguments,
+        &[
+            "--debate-tmpdir",
+            "--expected-fingerprint",
+            "--round",
+            "--claude-input-file",
+        ],
+        &[
+            "--debate-tmpdir",
+            "--expected-fingerprint",
+            "--round",
+            "--claude-input-file",
+        ],
+    ) {
+        Ok(parsed) => parsed,
+        Err(error) => return finish_round_ingest(Err(error)),
+    };
+    finish_round_ingest(run_round_ingest(&parsed))
+}
+
 /// `debate abort`
 #[must_use]
 pub fn abort(arguments: &[OsString]) -> ExitCode {
@@ -537,6 +581,160 @@ fn envelope(
         }),
     );
     serde_json::to_string(&Value::Object(object)).unwrap_or_default()
+}
+
+/// Build a composite-verb envelope: the base `envelope()` fields plus the
+/// verb-specific `extra` keys. The composite verbs have no Python counterpart,
+/// so this shape is a net-new contract, not a byte-parity surface.
+fn composite_envelope(
+    ok: bool,
+    operation: &str,
+    state: Option<&StoredState>,
+    slot_result: Option<&str>,
+    error_class: Option<&str>,
+    extra: Vec<(&str, Value)>,
+) -> String {
+    let phase = state
+        .and_then(|state| state.proposal.phase())
+        .map_or(Value::Null, |phase| {
+            Value::String(phase.as_str().to_owned())
+        });
+    let terminal = state
+        .and_then(|state| state.proposal.terminal_outcome())
+        .map_or(Value::Null, |outcome| {
+            Value::String(outcome.as_str().to_owned())
+        });
+    let mut object = Map::new();
+    let _ = object.insert(
+        "schema_version".to_owned(),
+        Value::Number(ENVELOPE_SCHEMA_VERSION.into()),
+    );
+    let _ = object.insert("ok".to_owned(), Value::Bool(ok));
+    let _ = object.insert("operation".to_owned(), Value::String(operation.to_owned()));
+    let _ = object.insert(
+        "fingerprint".to_owned(),
+        state.map_or(Value::Null, |state| {
+            Value::String(state.fingerprint.clone())
+        }),
+    );
+    let _ = object.insert("phase".to_owned(), phase);
+    let _ = object.insert("terminal_outcome".to_owned(), terminal);
+    let _ = object.insert(
+        "slot_result".to_owned(),
+        slot_result.map_or(Value::Null, |result| Value::String(result.to_owned())),
+    );
+    let _ = object.insert(
+        "error_class".to_owned(),
+        error_class.map_or(Value::Null, |class| Value::String(class.to_owned())),
+    );
+    for (key, value) in extra {
+        let _ = object.insert(key.to_owned(), value);
+    }
+    serde_json::to_string(&Value::Object(object)).unwrap_or_default()
+}
+
+/// Emit the `round-external` composite envelope and map to an exit code.
+fn finish_round_external(outcome: Result<RoundExternalOutcome, DebateError>) -> ExitCode {
+    match outcome {
+        Ok(result) => {
+            let operations: Vec<Value> = result
+                .operations
+                .iter()
+                .map(|op| {
+                    let mut object = Map::new();
+                    let _ = object
+                        .insert("operation".to_owned(), Value::String(op.operation.clone()));
+                    let _ = object.insert("ok".to_owned(), Value::Bool(op.ok));
+                    let _ = object.insert(
+                        "fingerprint".to_owned(),
+                        Value::String(op.fingerprint.clone()),
+                    );
+                    let _ = object.insert(
+                        "slot_result".to_owned(),
+                        op.slot_result
+                            .map_or(Value::Null, |result| Value::String(result.to_owned())),
+                    );
+                    Value::Object(object)
+                })
+                .collect();
+            println!(
+                "{}",
+                composite_envelope(
+                    result.exit_code == 0,
+                    "round-external",
+                    Some(&result.state),
+                    None,
+                    None,
+                    vec![
+                        ("operations", Value::Array(operations)),
+                        (
+                            "claude_prompt_path",
+                            Value::String(path_to_string(&result.claude_prompt_path)),
+                        ),
+                    ],
+                )
+            );
+            ExitCode::from(u8::try_from(result.exit_code).unwrap_or(2))
+        }
+        Err(error) => {
+            println!(
+                "{}",
+                composite_envelope(
+                    false,
+                    "round-external",
+                    None,
+                    None,
+                    Some(error.error_class),
+                    Vec::new(),
+                )
+            );
+            ExitCode::from(u8::try_from(error.exit_code).unwrap_or(2))
+        }
+    }
+}
+
+/// Emit the `round-ingest` composite envelope and map to an exit code.
+fn finish_round_ingest(outcome: Result<RoundIngestOutcome, DebateError>) -> ExitCode {
+    match outcome {
+        Ok(result) => {
+            let extra = vec![
+                (
+                    "digest",
+                    result.digest.clone().map_or(Value::Null, Value::String),
+                ),
+                (
+                    "comment_id",
+                    result.comment_id.clone().map_or(Value::Null, Value::String),
+                ),
+            ];
+            println!(
+                "{}",
+                composite_envelope(
+                    result.slot_result.is_none(),
+                    "round-ingest",
+                    Some(&result.state),
+                    result.slot_result,
+                    None,
+                    extra,
+                )
+            );
+            ExitCode::from(u8::try_from(result.exit_code).unwrap_or(2))
+        }
+        Err(error) => {
+            println!(
+                "{}",
+                composite_envelope(
+                    false,
+                    "round-ingest",
+                    None,
+                    None,
+                    Some(error.error_class),
+                    Vec::new(),
+                )
+            );
+            ExitCode::from(u8::try_from(error.exit_code).unwrap_or(2))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1465,6 +1663,267 @@ fn input_file_runner(root: &TemporaryRoot, input_file: &str, request: &TurnReque
         return TurnOutcome::drop(DROP_RUNNER_FAILURE);
     }
     TurnOutcome::success(request.output.clone())
+}
+
+// ---------------------------------------------------------------------------
+// round-external and round-ingest (composite verbs, #8653)
+// ---------------------------------------------------------------------------
+
+/// One recorded internal operation of a composite verb.
+struct OpRecord {
+    operation: String,
+    ok: bool,
+    fingerprint: String,
+    slot_result: Option<&'static str>,
+}
+
+/// The outcome of `run_round_external`, carried to the composite envelope.
+struct RoundExternalOutcome {
+    state: StoredState,
+    operations: Vec<OpRecord>,
+    claude_prompt_path: PathBuf,
+    exit_code: i32,
+}
+
+/// The outcome of `run_round_ingest`, carried to the composite envelope.
+struct RoundIngestOutcome {
+    state: StoredState,
+    slot_result: Option<&'static str>,
+    digest: Option<String>,
+    comment_id: Option<String>,
+    exit_code: i32,
+}
+
+/// Prepare the round, then record each live external slot (cursor, then codex)
+/// in canonical order, threading the fingerprint through each internal turn.
+fn run_round_external(
+    parsed: &BTreeMap<String, String>,
+    runner: Runner<'_>,
+) -> Result<RoundExternalOutcome, DebateError> {
+    let round_number: i64 = parsed["--round"]
+        .trim()
+        .parse()
+        .map_err(|_error| DebateError::validation())?;
+    let debate_root_path = lexical_absolute(&parsed["--debate-tmpdir"]);
+
+    // Step 1: prepare the round and carry its fingerprint forward.
+    let mut current_state = run_round_prep(parsed)?;
+    let mut running_fingerprint = current_state.fingerprint.clone();
+
+    // The external slots to record, in canonical `SLOT_ORDER`, restricted to the
+    // live panel that `round-prep` seated (claude is recorded by round-ingest).
+    let external: Vec<String> = current_state.active_round.as_ref().map_or_else(
+        Vec::new,
+        |active| {
+            active
+                .live_slots
+                .iter()
+                .filter(|slot| slot.as_str() == "cursor" || slot.as_str() == "codex")
+                .cloned()
+                .collect()
+        },
+    );
+
+    let mut operations: Vec<OpRecord> = Vec::new();
+    let mut exit_code = 0;
+    for slot in &external {
+        let rt_parsed = BTreeMap::from([
+            (
+                "--debate-tmpdir".to_owned(),
+                parsed["--debate-tmpdir"].clone(),
+            ),
+            (
+                "--expected-fingerprint".to_owned(),
+                running_fingerprint.clone(),
+            ),
+            ("--round".to_owned(), round_number.to_string()),
+            ("--slot".to_owned(), slot.clone()),
+        ]);
+        let turn = run_record_turn(&rt_parsed, runner)?;
+        let slot_result = turn.slot_result;
+        let turn_exit = turn.exit_code;
+        let state = turn.state;
+        running_fingerprint.clone_from(&state.fingerprint);
+        operations.push(OpRecord {
+            operation: format!("record-turn:{slot}"),
+            ok: slot_result.is_none(),
+            fingerprint: running_fingerprint.clone(),
+            slot_result,
+        });
+        let aborted = state
+            .proposal
+            .terminal_outcome()
+            .map(TerminalOutcome::as_str)
+            == Some("ABORTED");
+        current_state = state;
+        if aborted {
+            // Quorum floor tripped: surface the drop's exit code and stop.
+            exit_code = turn_exit;
+            break;
+        }
+    }
+
+    let claude_prompt_path = debate_root_path.join(format!("claude-round-{round_number}-prompt.md"));
+    Ok(RoundExternalOutcome {
+        state: current_state,
+        operations,
+        claude_prompt_path,
+        exit_code,
+    })
+}
+
+/// Record the claude slot from the confined input file, then (on a clean turn)
+/// compose the deterministic round digest, upsert it, and verify read-back.
+fn run_round_ingest(parsed: &BTreeMap<String, String>) -> Result<RoundIngestOutcome, DebateError> {
+    let round_number: i64 = parsed["--round"]
+        .trim()
+        .parse()
+        .map_err(|_error| DebateError::validation())?;
+    let debate_tmpdir = parsed["--debate-tmpdir"].clone();
+    let debate_root_path = lexical_absolute(&debate_tmpdir);
+    let input_file = parsed["--claude-input-file"].clone();
+
+    // Step 1: record the claude turn through the confined input-file runner,
+    // mirroring the `record-turn --slot claude --input-file` branch.
+    let root =
+        TemporaryRoot::resolve(Some(&debate_root_path)).map_err(|_error| DebateError::persistence())?;
+    let rt_parsed = BTreeMap::from([
+        ("--debate-tmpdir".to_owned(), debate_tmpdir.clone()),
+        (
+            "--expected-fingerprint".to_owned(),
+            parsed["--expected-fingerprint"].clone(),
+        ),
+        ("--round".to_owned(), round_number.to_string()),
+        ("--slot".to_owned(), "claude".to_owned()),
+        ("--input-file".to_owned(), input_file.clone()),
+    ]);
+    let runner = move |request: &TurnRequest| input_file_runner(&root, &input_file, request);
+    let turn = run_record_turn(&rt_parsed, &runner)?;
+
+    // A dropped claude turn (protocol rejection or quorum-floor abort) is
+    // surfaced without any comment mutation; the orchestrator owns the funnel.
+    if let Some(reason) = turn.slot_result {
+        return Ok(RoundIngestOutcome {
+            state: turn.state,
+            slot_result: Some(reason),
+            digest: None,
+            comment_id: None,
+            exit_code: turn.exit_code,
+        });
+    }
+
+    // Step 2: compose the fixed, path-free round digest deterministically.
+    let state = turn.state;
+    let live_slots = round_live_slots(&state, round_number);
+    let round_drops = round_drop_classes(&state, round_number);
+    let digest = compose_round_digest(round_number, &live_slots, &round_drops);
+    let comment_filename = format!("round-{round_number}-comment.md");
+    // The lexical path is what the tracking-issue owner and read-back verifier
+    // consume; the digest itself is written through the canonicalized root.
+    let comment_path = debate_root_path.join(&comment_filename);
+    let write_root = TemporaryRoot::resolve(Some(&debate_root_path))
+        .map_err(|_error| DebateError::persistence())?;
+    let confined = write_root
+        .confine(write_root.path().join(&comment_filename), PathIntent::Write)
+        .map_err(|_error| DebateError::persistence())?;
+    atomic_write_utf8_in(&write_root, confined.path(), &digest, false, 0o600)
+        .map_err(|_error| DebateError::persistence())?;
+
+    // Step 3: read the source identity, upsert the digest through the shared
+    // tracking-issue owner, and verify the exact redacted read-back.
+    let (repository, issue) =
+        crate::debate_publication_commands::source_repository_issue(&debate_tmpdir)
+            .map_err(|()| DebateError::publication_failure())?;
+    let marker = format!(
+        "<!-- larch:debate-round runid={} round={round_number} -->",
+        state.initialization.run_id
+    );
+    let comment_path_string = path_to_string(&comment_path);
+    crate::tracking_issue_commands::upsert_summary_rows(
+        &issue,
+        &marker,
+        &comment_path_string,
+        Some(&repository),
+    )
+    .map_err(|_error| DebateError::publication_failure())?;
+    let comment_id = crate::debate_publication_commands::verify_comment_body(
+        &debate_tmpdir,
+        &marker,
+        &comment_path_string,
+    )
+    .map_err(|()| DebateError::publication_failure())?;
+
+    Ok(RoundIngestOutcome {
+        state,
+        slot_result: None,
+        digest: Some(digest),
+        comment_id: Some(comment_id),
+        exit_code: 0,
+    })
+}
+
+/// The live-slot names of round `round_number`, from the active round if it is
+/// still open, otherwise from the submitted round's bindings (canonical order).
+fn round_live_slots(state: &StoredState, round_number: i64) -> Vec<String> {
+    if let Some(active) = state.active_round.as_ref()
+        && active.round_number == round_number
+    {
+        return active.live_slots.clone();
+    }
+    state
+        .proposal
+        .rounds()
+        .iter()
+        .find(|round| i64::from(round.round_number() as u8) == round_number)
+        .map_or_else(Vec::new, |round| {
+            round
+                .live_slots()
+                .iter()
+                .map(|participant| participant.as_str().to_owned())
+                .collect()
+        })
+}
+
+/// The `(slot, drop_class)` pairs recorded for round `round_number`, ordered by
+/// canonical `SLOT_ORDER` for a deterministic digest.
+fn round_drop_classes(state: &StoredState, round_number: i64) -> Vec<(String, String)> {
+    let mut drops: Vec<(String, String)> = state
+        .drops
+        .iter()
+        .filter(|drop| drop.round_number == round_number)
+        .map(|drop| (drop.slot.clone(), drop.reason.clone()))
+        .collect();
+    let slot_rank = |slot: &str| SLOT_ORDER.iter().position(|item| *item == slot).unwrap_or(SLOT_ORDER.len());
+    drops.sort_by_key(|(slot, _)| slot_rank(slot));
+    drops
+}
+
+/// Compose the fixed, path-free round digest: round number, live slot names,
+/// and stable drop classes only. No reasons, raw output, or paths.
+fn compose_round_digest(
+    round_number: i64,
+    live_slots: &[String],
+    drops: &[(String, String)],
+) -> String {
+    let live = if live_slots.is_empty() {
+        "none".to_owned()
+    } else {
+        live_slots.join(", ")
+    };
+    let mut text = format!("## Debate round {round_number}\n\nLive panel: {live}\n");
+    if drops.is_empty() {
+        text.push_str("\nNo drops.\n");
+    } else {
+        text.push_str("\nDropped:\n");
+        for (slot, reason) in drops {
+            text.push_str("- ");
+            text.push_str(slot);
+            text.push_str(": ");
+            text.push_str(reason);
+            text.push('\n');
+        }
+    }
+    text
 }
 
 /// `debate abort`: terminal-abort when nonterminal, then write/verify the

@@ -156,47 +156,30 @@ Require `ok=true` and `owned=true`, then set `TITLE_ADOPTED=true`. Start failure
 
 Print the canonical separator and `> **🔶 /debate 3: debate rounds**`.
 
-Run rounds 1 and 2 in order, stopping early only when a validated operation envelope reports a terminal outcome. For each admitted round:
+Run rounds 1 and 2 in order, stopping early only when a validated operation envelope reports a terminal outcome. Each round is exactly four model turns: `round-external`, the Claude Agent/`SendMessage` leg, the Claude `Write`, and `round-ingest`. For each admitted round:
 
-1. Prepare the round with the current fingerprint:
+1. Run the external panel in one composite turn with the current fingerprint:
 
    ```bash
-   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate round-prep \
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate round-external \
      --debate-tmpdir "$DEBATE_TMPDIR" --expected-fingerprint "$FINGERPRINT" \
      --round "$ROUND"
    ```
 
-   Require `ok=true`; advance only to its returned fingerprint. It writes one bounded prompt per live slot as `$DEBATE_TMPDIR/<slot>-round-<ROUND>-prompt.md`.
-2. For each live external slot in canonical order, call `debate record-turn` with the current fingerprint, round, and slot. Cursor and Codex resume the explicit handles created during initialization. Never use an ambient last-session selector. On a nonzero exit, still parse the returned slot result and fingerprint, print a warning naming only the slot and stable drop class, then enter the abort funnel if the terminal outcome is aborted.
+   It runs `round-prep` and then one internal `record-turn` for each live external slot (Cursor, then Codex) in canonical order, threading fingerprints in-process. Cursor and Codex resume the explicit handles created during initialization. Never use an ambient last-session selector. Require `ok=true` and advance only to its returned fingerprint. It writes one bounded prompt per live slot as `$DEBATE_TMPDIR/<slot>-round-<ROUND>-prompt.md`; read `claude_prompt_path` from its envelope for the Claude leg. Parse the ordered `operations` list; on any per-slot drop, print a warning naming only the slot and its stable drop class, and enter the abort funnel when the terminal outcome is aborted.
+2. In round 1, spawn exactly one `larch:debater` Agent-tool subagent. Give it paths only: `REPO_ROOT`, `$DEBATE_TMPDIR/debate-subject.md`, and the returned `claude_prompt_path` (`$DEBATE_TMPDIR/claude-round-1-prompt.md`). Retain its agent ID in `CLAUDE_AGENT_ID`. In round 2, continue that same agent with `SendMessage`, giving only the new prompt path. Do not fresh-spawn the Claude leg.
+3. After each Claude return, Write its final message byte-for-byte to `$DEBATE_TMPDIR/claude-round-<ROUND>.input`. Do not add a code fence or newline.
+4. Ingest the Claude turn and publish the round digest in one composite turn:
 
    ```bash
-   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate record-turn \
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate round-ingest \
      --debate-tmpdir "$DEBATE_TMPDIR" --expected-fingerprint "$FINGERPRINT" \
-     --round "$ROUND" --slot "$SLOT"
+     --round "$ROUND" \
+     --claude-input-file "$DEBATE_TMPDIR/claude-round-$ROUND.input"
    ```
 
-3. In round 1, spawn exactly one `larch:debater` Agent-tool subagent. Give it paths only: `REPO_ROOT`, `$DEBATE_TMPDIR/debate-subject.md`, and `$DEBATE_TMPDIR/claude-round-1-prompt.md`. Retain its agent ID in `CLAUDE_AGENT_ID`. In round 2, continue that same agent with `SendMessage`, giving only the new prompt path. Do not fresh-spawn the Claude leg.
-4. After each Claude return, Write its final message byte-for-byte to `$DEBATE_TMPDIR/claude-round-<ROUND>.input`. Do not add a code fence or newline. Ingest it with `debate record-turn ... --slot claude --input-file <that path>`. The command owner bounds the file, parses the strict ledger, and records a per-slot drop on rejection.
-
-   ```bash
-   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate record-turn \
-     --debate-tmpdir "$DEBATE_TMPDIR" --expected-fingerprint "$FINGERPRINT" \
-     --round "$ROUND" --slot claude \
-     --input-file "$DEBATE_TMPDIR/claude-round-$ROUND.input"
-   ```
-
-5. Report the round with the fixed `📊 Panel: | Cursor: ... | Codex: ... | Claude: ... |` format from `skills/shared/progress-reporting.md`. Preserve unavailable slots as `⊘` and failed slots with only their stable drop class. Then Write a fixed, path-free round digest to `$DEBATE_TMPDIR/round-<ROUND>-comment.md`. It may state the round number, live slot names, and stable drop classes, but must not quote reasons or raw output. Upsert it on the source issue with marker `<!-- larch:debate-round runid=$RUN_ID round=$ROUND -->` through `tracking-issue upsert-summary`. Require a verified comment result before the next round.
-
-   ```bash
-   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" tracking-issue upsert-summary \
-     --issue "$SOURCE_ISSUE" --repo "$REPO" \
-     --marker "<!-- larch:debate-round runid=$RUN_ID round=$ROUND -->" \
-     --content-file "$DEBATE_TMPDIR/round-$ROUND-comment.md"
-   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate comment-verify \
-     --debate-tmpdir "$DEBATE_TMPDIR" \
-     --marker "<!-- larch:debate-round runid=$RUN_ID round=$ROUND -->" \
-     --content-file "$DEBATE_TMPDIR/round-$ROUND-comment.md"
-   ```
+   It records the `claude` slot from that file (bounding the file and parsing the strict ledger, recording a per-slot drop on rejection), then composes a fixed, path-free round digest in Rust and upserts it on the source issue with marker `<!-- larch:debate-round runid=$RUN_ID round=$ROUND -->` through the tracking-issue owner, verifying the read-back internally. The digest states only the round number, live slot names, and stable drop classes; it never quotes reasons or raw output. Require `ok=true` and advance only to its returned fingerprint; on a per-slot drop, print a warning naming only the slot and its stable drop class, and enter the abort funnel when the terminal outcome is aborted.
+5. Report the round with the fixed `📊 Panel: | Cursor: ... | Codex: ... | Claude: ... |` format from `skills/shared/progress-reporting.md`. Preserve unavailable slots as `⊘` and failed slots with only their stable drop class.
 
 Every operation consumes exactly the fingerprint returned by the immediately preceding operation. A stale fingerprint, corrupt state, quorum loss, failed comment, missing prompt, Agent failure, or unparseable Claude return enters the abort funnel. Do not reconstruct state from chat history.
 

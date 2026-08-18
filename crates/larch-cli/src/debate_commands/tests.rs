@@ -11,11 +11,17 @@ mod debate_commands_tests {
 
     use super::super::{
         AdjudicateArgs, AdjudicationBackend, DebateError, InitInputs, SynthesisBackend,
-        TurnOutcome, TurnRequest, default_runner, envelope, initialize, input_file_runner,
-        one_dispatch_value, parse_args, parse_operator_adjudication_row, point_values,
-        proposal_parts, run_abort, run_adjudicate, run_adjudication_preview, run_publish_prepare,
-        run_record_turn, run_round_prep, run_synthesize, strict_bool, synthesis_input, voter_paths,
+        TurnOutcome, TurnRequest, compose_round_digest, default_runner, envelope, initialize,
+        input_file_runner, one_dispatch_value, parse_args, parse_operator_adjudication_row,
+        point_values, proposal_parts, run_abort, run_adjudicate, run_adjudication_preview,
+        run_publish_prepare, run_record_turn, run_round_external, run_round_ingest, run_round_prep,
+        run_synthesize, strict_bool, synthesis_input, voter_paths,
     };
+    use crate::github_service::with_test_github_service;
+    use larch_adapters::github::OctocrabGitHubService;
+    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
+    use serde_json::json;
+    use std::sync::Arc;
     use larch_adapters::TemporaryRoot;
     use larch_core::VendorSessionHandle;
     use larch_core::debate::{
@@ -1126,5 +1132,306 @@ mod debate_commands_tests {
         let (title, body) = proposal_parts("# Clean Title\n\nClean body.\n").expect("valid");
         assert_eq!(title, "Clean Title");
         assert_eq!(body, "Clean body.");
+    }
+
+    // -----------------------------------------------------------------------
+    // round-external and round-ingest composite verbs (#8653)
+    // -----------------------------------------------------------------------
+
+    fn external_parsed(debate: &Path, fingerprint: &str) -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (
+                "--debate-tmpdir".to_owned(),
+                debate.to_string_lossy().into_owned(),
+            ),
+            ("--expected-fingerprint".to_owned(), fingerprint.to_owned()),
+            ("--round".to_owned(), "1".to_owned()),
+        ])
+    }
+
+    fn ingest_parsed(
+        debate: &Path,
+        fingerprint: &str,
+        round: i64,
+        input: &Path,
+    ) -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (
+                "--debate-tmpdir".to_owned(),
+                debate.to_string_lossy().into_owned(),
+            ),
+            ("--expected-fingerprint".to_owned(), fingerprint.to_owned()),
+            ("--round".to_owned(), round.to_string()),
+            (
+                "--claude-input-file".to_owned(),
+                input.to_string_lossy().into_owned(),
+            ),
+        ])
+    }
+
+    #[test]
+    fn round_external_records_cursor_then_codex_and_threads_fingerprint() {
+        let (debate, state) = seed_init();
+        let outcome =
+            run_round_external(&external_parsed(&debate, &state.fingerprint), &agree_runner)
+                .expect("round-external succeeds");
+        let operations: Vec<&str> = outcome
+            .operations
+            .iter()
+            .map(|op| op.operation.as_str())
+            .collect();
+        assert_eq!(operations, vec!["record-turn:cursor", "record-turn:codex"]);
+        assert!(outcome.operations.iter().all(|op| op.ok));
+        assert_eq!(outcome.exit_code, 0);
+        // The running fingerprint advanced past the round-prep fingerprint, and
+        // the last internal op reports the final state fingerprint.
+        assert_ne!(outcome.state.fingerprint, state.fingerprint);
+        assert_eq!(
+            outcome.operations.last().expect("op").fingerprint,
+            outcome.state.fingerprint
+        );
+        // Claude remains the only pending slot; the round is not terminal.
+        let active = outcome.state.active_round.as_ref().expect("active round");
+        assert_eq!(active.pending_slots, vec!["claude"]);
+        assert!(outcome.state.proposal.terminal_outcome().is_none());
+        assert!(outcome.claude_prompt_path.ends_with("claude-round-1-prompt.md"));
+    }
+
+    #[test]
+    fn round_external_cursor_drop_keeps_codex_and_claude_alive() {
+        let (debate, state) = seed_init();
+        let runner = |request: &TurnRequest| {
+            let is_cursor = request
+                .session_handle
+                .as_ref()
+                .is_some_and(|handle| handle.vendor().as_str() == "cursor");
+            if is_cursor {
+                TurnOutcome::drop("runner_failure")
+            } else {
+                std::fs::write(&request.output, AGREE_LEDGER).expect("write ledger");
+                TurnOutcome::success(request.output.clone())
+            }
+        };
+        let outcome = run_round_external(&external_parsed(&debate, &state.fingerprint), &runner)
+            .expect("round-external succeeds");
+        assert_eq!(outcome.operations[0].operation, "record-turn:cursor");
+        assert_eq!(outcome.operations[0].slot_result, Some("runner_failure"));
+        assert!(!outcome.operations[0].ok);
+        assert_eq!(outcome.operations[1].operation, "record-turn:codex");
+        assert!(outcome.operations[1].ok);
+        // Cursor dropped, but codex + claude keep the panel above the floor.
+        assert!(outcome.state.proposal.terminal_outcome().is_none());
+        let active = outcome.state.active_round.as_ref().expect("active round");
+        assert_eq!(active.live_slots, vec!["codex", "claude"]);
+        assert_eq!(outcome.exit_code, 0);
+    }
+
+    #[test]
+    fn round_external_second_external_drop_trips_quorum_abort() {
+        let (debate, state) = seed_init();
+        let runner = |_request: &TurnRequest| TurnOutcome::drop("runner_failure");
+        let outcome = run_round_external(&external_parsed(&debate, &state.fingerprint), &runner)
+            .expect("round-external succeeds");
+        // Cursor drop keeps quorum; codex drop trips the floor and aborts.
+        assert_eq!(outcome.operations.len(), 2);
+        assert!(
+            outcome
+                .operations
+                .iter()
+                .all(|op| op.slot_result == Some("runner_failure"))
+        );
+        assert_eq!(
+            outcome
+                .state
+                .proposal
+                .terminal_outcome()
+                .map(TerminalOutcome::as_str),
+            Some("ABORTED")
+        );
+        // The composite surfaces the terminal drop's exit code (runner_failure = 6).
+        assert_eq!(outcome.exit_code, 6);
+    }
+
+    fn debate_source_comment_json(id: u64, body: &str) -> serde_json::Value {
+        let issue: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../larch-adapters/fixtures/github_issue.json"
+        ))
+        .expect("issue fixture");
+        let user = issue["user"].clone();
+        json!({
+            "id": id,
+            "node_id": format!("C_{id}"),
+            "url": format!("https://example.test/repos/owner/repo/issues/comments/{id}"),
+            "html_url": format!("https://github.com/owner/repo/issues/17#issuecomment-{id}"),
+            "body": body,
+            "user": user,
+            "created_at": "2026-08-05T12:00:00Z",
+            "updated_at": "2026-08-05T12:00:00Z",
+        })
+    }
+
+    fn seed_debate_source(root: &TemporaryRoot) {
+        let text = concat!(
+            "{\"debated_title\":\"[DEBATED] Choose a queue design\",",
+            "\"debating_title\":\"[DEBATING] Choose a queue design\",",
+            "\"issue\":\"17\",",
+            "\"issue_url\":\"https://github.com/owner/repo/issues/17\",",
+            "\"original_title\":\"Choose a queue design\",",
+            "\"prepared_updated_at\":\"2026-08-05T12:00:00Z\",",
+            "\"repository\":\"owner/repo\"}\n",
+        );
+        std::fs::write(root.path().join("debate-source.json"), text).expect("seed source");
+    }
+
+    #[test]
+    fn round_ingest_records_claude_composes_digest_upserts_and_verifies() {
+        let (debate, fingerprint) = seed_prepared(true);
+        let after_cursor =
+            run_record_turn(&record_turn_args(&debate, &fingerprint, 1, "cursor"), &agree_runner)
+                .expect("cursor")
+                .state
+                .fingerprint;
+        let after_codex = run_record_turn(
+            &record_turn_args(&debate, &after_cursor, 1, "codex"),
+            &agree_runner,
+        )
+        .expect("codex")
+        .state
+        .fingerprint;
+
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        seed_debate_source(&root);
+        let input = root.path().join("claude-round-1.input");
+        std::fs::write(&input, AGREE_LEDGER).expect("write input");
+
+        let digest = compose_round_digest(
+            1,
+            &[
+                "cursor".to_owned(),
+                "codex".to_owned(),
+                "claude".to_owned(),
+            ],
+            &[],
+        );
+        let marker = "<!-- larch:debate-round runid=run-1 round=1 -->";
+        let body = format!("{marker}\n\n{digest}")
+            .trim_end_matches('\n')
+            .to_owned();
+
+        // The upsert lists (empty), creates, reads back, and round-ingest then
+        // verifies: four GitHub reads/writes against the loopback stub.
+        let list_body = json!([debate_source_comment_json(90, &body)]).to_string();
+        let server = IssueServiceStub::start(vec![
+            IssueServiceExchange::any_json(200, "[]").expect("empty list"),
+            IssueServiceExchange::any_json(200, debate_source_comment_json(90, &body).to_string())
+                .expect("create response"),
+            IssueServiceExchange::any_json(200, list_body.clone()).expect("read-back"),
+            IssueServiceExchange::any_json(200, list_body).expect("verify"),
+        ])
+        .expect("start stub");
+        let base_url = server.base_url().to_owned();
+        let factory: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+            Arc::new(move || OctocrabGitHubService::with_test_base(&base_url));
+
+        let outcome = with_test_github_service(factory, || {
+            run_round_ingest(&ingest_parsed(&debate, &after_codex, 1, &input))
+        })
+        .expect("round-ingest succeeds");
+
+        assert_eq!(outcome.slot_result, None);
+        assert_eq!(outcome.comment_id.as_deref(), Some("90"));
+        assert_eq!(outcome.digest.as_deref(), Some(digest.as_str()));
+        assert_eq!(outcome.exit_code, 0);
+        // The digest is the deterministic, path-free round summary.
+        assert_eq!(
+            digest,
+            "## Debate round 1\n\nLive panel: cursor, codex, claude\n\nNo drops.\n"
+        );
+        // The round converged: claude recorded and the round submitted.
+        assert!(outcome.state.active_round.is_none());
+        assert_eq!(
+            outcome
+                .state
+                .proposal
+                .terminal_outcome()
+                .map(TerminalOutcome::as_str),
+            Some("CONVERGED")
+        );
+    }
+
+    #[test]
+    fn round_ingest_claude_protocol_rejection_surfaces_drop_without_mutation() {
+        let (debate, fingerprint) = seed_prepared(true);
+        let after_cursor =
+            run_record_turn(&record_turn_args(&debate, &fingerprint, 1, "cursor"), &agree_runner)
+                .expect("cursor")
+                .state
+                .fingerprint;
+        let after_codex = run_record_turn(
+            &record_turn_args(&debate, &after_cursor, 1, "codex"),
+            &agree_runner,
+        )
+        .expect("codex")
+        .state
+        .fingerprint;
+
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        let input = root.path().join("claude-round-1.input");
+        std::fs::write(&input, "not a valid ledger\n").expect("write input");
+
+        // No GitHub stub: a dropped claude turn must not reach the comment owner.
+        let outcome = run_round_ingest(&ingest_parsed(&debate, &after_codex, 1, &input))
+            .expect("round-ingest returns a drop envelope");
+        assert_eq!(outcome.slot_result, Some("protocol_rejection"));
+        assert!(outcome.comment_id.is_none());
+        assert!(outcome.digest.is_none());
+        assert_eq!(outcome.exit_code, 2);
+        // Cursor + codex keep quorum, so the claude rejection does not abort.
+        assert!(outcome.state.proposal.terminal_outcome().is_none());
+    }
+
+    #[test]
+    fn round_ingest_claude_drop_trips_quorum_abort_before_mutation() {
+        let debate = unique_dir("root");
+        let work = unique_dir("work");
+        let log = unique_dir("log");
+        let mut inputs = init_inputs(&debate, &work, &log);
+        inputs.codex = false; // live panel is exactly cursor + claude
+        let state = initialize(&inputs, &fake_bootstrap).expect("init succeeds");
+        let prep = BTreeMap::from([
+            (
+                "--debate-tmpdir".to_owned(),
+                debate.to_string_lossy().into_owned(),
+            ),
+            ("--expected-fingerprint".to_owned(), state.fingerprint),
+            ("--round".to_owned(), "1".to_owned()),
+        ]);
+        let prepared = run_round_prep(&prep).expect("round-prep");
+        let after_cursor = run_record_turn(
+            &record_turn_args(&debate, &prepared.fingerprint, 1, "cursor"),
+            &agree_runner,
+        )
+        .expect("cursor")
+        .state
+        .fingerprint;
+
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        let input = root.path().join("claude-round-1.input");
+        std::fs::write(&input, "not a valid ledger\n").expect("write input");
+
+        let outcome = run_round_ingest(&ingest_parsed(&debate, &after_cursor, 1, &input))
+            .expect("round-ingest returns a drop envelope");
+        assert_eq!(outcome.slot_result, Some("protocol_rejection"));
+        assert!(outcome.comment_id.is_none());
+        assert_eq!(
+            outcome
+                .state
+                .proposal
+                .terminal_outcome()
+                .map(TerminalOutcome::as_str),
+            Some("ABORTED")
+        );
+        // A quorum-floor abort exits with the drop's validation exit code.
+        assert_eq!(outcome.exit_code, 2);
     }
 }
