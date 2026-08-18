@@ -2031,9 +2031,11 @@ fn voter_slot_rows(output: &str) -> Vec<Value> {
     }
     let mut rows: Vec<Value> = Vec::new();
     for number in 1..=3 {
-        let mut status =
-            one_dispatch_value(output, &format!("VOTER_{number}_STATUS")).unwrap_or_else(|| "unknown".to_owned());
+        let mut status = one_dispatch_value(output, &format!("VOTER_{number}_STATUS"))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "unknown".to_owned());
         let mut parse_rate = one_dispatch_value(output, &format!("VOTER_{number}_PARSE_RATE_STATUS"))
+            .filter(|value| !value.is_empty())
             .unwrap_or_else(|| "unknown".to_owned());
         if !is_safe_line(&status) || !is_safe_line(&parse_rate) {
             "invalid".clone_into(&mut status);
