@@ -23,8 +23,8 @@ use std::{
 };
 
 use larch_core::{
-    OrderedJson, ensure_ascii_json, parse_named_block, title_has_archival_report_prefix,
-    title_lifecycle_reject_marker, title_starts_with_brainstorm,
+    EmptyKeyPolicy, KvDocument, OrderedJson, ParseOptions, ensure_ascii_json, parse_named_block,
+    title_has_archival_report_prefix, title_lifecycle_reject_marker, title_starts_with_brainstorm,
 };
 
 use crate::{
@@ -404,24 +404,14 @@ pub fn parse_flags(arguments: &[OsString]) -> ExitCode {
 /// LF-split with CRLF framing stripped on non-final lines, first `=` splits,
 /// and a lone CR stays part of the value.
 fn parse_stdout_kv(text: &str) -> Vec<(String, String)> {
-    let lines: Vec<&str> = text.split('\n').collect();
-    let final_index = lines.len().saturating_sub(1);
-    let mut rows = Vec::new();
-    for (index, line) in lines.iter().enumerate() {
-        let line = if index < final_index {
-            line.strip_suffix('\r').unwrap_or(line)
-        } else {
-            line
-        };
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        if key.is_empty() {
-            continue;
-        }
-        rows.push((key.to_owned(), value.to_owned()));
-    }
-    rows
+    let mut options = ParseOptions::legacy();
+    options.empty_keys = EmptyKeyPolicy::Skip;
+    KvDocument::parse(text, options)
+        .expect("legacy parser is non-rejecting")
+        .rows()
+        .iter()
+        .map(|row| (row.key().to_owned(), row.value().to_owned()))
+        .collect()
 }
 
 fn kv_last<'a>(rows: &'a [(String, String)], key: &str, default: &'a str) -> &'a str {
