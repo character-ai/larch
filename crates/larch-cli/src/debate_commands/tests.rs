@@ -290,7 +290,8 @@ mod debate_commands_tests {
     // record-turn and abort parity
     // -----------------------------------------------------------------------
 
-    const AGREE_LEDGER: &str = "POINT POINT_1 AGREE first reason\nPOINT POINT_2 AGREE second reason";
+    const AGREE_LEDGER: &str =
+        "POINT POINT_1 AGREE first reason\nPOINT POINT_2 AGREE second reason";
 
     /// Seed an initialized, round-1-prepared debate and return its fingerprint.
     ///
@@ -342,8 +343,11 @@ mod debate_commands_tests {
     fn record_turn_drives_round_one_to_converged() {
         let (debate, fingerprint) = seed_prepared(false);
         // First live slot: cursor. The round stays open.
-        let first = run_record_turn(&record_turn_args(&debate, &fingerprint, 1, "cursor"), &agree_runner)
-            .expect("cursor turn");
+        let first = run_record_turn(
+            &record_turn_args(&debate, &fingerprint, 1, "cursor"),
+            &agree_runner,
+        )
+        .expect("cursor turn");
         assert_eq!(first.slot_result, None);
         assert_eq!(first.exit_code, 0);
         assert!(first.state.active_round.is_some());
@@ -371,13 +375,20 @@ mod debate_commands_tests {
     fn record_turn_runner_failure_drops_and_aborts() {
         let (debate, fingerprint) = seed_prepared(false);
         let runner = |_request: &TurnRequest| TurnOutcome::drop("runner_failure");
-        let outcome = run_record_turn(&record_turn_args(&debate, &fingerprint, 1, "cursor"), &runner)
-            .expect("drop envelope");
+        let outcome = run_record_turn(
+            &record_turn_args(&debate, &fingerprint, 1, "cursor"),
+            &runner,
+        )
+        .expect("drop envelope");
         assert_eq!(outcome.slot_result, Some("runner_failure"));
         assert_eq!(outcome.exit_code, 6);
         // Dropping cursor leaves one live slot (< floor), so the debate aborts.
         assert_eq!(
-            outcome.state.proposal.terminal_outcome().map(|o| o.as_str()),
+            outcome
+                .state
+                .proposal
+                .terminal_outcome()
+                .map(|o| o.as_str()),
             Some("ABORTED")
         );
         assert_eq!(outcome.state.drops.len(), 1);
@@ -400,8 +411,11 @@ mod debate_commands_tests {
             std::fs::write(&request.output, "not a valid ledger").expect("write");
             TurnOutcome::success(request.output.clone())
         };
-        let outcome = run_record_turn(&record_turn_args(&debate, &fingerprint, 1, "cursor"), &runner)
-            .expect("drop envelope");
+        let outcome = run_record_turn(
+            &record_turn_args(&debate, &fingerprint, 1, "cursor"),
+            &runner,
+        )
+        .expect("drop envelope");
         assert_eq!(outcome.slot_result, Some("protocol_rejection"));
         assert_eq!(outcome.exit_code, 2);
     }
@@ -423,29 +437,39 @@ mod debate_commands_tests {
     #[test]
     fn record_turn_input_file_drives_claude_slot() {
         let (debate, fingerprint) = seed_prepared(true);
-        let after_cursor =
-            run_record_turn(&record_turn_args(&debate, &fingerprint, 1, "cursor"), &agree_runner)
-                .expect("cursor turn")
-                .state
-                .fingerprint;
-        let after_codex =
-            run_record_turn(&record_turn_args(&debate, &after_cursor, 1, "codex"), &agree_runner)
-                .expect("codex turn")
-                .state
-                .fingerprint;
+        let after_cursor = run_record_turn(
+            &record_turn_args(&debate, &fingerprint, 1, "cursor"),
+            &agree_runner,
+        )
+        .expect("cursor turn")
+        .state
+        .fingerprint;
+        let after_codex = run_record_turn(
+            &record_turn_args(&debate, &after_cursor, 1, "codex"),
+            &agree_runner,
+        )
+        .expect("codex turn")
+        .state
+        .fingerprint;
         // claude is the last pending slot, driven through the confined input file.
         let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
         let input = root.path().join("claude-input.txt");
         std::fs::write(&input, AGREE_LEDGER).expect("write input");
         let input_str = input.to_string_lossy().into_owned();
         let runner = |request: &TurnRequest| input_file_runner(&root, &input_str, request);
-        let outcome =
-            run_record_turn(&record_turn_args(&debate, &after_codex, 1, "claude"), &runner)
-                .expect("claude turn");
+        let outcome = run_record_turn(
+            &record_turn_args(&debate, &after_codex, 1, "claude"),
+            &runner,
+        )
+        .expect("claude turn");
         assert_eq!(outcome.slot_result, None);
         assert!(outcome.state.active_round.is_none());
         assert_eq!(
-            outcome.state.proposal.terminal_outcome().map(|o| o.as_str()),
+            outcome
+                .state
+                .proposal
+                .terminal_outcome()
+                .map(|o| o.as_str()),
             Some("CONVERGED")
         );
     }

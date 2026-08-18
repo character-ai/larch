@@ -221,7 +221,12 @@ pub fn record_turn(arguments: &[OsString]) -> ExitCode {
             "--slot",
             "--input-file",
         ],
-        &["--debate-tmpdir", "--expected-fingerprint", "--round", "--slot"],
+        &[
+            "--debate-tmpdir",
+            "--expected-fingerprint",
+            "--round",
+            "--slot",
+        ],
     ) {
         Ok(parsed) => parsed,
         Err(error) => return finish("record-turn", Err(error)),
@@ -836,8 +841,8 @@ fn run_record_turn(
     let slot = parsed["--slot"].clone();
     let expected_fingerprint = &parsed["--expected-fingerprint"];
     let debate_root_path = lexical_absolute(&parsed["--debate-tmpdir"]);
-    let debate_root =
-        TemporaryRoot::resolve(Some(&debate_root_path)).map_err(|_error| DebateError::persistence())?;
+    let debate_root = TemporaryRoot::resolve(Some(&debate_root_path))
+        .map_err(|_error| DebateError::persistence())?;
     let _lock = larch_cli::debate_state::lock_state(&debate_root_path)?;
     let state = larch_cli::debate_state::load_state(&debate_root_path)?;
     require_fingerprint(&state, expected_fingerprint)?;
@@ -845,10 +850,7 @@ fn run_record_turn(
     let Some(active) = state.active_round.as_ref() else {
         return Err(DebateError::validation());
     };
-    if !active.prepared
-        || active.round_number != round_number
-        || state.proposal.phase().is_none()
-    {
+    if !active.prepared || active.round_number != round_number || state.proposal.phase().is_none() {
         return Err(DebateError::validation());
     }
     if active.reserved_slot.is_some()
@@ -882,7 +884,9 @@ fn run_record_turn(
         &mailbox,
         &subject_encoded,
     )?;
-    let output = debate_root.path().join(format!("{slot}-round-{round_number}.out"));
+    let output = debate_root
+        .path()
+        .join(format!("{slot}-round-{round_number}.out"));
     let request = TurnRequest {
         prompt,
         workdir: PathBuf::from(&state.initialization.repo_workdir),
@@ -910,7 +914,13 @@ fn run_record_turn(
             .error_class
             .filter(|reason| is_drop_reason(reason))
             .unwrap_or(DROP_RUNNER_FAILURE);
-        return record_drop(&debate_root_path, &reserved_state, &slot, round_number, reason);
+        return record_drop(
+            &debate_root_path,
+            &reserved_state,
+            &slot,
+            round_number,
+            reason,
+        );
     }
 
     // Confine and parse the runner's output into a validated slot binding.
@@ -1289,7 +1299,8 @@ fn run_abort(parsed: &BTreeMap<String, String>) -> Result<StoredState, DebateErr
         .map_err(|_error| DebateError::persistence())?;
     let handoff = root.path().join(ABORT_RESTORE_FILENAME);
     if handoff.exists() {
-        let existing = read_confined(&root, &handoff, false).ok_or_else(DebateError::persistence)?;
+        let existing =
+            read_confined(&root, &handoff, false).ok_or_else(DebateError::persistence)?;
         if existing != payload {
             return Err(DebateError::persistence());
         }
