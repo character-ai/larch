@@ -117,7 +117,7 @@ Try the bare `issue` skill name, then `larch:issue` only if the first result is 
 Prepare the source through the typed issue owner:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate issue-prepare \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate issue-prepare \
   --debate-tmpdir "$DEBATE_TMPDIR" --repo "$REPO" --issue "$SOURCE_ISSUE"
 ```
 
@@ -145,7 +145,7 @@ Require exit zero, `ok=true`, a 64-character lowercase fingerprint, no terminal 
 Only now adopt the run-owned title:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate title-transition \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate title-transition \
   --debate-tmpdir "$DEBATE_TMPDIR" --mode start
 ```
 
@@ -192,7 +192,7 @@ Run rounds 1 and 2 in order, stopping early only when a validated operation enve
      --issue "$SOURCE_ISSUE" --repo "$REPO" \
      --marker "<!-- larch:debate-round runid=$RUN_ID round=$ROUND -->" \
      --content-file "$DEBATE_TMPDIR/round-$ROUND-comment.md"
-   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate comment-verify \
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate comment-verify \
      --debate-tmpdir "$DEBATE_TMPDIR" \
      --marker "<!-- larch:debate-round runid=$RUN_ID round=$ROUND -->" \
      --content-file "$DEBATE_TMPDIR/round-$ROUND-comment.md"
@@ -266,7 +266,7 @@ Require `ok=true`, the unchanged fingerprint, and the exact artifact path `$DEBA
 Append the deterministic backward link without model-authored file composition:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate proposal-link \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate proposal-link \
   --debate-tmpdir "$DEBATE_TMPDIR" --body-file "$BODY_FILE"
 # lint-consecutive-bash: ok the linked body must verify before its untrusted title is inspected
 ```
@@ -298,7 +298,7 @@ Write a fixed forward-link comment naming only the verified proposal number and 
   --issue "$SOURCE_ISSUE" --repo "$REPO" \
   --marker "<!-- larch:debate-proposal runid=$RUN_ID -->" \
   --content-file "$DEBATE_TMPDIR/proposal-comment.md"
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate comment-verify \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate comment-verify \
   --debate-tmpdir "$DEBATE_TMPDIR" \
   --marker "<!-- larch:debate-proposal runid=$RUN_ID -->" \
   --content-file "$DEBATE_TMPDIR/proposal-comment.md"
@@ -308,7 +308,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate comment-verify \
 Finish the source title only after both links verify:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate title-transition \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate title-transition \
   --debate-tmpdir "$DEBATE_TMPDIR" --mode finish
 ```
 
@@ -337,7 +337,7 @@ For every failure or cancellation after title adoption, Write one fixed sanitize
   --issue "$SOURCE_ISSUE" --repo "$REPO" \
   --marker "<!-- larch:debate-aborted runid=$RUN_ID -->" \
   --content-file "$DEBATE_TMPDIR/aborted-comment.md"
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate comment-verify \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate comment-verify \
   --debate-tmpdir "$DEBATE_TMPDIR" \
   --marker "<!-- larch:debate-aborted runid=$RUN_ID -->" \
   --content-file "$DEBATE_TMPDIR/aborted-comment.md"

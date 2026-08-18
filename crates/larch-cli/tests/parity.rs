@@ -172,11 +172,19 @@ impl CleanInstallCase {
             | "clean-install-debate-adjudicate"
             | "clean-install-debate-adjudication-preview"
             | "clean-install-debate-init"
+            | "clean-install-debate-issue-prepare"
             | "clean-install-debate-publish-prepare"
             | "clean-install-debate-record-turn"
             | "clean-install-debate-round-prep"
             | "clean-install-debate-synthesize"
             | "clean-install-voting-write-tally" => 2,
+            // The three remaining publication verbs mirror the retired Python
+            // module, which caught the argparse `SystemExit` and emitted each
+            // verb's own publication-failure envelope, so the clean-install
+            // `--help` token surfaces as that class's exit `10`.
+            "clean-install-debate-title-transition"
+            | "clean-install-debate-proposal-link"
+            | "clean-install-debate-comment-verify" => 10,
             // Every umbrella verb owns a real help action, so the default
             // clean-install `--help` probe succeeds.
             _ => 0,
@@ -742,7 +750,22 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "debate",
         "adjudication-preview",
     ),
+    CleanInstallCase::new(
+        "clean-install-debate-comment-verify",
+        "debate",
+        "comment-verify",
+    ),
     CleanInstallCase::new("clean-install-debate-init", "debate", "init"),
+    CleanInstallCase::new(
+        "clean-install-debate-issue-prepare",
+        "debate",
+        "issue-prepare",
+    ),
+    CleanInstallCase::new(
+        "clean-install-debate-proposal-link",
+        "debate",
+        "proposal-link",
+    ),
     CleanInstallCase::new(
         "clean-install-debate-publish-prepare",
         "debate",
@@ -751,6 +774,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-debate-record-turn", "debate", "record-turn"),
     CleanInstallCase::new("clean-install-debate-round-prep", "debate", "round-prep"),
     CleanInstallCase::new("clean-install-debate-synthesize", "debate", "synthesize"),
+    CleanInstallCase::new(
+        "clean-install-debate-title-transition",
+        "debate",
+        "title-transition",
+    ),
     CleanInstallCase::new("clean-install-deps-apply", "deps", "apply"),
     CleanInstallCase::new("clean-install-deps-explicit-refs", "deps", "explicit-refs"),
     CleanInstallCase::new("clean-install-deps-fetch", "deps", "fetch"),

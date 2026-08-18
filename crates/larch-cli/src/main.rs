@@ -44,6 +44,7 @@ mod collector_commands;
 mod combine_issues_commands;
 mod complete_umbrella_commands;
 mod debate_commands;
+mod debate_publication_commands;
 mod deps_audit_commands;
 mod developer_tooling_commands;
 mod difficulty_calibration_commands;
@@ -1070,6 +1071,18 @@ enum DebateCommand {
     /// Write the idempotent local proposal-publication handoff.
     #[command(name = "publish-prepare", disable_help_flag = true)]
     PublishPrepare(RawCompatibilityArguments),
+    /// Snapshot one open source issue and write the debate subject and metadata.
+    #[command(name = "issue-prepare", disable_help_flag = true)]
+    IssuePrepare(RawCompatibilityArguments),
+    /// Apply a freshness-checked lifecycle title compare-and-swap.
+    #[command(name = "title-transition", disable_help_flag = true)]
+    TitleTransition(RawCompatibilityArguments),
+    /// Append the canonical source backlink to a synthesized proposal body.
+    #[command(name = "proposal-link", disable_help_flag = true)]
+    ProposalLink(RawCompatibilityArguments),
+    /// Verify one source comment's exact redacted postcondition by read-back.
+    #[command(name = "comment-verify", disable_help_flag = true)]
+    CommentVerify(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2061,6 +2074,18 @@ fn run(
             }
             DebateCommand::PublishPrepare(arguments) => {
                 debate_commands::publish_prepare(&arguments.arguments)
+            }
+            DebateCommand::IssuePrepare(arguments) => {
+                debate_publication_commands::issue_prepare(&arguments.arguments)
+            }
+            DebateCommand::TitleTransition(arguments) => {
+                debate_publication_commands::title_transition(&arguments.arguments)
+            }
+            DebateCommand::ProposalLink(arguments) => {
+                debate_publication_commands::proposal_link(&arguments.arguments)
+            }
+            DebateCommand::CommentVerify(arguments) => {
+                debate_publication_commands::comment_verify(&arguments.arguments)
             }
         }),
         Domain::Deps(command) => Ok(match command {

@@ -24,8 +24,8 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use larch_adapters::{
-    PathIntent, TemporaryRoot, atomic_write_utf8_in, ensure_directory_chain, open_confined_read,
-    read_utf8,
+    PathIntent, TemporaryRoot, absolute_lexical, atomic_write_utf8_in, ensure_directory_chain,
+    open_confined_read, read_utf8,
 };
 use larch_core::debate::{
     ABSENT_FINGERPRINT, ActiveRound, AdjudicationDecision, AdjudicationRecord,
@@ -545,39 +545,48 @@ fn envelope(
 
 /// Parse `--flag value` / `--flag=value` pairs; any deviation is a validation
 /// failure, mirroring Python `argparse`'s `SystemExit` envelope path.
-fn parse_args(
+/// Parse `--flag value` / `--flag=value` pairs for a closed known-flag set.
+pub fn parse_known_flags(
     arguments: &[OsString],
     known: &[&str],
-    required: &[&str],
-) -> Result<BTreeMap<String, String>, DebateError> {
+) -> Result<BTreeMap<String, String>, ()> {
     let mut parsed: BTreeMap<String, String> = BTreeMap::new();
     let mut index = 0;
     while index < arguments.len() {
-        let token = arguments[index]
-            .to_str()
-            .ok_or_else(DebateError::validation)?;
+        let token = arguments[index].to_str().ok_or(())?;
         if !token.starts_with("--") {
-            return Err(DebateError::validation());
+            return Err(());
         }
-        let (flag, inline_value) = match token.split_once('=') {
+        let (flag, inline) = match token.split_once('=') {
             Some((flag, value)) => (flag, Some(value.to_owned())),
             None => (token, None),
         };
         if !known.contains(&flag) {
-            return Err(DebateError::validation());
+            return Err(());
         }
-        let value = if let Some(value) = inline_value {
+        let value = if let Some(value) = inline {
             value
         } else {
             index += 1;
-            let next = arguments.get(index).ok_or_else(DebateError::validation)?;
-            next.to_str()
-                .ok_or_else(DebateError::validation)?
+            arguments
+                .get(index)
+                .ok_or(())?
+                .to_str()
+                .ok_or(())?
                 .to_owned()
         };
         let _ = parsed.insert(flag.to_owned(), value);
         index += 1;
     }
+    Ok(parsed)
+}
+
+fn parse_args(
+    arguments: &[OsString],
+    known: &[&str],
+    required: &[&str],
+) -> Result<BTreeMap<String, String>, DebateError> {
+    let parsed = parse_known_flags(arguments, known).map_err(|()| DebateError::validation())?;
     for name in required {
         if !parsed.contains_key(*name) {
             return Err(DebateError::validation());
@@ -2950,14 +2959,7 @@ fn run_publish_prepare(
 /// `_absolute_lexical`: an absolute path is returned verbatim; a relative path
 /// is joined onto the current directory.
 fn lexical_absolute(path: &str) -> PathBuf {
-    let candidate = PathBuf::from(path);
-    if candidate.is_absolute() {
-        candidate
-    } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_error| PathBuf::from("."))
-            .join(candidate)
-    }
+    absolute_lexical(Path::new(path))
 }
 
 fn path_to_string(path: &Path) -> String {
