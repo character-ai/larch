@@ -24,7 +24,6 @@ def _load_module(name: str, path: Path) -> ModuleType:
     ("name", "relpath"),
     [
         ("fixture_voter_calibration", "skills/voter-calibration/scripts/voter-calibration.py"),
-        ("fixture_fluff_analysis", "skills/fluff-analysis/scripts/fluff-analysis.py"),
     ],
 )
 def test_default_synced_corpus_matches_explicit_fixture(

@@ -141,6 +141,19 @@ used by those compatibility callers. The legacy `object_store.py` adapter is
 for compatibility/test callers only. The offline adapter double covers
 retry/resume, redaction before egress, and cold/warm sync.
 
+**The `/fluff-analysis` analyzer cut over in #8671.** `fluff-analysis analyze`
+is Rust-owned: `crates/larch-core/src/fluff_analysis.rs` owns extraction, the
+multi-label classifier, assessment and ship-outcome coverage, false-negative
+diagnostics, and rendering behind
+`crates/larch-cli/src/fluff_analysis_commands.rs`. The leaf deleted the
+standalone `skills/fluff-analysis/scripts/fluff-analysis.py` (frozen verbatim
+as `fixtures/rust-parity/fluff_analysis_reference.py`), replaced the synthetic
+bash harness with the black-box parity suite
+`crates/larch-cli/tests/fluff_analysis_parity.rs`, repointed the corpus smoke
+onto `scripts/larch.sh`, and retired the analyzer's
+`voting compose-tally-record` subprocess seam in favor of the in-process core
+call.
+
 **Breadcrumb publication cut over in #8074.** `run-log publish-breadcrumbs` is
 Rust-owned. `larch_adapters::run_lifecycle::publish_breadcrumbs` is the single
 owner: the already-migrated lifecycle terminalizer calls it directly, and

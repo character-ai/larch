@@ -79,11 +79,6 @@ const FOCUS_AREAS: &[&str] = &[
     "architecture",
     "security",
 ];
-const GUIDELINE_OUTCOME: &str = "architectural-guideline-outcome.json";
-const INVARIANT_OUTCOME: &str = "architectural-invariant-outcome.json";
-const CLEAN_GUIDELINE: &str = "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.";
-const CLEAN_INVARIANT: &str = "Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.";
-const OUTCOME_CUTOVER: (u64, u64, u64) = (52, 4, 16);
 const AUDIT_NUDGE_THRESHOLD: usize = 25;
 const AUDIT_ERROR_CHARS: usize = 500;
 const AUDIT_NEVER_RUN_ADVISORY: &str =
@@ -1914,8 +1909,8 @@ pub fn scan_run(arguments: &[OsString]) -> ExitCode {
                 &run_dir,
                 pr,
                 &name,
-                "architectural-guideline-assessment.md",
-                CLEAN_GUIDELINE,
+                AssessmentKind::Guidelines.design_assessment_filename(),
+                AssessmentKind::Guidelines.clean_presentation_note(),
                 "clean",
                 "deviation",
                 "guideline",
@@ -1924,8 +1919,8 @@ pub fn scan_run(arguments: &[OsString]) -> ExitCode {
                 &run_dir,
                 pr,
                 &name,
-                "architectural-invariant-assessment.md",
-                CLEAN_INVARIANT,
+                AssessmentKind::Invariants.design_assessment_filename(),
+                AssessmentKind::Invariants.clean_presentation_note(),
                 "clean",
                 "violation",
                 "invariant",
@@ -1934,14 +1929,14 @@ pub fn scan_run(arguments: &[OsString]) -> ExitCode {
                 &run_dir,
                 pr,
                 &name,
-                GUIDELINE_OUTCOME,
+                AssessmentKind::Guidelines.ship_outcome_sidecar_filename(),
                 AssessmentKind::Guidelines,
             ),
             "invariant-ship-outcome" => outcome_scan(
                 &run_dir,
                 pr,
                 &name,
-                INVARIANT_OUTCOME,
+                AssessmentKind::Invariants.ship_outcome_sidecar_filename(),
                 AssessmentKind::Invariants,
             ),
             _ => {
@@ -2624,7 +2619,7 @@ fn outcome_scan(
     if !path.exists() && !path.is_symlink() {
         if manifest.as_ref().is_some_and(|manifest| {
             strict_version_tuple(&value_string(manifest, "larch_version"))
-                .is_none_or(|version| version < OUTCOME_CUTOVER)
+                .is_none_or(|version| version < larch_core::SHIP_OUTCOME_CUTOVER_VERSION)
         }) {
             return json!({"scan":name,"pr":pr,"result":"informational","detail":format!("pre-cutover run lacks {label} outcome artifact")});
         }

@@ -1,0 +1,171 @@
+{
+  "exit_code": 0,
+  "files": {
+    "logs/design/RUN-DSGN-1/architectural-guideline-assessment.md": {
+      "text": "Deviation approved for the final plan.\n"
+    },
+    "logs/design/RUN-DSGN-1/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-21T10:00:00Z\",\"larch_version\":\"49.0.0\"}"
+    },
+    "logs/design/RUN-DSGN-1/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\tscope\nFINDING_1\tCursor-Arch\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tYES\ttrue\tmajor\tgood\tfalse\tCodex\tYES\ttrue\tmajor\tgood\tfalse\tCursor\timportant\t\nFINDING_2\tCodex-Pragmatic\trejected\tNO\ttrue\tnit\tadequate\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\tnit\t\nFINDING_3\tCodex-FN\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\timportant\t\nFINDING_4\tCodex-FN\trejected\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\tblocker\t\nFINDING_5\tCodex-FN\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\timportant\toos\nFINDING_6\tCodex-FN\tout_of_scope\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\timportant\t\n"
+    },
+    "logs/design/RUN-DSGN-1/plan-review/round-1/findings.md": {
+      "text": "### FINDING_1:\n- **Reviewer(s)**: Cursor-Arch\n- **Severity**: important\n- **Focus area**: correctness\n- **Concern**: Plan omits a required file; the feature is incomplete without it.\n\n### FINDING_2:\n- **Reviewer(s)**: Codex-Pragmatic\n- **Severity**: important\n- **Focus area**: code-quality\n- **Concern**: A rename would be cleaner here.\n"
+    },
+    "logs/design/RUN-DSGN-2/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-22T10:00:00Z\",\"larch_version\":\"49.0.0\"}"
+    },
+    "logs/design/RUN-DSGN-2/plan-review/round-1/findings-classification.tsv": {
+      "text": "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\nFINDING_9\tCodex-Concise\taccepted\tYES\ttrue\tminor\tgood\tfalse\tClaude\tYES\ttrue\tminor\tgood\tfalse\tCodex\tYES\ttrue\tminor\tgood\tfalse\tCursor\tlatent\n"
+    },
+    "logs/design/RUN-DSGN-ASSESS/architectural-guideline-assessment.md": {
+      "text": "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.\n"
+    },
+    "logs/design/RUN-DSGN-ASSESS/architectural-invariant-assessment.md": {
+      "text": "Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.\n"
+    },
+    "logs/design/RUN-DSGN-ASSESS/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-23T10:00:00Z\",\"larch_version\":\"49.0.0\"}"
+    },
+    "logs/design/RUN-DSGN-EMPTY/architectural-guideline-assessment.md": {
+      "text": " \n"
+    },
+    "logs/design/RUN-DSGN-EMPTY/architectural-invariant-assessment.md": {
+      "text": "Violation: something bad.\n"
+    },
+    "logs/design/RUN-DSGN-EMPTY/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-22T12:00:00Z\",\"larch_version\":\"49.0.0\"}"
+    },
+    "logs/design/RUN-NESTED/extra/round-1/findings-classification.tsv": {
+      "text": "finding_id\tvoting_result\nFINDING_1\taccepted\n"
+    },
+    "logs/design/RUN-NESTED/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-21T00:00:00Z\",\"larch_version\":\"49.0.0\"}"
+    },
+    "logs/implement/RUN-IMPL-1/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-20T10:00:00Z\",\"larch_version\":\"48.9.9\",\"skill\":\"implement\"}"
+    },
+    "logs/implement/RUN-IMPL-1/review-findings-full.jsonl": {
+      "text": "{\"id\":\"FINDING_2\",\"phase\":\"code-review\",\"outcome\":\"accepted\",\"reviewer_slots\":[\"cursor-specialist-correctness-output.txt\"],\"round_num\":\"1\",\"category\":\"Inverted guard skips required validation\",\"prose_body\":\"## Inverted guard skips required validation\\n- **Severity**: important\\n- **Concern**: logic error: the check is inverted and the feature is broken.\"}\n{\"id\":\"REJ_CR1_1\",\"phase\":\"code-review\",\"outcome\":\"rejected\",\"reviewer_slots\":[\"cursor-specialist-structure-output.txt\"],\"round_num\":\"1\",\"category\":\"\",\"body_severity\":\"nit\",\"focus_area\":\"code-quality\",\"prose_body\":\"## refactor: extract a helper for clarity\\n- **Concern**: this would be cleaner as a refactor; more readable.\"}\n{\"id\":\"OOS_CR1_1\",\"phase\":\"code-review\",\"outcome\":\"out_of_scope\",\"reviewer_slots\":[\"cursor-specialist-edge-cases-output.txt\"],\"round_num\":\"1\",\"category\":\"\",\"body_severity\":\"latent\",\"prose_body\":\"## perf: avoid a redundant read\\n- **Concern**: a micro-optimization could cache this.\"}\n{\"id\":\"SKIP_1\",\"phase\":\"retroactive-backfill\",\"outcome\":\"accepted\",\"round_num\":\"1\",\"category\":\"Backfill row\"}\n"
+    },
+    "logs/implement/RUN-IMPL-BAD/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-23T10:00:00Z\",\"larch_version\":\"not-a-version\",\"skill\":\"implement\"}"
+    },
+    "logs/implement/RUN-IMPL-BAD/review-findings-full.jsonl": {
+      "text": "{\"id\":\"FINDING_BAD\",\"phase\":\"code-review\",\"outcome\":\"accepted\",\"reviewer_slots\":[\"cursor-specialist-correctness-output.txt\"],\"round_num\":\"1\",\"category\":\"Bad version run\",\"body_severity\":\"important\",\"prose_body\":\"## Bad version run\"}\n"
+    },
+    "logs/implement/RUN-IMPL-FN/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-28T10:00:00Z\",\"larch_version\":\"49.0.0\",\"skill\":\"implement\"}"
+    },
+    "logs/implement/RUN-IMPL-FN/round-1/findings-classification.tsv": {
+      "text": "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\tscope\nFINDING_4\tcursor-validity\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\t\t\nFINDING_5\tcodex-pragmatism\trejected\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\tblocking\t\nOOS_CR1_6\tcursor-validity\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\timportant\t\nFINDING_7\tcursor-validity\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\timportant\toos\nFINDING_8\tcursor-validity\tout_of_scope\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\timportant\t\nFINDING_10\tcursor-validity\texonerated\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\timportant\t\n"
+    },
+    "logs/implement/RUN-IMPL-FN/round-1/review-findings-full.jsonl": {
+      "text": "{\"id\":\"REJ_CR1_4\",\"phase\":\"code-review\",\"outcome\":\"rejected\",\"reviewer_slots\":[\"cursor-validity\"],\"round_num\":\"1\",\"category\":\"TSV neutral should win\",\"body_severity\":\"important\",\"prose_body\":\"## FINDING_4:\\n- **Concern**: TSV links this mismatched JSONL id through the prose token.\"}\n{\"id\":\"REJ_CR1_5\",\"phase\":\"code-review\",\"outcome\":\"rejected\",\"reviewer_slots\":[\"codex-pragmatism\"],\"round_num\":\"1\",\"category\":\"Blocking reject\",\"body_severity\":\"blocking\",\"prose_body\":\"## FINDING_5:\\n- **Concern**: This is truly blocking.\"}\n"
+    },
+    "logs/implement/RUN-IMPL-MALFORM/code-review-tally.json": {
+      "text": "{\"schema_version\":2,\"phase\":\"code-review\",\"mode\":\"self-review\",\"accepted_count\":5,\"rejected_count\":3}"
+    },
+    "logs/implement/RUN-IMPL-MALFORM/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-27T10:00:00Z\",\"larch_version\":\"49.0.0\",\"skill\":\"implement\"}"
+    },
+    "logs/implement/RUN-IMPL-MALFORM/review-findings-full.jsonl": {
+      "text": "{not json\n"
+    },
+    "logs/implement/RUN-IMPL-MR/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-29T10:00:00Z\",\"larch_version\":\"49.1.0\",\"skill\":\"implement\"}"
+    },
+    "logs/implement/RUN-IMPL-MR/review-findings-full.jsonl": {
+      "text": "{\"id\":\"FINDING_1\",\"phase\":\"code-review\",\"outcome\":\"accepted\",\"reviewer_slots\":[\"dyn-cursor-security\"],\"round_num\":\"1\",\"category\":\"Round one accept\",\"body_severity\":\"major\",\"prose_body\":\"## Round one accept\"}\n{\"id\":\"FINDING_1\",\"phase\":\"code-review\",\"outcome\":\"rejected\",\"reviewer_slots\":[\"codex-generalist\"],\"round_num\":\"2\",\"category\":\"Round two reject\",\"body_severity\":\"trivial\",\"prose_body\":\"## Round two reject\"}\n"
+    },
+    "logs/implement/RUN-IMPL-MR/round-1/findings-classification.tsv": {
+      "text": "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\nFINDING_1\tdyn-cursor-security\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tYES\ttrue\timportant\tgood\tfalse\tNO\ttrue\tnit\tweak\tfalse\n"
+    },
+    "logs/implement/RUN-IMPL-MR/round-2/findings-classification.tsv": {
+      "text": "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\nFINDING_1\tcodex-generalist\trejected\tNO\ttrue\tnit\tweak\tfalse\tNO\ttrue\tnit\tweak\tfalse\tNO\ttrue\tnit\tweak\tfalse\n"
+    },
+    "logs/implement/RUN-IMPL-SELF/code-review-tally.json": {
+      "text": "{\"schema_version\":2,\"phase\":\"code-review\",\"mode\":\"self-review\",\"accepted_count\":2,\"rejected_count\":1}"
+    },
+    "logs/implement/RUN-IMPL-SELF/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-26T10:00:00Z\",\"larch_version\":\"49.0.0\",\"skill\":\"implement\"}"
+    },
+    "logs/implement/RUN-IMPL-SELF/review-findings-full.jsonl": {
+      "text": ""
+    },
+    "logs/implement/RUN-IMPL-TSV21/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-25T10:00:00Z\",\"larch_version\":\"49.0.0\",\"skill\":\"implement\"}"
+    },
+    "logs/implement/RUN-IMPL-TSV21/review-findings-full.jsonl": {
+      "text": "{\"id\":\"FINDING_21\",\"phase\":\"code-review\",\"outcome\":\"accepted\",\"reviewer_slots\":[\"cursor-validity\"],\"round_num\":\"1\",\"category\":\"Twenty-one column probe\",\"prose_body\":\"## Twenty-one column probe\"}\n"
+    },
+    "logs/implement/RUN-IMPL-TSV21/round-1/findings-classification.tsv": {
+      "text": "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\nFINDING_21\tcursor-validity\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcursor-plan-fidelity\tYES\ttrue\tminor\tadequate\tfalse\tcursor-pragmatism\n"
+    },
+    "logs/implement/RUN-OUTCOME-CLEAN/architectural-guideline-outcome.json": {
+      "text": "{\"schema_version\":\"1\",\"phase\":\"implement\",\"step\":\"8\",\"outcome\":\"clean\",\"reason\":\"guidelines-absent\",\"detail\":\"\",\"guidelines_status\":\"absent\",\"head_sha\":\"abc123\",\"base_ref\":\"origin/main\",\"assessment_kind\":\"\"}"
+    },
+    "logs/implement/RUN-OUTCOME-CLEAN/architectural-invariant-outcome.json": {
+      "text": "{\"schema_version\":\"1\",\"phase\":\"implement\",\"step\":\"8\",\"outcome\":\"clean\",\"reason\":\"invariants-empty\",\"detail\":\"\",\"invariants_status\":\"present\",\"head_sha\":\"abc123\",\"base_ref\":\"origin/main\",\"assessment_kind\":\"clean\"}"
+    },
+    "logs/implement/RUN-OUTCOME-CLEAN/final-summary.md": {
+      "text": "summary\n"
+    },
+    "logs/implement/RUN-OUTCOME-CLEAN/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-24T11:00:00Z\",\"larch_version\":\"52.4.16\",\"steps_ran\":{\"step8\":true}}"
+    },
+    "logs/implement/RUN-OUTCOME-DROPPED/architectural-guideline-outcome.json": {
+      "text": "{\"schema_version\":\"1\",\"phase\":\"implement\",\"step\":\"8\",\"outcome\":\"dropped\",\"reason\":\"note-redaction-failed\",\"detail\":\"\",\"guidelines_status\":\"present\",\"head_sha\":\"abc123\",\"base_ref\":\"origin/main\",\"assessment_kind\":\"\"}"
+    },
+    "logs/implement/RUN-OUTCOME-DROPPED/architectural-invariant-outcome.json": {
+      "text": "{\"schema_version\":\"1\",\"phase\":\"implement\",\"step\":\"8\",\"outcome\":\"dropped\",\"reason\":\"unavailable\",\"detail\":\"\",\"invariants_status\":\"present\",\"head_sha\":\"abc123\",\"base_ref\":\"origin/main\",\"assessment_kind\":\"\"}"
+    },
+    "logs/implement/RUN-OUTCOME-DROPPED/final-summary.md": {
+      "text": "summary\n"
+    },
+    "logs/implement/RUN-OUTCOME-DROPPED/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-24T12:00:00Z\",\"larch_version\":\"52.4.16\",\"steps_ran\":{\"step8\":true}}"
+    },
+    "logs/implement/RUN-OUTCOME-MALFORMED_CURRENT/architectural-guideline-outcome.json": {
+      "text": "{\"schema_version\":\"1\",\"phase\":\"implement\",\"step\":\"8\",\"outcome\":\"pinned\",\"reason\":\"bogus\",\"detail\":\"\",\"guidelines_status\":\"present\",\"base_ref\":\"origin/main\",\"assessment_kind\":\"deviation\"}"
+    },
+    "logs/implement/RUN-OUTCOME-MALFORMED_CURRENT/final-summary.md": {
+      "text": "summary\n"
+    },
+    "logs/implement/RUN-OUTCOME-MALFORMED_CURRENT/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-24T15:00:00Z\",\"larch_version\":\"52.4.16\",\"steps_ran\":{\"step8\":true}}"
+    },
+    "logs/implement/RUN-OUTCOME-MISSING_CURRENT/final-summary.md": {
+      "text": "summary\n"
+    },
+    "logs/implement/RUN-OUTCOME-MISSING_CURRENT/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-24T13:00:00Z\",\"larch_version\":\"52.4.16\",\"steps_ran\":{\"step8\":true}}"
+    },
+    "logs/implement/RUN-OUTCOME-MISSING_LEGACY/final-summary.md": {
+      "text": "summary\n"
+    },
+    "logs/implement/RUN-OUTCOME-MISSING_LEGACY/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-24T14:00:00Z\",\"larch_version\":\"52.4.15\",\"steps_ran\":{\"step8\":true}}"
+    },
+    "logs/implement/RUN-OUTCOME-PINNED/architectural-guideline-outcome.json": {
+      "text": "{\"schema_version\":\"1\",\"phase\":\"implement\",\"step\":\"8\",\"outcome\":\"pinned\",\"reason\":\"note-pinned\",\"detail\":\"\",\"guidelines_status\":\"present\",\"head_sha\":\"abc123\",\"base_ref\":\"origin/main\",\"assessment_kind\":\"deviation\"}"
+    },
+    "logs/implement/RUN-OUTCOME-PINNED/architectural-invariant-outcome.json": {
+      "text": "{\"schema_version\":\"1\",\"phase\":\"implement\",\"step\":\"8\",\"outcome\":\"violation\",\"reason\":\"violation-note\",\"detail\":\"\",\"invariants_status\":\"present\",\"head_sha\":\"abc123\",\"base_ref\":\"origin/main\",\"assessment_kind\":\"violation\"}"
+    },
+    "logs/implement/RUN-OUTCOME-PINNED/final-summary.md": {
+      "text": "summary\n"
+    },
+    "logs/implement/RUN-OUTCOME-PINNED/manifest.json": {
+      "text": "{\"started_at\":\"2026-05-24T10:00:00Z\",\"larch_version\":\"52.4.16\",\"steps_ran\":{\"step8\":true}}"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "# Review Fluff Analysis\n\nCharacterizes review suggestions that are *not accepted* or *accepted-but-low-value*, from the synchronized larch run-log cache. Counts are directional (keyword tags are approximate; severity cuts are exact). See `skills/shared/review-acceptance-rubric.md` for the necessity gate this report is designed to inform.\n\n- Records: **18** total (implement code-review **10**, design in-scope **8**)\n- Sources: committed=15, committed-self-review-tally=3\n\n## Baselines\n\n| corpus | n | accepted | OOS | rejected |\n|---|--:|--:|--:|--:|\n| implement code-review | 10 | 60.0% | 10.0% | 30.0% |\n| design in-scope | 8 | 37.5% | — | 62.5% |\n\n## Invariant assessment coverage\n\n| runs scanned | runs with assessment artifact | clean count | deviation count |\n|--:|--:|--:|--:|\n| 5 | 2 | 1 | 0 |\n\n| run | started_at | larch_version | assessment_kind |\n|---|---|---|---|\n| RUN-DSGN-1 | 2026-05-21T10:00:00Z | 49.0.0 | missing |\n| RUN-DSGN-2 | 2026-05-22T10:00:00Z | 49.0.0 | missing |\n| RUN-DSGN-ASSESS | 2026-05-23T10:00:00Z | 49.0.0 | clean |\n| RUN-DSGN-EMPTY | 2026-05-22T12:00:00Z | 49.0.0 | violation |\n| RUN-NESTED | 2026-05-21T00:00:00Z | 49.0.0 | missing |\n\n## Guideline assessment coverage\n\n| runs scanned | runs with assessment artifact | clean count | deviation count |\n|--:|--:|--:|--:|\n| 5 | 2 | 1 | 1 |\n\n| run | started_at | larch_version | assessment_kind |\n|---|---|---|---|\n| RUN-DSGN-1 | 2026-05-21T10:00:00Z | 49.0.0 | deviation |\n| RUN-DSGN-2 | 2026-05-22T10:00:00Z | 49.0.0 | missing |\n| RUN-DSGN-ASSESS | 2026-05-23T10:00:00Z | 49.0.0 | clean |\n| RUN-DSGN-EMPTY | 2026-05-22T12:00:00Z | 49.0.0 | missing |\n| RUN-NESTED | 2026-05-21T00:00:00Z | 49.0.0 | missing |\n\n## Implement invariant outcome coverage\n\n| runs scanned | valid | missing-current | missing-legacy | pinned | clean | dropped | drop rate |\n|--:|--:|--:|--:|--:|--:|--:|--:|\n| 13 | 3 | 2 | 8 | 0 | 1 | 1 | 33.3% |\n\n| dropped reason | count |\n|---|--:|\n| unavailable | 1 |\n\n## Implement guideline outcome coverage\n\n| runs scanned | valid | missing-current | missing-legacy | pinned | clean | dropped | drop rate |\n|--:|--:|--:|--:|--:|--:|--:|--:|\n| 13 | 3 | 2 | 8 | 1 | 1 | 1 | 33.3% |\n\n| dropped reason | count |\n|---|--:|\n| note-redaction-failed | 1 |\n\n## Q1 — Low-acceptance semantic groups\n\nMulti-label tags (a finding may carry several). Groups below the corpus baseline are fluff-prone; distinguish **reject-heavy** (down-vote / suppress) from **OOS-heavy** (valid but defer).\n\n\n## Q3 — Severity / quality / uncertain\n\n**implement — reviewer-authored body severity → outcome**\n\n| severity | n | acc% | oos% | rej% |\n|---|--:|--:|--:|--:|\n| important | 3 | 100.0 | 0.0 | 0.0 |\n| latent | 1 | 0.0 | 100.0 | 0.0 |\n| nit | 2 | 0.0 | 0.0 | 100.0 |\n| (none) | 4 | 75.0 | 0.0 | 25.0 |\n\n**design in-scope — modal voter severity → accept rate**\n\n| voter severity | n | acc% |\n|---|--:|--:|\n| important | 1 | 100.0 |\n| latent | 1 | 100.0 |\n| nit | 5 | 0.0 |\n| (none) | 1 | 100.0 |\n\n## Reviewer lane\n\n_(insufficient lane-tagged volume)_\n\n## Accepted-but-low-value proxy\n\n- implement: **0.0%** of accepted findings were reviewer-severity nit/latent (0/6)\n- design: **33.3%** of accepted in-scope were modal-voter nit/latent (1/3)\n\n## False-negative / under-acceptance metrics\n\nDiagnostic-only rates over TSV panel verdicts and reviewer-claimed `body_severity` tiers.\n\n### Neutral-rate by severity tier\n\n| corpus | tier | neutral | total | rate | runs |\n|---|---|--:|--:|--:|--:|\n| implement false-negative | important | 1 | 3 | 33.3% | 2 |\n| implement false-negative | nit | 0 | 1 | 0.0% | 1 |\n| implement false-negative | (none) | 0 | 1 | 0.0% | 1 |\n| design in-scope | important | 1 | 3 | 33.3% | 1 |\n| design in-scope | latent | 0 | 1 | 0.0% | 1 |\n| design in-scope | nit | 0 | 1 | 0.0% | 1 |\n| design in-scope | (none) | 0 | 1 | 0.0% | 1 |\n\n### Important-reject-rate\n\n| corpus | rejected | reviewer-claimed-important | rate | runs |\n|---|--:|--:|--:|--:|\n| implement false-negative | 1 | 3 | 33.3% | 2 |\n| design in-scope | 1 | 3 | 33.3% | 1 |\n\n## Recommendations (data-driven)\n\n\nApply changes at `skills/shared/review-acceptance-rubric.md` and propagate via its `## Update triggers` list; run `make test-render-voter-prompt`.\n\n_(No strong fluff signal at the current thresholds / sample size.)_\n"
+  }
+}

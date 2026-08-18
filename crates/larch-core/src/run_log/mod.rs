@@ -52,7 +52,9 @@ pub use round_artifacts::{
     ResidualSecretError, glob_matches, is_round_sidecar_file, round_artifact_included,
     stage_round_artifact,
 };
-pub use ship_outcome::{AssessmentKind, validate_ship_outcome_record};
+pub use ship_outcome::{
+    AssessmentKind, SHIP_OUTCOME_CUTOVER_VERSION, validate_ship_outcome_record,
+};
 pub use slug::{RunLogSlug, RunLogSlugError, RunLogSlugErrorKind, validate_run_log_slug};
 pub use tolerance::{
     final_summary_terminal_heading, first_nonempty_line, manifest_pr_evidence_matches,

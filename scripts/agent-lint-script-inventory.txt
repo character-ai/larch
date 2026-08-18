@@ -85,7 +85,6 @@ skills/design/scripts/test-gate-b-apply-mode.sh
 skills/design/scripts/test-step3-orchestrator-fence.sh
 skills/design/scripts/test-step3-review-cap.sh
 skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh
-skills/fluff-analysis/scripts/test-fluff-analysis.sh
 skills/implement/scripts/flush-execution-issues.sh
 skills/implement/scripts/hook-stop-fail-close.sh
 skills/implement/scripts/oos-disposition-checkpoint.sh

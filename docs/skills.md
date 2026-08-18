@@ -165,7 +165,7 @@ All GitHub mutations are grouped behind one `AskUserQuestion` gate: approve all,
 
 **Source**: [`skills/fluff-analysis/SKILL.md`](../skills/fluff-analysis/SKILL.md)
 
-Characterize review **fluff** — suggestions that are *not accepted* (rejected or deferred to Out-of-Scope) or *accepted-but-low-value* — from the synchronized local run-log cache. The analyzer normalizes every review finding and prints acceptance baselines, low-acceptance groups, reviewer-lane splits, comparisons, and recommendations. `--include-in-progress` additionally reads active `/design` session temp dirs. `--log-root DIR` selects an offline fixture corpus; otherwise the analyzer synchronizes the repository-scoped cache before reading it.
+Characterize review **fluff** — suggestions that are *not accepted* (rejected or deferred to Out-of-Scope) or *accepted-but-low-value* — from the synchronized local run-log cache. The Rust-owned analyzer behind `scripts/larch.sh fluff-analysis analyze` normalizes every review finding and prints acceptance baselines, low-acceptance groups, reviewer-lane splits, comparisons, and recommendations. `--include-in-progress` additionally reads active `/design` session temp dirs. `--log-root DIR` selects an offline fixture corpus; otherwise the analyzer synchronizes the repository-scoped cache before reading it.
 
 ### `/rejected-analysis`
 

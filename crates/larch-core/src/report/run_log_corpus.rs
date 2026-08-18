@@ -855,6 +855,29 @@ impl RunLogCorpus {
         rows
     }
 
+    /// Return every contained `findings-classification.tsv` below safe child
+    /// runs at any depth, sorted by full path.
+    ///
+    /// This matches the Python `discover_design_classification_paths` walk:
+    /// unlike [`Self::classification_paths_without_manifest`], non-canonical
+    /// layouts are included, while the symlink and containment policy stays
+    /// identical to normal corpus discovery.
+    #[must_use]
+    pub fn classification_files_anywhere(&self) -> Vec<PathBuf> {
+        let mut paths: Vec<PathBuf> = self
+            .safe_child_run_directories()
+            .into_iter()
+            .flat_map(|run_dir| {
+                RunLogFileIter::new(&run_dir).filter(|path| {
+                    path.file_name().and_then(|name| name.to_str())
+                        == Some("findings-classification.tsv")
+                })
+            })
+            .collect();
+        paths.sort();
+        paths
+    }
+
     fn discover_skill_roots(
         &self,
         pending: &mut VecDeque<RunLogCorpusEvent>,
@@ -889,6 +912,42 @@ impl RunLogCorpus {
             })
             .collect()
     }
+}
+
+/// Return the trimmed `started_at` string from `manifest.json` only.
+///
+/// This is the primary-manifest-only read the fluff analyzer needs: no
+/// `run-manifest.json` candidate and no `updated_at` fallback, matching the
+/// Python `run_started_at(manifest_candidates=("manifest.json",),
+/// continue_on_empty=False)` call shape. The text is returned unvalidated;
+/// datetime validation stays with the consumer.
+#[must_use]
+pub fn manifest_only_started_at_text(run_dir: &Path) -> String {
+    manifest_only_string_field(run_dir, "started_at")
+}
+
+/// Return the validated `larch_version` from `manifest.json` only.
+///
+/// Shares the primary-manifest-only policy of
+/// [`manifest_only_started_at_text`]; an absent, non-string, or invalid
+/// version renders as the empty string.
+#[must_use]
+pub fn manifest_only_larch_version(run_dir: &Path) -> String {
+    let text = manifest_only_string_field(run_dir, "larch_version");
+    if valid_larch_version(&text) {
+        text
+    } else {
+        String::new()
+    }
+}
+
+fn manifest_only_string_field(run_dir: &Path, key: &str) -> String {
+    load_metadata_candidate(&run_dir.join("manifest.json"))
+        .and_then(|metadata| match metadata.fields.get(key) {
+            Some(Value::String(text)) => Some(text.trim().to_owned()),
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 /// Read a historical run's start time without requiring a modern manifest.

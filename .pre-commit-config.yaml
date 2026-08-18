@@ -126,7 +126,6 @@ repos:
             skills/design/scripts/test\-trailer\-helpers\.sh|
             skills/design/scripts/test\-trailer\-validate\.sh|
             skills/fluff\-analysis/scripts/test\-fluff\-analysis\-corpus\.sh|
-            skills/fluff\-analysis/scripts/test\-fluff\-analysis\.sh|
             skills/implement/scripts/flush\-execution\-issues\.sh|
             skills/implement/scripts/hook\-stop\-fail\-close\.sh|
             skills/implement/scripts/oos\-disposition\-checkpoint\.sh|
@@ -370,7 +369,6 @@ repos:
             skills/design/scripts/test\-trailer\-helpers\.sh|
             skills/design/scripts/test\-trailer\-validate\.sh|
             skills/fluff\-analysis/scripts/test\-fluff\-analysis\-corpus\.sh|
-            skills/fluff\-analysis/scripts/test\-fluff\-analysis\.sh|
             skills/implement/scripts/flush\-execution\-issues\.sh|
             skills/implement/scripts/hook\-stop\-fail\-close\.sh|
             skills/implement/scripts/oos\-disposition\-checkpoint\.sh|

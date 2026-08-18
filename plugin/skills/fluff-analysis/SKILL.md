@@ -25,10 +25,10 @@ This is the standing tool behind the kind of analysis filed as a `[Analysis Repo
 Call the analyzer via the Bash tool, forwarding any flags, then relay its markdown stdout to the user:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/fluff-analysis/scripts/fluff-analysis.py" [flags]
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" fluff-analysis analyze [flags]
 ```
 
-Do not re-derive, re-tally, or re-format the analysis in the main agent — the script owns extraction, classification, and rendering.
+Do not re-derive, re-tally, or re-format the analysis in the main agent — the command owns extraction, classification, and rendering.
 
 Flags:
 
@@ -41,15 +41,12 @@ Flags:
 - `--log-root DIR`: offline fixture corpus override. By default, sync the current repository cache.
 - `--out FILE` — write the report to `FILE` instead of stdout.
 
-On success, stdout begins with `# Review Fluff Analysis`. If the log root is missing the script exits non-zero with a diagnostic; surface it rather than inventing results.
+On success, stdout begins with `# Review Fluff Analysis`. If the log root is missing the command exits non-zero with a diagnostic; surface it rather than inventing results.
 
 ## Implementation
 
-Logic lives in `scripts/`; SKILL.md is a thin coordinator. Per-script contracts sit beside each file:
+The analyzer is Rust-owned: `crates/larch-core/src/fluff_analysis.rs` (extraction, the multi-label semantic classifier, acceptance aggregation, and markdown report rendering) behind the `crates/larch-cli/src/fluff_analysis_commands.rs` CLI shim, reached only through `scripts/larch.sh fluff-analysis analyze`. Parity against the frozen Python reference is proven by `crates/larch-cli/tests/fluff_analysis_parity.rs` (`make test-fluff-analysis`).
 
-- `scripts/fluff-analysis.py` (contract: `scripts/fluff-analysis.md`) — the analyzer: extraction, the multi-label semantic classifier, acceptance aggregation, and markdown report rendering.
-- `scripts/pyrightconfig.json` — Pyright `extraPaths` config so IDEs resolve `python/` imports in `fluff-analysis.py` without a runtime `sys.path` insert.
-- `scripts/test-fluff-analysis.sh` (contract: `scripts/test-fluff-analysis.md`) — offline regression harness over a synthetic `larch-logs` fixture.
 - `scripts/test-fluff-analysis-corpus.sh` (contract: `scripts/test-fluff-analysis-corpus.md`) — optional synchronized-cache smoke for post-version low-value acceptance.
 
 ## NEVER

@@ -680,7 +680,7 @@ fn assessment_and_outcome_scans_distinguish_missing_invalid_and_valid_artifacts(
             7,
             "guideline-assessment",
             "architectural-guideline-assessment.md",
-            CLEAN_GUIDELINE,
+            AssessmentKind::Guidelines.clean_presentation_note(),
             "clean",
             "deviation",
             "guideline",
@@ -694,7 +694,7 @@ fn assessment_and_outcome_scans_distinguish_missing_invalid_and_valid_artifacts(
             7,
             "guideline-assessment",
             "architectural-guideline-assessment.md",
-            CLEAN_GUIDELINE,
+            AssessmentKind::Guidelines.clean_presentation_note(),
             "clean",
             "deviation",
             "guideline",
@@ -704,14 +704,14 @@ fn assessment_and_outcome_scans_distinguish_missing_invalid_and_valid_artifacts(
     write(
         &run,
         "architectural-guideline-assessment.md",
-        &format!("{CLEAN_GUIDELINE}\n"),
+        &format!("{}\n", AssessmentKind::Guidelines.clean_presentation_note()),
     );
     let clean = assessment_scan(
         &run,
         7,
         "guideline-assessment",
         "architectural-guideline-assessment.md",
-        CLEAN_GUIDELINE,
+        AssessmentKind::Guidelines.clean_presentation_note(),
         "clean",
         "deviation",
         "guideline",
@@ -729,7 +729,7 @@ fn assessment_and_outcome_scans_distinguish_missing_invalid_and_valid_artifacts(
             7,
             "guideline-assessment",
             "architectural-guideline-assessment.md",
-            CLEAN_GUIDELINE,
+            AssessmentKind::Guidelines.clean_presentation_note(),
             "clean",
             "deviation",
             "guideline",
@@ -742,7 +742,7 @@ fn assessment_and_outcome_scans_distinguish_missing_invalid_and_valid_artifacts(
             &run,
             7,
             "guideline-ship-outcome",
-            GUIDELINE_OUTCOME,
+            AssessmentKind::Guidelines.ship_outcome_sidecar_filename(),
             AssessmentKind::Guidelines,
         )
     };
@@ -758,13 +758,21 @@ fn assessment_and_outcome_scans_distinguish_missing_invalid_and_valid_artifacts(
         "manifest.json",
         r#"{"larch_version":"56.3.0","steps_ran":{"step8":true}}"#,
     );
-    write(&run, GUIDELINE_OUTCOME, "\n");
-    assert_eq!(result(&guideline()), "fail");
-    write(&run, GUIDELINE_OUTCOME, "not JSON\n");
+    write(
+        &run,
+        AssessmentKind::Guidelines.ship_outcome_sidecar_filename(),
+        "\n",
+    );
     assert_eq!(result(&guideline()), "fail");
     write(
         &run,
-        GUIDELINE_OUTCOME,
+        AssessmentKind::Guidelines.ship_outcome_sidecar_filename(),
+        "not JSON\n",
+    );
+    assert_eq!(result(&guideline()), "fail");
+    write(
+        &run,
+        AssessmentKind::Guidelines.ship_outcome_sidecar_filename(),
         &serde_json::to_string(&clean_outcome(AssessmentKind::Guidelines)).expect("outcome JSON"),
     );
     let valid = guideline();
@@ -773,7 +781,7 @@ fn assessment_and_outcome_scans_distinguish_missing_invalid_and_valid_artifacts(
 
     write(
         &run,
-        INVARIANT_OUTCOME,
+        AssessmentKind::Invariants.ship_outcome_sidecar_filename(),
         &serde_json::to_string(&clean_outcome(AssessmentKind::Invariants)).expect("outcome JSON"),
     );
     assert_eq!(
@@ -781,7 +789,7 @@ fn assessment_and_outcome_scans_distinguish_missing_invalid_and_valid_artifacts(
             &run,
             7,
             "invariant-ship-outcome",
-            INVARIANT_OUTCOME,
+            AssessmentKind::Invariants.ship_outcome_sidecar_filename(),
             AssessmentKind::Invariants,
         )),
         "pass"

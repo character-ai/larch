@@ -38,6 +38,13 @@ pub enum AssessmentKind {
     Invariants,
 }
 
+/// First larch version whose implement runs must write ship-outcome sidecars.
+///
+/// Shared by both assessment kinds; mirrors the two identical Python cutovers
+/// `GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION` and
+/// `INVARIANT_SHIP_OUTCOME_MIN_LARCH_VERSION` (`52.4.16`).
+pub const SHIP_OUTCOME_CUTOVER_VERSION: (u64, u64, u64) = (52, 4, 16);
+
 impl AssessmentKind {
     const fn is_invariant(self) -> bool {
         matches!(self, Self::Invariants)
@@ -114,7 +121,36 @@ impl AssessmentKind {
         }
     }
 
-    fn ship_reason_tokens(self) -> Vec<&'static str> {
+    /// The clean-note body a design assessment must equal to count as clean.
+    #[must_use]
+    pub const fn clean_presentation_note(self) -> &'static str {
+        match self {
+            Self::Guidelines => "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.",
+            Self::Invariants => "Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.",
+        }
+    }
+
+    /// The design-run assessment artifact filename for this kind.
+    #[must_use]
+    pub const fn design_assessment_filename(self) -> &'static str {
+        match self {
+            Self::Guidelines => "architectural-guideline-assessment.md",
+            Self::Invariants => "architectural-invariant-assessment.md",
+        }
+    }
+
+    /// The implement-run ship-outcome sidecar filename for this kind.
+    #[must_use]
+    pub const fn ship_outcome_sidecar_filename(self) -> &'static str {
+        match self {
+            Self::Guidelines => "architectural-guideline-outcome.json",
+            Self::Invariants => "architectural-invariant-outcome.json",
+        }
+    }
+
+    /// Every reason token this kind's ship-outcome sidecar accepts.
+    #[must_use]
+    pub fn ship_reason_tokens(self) -> Vec<&'static str> {
         let mut tokens = COMMON_REASONS.to_vec();
         tokens.push(self.non_clean_note_reason());
         tokens.push(self.absent_reason());
