@@ -81,6 +81,26 @@ and their registry milestones are complete. Only the contract-only `lint`
 command remains Python-owned. Shared Python token helpers remain because that
 lint consumes them; they are not fallback implementations for Rust commands.
 
+### Debate Python-to-Rust cutover
+
+Umbrella #8555 (chief #7687) ported the whole `/debate` runtime to Rust across
+leaves #8597-#8604 and closed the Python boundary in leaf #8605. The removed
+Python surface is `larch.debate.orchestrator` and `larch.debate.publication`
+(deleted by #8678 and #8679), plus `larch.debate.protocol` and the package
+`larch.debate.__init__`, which #8605 deleted along with
+`python/tests/debate/test_protocol.py` and the sole `larch.debate` config value
+`DEBATE_SUBJECT_VALUE_KEY`. Rust now owns every debate command and its wire
+contract: `crates/larch-core/src/debate/` (protocol, state, and prompt modules)
+and `crates/larch-cli/src/{debate_commands,debate_publication_commands,debate_state}.rs`.
+Production callers enter through `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh debate
+<verb>`; no `python/cli.py debate` caller remains. All twelve debate rows in
+`crates/larch-lint/data/command-registry.toml` are `owner = "rust"` with
+`implementation_parity`, `consumer_cutover`, and `python_removal` all
+`complete`; their historical `python_module` strings are provenance, not live
+imports. Following #8678 and #8679, the removed debate `.py` paths are not added
+to `python/migrated-scripts.tsv`, because the Rust sources cite their Python
+provenance by path and `make lint-retired-scripts` matches those paths anywhere.
+
 **Initialization and entry writes cut over in #8073.** `run-log init`, `write`,
 `write-round`, `append`, `append-entry`, `append-failure`, `exists`, and
 `verify-completeness` are Rust-owned; `crates/larch-core/src/run_log/` owns the

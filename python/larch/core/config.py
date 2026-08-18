@@ -126,7 +126,6 @@ DEBATE_STALEMATE_TALLY_FILENAME: Final = "stalemate-tally.json"
 DEBATE_SYNTHESIS_INPUT_MAX_BYTES: Final = 64 * 1024
 DEBATE_SUBJECT_MAX_BYTES: Final = 24 * 1024
 DEBATE_TURN_OUTPUT_MAX_BYTES: Final = 4 * 1024
-DEBATE_SUBJECT_VALUE_KEY: Final = "larch.debate.subject-base64"
 DEBATE_SUBJECT_FILENAME: Final = "debate-subject.md"
 DEBATE_TURN_PROMPT_FILENAME_TEMPLATE: Final = "{slot}-round-{round_number}-prompt.md"
 DEBATE_ADJUDICATION_PREVIEW_FILENAME: Final = "adjudication-preview.json"

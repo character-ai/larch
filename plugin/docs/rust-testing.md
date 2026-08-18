@@ -236,11 +236,10 @@ wire constants and enums, lexical validators, slot-ledger row grammar with
 exact rejection-reason tokens, concession citation classification, and reason
 normalization plus fingerprints. Leaf #8598 adds the state half: round-state
 assembly, point resolution, stalemate detection, adjudication records, and the
-proposal transition machine. Inline tests mirror the executable-contract cases
-from `python/tests/debate/test_protocol.py`, including the transition and
-stalemate rejection tokens, and pin Python-computed golden fingerprint fixtures
-for byte parity. The still-Python debate commands keep
-`python/larch/debate/protocol.py` live; this core is network-free and
+proposal transition machine. Inline tests cover the executable-contract cases,
+including the transition and stalemate rejection tokens, and pin golden
+fingerprint fixtures for byte parity. The Python debate protocol module has been
+removed; `larch_core::debate` is the sole owner. This core is network-free and
 filesystem-free.
 
 Leaf #8599 ports the state store. `larch_core::debate::state` owns canonical
