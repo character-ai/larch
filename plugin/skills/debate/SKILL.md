@@ -170,16 +170,16 @@ Run rounds 1 and 2 in order, stopping early only when a validated operation enve
 2. For each live external slot in canonical order, call `debate record-turn` with the current fingerprint, round, and slot. Cursor and Codex resume the explicit handles created during initialization. Never use an ambient last-session selector. On a nonzero exit, still parse the returned slot result and fingerprint, print a warning naming only the slot and stable drop class, then enter the abort funnel if the terminal outcome is aborted.
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate record-turn \
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate record-turn \
      --debate-tmpdir "$DEBATE_TMPDIR" --expected-fingerprint "$FINGERPRINT" \
      --round "$ROUND" --slot "$SLOT"
    ```
 
 3. In round 1, spawn exactly one `larch:debater` Agent-tool subagent. Give it paths only: `REPO_ROOT`, `$DEBATE_TMPDIR/debate-subject.md`, and `$DEBATE_TMPDIR/claude-round-1-prompt.md`. Retain its agent ID in `CLAUDE_AGENT_ID`. In round 2, continue that same agent with `SendMessage`, giving only the new prompt path. Do not fresh-spawn the Claude leg.
-4. After each Claude return, Write its final message byte-for-byte to `$DEBATE_TMPDIR/claude-round-<ROUND>.input`. Do not add a code fence or newline. Ingest it with `debate record-turn ... --slot claude --input-file <that path>`. The Python owner bounds the file, parses the strict ledger, and records a per-slot drop on rejection.
+4. After each Claude return, Write its final message byte-for-byte to `$DEBATE_TMPDIR/claude-round-<ROUND>.input`. Do not add a code fence or newline. Ingest it with `debate record-turn ... --slot claude --input-file <that path>`. The command owner bounds the file, parses the strict ledger, and records a per-slot drop on rejection.
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate record-turn \
+   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate record-turn \
      --debate-tmpdir "$DEBATE_TMPDIR" --expected-fingerprint "$FINGERPRINT" \
      --round "$ROUND" --slot claude \
      --input-file "$DEBATE_TMPDIR/claude-round-$ROUND.input"
@@ -324,7 +324,7 @@ When `DEBATE_SUCCESS=true`, run lifecycle finalize, remove the activation sentin
 If `STATE_CREATED=true`, call abort once with the latest validated fingerprint unless state is already aborted:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate abort \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate abort \
   --debate-tmpdir "$DEBATE_TMPDIR" --expected-fingerprint "$FINGERPRINT"
 ```
 

@@ -56,14 +56,7 @@ from larch.debate.orchestrator import (
     ParticipantSlot,
     ProposalState,
     RestoreMetadata,
-    TurnRequest,
-    TurnResult,
-    TurnRunner,
-    abort,
-    abort_main,
     load_state,
-    record_turn,
-    record_turn_main,
     write_state,
 )
 
@@ -71,9 +64,7 @@ from larch.debate.orchestrator import (
 # supported facade while wildcard imports remain protocol-only.
 _ORCHESTRATOR_FACADE = (
     ActiveRound, DebateError, DropRecord, InitializationContext, ParticipantSlot,
-    ProposalState, RestoreMetadata, TurnRequest, TurnResult,
-    TurnRunner, abort, abort_main, load_state, record_turn,
-    record_turn_main, write_state,
+    ProposalState, RestoreMetadata, load_state, write_state,
 )
 
 __all__ = [
