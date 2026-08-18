@@ -10,7 +10,9 @@ use std::{env, ffi::OsString, fs, path::PathBuf, process::ExitCode};
 use larch_core::{FluffOptions, parse_cutoff_text, parse_larch_version_tuple};
 
 use crate::{
-    argparse_compat::{optional_out_path, parse_with_flags, python_repr, usage_error, write_stdout},
+    argparse_compat::{
+        optional_out_path, parse_with_flags, python_repr, usage_error, write_stdout,
+    },
     run_log_publication_commands::{synchronized_corpus_root, synchronized_repository_root},
 };
 
