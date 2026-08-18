@@ -422,7 +422,7 @@ fn remove_worktree(arguments: &RemoveWorktreeArguments) -> Result<(), String> {
         &arguments.worktree,
         &arguments.root,
         &root,
-        PathIntent::Write,
+        PathIntent::Cleanup,
         "--worktree",
     )?;
     let path = confined.path().to_path_buf();
@@ -2157,7 +2157,10 @@ mod tests {
         build_audit_proposal, mark_audit_graph_in_flight, mark_audit_leaf_in_flight,
         mark_audit_proposal_complete, record_audit_leaf_resolved, umbrella_leaf_opening,
     };
-    use larch_test_support::{HttpResponseBuilder, IssueServiceExchange, IssueServiceStub};
+    use larch_test_support::{
+        GitFixture, GitFixtureError, GitRepository, HttpResponseBuilder, IssueServiceExchange,
+        IssueServiceStub,
+    };
     use serde_json::{Value, json};
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -3654,5 +3657,42 @@ mod tests {
             "dependency mutation refused: protected dependency target"
         );
         assert_eq!(server.finish().expect("stub completed").len(), 2);
+    }
+
+    #[test]
+    fn remove_worktree_deletes_a_real_detached_worktree_directory() {
+        let repository = match GitRepository::builder(GitFixture::Refs).build() {
+            Ok(repository) => repository,
+            Err(GitFixtureError::Skip(skip)) => {
+                eprintln!("explicit capability skip: {skip}");
+                return;
+            }
+            Err(error) => panic!("git fixture failed: {error}"),
+        };
+
+        let session_root = tempfile::tempdir().expect("session root");
+        let worktree = session_root.path().join("worktree");
+        let worktree_arg = worktree
+            .to_str()
+            .expect("worktree path is valid UTF-8")
+            .to_owned();
+
+        let added = repository
+            .git(["worktree", "add", "--detach", &worktree_arg, "HEAD"])
+            .expect("run worktree add");
+        assert!(added.success(), "worktree add must succeed");
+        assert!(worktree.is_dir(), "worktree directory must exist");
+
+        super::remove_worktree(&RemoveWorktreeArguments {
+            repo_root: repository.root().to_path_buf(),
+            root: session_root.path().to_path_buf(),
+            worktree: worktree.clone(),
+        })
+        .expect("remove_worktree removes an existing directory worktree");
+
+        assert!(
+            std::fs::symlink_metadata(&worktree).is_err(),
+            "worktree directory must be gone after removal"
+        );
     }
 }
