@@ -1,17 +1,16 @@
 # Debate protocol
 
 Normative wire contract for the pure debate protocol. Executable validation and
-constants live in `python/larch/debate/protocol.py`. This document names the
+constants live in `crates/larch-core/src/debate/protocol.rs`. This document names the
 owning exported symbol beside every published literal so each value stays
 grep-discoverable from its single source of truth. Do not treat examples or
 prose here as a second regex or parser authority.
 
 ## Ownership
 
-- Executable owner: `python/larch/debate/protocol.py`
-- Piece 1 facade: `python/larch/debate/__init__.py` (does not export Piece 2
-  transition or round-assembly symbols)
-- Executable contract tests: `python/tests/debate/test_protocol.py`
+- Executable owner: `crates/larch-core/src/debate/protocol.rs`
+- Executable contract tests: the inline tests in
+  `crates/larch-core/src/debate/protocol.rs` (run with `cargo test -p larch-core debate`)
 - This file is development-only documentation. It has no plugin doc projection.
 
 ## Versions and bounds
@@ -41,7 +40,7 @@ Ledger tokens:
 
 ## Types and enums
 
-Each type below is an exported symbol from `python/larch/debate/protocol.py`.
+Each type below is an exported symbol from `crates/larch-core/src/debate/protocol.rs`.
 
 ### `Participant`
 
@@ -272,8 +271,8 @@ record is a split.
 
 `NonterminalPhase` has four members and `TransitionAction` has four members, so
 the full matrix has `4 × 4 = 16` pairs. The legal subset is the nine edges in
-the pinned legal-edge table in `python/larch/debate/protocol.py`
-(`_TRANSITION_TABLE`). The remaining seven pairs are illegal.
+the pinned legal-edge table in `crates/larch-core/src/debate/protocol.rs`
+(`LEGAL_EDGES`). The remaining seven pairs are illegal.
 
 | Phase (`NonterminalPhase`) | Action (`TransitionAction`) | Legal? | Result / payload |
 | --- | --- | --- | --- |
