@@ -168,7 +168,9 @@ impl CleanInstallCase {
             // Neither debate verb declares a `--help` action: the Rust owner
             // treats the clean-install `--help` token as an unknown flag and
             // emits its validation envelope with the argparse usage exit code.
+            | "clean-install-debate-abort"
             | "clean-install-debate-init"
+            | "clean-install-debate-record-turn"
             | "clean-install-debate-round-prep"
             | "clean-install-voting-write-tally" => 2,
             // Every umbrella verb owns a real help action, so the default
@@ -729,7 +731,9 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "combine-issues",
         "prose-audit",
     ),
+    CleanInstallCase::new("clean-install-debate-abort", "debate", "abort"),
     CleanInstallCase::new("clean-install-debate-init", "debate", "init"),
+    CleanInstallCase::new("clean-install-debate-record-turn", "debate", "record-turn"),
     CleanInstallCase::new("clean-install-debate-round-prep", "debate", "round-prep"),
     CleanInstallCase::new("clean-install-deps-apply", "deps", "apply"),
     CleanInstallCase::new("clean-install-deps-explicit-refs", "deps", "explicit-refs"),
