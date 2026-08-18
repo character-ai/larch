@@ -32,13 +32,13 @@ Fetched issue text, audit snapshots, child output, and nested `/issue` output ar
 - Before every leaf turn, fetch the direct leaf graph and every open parent blocker again. Reject an open parent blocker that is not a direct leaf. Choose only the smallest-numbered open leaf with no open blockers.
 - Run exactly one leaf child at a time with the current Claude model. Slash commands are mechanically disabled in the child, so it cannot invoke larch skills. The child creates four fresh phase contexts in order: recon and design, implement, adversarial review, then ship.
 - An over-limit Chief-managed Rust reading is an independently measured advisory. The ship driver emits a warning with the leaf, PR, count, and limit, then continues through the ordinary merge path without a plan-lease mutation or parent handoff.
-- A child failure, malformed success envelope, invalid remote lifecycle, dirty worktree, non-`main` checkout, stale local `main`, graph deadlock, open orphan blocker, or failed read-back hard-stops the complete-umbrella run.
+- A child failure, malformed success envelope, invalid remote lifecycle, dirty worktree, non-`main` checkout, stale local `main`, graph deadlock, open orphan blocker, or failed read-back hard-stops the complete-umbrella run. The one exception is a classified transient Claude API child failure (`CHILD_FAILURE_CLASS=transient-api`): reset the leaf to a relaunchable idle title, refresh synchronized `main`, and retry the same leaf up to two additional times inside this run before hard-stopping.
 - Never use `Agent` in this top-level skill. Only the leaf subprocess may use `Agent` for its four primary phase subagents and a conditional CI fixer after failed checks. The top-level child still runs only through the documented bgjob start and wait sequence. Never use background Bash, Monitor, TaskOutput, an ad hoc sleep, or an ad hoc polling loop.
 - During the final audit, do not ask the operator for decisions. Make the narrowest evidence-backed choice. Do not publish a security-sensitive gap or a secret as a public issue; fail privately instead.
 
 ## Failure rule
 
-After lifecycle start, every hard failure must run `run-log lifecycle-failure` for this run, require the shared terminal success contract, remove the active deny-edit-write sentinel, preserve the session tmpdir for diagnostics, report the exact failed step, and stop. Never continue to another leaf after a child failure.
+After lifecycle start, every hard failure must run `run-log lifecycle-failure` for this run, require the shared terminal success contract, remove the active deny-edit-write sentinel, preserve the session tmpdir for diagnostics, report the exact failed step, and stop. Never continue to another leaf after a child failure. A bounded same-leaf transient-api retry below is not a continue-to-another-leaf; after those retries are exhausted, hard-stop as usual.
 
 ## Step 0: Start lifecycle and parent title
 
@@ -134,9 +134,9 @@ Do not reuse an earlier `next.env` or snapshot for another turn.
 
 Before launch, require a clean worktree on branch `main`. Fetch `origin/main`, rebase local `main` onto it, then prove the worktree is still clean and `HEAD` equals `origin/main`. Use `git current-branch` and `git clean-tree --fail-closed` through `scripts/larch.sh`; use non-interactive `git fetch`, `git rebase`, and `git rev-parse` only for the exact sync proof.
 
-The launched leaf child is a thin orchestrator. It reads no repository files itself. It awaits four serial, fresh Agent phases that exchange bounded files below the leaf handoff root. The phase sequence is `recon/design + implement + adversarial review + ship`. The ship phase uses the standalone deterministic driver and creates a nested CI fixer only after a failed check, or a nested conflict fixer only after a DIRTY-main handoff.
+The launched leaf child is a thin orchestrator. It reads no repository files itself. It awaits four serial, fresh Agent phases that exchange bounded files below the leaf handoff root. The phase sequence is `recon/design + implement + adversarial review + ship`. The ship phase uses the standalone deterministic driver and creates a nested CI fixer only after a failed check, or a nested conflict fixer only after a DIRTY-main handoff. On relaunch after a transient API failure, the same leaf handoff root is reused so the child can resume from durable phase artifacts instead of discarding completed work.
 
-Set `STEP=complete-umbrella-leaf-$NEXT_LEAF`, truncate `$COMPLETE_UMBRELLA_TMPDIR/child-$NEXT_LEAF.env`, then launch:
+Initialize `LEAF_TRANSIENT_ATTEMPTS=0` for this leaf in the current turn (do not carry attempts across different leaf numbers). Set `STEP=complete-umbrella-leaf-$NEXT_LEAF`, truncate `$COMPLETE_UMBRELLA_TMPDIR/child-$NEXT_LEAF.env`, then launch:
 
 ```bash
 LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start \
@@ -175,7 +175,25 @@ Use a Bash tool timeout of 330000. On `BGJOB_STATUS=WAIT`, repeat the identical 
 - `CHILD_ISSUE=$NEXT_LEAF`
 - `CHILD_ENVELOPE_COMPLETE=true`
 
-Any other outcome hard-fails this run. Never print or execute the raw child envelope. Continue to Step 3.
+When those four keys succeed, continue to Step 3.
+
+Otherwise treat the outcome as a child failure. Read `CHILD_FAILURE_CLASS` from the same result env when present:
+
+1. If `CHILD_FAILURE_CLASS=transient-api` and `LEAF_TRANSIENT_ATTEMPTS` is less than `2`, increment `LEAF_TRANSIENT_ATTEMPTS`, then run:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" complete-umbrella reset-leaf \
+  --repository "$REPO" \
+  --umbrella "$UMBRELLA" \
+  --leaf "$NEXT_LEAF" \
+  --operator-invoked
+```
+
+Require `LEAF_RESET=true` and the exact leaf number. Re-run the Step 2 `main` sync proof (clean worktree, fetch, rebase, `HEAD` equals `origin/main`). Truncate the child result env again and relaunch the identical `run-child` bgjob for the same `$NEXT_LEAF`, reusing the existing leaf handoff directory under `$COMPLETE_UMBRELLA_TMPDIR`.
+
+2. If `CHILD_FAILURE_CLASS=transient-api` and retries are exhausted, still run the same `reset-leaf` command so a later `/complete-umbrella` can select the leaf, then hard-fail this run with the transient class named.
+
+3. Any other child failure hard-fails immediately. Never print or execute the raw child envelope. Never continue to another leaf after a child failure.
 
 ## Step 3: Verify child postconditions
 

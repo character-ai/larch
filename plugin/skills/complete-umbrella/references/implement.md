@@ -10,7 +10,7 @@ Read `phase-common.md` in this directory in full before acting.
 
 Read only `$SESSION_TMPDIR/design-brief.md` and `$SESSION_TMPDIR/leaf-issue.md` as initial task inputs. Do not read the umbrella issue again. Do not repeat broad repository exploration. Open only the source, tests, and companion files named by the brief, plus narrow dependencies needed to edit them safely.
 
-Require a clean worktree on `main`. Create branch `complete-umbrella/leaf-<LEAF>` from the synchronized `main` checkout. Stop if that branch name exists in an unexpected state.
+Require a clean worktree on `main`. Prefer the existing local branch `complete-umbrella/leaf-<LEAF>` when it already exists with the intended feature commits recorded in `$SESSION_TMPDIR/implementation-summary.md` or when resuming after a prior incomplete child. Otherwise create that branch from the synchronized `main` checkout. Stop if the branch name exists in an unexpected conflicting state (wrong tip, dirty tree, or unrelated commits that do not match the handoff).
 
 Implement the brief completely. Follow the repository architecture and editing rules summarized in the brief. Add or update focused tests. Refresh every generated or projected companion named by the brief. Run the brief's changed-path checks with bounded output.
 

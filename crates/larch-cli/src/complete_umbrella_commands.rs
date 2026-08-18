@@ -21,19 +21,21 @@ use larch_adapters::{
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
-    COMPLETE_UMBRELLA_CHILD_COMPLETE, ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext,
-    DONE_PREFIX, ExternalProcessRunner, ExternalProgram, GitHubCloseReason, GitHubIssue,
-    GitHubIssueState, GitHubRepositoryRef, GitHubService, IMPLEMENTING_PREFIX, IssueMutationField,
+    COMPLETE_UMBRELLA_CHILD_COMPLETE, COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API,
+    ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext, DONE_PREFIX,
+    ExternalProcessRunner, ExternalProgram, GitHubCloseReason, GitHubIssue, GitHubIssueState,
+    GitHubRepositoryRef, GitHubService, IMPLEMENTING_PREFIX, IssueMutationField,
     IssueMutationRequest, ProcessRequest, VendorLaunchRequest, VendorProgram, build_claude_argv,
-    complete_umbrella_child_prompt, complete_umbrella_done_title, complete_umbrella_start_title,
-    emit_kv, has_umbrella_proposal, is_controlling_umbrella_title, parse_claude_envelope, redact,
-    redact_issue_mutation_request, select_complete_umbrella_leaf, umbrella_leaf_opening,
-    umbrella_leaf_prefix, validate_complete_umbrella_leaf, validate_complete_umbrella_parent,
+    complete_umbrella_child_prompt, complete_umbrella_done_title, complete_umbrella_relaunch_title,
+    complete_umbrella_start_title, emit_kv, has_umbrella_proposal, is_controlling_umbrella_title,
+    is_transient_claude_api_error, parse_claude_envelope, redact, redact_issue_mutation_request,
+    select_complete_umbrella_leaf, umbrella_leaf_opening, umbrella_leaf_prefix,
+    validate_complete_umbrella_leaf, validate_complete_umbrella_parent,
 };
 use serde::Serialize;
 use std::{
-    collections::BTreeSet, env, ffi::OsString, num::NonZeroUsize, path::PathBuf, process::ExitCode,
-    time::Duration,
+    collections::BTreeSet, env, ffi::OsString, fmt::Write as _, num::NonZeroUsize, path::PathBuf,
+    process::ExitCode, time::Duration,
 };
 #[cfg(test)]
 use std::{fs, path::Path};
@@ -86,6 +88,9 @@ pub enum CompleteUmbrellaCommand {
     /// Prove that one child completed its remote lifecycle.
     #[command(name = "verify-child")]
     VerifyChild(LeafArguments),
+    /// Strip a stale `[IMPLEMENTING]` leaf prefix so selection can relaunch it.
+    #[command(name = "reset-leaf")]
+    ResetLeaf(ResetLeafArguments),
     /// Validate caller-owned audit-gap files before public issue creation.
     #[command(name = "validate-gap")]
     ValidateGap(ValidateGapArguments),
@@ -94,6 +99,14 @@ pub enum CompleteUmbrellaCommand {
     AttachLeaf(AttachLeafArguments),
     /// Mark the audited parent done and close it as completed.
     Finish(ParentMutationArguments),
+}
+
+#[derive(Args)]
+pub struct ResetLeafArguments {
+    #[command(flatten)]
+    leaf: LeafArguments,
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    operator_invoked: bool,
 }
 
 #[derive(Args)]
@@ -221,6 +234,7 @@ pub fn run(command: CompleteUmbrellaCommand) -> ExitCode {
         CompleteUmbrellaCommand::Next(arguments) => next(&arguments),
         CompleteUmbrellaCommand::RunChild(arguments) => run_child(&arguments),
         CompleteUmbrellaCommand::VerifyChild(arguments) => verify_child(&arguments),
+        CompleteUmbrellaCommand::ResetLeaf(arguments) => reset_leaf(&arguments),
         CompleteUmbrellaCommand::ValidateGap(arguments) => validate_gap(&arguments),
         CompleteUmbrellaCommand::AttachLeaf(arguments) => attach_leaf(&arguments),
         CompleteUmbrellaCommand::Finish(arguments) => finish(&arguments),
@@ -425,6 +439,7 @@ fn run_child(arguments: &RunChildArguments) -> Result<(), String> {
                 &output_root,
                 arguments.leaf,
                 ChildResultStatus::Failed,
+                None,
             )?;
             return Err(format!("child process failed: {}", error.message()));
         }
@@ -437,16 +452,42 @@ fn run_child(arguments: &RunChildArguments) -> Result<(), String> {
         &output_root,
     )?;
     write_child_stderr(arguments, &output_root, &execution)?;
-    let parsed = parse_claude_envelope(&raw);
+    finish_child_envelope(arguments, &output_root, &execution, &raw)
+}
+
+fn finish_child_envelope(
+    arguments: &RunChildArguments,
+    output_root: &TemporaryRoot,
+    execution: &larch_core::ProcessOutput,
+    raw: &str,
+) -> Result<(), String> {
+    let parsed = parse_claude_envelope(raw);
     let result_status = child_terminal_status(&parsed.text);
     let success = execution.status().success()
         && !execution.stdout_truncated()
         && !execution.stderr_truncated()
         && result_status.is_some();
     let result_status = result_status.unwrap_or(ChildResultStatus::Failed);
-    write_child_result(arguments, &output_root, arguments.leaf, result_status)?;
+    let failure_class = if success {
+        None
+    } else if is_transient_claude_api_error(&parsed) {
+        Some(COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API)
+    } else {
+        None
+    };
+    write_child_result(
+        arguments,
+        output_root,
+        arguments.leaf,
+        result_status,
+        failure_class,
+    )?;
     if !success {
-        return Err("child did not return a complete, bounded success envelope".to_owned());
+        return Err(if failure_class.is_some() {
+            "child ended on a transient Claude API failure".to_owned()
+        } else {
+            "child did not return a complete, bounded success envelope".to_owned()
+        });
     }
     emit_kv("CHILD_STATUS", result_status.value());
     emit_kv("CHILD_ISSUE", &arguments.leaf.to_string());
@@ -463,6 +504,67 @@ fn verify_child(arguments: &LeafArguments) -> Result<(), String> {
     .map_err(ServiceFailure::into_detail)?;
     emit_kv("CHILD_VERIFIED", "true");
     emit_kv("CHILD_ISSUE", &arguments.leaf.to_string());
+    Ok(())
+}
+
+fn reset_leaf(arguments: &ResetLeafArguments) -> Result<(), String> {
+    require_operator(arguments.operator_invoked)?;
+    require_issue(arguments.leaf.umbrella, "--umbrella")?;
+    require_issue(arguments.leaf.leaf, "--leaf")?;
+    let repository = parse_repository(&arguments.leaf.repository)?;
+    with_github_service(async |service, cancellation| {
+        reset_leaf_remote(service, cancellation, &repository, &arguments.leaf).await
+    })
+    .map_err(ServiceFailure::into_detail)?;
+    emit_kv("LEAF_RESET", "true");
+    emit_kv("LEAF_ISSUE", &arguments.leaf.leaf.to_string());
+    Ok(())
+}
+
+async fn reset_leaf_remote(
+    service: &larch_adapters::github::OctocrabGitHubService,
+    cancellation: &Cancellation,
+    repository: &GitHubRepositoryRef,
+    arguments: &LeafArguments,
+) -> Result<(), String> {
+    let graph = read_graph(service, cancellation, repository, arguments.umbrella).await?;
+    let Some(leaf) = graph
+        .leaves
+        .iter()
+        .find(|leaf| leaf.issue.number == arguments.leaf)
+    else {
+        return Err("child is not a direct leaf of the umbrella".to_owned());
+    };
+    if leaf.issue.state != GitHubIssueState::Open {
+        return Err("leaf must be open to reset its active title".to_owned());
+    }
+    validate_complete_umbrella_leaf(&leaf.issue, arguments.umbrella)?;
+    let title = complete_umbrella_relaunch_title(&leaf.issue.title, arguments.umbrella)
+        .map_err(str::to_owned)?;
+    if title == leaf.issue.title {
+        return Ok(());
+    }
+    let owner = IssueMutationOwner::new(service);
+    let before = owner
+        .read_snapshot(repository, arguments.leaf, cancellation)
+        .await
+        .map_err(|error| error.to_string())?;
+    if before.state != GitHubIssueState::Open {
+        return Err("leaf changed before the relaunch-title mutation".to_owned());
+    }
+    let expected = complete_umbrella_relaunch_title(&before.title, arguments.umbrella)
+        .map_err(str::to_owned)?;
+    if expected != title {
+        return Err("leaf title changed before the relaunch-title mutation".to_owned());
+    }
+    let request = exact_title_request(&before, title.clone())?;
+    let verified = owner
+        .apply(cancellation, &operator_authorization(), &request)
+        .await
+        .map_err(|error| error.to_string())?;
+    if verified.after.state != GitHubIssueState::Open || verified.after.title != title {
+        return Err("idle leaf title read-back failed".to_owned());
+    }
     Ok(())
 }
 
@@ -1109,8 +1211,9 @@ fn write_child_result(
     root: &TemporaryRoot,
     leaf: u64,
     status: ChildResultStatus,
+    failure_class: Option<&str>,
 ) -> Result<(), String> {
-    let text = format!(
+    let mut text = format!(
         "CHILD_STATUS={status}\nCHILD_ISSUE={leaf}\nCHILD_ENVELOPE_COMPLETE={}\n",
         if status.envelope_complete() {
             "true"
@@ -1119,6 +1222,9 @@ fn write_child_result(
         },
         status = status.value(),
     );
+    if let Some(class) = failure_class {
+        let _ = writeln!(text, "CHILD_FAILURE_CLASS={class}");
+    }
     write_private_file(&arguments.result_env, &text, &arguments.output_root, root)
 }
 

@@ -46,7 +46,7 @@ pub use drafter::{
     plan_contains_standalone_scout_manifest, render_drafter_dirty_tree, render_drafter_status,
     terminal_diff_lines, terminal_plan_trailer_value, validate_drafter_timeout,
 };
-pub use envelope::{ClaudeEnvelopeStatus, parse_claude_envelope};
+pub use envelope::{ClaudeEnvelopeStatus, is_transient_claude_api_error, parse_claude_envelope};
 pub use external_agent::{
     CODEX_POLICY_REJECTION_EXCERPT_BYTES, CODEX_POLICY_REJECTION_TAIL_BYTES,
     CodexSessionParseError, CursorCreateChatParseError, ExternalAuthVerdict,

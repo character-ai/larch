@@ -175,3 +175,22 @@ fn child_harness_hard_fails_a_noncompletion_envelope() {
         "CHILD_STATUS=failed\nCHILD_ISSUE=42\nCHILD_ENVELOPE_COMPLETE=false\n"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn child_harness_classifies_a_transient_claude_api_envelope() {
+    let (root, mut command) = fixture(
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"is_error\":true,\"terminal_reason\":\"api_error\",\"result\":\"API Error: ENOTFOUND\"}'\n",
+    );
+    command
+        .args(child_arguments(root.path()))
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "child ended on a transient Claude API failure",
+        ));
+    assert_eq!(
+        fs::read_to_string(root.path().join("child.env")).expect("transient result env"),
+        "CHILD_STATUS=failed\nCHILD_ISSUE=42\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_FAILURE_CLASS=transient-api\n"
+    );
+}

@@ -1,7 +1,7 @@
 //! Claude JSON envelope parsing into seven distinct typed outcomes.
 
 use super::VendorParsedResult;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 /// Distinct Claude envelope parse outcomes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -48,6 +48,7 @@ pub fn parse_claude_envelope(raw: &str) -> VendorParsedResult {
             text: String::new(),
             raw: raw.to_owned(),
             is_error: false,
+            terminal_reason: String::new(),
         };
     };
     let Some(object) = value.as_object() else {
@@ -56,14 +57,17 @@ pub fn parse_claude_envelope(raw: &str) -> VendorParsedResult {
             text: String::new(),
             raw: raw.to_owned(),
             is_error: false,
+            terminal_reason: String::new(),
         };
     };
+    let terminal_reason = string_field(object, "terminal_reason");
     if object.get("is_error").is_some_and(json_truthy) {
         return VendorParsedResult {
             status: ClaudeEnvelopeStatus::IsError,
             text: String::new(),
             raw: raw.to_owned(),
             is_error: true,
+            terminal_reason,
         };
     }
     let Some(result) = object.get("result") else {
@@ -72,6 +76,7 @@ pub fn parse_claude_envelope(raw: &str) -> VendorParsedResult {
             text: String::new(),
             raw: raw.to_owned(),
             is_error: false,
+            terminal_reason,
         };
     };
     let Some(text) = result.as_str() else {
@@ -80,6 +85,7 @@ pub fn parse_claude_envelope(raw: &str) -> VendorParsedResult {
             text: String::new(),
             raw: raw.to_owned(),
             is_error: false,
+            terminal_reason,
         };
     };
     if text.is_empty() {
@@ -88,6 +94,7 @@ pub fn parse_claude_envelope(raw: &str) -> VendorParsedResult {
             text: String::new(),
             raw: raw.to_owned(),
             is_error: false,
+            terminal_reason,
         };
     }
     VendorParsedResult {
@@ -95,7 +102,42 @@ pub fn parse_claude_envelope(raw: &str) -> VendorParsedResult {
         text: text.to_owned(),
         raw: raw.to_owned(),
         is_error: false,
+        terminal_reason,
     }
+}
+
+/// Report whether a Claude envelope is a recoverable API / connectivity failure.
+///
+/// Matches `is_error` envelopes with `terminal_reason=api_error` or result /
+/// raw text that names DNS / reachability failures such as `ENOTFOUND`.
+#[must_use]
+pub fn is_transient_claude_api_error(parsed: &VendorParsedResult) -> bool {
+    if parsed.status != ClaudeEnvelopeStatus::IsError && !parsed.is_error {
+        return false;
+    }
+    if parsed.terminal_reason == "api_error" {
+        return true;
+    }
+    claude_api_connectivity_signature(&parsed.raw)
+}
+
+fn string_field(object: &Map<String, Value>, key: &str) -> String {
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_owned()
+}
+
+fn claude_api_connectivity_signature(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("enotfound")
+        || lower.contains("can't reach the api server")
+        || lower.contains("cant reach the api server")
+        || lower.contains("check your internet or dns")
+        || lower.contains("econnreset")
+        || lower.contains("etimedout")
+        || lower.contains("econnrefused")
 }
 
 fn json_truthy(value: &Value) -> bool {

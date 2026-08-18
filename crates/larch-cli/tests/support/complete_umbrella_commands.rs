@@ -1,5 +1,6 @@
 use super::*;
 use larch_adapters::github::OctocrabGitHubService;
+use larch_core::{is_transient_claude_api_error, parse_claude_envelope};
 use larch_test_support::{IssueServiceExchange, IssueServiceStub};
 use serde_json::{Value, json};
 
@@ -189,6 +190,13 @@ fn command_dispatch_rejects_invalid_inputs_before_remote_work() {
             umbrella: 0,
             ..leaf()
         }),
+        CompleteUmbrellaCommand::ResetLeaf(ResetLeafArguments {
+            leaf: LeafArguments {
+                umbrella: 0,
+                ..leaf()
+            },
+            operator_invoked: false,
+        }),
         CompleteUmbrellaCommand::ValidateGap(ValidateGapArguments {
             umbrella: 0,
             files: files(),
@@ -229,6 +237,29 @@ fn child_terminal_status_accepts_only_complete_success_marker() {
         None
     );
     assert_eq!(child_terminal_status("summary\n"), None);
+}
+
+#[test]
+fn transient_claude_api_envelopes_classify_from_terminal_reason_or_connectivity() {
+    let api_error = parse_claude_envelope(
+        r#"{"is_error":true,"terminal_reason":"api_error","result":"API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND)"}"#,
+    );
+    assert!(is_transient_claude_api_error(&api_error));
+    assert_eq!(api_error.terminal_reason, "api_error");
+    assert!(api_error.is_error);
+
+    let connectivity = parse_claude_envelope(
+        r#"{"is_error":true,"result":"API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND)"}"#,
+    );
+    assert!(is_transient_claude_api_error(&connectivity));
+
+    let permanent = parse_claude_envelope(r#"{"is_error":true,"result":"policy refusal"}"#);
+    assert!(!is_transient_claude_api_error(&permanent));
+
+    let ok = parse_claude_envelope(
+        "{\"result\":\"verified\\nCOMPLETE_UMBRELLA_CHILD_STATUS=complete\"}",
+    );
+    assert!(!is_transient_claude_api_error(&ok));
 }
 
 #[test]
@@ -398,6 +429,81 @@ async fn start_refuses_a_deadlocked_umbrella_without_renaming() {
         error,
         "cannot start a deadlocked umbrella while every open leaf is blocked: 41"
     );
+    let requests = server.finish().expect("stub completed");
+    assert!(requests.iter().all(|request| request.method != "PATCH"));
+}
+
+#[tokio::test]
+async fn reset_leaf_remote_strips_only_the_active_prefix() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let body = format!("{}\n\nTask.", umbrella_leaf_opening(UMBRELLA));
+    let active_leaf = issue_json(
+        LEAF,
+        410,
+        "[IMPLEMENTING] [LEAF OF 40] Task",
+        &body,
+        "open",
+        BEFORE,
+    );
+    let idle_leaf = issue_json(LEAF, 410, "[LEAF OF 40] Task", &body, "open", AFTER);
+    let mut exchanges = open_graph(&parent, &active_leaf);
+    exchanges.extend([
+        response(200, &active_leaf),
+        response(200, &active_leaf),
+        response(200, &idle_leaf),
+        response(200, &idle_leaf),
+    ]);
+    let (client, server) = service(exchanges);
+    let arguments = LeafArguments {
+        repository: String::from("o/r"),
+        umbrella: UMBRELLA,
+        leaf: LEAF,
+    };
+
+    reset_leaf_remote(&client, &Cancellation::new(), &repository(), &arguments)
+        .await
+        .expect("idle transition");
+
+    let requests = server.finish().expect("stub completed");
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.method == "PATCH")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn reset_leaf_remote_is_idempotent_for_an_idle_leaf() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let body = format!("{}\n\nTask.", umbrella_leaf_opening(UMBRELLA));
+    let idle_leaf = issue_json(LEAF, 410, "[LEAF OF 40] Task", &body, "open", BEFORE);
+    let (client, server) = service(open_graph(&parent, &idle_leaf));
+    let arguments = LeafArguments {
+        repository: String::from("o/r"),
+        umbrella: UMBRELLA,
+        leaf: LEAF,
+    };
+
+    reset_leaf_remote(&client, &Cancellation::new(), &repository(), &arguments)
+        .await
+        .expect("already idle");
+
     let requests = server.finish().expect("stub completed");
     assert!(requests.iter().all(|request| request.method != "PATCH"));
 }
