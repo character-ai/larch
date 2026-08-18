@@ -9,7 +9,7 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | Key | Value | Composition | Runtime Authority |
 |---|---:|---|---|
 | <a id="debate.panel"></a>`debate.panel` | debate.panel | persistent Cursor subprocess + Codex subprocess + Claude Agent session | `crates/larch-core/src/external_defaults.rs` |
-| <a id="debate.rounds"></a>`debate.rounds` | two-round debate protocol | blind position round + validated mailbox negotiation round | `python/larch/debate/orchestrator.py` |
+| <a id="debate.rounds"></a>`debate.rounds` | two-round debate protocol | blind position round + validated mailbox negotiation round | `crates/larch-cli/src/debate_commands.rs` |
 | <a id="debate.adjudication"></a>`debate.adjudication` | AskUserQuestion | default operator decisions or autonomous anonymized voter panel | `skills/debate/SKILL.md` |
 | <a id="debate.publication"></a>`debate.publication` | /issue | verified source creation + proposal filing + bidirectional links | `skills/debate/SKILL.md` |
 | <a id="design.plan_review.cursor_archetypes"></a>`design.plan_review.cursor_archetypes` | Cursor | Architecture/Standards Innovation/Exploration Pragmatism/Safety Requirements/Completeness | `skills/design/references/plan-review-runtime.md` |

@@ -1913,11 +1913,13 @@ verb = "publish-prepare"
 python_module = "larch.debate.orchestrator"
 python_function = "publish_prepare_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 8043
+migration_issue = 8603
+clean_install_test = "clean-install-debate-publish-prepare"
 
 [[commands]]
 domain = "debate"
@@ -1953,11 +1955,13 @@ verb = "synthesize"
 python_module = "larch.debate.orchestrator"
 python_function = "synthesize_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 8043
+migration_issue = 8603
+clean_install_test = "clean-install-debate-synthesize"
 
 [[commands]]
 domain = "debate"
@@ -8984,12 +8988,6 @@ python = []
 rust = ["block-issue *", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome", "timing *", "token append-record", "token dump", "token lane-report", "token lane-write", "token mark", "token record-vendor", "token record-vendor-sidecar", "tracking-issue *"]
 
 [[callers]]
-path = "python/larch/debate/orchestrator.py"
-kind = "python-runtime"
-python = []
-rust = ["agent dispatch-waterfall"]
-
-[[callers]]
 path = "python/larch/design/decompose.py"
 kind = "python-runtime"
 python = []
@@ -9376,8 +9374,8 @@ rust = []
 [[callers]]
 path = "skills/debate/SKILL.md"
 kind = "skill"
-python = ["debate comment-verify", "debate issue-prepare", "debate proposal-link", "debate publish-prepare", "debate synthesize", "debate title-transition"]
-rust = ["debate abort", "debate adjudicate", "debate adjudication-preview", "debate init", "debate record-turn", "debate round-prep", "run-log lifecycle-start", "session setup", "tracking-issue upsert-summary", "untrusted file-block", "verify skill-called"]
+python = ["debate comment-verify", "debate issue-prepare", "debate proposal-link", "debate title-transition"]
+rust = ["debate abort", "debate adjudicate", "debate adjudication-preview", "debate init", "debate publish-prepare", "debate record-turn", "debate round-prep", "debate synthesize", "run-log lifecycle-start", "session setup", "tracking-issue upsert-summary", "untrusted file-block", "verify skill-called"]
 
 [[callers]]
 path = "skills/deps/SKILL.md"

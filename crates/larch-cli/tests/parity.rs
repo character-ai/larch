@@ -172,8 +172,10 @@ impl CleanInstallCase {
             | "clean-install-debate-adjudicate"
             | "clean-install-debate-adjudication-preview"
             | "clean-install-debate-init"
+            | "clean-install-debate-publish-prepare"
             | "clean-install-debate-record-turn"
             | "clean-install-debate-round-prep"
+            | "clean-install-debate-synthesize"
             | "clean-install-voting-write-tally" => 2,
             // Every umbrella verb owns a real help action, so the default
             // clean-install `--help` probe succeeds.
@@ -741,8 +743,14 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "adjudication-preview",
     ),
     CleanInstallCase::new("clean-install-debate-init", "debate", "init"),
+    CleanInstallCase::new(
+        "clean-install-debate-publish-prepare",
+        "debate",
+        "publish-prepare",
+    ),
     CleanInstallCase::new("clean-install-debate-record-turn", "debate", "record-turn"),
     CleanInstallCase::new("clean-install-debate-round-prep", "debate", "round-prep"),
+    CleanInstallCase::new("clean-install-debate-synthesize", "debate", "synthesize"),
     CleanInstallCase::new("clean-install-deps-apply", "deps", "apply"),
     CleanInstallCase::new("clean-install-deps-explicit-refs", "deps", "explicit-refs"),
     CleanInstallCase::new("clean-install-deps-fetch", "deps", "fetch"),

@@ -249,7 +249,7 @@ Print the canonical separator and `> **🔶 /debate 5: publish proposal**`.
 Call synthesis with the terminal fingerprint:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate synthesize \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate synthesize \
   --debate-tmpdir "$DEBATE_TMPDIR" --expected-fingerprint "$FINGERPRINT"
 # lint-consecutive-bash: ok synthesis must validate before the separate publication handoff is created
 ```
@@ -257,7 +257,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate synthesize \
 Require `ok=true`, the unchanged terminal fingerprint, and the exact body artifact `$DEBATE_TMPDIR/proposal-body.md`. Then prepare publication:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" debate publish-prepare \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate publish-prepare \
   --debate-tmpdir "$DEBATE_TMPDIR" --expected-fingerprint "$FINGERPRINT"
 ```
 
