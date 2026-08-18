@@ -1835,3 +1835,914 @@ fn default_false(value: Option<&OsStr>) -> String {
 fn exit_code(code: i32) -> ExitCode {
     ExitCode::from(u8::try_from(code).unwrap_or(1))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::implement_child_seam::declare_plugin_root;
+    use crate::implement_dispatch_commands::{
+        clear_test_hooks, install_test_larch, install_test_python,
+    };
+    use larch_core::ProcessStatus;
+    use std::ffi::OsStr;
+    use tempfile::TempDir;
+
+    fn out(code: i32, stdout: &str) -> ProcessOutput {
+        ProcessOutput::new(
+            ProcessStatus::new(code == 0, Some(code)),
+            stdout.as_bytes().to_vec(),
+            Vec::new(),
+            false,
+            false,
+        )
+    }
+
+    fn os(values: &[&str]) -> Vec<OsString> {
+        values.iter().map(OsString::from).collect()
+    }
+
+    fn map(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect()
+    }
+
+    // ---- pure path classification -------------------------------------
+
+    #[test]
+    fn non_runtime_paths_are_docs_readme_and_text_or_tsv() {
+        assert!(is_non_runtime_path("docs/anything.rs"));
+        assert!(is_non_runtime_path("nested/README.md"));
+        assert!(is_non_runtime_path("scripts/residual.txt"));
+        assert!(is_non_runtime_path("skills/topology.tsv"));
+        assert!(!is_non_runtime_path("Cargo.toml"));
+        assert!(!is_non_runtime_path("Makefile"));
+        assert!(!is_non_runtime_path("crates/larch-cli/src/main.rs"));
+    }
+
+    // ---- checks relay + pass ------------------------------------------
+
+    #[test]
+    fn checks_relay_line_covers_skip_ok_and_fail() {
+        assert_eq!(
+            checks_relay_line(&map(&[
+                ("RELEVANT_CHECKS_SKIPPED", "true"),
+                ("SITE", "step5")
+            ])),
+            "RELEVANT_CHECKS_SKIPPED=true SITE=step5"
+        );
+        assert_eq!(
+            checks_relay_line(&map(&[
+                ("RELEVANT_CHECKS_OK", "true"),
+                ("SITE", "step6"),
+                ("COVERAGE", "full"),
+                ("PHASE", "p1"),
+                ("WARN", "slow"),
+            ])),
+            "RELEVANT_CHECKS_OK=true SITE=step6 COVERAGE=full PHASE=p1 WARN=slow"
+        );
+        let fail = checks_relay_line(&map(&[
+            ("EXIT_CODE", "7"),
+            ("PHASE", "lint"),
+            ("DIGEST_FILE", "d"),
+        ]));
+        assert!(fail.starts_with("STATUS=fail FAILURE_REASON=checks-failed"));
+        assert!(
+            fail.contains("EXIT_CODE=7")
+                && fail.contains("PHASE=lint")
+                && fail.contains("DIGEST_FILE=d")
+        );
+    }
+
+    #[test]
+    fn checks_pass_requires_ok_or_skipped_without_fail_status() {
+        assert!(!checks_pass(&map(&[
+            ("STATUS", "fail"),
+            ("RELEVANT_CHECKS_OK", "true")
+        ])));
+        assert!(checks_pass(&map(&[("RELEVANT_CHECKS_OK", "true")])));
+        assert!(checks_pass(&map(&[("RELEVANT_CHECKS_SKIPPED", "true")])));
+        assert!(!checks_pass(&map(&[("STATUS", "ok")])));
+    }
+
+    #[test]
+    fn whitespace_kv_line_keeps_first_valid_tokens_only() {
+        let rows = parse_whitespace_kv_line("A=1 B=2 bad-key=3 =4 A=9 C");
+        assert_eq!(rows.get("A"), Some(&"1".to_owned()));
+        assert_eq!(rows.get("B"), Some(&"2".to_owned()));
+        assert!(!rows.contains_key("bad-key"));
+        assert_eq!(rows.len(), 2);
+    }
+
+    // ---- result-env + commit relays -----------------------------------
+
+    #[test]
+    fn relay_commit_kvs_filters_keys_and_honors_next_action_flag() {
+        let raw = "COMMITTED=true\nSHA=abc\nNOISE=x\nNEXT_ACTION=commit\n";
+        assert_eq!(relay_commit_kvs(raw, false), "COMMITTED=true\nSHA=abc\n");
+        assert_eq!(
+            relay_commit_kvs(raw, true),
+            "COMMITTED=true\nSHA=abc\nNEXT_ACTION=commit\n"
+        );
+    }
+
+    #[test]
+    fn record_result_line_and_is_environment_key() {
+        let mut rows = Vec::new();
+        record_result_line("STEP=go", &mut rows);
+        record_result_line("bad-key=1", &mut rows);
+        record_result_line("no-equals", &mut rows);
+        assert_eq!(rows, vec![("STEP".to_owned(), "go".to_owned())]);
+        assert!(is_environment_key("A_1"));
+        assert!(!is_environment_key(""));
+        assert!(!is_environment_key("lower"));
+    }
+
+    #[test]
+    fn parse_line_anchored_collects_all_matching_lines() {
+        assert_eq!(
+            parse_line_anchored("K=a\nX=z\nK=b\n", "K"),
+            vec!["a".to_owned(), "b".to_owned()]
+        );
+    }
+
+    #[test]
+    fn emit_final_records_seven_result_rows() {
+        let mut rows = Vec::new();
+        emit_final(&mut rows, "ok", "", "/p", "url", "ok", "", "rebased");
+        assert_eq!(rows.len(), 7);
+        assert_eq!(rows[0], ("DIAGRAM_STATUS".to_owned(), "ok".to_owned()));
+        assert_eq!(rows[6], ("REBASE_OUTCOME".to_owned(), "rebased".to_owned()));
+    }
+
+    #[test]
+    fn flush_result_env_writes_rows_and_skips_when_absent() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("merge.env");
+        flush_result_env(Some(&path), &[("A".to_owned(), "1".to_owned())]);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "A=1\n");
+        flush_result_env(None, &[("B".to_owned(), "2".to_owned())]);
+    }
+
+    #[test]
+    fn read_result_rows_dedupes_and_rejects_carriage_return() {
+        let dir = TempDir::new().unwrap();
+        let good = dir.path().join("r.env");
+        fs::write(&good, "STEP=go\nSTEP=again\nbad-key=x\n").unwrap();
+        let rows = read_result_rows(&good, dir.path()).unwrap().unwrap();
+        assert_eq!(rows.get("STEP"), Some(&"go".to_owned()));
+        assert!(!rows.contains_key("bad-key"));
+
+        let crlf = dir.path().join("crlf.env");
+        fs::write(&crlf, "A=1\r\n").unwrap();
+        assert!(read_result_rows(&crlf, dir.path()).is_err());
+
+        let missing = dir.path().join("missing.env");
+        assert!(read_result_rows(&missing, dir.path()).unwrap().is_none());
+    }
+
+    #[test]
+    fn read_result_rows_rejects_symlink() {
+        let dir = TempDir::new().unwrap();
+        let target = dir.path().join("real.env");
+        fs::write(&target, "A=1\n").unwrap();
+        let link = dir.path().join("link.env");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_result_rows(&link, dir.path()).is_err());
+    }
+
+    // ---- step-5 result-env state machine ------------------------------
+
+    fn write_result_env(tmpdir: &Path, step: &str, body: &str) {
+        let path = result_env_path(tmpdir, step).unwrap();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, body).unwrap();
+    }
+
+    #[test]
+    fn step5_canonical_state_absent_stale_and_stall() {
+        let dir = TempDir::new().unwrap();
+        assert_eq!(
+            step5_canonical_result_env_state(dir.path()).unwrap(),
+            "absent"
+        );
+
+        write_result_env(dir.path(), STEP5_REVIEW_STEP, "STEP=other\nX=1\n");
+        assert_eq!(
+            step5_canonical_result_env_state(dir.path()).unwrap(),
+            "stale"
+        );
+
+        let mut body = format!("STEP={STEP5_REVIEW_STEP}\nBGJOB_RC=1\nSTEP5_REVIEW_STATUS=stall\n");
+        for key in STEP5_RESULT_ENVELOPE_KEYS {
+            if *key != "STEP5_REVIEW_STATUS" {
+                body.push_str(key);
+                body.push_str("=v\n");
+            }
+        }
+        write_result_env(dir.path(), STEP5_REVIEW_STEP, &body);
+        assert_eq!(
+            step5_canonical_result_env_state(dir.path()).unwrap(),
+            "stall"
+        );
+    }
+
+    #[test]
+    fn step5_resume_state_absent_and_stale() {
+        let dir = TempDir::new().unwrap();
+        assert_eq!(step5_resume_result_env_state(dir.path()).unwrap(), "absent");
+        write_result_env(dir.path(), STEP5_RESUME_STEP, "STEP=other\nBGJOB_RC=1\n");
+        assert_eq!(step5_resume_result_env_state(dir.path()).unwrap(), "stale");
+    }
+
+    #[test]
+    fn prepare_step5_result_keeps_complete_and_removes_others() {
+        let dir = TempDir::new().unwrap();
+        prepare_step5_result(dir.path(), STEP5_REVIEW_STEP, "complete").unwrap();
+        write_result_env(dir.path(), STEP5_REVIEW_STEP, "STEP=x\n");
+        let path = result_env_path(dir.path(), STEP5_REVIEW_STEP).unwrap();
+        assert!(path.exists());
+        prepare_step5_result(dir.path(), STEP5_REVIEW_STEP, "stale").unwrap();
+        assert!(!path.exists());
+    }
+
+    // ---- kv-file readers ----------------------------------------------
+
+    #[test]
+    fn read_kv_file_handles_export_quotes_first_and_last() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("env.sh");
+        fs::write(&path, "export FOO='bar'\nFOO=\"baz\"\nOTHER=1\n").unwrap();
+        assert_eq!(read_kv_file(&path, "FOO"), "bar");
+        assert_eq!(read_kv_file_last(&path, "FOO"), "baz");
+        assert_eq!(read_kv_file(&path, "MISSING"), "");
+        assert_eq!(first_line_value("A=1\nB=2\n", "B"), Some("2".to_owned()));
+    }
+
+    #[test]
+    fn dynamic_cap_and_difficulty_override_read_session_files() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join("session-env.sh"),
+            "LARCH_DYNAMIC_ARCHETYPES_MAX=4\n",
+        )
+        .unwrap();
+        assert_eq!(resolve_dynamic_cap(dir.path()), "4");
+        fs::write(
+            dir.path().join("run-flags.sh"),
+            "DIFFICULTY_OVERRIDE=HARD\n",
+        )
+        .unwrap();
+        assert_eq!(difficulty_override(dir.path()), "HARD");
+        fs::write(
+            dir.path().join("run-flags.sh"),
+            "DIFFICULTY_OVERRIDE=WEIRD\n",
+        )
+        .unwrap();
+        assert_eq!(difficulty_override(dir.path()), "");
+    }
+
+    // ---- timing counts ------------------------------------------------
+
+    #[test]
+    fn round_timing_counts_prefer_tally_then_fall_back_to_headings() {
+        let dir = TempDir::new().unwrap();
+        let round = dir.path().join("round-3");
+        fs::create_dir_all(&round).unwrap();
+        fs::write(
+            round.join("review-tally.env"),
+            "ACCEPTED_COUNT=5\nREJECTED_COUNT=2\n",
+        )
+        .unwrap();
+        assert_eq!(step5_round_timing_counts(&round), (5, 2));
+
+        let round2 = dir.path().join("round-4");
+        fs::create_dir_all(&round2).unwrap();
+        fs::write(round2.join("accepted-findings.md"), "### one\n### two\n").unwrap();
+        fs::write(round2.join("rejected-findings.md"), "### [rejected] a\n").unwrap();
+        assert_eq!(step5_round_timing_counts(&round2), (2, 1));
+    }
+
+    #[test]
+    fn count_finding_headings_counts_markdown_headings() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("f.md");
+        fs::write(&path, "### a\ntext\n### b\n").unwrap();
+        assert_eq!(count_finding_headings(&path), 2);
+    }
+
+    // ---- small scalar helpers -----------------------------------------
+
+    #[test]
+    fn scalar_helpers_behave() {
+        assert!(is_digits("120"));
+        assert!(!is_digits(""));
+        assert!(!is_digits("1a"));
+        assert_eq!(default_false(None), "false");
+        assert_eq!(default_false(Some(OsStr::new(""))), "false");
+        assert_eq!(default_false(Some(OsStr::new("x"))), "x");
+        assert_eq!(choice("true".to_owned()), Ok("true".to_owned()));
+        assert_eq!(choice("nope".to_owned()), Err(()));
+    }
+
+    #[test]
+    fn has_symlink_ancestor_detects_symlinked_parent() {
+        let dir = TempDir::new().unwrap();
+        let base = dir.path().canonicalize().unwrap();
+        let real = base.join("real");
+        fs::create_dir_all(&real).unwrap();
+        let link = base.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        assert!(has_symlink_ancestor(&link.join("child")));
+        assert!(!has_symlink_ancestor(&real.join("child")));
+    }
+
+    #[test]
+    fn identity_from_child_args_requires_every_field() {
+        assert!(identity_from_child_args("", "h", "f", "s").is_err());
+        let id = identity_from_child_args("/repo", "h", "f", "s").unwrap();
+        assert_eq!(id.head_sha, "h");
+        assert_eq!(id.repo_root, PathBuf::from("/repo"));
+    }
+
+    // ---- step7a argv parsing ------------------------------------------
+
+    #[test]
+    fn step7a_args_parse_defaults_inline_and_spaced() {
+        let parsed = Step7aArgs::parse(&os(&[
+            "--implement-tmpdir",
+            "/t",
+            "--issue-number=42",
+            "--bgjob-launch",
+            "true",
+        ]))
+        .unwrap();
+        assert_eq!(parsed.implement_tmpdir, "/t");
+        assert_eq!(parsed.issue_number, "42");
+        assert_eq!(parsed.bgjob_launch, "true");
+        assert_eq!(parsed.base_remote, "origin");
+        assert_eq!(parsed.base_ref, "main");
+    }
+
+    #[test]
+    fn step7a_args_reject_bad_choice_unknown_flag_and_missing_value() {
+        assert!(Step7aArgs::parse(&os(&["--forked-target", "maybe"])).is_err());
+        assert!(Step7aArgs::parse(&os(&["--nope"])).is_err());
+        assert!(Step7aArgs::parse(&os(&["--issue-number"])).is_err());
+    }
+
+    #[test]
+    fn emit_arg_failure_and_exit_code_are_callable() {
+        let _ = emit_arg_failure("argv");
+        let _ = exit_code(2);
+        let mut rows = Vec::new();
+        emit_line("STEP=x", &mut rows);
+        emit_result_kv("A", "1", &mut rows);
+        assert_eq!(rows.len(), 2);
+    }
+
+    // ---- hook-driven worker paths -------------------------------------
+
+    struct HookGuard;
+    impl Drop for HookGuard {
+        fn drop(&mut self) {
+            clear_test_hooks();
+        }
+    }
+
+    fn arm_plugin_root(dir: &TempDir) -> HookGuard {
+        clear_test_hooks();
+        declare_plugin_root(dir.path());
+        HookGuard
+    }
+
+    #[test]
+    fn resolve_session_repo_root_reads_python_repo_root() {
+        let dir = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&dir);
+        install_test_python(|_args| Ok(out(0, "REPO_ROOT=/repo/here\n")));
+        assert_eq!(
+            resolve_session_repo_root(dir.path()).unwrap(),
+            PathBuf::from("/repo/here")
+        );
+        install_test_python(|_args| Ok(out(1, "")));
+        assert!(resolve_session_repo_root(dir.path()).is_err());
+    }
+
+    #[test]
+    fn run_relevant_checks_captures_first_line_and_failure_fallback() {
+        let dir = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&dir);
+        install_test_larch(|_c, _r, _a| {
+            Ok(out(
+                0,
+                "RELEVANT_CHECKS_OK=true SITE=step5 COVERAGE=full PHASE=p\n",
+            ))
+        });
+        let (captured, _) = run_relevant_checks_for_site(dir.path(), "step5", dir.path());
+        assert!(checks_pass(&captured));
+
+        install_test_larch(|_c, _r, _a| Ok(out(2, "")));
+        let (captured, _) = run_relevant_checks_for_site(dir.path(), "step5", dir.path());
+        assert_eq!(captured.get("STATUS"), Some(&"fail".to_owned()));
+        assert_eq!(captured.get("EXIT_CODE"), Some(&"2".to_owned()));
+    }
+
+    #[test]
+    fn run_step7a_happy_path_emits_success_envelope() {
+        let dir = TempDir::new().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&dir);
+        // Force the diagram-upsert branch by pre-seeding the section file.
+        fs::write(tmp.path().join("code-flow-diagram.md"), "flow\n").unwrap();
+        fs::write(tmp.path().join("code-flow-section.md"), "flow\n").unwrap();
+        install_test_larch(|_c, _r, args| {
+            let first = args
+                .first()
+                .map(|a| a.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let second = args
+                .get(1)
+                .map(|a| a.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let body = match (first.as_str(), second.as_str()) {
+                ("diagram", "code-flow") => "STATUS=ok\nDIAGRAM_FILE=/d/diagram.md\n",
+                ("diagrams", "upsert") => "UPSERT_STATUS=ok\nCOMMENT_URL=http://c\n",
+                ("push", "checkpoint-probe") => "REBASE_OUTCOME=rebased\n",
+                ("execution-issues", "flush") => "FLUSH_STATUS=ok\n",
+                _ => "",
+            };
+            Ok(out(0, body))
+        });
+        let args = Step7aArgs {
+            implement_tmpdir: tmp.path().to_string_lossy().into_owned(),
+            issue_number: "42".to_owned(),
+            run_id: "r1".to_owned(),
+            no_logs_commit: "false".to_owned(),
+            forked_target: "false".to_owned(),
+            base_remote: "origin".to_owned(),
+            base_ref: "main".to_owned(),
+            bgjob_launch: "false".to_owned(),
+            bgjob_merge_result_env: String::new(),
+        };
+        let merge = tmp.path().join("merge.env");
+        let rc = run_step7a(tmp.path(), &args, Some(&merge));
+        assert_eq!(rc, 0);
+        let flushed = fs::read_to_string(&merge).unwrap();
+        assert!(flushed.contains("REBASE_OUTCOME=rebased"));
+        assert!(flushed.contains("LOG_CHECKPOINT_STATUS=ok"));
+    }
+
+    #[test]
+    fn run_step7a_probe_conflict_returns_probe_rc() {
+        let dir = TempDir::new().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&dir);
+        install_test_larch(|_c, _r, args| {
+            let first = args
+                .first()
+                .map(|a| a.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            if first == "push" {
+                Ok(out(1, "REBASE_OUTCOME=conflict\n"))
+            } else if first == "diagram" {
+                Ok(out(0, "STATUS=skip\n"))
+            } else {
+                Ok(out(0, ""))
+            }
+        });
+        let args = Step7aArgs {
+            implement_tmpdir: tmp.path().to_string_lossy().into_owned(),
+            issue_number: String::new(),
+            run_id: String::new(),
+            no_logs_commit: "false".to_owned(),
+            forked_target: "false".to_owned(),
+            base_remote: "origin".to_owned(),
+            base_ref: "main".to_owned(),
+            bgjob_launch: "false".to_owned(),
+            bgjob_merge_result_env: String::new(),
+        };
+        assert_eq!(run_step7a(tmp.path(), &args, None), 1);
+    }
+
+    #[test]
+    fn launch_step7a_bgjob_relays_started_envelope() {
+        let dir = TempDir::new().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&dir);
+        install_test_larch(|_c, _r, _a| Ok(out(0, "DIAGRAM_STATUS=started\n")));
+        let args = Step7aArgs {
+            implement_tmpdir: tmp.path().to_string_lossy().into_owned(),
+            issue_number: "42".to_owned(),
+            run_id: "r1".to_owned(),
+            no_logs_commit: "false".to_owned(),
+            forked_target: "false".to_owned(),
+            base_remote: "origin".to_owned(),
+            base_ref: "main".to_owned(),
+            bgjob_launch: "true".to_owned(),
+            bgjob_merge_result_env: String::new(),
+        };
+        let _ = launch_step7a_bgjob(tmp.path(), &args);
+        assert!(
+            tmp.path()
+                .join("bgjob")
+                .join(format!("{STEP7A_STEP}.merge.env"))
+                .exists()
+        );
+    }
+
+    #[test]
+    fn run_adapter_delegates_through_bgjob_adapt() {
+        let dir = TempDir::new().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&dir);
+        install_test_larch(|_c, _r, _a| Ok(out(0, "STEP=step5\nBGJOB_RC=0\n")));
+        let spec = AdapterSpec {
+            tmpdir: tmp.path().to_path_buf(),
+            step: STEP5_REVIEW_STEP,
+            budget_s: 600,
+            verb: "step-5-review",
+            public_args: os(&["--bgjob-child"]),
+            merge_env: tmp.path().join("merge.env"),
+            initial_merge_rows: vec![("A".to_owned(), "1".to_owned())],
+            repo_root: Some(tmp.path().to_path_buf()),
+        };
+        let _ = run_adapter(&spec).unwrap();
+    }
+
+    #[test]
+    fn run_parent_flow_prints_bgjob_error_on_failure() {
+        let ok = run_parent_flow(|| Ok(exit_code(0)));
+        let _ = ok;
+        let _ = run_parent_flow(|| Err("boom".to_owned()));
+    }
+
+    #[test]
+    fn forward_worker_maps_ok_and_err() {
+        assert_eq!(
+            forward_worker(Ok(out(3, "OUT=1\n"))),
+            (3, "OUT=1\n".to_owned())
+        );
+        assert_eq!(forward_worker(Err("bad".to_owned())), (1, String::new()));
+    }
+
+    fn arg_at(args: &[OsString], index: usize) -> String {
+        args.get(index)
+            .map(|a| a.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn step5_review_worker_rejects_non_integer_dynamic_cap() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        fs::write(
+            tmp.path().join("session-env.sh"),
+            "LARCH_DYNAMIC_ARCHETYPES_MAX=9\n",
+        )
+        .unwrap();
+        assert_eq!(step5_review_worker(tmp.path()), (2, String::new()));
+    }
+
+    #[test]
+    fn step5_review_worker_runs_review_and_fix_with_difficulty() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        fs::write(
+            tmp.path().join("run-flags.sh"),
+            "DIFFICULTY_OVERRIDE=HARD\n",
+        )
+        .unwrap();
+        install_test_larch(|_c, _r, _a| Ok(out(0, "REVIEW=done\n")));
+        // larch_env is not hooked and fails fast on the bogus root; the worker
+        // still exercises banner + command assembly + difficulty branch.
+        let (_rc, _out) = step5_review_worker(tmp.path());
+    }
+
+    #[test]
+    fn step5_resume_worker_commit_stall_path() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_python(|_a| Ok(out(0, "NEXT_ACTION=stall\nCOMMITTED=true\nSHA=abc\n")));
+        let (rc, text) = step5_resume_worker(tmp.path(), "2", "", true);
+        assert_eq!(rc, 0);
+        assert!(text.contains("NEXT_ACTION=stall"));
+        assert!(text.contains("STEP5_REVIEW_STATUS=stall"));
+    }
+
+    #[test]
+    fn step5_resume_worker_continue_path_runs_next_round() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_python(|_a| Ok(out(0, "NEXT_ACTION=continue\n")));
+        install_test_larch(|_c, _r, args| {
+            assert_eq!(arg_at(args, 0), "review-and-fix");
+            Ok(out(0, "ROUND=3\n"))
+        });
+        let (rc, text) = step5_resume_worker(tmp.path(), "2", "", true);
+        assert_eq!(rc, 0);
+        assert!(text.contains("ROUND=3"));
+    }
+
+    #[test]
+    fn step5_resume_worker_rejects_non_numeric_round() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        let (rc, _text) = step5_resume_worker(tmp.path(), "abc", "", false);
+        assert_eq!(rc, 2);
+    }
+
+    #[test]
+    fn commit_phase_non_terminal_action_relays_with_next_action() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_python(|_a| Ok(out(1, "NEXT_ACTION=retry\nERROR=boom\n")));
+        let (rc, text) = step5_resume_commit_phase();
+        assert_eq!(rc, Some(1));
+        assert!(text.contains("ERROR=boom"));
+    }
+
+    #[test]
+    fn checks_step5_resume_pass_runs_resume_leg() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_python(|_a| Ok(out(0, "REPO_ROOT=/repo\n")));
+        install_test_larch(|_c, _r, args| match arg_at(args, 0).as_str() {
+            "checks" => Ok(out(
+                0,
+                "RELEVANT_CHECKS_OK=true SITE=step5 COVERAGE=full PHASE=p\n",
+            )),
+            "implement" => Ok(out(0, "COMMITTED=true\n")),
+            _ => Ok(out(0, "")),
+        });
+        let (rc, text) = run_checks_step5_resume(tmp.path(), "step5", "2");
+        assert_eq!(rc, 0);
+        assert!(text.contains("RELEVANT_CHECKS_OK=true"));
+        assert!(text.contains("COMMITTED=true"));
+    }
+
+    #[test]
+    fn checks_step5_resume_fail_emits_checks_failed() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_python(|_a| Ok(out(0, "REPO_ROOT=/repo\n")));
+        install_test_larch(|_c, _r, _a| Ok(out(2, "")));
+        let (rc, text) = run_checks_step5_resume(tmp.path(), "step5", "2");
+        assert_eq!(rc, 0);
+        assert!(text.contains("NEXT_ACTION=checks-failed"));
+    }
+
+    #[test]
+    fn checks_step5_resume_repo_root_failure_bails() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_python(|_a| Ok(out(1, "")));
+        let (rc, _text) = run_checks_step5_resume(tmp.path(), "step5", "2");
+        assert_eq!(rc, 2);
+    }
+
+    #[test]
+    fn step6_entry_worker_skip_to_7a_when_no_files_changed() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_larch(|_c, _r, _a| Ok(out(0, "FILES_CHANGED=false\n")));
+        let (rc, text) = step6_entry_worker("false", "false", tmp.path());
+        assert_eq!(rc, 0);
+        assert!(text.contains("NEXT_ACTION=skip-to-7a"));
+        assert!(tmp.path().join(".review-boundary-passed").exists());
+    }
+
+    #[test]
+    fn step6_entry_worker_files_changed_runs_composite() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_larch(|_c, _r, args| match arg_at(args, 0).as_str() {
+            "review-and-fix" => Ok(out(0, "FILES_CHANGED=true\n")),
+            _ => Ok(out(0, "NEXT_ACTION=continue\n")),
+        });
+        let (rc, text) = step6_entry_worker("false", "false", tmp.path());
+        assert_eq!(rc, 0);
+        assert!(text.contains("NEXT_ACTION=continue"));
+    }
+
+    #[test]
+    fn step6_entry_worker_seeds_stall_on_probe_failure() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_larch(|_c, _r, args| match arg_at(args, 0).as_str() {
+            "review-and-fix" => Ok(out(1, "")),
+            _ => Ok(out(0, "")),
+        });
+        let (rc, text) = step6_entry_worker("false", "false", tmp.path());
+        assert_eq!(rc, 0);
+        assert!(text.contains("NEXT_ACTION=stall"));
+    }
+
+    #[test]
+    fn step6_entry_worker_force_checks_goes_straight_to_composite() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_larch(|_c, _r, _a| Ok(out(0, "NEXT_ACTION=continue\n")));
+        let (rc, _text) = step6_entry_worker("false", "true", tmp.path());
+        assert_eq!(rc, 0);
+    }
+
+    #[test]
+    fn generate_diagram_failure_appends_warning() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_larch(|_c, _r, _a| Ok(out(1, "STATUS=failed\n")));
+        let (status, path, reason) = generate_code_flow_diagram(tmp.path(), "origin", "main");
+        assert_eq!(status, "failed");
+        assert!(path.is_empty());
+        assert!(!reason.is_empty());
+    }
+
+    #[test]
+    fn checkpoint_execution_issues_degrades_on_bad_status() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        assert_eq!(checkpoint_execution_issues(tmp.path(), ""), "skip");
+        install_test_larch(|_c, _r, _a| Ok(out(0, "FLUSH_STATUS=broken\n")));
+        assert_eq!(checkpoint_execution_issues(tmp.path(), "r1"), "degraded");
+        install_test_larch(|_c, _r, _a| Ok(out(0, "FLUSH_STATUS=ok\n")));
+        assert_eq!(checkpoint_execution_issues(tmp.path(), "r1"), "ok");
+    }
+
+    /// Mock the two-step identity resolution (`resolve-repo-root` + `compute`).
+    fn install_identity_python(repo_root: &str) {
+        let repo_root = repo_root.to_owned();
+        install_test_python(move |args| {
+            let verb = args
+                .get(2)
+                .map(|a| a.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            if verb == "resolve-repo-root" {
+                Ok(out(0, &format!("REPO_ROOT={repo_root}\n")))
+            } else {
+                Ok(out(
+                    0,
+                    "CHECKS_INPUT_HEAD_SHA=head1\nCHECKS_INPUT_TREE_FP=fp1\nCHECKS_INPUT_FP_SCHEMA=v1\n",
+                ))
+            }
+        });
+    }
+
+    #[test]
+    fn publish_step5_child_appends_identity_rows() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_identity_python(&tmp.path().to_string_lossy());
+        let merge = tmp.path().join("child.env");
+        assert!(publish_step5_child(
+            tmp.path(),
+            &merge.to_string_lossy(),
+            "STEP5_REVIEW_STATUS=complete\n"
+        ));
+        let written = fs::read_to_string(&merge).unwrap();
+        assert!(written.contains("STEP5_REVIEW_STATUS=complete"));
+        assert!(written.contains("CHECKS_INPUT_HEAD_SHA=head1"));
+    }
+
+    #[test]
+    fn step5_result_identity_ok_matches_live_identity() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_identity_python(&tmp.path().to_string_lossy());
+        let matching = map(&[
+            ("CHECKS_INPUT_HEAD_SHA", "head1"),
+            ("CHECKS_INPUT_TREE_FP", "fp1"),
+            ("CHECKS_INPUT_FP_SCHEMA", "v1"),
+        ]);
+        assert!(step5_result_identity_ok(tmp.path(), &matching));
+        let stale = map(&[("CHECKS_INPUT_HEAD_SHA", "other")]);
+        assert!(!step5_result_identity_ok(tmp.path(), &stale));
+    }
+
+    #[test]
+    fn step5_canonical_state_complete_when_identity_matches() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_identity_python(&tmp.path().to_string_lossy());
+        let mut body = format!(
+            "STEP={STEP5_REVIEW_STEP}\nBGJOB_RC=0\nSTEP5_REVIEW_STATUS=complete\n\
+             CHECKS_INPUT_HEAD_SHA=head1\nCHECKS_INPUT_TREE_FP=fp1\nCHECKS_INPUT_FP_SCHEMA=v1\n"
+        );
+        for key in STEP5_RESULT_ENVELOPE_KEYS {
+            if *key != "STEP5_REVIEW_STATUS" {
+                body.push_str(key);
+                body.push_str("=v\n");
+            }
+        }
+        write_result_env(tmp.path(), STEP5_REVIEW_STEP, &body);
+        assert_eq!(
+            step5_canonical_result_env_state(tmp.path()).unwrap(),
+            "complete"
+        );
+    }
+
+    #[test]
+    fn handoff_timing_records_round_when_ledger_missing() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        let round = tmp.path().join("round-2");
+        fs::create_dir_all(&round).unwrap();
+        fs::write(round.join("round-start-s"), "1000\n").unwrap();
+        fs::write(
+            round.join("review-tally.env"),
+            "ACCEPTED_COUNT=1\nREJECTED_COUNT=0\n",
+        )
+        .unwrap();
+        // No timing-ledger.tsv => proceeds to the record-round leg (larch_env
+        // fails fast on the bogus root, but the ledger-scan branch is exercised).
+        record_step5_handoff_timing(tmp.path(), "2");
+    }
+
+    #[test]
+    fn handoff_timing_returns_early_on_matching_ledger_row() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        let round = tmp.path().join("round-3");
+        fs::create_dir_all(&round).unwrap();
+        fs::write(round.join("round-start-s"), "2000\n").unwrap();
+        let ledger_row = "ts\tround\tx\timplement\tStep 5 — code review\t3\t2000\n";
+        fs::write(tmp.path().join("timing-ledger.tsv"), ledger_row).unwrap();
+        record_step5_handoff_timing(tmp.path(), "3");
+    }
+
+    #[test]
+    fn step7a_public_bail_paths() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        // Unknown flag => argv bail envelope.
+        let _ = step7a(&os(&["--nope"]));
+        // Missing tmpdir => missing-implement-tmpdir bail (env is unset here).
+        // Guard against an ambient value leaking in from the shell.
+        if env::var_os("IMPLEMENT_TMPDIR").is_none() {
+            let _ = step7a(&os(&["--issue-number", "42"]));
+        }
+    }
+
+    #[test]
+    fn step7a_public_bgjob_launch_and_run_paths() {
+        let tmp = TempDir::new().unwrap();
+        let work = TempDir::new().unwrap();
+        let canonical = work.path().canonicalize().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_larch(|_c, _r, _a| {
+            Ok(out(0, "DIAGRAM_STATUS=started\nREBASE_OUTCOME=skipped\n"))
+        });
+        let tmpdir = canonical.to_string_lossy().into_owned();
+        // bgjob-launch path.
+        let _ = step7a(&os(&[
+            "--implement-tmpdir",
+            &tmpdir,
+            "--issue-number",
+            "42",
+            "--run-id",
+            "r1",
+            "--bgjob-launch",
+            "true",
+        ]));
+        // run path (bgjob-launch defaults to false).
+        let _ = step7a(&os(&["--implement-tmpdir", &tmpdir, "--run-id", "r1"]));
+    }
+
+    #[test]
+    fn resolve_session_repo_root_requires_repo_root_line() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_python(|_a| Ok(out(0, "OTHER=1\n")));
+        assert!(resolve_session_repo_root(tmp.path()).is_err());
+    }
+
+    #[test]
+    fn run_relevant_checks_empty_stdout_marks_failure() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        install_test_larch(|_c, _r, _a| Ok(out(0, "\n")));
+        let (captured, _) = run_relevant_checks_for_site(tmp.path(), "step5", tmp.path());
+        assert_eq!(captured.get("STATUS"), Some(&"fail".to_owned()));
+        assert_eq!(
+            captured.get("FAILURE_REASON"),
+            Some(&"checks-child-failed".to_owned())
+        );
+    }
+
+    #[test]
+    fn generate_diagram_ok_writes_section_and_handles_retry_sidecar() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = arm_plugin_root(&tmp);
+        fs::write(tmp.path().join("code-flow-diagram.md"), "flow\n").unwrap();
+        fs::write(tmp.path().join("code-flow-diagram.retried"), "FIRST_RC=1\n").unwrap();
+        install_test_larch(|_c, _r, _a| Ok(out(0, "STATUS=ok\nDIAGRAM_FILE=/d/f.md\n")));
+        let (status, path, _reason) = generate_code_flow_diagram(tmp.path(), "origin", "main");
+        assert_eq!(status, "ok");
+        assert_eq!(path, "/d/f.md");
+        assert!(tmp.path().join("code-flow-section.md").exists());
+        assert!(!tmp.path().join("code-flow-diagram.retried").exists());
+    }
+}

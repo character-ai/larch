@@ -80,6 +80,30 @@ pub fn delegate_verified_larch(
     run_verified_larch_in(cwd, root, args)
 }
 
+/// Answer every `delegate_python` call from `hook` for this thread (test only).
+#[cfg(test)]
+pub fn install_test_python(
+    hook: impl Fn(&[OsString]) -> Result<ProcessOutput, String> + Send + Sync + 'static,
+) {
+    TEST_PYTHON.with(|slot| *slot.borrow_mut() = Some(std::sync::Arc::new(hook)));
+}
+
+/// Answer every `delegate_verified_larch` call from `hook` for this thread (test only).
+#[cfg(test)]
+pub fn install_test_larch(
+    hook: impl Fn(&Path, &Path, &[OsString]) -> Result<ProcessOutput, String> + Send + Sync + 'static,
+) {
+    TEST_LARCH.with(|slot| *slot.borrow_mut() = Some(std::sync::Arc::new(hook)));
+}
+
+/// Restore both dispatch seams and the child seam for this thread (test only).
+#[cfg(test)]
+pub fn clear_test_hooks() {
+    TEST_PYTHON.with(|slot| *slot.borrow_mut() = None);
+    TEST_LARCH.with(|slot| *slot.borrow_mut() = None);
+    crate::implement_child_seam::clear_hooks();
+}
+
 /// `implement recovery-paths` compatibility command.
 pub fn recovery_paths(arguments: &[OsString]) -> ExitCode {
     let parsed = match parse_required_with_help(
