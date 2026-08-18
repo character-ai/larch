@@ -5,4 +5,4 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
-exec python3 "$PLUGIN_ROOT/python/cli.py" implement step-6-entry "$@"
+exec "$PLUGIN_ROOT/scripts/larch.sh" implement step-6-entry "$@"

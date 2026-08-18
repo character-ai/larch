@@ -15,7 +15,6 @@ from larch.implement import (
     dispatch_commit_route,
     dispatch_manifest,
     dispatch_ship,
-    step_7a,
 )
 
 
@@ -47,15 +46,6 @@ def test_whitespace_kv_first_wins_and_skips_trailing_prose() -> None:
         "STATUS": "fail",
         "FAILURE_REASON": "x",
     }
-
-
-def test_terminal_action_any_matching_next_action() -> None:
-    assert dispatch_commit_route._terminal_action_in_output(
-        "NEXT_ACTION=continue\nNEXT_ACTION=stall\n"
-    )
-    assert not dispatch_commit_route._terminal_action_in_output(
-        "NEXT_ACTION=keep-going\nOTHER=1\n"
-    )
 
 
 def test_relay_commit_kvs_filters_allowed_keys(capsys: pytest.CaptureFixture[str]) -> None:
@@ -90,36 +80,3 @@ def test_assessment_handoff_rejects_duplicate_keys(tmp_path: Path) -> None:
     lines, fields = dispatch_ship._read_handoff_fields(handoff=clean)
     assert fields == {"OUTCOME": "ok", "DETAIL": "x"}
     assert "ignored" in lines
-
-
-def test_step_7a_first_rc_last_wins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    sidecar = tmp_path / "code-flow-diagram.retried"
-    _ = sidecar.write_text("FIRST_RC=1\nFIRST_RC=42\n", encoding="utf-8")
-    issues: list[str] = []
-
-    def fake_generate(
-        implement_tmpdir: Path,
-        *,
-        base_remote: str,
-        base_ref: str,
-    ) -> object:
-        _ = (implement_tmpdir, base_remote, base_ref)
-        return SimpleNamespace(
-            exit_code=0,
-            status="skipped",
-            diagram_file="",
-            reason="",
-        )
-
-    def fake_append(**kwargs: object) -> None:
-        issues.append(str(kwargs.get("entry", "")))
-
-    monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
-    monkeypatch.setattr(step_7a.run_log_batch, "append_execution_issue", fake_append)
-    _ = step_7a._generate_code_flow_diagram(
-        tmp_path,
-        base_remote="origin",
-        base_ref="main",
-    )
-    assert any("rc=42" in entry for entry in issues)
-    assert not sidecar.exists()

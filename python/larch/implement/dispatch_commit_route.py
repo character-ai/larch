@@ -5,41 +5,30 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import io
 import os
 import re
 import subprocess
 import sys
-import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
 from larch import io as larch_io
 from larch.bgjob import model as bgjob_model
-from larch.bgjob import registry as bgjob_registry
-from larch.core import config
 from larch.core import proc
 from larch.core import redact
 from larch.core import rust_runtime
 from larch.core.repo_roots import larch_entrypoint
 from larch.errors import ShipError
 from larch.implement import checks
-from larch.implement import checks_result_identity
 from larch.implement import ship
 from larch.implement import scope_disposition
 from larch.implement.self_edit_log import file_sha256, read_self_edits
-from larch.core.findings import parse_findings
 from larch.implement.dispatch_helpers import (
-    _current_cli_path,
     _emit_kv,
     _forward_child_output_to_stderr,
-    _forward_result,
-    _invoke_cli,
     _invoke_larch,
     _read_kv_file,
-    _read_session_key_default,
     _rehydrate_larch_triplet,
     _rehydrate_plugin_root,
     _run,
@@ -50,29 +39,25 @@ from larch.implement.dispatch_helpers import (
     porcelain_status_paths_z,
 )
 from larch.implement.dispatch_helpers import _resolve_repo_root as _resolve_repo_root  # noqa: PLC0414 - re-exported for test monkeypatching  # pylint: disable=useless-import-alias  # re-exported for test monkeypatching
+from larch.implement.dispatch_helpers import _invoke_cli as _invoke_cli  # noqa: PLC0414 - re-exported for test monkeypatching
 from larch.implement.dispatch_leg import (
     _CHECKS_DEADLINE_MS,
     _COMMIT_ROUTE_DEADLINE_MS,
     _COMMIT_ROUTE_FAILURE_LOG_MAX,
     _COMMIT_ROUTE_SUCCESS_OUTCOMES,
     _STEP5_RESUME_COMMIT_RELAY_KEYS,
-    _STEP5_RESUME_DEADLINE_MS,
     _run_cli_capture,
-    _run_larch_capture,
     _run_leg_with_timeout,
     _timeout_stderr,
     _timeout_stdout,
     CommitRouteOutcome,
-    TIMING_LEDGER_MIN_COLUMNS,
 )
 from larch.implement.dispatch_helpers import _derive_pathspec_via_recovery_paths
+from larch.implement.dispatch_helpers import _current_cli_path
 from larch.report.progress_file import resolve_owned_run_id
 
 
-_STEP5_REVIEW_STEP = "implement-step5-review"
-_STEP5_RESUME_STEP = "implement-step5-resume"
 _STEP6_CHECKS_STEP = "implement-step6-checks"
-_CHECKS_TERMINAL_ACTIONS = frozenset({"continue", "stall", "checks-failed", "skip-to-7a"})
 
 
 @dataclass(frozen=True)
@@ -84,20 +69,6 @@ class BgjobRequest:
     public_args: tuple[str, ...]
     merge_result_env: Path
     initial_merge_rows: tuple[tuple[str, str], ...] = ()
-
-
-@dataclass(frozen=True)
-class IdentityChildRequest:
-    tmpdir: Path
-    step: str
-    merge_env: Path
-    launch: checks_result_identity.ChecksInputIdentity
-    worker: Callable[[], int]
-    allow_post_mutation: bool
-
-
-def _bgjob_result_path(*, tmpdir: Path, step: str) -> Path:
-    return bgjob_model.result_env_path(tmpdir=tmpdir, step=step)
 
 
 def _safe_merge_env(*, tmpdir: Path, raw: str | Path) -> Path:
@@ -196,69 +167,6 @@ def _run_adapter(
     return result.returncode
 
 
-def _capture_worker(worker: Callable[[], int]) -> tuple[int, str]:
-    output = io.StringIO()
-    with contextlib.redirect_stdout(output):
-        rc = worker()
-    return int(rc), output.getvalue()
-
-
-def _stdout_is_merge_rows(text: str) -> bool:
-    for line in text.splitlines():
-        if not line:
-            continue
-        key, separator, _value = line.partition("=")
-        if not separator or re.fullmatch(r"[A-Z0-9_]+", key) is None:
-            return False
-    return True
-
-
-def _publish_child_output(*, tmpdir: Path, merge_env: Path, text: str) -> None:
-    if not _stdout_is_merge_rows(text):
-        raise ValueError("child output is not a KV stream")
-    safe_path = _safe_merge_env(tmpdir=tmpdir, raw=merge_env)
-    larch_io.trusted_atomic_write(
-        path=safe_path,
-        text=text if not text or text.endswith("\n") else f"{text}\n",
-        root=tmpdir,
-        mode=0o600,
-    )
-
-
-def _unlink_safe_file(*, path: Path, root: Path) -> None:
-    if path.is_symlink() or (path.exists() and not path.is_file()):
-        raise ValueError("unsafe result file")
-    _ = bgjob_model.ensure_under(path, root, label="result file")
-    with contextlib.suppress(FileNotFoundError):
-        path.unlink()
-    if path.exists() or path.is_symlink():
-        raise OSError("result file clear failed")
-
-
-def _read_result_rows(*, path: Path, tmpdir: Path) -> dict[str, str] | None:
-    if path.is_symlink() or (path.exists() and not path.is_file()):
-        raise ValueError("unsafe result file")
-    _ = bgjob_model.ensure_under(path, tmpdir, label="result file")
-    if not path.exists():
-        return None
-    return larch_io.read_kvs(
-        path,
-        first_wins=True,
-        reject_cr=True,
-        reject_symlink=True,
-        key_pattern=r"^[A-Z0-9_]+$",
-    )
-
-
-def _live_registry_entry(*, tmpdir: Path, step: str) -> bgjob_model.RegistryEntry | None:
-    _path, entry = bgjob_registry.read_for(tmpdir=tmpdir, step=step)
-    if entry is None:
-        return None
-    if bgjob_registry.daemon_liveness(entry).live or bgjob_registry.child_liveness(entry).live:
-        return entry
-    return None
-
-
 def _checks_step_for_site(site: str) -> tuple[str, int]:
     if site == "step3":
         return "implement-step3-checks", 15600
@@ -267,124 +175,6 @@ def _checks_step_for_site(site: str) -> tuple[str, int]:
     if site == "step6":
         return _STEP6_CHECKS_STEP, 10800
     return f"implement-checks-{site}", 10800
-
-
-def _checks_launch_identity(*, tmpdir: Path) -> checks_result_identity.ChecksInputIdentity:
-    repo_root = checks_result_identity.resolve_session_repo_root(tmpdir)
-    return checks_result_identity.compute_identity(repo_root=repo_root)
-
-
-def _prepare_checks_rejoin(
-    *,
-    tmpdir: Path,
-    step: str,
-    merge_env: Path,
-    identity: checks_result_identity.ChecksInputIdentity,
-) -> None:
-    result_env = _bgjob_result_path(tmpdir=tmpdir, step=step)
-    live_entry = _live_registry_entry(tmpdir=tmpdir, step=step)
-    if live_entry is not None:
-        seed = checks_result_identity.classify_live_seed(merge_env=merge_env, live=identity)
-        if seed.state != config.CHECKS_RESULT_STATE_MATCHING:
-            raise ValueError(f"live checks job identity mismatch: {seed.state}")
-        completed = checks_result_identity.classify_completed_result(
-            result_env=result_env,
-            step=step,
-            live=identity,
-            terminal_actions=_CHECKS_TERMINAL_ACTIONS,
-        )
-        if completed.state not in {
-            config.CHECKS_RESULT_STATE_MATCHING,
-            config.CHECKS_RESULT_STATE_ABSENT,
-        }:
-            _unlink_safe_file(path=result_env, root=tmpdir)
-        return
-    completed = checks_result_identity.classify_completed_result(
-        result_env=result_env,
-        step=step,
-        live=identity,
-        terminal_actions=_CHECKS_TERMINAL_ACTIONS,
-    )
-    if completed.state == config.CHECKS_RESULT_STATE_MATCHING:
-        return
-    if completed.state == config.CHECKS_RESULT_STATE_UNSAFE:
-        raise ValueError(completed.reason)
-    _unlink_safe_file(path=result_env, root=tmpdir)
-    _unlink_safe_file(path=merge_env, root=tmpdir)
-
-
-def _identity_from_child_args(args: argparse.Namespace) -> checks_result_identity.ChecksInputIdentity:
-    if not args.repo_root or not args.launch_head or not args.launch_fp or not args.launch_schema:
-        raise checks_result_identity.ChecksIdentityError("launch identity args required in child mode")
-    repo_root = checks_result_identity.validate_repo_root(args.repo_root)
-    return checks_result_identity.ChecksInputIdentity(
-        head_sha=args.launch_head,
-        tree_fingerprint=args.launch_fp,
-        fingerprint_schema=args.launch_schema,
-        repo_root=repo_root,
-    )
-
-
-def _terminal_action_in_output(text: str) -> bool:
-    parsed = larch_io.parse_kv(
-        "\n".join(text.splitlines()),
-        duplicate_policy="all",
-        allowed_keys={"NEXT_ACTION"},
-    )
-    return any(value in _CHECKS_TERMINAL_ACTIONS for value in parsed.get("NEXT_ACTION", []))
-
-
-def _publish_identity_child(request: IdentityChildRequest) -> int:
-    try:
-        _ = checks_result_identity.validate_child_identity(
-            repo_root=request.launch.repo_root,
-            expected=request.launch,
-        )
-    except checks_result_identity.ChecksIdentityError:
-        rows = checks_result_identity.integrity_failure_rows(
-            step=request.step,
-            reason="pre-checks-identity-mismatch",
-        )
-        _publish_child_output(
-            tmpdir=request.tmpdir,
-            merge_env=request.merge_env,
-            text=larch_io.format_kvs(rows),
-        )
-        return 1
-    rc, output = _capture_worker(request.worker)
-    try:
-        if request.allow_post_mutation and _terminal_action_in_output(output):
-            final_identity = checks_result_identity.compute_identity(
-                repo_root=request.launch.repo_root
-            )
-        else:
-            final_identity = checks_result_identity.validate_child_identity(
-                repo_root=request.launch.repo_root,
-                expected=request.launch,
-            )
-    except checks_result_identity.ChecksIdentityError:
-        rows = checks_result_identity.integrity_failure_rows(
-            step=request.step,
-            reason="pre-publish-identity-mismatch",
-        )
-        _publish_child_output(
-            tmpdir=request.tmpdir,
-            merge_env=request.merge_env,
-            text=larch_io.format_kvs(rows),
-        )
-        return 1
-    merged = output
-    if merged and not merged.endswith("\n"):
-        merged += "\n"
-    merged += larch_io.format_kvs(final_identity.as_rows())
-    _publish_child_output(
-        tmpdir=request.tmpdir,
-        merge_env=request.merge_env,
-        text=merged,
-    )
-    sys.stdout.write(output)
-    return rc
-
 
 
 def _relay_scope_coverage(implement_tmpdir: Path) -> int:
@@ -445,217 +235,6 @@ def _write_terminal_sentinel(*, tmpdir: Path, sentinel: str) -> None:
     with contextlib.suppress(OSError):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
-
-
-def _step5_result_identity_rows(tmpdir: Path) -> str:
-    """Result-write-time identity rows for Step 5 reuse validation.
-
-    Step 5 mutates the tree (the coder commits fixes), so the identity is computed
-    at publish time, not launch time, to permit exact reuse when nothing changed
-    since the review completed. Returns "" when identity cannot be computed, so the
-    result is published without identity and a later re-entry fails closed to a re-run.
-    """
-    try:
-        identity = _checks_launch_identity(tmpdir=tmpdir)
-    except checks_result_identity.ChecksIdentityError:
-        return ""
-    return larch_io.format_kvs(identity.as_rows())
-
-
-def _publish_step5_child(*, tmpdir: Path, merge_env_raw: str, output: str) -> bool:
-    """Publish Step 5 child output plus result-write-time identity; True on success."""
-    identity_rows = _step5_result_identity_rows(tmpdir)
-    merged = output
-    if identity_rows:
-        if merged and not merged.endswith("\n"):
-            merged += "\n"
-        merged += identity_rows
-    try:
-        _publish_child_output(
-            tmpdir=tmpdir,
-            merge_env=_safe_merge_env(tmpdir=tmpdir, raw=merge_env_raw),
-            text=merged,
-        )
-    except (OSError, UnicodeError, ValueError):
-        return False
-    return True
-
-
-def _step5_result_identity_ok(*, tmpdir: Path, rows: dict[str, str]) -> bool:
-    """True when a completed Step 5 result env matches the live repository identity."""
-    try:
-        live = _checks_launch_identity(tmpdir=tmpdir)
-    except checks_result_identity.ChecksIdentityError:
-        return False
-    return checks_result_identity.result_identity_matches(rows, live=live)
-
-
-def step5_canonical_result_env_state(*, tmpdir: Path) -> str:
-    """Classify only the canonical Step 5 review result grammar."""
-    rows = _read_result_rows(
-        path=_bgjob_result_path(tmpdir=tmpdir, step=_STEP5_REVIEW_STEP),
-        tmpdir=tmpdir,
-    )
-    if rows is None:
-        return "absent"
-    status = rows.get("STEP5_REVIEW_STATUS", "")
-    if rows.get("STEP") != _STEP5_REVIEW_STEP or not set(config.STEP5_RESULT_ENVELOPE_KEYS).issubset(rows):
-        return "stale"
-    if rows.get(config.BGJOB_RC_KEY) == "0" and status == "complete":
-        if not _step5_result_identity_ok(tmpdir=tmpdir, rows=rows):
-            return "stale"
-        return "complete"
-    if status == "stall":
-        return "stall"
-    return "stale"
-
-
-def step5_resume_result_env_state(*, tmpdir: Path) -> str:
-    """Classify the distinct Step 5 resume result grammar."""
-    rows = _read_result_rows(
-        path=_bgjob_result_path(tmpdir=tmpdir, step=_STEP5_RESUME_STEP),
-        tmpdir=tmpdir,
-    )
-    if rows is None:
-        return "absent"
-    if (
-        rows.get("STEP") == _STEP5_RESUME_STEP
-        and rows.get(config.BGJOB_RC_KEY) == "0"
-        and rows.get("STEP5_REVIEW_STATUS") in {"complete", "stall"}
-    ):
-        if not _step5_result_identity_ok(tmpdir=tmpdir, rows=rows):
-            return "stale"
-        return "complete"
-    return "stale"
-
-
-def _prepare_step5_result(*, tmpdir: Path, step: str, state: str) -> None:
-    if state == "complete":
-        return
-    result = _bgjob_result_path(tmpdir=tmpdir, step=step)
-    if result.exists() or result.is_symlink():
-        _unlink_safe_file(path=result, root=tmpdir)
-
-
-def _difficulty_override(tmpdir: Path) -> str:
-    value = _read_kv_file(path=tmpdir / "run-flags.sh", key="DIFFICULTY_OVERRIDE", default="")
-    return value if value in {"TRIVIAL", "MODERATE", "HARD"} else ""
-
-
-def _step5_review_worker(implement_tmpdir: Path) -> int:
-    implement_tmpdir = _tmpdir_from_env()
-    _rehydrate_plugin_root(implement_tmpdir)
-    _rehydrate_larch_triplet(implement_tmpdir)
-    _invoke_larch(["timing", "telemetry-mark", "--implement-tmpdir", str(implement_tmpdir), "--label", "Step 5 — code review"])
-    dynamic_cap = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="LARCH_DYNAMIC_ARCHETYPES_MAX", default="") or os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX", "") or "1"
-    if dynamic_cap not in {"0", "1"}:
-        print(f"ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: {dynamic_cap}", file=sys.stderr)
-        return 2
-    os.environ["LARCH_DYNAMIC_ARCHETYPES_MAX"] = dynamic_cap
-    print(
-        f"> **🔶 /implement 5: code review: review-and-fix step5 --mode loop, fixed tier cap 2; "
-        "escalated rounds skip pruning; prune-to-empty converges; no round-5 re-probe; "
-        f"dynamic-archetypes cap={dynamic_cap}**",
-        file=sys.stderr,
-    )
-    command = [
-        "review-and-fix",
-        "step5",
-        "--implement-tmpdir",
-        str(implement_tmpdir),
-        "--mode",
-        "loop",
-        "--starting-round",
-        "1",
-    ]
-    difficulty = _difficulty_override(implement_tmpdir)
-    if difficulty:
-        command.extend(("--difficulty", difficulty))
-    return _forward_result(_invoke_larch(command))
-
-
-def step5_review_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py implement step-5-review")
-    parser.add_argument("--bgjob-child", action="store_true")
-    parser.add_argument("--merge-result-env", default="")
-    args = parser.parse_args(argv)
-    implement_tmpdir = _tmpdir_from_env()
-    _rehydrate_plugin_root(implement_tmpdir)
-    _rehydrate_larch_triplet(implement_tmpdir)
-    if args.bgjob_child:
-        if not args.merge_result_env:
-            print("step-5-review: --merge-result-env is required in child mode", file=sys.stderr)
-            return 2
-        rc, output = _capture_worker(lambda: _step5_review_worker(implement_tmpdir))
-        if not _publish_step5_child(
-            tmpdir=implement_tmpdir,
-            merge_env_raw=args.merge_result_env,
-            output=output,
-        ):
-            return 2
-        sys.stdout.write(output)
-        return rc
-    try:
-        state = step5_canonical_result_env_state(tmpdir=implement_tmpdir)
-        _prepare_step5_result(tmpdir=implement_tmpdir, step=_STEP5_REVIEW_STEP, state=state)
-        merge_env = _safe_merge_env(
-            tmpdir=implement_tmpdir,
-            raw=implement_tmpdir / ".step5-review-result.env",
-        )
-        spec = _bgjob_spec(
-            BgjobRequest(
-                tmpdir=implement_tmpdir,
-                step=_STEP5_REVIEW_STEP,
-                budget_s=21600,
-                verb="step-5-review",
-                public_args=(),
-                merge_result_env=merge_env,
-            )
-        )
-    except (OSError, RuntimeError, UnicodeError, ValueError):
-        print("BGJOB_ERROR=invalid-input")
-        return 2
-    return _run_adapter(spec)
-
-
-def _step5_round_timing_row_exists(cols: list[str], *, round_decimal: str, start_s: str) -> bool:
-    return (
-        len(cols) >= TIMING_LEDGER_MIN_COLUMNS
-        and cols[1] == "round"
-        and cols[3] == "implement"
-        and cols[4] == "Step 5 — code review"
-        and cols[5] == round_decimal
-        and cols[6] == start_s
-    )
-
-
-def _step5_round_timing_counts(round_dir: Path) -> tuple[int, int]:
-    """Recover the round counts the removed Python timing CLI used to infer."""
-    tally = round_dir / "review-tally.env"
-    accepted_raw = _read_kv_file(path=tally, key="ACCEPTED_COUNT") or _read_kv_file(
-        path=tally,
-        key="ACCEPTED",
-    )
-    rejected_raw = _read_kv_file(path=tally, key="REJECTED_COUNT") or _read_kv_file(
-        path=tally,
-        key="REJECTED",
-    )
-    accepted = int(accepted_raw) if accepted_raw.isdigit() else len(
-        parse_findings(round_dir / "accepted-findings.md", boundary="finding_heading")
-    )
-    if rejected_raw.isdigit():
-        return max(accepted, 0), max(int(rejected_raw), 0)
-    rejected_path = round_dir / "rejected-findings.md"
-    try:
-        rejected_text = rejected_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        rejected_text = ""
-    rejected = len(re.findall(r"^###\s+\[(?:rejected|Code Review)\]\s+", rejected_text, flags=re.MULTILINE))
-    if not rejected:
-        rejected = len(re.findall(r"^(?:[0-9]+:FINDING_[A-Za-z0-9_]+_OUTCOME=rejected|\[[^]]+\]|- )", rejected_text, flags=re.MULTILINE))
-    if not rejected and rejected_text:
-        rejected = 1
-    return max(accepted, 0), rejected
 
 
 def _parse_whitespace_kv_line(line: str) -> dict[str, str]:
@@ -818,10 +397,6 @@ def _relay_commit_kvs(commit_output: str, *, include_next_action: bool = True) -
         parsed = larch_io.parse_kv(line, duplicate_policy="first")
         if parsed and next(iter(parsed)) in allowed:
             print(line)
-
-
-def _step5_resume_relay_commit_kvs(commit_output: str) -> None:
-    _relay_commit_kvs(commit_output)
 
 
 def _commit_route_failure_log_path(implement_tmpdir: Path, *, site: str) -> Path:
@@ -1460,32 +1035,6 @@ def _run_4r_rebase_checkpoint(forked_target: str) -> int:
     return result.exit_code
 
 
-def _run_step5_resume_leg(
-    *,
-    implement_tmpdir: Path,
-    final_round_num: str,
-    deadline_ms: int,
-) -> tuple[int, str]:
-    result = _run_leg_with_timeout(
-        argv=[
-            "implement",
-            "step-5-resume",
-            "--final-round-num",
-            final_round_num,
-            "--ready-to-commit",
-            "--bgjob-child",
-            "--merge-result-env",
-            str(implement_tmpdir / "bgjob" / f"{_STEP5_RESUME_STEP}.merge.env"),
-        ],
-        deadline_ms=deadline_ms,
-        label="step5-resume",
-        env={**os.environ, "IMPLEMENT_TMPDIR": str(implement_tmpdir)},
-    )
-    if isinstance(result, subprocess.TimeoutExpired):
-        return 124, _timeout_stdout(result)
-    return result.returncode, result.stdout
-
-
 def checks_commit_route_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR0911,RUF100
     parser = argparse.ArgumentParser(prog="cli.py implement checks-commit-route")
     parser.add_argument("--checks-site", required=True)
@@ -1557,347 +1106,6 @@ def _checks_commit_route_main_impl(  # noqa: C901,PLR0911,PLR0912,RUF100
         _emit_kv(key="NEXT_ACTION", value="stall")
         return 0
     return 1
-
-
-def checks_step5_resume_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py implement checks-step5-resume")
-    parser.add_argument("--checks-site", required=True)
-    parser.add_argument("--final-round-num", required=True)
-    parser.add_argument("--checks-deadline-ms", type=int, default=_CHECKS_DEADLINE_MS)
-    parser.add_argument("--resume-deadline-ms", type=int, default=_STEP5_RESUME_DEADLINE_MS)
-    args = parser.parse_args(argv)
-    if not args.final_round_num.isdigit():
-        print("checks-step5-resume: --final-round-num must be numeric", file=sys.stderr)
-        return 2
-    implement_tmpdir = _tmpdir_from_env()
-    _rehydrate_plugin_root(implement_tmpdir)
-    _rehydrate_larch_triplet(implement_tmpdir)
-    return _checks_step5_resume_main_impl(args, implement_tmpdir)
-
-
-def _checks_step5_resume_main_impl(args: argparse.Namespace, implement_tmpdir: Path) -> int:
-    try:
-        repo_root = _session_validated_repo_root(implement_tmpdir)
-    except ShipError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    captured, timed_out = _run_relevant_checks_for_site(
-        implement_tmpdir=implement_tmpdir,
-        checks_site=args.checks_site,
-        deadline_ms=args.checks_deadline_ms,
-        repo_root=repo_root,
-    )
-    _relay_checks_stdout(captured)
-    if timed_out or not _checks_pass(captured):
-        _emit_kv(key="NEXT_ACTION", value="checks-failed")
-        return 0
-    rc, resume_stdout = _run_step5_resume_leg(
-        implement_tmpdir=implement_tmpdir,
-        final_round_num=args.final_round_num,
-        deadline_ms=args.resume_deadline_ms,
-    )
-    if resume_stdout:
-        sys.stdout.write(resume_stdout)
-        if not resume_stdout.endswith("\n"):
-            sys.stdout.write("\n")
-    return rc
-
-
-def _step5_resume_commit_phase() -> int | None:
-    """Run shared commit-route and relay its routing envelope."""
-    commit_result = _invoke_cli(["implement", "commit-route", "--site", "step5-resume-handoff"])
-    commit_output = commit_result.stdout
-    next_actions = _parse_line_anchored_commit_kv(commit_output, key="NEXT_ACTION")
-    if len(next_actions) == 1 and next_actions[0] in ("continue", "stall"):
-        _emit_kv(key="NEXT_ACTION", value=next_actions[0])
-        _relay_commit_kvs(commit_output, include_next_action=False)
-        if next_actions[0] == "stall":
-            return 0
-        if commit_result.returncode != 0:
-            return commit_result.returncode
-        return None
-    _step5_resume_relay_commit_kvs(commit_output)
-    return commit_result.returncode if commit_result.returncode != 0 else 1
-
-
-def _record_step5_handoff_timing(*, implement_tmpdir: Path, final_round_num: str) -> None:
-    _ = rust_runtime.timing_mark(
-        proc,
-        label="Step 5: review handoff",
-        skill="implement",
-        environment={
-            "DESIGN_TMPDIR": "",
-            "IMPLEMENT_TMPDIR": str(implement_tmpdir),
-        },
-    )
-    round_start_file = implement_tmpdir / f"round-{final_round_num}" / "round-start-s"
-    if round_start_file.is_file():
-        start_s = round_start_file.read_text(encoding="utf-8", errors="replace").strip()
-        ledger = implement_tmpdir / "timing-ledger.tsv"
-        needs_record = start_s.isdigit()
-        if needs_record and ledger.is_file():
-            round_decimal = str(int(final_round_num))
-            for line in ledger.read_text(encoding="utf-8", errors="replace").splitlines():
-                cols = line.split("\t")
-                if _step5_round_timing_row_exists(cols, round_decimal=round_decimal, start_s=start_s):
-                    needs_record = False
-                    break
-        if needs_record and start_s.isdigit():
-            round_dir = implement_tmpdir / f"round-{final_round_num}"
-            accepted, rejected = _step5_round_timing_counts(round_dir)
-            _ = rust_runtime.timing_record_round(
-                proc,
-                skill="implement",
-                step="Step 5 — code review",
-                round_num=int(final_round_num),
-                start_s=int(start_s),
-                end_s=int(time.time()),
-                accepted=accepted,
-                rejected=rejected,
-                ledger=str(ledger),
-                environment={"IMPLEMENT_TMPDIR": str(implement_tmpdir)},
-            )
-
-
-def _step5_resume_worker(args: argparse.Namespace, implement_tmpdir: Path) -> int:
-    _record_step5_handoff_timing(
-        implement_tmpdir=implement_tmpdir,
-        final_round_num=args.final_round_num,
-    )
-    if args.checks_site:
-        return checks_step5_resume_main(
-            ["--checks-site", args.checks_site, "--final-round-num", args.final_round_num]
-        )
-    if args.ready_to_commit or os.environ.get("STEP5_HANDOFF_READY_TO_COMMIT") == "true":
-        commit_rc = _step5_resume_commit_phase()
-        if commit_rc is not None:
-            if commit_rc == 0:
-                _emit_kv(key="STEP5_REVIEW_STATUS", value="stall")
-            return commit_rc
-    command = [
-        "review-and-fix",
-        "step5",
-        "--implement-tmpdir",
-        str(implement_tmpdir),
-        "--mode",
-        "loop",
-        "--starting-round",
-        str(int(args.final_round_num) + 1),
-    ]
-    difficulty = _difficulty_override(implement_tmpdir)
-    if difficulty:
-        command.extend(("--difficulty", difficulty))
-    return _forward_result(_invoke_larch(command))
-
-
-def _step5_resume_child(args: argparse.Namespace, implement_tmpdir: Path) -> int:
-    if not args.merge_result_env:
-        print("step-5-resume: --merge-result-env is required in child mode", file=sys.stderr)
-        return 2
-    rc, output = _capture_worker(lambda: _step5_resume_worker(args, implement_tmpdir))
-    if not _publish_step5_child(
-        tmpdir=implement_tmpdir,
-        merge_env_raw=args.merge_result_env,
-        output=output,
-    ):
-        return 2
-    sys.stdout.write(output)
-    return rc
-
-
-def step5_resume_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py implement step-5-resume")
-    parser.add_argument("--final-round-num", required=True)
-    parser.add_argument("--checks-site", default="")
-    parser.add_argument("--ready-to-commit", action="store_true")
-    parser.add_argument("--record-only", action="store_true")
-    parser.add_argument("--bgjob-child", action="store_true")
-    parser.add_argument("--merge-result-env", default="")
-    args = parser.parse_args(argv)
-    if not args.final_round_num.isdigit():
-        print("step-5-resume: --final-round-num must be numeric", file=sys.stderr)
-        return 2
-    implement_tmpdir = _tmpdir_from_env()
-    _rehydrate_plugin_root(implement_tmpdir)
-    _rehydrate_larch_triplet(implement_tmpdir)
-    if args.record_only:
-        if args.bgjob_child:
-            print("step-5-resume: --record-only cannot run in child mode", file=sys.stderr)
-            return 2
-        _record_step5_handoff_timing(
-            implement_tmpdir=implement_tmpdir,
-            final_round_num=args.final_round_num,
-        )
-        return 0
-    if args.bgjob_child:
-        return _step5_resume_child(args, implement_tmpdir)
-    public_args = ["--final-round-num", args.final_round_num]
-    if args.ready_to_commit:
-        public_args.append("--ready-to-commit")
-    if args.checks_site:
-        public_args.extend(("--checks-site", args.checks_site))
-    try:
-        state = step5_resume_result_env_state(tmpdir=implement_tmpdir)
-        _prepare_step5_result(tmpdir=implement_tmpdir, step=_STEP5_RESUME_STEP, state=state)
-        merge_env = _safe_merge_env(
-            tmpdir=implement_tmpdir,
-            raw=implement_tmpdir / "bgjob" / f"{_STEP5_RESUME_STEP}.merge.env",
-        )
-        spec = _bgjob_spec(
-            BgjobRequest(
-                tmpdir=implement_tmpdir,
-                step=_STEP5_RESUME_STEP,
-                budget_s=32700,
-                verb="step-5-resume",
-                public_args=tuple(public_args),
-                merge_result_env=merge_env,
-            )
-        )
-    except (OSError, RuntimeError, UnicodeError, ValueError):
-        print("BGJOB_ERROR=invalid-input")
-        return 2
-    return _run_adapter(spec)
-
-
-def _run_step6_composite(*, forked_target: str) -> int:
-    return checks_commit_route_main(
-        [
-            "--checks-site",
-            "step6",
-            "--commit-site",
-            "step7",
-            "--emit-step7-breadcrumb",
-            "--rebase-checkpoint-7r",
-            "--forked-target",
-            forked_target,
-        ]
-    )
-
-
-def _step6_entry_seed_stall(implement_tmpdir: Path) -> int:
-    seeded = _seed_durable_stall_state(
-        implement_tmpdir,
-        stall_step="6",
-        bail_reason=config.REVIEW_CHANGE_DETECTION_FAILED,
-    )
-    if not seeded:
-        return 1
-    _emit_kv(key="NEXT_ACTION", value="stall")
-    return 0
-
-
-def _step6_entry_worker(args: argparse.Namespace, implement_tmpdir: Path) -> int:
-    (implement_tmpdir / ".review-boundary-passed").touch(exist_ok=True)
-    if args.force_checks == "true":
-        return _run_step6_composite(forked_target=args.forked_target)
-
-    check_changes = _run_larch_capture(
-        [
-            "review-and-fix",
-            "check-changes",
-            "--baseline",
-            str(implement_tmpdir / "pre-review-untracked.txt"),
-            "--head-baseline",
-            str(implement_tmpdir / "pre-review-head.txt"),
-        ]
-    )
-    _forward_result(check_changes)
-    files_changed_values = _parse_line_anchored_commit_kv(check_changes.stdout, key="FILES_CHANGED")
-    if check_changes.returncode != 0 or len(files_changed_values) != 1 or files_changed_values[0] not in {"true", "false"}:
-        return _step6_entry_seed_stall(implement_tmpdir)
-    if files_changed_values[0] == "false":
-        _emit_kv(key="NEXT_ACTION", value="skip-to-7a")
-        return 0
-    return _run_step6_composite(forked_target=args.forked_target)
-
-
-def step6_entry_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py implement step-6-entry")
-    parser.add_argument("--forked-target", choices=("true", "false"), default="false")
-    parser.add_argument("--force-checks", choices=("true", "false"), default="false")
-    parser.add_argument("--bgjob-child", action="store_true")
-    parser.add_argument("--merge-result-env", default="")
-    parser.add_argument("--repo-root", default="")
-    parser.add_argument("--launch-head", default="")
-    parser.add_argument("--launch-fp", default="")
-    parser.add_argument("--launch-schema", default="")
-    args = parser.parse_args(argv)
-    implement_tmpdir = _tmpdir_from_env()
-    _rehydrate_plugin_root(implement_tmpdir)
-    _rehydrate_larch_triplet(implement_tmpdir)
-    if args.bgjob_child:
-        try:
-            merge_env = _safe_merge_env(tmpdir=implement_tmpdir, raw=args.merge_result_env)
-            launch = _identity_from_child_args(args)
-            _old_repo_root = os.environ.get("REPO_ROOT")
-            _old_cpd = os.environ.get("CLAUDE_PROJECT_DIR")
-            os.environ["REPO_ROOT"] = str(launch.repo_root)
-            os.environ["CLAUDE_PROJECT_DIR"] = str(launch.repo_root)
-            try:
-                return _publish_identity_child(
-                    IdentityChildRequest(
-                        tmpdir=implement_tmpdir,
-                        step=_STEP6_CHECKS_STEP,
-                        merge_env=merge_env,
-                        launch=launch,
-                        worker=lambda: _step6_entry_worker(args, implement_tmpdir),
-                        allow_post_mutation=True,
-                    )
-                )
-            finally:
-                if _old_repo_root is None:
-                    os.environ.pop("REPO_ROOT", None)
-                else:
-                    os.environ["REPO_ROOT"] = _old_repo_root
-                if _old_cpd is None:
-                    os.environ.pop("CLAUDE_PROJECT_DIR", None)
-                else:
-                    os.environ["CLAUDE_PROJECT_DIR"] = _old_cpd
-        except (OSError, RuntimeError, UnicodeError, ValueError):
-            return 2
-    public_args = (
-        "--forked-target",
-        args.forked_target,
-        "--force-checks",
-        args.force_checks,
-    )
-    try:
-        identity = _checks_launch_identity(tmpdir=implement_tmpdir)
-        merge_env = _safe_merge_env(
-            tmpdir=implement_tmpdir,
-            raw=implement_tmpdir / "bgjob" / f"{_STEP6_CHECKS_STEP}.merge.env",
-        )
-        _prepare_checks_rejoin(
-            tmpdir=implement_tmpdir,
-            step=_STEP6_CHECKS_STEP,
-            merge_env=merge_env,
-            identity=identity,
-        )
-        child_identity_args = (
-            "--repo-root",
-            str(identity.repo_root),
-            "--launch-head",
-            identity.head_sha,
-            "--launch-fp",
-            identity.tree_fingerprint,
-            "--launch-schema",
-            identity.fingerprint_schema,
-        )
-        spec = _bgjob_spec(
-            BgjobRequest(
-                tmpdir=implement_tmpdir,
-                step=_STEP6_CHECKS_STEP,
-                budget_s=15600,
-                verb="step-6-entry",
-                public_args=(*public_args, *child_identity_args),
-                merge_result_env=merge_env,
-                initial_merge_rows=tuple(identity.as_rows()),
-            )
-        )
-    except (OSError, RuntimeError, UnicodeError, ValueError, checks_result_identity.ChecksIdentityError) as exc:
-        print(f"step-6-entry: {exc}", file=sys.stderr)
-        return 2
-    return _run_adapter(spec, repo_root=identity.repo_root)
 
 
 def step8_python_guard_main(argv: list[str] | None = None) -> int:

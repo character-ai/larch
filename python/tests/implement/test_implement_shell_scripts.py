@@ -30,14 +30,13 @@ _CLI = _REPO / "python" / "cli.py"
 _REAL_PYTHON = sys.executable
 _BASH = shutil.which("bash") or "/bin/bash"
 
-_STEP5_WRAPPERS = (
-    "step-5-review.sh",
-    "step-5-resume.sh",
-    "step-6-entry.sh",
-)
+_STEP5_WRAPPERS: tuple[str, ...] = ()
 
 _STEP5_RUST_WRAPPERS = (
     "run-step-checks.sh",
+    "step-5-review.sh",
+    "step-5-resume.sh",
+    "step-6-entry.sh",
 )
 
 _STEP8_HELPER_STATIC_PINS: tuple[tuple[str, str, bool], ...] = (
@@ -460,11 +459,6 @@ def _run_step8(
 @pytest.mark.parametrize("wrapper", _STEP5_WRAPPERS + _STEP5_RUST_WRAPPERS, ids=_STEP5_WRAPPERS + _STEP5_RUST_WRAPPERS)
 def test_step5_wrapper_shape_set_euo_pipefail(wrapper: str) -> None:
     assert "set -euo pipefail" in _wrapper_source(wrapper)
-
-
-@pytest.mark.parametrize("wrapper", _STEP5_WRAPPERS, ids=_STEP5_WRAPPERS)
-def test_step5_wrapper_shape_exec_python_implement(wrapper: str) -> None:
-    assert 'exec python3 "$PLUGIN_ROOT/python/cli.py" implement' in _wrapper_source(wrapper)
 
 
 @pytest.mark.parametrize("wrapper", _STEP5_RUST_WRAPPERS, ids=_STEP5_RUST_WRAPPERS)

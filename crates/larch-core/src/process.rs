@@ -554,6 +554,8 @@ pub enum ChildEnvironment {
     LarchTokenSessionId,
     LarchTimingLedger,
     LarchTimingSkill,
+    /// Dynamic-archetype cap propagated to a delegated Step 5 review round.
+    LarchDynamicArchetypesMax,
     ResearchTmpdir,
     ReviewTmpdir,
     SessionEnvPath,
@@ -649,6 +651,7 @@ impl ChildEnvironment {
             Self::LarchTokenSessionId => env::LARCH_TOKEN_SESSION_ID,
             Self::LarchTimingLedger => env::LARCH_TIMING_LEDGER,
             Self::LarchTimingSkill => env::LARCH_TIMING_SKILL,
+            Self::LarchDynamicArchetypesMax => "LARCH_DYNAMIC_ARCHETYPES_MAX",
             Self::ResearchTmpdir => env::RESEARCH_TMPDIR,
             Self::ReviewTmpdir => env::REVIEW_TMPDIR,
             Self::SessionEnvPath => env::SESSION_ENV_PATH,

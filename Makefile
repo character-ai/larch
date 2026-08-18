@@ -28,7 +28,7 @@ HARNESS_MARK ?= sh -c 'timer=target/harness-mark/larch-harness-mark; LARCH_HARNE
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope lint-retired-scripts
 .PHONY: agent-sync
 .PHONY: test-hook-deny-run-in-background test-bgjob
-.PHONY: test-step-7a step-7a-py-harness step-7a-bash-harness test-step-8-oos-checkpoint
+.PHONY: test-step-7a step-7a-bash-harness test-step-8-oos-checkpoint
 .PHONY: test-oos-disposition-gate oos-disposition-gate-bash-harness
 .PHONY: test-flush-execution-issues flush-execution-issues-bash-harness
 .PHONY: test-review-dispatch-panel
@@ -650,12 +650,10 @@ test-flush-execution-issues: flush-execution-issues-bash-harness
 flush-execution-issues-bash-harness:
 	$(HARNESS_MARK) --label $@ -- bash skills/implement/scripts/test-flush-execution-issues.sh
 
-test-step-7a: step-7a-py-harness step-7a-bash-harness
+test-step-7a: step-7a-bash-harness
 
-step-7a-py-harness:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_step_7a.py -q
-
-# Delegation smoke for step-7a.sh; behavior lives in step-7a-py-harness.
+# Delegation smoke for step-7a.sh; behavior lives in the Rust owner
+# crates/larch-cli/src/implement_review_commands.rs.
 step-7a-bash-harness:
 	$(HARNESS_MARK) --label $@ -- bash skills/implement/scripts/test-step-7a.sh
 

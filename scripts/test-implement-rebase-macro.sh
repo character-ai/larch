@@ -13,7 +13,7 @@ ref=Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
 owner=Path('crates/larch-cli/src/push_rebase.rs').read_text()
 bootstrap=Path('crates/larch-cli/src/implement_bootstrap_continuation.rs').read_text()
 step7a=Path('skills/implement/scripts/step-7a.sh').read_text()
-step7a_py=Path('python/larch/implement/step_7a.py').read_text()
+step7a_rs=Path('crates/larch-cli/src/implement_review_commands.rs').read_text()
 
 if skill.count('larch-run.sh" scripts/larch.sh push checkpoint-probe 1.r') != 0:
     errors.append('SKILL.md must not call prompt-side 1.r probe')
@@ -63,12 +63,12 @@ for needle in [
         errors.append(f'rebase reference missing {needle}')
 if '--forked-target' not in owner or 'FORKED_REMOTE' not in owner or '"upstream"' not in owner or '"main"' not in owner:
     errors.append('crates/larch-cli/src/push_rebase.rs does not implement --forked-target upstream/main mapping')
-if 'implement step-7a' not in step7a or 'python/cli.py' not in step7a:
-    errors.append('step-7a.sh must delegate to python/cli.py implement step-7a')
-if 'rust_runtime.checkpoint_probe(' not in step7a_py or 'step_prefix="7a.r"' not in step7a_py:
-    errors.append('python/step_7a.py must keep one internal 7a.r Rust probe invocation')
-if 'base_remote=base_remote' not in step7a_py or 'base_ref=base_ref' not in step7a_py or 'base_remote = "upstream"' not in step7a_py:
-    errors.append('python/step_7a.py must keep its internal base derivation')
+if 'implement step-7a' not in step7a or 'scripts/larch.sh' not in step7a:
+    errors.append('step-7a.sh must delegate to scripts/larch.sh implement step-7a')
+if 'OsString::from("checkpoint-probe")' not in step7a_rs or 'OsString::from("7a.r")' not in step7a_rs:
+    errors.append('implement_review_commands.rs must keep one internal 7a.r Rust probe invocation')
+if '"upstream".to_owned()' not in step7a_rs or 'args.base_ref' not in step7a_rs:
+    errors.append('implement_review_commands.rs must keep its internal base derivation')
 if errors:
     print('\n'.join(errors), file=sys.stderr)
     sys.exit(1)
