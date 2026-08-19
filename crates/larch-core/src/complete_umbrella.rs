@@ -416,7 +416,9 @@ mod tests {
         assert!(complete_umbrella_leaf_non_candidate(
             "[IMPLEMENTING] [LEAF OF 5] Task"
         ));
-        assert!(complete_umbrella_leaf_non_candidate("[DONE] [LEAF OF 5] Task"));
+        assert!(complete_umbrella_leaf_non_candidate(
+            "[DONE] [LEAF OF 5] Task"
+        ));
         assert!(!complete_umbrella_leaf_non_candidate("[LEAF OF 5] Task"));
         assert!(!complete_umbrella_leaf_non_candidate(
             "Re: [DESIGNED] [LEAF OF 5] Task"
@@ -450,7 +452,10 @@ mod tests {
             open_blockers: Vec::new(),
         };
         assert_eq!(
-            select_complete_umbrella_leaf(&[designing.clone(), designed.clone(), idle.clone()], &[]),
+            select_complete_umbrella_leaf(
+                &[designing.clone(), designed.clone(), idle.clone()],
+                &[]
+            ),
             CompleteUmbrellaNext::Launch(11)
         );
         assert_eq!(
