@@ -1729,10 +1729,9 @@ fn run_step0_init_driver(
         if !outcome.stderr.is_empty() {
             eprint_line(&outcome.stderr);
         }
-        let shown = if init_status.is_empty() { // lint-status-routing: ok init_status is a raw INIT_STATUS wire string read from the child result map, not a routed enum
-            "unknown"
-        } else {
-            init_status
+        let shown = match init_status {
+            "" => "unknown",
+            other => other,
         };
         eprintln!(
             "**⚠ Step 0b: design-init-runparams.sh failed (INIT_STATUS={shown}); aborting /design**"
