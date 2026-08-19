@@ -198,6 +198,7 @@ pub fn prepare(arguments: &PrepareArguments) -> ExitCode {
     }
 }
 
+#[derive(Clone)]
 pub struct ReconcileNotesArguments {
     pub repository: larch_core::GitHubRepositoryRef,
     pub baseline_tag: String,

@@ -2,10 +2,11 @@
 mod release_prepare_tests {
     use super::super::{
         BumpType, Cancellation, GixRepository, LarchRuntime, PrepareArguments,
-        ReleasePlanningService, ReleasePullRequest, apply_bump, classify, companion_title,
-        flag_tokens, frontmatter, frontmatter_field, idempotency_subject, is_bump_subject,
-        is_log_housekeeping, is_release_subject, pr_suffix, prepare_out_dir, prepare_with_service,
-        public_surface, release_already_cut, resolve, select_pull_requests, semver, skill_path,
+        ReconcileNotesArguments, ReleasePlanningService, ReleasePullRequest, apply_bump, classify,
+        companion_title, flag_tokens, frontmatter, frontmatter_field, idempotency_subject,
+        is_bump_subject, is_log_housekeeping, is_release_subject, pr_suffix, prepare_out_dir,
+        prepare_with_service, public_surface, read_prepared_pr_numbers, reconcile_notes_with_service,
+        release_already_cut, resolve, select_pull_requests, semver, skill_path,
         strict_plugin_version_bytes, tsv, verify_main_worktree, verify_origin,
     };
     use crate::github_repository_resolution::parse_github_remote_url;
@@ -870,6 +871,203 @@ mod release_prepare_tests {
         assert_eq!(
             prepare_out_dir(&link).expect_err("symlink must fail").token,
             "invalid-args"
+        );
+    }
+
+    #[test]
+    fn reconcile_notes_surfaces_mid_run_additions_and_excludes() {
+        let fixture = release_repository();
+        fixture
+            .write("README.md", b"mid-run merge\n")
+            .expect("readme");
+        checked_git(&fixture, ["add", "-A"]);
+        checked_git(&fixture, ["commit", "--quiet", "-m", "Mid-run PR (#99)"]);
+        checked_git(&fixture, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        let repository = GixRepository::open(fixture.root()).expect("open repository");
+        let source = resolve(&repository, "HEAD").expect("source").to_hex();
+
+        let prepare_list = tempfile::NamedTempFile::new().expect("prepare list");
+        fs::write(prepare_list.path(), "42\tFeature\trelease-note\tauthor\thttps://github.com/o/r/pull/42\n")
+            .expect("write prepare list");
+        let output = tempfile::tempdir().expect("output directory");
+        let output_root = TemporaryRoot::resolve(Some(output.path())).expect("temporary root");
+        let service = FakeReleaseService {
+            pulls: BTreeMap::from([
+                (42, pull_request(42, "Feature")),
+                (99, pull_request(99, "Mid-run")),
+            ]),
+            ..FakeReleaseService::default()
+        };
+        let arguments = ReconcileNotesArguments {
+            repository: GitHubRepositoryRef::new("o", "r").expect("repository reference"),
+            baseline_tag: "v1.2.3".to_owned(),
+            source_commit: source.clone(),
+            pr_list: prepare_list.path().to_path_buf(),
+            exclude_pr: 0,
+            out_dir: output.path().to_path_buf(),
+        };
+        let runtime = LarchRuntime::current_thread().expect("test runtime");
+        runtime
+            .block_on(reconcile_notes_with_service(
+                &arguments,
+                &output_root,
+                &repository,
+                &service,
+                &Cancellation::new(),
+            ))
+            .expect("reconcile notes");
+        let full = fs::read_to_string(output.path().join("pr-list.tsv")).expect("full list");
+        let added =
+            fs::read_to_string(output.path().join("added-pr-list.tsv")).expect("added list");
+        assert!(full.contains("42\t"));
+        assert!(full.contains("99\t"));
+        assert!(!added.contains("42\t"));
+        assert_eq!(
+            added,
+            "99\tMid-run\trelease-note\tauthor\thttps://github.com/o/r/pull/99\n"
+        );
+
+        let exclude_out = tempfile::tempdir().expect("exclude output");
+        let exclude_root =
+            TemporaryRoot::resolve(Some(exclude_out.path())).expect("exclude temporary root");
+        let exclude_arguments = ReconcileNotesArguments {
+            exclude_pr: 99,
+            out_dir: exclude_out.path().to_path_buf(),
+            ..arguments
+        };
+        runtime
+            .block_on(reconcile_notes_with_service(
+                &exclude_arguments,
+                &exclude_root,
+                &repository,
+                &service,
+                &Cancellation::new(),
+            ))
+            .expect("reconcile with exclude");
+        let excluded_full =
+            fs::read_to_string(exclude_out.path().join("pr-list.tsv")).expect("excluded full");
+        let excluded_added = fs::read_to_string(exclude_out.path().join("added-pr-list.tsv"))
+            .expect("excluded added");
+        assert!(excluded_full.contains("42\t"));
+        assert!(!excluded_full.contains("99\t"));
+        assert!(excluded_added.is_empty());
+    }
+
+    #[test]
+    fn reconcile_notes_maps_baseline_and_pr_list_failures() {
+        let fixture = release_repository();
+        let repository = GixRepository::open(fixture.root()).expect("open repository");
+        let source = resolve(&repository, "HEAD").expect("source").to_hex();
+        let prepare_list = tempfile::NamedTempFile::new().expect("prepare list");
+        fs::write(prepare_list.path(), "42\tFeature\n").expect("write prepare list");
+        let output = tempfile::tempdir().expect("output directory");
+        let output_root = TemporaryRoot::resolve(Some(output.path())).expect("temporary root");
+        let service = FakeReleaseService::default();
+        let runtime = LarchRuntime::current_thread().expect("test runtime");
+        let base = ReconcileNotesArguments {
+            repository: GitHubRepositoryRef::new("o", "r").expect("repository reference"),
+            baseline_tag: "v1.2.3".to_owned(),
+            source_commit: source,
+            pr_list: prepare_list.path().to_path_buf(),
+            exclude_pr: 0,
+            out_dir: output.path().to_path_buf(),
+        };
+
+        assert_eq!(
+            runtime
+                .block_on(reconcile_notes_with_service(
+                    &ReconcileNotesArguments {
+                        baseline_tag: "latest".to_owned(),
+                        ..base.clone()
+                    },
+                    &output_root,
+                    &repository,
+                    &service,
+                    &Cancellation::new(),
+                ))
+                .expect_err("invalid baseline")
+                .token,
+            "invalid-baseline-tag"
+        );
+        assert_eq!(
+            runtime
+                .block_on(reconcile_notes_with_service(
+                    &ReconcileNotesArguments {
+                        baseline_tag: "v9.9.9".to_owned(),
+                        ..base.clone()
+                    },
+                    &output_root,
+                    &repository,
+                    &service,
+                    &Cancellation::new(),
+                ))
+                .expect_err("missing baseline")
+                .token,
+            "baseline-tag-unresolvable"
+        );
+        assert_eq!(
+            runtime
+                .block_on(reconcile_notes_with_service(
+                    &ReconcileNotesArguments {
+                        source_commit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef".to_owned(),
+                        ..base.clone()
+                    },
+                    &output_root,
+                    &repository,
+                    &service,
+                    &Cancellation::new(),
+                ))
+                .expect_err("missing source")
+                .token,
+            "source-commit-unresolvable"
+        );
+
+        checked_git(&fixture, ["commit", "--allow-empty", "--quiet", "-m", "orphan-base"]);
+        checked_git(&fixture, ["tag", "v0.0.1"]);
+        let orphan_base = resolve(&repository, "v0.0.1").expect("orphan baseline");
+        checked_git(&fixture, ["reset", "--hard", "--quiet", "HEAD~1"]);
+        let disconnected = GixRepository::open(fixture.root()).expect("reopen");
+        assert_eq!(
+            runtime
+                .block_on(reconcile_notes_with_service(
+                    &ReconcileNotesArguments {
+                        baseline_tag: "v0.0.1".to_owned(),
+                        source_commit: resolve(&disconnected, "HEAD")
+                            .expect("head")
+                            .to_hex(),
+                        ..base.clone()
+                    },
+                    &output_root,
+                    &disconnected,
+                    &service,
+                    &Cancellation::new(),
+                ))
+                .expect_err("baseline not ancestor")
+                .token,
+            "baseline-not-on-main"
+        );
+        let _ = orphan_base;
+
+        assert_eq!(
+            read_prepared_pr_numbers(prepare_list.path())
+                .expect("valid prepared list")
+                .into_iter()
+                .collect::<Vec<_>>(),
+            vec![42]
+        );
+        let bad_list = tempfile::NamedTempFile::new().expect("bad list");
+        fs::write(bad_list.path(), "not-a-number\trow\n").expect("write bad list");
+        assert_eq!(
+            read_prepared_pr_numbers(bad_list.path())
+                .expect_err("invalid prepared list")
+                .token,
+            "pr-list-read-failed"
+        );
+        assert_eq!(
+            read_prepared_pr_numbers(&output.path().join("missing.tsv"))
+                .expect_err("missing prepared list")
+                .token,
+            "pr-list-read-failed"
         );
     }
 }
