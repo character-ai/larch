@@ -192,6 +192,7 @@ impl CleanInstallCase {
             // argument, so each refuses with the Python `exit 2` before any
             // plugin-root guard or child dispatch. `settle-next-action` instead
             // owns a real `-h`/`--help` usage action and exits 0 (default arm).
+            | "clean-install-design-driver"
             | "clean-install-design-step0-parse"
             | "clean-install-design-step0-session"
             | "clean-install-design-step0-route"
@@ -807,6 +808,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "design",
         "init-runparams",
     ),
+    CleanInstallCase::new("clean-install-design-driver", "design", "driver"),
     CleanInstallCase::new("clean-install-design-parse-flags", "design", "parse-flags"),
     CleanInstallCase::new("clean-install-design-route", "design", "route"),
     CleanInstallCase::new("clean-install-design-step0-parse", "design", "step0-parse"),

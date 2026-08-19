@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    },
+    "design/actions.txt": {
+      "text": "ACTION=TALLY\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "STEP_SKIPPED=TALLY REASON=before-resume\n"
+  }
+}

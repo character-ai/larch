@@ -671,7 +671,7 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, ente
 Branch on `_autofix_status` per `validator-failure.md`. If auto-repair does not resolve the defects, use **AskUserQuestion** with exactly these three option labels (verbatim): **Fix-and-retry**, **Override**, **Cancel**. Execute the missing-script summary and option bodies from `validator-failure.md`.
 
 **Plan helper contracts**:
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design driver`: ACTION dispatcher; sibling `design-driver.md`.
+- `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh design driver`: ACTION dispatcher; sibling `design-driver.md`.
 - `scripts/larch.sh plan parse-commands` (also `validate-commands`, `validate`, `validator-autofix`, `check-size`, `set-oversize-override`): Rust owner `plan_quality_commands.rs` / `plan_quality_revise_commands.rs`; parity `plan_quality_migrated_parity.rs`.
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py design postplan-emit`: Step 2b post-plan driver; implementation `${CLAUDE_PLUGIN_ROOT}/python/larch/design/design_postplan.py`; harness `${CLAUDE_PLUGIN_ROOT}/python/tests/design/test_design_postplan.py`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dry-runnable-scripts.tsv`: Tier 3 opt-in registry; docs `dry-runnable-scripts.md`.

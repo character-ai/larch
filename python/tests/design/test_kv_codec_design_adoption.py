@@ -9,7 +9,6 @@ from pathlib import Path
 from larch.design import (
     design_core,
     design_log_publish_flow,
-    design_step1,
     design_step5c,
     plan_scout,
 )
@@ -41,19 +40,6 @@ def test_step0_env_readers_keep_allowlist_duplicate_and_empty_value_policy(
     assert design_core._load_source_env(  # pyright: ignore[reportPrivateUsage] - characterize migration seam
         path=source, allow_keys={"KEEP"}
     ) == {"KEEP": ""}
-
-
-def test_step1_stderr_sink_uses_first_matching_value_and_preserves_empty_fallback(
-    tmp_path: Path,
-) -> None:
-    output = tmp_path / "custom-output.txt"
-    _ = output.with_name("custom-output.txt.meta").write_text(
-        "STDERR_SINK=first.log\nSTDERR_SINK=second.log\n", encoding="utf-8"
-    )
-
-    assert design_step1.brainstorm_stderr_sink_for_output(  # pyright: ignore[reportPrivateUsage] - characterize migration seam
-        output_path=output, design_tmpdir=tmp_path
-    ) == Path("first.log")
 
 
 def test_optional_trailers_preserve_input_order_and_duplicates(tmp_path: Path) -> None:

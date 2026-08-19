@@ -1,0 +1,33 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/.brainstorm-done": {
+      "text": ""
+    },
+    "design/.completed/step-1c": {
+      "text": ""
+    },
+    "design/.completed/step-1d": {
+      "text": ""
+    },
+    "design/.completed/step-1d.5": {
+      "text": ""
+    },
+    "design/.keep": {
+      "text": ""
+    },
+    "design/run-params.json": {
+      "text": "{\"brainstorm_requested\": true}"
+    },
+    "design/timing-ledger.tsv": {
+      "text": "v1\tmark\t1787000000\tdesign\tdesign Step 1d.5 — brainstorm\t-\t-\t-\t-\t-\t-\t-\t-\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "STEP1D5_ACTION=skip\nSTEP1D5_SKIP_KIND=already-complete\n"
+  }
+}

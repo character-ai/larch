@@ -129,16 +129,16 @@ const COMMON_ENV_DEFAULTS: [(&str, &str); 24] = [
     ("CLARIFY_HARD_HALT_RC", "1"),
 ];
 
-type Env = BTreeMap<String, String>;
+pub type Env = BTreeMap<String, String>;
 
-fn utf8_arguments(arguments: &[OsString]) -> Vec<String> {
+pub fn utf8_arguments(arguments: &[OsString]) -> Vec<String> {
     arguments
         .iter()
         .map(|argument| argument.to_string_lossy().into_owned())
         .collect()
 }
 
-fn env_get<'a>(env: &'a Env, key: &str, default: &'a str) -> &'a str {
+pub fn env_get<'a>(env: &'a Env, key: &str, default: &'a str) -> &'a str {
     env.get(key).map_or(default, String::as_str)
 }
 
@@ -147,15 +147,15 @@ fn env_get<'a>(env: &'a Env, key: &str, default: &'a str) -> &'a str {
 // ---------------------------------------------------------------------------
 
 /// One child process' captured streams and exit status.
-struct ChildOutcome {
-    code: i32,
-    stdout: String,
-    stderr: String,
+pub struct ChildOutcome {
+    pub code: i32,
+    pub stdout: String,
+    pub stderr: String,
 }
 
 /// The subprocess/GitHub seam every Step 0 verb composes through. Production
 /// spawns the verified larch entrypoint; unit tests inject a recorded runner.
-trait Step0Runner {
+pub trait Step0Runner {
     /// Run one larch child. When `merge_stderr` is set the child's stderr is
     /// folded into `stdout`, mirroring Python `stderr=subprocess.STDOUT`.
     fn run(
@@ -181,10 +181,10 @@ trait Step0Runner {
     }
 }
 
-struct LiveStep0Runner;
+pub struct LiveStep0Runner;
 
 /// The larch entrypoint, preferring `LARCH_BINARY` like the frozen router.
-fn entrypoint(plugin_root: &Path) -> PathBuf {
+pub fn entrypoint(plugin_root: &Path) -> PathBuf {
     match std::env::var_os("LARCH_BINARY") {
         Some(value) if !value.is_empty() => PathBuf::from(value),
         _ => plugin_root.join("scripts").join("larch.sh"),
@@ -269,24 +269,24 @@ impl Step0Runner for LiveStep0Runner {
 // Wrapper argument parsing (design_step0_env.py `_parse_wrapper_args`)
 // ---------------------------------------------------------------------------
 
-struct WrapperNs {
-    session_env_path: String,
-    claude_pid: String,
-    plugin_root: String,
-    outcome: String,
-    issue_number: String,
-    exit_code: String,
-    failure_detail_log: String,
-    reason: String,
-    tool: String,
-    public_argv: Vec<String>,
+pub struct WrapperNs {
+    pub session_env_path: String,
+    pub claude_pid: String,
+    pub plugin_root: String,
+    pub outcome: String,
+    pub issue_number: String,
+    pub exit_code: String,
+    pub failure_detail_log: String,
+    pub reason: String,
+    pub tool: String,
+    pub public_argv: Vec<String>,
 }
 
 fn env_or(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_owned())
 }
 
-fn parse_wrapper_args(argv: &[String]) -> Result<WrapperNs, ExitCode> {
+pub fn parse_wrapper_args(argv: &[String]) -> Result<WrapperNs, ExitCode> {
     let mut ns = WrapperNs {
         session_env_path: String::new(),
         claude_pid: String::new(),
@@ -361,7 +361,7 @@ fn parse_wrapper_args(argv: &[String]) -> Result<WrapperNs, ExitCode> {
 
 /// `require_plugin_root`: reject empty/template roots. Never mutates process env
 /// (the frozen `os.environ` write is replaced by explicit child-env passing).
-fn require_plugin_root(value: &str) -> Result<PathBuf, ExitCode> {
+pub fn require_plugin_root(value: &str) -> Result<PathBuf, ExitCode> {
     if value.is_empty() {
         eprintln!("/design wrapper: CLAUDE_PLUGIN_ROOT is empty; abort");
         return Err(ExitCode::from(1));
@@ -654,7 +654,7 @@ fn base_env() -> Env {
     env
 }
 
-fn load_wrapper_env(ns: &WrapperNs) -> Env {
+pub fn load_wrapper_env(ns: &WrapperNs) -> Env {
     let mut env = base_env();
     for (key, value) in load_source_env(&ns.session_env_path, &ns.claude_pid) {
         let _ = env.insert(key, value);
@@ -783,7 +783,7 @@ fn reap_pid_residuals(claude_pid: &str) -> Result<(), String> {
 // Shared verb helpers (design_step0.py)
 // ---------------------------------------------------------------------------
 
-fn require_design_tmpdir(env: &Env, design_tmpdir: Option<&str>) -> Result<PathBuf, ExitCode> {
+pub fn require_design_tmpdir(env: &Env, design_tmpdir: Option<&str>) -> Result<PathBuf, ExitCode> {
     let raw = design_tmpdir.filter(|value| !value.is_empty()).map_or_else(
         || env_get(env, "DESIGN_TMPDIR", "").to_owned(),
         str::to_owned,
@@ -828,7 +828,7 @@ fn pause_save_bridge(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
 }
 
 /// If a pause is requested, run pause-save and yield its exit code.
-fn check_pause_and_exit(env: &Env, design_tmpdir: &Path) -> Option<ExitCode> {
+pub fn check_pause_and_exit(env: &Env, design_tmpdir: &Path) -> Option<ExitCode> {
     if design_tmpdir.join(".pause-requested").is_file() {
         let code = pause_save_bridge(
             design_tmpdir,
@@ -840,7 +840,7 @@ fn check_pause_and_exit(env: &Env, design_tmpdir: &Path) -> Option<ExitCode> {
     None
 }
 
-fn exit_from_i32(code: i32) -> ExitCode {
+pub fn exit_from_i32(code: i32) -> ExitCode {
     ExitCode::from(u8::try_from(code).unwrap_or(1))
 }
 
@@ -1179,7 +1179,7 @@ fn which(program: &str) -> bool {
         .any(|directory| fs::metadata(directory.join(program)).is_ok_and(|meta| meta.is_file()))
 }
 
-fn derive_binary_found(env: &mut Env) {
+pub fn derive_binary_found(env: &mut Env) {
     if env_get(env, "CODEX_BINARY_FOUND", "").is_empty() {
         let _ = env.insert(
             "CODEX_BINARY_FOUND".to_owned(),

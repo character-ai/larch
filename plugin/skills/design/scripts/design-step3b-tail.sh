@@ -139,7 +139,7 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" timing mark "
 if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
   set +e
   printf '%s\n' 'ACTION=FINALIZE' \
-    | python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design driver --design-tmpdir "$DESIGN_TMPDIR"
+    | "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" design driver --design-tmpdir "$DESIGN_TMPDIR"
   _finalize_rc=$?
   set -e
   if [ "$_finalize_rc" -ne 0 ]; then
