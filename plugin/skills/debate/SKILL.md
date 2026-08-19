@@ -191,7 +191,9 @@ Skip this step only when the last validated envelope is already terminal. When i
     debate_adjudication "$DEBATE_TMPDIR/adjudication-preview.json"
   ```
 
-  Inspect only the wrapped artifact. For every point, ask one `AskUserQuestion` with the two bounded positions and a both-viable choice. Write exactly one TSV row per point to `$DEBATE_TMPDIR/operator-decisions.tsv`: a selected position uses `POINT_N<TAB>SELECTED<TAB>position`; both viable uses `POINT_N<TAB>SPLIT<TAB>position-a<TAB>position-b`. Then run with the unchanged preview fingerprint:
+  Inspect only the wrapped artifact. Process the `N` disputed points in artifact order, in consecutive batches of up to 4. Make exactly `ceil(N/4)` `AskUserQuestion` calls, with one question per disputed point in the current batch. Each question offers the point's two bounded positions plus the both-viable choice. Do not merge or reorder points.
+
+  After collecting every answer, write exactly one TSV row per point to `$DEBATE_TMPDIR/operator-decisions.tsv`: a selected position uses `POINT_N<TAB>SELECTED<TAB>position`; both viable uses `POINT_N<TAB>SPLIT<TAB>position-a<TAB>position-b`. Then run with the unchanged preview fingerprint:
 
   ```bash
   "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate adjudicate \
