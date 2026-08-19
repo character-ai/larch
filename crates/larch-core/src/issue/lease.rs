@@ -11,11 +11,14 @@
 //! line binds a run, and a body carrying two of them binds nobody.
 
 use crate::text::{balanced_fence_line_indices, split_lines_keep_ends};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use regex::Regex;
 use std::sync::LazyLock;
 
 /// Token every lease line opens with, fenced or not.
 const LEASE_OPENING: &str = "<!-- larch:implementation-lease";
+/// Hours without a refresh before a single runner may reacquire a lease.
+pub const IMPLEMENTATION_LEASE_STALE_AFTER_HOURS: i64 = 12;
 
 static LEASE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
@@ -82,6 +85,23 @@ pub fn parse_implementation_lease(body: &str) -> Option<ImplementationLease> {
         plan: captures[4].to_owned(),
         updated_at: captures[5].to_owned(),
     })
+}
+
+/// Return a lease's age in whole hours at `now`.
+#[must_use]
+pub fn implementation_lease_age_hours(
+    lease: &ImplementationLease,
+    now: DateTime<Utc>,
+) -> Option<i64> {
+    let updated = NaiveDateTime::parse_from_str(&lease.updated_at, "%Y-%m-%dT%H:%M:%SZ").ok()?;
+    Some((now - updated.and_utc()).num_seconds().div_euclid(3600))
+}
+
+/// Return whether a lease is old enough for the single runner to reacquire.
+#[must_use]
+pub fn implementation_lease_is_expired(lease: &ImplementationLease, now: DateTime<Utc>) -> bool {
+    implementation_lease_age_hours(lease, now)
+        .is_some_and(|age| age >= IMPLEMENTATION_LEASE_STALE_AFTER_HOURS)
 }
 
 /// Render the exact v1 bytes for `lease`, refusing any invalid field.
@@ -184,9 +204,11 @@ fn valid_timestamp(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        ImplementationLease, LeaseDefect, parse_implementation_lease, render_implementation_lease,
+        ImplementationLease, LeaseDefect, implementation_lease_age_hours,
+        implementation_lease_is_expired, parse_implementation_lease, render_implementation_lease,
         upsert_implementation_lease,
     };
+    use chrono::{TimeZone as _, Utc};
 
     fn lease() -> ImplementationLease {
         ImplementationLease {
@@ -272,5 +294,21 @@ mod tests {
             upsert_implementation_lease(&fenced, &lease()),
             Ok(format!("{fenced}{rendered}\n"))
         );
+    }
+
+    #[test]
+    fn lease_expiry_uses_the_shared_twelve_hour_boundary() {
+        let now = Utc
+            .with_ymd_and_hms(2026, 8, 19, 12, 0, 0)
+            .single()
+            .expect("valid instant");
+        let mut candidate = lease();
+        candidate.updated_at = "2026-08-19T00:00:01Z".to_owned();
+        assert_eq!(implementation_lease_age_hours(&candidate, now), Some(11));
+        assert!(!implementation_lease_is_expired(&candidate, now));
+
+        candidate.updated_at = "2026-08-19T00:00:00Z".to_owned();
+        assert_eq!(implementation_lease_age_hours(&candidate, now), Some(12));
+        assert!(implementation_lease_is_expired(&candidate, now));
     }
 }

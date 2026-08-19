@@ -31,6 +31,7 @@ def test_registry_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         child=identity,
         owner=None,
         start_epoch=1,
+        heartbeat_epoch=1,
         budget_s=30,
         stdout_log=tmp_path / "bgjob/demo-step.stdout.log",
         stderr_log=tmp_path / "bgjob/demo-step.stderr.log",
@@ -42,6 +43,54 @@ def test_registry_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     assert loaded is not None
     assert loaded.step == "demo-step"
     assert loaded.child.pid == os.getpid()
+    assert loaded.heartbeat_epoch == 1
+
+    legacy = "\n".join(
+        line
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if not line.startswith("HEARTBEAT_EPOCH=")
+    )
+    _ = path.write_text(f"{legacy}\n", encoding="utf-8")
+    loaded_legacy = registry.read_entry(path)
+    assert loaded_legacy is not None
+    assert loaded_legacy.heartbeat_epoch == loaded_legacy.start_epoch
+
+
+@pytest.mark.parametrize(
+    ("heartbeat_epoch", "now", "expected"),
+    [
+        (14_401, 14_400.0, False),
+        (14_399, 14_400.0, False),
+        (14_399, 14_430.0, True),
+    ],
+)
+def test_registry_expiry_uses_heartbeat_staleness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    heartbeat_epoch: int,
+    now: float,
+    expected: bool,
+) -> None:
+    identity = _identity()
+    entry = model.RegistryEntry(
+        step="demo-step",
+        run_id="run-1",
+        tmpdir=tmp_path,
+        log_dir=tmp_path / "bgjob",
+        clone_path=Path.cwd().resolve(),
+        daemon=identity,
+        child=identity,
+        owner=None,
+        start_epoch=1,
+        heartbeat_epoch=heartbeat_epoch,
+        budget_s=2,
+        stdout_log=tmp_path / "bgjob/demo-step.stdout.log",
+        stderr_log=tmp_path / "bgjob/demo-step.stderr.log",
+        result_env=tmp_path / "bgjob/demo-step.result.env",
+    )
+    monkeypatch.setattr(registry.time, "time", lambda: now)
+
+    assert registry.entry_expired(entry) is expected
 
 
 def test_registry_round_trip_accepts_uppercase_uuid_run_id(
@@ -59,6 +108,7 @@ def test_registry_round_trip_accepts_uppercase_uuid_run_id(
         child=identity,
         owner=None,
         start_epoch=1,
+        heartbeat_epoch=1,
         budget_s=30,
         stdout_log=tmp_path / "bgjob/demo-step.stdout.log",
         stderr_log=tmp_path / "bgjob/demo-step.stderr.log",
@@ -89,6 +139,7 @@ def test_registry_round_trip_accepts_external_log_directory(
         child=identity,
         owner=None,
         start_epoch=1,
+        heartbeat_epoch=1,
         budget_s=30,
         stdout_log=log_dir / "demo-step.stdout.log",
         stderr_log=log_dir / "demo-step.stderr.log",
@@ -124,6 +175,7 @@ def test_registry_rejects_escaped_result_path(tmp_path: Path, monkeypatch: pytes
         child=identity,
         owner=None,
         start_epoch=1,
+        heartbeat_epoch=1,
         budget_s=30,
         stdout_log=tmp_path / "bgjob/demo-step.stdout.log",
         stderr_log=tmp_path / "bgjob/demo-step.stderr.log",

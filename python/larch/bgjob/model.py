@@ -42,6 +42,7 @@ class RegistryEntry:
     child: process_identity.RecordedProcessIdentity
     owner: process_identity.RecordedProcessIdentity | None
     start_epoch: int
+    heartbeat_epoch: int
     budget_s: int
     stdout_log: Path
     stderr_log: Path

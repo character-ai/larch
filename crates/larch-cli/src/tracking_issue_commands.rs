@@ -37,9 +37,9 @@ use larch_core::{
     GitHubService, IMPLEMENTING_PREFIX, ImplementationLease, IssueCreateRequest,
     IssueMutationField, IssueMutationLease, IssueMutationRequest, IssueMutationSnapshot,
     LIFECYCLE_PREFIXES, PLAN_MARKER, cleanup_cache_sessions_root, detect_lifecycle_prefix, emit_kv,
-    insert_signal_marker, parse_implementation_lease, parse_named_block, parse_receipt,
-    receipt_marker_present, redact_run_log_payload, strip_lifecycle_prefix,
-    upsert_implementation_lease,
+    implementation_lease_is_expired, insert_signal_marker, parse_implementation_lease,
+    parse_named_block, parse_receipt, receipt_marker_present, redact_run_log_payload,
+    strip_lifecycle_prefix, upsert_implementation_lease,
 };
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -850,8 +850,12 @@ fn initial_lease_mutation(
         return Err("stale-identity".to_owned());
     }
     let (base, plan) = initial_lease_identity(&before.body, request.head_sha)?;
+    // The repository admits one implementation runner at a time. A fresh
+    // foreign lease still blocks ownership theft, but an expired lease is
+    // stale state that the admitted runner must be able to reacquire.
     if let Some(existing) = parse_implementation_lease(&before.body)
         && (existing.run_id != request.run_id || existing.branch != request.branch)
+        && !implementation_lease_is_expired(&existing, chrono::Utc::now())
     {
         return Err("implementation-lease-run-mismatch".to_owned());
     }
@@ -2720,7 +2724,7 @@ mod tests {
             branch: "feature/work".to_owned(),
             base: "a".repeat(40),
             plan: "b".repeat(64),
-            updated_at: "2026-08-10T00:00:00Z".to_owned(),
+            updated_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
         };
         let receipt = format!(
             "<!-- larch:plan-receipt v1 plan_sha256={} base_sha={} blockers_sha256={} owners_sha256={} -->\n",
@@ -2791,6 +2795,32 @@ mod tests {
             initial_lease_mutation(&before, &reference, 7, &different_branch),
             Err("implementation-lease-run-mismatch".to_owned())
         );
+
+        let mut expired = existing.clone();
+        expired.updated_at = "2000-01-01T00:00:00Z".to_owned();
+        let expired_body = larch_core::upsert_implementation_lease(&preflight_body, &expired)
+            .expect("expired lease installs");
+        let expired_before = larch_core::IssueMutationSnapshot {
+            body: expired_body,
+            ..before
+        };
+        let expired_body_sha256 = sha256_text(&expired_before.body);
+        let expired_title_sha256 = sha256_text(&expired_before.title);
+        let expired_labels_sha256 = super::sha256_labels(&expired_before.labels);
+        let reacquire = LeaseInitializationRequest {
+            run_id: "run-8",
+            branch: "feature/resumed",
+            expected_updated_at: &expired_before.updated_at,
+            expected_body_sha256: &expired_body_sha256,
+            expected_title_sha256: &expired_title_sha256,
+            expected_labels_sha256: &expired_labels_sha256,
+            ..request
+        };
+        let (_mutation, reacquired, _title) =
+            initial_lease_mutation(&expired_before, &reference, 7, &reacquire)
+                .expect("expired lease is reacquired");
+        assert_eq!(reacquired.run_id, "run-8");
+        assert_eq!(reacquired.branch, "feature/resumed");
     }
 
     #[test]

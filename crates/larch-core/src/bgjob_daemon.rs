@@ -51,6 +51,8 @@ pub const BGJOB_WAIT_LEASE_TTL_S: f64 = 390.0;
 pub const BGJOB_OWNER_VALIDATION_FAILURE_THRESHOLD: u32 = 3;
 /// Seconds between daemon monitor polls.
 pub const BGJOB_DAEMON_POLL_INTERVAL_S: f64 = 1.0;
+/// Minimum excess wall-clock advance that identifies a suspended daemon.
+pub const BGJOB_SUSPEND_MIN_GAP_S: f64 = 30.0;
 /// Trailing stderr bytes a dead-daemon report may quote.
 pub const BGJOB_LOG_TAIL_BYTES: usize = 4096;
 /// Test-only override for the owner grace window.
@@ -61,6 +63,8 @@ pub const ENV_TEST_BGJOB_DAEMON_POLL_INTERVAL_S: &str = "LARCH_TEST_BGJOB_DAEMON
 pub const ENV_TEST_BGJOB_STARTUP_ACK_TIMEOUT_S: &str = "LARCH_TEST_BGJOB_STARTUP_ACK_TIMEOUT_S";
 /// Explicit session-owner pid supplied by an orchestrator.
 pub const ENV_BGJOB_OWNER_PID: &str = "LARCH_BGJOB_OWNER_PID";
+/// Opt-in Darwin idle-sleep guard for a background job's requested command.
+pub const ENV_BGJOB_CAFFEINATE: &str = "LARCH_BGJOB_CAFFEINATE";
 /// Session-owner pid exported by the larch skill layer.
 pub const ENV_LARCH_CLAUDE_PID: &str = "LARCH_CLAUDE_PID";
 /// Session-owner pid exported by the Claude Code harness.
@@ -90,6 +94,143 @@ pub struct OwnerValidationStep {
     pub orphaned: bool,
     /// The failing validation, when one ran.
     pub validation: Option<ValidationResult>,
+}
+
+/// Clock samples and the one-shot owner grace granted after a suspend.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WakeGraceState {
+    last_monotonic: Duration,
+    last_wall_s: f64,
+    grace_until: Option<Duration>,
+}
+
+impl WakeGraceState {
+    /// Capture the daemon's initial clock samples.
+    #[must_use]
+    pub fn new(host: &dyn ProcessIdentityHost) -> Self {
+        Self {
+            last_monotonic: host.monotonic_now(),
+            last_wall_s: host.wall_time_secs(),
+            grace_until: None,
+        }
+    }
+}
+
+/// One daemon clock poll and its wake-grace decision.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WakeGraceStep {
+    /// State carried into the next monitor poll.
+    pub state: WakeGraceState,
+    /// Current monotonic clock sample.
+    pub monotonic_now: Duration,
+    /// Current wall-clock sample.
+    pub wall_time_s: f64,
+    /// Whether this poll detected one new suspend gap.
+    pub suspend_detected: bool,
+    /// Whether orphaning must wait for a foreground waiter to refresh its lease.
+    pub grace_active: bool,
+}
+
+/// Daemon monitor timing and owner-validation state.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MonitorLivenessState {
+    started: Duration,
+    wake: WakeGraceState,
+    owner: OwnerValidationState,
+}
+
+impl MonitorLivenessState {
+    /// Capture the monitor's monotonic start and initial wake samples.
+    #[must_use]
+    pub fn new(host: &dyn ProcessIdentityHost) -> Self {
+        Self {
+            started: host.monotonic_now(),
+            wake: WakeGraceState::new(host),
+            owner: OwnerValidationState::default(),
+        }
+    }
+}
+
+/// One monitor poll after wake grace and owner validation are combined.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MonitorLivenessStep {
+    /// State carried into the next monitor poll.
+    pub state: MonitorLivenessState,
+    /// Suspend-pausing runtime elapsed since monitor start.
+    pub elapsed: Duration,
+    /// Current wall time for heartbeat and wait-lease TTL reads.
+    pub wall_time_s: f64,
+    /// Whether this poll detected one new suspend gap.
+    pub suspend_detected: bool,
+    /// Whether the owner is orphaned after wake grace is applied.
+    pub orphaned: bool,
+    /// Consecutive owner-validation failures observed so far.
+    pub owner_failure_count: u32,
+    /// The latest owner validation, when the job records an owner.
+    pub validation: Option<ValidationResult>,
+}
+
+/// Detect a suspend and grant one wait-lease TTL of monotonic wake grace.
+///
+/// The state advances its wall sample when it detects a gap, so one observed
+/// jump cannot renew the grace on later polls. A later, distinct suspend can.
+#[must_use]
+pub fn check_wake_grace(host: &dyn ProcessIdentityHost, state: WakeGraceState) -> WakeGraceStep {
+    let monotonic_now = host.monotonic_now();
+    let wall_time_s = host.wall_time_secs();
+    let monotonic_delta_s = monotonic_now
+        .saturating_sub(state.last_monotonic)
+        .as_secs_f64();
+    let wall_delta_s = wall_time_s - state.last_wall_s;
+    let suspend_detected =
+        wall_delta_s.is_finite() && wall_delta_s > monotonic_delta_s + BGJOB_SUSPEND_MIN_GAP_S;
+    let mut grace_until = if suspend_detected {
+        Some(monotonic_now.saturating_add(Duration::from_secs_f64(BGJOB_WAIT_LEASE_TTL_S)))
+    } else {
+        state.grace_until
+    };
+    let grace_active = grace_until.is_some_and(|deadline| monotonic_now < deadline);
+    if !grace_active {
+        grace_until = None;
+    }
+    WakeGraceStep {
+        state: WakeGraceState {
+            last_monotonic: monotonic_now,
+            last_wall_s: wall_time_s,
+            grace_until,
+        },
+        monotonic_now,
+        wall_time_s,
+        suspend_detected,
+        grace_active,
+    }
+}
+
+/// Advance daemon timing, wake grace, and owner validation by one poll.
+#[must_use]
+pub fn check_monitor_liveness(
+    host: &dyn ProcessIdentityHost,
+    owner: Option<&RecordedProcessIdentity>,
+    mut state: MonitorLivenessState,
+    owner_grace_s: f64,
+) -> MonitorLivenessStep {
+    let wake = check_wake_grace(host, state.wake);
+    state.wake = wake.state;
+    if wake.suspend_detected {
+        state.owner = OwnerValidationState::default();
+    }
+    let elapsed = wake.monotonic_now.saturating_sub(state.started);
+    let owner_step = check_owner_validation(host, owner, state.owner, elapsed, owner_grace_s);
+    state.owner = owner_step.state;
+    MonitorLivenessStep {
+        state,
+        elapsed,
+        wall_time_s: wake.wall_time_s,
+        suspend_detected: wake.suspend_detected,
+        orphaned: owner_step.orphaned && !wake.grace_active,
+        owner_failure_count: owner_step.state.failure_count,
+        validation: owner_step.validation,
+    }
 }
 
 /// Read a non-negative finite timing override, or fall back to `default`.
@@ -431,19 +572,37 @@ fn is_packed_token(token: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        BGJOB_OWNER_GRACE_S, ENV_TEST_BGJOB_OWNER_GRACE_S, OwnerValidationState,
-        check_owner_validation, is_packed_token, log_tail, merge_rows, ordered_rows,
-        orphan_diagnostic, parse_timing_override, redact_outbound, render_rows, result_rows,
-        startup_in_progress, startup_rows, timing_override_or_default,
+        BGJOB_OWNER_GRACE_S, ENV_TEST_BGJOB_OWNER_GRACE_S, MonitorLivenessState,
+        OwnerValidationState, check_monitor_liveness, check_owner_validation, is_packed_token,
+        log_tail, merge_rows, ordered_rows, orphan_diagnostic, parse_timing_override,
+        redact_outbound, render_rows, result_rows, startup_in_progress, startup_rows,
+        timing_override_or_default,
     };
     use crate::{
         IdentityProbeOutput, ProcessBirthIdentity, ProcessBirthIdentityProbeOutput,
         ProcessIdentityHost, RecordedProcessIdentity, TerminateSignal,
     };
-    use std::{path::Path, time::Duration};
+    use std::{cell::Cell, path::Path, time::Duration};
 
     struct OwnerHost {
         live: bool,
+        monotonic: Cell<Duration>,
+        wall_s: Cell<f64>,
+    }
+
+    impl OwnerHost {
+        fn new(live: bool) -> Self {
+            Self {
+                live,
+                monotonic: Cell::new(Duration::ZERO),
+                wall_s: Cell::new(0.0),
+            }
+        }
+
+        fn set_clocks(&self, monotonic: Duration, wall_s: f64) {
+            self.monotonic.set(monotonic);
+            self.wall_s.set(wall_s);
+        }
     }
 
     impl ProcessIdentityHost for OwnerHost {
@@ -490,11 +649,11 @@ mod tests {
         fn sleep(&self, _duration: Duration) {}
 
         fn monotonic_now(&self) -> Duration {
-            Duration::ZERO
+            self.monotonic.get()
         }
 
         fn wall_time_secs(&self) -> f64 {
-            0.0
+            self.wall_s.get()
         }
 
         fn current_pid(&self) -> i32 {
@@ -558,7 +717,7 @@ mod tests {
 
     #[test]
     fn owner_grace_starts_only_after_three_consecutive_failures() {
-        let missing = OwnerHost { live: false };
+        let missing = OwnerHost::new(false);
         let mut state = OwnerValidationState::default();
         for poll in 0..2_u32 {
             let step = check_owner_validation(
@@ -584,7 +743,7 @@ mod tests {
 
     #[test]
     fn owner_grace_window_delays_orphaning_and_a_live_owner_resets_it() {
-        let missing = OwnerHost { live: false };
+        let missing = OwnerHost::new(false);
         let mut state = OwnerValidationState::default();
         for poll in 0..3_u32 {
             state = check_owner_validation(
@@ -615,7 +774,7 @@ mod tests {
         assert!(outside.orphaned);
 
         let live = check_owner_validation(
-            &OwnerHost { live: true },
+            &OwnerHost::new(true),
             Some(&owner()),
             state,
             Duration::from_secs(200),
@@ -627,6 +786,42 @@ mod tests {
         let absent = check_owner_validation(&missing, None, state, Duration::from_secs(200), 0.0);
         assert!(!absent.orphaned);
         assert!(absent.validation.is_none());
+    }
+
+    #[test]
+    fn suspend_grants_one_fresh_owner_and_wait_lease_window_without_spurious_timeout() {
+        let host = OwnerHost::new(false);
+        host.set_clocks(Duration::ZERO, 1_000.0);
+        let mut state = MonitorLivenessState::new(&host);
+        for second in [0_u32, 1, 2, 121] {
+            host.set_clocks(
+                Duration::from_secs(u64::from(second)),
+                1_000.0 + f64::from(second),
+            );
+            let step = check_monitor_liveness(&host, Some(&owner()), state, 120.0);
+            assert!(!step.orphaned);
+            state = step.state;
+        }
+
+        host.set_clocks(Duration::from_secs(122), 14_722.0);
+        let wake = check_monitor_liveness(&host, Some(&owner()), state, 120.0);
+        assert!(wake.suspend_detected);
+        assert!(!wake.orphaned);
+        assert_eq!(wake.elapsed, Duration::from_secs(122));
+        assert!(wake.elapsed < Duration::from_secs(600));
+
+        let same_jump = check_monitor_liveness(&host, Some(&owner()), wake.state, 120.0);
+        assert!(!same_jump.suspend_detected);
+        assert!(!same_jump.orphaned);
+
+        host.set_clocks(Duration::from_secs(123), 14_723.0);
+        let during_grace = check_monitor_liveness(&host, Some(&owner()), same_jump.state, 120.0);
+        assert!(!during_grace.orphaned);
+
+        host.set_clocks(Duration::from_secs(512), 15_112.0);
+        let expired = check_monitor_liveness(&host, Some(&owner()), during_grace.state, 120.0);
+        assert!(!expired.suspend_detected);
+        assert!(expired.orphaned);
     }
 
     #[test]

@@ -4,6 +4,9 @@
 //! detached daemon role. The daemon owns the child process group, the durable
 //! registry row, and the completed result envelope; `wait` is the only
 //! foreground reader of that envelope.
+//! Runtime budgets and wake grace use the daemon's monotonic clock. Registry
+//! heartbeat and foreground wait-lease TTLs use wall-clock epochs because they
+//! cross process boundaries.
 
 use crate::argparse_compat::{split_inline_option, take_option_value, utf8_arguments};
 use larch_adapters::{
@@ -17,19 +20,20 @@ use larch_core::{
     BGJOB_RC_ORPHANED, BGJOB_RC_TIMEOUT, BGJOB_STATUS_DEAD, BGJOB_STATUS_DONE, BGJOB_STATUS_KEY,
     BGJOB_STATUS_STARTED, BGJOB_STATUS_WAIT, BGJOB_WAIT_DEFAULT_CHUNK_S,
     BGJOB_WAIT_HARD_DEADLINE_GRACE_S, BGJOB_WAIT_LEASE_TTL_S, BGJOB_WAIT_MAX_CHUNK_S, BgjobError,
-    JobSpec, OwnerIdentity, OwnerValidationState, ProcessBirthIdentity, ProcessIdentityHost,
-    ProcessIdentityValidationPolicy, RecordedProcessIdentity, RegistryEntry, ValidationResult,
-    bgjob_dir, check_owner_validation, checked_dir, child_liveness, clear_completion_residue,
-    collect_process_group_members_checked, confirm_process_group_absent, daemon_liveness,
-    daemon_poll_interval_s, ensure_under, epoch_now, finish_completion_transaction, iter_entries,
-    log_paths, log_tail, merge_rows, ordered_rows, orphan_diagnostic, owner_grace_s,
-    owner_pid_candidate, phase_barrier, prepare_completion_transaction, private_atomic_write,
-    read_entry, read_for, read_merge_result_env, read_process_identity, refresh_wait_lease,
-    registry_path, render_rows, resolve_run_id, result_env_path, result_rows,
-    startup_ack_timeout_s, startup_env_path, startup_in_progress, startup_rows,
-    terminate_validated_process_group_with_policy, unlink_entry, validate_merge_result_env,
-    validate_run_id, validate_slug, validate_terminal_stdout_key, validate_timing_overrides,
-    wait_lease_is_fresh, worker_status_path, write_entry,
+    ENV_BGJOB_CAFFEINATE, JobSpec, MonitorLivenessState, OwnerIdentity, ProcessBirthIdentity,
+    ProcessIdentityHost, ProcessIdentityValidationPolicy, RecordedProcessIdentity, RegistryEntry,
+    ValidationResult, bgjob_dir, check_monitor_liveness, checked_dir, child_liveness,
+    clear_completion_residue, collect_process_group_members_checked, confirm_process_group_absent,
+    daemon_liveness, daemon_poll_interval_s, ensure_under, epoch_now,
+    finish_completion_transaction, iter_entries, log_paths, log_tail, merge_rows, ordered_rows,
+    orphan_diagnostic, owner_grace_s, owner_pid_candidate, phase_barrier,
+    prepare_completion_transaction, private_atomic_write, read_entry, read_for,
+    read_merge_result_env, read_process_identity, refresh_wait_lease, registry_path, render_rows,
+    resolve_run_id, result_env_path, result_rows, startup_ack_timeout_s, startup_env_path,
+    startup_in_progress, startup_rows, terminate_validated_process_group_with_policy, unlink_entry,
+    validate_merge_result_env, validate_run_id, validate_slug, validate_terminal_stdout_key,
+    validate_timing_overrides, wait_lease_is_fresh_at, worker_status_path, write_entry,
+    write_entry_at,
 };
 use nix::{
     sys::signal::{Signal, killpg},
@@ -59,6 +63,7 @@ const ENV_WORKER_TMPDIR: &str = "LARCH_BGJOB_WORKER_TMPDIR";
 const ENV_WORKER_STEP: &str = "LARCH_BGJOB_WORKER_STEP";
 /// Session temporary directory consulted when `--tmpdir` is omitted.
 const ENV_IMPLEMENT_TMPDIR: &str = "IMPLEMENT_TMPDIR";
+const CAFFEINATE_PATH: &str = "/usr/bin/caffeinate";
 const IDENTITY_CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
 const IDENTITY_CAPTURE_SLEEP: Duration = Duration::from_millis(50);
 const CHILD_REAP_TIMEOUT: Duration = Duration::from_secs(5);
@@ -75,6 +80,12 @@ struct SpawnedWorker {
 
 struct AcknowledgementFailure {
     reader: Option<std::thread::JoinHandle<()>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WorkerCommand {
+    program: OsString,
+    arguments: Vec<OsString>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -548,6 +559,12 @@ fn one_line(error: &(impl ToString + ?Sized)) -> String {
     error.to_string().replace(['\n', '\r'], " ")
 }
 
+fn wall_epoch(wall_time_s: f64) -> Result<i64, String> {
+    let duration =
+        Duration::try_from_secs_f64(wall_time_s).map_err(|_| "invalid-wall-clock".to_owned())?;
+    i64::try_from(duration.as_secs()).map_err(|_| "invalid-wall-clock".to_owned())
+}
+
 fn error(detail: &str) -> ExitCode {
     println!("BGJOB_ERROR={detail}");
     ExitCode::from(2)
@@ -718,7 +735,7 @@ fn daemon_body(spec: &JobSpec) -> Result<(), String> {
         kill_and_reap(&host, &mut worker.child, None);
         return Err(one_line(&error));
     }
-    let (child_identity, registry) =
+    let (child_identity, mut entry, registry) =
         match register_startup(&host, spec, &mut worker.child, &stdout_log, &stderr_log) {
             Ok(startup) => startup,
             Err(error) => {
@@ -770,7 +787,14 @@ fn daemon_body(spec: &JobSpec) -> Result<(), String> {
     }
     phase_barrier("after-acknowledgement").map_err(|error| one_line(&error))?;
     let _ = fs::remove_file(&startup);
-    match monitor(spec, &mut worker.child, &child_identity, &registry, &host) {
+    match monitor(
+        spec,
+        &mut worker.child,
+        &child_identity,
+        &mut entry,
+        &registry,
+        &host,
+    ) {
         Ok(()) => Ok(()),
         Err(message) => {
             // Registration succeeded before the gate opened. A later error
@@ -786,7 +810,7 @@ fn register_startup(
     child: &mut Child,
     stdout_log: &Path,
     stderr_log: &Path,
-) -> Result<(RecordedProcessIdentity, PathBuf), String> {
+) -> Result<(RecordedProcessIdentity, RegistryEntry, PathBuf), String> {
     let child_pid = i32::try_from(child.id()).map_err(|error| one_line(&error))?;
     let Some(child_identity) = capture_identity(host, child_pid, "") else {
         return Err(format!(
@@ -799,6 +823,7 @@ fn register_startup(
         return Err("could not capture daemon process identity".to_owned());
     };
     phase_barrier("after-identity-capture").map_err(|error| one_line(&error))?;
+    let start_epoch = wall_epoch(host.wall_time_secs())?;
     let entry = RegistryEntry {
         step: spec.step.clone(),
         run_id: spec.run_id.clone(),
@@ -811,7 +836,8 @@ fn register_startup(
         // while the requested command and all group descendants run.
         child_allows_exec: false,
         owner: spec.owner.recorded.clone(),
-        start_epoch: epoch_now(),
+        start_epoch,
+        heartbeat_epoch: start_epoch,
         budget_s: spec.budget_s,
         stdout_log: stdout_log.to_path_buf(),
         stderr_log: stderr_log.to_path_buf(),
@@ -828,7 +854,7 @@ fn register_startup(
             return Err(one_line(&failure));
         }
     };
-    Ok((child_identity, registry))
+    Ok((child_identity, entry, registry))
 }
 
 /// Render one finished child's result code the way the Python owner did.
@@ -1030,9 +1056,10 @@ fn worker_body(arguments: &[OsString]) -> Result<String, String> {
         return Err("worker-gate-not-released".to_owned());
     }
 
-    let mut requested = Command::new(program); // lint-subprocess-via-runner: ok the durable worker owns the requested long-running child
+    let launch = worker_command(program, arguments);
+    let mut requested = Command::new(&launch.program); // lint-subprocess-via-runner: ok the durable worker owns the requested long-running child
     requested
-        .args(arguments)
+        .args(&launch.arguments)
         .stdin(Stdio::null())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -1051,6 +1078,38 @@ fn worker_body(arguments: &[OsString]) -> Result<String, String> {
     wait_for_worker_group()?;
     write_worker_status(&status_path, &root, &step, &rc)?;
     Ok(rc)
+}
+
+fn worker_command(program: &str, arguments: &[String]) -> WorkerCommand {
+    worker_command_for(
+        program,
+        arguments,
+        cfg!(target_os = "macos"),
+        env::var(ENV_BGJOB_CAFFEINATE).as_deref() == Ok("true"),
+        Path::new(CAFFEINATE_PATH).is_file(),
+    )
+}
+
+fn worker_command_for(
+    program: &str,
+    arguments: &[String],
+    darwin: bool,
+    caffeinate_enabled: bool,
+    caffeinate_available: bool,
+) -> WorkerCommand {
+    if darwin && caffeinate_enabled && caffeinate_available {
+        let mut wrapped_arguments = Vec::with_capacity(arguments.len().saturating_add(2));
+        wrapped_arguments.extend([OsString::from("-i"), OsString::from(program)]);
+        wrapped_arguments.extend(arguments.iter().map(OsString::from));
+        return WorkerCommand {
+            program: OsString::from(CAFFEINATE_PATH),
+            arguments: wrapped_arguments,
+        };
+    }
+    WorkerCommand {
+        program: OsString::from(program),
+        arguments: arguments.iter().map(OsString::from).collect(),
+    }
 }
 
 fn write_worker_status(path: &Path, root: &Path, step: &str, rc: &str) -> Result<(), String> {
@@ -1103,6 +1162,7 @@ fn monitor(
     spec: &JobSpec,
     child: &mut Child,
     child_identity: &RecordedProcessIdentity,
+    entry: &mut RegistryEntry,
     registry: &Path,
     host: &SystemProcessIdentityHost,
 ) -> Result<(), String> {
@@ -1113,10 +1173,13 @@ fn monitor(
             .max(0.0),
     );
     let budget = Duration::from_secs(u64::try_from(spec.budget_s.max(0)).unwrap_or(u64::MAX));
-    let started = Instant::now();
-    let mut owner_state = OwnerValidationState::default();
-    let terminal = loop {
-        let now = started.elapsed();
+    let mut monitor_state = MonitorLivenessState::new(host);
+    let (terminal, elapsed) = loop {
+        let step =
+            check_monitor_liveness(host, spec.owner.recorded.as_ref(), monitor_state, grace_s);
+        monitor_state = step.state;
+        let elapsed = step.elapsed;
+        refresh_registry_heartbeat(entry, registry, step.wall_time_s)?;
         // Test-only phase barriers can stop the daemon after its worker
         // becomes a zombie but before this direct parent reaps it. That is
         // the real missing-pid recovery window `wait` must handle without a
@@ -1125,35 +1188,35 @@ fn monitor(
         match child.try_wait() {
             Ok(Some(status)) => {
                 phase_barrier("after-leader-exit").map_err(|error| one_line(&error))?;
-                break MonitorTerminal::Exited(worker_result_token(spec, status));
+                break (
+                    MonitorTerminal::Exited(worker_result_token(spec, status)),
+                    elapsed,
+                );
             }
             Ok(None) => {}
-            Err(error) => break MonitorTerminal::WaitError(one_line(&error)),
+            Err(error) => break (MonitorTerminal::WaitError(one_line(&error)), elapsed),
         }
-        if now >= budget {
-            break MonitorTerminal::Teardown(BGJOB_RC_TIMEOUT);
+        if elapsed >= budget {
+            break (MonitorTerminal::Teardown(BGJOB_RC_TIMEOUT), elapsed);
         }
-        let step = check_owner_validation(
-            host,
-            spec.owner.recorded.as_ref(),
-            owner_state,
-            now,
-            grace_s,
-        );
-        owner_state = step.state;
         if let (true, Some(validation)) = (step.orphaned, step.validation.as_ref()) {
             // An active foreground wait refreshes a lease under the session
             // tmpdir. Keep the child alive while that lease is fresh so an
             // ephemeral start-shell owner (#8639) cannot orphan a still-waited
             // job. When wait stops, the lease ages out and orphaning resumes.
-            if wait_lease_is_fresh(&spec.tmpdir, &spec.step, BGJOB_WAIT_LEASE_TTL_S) {
-                thread::sleep(poll);
+            if wait_lease_is_fresh_at(
+                &spec.tmpdir,
+                &spec.step,
+                BGJOB_WAIT_LEASE_TTL_S,
+                step.wall_time_s,
+            ) {
+                host.sleep(poll);
                 continue;
             }
-            append_orphan_diagnostic(spec, validation, owner_state.failure_count);
-            break MonitorTerminal::Teardown(BGJOB_RC_ORPHANED);
+            append_orphan_diagnostic(spec, validation, step.owner_failure_count);
+            break (MonitorTerminal::Teardown(BGJOB_RC_ORPHANED), elapsed);
         }
-        thread::sleep(poll);
+        host.sleep(poll);
     };
     let (rc_token, teardown_reason) = match terminal {
         MonitorTerminal::Exited(rc) => (rc, "child-exited"),
@@ -1163,7 +1226,7 @@ fn monitor(
             ("2".to_owned(), "child-wait-error")
         }
     };
-    let elapsed_s = i64::try_from(started.elapsed().as_secs()).unwrap_or(i64::MAX);
+    let elapsed_s = i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX);
     if let Err(reason) = terminate_and_confirm_child(
         host,
         child,
@@ -1187,6 +1250,22 @@ fn monitor(
         let _ = remove_result_residue(&path);
     }
     unlink_entry(registry);
+    Ok(())
+}
+
+fn refresh_registry_heartbeat(
+    entry: &mut RegistryEntry,
+    registry: &Path,
+    wall_time_s: f64,
+) -> Result<(), String> {
+    entry.heartbeat_epoch = wall_epoch(wall_time_s)?;
+    let root = registry
+        .parent()
+        .ok_or_else(|| "registry-path-has-no-parent".to_owned())?;
+    let written = write_entry_at(entry, Some(root)).map_err(|error| one_line(&error))?;
+    if written != registry {
+        return Err("registry-heartbeat-path-mismatch".to_owned());
+    }
     Ok(())
 }
 
@@ -1486,10 +1565,11 @@ fn recovery_diag(reason: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        MIN_POLL_SLEEP, StartArguments, WaitArguments, daemon_arguments, dead_rows, done_rows,
-        finish_start, inherited_owner, one_line, open_verified_log, owner_from_rows, owner_rows,
-        parse_start, parse_wait, poll_sleep, read_completed_result, read_merge_text, read_result,
-        remove_result_residue, wait_rows, write_result,
+        CAFFEINATE_PATH, MIN_POLL_SLEEP, StartArguments, WaitArguments, daemon_arguments,
+        dead_rows, done_rows, finish_start, inherited_owner, one_line, open_verified_log,
+        owner_from_rows, owner_rows, parse_start, parse_wait, poll_sleep, read_completed_result,
+        read_merge_text, read_result, remove_result_residue, wait_rows, wall_epoch,
+        worker_command_for, write_result,
     };
     use larch_core::{
         BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BGJOB_WAIT_DEFAULT_CHUNK_S, BGJOB_WAIT_MAX_CHUNK_S,
@@ -1728,6 +1808,33 @@ mod tests {
             .expect("command separator");
         assert_eq!(&rendered[separator + 1..], ["/bin/echo", "hello"]);
         assert!(!daemon_arguments(&job).contains(&OsString::from("--owner-pid")));
+    }
+
+    #[test]
+    fn caffeinate_wrap_is_darwin_only_opt_in_and_availability_gated() {
+        let arguments = ["hello".to_owned()];
+        for (darwin, enabled, available) in [
+            (false, true, true),
+            (true, false, true),
+            (true, true, false),
+        ] {
+            let command = worker_command_for("/bin/echo", &arguments, darwin, enabled, available);
+            assert_eq!(command.program, OsString::from("/bin/echo"));
+            assert_eq!(command.arguments, [OsString::from("hello")]);
+        }
+
+        let wrapped = worker_command_for("/bin/echo", &arguments, true, true, true);
+        assert_eq!(wrapped.program, OsString::from(CAFFEINATE_PATH));
+        assert_eq!(
+            wrapped.arguments,
+            [
+                OsString::from("-i"),
+                OsString::from("/bin/echo"),
+                OsString::from("hello"),
+            ]
+        );
+        assert_eq!(wall_epoch(42.9), Ok(42));
+        assert!(wall_epoch(f64::NAN).is_err());
     }
 
     #[test]

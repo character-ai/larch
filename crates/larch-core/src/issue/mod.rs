@@ -65,8 +65,9 @@ pub use ground_truth::{
 };
 pub use input::{InputMode, ParsedInput, ParsedItem, parse_issue_input};
 pub use lease::{
-    ImplementationLease, LeaseDefect, parse_implementation_lease, render_implementation_lease,
-    upsert_implementation_lease,
+    IMPLEMENTATION_LEASE_STALE_AFTER_HOURS, ImplementationLease, LeaseDefect,
+    implementation_lease_age_hours, implementation_lease_is_expired, parse_implementation_lease,
+    render_implementation_lease, upsert_implementation_lease,
 };
 pub use oos_batch::{
     IssueCapError, ManifestObservation, apply_issue_cap, description_lines, existing_oos_titles,

@@ -6,14 +6,15 @@ use std::{
     sync::LazyLock,
 };
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use regex::Regex;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    DONE_PREFIX, IMPLEMENTING_PREFIX, ImplementationLease, NamedBlockDefect, PLAN_MARKER,
-    STALLED_PREFIX, balanced_fence_line_indices, parse_implementation_lease, parse_named_block,
-    split_lines_keep_ends, split_text_lines, trim_python_whitespace,
+    DONE_PREFIX, IMPLEMENTATION_LEASE_STALE_AFTER_HOURS, IMPLEMENTING_PREFIX, NamedBlockDefect,
+    PLAN_MARKER, STALLED_PREFIX, balanced_fence_line_indices, implementation_lease_age_hours,
+    parse_implementation_lease, parse_named_block, split_lines_keep_ends, split_text_lines,
+    trim_python_whitespace,
 };
 
 pub const REASON_MISSING_NATIVE: &str = "missing-native-blocker-edge";
@@ -30,8 +31,6 @@ pub const REASON_REUSE_SOURCE_UNAVAILABLE: &str = "reuse-source-unavailable";
 
 const OWNERS_START: &str = "<!-- larch:owners:start -->";
 const OWNERS_END: &str = "<!-- larch:owners:end -->";
-const LEASE_STALE_HOURS: i64 = 12;
-
 static NATIVE_BLOCKER_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[ \t]*Native blockers?:[ \t]+(.+?)[ \t]*$")
         .expect("native blocker expression is valid")
@@ -1186,23 +1185,23 @@ fn stale_lease_finding(
 ) -> Option<LeaseAuditFinding> {
     let lease = parse_implementation_lease(&issue.body)?;
     (!open_pr_branches.contains(&lease.branch)).then_some(lease).and_then(|lease| {
-        lease_age_hours(&lease, now).filter(|age| *age >= LEASE_STALE_HOURS).map(|age| {
-            LeaseAuditFinding {
-                token: format!("stale-implementation-lease issue=#{} age_hours={age}", issue.number),
-                cleanup_command: format!(
-                    "scripts/larch.sh tracking-issue rename --issue {} --state stalled --repo {} --run-id {}",
-                    issue.number,
-                    repository.as_str(),
-                    lease.run_id
-                ),
-            }
-        })
+        implementation_lease_age_hours(&lease, now)
+            .filter(|age| *age >= IMPLEMENTATION_LEASE_STALE_AFTER_HOURS)
+            .map(|age| {
+                LeaseAuditFinding {
+                    token: format!(
+                        "stale-implementation-lease issue=#{} age_hours={age}",
+                        issue.number
+                    ),
+                    cleanup_command: format!(
+                        "scripts/larch.sh tracking-issue rename --issue {} --state stalled --repo {} --run-id {}",
+                        issue.number,
+                        repository.as_str(),
+                        lease.run_id
+                    ),
+                }
+            })
     })
-}
-
-fn lease_age_hours(lease: &ImplementationLease, now: DateTime<Utc>) -> Option<i64> {
-    let parsed = NaiveDateTime::parse_from_str(&lease.updated_at, "%Y-%m-%dT%H:%M:%SZ").ok()?;
-    Some((now - parsed.and_utc()).num_seconds().div_euclid(3600))
 }
 
 fn valid_repository_part(value: &str) -> bool {

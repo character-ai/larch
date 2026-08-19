@@ -1,19 +1,21 @@
 //! Read-only background-job registry liveness used by the larch statusline.
 //!
 //! This is the shared Rust reader for the `daemons/*.env` rows the bgjob
-//! runtime writes. It answers exactly one question — does an
-//! in-budget, live job exist for this clone and run — so the statusline can
+//! runtime writes. It answers exactly one question: does a heartbeat-fresh,
+//! live job exist for this clone and run, so the statusline can
 //! keep a long-running step visible without a staleness marker. The bgjob
 //! command leaves extend this module rather than adding a second reader.
 
 use crate::read_kv_raw;
 use larch_core::{
-    ProcessBirthIdentity, ProcessIdentityHost, ProcessIdentityValidationPolicy,
-    RecordedProcessIdentity, validate_process_identity_with_policy,
+    BGJOB_HEARTBEAT_STALE_AFTER_S, ProcessBirthIdentity, ProcessIdentityHost,
+    ProcessIdentityValidationPolicy, RecordedProcessIdentity,
+    validate_process_identity_with_policy,
 };
 use std::{
     fs,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 /// Directory under the larch cache home that holds registry rows.
@@ -51,14 +53,13 @@ impl IdentityLiveness for HostLiveness<'_> {
 struct RegistryEntry {
     run_id: String,
     clone_path: PathBuf,
-    start_epoch: f64,
-    budget_s: f64,
+    heartbeat_epoch: i64,
     daemon: RecordedProcessIdentity,
     child: RecordedProcessIdentity,
     child_allows_exec: bool,
 }
 
-/// Return whether an in-budget, live background job owns `run_id` for a clone.
+/// Return whether a heartbeat-fresh, live background job owns `run_id` for a clone.
 ///
 /// Any unreadable, malformed, or expired row is treated as not live, matching
 /// the fail-silent Python reader this replaces.
@@ -73,6 +74,12 @@ pub fn has_live_entry(
     if run_id.is_empty() || clone_root.as_os_str().is_empty() {
         return false;
     }
+    let Ok(now_duration) = Duration::try_from_secs_f64(now) else {
+        return false;
+    };
+    let Ok(now_epoch) = i64::try_from(now_duration.as_secs()) else {
+        return false;
+    };
     let Ok(entries) = fs::read_dir(registry_root) else {
         return false;
     };
@@ -85,7 +92,7 @@ pub fn has_live_entry(
     paths.iter().any(|path| {
         read_entry(path).is_some_and(|entry| {
             entry.run_id == run_id
-                && now - entry.start_epoch <= entry.budget_s
+                && now_epoch.saturating_sub(entry.heartbeat_epoch) <= BGJOB_HEARTBEAT_STALE_AFTER_S
                 && entry.clone_path == clone_root
                 && (liveness.is_live(
                     &entry.child,
@@ -114,11 +121,13 @@ fn read_entry(path: &Path) -> Option<RegistryEntry> {
     validated_child_path(field(&rows, "STDOUT_LOG")?, &log_dir)?;
     validated_child_path(field(&rows, "STDERR_LOG")?, &log_dir)?;
     validated_child_path(field(&rows, "RESULT_ENV")?, &tmpdir.join(BGJOB_TMP_SUBDIR))?;
+    let start_epoch = field(&rows, "START_EPOCH")?.parse().ok()?;
+    let _budget_s = field(&rows, "BUDGET_S")?.parse::<f64>().ok()?;
     Some(RegistryEntry {
         run_id: field(&rows, "RUN_ID")?.to_owned(),
         clone_path: fs::canonicalize(field(&rows, "CLONE_PATH").unwrap_or(".")).ok()?,
-        start_epoch: field(&rows, "START_EPOCH")?.parse().ok()?,
-        budget_s: field(&rows, "BUDGET_S")?.parse().ok()?,
+        heartbeat_epoch: field(&rows, "HEARTBEAT_EPOCH")
+            .map_or(Some(start_epoch), |value| value.parse().ok())?,
         daemon: identity(&rows, "DAEMON")?,
         child: identity(&rows, "CHILD")?,
         child_allows_exec: field(&rows, "CHILD_ALLOW_COMMAND_TRANSITION")
@@ -234,7 +243,7 @@ mod tests {
             )
         };
         let rows = format!(
-            "STEP=step-5\nRUN_ID={run_id}\nTMPDIR={}\nLOG_DIR={}\nCLONE_PATH={}\nSTART_EPOCH=1000\nBUDGET_S=600\nSTDOUT_LOG={}\nSTDERR_LOG={}\nRESULT_ENV={}\n{}{}",
+            "STEP=step-5\nRUN_ID={run_id}\nTMPDIR={}\nLOG_DIR={}\nCLONE_PATH={}\nSTART_EPOCH=1000\nHEARTBEAT_EPOCH=1090\nBUDGET_S=600\nSTDOUT_LOG={}\nSTDERR_LOG={}\nRESULT_ENV={}\n{}{}",
             tmpdir.display(),
             log_dir.display(),
             clone.display(),
@@ -249,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn a_live_in_budget_row_for_this_clone_and_run_counts() {
+    fn a_live_heartbeat_fresh_row_for_this_clone_and_run_counts() {
         let sandbox = TempDir::new().expect("sandbox");
         let registry = seed(sandbox.path(), "run-1");
         let clone = fs::canonicalize(sandbox.path().join("clone")).expect("clone");
@@ -288,6 +297,40 @@ mod tests {
             "run-1",
             &LiveHost(true),
             1100.0
+        ));
+    }
+
+    #[test]
+    fn a_fresh_heartbeat_survives_a_wall_jump_and_a_stale_one_expires() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let registry = seed(sandbox.path(), "run-1");
+        let clone = fs::canonicalize(sandbox.path().join("clone")).expect("clone");
+        let row = registry.join("run-1-step-5.env");
+        let jumped = fs::read_to_string(&row)
+            .expect("registry row")
+            .replace("HEARTBEAT_EPOCH=1090", "HEARTBEAT_EPOCH=14399");
+        fs::write(&row, jumped).expect("fresh heartbeat");
+
+        assert!(has_live_entry(
+            &registry,
+            &clone,
+            "run-1",
+            &LiveHost(true),
+            14_400.0
+        ));
+        assert!(has_live_entry(
+            &registry,
+            &clone,
+            "run-1",
+            &LiveHost(true),
+            14_000.0
+        ));
+        assert!(!has_live_entry(
+            &registry,
+            &clone,
+            "run-1",
+            &LiveHost(true),
+            14_431.0
         ));
     }
 
