@@ -43,7 +43,7 @@ use larch_core::{
     DebateSeat, VendorLaunchRequest, VendorProgram, VendorSessionHandle, build_codex_resume_argv,
     build_codex_session_argv, build_cursor_create_chat_argv, build_cursor_resume_argv,
     debate_panel_seating, parse_codex_session_id, parse_cursor_create_chat_id, redact_outbound,
-    role_default,
+    role_default, untrusted_content_block,
 };
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
@@ -137,6 +137,13 @@ const RESTORE_ORIGINAL_TITLE_KEY: &str = "RESTORE_ORIGINAL_TITLE";
 const RESTORE_TITLE_KEY: &str = "RESTORE_TITLE";
 /// Restore handoff key: new source fingerprint.
 const SOURCE_FINGERPRINT_KEY: &str = "SOURCE_FINGERPRINT";
+/// Filename of the fixed forward-link proposal comment.
+const PROPOSAL_COMMENT_FILENAME: &str = "proposal-comment.md";
+/// Filename of the fixed aborted-debate comment.
+const ABORTED_COMMENT_FILENAME: &str = "aborted-comment.md";
+/// The sanitized fixed aborted-debate sentence, preserved byte for byte.
+const ABORTED_COMMENT_SENTENCE: &str =
+    "The debate ended before proposal publication. No outcome was adopted.";
 
 /// The drop exit code for a drop reason token (mirrors `DEBATE_DROP_EXIT_CODES`).
 fn drop_exit_code(reason: &str) -> i32 {
@@ -459,6 +466,79 @@ pub fn publish_prepare(arguments: &[OsString]) -> ExitCode {
     )
 }
 
+/// `debate publish-run`
+///
+/// Composite of `synthesize`, `publish-prepare`, and the in-process proposal
+/// link, threading the (unchanged) terminal fingerprint internally.
+#[must_use]
+pub fn publish_run(arguments: &[OsString]) -> ExitCode {
+    let parsed = match parse_args(
+        arguments,
+        &["--debate-tmpdir", "--expected-fingerprint"],
+        &["--debate-tmpdir", "--expected-fingerprint"],
+    ) {
+        Ok(parsed) => parsed,
+        Err(error) => return finish_publish_run(Err(error)),
+    };
+    let backend = SynthesisBackend {
+        dispatch: &default_synthesis_dispatch,
+        run_log: &default_synthesis_run_log,
+    };
+    finish_publish_run(run_publish_run(&parsed, &backend))
+}
+
+/// `debate publish-finish`
+///
+/// Composite of the fixed forward-link comment upsert, its read-back verify,
+/// and the finish title transition.
+#[must_use]
+pub fn publish_finish(arguments: &[OsString]) -> ExitCode {
+    let parsed = match parse_args(
+        arguments,
+        &[
+            "--debate-tmpdir",
+            "--expected-fingerprint",
+            "--proposal-number",
+            "--proposal-url",
+        ],
+        &[
+            "--debate-tmpdir",
+            "--expected-fingerprint",
+            "--proposal-number",
+            "--proposal-url",
+        ],
+    ) {
+        Ok(parsed) => parsed,
+        Err(error) => return finish_publish_finish(Err(error)),
+    };
+    finish_publish_finish(run_publish_finish(&parsed))
+}
+
+/// `debate abort-run`
+///
+/// Composite of `abort`, the conditional owned-title restore, and the fixed
+/// aborted-comment upsert plus read-back verify.
+#[must_use]
+pub fn abort_run(arguments: &[OsString]) -> ExitCode {
+    let parsed = match parse_args(
+        arguments,
+        &[
+            "--debate-tmpdir",
+            "--expected-fingerprint",
+            "--title-adopted",
+        ],
+        &[
+            "--debate-tmpdir",
+            "--expected-fingerprint",
+            "--title-adopted",
+        ],
+    ) {
+        Ok(parsed) => parsed,
+        Err(error) => return finish_abort_run(Err(error)),
+    };
+    finish_abort_run(run_abort_run(&parsed))
+}
+
 /// Emit the operation envelope with an optional artifact path.
 fn finish_artifact(
     operation: &str,
@@ -726,6 +806,139 @@ fn finish_round_ingest(outcome: Result<RoundIngestOutcome, DebateError>) -> Exit
                 composite_envelope(
                     false,
                     "round-ingest",
+                    None,
+                    None,
+                    Some(error.error_class),
+                    Vec::new(),
+                )
+            );
+            ExitCode::from(u8::try_from(error.exit_code).unwrap_or(2))
+        }
+    }
+}
+
+/// Emit the `publish-run` composite envelope and map to an exit code.
+fn finish_publish_run(outcome: Result<PublishRunOutcome, DebateError>) -> ExitCode {
+    match outcome {
+        Ok(result) => {
+            let extra = vec![
+                (
+                    "title_file",
+                    Value::String(path_to_string(&result.title_file)),
+                ),
+                (
+                    "linked_body_path",
+                    Value::String(path_to_string(&result.linked_body_path)),
+                ),
+                (
+                    "source_issue_number",
+                    Value::String(result.source_issue_number.clone()),
+                ),
+                (
+                    "cross_link_issue_number",
+                    Value::String(result.cross_link_issue_number.clone()),
+                ),
+                (
+                    "source_fingerprint",
+                    Value::String(result.source_fingerprint.clone()),
+                ),
+                (
+                    "proposal_title_block",
+                    Value::String(result.proposal_title_block.clone()),
+                ),
+            ];
+            println!(
+                "{}",
+                composite_envelope(true, "publish-run", Some(&result.state), None, None, extra)
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            println!(
+                "{}",
+                composite_envelope(
+                    false,
+                    "publish-run",
+                    None,
+                    None,
+                    Some(error.error_class),
+                    Vec::new(),
+                )
+            );
+            ExitCode::from(u8::try_from(error.exit_code).unwrap_or(2))
+        }
+    }
+}
+
+/// Emit the `publish-finish` composite envelope and map to an exit code.
+fn finish_publish_finish(outcome: Result<PublishFinishOutcome, DebateError>) -> ExitCode {
+    match outcome {
+        Ok(result) => {
+            let extra = vec![
+                ("comment_id", Value::String(result.comment_id.clone())),
+                ("title_changed", Value::Bool(result.title_changed)),
+                ("owned", Value::Bool(result.owned)),
+            ];
+            println!(
+                "{}",
+                composite_envelope(
+                    true,
+                    "publish-finish",
+                    Some(&result.state),
+                    None,
+                    None,
+                    extra
+                )
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            println!(
+                "{}",
+                composite_envelope(
+                    false,
+                    "publish-finish",
+                    None,
+                    None,
+                    Some(error.error_class),
+                    Vec::new(),
+                )
+            );
+            ExitCode::from(u8::try_from(error.exit_code).unwrap_or(2))
+        }
+    }
+}
+
+/// Emit the `abort-run` composite envelope and map to an exit code.
+fn finish_abort_run(outcome: Result<AbortRunOutcome, DebateError>) -> ExitCode {
+    match outcome {
+        Ok(result) => {
+            let extra = vec![
+                (
+                    "restore_owned",
+                    result.restore_owned.map_or(Value::Null, Value::Bool),
+                ),
+                (
+                    "restore_changed",
+                    result.restore_changed.map_or(Value::Null, Value::Bool),
+                ),
+                (
+                    "comment_id",
+                    result.comment_id.clone().map_or(Value::Null, Value::String),
+                ),
+            ];
+            println!(
+                "{}",
+                composite_envelope(true, "abort-run", Some(&result.state), None, None, extra)
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            println!(
+                "{}",
+                composite_envelope(
+                    false,
+                    "abort-run",
                     None,
                     None,
                     Some(error.error_class),
@@ -3415,6 +3628,241 @@ fn run_publish_prepare(
         DebateError::publication_failure(),
     )?;
     Ok((state, handoff_path))
+}
+
+// ---------------------------------------------------------------------------
+// publish-run, publish-finish, and abort-run composite verbs
+// ---------------------------------------------------------------------------
+
+/// The `publish-run` composite result: the untouched terminal state plus the
+/// verified publication handoff values the SKILL previously parsed from
+/// `publish-prepare.env`, and the wrapped untrusted proposal title.
+#[derive(Debug)]
+struct PublishRunOutcome {
+    state: StoredState,
+    title_file: PathBuf,
+    linked_body_path: PathBuf,
+    source_issue_number: String,
+    cross_link_issue_number: String,
+    source_fingerprint: String,
+    proposal_title_block: String,
+}
+
+/// The `publish-finish` composite result: the untouched terminal state plus
+/// the verified forward-link comment id and the finish transition evidence.
+#[derive(Debug)]
+struct PublishFinishOutcome {
+    state: StoredState,
+    comment_id: String,
+    title_changed: bool,
+    owned: bool,
+}
+
+/// The `abort-run` composite result: the post-abort state plus the optional
+/// restore and comment evidence (all absent before title adoption).
+#[derive(Debug)]
+struct AbortRunOutcome {
+    state: StoredState,
+    restore_owned: Option<bool>,
+    restore_changed: Option<bool>,
+    comment_id: Option<String>,
+}
+
+/// Synthesize, prepare publication, and link the proposal body in one
+/// process, threading the (unchanged) terminal fingerprint internally.
+fn run_publish_run(
+    parsed: &BTreeMap<String, String>,
+    backend: &SynthesisBackend<'_>,
+) -> Result<PublishRunOutcome, DebateError> {
+    // Step 1: synthesize (idempotent; the fingerprint is unchanged on success).
+    let (_synth_state, _body) = run_synthesize(parsed, backend)?;
+    // Step 2: the idempotent publish-prepare handoff (kept for retry parity).
+    let (state, _handoff) = run_publish_prepare(parsed)?;
+    let debate_root_path = lexical_absolute(&parsed["--debate-tmpdir"]);
+    let debate_root = TemporaryRoot::resolve(Some(&debate_root_path))
+        .map_err(|_error| DebateError::persistence())?;
+    // Step 3: append the deterministic source backlink in-process on the
+    // canonical synthesized body. The lexical path is what the publication
+    // owner's containment check consumes.
+    let body_path = debate_root_path.join(PROPOSAL_BODY_FILENAME);
+    let linked_body_path = crate::debate_publication_commands::link_proposal_body_in(
+        &parsed["--debate-tmpdir"],
+        &path_to_string(&body_path),
+    )
+    .map_err(|()| DebateError::publication_failure())?;
+    // Step 4: fail-closed proposal-title shape check (moved from the SKILL):
+    // exactly one nonempty line, the exact `[PROPOSAL] ` prefix, and a
+    // nonempty remainder that does not begin with a dash.
+    let title_path = debate_root.path().join(PROPOSAL_TITLE_FILENAME);
+    let title_content =
+        read_owned_text(&debate_root, &title_path).ok_or_else(DebateError::publication_failure)?;
+    let nonempty: Vec<&str> = title_content
+        .lines()
+        .filter(|line| !line.is_empty())
+        .collect();
+    let title_prefix = format!("{PROPOSAL_TITLE_PREFIX} ");
+    let remainder = match nonempty.as_slice() {
+        [line] => line.strip_prefix(&title_prefix),
+        _ => None,
+    };
+    match remainder {
+        Some(remainder) if !remainder.is_empty() && !remainder.starts_with('-') => {}
+        _ => return Err(DebateError::publication_failure()),
+    }
+    let issue = state.initialization.restore.issue_number.clone();
+    Ok(PublishRunOutcome {
+        title_file: title_path,
+        linked_body_path,
+        source_issue_number: issue.clone(),
+        cross_link_issue_number: issue,
+        source_fingerprint: state.fingerprint.clone(),
+        proposal_title_block: untrusted_content_block("debate_proposal_title", &title_content),
+        state,
+    })
+}
+
+/// Upsert the fixed forward-link comment, verify its read-back, and finish
+/// the source title in one process.
+fn run_publish_finish(
+    parsed: &BTreeMap<String, String>,
+) -> Result<PublishFinishOutcome, DebateError> {
+    let debate_tmpdir = parsed["--debate-tmpdir"].clone();
+    let debate_root_path = lexical_absolute(&debate_tmpdir);
+    let debate_root = TemporaryRoot::resolve(Some(&debate_root_path))
+        .map_err(|_error| DebateError::persistence())?;
+    let state = {
+        let _lock = larch_cli::debate_state::lock_state(&debate_root_path)?;
+        let state = larch_cli::debate_state::load_state(&debate_root_path)?;
+        require_fingerprint(&state, &parsed["--expected-fingerprint"])?;
+        if completed_synthesis(&debate_root, &state)?.is_none() {
+            return Err(DebateError::publication_failure());
+        }
+        state
+    };
+    // Allowlist by construction: the URL is rebuilt from the metadata
+    // repository and the validated number, never trusted from the caller.
+    let number = &parsed["--proposal-number"];
+    if number.is_empty()
+        || !number.chars().all(|character| character.is_ascii_digit())
+        || number.chars().all(|character| character == '0')
+    {
+        return Err(DebateError::validation());
+    }
+    let (repository, issue) =
+        crate::debate_publication_commands::source_repository_issue(&debate_tmpdir)
+            .map_err(|()| DebateError::validation())?;
+    let expected_url = format!("https://github.com/{repository}/issues/{number}");
+    if parsed["--proposal-url"] != expected_url {
+        return Err(DebateError::validation());
+    }
+    // The fixed forward-link comment, composed here rather than by a model.
+    let comment = format!("The debate produced proposal [#{number}]({expected_url}).\n");
+    let _ = write_owned_text(
+        &debate_root,
+        PROPOSAL_COMMENT_FILENAME,
+        &comment,
+        DebateError::publication_failure(),
+    )?;
+    let marker = format!(
+        "<!-- larch:debate-proposal runid={} -->",
+        state.initialization.run_id
+    );
+    // The lexical path is what the tracking-issue owner and read-back verifier
+    // consume; the comment itself was written through the canonicalized root.
+    let comment_path_string = path_to_string(&debate_root_path.join(PROPOSAL_COMMENT_FILENAME));
+    crate::tracking_issue_commands::upsert_summary_rows(
+        &issue,
+        &marker,
+        &comment_path_string,
+        Some(&repository),
+    )
+    .map_err(|_error| DebateError::publication_failure())?;
+    let comment_id = crate::debate_publication_commands::verify_comment_body(
+        &debate_tmpdir,
+        &marker,
+        &comment_path_string,
+    )
+    .map_err(|()| DebateError::publication_failure())?;
+    // Finish the source title only after both links verified.
+    let (title_changed, owned, _updated_at) =
+        crate::debate_publication_commands::transition_title_mode(&debate_tmpdir, "finish")
+            .map_err(|()| DebateError::publication_failure())?;
+    Ok(PublishFinishOutcome {
+        state,
+        comment_id,
+        title_changed,
+        owned,
+    })
+}
+
+/// Abort, conditionally restore the owned title, and upsert plus verify the
+/// fixed aborted comment in one process (abort -> restore -> comment).
+fn run_abort_run(parsed: &BTreeMap<String, String>) -> Result<AbortRunOutcome, DebateError> {
+    let title_adopted = strict_bool(&parsed["--title-adopted"])?;
+    let debate_tmpdir = parsed["--debate-tmpdir"].clone();
+    // Step 1: terminal abort (idempotent on an already-aborted debate); the
+    // returned state carries the post-abort fingerprint.
+    let abort_parsed = BTreeMap::from([
+        ("--debate-tmpdir".to_owned(), debate_tmpdir.clone()),
+        (
+            "--expected-fingerprint".to_owned(),
+            parsed["--expected-fingerprint"].clone(),
+        ),
+    ]);
+    let state = run_abort(&abort_parsed)?;
+    // Pre-title failures never retitle or comment (current Step 6 semantics).
+    if !title_adopted {
+        return Ok(AbortRunOutcome {
+            state,
+            restore_owned: None,
+            restore_changed: None,
+            comment_id: None,
+        });
+    }
+    // Step 2: owned-title restore. A foreign title yields owned=false and is
+    // never overwritten; the aborted comment is still posted.
+    let (restore_changed, restore_owned, _updated_at) =
+        crate::debate_publication_commands::transition_title_mode(&debate_tmpdir, "restore")
+            .map_err(|()| DebateError::publication_failure())?;
+    // Step 3: the fixed sanitized aborted comment, upserted and verified.
+    let debate_root_path = lexical_absolute(&debate_tmpdir);
+    let debate_root = TemporaryRoot::resolve(Some(&debate_root_path))
+        .map_err(|_error| DebateError::persistence())?;
+    let _ = write_owned_text(
+        &debate_root,
+        ABORTED_COMMENT_FILENAME,
+        &format!("{ABORTED_COMMENT_SENTENCE}\n"),
+        DebateError::publication_failure(),
+    )?;
+    let marker = format!(
+        "<!-- larch:debate-aborted runid={} -->",
+        state.initialization.run_id
+    );
+    let (repository, issue) =
+        crate::debate_publication_commands::source_repository_issue(&debate_tmpdir)
+            .map_err(|()| DebateError::publication_failure())?;
+    // The lexical path is what the tracking-issue owner and read-back verifier
+    // consume; the comment itself was written through the canonicalized root.
+    let comment_path_string = path_to_string(&debate_root_path.join(ABORTED_COMMENT_FILENAME));
+    crate::tracking_issue_commands::upsert_summary_rows(
+        &issue,
+        &marker,
+        &comment_path_string,
+        Some(&repository),
+    )
+    .map_err(|_error| DebateError::publication_failure())?;
+    let comment_id = crate::debate_publication_commands::verify_comment_body(
+        &debate_tmpdir,
+        &marker,
+        &comment_path_string,
+    )
+    .map_err(|()| DebateError::publication_failure())?;
+    Ok(AbortRunOutcome {
+        state,
+        restore_owned: Some(restore_owned),
+        restore_changed: Some(restore_changed),
+        comment_id: Some(comment_id),
+    })
 }
 
 // ---------------------------------------------------------------------------
