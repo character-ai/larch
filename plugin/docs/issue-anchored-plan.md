@@ -56,18 +56,32 @@ plan review and Gate C. Publish applies the complete M1 and M2 contract again.
 prefix. It cannot admit a missing or malformed plan, and it never materializes
 raw issue prose or the issue title as a plan.
 
-## Managed Chief-migration leaf gate
+## Complete-umbrella leaf admission and Chief migration budget
 
-The `/complete-umbrella` lifecycle applies an additional mechanical gate when
-its parent umbrella body declares a `#<N> [CHIEF UMBRELLA]` relationship. The
-recon/design phase first writes a concrete plan through
-`scripts/larch.sh named-block write --marker plan`; only then may its prepare
+Every `/complete-umbrella` leaf passes an additional mechanical admission gate.
+The recon/design phase first preserves an existing issue plan exactly or, when
+none exists, writes a concrete plan through
+`scripts/larch.sh named-block write --marker plan`. Only then may its prepare
 driver add `[IMPLEMENTING]`. The driver validates exactly one issue-body plan
-against the existing M1/M2 contract before that transition. This is a
-managed-chief admission rule, not a substitute for an approval or a way to
-backfill one.
+against the existing M1/M2 contract and runs the canonical plan-size check
+before that transition or any ship-state write.
 
-Immediately before the managed ship driver submits a queued or direct merge, it measures
+A plan-contract defect or hard size trigger returns the bounded `needs-design`
+outcome and reports
+`/design <leaf>` without launching implementation, adding an active title, or
+writing ship state. The parent strips a stale `[IMPLEMENTING]` prefix left by
+an older run so `/design` can admit the leaf; idle and `[DESIGNED]` titles are
+unchanged. Issue-body metadata cannot authorize this thin path to suppress the
+trigger. In particular, a published `oversize_override: operator` trailer has
+no run-local authority sidecar and is therefore untrusted at this gate. A full
+`/design` pass can rework the plan. A resulting `[DESIGNED] [LEAF OF N]` title
+remains selectable when the plan fits the thin route; an oversized designed
+leaf can instead use the direct `/implement` lifecycle.
+
+For a parent whose body declares a `#<N> [CHIEF UMBRELLA]` relationship, the
+ship driver also applies the following read-only Rust line-budget advisory.
+
+Immediately before that driver submits a queued or direct merge, it measures
 `git merge-base origin/main HEAD` to `HEAD` with
 `git diff --no-ext-diff --numstat -z -M50%`. It sums added lines for every changed
 `.rs` destination path, including test paths. Deletions contribute zero; an

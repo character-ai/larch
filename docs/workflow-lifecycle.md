@@ -188,15 +188,23 @@ without changing GitHub or repository state. The Rust adapter gathers its
 snapshot through typed GitHub, Git, filesystem, and in-process lint owners;
 callers enter through the verified bootstrap.
 
-For a `/complete-umbrella` parent that names a Chief umbrella, recon/design
-writes a valid issue-anchored plan before the prepare driver can move a leaf to
-`[IMPLEMENTING]`. The managed ship driver counts merge-base-to-head added
+For every `/complete-umbrella` leaf, recon/design preserves an existing valid
+issue-anchored plan or writes one when absent. Before the prepare driver can
+move the leaf to `[IMPLEMENTING]` or write ship state, it validates that plan
+and applies the canonical size gate. A plan-contract defect or hard trigger
+returns a bounded
+`needs-design` outcome and reports `/design <leaf>` without launching the
+implementation phase, adding an active title, or writing ship state. The parent
+clears a stale `[IMPLEMENTING]` prefix so the design lifecycle can admit the
+leaf. Issue-body override metadata cannot disarm this gate.
+
+For a parent that names a Chief umbrella, the managed ship driver counts merge-base-to-head added
 non-generated Rust lines, including tests, immediately before queue submission
 or direct admin merge. A leaf above 1,500 lines emits an independently measured
 continue-with-warning advisory naming the leaf, PR, count, and limit; it does not
 stop the merge or require a plan mutation. The audit records closed historical
 leaves as report-only plan or Rust-budget evidence, never by fabricating a
-retrospective plan, approval, or deviation. See [Issue-Anchored Plan](issue-anchored-plan.md#managed-chief-migration-leaf-gate)
+retrospective plan, approval, or deviation. See [Issue-Anchored Plan](issue-anchored-plan.md#complete-umbrella-leaf-admission-and-chief-migration-budget)
 for the exact count and evidence wire contract.
 
 Scheduled automation may archive the JSON and project it into one marker-keyed

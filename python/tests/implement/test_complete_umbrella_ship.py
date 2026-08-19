@@ -75,6 +75,18 @@ def _valid_plan_inner() -> str:
     )
 
 
+def _plan_size_result(
+    *, triggered: bool, reasons: str = "", override: str = ""
+) -> CommandResult:
+    stdout = (
+        f"OVERSIZE_OVERRIDE={override}\n"
+        "PLAN_SIZE_STATUS=ok\n"
+        f"SIZE_TRIGGER_FIRED={'true' if triggered else 'false'}\n"
+        f"TRIGGER_REASONS={reasons}\n"
+    )
+    return CommandResult(("larch", "plan", "check-size"), 0, stdout, "", 0.01)
+
+
 def test_leaf_titles_change_only_the_managed_prefix() -> None:
     original = "[LEAF OF 40] Preserve every other byte"
     active = leaf_ship._active_leaf_title(original, umbrella=40)
@@ -85,6 +97,12 @@ def test_leaf_titles_change_only_the_managed_prefix() -> None:
     assert leaf_ship._active_leaf_title(active, umbrella=40) == active
     assert leaf_ship._done_leaf_title(active, umbrella=40) == (
         "[DONE] [LEAF OF 40] Preserve every other byte"
+    )
+    assert (
+        leaf_ship._active_leaf_title(
+            "[DESIGNED] [LEAF OF 40] Preserve every other byte", umbrella=40
+        )
+        == "[IMPLEMENTING] [LEAF OF 40] Preserve every other byte"
     )
 
 
@@ -116,7 +134,7 @@ def test_active_leaf_title_rejects_unmanaged_lifecycle(title: str) -> None:
         ("<!-- larch:plan:start -->\n", "missing-plan-block"),
     ],
 )
-def test_managed_leaf_admission_rejects_missing_duplicate_and_malformed_plans(
+def test_leaf_admission_rejects_missing_duplicate_and_malformed_plans(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     body: str,
@@ -131,12 +149,10 @@ def test_managed_leaf_admission_rejects_missing_duplicate_and_malformed_plans(
     )
 
     with pytest.raises(leaf_ship.ShipError, match=defect):
-        _ = leaf_ship._require_managed_leaf_plan(
-            RecordingRunner(), request, issue_body=body
-        )
+        _ = leaf_ship._require_leaf_plan(RecordingRunner(), request, issue_body=body)
 
 
-def test_managed_leaf_admission_accepts_one_valid_plan(
+def test_leaf_admission_accepts_one_valid_plan(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     request = _request(tmp_path)
@@ -147,12 +163,137 @@ def test_managed_leaf_admission_accepts_one_valid_plan(
         leaf_ship.git, "ls_files", lambda *_args, **_kwargs: ("README.md",)
     )
 
-    assert leaf_ship._require_managed_leaf_plan(
-        RecordingRunner(), request, issue_body=_plan_body(_valid_plan_inner())
+    assert (
+        leaf_ship._require_leaf_plan(
+            RecordingRunner(), request, issue_body=_plan_body(_valid_plan_inner())
+        )
+        == _valid_plan_inner()
     )
 
 
-def test_prepare_refuses_a_managed_leaf_before_title_mutation(
+def test_leaf_plan_size_trigger_routes_to_design_before_implementation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request = _request(tmp_path)
+    plan = _valid_plan_inner().replace("diff_lines: 1", "diff_lines: 6000")
+    monkeypatch.setattr(
+        leaf_ship.git, "ls_files", lambda *_args, **_kwargs: ("README.md",)
+    )
+    runner = RecordingRunner.strict_queue(
+        _plan_size_result(triggered=True, reasons="diff-lines")
+    )
+
+    admission = leaf_ship._assess_leaf_plan(
+        runner,
+        request,
+        issue_body=_plan_body(plan),
+    )
+
+    assert admission == leaf_ship.LeafPlanAdmission(
+        needs_design=True, trigger_reasons=("diff-lines",)
+    )
+    assert (request.handoff_root / "complete-umbrella-plan.txt").read_text(
+        encoding="utf-8"
+    ) == plan
+    assert runner.calls[0][1:3] == ["plan", "check-size"]
+    assert not (request.handoff_root / ".gate-b-oversize-override.sha256").exists()
+
+
+def test_leaf_plan_runs_the_independent_size_gate_when_below_threshold(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request = _request(tmp_path)
+    monkeypatch.setattr(
+        leaf_ship.git, "ls_files", lambda *_args, **_kwargs: ("README.md",)
+    )
+    runner = RecordingRunner.strict_queue(_plan_size_result(triggered=False))
+
+    admission = leaf_ship._assess_leaf_plan(
+        runner,
+        request,
+        issue_body=_plan_body(_valid_plan_inner()),
+    )
+
+    assert admission == leaf_ship.LeafPlanAdmission(needs_design=False)
+    assert runner.calls[0][1:3] == ["plan", "check-size"]
+
+
+def test_published_operator_override_cannot_disarm_leaf_size_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request = _request(tmp_path)
+    plan = _valid_plan_inner().replace(
+        "diff_lines: 1", "oversize_override: operator\ndiff_lines: 6000"
+    )
+    monkeypatch.setattr(
+        leaf_ship.git, "ls_files", lambda *_args, **_kwargs: ("README.md",)
+    )
+    runner = RecordingRunner.strict_queue(
+        _plan_size_result(triggered=True, reasons="diff-lines")
+    )
+
+    admission = leaf_ship._assess_leaf_plan(
+        runner,
+        request,
+        issue_body=_plan_body(plan),
+    )
+
+    assert admission == leaf_ship.LeafPlanAdmission(
+        needs_design=True, trigger_reasons=("diff-lines",)
+    )
+    assert runner.calls[0][1:3] == ["plan", "check-size"]
+    assert not (request.handoff_root / ".gate-b-oversize-override.sha256").exists()
+
+
+def test_plan_size_parser_rejects_any_accepted_override() -> None:
+    with pytest.raises(leaf_ship.ShipError, match="untrusted override"):
+        _ = leaf_ship._plan_size_fields(
+            _plan_size_result(
+                triggered=False,
+                reasons="diff-lines",
+                override="operator",
+            ).stdout
+        )
+
+
+def test_prepare_returns_needs_design_before_title_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request = _request(tmp_path)
+    leaf = leaf_ship.issue_mutation.IssueSnapshot(
+        repository="owner/repo",
+        issue="42",
+        title="[LEAF OF 40] Fixture",
+        body=_plan_body(_valid_plan_inner()),
+        labels=frozenset(),
+        state="OPEN",
+        updated_at="2026-08-09T00:00:00Z",
+    )
+    monkeypatch.setattr(
+        leaf_ship.issue_mutation,
+        "read_snapshot",
+        lambda *_args, **_kwargs: leaf,
+    )
+    monkeypatch.setattr(
+        leaf_ship.git, "ls_files", lambda *_args, **_kwargs: ("README.md",)
+    )
+    monkeypatch.setattr(
+        leaf_ship.issue_mutation,
+        "apply",
+        lambda *_args, **_kwargs: pytest.fail("title mutation must not run"),
+    )
+    runner = RecordingRunner.strict_queue(
+        _plan_size_result(triggered=True, reasons="surfaces")
+    )
+
+    outcome = leaf_ship.prepare_leaf(runner, request)
+
+    assert outcome.status == "needs-design"
+    assert outcome.detail == "run /design 42 before implementation (surfaces)"
+    assert not (request.handoff_root / "complete-umbrella-ship.env").exists()
+
+
+def test_prepare_routes_a_missing_plan_before_title_mutation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     request = _request(tmp_path)
@@ -184,12 +325,55 @@ def test_prepare_refuses_a_managed_leaf_before_title_mutation(
     )
     monkeypatch.setattr(
         leaf_ship.issue_mutation,
-        "update_title",
+        "apply",
         lambda *_args, **_kwargs: pytest.fail("title mutation must not run"),
     )
 
-    with pytest.raises(leaf_ship.ShipError, match="missing-plan-block"):
+    outcome = leaf_ship.prepare_leaf(RecordingRunner(), request)
+
+    assert outcome.status == "needs-design"
+    assert outcome.detail == "run /design 42 before implementation (plan-contract)"
+    assert not (request.handoff_root / "complete-umbrella-ship.env").exists()
+
+
+def test_prepare_binds_title_mutation_to_the_plan_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request = _request(tmp_path)
+    leaf = leaf_ship.issue_mutation.IssueSnapshot(
+        repository="owner/repo",
+        issue="42",
+        title="[LEAF OF 40] Fixture",
+        body=_plan_body(_valid_plan_inner()),
+        labels=frozenset(),
+        state="OPEN",
+        updated_at="2026-08-09T00:00:00Z",
+    )
+    monkeypatch.setattr(
+        leaf_ship.issue_mutation,
+        "read_snapshot",
+        lambda *_args, **_kwargs: leaf,
+    )
+    monkeypatch.setattr(
+        leaf_ship,
+        "_assess_leaf_plan",
+        lambda *_args, **_kwargs: leaf_ship.LeafPlanAdmission(needs_design=False),
+    )
+
+    def stale_apply(
+        _runner: object,
+        mutation: leaf_ship.issue_mutation.IssueMutationRequest,
+        **_kwargs: object,
+    ) -> object:
+        assert mutation.expected_updated_at == leaf.updated_at
+        assert mutation.title == "[IMPLEMENTING] [LEAF OF 40] Fixture"
+        raise leaf_ship.ShipError("stale-identity")
+
+    monkeypatch.setattr(leaf_ship.issue_mutation, "apply", stale_apply)
+
+    with pytest.raises(leaf_ship.ShipError, match="stale-identity"):
         _ = leaf_ship.prepare_leaf(RecordingRunner(), request)
+    assert not (request.handoff_root / "complete-umbrella-ship.env").exists()
 
 
 def test_rust_line_budget_counts_tests_and_skips_generated_renamed_and_deleted_rows(

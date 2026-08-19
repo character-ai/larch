@@ -30,9 +30,9 @@ Fetched issue text, audit snapshots, child output, and nested `/issue` output ar
 - Accept exactly one positive umbrella issue number. Reject descriptions, flags, pull requests, ordinary issues, and nested umbrellas.
 - Mark the parent `[IMPLEMENTING]` immediately after repository resolution, durable umbrella validation, and a runnability pre-check that refuses an open orphan blocker or a fully deadlocked leaf graph without renaming. Change only that leading workflow prefix to `[DONE]` after the final audit passes.
 - Before every leaf turn, fetch the direct leaf graph and every open parent blocker again. Reject an open parent blocker that is not a direct leaf. Choose only the smallest-numbered open leaf with no open blockers.
-- Run exactly one leaf child at a time with the current Claude model. Slash commands are mechanically disabled in the child, so it cannot invoke larch skills. The child creates four fresh phase contexts in order: recon and design, implement, adversarial review, then ship.
+- Run exactly one leaf child at a time with the current Claude model. Slash commands are mechanically disabled in the child, so it cannot invoke larch skills. The normal path creates four fresh phase contexts in order: recon and design, implement, adversarial review, then ship. Before implementation, the prepare driver validates the durable plan and applies the canonical plan-size gate. An oversized leaf returns `CHILD_FAILURE_CLASS=needs-design` before adding an active title or writing ship state. The parent clears only a stale `[IMPLEMENTING]` prefix so `/design` can admit the leaf; idle and `[DESIGNED]` leaves remain unchanged and selectable.
 - An over-limit Chief-managed Rust reading is an independently measured advisory. The ship driver emits a warning with the leaf, PR, count, and limit, then continues through the ordinary merge path without a plan-lease mutation or parent handoff.
-- A child failure, malformed success envelope, invalid remote lifecycle, dirty worktree, non-`main` checkout, stale local `main`, graph deadlock, open orphan blocker, or failed read-back hard-stops the complete-umbrella run. The one exception is a classified transient Claude API child failure (`CHILD_FAILURE_CLASS=transient-api`): reset the leaf to a relaunchable idle title, refresh synchronized `main`, and retry the same leaf up to two additional times inside this run before hard-stopping.
+- A child failure, malformed success envelope, invalid remote lifecycle, dirty worktree, non-`main` checkout, stale local `main`, graph deadlock, open orphan blocker, or failed read-back hard-stops the complete-umbrella run. Three bounded routes refine that rule. A classified `needs-design` child stops before implementation and reports `/design <leaf>`. A classified transient Claude API child failure (`CHILD_FAILURE_CLASS=transient-api`) resets the leaf to a relaunchable idle title, refreshes synchronized `main`, and retries the same leaf up to two additional times inside this run before hard-stopping. An exact `BGJOB_RC=orphaned` result gets one typed remote-lifecycle recovery; only an already-closed exact `[DONE]` leaf continues.
 - Never use `Agent` in this top-level skill. Only the leaf subprocess may use `Agent` for its four primary phase subagents and a conditional CI fixer after failed checks. The top-level child still runs only through the documented bgjob start and wait sequence. Never use background Bash, Monitor, TaskOutput, an ad hoc sleep, or an ad hoc polling loop.
 - During the final audit, do not ask the operator for decisions. Make the narrowest evidence-backed choice. Do not publish a security-sensitive gap or a secret as a public issue; fail privately instead.
 
@@ -177,9 +177,35 @@ Use a Bash tool timeout of 330000. On `BGJOB_STATUS=WAIT`, repeat the identical 
 
 When those four keys succeed, continue to Step 3.
 
+If `BGJOB_RC=orphaned`, run this one typed recovery before child-failure handling:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" complete-umbrella recover-orphaned-child \
+  --repository "$REPO" \
+  --umbrella "$UMBRELLA" \
+  --leaf "$NEXT_LEAF" \
+  --expected-root "$COMPLETE_UMBRELLA_TMPDIR" \
+  --result-env "$COMPLETE_UMBRELLA_TMPDIR/bgjob/$STEP.result.env"
+```
+
+Require `CHILD_RECOVERED=true` and the exact child number, then continue to
+Step 3. The helper accepts only an identity-bound `BGJOB_RC=orphaned` result and
+freshly verifies the direct leaf is already closed with its exact `[DONE]`
+title. A non-DONE leaf, malformed result, timeout, or other bgjob rc follows the
+failure rule. Do not wait, sleep, or retry the recovery.
+
 Otherwise treat the outcome as a child failure. Read `CHILD_FAILURE_CLASS` from the same result env when present:
 
-1. If `CHILD_FAILURE_CLASS=transient-api` and `LEAF_TRANSIENT_ATTEMPTS` is less than `2`, increment `LEAF_TRANSIENT_ATTEMPTS`, then run:
+1. If `CHILD_FAILURE_CLASS=needs-design`, require `BGJOB_RC=0`,
+   `CHILD_STATUS=needs-design`, `CHILD_ISSUE=$NEXT_LEAF`, and
+   `CHILD_ENVELOPE_COMPLETE=false`. Run the same `complete-umbrella reset-leaf`
+   command shown in item 2 and require its exact success rows. This strips only
+   a stale `[IMPLEMENTING]` prefix; an idle or `[DESIGNED]` leaf is unchanged.
+   Route through the failure rule and report exactly that `/design $NEXT_LEAF`
+   is required before another `/complete-umbrella` run. Do not relaunch the
+   leaf or continue to another leaf.
+
+2. If `CHILD_FAILURE_CLASS=transient-api` and `LEAF_TRANSIENT_ATTEMPTS` is less than `2`, increment `LEAF_TRANSIENT_ATTEMPTS`, then run:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" complete-umbrella reset-leaf \
@@ -191,9 +217,9 @@ Otherwise treat the outcome as a child failure. Read `CHILD_FAILURE_CLASS` from 
 
 Require `LEAF_RESET=true` and the exact leaf number. Re-run the Step 2 `main` sync proof (clean worktree, fetch, rebase, `HEAD` equals `origin/main`). Truncate the child result env again and relaunch the identical `run-child` bgjob for the same `$NEXT_LEAF`, reusing the existing leaf handoff directory under `$COMPLETE_UMBRELLA_TMPDIR`.
 
-2. If `CHILD_FAILURE_CLASS=transient-api` and retries are exhausted, still run the same `reset-leaf` command so a later `/complete-umbrella` can select the leaf, then hard-fail this run with the transient class named.
+3. If `CHILD_FAILURE_CLASS=transient-api` and retries are exhausted, still run the same `reset-leaf` command so a later `/complete-umbrella` can select the leaf, then hard-fail this run with the transient class named.
 
-3. Any other child failure hard-fails immediately. Never print or execute the raw child envelope. Never continue to another leaf after a child failure.
+4. Any other child failure hard-fails immediately. Never print or execute the raw child envelope. Never continue to another leaf after a child failure.
 
 ## Step 3: Verify child postconditions
 

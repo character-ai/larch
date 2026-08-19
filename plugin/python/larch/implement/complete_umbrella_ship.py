@@ -73,6 +73,13 @@ _GENERATED_RUST_MARKERS: Final = (
 )
 _NUMSTAT_INTEGER_RE: Final = re.compile(r"^[0-9]+$")
 _NUMSTAT_HEADER_PARTS: Final = 3
+_PLAN_SIZE_INPUT_BASENAME: Final = "complete-umbrella-plan.txt"
+_PLAN_SIZE_RESULT_KEYS: Final = (
+    "OVERSIZE_OVERRIDE",
+    "PLAN_SIZE_STATUS",
+    "SIZE_TRIGGER_FIRED",
+    "TRIGGER_REASONS",
+)
 
 
 @dataclass(frozen=True)
@@ -109,6 +116,16 @@ class LeafShipOutcome:
     ci_errors_file: str = ""
     conflict_files: str = ""
     detail: str = ""
+
+
+@dataclass(frozen=True)
+class LeafPlanAdmission:
+    needs_design: bool
+    trigger_reasons: tuple[str, ...] = ()
+
+
+class _LeafPlanNeedsDesign(ShipError):
+    """A durable plan contract defect that requires the full design lifecycle."""
 
 
 @dataclass(frozen=True)
@@ -437,7 +454,9 @@ def _leaf_prefix(umbrella: int) -> str:
 def _active_leaf_title(title: str, *, umbrella: int) -> str:
     leaf_prefix = _leaf_prefix(umbrella)
     active_prefix = config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"]
+    designed_prefix = config.TRACKING_ISSUE_PREFIX_BY_STATE["designed"]
     active_leaf_prefix = f"{active_prefix}{leaf_prefix}"
+    designed_leaf_prefix = f"{designed_prefix}{leaf_prefix}"
     if (
         title.startswith(active_leaf_prefix)
         and title[len(active_leaf_prefix) :].strip()
@@ -445,6 +464,11 @@ def _active_leaf_title(title: str, *, umbrella: int) -> str:
         return title
     if title.startswith(leaf_prefix) and title[len(leaf_prefix) :].strip():
         return f"{active_prefix}{title}"
+    if (
+        title.startswith(designed_leaf_prefix)
+        and title[len(designed_leaf_prefix) :].strip()
+    ):
+        return f"{active_prefix}{title[len(designed_prefix) :]}"
     raise ShipError("leaf title does not have the exact managed leaf prefix")
 
 
@@ -475,26 +499,89 @@ def _is_chief_migration_umbrella(runner: Runner, request: LeafShipRequest) -> bo
     return _CHIEF_MIGRATION_UMBRELLA_RE.search(parent.body) is not None
 
 
-def _require_managed_leaf_plan(
+def _require_leaf_plan(
     runner: Runner,
     request: LeafShipRequest,
     *,
     issue_body: str,
-) -> bool:
-    """Validate durable M1/M2 plan evidence before managed implementation starts."""
-    if not _is_chief_migration_umbrella(runner, request):
-        return False
+) -> str:
+    """Validate and return durable M1/M2 plan evidence before implementation."""
     result = issue_wire.validate_issue_plan(
         issue_body=issue_body,
         repo_root=request.repo_root,
         tracked_paths=frozenset(git.ls_files(runner, cwd=str(request.repo_root))),
     )
     if not result.ok:
-        raise ShipError(
-            "managed chief leaf requires a valid issue plan: "
+        raise _LeafPlanNeedsDesign(
+            "complete-umbrella leaf requires a valid issue plan: "
             + ",".join(result.defects)
         )
-    return True
+    plan_inner, malformed = issue_wire.parse_named_block(body=issue_body, marker="plan")
+    if plan_inner is None or malformed:
+        raise _LeafPlanNeedsDesign("validated leaf plan could not be materialized")
+    return plan_inner
+
+
+def _plan_size_fields(stdout: str) -> dict[str, str]:
+    parsed = larch_io.parse_kv(
+        stdout,
+        duplicate_policy="all",
+        allowed_keys=_PLAN_SIZE_RESULT_KEYS,
+    )
+    fields: dict[str, str] = {}
+    for key in _PLAN_SIZE_RESULT_KEYS:
+        values = parsed.get(key, [])
+        if len(values) != 1:
+            raise ShipError(f"plan size preflight returned invalid {key}")
+        fields[key] = values[0]
+    if fields["PLAN_SIZE_STATUS"] != "ok":
+        raise ShipError("plan size preflight did not return ok")
+    if fields["SIZE_TRIGGER_FIRED"] not in {"true", "false"}:
+        raise ShipError("plan size preflight returned an invalid trigger")
+    if fields["OVERSIZE_OVERRIDE"]:
+        raise ShipError("plan size preflight accepted an untrusted override")
+    return fields
+
+
+def _assess_leaf_plan(
+    runner: Runner,
+    request: LeafShipRequest,
+    *,
+    issue_body: str,
+) -> LeafPlanAdmission:
+    """Apply the canonical size gate before the thin implementation phase."""
+    plan_inner = _require_leaf_plan(runner, request, issue_body=issue_body)
+    plan_path = request.handoff_root / _PLAN_SIZE_INPUT_BASENAME
+    try:
+        larch_io.trusted_atomic_write(
+            plan_path,
+            plan_inner,
+            root=request.handoff_root,
+            mode=0o600,
+        )
+    except OSError as exc:
+        raise ShipError(f"plan size input write failed: {exc}") from exc
+    entrypoint = repo_roots.larch_entrypoint(Path(__file__).resolve().parents[3])
+    checked = runner.run(
+        [
+            str(entrypoint),
+            "plan",
+            "check-size",
+            "--design-tmpdir",
+            str(request.handoff_root),
+            "--plan-file",
+            str(plan_path),
+        ],
+        cwd=str(request.repo_root),
+    )
+    if checked.returncode != 0:
+        raise ShipError("plan size preflight failed")
+    fields = _plan_size_fields(checked.stdout)
+    reasons = tuple(reason for reason in fields["TRIGGER_REASONS"].split(",") if reason)
+    return LeafPlanAdmission(
+        needs_design=fields["SIZE_TRIGGER_FIRED"] == "true",
+        trigger_reasons=reasons,
+    )
 
 
 def _parse_numstat_count(value: str) -> int | None:
@@ -634,18 +721,32 @@ def prepare_leaf(
     )
     if snapshot.state.upper() != "OPEN":
         raise ShipError("leaf must be open before implementation starts")
-    _ = _require_managed_leaf_plan(
-        runner,
-        request,
-        issue_body=snapshot.body,
-    )
+    try:
+        admission = _assess_leaf_plan(
+            runner,
+            request,
+            issue_body=snapshot.body,
+        )
+    except _LeafPlanNeedsDesign:
+        return LeafShipOutcome(
+            status="needs-design",
+            detail=f"run /design {request.leaf} before implementation (plan-contract)",
+        )
+    if admission.needs_design:
+        reasons = ",".join(admission.trigger_reasons) or "plan-size"
+        return LeafShipOutcome(
+            status="needs-design",
+            detail=f"run /design {request.leaf} before implementation ({reasons})",
+        )
     title = _active_leaf_title(snapshot.title, umbrella=request.umbrella)
     if title != snapshot.title:
-        mutation = issue_mutation.update_title(
+        mutation = issue_mutation.apply(
             runner,
-            repository=request.repository,
-            issue=str(request.leaf),
-            title=title,
+            issue_mutation.request_for_snapshot(
+                snapshot,
+                fields=frozenset({issue_mutation.MutationField.TITLE}),
+                title=title,
+            ),
             cwd=str(request.repo_root),
         )
         if mutation.after.title != title:

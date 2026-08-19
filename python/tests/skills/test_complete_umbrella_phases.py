@@ -82,6 +82,24 @@ def test_managed_leaf_phases_persist_and_verify_gate_evidence() -> None:
     assert "do not edit or publish the" in review
 
 
+def test_recon_routes_large_or_malformed_plans_before_implementation() -> None:
+    recon = _read("recon-design.md")
+    assert "plan-block read" in recon
+    assert "Do not replace or republish it." in recon
+    assert "MALFORMED=<reason>" in recon
+    assert "SHIP_STATUS=needs-design" in recon
+    assert "PHASE_STATUS=needs-design" in recon
+    assert "HANDOFF_FILE=needs-design.md" in recon
+    assert "Never add `oversize_override: operator`" in recon
+
+    skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    needs_design = skill.index("CHILD_FAILURE_CLASS=needs-design")
+    reset = skill.index("complete-umbrella reset-leaf", needs_design)
+    assert needs_design < reset
+
+
 def test_top_level_continues_after_an_over_limit_budget_warning() -> None:
     skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
         encoding="utf-8"
@@ -90,6 +108,17 @@ def test_top_level_continues_after_an_over_limit_budget_warning() -> None:
     assert "finalize-budget-deviation" not in skill
     assert "independently measured advisory" in skill
     assert "continues through the ordinary merge path" in skill
+
+
+def test_top_level_recovers_only_an_exact_remote_done_orphan() -> None:
+    skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "complete-umbrella recover-orphaned-child" in skill
+    assert "BGJOB_RC=orphaned" in skill
+    assert "CHILD_RECOVERED=true" in skill
+    assert "already closed with its exact `[DONE]`" in skill
+    assert "Do not wait, sleep, or retry the recovery." in skill
 
 
 def test_phase_return_contract_uses_basename_handoffs() -> None:

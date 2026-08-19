@@ -21,16 +21,18 @@ use larch_adapters::{
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
-    COMPLETE_UMBRELLA_CHILD_COMPLETE, COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API,
-    ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext, DONE_PREFIX,
+    COMPLETE_UMBRELLA_CHILD_COMPLETE, COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN,
+    COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API, COMPLETE_UMBRELLA_CHILD_NEEDS_DESIGN,
+    ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext, DONE_PREFIX, DuplicatePolicy,
     ExternalProcessRunner, ExternalProgram, GitHubCloseReason, GitHubIssue, GitHubIssueState,
     GitHubRepositoryRef, GitHubService, IMPLEMENTING_PREFIX, IssueMutationField,
-    IssueMutationRequest, ProcessRequest, VendorLaunchRequest, VendorProgram, build_claude_argv,
-    complete_umbrella_child_prompt, complete_umbrella_done_title, complete_umbrella_relaunch_title,
-    complete_umbrella_start_title, emit_kv, has_umbrella_proposal, is_controlling_umbrella_title,
-    is_transient_claude_api_error, parse_claude_envelope, redact, redact_issue_mutation_request,
-    select_complete_umbrella_leaf, umbrella_leaf_opening, umbrella_leaf_prefix,
-    validate_complete_umbrella_leaf, validate_complete_umbrella_parent,
+    IssueMutationRequest, KvDocument, ParseOptions, ProcessRequest, VendorLaunchRequest,
+    VendorProgram, build_claude_argv, complete_umbrella_child_prompt, complete_umbrella_done_title,
+    complete_umbrella_relaunch_title, complete_umbrella_start_title, emit_kv,
+    has_umbrella_proposal, is_controlling_umbrella_title, is_transient_claude_api_error,
+    parse_claude_envelope, redact, redact_issue_mutation_request, select_complete_umbrella_leaf,
+    umbrella_leaf_opening, umbrella_leaf_prefix, validate_complete_umbrella_leaf,
+    validate_complete_umbrella_parent,
 };
 use serde::Serialize;
 use std::{
@@ -48,6 +50,7 @@ const CHILD_OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ChildResultStatus {
     Complete,
+    NeedsDesign,
     Failed,
 }
 
@@ -55,6 +58,7 @@ impl ChildResultStatus {
     const fn value(self) -> &'static str {
         match self {
             Self::Complete => "complete",
+            Self::NeedsDesign => "needs-design",
             Self::Failed => "failed",
         }
     }
@@ -72,6 +76,7 @@ fn child_terminal_status(text: &str) -> Option<ChildResultStatus> {
         .trim();
     match marker {
         COMPLETE_UMBRELLA_CHILD_COMPLETE => Some(ChildResultStatus::Complete),
+        COMPLETE_UMBRELLA_CHILD_NEEDS_DESIGN => Some(ChildResultStatus::NeedsDesign),
         _ => None,
     }
 }
@@ -88,6 +93,9 @@ pub enum CompleteUmbrellaCommand {
     /// Prove that one child completed its remote lifecycle.
     #[command(name = "verify-child")]
     VerifyChild(LeafArguments),
+    /// Recover an orphaned bgjob only when its exact leaf is already done.
+    #[command(name = "recover-orphaned-child")]
+    RecoverOrphanedChild(RecoverOrphanedChildArguments),
     /// Strip a stale `[IMPLEMENTING]` leaf prefix so selection can relaunch it.
     #[command(name = "reset-leaf")]
     ResetLeaf(ResetLeafArguments),
@@ -139,6 +147,16 @@ pub struct LeafArguments {
     umbrella: u64,
     #[arg(long)]
     leaf: u64,
+}
+
+#[derive(Args)]
+pub struct RecoverOrphanedChildArguments {
+    #[command(flatten)]
+    leaf: LeafArguments,
+    #[arg(long = "expected-root")]
+    root: PathBuf,
+    #[arg(long = "result-env")]
+    result_env: PathBuf,
 }
 
 #[derive(Args)]
@@ -234,6 +252,9 @@ pub fn run(command: CompleteUmbrellaCommand) -> ExitCode {
         CompleteUmbrellaCommand::Next(arguments) => next(&arguments),
         CompleteUmbrellaCommand::RunChild(arguments) => run_child(&arguments),
         CompleteUmbrellaCommand::VerifyChild(arguments) => verify_child(&arguments),
+        CompleteUmbrellaCommand::RecoverOrphanedChild(arguments) => {
+            recover_orphaned_child(&arguments)
+        }
         CompleteUmbrellaCommand::ResetLeaf(arguments) => reset_leaf(&arguments),
         CompleteUmbrellaCommand::ValidateGap(arguments) => validate_gap(&arguments),
         CompleteUmbrellaCommand::AttachLeaf(arguments) => attach_leaf(&arguments),
@@ -463,12 +484,14 @@ fn finish_child_envelope(
 ) -> Result<(), String> {
     let parsed = parse_claude_envelope(raw);
     let result_status = child_terminal_status(&parsed.text);
-    let success = execution.status().success()
+    let bounded = execution.status().success()
         && !execution.stdout_truncated()
         && !execution.stderr_truncated()
         && result_status.is_some();
     let result_status = result_status.unwrap_or(ChildResultStatus::Failed);
-    let failure_class = if success {
+    let failure_class = if bounded && result_status == ChildResultStatus::NeedsDesign {
+        Some(COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN)
+    } else if bounded {
         None
     } else if is_transient_claude_api_error(&parsed) {
         Some(COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API)
@@ -482,7 +505,7 @@ fn finish_child_envelope(
         result_status,
         failure_class,
     )?;
-    if !success {
+    if !bounded {
         return Err(if failure_class.is_some() {
             "child ended on a transient Claude API failure".to_owned()
         } else {
@@ -504,6 +527,60 @@ fn verify_child(arguments: &LeafArguments) -> Result<(), String> {
     .map_err(ServiceFailure::into_detail)?;
     emit_kv("CHILD_VERIFIED", "true");
     emit_kv("CHILD_ISSUE", &arguments.leaf.to_string());
+    Ok(())
+}
+
+fn recover_orphaned_child(arguments: &RecoverOrphanedChildArguments) -> Result<(), String> {
+    require_issue(arguments.leaf.umbrella, "--umbrella")?;
+    require_issue(arguments.leaf.leaf, "--leaf")?;
+    let repository = parse_repository(&arguments.leaf.repository)?;
+    let root = temporary_root(&arguments.root, "--expected-root")?;
+    let result = read_expected_file(
+        &arguments.result_env,
+        &arguments.root,
+        &root,
+        "--result-env",
+        64 * 1024,
+    )?;
+    with_github_service(async |service, cancellation| {
+        recover_orphaned_child_remote(service, cancellation, &repository, &arguments.leaf, &result)
+            .await
+    })
+    .map_err(ServiceFailure::into_detail)?;
+    emit_kv("CHILD_RECOVERED", "true");
+    emit_kv("CHILD_ISSUE", &arguments.leaf.leaf.to_string());
+    Ok(())
+}
+
+async fn recover_orphaned_child_remote(
+    service: &larch_adapters::github::OctocrabGitHubService,
+    cancellation: &Cancellation,
+    repository: &GitHubRepositoryRef,
+    arguments: &LeafArguments,
+    result: &str,
+) -> Result<(), String> {
+    validate_orphaned_child_result(result, arguments.leaf)?;
+    verify_child_remote(service, cancellation, repository, arguments).await
+}
+
+fn validate_orphaned_child_result(text: &str, leaf: u64) -> Result<(), String> {
+    let document = KvDocument::parse(text, ParseOptions::environment())
+        .map_err(|error| format!("orphaned child result is malformed: {error}"))?;
+    let values = document.select(DuplicatePolicy::Last);
+    if values.get("BGJOB_RC").map(String::as_str) != Some("orphaned") {
+        return Err("child recovery requires BGJOB_RC=orphaned".to_owned());
+    }
+    let expected_step = format!("complete-umbrella-leaf-{leaf}");
+    if values.get("STEP") != Some(&expected_step) {
+        return Err("orphaned child result does not match the leaf step".to_owned());
+    }
+    let expected_leaf = leaf.to_string();
+    if values
+        .get("CHILD_ISSUE")
+        .is_some_and(|issue| issue != &expected_leaf)
+    {
+        return Err("orphaned child result carries another leaf identity".to_owned());
+    }
     Ok(())
 }
 

@@ -194,3 +194,20 @@ fn child_harness_classifies_a_transient_claude_api_envelope() {
         "CHILD_STATUS=failed\nCHILD_ISSUE=42\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_FAILURE_CLASS=transient-api\n"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn child_harness_preserves_a_bounded_needs_design_handoff() {
+    let (root, mut command) = fixture(
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"result\":\"scoped handoff\\nCOMPLETE_UMBRELLA_CHILD_STATUS=needs-design\"}'\n",
+    );
+    command
+        .args(child_arguments(root.path()))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("CHILD_STATUS=needs-design\n"));
+    assert_eq!(
+        fs::read_to_string(root.path().join("child.env")).expect("needs-design result env"),
+        "CHILD_STATUS=needs-design\nCHILD_ISSUE=42\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_FAILURE_CLASS=needs-design\n"
+    );
+}
