@@ -146,6 +146,110 @@ pub struct AuditLedgerSummary {
     pub blocked: usize,
 }
 
+/// The first constraint a ledger violated, named for a diagnostic surface.
+///
+/// This is the diagnostic granularity behind [`validate_audit_ledger`]'s stable
+/// [`AuditUmbrellaRefusal`]. Each variant maps back to exactly one refusal token
+/// through [`AuditLedgerViolation::refusal`], so the accept/reject outcome and
+/// exit contract stay unchanged while the failure is now nameable.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AuditLedgerViolation {
+    /// The immutable snapshot itself failed its bounded contract.
+    Snapshot,
+    /// The ledger `version` did not match [`AUDIT_LEDGER_VERSION`].
+    Version,
+    /// The ledger `snapshot_sha256` did not bind the supplied snapshot.
+    SnapshotBinding,
+    /// The ledger carried no entries.
+    EmptyEntries,
+    /// The ledger carried more than [`MAX_AUDIT_REQUIREMENTS`] entries.
+    TooManyEntries,
+    /// One entry `id` was not a bounded ASCII identifier.
+    MalformedEntryId { id: String },
+    /// One entry `id` repeated an earlier entry `id`.
+    DuplicateEntryId { id: String },
+    /// One entry `requirement` was not a single trimmed line.
+    RequirementLine { id: String },
+    /// One entry `code_evidence` array had a malformed line.
+    CodeEvidence { id: String },
+    /// One entry `test_evidence` array had a malformed line.
+    TestEvidence { id: String },
+    /// One entry `reason` was too long or contained a carriage return.
+    ReasonShape { id: String },
+    /// One entry's text tripped the security triage scan.
+    SecuritySensitive { id: String },
+    /// A `satisfied` entry lacked required evidence or carried a reason.
+    SatisfiedEvidence { id: String },
+    /// A `gap` entry carried no code or test evidence.
+    GapEvidence { id: String },
+    /// A `not_applicable` entry had evidence or lacked a reason.
+    NotApplicableShape { id: String },
+    /// A `blocked` entry had evidence or lacked a reason.
+    BlockedShape { id: String },
+    /// The ledger left source items uncovered or referenced unknown source ids.
+    Coverage { uncovered: usize, unknown: usize },
+}
+
+impl AuditLedgerViolation {
+    /// Return the stable kebab-case constraint name for this violation.
+    #[must_use]
+    pub const fn constraint(&self) -> &'static str {
+        match self {
+            Self::Snapshot => "snapshot",
+            Self::Version => "version",
+            Self::SnapshotBinding => "snapshot-binding",
+            Self::EmptyEntries => "empty-entries",
+            Self::TooManyEntries => "too-many-entries",
+            Self::MalformedEntryId { .. } => "malformed-entry-id",
+            Self::DuplicateEntryId { .. } => "duplicate-entry-id",
+            Self::RequirementLine { .. } => "requirement-line",
+            Self::CodeEvidence { .. } => "code-evidence",
+            Self::TestEvidence { .. } => "test-evidence",
+            Self::ReasonShape { .. } => "reason-shape",
+            Self::SecuritySensitive { .. } => "security-sensitive",
+            Self::SatisfiedEvidence { .. } => "satisfied-evidence",
+            Self::GapEvidence { .. } => "gap-evidence",
+            Self::NotApplicableShape { .. } => "not-applicable-shape",
+            Self::BlockedShape { .. } => "blocked-shape",
+            Self::Coverage { .. } => "coverage",
+        }
+    }
+
+    /// Return the offending entry id when the violation is scoped to one entry.
+    #[must_use]
+    pub const fn entry_id(&self) -> Option<&str> {
+        match self {
+            Self::MalformedEntryId { id }
+            | Self::DuplicateEntryId { id }
+            | Self::RequirementLine { id }
+            | Self::CodeEvidence { id }
+            | Self::TestEvidence { id }
+            | Self::ReasonShape { id }
+            | Self::SecuritySensitive { id }
+            | Self::SatisfiedEvidence { id }
+            | Self::GapEvidence { id }
+            | Self::NotApplicableShape { id }
+            | Self::BlockedShape { id } => Some(id.as_str()),
+            Self::Snapshot
+            | Self::Version
+            | Self::SnapshotBinding
+            | Self::EmptyEntries
+            | Self::TooManyEntries
+            | Self::Coverage { .. } => None,
+        }
+    }
+
+    /// Map this violation to the stable refusal token that owns the exit contract.
+    #[must_use]
+    pub const fn refusal(&self) -> AuditUmbrellaRefusal {
+        match self {
+            Self::Snapshot => INVALID_AUDIT_SNAPSHOT,
+            Self::SecuritySensitive { .. } => SECURITY_SENSITIVE_AUDIT,
+            _ => INVALID_AUDIT_LEDGER,
+        }
+    }
+}
+
 /// A node in a proposed native blocked-by edge.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -344,6 +448,10 @@ pub fn parse_audit_ledger(text: &str) -> Result<AuditLedger, AuditUmbrellaRefusa
 
 /// Validate full coverage and evidence of one ledger against an immutable snapshot.
 ///
+/// This is the thin, refusal-typed wrapper over [`diagnose_audit_ledger`]. It
+/// preserves the exact [`AuditUmbrellaRefusal`] contract every caller relies on;
+/// use [`diagnose_audit_ledger`] directly when the named constraint is wanted.
+///
 /// # Errors
 ///
 /// Returns [`INVALID_AUDIT_SNAPSHOT`], [`INVALID_AUDIT_LEDGER`], or
@@ -352,13 +460,36 @@ pub fn validate_audit_ledger(
     snapshot: &AuditSnapshot,
     ledger: &AuditLedger,
 ) -> Result<AuditLedgerSummary, AuditUmbrellaRefusal> {
-    validate_snapshot(snapshot)?;
-    if ledger.version != AUDIT_LEDGER_VERSION
-        || ledger.snapshot_sha256 != audit_snapshot_sha256(snapshot)
-        || ledger.entries.is_empty()
-        || ledger.entries.len() > MAX_AUDIT_REQUIREMENTS
-    {
-        return Err(INVALID_AUDIT_LEDGER);
+    diagnose_audit_ledger(snapshot, ledger).map_err(|violation| violation.refusal())
+}
+
+/// Validate one ledger, naming the first violated constraint on failure.
+///
+/// The single validation authority for `/audit-umbrella`. Accept/reject outcome
+/// and the refusal token surfaced by [`validate_audit_ledger`] are unchanged;
+/// this variant additionally names the failing constraint, the offending entry
+/// id, and the uncovered/unknown coverage counts.
+///
+/// # Errors
+///
+/// Returns the [`AuditLedgerViolation`] for the first constraint the immutable
+/// source or ledger failed.
+pub fn diagnose_audit_ledger(
+    snapshot: &AuditSnapshot,
+    ledger: &AuditLedger,
+) -> Result<AuditLedgerSummary, AuditLedgerViolation> {
+    validate_snapshot(snapshot).map_err(|_error| AuditLedgerViolation::Snapshot)?;
+    if ledger.version != AUDIT_LEDGER_VERSION {
+        return Err(AuditLedgerViolation::Version);
+    }
+    if ledger.snapshot_sha256 != audit_snapshot_sha256(snapshot) {
+        return Err(AuditLedgerViolation::SnapshotBinding);
+    }
+    if ledger.entries.is_empty() {
+        return Err(AuditLedgerViolation::EmptyEntries);
+    }
+    if ledger.entries.len() > MAX_AUDIT_REQUIREMENTS {
+        return Err(AuditLedgerViolation::TooManyEntries);
     }
     let source_items = audit_source_items(snapshot);
     let expected_source_ids = source_items
@@ -367,72 +498,124 @@ pub fn validate_audit_ledger(
         .collect::<BTreeSet<_>>();
     let mut entry_ids = BTreeSet::new();
     let mut covered = BTreeSet::new();
+    let mut unknown = BTreeSet::new();
     let mut summary = AuditLedgerSummary::default();
     for entry in &ledger.entries {
-        if !bounded_ascii_identifier(&entry.id, true)
-            || !entry_ids.insert(entry.id.as_str())
-            || !expected_source_ids.contains(entry.source_id.as_str())
-            || !valid_single_line(&entry.requirement, 8 * 1024)
-            || !evidence_valid(&entry.code_evidence)
-            || !evidence_valid(&entry.test_evidence)
-            || entry.reason.len() > 8 * 1024
-            || entry.reason.contains('\r')
-        {
-            return Err(INVALID_AUDIT_LEDGER);
+        check_entry_shape(entry, &mut entry_ids)?;
+        if expected_source_ids.contains(entry.source_id.as_str()) {
+            let _ = covered.insert(entry.source_id.as_str());
+        } else {
+            let _ = unknown.insert(entry.source_id.as_str());
         }
-        if triage_text_is_security_sensitive(&format!(
-            "{}\n{}\n{}\n{}",
-            entry.requirement,
-            entry.code_evidence.join("\n"),
-            entry.test_evidence.join("\n"),
-            entry.reason
-        )) {
-            return Err(SECURITY_SENSITIVE_AUDIT);
-        }
-        let _ = covered.insert(entry.source_id.as_str());
-        match entry.status {
-            RequirementStatus::Satisfied => {
-                if entry.code_evidence.is_empty()
-                    || entry.test_evidence.is_empty()
-                    || !entry.reason.is_empty()
-                {
-                    return Err(INVALID_AUDIT_LEDGER);
-                }
-                summary.satisfied += 1;
-            }
-            RequirementStatus::Gap => {
-                if entry.code_evidence.is_empty() && entry.test_evidence.is_empty() {
-                    return Err(INVALID_AUDIT_LEDGER);
-                }
-                summary.gaps += 1;
-            }
-            RequirementStatus::NotApplicable => {
-                if !entry.code_evidence.is_empty()
-                    || !entry.test_evidence.is_empty()
-                    || !valid_text(&entry.reason, 8 * 1024)
-                {
-                    return Err(INVALID_AUDIT_LEDGER);
-                }
-                summary.not_applicable += 1;
-            }
-            RequirementStatus::Blocked => {
-                if !entry.code_evidence.is_empty()
-                    || !entry.test_evidence.is_empty()
-                    || !valid_text(&entry.reason, 8 * 1024)
-                {
-                    return Err(INVALID_AUDIT_LEDGER);
-                }
-                summary.blocked += 1;
-            }
+        match check_entry_status(entry)? {
+            RequirementStatus::Satisfied => summary.satisfied += 1,
+            RequirementStatus::Gap => summary.gaps += 1,
+            RequirementStatus::NotApplicable => summary.not_applicable += 1,
+            RequirementStatus::Blocked => summary.blocked += 1,
         }
     }
-    if covered.len() != expected_source_ids.len()
-        || !expected_source_ids.iter().all(|id| covered.contains(id))
-    {
-        return Err(INVALID_AUDIT_LEDGER);
+    let uncovered = expected_source_ids.len() - covered.len();
+    if uncovered != 0 || !unknown.is_empty() {
+        return Err(AuditLedgerViolation::Coverage {
+            uncovered,
+            unknown: unknown.len(),
+        });
     }
     summary.total = ledger.entries.len();
     Ok(summary)
+}
+
+/// Check one entry's identifier, single-line, evidence, and triage shape.
+fn check_entry_shape<'entry>(
+    entry: &'entry AuditLedgerEntry,
+    entry_ids: &mut BTreeSet<&'entry str>,
+) -> Result<(), AuditLedgerViolation> {
+    if !bounded_ascii_identifier(&entry.id, true) {
+        return Err(AuditLedgerViolation::MalformedEntryId {
+            id: entry.id.clone(),
+        });
+    }
+    if !entry_ids.insert(entry.id.as_str()) {
+        return Err(AuditLedgerViolation::DuplicateEntryId {
+            id: entry.id.clone(),
+        });
+    }
+    if !valid_single_line(&entry.requirement, 8 * 1024) {
+        return Err(AuditLedgerViolation::RequirementLine {
+            id: entry.id.clone(),
+        });
+    }
+    if !evidence_valid(&entry.code_evidence) {
+        return Err(AuditLedgerViolation::CodeEvidence {
+            id: entry.id.clone(),
+        });
+    }
+    if !evidence_valid(&entry.test_evidence) {
+        return Err(AuditLedgerViolation::TestEvidence {
+            id: entry.id.clone(),
+        });
+    }
+    if entry.reason.len() > 8 * 1024 || entry.reason.contains('\r') {
+        return Err(AuditLedgerViolation::ReasonShape {
+            id: entry.id.clone(),
+        });
+    }
+    if triage_text_is_security_sensitive(&format!(
+        "{}\n{}\n{}\n{}",
+        entry.requirement,
+        entry.code_evidence.join("\n"),
+        entry.test_evidence.join("\n"),
+        entry.reason
+    )) {
+        return Err(AuditLedgerViolation::SecuritySensitive {
+            id: entry.id.clone(),
+        });
+    }
+    Ok(())
+}
+
+/// Check one entry's per-status evidence and reason rules.
+fn check_entry_status(entry: &AuditLedgerEntry) -> Result<RequirementStatus, AuditLedgerViolation> {
+    match entry.status {
+        RequirementStatus::Satisfied => {
+            if entry.code_evidence.is_empty()
+                || entry.test_evidence.is_empty()
+                || !entry.reason.is_empty()
+            {
+                return Err(AuditLedgerViolation::SatisfiedEvidence {
+                    id: entry.id.clone(),
+                });
+            }
+        }
+        RequirementStatus::Gap => {
+            if entry.code_evidence.is_empty() && entry.test_evidence.is_empty() {
+                return Err(AuditLedgerViolation::GapEvidence {
+                    id: entry.id.clone(),
+                });
+            }
+        }
+        RequirementStatus::NotApplicable => {
+            if !entry.code_evidence.is_empty()
+                || !entry.test_evidence.is_empty()
+                || !valid_text(&entry.reason, 8 * 1024)
+            {
+                return Err(AuditLedgerViolation::NotApplicableShape {
+                    id: entry.id.clone(),
+                });
+            }
+        }
+        RequirementStatus::Blocked => {
+            if !entry.code_evidence.is_empty()
+                || !entry.test_evidence.is_empty()
+                || !valid_text(&entry.reason, 8 * 1024)
+            {
+                return Err(AuditLedgerViolation::BlockedShape {
+                    id: entry.id.clone(),
+                });
+            }
+        }
+    }
+    Ok(entry.status)
 }
 
 /// Return the SHA-256 binding for exact serialized ledger bytes.
@@ -1361,6 +1544,136 @@ mod tests {
         assert_eq!(
             validate_audit_ledger(&snapshot, &ledger),
             Err(INVALID_AUDIT_LEDGER)
+        );
+    }
+
+    #[test]
+    fn diagnose_accepts_a_complete_ledger() {
+        let snapshot = snapshot();
+        let ledger = ledger(&snapshot);
+        let summary = diagnose_audit_ledger(&snapshot, &ledger).expect("valid ledger");
+        assert_eq!(summary.total, ledger.entries.len());
+    }
+
+    #[test]
+    fn diagnose_reports_uncovered_source_count() {
+        let snapshot = snapshot();
+        let mut ledger = ledger(&snapshot);
+        let _ = ledger.entries.pop();
+        assert_eq!(
+            diagnose_audit_ledger(&snapshot, &ledger),
+            Err(AuditLedgerViolation::Coverage {
+                uncovered: 1,
+                unknown: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn diagnose_reports_unknown_source_count() {
+        let snapshot = snapshot();
+        let mut ledger = ledger(&snapshot);
+        let next = ledger.entries.len() + 1;
+        ledger.entries.push(AuditLedgerEntry {
+            id: format!("R-{next}"),
+            source_id: "unknown:source:1".to_owned(),
+            requirement: "Account for the source item".to_owned(),
+            status: RequirementStatus::Gap,
+            code_evidence: vec!["src/lib.rs: symbol is absent".to_owned()],
+            test_evidence: vec!["tests/fixture.rs: missing assertion".to_owned()],
+            reason: String::new(),
+        });
+        assert_eq!(
+            diagnose_audit_ledger(&snapshot, &ledger),
+            Err(AuditLedgerViolation::Coverage {
+                uncovered: 0,
+                unknown: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn diagnose_reports_duplicate_entry_id() {
+        let snapshot = snapshot();
+        let mut ledger = ledger(&snapshot);
+        let first = ledger.entries[0].id.clone();
+        ledger.entries[1].id = first.clone();
+        assert_eq!(
+            diagnose_audit_ledger(&snapshot, &ledger),
+            Err(AuditLedgerViolation::DuplicateEntryId { id: first })
+        );
+    }
+
+    #[test]
+    fn diagnose_reports_satisfied_evidence_and_maps_to_ledger_refusal() {
+        let snapshot = snapshot();
+        let mut ledger = ledger(&snapshot);
+        ledger.entries[0].status = RequirementStatus::Satisfied;
+        ledger.entries[0].reason = "an unexpected reason".to_owned();
+        let violation = diagnose_audit_ledger(&snapshot, &ledger).expect_err("violation");
+        assert_eq!(
+            violation,
+            AuditLedgerViolation::SatisfiedEvidence {
+                id: "R-1".to_owned(),
+            }
+        );
+        assert_eq!(violation.refusal(), INVALID_AUDIT_LEDGER);
+    }
+
+    #[test]
+    fn diagnose_reports_security_sensitive_and_maps_to_security_refusal() {
+        let snapshot = snapshot();
+        let mut ledger = ledger(&snapshot);
+        ledger.entries[0].requirement = "Rotate the stored credential".to_owned();
+        let violation = diagnose_audit_ledger(&snapshot, &ledger).expect_err("violation");
+        assert_eq!(
+            violation,
+            AuditLedgerViolation::SecuritySensitive {
+                id: "R-1".to_owned(),
+            }
+        );
+        assert_eq!(violation.refusal(), SECURITY_SENSITIVE_AUDIT);
+    }
+
+    #[test]
+    fn violation_constraint_names_are_stable() {
+        assert_eq!(
+            AuditLedgerViolation::Coverage {
+                uncovered: 0,
+                unknown: 0,
+            }
+            .constraint(),
+            "coverage"
+        );
+        assert_eq!(
+            AuditLedgerViolation::DuplicateEntryId {
+                id: "R-1".to_owned()
+            }
+            .constraint(),
+            "duplicate-entry-id"
+        );
+        assert_eq!(
+            AuditLedgerViolation::SecuritySensitive {
+                id: "R-1".to_owned()
+            }
+            .constraint(),
+            "security-sensitive"
+        );
+        assert_eq!(AuditLedgerViolation::Snapshot.constraint(), "snapshot");
+        assert_eq!(
+            AuditLedgerViolation::SatisfiedEvidence {
+                id: "R-1".to_owned()
+            }
+            .entry_id(),
+            Some("R-1")
+        );
+        assert_eq!(
+            AuditLedgerViolation::Coverage {
+                uncovered: 1,
+                unknown: 0,
+            }
+            .entry_id(),
+            None
         );
     }
 
