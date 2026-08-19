@@ -20,8 +20,17 @@ pub const BGJOB_STATUS_DEAD: &str = "DEAD";
 pub const BGJOB_RC_TIMEOUT: &str = "timeout";
 /// Result code recorded when the session owner is gone.
 pub const BGJOB_RC_ORPHANED: &str = "orphaned";
-/// Default and maximum foreground wait chunk, in seconds.
-pub const BGJOB_WAIT_MAX_CHUNK_S: i64 = 270;
+/// Default foreground wait chunk, in seconds.
+///
+/// Most skill steps use this short chunk under the Bash foreground timeout
+/// ceiling. Longer callers must pass an explicit `--max-wait-s`.
+pub const BGJOB_WAIT_DEFAULT_CHUNK_S: i64 = 270;
+/// Maximum allowed wait chunk, in seconds (#8707).
+///
+/// Sized for `/complete-umbrella` leaf waits that run as background Bash so a
+/// typical hour-scale leaf finishes in one or two wait calls. A continuous
+/// wait refreshes the wait lease on every poll for the whole chunk.
+pub const BGJOB_WAIT_MAX_CHUNK_S: i64 = 7200;
 /// Extra seconds before a wait abandons its chunk unconditionally.
 pub const BGJOB_WAIT_HARD_DEADLINE_GRACE_S: u64 = 30;
 /// Seconds a startup marker keeps a wait patient before it reports `DEAD`.
@@ -32,9 +41,11 @@ pub const BGJOB_STARTUP_ACK_TIMEOUT_S: f64 = 25.0;
 pub const BGJOB_OWNER_GRACE_S: f64 = 120.0;
 /// Seconds a foreground-wait lease stays fresh after its last refresh (#8639).
 ///
-/// Sized above one wait chunk plus the owner grace so an orchestrator can
-/// return `WAIT`, re-enter an identical `bgjob wait`, and still protect the
-/// child when the start-time owner PID was an ephemeral tool shell.
+/// Sized above the default wait chunk plus the owner grace so an orchestrator
+/// can return `WAIT`, re-enter an identical `bgjob wait`, and still protect the
+/// child when the start-time owner PID was an ephemeral tool shell. A single
+/// long wait refreshes the lease on every poll, so the TTL only covers the
+/// gap between chunk returns.
 pub const BGJOB_WAIT_LEASE_TTL_S: f64 = 390.0;
 /// Consecutive owner-validation failures required before the grace clock starts.
 pub const BGJOB_OWNER_VALIDATION_FAILURE_THRESHOLD: u32 = 3;

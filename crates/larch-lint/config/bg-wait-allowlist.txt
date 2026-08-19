@@ -1,1 +1,3 @@
-# Intentionally empty: bgjob migration removed retained skill prose exceptions.
+# path	reason
+skills/complete-umbrella/SKILL.md	#8707 leaf bgjob wait uses run_in_background so a 7200s wait outlives the Bash foreground timeout ceiling
+skills/shared/bgjob-wait.md	#8707 documents the complete-umbrella long leaf wait background carve-out

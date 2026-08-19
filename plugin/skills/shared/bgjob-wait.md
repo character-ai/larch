@@ -68,6 +68,10 @@ After `DONE`, parse all rows and read `$IMPLEMENT_TMPDIR/bgjob/implement-step5-r
 
 Do not apply the generic `BGJOB_RC=0` success gate to `ship route-exit`. Step 8 reads the direct ship outcome KVs and numeric driver rc from the bgjob result env. The orchestrator validates those route inputs rather than treating `BGJOB_RC=0` alone as success.
 
+## Long leaf wait carve-out
+
+`/complete-umbrella` Step 2 is the only shipped caller that raises `--max-wait-s` above the default 270-second chunk. It uses `--max-wait-s 7200` with Bash `run_in_background: true` so a typical hour-scale leaf finishes in one or two wait calls without exceeding the Bash foreground timeout ceiling. The wait still refreshes the wait lease on every poll. Other skills keep the 270-second chunk and foreground timeout `330000` contract above.
+
 ## Parallel external lanes
 
 Every concurrent external lane must use a unique `--step` slug, such as `review-codex-1` and `review-cursor-1`. Shared slugs clobber registry rows, stdout/stderr logs, and `$TMPDIR/bgjob/<step>.result.env`.

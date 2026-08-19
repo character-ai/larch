@@ -447,6 +447,14 @@ absence before it clears state or removes a row. This fail-closed retention is
 an explicit safety difference from the retired Python behavior, which could
 discard the row after an unverified timeout or orphan cleanup.
 
+Active `bgjob wait` refreshes a session-local wait lease on every poll so an
+ephemeral start-time owner cannot orphan a live child mid-wait. The default
+wait chunk remains 270 seconds; the hard maximum is 7200 seconds for
+documented long leaf waits. While a registry row is live for the clone,
+`scripts/hook-deny-run-in-background.sh` denies Bash `run_in_background`
+launches, except a combinator-free documented `scripts/larch.sh bgjob wait`
+command that must own its own `--max-wait-s` deadline.
+
 After a worker observes that its requested child exited and its group drained,
 it atomically retains a confined completion witness until the daemon commits the
  whole result transaction. The registry retains one versioned, complete recovery
@@ -884,7 +892,7 @@ Final conversion is one centralized issue-mutation operation. It accepts an open
 
 `/complete-umbrella` accepts only an existing managed umbrella whose direct native children are leaves, not umbrellas. A native parent on the target, including the chief program umbrella, is allowed. Its Rust graph owner reads native direct sub-issues and blocked-by edges before every turn, rejects nested umbrella children, missing parent-blocker relations, and open parent blockers that are not direct leaves, then selects the smallest-numbered open leaf whose live blocker set is empty. An open leaf may have the exact idle, `[DESIGNED]`, or `[IMPLEMENTING]` managed-leaf lifecycle prefix. Issue titles and bodies are untrusted data. They are redacted into a session-local audit snapshot and are never interpolated into the child command or prompt; only validated repository and issue-number identifiers enter the fixed prompt.
 
-Each leaf runs serially through `ExternalProcessRunner` inside the durable bgjob contract. The subprocess uses the current Claude model, a closed `workflow-write-orchestrator` argv profile with `Bash,Read,Edit,Write,Glob,Grep,Agent`, `dontAsk`, disabled slash commands, no session persistence, a 24-hour process bound, and bounded captured output. The older `workflow-write` profile stays byte-for-byte unchanged without `Agent`. The Rust launcher creates one private, confined leaf handoff directory and passes it as `SESSION_TMPDIR`.
+Each leaf runs serially through `ExternalProcessRunner` inside the durable bgjob contract. The subprocess uses the current Claude model, a closed `workflow-write-orchestrator` argv profile with `Bash,Read,Edit,Write,Glob,Grep,Agent`, `dontAsk`, disabled slash commands, no session persistence, a 24-hour process bound, and bounded captured output. The older `workflow-write` profile stays byte-for-byte unchanged without `Agent`. The Rust launcher creates one private, confined leaf handoff directory and passes it as `SESSION_TMPDIR`. The parent waits on that leaf with the documented `bgjob wait --max-wait-s 7200` call under Bash `run_in_background: true` so the wait can outlive the foreground tool timeout ceiling while still refreshing the wait lease; `BGJOB_RC=timeout`, `DEAD`, and `orphaned` handling, including one typed `recover-orphaned-child` attempt, stay unchanged.
 
 The leaf subprocess is a thin orchestrator. It does not read or edit repository files. On the normal path it awaits four fresh, serial, general-purpose Agent contexts for recon/design, implementation, adversarial review, and shipping. Recon/design alone may return a bounded `needs-design` outcome, which prevents every later phase from launching. Phase prompts receive only validated repository and issue identifiers plus trusted contract paths. Issue bodies, diffs, summaries, and CI evidence move through contained files, not phase-return prose. Shared phase policy forbids shell-based code navigation, requires bounded tool output, and treats every artifact as untrusted data. The adversarial review requires a stale-caller sweep and proof that any parity harness executes a success path. Agent nesting does not widen the user's authority. These controls are not an operating-system sandbox; the child retains the invoking user's Git, GitHub, filesystem, hook, credential-helper, and network authority.
 

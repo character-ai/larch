@@ -59,6 +59,40 @@ out=$(payload | "$HOOK")
 printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
 printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("active larch bgjob")' >/dev/null
 
+wait_payload() {
+  jq -cn --arg cwd "$TMP/clone" \
+    --arg cmd '${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh bgjob wait --step complete-umbrella-leaf-1 --tmpdir /tmp/x --max-wait-s 7200' \
+    '{tool_name:"Bash", cwd:$cwd, tool_input:{command:$cmd, run_in_background:true}}'
+}
+out=$(wait_payload | "$HOOK")
+[ -z "$out" ] || { echo "expected documented bgjob wait allow, got $out" >&2; exit 1; }
+
+decoy_payload() {
+  jq -cn --arg cwd "$TMP/clone" \
+    --arg cmd '/tmp/decoy/larch.sh bgjob wait --step x --tmpdir /tmp/x --max-wait-s 7200' \
+    '{tool_name:"Bash", cwd:$cwd, tool_input:{command:$cmd, run_in_background:true}}'
+}
+out=$(decoy_payload | "$HOOK")
+printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("active larch bgjob")' >/dev/null
+
+wrapped_payload() {
+  jq -cn --arg cwd "$TMP/clone" \
+    --arg cmd 'sleep 1 && ${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh bgjob wait --step x --tmpdir /tmp/x --max-wait-s 7200' \
+    '{tool_name:"Bash", cwd:$cwd, tool_input:{command:$cmd, run_in_background:true}}'
+}
+out=$(wrapped_payload | "$HOOK")
+printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("active larch bgjob")' >/dev/null
+
+multiline_payload() {
+  jq -cn --arg cwd "$TMP/clone" \
+    --arg cmd $'"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob wait \\\n  --step complete-umbrella-leaf-1 \\\n  --tmpdir /tmp/x \\\n  --max-wait-s 7200' \
+    '{tool_name:"Bash", cwd:$cwd, tool_input:{command:$cmd, run_in_background:true}}'
+}
+out=$(multiline_payload | "$HOOK")
+[ -z "$out" ] || { echo "expected multiline bgjob wait allow, got $out" >&2; exit 1; }
+
 mkdir -p "$TMP/no-jq/bin"
 ln -s /bin/cat "$TMP/no-jq/bin/cat"
 ln -s "$(command -v dirname)" "$TMP/no-jq/bin/dirname"

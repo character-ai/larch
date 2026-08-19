@@ -15,9 +15,9 @@ use larch_adapters::{
 };
 use larch_core::{
     BGJOB_RC_ORPHANED, BGJOB_RC_TIMEOUT, BGJOB_STATUS_DEAD, BGJOB_STATUS_DONE, BGJOB_STATUS_KEY,
-    BGJOB_STATUS_STARTED, BGJOB_STATUS_WAIT, BGJOB_WAIT_HARD_DEADLINE_GRACE_S,
-    BGJOB_WAIT_LEASE_TTL_S, BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec, OwnerIdentity,
-    OwnerValidationState, ProcessBirthIdentity, ProcessIdentityHost,
+    BGJOB_STATUS_STARTED, BGJOB_STATUS_WAIT, BGJOB_WAIT_DEFAULT_CHUNK_S,
+    BGJOB_WAIT_HARD_DEADLINE_GRACE_S, BGJOB_WAIT_LEASE_TTL_S, BGJOB_WAIT_MAX_CHUNK_S, BgjobError,
+    JobSpec, OwnerIdentity, OwnerValidationState, ProcessBirthIdentity, ProcessIdentityHost,
     ProcessIdentityValidationPolicy, RecordedProcessIdentity, RegistryEntry, ValidationResult,
     bgjob_dir, check_owner_validation, checked_dir, child_liveness, clear_completion_residue,
     collect_process_group_members_checked, confirm_process_group_absent, daemon_liveness,
@@ -106,7 +106,7 @@ impl Default for WaitArguments {
             step: String::new(),
             tmpdir: String::new(),
             run_id: String::new(),
-            max_wait_s: BGJOB_WAIT_MAX_CHUNK_S,
+            max_wait_s: BGJOB_WAIT_DEFAULT_CHUNK_S,
             poll_interval_s: 1.0,
         }
     }
@@ -655,7 +655,11 @@ fn parse_wait(arguments: &[OsString]) -> Result<WaitArguments, &'static str> {
             "--max-wait-s" => {
                 let raw =
                     take_option_value(&values, &mut index, inline, "missing-option-argument")?;
-                parsed.max_wait_s = raw.parse::<i64>().map_err(|_| "invalid-max-wait")?;
+                let value = raw.parse::<i64>().map_err(|_| "invalid-max-wait")?;
+                if !(0..=BGJOB_WAIT_MAX_CHUNK_S).contains(&value) {
+                    return Err("invalid-max-wait");
+                }
+                parsed.max_wait_s = value;
             }
             "--poll-interval-s" => {
                 let raw =
@@ -1488,9 +1492,9 @@ mod tests {
         remove_result_residue, wait_rows, write_result,
     };
     use larch_core::{
-        BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BGJOB_WAIT_MAX_CHUNK_S, BgjobError, JobSpec,
-        OwnerIdentity, ProcessBirthIdentity, RecordedProcessIdentity, ordered_rows, render_rows,
-        validate_merge_result_env,
+        BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BGJOB_WAIT_DEFAULT_CHUNK_S, BGJOB_WAIT_MAX_CHUNK_S,
+        BgjobError, JobSpec, OwnerIdentity, ProcessBirthIdentity, RecordedProcessIdentity,
+        ordered_rows, render_rows, validate_merge_result_env,
     };
     use std::{
         ffi::OsString,
@@ -1620,7 +1624,7 @@ mod tests {
     }
 
     #[test]
-    fn wait_arguments_default_to_the_maximum_chunk_and_require_a_step() {
+    fn wait_arguments_default_to_the_default_chunk_and_require_a_step() {
         let parsed = parse_wait(&arguments(&[
             "--step",
             "demo-step",
@@ -1632,7 +1636,7 @@ mod tests {
             "0.1",
         ]))
         .expect("parsed wait arguments");
-        assert_eq!(parsed.max_wait_s, BGJOB_WAIT_MAX_CHUNK_S);
+        assert_eq!(parsed.max_wait_s, BGJOB_WAIT_DEFAULT_CHUNK_S);
         assert!((parsed.poll_interval_s - 0.1).abs() < f64::EPSILON);
         assert_eq!(
             parse_wait(&arguments(&["--tmpdir", "/tmp"])).expect_err("missing step"),
@@ -1661,6 +1665,28 @@ mod tests {
             ]))
             .expect_err("bad interval"),
             "invalid-poll-interval"
+        );
+        let long = parse_wait(&arguments(&[
+            "--step",
+            "leaf",
+            "--tmpdir",
+            "/tmp/session",
+            "--max-wait-s",
+            "7200",
+        ]))
+        .expect("long leaf wait");
+        assert_eq!(long.max_wait_s, BGJOB_WAIT_MAX_CHUNK_S);
+        assert_eq!(
+            parse_wait(&arguments(&[
+                "--step",
+                "leaf",
+                "--tmpdir",
+                "/tmp/session",
+                "--max-wait-s",
+                "7201"
+            ]))
+            .expect_err("above max"),
+            "invalid-max-wait"
         );
     }
 
@@ -1813,7 +1839,7 @@ mod tests {
     #[test]
     fn wait_arguments_carry_their_defaults() {
         let parsed = WaitArguments::default();
-        assert_eq!(parsed.max_wait_s, BGJOB_WAIT_MAX_CHUNK_S);
+        assert_eq!(parsed.max_wait_s, BGJOB_WAIT_DEFAULT_CHUNK_S);
         assert!((parsed.poll_interval_s - 1.0).abs() < f64::EPSILON);
     }
 }

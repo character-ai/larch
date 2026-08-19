@@ -56,6 +56,33 @@ case "$run_bg:$command_text" in
   *) exit 0 ;;
 esac
 
+# Allow only a combinator-free documented `bgjob wait` to run in the background
+# while a registry row is live (#8707). That wait keeps the wait lease fresh for
+# long leaf children; any other background Bash still races the daemon.
+is_documented_bgjob_wait() {
+  local normalized=$1
+  # Collapse whitespace so multi-line skill fences still match. Avoid external
+  # tools so a restricted hook PATH cannot break the carve-out.
+  normalized=${normalized//$'\n'/ }
+  normalized=${normalized//$'\r'/ }
+  normalized=${normalized//$'\t'/ }
+  while [[ "$normalized" == *"  "* ]]; do
+    normalized=${normalized//  / }
+  done
+  case "$normalized" in
+    *'&&'*|*'||'*|*';'*|*'|'*|*'`'*|*'$('*|*'>'*|*'<'*) return 1 ;;
+  esac
+  # Require the verified shim path so a same-named decoy binary cannot pass.
+  case "$normalized" in
+    *'/scripts/larch.sh'*' bgjob wait '*|*'/scripts/larch.sh'*' bgjob wait') return 0 ;;
+  esac
+  return 1
+}
+
+if is_documented_bgjob_wait "$command_text"; then
+  exit 0
+fi
+
 cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || cwd=""
 cwd_canon=$(canonical_dir "$cwd" 2>/dev/null || true)
 if [ -z "$cwd_canon" ]; then
