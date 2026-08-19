@@ -29,6 +29,12 @@ const SESSION_ACTIVITY_LOCK_RELATIVE: &str =
 /// excluded from Python-era parity captures, while ordinary lock files remain
 /// observable.
 const STALL_RECOVERY_ATTEMPT_LOCK_NAME: &str = ".stall-recovery-attempts.lock";
+/// Coverage-instrumented binaries drop `*.profraw` LLVM profile files into
+/// their working directory when the parity suite runs under `cargo llvm-cov`.
+/// They are an instrumentation byproduct, never a genuine CLI side effect, so
+/// the capture ignores them to keep the frozen-Python golden comparison valid
+/// under coverage.
+const LLVM_PROFRAW_EXTENSION: &str = "profraw";
 static RFC3339_UTC: OnceLock<Regex> = OnceLock::new();
 static PROCESS_IDENTITY: OnceLock<Regex> = OnceLock::new();
 static REFRESH_EPOCH: OnceLock<Regex> = OnceLock::new();
@@ -445,6 +451,9 @@ fn capture_directory(
             || relative
                 .file_name()
                 .is_some_and(|name| name == STALL_RECOVERY_ATTEMPT_LOCK_NAME)
+            || relative
+                .extension()
+                .is_some_and(|extension| extension == LLVM_PROFRAW_EXTENSION)
         {
             continue;
         }
@@ -859,6 +868,7 @@ mod tests {
             .expect("nested lock parent");
         fs::write(&nested, "").expect("nested attempt lock inode");
         fs::write(root.join("unrelated.lock"), "kept").expect("ordinary artifact");
+        fs::write(root.join("default_1_2.profraw"), "coverage").expect("profraw artifact");
 
         let (files, side_effects) =
             super::capture_tree(root, &BTreeSet::new()).expect("capture tree");
@@ -866,6 +876,7 @@ mod tests {
         assert!(!files.contains_key(super::SESSION_ACTIVITY_LOCK_RELATIVE));
         assert!(!files.contains_key(super::STALL_RECOVERY_ATTEMPT_LOCK_NAME));
         assert!(!files.contains_key("nested/.stall-recovery-attempts.lock"));
+        assert!(!files.contains_key("default_1_2.profraw"));
         assert_eq!(
             files.get("unrelated.lock"),
             Some(&super::CapturedContent::Text("kept".to_owned()))
