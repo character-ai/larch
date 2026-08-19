@@ -109,6 +109,36 @@ fn gap_preflight_validates_files_before_issue_creation() {
         .stderr(predicate::str::contains("prefix-free, option-safe"));
 }
 
+#[test]
+fn run_leaves_is_exposed_and_rejects_an_unresolved_model_before_remote_work() {
+    let root = TempDir::new().expect("fixture");
+    larch()
+        .args([
+            "complete-umbrella",
+            "run-leaves",
+            "--repository",
+            "owner/repo",
+            "--repo-root",
+            &root.path().display().to_string(),
+            "--umbrella",
+            "40",
+            "--model",
+            "unknown",
+            "--output-root",
+            &root.path().display().to_string(),
+            "--output",
+            &root.path().join("snapshot.json").display().to_string(),
+            "--result-env",
+            &root.path().join("result.env").display().to_string(),
+            "--operator-invoked",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "--model must be one resolved non-whitespace token",
+        ));
+}
+
 #[cfg(unix)]
 #[test]
 fn child_harness_pins_model_disables_skills_and_requires_completion_marker() {

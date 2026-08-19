@@ -1,18 +1,17 @@
 //! Rust composition root for `/complete-umbrella`.
 
-#[cfg(test)]
-use crate::session_artifact_support::confine_session_path;
 use crate::{
+    git_command_runtime::GitCommandRuntime,
     github_repository_resolution::repository_ref,
     github_service::{ServiceFailure, with_github_service},
     session_artifact_support::{
-        canonical_directory, read_expected_file, temporary_root, write_private_file,
+        canonical_directory, confine_session_path, read_expected_file, temporary_root,
+        write_private_file,
     },
 };
 use clap::{Args, Subcommand};
-#[cfg(test)]
-use larch_adapters::PathIntent;
 use larch_adapters::{
+    FetchRequest, GitRef, GitRefspec, GitRemote, GixRepository, PathIntent, RebaseRequest,
     TemporaryRoot, TokioProcessRunner,
     github::{
         DependencyEdge, IssueMutationOwner, LiveMutationRequest, SubIssueEdge,
@@ -24,28 +23,36 @@ use larch_core::{
     COMPLETE_UMBRELLA_CHILD_COMPLETE, COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN,
     COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API, COMPLETE_UMBRELLA_CHILD_NEEDS_DESIGN,
     ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext, DONE_PREFIX, DuplicatePolicy,
-    ExternalProcessRunner, ExternalProgram, GitHubCloseReason, GitHubIssue, GitHubIssueState,
-    GitHubRepositoryRef, GitHubService, IMPLEMENTING_PREFIX, IssueMutationField,
-    IssueMutationRequest, KvDocument, ParseOptions, ProcessRequest, VendorLaunchRequest,
-    VendorProgram, build_claude_argv, complete_umbrella_child_prompt, complete_umbrella_done_title,
-    complete_umbrella_relaunch_title, complete_umbrella_start_title, emit_kv,
-    has_umbrella_proposal, is_controlling_umbrella_title, is_transient_claude_api_error,
-    parse_claude_envelope, redact, redact_issue_mutation_request, select_complete_umbrella_leaf,
-    umbrella_leaf_opening, umbrella_leaf_prefix, validate_complete_umbrella_leaf,
-    validate_complete_umbrella_parent,
+    EnvFile, ExternalProcessRunner, ExternalProgram, GitHubCloseReason, GitHubIssue,
+    GitHubIssueState, GitHubRepositoryRef, GitHubService, Head, IMPLEMENTING_PREFIX,
+    IssueMutationField, IssueMutationRequest, KvDocument, ParseOptions, ProcessRequest,
+    RepositoryRead, StatusOptions, VendorLaunchRequest, VendorProgram, build_claude_argv,
+    complete_umbrella_child_prompt, complete_umbrella_done_title, complete_umbrella_relaunch_title,
+    complete_umbrella_start_title, emit_kv, has_umbrella_proposal, is_controlling_umbrella_title,
+    is_transient_claude_api_error, parse_claude_envelope, redact, redact_issue_mutation_request,
+    select_complete_umbrella_leaf, single_line, umbrella_leaf_opening, umbrella_leaf_prefix,
+    validate_complete_umbrella_leaf, validate_complete_umbrella_parent,
 };
 use serde::Serialize;
-use std::{
-    collections::BTreeSet, env, ffi::OsString, fmt::Write as _, num::NonZeroUsize, path::PathBuf,
-    process::ExitCode, time::Duration,
-};
 #[cfg(test)]
-use std::{fs, path::Path};
+use std::fs;
+use std::{
+    collections::BTreeSet,
+    env,
+    ffi::OsString,
+    fmt::Write as _,
+    num::NonZeroUsize,
+    path::{Path, PathBuf},
+    process::ExitCode,
+    time::Duration,
+};
 
 const MAX_DIRECT_LEAVES: usize = 100;
 const CHILD_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 const CHILD_SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 const CHILD_OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
+const MAX_TRANSIENT_CHILD_RETRIES: u8 = 2;
+const RUN_LEAVES_STEP: &str = "complete-umbrella-leaves";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ChildResultStatus {
@@ -87,6 +94,9 @@ pub enum CompleteUmbrellaCommand {
     Start(ParentMutationArguments),
     /// Fetch a fresh graph snapshot and select the next runnable leaf.
     Next(NextArguments),
+    /// Run the deterministic leaf-selection, synchronization, child, and verification loop.
+    #[command(name = "run-leaves")]
+    RunLeaves(RunLeavesArguments),
     /// Run one leaf in the current Claude harness and model.
     #[command(name = "run-child")]
     RunChild(RunChildArguments),
@@ -137,6 +147,26 @@ pub struct NextArguments {
     output_root: PathBuf,
     #[arg(long)]
     output: PathBuf,
+}
+
+#[derive(Args)]
+pub struct RunLeavesArguments {
+    #[arg(long)]
+    repository: String,
+    #[arg(long)]
+    repo_root: PathBuf,
+    #[arg(long)]
+    umbrella: u64,
+    #[arg(long)]
+    model: String,
+    #[arg(long)]
+    output_root: PathBuf,
+    #[arg(long)]
+    output: PathBuf,
+    #[arg(long)]
+    result_env: PathBuf,
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    operator_invoked: bool,
 }
 
 #[derive(Args)]
@@ -245,11 +275,144 @@ struct ExpectedAuditLeaf {
     body: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ChildAttempt {
+    Complete,
+    NeedsDesign,
+    TransientApi(String),
+    Failed(String),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RunLeavesFailure {
+    next_action: &'static str,
+    step: &'static str,
+    leaf: Option<u64>,
+    reason: String,
+}
+
+impl RunLeavesFailure {
+    fn failed(step: &'static str, leaf: Option<u64>, reason: impl AsRef<str>) -> Self {
+        Self::new("failed", step, leaf, reason)
+    }
+
+    fn needs_design(leaf: u64) -> Self {
+        Self::new(
+            "needs-design",
+            "run-child",
+            Some(leaf),
+            format!("leaf #{leaf} requires /design before implementation"),
+        )
+    }
+
+    fn new(
+        next_action: &'static str,
+        step: &'static str,
+        leaf: Option<u64>,
+        reason: impl AsRef<str>,
+    ) -> Self {
+        let redacted = redact(reason.as_ref());
+        let reason = single_line(redacted.text());
+        Self {
+            next_action,
+            step,
+            leaf,
+            reason: if reason.is_empty() {
+                "unspecified failure".to_owned()
+            } else {
+                reason
+            },
+        }
+    }
+
+    fn diagnostic(&self) -> String {
+        self.leaf.map_or_else(
+            || format!("failed at {}: {}", self.step, self.reason),
+            |leaf| format!("failed at {} for leaf #{leaf}: {}", self.step, self.reason),
+        )
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum RunLeavesEnvelope {
+    Progress {
+        action: &'static str,
+        leaf: u64,
+        completed: usize,
+    },
+    Audit {
+        completed: usize,
+    },
+    Failure(RunLeavesFailure),
+}
+
+impl RunLeavesEnvelope {
+    fn render(&self) -> Result<String, String> {
+        const KEYS: &[&str] = &[
+            "COMPLETED_LEAF_COUNT",
+            "CURRENT_LEAF",
+            "FAILED_LEAF",
+            "FAILED_STEP",
+            "FAILURE_REASON",
+            "NEXT_ACTION",
+            "OPEN_LEAF_COUNT",
+            "SNAPSHOT_WRITTEN",
+        ];
+        let rows = match self {
+            Self::Progress {
+                action,
+                leaf,
+                completed,
+            } => vec![
+                ("NEXT_ACTION", (*action).to_owned()),
+                ("CURRENT_LEAF", leaf.to_string()),
+                ("COMPLETED_LEAF_COUNT", completed.to_string()),
+            ],
+            Self::Audit { completed } => vec![
+                ("NEXT_ACTION", "audit".to_owned()),
+                ("COMPLETED_LEAF_COUNT", completed.to_string()),
+                ("OPEN_LEAF_COUNT", "0".to_owned()),
+                ("SNAPSHOT_WRITTEN", "true".to_owned()),
+            ],
+            Self::Failure(failure) => vec![
+                ("NEXT_ACTION", failure.next_action.to_owned()),
+                ("FAILED_STEP", failure.step.to_owned()),
+                (
+                    "FAILED_LEAF",
+                    failure
+                        .leaf
+                        .map_or_else(|| "0".to_owned(), |leaf| leaf.to_string()),
+                ),
+                ("FAILURE_REASON", failure.reason.clone()),
+            ],
+        };
+        let borrowed = rows
+            .iter()
+            .map(|(key, value)| (*key, value.as_str()))
+            .collect::<Vec<_>>();
+        let mut environment = EnvFile::empty();
+        environment
+            .apply_guarded(&borrowed, KEYS)
+            .map_err(|error| error.to_string())?;
+        environment.render().map_err(|error| error.to_string())
+    }
+}
+
+trait RunLeavesOperations {
+    fn read_graph(&mut self) -> Result<GraphState, String>;
+    fn write_snapshot(&mut self, graph: &GraphState) -> Result<(), String>;
+    fn sync_main(&mut self) -> Result<(), String>;
+    fn run_child(&mut self, leaf: u64) -> ChildAttempt;
+    fn reset_leaf(&mut self, leaf: u64) -> Result<(), String>;
+    fn write_result(&mut self, envelope: &RunLeavesEnvelope) -> Result<(), String>;
+}
+
 #[must_use]
 pub fn run(command: CompleteUmbrellaCommand) -> ExitCode {
     let result = match command {
         CompleteUmbrellaCommand::Start(arguments) => start(&arguments),
         CompleteUmbrellaCommand::Next(arguments) => next(&arguments),
+        CompleteUmbrellaCommand::RunLeaves(arguments) => run_leaves(&arguments),
         CompleteUmbrellaCommand::RunChild(arguments) => run_child(&arguments),
         CompleteUmbrellaCommand::VerifyChild(arguments) => verify_child(&arguments),
         CompleteUmbrellaCommand::RecoverOrphanedChild(arguments) => {
@@ -331,12 +494,466 @@ fn next(arguments: &NextArguments) -> Result<(), String> {
     emit_next(arguments, &graph)
 }
 
-fn emit_next(arguments: &NextArguments, graph: &GraphState) -> Result<(), String> {
-    if graph.parent.state != GitHubIssueState::Open
-        || !graph.parent.title.starts_with(IMPLEMENTING_PREFIX)
-    {
-        return Err("parent must be open with the [IMPLEMENTING] prefix".to_owned());
+fn run_leaves(arguments: &RunLeavesArguments) -> Result<(), String> {
+    require_operator(arguments.operator_invoked)?;
+    require_issue(arguments.umbrella, "--umbrella")?;
+    validate_child_model(&arguments.model)?;
+    let mut operations = LiveRunLeavesOperations::new(arguments)?;
+    match execute_run_leaves(&mut operations) {
+        Ok(completed) => {
+            emit_kv("NEXT_ACTION", "audit");
+            emit_kv("COMPLETED_LEAF_COUNT", &completed.to_string());
+            emit_kv("OPEN_LEAF_COUNT", "0");
+            emit_kv("SNAPSHOT_WRITTEN", "true");
+            Ok(())
+        }
+        Err(failure) => Err(failure.diagnostic()),
     }
+}
+
+fn execute_run_leaves(
+    operations: &mut impl RunLeavesOperations,
+) -> Result<usize, RunLeavesFailure> {
+    match drive_run_leaves(operations) {
+        Ok(completed) => {
+            let envelope = RunLeavesEnvelope::Audit { completed };
+            operations
+                .write_result(&envelope)
+                .map_err(|error| RunLeavesFailure::failed("write-result", None, error))?;
+            Ok(completed)
+        }
+        Err(failure) => {
+            let envelope = RunLeavesEnvelope::Failure(failure.clone());
+            if let Err(error) = operations.write_result(&envelope) {
+                return Err(RunLeavesFailure::failed(
+                    "write-result",
+                    failure.leaf,
+                    format!("{error}; original failure: {}", failure.diagnostic()),
+                ));
+            }
+            Err(failure)
+        }
+    }
+}
+
+fn drive_run_leaves(operations: &mut impl RunLeavesOperations) -> Result<usize, RunLeavesFailure> {
+    let mut pending_verification = None;
+    let mut completed = 0;
+    loop {
+        let graph = operations
+            .read_graph()
+            .map_err(|error| RunLeavesFailure::failed("read-graph", pending_verification, error))?;
+        if let Some(leaf) = pending_verification.take() {
+            verify_child_in_graph(&graph, leaf)
+                .map_err(|error| RunLeavesFailure::failed("verify-child", Some(leaf), error))?;
+            completed += 1;
+        }
+        let Some(leaf) = select_run_leaves_leaf(operations, &graph)? else {
+            return Ok(completed);
+        };
+        run_selected_leaf(operations, leaf, completed)?;
+        pending_verification = Some(leaf);
+    }
+}
+
+fn select_run_leaves_leaf(
+    operations: &mut impl RunLeavesOperations,
+    graph: &GraphState,
+) -> Result<Option<u64>, RunLeavesFailure> {
+    require_active_parent(graph)
+        .map_err(|error| RunLeavesFailure::failed("select-leaf", None, error))?;
+    let selection = select_complete_umbrella_leaf(
+        &selection_leaves(&graph.leaves),
+        &graph.open_orphan_blockers,
+    );
+    let selected_leaf = match &selection {
+        CompleteUmbrellaNext::Launch(leaf) => Some(*leaf),
+        CompleteUmbrellaNext::Deadlocked(leaves) => leaves.first().copied(),
+        CompleteUmbrellaNext::Audit | CompleteUmbrellaNext::OrphanBlocked(_) => None,
+    };
+    operations
+        .write_snapshot(graph)
+        .map_err(|error| RunLeavesFailure::failed("write-snapshot", selected_leaf, error))?;
+    match selection {
+        CompleteUmbrellaNext::Launch(leaf) => Ok(Some(leaf)),
+        CompleteUmbrellaNext::Audit => Ok(None),
+        CompleteUmbrellaNext::OrphanBlocked(issues) => Err(RunLeavesFailure::failed(
+            "select-leaf",
+            None,
+            format!(
+                "open non-leaf parent blockers remain: {}",
+                join_numbers(&issues)
+            ),
+        )),
+        CompleteUmbrellaNext::Deadlocked(issues) => Err(RunLeavesFailure::failed(
+            "select-leaf",
+            issues.first().copied(),
+            format!(
+                "all open leaves are blocked or active: {}",
+                join_numbers(&issues)
+            ),
+        )),
+    }
+}
+
+fn run_selected_leaf(
+    operations: &mut impl RunLeavesOperations,
+    leaf: u64,
+    completed: usize,
+) -> Result<(), RunLeavesFailure> {
+    write_run_leaves_progress(operations, "launch", leaf, completed)?;
+    operations
+        .sync_main()
+        .map_err(|error| RunLeavesFailure::failed("sync-before-child", Some(leaf), error))?;
+    run_child_attempts(operations, leaf, completed)?;
+    operations
+        .sync_main()
+        .map_err(|error| RunLeavesFailure::failed("sync-after-child", Some(leaf), error))?;
+    write_run_leaves_progress(operations, "verify", leaf, completed)
+}
+
+fn run_child_attempts(
+    operations: &mut impl RunLeavesOperations,
+    leaf: u64,
+    completed: usize,
+) -> Result<(), RunLeavesFailure> {
+    let mut transient_retries = 0;
+    loop {
+        match operations.run_child(leaf) {
+            ChildAttempt::Complete => return Ok(()),
+            ChildAttempt::NeedsDesign => {
+                operations.reset_leaf(leaf).map_err(|error| {
+                    RunLeavesFailure::failed(
+                        "reset-leaf",
+                        Some(leaf),
+                        format!("needs-design reset failed: {error}"),
+                    )
+                })?;
+                return Err(RunLeavesFailure::needs_design(leaf));
+            }
+            ChildAttempt::TransientApi(_reason)
+                if transient_retries < MAX_TRANSIENT_CHILD_RETRIES =>
+            {
+                transient_retries += 1;
+                operations.reset_leaf(leaf).map_err(|error| {
+                    RunLeavesFailure::failed(
+                        "reset-leaf",
+                        Some(leaf),
+                        format!("transient child reset failed: {error}"),
+                    )
+                })?;
+                write_run_leaves_progress(operations, "launch", leaf, completed)?;
+                operations.sync_main().map_err(|error| {
+                    RunLeavesFailure::failed("sync-before-retry", Some(leaf), error)
+                })?;
+            }
+            ChildAttempt::TransientApi(reason) => {
+                operations.reset_leaf(leaf).map_err(|error| {
+                    RunLeavesFailure::failed(
+                        "reset-leaf",
+                        Some(leaf),
+                        format!("exhausted transient child reset failed: {error}"),
+                    )
+                })?;
+                return Err(RunLeavesFailure::failed(
+                    "run-child",
+                    Some(leaf),
+                    format!(
+                        "transient Claude API failure persisted after {} attempts: {reason}",
+                        MAX_TRANSIENT_CHILD_RETRIES + 1
+                    ),
+                ));
+            }
+            ChildAttempt::Failed(reason) => {
+                return Err(RunLeavesFailure::failed("run-child", Some(leaf), reason));
+            }
+        }
+    }
+}
+
+fn write_run_leaves_progress(
+    operations: &mut impl RunLeavesOperations,
+    action: &'static str,
+    leaf: u64,
+    completed: usize,
+) -> Result<(), RunLeavesFailure> {
+    operations
+        .write_result(&RunLeavesEnvelope::Progress {
+            action,
+            leaf,
+            completed,
+        })
+        .map_err(|error| RunLeavesFailure::failed("write-result", Some(leaf), error))
+}
+
+struct LiveRunLeavesOperations<'a> {
+    arguments: &'a RunLeavesArguments,
+    repository: GitHubRepositoryRef,
+    repo_root: PathBuf,
+    output_root: TemporaryRoot,
+    driver_root: PathBuf,
+}
+
+impl<'a> LiveRunLeavesOperations<'a> {
+    fn new(arguments: &'a RunLeavesArguments) -> Result<Self, String> {
+        let repository = parse_repository(&arguments.repository)?;
+        let repo_root = canonical_directory(&arguments.repo_root, "--repo-root")?;
+        let output_root = temporary_root(&arguments.output_root, "--output-root")?;
+        let output = confine_session_path(
+            &arguments.output,
+            &arguments.output_root,
+            &output_root,
+            PathIntent::Write,
+            "--output",
+        )?;
+        let result_env = confine_session_path(
+            &arguments.result_env,
+            &arguments.output_root,
+            &output_root,
+            PathIntent::Write,
+            "--result-env",
+        )?;
+        if output.path() == result_env.path() {
+            return Err("--output and --result-env must be different files".to_owned());
+        }
+        let driver_root = output_root
+            .ensure_directory("complete-umbrella-run-leaves")
+            .map_err(|error| format!("could not create run-leaves state root: {error}"))?;
+        if output.path().starts_with(&driver_root) || result_env.path().starts_with(&driver_root) {
+            return Err("caller-owned output files must not overlap run-leaves state".to_owned());
+        }
+        Ok(Self {
+            arguments,
+            repository,
+            repo_root,
+            output_root,
+            driver_root,
+        })
+    }
+
+    fn child_arguments(&self, leaf: u64) -> RunChildArguments {
+        RunChildArguments {
+            repository: self.arguments.repository.clone(),
+            repo_root: self.repo_root.clone(),
+            umbrella: self.arguments.umbrella,
+            leaf,
+            model: self.arguments.model.clone(),
+            output_root: self.arguments.output_root.clone(),
+            output: self.driver_root.join(format!("child-{leaf}.json")),
+            result_env: self.driver_root.join(format!("child-{leaf}.env")),
+        }
+    }
+}
+
+impl RunLeavesOperations for LiveRunLeavesOperations<'_> {
+    fn read_graph(&mut self) -> Result<GraphState, String> {
+        with_github_service(async |service, cancellation| {
+            read_graph(
+                service,
+                cancellation,
+                &self.repository,
+                self.arguments.umbrella,
+            )
+            .await
+        })
+        .map_err(ServiceFailure::into_detail)
+    }
+
+    fn write_snapshot(&mut self, graph: &GraphState) -> Result<(), String> {
+        write_audit_snapshot_to(
+            &self.arguments.repository,
+            &self.arguments.output_root,
+            &self.arguments.output,
+            graph,
+        )
+    }
+
+    fn sync_main(&mut self) -> Result<(), String> {
+        synchronize_main(&self.repo_root)
+    }
+
+    fn run_child(&mut self, leaf: u64) -> ChildAttempt {
+        let arguments = self.child_arguments(leaf);
+        if let Err(error) = write_private_file(
+            &arguments.result_env,
+            "",
+            &arguments.output_root,
+            &self.output_root,
+        ) {
+            return ChildAttempt::Failed(format!(
+                "could not clear the prior child result before launch: {error}"
+            ));
+        }
+        let execution = run_child(&arguments);
+        let result = read_expected_file(
+            &arguments.result_env,
+            &arguments.output_root,
+            &self.output_root,
+            "child result env",
+            64 * 1024,
+        );
+        classify_child_attempt(leaf, execution, result)
+    }
+
+    fn reset_leaf(&mut self, leaf: u64) -> Result<(), String> {
+        let arguments = LeafArguments {
+            repository: self.arguments.repository.clone(),
+            umbrella: self.arguments.umbrella,
+            leaf,
+        };
+        with_github_service(async |service, cancellation| {
+            reset_leaf_remote(service, cancellation, &self.repository, &arguments).await
+        })
+        .map_err(ServiceFailure::into_detail)
+    }
+
+    fn write_result(&mut self, envelope: &RunLeavesEnvelope) -> Result<(), String> {
+        let text = envelope.render()?;
+        write_private_file(
+            &self.arguments.result_env,
+            &text,
+            &self.arguments.output_root,
+            &self.output_root,
+        )
+    }
+}
+
+fn classify_child_attempt(
+    leaf: u64,
+    execution: Result<(), String>,
+    result: Result<String, String>,
+) -> ChildAttempt {
+    let execution_error = execution.err();
+    let text = match result {
+        Ok(text) => text,
+        Err(error) => {
+            return ChildAttempt::Failed(execution_error.map_or_else(
+                || format!("child result env is unavailable: {error}"),
+                |process_error| {
+                    format!("{process_error}; child result env is unavailable: {error}")
+                },
+            ));
+        }
+    };
+    let environment = match EnvFile::parse(&text) {
+        Ok(environment) => environment,
+        Err(error) => {
+            return ChildAttempt::Failed(execution_error.map_or_else(
+                || format!("child result env is malformed: {error}"),
+                |process_error| format!("{process_error}; child result env is malformed: {error}"),
+            ));
+        }
+    };
+    let values = environment.values();
+    let expected_leaf = leaf.to_string();
+    if values.get("CHILD_ISSUE") != Some(&expected_leaf) {
+        return ChildAttempt::Failed("child result carries another leaf identity".to_owned());
+    }
+    let status = values.get("CHILD_STATUS").map(String::as_str);
+    let complete = values.get("CHILD_ENVELOPE_COMPLETE").map(String::as_str);
+    let class = values.get("CHILD_FAILURE_CLASS").map(String::as_str);
+    match (execution_error, status, complete, class) {
+        (None, Some("complete"), Some("true"), None) => ChildAttempt::Complete,
+        (
+            None,
+            Some("needs-design"),
+            Some("false"),
+            Some(COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN),
+        ) => ChildAttempt::NeedsDesign,
+        (
+            Some(reason),
+            Some("failed"),
+            Some("false"),
+            Some(COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API),
+        ) => ChildAttempt::TransientApi(reason),
+        (Some(reason), Some("failed"), Some("false"), None) => ChildAttempt::Failed(reason),
+        (Some(reason), _, _, _) => ChildAttempt::Failed(format!(
+            "{reason}; child result env has an invalid failure shape"
+        )),
+        (None, _, _, _) => {
+            ChildAttempt::Failed("child result env has an invalid success shape".to_owned())
+        }
+    }
+}
+
+fn synchronize_main(repo_root: &Path) -> Result<(), String> {
+    require_clean_main(repo_root, "before synchronization")?;
+    let remote = GitRemote::new("origin").map_err(|error| error.to_string())?;
+    let refspec = GitRefspec::new("refs/heads/main:refs/remotes/origin/main")
+        .map_err(|error| error.to_string())?;
+    let upstream = GitRef::new("origin/main").map_err(|error| error.to_string())?;
+    let runtime = GitCommandRuntime::for_repository(repo_root)?;
+    runtime
+        .runtime
+        .block_on(runtime.git_cli().fetch(
+            FetchRequest {
+                remote,
+                refspec: Some(refspec),
+                quiet: true,
+                no_tags: true,
+            },
+            &runtime.cancellation,
+        ))
+        .map_err(|error| format!("git fetch origin/main failed: {error}"))?;
+    if let Err(error) = runtime.runtime.block_on(runtime.git_cli().rebase(
+        RebaseRequest::Start {
+            onto: None,
+            upstream,
+            branch: None,
+        },
+        &runtime.cancellation,
+    )) {
+        let abort = runtime
+            .runtime
+            .block_on(
+                runtime
+                    .git_cli()
+                    .rebase(RebaseRequest::Abort, &runtime.cancellation),
+            )
+            .map_or_else(
+                |abort_error| format!("rebase abort failed: {abort_error}"),
+                |_output| "rebase aborted".to_owned(),
+            );
+        return Err(format!("git rebase origin/main failed: {error}; {abort}"));
+    }
+    require_clean_main(repo_root, "after synchronization")?;
+    let repository = GixRepository::open(repo_root)
+        .map_err(|error| format!("cannot reopen repository after synchronization: {error}"))?;
+    let head = repository
+        .resolve_revision(&larch_core::Revision::new("HEAD"))
+        .map_err(|error| format!("cannot resolve HEAD after synchronization: {error}"))?;
+    let origin = repository
+        .resolve_revision(&larch_core::Revision::new("origin/main"))
+        .map_err(|error| format!("cannot resolve origin/main after synchronization: {error}"))?;
+    if head != origin {
+        return Err("HEAD does not equal origin/main after synchronization".to_owned());
+    }
+    Ok(())
+}
+
+fn require_clean_main(repo_root: &Path, phase: &str) -> Result<(), String> {
+    let repository = GixRepository::open(repo_root)
+        .map_err(|error| format!("cannot open repository {phase}: {error}"))?;
+    let head = repository
+        .head()
+        .map_err(|error| format!("cannot read HEAD {phase}: {error}"))?;
+    let Head::Symbolic { name, .. } = head else {
+        return Err(format!("repository is not on branch main {phase}"));
+    };
+    if name.as_bytes() != b"refs/heads/main" {
+        return Err(format!("repository is not on branch main {phase}"));
+    }
+    let status = repository
+        .local_status(&StatusOptions::default())
+        .map_err(|error| format!("cannot read working-tree status {phase}: {error}"))?;
+    if status.is_dirty() {
+        return Err(format!("working tree is not clean {phase}"));
+    }
+    Ok(())
+}
+
+fn emit_next(arguments: &NextArguments, graph: &GraphState) -> Result<(), String> {
+    require_active_parent(graph)?;
     let selection_input = selection_leaves(&graph.leaves);
     let selection = select_complete_umbrella_leaf(&selection_input, &graph.open_orphan_blockers);
     write_audit_snapshot(arguments, graph)?;
@@ -368,6 +985,32 @@ fn selection_leaves(leaves: &[LeafState]) -> Vec<CompleteUmbrellaLeaf> {
         .collect()
 }
 
+fn require_active_parent(graph: &GraphState) -> Result<(), String> {
+    if graph.parent.state == GitHubIssueState::Open
+        && graph.parent.title.starts_with(IMPLEMENTING_PREFIX)
+    {
+        Ok(())
+    } else {
+        Err("parent must be open with the [IMPLEMENTING] prefix".to_owned())
+    }
+}
+
+fn verify_child_in_graph(graph: &GraphState, leaf_number: u64) -> Result<(), String> {
+    let Some(leaf) = graph
+        .leaves
+        .iter()
+        .find(|leaf| leaf.issue.number == leaf_number)
+    else {
+        return Err("child is not a direct leaf of the umbrella".to_owned());
+    };
+    let done_prefix = format!("{DONE_PREFIX}{}", umbrella_leaf_prefix(graph.parent.number));
+    if leaf.issue.state == GitHubIssueState::Closed && leaf.issue.title.starts_with(&done_prefix) {
+        Ok(())
+    } else {
+        Err("child must be closed with the exact [DONE] leaf prefix".to_owned())
+    }
+}
+
 fn next_action_fields(selection: &CompleteUmbrellaNext) -> Vec<(&'static str, String)> {
     match selection {
         CompleteUmbrellaNext::Launch(issue) => vec![
@@ -390,12 +1033,7 @@ fn run_child(arguments: &RunChildArguments) -> Result<(), String> {
     require_issue(arguments.umbrella, "--umbrella")?;
     require_issue(arguments.leaf, "--leaf")?;
     let repository = parse_repository(&arguments.repository)?;
-    if arguments.model == "unknown"
-        || arguments.model.is_empty()
-        || arguments.model.chars().any(char::is_whitespace)
-    {
-        return Err("--model must be one resolved non-whitespace token".to_owned());
-    }
+    validate_child_model(&arguments.model)?;
     let repo_root = canonical_directory(&arguments.repo_root, "--repo-root")?;
     let output_root = temporary_root(&arguments.output_root, "--output-root")?;
     let handoff_root = output_root
@@ -474,6 +1112,14 @@ fn run_child(arguments: &RunChildArguments) -> Result<(), String> {
     )?;
     write_child_stderr(arguments, &output_root, &execution)?;
     finish_child_envelope(arguments, &output_root, &execution, &raw)
+}
+
+fn validate_child_model(model: &str) -> Result<(), String> {
+    if model == "unknown" || model.is_empty() || model.chars().any(char::is_whitespace) {
+        Err("--model must be one resolved non-whitespace token".to_owned())
+    } else {
+        Ok(())
+    }
 }
 
 fn finish_child_envelope(
@@ -574,10 +1220,6 @@ fn validate_orphaned_child_result(text: &str, leaf: u64) -> Result<(), String> {
     if values.get("BGJOB_RC").map(String::as_str) != Some("orphaned") {
         return Err("child recovery requires BGJOB_RC=orphaned".to_owned());
     }
-    let expected_step = format!("complete-umbrella-leaf-{leaf}");
-    if values.get("STEP") != Some(&expected_step) {
-        return Err("orphaned child result does not match the leaf step".to_owned());
-    }
     let expected_leaf = leaf.to_string();
     if values
         .get("CHILD_ISSUE")
@@ -585,7 +1227,20 @@ fn validate_orphaned_child_result(text: &str, leaf: u64) -> Result<(), String> {
     {
         return Err("orphaned child result carries another leaf identity".to_owned());
     }
-    Ok(())
+    let legacy_step = format!("complete-umbrella-leaf-{leaf}");
+    if values.get("STEP") == Some(&legacy_step) {
+        return Ok(());
+    }
+    if values.get("STEP").map(String::as_str) != Some(RUN_LEAVES_STEP) {
+        return Err("orphaned child result does not match the leaf driver step".to_owned());
+    }
+    if values.get("CURRENT_LEAF") != Some(&expected_leaf) {
+        return Err("orphaned leaf driver result carries another current leaf".to_owned());
+    }
+    match values.get("NEXT_ACTION").map(String::as_str) {
+        Some("launch" | "verify") => Ok(()),
+        _ => Err("orphaned leaf driver result has no recoverable child action".to_owned()),
+    }
 }
 
 fn reset_leaf(arguments: &ResetLeafArguments) -> Result<(), String> {
@@ -656,18 +1311,7 @@ async fn verify_child_remote(
     arguments: &LeafArguments,
 ) -> Result<(), String> {
     let graph = read_graph(service, cancellation, repository, arguments.umbrella).await?;
-    let Some(leaf) = graph
-        .leaves
-        .iter()
-        .find(|leaf| leaf.issue.number == arguments.leaf)
-    else {
-        return Err("child is not a direct leaf of the umbrella".to_owned());
-    };
-    let done_prefix = format!("{DONE_PREFIX}{}", umbrella_leaf_prefix(arguments.umbrella));
-    if leaf.issue.state != GitHubIssueState::Closed || !leaf.issue.title.starts_with(&done_prefix) {
-        return Err("child must be closed with the exact [DONE] leaf prefix".to_owned());
-    }
-    Ok(())
+    verify_child_in_graph(&graph, arguments.leaf)
 }
 
 fn attach_leaf(arguments: &AttachLeafArguments) -> Result<(), String> {
@@ -1234,8 +1878,22 @@ fn parse_repository(value: &str) -> Result<GitHubRepositoryRef, String> {
 }
 
 fn write_audit_snapshot(arguments: &NextArguments, graph: &GraphState) -> Result<(), String> {
+    write_audit_snapshot_to(
+        &arguments.repository,
+        &arguments.output_root,
+        &arguments.output,
+        graph,
+    )
+}
+
+fn write_audit_snapshot_to(
+    repository: &str,
+    output_root: &Path,
+    output: &Path,
+    graph: &GraphState,
+) -> Result<(), String> {
     let snapshot = AuditSnapshot {
-        repository: arguments.repository.clone(),
+        repository: repository.to_owned(),
         umbrella: audit_issue(&graph.parent),
         leaves: graph
             .leaves
@@ -1247,13 +1905,8 @@ fn write_audit_snapshot(arguments: &NextArguments, graph: &GraphState) -> Result
             .collect(),
     };
     let text = serde_json::to_string_pretty(&snapshot).map_err(|error| error.to_string())?;
-    let root = temporary_root(&arguments.output_root, "--output-root")?;
-    write_private_file(
-        &arguments.output,
-        &format!("{text}\n"),
-        &arguments.output_root,
-        &root,
-    )
+    let root = temporary_root(output_root, "--output-root")?;
+    write_private_file(output, &format!("{text}\n"), output_root, &root)
 }
 
 fn audit_issue(issue: &GitHubIssue) -> AuditIssue {
