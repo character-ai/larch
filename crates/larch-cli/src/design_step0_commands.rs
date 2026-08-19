@@ -24,9 +24,11 @@ use std::{
 use larch_core::{CommentPolicy, KvDocument, ParseOptions};
 
 use crate::{
+    blocker_commands::resolve_repo_for,
     design_commands::{
         PAUSE_LOAD_TIMEOUT, kv_all, kv_last, parse_stdout_kv, quote_single, write_kv_file,
     },
+    github_service::with_github_service,
     python_verb::run_python_verb,
     voter_calibration_commands::resolve_like_python,
 };
@@ -229,6 +231,37 @@ impl Step0Runner for LiveStep0Runner {
                 stderr: String::new(),
             },
         }
+    }
+
+    /// Typed issue read through the hardened Octocrab `GitHubService` (#7672),
+    /// replacing the frozen Python `gh issue view --json body,labels,title`.
+    /// Returns `(title, body, has_clarify)` where `has_clarify` is the string
+    /// `"true"` when the `needs-design-clarification` label is present.
+    fn read_issue(&self, issue: &str, repo: &str) -> Result<(String, String, String), ()> {
+        let slug = resolve_repo_for(if repo.is_empty() { None } else { Some(repo) }).ok_or(())?;
+        let (owner, name) = slug.split_once('/').ok_or(())?;
+        let number: u64 = issue.parse().map_err(|_error| ())?;
+        let companion = with_github_service(async |service, cancellation| {
+            service
+                .issue_read(cancellation, owner, name, number)
+                .await
+                .map_err(|error| error.to_string())
+        })
+        .map_err(|_error| ())?;
+        let has_clarify = companion
+            .labels
+            .iter()
+            .any(|label| label == "needs-design-clarification");
+        Ok((
+            companion.title,
+            companion.body,
+            if has_clarify { "true" } else { "false" }.to_owned(),
+        ))
+    }
+
+    /// Resolve the ambient repository slug through the shared `gh`/`gix` owner.
+    fn resolve_repo(&self) -> String {
+        resolve_repo_for(None).unwrap_or_default()
     }
 }
 
@@ -1297,6 +1330,71 @@ pub fn step0_clarify_hard_halt(arguments: &[OsString]) -> ExitCode {
 // ---------------------------------------------------------------------------
 
 /// The `step0-abort-cleanup` entry point.
+/// Port of `progress_file.validate_run_id`: a non-reserved run identifier of
+/// 1..=128 letters, digits, dot, underscore, or dash.
+fn is_valid_owned_run_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value != "."
+        && value != ".."
+        && value != "current"
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
+/// Port of `progress_file.resolve_owned_run_id` for the abort path: process
+/// `LARCH_RUN_ID`, then persisted `session-env.sh`/`source-env.sh` values,
+/// returning the first candidate that validates.
+fn resolve_owned_run_id(design_tmpdir: &Path) -> Option<String> {
+    let mut candidates: Vec<String> = Vec::new();
+    if let Ok(value) = std::env::var("LARCH_RUN_ID")
+        && !value.is_empty()
+    {
+        candidates.push(value);
+    }
+    for name in ["session-env.sh", "source-env.sh"] {
+        let Ok(text) = fs::read_to_string(design_tmpdir.join(name)) else {
+            continue;
+        };
+        for line in text.lines() {
+            for prefix in ["LARCH_RUN_ID=", "export LARCH_RUN_ID="] {
+                if let Some(rest) = line.strip_prefix(prefix) {
+                    candidates
+                        .push(rest.trim().trim_matches(|c: char| c == '\'' || c == '"').to_owned());
+                }
+            }
+        }
+    }
+    candidates.into_iter().find(|value| is_valid_owned_run_id(value))
+}
+
+/// Port of `progress_file.resolve_persisted_repo_root`: the first absolute,
+/// existing `REPO_ROOT` persisted in `source-env.sh`/`session-env.sh`.
+fn resolve_persisted_repo_root(design_tmpdir: &Path) -> Option<PathBuf> {
+    for name in ["source-env.sh", "session-env.sh"] {
+        let Ok(text) = fs::read_to_string(design_tmpdir.join(name)) else {
+            continue;
+        };
+        for line in text.lines() {
+            for prefix in ["REPO_ROOT=", "export REPO_ROOT="] {
+                if let Some(rest) = line.strip_prefix(prefix) {
+                    let candidate = PathBuf::from(
+                        rest.trim().trim_matches(|c: char| c == '\'' || c == '"'),
+                    );
+                    if candidate.is_absolute()
+                        && candidate.is_dir()
+                        && let Ok(resolved) = candidate.canonicalize()
+                    {
+                        return Some(resolved);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 pub fn step0_abort_cleanup(arguments: &[OsString]) -> ExitCode {
     step0_abort_cleanup_with(arguments, &LiveStep0Runner)
 }
@@ -1346,6 +1444,27 @@ fn step0_abort_cleanup_with(arguments: &[OsString], runner: &dyn Step0Runner) ->
         &[],
         false,
     );
+    // Best-effort progress deactivation before cleanup, matching frozen
+    // `step0_abort_cleanup_main`: clear the owned run pointer so an aborted
+    // /design stops showing as active once its tmpdir is gone.
+    if let (Some(run_id), Some(repo_root)) = (
+        resolve_owned_run_id(&design_tmpdir),
+        resolve_persisted_repo_root(&design_tmpdir),
+    ) {
+        let _ = runner.run(
+            &plugin_root,
+            &[
+                "progress".to_owned(),
+                "deactivate".to_owned(),
+                "--repo-root".to_owned(),
+                repo_root.display().to_string(),
+                "--run-id".to_owned(),
+                run_id,
+            ],
+            &[],
+            false,
+        );
+    }
     let cleanup = runner.run(
         &plugin_root,
         &[
@@ -2382,8 +2501,8 @@ mod tests {
     use super::{
         ChildOutcome, Step0Runner, bash_percent_q, decode_bash_percent_q,
         decode_shell_assignment_value, require_plugin_root, settle_next_action, step0_abort_cleanup_with,
-        step0_ap_continue, step0_clarify_hard_halt, step0_parse_with, step0_session_with, step0c_with,
-        validate_claude_pid,
+        step0_ap_continue, step0_clarify_hard_halt, step0_parse_with, step0_route_with, step0_session_with,
+        step0c_with, validate_claude_pid,
     };
 
     fn arguments(values: &[&str]) -> Vec<OsString> {
@@ -2551,6 +2670,97 @@ mod tests {
     }
 
     #[test]
+    fn route_proceed_folds_init_success_end_to_end() {
+        // Contract success-path assertion (#8578 parity plan §5): a `proceed`
+        // route must fold `INIT_STATUS=ok` with a non-empty `RUN_PARAMS_PATH=`
+        // and return success. The offline parity golden cannot record a live
+        // `design route`/`init-runparams` success, so the injected seam proves it
+        // here. `finish_step0_route` only returns `SUCCESS` when the folded init
+        // reported `INIT_STATUS=ok` and `run-params.json` exists.
+        let session = DesignSession::builder(DesignFixture::Absent)
+            .build()
+            .expect("build design session");
+        let design_tmpdir = session.root().join("design-tmpdir");
+        fs::create_dir_all(&design_tmpdir).expect("create design tmpdir");
+        let plugin_root = session.root().join("plugin");
+        fs::create_dir_all(&plugin_root).expect("create plugin root");
+        let source = session.root().join("source-env.sh");
+        source_env(&source, &plugin_root, &design_tmpdir);
+        // The folded-init success guard requires a materialized run-params.json.
+        let run_params = design_tmpdir.join("run-params.json");
+        fs::write(&run_params, "{}").expect("seed run-params");
+        let answers = vec![
+            // design route -> proceed
+            ok("ROUTE=proceed\n"),
+            // design init-runparams -> success rows with a non-empty path
+            ok(&format!(
+                "INIT_STATUS=ok\nRENAMED=false\nRUN_PARAMS_PATH={}\n",
+                run_params.display()
+            )),
+        ];
+        let runner = RecordingRunner::new(answers);
+        let code = step0_route_with(
+            &arguments(&[
+                "--plugin-root",
+                plugin_root.to_str().expect("utf8"),
+                "--session-env-path",
+                source.to_str().expect("utf8"),
+                "--claude-pid",
+                "4242",
+            ]),
+            &runner,
+        );
+        assert_eq!(code, ExitCode::SUCCESS);
+        // The route-state wire file records the proceed route before folded init.
+        let route_state =
+            fs::read_to_string(design_tmpdir.join(".design-step0-route-state.env"))
+                .expect("route state env");
+        assert!(
+            route_state.contains("ROUTE=proceed"),
+            "route state env: {route_state}"
+        );
+        // The proceed path folds route then init-runparams end to end.
+        let calls = runner.calls.borrow();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0][1], "route");
+        assert_eq!(calls[1][1], "init-runparams");
+    }
+
+    #[test]
+    fn live_runner_reads_issue_labels_through_github_service() {
+        // Regression guard: the live `step0-route` GitHub read must go through
+        // the typed `GitHubService::issue_read` (#7672), not an always-`Err`
+        // stub. A stubbed loopback issue with the clarify label must surface
+        // `has_clarify == "true"` and the bounded title/body.
+        use std::sync::Arc;
+
+        use larch_adapters::github::OctocrabGitHubService;
+        use larch_test_support::{IssueServiceExchange, IssueServiceStub};
+
+        use crate::github_service::with_test_github_service;
+
+        let body = br#"{"title":"Fix the widget","body":"widget body","labels":[{"name":"needs-design-clarification"}]}"#;
+        let stub = IssueServiceStub::start([
+            IssueServiceExchange::any_json(200, body.to_vec()).expect("issue json response"),
+        ])
+        .expect("start issue service stub");
+        let base_url = stub.base_url().to_owned();
+        let factory: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+            Arc::new(move || OctocrabGitHubService::with_test_base(&base_url));
+        let read = with_test_github_service(factory, || {
+            super::LiveStep0Runner.read_issue("123", "owner/repo")
+        });
+        assert_eq!(
+            read,
+            Ok((
+                "Fix the widget".to_owned(),
+                "widget body".to_owned(),
+                "true".to_owned(),
+            ))
+        );
+    }
+
+    #[test]
     fn ap_continue_writes_completion_sentinels() {
         let session = DesignSession::builder(DesignFixture::Absent)
             .build()
@@ -2655,6 +2865,59 @@ mod tests {
         assert_eq!(code, ExitCode::from(2));
         // Rejection happens before any child call.
         assert!(runner.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn abort_cleanup_deactivates_progress_before_cleanup() {
+        let session = DesignSession::builder(DesignFixture::Absent)
+            .build()
+            .expect("build design session");
+        let design_tmpdir = session.root().join("design-tmpdir");
+        fs::create_dir_all(&design_tmpdir).expect("create design tmpdir");
+        let plugin_root = session.root().join("plugin");
+        fs::create_dir_all(&plugin_root).expect("create plugin root");
+        let source = session.root().join("source-env.sh");
+        source_env(&source, &plugin_root, &design_tmpdir);
+        // The persisted run/repo the abort path resolves for deactivation.
+        let repo_root = session.root().join("repo");
+        fs::create_dir_all(&repo_root).expect("create repo root");
+        fs::write(
+            design_tmpdir.join("source-env.sh"),
+            format!("LARCH_RUN_ID=run-123\nREPO_ROOT={}\n", repo_root.display()),
+        )
+        .expect("write persisted env");
+        let runner = RecordingRunner::new(Vec::new());
+        let code = step0_abort_cleanup_with(
+            &arguments(&[
+                "--plugin-root",
+                plugin_root.to_str().expect("utf8"),
+                "--session-env-path",
+                source.to_str().expect("utf8"),
+                "--claude-pid",
+                "4242",
+            ]),
+            &runner,
+        );
+        assert_eq!(code, ExitCode::SUCCESS);
+        let calls = runner.calls.borrow();
+        let find = |verb: &str, sub: &str| {
+            calls.iter().position(|call| {
+                call.first().map(String::as_str) == Some(verb)
+                    && call.get(1).map(String::as_str) == Some(sub)
+            })
+        };
+        let deactivate = find("progress", "deactivate").expect("progress deactivate call");
+        let cleanup = find("session", "cleanup-tmpdir").expect("cleanup-tmpdir call");
+        assert!(deactivate < cleanup, "deactivation must precede cleanup");
+        let canonical = repo_root.canonicalize().expect("canonical repo root");
+        assert!(calls[deactivate].contains(&"run-123".to_owned()));
+        assert!(
+            calls[deactivate]
+                .iter()
+                .any(|arg| arg == &canonical.display().to_string()),
+            "deactivate call must carry the resolved repo root: {:?}",
+            calls[deactivate]
+        );
     }
 
     #[test]
