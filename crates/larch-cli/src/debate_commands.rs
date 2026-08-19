@@ -3985,10 +3985,8 @@ fn run_init_run(
     parsed: &BTreeMap<String, String>,
     bootstrapper: Bootstrapper<'_>,
 ) -> Result<InitRunOutcome, InitRunFailure> {
-    let state = run_init(parsed, bootstrapper).map_err(|error| InitRunFailure {
-        error,
-        state: None,
-    })?;
+    let state =
+        run_init(parsed, bootstrapper).map_err(|error| InitRunFailure { error, state: None })?;
     // Adopt the title only after the durable state exists. The start mode is
     // idempotent on an already-adopted title and always owned on success; a
     // refusal is a partial failure carrying the persisted state.

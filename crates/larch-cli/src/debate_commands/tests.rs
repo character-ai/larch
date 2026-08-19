@@ -1918,8 +1918,7 @@ mod debate_commands_tests {
                 .state
                 .fingerprint
                 .chars()
-                .all(|character| character.is_ascii_digit()
-                    || character.is_ascii_lowercase())
+                .all(|character| character.is_ascii_digit() || character.is_ascii_lowercase())
         );
         assert!(debate.join("debate-state.json").exists());
         // The composite envelope reports both abort-funnel booleans separately.
@@ -2011,10 +2010,8 @@ mod debate_commands_tests {
         let mut parsed = init_run_parsed(&debate, &work, &log);
         let _ = parsed.insert("--cursor-present".to_owned(), "false".to_owned());
         let (factory, server) = stub_factory(start_transition_exchanges());
-        let outcome = with_test_github_service(factory, || {
-            run_init_run(&parsed, &fake_bootstrap)
-        })
-        .expect("init-run succeeds with one unavailable vendor");
+        let outcome = with_test_github_service(factory, || run_init_run(&parsed, &fake_bootstrap))
+            .expect("init-run succeeds with one unavailable vendor");
         assert_eq!(server.finish().expect("stub finished").len(), 4);
         assert_eq!(
             outcome.state.initialization.warning,
