@@ -6011,7 +6011,73 @@ def _dynamic_archetype(name: str) -> dict[str, object]:
     }
 
 
-def test_normalize_coder_scout_producer_subagent(tmp_path: Path) -> None:
+# Mirrors REVIEW_RESERVED in crates/larch-core/src/design/plan_scout.rs so unit
+# tests can stub the Rust-owned scout filter without a CI binary.
+_REVIEW_RESERVED_SLUGS = {
+    "generic",
+    "structure",
+    "correctness",
+    "testing",
+    "security",
+    "edge-cases",
+    "plan-fidelity",
+    "code-reviewer",
+    "reviewer-structure",
+    "reviewer-correctness",
+    "reviewer-testing",
+    "reviewer-security",
+    "reviewer-edge-cases",
+    "reviewer-plan-fidelity",
+}
+
+
+def _stub_scout_filter_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace `_invoke_larch` scout filter-manifest with a review-mode stub.
+
+    `python-tests` CI shards have no Rust binary. Production still reaches the
+    verified bootstrap; these unit tests only need the filter contract.
+    """
+
+    def fake_larch(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert list(args[:2]) == ["scout", "filter-manifest"], args
+        input_path = Path(str(args[2]))
+        output_path = Path(str(args[3]))
+        max_archetypes = 1
+        mode = "review"
+        argv = [str(item) for item in args[4:]]
+        while argv:
+            flag = argv.pop(0)
+            if flag == "--max-archetypes":
+                max_archetypes = int(argv.pop(0))
+            elif flag == "--mode":
+                mode = argv.pop(0)
+            else:
+                raise AssertionError(f"unexpected filter-manifest flag: {flag}")
+        assert mode == "review"
+        data = json.loads(input_path.read_text(encoding="utf-8"))
+        kept: list[object] = []
+        for item in data.get("archetypes", []):
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name")
+            if not isinstance(name, str) or name in _REVIEW_RESERVED_SLUGS:
+                continue
+            if len(kept) < max_archetypes:
+                kept.append(item)
+        output_path.write_text(json.dumps({"archetypes": kept}, separators=(",", ":")) + "\n", encoding="utf-8")
+        status = "empty" if not kept else "ok"
+        stdout = (
+            f"SCOUT_STATUS={status}\n"
+            f"SCOUT_MANIFEST={output_path}\n"
+            f"SCOUT_ARCHETYPE_COUNT={len(kept)}\n"
+        )
+        return subprocess.CompletedProcess(list(args), 0, stdout, "")
+
+    monkeypatch.setattr(dispatch_manifest, "_invoke_larch", fake_larch)
+
+
+def test_normalize_coder_scout_producer_subagent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_scout_filter_manifest(monkeypatch)
     raw = tmp_path / "scout-coder-manifest.raw.json"
     raw.write_text('{"archetypes":[]}\n', encoding="utf-8")
     status = implement_dispatch.normalize_coder_scout(tmpdir=tmp_path, input_path=raw, producer="subagent")
@@ -6020,7 +6086,8 @@ def test_normalize_coder_scout_producer_subagent(tmp_path: Path) -> None:
     assert "SCOUT_CODER_PRODUCER=subagent" in status_env
 
 
-def test_normalize_coder_scout_intentional_empty_is_ok(tmp_path: Path) -> None:
+def test_normalize_coder_scout_intentional_empty_is_ok(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_scout_filter_manifest(monkeypatch)
     raw = tmp_path / "raw.json"
     raw.write_text('{"archetypes":[]}\n', encoding="utf-8")
     status = implement_dispatch.normalize_coder_scout(tmpdir=tmp_path, input_path=raw, producer="main-agent")
@@ -6030,7 +6097,8 @@ def test_normalize_coder_scout_intentional_empty_is_ok(tmp_path: Path) -> None:
     assert json.loads((tmp_path / "scout-coder-manifest.json").read_text(encoding="utf-8")) == {"archetypes": []}
 
 
-def test_normalize_coder_scout_filtered_to_zero_is_invalid(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_normalize_coder_scout_filtered_to_zero_is_invalid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _stub_scout_filter_manifest(monkeypatch)
     raw = tmp_path / "raw.json"
     raw.write_text(json.dumps({"archetypes": [_dynamic_archetype("correctness"), _dynamic_archetype("testing")]}) + "\n", encoding="utf-8")
     status = implement_dispatch.normalize_coder_scout(tmpdir=tmp_path, input_path=raw, producer="main-agent")
@@ -6042,7 +6110,8 @@ def test_normalize_coder_scout_filtered_to_zero_is_invalid(tmp_path: Path, capsy
     assert json.loads((tmp_path / "scout-coder-manifest.json").read_text(encoding="utf-8")) == {"archetypes": []}
 
 
-def test_normalize_coder_scout_uses_review_mode_so_arch_survives(tmp_path: Path) -> None:
+def test_normalize_coder_scout_uses_review_mode_so_arch_survives(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_scout_filter_manifest(monkeypatch)
     raw = tmp_path / "raw.json"
     raw.write_text(json.dumps({"archetypes": [_dynamic_archetype("arch")]}) + "\n", encoding="utf-8")
     status = implement_dispatch.normalize_coder_scout(tmpdir=tmp_path, input_path=raw, producer="external")
@@ -6051,7 +6120,8 @@ def test_normalize_coder_scout_uses_review_mode_so_arch_survives(tmp_path: Path)
     assert [item["name"] for item in manifest["archetypes"]] == ["arch"]
 
 
-def test_normalize_coder_scout_caps_to_one_archetype(tmp_path: Path) -> None:
+def test_normalize_coder_scout_caps_to_one_archetype(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _stub_scout_filter_manifest(monkeypatch)
     raw = tmp_path / "raw.json"
     raw.write_text(
         json.dumps({"archetypes": [_dynamic_archetype("arch"), _dynamic_archetype("api-contract")]}) + "\n",
