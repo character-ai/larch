@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "SETTLE_STATUS=pause-save\nSETTLE_NEXT_ACTION=pause\nSETTLE_EXIT_RC=11\n"
+  }
+}

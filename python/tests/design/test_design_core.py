@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from larch.design import design_core
 
 
@@ -38,3 +40,24 @@ def test_router_stdout_codec_skips_lines_without_equals() -> None:
 def test_router_stdout_codec_handles_embedded_equals() -> None:
     result = design_core._parse_stdout_kv("URL=https://example.com/?a=1\n")  # pyright: ignore[reportPrivateUsage]
     assert result["URL"] == ["https://example.com/?a=1"]
+
+
+def test_relocated_decode_bash_percent_q_handles_utf8_byte_escapes() -> None:
+    assert design_core._decode_bash_percent_q("$'\\360\\237\\230\\200'") == "😀"  # pyright: ignore[reportPrivateUsage]
+    assert design_core._decode_bash_percent_q("$'caf\\303\\251'") == "café"  # pyright: ignore[reportPrivateUsage]
+    assert design_core._decode_bash_percent_q("''") == ""  # pyright: ignore[reportPrivateUsage]
+
+
+def test_relocated_parse_wrapper_args_binds_value_flags_and_public_argv() -> None:
+    ns = design_core._parse_wrapper_args(  # pyright: ignore[reportPrivateUsage]
+        ["--claude-pid", "123", "--plugin-root", "/plugin", "--", "--brainstorm", "hello"]
+    )
+    assert ns.claude_pid == "123"
+    assert ns.plugin_root == "/plugin"
+    assert ns.public_argv == ["--brainstorm", "hello"]
+
+
+def test_relocated_require_plugin_root_rejects_template_literal() -> None:
+    with pytest.raises(SystemExit) as exc:
+        _ = design_core.require_plugin_root("${CLAUDE_PLUGIN_ROOT}")
+    assert exc.value.code == 1

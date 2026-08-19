@@ -216,6 +216,16 @@ pub struct PullRequest {
     merge_commit_oid: Option<String>,
 }
 
+/// One companion issue's redacted title, body, and label names.
+///
+/// Bounded typed read for `design step0-route` (leaf #8578, per #7672).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompanionIssue {
+    pub title: String,
+    pub body: String,
+    pub labels: Vec<String>,
+}
+
 /// Pull-request fields used to prepare release notes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReleasePullRequest {
@@ -901,6 +911,61 @@ impl OctocrabGitHubService {
         let object = as_object(&value)?;
         required_str(object, "title", self.policy.limits(), "issue title")
             .map(|title| self.redactor.safe_text(title).to_string())
+    }
+
+    /// Read one companion issue's title, body, and label names.
+    ///
+    /// Bounded typed read for `design step0-route` (leaf #8578, per the #7672
+    /// canonical GitHub-service result): title/body are bounded and redacted,
+    /// labels are parsed by name. Replaces the retired Python `gh issue view`.
+    ///
+    /// # Errors
+    /// Returns a typed input, transport, cancellation, or response-contract failure.
+    pub async fn issue_read(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<CompanionIssue, GitHubOperationError> {
+        validate_repo(owner, repo)?;
+        let route = format!("/repos/{owner}/{repo}/issues/{number}");
+        let value = self
+            .fetch_json(cancellation, self.client.get(route.as_str(), None::<&()>))
+            .await?;
+        let limits = self.policy.limits();
+        let object = as_object(&value)?;
+        let title = required_str(object, "title", limits, "issue title")?;
+        let body = object
+            .get("body")
+            .and_then(Value::as_str)
+            .map(|body| bounded_string(body, limits, "issue body"))
+            .transpose()?
+            .unwrap_or_default();
+        let labels = object
+            .get("labels")
+            .and_then(Value::as_array)
+            .ok_or(GitHubOperationError::Malformed("issue labels"))?;
+        if labels.len() > limits.items() {
+            return Err(GitHubOperationError::Malformed(
+                "issue labels exceed item bound",
+            ));
+        }
+        let labels = labels
+            .iter()
+            .map(|label| {
+                let label = as_object(label)?;
+                required_str(label, "name", limits, "issue label")
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(CompanionIssue {
+            title: self.redactor.safe_text(title).to_string(),
+            body: self.redactor.safe_text(body).to_string(),
+            labels: labels
+                .into_iter()
+                .map(|label| self.redactor.safe_text(label).to_string())
+                .collect(),
+        })
     }
 
     async fn release_pull_request_pages(

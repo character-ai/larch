@@ -33,6 +33,7 @@ impl CleanInstallCase {
     /// A verb whose only offline-deterministic invocation is a refusal still
     /// proves the dispatch reached it; the case pins that refusal's code rather
     /// than reaching the network or mutating a repository to reach `0`.
+    #[allow(clippy::too_many_lines)] // One comment-rich clean-install dispatch table.
     fn expected_exit(self) -> i32 {
         match self.id {
             // `issue state` refuses its own missing-value line. Neither
@@ -185,7 +186,20 @@ impl CleanInstallCase {
             // `implement step-7a` catches its argparse SystemExit — including the
             // `--help` action — and emits the seven-key bail envelope with the
             // argparse usage exit code instead of printing help.
-            | "clean-install-implement-step-7a" => 2,
+            | "clean-install-implement-step-7a"
+            // The eight `design step0-*` owner verbs share the frozen wrapper-arg
+            // parser: the clean-install `--help` token is an unknown wrapper
+            // argument, so each refuses with the Python `exit 2` before any
+            // plugin-root guard or child dispatch. `settle-next-action` instead
+            // owns a real `-h`/`--help` usage action and exits 0 (default arm).
+            | "clean-install-design-step0-parse"
+            | "clean-install-design-step0-session"
+            | "clean-install-design-step0-route"
+            | "clean-install-design-step0-clarify-hard-halt"
+            | "clean-install-design-step0-init"
+            | "clean-install-design-step0-abort-cleanup"
+            | "clean-install-design-step0-ap-continue"
+            | "clean-install-design-step0c" => 2,
             // The three remaining publication verbs mirror the retired Python
             // module, which caught the argparse `SystemExit` and emitted each
             // verb's own publication-failure envelope, so the clean-install
@@ -795,6 +809,31 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-design-parse-flags", "design", "parse-flags"),
     CleanInstallCase::new("clean-install-design-route", "design", "route"),
+    CleanInstallCase::new("clean-install-design-step0-parse", "design", "step0-parse"),
+    CleanInstallCase::new("clean-install-design-step0-session", "design", "step0-session"),
+    CleanInstallCase::new("clean-install-design-step0-route", "design", "step0-route"),
+    CleanInstallCase::new(
+        "clean-install-design-step0-clarify-hard-halt",
+        "design",
+        "step0-clarify-hard-halt",
+    ),
+    CleanInstallCase::new("clean-install-design-step0-init", "design", "step0-init"),
+    CleanInstallCase::new(
+        "clean-install-design-step0-abort-cleanup",
+        "design",
+        "step0-abort-cleanup",
+    ),
+    CleanInstallCase::new(
+        "clean-install-design-step0-ap-continue",
+        "design",
+        "step0-ap-continue",
+    ),
+    CleanInstallCase::new("clean-install-design-step0c", "design", "step0c"),
+    CleanInstallCase::new(
+        "clean-install-design-settle-next-action",
+        "design",
+        "settle-next-action",
+    ),
     CleanInstallCase::new("clean-install-deps-explicit-refs", "deps", "explicit-refs"),
     CleanInstallCase::new("clean-install-deps-fetch", "deps", "fetch"),
     CleanInstallCase::new("clean-install-deps-plan", "deps", "plan"),

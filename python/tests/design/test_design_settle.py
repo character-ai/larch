@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from larch.design import design_dialectic, design_pause
+from larch.design import design_dialectic, design_pause, design_settle
 from larch.design.design_settle import (
     ChildCapture,
     SettleRequest,
@@ -17,6 +18,43 @@ from larch.design.design_settle import (
     step35_settle_main,
 )
 from test_support import make_design_tmpdir
+
+
+# Mirror of the Rust-owned settle-next-action dispatch (#8578) so unit tests
+# exercise the subprocess seam without spawning scripts/larch.sh.
+_ACTION_BY_SITE_RC: dict[tuple[str, int], tuple[str, str]] = {
+    ("gate-b", 0): ("gate-b-continue", "ok"),
+    ("gate-a", 0): ("gate-a-return", "ok"),
+    ("discussion-round2", 0): ("gate-a-return", "ok"),
+    ("gate-b", 10): ("gate-b-validator-fail", "validate-failed"),
+    ("gate-a", 10): ("gate-a-validator-fail", "validate-failed"),
+    ("discussion-round2", 10): ("gate-a-validator-fail", "validate-failed"),
+    ("gate-b", 11): ("pause", "pause-save"),
+    ("gate-a", 11): ("pause", "pause-save"),
+    ("discussion-round2", 11): ("pause", "pause-save"),
+    ("gate-b", 12): ("gate-b-hard-size", "plan-size-trigger"),
+    ("gate-a", 12): ("gate-a-hard-size", "plan-size-trigger"),
+    ("discussion-round2", 12): ("gate-a-hard-size", "plan-size-trigger"),
+    ("gate-b", 13): ("gate-b-split", "partition-requested"),
+    ("gate-a", 13): ("gate-a-split", "partition-requested"),
+    ("discussion-round2", 13): ("gate-a-split", "partition-requested"),
+    ("gate-c", 0): ("gate-c-return", "ok"),
+    ("gate-c", 10): ("gate-c-validator-fail", "validate-failed"),
+    ("gate-c", 11): ("pause", "pause-save"),
+    ("gate-c", 12): ("gate-c-hard-size", "plan-size-trigger"),
+    ("gate-c", 13): ("gate-c-split", "partition-requested"),
+}
+
+
+def _fake_next_action(site: str, postplan_rc: int) -> ChildCapture:
+    entry = _ACTION_BY_SITE_RC.get((site, postplan_rc))
+    if entry is None:
+        return ChildCapture(rc=2, stdout="SETTLE_STATUS=unknown-dispatch\n")
+    action, status = entry
+    return ChildCapture(
+        rc=0,
+        stdout=f"SETTLE_STATUS={status}\nSETTLE_NEXT_ACTION={action}\nSETTLE_EXIT_RC={postplan_rc}\n",
+    )
 
 
 def _request(
@@ -63,7 +101,13 @@ def _runners(
     def pause(_request: SettleRequest) -> ChildCapture:
         return ChildCapture(rc=pause_rc, stdout=pause_out)
 
-    return SettleRunners(dedup=dedup, postplan=postplan, dialectic_clear=dialectic, pause_save=pause)
+    return SettleRunners(
+        dedup=dedup,
+        postplan=postplan,
+        dialectic_clear=dialectic,
+        pause_save=pause,
+        next_action=_fake_next_action,
+    )
 
 
 @pytest.mark.parametrize(
@@ -258,6 +302,7 @@ def test_default_dialectic_clear_shape_error_is_fail_open(
         postplan=lambda _r, _s: ChildCapture(rc=0, stdout="POSTPLAN_RC=0\n"),
         dialectic_clear=runners.dialectic_clear,
         pause_save=lambda _r: ChildCapture(rc=0, stdout=""),
+        next_action=_fake_next_action,
     )
     result = step35_settle_for(
         request=_request(design, site="gate-c", round_num=None),
@@ -329,6 +374,7 @@ def test_settle_skips_dedup_on_ready_marker_resume(tmp_path: Path) -> None:
         postplan=runners.postplan,
         dialectic_clear=runners.dialectic_clear,
         pause_save=runners.pause_save,
+        next_action=runners.next_action,
     )
     result = step35_settle_for(request=_request(design, round_num="4"), runners=runners)
     assert result.exit_rc == 0
@@ -350,6 +396,7 @@ def test_settle_force_dedup_overrides_marker(tmp_path: Path) -> None:
         postplan=base.postplan,
         dialectic_clear=base.dialectic_clear,
         pause_save=base.pause_save,
+        next_action=base.next_action,
     )
     result = step35_settle_for(
         request=_request(design, round_num="5", force_dedup=True),
@@ -375,6 +422,7 @@ def test_settle_reruns_dedup_when_awaiting_postplan_operator(tmp_path: Path) -> 
         postplan=base.postplan,
         dialectic_clear=base.dialectic_clear,
         pause_save=base.pause_save,
+        next_action=base.next_action,
     )
     result = step35_settle_for(request=_request(design, round_num="6"), runners=runners)
     assert result.exit_rc == 0
@@ -398,3 +446,48 @@ def test_plan_review_step35_settle_delegates_in_process(
     monkeypatch.setattr("larch.design.design_settle.step35_settle_for", fake_for)
     rc = step35_settle_main(["--site", "gate-c", "--plugin-root", str(plugin)])
     assert rc == 0
+
+
+def test_default_next_action_invokes_settle_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.append(list(cmd))
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=0,
+            stdout="SETTLE_STATUS=ok\nSETTLE_NEXT_ACTION=gate-b-continue\nSETTLE_EXIT_RC=0\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(design_settle.subprocess, "run", fake_run)
+    capture = design_settle._default_next_action("gate-b", 0)  # pyright: ignore[reportPrivateUsage]
+    assert capture.rc == 0
+    assert "SETTLE_NEXT_ACTION=gate-b-continue" in capture.stdout
+    assert seen
+    argv = seen[0]
+    assert argv[1:] == ["design", "settle-next-action", "--site", "gate-b", "--postplan-rc", "0"]
+
+
+def test_dispatch_next_action_missing_action_returns_rc3(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = make_design_tmpdir(tmp_path)
+
+    def unknown_next_action(_site: str, _rc: int) -> ChildCapture:
+        return ChildCapture(rc=2, stdout="SETTLE_STATUS=unknown-dispatch\n")
+
+    runners = _runners()
+    runners = SettleRunners(
+        dedup=runners.dedup,
+        postplan=runners.postplan,
+        dialectic_clear=runners.dialectic_clear,
+        pause_save=runners.pause_save,
+        next_action=unknown_next_action,
+    )
+    result = step35_settle_for(
+        request=_request(design, site="gate-c", round_num=None),
+        runners=runners,
+    )
+    assert result.exit_rc == 3
+    assert "settle-next-action failed" in capsys.readouterr().err

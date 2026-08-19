@@ -33,7 +33,8 @@ use crate::{
 };
 
 /// Bound for the delegated `design pause-load` bridge (leaf #8589 retires it).
-const PAUSE_LOAD_TIMEOUT: Duration = Duration::from_secs(120);
+/// Raised to `pub(crate)` so the Step 0 owner reuses the same bridge bound.
+pub const PAUSE_LOAD_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The lifecycle marker whose plan-block special case reroutes. The shared
 /// larch-core `LIFECYCLE_PREFIXES` entries carry a trailing space, while
@@ -114,7 +115,7 @@ struct ParseFlagsState {
     issue_captured: bool,
 }
 
-fn quote_single(value: &str) -> String {
+pub fn quote_single(value: &str) -> String {
     let parts: Vec<&str> = value.split('\'').collect();
     format!("'{}'", parts.join("'\"'\"'"))
 }
@@ -403,7 +404,7 @@ pub fn parse_flags(arguments: &[OsString]) -> ExitCode {
 /// Python `larch_io.parse_kv(duplicate_policy="all", skip_empty_key=True)`:
 /// LF-split with CRLF framing stripped on non-final lines, first `=` splits,
 /// and a lone CR stays part of the value.
-fn parse_stdout_kv(text: &str) -> Vec<(String, String)> {
+pub fn parse_stdout_kv(text: &str) -> Vec<(String, String)> {
     let mut options = ParseOptions::legacy();
     options.empty_keys = EmptyKeyPolicy::Skip;
     KvDocument::parse(text, options)
@@ -414,14 +415,14 @@ fn parse_stdout_kv(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-fn kv_last<'a>(rows: &'a [(String, String)], key: &str, default: &'a str) -> &'a str {
+pub fn kv_last<'a>(rows: &'a [(String, String)], key: &str, default: &'a str) -> &'a str {
     rows.iter()
         .rev()
         .find(|(row_key, _)| row_key == key)
         .map_or(default, |(_, value)| value.as_str())
 }
 
-fn kv_all<'a>(rows: &'a [(String, String)], key: &str) -> Vec<&'a str> {
+pub fn kv_all<'a>(rows: &'a [(String, String)], key: &str) -> Vec<&'a str> {
     rows.iter()
         .filter(|(row_key, _)| row_key == key)
         .map(|(_, value)| value.as_str())
@@ -430,7 +431,7 @@ fn kv_all<'a>(rows: &'a [(String, String)], key: &str) -> Vec<&'a str> {
 
 /// Write `KEY=value` rows non-atomically like the Python `_write_kv_file`;
 /// failures are swallowed exactly like the `OSError` branch there.
-fn write_kv_file(path: &Path, rows: &[(String, String)]) {
+pub fn write_kv_file(path: &Path, rows: &[(String, String)]) {
     let mut text = String::new();
     for (key, value) in rows {
         let _ = writeln!(text, "{key}={value}");

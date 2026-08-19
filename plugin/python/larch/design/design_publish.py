@@ -18,7 +18,7 @@ from larch.report import design_diagram_log
 from larch.calibration import difficulty
 from larch.core import architectural_guidelines, config, proc
 from larch.report.run_log_batch import append_execution_issue
-from larch.design import design_step0_env, plan_grammar
+from larch.design import design_core, plan_grammar
 from larch.design.design_core import capture_contract_stream_to_paths
 from larch.design.design_terminal import (
     extend_publish_failure_stage_args,
@@ -923,7 +923,7 @@ def capture_design_transcript(*, ctx: TranscriptCaptureContext) -> bool:
     if not _remove_root_transcript(design_tmpdir=ctx.design_tmpdir, warning_step_label=ctx.warning_step_label):
         return False
     source_env = ctx.design_tmpdir / "source-env.sh"
-    source_data = design_step0_env._load_source_env(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    source_data = design_core._load_source_env(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
         path=source_env,
         allow_keys={"SESSION_ID"},
     )

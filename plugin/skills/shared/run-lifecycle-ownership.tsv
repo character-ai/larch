@@ -1,6 +1,6 @@
 skill	start_owner	terminal_owner	no_archive_exception
 *	skills/shared/run-lifecycle.md	skills/shared/run-lifecycle.md	-
-design	python/larch/design/design_step0.py	python/larch/design/design_log_publish_flow.py	-
+design	crates/larch-cli/src/design_step0_commands.rs	python/larch/design/design_log_publish_flow.py	-
 implement	crates/larch-cli/src/implement_commands.rs	crates/larch-cli/src/implement_terminal_commands.rs	no-logs-commit
 review	skills/review/SKILL.md	skills/review/SKILL.md	-
 audit-umbrella	skills/audit-umbrella/SKILL.md	skills/audit-umbrella/SKILL.md	-

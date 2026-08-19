@@ -17,15 +17,19 @@ from collections.abc import Mapping, Sequence
 from larch import io as larch_io
 from larch.core.repo_roots import consumer_repo_root, larch_entrypoint, larch_entrypoint_env
 
-from larch.design.design_core import _extract_args, _normalize_step, _parse_stdout_kv
-from larch.design.design_step0 import (
+from larch.design.design_core import (
     _append_failure,
     _derive_binary_found,
+    _extract_args,
+    _load_wrapper_env,
+    _normalize_step,
+    _parse_stdout_kv,
+    _parse_wrapper_args,
     _require_design_tmpdir,
     _run_best_effort,
     check_pause_and_exit,
+    require_plugin_root,
 )
-from larch.design.design_step0_env import _load_wrapper_env, _parse_wrapper_args, require_plugin_root
 
 def brainstorm_stderr_sink_for_output(*, output_path: Path, design_tmpdir: Path) -> Path | None:
     meta = output_path.with_name(output_path.name + ".meta")

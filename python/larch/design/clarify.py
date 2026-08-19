@@ -15,8 +15,6 @@ from typing import NamedTuple, NoReturn, cast
 from larch.calibration import difficulty
 from larch.design import design_publish
 from larch.design import design_core
-from larch.design import design_step0
-from larch.design import design_step0_env
 from larch.design import design_terminal
 from larch.design import design_pause
 from larch.design import design_summary
@@ -736,7 +734,7 @@ def _cli_cmd(plugin_root: Path, *args: str) -> list[str]:
 def _build_driver_env(args: DesignClarifyArgs) -> tuple[dict[str, str], Path, Path]:
     env: dict[str, str] = {key: os.environ[key] for key in CLARIFY_ENV_ALLOW if key in os.environ}
     env.update(
-        design_step0_env._load_source_env(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        design_core._load_source_env(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
             path=args.session_env_path,
             allow_keys=CLARIFY_ENV_ALLOW,
             claude_pid=args.claude_pid,
@@ -744,7 +742,7 @@ def _build_driver_env(args: DesignClarifyArgs) -> tuple[dict[str, str], Path, Pa
     )
     if not env.get("CLAUDE_PLUGIN_ROOT"):
         env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root(Path(__file__).resolve().parents[3]))
-    design_tmpdir = design_step0._require_design_tmpdir(env=env)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    design_tmpdir = design_core._require_design_tmpdir(env=env)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
     env["DESIGN_TMPDIR"] = str(design_tmpdir)
     env["ISSUE_NUMBER"] = args.issue
     return env, design_tmpdir, Path(env["CLAUDE_PLUGIN_ROOT"])

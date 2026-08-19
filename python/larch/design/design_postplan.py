@@ -12,7 +12,7 @@ from larch.calibration import difficulty
 from collections.abc import Sequence
 
 from larch.core.repo_roots import consumer_repo_root, larch_entrypoint, larch_entrypoint_env, plugin_root
-from larch.design.design_session import step2b5_next_action_for
+from larch.design.design_core import step2b5_next_action_for
 from larch.design.design_terminal import phase_driver_write_result_env
 
 

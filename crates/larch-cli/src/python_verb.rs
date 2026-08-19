@@ -77,6 +77,11 @@ pub fn run_python_verb(
         ChildEnvironment::DesignTmpdir,
         ChildEnvironment::GhConfigDir,
         ChildEnvironment::ImplementTmpdir,
+        // A bridged Python verb may resolve `scripts/larch.sh`, which needs
+        // `LARCH_BINARY` to reach a built binary from an otherwise unbuilt
+        // checkout (e.g. the migration parity harness). Unset in production, so
+        // the bootstrap resolves normally.
+        ChildEnvironment::LarchBinary,
         ChildEnvironment::LarchRenderCacheDir,
         ChildEnvironment::LarchTokenLedger,
         ChildEnvironment::LarchTokenSessionId,

@@ -101,7 +101,7 @@ On success, Step 0b consumes the bound booleans, optional `run_id`, `POSITIONAL_
 Setup KV contract pointer (maintainer only): `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md`. Parse `SESSION_TMPDIR`, `SESSION_ID`, `CONTEXT_FILE`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, and `CURSOR_PRESENT`; set `DESIGN_TMPDIR=SESSION_TMPDIR`. Preserve `CONTEXT_FILE` for every nested Skill-tool lifecycle handoff. Execution-issues logging targets `$DESIGN_TMPDIR/execution-issues.md`.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design step0-session \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" design step0-session \
   --claude-pid "$PPID" \
   --plugin-root "${CLAUDE_PLUGIN_ROOT}" \
   -- <PUBLIC_ARGV_WORDS>

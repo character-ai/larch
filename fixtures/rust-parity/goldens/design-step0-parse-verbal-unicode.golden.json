@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    ".home/.cache/larch/sessions/step0-parsed-4242.env": {
+      "text": "partition_requested=false\nbrainstorm_requested=false\napprove_requested=false\nskip_approve_requested=false\nno_dedup_requested=false\nlifecycle_parent_context=''\nrun_id=''\ndifficulty=''\nPOSITIONAL_KIND=verbal\nPOSITIONAL_VALUE=$'add a \\360\\237\\230\\200 caf\\303\\251 \\303\\277 widget'\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "STEP0_PARSED_ENV_PATH=<SANDBOX>/.home/.cache/larch/sessions/step0-parsed-4242.env\nPARTITION_REQUESTED=false\nBRAINSTORM_REQUESTED=false\nAPPROVE_REQUESTED=false\nSKIP_APPROVE_REQUESTED=false\nNO_DEDUP_REQUESTED=false\nRUN_ID=\nPOSITIONAL_KIND=verbal\nPOSITIONAL_VALUE=add a 😀 café ÿ widget\n"
+  }
+}

@@ -20,7 +20,7 @@ from collections.abc import Callable, Sequence
 
 from larch import io as larch_io
 from larch.core.repo_roots import larch_entrypoint
-from larch.design import design_dialectic, design_session, plan_grammar
+from larch.design import design_core, design_dialectic, plan_grammar
 from larch.state import session_env
 
 
@@ -101,7 +101,7 @@ def _write_capture(*, path: Path, text: str) -> None:
 
 def _pause_if_requested(*, design_tmpdir: Path) -> int | None:
     if (design_tmpdir / ".pause-requested").is_file():
-        return design_session.pause_save_for_request(design_tmpdir=design_tmpdir)
+        return design_core.pause_save_for_request(design_tmpdir=design_tmpdir)
     return None
 
 
@@ -218,7 +218,7 @@ def _run_diagram(*, design_tmpdir: Path) -> int:
     if paused is not None:
         return paused
     started = time.monotonic()
-    design_session.mark_design_timing(label="design Step 5b.5 — arch diagram")
+    design_core.mark_design_timing(label="design Step 5b.5 — arch diagram")
     if diagram_required(plan_file=design_tmpdir / "plan.txt"):
         _unlink_diagram_artifacts(
             design_tmpdir=design_tmpdir,
@@ -271,8 +271,8 @@ def step3b_entry_main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR091
         print("cli.py design step3b-entry: --mode finalize|diagram required", file=sys.stderr)
         return 2
     try:
-        request = design_session.load_design_session_request(args)
-    except design_session.DesignSessionRequestError as exc:
+        request = design_core.load_design_session_request(args)
+    except design_core.DesignSessionRequestError as exc:
         print(exc, file=sys.stderr)
         return 1
     if session_env.require_plugin_root() != 0:
@@ -305,6 +305,6 @@ def step3b_entry_main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR091
     paused = _pause_if_requested(design_tmpdir=design_tmpdir)
     if paused is not None:
         return paused
-    design_session.mark_design_timing(label="design Step 3b — finalize")
+    design_core.mark_design_timing(label="design Step 3b — finalize")
     rc = _run_finalize(design_tmpdir=design_tmpdir)
     return _run_step4_mode_probe(design_tmpdir=design_tmpdir) if rc == 0 else rc
