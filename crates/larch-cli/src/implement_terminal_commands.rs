@@ -111,10 +111,7 @@ fn rehydrate_plugin_root(tmpdir: &Path) -> PathBuf {
         )
         .filter(|value| !value.is_empty())
     });
-    recorded.map_or_else(
-        || resolve_plugin_root().unwrap_or_default(),
-        PathBuf::from,
-    )
+    recorded.map_or_else(|| resolve_plugin_root().unwrap_or_default(), PathBuf::from)
 }
 
 /// Run one sibling Rust verb through the verified bootstrap and capture it.
@@ -233,14 +230,16 @@ fn read_finalize_state(path: &Path) -> Result<BTreeMap<String, String>, String> 
         if !is_finalize_key(row.key()) {
             continue;
         }
-        let decoded =
-            split_one_shell_token(row.value()).unwrap_or_else(|| row.value().to_owned());
+        let decoded = split_one_shell_token(row.value()).unwrap_or_else(|| row.value().to_owned());
         let _ = state.insert(row.key().to_owned(), decoded);
     }
     Ok(state)
 }
 
-fn write_finalize_state_merged(path: &Path, state: &BTreeMap<String, String>) -> Result<(), String> {
+fn write_finalize_state_merged(
+    path: &Path,
+    state: &BTreeMap<String, String>,
+) -> Result<(), String> {
     let mut text = String::new();
     for (key, value) in state {
         if !is_finalize_key(key) {
@@ -356,7 +355,9 @@ fn prepare_terminal_snapshot(
         args.extend(["--repo-root", text]);
     }
     let Ok(prepare) = larch(root, tmpdir, &args, repo_root, &[]) else {
-        eprintln!("Step 18: terminal snapshot preparation failed (rc=1); the session staging tree was retained for retry.");
+        eprintln!(
+            "Step 18: terminal snapshot preparation failed (rc=1); the session staging tree was retained for retry."
+        );
         emit("RUN_LOG_FINAL_FLUSH_OK", "false");
         emit("RUN_LOG_PUBLISH_OK", "false");
         return EXIT_INTERNAL_ERROR;
@@ -370,8 +371,10 @@ fn prepare_terminal_snapshot(
         }
     }
     let code = prepare.status().code().unwrap_or(EXIT_INTERNAL_ERROR);
-    let prepared =
-        code == 0 && parse_kv(&stdout).get("TERMINAL_SNAPSHOT_STATUS").map(String::as_str)
+    let prepared = code == 0
+        && parse_kv(&stdout)
+            .get("TERMINAL_SNAPSHOT_STATUS")
+            .map(String::as_str)
             == Some("prepared");
     if !prepared {
         eprintln!(
@@ -446,7 +449,10 @@ fn publish_terminal_archive(
         }
     };
     let values = parse_kv(&stdout);
-    let publication = values.get("RUN_LOG_PUBLICATION").cloned().unwrap_or_default();
+    let publication = values
+        .get("RUN_LOG_PUBLICATION")
+        .cloned()
+        .unwrap_or_default();
     let cache_dir = values.get("CACHE_DIR").filter(|value| !value.is_empty());
     let remote_key = values.get("REMOTE_KEY").is_some_and(|key| !key.is_empty());
     let published = publication == "published"
@@ -508,13 +514,8 @@ fn complete_terminal_run_log(
 ) -> i32 {
     let suppressed = terminal_publication_suppressed(tmpdir);
     let repo_root = terminal_publication_repo_root(tmpdir);
-    let prepare_rc = prepare_terminal_snapshot(
-        root,
-        tmpdir,
-        run_id,
-        suppressed,
-        repo_root.as_deref(),
-    );
+    let prepare_rc =
+        prepare_terminal_snapshot(root, tmpdir, run_id, suppressed, repo_root.as_deref());
     if prepare_rc != 0 {
         return prepare_rc;
     }
@@ -680,9 +681,10 @@ fn step18_logs_flush(root: &Path, tmpdir: &Path, step17_emitted: &str) -> i32 {
         eprintln!("**⚠ Step 18: final report render failed (WFR_RC={wfr_rc}): {reason}.**");
     }
     mark_token_and_timing(root, tmpdir);
-    let run_id = env::var("RUN_ID").ok().filter(|value| !value.is_empty()).unwrap_or_else(|| {
-        read_kv_file(&tmpdir.join("session-env.sh"), "LARCH_RUN_ID", "")
-    });
+    let run_id = env::var("RUN_ID")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| read_kv_file(&tmpdir.join("session-env.sh"), "LARCH_RUN_ID", ""));
     complete_terminal_run_log(root, tmpdir, &run_id, &emit_body, &wfr_rc)
 }
 
@@ -732,22 +734,20 @@ pub fn step_18(arguments: &[OsString]) -> ExitCode {
         return ExitCode::from(2);
     }
     rehydrate_session(&tmpdir);
-    let phase = parsed
-        .value("--phase")
-        .map_or_else(|| "gate".to_owned(), |value| {
-            value.to_string_lossy().into_owned()
-        });
+    let phase = parsed.value("--phase").map_or_else(
+        || "gate".to_owned(),
+        |value| value.to_string_lossy().into_owned(),
+    );
     if phase == "gate" {
         return step18_gate(
             &tmpdir,
             &opt_string(parsed.value("--stall-tracking-memory")),
         );
     }
-    let step17_emitted = parsed
-        .value("--step17-emitted")
-        .map_or_else(|| "false".to_owned(), |value| {
-            value.to_string_lossy().into_owned()
-        });
+    let step17_emitted = parsed.value("--step17-emitted").map_or_else(
+        || "false".to_owned(),
+        |value| value.to_string_lossy().into_owned(),
+    );
     exit_code(step18_logs_flush(&root, &tmpdir, &step17_emitted))
 }
 
@@ -757,9 +757,7 @@ pub fn step_18(arguments: &[OsString]) -> ExitCode {
 
 fn record_terminal_shipping_refusal(tmpdir: &Path) -> bool {
     let state_path = tmpdir.join("finalize-state.sh");
-    if fs::symlink_metadata(&state_path)
-        .is_ok_and(|metadata| metadata.file_type().is_symlink())
-    {
+    if fs::symlink_metadata(&state_path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
         return false;
     }
     let expected: [(&str, &str); 6] = [
@@ -793,6 +791,23 @@ fn record_terminal_shipping_refusal(tmpdir: &Path) -> bool {
         return false;
     }
     fs::read_to_string(&issue_log).is_ok_and(|text| text.contains(REFUSAL_ENTRY))
+}
+
+/// Emit the blocked envelope for a shipping outcome with no recorded PR number.
+fn refuse_terminal_shipping(tmpdir: &Path) -> ExitCode {
+    let persisted = record_terminal_shipping_refusal(tmpdir);
+    emit(
+        "STALL_RECOVERY_REQUIRED",
+        if persisted { "true" } else { "unknown" },
+    );
+    emit("TERMINAL_FINALIZE_REFUSED", "true");
+    emit("STATUS", "blocked");
+    emit("OUTCOME", "stalled");
+    emit("NEXT_ACTION", "tool-failure");
+    if !persisted {
+        eprintln!("implement step-18-gate-logs-flush: cannot persist terminal shipping refusal");
+    }
+    exit_code(EXIT_INTERNAL_ERROR)
 }
 
 /// `implement step-18-gate-logs-flush` compatibility command.
@@ -859,33 +874,21 @@ pub fn step_18_gate_logs_flush(arguments: &[OsString]) -> ExitCode {
     }
     println!("⏩ 18a: stall recovery; no stall detected");
     let normalized = normalize_outcome(&root, &tmpdir, &layers.memory);
-    if normalized.get("IMPLEMENT_NORMALIZED_OUTCOME").map(String::as_str) == Some("shipping")
+    if normalized
+        .get("IMPLEMENT_NORMALIZED_OUTCOME")
+        .map(String::as_str)
+        == Some("shipping")
         && normalized
             .get("IMPLEMENT_PR_NUMBER")
             .is_none_or(|value| value.trim().is_empty())
     {
-        let persisted = record_terminal_shipping_refusal(&tmpdir);
-        emit(
-            "STALL_RECOVERY_REQUIRED",
-            if persisted { "true" } else { "unknown" },
-        );
-        emit("TERMINAL_FINALIZE_REFUSED", "true");
-        emit("STATUS", "blocked");
-        emit("OUTCOME", "stalled");
-        emit("NEXT_ACTION", "tool-failure");
-        if !persisted {
-            eprintln!(
-                "implement step-18-gate-logs-flush: cannot persist terminal shipping refusal"
-            );
-        }
-        return exit_code(EXIT_INTERNAL_ERROR);
+        return refuse_terminal_shipping(&tmpdir);
     }
     emit("STALL_RECOVERY_REQUIRED", "false");
-    let step17_emitted = parsed
-        .value("--step17-emitted")
-        .map_or_else(|| "false".to_owned(), |value| {
-            value.to_string_lossy().into_owned()
-        });
+    let step17_emitted = parsed.value("--step17-emitted").map_or_else(
+        || "false".to_owned(),
+        |value| value.to_string_lossy().into_owned(),
+    );
     let rc = step18_logs_flush(&root, &tmpdir, &step17_emitted);
     emit(
         "NEXT_ACTION",
@@ -997,7 +1000,9 @@ pub fn step_19(arguments: &[OsString]) -> ExitCode {
     }
     rehydrate_session(&tmpdir);
     if !terminalization_record_valid(&tmpdir) {
-        eprintln!("Step 19: cleanup refused because Step 18 run-log terminalization is not recorded.");
+        eprintln!(
+            "Step 19: cleanup refused because Step 18 run-log terminalization is not recorded."
+        );
         emit("CLEANUP_BLOCKED", "run-log-not-terminalized");
         return exit_code(EXIT_INTERNAL_ERROR);
     }
@@ -1104,8 +1109,11 @@ mod tests {
     fn finalize_state_round_trips_unquoted_sorted_rows() {
         let root = TempDir::new().expect("temp");
         let path = root.path().join("finalize-state.sh");
-        fs::write(&path, "# comment\nZ='last'\nA=\"first\"\nbad-key=x\nZ=second\n")
-            .expect("write");
+        fs::write(
+            &path,
+            "# comment\nZ='last'\nA=\"first\"\nbad-key=x\nZ=second\n",
+        )
+        .expect("write");
         let state = read_finalize_state(&path).expect("read");
         assert_eq!(state.get("A").map(String::as_str), Some("first"));
         assert_eq!(state.get("Z").map(String::as_str), Some("second"));
@@ -1144,7 +1152,10 @@ mod tests {
             "STALL_TRACKING=false\nBAIL_NEEDS_USER_INPUT=false\nSTALL_STEP=\n",
         )
         .expect("write");
-        assert!(should_restore_finalize(root.path()), "missing finalize state");
+        assert!(
+            should_restore_finalize(root.path()),
+            "missing finalize state"
+        );
         fs::write(
             root.path().join("finalize-state.sh"),
             "STALL_TRACKING=false\nSTALL_STEP=\n",

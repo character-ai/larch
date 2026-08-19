@@ -2280,9 +2280,9 @@ fn run(
         Domain::Admission(AdmissionCommand::Preflight(arguments)) => {
             Ok(admission_commands::preflight(&arguments.arguments))
         }
-        Domain::Checks(ChecksCommand::SelfEditLog(arguments)) => {
-            Ok(checks_identity_commands::self_edit_log(&arguments.arguments))
-        }
+        Domain::Checks(ChecksCommand::SelfEditLog(arguments)) => Ok(
+            checks_identity_commands::self_edit_log(&arguments.arguments),
+        ),
         Domain::Implement(command) => Ok(match command {
             ImplementCommand::ChecksResultIdentity(arguments) => {
                 checks_identity_commands::checks_result_identity(&arguments.arguments)

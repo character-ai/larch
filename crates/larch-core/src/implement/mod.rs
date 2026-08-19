@@ -22,14 +22,14 @@ pub use identity::{
     first_kv_value, identities_match, identity_from_rows, integrity_failure_rows, read_env_rows,
     session_repo_root, validate_repo_root_path,
 };
-pub use self_edit_log::{
-    SELF_EDIT_LOG_NAME, SelfEditRecord, file_sha256, normalize_path, read_self_edits,
-    validate_session_tmpdir,
-};
 pub use manifest::{
     DispatchState, clear_external_scout_paths, manifest_legacy_fingerprint, path_under_submodule,
 };
 pub use recovery::{RecoveryPorcelainInputs, compute_recovery_paths};
+pub use self_edit_log::{
+    SELF_EDIT_LOG_NAME, SelfEditRecord, file_sha256, normalize_path, read_self_edits,
+    validate_session_tmpdir,
+};
 pub use step_checks::{
     CHECKS_TERMINAL_ACTIONS, STEP6_CHECKS_STEP, StepChecksSite, checks_step_for_site,
     public_args_for_site, resolve_step_and_budget, resolve_step_name,

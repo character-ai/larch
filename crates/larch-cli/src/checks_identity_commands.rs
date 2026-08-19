@@ -74,7 +74,9 @@ pub fn validate_repo_root(repo_root: &Path) -> Result<PathBuf, ChecksIdentityErr
     if toplevel == resolved {
         Ok(resolved)
     } else {
-        Err(ChecksIdentityError::new("repo root is not the git toplevel"))
+        Err(ChecksIdentityError::new(
+            "repo root is not the git toplevel",
+        ))
     }
 }
 
@@ -275,11 +277,10 @@ fn validate_child(arguments: &[OsString]) -> Result<ExitCode, DispatchFailure> {
         &["--repo-root", "--expected-head", "--expected-fp"],
     )?;
     let root = validate_repo_root(Path::new(&opt_string(parsed.value("--repo-root"))))?;
-    let schema = parsed
-        .value("--expected-schema")
-        .map_or_else(|| CHECKS_INPUT_FP_SCHEMA_V1.to_owned(), |value| {
-            value.to_string_lossy().into_owned()
-        });
+    let schema = parsed.value("--expected-schema").map_or_else(
+        || CHECKS_INPUT_FP_SCHEMA_V1.to_owned(),
+        |value| value.to_string_lossy().into_owned(),
+    );
     let expected = ChecksInputIdentity {
         head_sha: opt_string(parsed.value("--expected-head")),
         tree_fingerprint: opt_string(parsed.value("--expected-fp")),
@@ -447,11 +448,11 @@ mod tests {
     #[test]
     fn identity_reports_missing_and_invalid_verbs() {
         assert_eq!(checks_result_identity(&[]), ExitCode::from(2));
+        assert_eq!(checks_result_identity(&args(&["bogus"])), ExitCode::from(2));
         assert_eq!(
-            checks_result_identity(&args(&["bogus"])),
-            ExitCode::from(2)
+            checks_result_identity(&args(&["--help"])),
+            ExitCode::SUCCESS
         );
-        assert_eq!(checks_result_identity(&args(&["--help"])), ExitCode::SUCCESS);
     }
 
     #[test]

@@ -195,7 +195,10 @@ fn fixture() -> Fixture {
     fs::create_dir_all(&tmpdir).expect("tmpdir");
     fs::write(
         tmpdir.join("session-env.sh"),
-        format!("LARCH_RUN_ID=RUN1\nREPO_ROOT={}\nSTALL_TRACKING=false\n", repo.display()),
+        format!(
+            "LARCH_RUN_ID=RUN1\nREPO_ROOT={}\nSTALL_TRACKING=false\n",
+            repo.display()
+        ),
     )
     .expect("session env");
     fs::write(
@@ -593,9 +596,15 @@ fn composite_refuses_terminal_shipping_without_a_pr_number() {
     assert_eq!(kv("OUTCOME", &text), "stalled");
     assert_eq!(kv("NEXT_ACTION", &text), "tool-failure");
     let state = fs::read_to_string(fixture.tmpdir.join("finalize-state.sh")).expect("state");
-    assert!(state.contains("BAIL_REASON=step18-terminal-shipping-without-pr\n"), "{state}");
+    assert!(
+        state.contains("BAIL_REASON=step18-terminal-shipping-without-pr\n"),
+        "{state}"
+    );
     assert!(state.contains("STEP18_GATE_REFUSAL=step18-terminal-shipping-without-pr\n"));
-    assert!(state.contains("EXIT_CODE=1\nPHASE=stalled\n"), "sorted keys: {state}");
+    assert!(
+        state.contains("EXIT_CODE=1\nPHASE=stalled\n"),
+        "sorted keys: {state}"
+    );
     let issues = fs::read_to_string(fixture.tmpdir.join("execution-issues.md")).expect("issues");
     assert!(issues.contains("Step 18 terminal gate"));
     assert!(!fixture.log().contains("prepare-terminal-snapshot"));
@@ -664,7 +673,9 @@ fn step19_relays_the_teardown_tail_and_exit_code() {
     }
     let log = fixture.log();
     assert!(log.contains("clear-implement-pointer --claude-pid"));
-    assert!(log.contains("teardown sentinel=missing argv=implement-finalize teardown --state-file"));
+    assert!(
+        log.contains("teardown sentinel=missing argv=implement-finalize teardown --state-file")
+    );
     assert!(
         !log.contains("restore-finalize-state"),
         "aligned state skips the restore"
@@ -674,7 +685,11 @@ fn step19_relays_the_teardown_tail_and_exit_code() {
 #[test]
 fn step19_restores_for_each_documented_trigger() {
     for (name, ship, finalize) in [
-        ("missing-finalize", "STALL_TRACKING=false\nSTALL_STEP=\n", None),
+        (
+            "missing-finalize",
+            "STALL_TRACKING=false\nSTALL_STEP=\n",
+            None,
+        ),
         (
             "ship-stall",
             "STALL_TRACKING=yes\nBAIL_NEEDS_USER_INPUT=false\nSTALL_STEP=\n",
@@ -786,7 +801,10 @@ fn identity_is_deterministic_and_changes_with_every_input_class() {
 
     fs::write(repo.join("tracked.txt"), "two\n").expect("unstaged edit");
     let unstaged = identity_rows(&fixture, &repo);
-    assert_ne!(kv("CHECKS_INPUT_TREE_FP", &first), kv("CHECKS_INPUT_TREE_FP", &unstaged));
+    assert_ne!(
+        kv("CHECKS_INPUT_TREE_FP", &first),
+        kv("CHECKS_INPUT_TREE_FP", &unstaged)
+    );
 
     git(&repo, &["add", "tracked.txt"]);
     let staged = identity_rows(&fixture, &repo);
@@ -899,12 +917,7 @@ fn identity_classifies_every_documented_state() {
         (None, "absent", "missing", 1),
         (Some("\n"), "incomplete", "empty", 1),
         (Some("BGJOB_RC=1\n"), "incomplete", "bgjob-rc", 1),
-        (
-            Some("BGJOB_RC=0\n"),
-            "incomplete",
-            "missing-next-action",
-            1,
-        ),
+        (Some("BGJOB_RC=0\n"), "incomplete", "missing-next-action", 1),
         (
             Some("BGJOB_RC=0\nNEXT_ACTION=nope\n"),
             "incomplete",
@@ -937,8 +950,11 @@ fn identity_classifies_every_documented_state() {
     assert_eq!(code(&matching), 0, "{}", stderr(&matching));
     assert_eq!(kv("STATE", &stdout(&matching)), "matching");
 
-    std::os::unix::fs::symlink(fixture.tmpdir.join("elsewhere"), fixture.tmpdir.join("link.env"))
-        .expect("symlink");
+    std::os::unix::fs::symlink(
+        fixture.tmpdir.join("elsewhere"),
+        fixture.tmpdir.join("link.env"),
+    )
+    .expect("symlink");
     let unsafe_env = fixture.run(&[
         "implement",
         "checks-result-identity",

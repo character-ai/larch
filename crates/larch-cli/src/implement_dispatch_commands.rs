@@ -647,15 +647,11 @@ fn classify_completed(
     step: &str,
 ) -> Result<(String, String), String> {
     let live = live_identity(&identity.repo_root).map_err(|error| error.to_string())?;
-    let classified =
-        classify_completed_result(result_env, step, &live, CHECKS_TERMINAL_ACTIONS);
+    let classified = classify_completed_result(result_env, step, &live, CHECKS_TERMINAL_ACTIONS);
     Ok((classified.state.to_owned(), classified.reason))
 }
 
-fn classify_seed(
-    identity: &LaunchIdentity,
-    merge_env: &Path,
-) -> Result<(String, String), String> {
+fn classify_seed(identity: &LaunchIdentity, merge_env: &Path) -> Result<(String, String), String> {
     let live = live_identity(&identity.repo_root).map_err(|error| error.to_string())?;
     let classified = classify_live_seed(merge_env, &live);
     Ok((classified.state.to_owned(), classified.reason))

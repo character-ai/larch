@@ -65,10 +65,7 @@ impl ChecksInputIdentity {
     #[must_use]
     pub fn as_rows(&self) -> Vec<(String, String)> {
         vec![
-            (
-                CHECKS_INPUT_HEAD_SHA_KEY.to_owned(),
-                self.head_sha.clone(),
-            ),
+            (CHECKS_INPUT_HEAD_SHA_KEY.to_owned(), self.head_sha.clone()),
             (
                 CHECKS_INPUT_TREE_FP_KEY.to_owned(),
                 self.tree_fingerprint.clone(),
@@ -135,7 +132,9 @@ fn is_tree_fingerprint(value: &str) -> bool {
 /// unresolvable root.
 pub fn validate_repo_root_path(repo_root: &Path) -> Result<PathBuf, ChecksIdentityError> {
     if !repo_root.is_absolute() {
-        return Err(ChecksIdentityError::new("repo root must be an absolute path"));
+        return Err(ChecksIdentityError::new(
+            "repo root must be an absolute path",
+        ));
     }
     let metadata = fs::symlink_metadata(repo_root)
         .map_err(|_| ChecksIdentityError::new("repo root must be a non-symlink directory"))?;
@@ -622,7 +621,10 @@ mod tests {
                 fs::write(&path, body).expect("write");
             }
             let classified = classify_completed_result(&path, "s", &identity, ACTIONS);
-            assert_eq!((classified.state, classified.reason.as_str()), (*state, *reason));
+            assert_eq!(
+                (classified.state, classified.reason.as_str()),
+                (*state, *reason)
+            );
         }
     }
 
@@ -653,7 +655,10 @@ mod tests {
         )
         .expect("write");
         let drifted = classify_completed_result(&path, "s", &identity, ACTIONS);
-        assert_eq!((drifted.state, drifted.reason.as_str()), ("stale", "identity-mismatch"));
+        assert_eq!(
+            (drifted.state, drifted.reason.as_str()),
+            ("stale", "identity-mismatch")
+        );
         let mut schema_rows = rows_of(&identity);
         let _ = schema_rows.insert(CHECKS_INPUT_FP_SCHEMA_KEY.to_owned(), "v2".to_owned());
         assert!(identity_from_rows(&schema_rows, root.path()).is_none());
@@ -727,7 +732,9 @@ mod tests {
         assert_eq!(session_repo_root(root.path()).expect("root"), "/tmp/repo");
         fs::write(root.path().join("session-env.sh"), "OTHER=1\n").expect("write");
         assert_eq!(
-            session_repo_root(root.path()).expect_err("missing").to_string(),
+            session_repo_root(root.path())
+                .expect_err("missing")
+                .to_string(),
             "REPO_ROOT missing from session-env.sh"
         );
     }
