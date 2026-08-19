@@ -352,8 +352,6 @@
   "tests/design/test_design_publish.py::test_sanitize_diagram_candidate_accepted": 1,
   "tests/design/test_design_publish.py::test_sanitize_diagram_candidate_missing_candidate": 4,
   "tests/design/test_design_publish.py::test_sanitize_diagram_candidate_rejected": 4,
-  "tests/design/test_design_step_log.py::test_step1_log_overrides_compose_and_log": 4,
-  "tests/design/test_design_step_log.py::test_step1_log_requires_conventional_plan_file": 3,
   "tests/design/test_design_summary.py::test_published_run_logs_path_rejects_mismatched_disabled_manifest": 4,
   "tests/design/test_design_summary.py::test_published_run_logs_path_requires_completed_log_publication": 1,
   "tests/design/test_design_summary.py::test_render_final_summary_write_failure_rebuilds_fallback_with_detail_first": 3,
