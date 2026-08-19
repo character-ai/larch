@@ -1684,6 +1684,145 @@ async fn next_excludes_closed_leaves_with_stale_or_arbitrary_titles() {
 }
 
 #[tokio::test]
+async fn next_skips_open_designing_designed_and_done_without_aborting() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let designing = issue_json(
+        LEAF,
+        410,
+        "[DESIGNING] [LEAF OF 40] Planning",
+        &format!("{}\n\nWork remains.", umbrella_leaf_opening(UMBRELLA)),
+        "open",
+        BEFORE,
+    );
+    let designed = issue_json(
+        GAP,
+        420,
+        "[DESIGNED] [LEAF OF 40] Planned",
+        &format!("{}\n\nWork remains.", umbrella_leaf_opening(UMBRELLA)),
+        "open",
+        BEFORE,
+    );
+    let open_done = issue_json(
+        43,
+        430,
+        "[DONE] [LEAF OF 40] Drifted open",
+        &format!("{}\n\nWork remains.", umbrella_leaf_opening(UMBRELLA)),
+        "open",
+        BEFORE,
+    );
+    let idle = issue_json(
+        44,
+        440,
+        "[LEAF OF 40] Still open",
+        &format!("{}\n\nWork remains.", umbrella_leaf_opening(UMBRELLA)),
+        "open",
+        BEFORE,
+    );
+    let (client, server) = service(vec![
+        response(200, &parent),
+        response(
+            200,
+            refs(&[
+                (LEAF, 410, "open"),
+                (GAP, 420, "open"),
+                (43, 430, "open"),
+                (44, 440, "open"),
+            ]),
+        ),
+        response(
+            200,
+            refs(&[
+                (LEAF, 410, "open"),
+                (GAP, 420, "open"),
+                (43, 430, "open"),
+                (44, 440, "open"),
+            ]),
+        ),
+        response(200, &designing),
+        response(200, "[]"),
+        response(200, "[]"),
+        response(200, &designed),
+        response(200, "[]"),
+        response(200, "[]"),
+        response(200, &open_done),
+        response(200, "[]"),
+        response(200, "[]"),
+        response(200, &idle),
+        response(200, "[]"),
+        response(200, "[]"),
+    ]);
+
+    let graph = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA)
+        .await
+        .expect("in-flight and open-DONE leaves must not abort next enumeration");
+    assert_eq!(graph.leaves.len(), 4);
+    let selection = select_complete_umbrella_leaf(
+        &selection_leaves(&graph.leaves),
+        &graph.open_orphan_blockers,
+    );
+    assert_eq!(
+        next_action_fields(&selection),
+        vec![
+            ("NEXT_ACTION", "launch".to_owned()),
+            ("NEXT_LEAF", "44".to_owned()),
+        ]
+    );
+    server
+        .join()
+        .expect("non-candidate open leaf graph stub completed");
+}
+
+#[tokio::test]
+async fn next_deadlocks_when_only_non_candidate_open_leaves_remain() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let open_done = issue_json(
+        LEAF,
+        410,
+        "[DONE] [LEAF OF 40] Still open",
+        &format!("{}\n\nWork remains.", umbrella_leaf_opening(UMBRELLA)),
+        "open",
+        BEFORE,
+    );
+    let (client, server) = service(vec![
+        response(200, &parent),
+        response(200, refs(&[(LEAF, 410, "open")])),
+        response(200, refs(&[(LEAF, 410, "open")])),
+        response(200, &open_done),
+        response(200, "[]"),
+        response(200, "[]"),
+    ]);
+    let graph = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA)
+        .await
+        .expect("open DONE drift must enumerate then deadlock");
+    let selection = select_complete_umbrella_leaf(
+        &selection_leaves(&graph.leaves),
+        &graph.open_orphan_blockers,
+    );
+    assert_eq!(
+        next_action_fields(&selection),
+        vec![
+            ("NEXT_ACTION", "deadlock".to_owned()),
+            ("BLOCKED_LEAVES", "41".to_owned()),
+        ]
+    );
+    server.join().expect("open DONE deadlock stub completed");
+}
+
+#[tokio::test]
 async fn graph_diagnostics_still_name_open_leaf_lifecycle_failures() {
     let parent = issue_json(
         UMBRELLA,
@@ -1696,7 +1835,7 @@ async fn graph_diagnostics_still_name_open_leaf_lifecycle_failures() {
     let invalid_title = issue_json(
         LEAF,
         410,
-        "[DONE] [LEAF OF 40] Still open",
+        "[STALLED] [LEAF OF 40] Still open",
         &format!("{}\n\nWork remains.", umbrella_leaf_opening(UMBRELLA)),
         "open",
         BEFORE,
@@ -1709,7 +1848,7 @@ async fn graph_diagnostics_still_name_open_leaf_lifecycle_failures() {
     ]);
     let Err(error) = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA).await
     else {
-        panic!("open leaf title must remain exact");
+        panic!("unsupported open leaf title must remain exact");
     };
     assert_eq!(
         error,
