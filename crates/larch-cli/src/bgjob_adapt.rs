@@ -745,21 +745,39 @@ impl<Host: AdapterHost> Adapter<'_, Host> {
                 invalid: false,
             });
         };
-        let entry = read_entry(&path);
-        let after = stat_fingerprint(&path).unwrap_or_default();
-        if entry.is_none() || after.as_ref() != Some(&before) {
-            return Ok(RegistrySnapshot {
-                path,
-                entry: None,
-                fingerprint: after,
-                invalid: true,
+        let mut before = before;
+        for _ in 0..3 {
+            let entry = read_entry(&path);
+            let after = stat_fingerprint(&path).unwrap_or_default();
+            if entry.is_some() && after.as_ref() == Some(&before) {
+                return Ok(RegistrySnapshot {
+                    path,
+                    entry,
+                    fingerprint: after,
+                    invalid: false,
+                });
+            }
+            // The daemon replaces the complete row atomically for every
+            // heartbeat. Retry only that recognizable inode transition;
+            // in-place mutation, removal, or an unreadable row stays invalid.
+            let atomic_replacement = after.as_ref().is_some_and(|current| {
+                current.device == before.device && current.inode != before.inode
             });
+            if !atomic_replacement {
+                return Ok(RegistrySnapshot {
+                    path,
+                    entry: None,
+                    fingerprint: after,
+                    invalid: true,
+                });
+            }
+            before = after.expect("atomic replacement has a fingerprint");
         }
         Ok(RegistrySnapshot {
             path,
-            entry,
-            fingerprint: after,
-            invalid: false,
+            entry: None,
+            fingerprint: Some(before),
+            invalid: true,
         })
     }
 
@@ -807,6 +825,24 @@ impl<Host: AdapterHost> Adapter<'_, Host> {
             return Err(DecisionError::token("registry-replaced"));
         }
         Ok(current)
+    }
+
+    fn verify_same_active_snapshot(&self, previous: &RegistrySnapshot) -> DecisionResult<()> {
+        let current = self.snapshot_registry()?;
+        let same_entry = previous
+            .entry
+            .as_ref()
+            .zip(current.entry.as_ref())
+            .is_some_and(|(previous, current)| {
+                let mut previous = previous.clone();
+                previous.heartbeat_epoch = current.heartbeat_epoch;
+                previous == *current
+            });
+        if current.invalid || current.path != previous.path || !same_entry {
+            self.raise_if_result()?;
+            return Err(DecisionError::token("registry-replaced"));
+        }
+        Ok(())
     }
 
     fn clear_expired(&self, snapshot: &RegistrySnapshot) -> DecisionResult<()> {
@@ -863,7 +899,7 @@ impl<Host: AdapterHost> Adapter<'_, Host> {
         if let Some(output) = self.read_completed_result()? {
             return Ok(output);
         }
-        let _ = self.verify_same_snapshot(snapshot)?;
+        self.verify_same_active_snapshot(snapshot)?;
         Ok(format!(
             "{BGJOB_STATUS_KEY}={BGJOB_STATUS_STARTED} STEP={} PGID={}\n",
             self.spec.step, entry.child.pgid
@@ -1440,6 +1476,7 @@ mod tests {
                 child_allows_exec: true,
                 owner: None,
                 start_epoch: now(),
+                heartbeat_epoch: now(),
                 budget_s: request.spec.budget_s,
                 stdout_log: request
                     .spec
@@ -1579,6 +1616,7 @@ mod tests {
             child_allows_exec: true,
             owner: None,
             start_epoch: 1,
+            heartbeat_epoch: 1,
             budget_s: 1,
             stdout_log: spec.log_dir.join("demo-step.stdout.log"),
             stderr_log: spec.log_dir.join("demo-step.stderr.log"),
@@ -1593,6 +1631,7 @@ mod tests {
     fn active_entry(spec: &JobSpec) -> RegistryEntry {
         let mut entry = dead_entry(spec);
         entry.start_epoch = now();
+        entry.heartbeat_epoch = now();
         entry.budget_s = 60;
         entry
     }
@@ -2097,6 +2136,29 @@ mod tests {
                 .token,
             "registry-replaced"
         );
+
+        let before_heartbeat = adapter.snapshot_registry().expect("active snapshot");
+        let mut heartbeat_update = before_heartbeat
+            .entry
+            .clone()
+            .expect("active registry entry");
+        heartbeat_update.heartbeat_epoch += 1;
+        write_entry_at(&heartbeat_update, Some(&registry)).expect("heartbeat update");
+        adapter
+            .verify_same_active_snapshot(&before_heartbeat)
+            .expect("heartbeat-only replacement");
+
+        let before_budget_change = adapter.snapshot_registry().expect("active snapshot");
+        heartbeat_update.budget_s += 1;
+        write_entry_at(&heartbeat_update, Some(&registry)).expect("budget change");
+        assert_eq!(
+            adapter
+                .verify_same_active_snapshot(&before_budget_change)
+                .expect_err("non-heartbeat replacement")
+                .token,
+            "registry-replaced"
+        );
+        write_entry_at(&active_entry(&job), Some(&registry)).expect("restore active registry");
 
         let result = result_env_path(&job.tmpdir, &job.step).expect("result path");
         fs::write(&result, "BGJOB_RC=0\nSTEP=demo-step\n").expect("completed result");

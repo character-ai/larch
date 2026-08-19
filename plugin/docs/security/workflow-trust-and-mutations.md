@@ -455,6 +455,17 @@ documented long leaf waits. While a registry row is live for the clone,
 launches, except a combinator-free documented `scripts/larch.sh bgjob wait`
 command that must own its own `--max-wait-s` deadline.
 
+The daemon owns elapsed-time decisions with a suspend-pausing monotonic clock.
+It refreshes the registry row's wall-clock `HEARTBEAT_EPOCH` on every monitor
+poll; other processes use that field only as a bounded cross-process liveness
+TTL. A detected suspend resets owner validation and grants exactly one
+wait-lease window before orphaning can proceed. The same wall-clock jump cannot
+renew that grace, and a wall-clock jump cannot consume the runtime budget.
+Legacy registry rows remain readable by treating their start epoch as their
+initial heartbeat. On macOS, the default-off `LARCH_BGJOB_CAFFEINATE=true`
+option wraps only the requested command with fixed `/usr/bin/caffeinate -i`.
+It prevents idle sleep while that command runs, not lid-close or forced sleep.
+
 After a worker observes that its requested child exited and its group drained,
 it atomically retains a confined completion witness until the daemon commits the
  whole result transaction. The registry retains one versioned, complete recovery

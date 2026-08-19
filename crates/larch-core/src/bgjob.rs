@@ -1,4 +1,7 @@
 //! Durable background-job records, registry storage, and path validation.
+//!
+//! Runtime budgets are daemon-owned monotonic decisions. Registry wall-clock
+//! epochs are timestamps for logs and cross-process heartbeat staleness only.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -39,6 +42,10 @@ pub const BGJOB_STARTUP_ENV_SUFFIX: &str = ".startup.env";
 pub const BGJOB_INPUT_FP_SUFFIX: &str = ".input-fp";
 /// Durable worker-completion witness suffix.
 pub const BGJOB_WORKER_STATUS_SUFFIX: &str = ".worker-status.env";
+/// Registry key refreshed by the daemon on every monitor poll.
+pub const BGJOB_HEARTBEAT_EPOCH_KEY: &str = "HEARTBEAT_EPOCH";
+/// Seconds without a daemon heartbeat before a registry row is stale.
+pub const BGJOB_HEARTBEAT_STALE_AFTER_S: i64 = 30;
 /// Foreground-wait lease suffix. An active `bgjob wait` refreshes this file so
 /// the daemon does not orphan a live job merely because the start-time session
 /// owner PID exited (#8639).
@@ -278,6 +285,8 @@ pub struct RegistryEntry {
     pub owner: Option<RecordedProcessIdentity>,
     /// Epoch at launch.
     pub start_epoch: i64,
+    /// Wall-clock epoch refreshed by the daemon on every monitor poll.
+    pub heartbeat_epoch: i64,
     /// Maximum job runtime in seconds.
     pub budget_s: i64,
     /// Child stdout log.
@@ -611,16 +620,25 @@ pub fn wait_lease_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError>
 ///
 /// Returns an error when the path is unsafe or the atomic write fails.
 pub fn refresh_wait_lease(tmpdir: &Path, step: &str) -> Result<(), BgjobError> {
-    let path = wait_lease_path(tmpdir, step)?;
-    let root = bgjob_dir(tmpdir)?;
-    let _ = fs::create_dir_all(&root);
     let epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| BgjobError::Io(error.to_string()))?
         .as_secs();
+    refresh_wait_lease_at(tmpdir, step, epoch, process::id())
+}
+
+fn refresh_wait_lease_at(
+    tmpdir: &Path,
+    step: &str,
+    epoch: u64,
+    waiter_pid: u32,
+) -> Result<(), BgjobError> {
+    let path = wait_lease_path(tmpdir, step)?;
+    let root = bgjob_dir(tmpdir)?;
+    let _ = fs::create_dir_all(&root);
     private_atomic_write(
         &path,
-        &format!("REFRESH_EPOCH={epoch}\nWAITER_PID={}\n", process::id()),
+        &format!("REFRESH_EPOCH={epoch}\nWAITER_PID={waiter_pid}\n"),
         &root,
     )
 }
@@ -628,7 +646,16 @@ pub fn refresh_wait_lease(tmpdir: &Path, step: &str) -> Result<(), BgjobError> {
 /// Return whether `step` has a wait lease fresher than `ttl_s`.
 #[must_use]
 pub fn wait_lease_is_fresh(tmpdir: &Path, step: &str, ttl_s: f64) -> bool {
-    if !ttl_s.is_finite() || ttl_s <= 0.0 {
+    let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+        return false;
+    };
+    wait_lease_is_fresh_at(tmpdir, step, ttl_s, now.as_secs_f64())
+}
+
+/// Return whether `step` has a wait lease fresher than `ttl_s` at `now_epoch_s`.
+#[must_use]
+pub fn wait_lease_is_fresh_at(tmpdir: &Path, step: &str, ttl_s: f64, now_epoch_s: f64) -> bool {
+    if !ttl_s.is_finite() || ttl_s <= 0.0 || !now_epoch_s.is_finite() || now_epoch_s < 0.0 {
         return false;
     }
     let Ok(path) = wait_lease_path(tmpdir, step) else {
@@ -649,14 +676,14 @@ pub fn wait_lease_is_fresh(tmpdir: &Path, step: &str, ttl_s: f64) -> bool {
     else {
         return false;
     };
-    let Ok(epoch) = raw.parse::<u64>() else {
+    let Ok(epoch) = raw.parse::<f64>() else {
         return false;
     };
-    let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+    if !epoch.is_finite() || epoch < 0.0 {
         return false;
-    };
-    let age = now.saturating_sub(Duration::from_secs(epoch));
-    age <= Duration::from_secs_f64(ttl_s)
+    }
+    let age_s = (now_epoch_s - epoch).max(0.0);
+    age_s <= ttl_s
 }
 
 /// Return the durable completion-transaction descriptor path for `step`.
@@ -1365,6 +1392,10 @@ pub fn write_entry_at(entry: &RegistryEntry, root: Option<&Path>) -> Result<Path
             entry.clone_path.display().to_string(),
         ),
         ("START_EPOCH".to_owned(), entry.start_epoch.to_string()),
+        (
+            BGJOB_HEARTBEAT_EPOCH_KEY.to_owned(),
+            entry.heartbeat_epoch.to_string(),
+        ),
         ("BUDGET_S".to_owned(), entry.budget_s.to_string()),
         (
             "STDOUT_LOG".to_owned(),
@@ -1465,6 +1496,10 @@ pub fn read_entry(path: &Path) -> Option<RegistryEntry> {
         (None, None, Vec::new())
     };
     let clone_raw = rows.get("CLONE_PATH").map_or(".", String::as_str);
+    let start_epoch = rows.get("START_EPOCH")?.parse().ok()?;
+    let heartbeat_epoch = rows
+        .get(BGJOB_HEARTBEAT_EPOCH_KEY)
+        .map_or(Some(start_epoch), |value| value.parse().ok())?;
     Some(RegistryEntry {
         step: validate_slug(rows.get("STEP")?, "step").ok()?,
         run_id: validate_run_id(rows.get("RUN_ID")?).ok()?,
@@ -1480,7 +1515,8 @@ pub fn read_entry(path: &Path) -> Option<RegistryEntry> {
             .get("CHILD_ALLOW_COMMAND_TRANSITION")
             .is_none_or(|value| value == "true"),
         owner: parse_identity(&rows, "OWNER"),
-        start_epoch: rows.get("START_EPOCH")?.parse().ok()?,
+        start_epoch,
+        heartbeat_epoch,
         budget_s: rows.get("BUDGET_S")?.parse().ok()?,
         stdout_log,
         stderr_log,
@@ -1712,13 +1748,19 @@ pub fn daemon_liveness(host: &dyn ProcessIdentityHost, entry: &RegistryEntry) ->
     liveness(host, &entry.daemon)
 }
 
-/// Return whether an entry exceeded its configured runtime budget.
+/// Return whether an entry's daemon heartbeat is stale.
 #[must_use]
 pub fn entry_expired(entry: &RegistryEntry) -> bool {
-    epoch_now().saturating_sub(entry.start_epoch) > entry.budget_s
+    entry_expired_at(entry, epoch_now())
 }
 
-/// Return whether a live, in-budget registry entry belongs to a run and clone.
+/// Return whether an entry's daemon heartbeat is stale at `now_epoch`.
+#[must_use]
+pub const fn entry_expired_at(entry: &RegistryEntry, now_epoch: i64) -> bool {
+    now_epoch.saturating_sub(entry.heartbeat_epoch) > BGJOB_HEARTBEAT_STALE_AFTER_S
+}
+
+/// Return whether a live, heartbeat-fresh registry entry belongs to a run and clone.
 #[must_use]
 pub fn has_live_entry(host: &dyn ProcessIdentityHost, repo_root: &Path, run_id: &str) -> bool {
     let Ok(root) = registry_root() else {
@@ -2258,16 +2300,16 @@ mod tests {
         RECOVERY_LEASE_MALFORMED_STALE_AFTER, REGISTRY_SENTINEL_PREFIX, RecoveryClaim,
         RecoveryLeaseFaultPhase, RegistryEntry, absolute_path, bgjob_dir, checked_dir,
         child_liveness, claim_recovery, completion_result_is_visible, daemon_liveness,
-        default_run_id, ensure_directory, ensure_under, entry_expired, epoch_now, expand_home,
-        finish_completion_transaction, has_live_entry_at, identity_rows, iter_entries_at,
-        log_paths, parse_identity, prepare_completion_transaction, private_atomic_write,
-        read_completion_transaction, read_entry, read_recovery_lease, refresh_wait_lease,
-        registry_path, reject_line_value, release_recovery_claim, render_rows, resolve_candidate,
-        resolve_run_id, resolved_directory, result_env_path, set_recovery_lease_fault,
-        startup_env_path, temporary_path, unlink_entry, validate_initial_merge_rows,
-        validate_merge_result_env, validate_parent_chain, validate_run_id, validate_slug,
-        validate_terminal_stdout_key, validated_path, wait_lease_is_fresh, wait_lease_path,
-        write_entry_at,
+        default_run_id, ensure_directory, ensure_under, entry_expired, entry_expired_at, epoch_now,
+        expand_home, finish_completion_transaction, has_live_entry_at, identity_rows,
+        iter_entries_at, log_paths, parse_identity, prepare_completion_transaction,
+        private_atomic_write, read_completion_transaction, read_entry, read_recovery_lease,
+        refresh_wait_lease, refresh_wait_lease_at, registry_path, reject_line_value,
+        release_recovery_claim, render_rows, resolve_candidate, resolve_run_id, resolved_directory,
+        result_env_path, set_recovery_lease_fault, startup_env_path, temporary_path, unlink_entry,
+        validate_initial_merge_rows, validate_merge_result_env, validate_parent_chain,
+        validate_run_id, validate_slug, validate_terminal_stdout_key, validated_path,
+        wait_lease_is_fresh, wait_lease_is_fresh_at, wait_lease_path, write_entry_at,
     };
     use crate::{
         IdentityProbeOutput, ProcessBirthIdentity, ProcessBirthIdentityProbeOutput,
@@ -2312,6 +2354,7 @@ mod tests {
             child_allows_exec: false,
             owner,
             start_epoch: 1,
+            heartbeat_epoch: 1,
             budget_s: 30,
             stdout_log: log_dir.join("demo-step.stdout.log"),
             stderr_log: log_dir.join("demo-step.stderr.log"),
@@ -2517,6 +2560,34 @@ mod tests {
                 .ends_with("lease-step.wait-lease.env")
         );
         assert!(!wait_lease_is_fresh(tmpdir, "lease-step", 0.0));
+    }
+
+    #[test]
+    fn wait_lease_wall_jump_is_stale_until_a_resuming_waiter_refreshes() {
+        let sandbox = tempfile::tempdir().expect("tempdir");
+        let tmpdir = sandbox.path();
+        refresh_wait_lease_at(tmpdir, "lease-step", 1_000, 42).expect("initial refresh");
+        assert!(wait_lease_is_fresh_at(tmpdir, "lease-step", 390.0, 1_390.0));
+        assert!(!wait_lease_is_fresh_at(
+            tmpdir,
+            "lease-step",
+            390.0,
+            14_400.0
+        ));
+
+        refresh_wait_lease_at(tmpdir, "lease-step", 14_400, 43).expect("wake refresh");
+        assert!(wait_lease_is_fresh_at(
+            tmpdir,
+            "lease-step",
+            390.0,
+            14_400.0
+        ));
+        assert!(wait_lease_is_fresh_at(
+            tmpdir,
+            "lease-step",
+            390.0,
+            14_000.0
+        ));
     }
 
     #[test]
@@ -3087,6 +3158,7 @@ mod tests {
                     && !line.starts_with("RECOVERY_INPUTS_VERSION=")
                     && !line.starts_with("MERGE_RESULT_ENV=")
                     && !line.starts_with("TERMINAL_STDOUT_KEY=")
+                    && !line.starts_with("HEARTBEAT_EPOCH=")
                     && !line.starts_with(REGISTRY_SENTINEL_PREFIX)
             })
             .collect::<Vec<_>>()
@@ -3103,6 +3175,7 @@ mod tests {
         assert!(legacy_entry.terminal_stdout_key.is_none());
         assert!(legacy_entry.sentinel_paths.is_empty());
         assert!(!legacy_entry.recovery_inputs_recorded);
+        assert_eq!(legacy_entry.heartbeat_epoch, legacy_entry.start_epoch);
         assert!(
             legacy_entry
                 .owner
@@ -3140,11 +3213,13 @@ mod tests {
         let tmpdir = checked_dir(sandbox.path(), "tmpdir", true).expect("tmpdir");
         let registry = tmpdir.join("registry");
         let mut record = entry(&tmpdir, None);
-        record.start_epoch = i64::MAX;
-        assert!(!entry_expired(&record));
         record.start_epoch = 0;
-        record.budget_s = -1;
-        assert!(entry_expired(&record));
+        record.heartbeat_epoch = 10_000;
+        record.budget_s = 1;
+        assert!(!entry_expired_at(&record, 10_030));
+        assert!(entry_expired_at(&record, 10_031));
+        record.heartbeat_epoch = i64::MAX;
+        assert!(!entry_expired(&record));
 
         let path = write_entry_at(&record, Some(&registry)).expect("write registry");
         assert!(read_entry(&path).is_some());
@@ -3170,6 +3245,7 @@ mod tests {
         record.daemon = live_identity(11);
         record.child = live_identity(12);
         record.start_epoch = epoch_now();
+        record.heartbeat_epoch = epoch_now();
         record.budget_s = 60;
         let path = write_entry_at(&record, Some(&registry)).expect("registry entry");
 

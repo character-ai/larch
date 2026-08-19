@@ -9,7 +9,7 @@ from pathlib import Path
 
 from larch import io as larch_io
 from larch.bgjob import model
-from larch.core import process_identity
+from larch.core import config, process_identity
 from larch.report.progress_file import resolve_owned_run_id
 
 
@@ -82,6 +82,7 @@ def write_entry(entry: model.RegistryEntry) -> Path:
         ("LOG_DIR", str(entry.log_dir)),
         ("CLONE_PATH", str(entry.clone_path)),
         ("START_EPOCH", str(entry.start_epoch)),
+        (config.BGJOB_HEARTBEAT_EPOCH_KEY, str(entry.heartbeat_epoch)),
         ("BUDGET_S", str(entry.budget_s)),
         ("STDOUT_LOG", str(entry.stdout_log)),
         ("STDERR_LOG", str(entry.stderr_log)),
@@ -113,6 +114,9 @@ def read_entry(path: Path) -> model.RegistryEntry | None:
         result_env = _validated_path(Path(rows["RESULT_ENV"]), root=model.bgjob_dir(tmpdir))
         if stdout_log is None or stderr_log is None or result_env is None:
             return None
+        start_epoch = int(rows["START_EPOCH"])
+        heartbeat_raw = rows.get(config.BGJOB_HEARTBEAT_EPOCH_KEY)
+        heartbeat_epoch = start_epoch if heartbeat_raw is None else int(heartbeat_raw)
         return model.RegistryEntry(
             step=model.validate_slug(rows["STEP"], label="step"),
             run_id=model.validate_run_id(rows["RUN_ID"]),
@@ -122,7 +126,8 @@ def read_entry(path: Path) -> model.RegistryEntry | None:
             daemon=daemon,
             child=child,
             owner=_parse_identity(rows, "OWNER"),
-            start_epoch=int(rows["START_EPOCH"]),
+            start_epoch=start_epoch,
+            heartbeat_epoch=heartbeat_epoch,
             budget_s=int(rows["BUDGET_S"]),
             stdout_log=stdout_log,
             stderr_log=stderr_log,
@@ -171,11 +176,11 @@ def daemon_liveness(entry: model.RegistryEntry) -> model.LivenessVerdict:
 
 
 def entry_expired(entry: model.RegistryEntry) -> bool:
-    return time.time() - entry.start_epoch > entry.budget_s
+    return time.time() - entry.heartbeat_epoch > config.BGJOB_HEARTBEAT_STALE_AFTER_S
 
 
 def has_live_entry(*, repo_root: Path, run_id: str) -> bool:
-    """Return whether an in-budget background job is live for this run and clone."""
+    """Return whether a heartbeat-fresh background job is live for this run and clone."""
     try:
         safe_run_id = model.validate_run_id(run_id)
         repo_real = repo_root.resolve()

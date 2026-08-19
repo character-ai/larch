@@ -636,6 +636,17 @@ See the canonical
 [cross-repository failure-report contract](security/artifacts-redaction-and-publication.md#cross-repository-failure-reports)
 for the confidentiality and fallback rules shared by public reporters.
 
+## Optional macOS bgjob idle-sleep prevention
+
+`LARCH_BGJOB_CAFFEINATE=true` runs each requested bgjob command under the fixed
+`/usr/bin/caffeinate -i` wrapper on macOS. The setting is off by default. It is
+a no-op on other platforms and when that executable is absent.
+
+The `-i` assertion prevents idle system sleep only while the requested command
+runs. It does not prevent lid-close sleep, clamshell sleep, forced sleep, or
+shutdown. The persistent bgjob worker remains the process-group leader and
+retains its normal teardown responsibilities.
+
 ## Optional dedicated-runner background-task clamp
 
 After a workflow has migrated to bgjob waits, operators running dedicated autonomous sessions may set `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` to make Claude background tasks unavailable at the product layer. This is optional and has tradeoffs: it also disables background subagents and Ctrl+B behavior in that session.
