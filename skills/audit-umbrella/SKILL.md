@@ -186,7 +186,9 @@ Persist the full proposal before its first public mutation:
   >"$AUDIT_TMPDIR/proposal.env"
 ```
 
-Require `AUDIT_PROPOSAL_PERSISTED=true` and retain `AUDIT_REUSED_LEAF_COUNT` for the final report. Then apply it once with explicit invocation authority:
+Use a Bash tool timeout of 600000 for this command: it reads the live proposal issues and the open issue history, which can take minutes in a large repository. persist-proposal performs no GitHub mutation, so a timeout-killed run leaves the graph untouched and is safe to re-run. It streams a start-of-phase line to stderr before each remote phase, so a killed run is diagnosable from the last line reached.
+
+Require `AUDIT_PROPOSAL_PERSISTED=true` and retain `AUDIT_REUSED_LEAF_COUNT` for the final report. Then apply it once with explicit invocation authority. Use a Bash tool timeout of 600000 for apply as well, since it re-reads live issue state before mutating:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-umbrella apply \
