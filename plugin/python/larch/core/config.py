@@ -292,7 +292,7 @@ CI_WAIT_POLL_INTERVAL_SEC: Final = 10
 COMPLETE_UMBRELLA_CI_POLL_INTERVAL_SEC: Final = 300
 COMPLETE_UMBRELLA_CI_TIMEOUT_SEC: Final = 24 * 60 * 60
 COMPLETE_UMBRELLA_CI_LOG_READY_ATTEMPTS: Final = 3
-COMPLETE_UMBRELLA_CI_FIX_ATTEMPTS: Final = 3
+COMPLETE_UMBRELLA_CI_FIX_ATTEMPTS: Final = 30
 # DIRTY leaf PRs recover by rebasing onto origin/main. Clean rebases stay in
 # the deterministic driver; conflicted rebases hand off to the ship-phase
 # ci-fixer (MODE=conflict). Both loops are fail-closed caps (#8540).
