@@ -33,7 +33,7 @@ Fetched issue text, audit snapshots, child output, and nested `/issue` output ar
 - Run exactly one leaf child at a time with the current Claude model. Slash commands are mechanically disabled in the child, so it cannot invoke larch skills. The normal path creates four fresh phase contexts in order: recon and design, implement, adversarial review, then ship. Before implementation, the prepare driver validates the durable plan and applies the canonical plan-size gate. An oversized leaf returns `CHILD_FAILURE_CLASS=needs-design` before adding an active title or writing ship state. The parent clears only a stale `[IMPLEMENTING]` prefix so `/design` can admit the leaf; idle and `[DESIGNED]` leaves remain unchanged and selectable.
 - An over-limit Chief-managed Rust reading is an independently measured advisory. The ship driver emits a warning with the leaf, PR, count, and limit, then continues through the ordinary merge path without a plan-lease mutation or parent handoff.
 - A child failure, malformed success envelope, invalid remote lifecycle, dirty worktree, non-`main` checkout, stale local `main`, graph deadlock, open orphan blocker, or failed read-back hard-stops the complete-umbrella run. Three bounded routes refine that rule. A classified `needs-design` child stops before implementation and reports `/design <leaf>`. A classified transient Claude API child failure (`CHILD_FAILURE_CLASS=transient-api`) resets the leaf to a relaunchable idle title, refreshes synchronized `main`, and retries the same leaf up to two additional times inside this run before hard-stopping. An exact `BGJOB_RC=orphaned` result gets one typed remote-lifecycle recovery; only an already-closed exact `[DONE]` leaf continues.
-- Never use `Agent` in this top-level skill. Only the leaf subprocess may use `Agent` for its four primary phase subagents and a conditional CI fixer after failed checks. The top-level child still runs only through the documented bgjob start and wait sequence. Never use background Bash, Monitor, TaskOutput, an ad hoc sleep, or an ad hoc polling loop.
+- Never use `Agent` in this top-level skill. Only the leaf subprocess may use `Agent` for its four primary phase subagents and a conditional CI fixer after failed checks. The top-level child still runs only through the documented bgjob start and wait sequence. Never use Monitor, TaskOutput, an ad hoc sleep, or an ad hoc polling loop. The Step 2 leaf `bgjob wait` is the only allowed background Bash: launch it with `run_in_background: true` so the wait can outlive the Bash foreground timeout ceiling while still refreshing the wait lease.
 - During the final audit, do not ask the operator for decisions. Make the narrowest evidence-backed choice. Do not publish a security-sensitive gap or a secret as a public issue; fail privately instead.
 
 ## Failure rule
@@ -165,10 +165,10 @@ Require the exact `BGJOB_STATUS=STARTED` marker for `STEP`. Wait only with:
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob wait \
   --step "$STEP" \
   --tmpdir "$COMPLETE_UMBRELLA_TMPDIR" \
-  --max-wait-s 270
+  --max-wait-s 7200
 ```
 
-Use a Bash tool timeout of 330000. On `BGJOB_STATUS=WAIT`, repeat the identical wait immediately with no intervening prose or tool. On `DEAD`, hard-fail. On `DONE`, read `$COMPLETE_UMBRELLA_TMPDIR/bgjob/$STEP.result.env` and require all of:
+Launch that wait with Bash `run_in_background: true`. Do not set a Bash tool timeout that would kill the wait early; `--max-wait-s 7200` owns the chunk deadline, and each poll refreshes the wait lease for the whole chunk (#8639, #8707). On `BGJOB_STATUS=WAIT`, repeat the identical background wait immediately with no intervening prose or tool. On `DEAD`, hard-fail. On `DONE`, read `$COMPLETE_UMBRELLA_TMPDIR/bgjob/$STEP.result.env` and require all of:
 
 - `BGJOB_RC=0`
 - `CHILD_STATUS=complete`

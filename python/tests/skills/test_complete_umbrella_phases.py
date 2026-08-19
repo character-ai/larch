@@ -153,6 +153,9 @@ def test_leaf_bgjob_start_binds_durable_session_owner() -> None:
     )
     assert 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start' in skill
     assert "wait lease" in skill
+    assert "--max-wait-s 7200" in skill
+    assert "run_in_background: true" in skill
+    assert "330000" not in skill
     wait_contract = (
         REPO_ROOT / "skills" / "shared" / "bgjob-wait.md"
     ).read_text(encoding="utf-8")
