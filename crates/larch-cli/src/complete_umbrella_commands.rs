@@ -4,6 +4,7 @@ use crate::{
     git_command_runtime::GitCommandRuntime,
     github_repository_resolution::repository_ref,
     github_service::{ServiceFailure, with_github_service},
+    net_commands::{validate_wait_online_ceiling, wait_online_for},
     session_artifact_support::{
         canonical_directory, confine_session_path, read_expected_file, temporary_root,
         write_private_file,
@@ -22,17 +23,18 @@ use larch_adapters::{
 use larch_core::{
     COMPLETE_UMBRELLA_CHILD_COMPLETE, COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN,
     COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API, COMPLETE_UMBRELLA_CHILD_NEEDS_DESIGN,
-    ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext, DONE_PREFIX, DuplicatePolicy,
-    EnvFile, ExternalProcessRunner, ExternalProgram, GitHubCloseReason, GitHubIssue,
-    GitHubIssueState, GitHubRepositoryRef, GitHubService, Head, IMPLEMENTING_PREFIX,
-    IssueMutationField, IssueMutationRequest, KvDocument, ParseOptions, ProcessRequest,
-    RepositoryRead, StatusOptions, VendorLaunchRequest, VendorProgram, build_claude_argv,
-    complete_umbrella_child_prompt, complete_umbrella_done_title,
-    complete_umbrella_leaf_non_candidate, complete_umbrella_relaunch_title,
-    complete_umbrella_start_title, emit_kv, has_umbrella_proposal, is_controlling_umbrella_title,
-    is_transient_claude_api_error, parse_claude_envelope, redact, redact_issue_mutation_request,
-    select_complete_umbrella_leaf, single_line, umbrella_leaf_opening, umbrella_leaf_prefix,
-    validate_complete_umbrella_leaf, validate_complete_umbrella_parent,
+    ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext, DEFAULT_NET_WAIT_CEILING,
+    DONE_PREFIX, DuplicatePolicy, EnvFile, ExternalProcessRunner, ExternalProgram,
+    GitHubCloseReason, GitHubIssue, GitHubIssueState, GitHubRepositoryRef, GitHubService, Head,
+    IMPLEMENTING_PREFIX, IssueMutationField, IssueMutationRequest, KvDocument, ParseOptions,
+    ProcessRequest, RepositoryRead, StatusOptions, VendorLaunchRequest, VendorProgram,
+    WaitOnlineResult, build_claude_argv, complete_umbrella_child_prompt,
+    complete_umbrella_done_title, complete_umbrella_leaf_non_candidate,
+    complete_umbrella_relaunch_title, complete_umbrella_start_title, emit_kv,
+    has_umbrella_proposal, is_controlling_umbrella_title, is_transient_claude_api_error,
+    parse_claude_envelope, redact, redact_issue_mutation_request, select_complete_umbrella_leaf,
+    single_line, umbrella_leaf_opening, umbrella_leaf_prefix, validate_complete_umbrella_leaf,
+    validate_complete_umbrella_parent,
 };
 use serde::Serialize;
 #[cfg(test)]
@@ -45,6 +47,7 @@ use std::{
     num::NonZeroUsize,
     path::{Path, PathBuf},
     process::ExitCode,
+    thread,
     time::Duration,
 };
 
@@ -53,6 +56,9 @@ const CHILD_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 const CHILD_SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 const CHILD_OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
 const MAX_TRANSIENT_CHILD_RETRIES: u8 = 2;
+const MAX_TRANSIENT_RESET_ATTEMPTS: u8 = 3;
+const TRANSIENT_RESET_INITIAL_BACKOFF: Duration = Duration::from_secs(2);
+const TRANSIENT_RESET_MAX_BACKOFF: Duration = Duration::from_secs(4);
 const RUN_LEAVES_STEP: &str = "complete-umbrella-leaves";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -166,6 +172,9 @@ pub struct RunLeavesArguments {
     output: PathBuf,
     #[arg(long)]
     result_env: PathBuf,
+    /// Positive per-recovery connectivity wait ceiling, up to the core limit.
+    #[arg(long, default_value_t = DEFAULT_NET_WAIT_CEILING.as_secs())]
+    net_wait_ceiling_s: u64,
     #[arg(long, action = clap::ArgAction::SetTrue)]
     operator_invoked: bool,
 }
@@ -334,59 +343,125 @@ impl RunLeavesFailure {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct RunLeavesMetrics {
+    child_attempt_count: u64,
+    transient_child_retry_count: u64,
+    net_probe_attempt_count: u64,
+    net_wait_seconds: u64,
+    leaf_reset_attempt_count: u64,
+    reset_backoff_seconds: u64,
+}
+
+impl RunLeavesMetrics {
+    fn record_wait(&mut self, result: WaitOnlineResult) {
+        self.net_probe_attempt_count = self
+            .net_probe_attempt_count
+            .saturating_add(u64::from(result.probe_attempts()));
+        self.net_wait_seconds = self
+            .net_wait_seconds
+            .saturating_add(result.waited().as_secs());
+    }
+
+    fn rows(self) -> [(&'static str, String); 6] {
+        [
+            ("CHILD_ATTEMPT_COUNT", self.child_attempt_count.to_string()),
+            (
+                "TRANSIENT_CHILD_RETRY_COUNT",
+                self.transient_child_retry_count.to_string(),
+            ),
+            (
+                "NET_PROBE_ATTEMPT_COUNT",
+                self.net_probe_attempt_count.to_string(),
+            ),
+            ("NET_WAIT_SECONDS", self.net_wait_seconds.to_string()),
+            (
+                "LEAF_RESET_ATTEMPT_COUNT",
+                self.leaf_reset_attempt_count.to_string(),
+            ),
+            (
+                "RESET_BACKOFF_SECONDS",
+                self.reset_backoff_seconds.to_string(),
+            ),
+        ]
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum RunLeavesEnvelope {
     Progress {
         action: &'static str,
         leaf: u64,
         completed: usize,
+        metrics: RunLeavesMetrics,
     },
     Audit {
         completed: usize,
+        metrics: RunLeavesMetrics,
     },
-    Failure(RunLeavesFailure),
+    Failure {
+        failure: RunLeavesFailure,
+        metrics: RunLeavesMetrics,
+    },
 }
 
 impl RunLeavesEnvelope {
     fn render(&self) -> Result<String, String> {
         const KEYS: &[&str] = &[
+            "CHILD_ATTEMPT_COUNT",
             "COMPLETED_LEAF_COUNT",
             "CURRENT_LEAF",
             "FAILED_LEAF",
             "FAILED_STEP",
             "FAILURE_REASON",
+            "LEAF_RESET_ATTEMPT_COUNT",
+            "NET_PROBE_ATTEMPT_COUNT",
+            "NET_WAIT_SECONDS",
             "NEXT_ACTION",
             "OPEN_LEAF_COUNT",
+            "RESET_BACKOFF_SECONDS",
             "SNAPSHOT_WRITTEN",
+            "TRANSIENT_CHILD_RETRY_COUNT",
         ];
-        let rows = match self {
+        let (mut rows, metrics) = match self {
             Self::Progress {
                 action,
                 leaf,
                 completed,
-            } => vec![
-                ("NEXT_ACTION", (*action).to_owned()),
-                ("CURRENT_LEAF", leaf.to_string()),
-                ("COMPLETED_LEAF_COUNT", completed.to_string()),
-            ],
-            Self::Audit { completed } => vec![
-                ("NEXT_ACTION", "audit".to_owned()),
-                ("COMPLETED_LEAF_COUNT", completed.to_string()),
-                ("OPEN_LEAF_COUNT", "0".to_owned()),
-                ("SNAPSHOT_WRITTEN", "true".to_owned()),
-            ],
-            Self::Failure(failure) => vec![
-                ("NEXT_ACTION", failure.next_action.to_owned()),
-                ("FAILED_STEP", failure.step.to_owned()),
-                (
-                    "FAILED_LEAF",
-                    failure
-                        .leaf
-                        .map_or_else(|| "0".to_owned(), |leaf| leaf.to_string()),
-                ),
-                ("FAILURE_REASON", failure.reason.clone()),
-            ],
+                metrics,
+            } => (
+                vec![
+                    ("NEXT_ACTION", (*action).to_owned()),
+                    ("CURRENT_LEAF", leaf.to_string()),
+                    ("COMPLETED_LEAF_COUNT", completed.to_string()),
+                ],
+                *metrics,
+            ),
+            Self::Audit { completed, metrics } => (
+                vec![
+                    ("NEXT_ACTION", "audit".to_owned()),
+                    ("COMPLETED_LEAF_COUNT", completed.to_string()),
+                    ("OPEN_LEAF_COUNT", "0".to_owned()),
+                    ("SNAPSHOT_WRITTEN", "true".to_owned()),
+                ],
+                *metrics,
+            ),
+            Self::Failure { failure, metrics } => (
+                vec![
+                    ("NEXT_ACTION", failure.next_action.to_owned()),
+                    ("FAILED_STEP", failure.step.to_owned()),
+                    (
+                        "FAILED_LEAF",
+                        failure
+                            .leaf
+                            .map_or_else(|| "0".to_owned(), |leaf| leaf.to_string()),
+                    ),
+                    ("FAILURE_REASON", failure.reason.clone()),
+                ],
+                *metrics,
+            ),
         };
+        rows.extend(metrics.rows());
         let borrowed = rows
             .iter()
             .map(|(key, value)| (*key, value.as_str()))
@@ -404,7 +479,9 @@ trait RunLeavesOperations {
     fn write_snapshot(&mut self, graph: &GraphState) -> Result<(), String>;
     fn sync_main(&mut self) -> Result<(), String>;
     fn run_child(&mut self, leaf: u64) -> ChildAttempt;
+    fn wait_online(&mut self) -> Result<WaitOnlineResult, String>;
     fn reset_leaf(&mut self, leaf: u64) -> Result<(), String>;
+    fn wait_reset_backoff(&mut self, duration: Duration);
     fn write_result(&mut self, envelope: &RunLeavesEnvelope) -> Result<(), String>;
 }
 
@@ -515,16 +592,20 @@ fn run_leaves(arguments: &RunLeavesArguments) -> Result<(), String> {
 fn execute_run_leaves(
     operations: &mut impl RunLeavesOperations,
 ) -> Result<usize, RunLeavesFailure> {
-    match drive_run_leaves(operations) {
+    let mut metrics = RunLeavesMetrics::default();
+    match drive_run_leaves(operations, &mut metrics) {
         Ok(completed) => {
-            let envelope = RunLeavesEnvelope::Audit { completed };
+            let envelope = RunLeavesEnvelope::Audit { completed, metrics };
             operations
                 .write_result(&envelope)
                 .map_err(|error| RunLeavesFailure::failed("write-result", None, error))?;
             Ok(completed)
         }
         Err(failure) => {
-            let envelope = RunLeavesEnvelope::Failure(failure.clone());
+            let envelope = RunLeavesEnvelope::Failure {
+                failure: failure.clone(),
+                metrics,
+            };
             if let Err(error) = operations.write_result(&envelope) {
                 return Err(RunLeavesFailure::failed(
                     "write-result",
@@ -537,7 +618,10 @@ fn execute_run_leaves(
     }
 }
 
-fn drive_run_leaves(operations: &mut impl RunLeavesOperations) -> Result<usize, RunLeavesFailure> {
+fn drive_run_leaves(
+    operations: &mut impl RunLeavesOperations,
+    metrics: &mut RunLeavesMetrics,
+) -> Result<usize, RunLeavesFailure> {
     let mut pending_verification = None;
     let mut completed = 0;
     loop {
@@ -552,7 +636,7 @@ fn drive_run_leaves(operations: &mut impl RunLeavesOperations) -> Result<usize, 
         let Some(leaf) = select_run_leaves_leaf(operations, &graph)? else {
             return Ok(completed);
         };
-        run_selected_leaf(operations, leaf, completed)?;
+        run_selected_leaf(operations, leaf, completed, metrics)?;
         pending_verification = Some(leaf);
     }
 }
@@ -601,28 +685,37 @@ fn run_selected_leaf(
     operations: &mut impl RunLeavesOperations,
     leaf: u64,
     completed: usize,
+    metrics: &mut RunLeavesMetrics,
 ) -> Result<(), RunLeavesFailure> {
-    write_run_leaves_progress(operations, "launch", leaf, completed)?;
+    write_run_leaves_progress(operations, "launch", leaf, completed, *metrics)?;
     operations
         .sync_main()
         .map_err(|error| RunLeavesFailure::failed("sync-before-child", Some(leaf), error))?;
-    run_child_attempts(operations, leaf, completed)?;
+    run_child_attempts(operations, leaf, completed, metrics)?;
     operations
         .sync_main()
         .map_err(|error| RunLeavesFailure::failed("sync-after-child", Some(leaf), error))?;
-    write_run_leaves_progress(operations, "verify", leaf, completed)
+    write_run_leaves_progress(operations, "verify", leaf, completed, *metrics)
 }
 
 fn run_child_attempts(
     operations: &mut impl RunLeavesOperations,
     leaf: u64,
     completed: usize,
+    metrics: &mut RunLeavesMetrics,
 ) -> Result<(), RunLeavesFailure> {
     let mut transient_retries = 0;
     loop {
+        if transient_retries > 0 {
+            metrics.transient_child_retry_count =
+                metrics.transient_child_retry_count.saturating_add(1);
+        }
+        metrics.child_attempt_count = metrics.child_attempt_count.saturating_add(1);
         match operations.run_child(leaf) {
             ChildAttempt::Complete => return Ok(()),
             ChildAttempt::NeedsDesign => {
+                metrics.leaf_reset_attempt_count =
+                    metrics.leaf_reset_attempt_count.saturating_add(1);
                 operations.reset_leaf(leaf).map_err(|error| {
                     RunLeavesFailure::failed(
                         "reset-leaf",
@@ -635,27 +728,15 @@ fn run_child_attempts(
             ChildAttempt::TransientApi(_reason)
                 if transient_retries < MAX_TRANSIENT_CHILD_RETRIES =>
             {
+                recover_transient_leaf(operations, leaf, metrics)?;
                 transient_retries += 1;
-                operations.reset_leaf(leaf).map_err(|error| {
-                    RunLeavesFailure::failed(
-                        "reset-leaf",
-                        Some(leaf),
-                        format!("transient child reset failed: {error}"),
-                    )
-                })?;
-                write_run_leaves_progress(operations, "launch", leaf, completed)?;
+                write_run_leaves_progress(operations, "launch", leaf, completed, *metrics)?;
                 operations.sync_main().map_err(|error| {
                     RunLeavesFailure::failed("sync-before-retry", Some(leaf), error)
                 })?;
             }
             ChildAttempt::TransientApi(reason) => {
-                operations.reset_leaf(leaf).map_err(|error| {
-                    RunLeavesFailure::failed(
-                        "reset-leaf",
-                        Some(leaf),
-                        format!("exhausted transient child reset failed: {error}"),
-                    )
-                })?;
+                recover_transient_leaf(operations, leaf, metrics)?;
                 return Err(RunLeavesFailure::failed(
                     "run-child",
                     Some(leaf),
@@ -672,17 +753,87 @@ fn run_child_attempts(
     }
 }
 
+fn recover_transient_leaf(
+    operations: &mut impl RunLeavesOperations,
+    leaf: u64,
+    metrics: &mut RunLeavesMetrics,
+) -> Result<(), RunLeavesFailure> {
+    wait_for_connectivity(operations, leaf, metrics)?;
+    for attempt in 1..=MAX_TRANSIENT_RESET_ATTEMPTS {
+        metrics.leaf_reset_attempt_count = metrics.leaf_reset_attempt_count.saturating_add(1);
+        match operations.reset_leaf(leaf) {
+            Ok(()) => return Ok(()),
+            Err(error) if attempt == MAX_TRANSIENT_RESET_ATTEMPTS => {
+                return Err(RunLeavesFailure::failed(
+                    "reset-leaf",
+                    Some(leaf),
+                    format!(
+                        "transient child reset failed after {MAX_TRANSIENT_RESET_ATTEMPTS} attempts: {error}"
+                    ),
+                ));
+            }
+            Err(_error) => {
+                let delay = transient_reset_backoff(attempt);
+                operations.wait_reset_backoff(delay);
+                metrics.reset_backoff_seconds = metrics
+                    .reset_backoff_seconds
+                    .saturating_add(delay.as_secs());
+                wait_for_connectivity(operations, leaf, metrics)?;
+            }
+        }
+    }
+    Err(RunLeavesFailure::failed(
+        "reset-leaf",
+        Some(leaf),
+        "transient child reset loop ended without a result",
+    ))
+}
+
+fn wait_for_connectivity(
+    operations: &mut impl RunLeavesOperations,
+    leaf: u64,
+    metrics: &mut RunLeavesMetrics,
+) -> Result<(), RunLeavesFailure> {
+    let result = operations.wait_online().map_err(|error| {
+        RunLeavesFailure::failed(
+            "wait-online",
+            Some(leaf),
+            format!("connectivity wait failed: {error}"),
+        )
+    })?;
+    metrics.record_wait(result);
+    if result.online() {
+        Ok(())
+    } else {
+        Err(RunLeavesFailure::failed(
+            "wait-online",
+            Some(leaf),
+            "connectivity wait ceiling exhausted",
+        ))
+    }
+}
+
+fn transient_reset_backoff(failed_attempt: u8) -> Duration {
+    let exponent = u32::from(failed_attempt.saturating_sub(1));
+    let multiplier = 1_u32.checked_shl(exponent).unwrap_or(u32::MAX);
+    TRANSIENT_RESET_INITIAL_BACKOFF
+        .saturating_mul(multiplier)
+        .min(TRANSIENT_RESET_MAX_BACKOFF)
+}
+
 fn write_run_leaves_progress(
     operations: &mut impl RunLeavesOperations,
     action: &'static str,
     leaf: u64,
     completed: usize,
+    metrics: RunLeavesMetrics,
 ) -> Result<(), RunLeavesFailure> {
     operations
         .write_result(&RunLeavesEnvelope::Progress {
             action,
             leaf,
             completed,
+            metrics,
         })
         .map_err(|error| RunLeavesFailure::failed("write-result", Some(leaf), error))
 }
@@ -697,6 +848,8 @@ struct LiveRunLeavesOperations<'a> {
 
 impl<'a> LiveRunLeavesOperations<'a> {
     fn new(arguments: &'a RunLeavesArguments) -> Result<Self, String> {
+        validate_wait_online_ceiling(Duration::from_secs(arguments.net_wait_ceiling_s))
+            .map_err(|error| format!("invalid --net-wait-ceiling-s: {error}"))?;
         let repository = parse_repository(&arguments.repository)?;
         let repo_root = canonical_directory(&arguments.repo_root, "--repo-root")?;
         let output_root = temporary_root(&arguments.output_root, "--output-root")?;
@@ -796,6 +949,10 @@ impl RunLeavesOperations for LiveRunLeavesOperations<'_> {
         classify_child_attempt(leaf, execution, result)
     }
 
+    fn wait_online(&mut self) -> Result<WaitOnlineResult, String> {
+        wait_online_for(Duration::from_secs(self.arguments.net_wait_ceiling_s))
+    }
+
     fn reset_leaf(&mut self, leaf: u64) -> Result<(), String> {
         let arguments = LeafArguments {
             repository: self.arguments.repository.clone(),
@@ -806,6 +963,10 @@ impl RunLeavesOperations for LiveRunLeavesOperations<'_> {
             reset_leaf_remote(service, cancellation, &self.repository, &arguments).await
         })
         .map_err(ServiceFailure::into_detail)
+    }
+
+    fn wait_reset_backoff(&mut self, duration: Duration) {
+        thread::sleep(duration);
     }
 
     fn write_result(&mut self, envelope: &RunLeavesEnvelope) -> Result<(), String> {

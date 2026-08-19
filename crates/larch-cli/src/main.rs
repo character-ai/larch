@@ -86,6 +86,7 @@ mod kill_background;
 mod launcher_support;
 mod learn_from_bugs_commands;
 mod migration_audit_commands;
+mod net_commands;
 mod oos_commands;
 mod oos_file_commands;
 mod plan_quality_commands;
@@ -161,6 +162,7 @@ use complete_umbrella_commands::CompleteUmbrellaCommand;
 use developer_tooling_commands::{AliasCommand, ResidualBashCommand, VerifyCommand};
 use external_defaults_commands::ExternalDefaultsCommand;
 use git_commands::GitCommand;
+use net_commands::NetCommand;
 use plan_review_commands::PlanReviewCommand;
 use rebalance_tests::RebalanceTestsCommand;
 use repo_size_commands::RepoCommand;
@@ -347,6 +349,9 @@ enum Domain {
     /// Narrow provider transports used by Python-owned run-log workflows.
     #[command(subcommand)]
     ObjectStore(ObjectStoreCommand),
+    /// Fixed-endpoint connectivity helpers.
+    #[command(subcommand)]
+    Net(NetCommand),
     /// Composition, capping, ordering, and disposition of a run's OOS batch.
     #[command(subcommand)]
     Oos(OosCommand),
@@ -2226,6 +2231,7 @@ fn run(
         Domain::Ci(command) => Ok(ci_selection::run(command)),
         Domain::AuditUmbrella(command) => Ok(audit_umbrella_commands::run(command)),
         Domain::CompleteUmbrella(command) => Ok(complete_umbrella_commands::run(command)),
+        Domain::Net(command) => Ok(net_commands::run(command)),
         Domain::DirtyTree(command) => Ok(match command {
             DirtyTreeCommand::Baseline(arguments) => {
                 let raw = dirty_tree_raw_arguments("baseline");

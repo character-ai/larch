@@ -472,6 +472,22 @@ validation and transport failures to exit 0 while still emitting
 `STATUS=failed`. The concrete HTTP client lives in
 `crates/larch-adapters/src/http_client.rs`; core owns planning and redaction only.
 
+### Connectivity availability probe
+
+`net wait-online` enters through `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh` and
+uses a credential-free fixed-endpoint probe. The adapter sends unauthenticated
+`HEAD` requests only to `https://api.anthropic.com/` and
+`https://api.github.com/`. It follows no redirects, sends no request body or
+workflow credential, applies fixed connection and request deadlines, and treats
+any received HTTP status as endpoint reachability. Transport errors collapse to
+the offline state and never enter diagnostics.
+
+Core owns the capped exponential-backoff policy, monotonic awake-time ceiling,
+and seven-day hard maximum, plus probe counts and wait duration. The CLI exposes only `NET_ONLINE`,
+`NET_PROBE_ATTEMPT_COUNT`, and `NET_WAIT_SECONDS`. The
+`LARCH_TEST_NET_FORCE_OFFLINE=true` fault hook can only force the adapter
+offline; it cannot select a URL, add headers, or weaken transport policy.
+
 ### Object storage credentials and transport
 
 Cloud Storage uses the larch-owned `ObjectStore` port, the official Rust client,
@@ -851,6 +867,7 @@ boundaries above discoverable without duplicating their operation ledgers:
 | --- | --- |
 | Release, attestations, bootstrap, upgrade | `.github/workflows/rust-release-assets.yaml`, `scripts/larch.sh`, `crates/larch-cli/src/release_plugin_runtime.rs`, `crates/larch-adapters/src/github/attestation.rs`, `python/tests/release/test_assets.py`, `python/tests/release/test_rust_bootstrap.py`, and the clean-install cases in `crates/larch-cli/tests/parity.rs` |
 | GitHub credentials and operations | `crates/larch-adapters/src/github/`, `crates/larch-adapters/src/github_actions.rs`, the [GitHub service inventory](../github-service-inventory.md), and the `service-ownership` rule and tests in `crates/larch-lint/` |
+| Connectivity availability | `crates/larch-core/src/connectivity.rs`, `crates/larch-adapters/src/http_client.rs`, `crates/larch-cli/src/net_commands.rs`, and their focused Rust tests |
 | Google ADC | `crates/larch-adapters/src/google_auth.rs`, the [Google service inventory](../google-service-inventory.md), and the `service-ownership` rule and tests in `crates/larch-lint/` |
 | Object storage | `crates/larch-core/src/object_store.rs`, `crates/larch-adapters/src/google_storage.rs`, `crates/larch-adapters/src/s3_storage.rs`, `crates/larch-adapters/src/run_lifecycle.rs`, `python/larch/report/object_store.py`, the [Google service inventory](../google-service-inventory.md), and their focused Rust and Python tests |
 | Repository reads and Git compatibility | `docs/git-operation-inventory.md`, `crates/larch-adapters/src/git/`, `crates/larch-adapters/tests/git_repository.rs`, `crates/larch-lint/src/rules/git_ownership.rs`, and the command registry clean-install cases |

@@ -2,10 +2,15 @@
 
 use std::time::Duration;
 
-use reqwest::blocking::Client;
+use larch_core::{ConnectivityProbe, ConnectivityProbeFuture, ConnectivityStatus};
+use reqwest::{Client as AsyncClient, blocking::Client as BlockingClient};
 
 /// Default timeout for outbound webhook POSTs.
 const WEBHOOK_TIMEOUT: Duration = Duration::from_secs(10);
+const CONNECTIVITY_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+const CONNECTIVITY_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const CONNECTIVITY_ENDPOINTS: [&str; 2] = ["https://api.anthropic.com/", "https://api.github.com/"];
+const CONNECTIVITY_USER_AGENT: &str = "larch-connectivity-probe";
 
 /// Errors from the shared HTTP client. Messages must not embed secrets or URLs
 /// the caller intends to keep private; callers still scrub before emission.
@@ -38,7 +43,7 @@ impl std::error::Error for HttpClientError {}
 /// fails, or the response status is not success. Callers must scrub secrets
 /// from [`HttpClientError::as_str`] before emitting diagnostics.
 pub fn post_json(url: &str, body: &[u8]) -> Result<(), HttpClientError> {
-    let client = Client::builder()
+    let client = BlockingClient::builder()
         .timeout(WEBHOOK_TIMEOUT)
         .build()
         .map_err(|error| HttpClientError {
@@ -60,9 +65,61 @@ pub fn post_json(url: &str, body: &[u8]) -> Result<(), HttpClientError> {
     Ok(())
 }
 
+/// Fixed, credential-free availability probe for workflow service endpoints.
+pub struct FixedConnectivityProbe {
+    client: AsyncClient,
+    force_offline: bool,
+}
+
+impl FixedConnectivityProbe {
+    /// Build the fixed HTTPS probe. `force_offline` is reserved for the
+    /// environment-gated fault-injection path composed by the CLI.
+    ///
+    /// # Errors
+    ///
+    /// Returns a fixed diagnostic if the HTTP client cannot be constructed.
+    pub fn new(force_offline: bool) -> Result<Self, HttpClientError> {
+        let client = AsyncClient::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(CONNECTIVITY_CONNECT_TIMEOUT)
+            .timeout(CONNECTIVITY_REQUEST_TIMEOUT)
+            .user_agent(CONNECTIVITY_USER_AGENT)
+            .build()
+            .map_err(|_error| HttpClientError {
+                message: "connectivity probe client build failed".to_owned(),
+            })?;
+        Ok(Self {
+            client,
+            force_offline,
+        })
+    }
+}
+
+impl ConnectivityProbe for FixedConnectivityProbe {
+    fn probe(&self, timeout: Duration) -> ConnectivityProbeFuture<'_> {
+        Box::pin(async move {
+            if self.force_offline {
+                return ConnectivityStatus::Offline;
+            }
+            let requests = async {
+                for endpoint in CONNECTIVITY_ENDPOINTS {
+                    if self.client.head(endpoint).send().await.is_err() {
+                        return ConnectivityStatus::Offline;
+                    }
+                }
+                ConnectivityStatus::Online
+            };
+            tokio::time::timeout(timeout, requests)
+                .await
+                .unwrap_or(ConnectivityStatus::Offline)
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::post_json;
+    use super::{FixedConnectivityProbe, post_json};
+    use larch_core::{ConnectivityProbe, ConnectivityStatus};
     use std::{
         io::{Read as _, Write as _},
         net::TcpListener,
@@ -106,5 +163,18 @@ mod tests {
         let error = post_json("http://127.0.0.1:1/no-listener", b"{}").expect_err("connect");
         assert!(error.as_str().contains("http post failed"));
         let _: &dyn std::error::Error = &error;
+    }
+
+    #[test]
+    fn endpoints_are_fixed_and_forced_offline_never_needs_network_access() {
+        assert_eq!(
+            super::CONNECTIVITY_ENDPOINTS,
+            ["https://api.anthropic.com/", "https://api.github.com/"]
+        );
+        let runtime = crate::runtime::LarchRuntime::current_thread().expect("test runtime");
+        let probe = FixedConnectivityProbe::new(true).expect("probe client");
+        let status = runtime.block_on(probe.probe(Duration::from_secs(1)));
+
+        assert_eq!(status, ConnectivityStatus::Offline);
     }
 }
