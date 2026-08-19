@@ -783,10 +783,7 @@ fn reap_pid_residuals(claude_pid: &str) -> Result<(), String> {
 // Shared verb helpers (design_step0.py)
 // ---------------------------------------------------------------------------
 
-pub fn require_design_tmpdir(
-    env: &Env,
-    design_tmpdir: Option<&str>,
-) -> Result<PathBuf, ExitCode> {
+pub fn require_design_tmpdir(env: &Env, design_tmpdir: Option<&str>) -> Result<PathBuf, ExitCode> {
     let raw = design_tmpdir.filter(|value| !value.is_empty()).map_or_else(
         || env_get(env, "DESIGN_TMPDIR", "").to_owned(),
         str::to_owned,

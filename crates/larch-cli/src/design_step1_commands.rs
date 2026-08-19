@@ -181,7 +181,10 @@ fn append_failure(
         "run-log".to_owned(),
         "append-failure".to_owned(),
         "--log".to_owned(),
-        design_tmpdir.join("execution-issues.md").display().to_string(),
+        design_tmpdir
+            .join("execution-issues.md")
+            .display()
+            .to_string(),
         "--site".to_owned(),
         site.to_owned(),
         "--tool".to_owned(),
@@ -202,8 +205,16 @@ fn append_failure(
 // ---------------------------------------------------------------------------
 
 const STEP1E_REENTRY_SENTINELS: [&str; 10] = [
-    "step-1e", "step-2a", "step-2a.5", "step-2b", "step-2b.5", "step-3", "step-3.5", "step-3b",
-    "step-4", "step-4b",
+    "step-1e",
+    "step-2a",
+    "step-2a.5",
+    "step-2b",
+    "step-2b.5",
+    "step-3",
+    "step-3.5",
+    "step-3b",
+    "step-4",
+    "step-4b",
 ];
 
 /// The `step1e-reentry` entry point.
@@ -324,7 +335,10 @@ pub fn step1d7(arguments: &[OsString]) -> ExitCode {
         return code;
     }
     let skip = read_skip_approve_requested(&design_tmpdir);
-    println!("SKIP_APPROVE_REQUESTED={}", if skip { "true" } else { "false" });
+    println!(
+        "SKIP_APPROVE_REQUESTED={}",
+        if skip { "true" } else { "false" }
+    );
     ExitCode::SUCCESS
 }
 
@@ -482,8 +496,14 @@ fn step1d5_collect(
     ];
     args.extend(paths.iter().map(|path| path.display().to_string()));
     let collect = runner.run(plugin_root, &args, &[], false);
-    let _ = fs::write(design_tmpdir.join("brainstorm-collect.stdout.log"), &collect.stdout);
-    let _ = fs::write(design_tmpdir.join("brainstorm-collect.stderr.log"), &collect.stderr);
+    let _ = fs::write(
+        design_tmpdir.join("brainstorm-collect.stdout.log"),
+        &collect.stdout,
+    );
+    let _ = fs::write(
+        design_tmpdir.join("brainstorm-collect.stderr.log"),
+        &collect.stderr,
+    );
     if !collect.stdout.is_empty() {
         if collect.stdout.ends_with('\n') {
             print!("{}", collect.stdout);
@@ -545,9 +565,9 @@ fn brainstorm_stderr_sink_for_output(output_path: &Path, design_tmpdir: &Path) -
 
 /// Port of `_launch_tool_for_sink`.
 fn launch_tool_for_sink(sink: &Path) -> String {
-    let name = sink.file_name().map_or_else(String::new, |value| {
-        value.to_string_lossy().into_owned()
-    });
+    let name = sink
+        .file_name()
+        .map_or_else(String::new, |value| value.to_string_lossy().into_owned());
     name.strip_suffix(".failure.log")
         .map_or_else(|| name.clone(), str::to_owned)
 }
@@ -579,7 +599,10 @@ fn brainstorm_collect_launch_failure_once(
         .and_then(|text| kv_first(&text, "LAUNCHER_EXIT"))
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "1".to_owned());
-    if !exit_code.chars().all(|character| character.is_ascii_digit()) {
+    if !exit_code
+        .chars()
+        .all(|character| character.is_ascii_digit())
+    {
         exit_code = String::from("1");
     }
     if append_failure(
@@ -642,7 +665,11 @@ fn brainstorm_dirty_checkpoint(
     }
     let detected = design_tmpdir.join("dirty-tree-detected.env");
     if recovery {
-        let label = if reason.is_empty() { "unknown" } else { &reason };
+        let label = if reason.is_empty() {
+            "unknown"
+        } else {
+            &reason
+        };
         let mut text = format!(
             "STAGE=brainstorm-collection\nRECOVERY_REQUIRED=true\nDIRTY_TREE_STATUS={label}\n"
         );
@@ -654,7 +681,10 @@ fn brainstorm_dirty_checkpoint(
         let _ = fs::write(&detected, text);
         println!("WARN=brainstorm-collection dirty-tree recovery required (status={label})");
     } else {
-        let _ = fs::write(&detected, "STAGE=brainstorm-collection\nRECOVERY_REQUIRED=false\n");
+        let _ = fs::write(
+            &detected,
+            "STAGE=brainstorm-collection\nRECOVERY_REQUIRED=false\n",
+        );
     }
 }
 
@@ -662,7 +692,11 @@ fn brainstorm_dirty_checkpoint(
 /// substitutes `unknown` for a missing/empty value).
 fn kv_last_status(text: &str) -> String {
     let value = kv_last(text, "STATUS");
-    if value.is_empty() { "unknown".to_owned() } else { value }
+    if value.is_empty() {
+        "unknown".to_owned()
+    } else {
+        value
+    }
 }
 
 /// Last `KEY=` value across `\n`-split lines (empty when absent).
@@ -773,8 +807,14 @@ fn driver_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
         consumer_root: None,
     };
     for line in action_lines {
-        match dispatch_action_line(runner, &plugin_root, &design_tmpdir, &parsed, &mut state, &line)
-        {
+        match dispatch_action_line(
+            runner,
+            &plugin_root,
+            &design_tmpdir,
+            &parsed,
+            &mut state,
+            &line,
+        ) {
             LineOutcome::Continue => {}
             LineOutcome::Exit(code) => return code,
         }
@@ -822,7 +862,9 @@ fn dispatch_action_line(
         println!("ACTION_PASSTHROUGH={line}");
         return LineOutcome::Continue;
     }
-    let sentinel = design_tmpdir.join(".completed").join(normalize_step(action));
+    let sentinel = design_tmpdir
+        .join(".completed")
+        .join(normalize_step(action));
     let no_sentinel = action == "EMIT_PLAN" || action == "VALIDATE_PLAN_COMMANDS";
     if state.resume_seen {
         if sentinel.exists() && !no_sentinel {
@@ -848,8 +890,7 @@ fn dispatch_action_line(
         return LineOutcome::Exit(ExitCode::from(2));
     };
     println!("STEP_STARTED={action}");
-    let (child_args, child_env) =
-        driver_child_command(action, design_tmpdir, &action_args, state);
+    let (child_args, child_env) = driver_child_command(action, design_tmpdir, &action_args, state);
     let outcome = runner.run(plugin_root, &child_args, &child_env, false);
     if !outcome.stdout.is_empty() {
         print!("{}", outcome.stdout);
@@ -984,13 +1025,14 @@ fn resolve_run_id(session_env_path: &Path, implement_tmpdir: &Path) -> String {
         run_id = session_read(&implement_tmpdir.join("parent-issue.md"), "RUN_ID");
     }
     if run_id.is_empty() {
-        let manifests: Vec<PathBuf> = fs::read_dir(implement_tmpdir.join("larch-logs").join("implement"))
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|entry| entry.path().join("manifest.json"))
-            .filter(|path| path.is_file())
-            .collect();
+        let manifests: Vec<PathBuf> =
+            fs::read_dir(implement_tmpdir.join("larch-logs").join("implement"))
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|entry| entry.path().join("manifest.json"))
+                .filter(|path| path.is_file())
+                .collect();
         if manifests.len() == 1
             && let Some(parent) = manifests[0].parent()
             && let Some(name) = parent.file_name()
@@ -1063,7 +1105,9 @@ pub fn step1_log(arguments: &[OsString]) -> ExitCode {
     }
     let run_id = resolve_run_id(&session_env_path, &implement_tmpdir);
     if run_id.is_empty() {
-        return step1_log_fail("RUN_ID unresolved from session-env, parent-issue, manifest, or session-id");
+        return step1_log_fail(
+            "RUN_ID unresolved from session-env, parent-issue, manifest, or session-id",
+        );
     }
     let plan_file = implement_tmpdir.join("plan.txt");
     if !plan_file.is_file() {
@@ -1087,7 +1131,13 @@ pub fn step1_log(arguments: &[OsString]) -> ExitCode {
             plugin_root.display()
         ));
     }
-    match run_step1_log(&plugin_root, &implement_tmpdir, &plan_file, &parsed.goal_text, &run_id) {
+    match run_step1_log(
+        &plugin_root,
+        &implement_tmpdir,
+        &plan_file,
+        &parsed.goal_text,
+        &run_id,
+    ) {
         Ok(code) | Err(code) => code,
     }
 }
@@ -1140,7 +1190,11 @@ fn compose_command(plugin_root: &Path) -> Vec<String> {
     if trimmed.is_empty() {
         vec![
             python3_executable().display().to_string(),
-            plugin_root.join("python").join("cli.py").display().to_string(),
+            plugin_root
+                .join("python")
+                .join("cli.py")
+                .display()
+                .to_string(),
             "plan".to_owned(),
             "compose-goals-test".to_owned(),
         ]
@@ -1194,13 +1248,14 @@ fn compose_to_output(
     let Some((program, program_args)) = compose_cmd.split_first() else {
         return Err(step1_log_fail("compose command is empty"));
     };
-    let temp = implement_tmpdir.join(format!(
-        "plan-goals-test.md.tmp.{}",
-        std::process::id()
-    ));
+    let temp = implement_tmpdir.join(format!("plan-goals-test.md.tmp.{}", std::process::id()));
     let file = match fs::File::create(&temp) {
         Ok(file) => file,
-        Err(error) => return Err(step1_log_fail(&format!("compose temp create failed: {error}"))),
+        Err(error) => {
+            return Err(step1_log_fail(&format!(
+                "compose temp create failed: {error}"
+            )));
+        }
     };
     let mut command = Command::new(program);
     command.args(program_args);
@@ -1289,7 +1344,11 @@ fn log_parent_issue(
         let fail_log = implement_tmpdir.join("parent-issue-write.failure.log");
         let _ = fs::write(
             &fail_log,
-            format!("{}{}", stdout.unwrap_or_default(), stderr.unwrap_or_default()),
+            format!(
+                "{}{}",
+                stdout.unwrap_or_default(),
+                stderr.unwrap_or_default()
+            ),
         );
         append_log_write_failure(plugin_root, implement_tmpdir, &fail_log);
     }
@@ -1309,7 +1368,10 @@ fn append_log_write_failure(plugin_root: &Path, implement_tmpdir: &Path, output_
         "run-log",
         "append-failure",
         "--log",
-        &implement_tmpdir.join("execution-issues.md").display().to_string(),
+        &implement_tmpdir
+            .join("execution-issues.md")
+            .display()
+            .to_string(),
         "--site",
         "1",
         "--tool",
@@ -1509,7 +1571,12 @@ mod tests {
                 .join("brainstorm-collect.stdout.log")
                 .is_file()
         );
-        assert!(fixture.design_tmpdir.join("dirty-tree-detected.env").is_file());
+        assert!(
+            fixture
+                .design_tmpdir
+                .join("dirty-tree-detected.env")
+                .is_file()
+        );
     }
 
     #[test]

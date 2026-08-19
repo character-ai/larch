@@ -386,7 +386,10 @@ fn step1_log_cases() -> Vec<ParityCase> {
         let python = python_executable().to_string_lossy().into_owned();
         let compose = format!("{python} {{sandbox}}/{IMPL_RELATIVE}/compose.py");
         let seeds = vec![
-            SeedFile::text(&format!("{IMPL_RELATIVE}/session-env.sh"), "RUN_ID=testrun\n"),
+            SeedFile::text(
+                &format!("{IMPL_RELATIVE}/session-env.sh"),
+                "RUN_ID=testrun\n",
+            ),
             SeedFile::text(&format!("{IMPL_RELATIVE}/plan.txt"), "plan body\n"),
             SeedFile::text(
                 &format!("{IMPL_RELATIVE}/compose.py"),
