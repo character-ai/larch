@@ -1190,13 +1190,42 @@ enum ResumeLeafState {
 }
 
 fn resume(arguments: &ResumeArguments) -> Result<(), String> {
+    let (session_pid, repository, repository_name) = validate_resume_arguments(arguments)?;
+    let store = RunPointerStore::live()?;
+    resume_from_store(
+        arguments,
+        &store,
+        session_pid,
+        &repository,
+        &repository_name,
+    )
+}
+
+#[cfg(test)]
+fn resume_with_store(arguments: &ResumeArguments, store: &RunPointerStore) -> Result<(), String> {
+    let (session_pid, repository, repository_name) = validate_resume_arguments(arguments)?;
+    resume_from_store(arguments, store, session_pid, &repository, &repository_name)
+}
+
+fn validate_resume_arguments(
+    arguments: &ResumeArguments,
+) -> Result<(u32, GitHubRepositoryRef, String), String> {
     require_issue(arguments.issue, "--issue")?;
     let session_pid = arguments.claude_pid.unwrap_or_else(std::process::id);
     validate_session_pid(session_pid)?;
     let repository = parse_repository(&arguments.repository)?;
     let repository_name = format!("{}/{}", repository.owner(), repository.name());
-    let store = RunPointerStore::live()?;
-    let Some(record) = store.resume_candidate(&repository_name, arguments.issue)? else {
+    Ok((session_pid, repository, repository_name))
+}
+
+fn resume_from_store(
+    arguments: &ResumeArguments,
+    store: &RunPointerStore,
+    session_pid: u32,
+    repository: &GitHubRepositoryRef,
+    repository_name: &str,
+) -> Result<(), String> {
+    let Some(record) = store.resume_candidate(repository_name, arguments.issue)? else {
         emit_kv("RESUME_FOUND", "false");
         return Ok(());
     };
@@ -1208,12 +1237,13 @@ fn resume(arguments: &ResumeArguments) -> Result<(), String> {
     match resume_bgjob_state(&record.state, session_pid)? {
         ResumeBgjobState::Completed
             if record.state.current_step == RunPointerStep::Audit
-                && resume_audit_requires_reselection(&repository, &record.state)? =>
+                && resume_audit_requires_reselection(repository, &record.state)? =>
         {
-            record.state.current_leaf = None;
-            record.state.current_step = RunPointerStep::Select;
-            record.state.transient_attempt_count = 0;
-            record = store.update(&record, record.state.clone())?;
+            let mut state = record.state.clone();
+            state.current_leaf = None;
+            state.current_step = RunPointerStep::Select;
+            state.transient_attempt_count = 0;
+            record = store.update(&record, state)?;
             emit_resume(&record, ResumeAction::Reselect, None, None);
             return Ok(());
         }
@@ -1236,23 +1266,24 @@ fn resume(arguments: &ResumeArguments) -> Result<(), String> {
         })
         .transpose()?
         .flatten();
-    let leaf_state = resume_leaf_state(&repository, &record.state, arguments.operator_invoked)?;
+    let leaf_state = resume_leaf_state(repository, &record.state, arguments.operator_invoked)?;
     let decision = decide_resume_recovery(&record.state, child_result, leaf_state);
     if decision.reset_active_leaf {
         reset_resume_leaf_if_active(
-            &repository,
+            repository,
             &record.state,
             leaf_state,
             arguments.operator_invoked,
         )?;
     }
-    record.state.transient_attempt_count = decision.transient_attempt_count;
-    record.state.current_step = match decision.action {
+    let mut state = record.state.clone();
+    state.transient_attempt_count = decision.transient_attempt_count;
+    state.current_step = match decision.action {
         ResumeAction::Reselect => RunPointerStep::Select,
         ResumeAction::NeedsDesign | ResumeAction::Failed => RunPointerStep::Failed,
         ResumeAction::Wait => record.state.current_step,
     };
-    record = store.update(&record, record.state.clone())?;
+    record = store.update(&record, state)?;
     emit_resume(
         &record,
         decision.action,

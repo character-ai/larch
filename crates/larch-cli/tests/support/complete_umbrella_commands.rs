@@ -1,9 +1,10 @@
 use super::*;
+use crate::github_service::with_test_github_service;
 use larch_adapters::github::OctocrabGitHubService;
 use larch_core::{is_transient_claude_api_error, parse_claude_envelope};
 use larch_test_support::{GitFixture, GitRepository, IssueServiceExchange, IssueServiceStub};
 use serde_json::{Value, json};
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::Arc};
 
 const UMBRELLA: u64 = 40;
 const LEAF: u64 = 41;
@@ -347,6 +348,72 @@ fn orphaned_child_recovery_requires_the_exact_transport_and_leaf_identity() {
 }
 
 #[test]
+fn command_wrappers_verify_recover_and_idempotently_reset_a_leaf() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let closed_leaf = issue_json(
+        LEAF,
+        410,
+        "[DONE] [LEAF OF 40] Implement it",
+        "leaf body",
+        "closed",
+        CLOSED_AT,
+    );
+    let mut exchanges = closed_graph(&parent, &closed_leaf);
+    exchanges.extend(closed_graph(&parent, &closed_leaf));
+    let server = IssueServiceStub::start(exchanges).expect("closed leaf service");
+    let base = server.base_url().to_owned();
+    let github: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+        Arc::new(move || OctocrabGitHubService::with_test_base(&base));
+    let leaf = LeafArguments {
+        repository: String::from("o/r"),
+        umbrella: UMBRELLA,
+        leaf: LEAF,
+    };
+    let result_root = tempfile::tempdir().expect("orphan result root");
+    let result_path = result_root.path().join("orphan.env");
+    fs::write(
+        &result_path,
+        format!("BGJOB_RC=orphaned\nSTEP=complete-umbrella-leaf-{LEAF}\nCHILD_ISSUE={LEAF}\n"),
+    )
+    .expect("orphan result");
+    let recovery = RecoverOrphanedChildArguments {
+        leaf: LeafArguments {
+            repository: leaf.repository.clone(),
+            umbrella: leaf.umbrella,
+            leaf: leaf.leaf,
+        },
+        root: result_root.path().to_path_buf(),
+        result_env: result_path,
+    };
+    with_test_github_service(github, || {
+        verify_child(&leaf).expect("verify closed child");
+        recover_orphaned_child(&recovery).expect("recover closed child");
+    });
+    assert_eq!(server.finish().expect("closed leaf requests").len(), 10);
+
+    let body = format!("{}\n\nTask.", umbrella_leaf_opening(UMBRELLA));
+    let idle_leaf = issue_json(LEAF, 410, "[LEAF OF 40] Task", &body, "open", BEFORE);
+    let server =
+        IssueServiceStub::start(open_graph(&parent, &idle_leaf)).expect("idle leaf service");
+    let base = server.base_url().to_owned();
+    let github: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+        Arc::new(move || OctocrabGitHubService::with_test_base(&base));
+    let reset = ResetLeafArguments {
+        leaf,
+        operator_invoked: true,
+    };
+    with_test_github_service(github, || reset_leaf(&reset)).expect("idempotent reset");
+    assert_eq!(server.finish().expect("idle leaf requests").len(), 6);
+}
+
+#[test]
 fn run_pointer_round_trip_rebind_and_ambiguity_fail_closed() {
     let pointer_root = tempfile::tempdir().expect("pointer root");
     let run_root = tempfile::tempdir().expect("run root");
@@ -393,6 +460,108 @@ fn run_pointer_round_trip_rebind_and_ambiguity_fail_closed() {
     other.repository = String::from("other/r");
     store.create(other).expect("second ambiguous pointer");
     assert!(store.resume_candidate("o/r", UMBRELLA).is_err());
+}
+
+#[test]
+fn run_pointer_conflicts_and_stale_updates_fail_closed() {
+    let pointer_root = tempfile::tempdir().expect("pointer root");
+    let first_run = tempfile::tempdir().expect("first run root");
+    let second_run = tempfile::tempdir().expect("second run root");
+    let store = RunPointerStore::at(pointer_root.path());
+    let record = store
+        .create(run_pointer(first_run.path(), 123))
+        .expect("first pointer");
+
+    assert!(store.create(run_pointer(first_run.path(), 124)).is_err());
+    assert!(
+        store
+            .for_run(
+                "o/r",
+                UMBRELLA,
+                &fs::canonicalize(second_run.path()).expect("second run root"),
+            )
+            .is_err()
+    );
+    let mut changed_identity = record.state.clone();
+    changed_identity.repository = String::from("other/r");
+    assert!(store.update(&record, changed_identity).is_err());
+    assert!(store.rebind(&record, 0).is_err());
+
+    let mut collision = run_pointer(second_run.path(), 456);
+    collision.repository = String::from("other/r");
+    collision.umbrella = GAP;
+    store.create(collision).expect("collision pointer");
+    assert!(store.rebind(&record, 456).is_err());
+    assert!(store.pointer_path(0).is_err());
+    assert!(pointer_pid(Path::new("not-a-pointer.env")).is_err());
+    assert!(pointer_pid(Path::new("current-complete-umbrella-0.env")).is_err());
+    assert!(validate_pointer_tmpdir(Path::new("relative")).is_err());
+    assert!(validate_pointer_tmpdir(Path::new("/tmp/../escape")).is_err());
+    assert!(remove_regular_pointer(&record.path, second_run.path()).is_err());
+    let directory_pointer = pointer_root.path().join("directory-pointer.env");
+    fs::create_dir(&directory_pointer).expect("directory pointer");
+    assert!(remove_regular_pointer(&directory_pointer, pointer_root.path()).is_err());
+
+    let stale_root = tempfile::tempdir().expect("stale pointer root");
+    let stale_store = RunPointerStore::at(stale_root.path());
+    let stale = stale_store
+        .create(run_pointer(first_run.path(), 789))
+        .expect("stale pointer");
+    let mut replacement = stale.state.clone();
+    replacement.transient_attempt_count = 1;
+    private_atomic_write(
+        &stale.path,
+        &replacement.render().expect("replacement pointer"),
+        stale_root.path(),
+    )
+    .expect("replace pointer behind record");
+    assert!(stale_store.update(&stale, stale.state.clone()).is_err());
+    assert!(stale_store.rebind(&stale, 790).is_err());
+    assert!(stale_store.remove(&stale).is_err());
+}
+
+#[test]
+fn run_pointer_invalid_fields_fail_closed() {
+    let pointer_root = tempfile::tempdir().expect("pointer root");
+    let run_root = tempfile::tempdir().expect("run root");
+    let store = RunPointerStore::at(pointer_root.path());
+    let record = store
+        .create(run_pointer(run_root.path(), 123))
+        .expect("run pointer");
+    let valid = record.state.render().expect("valid pointer");
+    assert!(
+        CompleteUmbrellaRunPointer::parse(
+            &valid.replace("RUN_POINTER_VERSION=1", "RUN_POINTER_VERSION=2")
+        )
+        .is_err()
+    );
+    assert!(
+        CompleteUmbrellaRunPointer::parse(
+            &valid.replace("TRANSIENT_ATTEMPT_COUNT=0", "TRANSIENT_ATTEMPT_COUNT=9")
+        )
+        .is_err()
+    );
+    assert!(
+        CompleteUmbrellaRunPointer::parse(&valid.replace(
+            "BGJOB_STEP=complete-umbrella-leaves",
+            "BGJOB_STEP=another-step",
+        ))
+        .is_err()
+    );
+    assert!(
+        CompleteUmbrellaRunPointer::parse(&valid.replace("SESSION_PID=123", "SESSION_PID=0"))
+            .is_err()
+    );
+    assert!(CompleteUmbrellaRunPointer::parse(&format!("{valid}UNEXPECTED=true\n")).is_err());
+    assert_eq!(RunPointerStep::Start.value(), "start");
+    assert_eq!(RunPointerStep::Verify.value(), "verify");
+    assert_eq!(RunPointerStep::Audit.value(), "audit");
+    assert_eq!(RunPointerStep::Failed.value(), "failed");
+    assert_eq!(RunPointerStep::parse("failed"), Ok(RunPointerStep::Failed));
+    assert!(RunPointerStep::parse("unknown").is_err());
+    let mut terminal = record.state;
+    terminal.current_step = RunPointerStep::Failed;
+    assert!(terminal.validate_consistency().is_ok());
 }
 
 #[test]
@@ -515,6 +684,383 @@ fn resume_stuck_title_reselects_and_reuses_the_original_handoff_root() {
             .tmpdir
             .join(format!("complete-umbrella-leaf-{LEAF}")),
         fs::canonicalize(handoff).expect("canonical handoff root")
+    );
+}
+
+#[test]
+fn resume_closed_leaf_reselects_through_the_real_command_path() {
+    let pointer_root = tempfile::tempdir().expect("pointer root");
+    let run_root = tempfile::tempdir().expect("run root");
+    let store = RunPointerStore::at(pointer_root.path());
+    store
+        .create(run_pointer(run_root.path(), 123))
+        .expect("create run pointer");
+
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let leaf = issue_json(
+        LEAF,
+        410,
+        "[DONE] [LEAF OF 40] Implement it",
+        "leaf body",
+        "closed",
+        CLOSED_AT,
+    );
+    let server = IssueServiceStub::start(closed_graph(&parent, &leaf)).expect("issue service");
+    let base = server.base_url().to_owned();
+    let github: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+        Arc::new(move || OctocrabGitHubService::with_test_base(&base));
+    let arguments = ResumeArguments {
+        repository: String::from("o/r"),
+        issue: UMBRELLA,
+        claude_pid: Some(456),
+        operator_invoked: false,
+    };
+
+    with_test_github_service(github, || resume_with_store(&arguments, &store))
+        .expect("resume completed leaf");
+    let resumed = store
+        .resume_candidate("o/r", UMBRELLA)
+        .expect("resumed pointer")
+        .expect("run pointer");
+    assert_eq!(resumed.state.session_pid, 456);
+    assert_eq!(resumed.state.current_step, RunPointerStep::Select);
+    assert_eq!(resumed.state.current_leaf, Some(LEAF));
+    assert_eq!(server.finish().expect("GitHub requests").len(), 5);
+}
+
+#[test]
+fn resume_transient_active_leaf_resets_title_and_checkpoints_retry() {
+    let pointer_root = tempfile::tempdir().expect("pointer root");
+    let run_root = tempfile::tempdir().expect("run root");
+    let store = RunPointerStore::at(pointer_root.path());
+    store
+        .create(run_pointer(run_root.path(), 123))
+        .expect("create run pointer");
+    let child_root = run_root.path().join("complete-umbrella-run-leaves");
+    fs::create_dir(&child_root).expect("child result root");
+    fs::write(
+        child_root.join(format!("child-{LEAF}.env")),
+        format!(
+            "CHILD_STATUS=failed\nCHILD_ISSUE={LEAF}\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\nCHILD_FAILURE_CLASS={COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API}\n"
+        ),
+    )
+    .expect("transient child result");
+
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let body = format!("{}\n\nTask.", umbrella_leaf_opening(UMBRELLA));
+    let active_leaf = issue_json(
+        LEAF,
+        410,
+        "[IMPLEMENTING] [LEAF OF 40] Task",
+        &body,
+        "open",
+        BEFORE,
+    );
+    let idle_leaf = issue_json(LEAF, 410, "[LEAF OF 40] Task", &body, "open", AFTER);
+    let mut exchanges = open_graph(&parent, &active_leaf);
+    exchanges.extend(open_graph(&parent, &active_leaf));
+    exchanges.extend([
+        response(200, &active_leaf),
+        response(200, &active_leaf),
+        response(200, &idle_leaf),
+        response(200, &idle_leaf),
+    ]);
+    let server = IssueServiceStub::start(exchanges).expect("issue service");
+    let base = server.base_url().to_owned();
+    let github: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+        Arc::new(move || OctocrabGitHubService::with_test_base(&base));
+    let arguments = ResumeArguments {
+        repository: String::from("o/r"),
+        issue: UMBRELLA,
+        claude_pid: Some(456),
+        operator_invoked: true,
+    };
+
+    with_test_github_service(github, || resume_with_store(&arguments, &store))
+        .expect("resume transient leaf");
+    let resumed = store
+        .resume_candidate("o/r", UMBRELLA)
+        .expect("resumed pointer")
+        .expect("run pointer");
+    assert_eq!(resumed.state.current_step, RunPointerStep::Select);
+    assert_eq!(resumed.state.current_leaf, Some(LEAF));
+    assert_eq!(resumed.state.transient_attempt_count, 1);
+    let requests = server.finish().expect("GitHub requests");
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.method == "PATCH")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn resume_completed_audit_reselects_when_the_fresh_graph_has_work() {
+    let pointer_root = tempfile::tempdir().expect("pointer root");
+    let run_root = tempfile::tempdir().expect("run root");
+    let store = RunPointerStore::at(pointer_root.path());
+    let mut pointer = run_pointer(run_root.path(), 123);
+    pointer.current_leaf = None;
+    pointer.current_step = RunPointerStep::Audit;
+    store.create(pointer).expect("create audit pointer");
+    let result_path = result_env_path(run_root.path(), RUN_LEAVES_STEP).expect("result env path");
+    fs::create_dir(result_path.parent().expect("result env parent")).expect("bgjob root");
+    fs::write(
+        result_path,
+        format!("BGJOB_RC=0\nBGJOB_ELAPSED_S=1\nSTEP={RUN_LEAVES_STEP}\n"),
+    )
+    .expect("completed driver result");
+
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let leaf = issue_json(
+        LEAF,
+        410,
+        "[LEAF OF 40] Task",
+        &format!("{}\n\nTask.", umbrella_leaf_opening(UMBRELLA)),
+        "open",
+        BEFORE,
+    );
+    let server = IssueServiceStub::start(open_graph(&parent, &leaf)).expect("issue service");
+    let base = server.base_url().to_owned();
+    let github: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+        Arc::new(move || OctocrabGitHubService::with_test_base(&base));
+    let arguments = ResumeArguments {
+        repository: String::from("o/r"),
+        issue: UMBRELLA,
+        claude_pid: Some(456),
+        operator_invoked: false,
+    };
+
+    with_test_github_service(github, || resume_with_store(&arguments, &store))
+        .expect("resume stale audit");
+    let resumed = store
+        .resume_candidate("o/r", UMBRELLA)
+        .expect("resumed pointer")
+        .expect("run pointer");
+    assert_eq!(resumed.state.current_step, RunPointerStep::Select);
+    assert_eq!(resumed.state.current_leaf, None);
+    assert_eq!(server.finish().expect("GitHub requests").len(), 6);
+}
+
+#[test]
+fn resume_needs_design_records_a_terminal_pointer_without_resetting_idle_leaf() {
+    let pointer_root = tempfile::tempdir().expect("pointer root");
+    let run_root = tempfile::tempdir().expect("run root");
+    let store = RunPointerStore::at(pointer_root.path());
+    store
+        .create(run_pointer(run_root.path(), 123))
+        .expect("create run pointer");
+    let child_root = run_root.path().join("complete-umbrella-run-leaves");
+    fs::create_dir(&child_root).expect("child result root");
+    fs::write(
+        child_root.join(format!("child-{LEAF}.env")),
+        format!(
+            "CHILD_STATUS=needs-design\nCHILD_ISSUE={LEAF}\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\nCHILD_FAILURE_CLASS={COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN}\n"
+        ),
+    )
+    .expect("needs-design child result");
+
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let leaf = issue_json(
+        LEAF,
+        410,
+        "[LEAF OF 40] Task",
+        &format!("{}\n\nTask.", umbrella_leaf_opening(UMBRELLA)),
+        "open",
+        BEFORE,
+    );
+    let server = IssueServiceStub::start(open_graph(&parent, &leaf)).expect("issue service");
+    let base = server.base_url().to_owned();
+    let github: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+        Arc::new(move || OctocrabGitHubService::with_test_base(&base));
+    let arguments = ResumeArguments {
+        repository: String::from("o/r"),
+        issue: UMBRELLA,
+        claude_pid: Some(456),
+        operator_invoked: false,
+    };
+
+    with_test_github_service(github, || resume_with_store(&arguments, &store))
+        .expect("resume needs-design leaf");
+    let resumed = store
+        .resume_candidate("o/r", UMBRELLA)
+        .expect("resumed pointer")
+        .expect("run pointer");
+    assert_eq!(resumed.state.current_step, RunPointerStep::Failed);
+    assert_eq!(resumed.state.current_leaf, Some(LEAF));
+    assert_eq!(resumed.state.transient_attempt_count, 0);
+    let requests = server.finish().expect("GitHub requests");
+    assert!(requests.iter().all(|request| request.method != "PATCH"));
+}
+
+#[test]
+fn resume_terminal_decisions_are_explicit() {
+    let run_root = tempfile::tempdir().expect("run root");
+    let mut pointer = run_pointer(run_root.path(), 123);
+
+    let done = decide_resume_recovery(&pointer, None, Some(ResumeLeafState::Done));
+    assert_eq!(done.action, ResumeAction::Reselect);
+    assert!(!done.reset_active_leaf);
+
+    let needs_design = decide_resume_recovery(
+        &pointer,
+        Some(DurableChildResult::NeedsDesign),
+        Some(ResumeLeafState::Idle),
+    );
+    assert_eq!(needs_design.action, ResumeAction::NeedsDesign);
+    assert_eq!(
+        needs_design.failure_reason,
+        Some("leaf requires /design before implementation")
+    );
+
+    let failed = decide_resume_recovery(
+        &pointer,
+        Some(DurableChildResult::Failed),
+        Some(ResumeLeafState::Active),
+    );
+    assert_eq!(failed.action, ResumeAction::Failed);
+    assert!(failed.reset_active_leaf);
+    assert_eq!(
+        failed.failure_reason,
+        Some("dead child recorded an unrecoverable failure")
+    );
+
+    pointer.current_step = RunPointerStep::Failed;
+    let prior_failure = decide_resume_recovery(&pointer, None, Some(ResumeLeafState::Idle));
+    assert_eq!(prior_failure.action, ResumeAction::Failed);
+    assert_eq!(
+        prior_failure.failure_reason,
+        Some("the prior leaf driver recorded a terminal failure")
+    );
+
+    pointer.current_step = RunPointerStep::Audit;
+    let missing_audit = decide_resume_recovery(&pointer, None, None);
+    assert_eq!(missing_audit.action, ResumeAction::Failed);
+    assert_eq!(
+        missing_audit.failure_reason,
+        Some("the prior audit result lacks a completed bgjob envelope")
+    );
+
+    pointer.current_step = RunPointerStep::Verify;
+    let complete = decide_resume_recovery(
+        &pointer,
+        Some(DurableChildResult::Complete),
+        Some(ResumeLeafState::Active),
+    );
+    assert_eq!(complete.action, ResumeAction::Reselect);
+    assert!(complete.reset_active_leaf);
+
+    assert_eq!(ResumeAction::Wait.value(), "wait");
+    assert_eq!(ResumeAction::NeedsDesign.value(), "needs-design");
+    assert_eq!(ResumeAction::Failed.value(), "failed");
+    assert_eq!(DurableChildResult::Complete.status(), "complete");
+    assert_eq!(DurableChildResult::NeedsDesign.status(), "needs-design");
+    assert_eq!(DurableChildResult::Failed.status(), "failed");
+    assert_eq!(DurableChildResult::Complete.failure_class(), None);
+    assert_eq!(DurableChildResult::Failed.failure_class(), None);
+    assert_eq!(
+        DurableChildResult::NeedsDesign.failure_class(),
+        Some(COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN)
+    );
+}
+
+#[test]
+fn durable_child_shapes_and_local_resume_guards_fail_closed() {
+    let run_root = tempfile::tempdir().expect("run root");
+    let mut pointer = run_pointer(run_root.path(), 123);
+    assert_eq!(
+        read_durable_child_result(run_root.path(), LEAF, 0).expect("missing child result"),
+        None
+    );
+    let child_root = run_root.path().join("complete-umbrella-run-leaves");
+    fs::create_dir(&child_root).expect("child result root");
+    let child_path = child_root.join(format!("child-{LEAF}.env"));
+    let complete_result = format!(
+        "CHILD_STATUS=complete\nCHILD_ISSUE={LEAF}\nCHILD_ENVELOPE_COMPLETE=true\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\n"
+    );
+    fs::write(&child_path, &complete_result).expect("complete child result");
+    assert_eq!(
+        read_durable_child_result(run_root.path(), LEAF, 0).expect("complete child result"),
+        Some(DurableChildResult::Complete)
+    );
+    assert!(parse_durable_child_result(&complete_result, GAP, 0).is_err());
+
+    let needs_design_result = format!(
+        "CHILD_STATUS=needs-design\nCHILD_ISSUE={LEAF}\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\nCHILD_FAILURE_CLASS={COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN}\n"
+    );
+    assert_eq!(
+        parse_durable_child_result(&needs_design_result, LEAF, 0)
+            .expect("needs-design child result"),
+        Some(DurableChildResult::NeedsDesign)
+    );
+    let failed_result = format!(
+        "CHILD_STATUS=failed\nCHILD_ISSUE={LEAF}\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\n"
+    );
+    assert_eq!(
+        parse_durable_child_result(&failed_result, LEAF, 0).expect("failed child result"),
+        Some(DurableChildResult::Failed)
+    );
+    assert!(
+        parse_durable_child_result(
+            &complete_result.replace(
+                "CHILD_TRANSIENT_ATTEMPT_COUNT=0",
+                "CHILD_TRANSIENT_ATTEMPT_COUNT=9"
+            ),
+            LEAF,
+            0,
+        )
+        .is_err()
+    );
+    assert!(
+        parse_durable_child_result(
+            &complete_result.replace("CHILD_STATUS=complete", "CHILD_STATUS=failed"),
+            LEAF,
+            0,
+        )
+        .is_err()
+    );
+
+    let mut closed_parent = driver_graph(&[(LEAF, GitHubIssueState::Closed, false)]);
+    closed_parent.parent.state = GitHubIssueState::Closed;
+    assert!(!audit_graph_requires_reselection(&closed_parent).expect("closed parent"));
+
+    assert!(
+        reset_resume_leaf_if_active(&repository(), &pointer, Some(ResumeLeafState::Idle), false,)
+            .is_ok()
+    );
+    pointer.current_leaf = None;
+    assert!(
+        reset_resume_leaf_if_active(&repository(), &pointer, Some(ResumeLeafState::Active), true,)
+            .is_err()
     );
 }
 
@@ -1002,7 +1548,7 @@ fn run_leaves_waits_without_consuming_child_attempts_and_records_metrics() {
     };
     let mut metrics = RunLeavesMetrics::default();
 
-    let failure = run_child_attempts(&mut offline, LEAF, 0, &mut metrics)
+    let failure = run_child_attempts(&mut offline, LEAF, 0, &mut metrics, 0)
         .expect_err("offline ceiling must stop the in-daemon retry");
 
     assert_eq!(failure.step, "wait-online");
@@ -1030,7 +1576,7 @@ fn run_leaves_waits_without_consuming_child_attempts_and_records_metrics() {
     };
     let mut metrics = RunLeavesMetrics::default();
 
-    run_child_attempts(&mut recovered, LEAF, 0, &mut metrics).expect("online retry");
+    run_child_attempts(&mut recovered, LEAF, 0, &mut metrics, 0).expect("online retry");
 
     assert_eq!(recovered.child_leaves, vec![LEAF, LEAF]);
     assert_eq!(recovered.wait_calls, 1);
@@ -1187,6 +1733,56 @@ fn run_leaves_classifies_malformed_and_nonterminal_child_results() {
     ));
 }
 
+fn exercise_live_pointer_checkpoints(operations: &mut LiveRunLeavesOperations<'_>) {
+    assert_eq!(operations.transient_attempt_count(LEAF), 0);
+    assert_eq!(operations.transient_attempt_count(GAP), 0);
+    operations
+        .write_result(&RunLeavesEnvelope::Progress {
+            action: "verify",
+            leaf: LEAF,
+            completed: 0,
+            metrics: RunLeavesMetrics::default(),
+            transient_attempt_count: 1,
+        })
+        .expect("verification checkpoint");
+    assert_eq!(
+        operations.pointer.state.current_step,
+        RunPointerStep::Verify
+    );
+    assert_eq!(operations.transient_attempt_count(LEAF), 1);
+    assert!(
+        operations
+            .write_result(&RunLeavesEnvelope::Progress {
+                action: "invalid",
+                leaf: LEAF,
+                completed: 0,
+                metrics: RunLeavesMetrics::default(),
+                transient_attempt_count: 1,
+            })
+            .is_err()
+    );
+    operations
+        .write_result(&RunLeavesEnvelope::Audit {
+            completed: 1,
+            metrics: RunLeavesMetrics::default(),
+        })
+        .expect("audit checkpoint");
+    assert_eq!(operations.pointer.state.current_step, RunPointerStep::Audit);
+    assert_eq!(operations.pointer.state.current_leaf, None);
+    operations
+        .write_result(&RunLeavesEnvelope::Failure {
+            failure: RunLeavesFailure::failed("read-graph", None, "stopped"),
+            metrics: RunLeavesMetrics::default(),
+        })
+        .expect("terminal failure checkpoint");
+    assert_eq!(
+        operations.pointer.state.current_step,
+        RunPointerStep::Failed
+    );
+    assert_eq!(operations.pointer.state.current_leaf, None);
+    assert_eq!(operations.pointer.state.transient_attempt_count, 0);
+}
+
 #[test]
 fn live_run_leaves_confines_state_and_writes_caller_owned_files() {
     let repository_fixture = GitRepository::builder(GitFixture::Refs)
@@ -1247,6 +1843,7 @@ fn live_run_leaves_confines_state_and_writes_caller_owned_files() {
         fs::read_to_string(&arguments.result_env).expect("result text"),
         "CHILD_ATTEMPT_COUNT=0\nCOMPLETED_LEAF_COUNT=0\nCURRENT_LEAF=41\nLEAF_RESET_ATTEMPT_COUNT=0\nNET_PROBE_ATTEMPT_COUNT=0\nNET_WAIT_SECONDS=0\nNEXT_ACTION=launch\nRESET_BACKOFF_SECONDS=0\nTRANSIENT_CHILD_RETRY_COUNT=0\n"
     );
+    exercise_live_pointer_checkpoints(&mut operations);
 
     fs::create_dir(&child.result_env).expect("blocking child-result directory");
     assert!(matches!(
