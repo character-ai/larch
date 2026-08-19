@@ -26,10 +26,10 @@ use crate::{
     implement_child_seam::resolve_plugin_root,
     implement_dispatch_commands::{
         LaunchIdentity, checks_launch_identity, delegate_python, delegate_verified_larch,
-        ensure_safe_regular_file, format_rows, forward_output, opt_string, prepare_checks_rejoin,
-        publish_child_session, publish_identity_child, publish_rows, rehydrate_session,
-        resolve_repo_root_output, run_bgjob_adapt, run_verified_larch_env_in, safe_merge_env,
-        tmpdir_from_env, unlink_safe,
+        ensure_safe_regular_file, format_rows, forward_output, opt_string,
+        parse_command_with_tmpdir, prepare_checks_rejoin, publish_child_session,
+        publish_identity_child, publish_rows, rehydrate_session, resolve_repo_root_output,
+        run_bgjob_adapt, run_verified_larch_env_in, safe_merge_env, tmpdir_from_env, unlink_safe,
     },
 };
 
@@ -68,7 +68,7 @@ const STEP5_REVIEW_HELP: &str = "usage: cli.py implement step-5-review [-h] [--b
 
 /// `implement step-5-review` compatibility command.
 pub fn step5_review(arguments: &[OsString]) -> ExitCode {
-    let parsed = match parse_required_with_help(
+    let (parsed, tmpdir) = match parse_command_with_tmpdir(
         arguments,
         STEP5_REVIEW_PROG,
         STEP5_REVIEW_USAGE,
@@ -80,10 +80,6 @@ pub fn step5_review(arguments: &[OsString]) -> ExitCode {
         Ok(parsed) => parsed,
         Err(code) => return code,
     };
-    let Ok(tmpdir) = tmpdir_from_env() else {
-        return ExitCode::from(2);
-    };
-    rehydrate_session(&tmpdir);
     if parsed.flag("--bgjob-child") {
         let merge_raw = opt_string(parsed.value("--merge-result-env"));
         if merge_raw.is_empty() {
@@ -1631,6 +1627,7 @@ fn run_adapter(spec: &AdapterSpec) -> Result<ExitCode, String> {
         &spec.initial_merge_rows,
         &spec.public_args,
         spec.repo_root.as_deref(),
+        false,
     )
 }
 

@@ -1735,6 +1735,26 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "step-7a",
     ),
     CleanInstallCase::new(
+        "clean-install-implement-step-8-oos-checkpoint",
+        "implement",
+        "step-8-oos-checkpoint",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-step-8-python-guard",
+        "implement",
+        "step-8-python-guard",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-step-8-seed-initial",
+        "implement",
+        "step-8-seed-initial",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-step-8-ship",
+        "implement",
+        "step-8-ship",
+    ),
+    CleanInstallCase::new(
         "clean-install-implement-checks-result-identity",
         "implement",
         "checks-result-identity",

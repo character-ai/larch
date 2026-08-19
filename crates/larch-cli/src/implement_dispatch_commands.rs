@@ -26,7 +26,7 @@ use larch_core::{
 };
 
 use crate::{
-    argparse_compat::{choice_error, parse_required_with_help, usage_error},
+    argparse_compat::{ParsedCommandLine, choice_error, parse_required_with_help, usage_error},
     checks_identity_commands::{live_identity, validate_repo_root},
     child_process::{bounded_request_in, run_bounded},
     implement_child_seam::resolve_plugin_root,
@@ -312,6 +312,7 @@ fn run_parent(
         &identity.as_rows(),
         &public,
         Some(&identity.repo_root),
+        false,
     )
 }
 
@@ -330,6 +331,7 @@ pub fn run_bgjob_adapt(
     initial_merge_rows: &[(String, String)],
     public_args: &[OsString],
     repo_root: Option<&Path>,
+    replace_completed_result: bool,
 ) -> Result<ExitCode, String> {
     let root = resolve_plugin_root()?;
     let entry = root.join("scripts").join("larch.sh");
@@ -360,6 +362,9 @@ pub fn run_bgjob_adapt(
             "--initial-merge-row".into(),
             format!("{key}={value}").into(),
         ]);
+    }
+    if replace_completed_result {
+        argv.push("--replace-completed-result".into());
     }
     argv.extend([
         "--".into(),
@@ -835,6 +840,23 @@ pub fn tmpdir_from_env() -> Result<PathBuf, ()> {
         return Err(());
     }
     Ok(PathBuf::from(raw))
+}
+
+/// Parse one compatibility command and rehydrate its required implement tmpdir.
+pub fn parse_command_with_tmpdir(
+    arguments: &[OsString],
+    program: &str,
+    usage: &str,
+    help: &str,
+    options: &[&'static str],
+    flags: &[&'static str],
+    required: &[&str],
+) -> Result<(ParsedCommandLine, PathBuf), ExitCode> {
+    let parsed =
+        parse_required_with_help(arguments, program, usage, help, options, flags, required)?;
+    let tmpdir = tmpdir_from_env().map_err(|()| ExitCode::from(2))?;
+    rehydrate_session(&tmpdir);
+    Ok((parsed, tmpdir))
 }
 
 pub fn owner_pid_string() -> String {

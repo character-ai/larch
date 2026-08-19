@@ -174,7 +174,7 @@ pub fn clone_tag(arguments: &[OsString]) -> ExitCode {
         return refusal;
     }
     let tag = derive_clone_tag_full();
-    let prefix = format!("claude-implement-{tag}-");
+    let prefix = expected_tmpdir_basename_prefix();
     print_line(&format!("CLONE_TAG_FULL={}", shell_quote(&tag)));
     print_line(&format!(
         "EXPECTED_TMPDIR_BASENAME_PREFIX={}",
@@ -833,6 +833,11 @@ fn derive_clone_tag_full() -> String {
         return "_".to_owned();
     }
     String::from_utf8(translated).unwrap_or_else(|_error| "_".to_owned())
+}
+
+/// Return the ship driver's clone-scoped implement tmpdir prefix.
+pub fn expected_tmpdir_basename_prefix() -> String {
+    format!("claude-implement-{}-", derive_clone_tag_full())
 }
 
 /// Match `basename "$PWD"` byte behavior on the logical path string.

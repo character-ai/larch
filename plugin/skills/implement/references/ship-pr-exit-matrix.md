@@ -6,7 +6,7 @@
 
 ## Durable result env
 
-The Step 8 wrapper delegates launch and reattachment to `bgjob adapt`. Its child passes the adapter-provided merge-result env to `ship pr` as `--result-env-path`. The bgjob daemon merges the direct ship outcome KVs with `BGJOB_RC` and `STEP` into `$IMPLEMENT_TMPDIR/bgjob/implement-step8-ship.result.env`; Bash neither captures nor parses ship JSON.
+The Rust Step 8 dispatcher composes the shared bgjob adapter for launch and reattachment. Its child passes the adapter-provided merge-result env to the still-Python `ship pr` command as `--result-env-path`. The bgjob daemon merges the direct ship outcome KVs with `BGJOB_RC` and `STEP` into `$IMPLEMENT_TMPDIR/bgjob/implement-step8-ship.result.env`; the dispatcher neither captures nor parses ship JSON.
 
 ## `ship route-exit` contract
 
@@ -57,7 +57,7 @@ The ci-fixer subagent round loop is prose-owned in `skills/implement/SKILL.md`. 
 
 ## Initial state seeder contract
 
-`python/cli.py ship seed-initial-state` owns the canonical initial `ship-pr-state.sh` key set, including `OOS_PENDING=false`; `python/tests/implement/test_ship.py` pins the ordered keys. `step-8-seed-initial.sh` is the sole shell argv wrapper. Inputs come from durable `$IMPLEMENT_TMPDIR/bootstrap-routing.env`, `$IMPLEMENT_TMPDIR/ship-seed-input.env`, and session readers documented in `step-8-seed-initial.md`.
+The retained `ship seed-initial-state` command owns the canonical initial `ship-pr-state.sh` key set, including `OOS_PENDING=false`; `python/tests/implement/test_ship.py` pins the ordered keys. Rust resolves durable inputs and assembles its argv behind the sole `step-8-seed-initial.sh` shell wrapper. Inputs come from `$IMPLEMENT_TMPDIR/bootstrap-routing.env`, `$IMPLEMENT_TMPDIR/ship-seed-input.env`, and session readers documented in `step-8-seed-initial.md`.
 
 `MANIFEST_PATH` MUST be empty unless `/implement` Step 2 returned `STATUS=complete` with a readable JSON manifest. The `/design` Step 5 manifest (`design-export/manifest.env`, a shell KV file) is NEVER a valid value for `MANIFEST_PATH`. The bash ship path is retired, so `LARCH_SHIP_PR_IMPL=bash` prose is moot.
 

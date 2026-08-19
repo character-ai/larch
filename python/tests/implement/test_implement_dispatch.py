@@ -4,6 +4,7 @@ from __future__ import annotations
 import errno
 import fcntl
 import json
+import re
 import signal
 import subprocess
 from collections.abc import Callable, Sequence
@@ -29,6 +30,7 @@ from larch.implement import (
     dispatch_step2,
     dispatch_recovery,
     self_edit_log,
+    ship_state,
 )
 from larch.implement.dispatch_helpers import resolve_tmpdir_path
 from larch.core import config
@@ -187,22 +189,6 @@ def _write_step2_baseline(tmpdir: Path) -> None:
     (tmpdir / "step2-baseline.txt").write_text(f"{head}\n", encoding="utf-8")
 
 
-def test_step8_ship_thin_wrapper_reuses_shared_owner_pid_resolution() -> None:
-    """step-8-ship is a thin Python wrapper; owner pid lives in shared _bgjob_spec."""
-    root: Path = Path(__file__).resolve().parents[3]
-    wrapper = (root / "skills" / "implement" / "scripts" / "step-8-ship.sh").read_text(encoding="utf-8")
-    assert 'implement step-8-ship "$@"' in wrapper
-    assert "bgjob adapt" not in wrapper
-    assert "--owner-pid" not in wrapper
-    assert "--sentinel" not in wrapper
-    ship_src = (root / "python" / "larch" / "implement" / "dispatch_ship.py").read_text(encoding="utf-8")
-    assert "_bgjob_spec" in ship_src
-    assert "replace_completed_result=True" in ship_src
-    helper_src = (root / "python" / "larch" / "implement" / "dispatch_commit_route.py").read_text(encoding="utf-8")
-    assert 'os.environ.get("LARCH_CLAUDE_PID")' in helper_src
-    assert "owner_identity_from_env" in helper_src
-
-
 @pytest.mark.parametrize(
     ("script_name", "verb"),
     [
@@ -327,111 +313,6 @@ def test_write_step2_difficulty_record_uses_trivial_tier_model(
     assert write_call[write_call.index("--rater-model") + 1] == config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.TRIVIAL]
 
 
-def _apply_rust_manifest_update(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
-    """Small test double for the Rust-owned manifest command."""
-    root = Path(command[command.index("--log-root") + 1])
-    skill = command[command.index("--skill") + 1]
-    run_id = command[command.index("--run-id") + 1]
-    path = root / skill / run_id / "manifest.json"
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    for index, token in enumerate(command):
-        if token != "--field":
-            continue
-        key, raw = command[index + 1].split("=", 1)
-        value: object
-        if raw == "true":
-            value = True
-        elif raw == "false":
-            value = False
-        elif raw == "null":
-            value = None
-        elif raw.lstrip("-").isdigit():
-            value = int(raw)
-        else:
-            value = raw
-        if key.startswith("steps_ran."):
-            steps = payload.setdefault("steps_ran", {})
-            assert isinstance(steps, dict)
-            steps[key.split(".", 1)[1]] = value
-        else:
-            payload[key] = value
-    _ = path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
-    return subprocess.CompletedProcess(list(command), 0, "", "")
-
-
-def _mock_disposition_checkpoint_only(monkeypatch: pytest.MonkeyPatch, *, stdout: str = "", rc: int = 0) -> None:
-    original = subprocess.run
-
-    def selective_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        cmd = cast("Sequence[str]", args[0] if args else kwargs.get("args", []))
-        if any("disposition-checkpoint" in str(part) for part in cmd):
-            return subprocess.CompletedProcess(["checkpoint"], rc, stdout, "")
-        if "run-log" in cmd and "manifest" in cmd:
-            return _apply_rust_manifest_update(cmd)
-        return original(*args, **kwargs)  # pylint: disable=subprocess-run-check
-
-    monkeypatch.setattr(subprocess, "run", selective_run)
-
-
-def _capture_refresh_execution_issues(
-    monkeypatch: pytest.MonkeyPatch, *, rc: int = 0, error: Exception | None = None
-) -> list[list[str]]:
-    """Record the Rust `execution-issues refresh` argv the checkpoint reaches for."""
-    original = subprocess.run
-    calls: list[list[str]] = []
-
-    def selective_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        cmd = [str(part) for part in cast("Sequence[str]", args[0] if args else kwargs.get("args", []))]
-        if "disposition-checkpoint" in " ".join(cmd):
-            return subprocess.CompletedProcess(["checkpoint"], 0, "", "")
-        if "run-log" in cmd and "manifest" in cmd:
-            return _apply_rust_manifest_update(cmd)
-        if "execution-issues" in cmd:
-            if error is not None:
-                raise error
-            calls.append(cmd[cmd.index("execution-issues"):])
-            return subprocess.CompletedProcess(cmd, rc, "REFRESHED=true\n", "")
-        return original(*args, **kwargs)  # pylint: disable=subprocess-run-check
-
-    monkeypatch.setattr(subprocess, "run", selective_run)
-    return calls
-
-
-def test_stamp_step9a1_routes_through_rust_manifest_owner(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    manifest = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
-    manifest.parent.mkdir(parents=True)
-    _ = manifest.write_text('{"schema_version":2,"steps_ran":{}}\n', encoding="utf-8")
-    calls: list[list[str]] = []
-
-    def fake_rust(argv: Sequence[str], **_kwargs: object) -> CommandResult:
-        calls.append(list(argv))
-        return CommandResult(tuple(argv), 0, "", "", 0.0)
-
-    monkeypatch.setattr(dispatch_ship.proc, "run", fake_rust)
-
-    assert dispatch_ship._stamp_step9a1(  # pyright: ignore[reportPrivateUsage]
-        implement_tmpdir=tmp_path,
-        run_id="run-abc",
-        value=True,
-    )
-    assert calls == [[
-        str(Path(dispatch_ship.__file__).resolve().parents[3] / "scripts" / "larch.sh"),
-        "run-log",
-        "manifest",
-        "--log-root",
-        str(tmp_path / "larch-logs"),
-        "--skill",
-        "implement",
-        "--run-id",
-        "run-abc",
-        "--field",
-        "steps_ran.step9a1=true",
-    ]]
-
-
 def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "step2-dispatch")][:2] == ("larch.implement.implement_dispatch", "step2_dispatch_main")
     assert _REGISTRY[("implement", "run-dispatch")][:2] == ("larch.implement.implement_dispatch", "run_dispatch_main")
@@ -454,7 +335,10 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert ("implement", "step-6-entry") not in _REGISTRY
     assert ("implement", "step-5-resume") not in _REGISTRY
     assert ("implement", "step-7a") not in _REGISTRY
-    assert _REGISTRY[("implement", "step-8-ship")][:2] == ("larch.implement.implement_dispatch", "step8_ship_main")
+    assert ("implement", "step-8-python-guard") not in _REGISTRY
+    assert ("implement", "step-8-seed-initial") not in _REGISTRY
+    assert ("implement", "step-8-ship") not in _REGISTRY
+    assert ("implement", "step-8-oos-checkpoint") not in _REGISTRY
     assert ("implement", "step-18") not in _REGISTRY
     assert ("implement", "step-18-gate-logs-flush") not in _REGISTRY
     assert ("implement", "step-19") not in _REGISTRY
@@ -465,6 +349,16 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("ship", "pre-fix-rebase")][:2] == ("larch.implement.implement_dispatch", "ship_pre_fix_rebase_main")
     assert _REGISTRY[("ship", "route-exit")][:2] == ("larch.implement.implement_dispatch", "ship_route_exit_main")
     assert ("execution-issues", "flush-safety-net") not in _REGISTRY
+
+
+def test_step8_rust_patch_allowlist_matches_python_ship_state() -> None:
+    source = (
+        Path(__file__).resolve().parents[3]
+        / "crates/larch-cli/src/implement_ship_commands.rs"
+    ).read_text(encoding="utf-8")
+    block = source.split("const SHIP_STATE_ALLOWED_KEYS", 1)[1].split("];", 1)[0]
+    rust_keys = frozenset(re.findall(r'"([A-Z][A-Z0-9_]*)"', block))
+    assert rust_keys == ship_state._ALLOWED_SHIP_STATE_KEYS  # pyright: ignore[reportPrivateUsage]
 
 
 @pytest.mark.parametrize("tool", ["codex", "cursor"])
@@ -1130,15 +1024,10 @@ def test_ship_route_exit_fourth_transient_seeds_stall(
     calls: list[list[str]] = []
     monkeypatch.setattr(implement_dispatch.time, "sleep", lambda _seconds: None)
 
-    def fake_capture(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args, 0, "", "")
-
     def fake_rust(args: Sequence[str], **_kwargs: object) -> CommandResult:
         calls.append(list(args))
         return CommandResult(tuple(args), 0, "SEEDED=true\nSEED_MODE=rewrite\n", "", 0.0)
 
-    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_capture)
-    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_capture)
     monkeypatch.setattr(dispatch_ship.proc, "run", fake_rust)
     _write_ship_handoff(tmp, 6, {"outcome": "TRANSIENT"})
 
@@ -1840,298 +1729,6 @@ def test_ship_pre_fix_rebase_missing_tmpdir_fails_without_next_action(capsys: py
     assert "NEXT_ACTION=" not in capsys.readouterr().out
 
 
-def test_step8_oos_checkpoint_success_writes_stats_stamp_and_clears_state(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    (tmp / "ship-pr-state.sh").write_text(
-        "PHASE=ci-initial\nRUN_ID=state-run\nPR_NUMBER=12\nRESUME_PHASE=ship-pr-rrr-phase14\nOOS_PENDING=true\n",
-        encoding="utf-8",
-    )
-    run_dir = tmp / "larch-logs" / "implement" / "state-run"
-    run_dir.mkdir(parents=True)
-    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
-    (run_dir / "oos-issues.ndjson").write_text(
-        json.dumps({"body": "Filed URL: https://github.com/owner/repo/issues/1"}) + "\n",
-        encoding="utf-8",
-    )
-    _mock_disposition_checkpoint_only(monkeypatch, stdout="child stdout\n")
-
-    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
-
-    captured = capsys.readouterr()
-    assert captured.out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
-    assert "child stdout" not in captured.out
-    assert (run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run state-run: 1 OOS issue(s) filed.\n"
-    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["steps_ran"]["step9a1"] is True
-    state = (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
-    assert "OOS_PENDING=false\n" in state
-    assert "PR_NUMBER=12\n" in state
-    assert "RESUME_PHASE=ship-pr-rrr-phase14\n" in state
-
-
-def test_step8_oos_checkpoint_success_refreshes_execution_issues(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
-    run_dir = tmp / "larch-logs" / "implement" / "run"
-    run_dir.mkdir(parents=True)
-    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
-    calls = _capture_refresh_execution_issues(monkeypatch, rc=0)
-
-    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
-
-    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
-    assert calls == [["execution-issues", "refresh", "--implement-tmpdir", str(tmp), "--best-effort"]]
-
-
-def test_step8_oos_checkpoint_refresh_failure_still_reships(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
-    run_dir = tmp / "larch-logs" / "implement" / "run"
-    run_dir.mkdir(parents=True)
-    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
-    _ = _capture_refresh_execution_issues(monkeypatch, error=RuntimeError("refresh failed"))
-
-    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
-
-    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
-
-
-def test_step8_oos_checkpoint_stall_does_not_refresh(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    monkeypatch.setattr(
-        implement_dispatch.subprocess,
-        "run",
-        lambda *_a, **_k: subprocess.CompletedProcess(["checkpoint"], 1, "", ""),
-    )
-
-    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
-
-    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=1\nNEXT_ACTION=stall\n"
-
-
-def test_step8_oos_checkpoint_bookkeeping_failure_stalls_and_preserves_oos_pending(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
-    (tmp / "larch-logs" / "implement" / "run").mkdir(parents=True)
-    stamps: list[bool] = []
-    monkeypatch.setattr(
-        implement_dispatch.subprocess,
-        "run",
-        lambda *_a, **_k: subprocess.CompletedProcess(["checkpoint"], 0, "", ""),
-    )
-
-    def fake_stamp(_tmp: Path, _run_id: str, *, value: bool) -> bool:
-        stamps.append(value)
-        if value:
-            raise RuntimeError("stamp failed")
-        return True
-
-    monkeypatch.setattr(dispatch_ship, "_stamp_step9a1", lambda *, implement_tmpdir, run_id, value: fake_stamp(implement_tmpdir, run_id, value=value))
-
-    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
-
-    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=2\nNEXT_ACTION=stall\n"
-    assert stamps == [True, False]
-    assert "OOS_PENDING=true\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
-    assert not (tmp / "larch-logs" / "implement" / "run" / "run-statistics.md").is_file()
-
-
-def test_step8_oos_checkpoint_run_id_precedence_state_over_session_id(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    (tmp / "session-id").write_text("session-run\n", encoding="utf-8")
-    (tmp / "ship-pr-state.sh").write_text("RUN_ID=state-run\nOOS_PENDING=true\n", encoding="utf-8")
-    state_run_dir = tmp / "larch-logs" / "implement" / "state-run"
-    state_run_dir.mkdir(parents=True)
-    (state_run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
-    (state_run_dir / "oos-issues.ndjson").write_text(
-        json.dumps({"body": "Filed URL: https://github.com/owner/repo/issues/1"}) + "\n",
-        encoding="utf-8",
-    )
-    session_run_dir = tmp / "larch-logs" / "implement" / "session-run"
-    session_run_dir.mkdir(parents=True)
-    (session_run_dir / "oos-issues.ndjson").write_text(
-        json.dumps({"body": "Filed URL: https://github.com/owner/repo/issues/99"}) + "\n",
-        encoding="utf-8",
-    )
-    _mock_disposition_checkpoint_only(monkeypatch)
-
-    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
-
-    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
-    assert (state_run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run state-run: 1 OOS issue(s) filed.\n"
-    assert not (session_run_dir / "run-statistics.md").is_file()
-
-
-def test_step8_oos_checkpoint_stats_write_failure_stalls(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
-    (tmp / "larch-logs" / "implement" / "run").mkdir(parents=True)
-    (tmp / "larch-logs" / "implement" / "run" / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
-    _mock_disposition_checkpoint_only(monkeypatch)
-    monkeypatch.setattr(
-        dispatch_ship,
-        "_write_oos_run_statistics",
-        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("stats write failed")),
-    )
-
-    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
-
-    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=2\nNEXT_ACTION=stall\n"
-    assert "OOS_PENDING=true\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
-    assert not (tmp / "larch-logs" / "implement" / "run" / "run-statistics.md").is_file()
-
-
-def test_step8_oos_checkpoint_state_patch_failure_stalls(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
-    run_dir = tmp / "larch-logs" / "implement" / "run"
-    run_dir.mkdir(parents=True)
-    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
-    _mock_disposition_checkpoint_only(monkeypatch)
-    monkeypatch.setattr(
-        implement_dispatch.ship,
-        "_patch_ship_state_keys",
-        lambda **_k: (_ for _ in ()).throw(RuntimeError("state patch failed")),
-    )
-
-    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
-
-    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=2\nNEXT_ACTION=stall\n"
-    assert "OOS_PENDING=true\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
-    assert not (run_dir / "run-statistics.md").is_file()
-
-
-def test_step8_oos_checkpoint_bookkeeping_resolves_run_id_from_session_id_only(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    (tmp / "session-id").write_text("session-run\n", encoding="utf-8")
-    (tmp / "ship-pr-state.sh").write_text("OOS_PENDING=true\nPR_NUMBER=3\n", encoding="utf-8")
-    run_dir = tmp / "larch-logs" / "implement" / "session-run"
-    run_dir.mkdir(parents=True)
-    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
-    _mock_disposition_checkpoint_only(monkeypatch)
-
-    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
-
-    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
-    assert (run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run session-run: 0 OOS issue(s) filed.\n"
-    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["steps_ran"]["step9a1"] is True
-    assert "OOS_PENDING=false\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
-
-
-def test_step8_oos_checkpoint_resolves_run_id_from_single_ndjson_without_state_run_id(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    (tmp / "ship-pr-state.sh").write_text("OOS_PENDING=true\nPR_NUMBER=3\n", encoding="utf-8")
-    run_dir = tmp / "larch-logs" / "implement" / "ndjson-run"
-    run_dir.mkdir(parents=True)
-    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
-    (run_dir / "oos-issues.ndjson").write_text(
-        json.dumps({"body": "Filed URL: https://github.com/owner/repo/issues/2"}) + "\n",
-        encoding="utf-8",
-    )
-    _mock_disposition_checkpoint_only(monkeypatch)
-
-    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
-
-    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
-    assert (run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run ndjson-run: 1 OOS issue(s) filed.\n"
-    assert "OOS_PENDING=false\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
-
-
-def test_step8_oos_checkpoint_filed_count_ignores_stale_sentinel_without_ndjson(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\nPR_NUMBER=1\n", encoding="utf-8")
-    run_dir = tmp / "larch-logs" / "implement" / "run"
-    run_dir.mkdir(parents=True)
-    (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
-    (tmp / "oos-issues-created.md").write_text(
-        "- **Filed URL**: https://github.com/owner/repo/issues/stale\n",
-        encoding="utf-8",
-    )
-    _mock_disposition_checkpoint_only(monkeypatch)
-
-    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
-
-    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
-    assert (run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run run: 0 OOS issue(s) filed.\n"
-
-
-def test_step8_oos_checkpoint_nonzero_preserves_child_written_stderr_log(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    (tmp / "oos-disposition-checkpoint.stderr.log").write_text("child validation detail\n", encoding="utf-8")
-    monkeypatch.setattr(
-        implement_dispatch.subprocess,
-        "run",
-        lambda *_a, **_k: subprocess.CompletedProcess(["checkpoint"], 2, "", ""),
-    )
-    monkeypatch.setattr(implement_dispatch, "_invoke_cli", lambda *_a, **_k: subprocess.CompletedProcess(["append"], 0, "", ""))
-
-    assert implement_dispatch.step8_oos_checkpoint_main([]) == 0
-
-    assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=2\nNEXT_ACTION=stall\n"
-    assert (tmp / "oos-disposition-checkpoint.stderr.log").read_text(encoding="utf-8") == "child validation detail\n"
-
-
 def test_clone_tag_derivation_truncates_sanitized_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("CLONE_TAG", raising=False)
     monkeypatch.setenv("PWD", "/" + ("é" * 20))
@@ -2194,8 +1791,7 @@ def test_ship_pre_driver_guard_failure_isolates_stdout(
         calls.append(list(args))
         return subprocess.CompletedProcess(list(args), 4, '{"outcome":"STALLED"}\n', "guard stderr\n")
 
-    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
-    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
+    monkeypatch.setattr(dispatch_ship, "_invoke_larch", fake_run_cli)
 
     assert implement_dispatch.ship_pre_driver_main([]) == 4
 
@@ -2223,8 +1819,7 @@ def test_ship_pre_driver_seed_failure_stops_before_oos(
         calls.append(list(args))
         return results.pop(0)
 
-    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
-    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
+    monkeypatch.setattr(dispatch_ship, "_invoke_larch", fake_run_cli)
     _patch_rust_oos_file(monkeypatch, calls, results)
 
     assert implement_dispatch.ship_pre_driver_main([]) == 7
@@ -2272,8 +1867,7 @@ def test_ship_pre_driver_oos_failure_uses_distinct_action(
         calls.append(list(args))
         return results.pop(0)
 
-    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
-    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
+    monkeypatch.setattr(dispatch_ship, "_invoke_larch", fake_run_cli)
     _patch_rust_oos_file(monkeypatch, calls, results)
 
     assert implement_dispatch.ship_pre_driver_main([]) == 5
@@ -2312,8 +1906,7 @@ def test_ship_pre_driver_security_sidecar_payload_routes_to_oos_pipeline(
         calls.append(list(args))
         return results.pop(0)
 
-    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
-    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
+    monkeypatch.setattr(dispatch_ship, "_invoke_larch", fake_run_cli)
     _patch_rust_oos_file(monkeypatch, calls, results)
 
     assert implement_dispatch.ship_pre_driver_main([]) == 3
@@ -2347,8 +1940,7 @@ def test_ship_pre_driver_success_skips_seed_when_state_has_kv(
         calls.append(list(args))
         return results.pop(0)
 
-    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
-    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
+    monkeypatch.setattr(dispatch_ship, "_invoke_larch", fake_run_cli)
     _patch_rust_oos_file(monkeypatch, calls, results)
 
     assert implement_dispatch.ship_pre_driver_main([]) == 0
@@ -2375,7 +1967,7 @@ def test_ship_pre_driver_validates_scope_before_seeding_and_halts_for_missing_di
             return subprocess.CompletedProcess(argv, 0, "", "")
         return pytest.fail(f"unexpected CLI call: {argv}")
 
-    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
+    monkeypatch.setattr(dispatch_ship, "_invoke_larch", fake_run_cli)
     monkeypatch.setattr(dispatch_ship, "_resolve_repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(
         dispatch_ship.scope_disposition,
@@ -2411,7 +2003,7 @@ def test_ship_pre_driver_scope_validation_hard_failure_stays_tool_failure(
             return subprocess.CompletedProcess(argv, 0, "", "")
         return pytest.fail(f"unexpected CLI call: {argv}")
 
-    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
+    monkeypatch.setattr(dispatch_ship, "_invoke_larch", fake_run_cli)
     monkeypatch.setattr(dispatch_ship, "_resolve_repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(
         dispatch_ship.scope_disposition,
@@ -3364,6 +2956,8 @@ def _setup_commit_route(
             return subprocess.CompletedProcess(call, commit_rc, commit_stdout, commit_stderr)
         if call[:2] == ["run-log", "append-failure"]:
             return subprocess.CompletedProcess(call, 0, "", "")
+        if call[:2] == ["implement", "step-8-seed-initial"]:
+            return fake_seed(call)
         return subprocess.CompletedProcess(call, 0, "", "")
 
     def fake_seed(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -3380,14 +2974,10 @@ def _setup_commit_route(
         return subprocess.CompletedProcess(list(argv), porcelain_rc, porcelain_stdout, "")
 
     monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
-    monkeypatch.setattr(implement_dispatch, "_invoke_larch", fake_invoke, raising=False)
     monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", fake_invoke)
-    monkeypatch.setattr(dispatch_commit_route, "_invoke_larch", fake_invoke, raising=False)
     # Rust-owned run-log verbs route through the bootstrap runner.
     monkeypatch.setattr(implement_dispatch, "_invoke_larch", fake_invoke, raising=False)
     monkeypatch.setattr(dispatch_commit_route, "_invoke_larch", fake_invoke, raising=False)
-    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_seed)
-    monkeypatch.setattr(dispatch_commit_route, "_run_cli_capture", fake_seed)
     monkeypatch.setattr(implement_dispatch, "_run", fake_run)
     monkeypatch.setattr(dispatch_commit_route, "_run", fake_run)
     return impl, invoke_calls, seed_calls
@@ -4353,6 +3943,36 @@ def test_run_step4_commit_leg_failure_seeds_step4_stall(
     assert outcome == "seeded-stall"
     assert "COMMIT_ROUTE_OUTCOME=seeded-stall\n" in stdout
     assert seed_calls == [("4", "implementation-commit-failed")]
+
+
+def test_seed_durable_stall_state_uses_verified_rust_seeder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl = make_implement_tmpdir(tmp_path)
+    calls: list[list[str]] = []
+
+    def fake_larch(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(args))
+        return subprocess.CompletedProcess(list(args), 0, "", "")
+
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_larch", fake_larch)
+
+    assert dispatch_commit_route._seed_durable_stall_state(  # pyright: ignore[reportPrivateUsage]
+        impl,
+        stall_step="4",
+        bail_reason="implementation-commit-failed",
+    )
+    assert calls == [[
+        "implement",
+        "step-8-seed-initial",
+        "--stall-tracking",
+        "true",
+        "--stall-step",
+        "4",
+        "--bail-reason",
+        "implementation-commit-failed",
+    ]]
 
 
 def test_persist_ship_seed_context_refreshes_blank_manifest_path(tmp_path: Path) -> None:

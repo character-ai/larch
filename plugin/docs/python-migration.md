@@ -100,8 +100,8 @@ milestones are complete. `crates/larch-cli/src/implement_commands.rs` owns the
 four bootstrap-side verbs and `crates/larch-cli/src/implement_preflight_commands.rs`
 owns preflight.
 
-`dispatch_helpers.py` and `dispatch_manifest.py` stay: `dispatch_ship.py` still
-calls `_clone_expected_tmpdir_prefix`, and Step 2 still calls the in-process
+`dispatch_helpers.py` and `dispatch_manifest.py` stay for their surviving
+Python consumers, and Step 2 still calls the in-process
 `normalize_coder_scout()` library function. Preflight reads issues through the
 Octocrab `GitHubService` per the #7672 spike instead of shelling out to
 `gh issue view`, and resolves the repository root through `gix` per #7671.
@@ -142,16 +142,40 @@ delegate to the verified bootstrap, and the registry milestones are complete.
 the #8610 bgjob/identity/rejoin infrastructure in
 `crates/larch-cli/src/implement_dispatch_commands.rs` and delegating the
 still-Python composites (`implement commit-route`, `implement checks-commit-route`,
-`checks run-relevant`, `implement step-8-seed-initial`, `diagram code-flow`,
-`diagrams upsert`) plus the already-Rust verbs (`review-and-fix step5`,
+`checks run-relevant`, `diagram code-flow`, `diagrams upsert`) plus the
+already-Rust verbs (`implement step-8-seed-initial`, `review-and-fix step5`,
 `review-and-fix check-changes`, `push checkpoint-probe`, `execution-issues flush`,
 `timing`). `python/larch/implement/step_7a.py` is deleted, and the four entry
 points plus their exclusive helpers are removed from
-`python/larch/implement/dispatch_commit_route.py`. That module stays because the
-still-Python commit-route/step8-guard family (`commit`, `commit-route`,
-`checks-commit-route`, `step-8-python-guard`) shares its helpers, and
-`dispatch_ship.py` still imports `BgjobRequest`, `_bgjob_spec`, `_run_adapter`, and
-`_safe_merge_env` for `implement step-8-ship`.
+`python/larch/implement/dispatch_commit_route.py`. That module stays for the
+still-Python `commit`, `commit-route`, and `checks-commit-route` family.
+
+### Implement Step 8 ship-dispatch cutover
+
+Issue #8624 moved four commands to Rust: `implement step-8-python-guard`,
+`implement step-8-seed-initial`, `implement step-8-ship`, and
+`implement step-8-oos-checkpoint`. `crates/larch-cli/src/implement_ship_commands.rs`
+owns their argument parsing, durable input resolution, bgjob dispatch, Python
+runtime probe, phantom probe, OOS exit mapping, and post-checkpoint bookkeeping.
+Callers and all four thin wrappers enter through `scripts/larch.sh`; the
+surviving Python pre-driver reaches the guard and seeder only through that
+verified bootstrap. The Python CLI registrations, re-exports, handlers, and
+exclusive helpers are removed atomically, and the command-registry milestones
+are complete.
+
+The retained `ship seed-initial-state` and `ship pr` engines remain Python and
+are reached only through the central Rust-to-Python migration seam. The Rust
+ship parent composes the shared bgjob adapter with completed-result replacement;
+the child reconstructs canonical argv and passes the adapter merge-result path
+to `ship pr`. The delegated process uses the same six-hour budget as the Step 8
+bgjob, so a valid 30-minute CI wait outlives the default short bridge deadline.
+The Rust OOS router composes `oos disposition-checkpoint`, keeps the exact
+`OOS_CHECKPOINT_RC` and `NEXT_ACTION` grammar, writes run statistics, stamps the
+manifest, and atomically clears only `OOS_PENDING` after success.
+`dispatch_ship.py` remains for `ship pre-driver`, `ship pre-fix-rebase`,
+`ship route-exit`, and `ship normalize-assessment-handoff`.
+`dispatch_ship_seed.py` remains for Step 2 seed-context helpers. No Python
+fallback or dual owner remains for the four migrated commands.
 
 ### Stall-recovery mixed-runtime cutover
 
@@ -466,8 +490,8 @@ Most release helpers remain behind `python/cli.py`. Every audit-runs verb is Rus
 - Tracking issue read/write/summary verbs live behind `scripts/larch.sh tracking-issue ...` in Rust (#8346). Typed wrappers in `python/larch/core/rust_runtime.py` replace the former in-process Python workflow entry points, including local sentinel reads, and external command consumers keep entering through the same script. `final-report write` calls the same Rust tracking owner in process so its own output contract remains isolated. `python/larch/issue/tracking_issue.py` keeps only pure PR-footer helpers.
 - The four `execution-issues` verbs live behind `scripts/larch.sh execution-issues ...` in Rust (#8176, completed by #8347). The shared Rust run-log entry owner serializes category-keyed Markdown chunk deduplication, atomic live-ledger replacement, and lock-protected compare-and-clear after a flush so a concurrent append remains pending. Typed wrappers in `python/larch/core/rust_runtime.py` replaced every in-process Python caller, and `python/larch/issue/execution_issues.py` is gone. `flush` and `flush-safety-net` re-enter `scripts/larch.sh` for the batch append, and `refresh` re-enters it for `tracking-issue upsert-summary`, so each child's `KEY=value` rows land in the caller's capture file instead of the verb's own contract stream.
 - The five OOS batch verbs live behind `scripts/larch.sh oos ...` in Rust (#8178): `materialize-manifest`, `issue-cap`, `file-conflict-deps`, `disposition-gate`, and `disposition-checkpoint`. `crates/larch-cli/src/oos_commands.rs` owns the drivers; `oos_batch`, `oos_conflict`, `oos_disposition`, and `oos_record` in `larch_core::issue` own their composition and policy. The rejected-marker reader #8177 left split is reconciled in `larch_core::issue::oos_disposition`; see `docs/rust-command-registry.md`.
-- `oos file`, the post-ship accepted-OOS filing driver, lives behind `scripts/larch.sh oos file` in Rust (#8179). `larch_core::issue::oos_filing` owns the stable-identity model, the sentinel and run-log records, and the body-splitting rules; `crates/larch-cli/src/oos_file_commands.rs` owns the driver behind one `FilingGateway` seam. `python/larch/issue/oos_filer.py` is gone: the three identity helpers it borrowed lived in `larch.issue._oos` until #8672 retired that module, and the retained #7681 `larch.implement.dispatch_ship` workflow owns Step 8 checkpoint routing and post-pass bookkeeping.
-- `python/larch/issue/file_oos.py` is not a live command implementation or fallback. Its surviving in-process consumers use OOS block parsing and counting for the design workflow, title normalization for compatibility analysis, and run-id resolution for Step 8 bookkeeping. The receiving umbrella for this retained issue/OOS library is #7680, as recorded by `larch lint rule issue-python-free`; later library cutover does not return command ownership to Python.
+- `oos file`, the post-ship accepted-OOS filing driver, lives behind `scripts/larch.sh oos file` in Rust (#8179). `larch_core::issue::oos_filing` owns the stable-identity model, the sentinel and run-log records, and the body-splitting rules; `crates/larch-cli/src/oos_file_commands.rs` owns the driver behind one `FilingGateway` seam. `python/larch/issue/oos_filer.py` is gone: the three identity helpers it borrowed lived in `larch.issue._oos` until #8672 retired that module. The #8624 Rust Step 8 owner now handles checkpoint routing and post-pass bookkeeping.
+- `python/larch/issue/file_oos.py` is not a live command implementation or fallback. Its surviving in-process consumers use OOS block parsing and counting for the design workflow and title normalization for compatibility analysis. The receiving umbrella for this retained issue/OOS library is #7680, as recorded by `larch lint rule issue-python-free`; later library cutover does not return command ownership to Python.
 - The six dependency-audit verbs live behind `scripts/larch.sh deps ...` in Rust (#8180): `resolve-repo`, `fetch`, `explicit-refs`, `write-proposals`, `plan`, and `apply`. `larch_core::issue::deps_audit` owns the grouping rules, the untrusted prose scans, the plan the operator approves, and the apply-time revalidation; `crates/larch-cli/src/deps_audit_commands.rs` owns the six drivers behind one `DepsGateway` seam.
 - The ten combine-issues verbs live behind `scripts/larch.sh combine-issues ...` in Rust (#8181): `fetch`, `fetch-deps`, `list-open`, `close-eligible`, `plan-inherited`, `prose-audit`, `plan-audit`, `apply`, `close-sources`, and `close-stale`. `crates/larch-cli/src/combine_issues_commands.rs` owns their JSON planning contracts and typed GitHub effects; `IssueMutationOwner` owns issue creation and closure, while the typed dependency adapter proves re-added native blocker edges. `python/larch/issue/combine_issues.py` and its Python blocker parser are gone. `python/larch/issue/open_rows.py` remains only as #7681 governance-gate support.
 - `issue migration-audit` lives behind `scripts/larch.sh issue migration-audit` in Rust (#8392). `crates/larch-cli/src/migration_audit_commands.rs` collects a bounded immutable snapshot through the typed GitHub, Git, filesystem, and in-process lint owners, while `larch_core::migration_audit` preserves the schema-v2 report and governance policy. The Python registration and audit implementation are gone; `python/larch/issue/migration_governance.py` and its `issue_block` and `open_rows` support remain only for the distinct #7681 `issue governance-gate` policy consumer.

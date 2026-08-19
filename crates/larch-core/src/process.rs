@@ -40,7 +40,7 @@ pub enum HostUtilityProgram {
     Pgrep,
     /// Read one named macOS keychain item for a vendor credential preflight.
     Security,
-    /// Report the host Python interpreter version for a `/triage` probe.
+    /// Probe the host Python interpreter for fixed migration compatibility gates.
     Python3,
     /// Run the fixed `python3 -m pytest` runtime verification command.
     Pytest,
@@ -124,7 +124,7 @@ impl HostUtilityProgram {
                 "macOS keychain read required to prove a Cursor service token is present and readable before launch"
             }
             Self::Python3 => {
-                "host interpreter version report required by the fixed read-only /triage probe allowlist"
+                "host interpreter probe required by fixed read-only /triage and Step 8 compatibility gates"
             }
             Self::Pytest => {
                 "bounded pytest execution required to verify changed Python tests in an analyze-bugs runtime bundle"

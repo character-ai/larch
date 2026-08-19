@@ -15,11 +15,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from larch.issue import file_oos
 from larch import io as larch_io
 from larch.core import config
 from larch.core import proc
-from larch.core import rust_runtime
 from larch.core.repo_roots import larch_entrypoint
 from larch.core.run_context import RunContext
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
@@ -28,24 +26,14 @@ from larch.implement import ship
 from larch.implement.architectural_assessment import normalize_kinds
 from larch.implement import scope_disposition
 from larch.implement.dispatch_helpers import (
-    _clone_expected_tmpdir_prefix,
     _emit_kv,
-    _emit_phantom_probe_with_warn,
-    _env_value,
-    _first_nonempty,
     _forward_child_output_to_stderr,
     _invoke_larch,
     _read_kv_file,
-    _read_session_key_default,
     _rehydrate_plugin_root,
     _resolve_repo_root,
-    _run_cli_forward,
-    _tmpdir_from_env,
-    _tracking_sentinel_values,
     _write_text_atomic,
 )
-from larch.implement.dispatch_leg import _run_cli_capture
-from larch.implement.dispatch_commit_route import step8_python_guard_main
 
 SHIP_ROUTE_EXIT_NEEDS_USER = 3
 SHIP_ROUTE_EXIT_STALLED = 4
@@ -111,61 +99,6 @@ def _ship_state_has_shell_kv_entries(state_file: Path) -> bool:
         return False
     text = state_file.read_text(encoding="utf-8", errors="replace")
     return re.search(r"^[A-Za-z_][A-Za-z0-9_]*=", text, re.MULTILINE) is not None
-
-
-def step8_seed_initial_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py implement step-8-seed-initial")
-    for flag in ("merge", "draft", "no-admin-fallback", "no-logs-commit", "manifest-path", "tool-label", "stall-tracking", "stall-step", "bail-reason", "bail-failure-detail-log"):
-        parser.add_argument(f"--{flag}", default="")
-    args = parser.parse_args(argv)
-    implement_tmpdir = _tmpdir_from_env()
-    _rehydrate_plugin_root(implement_tmpdir)
-    state_file = implement_tmpdir / "ship-pr-state.sh"
-    if state_file.is_file() and state_file.stat().st_size > 0 and re.search(r"^[A-Za-z_][A-Za-z0-9_]*=", state_file.read_text(encoding="utf-8", errors="replace"), re.MULTILINE):
-        print("step-8-seed-initial: initial ship state is create-if-absent only; refusing to re-seed non-empty ship-pr-state.sh", file=sys.stderr)
-        return 2
-    bootstrap_file = implement_tmpdir / "bootstrap-routing.env"
-    seed_file = implement_tmpdir / "ship-seed-input.env"
-    parent_issue = implement_tmpdir / "parent-issue.md"
-    sentinel = _tracking_sentinel_values(parent_issue)
-    bootstrap_coder = _read_kv_file(path=bootstrap_file, key="coder", default="")
-    mapped_tool = "Codex" if bootstrap_coder == "codex" else "Cursor" if bootstrap_coder == "cursor" else "" if not bootstrap_coder else "claude"
-    branch = _first_nonempty(_read_kv_file(path=bootstrap_file, key="BRANCH_NAME", default=""), _read_kv_file(path=parent_issue, key="BRANCH_NAME", default=""), sentinel.get("BRANCH_NAME", ""))
-    issue = _first_nonempty(_read_kv_file(path=bootstrap_file, key="ISSUE_NUMBER", default=""), _read_kv_file(path=parent_issue, key="ISSUE_NUMBER", default=""), sentinel.get("ISSUE_NUMBER", ""))
-    run_id = _first_nonempty(_read_kv_file(path=bootstrap_file, key="RUN_ID", default=""), _read_session_key_default(implement_tmpdir=implement_tmpdir, key="LARCH_RUN_ID", default=""), _read_kv_file(path=parent_issue, key="RUN_ID", default=""), sentinel.get("RUN_ID", ""))
-    repo = _first_nonempty(_read_kv_file(path=bootstrap_file, key="REPO", default=""), _read_session_key_default(implement_tmpdir=implement_tmpdir, key="REPO", default=""))
-    if not branch:
-        print("step-8-seed-initial: BRANCH_NAME is required but missing from durable inputs", file=sys.stderr)
-        return 2
-    if not issue.isdigit():
-        print("step-8-seed-initial: ISSUE_NUMBER must be a non-empty digit value", file=sys.stderr)
-        return 2
-    if not run_id:
-        print("step-8-seed-initial: RUN_ID is required but missing from durable inputs", file=sys.stderr)
-        return 2
-    if not repo:
-        print("step-8-seed-initial: REPO is required but missing from durable inputs", file=sys.stderr)
-        return 2
-    expected_session_id = (implement_tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip() if (implement_tmpdir / "session-id").is_file() else ""
-    return _run_cli_forward([
-        "ship", "seed-initial-state", "--tmpdir", str(implement_tmpdir), "--state-file", str(state_file),
-        "--branch", branch, "--issue", issue, "--repo", repo, "--run-id", run_id,
-        "--manifest-path", _first_nonempty(args.manifest_path, _read_kv_file(path=seed_file, key="MANIFEST_PATH", default="")),
-        "--tool-label", _first_nonempty(args.tool_label, _read_kv_file(path=seed_file, key="TOOL_LABEL", default=""), mapped_tool, "claude"),
-        "--merge", _first_nonempty(args.merge, _read_kv_file(path=seed_file, key="MERGE", default=""), "false"),
-        "--draft", _first_nonempty(args.draft, _read_kv_file(path=seed_file, key="DRAFT", default=""), "false"),
-        "--forked", _first_nonempty(_read_kv_file(path=seed_file, key="FORKED_TARGET", default=""), _read_session_key_default(implement_tmpdir=implement_tmpdir, key="FORKED_TARGET", default=""), "false"),
-        "--repo-unavailable", _first_nonempty(_read_kv_file(path=bootstrap_file, key="REPO_UNAVAILABLE", default=""), _read_session_key_default(implement_tmpdir=implement_tmpdir, key="REPO_UNAVAILABLE", default=""), "false"),
-        "--deferred", _first_nonempty(_read_kv_file(path=bootstrap_file, key="DEFERRED", default=""), _read_kv_file(path=seed_file, key="DEFERRED", default=""), "false"),
-        "--no-admin-fallback", _first_nonempty(args.no_admin_fallback, _read_kv_file(path=seed_file, key="NO_ADMIN_FALLBACK", default=""), "false"),
-        "--no-logs-commit", _first_nonempty(args.no_logs_commit, _read_kv_file(path=seed_file, key="NO_LOGS_COMMIT", default=""), "false"),
-        "--expected-session-id", expected_session_id,
-        "--expected-tmpdir-basename-prefix", _clone_expected_tmpdir_prefix(),
-        "--stall-tracking", args.stall_tracking or "false",
-        "--stall-step", args.stall_step,
-        "--bail-reason", args.bail_reason,
-        "--bail-failure-detail-log", args.bail_failure_detail_log,
-    ])
 
 
 def _ship_route_exit_fail(*, message: str, handoff: Path) -> int:
@@ -953,7 +886,7 @@ def ship_pre_driver_main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
     _rehydrate_plugin_root(implement_tmpdir)
     state_file = implement_tmpdir / "ship-pr-state.sh"
 
-    guard = _run_cli_capture(["implement", "step-8-python-guard"])
+    guard = _invoke_larch(["implement", "step-8-python-guard"])
     _forward_child_output_to_stderr(guard)
     if guard.returncode != 0:
         _emit_kv(key="NEXT_ACTION", value="stall")
@@ -983,7 +916,7 @@ def ship_pre_driver_main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
         return 4
 
     if not _ship_state_has_shell_kv_entries(state_file):
-        seed = _run_cli_capture(["implement", "step-8-seed-initial"])
+        seed = _invoke_larch(["implement", "step-8-seed-initial"])
         _forward_child_output_to_stderr(seed)
         if seed.returncode != 0:
             _emit_kv(key="NEXT_ACTION", value="halt-seed")
@@ -1014,229 +947,4 @@ def ship_pre_driver_main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
     _forward_child_output_to_stderr(oos)
 
     _emit_kv(key="NEXT_ACTION", value="ship")
-    return 0
-
-
-_STEP8_SHIP_STEP = "implement-step8-ship"
-
-
-def _step8_ship_child(*, implement_tmpdir: Path, merge_result_env: str) -> int:
-    state_file = implement_tmpdir / "ship-pr-state.sh"
-
-    def state(*, key: str, default: str = "") -> str:
-        return _read_kv_file(path=state_file, key=key, default=default)
-
-    branch = os.environ.get("BRANCH_NAME", "") or state(key="BRANCH_NAME")
-    issue = os.environ.get(config.ENV_ISSUE_NUMBER, "") or state(key="ISSUE_NUMBER")
-    run_id = os.environ.get("RUN_ID", "") or state(key="RUN_ID")
-    repo = os.environ.get(config.ENV_REPO, "") or state(key="REPO")
-    merge = _env_value(name="merge") or state(key="MERGE", default="false") or "false"
-    draft = _env_value(name="draft") or state(key="DRAFT", default="false") or "false"
-    forked = _env_value(name="forked_target") or state(key="FORKED_TARGET", default="false") or "false"
-    repo_unavailable = os.environ.get("REPO_UNAVAILABLE", "") or state(key="REPO_UNAVAILABLE", default="false") or "false"
-    manifest = os.environ.get("MANIFEST_PATH", "") or state(key="MANIFEST_PATH")
-    tool = _env_value(name="coder") or state(key="TOOL_LABEL", default="claude") or "claude"
-    no_admin = _env_value(name="no_admin_fallback") or state(key="NO_ADMIN_FALLBACK", default="false") or "false"
-    no_logs = _env_value(name="no_logs_commit") or state(key="NO_LOGS_COMMIT", default="false") or "false"
-    for name, value in (("BRANCH_NAME", branch), ("RUN_ID", run_id), ("REPO", repo)):
-        if not value:
-            print(f"step-8-ship: missing {name} (not exported and absent from ship-pr-state.sh)", file=sys.stderr)
-            return 2
-    guard_rc = step8_python_guard_main([])
-    if guard_rc != 0:
-        return guard_rc
-    print("→ phantom-probe: 8-pre-ship", file=sys.stderr)
-    with contextlib.redirect_stdout(sys.stderr):
-        _emit_phantom_probe_with_warn("8-pre-ship")
-    expected_session_id = (
-        (implement_tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip()
-        if (implement_tmpdir / "session-id").is_file()
-        else ""
-    )
-    return _run_cli_forward([
-        "ship", "pr", "--branch", branch, "--issue", issue, "--repo", repo, "--run-id", run_id,
-        "--tmpdir", str(implement_tmpdir), "--manifest-path", manifest, "--state-file", str(state_file),
-        "--tool-label", tool, "--merge", merge, "--draft", draft, "--forked", forked,
-        "--repo-unavailable", repo_unavailable, "--no-admin-fallback", no_admin or "false", "--no-logs-commit", no_logs or "false",
-        "--result-env-path", merge_result_env,
-        "--expected-session-id", expected_session_id, "--expected-tmpdir-basename-prefix", _clone_expected_tmpdir_prefix(),
-    ])
-
-
-def step8_ship_main(argv: list[str] | None = None) -> int:
-    from larch.implement.dispatch_commit_route import (  # noqa: PLC0415 - lint-layering: ok Step 8 reuses shared bgjob request helpers
-        BgjobRequest,
-        _bgjob_spec,
-        _run_adapter,
-        _safe_merge_env,
-    )
-
-    parser = argparse.ArgumentParser(prog="cli.py implement step-8-ship")
-    parser.add_argument("--bgjob-child", action="store_true")
-    parser.add_argument("--merge-result-env", default="")
-    args = parser.parse_args(argv)
-    implement_tmpdir = _tmpdir_from_env()
-    _rehydrate_plugin_root(implement_tmpdir)
-    if args.bgjob_child:
-        if not args.merge_result_env:
-            print("step-8-ship: --merge-result-env is required in child mode", file=sys.stderr)
-            return 2
-        return _step8_ship_child(implement_tmpdir=implement_tmpdir, merge_result_env=args.merge_result_env)
-    try:
-        merge_env = _safe_merge_env(
-            tmpdir=implement_tmpdir,
-            raw=implement_tmpdir / "bgjob" / f"{_STEP8_SHIP_STEP}.merge.env",
-        )
-        spec = _bgjob_spec(
-            BgjobRequest(
-                tmpdir=implement_tmpdir,
-                step=_STEP8_SHIP_STEP,
-                budget_s=21600,
-                verb="step-8-ship",
-                public_args=(),
-                merge_result_env=merge_env,
-            )
-        )
-    except (OSError, RuntimeError, UnicodeError, ValueError):
-        print("BGJOB_ERROR=invalid-input")
-        return 2
-    return _run_adapter(spec, replace_completed_result=True)
-
-
-def _step8_oos_checkpoint_log_failure(*, implement_tmpdir: Path, rc: int, err: Path) -> None:
-    log_file = implement_tmpdir / "execution-issues.md"
-    log_text = log_file.read_text(encoding="utf-8", errors="replace") if log_file.is_file() else ""
-    if rc == 1:
-        already = "Step step-8-oos-checkpoint —" in log_text or (
-            "step-8-oos-checkpoint" in log_text and "step-8-oos-checkpoint-validation" not in log_text
-        )
-    else:
-        already = "step-8-oos-checkpoint-validation" in log_text
-    if rc != 0 and not already:
-        site = "step-8-oos-checkpoint" if rc == 1 else "step-8-oos-checkpoint-validation"
-        _invoke_larch([
-            "run-log",
-            "append-failure",
-            "--log",
-            str(log_file),
-            "--site",
-            site,
-            "--tool",
-            "larch oos disposition-checkpoint",
-            "--exit-code",
-            str(rc),
-            "--category",
-            "Tool Failures",
-            "--output-file",
-            str(err),
-            "--redact",
-        ])
-
-
-_OOS_NDJSON_FILED_URL_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://\S+/issues/\d+)", re.MULTILINE)
-_OOS_NDJSON_ANY_URL_RE = re.compile(r"https://[^\s|)]+/issues/\d+")
-
-
-def _step8_oos_checkpoint_filed_count(*, implement_tmpdir: Path, run_id: str) -> int:
-    """Count the distinct issue URLs the run's OOS batch already records."""
-    ndjson = implement_tmpdir / "larch-logs" / "implement" / run_id / "oos-issues.ndjson"
-    if not ndjson.is_file():
-        return 0
-    urls: list[str] = []
-    for raw in ndjson.read_text(encoding="utf-8", errors="replace").splitlines():
-        if not raw.strip():
-            continue
-        try:
-            record: object = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        body = str(record.get("body", "")) if isinstance(record, dict) else ""
-        urls.extend(_OOS_NDJSON_FILED_URL_RE.findall(body) or _OOS_NDJSON_ANY_URL_RE.findall(body))
-    return len(dict.fromkeys(urls))
-
-
-def _stamp_step9a1(*, implement_tmpdir: Path, run_id: str, value: bool) -> bool:
-    """Stamp `steps_ran.step9a1` on the run manifest, if there is one."""
-    manifest = implement_tmpdir / "larch-logs" / "implement" / run_id / "manifest.json"
-    if not manifest.is_file():
-        return False
-    try:
-        result = proc.run([
-            str(larch_entrypoint(Path(__file__).resolve().parents[3])), "run-log", "manifest",
-            "--log-root", str(implement_tmpdir / "larch-logs"),
-            "--skill", "implement", "--run-id", run_id,
-            "--field", f"steps_ran.step9a1={'true' if value else 'false'}",
-        ])
-    except OSError as exc:
-        raise RuntimeError(f"run-log manifest steps_ran.step9a1 update failed: {str(exc)[:300]}") from exc
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip() or "run-log manifest failed"
-        raise RuntimeError(f"run-log manifest steps_ran.step9a1 update failed: {detail[:300]}")
-    return True
-
-
-def _write_oos_run_statistics(*, implement_tmpdir: Path, run_id: str, filed_count: int) -> None:
-    path = implement_tmpdir / "larch-logs" / "implement" / run_id / "run-statistics.md"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"Run {run_id}: {filed_count} OOS issue(s) filed.\n", encoding="utf-8")
-
-
-def _step8_oos_checkpoint_bookkeeping(implement_tmpdir: Path) -> tuple[bool, str]:
-    run_id = file_oos.resolve_implement_run_id_for_disposition(implement_tmpdir)
-    if not run_id:
-        print("step-8-oos-checkpoint: bookkeeping failed: cannot resolve canonical run id", file=sys.stderr)
-        return False, ""
-    stats_path = implement_tmpdir / "larch-logs" / "implement" / run_id / "run-statistics.md"
-    try:
-        filed_count = _step8_oos_checkpoint_filed_count(implement_tmpdir=implement_tmpdir, run_id=run_id)
-        stamped = _stamp_step9a1(implement_tmpdir=implement_tmpdir, run_id=run_id, value=True)
-        if not stamped:
-            raise RuntimeError("manifest stamp returned false")
-        _write_oos_run_statistics(implement_tmpdir=implement_tmpdir, run_id=run_id, filed_count=filed_count)
-        ship._patch_ship_state_keys(state_file=implement_tmpdir / "ship-pr-state.sh", patch={"OOS_PENDING": "false"})  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
-    except Exception as exc:
-        print(f"step-8-oos-checkpoint: bookkeeping failed: {exc}", file=sys.stderr)
-        with contextlib.suppress(Exception):
-            _ = _stamp_step9a1(implement_tmpdir=implement_tmpdir, run_id=run_id, value=False)
-        with contextlib.suppress(OSError):
-            if stats_path.is_file():
-                stats_path.unlink()
-        return False, run_id
-    return True, run_id
-
-
-def step8_oos_checkpoint_main(argv: list[str] | None = None) -> int:
-    argparse.ArgumentParser(prog="cli.py implement step-8-oos-checkpoint").parse_args(argv)
-    implement_tmpdir = _tmpdir_from_env()
-    _rehydrate_plugin_root(implement_tmpdir)
-    err = implement_tmpdir / "oos-disposition-checkpoint.stderr.log"
-    argv = [
-        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
-        "oos", "disposition-checkpoint",
-        "--implement-tmpdir", str(implement_tmpdir),
-    ]
-    if os.environ.get("DESIGN_TMPDIR"):
-        argv.extend(["--design-tmpdir", os.environ["DESIGN_TMPDIR"]])
-    result = subprocess.run(argv, capture_output=True, text=True, check=False)
-    if result.stderr:
-        existing = err.read_text(encoding="utf-8", errors="replace") if err.is_file() else ""
-        err.write_text(existing + result.stderr, encoding="utf-8")
-    _step8_oos_checkpoint_log_failure(implement_tmpdir=implement_tmpdir, rc=result.returncode, err=err)
-    if result.returncode != 0:
-        _emit_kv(key="OOS_CHECKPOINT_RC", value=result.returncode)
-        _emit_kv(key="NEXT_ACTION", value="stall")
-        return 0
-    ok, _run_id = _step8_oos_checkpoint_bookkeeping(implement_tmpdir)
-    if ok:
-        with contextlib.suppress(Exception):
-            rust_runtime.execution_issues_refresh(
-                proc.ProcRunner(),
-                implement_tmpdir=str(implement_tmpdir),
-                best_effort=True,
-            )
-        _emit_kv(key="OOS_CHECKPOINT_RC", value=0)
-        _emit_kv(key="NEXT_ACTION", value="reship")
-    else:
-        _emit_kv(key="OOS_CHECKPOINT_RC", value=2)
-        _emit_kv(key="NEXT_ACTION", value="stall")
     return 0
