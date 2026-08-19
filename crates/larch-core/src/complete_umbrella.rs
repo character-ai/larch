@@ -57,8 +57,9 @@ pub enum CompleteUmbrellaNext {
 ///
 /// An open parent blocker that is not a direct leaf stops scheduling before
 /// leaf-dependency deadlock handling. Closed leaves do not participate. No
-/// open leaves advances to the audit. Active leaves do not launch again, but
-/// remain open so they produce a stable deadlock result instead of an audit.
+/// open leaves advances to the audit. Non-candidate open leaves (`[DESIGNING]`,
+/// `[DESIGNED]`, `[IMPLEMENTING]`, open `[DONE]`) do not launch, but remain
+/// open so they produce a stable deadlock result instead of an audit.
 #[must_use]
 pub fn select_complete_umbrella_leaf(
     leaves: &[CompleteUmbrellaLeaf],
