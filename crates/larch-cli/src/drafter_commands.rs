@@ -349,7 +349,7 @@ fn record_vendor_timing(
     );
 }
 
-/// Filter a scout candidate manifest through the still-Python plan-scout owner.
+/// Filter a scout candidate manifest through the in-process Rust scout owner.
 ///
 /// Returns whether the filtered manifest was published, plus the fail reason.
 fn filter_drafter_scout(

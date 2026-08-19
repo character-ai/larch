@@ -19,7 +19,7 @@ use crate::{
         write_json_lines_confined as write_manifest,
     },
     python_verb::{plugin_root_directory, run_python_verb},
-    runtime_entrypoint::run_verified_larch,
+    runtime_entrypoint::{run_verified_larch, run_verified_larch_with_timeout},
     scout_commands::filter_manifest_paths,
     waterfall_commands::{append_review_routing_arguments, dispatch_for_review, parse_dispatch_kv},
 };
@@ -584,11 +584,14 @@ fn prepare_dynamic_slots(
                 options.session_env_path.clone(),
             ]);
         }
-        let scout_output = run_verified_larch(
+        // Preserve the retired Python `run_python_verb` 120s outer ceiling for
+        // /review dynamic scout rather than the 600s verified-larch default.
+        let scout_output = run_verified_larch_with_timeout(
             &arguments
                 .into_iter()
                 .map(OsString::from)
                 .collect::<Vec<OsString>>(),
+            Duration::from_secs(120),
         );
         let (ok, stdout) = scout_output.map_or_else(
             |_| (false, String::new()),

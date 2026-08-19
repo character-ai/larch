@@ -14,6 +14,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::review::{focus_area_set, python_str_of_json};
+use crate::text::{ensure_ascii_json, split_text_lines};
 
 /// Sentence every dynamic `prompt_body` must end with.
 pub const REQUIRED_CLOSING_SENTENCE: &str = "Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.";
@@ -116,17 +117,23 @@ pub struct ScoutDifficultySidecar {
 }
 
 /// Render a manifest exactly as the retired Python owner wrote it.
+///
+/// Matches `json.dumps(..., separators=(",", ":"), ensure_ascii=True)` plus a
+/// trailing newline so non-ASCII model text stays `\uXXXX`-escaped.
 #[must_use]
 pub fn render_manifest(archetypes: &[DynamicArchetype]) -> String {
-    serde_json::to_string(&ManifestDocument { archetypes })
-        .unwrap_or_else(|_error| "{\"archetypes\":[]}".to_owned())
-        + "\n"
+    let rendered = serde_json::to_string(&ManifestDocument { archetypes })
+        .unwrap_or_else(|_error| "{\"archetypes\":[]}".to_owned());
+    ensure_ascii_json(&rendered) + "\n"
 }
 
 /// Render the difficulty sidecar in the retired owner's key order.
+///
+/// Same ASCII-escape contract as [`render_manifest`].
 #[must_use]
 pub fn render_difficulty_sidecar(sidecar: &ScoutDifficultySidecar) -> String {
-    serde_json::to_string(sidecar).unwrap_or_else(|_error| String::new()) + "\n"
+    let rendered = serde_json::to_string(sidecar).unwrap_or_else(|_error| String::new());
+    ensure_ascii_json(&rendered) + "\n"
 }
 
 /// Return the reserved slug set one panel mode owns.
@@ -328,11 +335,14 @@ pub fn validate_dynamic_manifest(
 }
 
 /// Recover the first fenced block that parses as JSON, else return `text`.
+///
+/// Line breaks follow Python `str.splitlines()` so vertical-tab and other
+/// separators in messy model output still salvage.
 #[must_use]
 pub fn extract_valid_fenced_json_text(text: &str) -> String {
     let mut in_block = false;
     let mut candidate: Vec<&str> = Vec::new();
-    for line in text.lines() {
+    for line in split_text_lines(text) {
         if FENCE_RE.is_match(line) {
             if in_block {
                 let joined = candidate.join("\n");
@@ -492,10 +502,25 @@ mod tests {
             extract_valid_fenced_json_text(text).trim(),
             "{\"archetypes\": []}"
         );
+        let vertical_tab =
+            "prose\u{000b}```json\u{000b}{\"archetypes\": []}\u{000b}```\u{000b}more";
+        assert_eq!(
+            extract_valid_fenced_json_text(vertical_tab).trim(),
+            "{\"archetypes\": []}"
+        );
         assert_eq!(
             extract_valid_fenced_json_text("no fence here"),
             "no fence here"
         );
+        let non_ascii = render_manifest(&[DynamicArchetype {
+            name: "deep-risk".to_owned(),
+            focus_area: "risk-integration".to_owned(),
+            weight: 1,
+            rationale: "café — naïve".to_owned(),
+            prompt_body: "Inspect seams.".to_owned(),
+        }]);
+        assert!(non_ascii.contains(r"caf\u00e9"));
+        assert!(!non_ascii.contains('é'));
         assert_eq!(
             extract_valid_fenced_json_text("```\nnot json\n```"),
             "```\nnot json\n```"
