@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    },
+    "design/actions.txt": {
+      "text": "hello world\nACTION=SOMETHING_ELSE\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "ACTION_PASSTHROUGH=hello world\nACTION_PASSTHROUGH=ACTION=SOMETHING_ELSE\n"
+  }
+}

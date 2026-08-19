@@ -49,6 +49,7 @@ mod debate_publication_commands;
 mod deps_audit_commands;
 mod design_commands;
 mod design_step0_commands;
+mod design_step1_commands;
 mod developer_tooling_commands;
 mod difficulty_calibration_commands;
 mod difficulty_commands;
@@ -1209,6 +1210,18 @@ enum DesignCommand {
     /// Decide the settle next action from site and postplan rc (#8578).
     #[command(name = "settle-next-action", disable_help_flag = true)]
     SettleNextAction(RawCompatibilityArguments),
+    /// Drive the Step 1 plan-review/plan action loop (#8579).
+    #[command(disable_help_flag = true)]
+    Driver(RawCompatibilityArguments),
+    /// Decide the Step 1d.5 brainstorm entry/collect/complete modes (#8579).
+    #[command(name = "step1d5", disable_help_flag = true)]
+    Step1d5(RawCompatibilityArguments),
+    /// Write the Step 1d.7 drafter-prerequisite sentinels (#8579).
+    #[command(name = "step1d7", disable_help_flag = true)]
+    Step1d7(RawCompatibilityArguments),
+    /// Unlink the Step 1e..4b reentry sentinels (#8579).
+    #[command(name = "step1e-reentry", disable_help_flag = true)]
+    Step1eReentry(RawCompatibilityArguments),
 }
 
 impl DesignCommand {
@@ -1231,6 +1244,10 @@ impl DesignCommand {
             Self::Step0ApContinue(_) => design_step0_commands::step0_ap_continue(&arguments),
             Self::Step0c(_) => design_step0_commands::step0c(&arguments),
             Self::SettleNextAction(_) => design_step0_commands::settle_next_action(&arguments),
+            Self::Driver(_) => design_step1_commands::driver(&arguments),
+            Self::Step1d5(_) => design_step1_commands::step1d5(&arguments),
+            Self::Step1d7(_) => design_step1_commands::step1d7(&arguments),
+            Self::Step1eReentry(_) => design_step1_commands::step1e_reentry(&arguments),
         }
     }
 }
@@ -1270,6 +1287,9 @@ enum PlanCommand {
     /// Compose the plan-goals-test markdown document.
     #[command(name = "compose-goals-test", disable_help_flag = true)]
     ComposeGoalsTest(RawCompatibilityArguments),
+    /// Compose and log the `/implement` Step 1 plan-goals-test records (#8579).
+    #[command(name = "step1-log", disable_help_flag = true)]
+    Step1Log(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2497,6 +2517,9 @@ fn run(
             }
             PlanCommand::ComposeGoalsTest(arguments) => {
                 plan_quality_commands::compose_goals_test(&arguments.arguments)
+            }
+            PlanCommand::Step1Log(arguments) => {
+                design_step1_commands::step1_log(&arguments.arguments)
             }
         }),
         Domain::TrackingIssue(command) => Ok(match command {

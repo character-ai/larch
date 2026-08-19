@@ -2231,11 +2231,12 @@ verb = "driver"
 python_module = "larch.design.design_step1"
 python_function = "driver_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8579
 
 [[commands]]
 domain = "design"
@@ -2579,11 +2580,12 @@ verb = "step1d5"
 python_module = "larch.design.design_step1"
 python_function = "step1d5_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8579
 
 [[commands]]
 domain = "design"
@@ -2591,11 +2593,12 @@ verb = "step1d7"
 python_module = "larch.design.design_step1"
 python_function = "step1d7_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8579
 
 [[commands]]
 domain = "design"
@@ -2603,11 +2606,12 @@ verb = "step1e-reentry"
 python_module = "larch.design.design_step1"
 python_function = "step1e_reentry_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8579
 
 [[commands]]
 domain = "design"
@@ -4846,11 +4850,12 @@ verb = "step1-log"
 python_module = "larch.design.design_step_log"
 python_function = "step1_log_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8579
 
 [[commands]]
 domain = "plan"

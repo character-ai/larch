@@ -1,0 +1,21 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/.completed/tally": {
+      "text": ""
+    },
+    "design/.keep": {
+      "text": ""
+    },
+    "design/actions.txt": {
+      "text": "ACTION=TALLY\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "STEP_SKIPPED=TALLY REASON=completed-before-resume\n"
+  }
+}
