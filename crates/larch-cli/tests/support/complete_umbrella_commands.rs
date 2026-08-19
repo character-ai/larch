@@ -1406,6 +1406,10 @@ fn run_leaves_retries_only_the_same_transient_leaf_and_resets_needs_design() {
     assert_eq!(transient.child_leaves, vec![LEAF, LEAF, LEAF]);
     assert_eq!(transient.wait_calls, 2);
     assert_eq!(transient.resets, vec![LEAF, LEAF]);
+    assert_eq!(
+        transient.reset_backoffs,
+        vec![Duration::from_secs(60), Duration::from_secs(60)]
+    );
     assert!(transient.syncs.is_empty());
 
     let mut needs_design = FakeRunLeavesOperations {
@@ -1435,29 +1439,28 @@ fn run_leaves_retries_only_the_same_transient_leaf_and_resets_needs_design() {
 fn run_leaves_reports_retry_and_post_child_boundaries() {
     let mut exhausted = FakeRunLeavesOperations {
         graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
-        syncs: VecDeque::from([Ok(()), Ok(()), Ok(())]),
-        children: VecDeque::from([
-            ChildAttempt::TransientApi("network one".to_owned()),
-            ChildAttempt::TransientApi("network two".to_owned()),
-            ChildAttempt::TransientApi("network three".to_owned()),
-        ]),
+        syncs: std::iter::repeat_with(|| Ok(())).take(21).collect(),
+        children: (0..21)
+            .map(|index| ChildAttempt::TransientApi(format!("network {index}")))
+            .collect(),
         ..FakeRunLeavesOperations::default()
     };
     let failure = execute_run_leaves(&mut exhausted).expect_err("retry exhaustion");
     assert_eq!(failure.step, "run-child");
-    assert!(failure.reason.contains("after 3 attempts"));
-    assert_eq!(exhausted.resets, vec![LEAF, LEAF, LEAF]);
-    assert_eq!(exhausted.wait_calls, 3);
-    assert_eq!(exhausted.child_leaves, vec![LEAF, LEAF, LEAF]);
+    assert!(failure.reason.contains("after 21 attempts"));
+    assert_eq!(exhausted.resets, vec![LEAF; 21]);
+    assert_eq!(exhausted.wait_calls, 21);
+    assert_eq!(exhausted.child_leaves, vec![LEAF; 21]);
+    assert_eq!(exhausted.reset_backoffs, vec![Duration::from_secs(60); 20]);
     assert_eq!(
         exhausted.results.last(),
         Some(&RunLeavesEnvelope::Failure {
             failure,
             metrics: RunLeavesMetrics {
-                child_attempt_count: 3,
-                transient_child_retry_count: 2,
-                net_probe_attempt_count: 3,
-                leaf_reset_attempt_count: 3,
+                child_attempt_count: 21,
+                transient_child_retry_count: 20,
+                net_probe_attempt_count: 21,
+                leaf_reset_attempt_count: 21,
                 ..RunLeavesMetrics::default()
             },
         })
@@ -1471,6 +1474,10 @@ fn run_leaves_reports_retry_and_post_child_boundaries() {
     };
     let failure = execute_run_leaves(&mut retry_sync_failure).expect_err("retry sync failure");
     assert_eq!(failure.step, "sync-before-retry");
+    assert_eq!(
+        retry_sync_failure.reset_backoffs,
+        vec![Duration::from_secs(60)]
+    );
     assert_eq!(
         retry_sync_failure.results.last(),
         Some(&RunLeavesEnvelope::Failure {
@@ -1581,6 +1588,7 @@ fn run_leaves_waits_without_consuming_child_attempts_and_records_metrics() {
     assert_eq!(recovered.child_leaves, vec![LEAF, LEAF]);
     assert_eq!(recovered.wait_calls, 1);
     assert_eq!(recovered.resets, vec![LEAF]);
+    assert_eq!(recovered.reset_backoffs, vec![Duration::from_secs(60)]);
     assert_eq!(
         metrics,
         RunLeavesMetrics {

@@ -177,7 +177,8 @@ def test_whole_leaf_loop_bgjob_binds_one_durable_session_owner() -> None:
     assert "fixed Anthropic and GitHub endpoints" in skill
     assert "capped exponential backoff" in skill
     assert "up to three times with bounded backoff" in skill
-    assert "same handoff root up to two additional times" in skill
+    assert "same handoff root up to twenty additional times" in skill
+    assert "sleeps one minute" in skill
     assert "host suspend does not consume the budget" in skill
     assert "Offline probe rounds do not consume child relaunch attempts." in skill
     assert "wait lease" in skill
