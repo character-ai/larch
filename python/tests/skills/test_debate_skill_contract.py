@@ -94,6 +94,20 @@ def test_generated_handoffs_are_validated_before_use() -> None:
     assert "$BODY_FILE" not in text
 
 
+def test_default_adjudication_batches_operator_questions() -> None:
+    text = _skill()
+    start = text.index("- Default mode first runs:")
+    end = text.index("Require a terminal `converged`", start)
+    contract = text[start:end]
+    assert "consecutive batches of up to 4" in contract
+    assert "exactly `ceil(N/4)` `AskUserQuestion` calls" in contract
+    assert "one question per disputed point in the current batch" in contract
+    assert "two bounded positions plus the both-viable choice" in contract
+    assert "POINT_N<TAB>SELECTED<TAB>position" in contract
+    assert "POINT_N<TAB>SPLIT<TAB>position-a<TAB>position-b" in contract
+    assert "For every point, ask one `AskUserQuestion`" not in contract
+
+
 def test_issue_pattern_b_and_cross_links_are_verified() -> None:
     text = _skill()
     assert text.count("--sentinel-file") >= 3
