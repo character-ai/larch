@@ -401,33 +401,38 @@ mod tests {
     #[test]
     fn child_prompt_is_fixed_policy_with_only_trusted_identifiers() {
         let prompt = complete_umbrella_child_prompt("owner/repo", 40, 42, "/tmp/leaf-42");
-        assert!(prompt.contains("leaf issue #42 of umbrella #40"));
-        assert!(prompt.contains("repository owner/repo"));
-        assert!(prompt.contains("without using any larch skills"));
-        assert!(prompt.contains("Do not personally call Read, Grep, Glob, Edit, or Write"));
-        assert!(prompt.contains("exactly four primary general-purpose Agent subagents"));
-        assert!(prompt.contains("recon-design, implement, adversarial-review, ship"));
-        assert!(prompt.contains("call the next phase's Agent in the same continuous turn"));
-        assert!(prompt.contains("do not wait for any separate task notification"));
-        assert!(prompt.contains("HANDOFF_ROOT=/tmp/leaf-42"));
-        assert!(prompt.contains("exact value of $SESSION_TMPDIR"));
-        assert!(prompt.contains("references/recon-design.md"));
-        assert!(prompt.contains("references/adversarial-review.md"));
-        assert!(prompt.contains("PHASE_STATUS=complete"));
-        assert!(prompt.contains("malformed-phase-result"));
-        assert!(prompt.contains("PHASE_STATUS=needs-design"));
-        assert!(prompt.contains("needs-design.md"));
-        assert!(prompt.contains(COMPLETE_UMBRELLA_CHILD_NEEDS_DESIGN));
-        assert!(prompt.contains("two additional times"));
-        assert!(prompt.contains("design-brief.md"));
-        assert!(prompt.contains("implementation-summary.md"));
-        assert!(prompt.contains("review-summary.md"));
-        assert!(prompt.contains("ship-summary.md"));
-        assert!(prompt.contains("ignore surrounding narration"));
-        assert!(prompt.contains("Resume at the first incomplete phase"));
-        assert!(!prompt.contains("needs-orchestrator-finalize"));
-        assert!(!prompt.contains("Read both leaf issue"));
-        assert!(prompt.contains(COMPLETE_UMBRELLA_CHILD_COMPLETE));
+        for expected in [
+            "leaf issue #42 of umbrella #40",
+            "repository owner/repo",
+            "without using any larch skills",
+            "Do not personally call Read, Grep, Glob, Edit, or Write",
+            "exactly four primary general-purpose Agent subagents",
+            "recon-design, implement, adversarial-review, ship",
+            "call the next phase's Agent in the same continuous turn",
+            "do not wait for any separate task notification",
+            "HANDOFF_ROOT=/tmp/leaf-42",
+            "exact value of $SESSION_TMPDIR",
+            "references/recon-design.md",
+            "references/adversarial-review.md",
+            "PHASE_STATUS=complete",
+            "malformed-phase-result",
+            "PHASE_STATUS=needs-design",
+            "needs-design.md",
+            COMPLETE_UMBRELLA_CHILD_NEEDS_DESIGN,
+            "two additional times",
+            "design-brief.md",
+            "implementation-summary.md",
+            "review-summary.md",
+            "ship-summary.md",
+            "ignore surrounding narration",
+            "Resume at the first incomplete phase",
+            COMPLETE_UMBRELLA_CHILD_COMPLETE,
+        ] {
+            assert!(prompt.contains(expected), "missing {expected:?}");
+        }
+        for forbidden in ["needs-orchestrator-finalize", "Read both leaf issue"] {
+            assert!(!prompt.contains(forbidden), "found {forbidden:?}");
+        }
     }
 
     #[test]

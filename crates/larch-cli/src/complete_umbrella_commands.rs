@@ -484,10 +484,14 @@ fn finish_child_envelope(
 ) -> Result<(), String> {
     let parsed = parse_claude_envelope(raw);
     let result_status = child_terminal_status(&parsed.text);
+    let has_bounded_status = matches!(
+        result_status,
+        Some(ChildResultStatus::Complete | ChildResultStatus::NeedsDesign)
+    );
     let bounded = execution.status().success()
         && !execution.stdout_truncated()
         && !execution.stderr_truncated()
-        && result_status.is_some();
+        && has_bounded_status;
     let result_status = result_status.unwrap_or(ChildResultStatus::Failed);
     let failure_class = if bounded && result_status == ChildResultStatus::NeedsDesign {
         Some(COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN)
