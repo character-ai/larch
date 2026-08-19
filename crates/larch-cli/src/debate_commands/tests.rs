@@ -13,9 +13,10 @@ mod debate_commands_tests {
         AdjudicateArgs, AdjudicationBackend, DebateError, InitInputs, SynthesisBackend,
         TurnOutcome, TurnRequest, compose_round_digest, default_runner, envelope, initialize,
         input_file_runner, one_dispatch_value, parse_args, parse_operator_adjudication_row,
-        point_values, proposal_parts, run_abort, run_adjudicate, run_adjudication_preview,
-        run_publish_prepare, run_record_turn, run_round_external, run_round_ingest, run_round_prep,
-        run_synthesize, strict_bool, synthesis_input, voter_paths,
+        point_values, proposal_parts, run_abort, run_abort_run, run_adjudicate,
+        run_adjudication_preview, run_publish_finish, run_publish_prepare, run_publish_run,
+        run_record_turn, run_round_external, run_round_ingest, run_round_prep, run_synthesize,
+        strict_bool, synthesis_input, voter_paths,
     };
     use crate::github_service::with_test_github_service;
     use larch_adapters::TemporaryRoot;
@@ -1437,5 +1438,399 @@ mod debate_commands_tests {
         );
         // A quorum-floor abort exits with the drop's validation exit code.
         assert_eq!(outcome.exit_code, 2);
+    }
+
+    // -----------------------------------------------------------------------
+    // publish-run, publish-finish, and abort-run composite verbs (#8654)
+    // -----------------------------------------------------------------------
+
+    fn debate_issue_json(title: &str, updated_at: &str) -> String {
+        let mut value: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../larch-adapters/fixtures/github_issue.json"
+        ))
+        .expect("issue fixture");
+        value["id"] = json!(170);
+        value["number"] = json!(17);
+        value["title"] = json!(title);
+        value["body"] = json!("Body.");
+        value["state"] = json!("open");
+        value["labels"] = json!([]);
+        value["updated_at"] = json!(updated_at);
+        value["html_url"] = json!("https://github.com/owner/repo/issues/17");
+        value.to_string()
+    }
+
+    fn issue_exchange(title: &str, updated_at: &str) -> IssueServiceExchange {
+        IssueServiceExchange::any_json(200, debate_issue_json(title, updated_at))
+            .expect("issue exchange")
+    }
+
+    /// The three upsert exchanges (empty list, create, read-back list) plus the
+    /// read-back verify list for one marker-owned comment body.
+    fn comment_exchanges(id: u64, body: &str) -> Vec<IssueServiceExchange> {
+        let list_body = json!([debate_source_comment_json(id, body)]).to_string();
+        vec![
+            IssueServiceExchange::any_json(200, "[]").expect("empty list"),
+            IssueServiceExchange::any_json(200, debate_source_comment_json(id, body).to_string())
+                .expect("create response"),
+            IssueServiceExchange::any_json(200, list_body.clone()).expect("read-back"),
+            IssueServiceExchange::any_json(200, list_body).expect("verify"),
+        ]
+    }
+
+    fn stub_factory(
+        exchanges: Vec<IssueServiceExchange>,
+    ) -> (
+        Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync>,
+        IssueServiceStub,
+    ) {
+        let server = IssueServiceStub::start(exchanges).expect("start stub");
+        let base_url = server.base_url().to_owned();
+        let factory: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+            Arc::new(move || OctocrabGitHubService::with_test_base(&base_url));
+        (factory, server)
+    }
+
+    /// Seed a converged debate with a completed synthesis and the source
+    /// metadata; returns the root and the (unchanged) terminal fingerprint.
+    fn seed_synthesized() -> (PathBuf, String) {
+        let (debate, fingerprint) = seed_converged();
+        let dispatch = writing_dispatch("# My Title\n\nBody text here.\n");
+        let backend = SynthesisBackend {
+            dispatch: &dispatch,
+            run_log: &ok_run_log,
+        };
+        let _ = run_synthesize(&synthesize_parsed(&debate, &fingerprint), &backend)
+            .expect("synthesize");
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        seed_debate_source(&root);
+        (debate, fingerprint)
+    }
+
+    fn publish_finish_parsed(
+        debate: &Path,
+        fingerprint: &str,
+        number: &str,
+        url: &str,
+    ) -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (
+                "--debate-tmpdir".to_owned(),
+                debate.to_string_lossy().into_owned(),
+            ),
+            ("--expected-fingerprint".to_owned(), fingerprint.to_owned()),
+            ("--proposal-number".to_owned(), number.to_owned()),
+            ("--proposal-url".to_owned(), url.to_owned()),
+        ])
+    }
+
+    fn abort_run_parsed(
+        debate: &Path,
+        fingerprint: &str,
+        title_adopted: &str,
+    ) -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (
+                "--debate-tmpdir".to_owned(),
+                debate.to_string_lossy().into_owned(),
+            ),
+            ("--expected-fingerprint".to_owned(), fingerprint.to_owned()),
+            ("--title-adopted".to_owned(), title_adopted.to_owned()),
+        ])
+    }
+
+    #[test]
+    fn publish_run_links_body_and_wraps_title() {
+        let (debate, fingerprint) = seed_converged();
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        seed_debate_source(&root);
+        let dispatch = writing_dispatch("# My Title\n\nBody text here.\n");
+        let backend = SynthesisBackend {
+            dispatch: &dispatch,
+            run_log: &ok_run_log,
+        };
+        let outcome = run_publish_run(&synthesize_parsed(&debate, &fingerprint), &backend)
+            .expect("publish-run succeeds");
+        // The fingerprint is unchanged and re-exported as the source fingerprint.
+        assert_eq!(outcome.state.fingerprint, fingerprint);
+        assert_eq!(outcome.source_fingerprint, fingerprint);
+        assert_eq!(outcome.source_issue_number, "42");
+        assert_eq!(outcome.cross_link_issue_number, "42");
+        assert_eq!(outcome.title_file, root.path().join("proposal-title.txt"));
+        // proposal-link reports the caller's lexical root, like the retired verb.
+        assert_eq!(
+            outcome.linked_body_path,
+            debate.join("proposal-linked-body.md")
+        );
+        let linked = std::fs::read_to_string(&outcome.linked_body_path).expect("linked body");
+        assert!(linked.starts_with("Body text here."));
+        assert!(linked.contains("Source: [#17](https://github.com/owner/repo/issues/17)"));
+        // The title is exported only as the wrapped untrusted block.
+        assert!(
+            outcome
+                .proposal_title_block
+                .starts_with("<debate_proposal_title encoding=\"literal-redacted\">\n")
+        );
+        assert!(outcome.proposal_title_block.contains("[PROPOSAL] My Title"));
+        // publish-prepare.env is still written for idempotency parity.
+        assert!(root.path().join("publish-prepare.env").exists());
+    }
+
+    #[test]
+    fn publish_run_synthesis_failure_is_exit_9() {
+        let (debate, fingerprint) = seed_converged();
+        let dispatch = |_root: &Path,
+                        _state: &StoredState,
+                        _manifest: &Path|
+         -> Result<(bool, String), DebateError> {
+            Ok((false, "DISPATCH_OK=false\n".to_owned()))
+        };
+        let backend = SynthesisBackend {
+            dispatch: &dispatch,
+            run_log: &ok_run_log,
+        };
+        let error = run_publish_run(&synthesize_parsed(&debate, &fingerprint), &backend)
+            .expect_err("synthesis failure surfaces");
+        assert_eq!(error.error_class, "synthesis_exhausted");
+        assert_eq!(error.exit_code, 9);
+    }
+
+    #[test]
+    fn publish_run_before_terminal_state_is_error() {
+        let (debate, fingerprint) = seed_stalemate();
+        let backend = SynthesisBackend {
+            dispatch: &panic_synthesis_dispatch,
+            run_log: &ok_run_log,
+        };
+        let error = run_publish_run(&synthesize_parsed(&debate, &fingerprint), &backend)
+            .expect_err("nonterminal state refuses publication");
+        assert_eq!(error.error_class, "synthesis_exhausted");
+        assert_eq!(error.exit_code, 9);
+    }
+
+    #[test]
+    fn publish_finish_upserts_comment_and_finishes_title() {
+        let (debate, fingerprint) = seed_synthesized();
+        let marker = "<!-- larch:debate-proposal runid=run-1 -->";
+        let body = format!(
+            "{marker}\n\nThe debate produced proposal [#18](https://github.com/owner/repo/issues/18)."
+        );
+        let debating = "[DEBATING] Choose a queue design";
+        let debated = "[DEBATED] Choose a queue design";
+        let after = "2026-08-05T12:00:03Z";
+        let mut exchanges = comment_exchanges(93, &body);
+        exchanges.extend([
+            issue_exchange(debating, "2026-08-05T12:00:02Z"),
+            issue_exchange(debating, "2026-08-05T12:00:02Z"),
+            issue_exchange(debated, after),
+            issue_exchange(debated, after),
+        ]);
+        let (factory, server) = stub_factory(exchanges);
+        let outcome = with_test_github_service(factory, || {
+            run_publish_finish(&publish_finish_parsed(
+                &debate,
+                &fingerprint,
+                "18",
+                "https://github.com/owner/repo/issues/18",
+            ))
+        })
+        .expect("publish-finish succeeds");
+        assert_eq!(server.finish().expect("stub finished").len(), 8);
+        assert_eq!(outcome.state.fingerprint, fingerprint);
+        assert_eq!(outcome.comment_id, "93");
+        assert!(outcome.title_changed);
+        assert!(outcome.owned);
+        // The fixed forward-link comment is composed in Rust, byte for byte.
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("proposal-comment.md")).expect("comment"),
+            "The debate produced proposal [#18](https://github.com/owner/repo/issues/18).\n"
+        );
+    }
+
+    #[test]
+    fn publish_finish_url_or_number_mismatch_is_validation_without_traffic() {
+        let (debate, fingerprint) = seed_synthesized();
+        // A URL that does not rebuild from the metadata repository and number.
+        let error = run_publish_finish(&publish_finish_parsed(
+            &debate,
+            &fingerprint,
+            "18",
+            "https://github.com/owner/repo/issues/19",
+        ))
+        .expect_err("mismatched URL");
+        assert_eq!(error.error_class, "validation");
+        assert_eq!(error.exit_code, 2);
+        // A non-positive proposal number.
+        let error = run_publish_finish(&publish_finish_parsed(
+            &debate,
+            &fingerprint,
+            "0",
+            "https://github.com/owner/repo/issues/0",
+        ))
+        .expect_err("zero number");
+        assert_eq!(error.error_class, "validation");
+    }
+
+    #[test]
+    fn publish_finish_without_synthesis_is_publication_failure() {
+        let (debate, fingerprint) = seed_converged();
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        seed_debate_source(&root);
+        let error = run_publish_finish(&publish_finish_parsed(
+            &debate,
+            &fingerprint,
+            "18",
+            "https://github.com/owner/repo/issues/18",
+        ))
+        .expect_err("missing synthesis marker");
+        assert_eq!(error.error_class, "publication_failure");
+        assert_eq!(error.exit_code, 10);
+    }
+
+    #[test]
+    fn publish_finish_title_not_owned_is_publication_failure() {
+        let (debate, fingerprint) = seed_synthesized();
+        let marker = "<!-- larch:debate-proposal runid=run-1 -->";
+        let body = format!(
+            "{marker}\n\nThe debate produced proposal [#18](https://github.com/owner/repo/issues/18)."
+        );
+        // The comment upserts and verifies, then the finish transition finds a
+        // foreign live title and refuses.
+        let mut exchanges = comment_exchanges(94, &body);
+        exchanges.push(issue_exchange(
+            "Operator-owned replacement",
+            "2026-08-05T12:00:02Z",
+        ));
+        let (factory, server) = stub_factory(exchanges);
+        let error = with_test_github_service(factory, || {
+            run_publish_finish(&publish_finish_parsed(
+                &debate,
+                &fingerprint,
+                "18",
+                "https://github.com/owner/repo/issues/18",
+            ))
+        })
+        .expect_err("foreign title refuses finish");
+        assert_eq!(server.finish().expect("stub finished").len(), 5);
+        assert_eq!(error.error_class, "publication_failure");
+        assert_eq!(error.exit_code, 10);
+    }
+
+    #[test]
+    fn abort_run_restores_title_and_upserts_comment() {
+        let (debate, fingerprint) = seed_prepared(true);
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        seed_debate_source(&root);
+        let marker = "<!-- larch:debate-aborted runid=run-1 -->";
+        let body = format!(
+            "{marker}\n\nThe debate ended before proposal publication. No outcome was adopted."
+        );
+        let debating = "[DEBATING] Choose a queue design";
+        let after = "2026-08-05T12:00:04Z";
+        // abort -> restore (4 exchanges) -> comment upsert + verify (4).
+        let mut exchanges = vec![
+            issue_exchange(debating, "2026-08-05T12:00:02Z"),
+            issue_exchange(debating, "2026-08-05T12:00:02Z"),
+            issue_exchange("Choose a queue design", after),
+            issue_exchange("Choose a queue design", after),
+        ];
+        exchanges.extend(comment_exchanges(95, &body));
+        let (factory, server) = stub_factory(exchanges);
+        let outcome = with_test_github_service(factory, || {
+            run_abort_run(&abort_run_parsed(&debate, &fingerprint, "true"))
+        })
+        .expect("abort-run succeeds");
+        assert_eq!(server.finish().expect("stub finished").len(), 8);
+        assert_eq!(
+            outcome
+                .state
+                .proposal
+                .terminal_outcome()
+                .map(TerminalOutcome::as_str),
+            Some("ABORTED")
+        );
+        assert_eq!(outcome.restore_owned, Some(true));
+        assert_eq!(outcome.restore_changed, Some(true));
+        assert_eq!(outcome.comment_id.as_deref(), Some("95"));
+        // The sanitized fixed sentence is preserved byte for byte.
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("aborted-comment.md")).expect("comment"),
+            "The debate ended before proposal publication. No outcome was adopted.\n"
+        );
+    }
+
+    #[test]
+    fn abort_run_foreign_title_still_upserts_comment() {
+        let (debate, fingerprint) = seed_prepared(true);
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        seed_debate_source(&root);
+        let marker = "<!-- larch:debate-aborted runid=run-1 -->";
+        let body = format!(
+            "{marker}\n\nThe debate ended before proposal publication. No outcome was adopted."
+        );
+        // The restore snapshot shows a foreign title: owned=false, no PATCH.
+        let mut exchanges = vec![issue_exchange(
+            "Operator-owned replacement",
+            "2026-08-05T12:00:02Z",
+        )];
+        exchanges.extend(comment_exchanges(96, &body));
+        let (factory, server) = stub_factory(exchanges);
+        let outcome = with_test_github_service(factory, || {
+            run_abort_run(&abort_run_parsed(&debate, &fingerprint, "true"))
+        })
+        .expect("abort-run succeeds");
+        assert_eq!(server.finish().expect("stub finished").len(), 5);
+        assert_eq!(outcome.restore_owned, Some(false));
+        assert_eq!(outcome.restore_changed, Some(false));
+        assert_eq!(outcome.comment_id.as_deref(), Some("96"));
+    }
+
+    #[test]
+    fn abort_run_already_aborted_is_idempotent() {
+        let (debate, fingerprint) = seed_prepared(true);
+        let aborted = run_abort(&abort_args(&debate, &fingerprint)).expect("first abort");
+        // No GitHub stub: the pre-title route must produce no traffic.
+        let outcome = run_abort_run(&abort_run_parsed(&debate, &aborted.fingerprint, "false"))
+            .expect("abort-run succeeds on an aborted debate");
+        assert_eq!(outcome.state.fingerprint, aborted.fingerprint);
+        assert_eq!(
+            outcome
+                .state
+                .proposal
+                .terminal_outcome()
+                .map(TerminalOutcome::as_str),
+            Some("ABORTED")
+        );
+        assert_eq!(outcome.restore_owned, None);
+        assert_eq!(outcome.restore_changed, None);
+        assert_eq!(outcome.comment_id, None);
+    }
+
+    #[test]
+    fn abort_run_without_title_adoption_never_comments() {
+        let (debate, fingerprint) = seed_prepared(true);
+        // No GitHub stub: title-adopted=false stops after the abort itself.
+        let outcome = run_abort_run(&abort_run_parsed(&debate, &fingerprint, "false"))
+            .expect("abort-run succeeds");
+        assert_eq!(
+            outcome
+                .state
+                .proposal
+                .terminal_outcome()
+                .map(TerminalOutcome::as_str),
+            Some("ABORTED")
+        );
+        assert_eq!(outcome.restore_owned, None);
+        assert_eq!(outcome.comment_id, None);
+        assert!(!debate.join("aborted-comment.md").exists());
+        // A malformed adoption flag is a validation refusal.
+        let error = run_abort_run(&abort_run_parsed(
+            &debate,
+            &outcome.state.fingerprint,
+            "yes",
+        ))
+        .expect_err("strict bool");
+        assert_eq!(error.error_class, "validation");
     }
 }

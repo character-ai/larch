@@ -1156,6 +1156,15 @@ enum DebateCommand {
     /// Verify one source comment's exact redacted postcondition by read-back.
     #[command(name = "comment-verify", disable_help_flag = true)]
     CommentVerify(RawCompatibilityArguments),
+    /// Synthesize, prepare, and link the proposal publication in one composite verb.
+    #[command(name = "publish-run", disable_help_flag = true)]
+    PublishRun(RawCompatibilityArguments),
+    /// Upsert and verify the forward-link comment, then finish the source title.
+    #[command(name = "publish-finish", disable_help_flag = true)]
+    PublishFinish(RawCompatibilityArguments),
+    /// Abort, restore the owned title, and upsert the fixed aborted comment.
+    #[command(name = "abort-run", disable_help_flag = true)]
+    AbortRun(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2205,6 +2214,13 @@ fn run(
             DebateCommand::CommentVerify(arguments) => {
                 debate_publication_commands::comment_verify(&arguments.arguments)
             }
+            DebateCommand::PublishRun(arguments) => {
+                debate_commands::publish_run(&arguments.arguments)
+            }
+            DebateCommand::PublishFinish(arguments) => {
+                debate_commands::publish_finish(&arguments.arguments)
+            }
+            DebateCommand::AbortRun(arguments) => debate_commands::abort_run(&arguments.arguments),
         }),
         Domain::Deps(command) => Ok(match command {
             DepsCommand::ResolveRepo(arguments) => {

@@ -413,6 +413,30 @@ pub fn verify_comment_body(
     verify_comment(debate_tmpdir, marker, content_file)
 }
 
+/// Apply one lifecycle title transition for an in-process caller (the
+/// `debate publish-finish` and `debate abort-run` composites), reusing
+/// [`transition_title`]. Returns `(changed, owned, updated_at)`; the restore
+/// mode's foreign-title no-op returns `owned=false` and never overwrites.
+///
+/// # Errors
+///
+/// Returns `Err(())` when the metadata, snapshot, state machine, or mutation
+/// cannot be proven, matching the `title-transition` verb.
+pub fn transition_title_mode(debate_tmpdir: &str, mode: &str) -> Result<(bool, bool, String), ()> {
+    transition_title(debate_tmpdir, mode)
+}
+
+/// Append the canonical source backlink for an in-process caller (the
+/// `debate publish-run` composite), reusing [`link_proposal_body`].
+///
+/// # Errors
+///
+/// Returns `Err(())` when the metadata, body path, or body content cannot be
+/// proven, matching the `proposal-link` verb.
+pub fn link_proposal_body_in(debate_tmpdir: &str, body_file: &str) -> Result<PathBuf, ()> {
+    link_proposal_body(debate_tmpdir, body_file)
+}
+
 /// Read the source `(repository, issue)` from `debate-source.json` for an
 /// in-process caller (the `debate round-ingest` composite).
 ///
