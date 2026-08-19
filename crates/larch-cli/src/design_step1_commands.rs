@@ -20,6 +20,9 @@ use std::{
     process::{Command, ExitCode, Stdio},
 };
 
+use larch_adapters::GixRepository;
+use larch_core::RepositoryRead as _;
+use larch_core::review::python_truthy_of_json;
 use serde_json::Value;
 
 use crate::design_step0_commands::{
@@ -27,6 +30,48 @@ use crate::design_step0_commands::{
     env_get, exit_from_i32, load_wrapper_env, parse_wrapper_args, require_design_tmpdir,
     require_plugin_root, utf8_arguments,
 };
+
+/// Resolved wrapper preamble shared by the design Step 1 entry points.
+struct WrapperContext {
+    env: Env,
+    plugin_root: PathBuf,
+    design_tmpdir: PathBuf,
+    public_argv: Vec<String>,
+}
+
+/// Parse the wrapper argv, resolve the plugin root, optionally derive the
+/// binary-found flag, then require the design tmpdir. One owner for the
+/// parse-and-resolve preamble the Step 1 entry points otherwise repeat.
+fn wrapper_context(
+    arguments: &[OsString],
+    derive_binary: bool,
+) -> Result<WrapperContext, ExitCode> {
+    let argv = utf8_arguments(arguments);
+    let ns = parse_wrapper_args(&argv)?;
+    let mut env = load_wrapper_env(&ns);
+    let plugin_root_value = env_get(&env, "CLAUDE_PLUGIN_ROOT", &ns.plugin_root).to_owned();
+    let plugin_root = require_plugin_root(&plugin_root_value)?;
+    if derive_binary {
+        derive_binary_found(&mut env);
+    }
+    let design_tmpdir = require_design_tmpdir(&env, None)?;
+    Ok(WrapperContext {
+        env,
+        plugin_root,
+        design_tmpdir,
+        public_argv: ns.public_argv,
+    })
+}
+
+/// Create the `.completed` directory under the design tmpdir and touch each
+/// named checkpoint sentinel, swallowing best-effort I/O failures.
+fn mark_completed(design_tmpdir: &Path, names: &[&str]) {
+    let completed = design_tmpdir.join(".completed");
+    let _ = fs::create_dir_all(&completed);
+    for name in names {
+        let _ = fs::write(completed.join(name), "");
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Pure helpers ported branch-for-branch from design_core.py
@@ -219,18 +264,10 @@ const STEP1E_REENTRY_SENTINELS: [&str; 10] = [
 
 /// The `step1e-reentry` entry point.
 pub fn step1e_reentry(arguments: &[OsString]) -> ExitCode {
-    let argv = utf8_arguments(arguments);
-    let ns = match parse_wrapper_args(&argv) {
-        Ok(ns) => ns,
-        Err(code) => return code,
-    };
-    let env = load_wrapper_env(&ns);
-    let plugin_root_value = env_get(&env, "CLAUDE_PLUGIN_ROOT", &ns.plugin_root).to_owned();
-    if let Err(code) = require_plugin_root(&plugin_root_value) {
-        return code;
-    }
-    let design_tmpdir = match require_design_tmpdir(&env, None) {
-        Ok(path) => path,
+    let WrapperContext {
+        env, design_tmpdir, ..
+    } = match wrapper_context(arguments, false) {
+        Ok(context) => context,
         Err(code) => return code,
     };
     let completed = design_tmpdir.join(".completed");
@@ -281,17 +318,6 @@ fn step1d5_brainstorm_requested(design_tmpdir: &Path) -> bool {
     }
 }
 
-fn json_truthy(value: &Value) -> bool {
-    match value {
-        Value::Null => false,
-        Value::Bool(flag) => *flag,
-        Value::Number(number) => number.as_f64() != Some(0.0),
-        Value::String(text) => !text.is_empty(),
-        Value::Array(items) => !items.is_empty(),
-        Value::Object(map) => !map.is_empty(),
-    }
-}
-
 /// Port of step1d7's `skip_approve_requested` read (truthy, no symlink guard).
 fn read_skip_approve_requested(design_tmpdir: &Path) -> bool {
     let Ok(text) = fs::read_to_string(design_tmpdir.join("run-params.json")) else {
@@ -299,7 +325,11 @@ fn read_skip_approve_requested(design_tmpdir: &Path) -> bool {
     };
     serde_json::from_str::<Value>(&text)
         .ok()
-        .and_then(|value| value.get("skip_approve_requested").map(json_truthy))
+        .and_then(|value| {
+            value
+                .get("skip_approve_requested")
+                .map(python_truthy_of_json)
+        })
         .unwrap_or(false)
 }
 
@@ -309,27 +339,14 @@ fn read_skip_approve_requested(design_tmpdir: &Path) -> bool {
 
 /// The `step1d7` entry point.
 pub fn step1d7(arguments: &[OsString]) -> ExitCode {
-    let argv = utf8_arguments(arguments);
-    let ns = match parse_wrapper_args(&argv) {
-        Ok(ns) => ns,
-        Err(code) => return code,
-    };
-    let mut env = load_wrapper_env(&ns);
-    let plugin_root_value = env_get(&env, "CLAUDE_PLUGIN_ROOT", &ns.plugin_root).to_owned();
-    if let Err(code) = require_plugin_root(&plugin_root_value) {
-        return code;
-    }
-    derive_binary_found(&mut env);
-    let design_tmpdir = match require_design_tmpdir(&env, None) {
-        Ok(path) => path,
+    let WrapperContext {
+        env, design_tmpdir, ..
+    } = match wrapper_context(arguments, true) {
+        Ok(context) => context,
         Err(code) => return code,
     };
     if !step1d5_brainstorm_requested(&design_tmpdir) {
-        let completed = design_tmpdir.join(".completed");
-        let _ = fs::create_dir_all(&completed);
-        for name in ["step-1c", "step-1d", "step-1d.5"] {
-            let _ = fs::write(completed.join(name), "");
-        }
+        mark_completed(&design_tmpdir, &["step-1c", "step-1d", "step-1d.5"]);
     }
     if let Some(code) = check_pause_and_exit(&env, &design_tmpdir) {
         return code;
@@ -396,28 +413,21 @@ pub fn step1d5(arguments: &[OsString]) -> ExitCode {
 }
 
 fn step1d5_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
+    let WrapperContext {
+        env,
+        plugin_root,
+        design_tmpdir,
+        public_argv,
+    } = match wrapper_context(arguments, false) {
+        Ok(context) => context,
+        Err(code) => return code,
+    };
     let argv = utf8_arguments(arguments);
-    let ns = match parse_wrapper_args(&argv) {
-        Ok(ns) => ns,
-        Err(code) => return code,
-    };
-    let env = load_wrapper_env(&ns);
-    let plugin_root_value = env_get(&env, "CLAUDE_PLUGIN_ROOT", &ns.plugin_root).to_owned();
-    let plugin_root = match require_plugin_root(&plugin_root_value) {
-        Ok(root) => root,
-        Err(code) => return code,
-    };
-    let design_tmpdir = match require_design_tmpdir(&env, None) {
-        Ok(path) => path,
-        Err(code) => return code,
-    };
     match extract_mode(&argv).as_str() {
         "entry" => step1d5_entry(runner, &plugin_root, &design_tmpdir, &env),
-        "collect" => step1d5_collect(runner, &plugin_root, &design_tmpdir, &env, &ns.public_argv),
+        "collect" => step1d5_collect(runner, &plugin_root, &design_tmpdir, &env, &public_argv),
         "complete" => {
-            let completed = design_tmpdir.join(".completed");
-            let _ = fs::create_dir_all(&completed);
-            let _ = fs::write(completed.join("step-1d.5"), "");
+            mark_completed(&design_tmpdir, &["step-1d.5"]);
             if let Some(code) = check_pause_and_exit(&env, &design_tmpdir) {
                 return code;
             }
@@ -653,10 +663,12 @@ fn brainstorm_dirty_checkpoint(
     );
     let _ = fs::write(&stdout_path, &checkpoint.stdout);
     let _ = fs::write(&stderr_path, &checkpoint.stderr);
-    let mut status = kv_last(&checkpoint.stdout, "STATUS");
-    if checkpoint.code != 0 && status.is_empty() {
-        status = String::from("unknown");
-    }
+    let raw_status = kv_last(&checkpoint.stdout, "STATUS");
+    let status = if checkpoint.code != 0 && raw_status.is_empty() {
+        String::from("unknown")
+    } else {
+        raw_status
+    };
     if status == "dirty" || status == "unknown" {
         recovery = true;
         if reason.is_empty() {
@@ -718,19 +730,13 @@ const DRIVER_DISPATCH_ACTIONS: [&str; 4] =
 
 /// The consumer repository's git toplevel, or `None` outside a work tree.
 fn consumer_repo_root() -> Option<PathBuf> {
-    let output = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    if text.is_empty() {
-        None
-    } else {
-        Some(PathBuf::from(text))
-    }
+    let work_dir = GixRepository::discover(std::env::current_dir().ok()?)
+        .ok()?
+        .location()
+        .work_dir?;
+    Some(PathBuf::from(
+        String::from_utf8_lossy(work_dir.as_bytes()).into_owned(),
+    ))
 }
 
 struct DriverArgs {
@@ -1257,7 +1263,7 @@ fn compose_to_output(
             )));
         }
     };
-    let mut command = Command::new(program);
+    let mut command = Command::new(program); // lint-subprocess-via-runner: ok leaf seam that runs the composed plan-goals drafter command, mirroring the frozen design_step_log.py subprocess call
     command.args(program_args);
     command.args(["--plan-file", &plan_file.display().to_string()]);
     command.args(["--goal-text", goal_text]);
@@ -1293,7 +1299,7 @@ fn run_larch_log_write(
     let Some((program, program_args)) = larch_log_cmd.split_first() else {
         return (None, None, 1);
     };
-    let mut command = Command::new(program);
+    let mut command = Command::new(program); // lint-subprocess-via-runner: ok leaf seam that runs the larch `run-log write` entrypoint, mirroring the frozen design_step_log.py subprocess call
     command.args(program_args);
     command.args([
         "run-log",
@@ -1363,7 +1369,7 @@ fn append_log_write_failure(plugin_root: &Path, implement_tmpdir: &Path, output_
         );
         return;
     }
-    let mut command = Command::new(&helper);
+    let mut command = Command::new(&helper); // lint-subprocess-via-runner: ok leaf seam that runs the larch `run-log append-failure` entrypoint, mirroring the frozen design_step_log.py subprocess call
     command.args([
         "run-log",
         "append-failure",
