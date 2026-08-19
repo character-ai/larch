@@ -1,8 +1,9 @@
 use super::*;
 use larch_adapters::github::OctocrabGitHubService;
 use larch_core::{is_transient_claude_api_error, parse_claude_envelope};
-use larch_test_support::{IssueServiceExchange, IssueServiceStub};
+use larch_test_support::{GitFixture, GitRepository, IssueServiceExchange, IssueServiceStub};
 use serde_json::{Value, json};
+use std::collections::VecDeque;
 
 const UMBRELLA: u64 = 40;
 const LEAF: u64 = 41;
@@ -176,6 +177,16 @@ fn command_dispatch_rejects_invalid_inputs_before_remote_work() {
             output_root: PathBuf::from("relative"),
             output: PathBuf::from("snapshot"),
         }),
+        CompleteUmbrellaCommand::RunLeaves(RunLeavesArguments {
+            repository: String::from("o/r"),
+            repo_root: PathBuf::from("missing"),
+            umbrella: UMBRELLA,
+            model: String::from("unknown"),
+            output_root: PathBuf::from("relative"),
+            output: PathBuf::from("snapshot"),
+            result_env: PathBuf::from("result"),
+            operator_invoked: true,
+        }),
         CompleteUmbrellaCommand::RunChild(RunChildArguments {
             repository: String::from("o/r"),
             repo_root: PathBuf::from("missing"),
@@ -281,6 +292,710 @@ fn orphaned_child_recovery_requires_the_exact_transport_and_leaf_identity() {
             LEAF,
         )
         .is_err()
+    );
+
+    let driver = format!(
+        "BGJOB_RC=orphaned\nSTEP={RUN_LEAVES_STEP}\nNEXT_ACTION=verify\nCURRENT_LEAF={LEAF}\n"
+    );
+    assert!(validate_orphaned_child_result(&driver, LEAF).is_ok());
+    assert!(
+        validate_orphaned_child_result(
+            &format!(
+                "BGJOB_RC=orphaned\nSTEP={RUN_LEAVES_STEP}\nNEXT_ACTION=audit\nCURRENT_LEAF={LEAF}\n"
+            ),
+            LEAF,
+        )
+        .is_err()
+    );
+    assert!(
+        validate_orphaned_child_result(
+            &format!(
+                "BGJOB_RC=orphaned\nSTEP={RUN_LEAVES_STEP}\nNEXT_ACTION=launch\nCURRENT_LEAF={GAP}\n"
+            ),
+            LEAF,
+        )
+        .is_err()
+    );
+}
+
+#[derive(Default)]
+struct FakeRunLeavesOperations {
+    graphs: VecDeque<Result<GraphState, String>>,
+    syncs: VecDeque<Result<(), String>>,
+    children: VecDeque<ChildAttempt>,
+    reset_results: VecDeque<Result<(), String>>,
+    result_writes: VecDeque<Result<(), String>>,
+    snapshot_error: Option<String>,
+    snapshots: usize,
+    child_leaves: Vec<u64>,
+    resets: Vec<u64>,
+    results: Vec<RunLeavesEnvelope>,
+}
+
+impl RunLeavesOperations for FakeRunLeavesOperations {
+    fn read_graph(&mut self) -> Result<GraphState, String> {
+        self.graphs
+            .pop_front()
+            .unwrap_or_else(|| Err("unexpected graph read".to_owned()))
+    }
+
+    fn write_snapshot(&mut self, _graph: &GraphState) -> Result<(), String> {
+        if let Some(error) = self.snapshot_error.take() {
+            return Err(error);
+        }
+        self.snapshots += 1;
+        Ok(())
+    }
+
+    fn sync_main(&mut self) -> Result<(), String> {
+        self.syncs
+            .pop_front()
+            .unwrap_or_else(|| Err("unexpected main synchronization".to_owned()))
+    }
+
+    fn run_child(&mut self, leaf: u64) -> ChildAttempt {
+        self.child_leaves.push(leaf);
+        self.children
+            .pop_front()
+            .unwrap_or_else(|| ChildAttempt::Failed("unexpected child launch".to_owned()))
+    }
+
+    fn reset_leaf(&mut self, leaf: u64) -> Result<(), String> {
+        self.resets.push(leaf);
+        self.reset_results.pop_front().unwrap_or(Ok(()))
+    }
+
+    fn write_result(&mut self, envelope: &RunLeavesEnvelope) -> Result<(), String> {
+        self.results.push(envelope.clone());
+        self.result_writes.pop_front().unwrap_or(Ok(()))
+    }
+}
+
+fn driver_graph(leaves: &[(u64, GitHubIssueState, bool)]) -> GraphState {
+    let parent = GitHubIssue {
+        id: 400,
+        number: UMBRELLA,
+        title: String::from("[IMPLEMENTING] [UMBRELLA] Ship it"),
+        body: String::from(PROPOSAL_BODY),
+        state: GitHubIssueState::Open,
+        state_reason: String::new(),
+        url: String::from("https://github.com/o/r/issues/40"),
+        author: String::from("author"),
+        labels: Vec::new(),
+        comments: 0,
+        created_at: String::from(BEFORE),
+        closed_at: String::new(),
+        updated_at: String::from(BEFORE),
+        is_pull_request: false,
+    };
+    GraphState {
+        parent: parent.clone(),
+        leaves: leaves
+            .iter()
+            .map(|(number, state, implementing)| {
+                let lifecycle = if *state == GitHubIssueState::Closed {
+                    "[DONE] "
+                } else if *implementing {
+                    "[IMPLEMENTING] "
+                } else {
+                    ""
+                };
+                LeafState {
+                    issue: GitHubIssue {
+                        id: number * 10,
+                        number: *number,
+                        title: format!("{lifecycle}[LEAF OF {UMBRELLA}] Leaf {number}"),
+                        state: *state,
+                        ..parent.clone()
+                    },
+                    open_blockers: Vec::new(),
+                }
+            })
+            .collect(),
+        open_orphan_blockers: Vec::new(),
+    }
+}
+
+#[test]
+fn run_leaves_verifies_and_selects_from_one_fresh_graph_per_iteration() {
+    let mut operations = FakeRunLeavesOperations {
+        graphs: VecDeque::from([
+            Ok(driver_graph(&[
+                (LEAF, GitHubIssueState::Open, false),
+                (GAP, GitHubIssueState::Open, false),
+            ])),
+            Ok(driver_graph(&[
+                (LEAF, GitHubIssueState::Closed, false),
+                (GAP, GitHubIssueState::Open, false),
+            ])),
+            Ok(driver_graph(&[
+                (LEAF, GitHubIssueState::Closed, false),
+                (GAP, GitHubIssueState::Closed, false),
+            ])),
+        ]),
+        syncs: VecDeque::from([Ok(()), Ok(()), Ok(()), Ok(())]),
+        children: VecDeque::from([ChildAttempt::Complete, ChildAttempt::Complete]),
+        ..FakeRunLeavesOperations::default()
+    };
+
+    assert_eq!(execute_run_leaves(&mut operations), Ok(2));
+    assert!(operations.graphs.is_empty());
+    assert!(operations.syncs.is_empty());
+    assert_eq!(operations.snapshots, 3);
+    assert_eq!(operations.child_leaves, vec![LEAF, GAP]);
+    assert_eq!(
+        operations.results,
+        vec![
+            RunLeavesEnvelope::Progress {
+                action: "launch",
+                leaf: LEAF,
+                completed: 0,
+            },
+            RunLeavesEnvelope::Progress {
+                action: "verify",
+                leaf: LEAF,
+                completed: 0,
+            },
+            RunLeavesEnvelope::Progress {
+                action: "launch",
+                leaf: GAP,
+                completed: 1,
+            },
+            RunLeavesEnvelope::Progress {
+                action: "verify",
+                leaf: GAP,
+                completed: 1,
+            },
+            RunLeavesEnvelope::Audit { completed: 2 },
+        ]
+    );
+}
+
+#[test]
+fn run_leaves_stops_on_child_or_remote_verification_failure() {
+    let mut child_failure = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
+        syncs: VecDeque::from([Ok(())]),
+        children: VecDeque::from([ChildAttempt::Failed("ship failed".to_owned())]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure = execute_run_leaves(&mut child_failure).expect_err("child failure");
+    assert_eq!(failure.step, "run-child");
+    assert_eq!(failure.leaf, Some(LEAF));
+    assert_eq!(child_failure.snapshots, 1);
+
+    let mut verification_failure = FakeRunLeavesOperations {
+        graphs: VecDeque::from([
+            Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)])),
+            Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, true)])),
+        ]),
+        syncs: VecDeque::from([Ok(()), Ok(())]),
+        children: VecDeque::from([ChildAttempt::Complete]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure = execute_run_leaves(&mut verification_failure)
+        .expect_err("remote lifecycle must verify before another selection");
+    assert_eq!(failure.step, "verify-child");
+    assert_eq!(failure.leaf, Some(LEAF));
+    assert_eq!(verification_failure.snapshots, 1);
+    assert_eq!(verification_failure.child_leaves, vec![LEAF]);
+}
+
+#[test]
+fn run_leaves_reports_the_exact_sync_step_before_launch() {
+    let mut operations = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
+        syncs: VecDeque::from([Err("working tree is dirty".to_owned())]),
+        children: VecDeque::from([ChildAttempt::Complete]),
+        ..FakeRunLeavesOperations::default()
+    };
+
+    let failure = execute_run_leaves(&mut operations).expect_err("sync failure");
+    assert_eq!(failure.step, "sync-before-child");
+    assert_eq!(failure.leaf, Some(LEAF));
+    assert_eq!(failure.reason, "working tree is dirty");
+    assert!(operations.child_leaves.is_empty());
+    assert_eq!(
+        operations.results.last(),
+        Some(&RunLeavesEnvelope::Failure(failure))
+    );
+}
+
+#[test]
+fn run_leaves_fails_closed_on_graph_and_selection_boundaries() {
+    let mut graph_failure = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Err("graph unavailable".to_owned())]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure = execute_run_leaves(&mut graph_failure).expect_err("graph failure");
+    assert_eq!(failure.step, "read-graph");
+    assert_eq!(failure.leaf, None);
+
+    let mut snapshot_failure = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
+        snapshot_error: Some("snapshot refused".to_owned()),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure = execute_run_leaves(&mut snapshot_failure).expect_err("snapshot failure");
+    assert_eq!(failure.step, "write-snapshot");
+    assert_eq!(failure.leaf, Some(LEAF));
+
+    let mut orphan_graph = driver_graph(&[]);
+    orphan_graph.open_orphan_blockers.push(GAP);
+    let mut orphan = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Ok(orphan_graph)]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure = execute_run_leaves(&mut orphan).expect_err("orphan blocker");
+    assert_eq!(failure.step, "select-leaf");
+    assert!(failure.reason.contains("42"));
+
+    let mut blocked_graph = driver_graph(&[(LEAF, GitHubIssueState::Open, false)]);
+    blocked_graph.leaves[0].open_blockers.push(GAP);
+    let mut deadlocked = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Ok(blocked_graph)]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure = execute_run_leaves(&mut deadlocked).expect_err("deadlock");
+    assert_eq!(failure.leaf, Some(LEAF));
+    assert!(failure.reason.contains("all open leaves"));
+}
+
+#[test]
+fn run_leaves_preserves_result_write_failures() {
+    let mut audit_write_failure = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Closed, false)]))]),
+        result_writes: VecDeque::from([Err("audit result refused".to_owned())]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure = execute_run_leaves(&mut audit_write_failure).expect_err("audit write failure");
+    assert_eq!(failure.step, "write-result");
+    assert_eq!(failure.leaf, None);
+    assert_eq!(failure.reason, "audit result refused");
+
+    let mut failure_write_failure = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Err("graph unavailable".to_owned())]),
+        result_writes: VecDeque::from([Err("failure result refused".to_owned())]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure =
+        execute_run_leaves(&mut failure_write_failure).expect_err("failure write failure");
+    assert_eq!(failure.step, "write-result");
+    assert!(failure.reason.contains("failure result refused"));
+    assert!(failure.reason.contains("original failure"));
+}
+
+#[test]
+fn run_leaves_retries_only_the_same_transient_leaf_and_resets_needs_design() {
+    let mut transient = FakeRunLeavesOperations {
+        graphs: VecDeque::from([
+            Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)])),
+            Ok(driver_graph(&[(LEAF, GitHubIssueState::Closed, false)])),
+        ]),
+        syncs: VecDeque::from([Ok(()), Ok(()), Ok(()), Ok(())]),
+        children: VecDeque::from([
+            ChildAttempt::TransientApi("network one".to_owned()),
+            ChildAttempt::TransientApi("network two".to_owned()),
+            ChildAttempt::Complete,
+        ]),
+        ..FakeRunLeavesOperations::default()
+    };
+    assert_eq!(execute_run_leaves(&mut transient), Ok(1));
+    assert_eq!(transient.child_leaves, vec![LEAF, LEAF, LEAF]);
+    assert_eq!(transient.resets, vec![LEAF, LEAF]);
+    assert!(transient.syncs.is_empty());
+
+    let mut needs_design = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
+        syncs: VecDeque::from([Ok(())]),
+        children: VecDeque::from([ChildAttempt::NeedsDesign]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure = execute_run_leaves(&mut needs_design).expect_err("needs design");
+    assert_eq!(failure.next_action, "needs-design");
+    assert_eq!(failure.step, "run-child");
+    assert_eq!(needs_design.resets, vec![LEAF]);
+    assert_eq!(
+        needs_design.results.last(),
+        Some(&RunLeavesEnvelope::Failure(failure))
+    );
+}
+
+#[test]
+fn run_leaves_reports_retry_and_post_child_boundaries() {
+    let mut exhausted = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
+        syncs: VecDeque::from([Ok(()), Ok(()), Ok(())]),
+        children: VecDeque::from([
+            ChildAttempt::TransientApi("network one".to_owned()),
+            ChildAttempt::TransientApi("network two".to_owned()),
+            ChildAttempt::TransientApi("network three".to_owned()),
+        ]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure = execute_run_leaves(&mut exhausted).expect_err("retry exhaustion");
+    assert_eq!(failure.step, "run-child");
+    assert!(failure.reason.contains("after 3 attempts"));
+    assert_eq!(exhausted.resets, vec![LEAF, LEAF, LEAF]);
+
+    let mut retry_sync_failure = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
+        syncs: VecDeque::from([Ok(()), Err("retry sync refused".to_owned())]),
+        children: VecDeque::from([ChildAttempt::TransientApi("network".to_owned())]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure = execute_run_leaves(&mut retry_sync_failure).expect_err("retry sync failure");
+    assert_eq!(failure.step, "sync-before-retry");
+
+    let mut after_child_failure = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
+        syncs: VecDeque::from([Ok(()), Err("post-child sync refused".to_owned())]),
+        children: VecDeque::from([ChildAttempt::Complete]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure = execute_run_leaves(&mut after_child_failure).expect_err("post-child sync");
+    assert_eq!(failure.step, "sync-after-child");
+}
+
+#[test]
+fn run_leaves_reports_reset_and_progress_write_failures() {
+    let mut reset_failure = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
+        syncs: VecDeque::from([Ok(())]),
+        children: VecDeque::from([ChildAttempt::NeedsDesign]),
+        reset_results: VecDeque::from([Err("reset refused".to_owned())]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure = execute_run_leaves(&mut reset_failure).expect_err("needs-design reset");
+    assert_eq!(failure.step, "reset-leaf");
+    assert!(failure.reason.contains("needs-design reset failed"));
+
+    let mut transient_reset_failure = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
+        syncs: VecDeque::from([Ok(())]),
+        children: VecDeque::from([ChildAttempt::TransientApi("network".to_owned())]),
+        reset_results: VecDeque::from([Err("reset refused".to_owned())]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure =
+        execute_run_leaves(&mut transient_reset_failure).expect_err("transient reset failure");
+    assert_eq!(failure.step, "reset-leaf");
+    assert!(failure.reason.contains("transient child reset failed"));
+
+    let mut progress_failure = FakeRunLeavesOperations {
+        graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
+        result_writes: VecDeque::from([Err("progress refused".to_owned()), Ok(())]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let failure = execute_run_leaves(&mut progress_failure).expect_err("progress write failure");
+    assert_eq!(failure.step, "write-result");
+    assert_eq!(failure.leaf, Some(LEAF));
+}
+
+#[test]
+fn run_leaves_envelopes_and_child_results_are_exact() {
+    let failure = RunLeavesFailure::failed("run-child", Some(LEAF), "first\nsecond");
+    assert_eq!(failure.reason, "first second");
+    assert_eq!(
+        RunLeavesEnvelope::Failure(failure)
+            .render()
+            .expect("failure envelope"),
+        "FAILED_LEAF=41\nFAILED_STEP=run-child\nFAILURE_REASON=first second\nNEXT_ACTION=failed\n"
+    );
+
+    let complete =
+        format!("CHILD_STATUS=complete\nCHILD_ISSUE={LEAF}\nCHILD_ENVELOPE_COMPLETE=true\n");
+    assert_eq!(
+        classify_child_attempt(LEAF, Ok(()), Ok(complete)),
+        ChildAttempt::Complete
+    );
+    let transient = format!(
+        "CHILD_STATUS=failed\nCHILD_ISSUE={LEAF}\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_FAILURE_CLASS={COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API}\n"
+    );
+    assert_eq!(
+        classify_child_attempt(LEAF, Err("temporary API failure".to_owned()), Ok(transient),),
+        ChildAttempt::TransientApi("temporary API failure".to_owned())
+    );
+
+    assert_eq!(
+        RunLeavesEnvelope::Progress {
+            action: "verify",
+            leaf: LEAF,
+            completed: 2,
+        }
+        .render()
+        .expect("progress envelope"),
+        "COMPLETED_LEAF_COUNT=2\nCURRENT_LEAF=41\nNEXT_ACTION=verify\n"
+    );
+    assert_eq!(
+        RunLeavesEnvelope::Audit { completed: 3 }
+            .render()
+            .expect("audit envelope"),
+        "COMPLETED_LEAF_COUNT=3\nNEXT_ACTION=audit\nOPEN_LEAF_COUNT=0\nSNAPSHOT_WRITTEN=true\n"
+    );
+    let unspecified = RunLeavesFailure::failed("read-graph", None, "");
+    assert_eq!(unspecified.reason, "unspecified failure");
+    assert_eq!(
+        unspecified.diagnostic(),
+        "failed at read-graph: unspecified failure"
+    );
+}
+
+#[test]
+fn run_leaves_classifies_malformed_and_nonterminal_child_results() {
+    let needs_design = format!(
+        "CHILD_STATUS=needs-design\nCHILD_ISSUE={LEAF}\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_FAILURE_CLASS={COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN}\n"
+    );
+    assert_eq!(
+        classify_child_attempt(LEAF, Ok(()), Ok(needs_design)),
+        ChildAttempt::NeedsDesign
+    );
+
+    for attempt in [
+        classify_child_attempt(LEAF, Ok(()), Err("missing".to_owned())),
+        classify_child_attempt(
+            LEAF,
+            Err("process failed".to_owned()),
+            Err("missing".to_owned()),
+        ),
+        classify_child_attempt(LEAF, Ok(()), Ok("not-an-environment".to_owned())),
+        classify_child_attempt(
+            LEAF,
+            Err("process failed".to_owned()),
+            Ok("not-an-environment".to_owned()),
+        ),
+    ] {
+        assert!(matches!(attempt, ChildAttempt::Failed(_)));
+    }
+
+    let wrong_leaf =
+        format!("CHILD_STATUS=complete\nCHILD_ISSUE={GAP}\nCHILD_ENVELOPE_COMPLETE=true\n");
+    assert_eq!(
+        classify_child_attempt(LEAF, Ok(()), Ok(wrong_leaf)),
+        ChildAttempt::Failed("child result carries another leaf identity".to_owned())
+    );
+    let hard_failure =
+        format!("CHILD_STATUS=failed\nCHILD_ISSUE={LEAF}\nCHILD_ENVELOPE_COMPLETE=false\n");
+    assert_eq!(
+        classify_child_attempt(LEAF, Err("permanent failure".to_owned()), Ok(hard_failure),),
+        ChildAttempt::Failed("permanent failure".to_owned())
+    );
+    let invalid_success =
+        format!("CHILD_STATUS=failed\nCHILD_ISSUE={LEAF}\nCHILD_ENVELOPE_COMPLETE=false\n");
+    assert!(matches!(
+        classify_child_attempt(LEAF, Ok(()), Ok(invalid_success)),
+        ChildAttempt::Failed(reason) if reason.contains("invalid success shape")
+    ));
+    let invalid_failure =
+        format!("CHILD_STATUS=complete\nCHILD_ISSUE={LEAF}\nCHILD_ENVELOPE_COMPLETE=true\n");
+    assert!(matches!(
+        classify_child_attempt(
+            LEAF,
+            Err("process failed".to_owned()),
+            Ok(invalid_failure),
+        ),
+        ChildAttempt::Failed(reason) if reason.contains("invalid failure shape")
+    ));
+}
+
+#[test]
+fn live_run_leaves_confines_state_and_writes_caller_owned_files() {
+    let repository_fixture = GitRepository::builder(GitFixture::Refs)
+        .build()
+        .expect("Git fixture");
+    let output_root = tempfile::tempdir().expect("temporary output root");
+    let arguments = RunLeavesArguments {
+        repository: String::from("o/r"),
+        repo_root: repository_fixture.root().to_path_buf(),
+        umbrella: UMBRELLA,
+        model: String::from("claude-opus-4-1"),
+        output_root: output_root.path().to_path_buf(),
+        output: output_root.path().join("snapshot.json"),
+        result_env: output_root.path().join("run-leaves.env"),
+        operator_invoked: true,
+    };
+    let mut operations = LiveRunLeavesOperations::new(&arguments).expect("live operations");
+    let child = operations.child_arguments(LEAF);
+    assert_eq!(child.umbrella, UMBRELLA);
+    assert_eq!(child.leaf, LEAF);
+    assert!(child.output.starts_with(&operations.driver_root));
+    assert!(child.result_env.starts_with(&operations.driver_root));
+
+    operations
+        .write_snapshot(&driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))
+        .expect("caller-owned snapshot");
+    let snapshot = fs::read_to_string(&arguments.output).expect("snapshot text");
+    assert!(snapshot.contains("\"repository\": \"o/r\""));
+    assert!(snapshot.contains("\"number\": 41"));
+    operations
+        .write_result(&RunLeavesEnvelope::Progress {
+            action: "launch",
+            leaf: LEAF,
+            completed: 0,
+        })
+        .expect("caller-owned result");
+    assert_eq!(
+        fs::read_to_string(&arguments.result_env).expect("result text"),
+        "COMPLETED_LEAF_COUNT=0\nCURRENT_LEAF=41\nNEXT_ACTION=launch\n"
+    );
+
+    fs::create_dir(&child.result_env).expect("blocking child-result directory");
+    assert!(matches!(
+        operations.run_child(LEAF),
+        ChildAttempt::Failed(reason) if reason.contains("could not clear the prior child result")
+    ));
+    drop(operations);
+
+    let same_file = output_root.path().join("same.env");
+    let same_arguments = RunLeavesArguments {
+        output: same_file.clone(),
+        result_env: same_file,
+        ..arguments
+    };
+    let Err(error) = LiveRunLeavesOperations::new(&same_arguments) else {
+        panic!("identical caller-owned outputs must fail");
+    };
+    assert!(error.contains("must be different files"));
+}
+
+#[test]
+fn live_run_leaves_rejects_outputs_inside_its_private_state_root() {
+    let repository_fixture = GitRepository::builder(GitFixture::Refs)
+        .build()
+        .expect("Git fixture");
+    let output_root = tempfile::tempdir().expect("temporary output root");
+    fs::create_dir(output_root.path().join("complete-umbrella-run-leaves"))
+        .expect("private state root fixture");
+    let arguments = RunLeavesArguments {
+        repository: String::from("o/r"),
+        repo_root: repository_fixture.root().to_path_buf(),
+        umbrella: UMBRELLA,
+        model: String::from("claude-opus-4-1"),
+        output_root: output_root.path().to_path_buf(),
+        output: output_root
+            .path()
+            .join("complete-umbrella-run-leaves/snapshot.json"),
+        result_env: output_root.path().join("run-leaves.env"),
+        operator_invoked: true,
+    };
+    let Err(error) = LiveRunLeavesOperations::new(&arguments) else {
+        panic!("private state overlap must fail");
+    };
+    assert!(error.contains("must not overlap run-leaves state"));
+}
+
+#[test]
+fn run_leaves_main_sync_fast_forwards_and_rejects_another_branch() {
+    let repository = GitRepository::builder(GitFixture::Refs)
+        .build()
+        .expect("Git fixture");
+    let remote = repository.workspace_root().join("remote.git");
+    let remote_text = remote.to_str().expect("UTF-8 fixture path");
+    for arguments in [
+        vec!["init", "--quiet", "--bare", remote_text],
+        vec!["remote", "add", "origin", remote_text],
+        vec!["push", "--quiet", "origin", "main"],
+    ] {
+        let output = repository.git(arguments).expect("fixture Git command");
+        assert!(output.success(), "fixture Git command failed: {output:?}");
+    }
+    repository
+        .write("remote.txt", b"remote commit\n")
+        .expect("remote fixture file");
+    for arguments in [
+        ["add", "--", "remote.txt"].as_slice(),
+        ["commit", "--quiet", "-m", "remote"].as_slice(),
+        ["push", "--quiet", "origin", "main"].as_slice(),
+        ["reset", "--quiet", "--hard", "HEAD^"].as_slice(),
+    ] {
+        let output = repository.git(arguments).expect("fixture Git command");
+        assert!(output.success(), "fixture Git command failed: {output:?}");
+    }
+
+    synchronize_main(repository.root()).expect("fast-forward main");
+    let head = repository
+        .git(["rev-parse", "HEAD"])
+        .expect("local revision");
+    let origin = repository
+        .git(["rev-parse", "origin/main"])
+        .expect("remote revision");
+    assert_eq!(head.stdout, origin.stdout);
+
+    repository
+        .write("conflict.txt", b"remote side\n")
+        .expect("remote conflict fixture");
+    for arguments in [
+        ["add", "--", "conflict.txt"].as_slice(),
+        ["commit", "--quiet", "-m", "remote conflict"].as_slice(),
+        ["push", "--quiet", "origin", "main"].as_slice(),
+        ["reset", "--quiet", "--hard", "HEAD^"].as_slice(),
+    ] {
+        let output = repository.git(arguments).expect("remote conflict command");
+        assert!(
+            output.success(),
+            "remote conflict command failed: {output:?}"
+        );
+    }
+    repository
+        .write("conflict.txt", b"local side\n")
+        .expect("local conflict fixture");
+    for arguments in [
+        ["add", "--", "conflict.txt"].as_slice(),
+        ["commit", "--quiet", "-m", "local conflict"].as_slice(),
+    ] {
+        let output = repository.git(arguments).expect("local conflict command");
+        assert!(
+            output.success(),
+            "local conflict command failed: {output:?}"
+        );
+    }
+    let error = synchronize_main(repository.root()).expect_err("conflicting rebase");
+    assert!(error.contains("git rebase origin/main failed"));
+    assert!(error.contains("rebase aborted"));
+
+    let checkout = repository
+        .git(["checkout", "--quiet", "topic"])
+        .expect("topic checkout");
+    assert!(checkout.success(), "topic checkout failed: {checkout:?}");
+    assert!(
+        synchronize_main(repository.root())
+            .expect_err("non-main checkout")
+            .contains("not on branch main")
+    );
+}
+
+#[test]
+fn run_leaves_main_sync_rejects_dirty_detached_and_nonrepositories() {
+    let dirty = GitRepository::builder(GitFixture::Refs)
+        .build()
+        .expect("dirty Git fixture");
+    dirty
+        .write("untracked.txt", b"dirty\n")
+        .expect("dirty fixture file");
+    assert!(
+        synchronize_main(dirty.root())
+            .expect_err("dirty worktree")
+            .contains("working tree is not clean")
+    );
+
+    let detached = GitRepository::builder(GitFixture::Refs)
+        .build()
+        .expect("detached Git fixture");
+    let checkout = detached
+        .git(["checkout", "--quiet", "--detach"])
+        .expect("detached checkout");
+    assert!(checkout.success(), "detached checkout failed: {checkout:?}");
+    assert!(
+        synchronize_main(detached.root())
+            .expect_err("detached worktree")
+            .contains("not on branch main")
+    );
+
+    let not_repository = tempfile::tempdir().expect("non-repository directory");
+    assert!(
+        synchronize_main(not_repository.path())
+            .expect_err("non-repository")
+            .contains("cannot open repository")
     );
 }
 

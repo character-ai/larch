@@ -188,6 +188,12 @@ without changing GitHub or repository state. The Rust adapter gathers its
 snapshot through typed GitHub, Git, filesystem, and in-process lint owners;
 callers enter through the verified bootstrap.
 
+`/complete-umbrella` launches one durable `run-leaves` bgjob for the current
+leaf set. Its Rust owner refreshes the graph once per normal iteration, verifies
+the prior child and selects the next leaf from that same snapshot, synchronizes
+clean `main`, and stops on the first bounded failure envelope. Prompt-side
+orchestration resumes only when the driver reaches the final audit state.
+
 For every `/complete-umbrella` leaf, recon/design preserves an existing valid
 issue-anchored plan or writes one when absent. Before the prepare driver can
 move the leaf to `[IMPLEMENTING]` or write ship state, it validates that plan

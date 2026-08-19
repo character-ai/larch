@@ -96,7 +96,7 @@ def test_recon_routes_large_or_malformed_plans_before_implementation() -> None:
         encoding="utf-8"
     )
     needs_design = skill.index("CHILD_FAILURE_CLASS=needs-design")
-    reset = skill.index("complete-umbrella reset-leaf", needs_design)
+    reset = skill.index("resets only a stale active leaf title", needs_design)
     assert needs_design < reset
 
 
@@ -147,11 +147,23 @@ def test_phase_return_contract_uses_basename_handoffs() -> None:
     assert "re-spawn that fixer in a fresh context up to two additional times" in ship
 
 
-def test_leaf_bgjob_start_binds_durable_session_owner() -> None:
+def test_whole_leaf_loop_bgjob_binds_one_durable_session_owner() -> None:
     skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
         encoding="utf-8"
     )
-    assert 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start' in skill
+    start = (
+        'LARCH_CLAUDE_PID="$PPID" '
+        '"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" bgjob start'
+    )
+    assert skill.count(start) == 1
+    assert "STEP=complete-umbrella-leaves" in skill
+    assert "complete-umbrella run-leaves" in skill
+    assert "complete-umbrella next" not in skill
+    assert "complete-umbrella run-child" not in skill
+    assert "complete-umbrella verify-child" not in skill
+    assert "uses that same graph to verify the prior child and select the next leaf" in skill
+    for key in ("FAILED_STEP", "FAILED_LEAF", "FAILURE_REASON"):
+        assert key in skill
     assert "wait lease" in skill
     assert "--max-wait-s 7200" in skill
     assert "run_in_background: true" in skill
