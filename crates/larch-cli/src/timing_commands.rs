@@ -759,6 +759,14 @@ fn read_rows(path: &Path) -> LedgerRows {
 }
 
 fn epoch_now() -> i64 {
+    // The report path already reads this fixed clock; honoring it here too lets a
+    // test harness record deterministic `timing mark` ledgers. Unset in
+    // production, so the real business clock is used.
+    if let Some(fixed) = env::var_os("LARCH_TEST_TIMING_NOW")
+        .and_then(|value| value.to_string_lossy().trim().parse::<i64>().ok())
+    {
+        return fixed;
+    }
     let now = BusinessClock::now(&SystemClock);
     now.duration_since(UNIX_EPOCH).map_or(0, |elapsed| {
         i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX)

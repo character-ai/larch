@@ -2,21 +2,26 @@
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportUnusedFunction=false, reportUnusedCallResult=false
 from __future__ import annotations
 
+import argparse
 import contextlib
 import fcntl
 import io
 import os
+import shutil
 import subprocess
 import sys
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from larch import io as larch_io
 from larch.core import config, logging_util, proc, rust_runtime
 from larch.core import redact
+from larch.core.ctx import Ctx
 from larch.core.repo_roots import larch_entrypoint
+from larch.design import design_pause
+from larch.state import session_env
 from larch.state.session_env import validate_design_tmpdir
 
 _SUBPROCESS_RUN = subprocess.run
@@ -329,3 +334,873 @@ def _append_failure(*, plugin_root: Path, design_tmpdir: Path, site: str, tool: 
             output_file=output_file,
         )
     )
+
+
+# --- Relocated Step 0 wrapper-env constants, wrapper-arg parser, bash-quoting
+# codec, and env loaders (retired design_step0_env.py, #8578); the Step 0 verbs
+# themselves are Rust-owned in crates/larch-cli/src/design_commands.rs. ---
+
+COMMON_ENV_DEFAULTS: dict[str, str] = {
+    **session_env.COMMON_DESIGN_ENV_DEFAULTS,
+    **session_env.DESIGN_REQUEST_ENV_DEFAULTS,
+    "difficulty": "",
+    "SUMMARY_OUTCOME": "",
+    "CLARIFY_FAILURE_LOG": "",
+    "CLARIFY_HARD_HALT_RC": "1",
+}
+SOURCE_ENV_ALLOW = frozenset({
+    "DESIGN_TMPDIR",
+    "SESSION_TMPDIR",
+    "SESSION_ID",
+    "ISSUE_NUMBER",
+    "ISSUE_TITLE",
+    "HAS_CLARIFY_LABEL",
+    "REPO",
+    "CODEX_BINARY_FOUND",
+    "CURSOR_BINARY_FOUND",
+    "CLAUDE_PLUGIN_ROOT",
+})
+ROUTE_STATE_PATH = ".design-step0-route-state.env"
+_TEMPLATE_PLUGIN_ROOT = "${CLAUDE_PLUGIN_ROOT}"
+CONFIGURATION_ERROR_RC = 2
+
+
+class Step0WrapperNs(argparse.Namespace):
+    session_env_path: str
+    claude_pid: str
+    plugin_root: str
+    mode: str
+    outcome: str
+    skip_validate: bool
+    issue_number: str
+    exit_code: str
+    failure_detail_log: str
+    reason: str
+    tool: str
+    public_argv: list[str]
+
+
+def _parse_wrapper_args(argv: Sequence[str]) -> Step0WrapperNs:
+    ns = Step0WrapperNs()
+    ns.session_env_path = ""
+    ns.claude_pid = ""
+    ns.plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    ns.mode = ""
+    ns.outcome = os.environ.get("SUMMARY_OUTCOME", "")
+    ns.skip_validate = False
+    ns.issue_number = ""
+    ns.exit_code = os.environ.get("CLARIFY_HARD_HALT_RC", "1") or "1"
+    ns.failure_detail_log = os.environ.get("CLARIFY_FAILURE_LOG", "")
+    ns.reason = "external tool unhealthy; re-run once it recovers."
+    ns.tool = "degraded-tools-gate"
+    ns.public_argv = []
+    i = 0
+    args = list(argv)
+    value_flags = {
+        "--session-env-path": "session_env_path",
+        "--claude-pid": "claude_pid",
+        "--plugin-root": "plugin_root",
+        "--mode": "mode",
+        "--outcome": "outcome",
+        "--issue-number": "issue_number",
+        "--exit-code": "exit_code",
+        "--failure-detail-log": "failure_detail_log",
+        "--reason": "reason",
+        "--tool": "tool",
+        "--site": "site",
+        "--step3-review-loop-status": "step3_review_loop_status",
+        "--loop-status": "loop_status",
+    }
+    while i < len(args):
+        token = args[i]
+        if token == "--":
+            ns.public_argv = args[i + 1 :]
+            return ns
+        if token in {"--skip-validate", "--snapshot-original"}:
+            if token == "--skip-validate":
+                ns.skip_validate = True
+            i += 1
+            continue
+        if token in value_flags:
+            if i + 1 >= len(args):
+                print(f"design wrapper: {token} requires a value", file=sys.stderr)
+                raise SystemExit(2)
+            setattr(ns, value_flags[token], args[i + 1])
+            i += 2
+            continue
+        print(f"design wrapper: unknown argument: {token}", file=sys.stderr)
+        raise SystemExit(2)
+    return ns
+
+
+def require_plugin_root(value: str) -> Path:
+    if not value:
+        print("/design wrapper: CLAUDE_PLUGIN_ROOT is empty; abort", file=sys.stderr)
+        raise SystemExit(1)
+    if value == _TEMPLATE_PLUGIN_ROOT:
+        print(f"/design wrapper: CLAUDE_PLUGIN_ROOT is the unexpanded template literal {_TEMPLATE_PLUGIN_ROOT}; abort", file=sys.stderr)
+        raise SystemExit(1)
+    os.environ["CLAUDE_PLUGIN_ROOT"] = value
+    return Path(value)
+
+
+def _decode_ansi_c_quoted(inner: str) -> str:
+    max_oct_digits = 3
+    short_hex_digits = 2
+    unicode_hex_digits = 4
+    long_unicode_hex_digits = 8
+    out: list[str] = []
+    i = 0
+    while i < len(inner):
+        ch = inner[i]
+        if ch != "\\" or i + 1 >= len(inner):
+            out.append(ch)
+            i += 1
+            continue
+        nxt = inner[i + 1]
+        escapes = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "f": "\f", "v": "\v", "\\": "\\", "'": "'", '"': '"'}
+        if nxt in escapes:
+            out.append(escapes[nxt])
+            i += 2
+            continue
+        if nxt in "01234567":
+            j = i + 1
+            oct_digits = ""
+            while j < len(inner) and len(oct_digits) < max_oct_digits and inner[j] in "01234567":
+                oct_digits += inner[j]
+                j += 1
+            out.append(chr(int(oct_digits, 8)))
+            i = j
+            continue
+        if nxt == "x":
+            j = i + 2
+            hex_digits = ""
+            while j < len(inner) and len(hex_digits) < short_hex_digits and inner[j] in "0123456789abcdefABCDEF":
+                hex_digits += inner[j]
+                j += 1
+            if hex_digits:
+                out.append(chr(int(hex_digits, 16)))
+                i = j
+                continue
+        if nxt == "u" and i + 5 <= len(inner):
+            hex_digits = inner[i + 2 : i + 6]
+            if len(hex_digits) == unicode_hex_digits and all(c in "0123456789abcdefABCDEF" for c in hex_digits):
+                out.append(chr(int(hex_digits, 16)))
+                i += 6
+                continue
+        if nxt == "U" and i + 9 <= len(inner):
+            hex_digits = inner[i + 2 : i + 10]
+            if len(hex_digits) == long_unicode_hex_digits and all(c in "0123456789abcdefABCDEF" for c in hex_digits):
+                out.append(chr(int(hex_digits, 16)))
+                i += 10
+                continue
+        out.append(nxt)
+        i += 2
+    return "".join(out)
+
+
+def _decode_utf8_byte_escapes(value: str) -> str:
+    try:
+        return value.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return value
+
+
+def _decode_bash_percent_q(value: str) -> str:
+    if value == "''":
+        return ""
+    if not value:
+        return ""
+    if value.startswith("$'") and value.endswith("'"):
+        return _decode_utf8_byte_escapes(_decode_ansi_c_quoted(value[2:-1]))
+    if value.startswith("'"):
+        out = []
+        i = 1
+        while i < len(value):
+            if value[i] != "'":
+                out.append(value[i])
+                i += 1
+                continue
+            if value.startswith("'\"'\"'", i):
+                out.append("'")
+                i += 5
+                continue
+            break
+        return "".join(out)
+    out = []
+    i = 0
+    while i < len(value):
+        if value[i] == "\\" and i + 1 < len(value):
+            out.append(value[i + 1])
+            i += 2
+        else:
+            out.append(value[i])
+            i += 1
+    return "".join(out)
+
+
+def _decode_shell_assignment_value(value: str) -> str:
+    if value == "":
+        return ""
+    return _decode_bash_percent_q(value)
+
+
+def load_bash_quoted_env(*, path: Path, allow_keys: Iterable[str]) -> dict[str, str]:
+    if not path.is_file() or path.is_symlink():
+        return {}
+    data = larch_io.parse_kv(
+        "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()),
+        allowed_keys=set(allow_keys),
+        skip_comments=True,
+        duplicate_policy="last",
+    )
+    return {key: _decode_shell_assignment_value(value) for key, value in data.items()}
+
+
+def _load_source_env(*, path: str | Path, allow_keys: Iterable[str] = SOURCE_ENV_ALLOW, claude_pid: str = "") -> dict[str, str]:
+    source = Path(path)
+    if not str(path):
+        return {}
+    read_path: Path | None
+    if source.is_symlink():
+        if not claude_pid:
+            return {}
+        resolved = session_env.resolve_trusted_design_session_env_source(path=source, claude_pid=claude_pid)
+        if resolved is None:
+            return {}
+        read_path = resolved
+    elif source.is_file():
+        read_path = source
+    else:
+        return {}
+    normalized = "\n".join(
+        line.removeprefix("export ")
+        for raw in read_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        if (line := raw.strip()) and not line.startswith("#")
+    )
+    data = larch_io.parse_kv(normalized, allowed_keys=set(allow_keys), duplicate_policy="last")
+    return {key: _decode_shell_assignment_value(value) for key, value in data.items()}
+
+
+def _base_env() -> dict[str, str]:
+    return {key: os.environ.get(key, default) for key, default in COMMON_ENV_DEFAULTS.items()}
+
+
+def _load_wrapper_env(ns: Step0WrapperNs) -> dict[str, str]:
+    data = _base_env()
+    data.update(_load_source_env(path=ns.session_env_path, claude_pid=ns.claude_pid))
+    if ns.plugin_root:
+        data["CLAUDE_PLUGIN_ROOT"] = ns.plugin_root
+    if ns.outcome:
+        data["SUMMARY_OUTCOME"] = ns.outcome
+    return data
+
+
+# --- Relocated Step 0 main-entry support helpers (retired design_step0.py,
+# #8578); the Step 0 main entries are Rust-owned. ---
+
+
+def _derive_binary_found(env: dict[str, str]) -> None:
+    if not env.get("CODEX_BINARY_FOUND"):
+        env["CODEX_BINARY_FOUND"] = "true" if shutil.which("codex") else "false"
+    if not env.get("CURSOR_BINARY_FOUND"):
+        env["CURSOR_BINARY_FOUND"] = "true" if shutil.which("cursor") else "false"
+
+
+def _run_best_effort(*, command: Sequence[str], env: Mapping[str, str] | None = None) -> None:
+    with contextlib.suppress(OSError):
+        subprocess.run(list(command), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=dict(env) if env is not None else None, check=False)
+
+
+def _pause_args(
+    *, design_tmpdir: str | Path,
+    env: Mapping[str, str] | None = None,
+    ctx: Ctx | None = None,
+) -> list[str]:
+    if ctx is not None:
+        issue = ctx.issue_number
+        repo = ctx.repo
+    elif env is not None:
+        issue = env.get("ISSUE_NUMBER", "")
+        repo = env.get("REPO", "")
+    else:
+        issue = os.environ.get("ISSUE_NUMBER", "")
+        repo = os.environ.get("REPO", "")
+    args = ["--design-tmpdir", str(design_tmpdir), "--issue", issue]
+    if repo:
+        args.extend(["--repo", repo])
+    return args
+
+
+def _require_design_tmpdir(*, env: Mapping[str, str], design_tmpdir: str | Path | None = None) -> Path:
+    raw = str(design_tmpdir or env.get("DESIGN_TMPDIR", ""))
+    if not raw:
+        print("/design wrapper: DESIGN_TMPDIR required", file=sys.stderr)
+        raise SystemExit(1)
+    path = Path(raw)
+    if not path.is_absolute():
+        print("/design wrapper: DESIGN_TMPDIR must be an absolute path", file=sys.stderr)
+        raise SystemExit(1)
+    if not path.is_dir():
+        print(f"/design wrapper: DESIGN_TMPDIR is not an existing directory: {path}", file=sys.stderr)
+        raise SystemExit(1)
+    return path.resolve()
+
+
+def _require_design_tmpdir_nonempty(*, env: Mapping[str, str], site: str) -> Path:
+    raw = env.get("DESIGN_TMPDIR", "")
+    if not raw:
+        print(f"/design Step 5b {site}: DESIGN_TMPDIR required", file=sys.stderr)
+        raise SystemExit(1)
+    return Path(raw)
+
+
+def check_pause_and_exit(*, env: Mapping[str, str], design_tmpdir: str | Path | None = None) -> None:
+    raw = str(design_tmpdir or env.get("DESIGN_TMPDIR", ""))
+    if not raw:
+        return
+    tmpdir = _require_design_tmpdir(env=env, design_tmpdir=design_tmpdir)
+    if (tmpdir / ".pause-requested").is_file():
+        rc = design_pause.pause_save_main(_pause_args(design_tmpdir=tmpdir, env=env))
+        raise SystemExit(rc)
+
+
+def _step2b5_self_log(*, plugin_root: Path, design_tmpdir: Path, rc: int, stdout: str, stderr_tmp: Path) -> None:
+    if rc == 0:
+        return
+    stderr = ""
+    with contextlib.suppress(OSError):
+        stderr = stderr_tmp.read_text(encoding="utf-8", errors="replace")
+    combined = stdout
+    if stderr:
+        if combined and not combined.endswith("\n"):
+            combined += "\n"
+        combined += stderr
+    output_file = design_tmpdir / "check-plan-size.validation.log"
+    try:
+        output_file.write_text(combined, encoding="utf-8")
+    except OSError:
+        return
+    _append_failure(plugin_root=plugin_root, design_tmpdir=design_tmpdir, site="design Step 2b.5", tool="scripts/larch.sh plan check-size", exit_code=rc, category="Warnings", output_file=output_file)
+
+
+# --- Relocated wrapper-env, session helpers, pause/capture, and phase-driver
+# result-env writers (retired design_session.py, #8578). The settle-next-action
+# dispatch is Rust-owned; Python keeps no in-process copy. ---
+
+PHASE_RESULT_ENV_ALLOW_KEYS = {
+    "ACCEPTED_COUNT",
+    "AGGREGATOR_STATUS",
+    "BASELINE_DIFF_LINES",
+    "BASELINE_PLAN_LINES",
+    "DEDUP_RC",
+    "DEGRADED_PANEL",
+    "DEGRADED_PANEL_WARNING",
+    "INVALID_SLOT_PANEL_WARNING",
+    "DIFF_ADDED",
+    "DIFF_DELETED",
+    "DIFF_LINES",
+    "DRIFT_DIFF_RATIO",
+    "DRIFT_MULTIPLE",
+    "DRIFT_PLAN_RATIO",
+    "DRIFT_TRIGGER_FIRED",
+    "EMIT_PLAN_STATUS",
+    "ERROR",
+    "FINAL_ROUND_NUM",
+    "IMPORTANT_ACCEPTED_COUNT",
+    "LOOP_STATUS",
+    "MECHANICAL_CHURN",
+    "NEXT_ACTION",
+    "OOS_SKIP_BREADCRUMB",
+    "PANEL_PRUNED_EMPTY",
+    "PARTITION_REQUESTED",
+    "PLAN_LINES",
+    "PLAN_REVIEW_CONTINUE_REASON",
+    "PLAN_SIZE_STATUS",
+    "POSTPLAN_EMIT_STATUS",
+    "POSTPLAN_RC",
+    "REASON",
+    "REVIEW_ROUND_COUNT",
+    "ROUND_NUM",
+    "ROUNDS_COMPLETED",
+    "SCOPE_ANCHOR_FILE",
+    "SIZE_TRIGGER_FIRED",
+    "SNAPSHOT_STATUS",
+    "SETTLE_NEXT_ACTION",
+    "SETTLE_EXIT_RC",
+    "SETTLE_STATUS",
+    "SOFT_ADVISORY",
+    "STEP3_REVIEW_LOOP_STATUS",
+    "STEP3_REVIEW_CAP_REACHED",
+    "STEP3_REVIEW_ROUND_NUM",
+    "STEP2B5_EXIT_RC",
+    "STEP2B5_NEXT_ACTION",
+    "STEP2B5_STATUS",
+    "TALLY_PLAN_REVIEW_STATUS",
+    "TRIGGER_REASONS",
+    "VALIDATE_DEFECT_COUNT",
+    "VALIDATE_LOG_FILE",
+    "VALIDATE_MISSING_SCRIPT_COUNT",
+    "VALIDATE_SKIPPED_COUNT",
+    "VALIDATE_STATUS",
+    "VALIDATE_UNSAFE_TOKEN_COUNT",
+    "VOTING_TALLY_FILE",
+    "WARN",
+}
+
+CHECK_SIZE_WARNING_RC = 2
+
+
+_WRAPPER_ENV_DEFAULTS: dict[str, str] = {
+    "CLAUDE_PLUGIN_ROOT": "",
+    "MODE": "",
+    "SITE": "",
+    "SUMMARY_OUTCOME": "",
+    "SKIP_VALIDATE": "",
+    **session_env.COMMON_DESIGN_ENV_DEFAULTS,
+    **session_env.DESIGN_REQUEST_ENV_DEFAULTS,
+    **session_env.VALIDATOR_STATUS_ENV_DEFAULTS,
+    "PUBLISH_OK": "",
+    "PLAN_WRITE_OK": "",
+    "STANDALONE_HEAVY_FAILED": "",
+    "CLEANUP_ELIGIBLE": "",
+}
+
+_SESSION_ENV_ALLOWLIST = frozenset(_WRAPPER_ENV_DEFAULTS) | {
+    "LARCH_AUTO_MODE",
+    "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT",
+    "LARCH_TIMING_LEDGER",
+    "LARCH_TOKEN_SESSION_ID",
+    "LARCH_CLAUDE_SOURCE_FILE",
+    "PREV_IMPLEMENT_TMPDIR",
+    "LARCH_DYNAMIC_ARCHETYPES_MAX",
+    "LARCH_RUN_ID",
+    "LARCH_CLAUDE_PLUGIN_ROOT",
+    "LARCH_DESIGN_DRAFTER",
+    "LARCH_DESIGN_PLAN_MODEL",
+    "LARCH_DESIGN_DRIFT_MULTIPLE",
+}
+
+
+# Mutable builder: the argv parser sets fields on the instance as it scans.
+@dataclass
+class WrapperArgs:
+    session_env_path: str = ""
+    claude_pid: str = ""
+    plugin_root: str = ""
+    mode: str = ""
+    site: str = ""
+    snapshot_original: bool = False
+    outcome: str = ""
+    skip_validate: bool = False
+    write_completion_only: bool = False
+    include_step2b: bool = False
+    write_step2b_completion_only: bool = False
+    step3_review_loop_status: str = ""
+    loop_status: str = ""
+    validator_target_file: str = ""
+    validate_log_file: str = ""
+    validate_defect_count: str = ""
+    validate_unsafe_token_count: str = ""
+    validate_skipped_count: str = ""
+    operator_cancel: bool = False
+    public_argv_words: list[str] | None = None
+
+
+@dataclass(frozen=True)
+class DesignSessionRequest:
+    """Rehydrated request shared by the small /design entry points."""
+
+    claude_plugin_root: str
+    design_tmpdir: str
+    issue_number: str
+    repo: str
+    claude_pid: str
+
+
+class DesignSessionRequestError(ValueError):
+    """A session-env path cannot safely provide a generated-wrapper request."""
+
+
+@dataclass(frozen=True)
+class PostplanResult:
+    postplan_rc: int
+    stdout_lines: str
+    status: str
+    inline_retry_scheduled: bool = False
+
+
+@dataclass(frozen=True)
+class SettleDispatchResult:
+    action: str
+    exit_rc: int
+    status: str
+
+
+@dataclass(frozen=True)
+class Step2b5DispatchResult:
+    action: str
+    exit_rc: int
+    status: str
+
+
+@dataclass(frozen=True)
+class PostplanPaths:
+    design_tmpdir: Path
+    completed_dir: Path
+    step2b5_done: Path
+    step2b_done: Path
+    inline_retry_done: Path
+    inline_retry_pending: Path
+    fallback_used: Path
+    plan_source: Path
+    plan_summary: Path
+
+    @classmethod
+    def from_design_tmpdir(cls, design_tmpdir: Path) -> PostplanPaths:
+        root = design_tmpdir.resolve()
+        completed = root / ".completed"
+        return cls(
+            design_tmpdir=root,
+            completed_dir=completed,
+            step2b5_done=completed / "step-2b.5",
+            step2b_done=completed / "step-2b",
+            inline_retry_done=root / ".step2b-postplan-inline-retry-done",
+            inline_retry_pending=root / ".step2b-postplan-inline-retry-pending",
+            fallback_used=root / ".step2b-postplan-fallback-used",
+            plan_source=root / ".step2b-plan-source",
+            plan_summary=root / "plan-summary.md",
+        )
+
+
+@dataclass(frozen=True)
+class PostplanDecision:
+    postplan_rc: int
+    status: str
+    rows: tuple[str, ...]
+    touches: tuple[Path, ...]
+    writes: tuple[tuple[Path, str], ...]
+    unlinks: tuple[Path, ...]
+    clear_scout_manifests: bool = False
+    pause_save: bool = False
+    fatal_stderr: str = ""
+    print_captured_before_return: bool = False
+    print_stdout_before_system_exit: bool = False
+    inline_retry_scheduled: bool = False
+
+
+def _valid_var_name(value: str) -> bool:
+    if not value or value[0].isdigit():
+        return False
+    return all(ch.isalnum() or ch == "_" for ch in value)
+
+
+def step2b5_next_action_for(*, check_size_rc: int, check_size_kvs: dict[str, str], partition_requested: bool) -> Step2b5DispatchResult:
+    """Choose the Step 2b.5 action.
+
+    Priority is non-zero check-size rc, hard size trigger, explicit partition,
+    drift advisory, then under-threshold.
+    """
+    if check_size_rc != 0:
+        if check_size_rc == CHECK_SIZE_WARNING_RC:
+            return Step2b5DispatchResult(action="rc2-warning", exit_rc=CHECK_SIZE_WARNING_RC, status="rc2-warning")
+        return Step2b5DispatchResult(action="internal-error", exit_rc=check_size_rc, status="internal-error")
+    if check_size_kvs.get("SIZE_TRIGGER_FIRED", "false") == "true":
+        return Step2b5DispatchResult(action="hard-trigger", exit_rc=0, status="plan-size-trigger")
+    if partition_requested:
+        return Step2b5DispatchResult(action="partition-split", exit_rc=0, status="partition-requested")
+    if check_size_kvs.get("DRIFT_TRIGGER_FIRED", "false") == "true":
+        return Step2b5DispatchResult(action="drift-advisory", exit_rc=0, status="drift-advisory")
+    return Step2b5DispatchResult(action="under-threshold", exit_rc=0, status="under-threshold")
+
+
+def _quote_single(value: str) -> str:
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
+def _parse_common_wrapper_args(argv: Sequence[str]) -> WrapperArgs:
+    args = list(argv)
+    out = WrapperArgs(public_argv_words=[])
+    value_flags = session_env.WRAPPER_VALUE_FLAGS
+    bool_flags: dict[str, str] = {
+        "--snapshot-original": "snapshot_original",
+        "--skip-validate": "skip_validate",
+        "--write-completion-only": "write_completion_only",
+        "--include-step2b": "include_step2b",
+        "--write-step2b-completion-only": "write_step2b_completion_only",
+        "--operator-cancel": "operator_cancel",
+    }
+    i = 0
+    while i < len(args):
+        token = args[i]
+        if token == "--":
+            out.public_argv_words = args[i + 1 :]
+            break
+        if token in value_flags:
+            if i + 1 >= len(args):
+                raise ValueError(f"{token} requires a value")
+            setattr(out, value_flags[token], args[i + 1])
+            i += 2
+            continue
+        if token in bool_flags:
+            setattr(out, bool_flags[token], True)
+            i += 1
+            continue
+        # Forward-compatible no-op parsing for retired generated wrapper args.
+        # Unknown flags with a following value consume that value; bare flags are
+        # ignored. Behavior-bearing flags above are bound explicitly.
+        if token.startswith("--") and i + 1 < len(args) and not args[i + 1].startswith("--"):
+            i += 2
+        else:
+            i += 1
+    return out
+
+
+def _parse_session_env_line(raw: str) -> tuple[str, str] | None:
+    return session_env.parse_allowlisted_env_line(
+        raw=raw,
+        allowlist=_SESSION_ENV_ALLOWLIST,
+        name_validator=_valid_var_name,
+        reject_newline_rhs=True,
+    )
+
+
+def _load_session_env(path: str) -> dict[str, str]:
+    if not path:
+        return {}
+    source = Path(path)
+    if source.is_symlink() or not source.is_file():
+        return {}
+    env: dict[str, str] = {}
+    try:
+        text = source.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return env
+    for raw in text.splitlines():
+        pair = _parse_session_env_line(raw)
+        if pair is not None:
+            env[pair[0]] = pair[1]
+    return env
+
+
+def _rehydrate_wrapper_env(parsed: WrapperArgs) -> dict[str, str]:
+    merged: dict[str, str] = {key: os.environ.get(key, default) for key, default in _WRAPPER_ENV_DEFAULTS.items()}
+    if os.environ.get("CLAUDE_PLUGIN_ROOT"):
+        merged["CLAUDE_PLUGIN_ROOT"] = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    merged.update(_load_source_env(path=parsed.session_env_path, allow_keys=_SESSION_ENV_ALLOWLIST, claude_pid=parsed.claude_pid))
+    if parsed.plugin_root:
+        merged["CLAUDE_PLUGIN_ROOT"] = parsed.plugin_root
+    if parsed.mode:
+        merged["MODE"] = parsed.mode
+    if parsed.site:
+        merged["SITE"] = parsed.site
+    if parsed.outcome:
+        merged["SUMMARY_OUTCOME"] = parsed.outcome
+    if parsed.skip_validate:
+        merged["SKIP_VALIDATE"] = "1"
+    if parsed.step3_review_loop_status:
+        merged["STEP3_REVIEW_LOOP_STATUS"] = parsed.step3_review_loop_status
+    if parsed.loop_status:
+        merged["LOOP_STATUS"] = parsed.loop_status
+    if parsed.validator_target_file:
+        merged["_validator_target_file"] = parsed.validator_target_file
+    if parsed.validate_log_file:
+        merged["VALIDATE_LOG_FILE"] = parsed.validate_log_file
+    if parsed.validate_defect_count:
+        merged["VALIDATE_DEFECT_COUNT"] = parsed.validate_defect_count
+    if parsed.validate_unsafe_token_count:
+        merged["VALIDATE_UNSAFE_TOKEN_COUNT"] = parsed.validate_unsafe_token_count
+    if parsed.validate_skipped_count:
+        merged["VALIDATE_SKIPPED_COUNT"] = parsed.validate_skipped_count
+    return session_env.finalize_wrapper_env(merged)
+
+
+def load_design_session_request(argv: Sequence[str]) -> DesignSessionRequest:
+    """Load the generated-wrapper request shape without sourcing shell code."""
+    parsed = _parse_common_wrapper_args(argv)
+    source = Path(parsed.session_env_path) if parsed.session_env_path else None
+    if source is not None and source.is_symlink():
+        trusted = session_env.resolve_trusted_design_session_env_source(
+            path=source, claude_pid=parsed.claude_pid
+        )
+        if trusted is None:
+            raise DesignSessionRequestError(
+                f"/design wrapper: refusing untrusted session-env symlink: {parsed.session_env_path}"
+            )
+    merged = _rehydrate_wrapper_env(parsed)
+    os.environ.update(merged)
+    return DesignSessionRequest(
+        claude_plugin_root=merged["CLAUDE_PLUGIN_ROOT"],
+        design_tmpdir=merged["DESIGN_TMPDIR"],
+        issue_number=merged["ISSUE_NUMBER"],
+        repo=merged["REPO"],
+        claude_pid=parsed.claude_pid,
+    )
+
+
+def _design_require_plugin_root() -> int:
+    rc = session_env.require_plugin_root()
+    if rc != 0:
+        return rc
+    os.environ["CLAUDE_PLUGIN_ROOT"] = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    return 0
+
+
+def _design_tmpdir(ctx: Ctx | None = None) -> Path:
+    return Path(ctx.design_tmpdir if ctx is not None else os.environ.get("DESIGN_TMPDIR", ""))
+
+
+def _touch(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()
+
+
+def _write_text(*, path: Path, text: str) -> None:
+    larch_io.write_text(path=path, text=text)
+
+
+def _exact_line_file(*, path: Path, expected: str) -> bool:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").rstrip("\n") == expected
+    except OSError:
+        return False
+
+
+def _call_pause_save(*, design_tmpdir: Path, ctx: Ctx | None = None) -> int:
+    args = ["--design-tmpdir", str(design_tmpdir), "--issue", ctx.issue_number if ctx is not None else os.environ.get("ISSUE_NUMBER", "")]
+    repo = ctx.repo if ctx is not None else os.environ.get("REPO", "")
+    if repo:
+        args.extend(["--repo", repo])
+    return design_pause.pause_save_main(args)
+
+
+def _call_pause_save_captured(*, design_tmpdir: Path, ctx: Ctx | None = None) -> tuple[int, str, str]:
+    stdout_buf = io.StringIO()
+    stderr_buf = io.StringIO()
+    with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
+        rc = _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx)
+    return int(rc), stdout_buf.getvalue(), stderr_buf.getvalue()
+
+
+def _pause_save_stdout_ok(stdout: str) -> bool:
+    return any(line == "PAUSE_OK=true" for line in stdout.splitlines())
+
+
+def _print_pause_save_capture(stdout: str, stderr: str) -> None:
+    _print_text(stdout)
+    if stderr:
+        print(stderr, end="", file=sys.stderr)
+
+
+def _run_pause_save_terminal(*, design_tmpdir: Path, ctx: Ctx | None = None) -> int:
+    rc, stdout, stderr = _call_pause_save_captured(design_tmpdir=design_tmpdir, ctx=ctx)
+    _print_pause_save_capture(stdout, stderr)
+    if not _pause_save_stdout_ok(stdout):
+        return 1
+    return rc
+
+
+def pause_save_for_request(*, design_tmpdir: Path) -> int:
+    """Run the existing pause owner for a rehydrated small-entry request."""
+    return _call_pause_save(design_tmpdir=design_tmpdir)
+
+
+def _maybe_timing_mark(*, label: str, ctx: Ctx | None = None) -> None:
+    plugin_root = ctx.claude_plugin_root if ctx is not None else os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    if not plugin_root or plugin_root == "${CLAUDE_PLUGIN_ROOT}":
+        return
+    env = ctx.subprocess_env(overrides={"LARCH_TIMING_SKILL": "design"}) if ctx is not None else os.environ.copy()
+    env["LARCH_TIMING_SKILL"] = "design"
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    with contextlib.suppress(OSError):
+        subprocess.run(
+            [str(larch_entrypoint(plugin_root)), "timing", "mark", label],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+
+
+def mark_design_timing(*, label: str) -> None:
+    """Best-effort design timing mark for a rehydrated small-entry request."""
+    _maybe_timing_mark(label=label)
+
+
+def _capture_stdout(*, callable_obj: Callable[..., int], argv: Sequence[str]) -> tuple[int, str]:
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = callable_obj(list(argv))
+    return int(rc), buf.getvalue()
+
+
+def _capture_stdout_stderr(*, callable_obj: Callable[..., int], argv: Sequence[str], stderr_path: Path) -> tuple[int, str]:
+    buf = io.StringIO()
+    try:
+        with stderr_path.open("w", encoding="utf-8") as err, contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
+            try:
+                rc = callable_obj(list(argv))
+                return int(rc), buf.getvalue()
+            except SystemExit as exc:
+                code = exc.code if isinstance(exc.code, int) else 1
+                return code, buf.getvalue()
+            except BaseException:
+                err.write(traceback.format_exc())
+                return 1, buf.getvalue()
+    except OSError:
+        return 1, buf.getvalue()
+
+
+def _print_text(text: str) -> None:
+    if text:
+        print(text, end="" if text.endswith("\n") else "\n")
+
+
+def prelude_main(argv: Sequence[str]) -> int:
+    try:
+        request = load_design_session_request(argv)
+    except DesignSessionRequestError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    if not request.design_tmpdir:
+        return 0
+    pause_requested = Path(request.design_tmpdir) / ".pause-requested"
+    if not pause_requested.is_file():
+        return 0
+    return _call_pause_save(design_tmpdir=Path(request.design_tmpdir))
+
+
+def step3_continuation_entry_main(argv: Sequence[str]) -> int:
+    try:
+        request = load_design_session_request(argv)
+    except DesignSessionRequestError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    if _design_require_plugin_root() != 0:
+        return 1
+    if not request.design_tmpdir:
+        print("/design Step 3 continuation-entry: DESIGN_TMPDIR required", file=sys.stderr)
+        return 1
+    ok, _message = session_env.validate_design_tmpdir(request.design_tmpdir)
+    if not ok:
+        return 2
+    design_tmpdir = Path(request.design_tmpdir).resolve()
+    with contextlib.suppress(FileNotFoundError):
+        (design_tmpdir / ".step3-entry-plan-printed").unlink()
+    if (design_tmpdir / ".pause-requested").is_file():
+        return _call_pause_save(design_tmpdir=design_tmpdir)
+    completed = subprocess.run(
+        [
+            str(larch_entrypoint(request.claude_plugin_root)),
+            "plan-review",
+            "step3-state",
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--auto-continuation-entry",
+        ],
+        check=False,
+    )
+    rc = completed.returncode
+    if rc == 0:
+        _maybe_timing_mark(label="design Step 3 — auto-continuation entry")
+    return rc

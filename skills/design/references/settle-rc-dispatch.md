@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Gate B post-apply, Step 1e Gate A re-entry optional-trailer guard, Round 2 post-plan discussion revision, and Gate C plan revision after `python/cli.py design step35-settle` returns.
 
-**Contract**: prompt-side branch bodies for `python/cli.py design step35-settle` machine actions. Python chooses the action through `python/cli.py design settle-next-action`; this file does not derive actions from rc values.
+**Contract**: prompt-side branch bodies for `python/cli.py design step35-settle` machine actions. The `python/cli.py design step35-settle` wrapper chooses the action through `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" design settle-next-action`; this file does not derive actions from rc values.
 
 **When to load**: immediately before any orchestrator branches on `python/cli.py design step35-settle` output at Gate B post-apply, Gate A re-entry trailer guard, or discussion-round2 plan revision after settle returns.
 

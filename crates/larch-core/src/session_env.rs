@@ -340,7 +340,10 @@ pub fn design_run_launcher_text(pid: &str, plugin_root: &str) -> String {
             "  *.sh)\n",
             "    exec \"$PLUGIN_ROOT/skills/design/scripts/$script\" --session-env-path \"$SESSION_ENV_PATH\" --claude-pid \"$CLAUDE_PID\" \"$@\"\n",
             "    ;;\n",
-            "  step0-parse|step0-session|step0-route|step0-clarify-hard-halt|step0-init|step0-abort-cleanup|step0-ap-continue|step0c|step1d5|step1d7|step1e-reentry)\n",
+            "  step0-parse|step0-session|step0-route|step0-clarify-hard-halt|step0-init|step0-abort-cleanup|step0-ap-continue|step0c)\n",
+            "    exec \"$PLUGIN_ROOT/scripts/larch.sh\" design \"$script\" --session-env-path \"$SESSION_ENV_PATH\" --claude-pid \"$CLAUDE_PID\" \"$@\"\n",
+            "    ;;\n",
+            "  step1d5|step1d7|step1e-reentry)\n",
             "    exec python3 \"$PLUGIN_ROOT/python/cli.py\" design \"$script\" --session-env-path \"$SESSION_ENV_PATH\" --claude-pid \"$CLAUDE_PID\" \"$@\"\n",
             "    ;;\n",
             "  step6|step6-prelude|step6-cleanup)\n",
@@ -582,6 +585,14 @@ mod tests {
             design.starts_with("#!/usr/bin/env bash\nset -uo pipefail\nPLUGIN_ROOT=/opt/larch\n")
         );
         assert!(design.contains("current-design-env-4321.sh"));
+        // Leaf #8578: the Step 0 owner verbs run through the Rust entrypoint,
+        // while the still-Python step1d/step1e verbs stay on `python3 cli.py`.
+        assert!(design.contains(
+            "  step0-parse|step0-session|step0-route|step0-clarify-hard-halt|step0-init|step0-abort-cleanup|step0-ap-continue|step0c)\n    exec \"$PLUGIN_ROOT/scripts/larch.sh\" design \"$script\" --session-env-path \"$SESSION_ENV_PATH\" --claude-pid \"$CLAUDE_PID\" \"$@\"\n"
+        ));
+        assert!(design.contains(
+            "  step1d5|step1d7|step1e-reentry)\n    exec python3 \"$PLUGIN_ROOT/python/cli.py\" design \"$script\" --session-env-path \"$SESSION_ENV_PATH\" --claude-pid \"$CLAUDE_PID\" \"$@\"\n"
+        ));
         assert!(design.ends_with("esac\n"));
         let implement = implement_run_launcher_text("4321");
         assert!(implement.contains("current-implement-env-4321.sh"));

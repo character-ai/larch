@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "design-step0-abort-cleanup.sh: Invalid --claude-pid: must be a positive integer of at most 7 decimal digits\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

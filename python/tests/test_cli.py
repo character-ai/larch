@@ -268,10 +268,10 @@ def test_machine_stdout_keys_derived_from_registry() -> None:
 
 def test_repointed_design_commands_retain_machine_stdout_and_defining_modules() -> None:
     design_samples = {
-        ("design", "step0-session"): ("larch.design.design_step0", "step0_session_entry_main"),
+        ("design", "prelude"): ("larch.design.design_core", "prelude_main"),
+        ("design", "step3-continuation-entry"): ("larch.design.design_core", "step3_continuation_entry_main"),
         ("design", "step5c"): ("larch.design.design_step5c", "step5c_main"),
         ("design", "step2b-drafter"): ("larch.design.design_step2b", "step2b_drafter_main"),
-        ("design", "settle-next-action"): ("larch.design.design_session", "settle_next_action_main"),
         ("design", "stage-terminal-state"): ("larch.design.design_terminal", "stage_terminal_state_main"),
     }
     for key, (module_name, func_name) in design_samples.items():
@@ -291,8 +291,8 @@ def test_design_kv_entrypoint_disables_inherited_quiet(monkeypatch: pytest.Monke
     monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
     monkeypatch.setenv("LARCH_QUIET_PID", "999999")
     mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.design.design_step0_env": MagicMock(step0_parse_main=mock_main)}):
-        rc = cli.main(["design", "step0-parse", "--help"])
+    with patch.dict("sys.modules", {"larch.design.design_core": MagicMock(prelude_main=mock_main)}):
+        rc = cli.main(["design", "prelude", "--help"])
     assert rc == 0
     assert os.environ["LARCH_QUIET_DISABLE"] == "1"
 

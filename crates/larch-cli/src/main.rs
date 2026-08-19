@@ -48,6 +48,7 @@ mod debate_commands;
 mod debate_publication_commands;
 mod deps_audit_commands;
 mod design_commands;
+mod design_step0_commands;
 mod developer_tooling_commands;
 mod difficulty_calibration_commands;
 mod difficulty_commands;
@@ -1178,6 +1179,33 @@ enum DesignCommand {
     /// Refresh the session env, apply the `[DESIGNING]` rename, and write run-params.
     #[command(name = "init-runparams", disable_help_flag = true)]
     InitRunparams(RawCompatibilityArguments),
+    /// Parse the public `/design` Step 0 argv and cache the parsed env (#8578).
+    #[command(name = "step0-parse", disable_help_flag = true)]
+    Step0Parse(RawCompatibilityArguments),
+    /// Set up the `/design` Step 0 session (#8578).
+    #[command(name = "step0-session", disable_help_flag = true)]
+    Step0Session(RawCompatibilityArguments),
+    /// Decide and drive the Step 0b route for one issue (#8578).
+    #[command(name = "step0-route", disable_help_flag = true)]
+    Step0Route(RawCompatibilityArguments),
+    /// Emit the clarify hard-halt terminal state (#8578).
+    #[command(name = "step0-clarify-hard-halt", disable_help_flag = true)]
+    Step0ClarifyHardHalt(RawCompatibilityArguments),
+    /// Fold the init-runparams driver into Step 0 (#8578).
+    #[command(name = "step0-init", disable_help_flag = true)]
+    Step0Init(RawCompatibilityArguments),
+    /// Clean up after a `/design` Step 0 abort (#8578).
+    #[command(name = "step0-abort-cleanup", disable_help_flag = true)]
+    Step0AbortCleanup(RawCompatibilityArguments),
+    /// Continue the auto-proceed Step 0 path (#8578).
+    #[command(name = "step0-ap-continue", disable_help_flag = true)]
+    Step0ApContinue(RawCompatibilityArguments),
+    /// Write the Step 0c folded sentinel (#8578).
+    #[command(name = "step0c", disable_help_flag = true)]
+    Step0c(RawCompatibilityArguments),
+    /// Decide the settle next action from site and postplan rc (#8578).
+    #[command(name = "settle-next-action", disable_help_flag = true)]
+    SettleNextAction(RawCompatibilityArguments),
 }
 
 impl DesignCommand {
@@ -1189,6 +1217,17 @@ impl DesignCommand {
             Self::ParseFlags(_) => design_commands::parse_flags(&arguments),
             Self::Route(_) => design_commands::route(&arguments),
             Self::InitRunparams(_) => design_commands::init_runparams(&arguments),
+            Self::Step0Parse(_) => design_step0_commands::step0_parse(&arguments),
+            Self::Step0Session(_) => design_step0_commands::step0_session(&arguments),
+            Self::Step0Route(_) => design_step0_commands::step0_route(&arguments),
+            Self::Step0ClarifyHardHalt(_) => {
+                design_step0_commands::step0_clarify_hard_halt(&arguments)
+            }
+            Self::Step0Init(_) => design_step0_commands::step0_init(&arguments),
+            Self::Step0AbortCleanup(_) => design_step0_commands::step0_abort_cleanup(&arguments),
+            Self::Step0ApContinue(_) => design_step0_commands::step0_ap_continue(&arguments),
+            Self::Step0c(_) => design_step0_commands::step0c(&arguments),
+            Self::SettleNextAction(_) => design_step0_commands::settle_next_action(&arguments),
         }
     }
 }

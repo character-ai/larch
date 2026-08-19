@@ -1,0 +1,18 @@
+{
+  "exit_code": 1,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    },
+    "design/issue-body.txt": {
+      "text": "## Fixture issue\n\nJust prose.\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "design-route.sh: missing required arguments\n**⚠ Step 0b: design-route.sh configuration error (exit 2); aborting /design**\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -72,6 +72,16 @@ shape-restricted field that the owner validates. The same leaf moved `umbrella v
 `umbrella verify-completion` to Rust; both prove a completed run entirely from
 recorded artifacts and reach no GitHub service, so neither joins a row.
 
+The `design-issue-read` row records the #8578 cutover of `design step0-route`.
+Following the #7672 canonical GitHub-service result, its Step 0b issue read moved
+from the retired Python `gh issue view` to the typed `OctocrabGitHubService`
+adapter (`OctocrabGitHubOperations::issue_read`), which returns one bounded,
+redacted title, body, and label-name set. The other eight leaf #8578 verbs
+(`step0-parse`, `step0-session`, `step0-init`, `step0-clarify-hard-halt`,
+`step0-abort-cleanup`, `step0-ap-continue`, `step0c`, `settle-next-action`)
+reach no GitHub service, so they left the `pull-requests` row without joining
+another.
+
 The three `tracking-issue-*` rows record the corrected atomic cutover in #8346
 of the six tracking-issue lifecycle verbs. `tracking-issue-comment-reads`
 covers the three verbs that list comments: `read` renders the issue and its
@@ -146,6 +156,7 @@ issue-sub-issues	crates/larch-adapters/src/github/operations.rs	rust	#7682	compl
 issue-creation	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	issue cleanup-failed,issue create-one,issue write-sentinel
 issue-body-blocks	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7680,#7682	complete	complete	complete	named-block write,plan-block read,plan-block write
 issue-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682,#7685	complete	complete	complete	gh agnix-issue,issue context,issue fetch-issue-details,issue info,issue list-issues,issue state,umbrella prepare
+design-issue-read	crates/larch-adapters/src/github/operations.rs	rust	#7680	complete	complete	complete	design step0-route
 issue-backlog-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
 issue-backlog-comments	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	analyze-issues run
 issue-backlog-closure-references	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	analyze-issues fetch,analyze-issues run
@@ -162,7 +173,7 @@ pull-request-implement-dispatch	crates/larch-adapters/src/github/operations.rs	r
 pull-request-implement-migrated	crates/larch-adapters/src/github/operations.rs	rust	#7681	complete	complete	complete	implement checks-result-identity,implement checks-step5-resume,implement clone-tag,implement normalize-coder-scout,implement preflight,implement step-0-bootstrap,implement step-0-degraded-gate,implement step-18,implement step-5-resume,implement step-5-review,implement step-6-entry,implement step-7a
 pull-request-implement-retired	crates/larch-adapters/src/github/operations.rs	retired	#7681	not-applicable	complete	complete	implement step-18-gate-finalize
 pull-request-implement-terminal	crates/larch-adapters/src/github/operations.rs	rust	#7995	complete	complete	complete	implement step-18-gate-logs-flush,implement step-19
-pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	pending	pending	pending	ci behind-count,ci decide,ci distill-log,ci failed-jobs,ci main-health,ci rerun-failed,ci status,ci wait,design clarify,design dialectic-clear-stale,design dialectic-gatec,design dialectic-manual,design dialectic-promote-candidates,design dialectic-validate-candidates,design dialectic-write-candidates,design driver,design failure-report,design file-oos-annotate,design file-oos-prepare,design log-publish,design pause-load,design pause-save,design postplan-emit,design prelude,design publish,design read-result-env,design render-final-summary,design render-gate,design settle-next-action,design stage-terminal-state,design step-final-summary,design step0-abort-cleanup,design step0-ap-continue,design step0-clarify-hard-halt,design step0-init,design step0-parse,design step0-route,design step0-session,design step0c,design step1d5,design step1d7,design step1e-reentry,design step2b-drafter,design step2b-postplan,design step2b5,design step3-continuation-entry,design step35-settle,design step3b-entry,design step5b-annotate,design step5b-prepare,design step5c,design step6,design step6-cleanup,design step6-prelude,pr *,ship *
+pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	pending	pending	pending	ci behind-count,ci decide,ci distill-log,ci failed-jobs,ci main-health,ci rerun-failed,ci status,ci wait,design clarify,design dialectic-clear-stale,design dialectic-gatec,design dialectic-manual,design dialectic-promote-candidates,design dialectic-validate-candidates,design dialectic-write-candidates,design driver,design failure-report,design file-oos-annotate,design file-oos-prepare,design log-publish,design pause-load,design pause-save,design postplan-emit,design prelude,design publish,design read-result-env,design render-final-summary,design render-gate,design stage-terminal-state,design step-final-summary,design step1d5,design step1d7,design step1e-reentry,design step2b-drafter,design step2b-postplan,design step2b5,design step3-continuation-entry,design step35-settle,design step3b-entry,design step5b-annotate,design step5b-prepare,design step5c,design step6,design step6-cleanup,design step6-prelude,pr *,ship *
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
 repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676	complete	complete	complete	gh remote-repo,gh resolve-repo
 tracking-issue-comment-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	tracking-issue append-comment,tracking-issue read,tracking-issue upsert-summary

@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "/design Step 0 abort-cleanup: DESIGN_TMPDIR required\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

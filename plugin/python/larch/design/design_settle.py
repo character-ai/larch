@@ -17,14 +17,12 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.design import design_dialectic, design_pause
-from larch.design.design_session import (
-    SettleDispatchResult,
+from larch.design.design_core import (
     WrapperArgs,
-    _design_require_plugin_root,  # type: ignore[reportPrivateUsage]  # settle reuses design_session wrapper internals
-    _parse_common_wrapper_args,  # type: ignore[reportPrivateUsage]  # settle reuses design_session wrapper internals
-    _print_text,  # type: ignore[reportPrivateUsage]  # settle reuses design_session wrapper internals
-    _rehydrate_wrapper_env,  # type: ignore[reportPrivateUsage]  # settle reuses design_session wrapper internals
-    settle_next_action_for,
+    _design_require_plugin_root,  # type: ignore[reportPrivateUsage]  # settle reuses design_core wrapper internals
+    _parse_common_wrapper_args,  # type: ignore[reportPrivateUsage]  # settle reuses design_core wrapper internals
+    _print_text,  # type: ignore[reportPrivateUsage]  # settle reuses design_core wrapper internals
+    _rehydrate_wrapper_env,  # type: ignore[reportPrivateUsage]  # settle reuses design_core wrapper internals
 )
 from larch.state.session_env import validate_design_tmpdir
 
@@ -94,6 +92,7 @@ DedupRunner = Callable[[Path], ChildCapture]
 PostplanRunner = Callable[[SettleRequest, str], ChildCapture]
 DialecticClearRunner = Callable[[Path], int]
 PauseSaveRunner = Callable[[SettleRequest], ChildCapture]
+NextActionRunner = Callable[[str, int], ChildCapture]
 
 
 @dataclass(frozen=True)
@@ -104,6 +103,7 @@ class SettleRunners:
     postplan: PostplanRunner
     dialectic_clear: DialecticClearRunner
     pause_save: PauseSaveRunner
+    next_action: NextActionRunner
 
 
 @dataclass(frozen=True)
@@ -186,12 +186,34 @@ def _default_pause_save(request: SettleRequest) -> ChildCapture:
     return ChildCapture(rc=int(rc), stdout=buf.getvalue(), stderr=err.getvalue())
 
 
+def _default_next_action(site: str, postplan_rc: int) -> ChildCapture:
+    # settle-next-action is Rust-owned (#8578); invoke it through the larch
+    # entrypoint and parse SETTLE_* rows rather than dispatching in-process.
+    result = subprocess.run(
+        [
+            str(larch_entrypoint()),
+            "design",
+            "settle-next-action",
+            "--site",
+            site,
+            "--postplan-rc",
+            str(postplan_rc),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=larch_entrypoint_env(),
+    )
+    return ChildCapture(rc=result.returncode, stdout=result.stdout, stderr=result.stderr)
+
+
 def default_settle_runners() -> SettleRunners:
     return SettleRunners(
         dedup=_default_dedup,
         postplan=_default_postplan,
         dialectic_clear=_default_dialectic_clear,
         pause_save=_default_pause_save,
+        next_action=_default_next_action,
     )
 
 
@@ -249,13 +271,26 @@ def _warn_dialectic(*, where: str) -> None:
     print(_DIALECTIC_WARN.format(where=where), file=sys.stderr)
 
 
-def _dispatch_next_action(*, site: str, postplan_rc: int) -> SettleResult:
-    result: SettleDispatchResult = settle_next_action_for(site=site, postplan_rc=postplan_rc)
-    if not result.action:
+def _parse_next_action_output(stdout: str) -> tuple[str, int | None]:
+    action = ""
+    exit_rc: int | None = None
+    for line in stdout.splitlines():
+        if line.startswith("SETTLE_NEXT_ACTION="):
+            action = line.removeprefix("SETTLE_NEXT_ACTION=")
+        elif line.startswith("SETTLE_EXIT_RC="):
+            with contextlib.suppress(ValueError):
+                exit_rc = int(line.removeprefix("SETTLE_EXIT_RC="))
+    return action, exit_rc
+
+
+def _dispatch_next_action(*, runners: SettleRunners, site: str, postplan_rc: int) -> SettleResult:
+    capture = runners.next_action(site, postplan_rc)
+    action, parsed_exit_rc = _parse_next_action_output(capture.stdout)
+    if not action:
         print(f"{_LABEL}: settle-next-action failed for site={site} postplan_rc={postplan_rc}", file=sys.stderr)
         return SettleResult(exit_rc=3)
-    _emit_next_action(result.action)
-    return SettleResult(exit_rc=result.exit_rc, next_action=result.action)
+    _emit_next_action(action)
+    return SettleResult(exit_rc=parsed_exit_rc if parsed_exit_rc is not None else postplan_rc, next_action=action)
 
 
 def _handle_pause_requested(*, request: SettleRequest, runners: SettleRunners) -> SettleResult | None:
@@ -354,11 +389,11 @@ def _dispatch_postplan_rc(
             _warn_dialectic(where="postplan")
         if paths is not None:
             _atomic_write_line(path=paths.phase_file, value="awaiting-continuation")
-        return _dispatch_next_action(site=request.site, postplan_rc=0)
+        return _dispatch_next_action(runners=runners, site=request.site, postplan_rc=0)
     if machine_rc in {"10", "11", "12", "13"}:
         if machine_rc in {"10", "13"} and paths is not None:
             _atomic_write_line(path=paths.phase_file, value="awaiting-postplan-operator")
-        return _dispatch_next_action(site=request.site, postplan_rc=int(machine_rc))
+        return _dispatch_next_action(runners=runners, site=request.site, postplan_rc=int(machine_rc))
     print(f"{_LABEL}: unexpected POSTPLAN_RC={machine_rc}", file=sys.stderr)
     return SettleResult(exit_rc=3)
 

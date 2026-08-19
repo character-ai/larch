@@ -23,7 +23,7 @@ from larch.core.repo_roots import larch_entrypoint
 from larch.core import retry
 from larch.core import rust_runtime
 from larch.design import plan_grammar
-from larch.design.design_step0_env import ROUTE_STATE_PATH
+from larch.design.design_core import ROUTE_STATE_PATH
 from larch.design.design_terminal import phase_driver_read_result_env
 from larch.git import gh
 from larch.issue import issue_wire
@@ -98,11 +98,11 @@ def _binary_bool(*, value: str, binary: str) -> bool:
 def _route_state_value(design_tmpdir: Path, key: str) -> str:
     """Read a ``KEY=value`` row from the Step 0 route-state env, or return "".
 
-    The route-state file (written by ``design_step0``) carries the original
-    issue title and number that ``/design`` bound at Step 0; the title is needed
-    to build the split-piece title prefix. Reads go through the shared
-    ``phase_driver_read_result_env`` helper that sibling consumers
-    (``design_step0``, ``clarify``) already use, with a single-key containment,
+    The route-state file (written by the Rust-owned Step 0 route verb) carries
+    the original issue title and number that ``/design`` bound at Step 0; the
+    title is needed to build the split-piece title prefix. Reads go through the
+    shared ``phase_driver_read_result_env`` helper that sibling consumers
+    (``clarify``) already use, with a single-key containment,
     so parsing and value/newline handling stay centralized rather than being
     re-derived here. Missing/symlink/non-regular files degrade to "" so the
     caller's title passes through unchanged.

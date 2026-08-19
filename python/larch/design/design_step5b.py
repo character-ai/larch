@@ -14,18 +14,19 @@ from larch.core import architectural_guidelines
 from larch.design import design_oos
 from larch.core.repo_roots import consumer_repo_root
 
-from larch.design.design_core import _append_failure, _parse_stdout_kv
-from larch.design.design_session import (
+from larch.design.design_core import (
+    _append_failure,
     _call_pause_save,
     _capture_stdout_stderr,
     _design_require_plugin_root,
     _maybe_timing_mark,
     _parse_common_wrapper_args,
+    _parse_stdout_kv,
     _print_text,
     _rehydrate_wrapper_env,
+    _require_design_tmpdir_nonempty,
     _write_text,
 )
-from larch.design.design_step0 import _require_design_tmpdir_nonempty
 from larch.design.design_step5c import _step5b_mark_complete
 
 def _step5b_issue_args(env: Mapping[str, str]) -> list[str]:
