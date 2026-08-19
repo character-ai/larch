@@ -8,7 +8,8 @@ use crate::{
     git_command_runtime::GitCommandRuntime,
     github_repository_resolution::repository_ref,
     github_service::{
-        ServiceFailure, list_exhaustive_issues, with_github_service, with_github_service_policy,
+        ServiceFailure, list_exhaustive_issues, list_exhaustive_issues_for_state,
+        with_github_service, with_github_service_policy,
     },
     issue_mutation_support::create_with_rollback,
     session_artifact_support::{
@@ -357,9 +358,12 @@ fn persist_proposal(arguments: &PersistProposalArguments) -> Result<(), String> 
     let (mut current, open_history) = with_github_service_policy(
         GitHubTransportPolicy::migration_audit(),
         async |service, cancellation| {
+            eprintln!("audit-umbrella: persist-proposal verifying snapshot");
             verify_snapshot_unchanged(service, cancellation, &repository, &snapshot).await?;
+            eprintln!("audit-umbrella: persist-proposal reading live proposal issues");
             let current =
                 read_live_proposal_issues(service, cancellation, &repository, &proposal).await?;
+            eprintln!("audit-umbrella: persist-proposal listing open issue history for dedup");
             let history = list_all_issues(service, cancellation, &repository).await?;
             Ok((current, history))
         },
@@ -1241,9 +1245,9 @@ async fn list_all_issues(
     cancellation: &Cancellation,
     repository: &GitHubRepositoryRef,
 ) -> Result<Vec<GitHubIssue>, String> {
-    list_exhaustive_issues(service, cancellation, repository)
+    list_exhaustive_issues_for_state(service, cancellation, repository, GitHubIssueState::Open)
         .await
-        .map_err(|error| format!("cannot reconcile exhaustive issue history: {error}"))
+        .map_err(|error| format!("cannot reconcile open issue history: {error}"))
 }
 
 /// Bind pending leaves to one exact, already-open issue before any creation.
