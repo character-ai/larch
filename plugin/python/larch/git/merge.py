@@ -426,13 +426,10 @@ def _version_race_gate(
             result=config.MERGE_RESULT_ERROR,
             error="git fetch origin main failed; cannot verify same-version race",
         )
-    bump_subject = _bump_subject(runner, cwd=cwd)
-    if not bump_subject:
+    bump = _bump_commit(runner, cwd=cwd)
+    if bump is None:
         return None
-    match = _BUMP_SUBJECT_RE.fullmatch(bump_subject)
-    if match is None:
-        return None
-    local_version = match.group(1)
+    bump_sha, local_version = bump
     origin_version = _origin_plugin_version(runner, cwd=cwd)
     if not _SEMVER_RE.fullmatch(origin_version):
         sanitized = origin_version.replace("\n", " ")
@@ -445,10 +442,20 @@ def _version_race_gate(
             result=config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED,
             error=f"origin/main HEAD already bumped to {local_version}; rebase and re-bump",
         )
-    if not git.is_ancestor(runner, "origin/main", "HEAD", cwd=cwd):
+    current_version = _plugin_version_at(runner, f"{bump_sha}^", cwd=cwd)
+    if not _SEMVER_RE.fullmatch(current_version):
+        sanitized = current_version.replace("\n", " ")
         return MergeResult(
-            result=config.MERGE_RESULT_MAIN_ADVANCED,
-            error="origin/main advanced to a different version; rebase needed",
+            result=config.MERGE_RESULT_ERROR,
+            error=f"could not parse pre-bump plugin version (got: '{sanitized}')",
+        )
+    if origin_version != current_version:
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error=(
+                f"origin/main plugin version is {origin_version}, not pre-bump "
+                f"{current_version}; a competing release landed"
+            ),
         )
     premerge = runner.run(["git", "fetch", "origin", "main", "--quiet"], cwd=cwd)
     if premerge.returncode != 0:
@@ -461,6 +468,17 @@ def _version_race_gate(
         return MergeResult(
             result=config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED,
             error=f"origin/main HEAD already bumped to {local_version} (pre-merge re-fetch); rebase and re-bump",
+        )
+    if (
+        _SEMVER_RE.fullmatch(premerge_origin_version)
+        and premerge_origin_version != current_version
+    ):
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error=(
+                f"origin/main plugin version is {premerge_origin_version}, not pre-bump "
+                f"{current_version} (pre-merge re-fetch); a competing release landed"
+            ),
         )
     return None
 
@@ -475,8 +493,29 @@ def _bump_subject(runner: Runner, *, cwd: str | None) -> str:
     return ""
 
 
+def _bump_commit(runner: Runner, *, cwd: str | None) -> tuple[str, str] | None:
+    result = runner.run(["git", "log", "--format=%H\t%s", "origin/main..HEAD"], cwd=cwd)
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        sha, separator, subject = line.partition("\t")
+        if not separator or not sha:
+            continue
+        match = _BUMP_SUBJECT_RE.fullmatch(subject)
+        if match is not None:
+            return sha, match.group(1)
+    return None
+
+
 def _origin_plugin_version(runner: Runner, *, cwd: str | None) -> str:
-    result = runner.run(["git", "show", "origin/main:.claude-plugin/plugin.json"], cwd=cwd)
+    return _plugin_version_at(runner, "origin/main", cwd=cwd)
+
+
+def _plugin_version_at(runner: Runner, revision: str, *, cwd: str | None) -> str:
+    result = runner.run(
+        ["git", "show", f"{revision}:.claude-plugin/plugin.json"],
+        cwd=cwd,
+    )
     if result.returncode != 0:
         return ""
     try:

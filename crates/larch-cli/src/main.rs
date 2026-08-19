@@ -1831,6 +1831,8 @@ enum ReleaseCommand {
     PackageAsset(PackageAssetArguments),
     /// Prepare the release window, PR list, and aggregate bump.
     Prepare(PrepareReleaseArguments),
+    /// Recompute release notes PRs against the merged source commit.
+    ReconcileNotes(ReconcileNotesArguments),
     /// Promote one immutable release to Latest.
     Promote(PromoteReleaseArguments),
     /// Promote the newest immutable non-draft release to Latest.
@@ -1997,6 +1999,22 @@ struct PrepareReleaseArguments {
     repository: larch_core::GitHubRepositoryRef,
     #[arg(long, value_parser = ["major", "minor", "patch"])]
     bump: Option<String>,
+    #[arg(long, required = true)]
+    out_dir: PathBuf,
+}
+
+#[derive(Args)]
+struct ReconcileNotesArguments {
+    #[arg(long = "repo", default_value = "character-ai/larch", value_parser = parse_repository)]
+    repository: larch_core::GitHubRepositoryRef,
+    #[arg(long)]
+    baseline_tag: String,
+    #[arg(long)]
+    source_commit: String,
+    #[arg(long)]
+    pr_list: PathBuf,
+    #[arg(long)]
+    exclude_pr: u64,
     #[arg(long, required = true)]
     out_dir: PathBuf,
 }
@@ -3127,20 +3145,8 @@ fn run_release(
                 output_dir: arguments.output_dir,
             },
         )),
-        ReleaseCommand::Prepare(arguments) => {
-            let bump = arguments.bump.as_deref().map(|value| match value {
-                "major" => release_prepare::BumpType::Major,
-                "minor" => release_prepare::BumpType::Minor,
-                _ => release_prepare::BumpType::Patch,
-            });
-            Ok(release_prepare::prepare(
-                &release_prepare::PrepareArguments {
-                    repository: arguments.repository,
-                    bump,
-                    out_dir: arguments.out_dir,
-                },
-            ))
-        }
+        ReleaseCommand::Prepare(arguments) => Ok(run_release_prepare(arguments)),
+        ReleaseCommand::ReconcileNotes(arguments) => Ok(run_release_reconcile_notes(arguments)),
         ReleaseCommand::Promote(arguments) => Ok(release_publish::promote(
             &arguments.version,
             arguments.repository.as_deref(),
@@ -3174,6 +3180,30 @@ fn run_release(
             &arguments.source_commit,
         )),
     }
+}
+
+fn run_release_prepare(arguments: PrepareReleaseArguments) -> ExitCode {
+    let bump = arguments.bump.as_deref().map(|value| match value {
+        "major" => release_prepare::BumpType::Major,
+        "minor" => release_prepare::BumpType::Minor,
+        _ => release_prepare::BumpType::Patch,
+    });
+    release_prepare::prepare(&release_prepare::PrepareArguments {
+        repository: arguments.repository,
+        bump,
+        out_dir: arguments.out_dir,
+    })
+}
+
+fn run_release_reconcile_notes(arguments: ReconcileNotesArguments) -> ExitCode {
+    release_prepare::reconcile_notes(&release_prepare::ReconcileNotesArguments {
+        repository: arguments.repository,
+        baseline_tag: arguments.baseline_tag,
+        source_commit: arguments.source_commit,
+        pr_list: arguments.pr_list,
+        exclude_pr: arguments.exclude_pr,
+        out_dir: arguments.out_dir,
+    })
 }
 
 fn run_release_plugin_runtime(

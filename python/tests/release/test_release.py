@@ -17,7 +17,7 @@ def test_release_skill_rebuilds_worktree_driver_across_version_change() -> None:
     first_build = skill.index(build)
     candidate_build = skill.index(build, first_build + len(build))
     sync_complete = skill.index('sync_out="DRY_RUN_SYNC_SKIPPED=true"')
-    checkout = skill.index('git checkout -b "release/v${NEW_VERSION}"')
+    checkout = skill.index('git checkout -b "release/v${NEW_VERSION}" "$RELEASE_SHA"')
     assert first_build < prepare < ensure_policy < checkout < set_version < candidate_build
     assert sync_complete < first_build
 
@@ -35,6 +35,7 @@ def test_release_skill_rebuilds_worktree_driver_across_version_change() -> None:
         "set-version",
         "ensure-policy",
         "stage",
+        "reconcile-notes",
         "asset-run",
         "validate-draft",
         "finish",
@@ -60,15 +61,18 @@ def test_release_skill_stages_only_after_the_normal_queue_merge() -> None:
     queue_submit = skill.index('python3 "$PWD/python/cli.py" merge pr')
     queue_wait = skill.index('python3 "$PWD/python/cli.py" merge wait')
     stage = skill.index('"$PWD/scripts/larch.sh" release stage')
+    reconcile = skill.index('"$PWD/scripts/larch.sh" release reconcile-notes')
     validate = skill.index('"$PWD/scripts/larch.sh" release validate-draft')
 
-    assert queue_submit < queue_wait < stage < validate
+    assert queue_submit < queue_wait < stage < reconcile < validate
     assert "--release-queue-bypass" not in skill
     queue_fence_end = skill.index(chr(96) * 3, queue_submit)
     queue_command = skill[queue_submit:queue_fence_end]
     assert "--no-admin-fallback" in queue_command
     assert "\n  --admin" not in queue_command
     assert 'SOURCE_COMMIT=$(git rev-parse "v${NEW_VERSION}^{commit}")' in skill
+    assert 'git checkout -b "release/v${NEW_VERSION}" "$RELEASE_SHA"' in skill
+    assert "RELEASE_SHA" in skill
     asset_start = skill.index("  --step release-assets")
     assert (
         skill.rfind('"$PWD/scripts/larch.sh" bgjob start', 0, asset_start)

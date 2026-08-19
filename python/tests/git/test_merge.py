@@ -412,6 +412,106 @@ def test_bump_subject_accepts_canonical_and_legacy_release_commits(
     assert merge_module._bump_subject(runner, cwd=None) == expected  # pyright: ignore[reportPrivateUsage]
 
 
+def test_version_race_gate_allows_behind_release_branch_when_version_unchanged() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "fetch"), 0, "", "", 0.01),
+            CommandResult(
+                ("git", "log"),
+                0,
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tRelease v2.3.4\n",
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("git", "show"),
+                0,
+                '{"version":"2.3.3"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("git", "show"),
+                0,
+                '{"version":"2.3.3"}',
+                "",
+                0.01,
+            ),
+            CommandResult(("git", "fetch"), 0, "", "", 0.01),
+            CommandResult(
+                ("git", "show"),
+                0,
+                '{"version":"2.3.3"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    assert merge_module._version_race_gate(runner, cwd=None) is None  # pyright: ignore[reportPrivateUsage]
+    assert ["git", "merge-base", "--is-ancestor", "origin/main", "HEAD"] not in runner.calls
+
+
+def test_version_race_gate_errors_when_competing_release_landed() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "fetch"), 0, "", "", 0.01),
+            CommandResult(
+                ("git", "log"),
+                0,
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tRelease v2.3.4\n",
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("git", "show"),
+                0,
+                '{"version":"2.4.0"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("git", "show"),
+                0,
+                '{"version":"2.3.3"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    out = merge_module._version_race_gate(runner, cwd=None)  # pyright: ignore[reportPrivateUsage]
+    assert out is not None
+    assert out.result == config.MERGE_RESULT_ERROR
+    assert "competing release" in out.error
+
+
+def test_version_race_gate_still_detects_version_already_published() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "fetch"), 0, "", "", 0.01),
+            CommandResult(
+                ("git", "log"),
+                0,
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tRelease v2.3.4\n",
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("git", "show"),
+                0,
+                '{"version":"2.3.4"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    out = merge_module._version_race_gate(runner, cwd=None)  # pyright: ignore[reportPrivateUsage]
+    assert out is not None
+    assert out.result == config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED
+
+
 def test_merge_pr_rejects_the_retired_release_queue_bypass_flag() -> None:
     assert (
         merge_module.pr_main(

@@ -96,7 +96,7 @@ fn classify_bump_preserves_noop_idempotency() {
 }
 
 #[test]
-fn release_prepare_rejects_dirty_and_stale_main_before_network_access() {
+fn release_prepare_rejects_dirty_main_before_network_access() {
     let repository = repository();
     git(
         repository.path(),
@@ -121,11 +121,27 @@ fn release_prepare_rejects_dirty_and_stale_main_before_network_access() {
         .assert()
         .failure()
         .stdout(predicates::str::contains("ERROR=dirty-main\n"));
+}
 
-    fs::remove_file(repository.path().join("untracked")).expect("remove dirty file");
+#[test]
+fn release_prepare_accepts_local_main_behind_origin_tip() {
+    let repository = repository();
+    git(
+        repository.path(),
+        ["remote", "add", "origin", "https://github.com/o/r.git"],
+    );
+    let behind = head(repository.path());
     fs::write(repository.path().join("README.md"), "ahead\n").expect("ahead change");
     commit_all(repository.path(), "ahead");
-    larch()
+    git(
+        repository.path(),
+        ["update-ref", "refs/remotes/origin/main", &head(repository.path())],
+    );
+    git(repository.path(), ["reset", "--hard", "--quiet", &behind]);
+    let out_dir = tempfile::tempdir().expect("output directory");
+    // Local main may lag the pinned tip; prepare still fetches and reaches the
+    // GitHub planning calls (which fail offline with a non-stale error).
+    let assertion = larch()
         .current_dir(repository.path())
         .args([
             "release",
@@ -136,8 +152,16 @@ fn release_prepare_rejects_dirty_and_stale_main_before_network_access() {
             out_dir.path().to_str().expect("UTF-8 output directory"),
         ])
         .assert()
-        .failure()
-        .stdout(predicates::str::contains("ERROR=stale-local-main\n"));
+        .failure();
+    let stdout = String::from_utf8_lossy(&assertion.get_output().stdout);
+    assert!(
+        stdout.contains("ERROR="),
+        "expected an ERROR= token, got {stdout:?}"
+    );
+    assert!(
+        !stdout.contains("ERROR=stale-local-main\n"),
+        "behind local main must not fail as stale-local-main: {stdout:?}"
+    );
 }
 
 #[test]
@@ -171,7 +195,7 @@ fn release_prepare_accepts_clean_main_with_conversion_attributes() {
         ])
         .assert()
         .failure()
-        .stdout(predicates::str::contains("ERROR=gh-release-list-failed\n"));
+        .stdout(predicates::str::contains("ERROR=fetch-origin-main-failed\n"));
 }
 
 fn assert_bump(repository: &Path, base: &str, expected: &str) {

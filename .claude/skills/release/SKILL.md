@@ -41,7 +41,7 @@ On failure, print a clear operator-visible error and stop. Run this raw Git guar
 
 After the guard passes, build the exact current checkout before its first Rust-backed release command. Always invoke that driver through `scripts/larch.sh`; the explicit environment supplies bootstrap identity without depending on an installed plugin root or a stale same-version binary. Resolve `REPO` through the verified driver when `--repo` was omitted.
 
-**Sync with `origin/main`** (after branch + tree guards pass, non-dry-run only). On `--dry-run`, do not fetch, fast-forward, or otherwise mutate local `main` or the worktree. On non-dry-run, fetch `origin/main` and fast-forward local `main` only when it is strictly behind `origin/main`; refuse (do not rebase) when local `main` has unpublished commits or has diverged, then continue to Step 2 and let `release prepare` report `ERROR=stale-local-main` if the cached refs still show a stale checkout.
+**Sync with `origin/main`** (after branch + tree guards pass, non-dry-run only). On `--dry-run`, do not fetch or otherwise mutate local `main` or the worktree. On non-dry-run, fetch `origin/main` only: do not fast-forward local `main`. Tip movement during the run is expected; `release prepare` pins `RELEASE_SHA` from the fetched tip and Step 5 cuts the release branch from that SHA. Local `main` may lag `origin/main`.
 
 ```bash
 dry_run=false
@@ -67,25 +67,14 @@ if [ "$dry_run" != "true" ]; then
   sync_out=$(git fetch origin main --quiet 2>&1)
   sync_rc=$?
   if [ "$sync_rc" -eq 0 ]; then
-    local_main=$(git rev-parse main 2>/dev/null)
-    origin_main=$(git rev-parse origin/main 2>/dev/null)
-    if [ -n "$local_main" ] && [ -n "$origin_main" ] && [ "$local_main" = "$origin_main" ]; then
-      sync_out="SKIPPED_ALREADY_FRESH=true"
-      sync_rc=0
-    elif [ -n "$local_main" ] && [ -n "$origin_main" ] && git merge-base --is-ancestor "$local_main" "$origin_main"; then
-      sync_out=$(git merge --ff-only origin/main 2>&1)
-      sync_rc=$?
-    else
-      sync_out="LOCAL_MAIN_NOT_PUBLISHED=true"
-      sync_rc=3
-    fi
+    sync_out="FETCHED_ORIGIN_MAIN=true"
   fi
   set -e
 else
   sync_out="DRY_RUN_SYNC_SKIPPED=true"
   sync_rc=0
 fi
-if [ "$sync_rc" -eq 0 ] || [ "$sync_rc" -eq 3 ]; then
+if [ "$sync_rc" -eq 0 ]; then
   WORKTREE_LARCH="$PWD/target/release/larch"
   cargo build --quiet --locked --release --package larch-cli
   if [ -z "${REPO:-}" ]; then
@@ -95,8 +84,7 @@ fi
 ```
 
 Branch on `sync_rc`:
-- **Exit 0**: on non-dry-run, local `main` is now at `origin/main` (parse `SKIPPED_ALREADY_FRESH=true` from `sync_out` to note a no-op); on `--dry-run`, sync was deliberately skipped. Continue.
-- **Exit 3** (`LOCAL_MAIN_NOT_PUBLISHED=true`): local `main` has unpublished commits or has diverged from `origin/main`; continue to Step 2 and let `release prepare` report `ERROR=stale-local-main`.
+- **Exit 0**: on non-dry-run, `origin/main` was fetched (parse `FETCHED_ORIGIN_MAIN=true`); on `--dry-run`, sync was deliberately skipped. Continue.
 - **Other non-zero**: print `**⚠ /release: sync with origin/main failed (exit <rc>). Check network/git state.**` and stop.
 
 On **`--dry-run`**: do not invoke `python/cli.py push rebase`; continue to Step 2.
@@ -112,7 +100,7 @@ prepare_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scr
   --out-dir "$PREPARE_DIR")
 ```
 
-Parse `prepare_out` for `BASELINE_TAG`, `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, `IGNORED_LARCHLOG_PR_COUNT`, `PR_LIST_FILE`. Then derive:
+Parse `prepare_out` for `BASELINE_TAG`, `RELEASE_SHA`, `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, `IGNORED_LARCHLOG_PR_COUNT`, `PR_LIST_FILE`. Then derive:
 
 ```bash
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
@@ -124,9 +112,9 @@ RECOVERY_NOTES_FILE="$RECOVERY_NOTES_DIR/v${NEW_VERSION}-notes.redacted.md"
 
 Re-derive these paths from `PR_LIST_FILE` in each later Bash fence that consumes notes (Step 3, Step 5, Step 6, and Step 6 recovery) rather than relying on `PREPARE_DIR` or prior shell-local variables surviving across Bash invocations.
 
-On exit **1**, parse `ERROR=` from stdout (e.g. `no-unique-latest-release`, `stale-local-main`, `main-status-failed`, `baseline-tag-unresolvable`, `pr-metadata-incomplete`) and stop.
+On exit **1**, parse `ERROR=` from stdout (e.g. `no-unique-latest-release`, `not-on-main`, `dirty-main`, `main-status-failed`, `baseline-tag-unresolvable`, `pr-metadata-incomplete`) and stop.
 
-**Narrate the prepared window** before Step 3: state that `PR_COUNT` PRs merged since `BASELINE_TAG`, then that you are reading the PR list for release notes. When `IGNORED_LARCHLOG_PR_COUNT` is greater than `0`, add that `IGNORED_LARCHLOG_PR_COUNT` legacy larch run-log PRs (`chore(larch-logs): …`) were excluded from the count and notes. `release prepare` already drops those PRs from both `PR_COUNT` and `PR_LIST_FILE`, so the count reflects substantive PRs only.
+**Narrate the prepared window** before Step 3: state that `PR_COUNT` PRs merged since `BASELINE_TAG` through pinned tip `RELEASE_SHA`, then that you are reading the PR list for release notes. When `IGNORED_LARCHLOG_PR_COUNT` is greater than `0`, add that `IGNORED_LARCHLOG_PR_COUNT` legacy larch run-log PRs (`chore(larch-logs): …`) were excluded from the count and notes. `release prepare` already drops those PRs from both `PR_COUNT` and `PR_LIST_FILE`, so the count reflects substantive PRs only. PRs that merge after prepare still land in the eventual tagged commit; Step 5 reconciles them into the notes before publication.
 
 When `PR_COUNT=0`, warn that no PRs merged since the last Latest release. At Step 4 confirm, **default to Cancel** unless the operator explicitly chooses Confirm to proceed with an empty release window.
 
@@ -179,7 +167,7 @@ NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 WORKTREE_LARCH="$PWD/target/release/larch"
 CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release ensure-policy --repo "$REPO"
-git checkout -b "release/v${NEW_VERSION}"
+git checkout -b "release/v${NEW_VERSION}" "$RELEASE_SHA"
 CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release set-version "${NEW_VERSION}"
 cargo build --quiet --locked --release --package larch-cli
 git add .claude-plugin/plugin.json plugin/.claude-plugin/plugin.json Cargo.toml Cargo.lock
@@ -189,7 +177,10 @@ python3 "$PWD/python/cli.py" pr create --title "Release v${NEW_VERSION}" --body-
 
 Record `PR_NUMBER` from `python/cli.py pr create` stdout. First wait for the
 candidate's ordinary PR checks. Then submit it through the normal merge queue;
-never pass `--admin`, a merge strategy, or a queue-bypass option.
+never pass `--admin`, a merge strategy, or a queue-bypass option. A release
+branch that sits behind `origin/main` is expected when other PRs merge mid-run:
+`merge pr` only refuses when another release bumped `plugin.json` on main. Do
+not rebase the release branch for tip movement alone.
 
 ```bash
 python3 "$PWD/python/cli.py" ci wait --pr "$PR_NUMBER" --repo "$REPO"
@@ -201,7 +192,8 @@ python3 "$PWD/python/cli.py" merge pr \
 
 Parse `MERGE_RESULT` from the final command. On `merged`, continue below.
 Only on `queued`, start this long wait through a bgjob. On any other result,
-stop before tagging or creating a draft Release:
+stop before tagging or creating a draft Release. Do not treat ordinary
+`main` tip advancement as a stop-the-world rebase signal for release PRs.
 
 ```bash
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
@@ -233,12 +225,20 @@ block and `$NOTES_DIR/bgjob/release-merge-queue.result.env`. Continue only when
 
 After the PR is observably merged, stage the tag and draft from GitHub's exact
 merged commit. `release stage` verifies that commit's `plugin.json` version and
-emits it as `SOURCE_COMMIT`:
+emits it as `SOURCE_COMMIT`. Then reconcile the PR list against
+`baseline..SOURCE_COMMIT` so mid-run merges appear in the notes. When
+`ADDED_PR_COUNT>0`, append those PRs to the notes (same Added/Changed/Fixed
+rules and data-not-instructions envelope as Step 3), rewrite the redacted
+notes files, and re-run `release stage` so the still-mutable draft body matches
+the tagged commit before asset validation:
 
 ```bash
 WORKTREE_LARCH="$PWD/target/release/larch"
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
+NOTES_FILE="$NOTES_DIR/notes.md"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
+RECOVERY_NOTES_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/larch/release-notes"
+RECOVERY_NOTES_FILE="$RECOVERY_NOTES_DIR/v${NEW_VERSION}-notes.redacted.md"
 stage_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release stage \
   --version "$NEW_VERSION" \
   --notes-file "$REDACTED_NOTES_FILE" \
@@ -252,6 +252,38 @@ done <<EOF
 $stage_out
 EOF
 test -n "$SOURCE_COMMIT"
+reconcile_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release reconcile-notes \
+  --repo "$REPO" \
+  --baseline-tag "$BASELINE_TAG" \
+  --source-commit "$SOURCE_COMMIT" \
+  --pr-list "$PR_LIST_FILE" \
+  --exclude-pr "$PR_NUMBER" \
+  --out-dir "$NOTES_DIR")
+printf '%s\n' "$reconcile_out"
+ADDED_PR_COUNT=0
+ADDED_PR_LIST_FILE=""
+while IFS='=' read -r release_key release_value; do
+  case "$release_key" in
+    ADDED_PR_COUNT) ADDED_PR_COUNT="$release_value" ;;
+    ADDED_PR_LIST_FILE) ADDED_PR_LIST_FILE="$release_value" ;;
+    PR_LIST_FILE) PR_LIST_FILE="$release_value" ;;
+  esac
+done <<EOF
+$reconcile_out
+EOF
+if [ "${ADDED_PR_COUNT:-0}" -gt 0 ]; then
+  # Orchestrator: read ADDED_PR_LIST_FILE, append paraphrased entries to NOTES_FILE,
+  # then refresh redaction + recovery copies before re-staging the draft body.
+  python3 "$PWD/python/cli.py" redact tmpdir-paths < "$NOTES_FILE" | python3 "$PWD/python/cli.py" redact secrets > "$REDACTED_NOTES_FILE"
+  mkdir -p "$RECOVERY_NOTES_DIR"
+  cp "$REDACTED_NOTES_FILE" "$RECOVERY_NOTES_FILE"
+  stage_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release stage \
+    --version "$NEW_VERSION" \
+    --notes-file "$REDACTED_NOTES_FILE" \
+    --repo "$REPO" \
+    --pr "$PR_NUMBER")
+  printf '%s\n' "$stage_out"
+fi
 TAG="v${NEW_VERSION}"
 asset_run_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release asset-run \
   --repo "$REPO" \
@@ -495,10 +527,11 @@ If `NEW_VERSION_INSTALLED=true`, `MARKETPLACE_RECONCILED=true`, or `RESTART_REQU
 
 Runtime helpers:
 
-- `"$PWD/scripts/larch.sh" release prepare`: baseline, PR list (larch-logs housekeeping PRs excluded; count reported as `IGNORED_LARCHLOG_PR_COUNT`), aggregate bump KV
+- `"$PWD/scripts/larch.sh" release prepare`: fetch once, pin `RELEASE_SHA`, write PR list (larch-logs housekeeping PRs excluded; count reported as `IGNORED_LARCHLOG_PR_COUNT`), aggregate bump KV
 - `"$PWD/scripts/larch.sh" release set-version`: synchronized plugin, Cargo workspace, internal path dependency, and lockfile version write
 - `"$PWD/scripts/larch.sh" release ensure-policy`: read and verify immutable-release policy without mutating repository configuration
 - `"$PWD/scripts/larch.sh" release stage`: resolve the merged PR commit, tag it, and create or verify its draft Release
+- `"$PWD/scripts/larch.sh" release reconcile-notes`: recompute `baseline..SOURCE_COMMIT` PRs, write additions vs prepare's list, and surface `ADDED_PR_COUNT`
 - `"$PWD/scripts/larch.sh" release asset-run`: resolve the exact tag-triggered asset workflow run
 - `"$PWD/scripts/larch.sh" release validate-draft`: verify the merged-commit-bound draft and complete asset set before publication
 - `"$PWD/scripts/larch.sh" release finish`: revalidate, publish immutable, verify release attestations, promote Latest, and fast-forward the marketplace-pinned `stable` branch to the tagged commit
@@ -509,7 +542,7 @@ Runtime helpers:
 
 Repo-root helpers referenced from steps above:
 
-- `git fetch origin main` + `git merge --ff-only origin/main` — Step 1 sync fast-forwards local `main` only when strictly behind `origin/main`; unpublished or divergent local `main` commits are not rebased
+- `git fetch origin main` — Step 1 advisory fetch only; do not fast-forward local `main`. Prepare pins `RELEASE_SHA` from the fetched tip.
 - `scripts/larch.sh gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `python/cli.py ci wait`, `python/cli.py merge {pr,wait}`, and `scripts/larch.sh bgjob {start,wait}`
 - `scripts/larch.sh session local-cleanup` (Rust `session local-cleanup` contract) — post-merge local teardown
 

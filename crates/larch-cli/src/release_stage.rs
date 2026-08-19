@@ -1,4 +1,8 @@
 //! Checked draft-release staging and validation over typed Git and GitHub ports.
+//!
+//! After `release stage` emits `SOURCE_COMMIT`, the release skill runs
+//! `release reconcile-notes` over `baseline..SOURCE_COMMIT` so mid-run merges
+//! are appended to the still-mutable draft body before validate/finish.
 
 use std::{collections::BTreeSet, env, fs, path::Path, process::ExitCode, time::Duration};
 

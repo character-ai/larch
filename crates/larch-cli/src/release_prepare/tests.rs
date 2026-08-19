@@ -6,7 +6,7 @@ mod release_prepare_tests {
         flag_tokens, frontmatter, frontmatter_field, idempotency_subject, is_bump_subject,
         is_log_housekeeping, is_release_subject, pr_suffix, prepare_out_dir, prepare_with_service,
         public_surface, release_already_cut, resolve, select_pull_requests, semver, skill_path,
-        strict_plugin_version_bytes, tsv, verify_clean_main, verify_origin,
+        strict_plugin_version_bytes, tsv, verify_main_worktree, verify_origin,
     };
     use crate::github_repository_resolution::parse_github_remote_url;
     use larch_adapters::{TemporaryRoot, github::GitHubOperationError};
@@ -295,7 +295,7 @@ mod release_prepare_tests {
     fn successful_prepare_uses_typed_service_and_writes_companion_title() {
         let fixture = release_repository();
         let repository = GixRepository::open(fixture.root()).expect("open repository");
-        verify_clean_main(&repository).expect("clean synchronized main");
+        verify_main_worktree(&repository).expect("clean main worktree");
         let repo = GitHubRepositoryRef::new("o", "r").expect("repository reference");
         verify_origin(&repository, &repo).expect("matching origin");
         assert_eq!(
@@ -417,11 +417,34 @@ mod release_prepare_tests {
         let repository = GixRepository::open(fixture.root()).expect("open repository");
 
         assert_eq!(
-            verify_clean_main(&repository)
+            verify_main_worktree(&repository)
                 .expect_err("status probe must fail")
                 .token,
             "main-status-failed"
         );
+    }
+
+    #[test]
+    fn main_worktree_allows_local_main_behind_origin_tip() {
+        let fixture = release_repository();
+        let repository = GixRepository::open(fixture.root()).expect("open repository");
+        let tip = resolve(&repository, "HEAD").expect("head");
+        fixture
+            .write("README.md", b"mid-run merge\n")
+            .expect("readme");
+        checked_git(&fixture, ["add", "-A"]);
+        checked_git(&fixture, ["commit", "--quiet", "-m", "Mid-run PR (#99)"]);
+        checked_git(&fixture, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        checked_git(
+            &fixture,
+            ["update-ref", "refs/heads/main", &tip.to_hex()],
+        );
+        checked_git(&fixture, ["reset", "--hard", "--quiet", "main"]);
+        let behind = GixRepository::open(fixture.root()).expect("behind repository");
+        verify_main_worktree(&behind).expect("behind local main is allowed");
+        let origin = resolve(&behind, "origin/main").expect("origin tip");
+        let main = resolve(&behind, "main").expect("local main");
+        assert_ne!(origin, main);
     }
 
     #[test]
@@ -672,7 +695,13 @@ mod release_prepare_tests {
             &fixture,
             ["commit", "--quiet", "-m", "Change skill metadata"],
         );
-        let classification = classify(fixture.root(), &repository, Some("v1.2.3"), Some("HEAD"))
+        let classification = classify(
+            fixture.root(),
+            &repository,
+            Some("v1.2.3"),
+            Some("HEAD"),
+            true,
+        )
             .expect("classification");
         assert_eq!(classification.bump, BumpType::Major);
         assert!(classification.reasoning.contains("Renamed `name:`"));
@@ -701,23 +730,29 @@ mod release_prepare_tests {
         checked_git(&fixture, ["checkout", "--quiet", "--detach", "HEAD"]);
         let detached = GixRepository::open(fixture.root()).expect("detached repository");
         assert_eq!(
-            verify_clean_main(&detached)
+            verify_main_worktree(&detached)
                 .expect_err("detached head")
                 .token,
-            "stale-local-main"
+            "not-on-main"
         );
         checked_git(&fixture, ["checkout", "--quiet", "-b", "topic"]);
         let topic = GixRepository::open(fixture.root()).expect("topic repository");
         assert_eq!(
-            verify_clean_main(&topic).expect_err("topic head").token,
-            "stale-local-main"
+            verify_main_worktree(&topic).expect_err("topic head").token,
+            "not-on-main"
         );
 
         checked_git(&fixture, ["checkout", "--quiet", "main"]);
         checked_git(&fixture, ["mv", "skills/base", "skills/renamed"]);
         checked_git(&fixture, ["commit", "--quiet", "-m", "Rename skill"]);
         let repository = GixRepository::open(fixture.root()).expect("renamed repository");
-        let classification = classify(fixture.root(), &repository, Some("v1.2.3"), Some("HEAD"))
+        let classification = classify(
+            fixture.root(),
+            &repository,
+            Some("v1.2.3"),
+            Some("HEAD"),
+            true,
+        )
             .expect("rename classification");
         assert!(classification.reasoning.contains("Renamed skill"));
 

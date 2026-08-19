@@ -22,7 +22,8 @@ use larch_adapters::{
     runtime::{Cancellation, LarchRuntime},
 };
 
-use crate::release_common::semver;
+use crate::git_command_runtime::GitCommandRuntime;
+use crate::release_common::{self, semver};
 use larch_core::{
     ChangeKind, GitPath, Head, ObjectId, RepositoryRead, Revision, SafeText, StatusOptions, emit_kv,
 };
@@ -158,6 +159,7 @@ pub fn classify_bump(arguments: &ClassifyArguments) -> ExitCode {
             &repository,
             arguments.base.as_deref(),
             arguments.head.as_deref(),
+            true,
         )
     }) {
         Ok(classification) => match reasoning_file(&classification.reasoning) {
@@ -196,6 +198,204 @@ pub fn prepare(arguments: &PrepareArguments) -> ExitCode {
     }
 }
 
+pub struct ReconcileNotesArguments {
+    pub repository: larch_core::GitHubRepositoryRef,
+    pub baseline_tag: String,
+    pub source_commit: String,
+    pub pr_list: PathBuf,
+    pub exclude_pr: u64,
+    pub out_dir: PathBuf,
+}
+
+/// Recompute the release PR window over `baseline..SOURCE_COMMIT` and surface
+/// mid-run additions relative to prepare's `pr-list.tsv`.
+pub fn reconcile_notes(arguments: &ReconcileNotesArguments) -> ExitCode {
+    match reconcile_notes_inner(arguments) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            emit_kv("ERROR", error.token);
+            for row in error.rows {
+                println!("{row}");
+            }
+            if !error.detail.is_empty() {
+                eprintln!("{}", SafeText::diagnostic(error.detail));
+            }
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn reconcile_notes_inner(arguments: &ReconcileNotesArguments) -> Result<(), PrepareError> {
+    let out_dir = prepare_out_dir(&arguments.out_dir)?;
+    let (root, repository) =
+        open_repository().map_err(|error| PrepareError::new("not-on-main", error))?;
+    verify_origin(&repository, &arguments.repository)?;
+    fetch_origin_main(&root)?;
+    let repository = GixRepository::open(&root)
+        .map_err(|error| PrepareError::new("origin-main-unresolvable", error.to_string()))?;
+
+    let runtime = LarchRuntime::new()
+        .map_err(|error| PrepareError::new("gh-release-list-failed", error.to_string()))?;
+    runtime.block_on(async {
+        let cancellation = Cancellation::new();
+        let runner = TokioProcessRunner::default();
+        let service = OctocrabGitHubService::from_gh(&runner, &root, &cancellation)
+            .await
+            .map_err(|error| PrepareError::new("gh-release-list-failed", error.to_string()))?;
+        reconcile_notes_with_service(arguments, &out_dir, &repository, &service, &cancellation)
+            .await
+    })
+}
+
+async fn reconcile_notes_with_service<S: ReleasePlanningService + ?Sized>(
+    arguments: &ReconcileNotesArguments,
+    out_dir: &TemporaryRoot,
+    repository: &GixRepository,
+    service: &S,
+    cancellation: &Cancellation,
+) -> Result<(), PrepareError> {
+    let owner = arguments.repository.owner();
+    let name = arguments.repository.name();
+    let baseline = arguments.baseline_tag.as_str();
+    if semver(baseline.strip_prefix('v').unwrap_or_default()).is_none() {
+        return Err(PrepareError::new(
+            "invalid-baseline-tag",
+            format!("baseline tag has invalid format: {baseline}"),
+        ));
+    }
+    let baseline_id = resolve(repository, baseline).map_err(|_| {
+        PrepareError::new(
+            "baseline-tag-unresolvable",
+            format!("baseline tag not resolvable: {baseline}"),
+        )
+    })?;
+    let source_id = resolve(repository, &arguments.source_commit).map_err(|_| {
+        PrepareError::new(
+            "source-commit-unresolvable",
+            format!(
+                "source commit not resolvable: {}",
+                arguments.source_commit
+            ),
+        )
+    })?;
+    if !repository
+        .is_ancestor(&baseline_id, &source_id)
+        .map_err(|error| PrepareError::new("baseline-not-on-main", error.to_string()))?
+    {
+        return Err(PrepareError::new(
+            "baseline-not-on-main",
+            format!("baseline tag {baseline} is not an ancestor of the source commit"),
+        ));
+    }
+
+    let prepared = read_prepared_pr_numbers(&arguments.pr_list)?;
+    let mut commits = repository
+        .walk_commits_range(&baseline_id, &source_id, MAX_RELEASE_COMMITS + 1)
+        .map_err(|error| PrepareError::new("release-history-failed", error.to_string()))?;
+    if commits.len() > MAX_RELEASE_COMMITS {
+        return Err(PrepareError::new(
+            "release-history-too-large",
+            "release commit window exceeds the bounded limit",
+        ));
+    }
+    let selection = select_pull_requests(service, cancellation, owner, name, &commits).await?;
+    let mut selected = selection
+        .selected
+        .into_iter()
+        .filter(|pull_request| pull_request.number != arguments.exclude_pr)
+        .collect::<Vec<_>>();
+    selected.sort_by_key(|pull_request| pull_request.number);
+    let added = selected
+        .iter()
+        .filter(|pull_request| !prepared.contains(&pull_request.number))
+        .cloned()
+        .collect::<Vec<_>>();
+    write_pr_list(out_dir, service, cancellation, owner, name, &selected).await?;
+    write_named_pr_list(
+        out_dir,
+        service,
+        cancellation,
+        owner,
+        name,
+        &added,
+        "added-pr-list.tsv",
+    )
+    .await?;
+    emit_kv("BASELINE_TAG", baseline);
+    emit_kv("SOURCE_COMMIT", &arguments.source_commit);
+    emit_kv("PR_COUNT", &selected.len().to_string());
+    emit_kv("ADDED_PR_COUNT", &added.len().to_string());
+    emit_kv(
+        "PR_LIST_FILE",
+        &arguments.out_dir.join("pr-list.tsv").to_string_lossy(),
+    );
+    emit_kv(
+        "ADDED_PR_LIST_FILE",
+        &arguments
+            .out_dir
+            .join("added-pr-list.tsv")
+            .to_string_lossy(),
+    );
+    commits.clear();
+    Ok(())
+}
+
+fn read_prepared_pr_numbers(path: &Path) -> Result<BTreeSet<u64>, PrepareError> {
+    let text = fs::read_to_string(path).map_err(|error| {
+        PrepareError::new(
+            "pr-list-read-failed",
+            format!("could not read prepare pr-list: {error}"),
+        )
+    })?;
+    let mut numbers = BTreeSet::new();
+    for (index, line) in text.lines().enumerate() {
+        if line.is_empty() {
+            continue;
+        }
+        let number = line
+            .split('\t')
+            .next()
+            .and_then(|value| value.parse::<u64>().ok())
+            .ok_or_else(|| {
+                PrepareError::new(
+                    "pr-list-read-failed",
+                    format!("invalid pr-list row {}: {line}", index + 1),
+                )
+            })?;
+        numbers.insert(number);
+    }
+    Ok(numbers)
+}
+
+async fn write_named_pr_list<S: ReleasePlanningService + ?Sized>(
+    out_dir: &TemporaryRoot,
+    service: &S,
+    cancellation: &Cancellation,
+    owner: &str,
+    name: &str,
+    selected: &[ReleasePullRequest],
+    file_name: &str,
+) -> Result<(), PrepareError> {
+    let pr_list = out_dir
+        .confine(file_name, PathIntent::Write)
+        .map_err(|error| PrepareError::new("pr-list-write-failed", error.to_string()))?;
+    let mut rows = String::new();
+    for pull_request in selected {
+        let title = companion_title(service, cancellation, owner, name, pull_request).await;
+        let row = [
+            pull_request.number.to_string(),
+            tsv(&title),
+            tsv(&pull_request.labels.join(",")),
+            tsv(&pull_request.author),
+            tsv(&pull_request.url),
+        ];
+        rows.push_str(&row.join("\t"));
+        rows.push('\n');
+    }
+    atomic_write_utf8(&pr_list, &rows, 0o600)
+        .map_err(|error| PrepareError::new("pr-list-write-failed", error.to_string()))
+}
+
 #[derive(Debug)]
 struct PrepareError {
     token: &'static str,
@@ -221,9 +421,12 @@ impl PrepareError {
 fn prepare_inner(arguments: &PrepareArguments) -> Result<(), PrepareError> {
     let out_dir = prepare_out_dir(&arguments.out_dir)?;
     let (root, repository) =
-        open_repository().map_err(|error| PrepareError::new("stale-local-main", error))?;
+        open_repository().map_err(|error| PrepareError::new("not-on-main", error))?;
     verify_origin(&repository, &arguments.repository)?;
-    verify_clean_main(&repository)?;
+    verify_main_worktree(&repository)?;
+    fetch_origin_main(&root)?;
+    let repository = GixRepository::open(&root)
+        .map_err(|error| PrepareError::new("origin-main-unresolvable", error.to_string()))?;
 
     let runtime = LarchRuntime::new()
         .map_err(|error| PrepareError::new("gh-release-list-failed", error.to_string()))?;
@@ -274,10 +477,11 @@ async fn prepare_with_service<S: ReleasePlanningService + ?Sized>(
             format!("baseline tag not resolvable: {baseline}"),
         )
     })?;
-    let origin_main = resolve(repository, "origin/main")
-        .map_err(|_| PrepareError::new("stale-local-main", "origin/main not resolvable"))?;
+    let release_id = resolve(repository, "origin/main")
+        .map_err(|_| PrepareError::new("origin-main-unresolvable", "origin/main not resolvable"))?;
+    let release_sha = release_id.to_hex();
     if !repository
-        .is_ancestor(&baseline_id, &origin_main)
+        .is_ancestor(&baseline_id, &release_id)
         .map_err(|error| PrepareError::new("baseline-not-on-main", error.to_string()))?
     {
         return Err(PrepareError::new(
@@ -302,7 +506,7 @@ async fn prepare_with_service<S: ReleasePlanningService + ?Sized>(
     }
 
     let mut commits = repository
-        .walk_commits_range(&baseline_id, &origin_main, MAX_RELEASE_COMMITS + 1)
+        .walk_commits_range(&baseline_id, &release_id, MAX_RELEASE_COMMITS + 1)
         .map_err(|error| PrepareError::new("release-history-failed", error.to_string()))?;
     if commits.len() > MAX_RELEASE_COMMITS {
         return Err(PrepareError::new(
@@ -310,7 +514,7 @@ async fn prepare_with_service<S: ReleasePlanningService + ?Sized>(
             "release commit window exceeds the bounded limit",
         ));
     }
-    if release_already_cut(repository, &origin_main, &baseline, &commits)? {
+    if release_already_cut(repository, &release_id, &baseline, &commits)? {
         return Err(PrepareError::new(
             "release-already-cut",
             "origin/main plugin version is ahead of the Latest release with a Release commit",
@@ -322,7 +526,7 @@ async fn prepare_with_service<S: ReleasePlanningService + ?Sized>(
     selected.sort_by_key(|pull_request| pull_request.number);
     write_pr_list(out_dir, service, cancellation, owner, name, &selected).await?;
 
-    let classification = classify(root, repository, Some(&baseline), Some("origin/main"))
+    let classification = classify(root, repository, Some(&baseline), Some(&release_sha), false)
         .map_err(|error| PrepareError::new("classify-bump-failed", error))?;
     let (bump, new_version) = match arguments.bump {
         Some(bump) => (
@@ -333,6 +537,7 @@ async fn prepare_with_service<S: ReleasePlanningService + ?Sized>(
         None => (classification.bump, classification.new_version),
     };
     emit_kv("BASELINE_TAG", &baseline);
+    emit_kv("RELEASE_SHA", &release_sha);
     emit_kv("CURRENT_VERSION", &classification.current_version);
     emit_kv("NEW_VERSION", &new_version);
     emit_kv("BUMP_TYPE", bump.machine());
@@ -357,24 +562,16 @@ async fn write_pr_list<S: ReleasePlanningService + ?Sized>(
     name: &str,
     selected: &[ReleasePullRequest],
 ) -> Result<(), PrepareError> {
-    let pr_list = out_dir
-        .confine("pr-list.tsv", PathIntent::Write)
-        .map_err(|error| PrepareError::new("pr-list-write-failed", error.to_string()))?;
-    let mut rows = String::new();
-    for pull_request in selected {
-        let title = companion_title(service, cancellation, owner, name, pull_request).await;
-        let row = [
-            pull_request.number.to_string(),
-            tsv(&title),
-            tsv(&pull_request.labels.join(",")),
-            tsv(&pull_request.author),
-            tsv(&pull_request.url),
-        ];
-        rows.push_str(&row.join("\t"));
-        rows.push('\n');
-    }
-    atomic_write_utf8(&pr_list, &rows, 0o600)
-        .map_err(|error| PrepareError::new("pr-list-write-failed", error.to_string()))
+    write_named_pr_list(
+        out_dir,
+        service,
+        cancellation,
+        owner,
+        name,
+        selected,
+        "pr-list.tsv",
+    )
+    .await
 }
 
 async fn select_pull_requests<S: ReleasePlanningService + ?Sized>(
@@ -507,30 +704,27 @@ fn verify_origin(
     }
 }
 
-fn verify_clean_main(repository: &GixRepository) -> Result<(), PrepareError> {
+/// Require a clean checkout on local `main` without chasing `origin/main`.
+///
+/// The release window is pinned to the fetched `origin/main` tip (`RELEASE_SHA`),
+/// so local `main` may sit behind or ahead of that tip. Tip equality is not a
+/// prepare precondition.
+fn verify_main_worktree(repository: &GixRepository) -> Result<(), PrepareError> {
     let head = repository
         .head()
-        .map_err(|error| PrepareError::new("stale-local-main", error.to_string()))?;
+        .map_err(|error| PrepareError::new("not-on-main", error.to_string()))?;
     let Head::Symbolic { name, target } = head else {
-        return Err(PrepareError::new(
-            "stale-local-main",
-            "HEAD is not local main",
-        ));
+        return Err(PrepareError::new("not-on-main", "HEAD is not local main"));
     };
     if name.as_bytes() != b"refs/heads/main" {
-        return Err(PrepareError::new(
-            "stale-local-main",
-            "HEAD is not local main",
-        ));
+        return Err(PrepareError::new("not-on-main", "HEAD is not local main"));
     }
     let main = resolve(repository, "main")
-        .map_err(|_| PrepareError::new("stale-local-main", "main is not resolvable"))?;
-    let origin = resolve(repository, "origin/main")
-        .map_err(|_| PrepareError::new("stale-local-main", "origin/main is not resolvable"))?;
-    if target != main || main != origin {
+        .map_err(|_| PrepareError::new("not-on-main", "main is not resolvable"))?;
+    if target != main {
         return Err(PrepareError::new(
-            "stale-local-main",
-            "HEAD, main, and origin/main do not identify the same commit",
+            "not-on-main",
+            "HEAD does not identify local main",
         ));
     }
     let status = repository
@@ -542,11 +736,23 @@ fn verify_clean_main(repository: &GixRepository) -> Result<(), PrepareError> {
     Ok(())
 }
 
+fn fetch_origin_main(root: &Path) -> Result<(), PrepareError> {
+    let git = GitCommandRuntime::for_repository(root)
+        .map_err(|error| PrepareError::new("fetch-origin-main-failed", error))?;
+    let request = release_common::main_fetch_request()
+        .map_err(|error| PrepareError::new("fetch-origin-main-failed", error))?;
+    git.runtime
+        .block_on(git.git_cli().fetch(request, &git.cancellation))
+        .map(|_| ())
+        .map_err(|error| PrepareError::new("fetch-origin-main-failed", error.to_string()))
+}
+
 fn classify(
     root: &Path,
     repository: &GixRepository,
     base_ref: Option<&str>,
     head_ref: Option<&str>,
+    require_worktree_match: bool,
 ) -> Result<Classification, String> {
     let worktree_version = strict_plugin_version(&root.join(PLUGIN_JSON))?;
     let compare_ref = head_ref.unwrap_or("HEAD");
@@ -558,7 +764,7 @@ fn classify(
             .map_err(|error| error.to_string())?
             .ok_or_else(|| "could not read plugin.json at --head ref".to_owned())?;
         let version = strict_plugin_version_bytes(&bytes, "plugin.json at --head ref")?;
-        if version != worktree_version {
+        if require_worktree_match && version != worktree_version {
             return Err(format!(
                 "worktree plugin.json version ({worktree_version}) != --head ref ({version})"
             ));
