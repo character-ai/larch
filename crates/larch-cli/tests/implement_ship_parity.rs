@@ -250,7 +250,8 @@ fn ship_child_runs_guard_probe_and_canonical_python_driver() {
     assert!(output.status.success(), "{}", stderr(&output));
     assert_eq!(stdout(&output), "SHIP_RELAY=ok\n");
     assert!(stderr(&output).contains("→ phantom-probe: 8-pre-ship"));
-    assert!(stderr(&output).contains("PHANTOM_STATUS=clean"));
+    assert!(stderr(&output).contains("PHANTOM_STATUS="));
+    assert!(!fixture.tmpdir.join("larch-argv.txt").exists());
     let tmpdir = fixture.tmpdir.display().to_string();
     let state = fixture
         .tmpdir

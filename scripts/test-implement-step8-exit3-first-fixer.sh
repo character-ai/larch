@@ -40,7 +40,7 @@ else:
 
 require(skill, 'skills/implement/references/ship-pr-exit-matrix.md', 'SKILL.md exit matrix pointer')
 require(skill, 'step-8-ship.sh', 'SKILL.md ship wrapper invocation')
-require(skill, 'Python ship driver wrapper', 'SKILL.md Python ship wrapper prose')
+require(skill, 'Rust ship dispatcher', 'SKILL.md Rust ship dispatcher prose')
 # New ci-fixer subagent round loop contract in SKILL.md
 for needle in [
     '`larch:ci-fixer`',

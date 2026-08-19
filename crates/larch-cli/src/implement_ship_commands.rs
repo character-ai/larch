@@ -2,9 +2,9 @@
 //!
 //! The ship engine itself remains Python during the #7681 migration. These
 //! commands own its version fence, durable argv reconstruction, bgjob adapter,
-//! and post-OOS checkpoint bookkeeping. Every already-Rust child enters through
-//! the verified bootstrap; the two remaining Python ship verbs use the one
-//! reviewed migration seam.
+//! and post-OOS checkpoint bookkeeping. The two remaining Python ship verbs use
+//! the one reviewed migration seam. The phantom probe composes its typed Rust
+//! owner in process; Rust subprocesses enter through the verified bootstrap.
 
 use std::{
     env,
@@ -493,28 +493,9 @@ fn step8_ship_child(tmpdir: &Path, merge_result_env: &str) -> ExitCode {
 }
 
 fn emit_phantom_probe() {
-    eprintln!("→ phantom-probe: 8-pre-ship");
-    let output = verified_larch(&[
-        OsString::from("git"),
-        OsString::from("phantom-probe"),
-        OsString::from("--step"),
-        OsString::from("8-pre-ship"),
-    ]);
-    if let Ok(output) = output {
-        let stdout = String::from_utf8_lossy(output.stdout());
-        if output.status().success()
-            && stdout
-                .lines()
-                .any(|line| line.starts_with("PHANTOM_STATUS="))
-        {
-            for line in stdout.lines().filter(|line| !line.is_empty()) {
-                eprintln!("{line}");
-            }
-            return;
-        }
+    for line in crate::phantom_probe_lines("8-pre-ship", None, true) {
+        eprintln!("{line}");
     }
-    eprintln!("PHANTOM_STATUS=unknown");
-    eprintln!("PHANTOM_REASON=phantom-probe-failed");
 }
 
 /// Run the OOS disposition checkpoint and its Step 8 post-pass bookkeeping.

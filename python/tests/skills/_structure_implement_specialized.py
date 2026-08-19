@@ -1293,4 +1293,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 384
+LEGACY_ASSERTION_LABEL_COUNT = 390
