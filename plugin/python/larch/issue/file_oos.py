@@ -2,10 +2,9 @@
 
 The six OOS commands migrated by #8178 and #8179 are Rust-owned behind
 ``scripts/larch.sh``. This module is not a command implementation or fallback.
-Surviving callers use its block parsing/counting and title-normalization helpers, while the retained
-#7681 Step 8 workflow consumes run-id resolution for bookkeeping. The
-issue-domain migration ledger assigns this remaining Python library to
-receiving umbrella #7680.
+Surviving callers use its block parsing, counting, and title-normalization
+helpers. The issue-domain migration ledger assigns this remaining Python
+library to receiving umbrella #7680.
 """
 
 # pyright: reportUnusedCallResult=false
@@ -24,7 +23,6 @@ from typing import NamedTuple
 
 from larch import io as larch_io
 from larch.core import config
-from larch.report import run_log_corpus
 from larch.calibration import voting
 from larch.core.findings import count_non_security_blocks, parse_blocks
 from larch.issue.issue_create import ParsedItem, parse_issue_input
@@ -201,40 +199,6 @@ def normalize_title(text: object) -> str:
     cleaned = _sanitize_public_text(str(text or ""))
     cleaned = re.sub(r"[\x00-\x1f\x7f]", " ", cleaned)
     return re.sub(r"\s+", " ", cleaned).strip()
-
-
-def _read_kv_file(path: Path) -> dict[str, str]:
-    return larch_io.read_kvs(path, default={}, cr_strip="strip")
-
-
-def resolve_implement_run_id(tmpdir: Path, *, state: dict[str, str] | None = None) -> str:
-    if state is None:
-        state = _read_kv_file(path=tmpdir / "ship-pr-state.sh") | _read_kv_file(path=tmpdir / "finalize-state.sh")
-    run_id = state.get("RUN_ID", "")
-    if run_id:
-        return run_id
-    log_root = tmpdir / "larch-logs" / "implement"
-    if log_root.is_dir():
-        matches = [
-            run_dir / "oos-issues.ndjson"
-            for run_dir in run_log_corpus.safe_child_run_dirs(log_root)
-            if (run_dir / "oos-issues.ndjson").is_file()
-        ]
-        if len(matches) == 1:
-            return matches[0].parent.name
-    return ""
-
-
-def resolve_implement_run_id_for_disposition(tmpdir: Path, *, state: dict[str, str] | None = None) -> str:
-    if state is None:
-        state = _read_kv_file(path=tmpdir / "ship-pr-state.sh") | _read_kv_file(path=tmpdir / "finalize-state.sh")
-    run_id = state.get("RUN_ID", "")
-    if run_id:
-        return run_id
-    session_id = tmpdir / "session-id"
-    if session_id.is_file():
-        return session_id.read_text(encoding="utf-8").strip()
-    return resolve_implement_run_id(tmpdir, state=state)
 
 
 @dataclass(frozen=True)

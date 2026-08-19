@@ -2,7 +2,7 @@
 
 **Consumer**: `/implement` policy readers that need the Step 9a.1 combine, cap, conflict, filing, recovery, and evidence contract.
 
-**Contract**: `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos file` is the live Rust filing driver. It runs before `step-8-ship.sh`. Do not reproduce this pipeline in prompt-side Bash, invoke `/issue` as a fallback, or run its internal batch verbs in sequence. The retained #7681 Python ship workflow routes the private-security continuation and post-checkpoint bookkeeping only.
+**Contract**: `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos file` is the live Rust filing driver. It runs before `step-8-ship.sh`. Do not reproduce this pipeline in prompt-side Bash, invoke `/issue` as a fallback, or run its internal batch verbs in sequence. The Rust #7681 Step 8 workflow routes the private-security continuation and post-checkpoint bookkeeping.
 
 **When to load**: Read this file when composing accepted OOS or interpreting Step 9a.1 evidence. It is a behavioral reference, not an executable procedure.
 

@@ -151,7 +151,6 @@ from larch.implement.dispatch_commit_route import (
     _write_commit_route_failure_log,
     checks_commit_route_main,
     commit_route_main,
-    step8_python_guard_main,
 )
 
 # --- step 8+ ship ---
@@ -174,17 +173,11 @@ from larch.implement.dispatch_ship import (
     _ship_route_seed_transient_stall,
     _ship_route_write_retry_count,
     _ship_state_has_shell_kv_entries,
-    _step8_oos_checkpoint_bookkeeping,
-    _step8_oos_checkpoint_filed_count,
-    _step8_oos_checkpoint_log_failure,
     _write_ship_route_handoff,
     ship_pre_driver_main,
     ship_pre_fix_rebase_main,
     ship_normalize_assessment_handoff_main,
     ship_route_exit_main,
-    step8_oos_checkpoint_main,
-    step8_seed_initial_main,
-    step8_ship_main,
 )
 
 # --- recovery paths and implement commit ---

@@ -73,6 +73,7 @@ mod implement_dispatch_commands;
 mod implement_launcher_commands;
 mod implement_preflight_commands;
 mod implement_review_commands;
+mod implement_ship_commands;
 mod implement_terminal_commands;
 mod issue_commands;
 mod issue_create_commands;
@@ -1006,6 +1007,18 @@ enum ImplementCommand {
     /// Launch or run the Step 7a pre-ship checkpoint and code-flow diagram.
     #[command(name = "step-7a", disable_help_flag = true)]
     Step7a(RawCompatibilityArguments),
+    /// Refuse the still-Python ship engine when host Python is older than 3.11.
+    #[command(name = "step-8-python-guard", disable_help_flag = true)]
+    Step8PythonGuard(RawCompatibilityArguments),
+    /// Reconstruct and create the initial durable ship state.
+    #[command(name = "step-8-seed-initial", disable_help_flag = true)]
+    Step8SeedInitial(RawCompatibilityArguments),
+    /// Launch or run the Step 8 ship bgjob.
+    #[command(name = "step-8-ship", disable_help_flag = true)]
+    Step8Ship(RawCompatibilityArguments),
+    /// Route the OOS checkpoint result and persist successful bookkeeping.
+    #[command(name = "step-8-oos-checkpoint", disable_help_flag = true)]
+    Step8OosCheckpoint(RawCompatibilityArguments),
     /// Run one Step 18 phase: the stall gate or the terminal logs flush.
     #[command(name = "step-18", disable_help_flag = true)]
     Step18(RawCompatibilityArguments),
@@ -2381,6 +2394,18 @@ fn run(
             }
             ImplementCommand::Step7a(arguments) => {
                 implement_review_commands::step7a(&arguments.arguments)
+            }
+            ImplementCommand::Step8PythonGuard(arguments) => {
+                implement_ship_commands::step8_python_guard(&arguments.arguments)
+            }
+            ImplementCommand::Step8SeedInitial(arguments) => {
+                implement_ship_commands::step8_seed_initial(&arguments.arguments)
+            }
+            ImplementCommand::Step8Ship(arguments) => {
+                implement_ship_commands::step8_ship(&arguments.arguments)
+            }
+            ImplementCommand::Step8OosCheckpoint(arguments) => {
+                implement_ship_commands::step8_oos_checkpoint(&arguments.arguments)
             }
             ImplementCommand::Step18(arguments) => {
                 implement_terminal_commands::step_18(&arguments.arguments)

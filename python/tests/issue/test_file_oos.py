@@ -413,22 +413,9 @@ def make_file_conflict_deps_input(tmp_path: Path, name: str) -> Path:
 
 
 
-def test_read_kv_file_missing_symlink_follow_and_crlf_strip(tmp_path: Path) -> None:
-    missing = tmp_path / "missing.env"
-    assert not file_oos._read_kv_file(missing)  # pyright: ignore[reportPrivateUsage]
-
-    target = tmp_path / "target.env"
-    _ = target.write_bytes(b"A=one\r\nB=two\r\n")
-    link = tmp_path / "link.env"
-    link.symlink_to(target)
-
-    assert file_oos._read_kv_file(link) == {"A": "one", "B": "two"}  # pyright: ignore[reportPrivateUsage]
-
-
 # ---------------------------------------------------------------------------
 # Disposition gate / checkpoint parity (ported from test-oos-disposition-gate.sh)
 # ---------------------------------------------------------------------------
-
 
 
 

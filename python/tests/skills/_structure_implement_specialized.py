@@ -342,16 +342,24 @@ def run(repo_root: Path) -> list[str]:
         require(step0_owner, "CALLER_ENV_PATH", "step-0 fork metadata caller-env parse in Rust")
         require(step0_owner, "UPSTREAM_REPO", "step-0 fork metadata upstream parse in Rust")
         require("crates/larch-cli/src/bootstrap_commands.rs", "preflight-tmpdir.env", "Rust bootstrap preflight tmpdir persistence")
-        require("skills/implement/scripts/step-8-ship.sh", 'implement step-8-ship "$@"', "step-8 ship wrapper delegates to Python")
+        step8_owner = "crates/larch-cli/src/implement_ship_commands.rs"
+        require("skills/implement/scripts/step-8-ship.sh", 'implement step-8-ship "$@"', "step-8 ship wrapper delegates to Rust")
+        require("skills/implement/scripts/step-8-ship.sh", "scripts/larch.sh", "step-8 ship wrapper uses verified bootstrap")
         forbid("skills/implement/scripts/step-8-ship.sh", "read_state_key", "step-8 ship wrapper must not retain state rehydration")
-        require("skills/implement/scripts/step-8-python-guard.sh", "sys.version_info >= (3, 11)", "step-8 shared python 3.11 guard")
-        require("skills/implement/scripts/step-8-python-guard.sh", '"outcome":"STALLED"', "step-8 shared stalled JSON stdout")
-        require("skills/implement/scripts/step-8-python-guard.sh", "exit 4", "step-8 shared stale-python exit 4")
-        require("python/larch/implement/dispatch_ship.py", "step8_python_guard_main", "step-8 ship delegates python guard in Python")
+        require("skills/implement/scripts/step-8-python-guard.sh", 'implement step-8-python-guard "$@"', "step-8 guard wrapper delegates to Rust")
+        forbid("skills/implement/scripts/step-8-python-guard.sh", "sys.version_info", "step-8 guard wrapper has no Python implementation")
+        require(step8_owner, "pub fn step8_python_guard", "step-8 Python guard Rust owner")
+        require(step8_owner, "PYTHON_GUARD_JSON", "step-8 stalled JSON stdout")
+        forbid("python/larch/implement/dispatch_ship.py", "step8_python_guard_main", "step-8 Python guard fallback removed")
         require("crates/larch-cli/src/implement_commands.rs", "pub fn clone_tag", "implement clone-tag CLI handler")
-        require("python/larch/implement/dispatch_ship.py", '"ship", "pr"', "step-8 python ship invocation")
-        require("python/larch/implement/dispatch_ship.py", "replace_completed_result=True", "step-8 bgjob replace-completed-result")
-        require("skills/implement/scripts/step-8-seed-initial.sh", 'implement step-8-seed-initial "$@"', "step-8 seed wrapper delegates to Python")
+        require(step8_owner, '"ship".into()', "step-8 still-Python ship invocation")
+        require(step8_owner, "run_bgjob_adapt", "step-8 bgjob adapter invocation")
+        require(
+            step8_owner,
+            "Duration::from_secs(u64::from(SHIP_BUDGET_SECONDS))",
+            "step-8 Python ship child shares the six-hour bgjob budget",
+        )
+        require("skills/implement/scripts/step-8-seed-initial.sh", 'implement step-8-seed-initial "$@"', "step-8 seed wrapper delegates to Rust")
         require("skills/implement/scripts/step-0-degraded-gate.sh", 'implement step-0-degraded-gate "$@"', "step-0 degraded-gate wrapper delegates to larch")
         require("python/larch/cli.py", '("ship", "pre-driver"): ("larch.implement.implement_dispatch", "ship_pre_driver_main", True)', "ship pre-driver CLI registry")
         require("python/larch/cli.py", '"ship_pre_driver_main", True),', "ship pre-driver machine stdout contract")
@@ -365,12 +373,13 @@ def run(repo_root: Path) -> list[str]:
         require("python/larch/implement/dispatch_ship.py", '"oos", "file",', "ship pre-driver runs oos file")
         require("python/larch/implement/dispatch_ship.py", 'value="halt-seed"', "ship pre-driver seed halt token")
         require("python/larch/implement/dispatch_ship.py", 'value="halt-oos"', "ship pre-driver oos halt token")
+        require("python/larch/implement/dispatch_ship.py", "_invoke_larch", "ship pre-driver uses verified Rust bootstrap")
         forbid(skill, launcher + "skills/implement/scripts/step-8-python-guard.sh", "SKILL standalone step-8 guard fence removed")
         forbid(skill, launcher + "skills/implement/scripts/step-8-seed-initial.sh", "SKILL standalone step-8 seeder fence removed")
         forbid(skill, launcher + 'python/cli.py oos file --implement-tmpdir "$IMPLEMENT_TMPDIR"', "SKILL standalone pre-driver oos fence removed")
         require("crates/larch-cli/src/implement_commands.rs", "LARCH_CLAUDE_PID", "step-0 wrapper claude pid export in Rust")
-        require(skill, "python/cli.py ship seed-initial-state", "ship state initial seeder authority")
-        require("python/larch/implement/dispatch_ship.py", "--no-admin-fallback", "ship state no-admin fallback seeder argv")
+        require(skill, "retained `ship seed-initial-state` command owns", "ship state initial seeder authority")
+        require(step8_owner, '"--no-admin-fallback"', "ship state no-admin fallback seeder argv")
         require("python/larch/implement/ship_state.py", "NO_ADMIN_FALLBACK", "ship state no-admin fallback allowed key")
         require(skill, "## NEVER List", "NEVER list heading")
         require(skill, "NEVER call `ScheduleWakeup`", "NEVER #8 ScheduleWakeup pin")
@@ -411,7 +420,7 @@ def run(repo_root: Path) -> list[str]:
         require("crates/larch-cli/src/implement_bootstrap_continuation.rs", "ship-seed-input.env", "bootstrap ship seed input writer")
         require(skill, launcher + "skills/implement/scripts/step-2-post-dispatch.sh", "phantom 2-post-dispatch probe")
         require(skill, "regardless of wrapper exit code", "post-dispatch phantom parse before wrapper routing")
-        require("python/larch/implement/dispatch_ship.py", "8-pre-ship", "phantom 8-pre-ship probe moved into ship Python")
+        require(step8_owner, "8-pre-ship", "phantom 8-pre-ship probe moved into Rust ship dispatcher")
         forbid(skill, launcher + "scripts/" + "phantom-probe-with-warn.sh --step 8-pre-ship", "standalone orchestrator 8-pre-ship fence removed")
         rebase_ref = Path("skills/implement/references/rebase-checkpoint-routing.md").read_text()
         for needle in [
@@ -730,7 +739,7 @@ def run(repo_root: Path) -> list[str]:
         require("python/larch/implement/dispatch_leg.py", "terminate_validated_process_group", "active leg identity-validated kill")
         require("python/larch/implement/dispatch_leg.py", "ACTIVE_LEG_KILL_LOG_FILE", "active leg kill logging")
         require("python/larch/implement/dispatch_commit_route.py", 'NEXT_ACTION", value="checks-failed"', "composite checks-failed routing")
-        require("python/larch/implement/dispatch_ship.py", "--state-file", "step-8 state file forwarding in Python")
+        require(step8_owner, '"--state-file"', "step-8 state file forwarding in Rust")
         exit_matrix = Path("skills/implement/references/ship-pr-exit-matrix.md")
         if exit_matrix.is_file():
             exit_text = exit_matrix.read_text()
@@ -745,7 +754,7 @@ def run(repo_root: Path) -> list[str]:
                 "**`operator-bail`**",
                 "Post-driver `stall`",
                 "**`tool-failure`**",
-                "python/cli.py ship seed-initial-state` owns the canonical initial",
+                "retained `ship seed-initial-state` command owns the canonical initial",
                 "CI_PASSED=true` does not append execution issues",
                 "## Terminal manifest contract",
                 "Terminal runs must leave explicit `steps_ran` values through `scripts/larch.sh final-report write`.",
@@ -830,8 +839,8 @@ def run(repo_root: Path) -> list[str]:
                 "Checkpoint stall is expected until private security disposition clears the sidecar.",
                 "OOS issue cap enforcement applies only on the pre-driver `scripts/larch.sh oos file` Rust path for non-security OOS",
                 "does not run cap enforcement or public issue batch emission",
-                "python/cli.py implement step-8-oos-checkpoint",
-                "runs the Rust `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos disposition-checkpoint` command",
+                "scripts/larch.sh implement step-8-oos-checkpoint",
+                "runs the Rust `oos disposition-checkpoint` command through the verified bootstrap",
                 "emits exactly one `NEXT_ACTION=`",
                 "Its process rc is 0 whenever",
                 "returns non-zero only when no `NEXT_ACTION` is emitted",
@@ -842,7 +851,7 @@ def run(repo_root: Path) -> list[str]:
                 "OOS_PENDING=false",
                 "NEXT_ACTION=reship",
                 "an absent batch contributes zero",
-                "ship._patch_ship_state_keys",
+                "allowlisted `OOS_PENDING=false` state key",
                 "leaves `OOS_PENDING` unchanged",
                 "writes no stats, and clears no state",
                 "On disposition rc 1, rc 2, rc 3 (private security sidecar pending), 126, 127, or other non-zero rc",
@@ -966,7 +975,8 @@ def run(repo_root: Path) -> list[str]:
         require("python/larch/cli.py", '("ship", "route-exit"): ("larch.implement.implement_dispatch", "ship_route_exit_main", True)', "ship route-exit registry")
         require("python/larch/cli.py", '"ship_route_exit_main", True),', "ship route-exit machine stdout")
         require("python/larch/cli.py", '"commit_route_main", True),', "commit-route machine stdout")
-        require("python/larch/cli.py", '"step8_oos_checkpoint_main", True),', "step-8-oos-checkpoint machine stdout")
+        forbid("python/larch/cli.py", "step8_oos_checkpoint_main", "step-8-oos-checkpoint Python registration removed")
+        require("crates/larch-cli/src/main.rs", 'name = "step-8-oos-checkpoint"', "step-8-oos-checkpoint Rust registration")
         require(skill, "**`stall`** (post-driver only)", "SKILL post-driver stall paragraph")
         require(skill, "**`NEXT_ACTION=stall`** (OOS-checkpoint stall)", "SKILL OOS-checkpoint stall paragraph")
         require(skill, "missing/malformed ship outcome", "SKILL result-env setup-failure gate")
@@ -1128,7 +1138,7 @@ def run(repo_root: Path) -> list[str]:
         ]:
             forbid("skills/implement/scripts/step-18.sh", needle, f"step-18 wrapper must not retain {needle}")
         for needle in [
-            "Python ship driver wrapper",
+            "Rust ship dispatcher",
             "## Load-Bearing Invariants",
             "Two invariants enforced across multiple steps",
             "Claude-fallback subagent branch",
@@ -1153,11 +1163,12 @@ def run(repo_root: Path) -> list[str]:
         ]:
             if retired in skill_text:
                 checks.append(f"SKILL.md must not retain retired surface {retired!r}")
-        require("python/larch/implement/dispatch_ship.py", "_run_adapter", "step-8-ship delegates outer launch to bgjob adapter")
+        require("crates/larch-cli/src/implement_ship_commands.rs", "run_bgjob_adapt", "step-8-ship delegates outer launch to bgjob adapter")
         forbid("skills/implement/scripts/step-8-ship.sh", "HANDOFF_", "step-8-ship must not retain retired handoff sidecars")
         forbid("skills/implement/scripts/step-8-ship.sh", "persist_handoff", "step-8-ship must not retain retired handoff writer")
         forbid("skills/implement/scripts/step-8-ship.sh", "tee -a", "step-8-ship must not retain retired handoff stdout capture")
-        require("skills/implement/scripts/step-8-oos-checkpoint.sh", "implement step-8-oos-checkpoint", "step-8-oos-checkpoint delegates to Python authority")
+        require("skills/implement/scripts/step-8-oos-checkpoint.sh", "implement step-8-oos-checkpoint", "step-8-oos-checkpoint delegates to Rust authority")
+        require("skills/implement/scripts/step-8-oos-checkpoint.sh", "scripts/larch.sh", "step-8-oos-checkpoint uses verified bootstrap")
         forbid("skills/implement/scripts/step-8-oos-checkpoint.sh", "oos disposition-checkpoint", "step-8-oos-checkpoint wrapper does not call disposition directly")
 
         bootstrap_recovery_ref = "skills/implement/references/bootstrap-recovery.md"

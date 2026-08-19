@@ -1,15 +1,15 @@
 # step-8-python-guard.sh
 
-Shared Python 3.11 guard for /implement Step 8.
+Thin wrapper for the Rust-owned Python 3.11 guard used by `/implement` Step 8.
 
 ## Caller
 
-The pre-driver Step 8 orchestrator path and `skills/implement/scripts/step-8-ship.sh` both call this wrapper through `$IMPLEMENT_TMPDIR/larch-run.sh`.
+The surviving Python pre-driver invokes `scripts/larch.sh implement step-8-python-guard` through the verified bootstrap. The Rust ship child calls the same guard implementation in process. This wrapper preserves direct path invocation and plugin-root rehydration.
 
 ## Contract
 
-On Python 3.11 or newer, the wrapper exits `0` with no stdout. On older Python, it writes `ERROR: Python ship driver requires Python 3.11 or newer` to stderr, emits the single-line STALLED JSON object on stdout, and exits `4`.
+Rust runs a fixed `python3 -c` version probe. On Python 3.11 or newer, the command exits `0` with no stdout. If the probe fails or Python is older, it writes `ERROR: Python ship driver requires Python 3.11 or newer` to stderr, emits the single-line STALLED JSON object on stdout, and exits `4`.
 
 ## Edit-in-sync
 
-Keep the stdout JSON shape aligned with `python/ship.py`'s top-level version fallback and the Step 8 JSON routing contract in `skills/implement/SKILL.md`.
+Keep `crates/larch-cli/src/implement_ship_commands.rs`, `python/larch/implement/ship.py`'s top-level fallback, the Rust black-box parity test, and the Step 8 JSON routing contract aligned.

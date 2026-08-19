@@ -13,4 +13,4 @@ fi
 [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] || CLAUDE_PLUGIN_ROOT=$PLUGIN_ROOT
 export CLAUDE_PLUGIN_ROOT
 
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-8-oos-checkpoint
+exec "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" implement step-8-oos-checkpoint "$@"

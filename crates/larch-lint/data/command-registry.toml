@@ -4063,11 +4063,13 @@ verb = "step-8-oos-checkpoint"
 python_module = "larch.implement.implement_dispatch"
 python_function = "step8_oos_checkpoint_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8624
+clean_install_test = "clean-install-implement-step-8-oos-checkpoint"
 
 [[commands]]
 domain = "implement"
@@ -4075,11 +4077,13 @@ verb = "step-8-python-guard"
 python_module = "larch.implement.implement_dispatch"
 python_function = "step8_python_guard_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8624
+clean_install_test = "clean-install-implement-step-8-python-guard"
 
 [[commands]]
 domain = "implement"
@@ -4087,11 +4091,13 @@ verb = "step-8-seed-initial"
 python_module = "larch.implement.implement_dispatch"
 python_function = "step8_seed_initial_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8624
+clean_install_test = "clean-install-implement-step-8-seed-initial"
 
 [[commands]]
 domain = "implement"
@@ -4099,11 +4105,13 @@ verb = "step-8-ship"
 python_module = "larch.implement.implement_dispatch"
 python_function = "step8_ship_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8624
+clean_install_test = "clean-install-implement-step-8-ship"
 
 [[commands]]
 domain = "implement"
@@ -9239,7 +9247,7 @@ rust = ["git commit"]
 path = "python/larch/implement/dispatch_ship.py"
 kind = "python-runtime"
 python = []
-rust = ["oos disposition-checkpoint", "oos file", "run-log manifest", "stall-recovery seed-terminal-state"]
+rust = ["oos file", "stall-recovery seed-terminal-state"]
 
 [[callers]]
 path = "python/larch/implement/ship_recovery.py"
@@ -9682,8 +9690,8 @@ rust = ["fluff-analysis analyze"]
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["architectural-assessment materialize", "architectural-assessment submit", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "implement commit", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state", "tracking post-issue"]
-rust = ["admission fork-env", "admission gate", "bgjob wait", "bootstrap invoke", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement step-18-gate-logs-flush", "implement step-7a", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
+python = ["architectural-assessment materialize", "architectural-assessment submit", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "implement commit", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "tracking post-issue"]
+rust = ["admission fork-env", "admission gate", "bgjob wait", "bootstrap invoke", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -9778,14 +9786,14 @@ rust = ["bgjob wait", "review-and-fix write-self-review-tally", "timing telemetr
 [[callers]]
 path = "skills/implement/references/ship-pr-exit-matrix.md"
 kind = "skill"
-python = ["pr checks", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "ship seed-initial-state"]
+python = ["pr checks", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit"]
 rust = ["execution-issues flush", "final-report write"]
 
 [[callers]]
 path = "skills/implement/references/ship-pr-oos-checkpoint-router.md"
 kind = "skill"
-python = ["implement step-8-oos-checkpoint"]
-rust = ["oos disposition-checkpoint", "oos file"]
+python = []
+rust = ["implement step-8-oos-checkpoint", "oos file"]
 
 [[callers]]
 path = "skills/implement/references/stall-recovery.md"
@@ -9874,8 +9882,8 @@ rust = ["session resolve-implement-tmpdir"]
 [[callers]]
 path = "skills/implement/scripts/oos-disposition-checkpoint.md"
 kind = "skill"
-python = ["implement step-8-oos-checkpoint"]
-rust = ["oos disposition-checkpoint"]
+python = []
+rust = ["implement step-8-oos-checkpoint", "oos disposition-checkpoint"]
 
 [[callers]]
 path = "skills/implement/scripts/oos-disposition-checkpoint.sh"
@@ -10036,38 +10044,50 @@ rust = ["implement step-7a"]
 [[callers]]
 path = "skills/implement/scripts/step-8-oos-checkpoint.md"
 kind = "skill"
-python = ["implement step-8-oos-checkpoint"]
+python = []
 rust = ["oos disposition-checkpoint"]
 
 [[callers]]
 path = "skills/implement/scripts/step-8-oos-checkpoint.sh"
 kind = "skill"
-python = ["implement step-8-oos-checkpoint"]
-rust = []
+python = []
+rust = ["implement step-8-oos-checkpoint"]
+
+[[callers]]
+path = "skills/implement/scripts/step-8-python-guard.md"
+kind = "skill"
+python = []
+rust = ["implement step-8-python-guard"]
+
+[[callers]]
+path = "skills/implement/scripts/step-8-python-guard.sh"
+kind = "skill"
+python = []
+rust = ["implement step-8-python-guard"]
 
 [[callers]]
 path = "skills/implement/scripts/step-8-seed-initial.md"
 kind = "skill"
 python = ["ship seed-initial-state"]
-rust = ["implement clone-tag"]
+rust = ["implement step-8-seed-initial"]
 
 [[callers]]
 path = "skills/implement/scripts/step-8-seed-initial.sh"
 kind = "skill"
-python = ["implement step-8-seed-initial"]
-rust = []
+python = []
+rust = ["implement step-8-seed-initial"]
 
 [[callers]]
 path = "skills/implement/scripts/step-8-ship.md"
 kind = "skill"
-python = ["ship pr"]
-rust = ["bgjob adapt", "implement clone-tag", "oos file"]
+python = []
+rust = ["oos file"]
 
 [[callers]]
 path = "skills/implement/scripts/step-8-ship.sh"
 kind = "skill"
-python = ["implement step-8-ship"]
-rust = []
+python = []
+rust = ["implement step-8-ship"]
 
 [[callers]]
 path = "skills/implement/scripts/step-architectural-guidelines-write-compose.md"

@@ -45,7 +45,7 @@ oos-disposition-gate.sh [arguments...]
 
 ## Consumer
 
-The Rust `oos disposition-checkpoint` verb composes the same `gate_counters` evaluator in process; it does not spawn this wrapper or a second command. The retained #7681 Step 8 Python router invokes that Rust checkpoint through `scripts/larch.sh`, then owns exit-code mapping, a de-duplicated Tool Failures fallback when the Rust command could not record one, and post-pass bookkeeping. Orchestrator readers should use `oos-disposition-checkpoint.md` for the checkpoint exit contract and logging sites. After checkpoint exit **0**, `run-statistics`, `OOS_PENDING=false`, and re-invocation of `step-8-ship.sh` without resume-phase remain router-owned per `skills/implement/SKILL.md`; on checkpoint non-zero, the router must not perform those post-pass steps.
+The Rust `oos disposition-checkpoint` verb composes the same `gate_counters` evaluator in process; it does not spawn this wrapper or a second command. The Rust #7681 Step 8 router invokes that checkpoint through `scripts/larch.sh`, then owns exit-code mapping, a de-duplicated Tool Failures fallback when the command could not record one, and post-pass bookkeeping. Orchestrator readers should use `oos-disposition-checkpoint.md` for the checkpoint exit contract and logging sites. After checkpoint exit **0**, `run-statistics`, `OOS_PENDING=false`, and re-invocation of `step-8-ship.sh` without resume-phase remain router-owned per `skills/implement/SKILL.md`; on checkpoint non-zero, the router must not perform those post-pass steps.
 
 ## Test authority
 

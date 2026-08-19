@@ -6,12 +6,12 @@ Rust owns `scripts/larch.sh oos disposition-checkpoint`. The command resolves on
 
 The live Step 8 route is:
 
-1. `skills/implement/scripts/step-8-oos-checkpoint.sh` invokes the retained #7681 Python workflow router `python/cli.py implement step-8-oos-checkpoint`.
-2. That router invokes `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos disposition-checkpoint`, preserves its refusal artifact, appends a de-duplicated Tool Failures fallback when needed, and, only after a zero command exit, owns `run-statistics.md`, the `steps_ran.step9a1` stamp, and `OOS_PENDING=false` bookkeeping.
+1. `skills/implement/scripts/step-8-oos-checkpoint.sh` enters the Rust workflow router through `scripts/larch.sh implement step-8-oos-checkpoint`.
+2. `crates/larch-cli/src/implement_ship_commands.rs` invokes `scripts/larch.sh oos disposition-checkpoint`, preserves its refusal artifact, appends a de-duplicated Tool Failures fallback when needed, and, only after a zero command exit, owns `run-statistics.md`, the `steps_ran.step9a1` stamp, and allowlisted `OOS_PENDING=false` bookkeeping.
 3. `crates/larch-cli/src/main.rs` dispatches the OOS verb to `crates/larch-cli/src/oos_commands.rs`.
 4. The command composes `crates/larch-core/src/issue/oos_disposition.rs` and `crates/larch-core/src/issue/oos_record.rs` for gate state, evidence counters, and accepted-block grammar.
 
-The Python router is a distinct workflow responsibility; it is not a Python implementation or fallback for the migrated OOS command. The Rust checkpoint calls the shared gate evaluator in process and does not spawn `oos-disposition-gate.sh` or a nested `oos disposition-gate` command.
+The Step 8 router and the lower-level OOS checkpoint remain distinct Rust workflow responsibilities. The OOS checkpoint calls the shared gate evaluator in process and does not spawn `oos-disposition-gate.sh` or a nested `oos disposition-gate` command.
 
 ## Invocation
 
@@ -64,7 +64,7 @@ Outside fork and repo-unavailable carve-outs, a non-zero accepted non-security c
 | 2 | Invalid arguments or session inputs, ambiguous or missing required NDJSON, unusable Git history, or malformed gate evidence. |
 | 3 | Non-security disposition cleared, but a non-empty private security sidecar still requires disposition. |
 
-The retained #7681 Step 8 Python router translates any non-zero command exit into `OOS_CHECKPOINT_RC=<code>` plus `NEXT_ACTION=stall`. On zero it performs post-pass bookkeeping and emits `NEXT_ACTION=reship`. See `skills/implement/references/ship-pr-oos-checkpoint-router.md` for that router contract.
+The Rust #7681 Step 8 router translates any non-zero command exit into `OOS_CHECKPOINT_RC=<code>` plus `NEXT_ACTION=stall`. On zero it performs post-pass bookkeeping and emits `NEXT_ACTION=reship`. See `skills/implement/references/ship-pr-oos-checkpoint-router.md` for that router contract.
 
 ## Refusal artifacts
 

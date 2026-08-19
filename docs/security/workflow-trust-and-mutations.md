@@ -772,8 +772,10 @@ The main workflow does not author, repair, or inspect assessment prose on this
 path. Stale, malformed, incomplete, unavailable, or mismatched results do not
 clear the gate. A fresh assessor judges every repair. An invariant violation
 hard-stops after the bounded fix ladder; no waiver or operator override accepts
-it. `python/larch/core/architectural_guidelines.py` and the Step 8 ship route
-own the current mixed-runtime implementation.
+it. `python/larch/core/architectural_guidelines.py`, the retained Python
+assessment commands, and the `ship pr` engine own the current mixed-runtime
+assessment implementation. The Rust Step 8 dispatcher carries their closed
+route requests without interpreting assessment prose.
 
 ### Destructive and background workflows
 
@@ -846,14 +848,17 @@ while the sidecar remains.
 
 Review and design tally/aggregation modules retain their distinct source-side
 classification responsibilities. Under receiving umbrella #7681,
-`python/larch/implement/dispatch_ship.py` retains Step 8 routing and
-post-checkpoint bookkeeping. The surviving
-`python/larch/issue/file_oos.py` callers use in-process block parsing/counting,
-title normalization, and run-id resolution under receiving umbrella #7680; the
-module is not an OOS command owner or fallback. Rust tests in `oos_commands.rs`,
-`oos_file_commands.rs`, `oos_batch.rs`, `oos_disposition.rs`, and
-`oos_record.rs` cover manifest materialization, field variants, private
-routing, and checkpoint refusal.
+`crates/larch-cli/src/implement_ship_commands.rs` owns Step 8 dispatch,
+checkpoint exit mapping, canonical run-id resolution, manifest stamping, run
+statistics, and the allowlisted atomic `OOS_PENDING=false` transition.
+`python/larch/implement/dispatch_ship.py` retains only sibling pre-driver,
+pre-fix-rebase, route-exit, and assessment-handoff commands. The surviving
+`python/larch/issue/file_oos.py` callers use in-process block parsing/counting
+and title normalization under receiving umbrella #7680; the module is not an
+OOS command owner or fallback. Rust tests in `implement_ship_parity.rs`,
+`oos_commands.rs`, `oos_file_commands.rs`, `oos_batch.rs`,
+`oos_disposition.rs`, and `oos_record.rs` cover Step 8 wire parity, manifest
+materialization, field variants, private routing, and checkpoint refusal.
 
 ## Major Residual Risks
 
