@@ -1,6 +1,7 @@
 //! Executable-boundary coverage for the complete-umbrella child harness.
 
 use assert_cmd::Command;
+use larch_core::{private_atomic_write, session_pointer_root};
 use predicates::prelude::*;
 use std::{env, fs, path::Path};
 use tempfile::TempDir;
@@ -139,6 +140,100 @@ fn run_leaves_is_exposed_and_rejects_an_unresolved_model_before_remote_work() {
         ));
 }
 
+#[test]
+fn resume_accepts_the_documented_repository_and_issue_signature() {
+    let home = TempDir::new().expect("isolated home");
+    larch()
+        .env("HOME", home.path())
+        .args([
+            "complete-umbrella",
+            "resume",
+            "--repository",
+            "owner/repo",
+            "--issue",
+            "40",
+        ])
+        .assert()
+        .success()
+        .stdout("RESUME_FOUND=false\n");
+}
+
+#[test]
+fn completed_driver_resume_rebinds_then_pointer_cleanup_is_idempotent() {
+    let home = TempDir::new().expect("isolated home");
+    let run_root = TempDir::new().expect("run root");
+    let run_root = fs::canonicalize(run_root.path()).expect("canonical run root");
+    let bgjob_root = run_root.join("bgjob");
+    fs::create_dir(&bgjob_root).expect("bgjob root");
+    write(
+        &bgjob_root.join("complete-umbrella-leaves.result.env"),
+        "BGJOB_RC=0\nBGJOB_ELAPSED_S=1\nSTEP=complete-umbrella-leaves\n",
+    );
+
+    let pointer_root = session_pointer_root(Some(home.path().as_os_str()));
+    fs::create_dir_all(&pointer_root).expect("pointer root");
+    let old_pointer = pointer_root.join("current-complete-umbrella-123.env");
+    let pointer = format!(
+        "RUN_POINTER_VERSION=1\nREPOSITORY=owner/repo\nUMBRELLA_ISSUE=40\nCOMPLETE_UMBRELLA_TMPDIR={}\nCURRENT_LEAF=41\nCURRENT_STEP=launch\nTRANSIENT_ATTEMPT_COUNT=0\nBGJOB_STEP=complete-umbrella-leaves\nSESSION_PID=123\n",
+        run_root.display()
+    );
+    private_atomic_write(&old_pointer, &pointer, &pointer_root).expect("durable run pointer");
+
+    let new_pointer = pointer_root.join("current-complete-umbrella-456.env");
+    larch()
+        .env("HOME", home.path())
+        .args([
+            "complete-umbrella",
+            "resume",
+            "--repository",
+            "owner/repo",
+            "--issue",
+            "40",
+            "--claude-pid",
+            "456",
+        ])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("RESUME_FOUND=true\n")
+                .and(predicate::str::contains("RESUME_ACTION=wait\n"))
+                .and(predicate::str::contains("CURRENT_LEAF=41\n"))
+                .and(predicate::str::contains("CURRENT_STEP=launch\n"))
+                .and(predicate::str::contains("TRANSIENT_ATTEMPT_COUNT=0\n")),
+        );
+    assert!(!old_pointer.exists());
+    assert!(new_pointer.is_file());
+    assert!(
+        fs::read_to_string(&new_pointer)
+            .expect("rebound run pointer")
+            .contains("SESSION_PID=456\n")
+    );
+
+    let clear = || {
+        let mut command = larch();
+        command.env("HOME", home.path()).args([
+            "complete-umbrella",
+            "clear-pointer",
+            "--repository",
+            "owner/repo",
+            "--issue",
+            "40",
+            "--tmpdir",
+            &run_root.display().to_string(),
+        ]);
+        command
+    };
+    clear()
+        .assert()
+        .success()
+        .stdout("POINTER_CLEARED=true\nPOINTER_FOUND=true\n");
+    assert!(!new_pointer.exists());
+    clear()
+        .assert()
+        .success()
+        .stdout("POINTER_CLEARED=true\nPOINTER_FOUND=false\n");
+}
+
 #[cfg(unix)]
 #[test]
 fn child_harness_pins_model_disables_skills_and_requires_completion_marker() {
@@ -182,7 +277,7 @@ fn child_harness_pins_model_disables_skills_and_requires_completion_marker() {
     assert!(canonical.join("complete-umbrella-leaf-42").is_dir());
     assert_eq!(
         fs::read_to_string(root.path().join("child.env")).expect("result env"),
-        "CHILD_STATUS=complete\nCHILD_ISSUE=42\nCHILD_ENVELOPE_COMPLETE=true\n"
+        "CHILD_STATUS=complete\nCHILD_ISSUE=42\nCHILD_ENVELOPE_COMPLETE=true\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\n"
     );
     assert!(root.path().join("child.json").is_file());
 }
@@ -202,7 +297,7 @@ fn child_harness_hard_fails_a_noncompletion_envelope() {
         ));
     assert_eq!(
         fs::read_to_string(root.path().join("child.env")).expect("failure result env"),
-        "CHILD_STATUS=failed\nCHILD_ISSUE=42\nCHILD_ENVELOPE_COMPLETE=false\n"
+        "CHILD_STATUS=failed\nCHILD_ISSUE=42\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\n"
     );
 }
 
@@ -221,7 +316,7 @@ fn child_harness_classifies_a_transient_claude_api_envelope() {
         ));
     assert_eq!(
         fs::read_to_string(root.path().join("child.env")).expect("transient result env"),
-        "CHILD_STATUS=failed\nCHILD_ISSUE=42\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_FAILURE_CLASS=transient-api\n"
+        "CHILD_STATUS=failed\nCHILD_ISSUE=42\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\nCHILD_FAILURE_CLASS=transient-api\n"
     );
 }
 
@@ -238,6 +333,6 @@ fn child_harness_preserves_a_bounded_needs_design_handoff() {
         .stdout(predicate::str::contains("CHILD_STATUS=needs-design\n"));
     assert_eq!(
         fs::read_to_string(root.path().join("child.env")).expect("needs-design result env"),
-        "CHILD_STATUS=needs-design\nCHILD_ISSUE=42\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_FAILURE_CLASS=needs-design\n"
+        "CHILD_STATUS=needs-design\nCHILD_ISSUE=42\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\nCHILD_FAILURE_CLASS=needs-design\n"
     );
 }

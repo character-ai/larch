@@ -16,6 +16,7 @@ const DIRECT_FILES: &[&str] = &[
     "SECURITY.md",
     "docs/analysis-state.md",
     "docs/ci-latency-evidence.md",
+    "docs/complete-umbrella-recovery.md",
     "docs/configuration-and-permissions.md",
     "docs/dev-hook-audit.md",
     "docs/difficulty-floor-globs.tsv",
@@ -464,6 +465,16 @@ mod tests {
         for path in DEV_ONLY_PYTHON {
             assert!(!paths.contains(*path));
         }
+    }
+
+    #[test]
+    fn includes_complete_umbrella_recovery_runbook_in_runtime_projection() {
+        let fixture = fixture();
+        let root = repository_root(fixture.path());
+
+        let paths = runtime_paths(&root).expect("runtime path selection");
+
+        assert!(paths.contains("docs/complete-umbrella-recovery.md"));
     }
 
     #[test]
