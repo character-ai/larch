@@ -5,6 +5,7 @@
 
 mod plan_grammar;
 mod plan_quality;
+mod plan_scout;
 
 pub use plan_grammar::{
     CANONICAL_TRAILER_ORDER, FIRM_HEADING_KINDS, FORCE_PLAN_CONTRACT_ERROR, HEADING_KINDS,
@@ -23,4 +24,12 @@ pub use plan_quality::{
     firm_heading_count, firm_heading_paths, parse_optional_metadata, parse_plan_commands,
     plan_surfaces, render_plan_command_tsv, set_oversize_override_text,
     validate_difficulty_metadata,
+};
+pub use plan_scout::{
+    DynamicArchetype, EMPTY_MANIFEST_TEXT, INVALID_ARCHETYPES_SHAPE, MAX_ARCHETYPE_WEIGHT,
+    MAX_CONTEXT_BYTES, MAX_STAGED_BYTES, ManifestResult, PLAN_ONLY_RESERVED,
+    REQUIRED_CLOSING_SENTENCE, REVIEW_RESERVED, SCOUT_RAW_RATING_BASENAME, ScoutDifficultySidecar,
+    ensure_closing_sentence, extract_valid_fenced_json_text, render_difficulty_sidecar,
+    render_manifest, reserved_for_mode, unsafe_plan_delimiter, unsafe_prompt_body,
+    unsafe_rationale, unsafe_wrapper_tag, validate_dynamic_manifest,
 };

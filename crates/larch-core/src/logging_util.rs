@@ -22,9 +22,27 @@ pub fn emit_kv(key: &str, value: &str) {
     println!("{key}={value}");
 }
 
+/// Strip C0 control bytes and DEL from one diagnostic line.
+///
+/// Mirrors Python `logging_util.sanitize_diagnostic_line`: a warning derived
+/// from model output must not carry the control bytes that would let it forge
+/// extra contract-stream rows or rewrite an operator's terminal.
+#[must_use]
+pub fn sanitize_diagnostic_line(text: &str) -> String {
+    text.chars()
+        .filter(|character| *character >= ' ' && *character != '\u{7f}')
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::emit_kv;
+    use super::{emit_kv, sanitize_diagnostic_line};
+
+    #[test]
+    fn sanitize_strips_control_bytes_and_del() {
+        assert_eq!(sanitize_diagnostic_line("a\nb\u{7f}c\td"), "abcd");
+        assert_eq!(sanitize_diagnostic_line("plain text"), "plain text");
+    }
 
     #[test]
     #[should_panic(expected = "newline or carriage-return")]

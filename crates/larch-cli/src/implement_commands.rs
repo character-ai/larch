@@ -18,7 +18,6 @@ use std::{
     os::unix::ffi::OsStrExt as _,
     path::{Path, PathBuf},
     process::ExitCode,
-    time::Duration,
 };
 
 use larch_core::{ChildEnvironment, ProcessOutput, binary_on_path, emit_kv, shell_quote};
@@ -27,8 +26,9 @@ use crate::{
     argparse_compat::{
         ParsedCommandLine, choice_error, parse_with_flags, usage_error, write_stdout,
     },
-    implement_child_seam::{delegate_larch_with_environment, delegate_python},
+    implement_child_seam::delegate_larch_with_environment,
     oos_commands::atomic_write,
+    scout_commands::filter_manifest_paths,
     tracking_issue_commands::adoption_sentinel_identity,
 };
 
@@ -41,8 +41,6 @@ const CLONE_TAG_MAX_BYTES: usize = 32;
 const DIFFICULTY_VALUES: [&str; 3] = ["TRIVIAL", "MODERATE", "HARD"];
 /// Empty dynamic-archetype manifest written whenever normalization refuses.
 const EMPTY_SCOUT_MANIFEST: &str = "{\"archetypes\":[]}\n";
-/// Deadline for the still-Python `scout filter-manifest` sibling.
-const SCOUT_FILTER_TIMEOUT: Duration = Duration::from_secs(120);
 
 const HELP_FLAGS: [&str; 2] = ["-h", "--help"];
 
@@ -758,31 +756,11 @@ fn normalize_scout_manifest(tmpdir: &Path, input: &Path, producer: &str) -> Stri
     ));
     let mut status = "missing-or-invalid";
     if let Some(raw_count) = archetype_count(input) {
-        // `scout filter-manifest` remains Python-owned, so the budget rule it
-        // enforces keeps its single owner.
-        let filter = delegate_python(
-            vec![
-                OsString::from("scout"),
-                OsString::from("filter-manifest"),
-                input.as_os_str().to_owned(),
-                filtered.as_os_str().to_owned(),
-                OsString::from("--max-archetypes"),
-                OsString::from("1"),
-                OsString::from("--mode"),
-                OsString::from("review"),
-            ],
-            SCOUT_FILTER_TIMEOUT,
-        );
+        // The retired sibling ran as a subprocess whose WARN stream this caller
+        // discarded, so the in-process seam keeps the warnings unpublished.
+        let outcome = filter_manifest_paths(input, &filtered, 1, "review");
         let filtered_count = archetype_count(&filtered);
-        let filter_status = filter.as_ref().map_or_else(
-            |_error| String::new(),
-            |output| kv_value(&stdout_text(output), "SCOUT_STATUS"),
-        );
-        let filter_ok = filter
-            .as_ref()
-            .is_ok_and(|output| output.status().success())
-            && (filter_status == "ok" || filter_status == "empty")
-            && filtered_count.is_some();
+        let filter_ok = outcome.usable() && filtered_count.is_some();
         if filter_ok
             && (raw_count == 0 || filtered_count.unwrap_or(0) > 0)
             && fs::rename(&filtered, &manifest).is_ok()
@@ -1036,10 +1014,7 @@ mod tests {
         sentinel_identity, session_child_environment, step0_bootstrap, step0_degraded_gate,
         write_atomic, write_streams,
     };
-    use crate::{
-        argparse_compat::parse_with_flags,
-        implement_child_seam::{install_larch, install_python},
-    };
+    use crate::{argparse_compat::parse_with_flags, implement_child_seam::install_larch};
     use larch_core::{ChildEnvironment, ProcessOutput, ProcessStatus};
     use std::{
         ffi::OsString,
@@ -1058,6 +1033,13 @@ mod tests {
 
     fn arguments(values: &[&str]) -> Vec<OsString> {
         values.iter().map(OsString::from).collect()
+    }
+
+    /// One raw manifest carrying a single archetype the filter accepts.
+    fn scout_row(name: &str) -> String {
+        format!(
+            "{{\"archetypes\":[{{\"name\":\"{name}\",\"focus_area\":\"correctness\",\"weight\":1,\"rationale\":\"ok\",\"prompt_body\":\"Inspect seams.\"}}]}}\n"
+        )
     }
 
     fn output(code: i32, stdout: &str) -> ProcessOutput {
@@ -1177,12 +1159,7 @@ mod tests {
         clear_hooks();
         let root = TempDir::new().expect("temp");
         let raw = root.path().join("scout-coder-manifest.raw.json");
-        fs::write(&raw, "{\"archetypes\":[{\"id\":\"dyn-reuse\"}]}\n").expect("raw");
-        install_python(|args| {
-            let filtered = PathBuf::from(&args[3]);
-            fs::write(&filtered, "{\"archetypes\":[{\"id\":\"dyn-reuse\"}]}\n").expect("filtered");
-            Ok(output(0, "SCOUT_STATUS=ok\n"))
-        });
+        fs::write(&raw, scout_row("dyn-reuse")).expect("raw");
 
         let code = normalize_coder_scout(&arguments(&[
             "--tmpdir",
@@ -1213,10 +1190,6 @@ mod tests {
         let root = TempDir::new().expect("temp");
         let raw = root.path().join("raw.json");
         fs::write(&raw, "{\"archetypes\":[]}\n").expect("raw");
-        install_python(|args| {
-            fs::write(PathBuf::from(&args[3]), "{\"archetypes\":[]}\n").expect("filtered");
-            Ok(output(0, "SCOUT_STATUS=empty\n"))
-        });
 
         assert_eq!(
             normalize_scout_manifest(root.path(), &raw, "external"),
@@ -1249,31 +1222,37 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_or_empty_filter_refuses_the_coder_manifest() {
+    fn a_filter_that_drops_every_row_refuses_the_coder_manifest() {
         clear_hooks();
         let root = TempDir::new().expect("temp");
-        let raw = root.path().join("raw.json");
-        fs::write(&raw, "{\"archetypes\":[{\"id\":\"a\"}]}\n").expect("raw");
 
-        install_python(|_args| Ok(output(1, "")));
+        // A row the shared validator rejects filters to zero from a non-empty
+        // input, which is exactly the refusal Step 5 must observe.
+        let unusable = root.path().join("unusable.json");
+        fs::write(&unusable, "{\"archetypes\":[{\"id\":\"a\"}]}\n").expect("unusable");
         assert_eq!(
-            normalize_scout_manifest(root.path(), &raw, "external"),
+            normalize_scout_manifest(root.path(), &unusable, "external"),
             "missing-or-invalid"
         );
 
-        install_python(|args| {
-            fs::write(PathBuf::from(&args[3]), "{\"archetypes\":[]}\n").expect("filtered");
-            Ok(output(0, "SCOUT_STATUS=ok\n"))
-        });
+        // A reserved slug is dropped for the same reason.
+        let reserved = root.path().join("reserved.json");
+        fs::write(&reserved, scout_row("correctness")).expect("reserved");
         assert_eq!(
-            normalize_scout_manifest(root.path(), &raw, "external"),
+            normalize_scout_manifest(root.path(), &reserved, "external"),
             "missing-or-invalid"
         );
 
-        install_python(|_args| Err("cannot start scout filter-manifest".to_owned()));
+        // An unparseable manifest never reaches the filter at all.
+        let malformed = root.path().join("malformed.json");
+        fs::write(&malformed, "not json").expect("malformed");
         assert_eq!(
-            normalize_scout_manifest(root.path(), &raw, "external"),
+            normalize_scout_manifest(root.path(), &malformed, "external"),
             "missing-or-invalid"
+        );
+        assert_eq!(
+            fs::read_to_string(root.path().join("scout-coder-manifest.json")).expect("manifest"),
+            "{\"archetypes\":[]}\n"
         );
         clear_hooks();
     }

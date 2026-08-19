@@ -5,6 +5,6 @@ through ``design_step6`` (workflow phases), ``design_core`` (shared
 lifecycle helpers and small entry points), ``design_terminal`` (result
 environments and terminal state), ``design_pause`` (pause/resume state), ``design_oos``
 (out-of-scope annotation), ``decompose`` (issue decomposition), ``plan_quality``
-(plan validation and quality gates), ``plan_scout`` (dynamic archetype
-scouting), and ``clarify`` (clarification round-trip helpers).
+(plan validation and quality gates), and ``clarify`` (clarification
+round-trip helpers).
 """

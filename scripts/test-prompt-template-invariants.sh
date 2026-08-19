@@ -363,20 +363,26 @@ python3 "$REPO_ROOT/python/cli.py" render specialist \
 assert_contains "generic diff-specialist [BUG] class-or-instance instruction" \
     'For `[BUG]` fixes: classify whether the change addresses the class or only an instance; name sibling sites checked, or state that a grep for the defect pattern found none.' "$correctness_specialist_out"
 
-# ── plan_scout.py static source assertions ─────────────────────
+# ── scout static source assertions ─────────────────────────────
+# The scout prompt lives in the CLI owner and its closing-sentence contract in
+# the core library, so each assertion reads the file that owns the text.
 
-SCOUT="$REPO_ROOT/python/larch/design/plan_scout.py"
-scout_out="$TMP/plan_scout.py"
-cp "$SCOUT" "$scout_out"
+SCOUT_PROMPT="$REPO_ROOT/crates/larch-cli/src/scout_commands.rs"
+scout_prompt_out="$TMP/scout_commands.rs"
+cp "$SCOUT_PROMPT" "$scout_prompt_out"
+
+SCOUT_CONTRACT="$REPO_ROOT/crates/larch-core/src/design/plan_scout.rs"
+scout_contract_out="$TMP/plan_scout.rs"
+cp "$SCOUT_CONTRACT" "$scout_contract_out"
 
 assert_contains "scout prompt_body constraints" \
-    'CONSTRAINTS on prompt_body content' "$scout_out"
+    'CONSTRAINTS on prompt_body content' "$scout_prompt_out"
 assert_contains "scout closing-sentence requirement" \
-    'follow the output-format rules from your outer wrapper exactly' "$scout_out"
+    'follow the output-format rules from your outer wrapper exactly' "$scout_contract_out"
 assert_contains "scout closing-sentence repair" \
-    'REQUIRED_CLOSING_SENTENCE' "$scout_out"
+    'REQUIRED_CLOSING_SENTENCE' "$scout_contract_out"
 assert_contains "scout closing-sentence full anchor" \
-    'Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.' "$scout_out"
+    'Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.' "$scout_contract_out"
 
 # ── agent collect-results NS_STRONG_HEADER static source assertions ───────
 

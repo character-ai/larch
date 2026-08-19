@@ -11,7 +11,6 @@ from larch.design import (
     design_log_publish_flow,
     design_step1,
     design_step5c,
-    plan_scout,
 )
 
 
@@ -67,19 +66,3 @@ def test_optional_trailers_preserve_input_order_and_duplicates(tmp_path: Path) -
         "diff_added: 1\n",
         "diff_deleted: 3\n",
     ]
-
-
-def test_plan_scout_single_key_readers_use_first_value_and_reject_malformed(
-    tmp_path: Path,
-) -> None:
-    launch = tmp_path / "launch.env"
-    _ = launch.write_text(
-        "ELAPSED=4\r\nELAPSED=9\nSTATUS=first\nSTATUS=second\n", newline=""
-    )
-
-    assert plan_scout._launch_latency_ms(launch) == 4000  # pyright: ignore[reportPrivateUsage] - characterize migration seam
-    assert plan_scout._parse_launch_status(launch) == "first"  # pyright: ignore[reportPrivateUsage] - characterize migration seam
-
-    malformed = tmp_path / "malformed.env"
-    _ = malformed.write_text("ELAPSED=not-a-number\n", encoding="utf-8")
-    assert plan_scout._launch_latency_ms(malformed) == 0  # pyright: ignore[reportPrivateUsage] - characterize migration seam

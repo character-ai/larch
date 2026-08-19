@@ -16,7 +16,6 @@ from larch.implement import checks_lint_fix as _clf
 from larch.implement import ci_monitor
 from larch.design import decompose
 from larch.core import external_defaults
-from larch.design import plan_scout
 from larch.git import rebase
 
 from larch.core import config
@@ -126,49 +125,6 @@ def test_ci_monitor_available_tiers_uses_ci_recovery_role(monkeypatch: pytest.Mo
 
     assert ci_monitor._available_tiers() == ("codex", "claude")
     assert seen == ["implement.ci_recovery_fixer"]
-
-
-def test_plan_scout_uses_dynamic_and_plan_role_ids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    seen = _tool_order_probe(monkeypatch, plan_scout, "review.dynamic_archetype_scout", ("claude",))
-    plan_scout.scout_dynamic_archetypes(mode="diff", max_archetypes=0, output=tmp_path / "dynamic.json")
-    assert seen == ["review.dynamic_archetype_scout"]
-
-    plan = tmp_path / "plan.txt"
-    desc = tmp_path / "feature-description.txt"
-    plan.write_text("plan\n", encoding="utf-8")
-    desc.write_text("feature\n", encoding="utf-8")
-    scout_commands: list[list[str]] = []
-
-    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[Any]:
-        if "scope-paths" in cmd:
-            stdout = kwargs.get("stdout")
-            if stdout is not None:
-                stdout.write("README.md\n")
-            return subprocess.CompletedProcess(cmd, 0, b"", b"")
-        scout_commands.append(cmd)
-        output_path = Path(cmd[cmd.index("--output") + 1])
-        output_path.write_text('{"archetypes":[]}\n', encoding="utf-8")
-        stdout = kwargs.get("stdout")
-        if stdout is not None:
-            stdout.write("SCOUT_STATUS=empty\n")
-        return subprocess.CompletedProcess(cmd, 0, "", "")
-
-    monkeypatch.setattr(plan_scout.subprocess, "run", fake_run)
-
-    plan_scout.scout_plan_archetypes(
-        role_id="design.plan_archetype_scout",
-        plan_file=plan,
-        description_file=desc,
-        output=tmp_path / "plan-scout.json",
-        max_archetypes=3,
-        session_env_path="",
-        codex_present=False,
-        cursor_present=True,
-    )
-
-    assert scout_commands
-    assert scout_commands[-1][scout_commands[-1].index("--role-id") + 1] == "design.plan_archetype_scout"
-
 
 
 

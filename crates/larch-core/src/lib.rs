@@ -333,7 +333,7 @@ pub use issue_mutation::{
     redact_issue_text_outbound, same_mutation_identity, snapshot_is_strictly_newer,
     validate_issue_mutation_request, verify_authorized_body_change, verify_created_issue,
 };
-pub use logging_util::emit_kv;
+pub use logging_util::{emit_kv, sanitize_diagnostic_line};
 pub use main_cache::{resolve_main_cache_merge_group_source, validate_main_cache_source_sha};
 pub use migration_audit::{
     AggregateFinding, CommandAuditIssue, CommandAuditKey, DependencySnapshot, FindingCategory,

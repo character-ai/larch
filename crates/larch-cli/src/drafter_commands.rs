@@ -46,6 +46,7 @@ use crate::external_agent::{
     run_external_agent_with_auth_retries,
 };
 use crate::python_verb::{plugin_root_directory, run_python_verb};
+use crate::scout_commands::filter_manifest_paths;
 
 /// Vendor label used by every launcher in this module that drives Codex.
 const CODEX_TOOL: &str = "codex";
@@ -360,21 +361,10 @@ fn filter_drafter_scout(
     if !is_non_empty_file(candidate) {
         return (false, "absent");
     }
-    let verb = run_python_verb(
-        [
-            OsString::from("scout"),
-            OsString::from("filter-manifest"),
-            candidate.as_os_str().to_os_string(),
-            filtered.as_os_str().to_os_string(),
-            OsString::from("--max-archetypes"),
-            OsString::from("1"),
-        ],
-        DESIGN_VERB_TIMEOUT,
-    );
-    let parse_failed = verb.map_or(true, |output| {
-        String::from_utf8_lossy(output.stdout()).contains("SCOUT_STATUS=parse-failed")
-    });
-    let usable = !parse_failed
+    // The retired sibling ran as a subprocess whose WARN stream this caller
+    // discarded, so the in-process seam keeps the warnings unpublished.
+    let outcome = filter_manifest_paths(candidate, filtered, 1, "plan-review");
+    let usable = outcome.status != "parse-failed"
         && is_non_empty_file(filtered)
         && serde_json::from_str::<serde_json::Value>(&read_text(filtered))
             .ok()

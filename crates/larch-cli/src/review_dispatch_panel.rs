@@ -20,6 +20,7 @@ use crate::{
     },
     python_verb::{plugin_root_directory, run_python_verb},
     runtime_entrypoint::run_verified_larch,
+    scout_commands::filter_manifest_paths,
     waterfall_commands::{append_review_routing_arguments, dispatch_for_review, parse_dispatch_kv},
 };
 use larch_adapters::ensure_directory_chain;
@@ -583,7 +584,12 @@ fn prepare_dynamic_slots(
                 options.session_env_path.clone(),
             ]);
         }
-        let scout_output = run_python(arguments);
+        let scout_output = run_verified_larch(
+            &arguments
+                .into_iter()
+                .map(OsString::from)
+                .collect::<Vec<OsString>>(),
+        );
         let (ok, stdout) = scout_output.map_or_else(
             |_| (false, String::new()),
             |output| (output.status().success(), process_stdout(&output)),
@@ -1185,26 +1191,9 @@ fn dynamic_manifest(path: &Path) -> Option<Vec<DynamicArchetype>> {
 }
 
 fn filter_dynamic_manifest(input: &Path, output: &Path, max: usize) -> bool {
-    let output = run_python(vec![
-        "scout".to_owned(),
-        "filter-manifest".to_owned(),
-        input.display().to_string(),
-        output.display().to_string(),
-        "--max-archetypes".to_owned(),
-        max.to_string(),
-        "--mode".to_owned(),
-        "review".to_owned(),
-    ]);
-    let Ok(output) = output else { return false };
-    let stdout = process_stdout(&output);
-    emit_warnings(&stdout);
-    output.status().success()
-        && matches!(
-            parse_dispatch_kv(&stdout)
-                .get("SCOUT_STATUS")
-                .map(String::as_str),
-            Some("ok" | "empty"),
-        )
+    let outcome = filter_manifest_paths(input, output, max, "review");
+    outcome.emit_warnings();
+    outcome.usable()
 }
 
 fn write_dynamic_manifest(path: &Path, archetypes: &[DynamicArchetype]) -> Result<(), String> {
@@ -1295,16 +1284,6 @@ fn run_python(arguments: Vec<String>) -> Result<larch_core::ProcessOutput, Strin
         arguments.into_iter().map(OsString::from),
         Duration::from_secs(120),
     )
-}
-
-fn emit_warnings(text: &str) {
-    for warning in text
-        .lines()
-        .filter_map(|line| line.strip_prefix("WARN="))
-        .filter(|warning| !warning.is_empty())
-    {
-        emit_kv("WARN", warning);
-    }
 }
 
 fn kv_usize(kv: &BTreeMap<String, String>, key: &str) -> usize {

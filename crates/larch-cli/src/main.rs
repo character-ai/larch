@@ -112,6 +112,7 @@ mod run_log_entry_commands;
 pub(crate) mod run_log_migration_commands;
 mod run_log_publication_commands;
 mod runtime_entrypoint;
+mod scout_commands;
 mod session_artifact_support;
 mod validate_merged_commands;
 #[rustfmt::skip]
@@ -288,6 +289,9 @@ enum Domain {
     /// Implementation-plan readers.
     #[command(subcommand)]
     Plan(PlanCommand),
+    /// Dynamic reviewer archetype scouting and manifest filtering.
+    #[command(subcommand)]
+    Scout(ScoutCommand),
     /// The tracking issue's lifecycle: reads, comments, titles, and summaries.
     #[command(subcommand, name = "tracking-issue")]
     TrackingIssue(TrackingIssueCommand),
@@ -1445,6 +1449,19 @@ enum DepsCommand {
 }
 
 #[derive(Subcommand)]
+enum ScoutCommand {
+    /// Scout dynamic reviewer archetypes through the Cursor then Claude tiers.
+    #[command(name = "dynamic-archetypes", disable_help_flag = true)]
+    DynamicArchetypes(RawCompatibilityArguments),
+    /// Scout the one plan-review archetype a design plan justifies.
+    #[command(name = "plan-archetypes", disable_help_flag = true)]
+    PlanArchetypes(RawCompatibilityArguments),
+    /// Filter a scouted manifest to the caller's cap and panel mode.
+    #[command(name = "filter-manifest", disable_help_flag = true)]
+    FilterManifest(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
 enum CombineIssuesCommand {
     /// Fetch combinable open issues.
     #[command(disable_help_flag = true)]
@@ -2464,6 +2481,17 @@ fn run(
             Ok(issue_wire_commands::named_block_write(&arguments.arguments))
         }
         Domain::Design(command) => Ok(command.run()),
+        Domain::Scout(command) => Ok(match command {
+            ScoutCommand::DynamicArchetypes(arguments) => {
+                scout_commands::dynamic_archetypes(&arguments.arguments)
+            }
+            ScoutCommand::PlanArchetypes(arguments) => {
+                scout_commands::plan_archetypes(&arguments.arguments)
+            }
+            ScoutCommand::FilterManifest(arguments) => {
+                scout_commands::filter_manifest(&arguments.arguments)
+            }
+        }),
         Domain::Plan(command) => Ok(match command {
             PlanCommand::ScopePaths(arguments) => {
                 issue_wire_commands::scope_paths(&arguments.arguments)
