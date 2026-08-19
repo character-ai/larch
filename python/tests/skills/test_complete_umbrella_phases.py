@@ -162,8 +162,24 @@ def test_whole_leaf_loop_bgjob_binds_one_durable_session_owner() -> None:
     assert "complete-umbrella run-child" not in skill
     assert "complete-umbrella verify-child" not in skill
     assert "uses that same graph to verify the prior child and select the next leaf" in skill
-    for key in ("FAILED_STEP", "FAILED_LEAF", "FAILURE_REASON"):
+    for key in (
+        "CHILD_ATTEMPT_COUNT",
+        "TRANSIENT_CHILD_RETRY_COUNT",
+        "NET_PROBE_ATTEMPT_COUNT",
+        "NET_WAIT_SECONDS",
+        "LEAF_RESET_ATTEMPT_COUNT",
+        "RESET_BACKOFF_SECONDS",
+        "FAILED_STEP",
+        "FAILED_LEAF",
+        "FAILURE_REASON",
+    ):
         assert key in skill
+    assert "fixed Anthropic and GitHub endpoints" in skill
+    assert "capped exponential backoff" in skill
+    assert "up to three times with bounded backoff" in skill
+    assert "same handoff root up to two additional times" in skill
+    assert "host suspend does not consume the budget" in skill
+    assert "Offline probe rounds do not consume child relaunch attempts." in skill
     assert "wait lease" in skill
     assert "--max-wait-s 7200" in skill
     assert "run_in_background: true" in skill

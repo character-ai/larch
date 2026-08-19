@@ -191,8 +191,14 @@ callers enter through the verified bootstrap.
 `/complete-umbrella` launches one durable `run-leaves` bgjob for the current
 leaf set. Its Rust owner refreshes the graph once per normal iteration, verifies
 the prior child and selects the next leaf from that same snapshot, synchronizes
-clean `main`, and stops on the first bounded failure envelope. Prompt-side
-orchestration resumes only when the driver reaches the final audit state.
+clean `main`, and stops on the first bounded failure envelope. A transient
+Claude API child result stays inside that daemon: it waits for fixed Anthropic
+and GitHub endpoints with capped exponential backoff, retries the idempotent
+leaf reset with bounded backoff, and relaunches the same leaf from its existing
+handoff root. Probe rounds do not spend child attempts. The result environment
+records child, probe, transient-retry, reset, and wait counters. Prompt-side
+orchestration resumes only when the driver reaches the final audit state or the
+inner bounds produce a hard failure.
 
 For every `/complete-umbrella` leaf, recon/design preserves an existing valid
 issue-anchored plan or writes one when absent. Before the prepare driver can

@@ -9,6 +9,7 @@ mod bgjob_daemon;
 mod ci_timing;
 mod complete_umbrella;
 mod config;
+mod connectivity;
 mod context;
 /// Debate-domain protocol vocabulary, ledger grammar, and fingerprints (#8597).
 pub mod debate;
@@ -150,6 +151,11 @@ pub use complete_umbrella::{
     validate_complete_umbrella_parent,
 };
 pub use config::{GIT_COMMIT_CO_AUTHORED_BY_TRAILER, env};
+pub use connectivity::{
+    ConnectivityProbe, ConnectivityProbeFuture, ConnectivityStatus, DEFAULT_NET_WAIT_CEILING,
+    DEFAULT_NET_WAIT_INITIAL_BACKOFF, DEFAULT_NET_WAIT_MAX_BACKOFF, MAX_NET_WAIT_CEILING,
+    WaitOnlineError, WaitOnlinePolicy, WaitOnlinePolicyError, WaitOnlineResult, wait_online,
+};
 
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
 pub use design::{

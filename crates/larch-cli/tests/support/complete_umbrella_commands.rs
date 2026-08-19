@@ -185,6 +185,7 @@ fn command_dispatch_rejects_invalid_inputs_before_remote_work() {
             output_root: PathBuf::from("relative"),
             output: PathBuf::from("snapshot"),
             result_env: PathBuf::from("result"),
+            net_wait_ceiling_s: DEFAULT_NET_WAIT_CEILING.as_secs(),
             operator_invoked: true,
         }),
         CompleteUmbrellaCommand::RunChild(RunChildArguments {
@@ -323,12 +324,15 @@ struct FakeRunLeavesOperations {
     graphs: VecDeque<Result<GraphState, String>>,
     syncs: VecDeque<Result<(), String>>,
     children: VecDeque<ChildAttempt>,
+    wait_results: VecDeque<Result<WaitOnlineResult, String>>,
     reset_results: VecDeque<Result<(), String>>,
     result_writes: VecDeque<Result<(), String>>,
     snapshot_error: Option<String>,
     snapshots: usize,
     child_leaves: Vec<u64>,
+    wait_calls: usize,
     resets: Vec<u64>,
+    reset_backoffs: Vec<Duration>,
     results: Vec<RunLeavesEnvelope>,
 }
 
@@ -360,14 +364,32 @@ impl RunLeavesOperations for FakeRunLeavesOperations {
             .unwrap_or_else(|| ChildAttempt::Failed("unexpected child launch".to_owned()))
     }
 
+    fn wait_online(&mut self) -> Result<WaitOnlineResult, String> {
+        self.wait_calls += 1;
+        self.wait_results
+            .pop_front()
+            .unwrap_or_else(|| Ok(WaitOnlineResult::new(true, 1, Duration::ZERO)))
+    }
+
     fn reset_leaf(&mut self, leaf: u64) -> Result<(), String> {
         self.resets.push(leaf);
         self.reset_results.pop_front().unwrap_or(Ok(()))
     }
 
+    fn wait_reset_backoff(&mut self, duration: Duration) {
+        self.reset_backoffs.push(duration);
+    }
+
     fn write_result(&mut self, envelope: &RunLeavesEnvelope) -> Result<(), String> {
         self.results.push(envelope.clone());
         self.result_writes.pop_front().unwrap_or(Ok(()))
+    }
+}
+
+fn child_metrics(child_attempt_count: u64) -> RunLeavesMetrics {
+    RunLeavesMetrics {
+        child_attempt_count,
+        ..RunLeavesMetrics::default()
     }
 }
 
@@ -450,23 +472,30 @@ fn run_leaves_verifies_and_selects_from_one_fresh_graph_per_iteration() {
                 action: "launch",
                 leaf: LEAF,
                 completed: 0,
+                metrics: child_metrics(0),
             },
             RunLeavesEnvelope::Progress {
                 action: "verify",
                 leaf: LEAF,
                 completed: 0,
+                metrics: child_metrics(1),
             },
             RunLeavesEnvelope::Progress {
                 action: "launch",
                 leaf: GAP,
                 completed: 1,
+                metrics: child_metrics(1),
             },
             RunLeavesEnvelope::Progress {
                 action: "verify",
                 leaf: GAP,
                 completed: 1,
+                metrics: child_metrics(2),
             },
-            RunLeavesEnvelope::Audit { completed: 2 },
+            RunLeavesEnvelope::Audit {
+                completed: 2,
+                metrics: child_metrics(2),
+            },
         ]
     );
 }
@@ -483,6 +512,8 @@ fn run_leaves_stops_on_child_or_remote_verification_failure() {
     assert_eq!(failure.step, "run-child");
     assert_eq!(failure.leaf, Some(LEAF));
     assert_eq!(child_failure.snapshots, 1);
+    assert_eq!(child_failure.wait_calls, 0);
+    assert!(child_failure.resets.is_empty());
 
     let mut verification_failure = FakeRunLeavesOperations {
         graphs: VecDeque::from([
@@ -517,7 +548,10 @@ fn run_leaves_reports_the_exact_sync_step_before_launch() {
     assert!(operations.child_leaves.is_empty());
     assert_eq!(
         operations.results.last(),
-        Some(&RunLeavesEnvelope::Failure(failure))
+        Some(&RunLeavesEnvelope::Failure {
+            failure,
+            metrics: RunLeavesMetrics::default(),
+        })
     );
 }
 
@@ -602,6 +636,7 @@ fn run_leaves_retries_only_the_same_transient_leaf_and_resets_needs_design() {
     };
     assert_eq!(execute_run_leaves(&mut transient), Ok(1));
     assert_eq!(transient.child_leaves, vec![LEAF, LEAF, LEAF]);
+    assert_eq!(transient.wait_calls, 2);
     assert_eq!(transient.resets, vec![LEAF, LEAF]);
     assert!(transient.syncs.is_empty());
 
@@ -617,7 +652,14 @@ fn run_leaves_retries_only_the_same_transient_leaf_and_resets_needs_design() {
     assert_eq!(needs_design.resets, vec![LEAF]);
     assert_eq!(
         needs_design.results.last(),
-        Some(&RunLeavesEnvelope::Failure(failure))
+        Some(&RunLeavesEnvelope::Failure {
+            failure,
+            metrics: RunLeavesMetrics {
+                child_attempt_count: 1,
+                leaf_reset_attempt_count: 1,
+                ..RunLeavesMetrics::default()
+            },
+        })
     );
 }
 
@@ -637,6 +679,21 @@ fn run_leaves_reports_retry_and_post_child_boundaries() {
     assert_eq!(failure.step, "run-child");
     assert!(failure.reason.contains("after 3 attempts"));
     assert_eq!(exhausted.resets, vec![LEAF, LEAF, LEAF]);
+    assert_eq!(exhausted.wait_calls, 3);
+    assert_eq!(exhausted.child_leaves, vec![LEAF, LEAF, LEAF]);
+    assert_eq!(
+        exhausted.results.last(),
+        Some(&RunLeavesEnvelope::Failure {
+            failure,
+            metrics: RunLeavesMetrics {
+                child_attempt_count: 3,
+                transient_child_retry_count: 2,
+                net_probe_attempt_count: 3,
+                leaf_reset_attempt_count: 3,
+                ..RunLeavesMetrics::default()
+            },
+        })
+    );
 
     let mut retry_sync_failure = FakeRunLeavesOperations {
         graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
@@ -646,6 +703,18 @@ fn run_leaves_reports_retry_and_post_child_boundaries() {
     };
     let failure = execute_run_leaves(&mut retry_sync_failure).expect_err("retry sync failure");
     assert_eq!(failure.step, "sync-before-retry");
+    assert_eq!(
+        retry_sync_failure.results.last(),
+        Some(&RunLeavesEnvelope::Failure {
+            failure,
+            metrics: RunLeavesMetrics {
+                child_attempt_count: 1,
+                net_probe_attempt_count: 1,
+                leaf_reset_attempt_count: 1,
+                ..RunLeavesMetrics::default()
+            },
+        })
+    );
 
     let mut after_child_failure = FakeRunLeavesOperations {
         graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
@@ -674,13 +743,23 @@ fn run_leaves_reports_reset_and_progress_write_failures() {
         graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
         syncs: VecDeque::from([Ok(())]),
         children: VecDeque::from([ChildAttempt::TransientApi("network".to_owned())]),
-        reset_results: VecDeque::from([Err("reset refused".to_owned())]),
+        reset_results: VecDeque::from([
+            Err("reset refused once".to_owned()),
+            Err("reset refused twice".to_owned()),
+            Err("reset refused three times".to_owned()),
+        ]),
         ..FakeRunLeavesOperations::default()
     };
     let failure =
         execute_run_leaves(&mut transient_reset_failure).expect_err("transient reset failure");
     assert_eq!(failure.step, "reset-leaf");
     assert!(failure.reason.contains("transient child reset failed"));
+    assert_eq!(transient_reset_failure.wait_calls, 3);
+    assert_eq!(transient_reset_failure.resets, vec![LEAF, LEAF, LEAF]);
+    assert_eq!(
+        transient_reset_failure.reset_backoffs,
+        vec![Duration::from_secs(2), Duration::from_secs(4)]
+    );
 
     let mut progress_failure = FakeRunLeavesOperations {
         graphs: VecDeque::from([Ok(driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))]),
@@ -693,14 +772,72 @@ fn run_leaves_reports_reset_and_progress_write_failures() {
 }
 
 #[test]
+fn run_leaves_waits_without_consuming_child_attempts_and_records_metrics() {
+    let mut offline = FakeRunLeavesOperations {
+        children: VecDeque::from([ChildAttempt::TransientApi("offline".to_owned())]),
+        wait_results: VecDeque::from([Ok(WaitOnlineResult::new(false, 4, Duration::from_secs(7)))]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let mut metrics = RunLeavesMetrics::default();
+
+    let failure = run_child_attempts(&mut offline, LEAF, 0, &mut metrics)
+        .expect_err("offline ceiling must stop the in-daemon retry");
+
+    assert_eq!(failure.step, "wait-online");
+    assert_eq!(offline.child_leaves, vec![LEAF]);
+    assert_eq!(offline.wait_calls, 1);
+    assert!(offline.resets.is_empty());
+    assert_eq!(
+        metrics,
+        RunLeavesMetrics {
+            child_attempt_count: 1,
+            net_probe_attempt_count: 4,
+            net_wait_seconds: 7,
+            ..RunLeavesMetrics::default()
+        }
+    );
+
+    let mut recovered = FakeRunLeavesOperations {
+        syncs: VecDeque::from([Ok(())]),
+        children: VecDeque::from([
+            ChildAttempt::TransientApi("offline".to_owned()),
+            ChildAttempt::Complete,
+        ]),
+        wait_results: VecDeque::from([Ok(WaitOnlineResult::new(true, 3, Duration::from_secs(6)))]),
+        ..FakeRunLeavesOperations::default()
+    };
+    let mut metrics = RunLeavesMetrics::default();
+
+    run_child_attempts(&mut recovered, LEAF, 0, &mut metrics).expect("online retry");
+
+    assert_eq!(recovered.child_leaves, vec![LEAF, LEAF]);
+    assert_eq!(recovered.wait_calls, 1);
+    assert_eq!(recovered.resets, vec![LEAF]);
+    assert_eq!(
+        metrics,
+        RunLeavesMetrics {
+            child_attempt_count: 2,
+            transient_child_retry_count: 1,
+            net_probe_attempt_count: 3,
+            net_wait_seconds: 6,
+            leaf_reset_attempt_count: 1,
+            ..RunLeavesMetrics::default()
+        }
+    );
+}
+
+#[test]
 fn run_leaves_envelopes_and_child_results_are_exact() {
     let failure = RunLeavesFailure::failed("run-child", Some(LEAF), "first\nsecond");
     assert_eq!(failure.reason, "first second");
     assert_eq!(
-        RunLeavesEnvelope::Failure(failure)
-            .render()
-            .expect("failure envelope"),
-        "FAILED_LEAF=41\nFAILED_STEP=run-child\nFAILURE_REASON=first second\nNEXT_ACTION=failed\n"
+        RunLeavesEnvelope::Failure {
+            failure,
+            metrics: RunLeavesMetrics::default(),
+        }
+        .render()
+        .expect("failure envelope"),
+        "CHILD_ATTEMPT_COUNT=0\nFAILED_LEAF=41\nFAILED_STEP=run-child\nFAILURE_REASON=first second\nLEAF_RESET_ATTEMPT_COUNT=0\nNET_PROBE_ATTEMPT_COUNT=0\nNET_WAIT_SECONDS=0\nNEXT_ACTION=failed\nRESET_BACKOFF_SECONDS=0\nTRANSIENT_CHILD_RETRY_COUNT=0\n"
     );
 
     let complete =
@@ -722,16 +859,20 @@ fn run_leaves_envelopes_and_child_results_are_exact() {
             action: "verify",
             leaf: LEAF,
             completed: 2,
+            metrics: RunLeavesMetrics::default(),
         }
         .render()
         .expect("progress envelope"),
-        "COMPLETED_LEAF_COUNT=2\nCURRENT_LEAF=41\nNEXT_ACTION=verify\n"
+        "CHILD_ATTEMPT_COUNT=0\nCOMPLETED_LEAF_COUNT=2\nCURRENT_LEAF=41\nLEAF_RESET_ATTEMPT_COUNT=0\nNET_PROBE_ATTEMPT_COUNT=0\nNET_WAIT_SECONDS=0\nNEXT_ACTION=verify\nRESET_BACKOFF_SECONDS=0\nTRANSIENT_CHILD_RETRY_COUNT=0\n"
     );
     assert_eq!(
-        RunLeavesEnvelope::Audit { completed: 3 }
-            .render()
-            .expect("audit envelope"),
-        "COMPLETED_LEAF_COUNT=3\nNEXT_ACTION=audit\nOPEN_LEAF_COUNT=0\nSNAPSHOT_WRITTEN=true\n"
+        RunLeavesEnvelope::Audit {
+            completed: 3,
+            metrics: RunLeavesMetrics::default(),
+        }
+        .render()
+        .expect("audit envelope"),
+        "CHILD_ATTEMPT_COUNT=0\nCOMPLETED_LEAF_COUNT=3\nLEAF_RESET_ATTEMPT_COUNT=0\nNET_PROBE_ATTEMPT_COUNT=0\nNET_WAIT_SECONDS=0\nNEXT_ACTION=audit\nOPEN_LEAF_COUNT=0\nRESET_BACKOFF_SECONDS=0\nSNAPSHOT_WRITTEN=true\nTRANSIENT_CHILD_RETRY_COUNT=0\n"
     );
     let unspecified = RunLeavesFailure::failed("read-graph", None, "");
     assert_eq!(unspecified.reason, "unspecified failure");
@@ -812,14 +953,18 @@ fn live_run_leaves_confines_state_and_writes_caller_owned_files() {
         output_root: output_root.path().to_path_buf(),
         output: output_root.path().join("snapshot.json"),
         result_env: output_root.path().join("run-leaves.env"),
+        net_wait_ceiling_s: DEFAULT_NET_WAIT_CEILING.as_secs(),
         operator_invoked: true,
     };
     let mut operations = LiveRunLeavesOperations::new(&arguments).expect("live operations");
     let child = operations.child_arguments(LEAF);
+    let retry_child = operations.child_arguments(LEAF);
     assert_eq!(child.umbrella, UMBRELLA);
     assert_eq!(child.leaf, LEAF);
     assert!(child.output.starts_with(&operations.driver_root));
     assert!(child.result_env.starts_with(&operations.driver_root));
+    assert_eq!(child.output, retry_child.output);
+    assert_eq!(child.result_env, retry_child.result_env);
 
     operations
         .write_snapshot(&driver_graph(&[(LEAF, GitHubIssueState::Open, false)]))
@@ -832,11 +977,12 @@ fn live_run_leaves_confines_state_and_writes_caller_owned_files() {
             action: "launch",
             leaf: LEAF,
             completed: 0,
+            metrics: RunLeavesMetrics::default(),
         })
         .expect("caller-owned result");
     assert_eq!(
         fs::read_to_string(&arguments.result_env).expect("result text"),
-        "COMPLETED_LEAF_COUNT=0\nCURRENT_LEAF=41\nNEXT_ACTION=launch\n"
+        "CHILD_ATTEMPT_COUNT=0\nCOMPLETED_LEAF_COUNT=0\nCURRENT_LEAF=41\nLEAF_RESET_ATTEMPT_COUNT=0\nNET_PROBE_ATTEMPT_COUNT=0\nNET_WAIT_SECONDS=0\nNEXT_ACTION=launch\nRESET_BACKOFF_SECONDS=0\nTRANSIENT_CHILD_RETRY_COUNT=0\n"
     );
 
     fs::create_dir(&child.result_env).expect("blocking child-result directory");
@@ -876,6 +1022,7 @@ fn live_run_leaves_rejects_outputs_inside_its_private_state_root() {
             .path()
             .join("complete-umbrella-run-leaves/snapshot.json"),
         result_env: output_root.path().join("run-leaves.env"),
+        net_wait_ceiling_s: DEFAULT_NET_WAIT_CEILING.as_secs(),
         operator_invoked: true,
     };
     let Err(error) = LiveRunLeavesOperations::new(&arguments) else {
