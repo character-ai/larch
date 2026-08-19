@@ -272,10 +272,7 @@ async fn reconcile_notes_with_service<S: ReleasePlanningService + ?Sized>(
     let source_id = resolve(repository, &arguments.source_commit).map_err(|_| {
         PrepareError::new(
             "source-commit-unresolvable",
-            format!(
-                "source commit not resolvable: {}",
-                arguments.source_commit
-            ),
+            format!("source commit not resolvable: {}", arguments.source_commit),
         )
     })?;
     if !repository

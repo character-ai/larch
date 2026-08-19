@@ -483,16 +483,6 @@ def _version_race_gate(
     return None
 
 
-def _bump_subject(runner: Runner, *, cwd: str | None) -> str:
-    result = runner.run(["git", "log", "--format=%s", "origin/main..HEAD"], cwd=cwd)
-    if result.returncode != 0:
-        return ""
-    for line in result.stdout.splitlines():
-        if _BUMP_SUBJECT_RE.fullmatch(line):
-            return line
-    return ""
-
-
 def _bump_commit(runner: Runner, *, cwd: str | None) -> tuple[str, str] | None:
     result = runner.run(["git", "log", "--format=%H\t%s", "origin/main..HEAD"], cwd=cwd)
     if result.returncode != 0:

@@ -435,10 +435,7 @@ mod release_prepare_tests {
         checked_git(&fixture, ["add", "-A"]);
         checked_git(&fixture, ["commit", "--quiet", "-m", "Mid-run PR (#99)"]);
         checked_git(&fixture, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
-        checked_git(
-            &fixture,
-            ["update-ref", "refs/heads/main", &tip.to_hex()],
-        );
+        checked_git(&fixture, ["update-ref", "refs/heads/main", &tip.to_hex()]);
         checked_git(&fixture, ["reset", "--hard", "--quiet", "main"]);
         let behind = GixRepository::open(fixture.root()).expect("behind repository");
         verify_main_worktree(&behind).expect("behind local main is allowed");
@@ -702,7 +699,7 @@ mod release_prepare_tests {
             Some("HEAD"),
             true,
         )
-            .expect("classification");
+        .expect("classification");
         assert_eq!(classification.bump, BumpType::Major);
         assert!(classification.reasoning.contains("Renamed `name:`"));
         assert!(classification.reasoning.contains("Removed `--old`"));
@@ -753,7 +750,7 @@ mod release_prepare_tests {
             Some("HEAD"),
             true,
         )
-            .expect("rename classification");
+        .expect("rename classification");
         assert!(classification.reasoning.contains("Renamed skill"));
 
         fixture

@@ -393,23 +393,35 @@ def test_release_queue_submission_uses_normal_queue_for_a_merge_method_request(
 
 
 @pytest.mark.parametrize(
-    ("subject", "expected"),
+    ("subject", "expected_version"),
     [
-        ("Release v56.3.0", "Release v56.3.0"),
-        ("Bump version to 56.3.0", "Bump version to 56.3.0"),
-        ("Release v56.3.0 (#8427)", ""),
-        ("Release v56.3", ""),
+        ("Release v56.3.0", "56.3.0"),
+        ("Bump version to 56.3.0", "56.3.0"),
+        ("Release v56.3.0 (#8427)", None),
+        ("Release v56.3", None),
     ],
 )
-def test_bump_subject_accepts_canonical_and_legacy_release_commits(
+def test_bump_commit_accepts_canonical_and_legacy_release_commits(
     subject: str,
-    expected: str,
+    expected_version: str | None,
 ) -> None:
     runner = RecordingRunner(
-        responses=[CommandResult(("git", "log"), 0, f"{subject}\n", "", 0.01)],
+        responses=[
+            CommandResult(
+                ("git", "log"),
+                0,
+                f"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\t{subject}\n",
+                "",
+                0.01,
+            ),
+        ],
     )
 
-    assert merge_module._bump_subject(runner, cwd=None) == expected  # pyright: ignore[reportPrivateUsage]
+    out = merge_module._bump_commit(runner, cwd=None)  # pyright: ignore[reportPrivateUsage]
+    if expected_version is None:
+        assert out is None
+    else:
+        assert out == ("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", expected_version)
 
 
 def test_version_race_gate_allows_behind_release_branch_when_version_unchanged() -> None:

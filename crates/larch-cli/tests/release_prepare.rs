@@ -135,7 +135,11 @@ fn release_prepare_accepts_local_main_behind_origin_tip() {
     commit_all(repository.path(), "ahead");
     git(
         repository.path(),
-        ["update-ref", "refs/remotes/origin/main", &head(repository.path())],
+        [
+            "update-ref",
+            "refs/remotes/origin/main",
+            &head(repository.path()),
+        ],
     );
     git(repository.path(), ["reset", "--hard", "--quiet", &behind]);
     let out_dir = tempfile::tempdir().expect("output directory");
@@ -195,7 +199,9 @@ fn release_prepare_accepts_clean_main_with_conversion_attributes() {
         ])
         .assert()
         .failure()
-        .stdout(predicates::str::contains("ERROR=fetch-origin-main-failed\n"));
+        .stdout(predicates::str::contains(
+            "ERROR=fetch-origin-main-failed\n",
+        ));
 }
 
 fn assert_bump(repository: &Path, base: &str, expected: &str) {
