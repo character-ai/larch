@@ -198,7 +198,10 @@ leaf reset with bounded backoff, and relaunches the same leaf from its existing
 handoff root. Probe rounds do not spend child attempts. The result environment
 records child, probe, transient-retry, reset, and wait counters. Prompt-side
 orchestration resumes only when the driver reaches the final audit state or the
-inner bounds produce a hard failure.
+inner bounds produce a hard failure. A session-keyed pointer survives the
+invoking model session. Repeating the same command rebinds a live wait lease or
+resets and reselects a stale active leaf against the original tmpdir. See
+[Complete Umbrella Recovery](complete-umbrella-recovery.md).
 
 For every `/complete-umbrella` leaf, recon/design preserves an existing valid
 issue-anchored plan or writes one when absent. Before the prepare driver can

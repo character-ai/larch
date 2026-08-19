@@ -620,11 +620,33 @@ pub fn wait_lease_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError>
 ///
 /// Returns an error when the path is unsafe or the atomic write fails.
 pub fn refresh_wait_lease(tmpdir: &Path, step: &str) -> Result<(), BgjobError> {
+    refresh_wait_lease_for_pid(tmpdir, step, process::id())
+}
+
+/// Refresh the foreground-wait lease on behalf of one validated waiter PID.
+///
+/// Resume owners use this form to bind the lease to the rehydrated session
+/// before its first foreground `bgjob wait` process exists.
+///
+/// # Errors
+///
+/// Returns an error when `waiter_pid` is zero, the path is unsafe, or the
+/// atomic write fails.
+pub fn refresh_wait_lease_for_pid(
+    tmpdir: &Path,
+    step: &str,
+    waiter_pid: u32,
+) -> Result<(), BgjobError> {
+    if waiter_pid == 0 {
+        return Err(BgjobError::Invalid(
+            "waiter pid must be a positive integer".to_owned(),
+        ));
+    }
     let epoch = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| BgjobError::Io(error.to_string()))?
         .as_secs();
-    refresh_wait_lease_at(tmpdir, step, epoch, process::id())
+    refresh_wait_lease_at(tmpdir, step, epoch, waiter_pid)
 }
 
 fn refresh_wait_lease_at(
@@ -2304,12 +2326,13 @@ mod tests {
         expand_home, finish_completion_transaction, has_live_entry_at, identity_rows,
         iter_entries_at, log_paths, parse_identity, prepare_completion_transaction,
         private_atomic_write, read_completion_transaction, read_entry, read_recovery_lease,
-        refresh_wait_lease, refresh_wait_lease_at, registry_path, reject_line_value,
-        release_recovery_claim, render_rows, resolve_candidate, resolve_run_id, resolved_directory,
-        result_env_path, set_recovery_lease_fault, startup_env_path, temporary_path, unlink_entry,
-        validate_initial_merge_rows, validate_merge_result_env, validate_parent_chain,
-        validate_run_id, validate_slug, validate_terminal_stdout_key, validated_path,
-        wait_lease_is_fresh, wait_lease_is_fresh_at, wait_lease_path, write_entry_at,
+        refresh_wait_lease, refresh_wait_lease_at, refresh_wait_lease_for_pid, registry_path,
+        reject_line_value, release_recovery_claim, render_rows, resolve_candidate, resolve_run_id,
+        resolved_directory, result_env_path, set_recovery_lease_fault, startup_env_path,
+        temporary_path, unlink_entry, validate_initial_merge_rows, validate_merge_result_env,
+        validate_parent_chain, validate_run_id, validate_slug, validate_terminal_stdout_key,
+        validated_path, wait_lease_is_fresh, wait_lease_is_fresh_at, wait_lease_path,
+        write_entry_at,
     };
     use crate::{
         IdentityProbeOutput, ProcessBirthIdentity, ProcessBirthIdentityProbeOutput,
@@ -2560,6 +2583,14 @@ mod tests {
                 .ends_with("lease-step.wait-lease.env")
         );
         assert!(!wait_lease_is_fresh(tmpdir, "lease-step", 0.0));
+
+        refresh_wait_lease_for_pid(tmpdir, "lease-step", 4242).expect("rebind");
+        let lease = fs::read_to_string(
+            wait_lease_path(tmpdir, "lease-step").expect("lease path after rebind"),
+        )
+        .expect("lease text");
+        assert!(lease.contains("WAITER_PID=4242\n"));
+        assert!(refresh_wait_lease_for_pid(tmpdir, "lease-step", 0).is_err());
     }
 
     #[test]
