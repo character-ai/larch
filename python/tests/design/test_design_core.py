@@ -59,5 +59,5 @@ def test_relocated_parse_wrapper_args_binds_value_flags_and_public_argv() -> Non
 
 def test_relocated_require_plugin_root_rejects_template_literal() -> None:
     with pytest.raises(SystemExit) as exc:
-        design_core.require_plugin_root("${CLAUDE_PLUGIN_ROOT}")
+        _ = design_core.require_plugin_root("${CLAUDE_PLUGIN_ROOT}")
     assert exc.value.code == 1

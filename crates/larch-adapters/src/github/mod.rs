@@ -16,12 +16,12 @@ pub use issue_mutation::{IssueCreateFailure, IssueMutationOwner};
 pub use mutation_auth::{LiveMutationDecision, LiveMutationRequest, check_live_mutation_auth};
 pub use operations::{
     AuditPullRequest, AuditRunsService, CompanionIssue, CreatedPullRequest, DependencyEdge,
-    DependencyMutation,
-    DependencyMutationReceipt, DependencyRef, GitHubOperationError, MergeStateStatus, Mergeable,
-    PullRequest, PullRequestEdit, PullRequestMerge, PullRequestMergeMethod, PullRequestMergeResult,
-    PullRequestReviewState, PullRequestSpec, PullRequestState, ReleaseCandidatePullRequest,
-    ReleaseCandidatePullRequestState, ReleasePlanningService, ReleasePullRequest, ReviewDecision,
-    SubIssueEdge, SubIssueMutation, SubIssueMutationReceipt, SubIssueRef,
+    DependencyMutation, DependencyMutationReceipt, DependencyRef, GitHubOperationError,
+    MergeStateStatus, Mergeable, PullRequest, PullRequestEdit, PullRequestMerge,
+    PullRequestMergeMethod, PullRequestMergeResult, PullRequestReviewState, PullRequestSpec,
+    PullRequestState, ReleaseCandidatePullRequest, ReleaseCandidatePullRequestState,
+    ReleasePlanningService, ReleasePullRequest, ReviewDecision, SubIssueEdge, SubIssueMutation,
+    SubIssueMutationReceipt, SubIssueRef,
 };
 pub use release::{
     AssetUpload, DraftReleaseInput, FetchOutcome, FetchRequest, OctocrabReleaseTransport,

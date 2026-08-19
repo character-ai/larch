@@ -461,7 +461,7 @@ def test_default_next_action_invokes_settle_subprocess(monkeypatch: pytest.Monke
         )
 
     monkeypatch.setattr(design_settle.subprocess, "run", fake_run)
-    capture = design_settle._default_next_action("gate-b", 0)
+    capture = design_settle._default_next_action("gate-b", 0)  # pyright: ignore[reportPrivateUsage]
     assert capture.rc == 0
     assert "SETTLE_NEXT_ACTION=gate-b-continue" in capture.stdout
     assert seen

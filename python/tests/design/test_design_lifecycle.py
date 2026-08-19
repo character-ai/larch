@@ -37,12 +37,11 @@ from larch.design import design_publish
 from larch.core import architectural_guidelines
 from larch.core import logging_util
 from larch.core.proc import CommandResult
-from tests.support.design_wire import dialectic_candidate_json, plan_body, run_params_json, write_result_env
+from tests.support.design_wire import dialectic_candidate_json, plan_body, run_params_json
 from larch.state import session_env
 from larch.state import _tokens as stall_tokens
 from larch.state import _validate as stall_validate
 from larch.design.design_terminal import phase_driver_read_result_env
-from test_support import write_design_source_env
 
 
 CLI = Path(__file__).resolve().parents[2] / "cli.py"
@@ -158,27 +157,8 @@ def stall_rust_commands(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(design_terminal, "_run_stall_rust_capture", capture_rust)  # pyright: ignore[reportPrivateUsage]
 
 
-def _cmd_arg(cmd: Sequence[str], flag: str) -> str:
-    return cmd[cmd.index(flag) + 1]
-
-
 def _step0_wrapper_args(env_path: Path) -> list[str]:
     return ["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)]
-
-
-def _write_ok_init_result(design: Path, *, brainstorm_requested: bool = False) -> None:
-    write_result_env(
-        design / ".design-init-runparams-result.env",
-        {
-            "INIT_STATUS": "ok",
-            "RENAMED": "false",
-            "RUN_PARAMS_PATH": str(design / "run-params.json"),
-        },
-    )
-    (design / "run-params.json").write_text(
-        run_params_json(overrides={"brainstorm_requested": brainstorm_requested}),
-        encoding="utf-8",
-    )
 
 
 def _fake_best_effort(**_kwargs: object) -> None:
@@ -381,27 +361,6 @@ def test_step1e_reentry_removes_expected_result_envs(tmp_path: Path) -> None:
 def test_pause_save_main_accepts_wrapper_argv_without_cli_prefix(tmp_path: Path) -> None:
     rc = design_pause.pause_save_main(["--design-tmpdir", str(tmp_path), "--issue", "0"])
     assert rc == 0
-
-
-def _write_design_env_stand_in(argv: list[str]) -> int:
-    """Stand in for the Rust-owned `session write-design-env` inside a fake runner.
-
-    Issue #8058 moved the writer out of Python. These resume cases only need the
-    refreshed `source-env.sh` the routed step reads back, so the shared fixture
-    writer renders it from the same flags.
-    """
-    flags = dict(zip(argv[::2], argv[1::2], strict=False))
-    overrides = {
-        key: flags[flag]
-        for flag, key in (("--repo", "REPO"), ("--issue-number", "ISSUE_NUMBER"))
-        if flags.get(flag)
-    }
-    _ = write_design_source_env(
-        flags["--design-tmpdir"],
-        overrides=overrides,
-        session_id=flags.get("--session-id", ""),
-    )
-    return 0
 
 
 def _write_session_env(tmp_path: Path, design: Path, monkeypatch: pytest.MonkeyPatch | None = None, **extra: str) -> Path:

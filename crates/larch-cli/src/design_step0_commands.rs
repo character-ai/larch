@@ -525,7 +525,10 @@ fn decode_bash_percent_q(value: &str) -> String {
     if value == "''" || value.is_empty() {
         return String::new();
     }
-    if let Some(inner) = value.strip_prefix("$'").and_then(|rest| rest.strip_suffix('\'')) {
+    if let Some(inner) = value
+        .strip_prefix("$'")
+        .and_then(|rest| rest.strip_suffix('\''))
+    {
         return decode_utf8_byte_escapes(&decode_ansi_c_quoted(inner));
     }
     let bytes: Vec<char> = value.chars().collect();
@@ -764,7 +767,10 @@ fn reap_pid_residuals(claude_pid: &str) -> Result<(), String> {
     let symlink_path = design_symlink_path(claude_pid);
     validate_design_current_env_link(&symlink_path, claude_pid)?;
     let _ = fs::remove_file(&symlink_path);
-    for target in [design_run_path(claude_pid), step0_parsed_env_path(claude_pid)] {
+    for target in [
+        design_run_path(claude_pid),
+        step0_parsed_env_path(claude_pid),
+    ] {
         if any_ancestor_symlink(&target) {
             return Err(format!("refusing symlink in path: {}", target.display()));
         }
@@ -778,9 +784,10 @@ fn reap_pid_residuals(claude_pid: &str) -> Result<(), String> {
 // ---------------------------------------------------------------------------
 
 fn require_design_tmpdir(env: &Env, design_tmpdir: Option<&str>) -> Result<PathBuf, ExitCode> {
-    let raw = design_tmpdir
-        .filter(|value| !value.is_empty())
-        .map_or_else(|| env_get(env, "DESIGN_TMPDIR", "").to_owned(), str::to_owned);
+    let raw = design_tmpdir.filter(|value| !value.is_empty()).map_or_else(
+        || env_get(env, "DESIGN_TMPDIR", "").to_owned(),
+        str::to_owned,
+    );
     if raw.is_empty() {
         eprintln!("/design wrapper: DESIGN_TMPDIR required");
         return Err(ExitCode::from(1));
@@ -838,7 +845,10 @@ fn exit_from_i32(code: i32) -> ExitCode {
 }
 
 /// Port of `phase_driver_read_result_env`: CR-free, allowlisted, order-preserving.
-fn phase_driver_read_result_env(path: &Path, allowed: &[&str]) -> Result<Vec<(String, String)>, ()> {
+fn phase_driver_read_result_env(
+    path: &Path,
+    allowed: &[&str],
+) -> Result<Vec<(String, String)>, ()> {
     if path.is_symlink() || !path.is_file() {
         return Err(());
     }
@@ -846,7 +856,10 @@ fn phase_driver_read_result_env(path: &Path, allowed: &[&str]) -> Result<Vec<(St
         Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
         Err(_error) => return Err(()),
     };
-    let cleaned: Vec<&str> = raw.split('\n').filter(|line| !line.contains('\r')).collect();
+    let cleaned: Vec<&str> = raw
+        .split('\n')
+        .filter(|line| !line.contains('\r'))
+        .collect();
     let text = cleaned.join("\n");
     let document =
         KvDocument::parse(&text, ParseOptions::legacy()).expect("legacy parser is non-rejecting");
@@ -978,10 +991,9 @@ fn run_parse_argv(
     claude_pid: &str,
 ) -> (i32, Env, String) {
     let scratch_dir = step0_parsed_env_path(claude_pid);
-    let scratch_dir = scratch_dir.parent().map_or_else(
-        || PathBuf::from("."),
-        std::path::Path::to_path_buf,
-    );
+    let scratch_dir = scratch_dir
+        .parent()
+        .map_or_else(|| PathBuf::from("."), std::path::Path::to_path_buf);
     let _ = fs::create_dir_all(&scratch_dir);
     let out_path = scratch_dir.join(format!("larch-argv.{}.{}", std::process::id(), claude_pid));
     let mut args = vec![
@@ -1040,7 +1052,10 @@ fn validate_parse_result(rc: i32, data: &Env, stderr_text: &str) -> Result<(), E
         );
         return Err(ExitCode::from(1));
     }
-    if !matches!(env_get(data, "POSITIONAL_KIND", ""), "issue" | "verbal" | "none") {
+    if !matches!(
+        env_get(data, "POSITIONAL_KIND", ""),
+        "issue" | "verbal" | "none"
+    ) {
         eprintln!(
             "**⚠ /design: design parse-flags emitted invalid POSITIONAL_KIND; aborting before session setup.**"
         );
@@ -1054,7 +1069,8 @@ fn parse_and_persist(
     ns: &WrapperNs,
     plugin_root: &Path,
 ) -> Result<(PathBuf, Env), ExitCode> {
-    let (rc, mut data, stderr_text) = run_parse_argv(runner, &ns.public_argv, plugin_root, &ns.claude_pid);
+    let (rc, mut data, stderr_text) =
+        run_parse_argv(runner, &ns.public_argv, plugin_root, &ns.claude_pid);
     validate_parse_result(rc, &data, &stderr_text)?;
     for key in PARSED_ENV_KEYS {
         if !data.contains_key(key) {
@@ -1226,8 +1242,7 @@ fn step0c_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
 /// Bridge to the still-Python `design stage-terminal-state`, capturing streams
 /// to the two log paths and returning its exit code.
 fn stage_terminal_state_bridge(stdout_log: &Path, stderr_log: &Path, args: &[String]) -> i32 {
-    let mut arguments: Vec<OsString> =
-        vec!["design".into(), "stage-terminal-state".into()];
+    let mut arguments: Vec<OsString> = vec!["design".into(), "stage-terminal-state".into()];
     arguments.extend(args.iter().map(OsString::from));
     match run_python_verb(arguments, PAUSE_LOAD_TIMEOUT) {
         Ok(output) => {
@@ -1243,7 +1258,11 @@ fn stage_terminal_state_bridge(stdout_log: &Path, stderr_log: &Path, args: &[Str
     }
 }
 
-fn clarify_failure_stage_args(design_tmpdir: &Path, exit_code: &str, detail_log: &Path) -> Vec<String> {
+fn clarify_failure_stage_args(
+    design_tmpdir: &Path,
+    exit_code: &str,
+    detail_log: &Path,
+) -> Vec<String> {
     vec![
         "--design-tmpdir".to_owned(),
         design_tmpdir.display().to_string(),
@@ -1360,13 +1379,18 @@ fn resolve_owned_run_id(design_tmpdir: &Path) -> Option<String> {
         for line in text.lines() {
             for prefix in ["LARCH_RUN_ID=", "export LARCH_RUN_ID="] {
                 if let Some(rest) = line.strip_prefix(prefix) {
-                    candidates
-                        .push(rest.trim().trim_matches(|c: char| c == '\'' || c == '"').to_owned());
+                    candidates.push(
+                        rest.trim()
+                            .trim_matches(|c: char| c == '\'' || c == '"')
+                            .to_owned(),
+                    );
                 }
             }
         }
     }
-    candidates.into_iter().find(|value| is_valid_owned_run_id(value))
+    candidates
+        .into_iter()
+        .find(|value| is_valid_owned_run_id(value))
 }
 
 /// Port of `progress_file.resolve_persisted_repo_root`: the first absolute,
@@ -1379,9 +1403,8 @@ fn resolve_persisted_repo_root(design_tmpdir: &Path) -> Option<PathBuf> {
         for line in text.lines() {
             for prefix in ["REPO_ROOT=", "export REPO_ROOT="] {
                 if let Some(rest) = line.strip_prefix(prefix) {
-                    let candidate = PathBuf::from(
-                        rest.trim().trim_matches(|c: char| c == '\'' || c == '"'),
-                    );
+                    let candidate =
+                        PathBuf::from(rest.trim().trim_matches(|c: char| c == '\'' || c == '"'));
                     if candidate.is_absolute()
                         && candidate.is_dir()
                         && let Ok(resolved) = candidate.canonicalize()
@@ -1428,7 +1451,10 @@ fn step0_abort_cleanup_with(arguments: &[OsString], runner: &dyn Step0Runner) ->
             "run-log".to_owned(),
             "append-failure".to_owned(),
             "--log".to_owned(),
-            design_tmpdir.join("execution-issues.md").display().to_string(),
+            design_tmpdir
+                .join("execution-issues.md")
+                .display()
+                .to_string(),
             "--site".to_owned(),
             "design Step 0".to_owned(),
             "--tool".to_owned(),
@@ -1438,7 +1464,10 @@ fn step0_abort_cleanup_with(arguments: &[OsString], runner: &dyn Step0Runner) ->
             "--category".to_owned(),
             "Warnings".to_owned(),
             "--output-file".to_owned(),
-            design_tmpdir.join("execution-issues.md").display().to_string(),
+            design_tmpdir
+                .join("execution-issues.md")
+                .display()
+                .to_string(),
             "--redact".to_owned(),
         ],
         &[],
@@ -1528,7 +1557,11 @@ fn gap_fill_route_state_values(env: &mut Env, design_tmpdir: &Path) {
     }
 }
 
-fn bind_step0_route_issue_env(env: &mut Env, design_tmpdir: &Path, issue_number_arg: &str) -> Result<(), ExitCode> {
+fn bind_step0_route_issue_env(
+    env: &mut Env,
+    design_tmpdir: &Path,
+    issue_number_arg: &str,
+) -> Result<(), ExitCode> {
     if !issue_number_arg.is_empty() {
         if is_all_digits(issue_number_arg) {
             let _ = env.insert("ISSUE_NUMBER".to_owned(), issue_number_arg.to_owned());
@@ -1654,7 +1687,9 @@ fn run_step0_init_driver(
         if !outcome.stderr.is_empty() {
             eprint_line(&outcome.stderr);
         }
-        eprintln!("**⚠ Step 0b: design-init-runparams.sh configuration error (exit 2); aborting /design**");
+        eprintln!(
+            "**⚠ Step 0b: design-init-runparams.sh configuration error (exit 2); aborting /design**"
+        );
         let _ = fs::remove_file(&capture_path);
         return (1, BTreeMap::new());
     }
@@ -1699,7 +1734,9 @@ fn run_step0_init_driver(
         } else {
             init_status
         };
-        eprintln!("**⚠ Step 0b: design-init-runparams.sh failed (INIT_STATUS={shown}); aborting /design**");
+        eprintln!(
+            "**⚠ Step 0b: design-init-runparams.sh failed (INIT_STATUS={shown}); aborting /design**"
+        );
         return (1, BTreeMap::new());
     }
     if emit_stdout {
@@ -1745,13 +1782,20 @@ fn emit_step0_route_rows(route: &str, resume_step: &str, route_env: &Env, env: &
     if !marker_cleared.is_empty() {
         println!("MARKER_CLEARED={marker_cleared}");
     }
-    for key in ["TITLE_FILTER_REASON", "TITLE_FILTER_MARKER", "DESIGN_REENTRY_MARKER_PATH"] {
+    for key in [
+        "TITLE_FILTER_REASON",
+        "TITLE_FILTER_MARKER",
+        "DESIGN_REENTRY_MARKER_PATH",
+    ] {
         let value = env_get(route_env, key, "");
         if !value.is_empty() {
             println!("{key}={value}");
         }
     }
-    println!("HAS_CLARIFY_LABEL={}", env_get(env, "HAS_CLARIFY_LABEL", "false"));
+    println!(
+        "HAS_CLARIFY_LABEL={}",
+        env_get(env, "HAS_CLARIFY_LABEL", "false")
+    );
     println!("ISSUE_NUMBER={}", env_get(env, "ISSUE_NUMBER", ""));
     println!("ISSUE_TITLE={}", env_get(env, "ISSUE_TITLE", ""));
     let repo = env_get(env, "REPO", "");
@@ -1840,8 +1884,14 @@ fn finish_step0_route(ctx: &RouteFinish<'_>) -> ExitCode {
         "HAS_CLARIFY_LABEL".to_owned(),
         env_get(ctx.env, "HAS_CLARIFY_LABEL", "false").to_owned(),
     ));
-    rows.push(("ISSUE_NUMBER".to_owned(), env_get(ctx.env, "ISSUE_NUMBER", "").to_owned()));
-    rows.push(("ISSUE_TITLE".to_owned(), env_get(ctx.env, "ISSUE_TITLE", "").to_owned()));
+    rows.push((
+        "ISSUE_NUMBER".to_owned(),
+        env_get(ctx.env, "ISSUE_NUMBER", "").to_owned(),
+    ));
+    rows.push((
+        "ISSUE_TITLE".to_owned(),
+        env_get(ctx.env, "ISSUE_TITLE", "").to_owned(),
+    ));
     let repo = env_get(ctx.env, "REPO", "");
     if !repo.is_empty() {
         rows.push(("REPO".to_owned(), repo.to_owned()));
@@ -1917,7 +1967,10 @@ fn step0_route_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCod
     if let Some(code) = check_pause_and_exit(&env, &design_tmpdir) {
         return code;
     }
-    for (key, value) in load_bash_quoted_env(&design_tmpdir.join(".design-step0-parsed.env"), &PARSED_ENV_KEYS) {
+    for (key, value) in load_bash_quoted_env(
+        &design_tmpdir.join(".design-step0-parsed.env"),
+        &PARSED_ENV_KEYS,
+    ) {
         let _ = env.insert(key, value);
     }
     if let Err(code) = bind_step0_route_issue_env(&mut env, &design_tmpdir, &ns.issue_number) {
@@ -2031,7 +2084,9 @@ fn step0_route_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCod
             | "cancel-pause-load"
     ) || (route.starts_with("resume@") && !resume_step.is_empty());
     if !valid {
-        eprintln!("**⚠ Step 0b: missing or invalid ROUTE after design-route.sh; aborting /design**");
+        eprintln!(
+            "**⚠ Step 0b: missing or invalid ROUTE after design-route.sh; aborting /design**"
+        );
         return ExitCode::from(1);
     }
     finish_step0_route(&RouteFinish {
@@ -2098,18 +2153,29 @@ fn step0_init_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode
     if let Some(code) = check_pause_and_exit(&env, &design_tmpdir) {
         return code;
     }
-    for (key, value) in load_bash_quoted_env(&design_tmpdir.join(".design-step0-parsed.env"), &PARSED_ENV_KEYS) {
+    for (key, value) in load_bash_quoted_env(
+        &design_tmpdir.join(".design-step0-parsed.env"),
+        &PARSED_ENV_KEYS,
+    ) {
         let _ = env.insert(key, value);
     }
-    if let Ok(pairs) = phase_driver_read_result_env(&design_tmpdir.join(ROUTE_STATE_PATH), &ROUTE_STATE_KEYS) {
+    if let Ok(pairs) =
+        phase_driver_read_result_env(&design_tmpdir.join(ROUTE_STATE_PATH), &ROUTE_STATE_KEYS)
+    {
         for (key, value) in pairs {
             let _ = env.insert(key, value);
         }
     }
     let init_route = load_route_result_route(&design_tmpdir);
     materialize_step0_feature_description(&design_tmpdir, &env, &init_route);
-    let (rc, _result) =
-        run_step0_init_driver(runner, &plugin_root, &design_tmpdir, &env, &ns.claude_pid, false);
+    let (rc, _result) = run_step0_init_driver(
+        runner,
+        &plugin_root,
+        &design_tmpdir,
+        &env,
+        &ns.claude_pid,
+        false,
+    );
     exit_from_i32(rc)
 }
 
@@ -2167,7 +2233,9 @@ fn relay_degraded_tools_gate_stdout(stdout: &str, design_tmpdir: &Path) -> Degra
             "degraded-both-down-hard-fail".clone_into(&mut step0_status);
         } else if both_down_seen
             && both_down == "false"
-            && design_tmpdir.join(".degraded-tools-gate-prompted").is_file()
+            && design_tmpdir
+                .join(".degraded-tools-gate-prompted")
+                .is_file()
         {
             "degraded-one-down".clone_into(&mut step0_status);
         } else {
@@ -2317,7 +2385,12 @@ fn step0_session_main(
     let cursor_binary = kv_last(&setup_kv, "CURSOR_BINARY_FOUND", "").to_owned();
     let active_run_id = {
         let run_id = env_get(&parsed, "run_id", "");
-        if run_id.is_empty() { &session_id } else { run_id }.to_owned()
+        if run_id.is_empty() {
+            &session_id
+        } else {
+            run_id
+        }
+        .to_owned()
     };
     // Lifecycle start.
     let lifecycle = runner.run(
@@ -2402,7 +2475,11 @@ fn step0_session_main(
         ("--cursor-present", pick("CURSOR_PRESENT", "")),
         ("--codex-binary-found", {
             let value = kv_last(&reviewer_kv, "CODEX_BINARY_FOUND", "");
-            if value.is_empty() && !reviewer_kv.iter().any(|(row, _)| row == "CODEX_BINARY_FOUND") {
+            if value.is_empty()
+                && !reviewer_kv
+                    .iter()
+                    .any(|(row, _)| row == "CODEX_BINARY_FOUND")
+            {
                 codex_binary.clone()
             } else {
                 value.to_owned()
@@ -2410,7 +2487,11 @@ fn step0_session_main(
         }),
         ("--cursor-binary-found", {
             let value = kv_last(&reviewer_kv, "CURSOR_BINARY_FOUND", "");
-            if value.is_empty() && !reviewer_kv.iter().any(|(row, _)| row == "CURSOR_BINARY_FOUND") {
+            if value.is_empty()
+                && !reviewer_kv
+                    .iter()
+                    .any(|(row, _)| row == "CURSOR_BINARY_FOUND")
+            {
                 cursor_binary.clone()
             } else {
                 value.to_owned()
@@ -2459,22 +2540,41 @@ fn step0_session_main(
             "--codex-present".to_owned(),
             {
                 let value = pick("CODEX_PRESENT", "false");
-                if value.is_empty() { "false".to_owned() } else { value }
+                if value.is_empty() {
+                    "false".to_owned()
+                } else {
+                    value
+                }
             },
             "--cursor-present".to_owned(),
             {
                 let value = pick("CURSOR_PRESENT", "false");
-                if value.is_empty() { "false".to_owned() } else { value }
+                if value.is_empty() {
+                    "false".to_owned()
+                } else {
+                    value
+                }
             },
             "--codex-binary-found".to_owned(),
-            if codex_binary.is_empty() { "false".to_owned() } else { codex_binary },
+            if codex_binary.is_empty() {
+                "false".to_owned()
+            } else {
+                codex_binary
+            },
             "--cursor-binary-found".to_owned(),
-            if cursor_binary.is_empty() { "false".to_owned() } else { cursor_binary },
+            if cursor_binary.is_empty() {
+                "false".to_owned()
+            } else {
+                cursor_binary
+            },
         ],
         &[],
         false,
     );
-    let has_degraded = gate.stdout.split('\n').any(|line| line.starts_with("DEGRADED="));
+    let has_degraded = gate
+        .stdout
+        .split('\n')
+        .any(|line| line.starts_with("DEGRADED="));
     if gate.code != 0 || !has_degraded {
         eprintln!("**⚠ /design: degraded-tools gate failed; aborting Step 0**");
         return exit_from_i32(if gate.code != 0 { gate.code } else { 1 });
@@ -2500,9 +2600,9 @@ mod tests {
 
     use super::{
         ChildOutcome, Step0Runner, bash_percent_q, decode_bash_percent_q,
-        decode_shell_assignment_value, require_plugin_root, settle_next_action, step0_abort_cleanup_with,
-        step0_ap_continue, step0_clarify_hard_halt, step0_parse_with, step0_route_with, step0_session_with,
-        step0c_with, validate_claude_pid,
+        decode_shell_assignment_value, require_plugin_root, settle_next_action,
+        step0_abort_cleanup_with, step0_ap_continue, step0_clarify_hard_halt, step0_parse_with,
+        step0_route_with, step0_session_with, step0c_with, validate_claude_pid,
     };
 
     fn arguments(values: &[&str]) -> Vec<OsString> {
@@ -2546,7 +2646,12 @@ mod tests {
                 for key in super::PARSED_ENV_KEYS {
                     let _ = data.insert(
                         key.to_owned(),
-                        if key.ends_with("_requested") { "false" } else { "" }.to_owned(),
+                        if key.ends_with("_requested") {
+                            "false"
+                        } else {
+                            ""
+                        }
+                        .to_owned(),
                     );
                 }
                 let _ = data.insert("POSITIONAL_KIND".to_owned(), "none".to_owned());
@@ -2588,7 +2693,10 @@ mod tests {
     #[test]
     fn wrapper_rejects_missing_value_and_unknown_argument() {
         assert_eq!(
-            step0_parse_with(&arguments(&["--claude-pid"]), &RecordingRunner::new(Vec::new())),
+            step0_parse_with(
+                &arguments(&["--claude-pid"]),
+                &RecordingRunner::new(Vec::new())
+            ),
             ExitCode::from(2)
         );
         assert_eq!(
@@ -2712,9 +2820,8 @@ mod tests {
         );
         assert_eq!(code, ExitCode::SUCCESS);
         // The route-state wire file records the proceed route before folded init.
-        let route_state =
-            fs::read_to_string(design_tmpdir.join(".design-step0-route-state.env"))
-                .expect("route state env");
+        let route_state = fs::read_to_string(design_tmpdir.join(".design-step0-route-state.env"))
+            .expect("route state env");
         assert!(
             route_state.contains("ROUTE=proceed"),
             "route state env: {route_state}"
@@ -2741,7 +2848,7 @@ mod tests {
 
         let body = br#"{"title":"Fix the widget","body":"widget body","labels":[{"name":"needs-design-clarification"}]}"#;
         let stub = IssueServiceStub::start([
-            IssueServiceExchange::any_json(200, body.to_vec()).expect("issue json response"),
+            IssueServiceExchange::any_json(200, body.to_vec()).expect("issue json response")
         ])
         .expect("start issue service stub");
         let base_url = stub.base_url().to_owned();

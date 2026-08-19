@@ -139,6 +139,40 @@ if [[ "\${1:-}" == plan-review && "\${2:-}" == emit ]]; then
   printf 'EMIT_PLAN_STATUS=ok\nDIFF_LINES=%s\n' "\$diff_lines"
   exit 0
 fi
+if [[ "\${1:-}" == design && "\${2:-}" == settle-next-action ]]; then
+  shift 2
+  site="" postplan_rc=""
+  while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+      --site) site="\$2"; shift 2 ;;
+      --postplan-rc) postplan_rc="\$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  action="" status="unknown-dispatch"
+  case "\$site:\$postplan_rc" in
+    gate-b:0) action=gate-b-continue; status=ok ;;
+    gate-a:0|discussion-round2:0) action=gate-a-return; status=ok ;;
+    gate-c:0) action=gate-c-return; status=ok ;;
+    gate-b:10) action=gate-b-validator-fail; status=validate-failed ;;
+    gate-a:10|discussion-round2:10) action=gate-a-validator-fail; status=validate-failed ;;
+    gate-c:10) action=gate-c-validator-fail; status=validate-failed ;;
+    gate-b:11|gate-a:11|discussion-round2:11|gate-c:11) action=pause; status=pause-save ;;
+    gate-b:12) action=gate-b-hard-size; status=plan-size-trigger ;;
+    gate-a:12|discussion-round2:12) action=gate-a-hard-size; status=plan-size-trigger ;;
+    gate-c:12) action=gate-c-hard-size; status=plan-size-trigger ;;
+    gate-b:13) action=gate-b-split; status=partition-requested ;;
+    gate-a:13|discussion-round2:13) action=gate-a-split; status=partition-requested ;;
+    gate-c:13) action=gate-c-split; status=partition-requested ;;
+  esac
+  printf 'SETTLE_STATUS=%s\n' "\$status"
+  if [[ -n "\$action" ]]; then
+    printf 'SETTLE_NEXT_ACTION=%s\n' "\$action"
+    printf 'SETTLE_EXIT_RC=%s\n' "\$postplan_rc"
+    exit 0
+  fi
+  exit 2
+fi
 exit 2
 EOF
   chmod +x "$LARCH_BINARY"

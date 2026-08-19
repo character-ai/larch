@@ -174,7 +174,13 @@ fn design_dir_seed() -> Vec<SeedFile> {
 }
 
 fn parse_args(tail: &[&str]) -> Vec<String> {
-    let mut argv = args(&["step0-parse", "--plugin-root", "{sandbox}", "--claude-pid", "4242"]);
+    let mut argv = args(&[
+        "step0-parse",
+        "--plugin-root",
+        "{sandbox}",
+        "--claude-pid",
+        "4242",
+    ]);
     argv.push("--".to_owned());
     argv.extend(tail.iter().map(|value| (*value).to_owned()));
     argv
@@ -214,7 +220,15 @@ fn parse_cases() -> Vec<ParityCase> {
         ),
         parity_case(
             "design-step0-parse-empty-plugin-root",
-            &args(&["step0-parse", "--plugin-root", "", "--claude-pid", "4242", "--", "123"]),
+            &args(&[
+                "step0-parse",
+                "--plugin-root",
+                "",
+                "--claude-pid",
+                "4242",
+                "--",
+                "123",
+            ]),
             Vec::new(),
             &[],
         ),
