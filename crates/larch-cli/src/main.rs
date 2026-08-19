@@ -1099,6 +1099,12 @@ enum DebateCommand {
     /// Record one live slot's turn: run the vendor and bind the ledger.
     #[command(name = "record-turn", disable_help_flag = true)]
     RecordTurn(RawCompatibilityArguments),
+    /// Prepare and record every live external slot's turn in one composite verb.
+    #[command(name = "round-external", disable_help_flag = true)]
+    RoundExternal(RawCompatibilityArguments),
+    /// Record the claude turn, then compose, upsert, and verify the round digest.
+    #[command(name = "round-ingest", disable_help_flag = true)]
+    RoundIngest(RawCompatibilityArguments),
     /// Abort a debate and write the tracking-issue restore handoff.
     #[command(disable_help_flag = true)]
     Abort(RawCompatibilityArguments),
@@ -2143,6 +2149,12 @@ fn run(
             }
             DebateCommand::RecordTurn(arguments) => {
                 debate_commands::record_turn(&arguments.arguments)
+            }
+            DebateCommand::RoundExternal(arguments) => {
+                debate_commands::round_external(&arguments.arguments)
+            }
+            DebateCommand::RoundIngest(arguments) => {
+                debate_commands::round_ingest(&arguments.arguments)
             }
             DebateCommand::Abort(arguments) => debate_commands::abort(&arguments.arguments),
             DebateCommand::AdjudicationPreview(arguments) => {

@@ -398,6 +398,34 @@ fn verify_comment(debate_tmpdir: &str, marker: &str, content_file: &str) -> Resu
     Ok(matches[0].0.clone())
 }
 
+/// Verify one source comment's exact redacted read-back for an in-process
+/// caller (the `debate round-ingest` composite), reusing [`verify_comment`].
+///
+/// # Errors
+///
+/// Returns `Err(())` when the metadata, content, marker, or read-back
+/// postcondition cannot be proven, matching the `comment-verify` verb.
+pub fn verify_comment_body(
+    debate_tmpdir: &str,
+    marker: &str,
+    content_file: &str,
+) -> Result<String, ()> {
+    verify_comment(debate_tmpdir, marker, content_file)
+}
+
+/// Read the source `(repository, issue)` from `debate-source.json` for an
+/// in-process caller (the `debate round-ingest` composite).
+///
+/// # Errors
+///
+/// Returns `Err(())` when the metadata file is missing or malformed.
+pub fn source_repository_issue(debate_tmpdir: &str) -> Result<(String, String), ()> {
+    let root_abs = lexical_absolute(debate_tmpdir);
+    let debate_root = TemporaryRoot::resolve(Some(&root_abs)).map_err(|_error| ())?;
+    let metadata = read_metadata(&debate_root)?;
+    Ok((metadata.repository, metadata.issue))
+}
+
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
