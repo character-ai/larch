@@ -4,7 +4,7 @@
 
 ## Activation gate
 
-Before reading stdin or checking `jq`, the hook checks `${XDG_CACHE_HOME:-${HOME:-}/.cache}/larch/deny-edit-write-active` for a fresh sentinel named `<token>-*`. Recognized token prefixes are `research`, `audit-umbrella`, `bug`, `triage`, `umbrella`, `complete-umbrella`, and `debate`. The TTL is 360 minutes. The filename embeds the writer's `$PPID` for debugging and per-run overwrite only.
+Before reading stdin or checking `jq`, the hook checks `${XDG_CACHE_HOME:-${HOME:-}/.cache}/larch/deny-edit-write-active` for a fresh sentinel named `<token>-*`. Recognized token prefixes are `research`, `audit-umbrella`, `file-bug`, `triage`, `umbrella`, `complete-umbrella`, and `debate`. The TTL is 360 minutes. The filename embeds the writer's `$PPID` for debugging and per-run overwrite only. `/debate`'s sentinel is written by `session setup --deny-edit-write debate`, so its suffix embeds the setup process PID; the other consumers keep their hand-written `<token>-$PPID` fences.
 
 A missing activation directory, unreadable directory, stale sentinel, missing token, or unrecognized token is inactive. Inactive hooks exit 0 with empty stdout. There is no any-sentinel fallback, so a stale tokenless registration cannot be re-armed by another skill's fresh sentinel. The hook performs no `$PPID` correlation because production PreToolUse parent PIDs can diverge from orchestrator Bash parent PIDs.
 

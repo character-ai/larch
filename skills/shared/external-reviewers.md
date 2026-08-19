@@ -11,7 +11,7 @@ Durable session env files must keep only the binary-found keys. Do not persist `
 
 Later vendor routing must use `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` or a fresh `command -v` / `shutil.which()` check. Step 0 probe health is not a launch-routing input.
 
-`/debate` is the narrow exception. Its Step 0 probe is immediately followed by persistent Cursor and Codex session bootstrap, so `skills/debate/SKILL.md` passes exact `CODEX_PRESENT` / `CURSOR_PRESENT` values into `debate init`. One unavailable external slot proceeds with a named per-slot warning; two unavailable external slots hard-fail before the source title changes. This exception does not write presence values to durable session env and does not change routing for another skill.
+`/debate` is the narrow exception. Its Step 0 probe is immediately followed by persistent Cursor and Codex session bootstrap, so `skills/debate/SKILL.md` passes exact `CODEX_PRESENT` / `CURSOR_PRESENT` values into `debate init-run`. One unavailable external slot proceeds with a named per-slot warning; two unavailable external slots hard-fail before the source title changes. This exception does not write presence values to durable session env and does not change routing for another skill.
 
 The Step 0 probe does not probe the sol implementation role or terra vote and fix roles. Those models remain launch-time checks, and their failures use the existing local fallback paths.
 

@@ -1166,6 +1166,9 @@ enum DebateCommand {
     /// Abort, restore the owned title, and upsert the fixed aborted comment.
     #[command(name = "abort-run", disable_help_flag = true)]
     AbortRun(RawCompatibilityArguments),
+    /// Initialize the debate, then adopt the run-owned source title in one composite verb.
+    #[command(name = "init-run", disable_help_flag = true)]
+    InitRun(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2260,6 +2263,7 @@ fn run(
                 debate_commands::publish_finish(&arguments.arguments)
             }
             DebateCommand::AbortRun(arguments) => debate_commands::abort_run(&arguments.arguments),
+            DebateCommand::InitRun(arguments) => debate_commands::init_run(&arguments.arguments),
         }),
         Domain::Deps(command) => Ok(match command {
             DepsCommand::ResolveRepo(arguments) => {

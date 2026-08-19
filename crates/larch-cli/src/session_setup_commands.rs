@@ -42,9 +42,27 @@ const SETUP_USAGE: &str = concat!(
     "                     [--check-reviewers] [--skip-codex-probe]\n",
     "                     [--skip-cursor-probe]\n",
     "                     [--write-session-env WRITE_SESSION_ENV]\n",
-    "                     [--caller-env CALLER_ENV]",
+    "                     [--caller-env CALLER_ENV]\n",
+    "                     [--deny-edit-write DENY_EDIT_WRITE]",
 );
-const SETUP_OPTIONS: &[&str] = &["--prefix", "--write-session-env", "--caller-env"];
+const SETUP_OPTIONS: &[&str] = &[
+    "--prefix",
+    "--write-session-env",
+    "--caller-env",
+    "--deny-edit-write",
+];
+/// The deny-edit-write activation tokens, duplicated from the hook allowlist
+/// in `scripts/deny-edit-write.sh` (a Bash `case` line Rust cannot import).
+/// `deny_edit_write_tokens_match_the_hook_allowlist` pins set equality.
+const DENY_EDIT_WRITE_TOKENS: &[&str] = &[
+    "research",
+    "audit-umbrella",
+    "file-bug",
+    "complete-umbrella",
+    "debate",
+    "triage",
+    "umbrella",
+];
 const SETUP_FLAGS: &[&str] = &[
     "--skip-preflight",
     "--skip-branch-check",
@@ -90,8 +108,19 @@ pub fn setup(arguments: &[OsString]) -> ExitCode {
         eprintln!("session-setup.sh: --prefix is required");
         return ExitCode::from(4);
     }
+    // Fail closed before any work: a typo must not silently skip enforcement.
+    let deny_edit_write = text(parsed.value("--deny-edit-write"));
+    if !deny_edit_write.is_empty() && !DENY_EDIT_WRITE_TOKENS.contains(&deny_edit_write.as_str()) {
+        return usage_error(
+            SETUP_USAGE,
+            "session setup",
+            &format!("argument --deny-edit-write: invalid choice: '{deny_edit_write}'"),
+            4,
+        );
+    }
     let options = SetupOptions {
         prefix,
+        deny_edit_write,
         preflight: PreflightOptions {
             skip: parsed.flag("--skip-preflight"),
             skip_branch_check: parsed.flag("--skip-branch-check"),
@@ -122,6 +151,7 @@ pub fn setup(arguments: &[OsString]) -> ExitCode {
 #[derive(Clone, Debug)]
 struct SetupOptions {
     prefix: String,
+    deny_edit_write: String,
     preflight: PreflightOptions,
     skip_repo_check: bool,
     reviewers: ReviewerOptions,
@@ -483,6 +513,11 @@ fn run_setup(
         }
     };
     check_setup_cancellation(cancellation)?;
+
+    // The sentinel is the last fallible step: a refused setup never leaves
+    // one, so the hook cannot stay armed for a session that was never handed
+    // to its caller.
+    append_deny_edit_write_sentinel(options, &mut stdout)?;
 
     let result = SetupResult {
         stdout,
@@ -1021,6 +1056,60 @@ fn sanitize_clone_tag(name: &str) -> String {
     if tag.is_empty() { "_".to_owned() } else { tag }
 }
 
+/// Activate the opt-in deny-edit-write sentinel and publish its stdout key.
+fn append_deny_edit_write_sentinel(
+    options: &SetupOptions,
+    stdout: &mut Vec<(String, String)>,
+) -> Result<(), SetupFailure> {
+    if options.deny_edit_write.is_empty() {
+        return Ok(());
+    }
+    let sentinel =
+        activate_deny_edit_write_sentinel(&options.deny_edit_write).map_err(|message| {
+            SetupFailure {
+                exit_code: 1,
+                stdout: String::new(),
+                stderr: format!("session-setup.sh: {message}\n"),
+            }
+        })?;
+    stdout.push((
+        "DENY_EDIT_WRITE_SENTINEL".to_owned(),
+        display_path(&sentinel),
+    ));
+    Ok(())
+}
+
+/// Create the scoped deny-edit-write activation sentinel for a validated token.
+///
+/// The path mirrors `activation_dir()` in `scripts/deny-edit-write.sh`:
+/// `$XDG_CACHE_HOME` (else `$HOME/.cache`) plus `larch/deny-edit-write-active`,
+/// refusing when both are unset or empty. The hook never consults a `/tmp`
+/// fallback root, so writing one there would silently skip enforcement.
+fn activate_deny_edit_write_sentinel(token: &str) -> Result<PathBuf, String> {
+    let cache_home = env::var("XDG_CACHE_HOME")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var("HOME")
+                .ok()
+                .filter(|value| !value.is_empty())
+                .map(|home| Path::new(&home).join(".cache"))
+        })
+        .ok_or_else(|| {
+            "failed to activate deny-edit-write sentinel: XDG_CACHE_HOME and HOME are unset"
+                .to_owned()
+        })?;
+    let directory = cache_home.join("larch/deny-edit-write-active");
+    ensure_directory_chain(&directory)
+        .map_err(|error| format!("failed to activate deny-edit-write sentinel: {error}"))?;
+    // The PID suffix is informational only; the hook matches `<token>-*`.
+    let sentinel = directory.join(format!("{token}-{}", std::process::id()));
+    write_confined_file(&sentinel, "", 0o600, "deny-edit-write activation sentinel")
+        .map_err(|error| format!("failed to activate deny-edit-write sentinel: {error}"))?;
+    Ok(sentinel)
+}
+
 fn write_session_identity(tmpdir: &Path) -> Result<String, String> {
     let roots = allowed_session_roots(
         env::var_os("XDG_CACHE_HOME").as_deref(),
@@ -1312,8 +1401,29 @@ fn text(value: Option<&std::ffi::OsStr>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{SetupResult, write_setup_envelope};
+    use super::{DENY_EDIT_WRITE_TOKENS, SetupResult, write_setup_envelope};
     use std::io::{self, Write};
+
+    /// G-Cfg-3 deviation guard: the token list lives in a Bash `case` line the
+    /// Rust binary cannot import, so pin set equality against the hook source.
+    #[test]
+    fn deny_edit_write_tokens_match_the_hook_allowlist() {
+        let hook = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../scripts/deny-edit-write.sh"),
+        )
+        .expect("read scripts/deny-edit-write.sh");
+        let case_line = hook
+            .lines()
+            .map(str::trim)
+            .find(|line| line.ends_with(") ;;") && line.contains('|'))
+            .expect("hook token case line");
+        let mut hook_tokens: Vec<&str> = case_line.trim_end_matches(") ;;").split('|').collect();
+        hook_tokens.sort_unstable();
+        let mut rust_tokens: Vec<&str> = DENY_EDIT_WRITE_TOKENS.to_vec();
+        rust_tokens.sort_unstable();
+        assert_eq!(rust_tokens, hook_tokens);
+    }
 
     fn result() -> SetupResult {
         SetupResult {

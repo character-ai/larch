@@ -539,6 +539,51 @@ pub fn abort_run(arguments: &[OsString]) -> ExitCode {
     finish_abort_run(run_abort_run(&parsed))
 }
 
+/// `debate init-run`
+///
+/// Composite of `init` and the start title transition, reporting
+/// `state_created` and `title_adopted` separately so the Step 6 abort funnel
+/// keeps its flags on a partial failure.
+#[must_use]
+pub fn init_run(arguments: &[OsString]) -> ExitCode {
+    let parsed = match parse_args(
+        arguments,
+        &[
+            "--debate-tmpdir",
+            "--expected-fingerprint",
+            "--repo-workdir",
+            "--log-root",
+            "--run-id",
+            "--point-universe-json",
+            "--cursor-present",
+            "--codex-present",
+            "--claude-present",
+            "--subject-file",
+            "--source-metadata-file",
+            "--restore-issue-number",
+            "--restore-original-title",
+            "--restore-title",
+            "--run-local-values-json",
+        ],
+        &[
+            "--debate-tmpdir",
+            "--expected-fingerprint",
+            "--repo-workdir",
+            "--log-root",
+            "--run-id",
+            "--point-universe-json",
+            "--cursor-present",
+            "--codex-present",
+            "--claude-present",
+            "--subject-file",
+        ],
+    ) {
+        Ok(parsed) => parsed,
+        Err(error) => return finish_init_run(Err(InitRunFailure { error, state: None })),
+    };
+    finish_init_run(run_init_run(&parsed, &default_bootstrapper))
+}
+
 /// Emit the operation envelope with an optional artifact path.
 fn finish_artifact(
     operation: &str,
@@ -946,6 +991,58 @@ fn finish_abort_run(outcome: Result<AbortRunOutcome, DebateError>) -> ExitCode {
                 )
             );
             ExitCode::from(u8::try_from(error.exit_code).unwrap_or(2))
+        }
+    }
+}
+
+/// The `init-run` extra envelope keys: the two abort-funnel booleans plus the
+/// initialization warning (empty when init never produced a state).
+fn init_run_extra(
+    state: Option<&StoredState>,
+    state_created: bool,
+    title_adopted: bool,
+) -> Vec<(&'static str, Value)> {
+    let warning = state.map_or(String::new(), |state| state.initialization.warning.clone());
+    vec![
+        ("state_created", Value::Bool(state_created)),
+        ("title_adopted", Value::Bool(title_adopted)),
+        ("warning", Value::String(warning)),
+    ]
+}
+
+/// Emit the `init-run` composite envelope and map to an exit code. A partial
+/// failure (init persisted, title adoption refused) attaches the state so the
+/// fingerprint and phase populate for the Step 6 abort funnel.
+fn finish_init_run(outcome: Result<InitRunOutcome, InitRunFailure>) -> ExitCode {
+    match outcome {
+        Ok(result) => {
+            println!(
+                "{}",
+                composite_envelope(
+                    true,
+                    "init-run",
+                    Some(&result.state),
+                    None,
+                    None,
+                    init_run_extra(Some(&result.state), true, true),
+                )
+            );
+            ExitCode::SUCCESS
+        }
+        Err(failure) => {
+            let state_created = failure.state.is_some();
+            println!(
+                "{}",
+                composite_envelope(
+                    false,
+                    "init-run",
+                    failure.state.as_deref(),
+                    None,
+                    Some(failure.error.error_class),
+                    init_run_extra(failure.state.as_deref(), state_created, false),
+                )
+            );
+            ExitCode::from(u8::try_from(failure.error.exit_code).unwrap_or(2))
         }
     }
 }
@@ -3863,6 +3960,48 @@ fn run_abort_run(parsed: &BTreeMap<String, String>) -> Result<AbortRunOutcome, D
         restore_changed: Some(restore_changed),
         comment_id: Some(comment_id),
     })
+}
+
+/// The `init-run` composite result: the persisted initialization state after
+/// the run-owned source title has been adopted.
+#[derive(Debug)]
+struct InitRunOutcome {
+    state: StoredState,
+}
+
+/// The `init-run` composite failure: the error plus the persisted state when
+/// initialization already wrote `debate-state.json`, so the caller keeps
+/// `state_created=true` and the init fingerprint for the abort funnel.
+/// The state is boxed to keep the `Err` variant small.
+#[derive(Debug)]
+struct InitRunFailure {
+    error: DebateError,
+    state: Option<Box<StoredState>>,
+}
+
+/// Initialize the debate, then adopt the run-owned source title in one
+/// process (init -> start title transition).
+fn run_init_run(
+    parsed: &BTreeMap<String, String>,
+    bootstrapper: Bootstrapper<'_>,
+) -> Result<InitRunOutcome, InitRunFailure> {
+    let state =
+        run_init(parsed, bootstrapper).map_err(|error| InitRunFailure { error, state: None })?;
+    // Adopt the title only after the durable state exists. The start mode is
+    // idempotent on an already-adopted title and always owned on success; a
+    // refusal is a partial failure carrying the persisted state.
+    if crate::debate_publication_commands::transition_title_mode(
+        &parsed["--debate-tmpdir"],
+        "start",
+    )
+    .is_err()
+    {
+        return Err(InitRunFailure {
+            error: DebateError::publication_failure(),
+            state: Some(Box::new(state)),
+        });
+    }
+    Ok(InitRunOutcome { state })
 }
 
 // ---------------------------------------------------------------------------

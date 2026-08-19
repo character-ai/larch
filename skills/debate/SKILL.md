@@ -66,34 +66,18 @@ Before scratch allocation or GitHub mutation, confirm `SendMessage` is present i
 
 If default mode is non-interactive, terminalize with lifecycle early return, emit the prompt-required envelope from the public contract, and stop. Interactive means `AskUserQuestion` is available and the invocation is not CI, eval, autonomous-loop, or an explicitly non-interactive parent.
 
-Run the default repository-state admission setup. Do not pass any skip-preflight, skip-clean, skip-branch, or skip-stash option:
+Run the default repository-state admission setup, which also activates the scoped scratch-only Write-hook sentinel. Do not pass any skip-preflight, skip-clean, skip-branch, or skip-stash option:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session setup \
-  --prefix claude-debate --check-reviewers
+  --prefix claude-debate --check-reviewers --deny-edit-write debate
 ```
 
-Parse `SESSION_TMPDIR`, `REPO_ROOT`, `REPO`, `CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_BINARY_FOUND`, and `CURSOR_BINARY_FOUND`; bind `DEBATE_TMPDIR=$SESSION_TMPDIR`. Require the clean-tree, empty-stash, main-branch, and repository checks from this default setup.
+Parse `SESSION_TMPDIR`, `REPO_ROOT`, `REPO`, `CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, and `DENY_EDIT_WRITE_SENTINEL`; bind `DEBATE_TMPDIR=$SESSION_TMPDIR`. Require the clean-tree, empty-stash, main-branch, and repository checks from this default setup.
 
 `/debate` has a documented degraded-tools exception: its persistent session bootstrap uses the exact Step 0 presence results. If both `CODEX_PRESENT` and `CURSOR_PRESENT` are not `true`, terminalize with lifecycle failure before any title transition. If exactly one is not `true`, print `**⚠ /debate: unavailable vendor: <cursor|codex>; proceeding with two live slots.**` and retain the unavailable slot as a per-slot warning.
 
-Activate the scoped Write sentinel only after setup succeeds:
-
-```bash
-if [[ -z "${XDG_CACHE_HOME:-}" && -z "${HOME:-}" ]]; then
-  printf '%s\n' "**⚠ /debate: failed to activate the scratch-only Write hook. Aborting.**"
-  exit 1
-fi
-DEBATE_DENY_ACTIVE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/larch/deny-edit-write-active"
-DEBATE_DENY_ACTIVE_SENTINEL="$DEBATE_DENY_ACTIVE_DIR/debate-$PPID"
-if ! mkdir -p "$DEBATE_DENY_ACTIVE_DIR" || ! : > "$DEBATE_DENY_ACTIVE_SENTINEL"; then
-  printf '%s\n' "**⚠ /debate: failed to activate the scratch-only Write hook. Aborting.**"
-  exit 1
-fi
-printf 'DEBATE_DENY_ACTIVE_SENTINEL=%s\n' "$DEBATE_DENY_ACTIVE_SENTINEL"
-```
-
-Parse and retain the absolute `DEBATE_DENY_ACTIVE_SENTINEL` path because Bash tool calls do not preserve variables across fences. On failure, terminalize and clean up without continuing.
+Retain the absolute `DENY_EDIT_WRITE_SENTINEL` path because Bash tool calls do not preserve variables across fences. Setup owns the sentinel and fails closed without leaving one when activation cannot be proven, so a nonzero setup exit or a missing key is a hard failure: terminalize and clean up without continuing.
 
 <!-- step:1 - Resolve source -->
 ## Step 1 - Resolve source
@@ -128,10 +112,10 @@ Require `ok=true`, the exact source identity, `$DEBATE_TMPDIR/debate-source.json
 
 Print the canonical separator and `> **🔶 /debate 2: initialize**`.
 
-Initialize the durable protocol before changing the issue title. This is the final missing-vendor and external-session bootstrap gate:
+Initialize the durable protocol and adopt the run-owned title in one composite verb. It is the final missing-vendor and external-session bootstrap gate, and it changes the title only after the durable state exists:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate init \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate init-run \
   --debate-tmpdir "$DEBATE_TMPDIR" --expected-fingerprint ABSENT \
   --repo-workdir "$REPO_ROOT" --log-root "$LOG_ROOT" --run-id "$RUN_ID" \
   --point-universe-json '[1]' \
@@ -140,16 +124,9 @@ Initialize the durable protocol before changing the issue title. This is the fin
   --subject-file "$DEBATE_TMPDIR/debate-subject.md"
 ```
 
-Require exit zero, `ok=true`, a 64-character lowercase fingerprint, no terminal outcome, and at most one named unavailable-vendor warning. Set `STATE_CREATED=true` and retain `FINGERPRINT`.
+Require exit zero, `ok=true`, a 64-character lowercase fingerprint, no terminal outcome, at most one named unavailable-vendor warning, `state_created=true`, and `title_adopted=true`. Set `STATE_CREATED=true` and `TITLE_ADOPTED=true`, and retain `FINGERPRINT`.
 
-Only now adopt the run-owned title:
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" debate title-transition \
-  --debate-tmpdir "$DEBATE_TMPDIR" --mode start
-```
-
-Require `ok=true` and `owned=true`, then set `TITLE_ADOPTED=true`. Start failure leaves the original title unchanged and routes to failure cleanup without an aborted-debate comment.
+On failure, set `STATE_CREATED` and `TITLE_ADOPTED` from the envelope's `state_created` and `title_adopted` booleans and retain its fingerprint when present, so a failure between state creation and title adoption enters the Step 6 abort funnel with the exact init fingerprint. A start-transition failure leaves the original title unchanged and routes to failure cleanup without an aborted-debate comment.
 
 <!-- step:3 - Debate rounds -->
 ## Step 3 - Debate rounds
@@ -279,4 +256,4 @@ If `STATE_CREATED=true`, run the abort funnel once with the latest validated fin
 
 In one process it aborts the durable state (idempotently when already aborted) and, only when `TITLE_ADOPTED=true`, restores the source title and posts the aborted comment. The typed owner restores the exact original title only when the live title still equals this run's exact `[DEBATING]` title. A foreign title returns `owned=false` and is never overwritten; the comment is still posted. The comment is one fixed sanitized sentence composed in Rust: `The debate ended before proposal publication. No outcome was adopted.` It is upserted exactly once with marker `<!-- larch:debate-aborted runid=$RUN_ID -->` and verified by read-back; it never includes an exception, prompt, ledger, path, issue body, or vendor output. Upsert identity makes retries update the same comment instead of creating another. Require `ok=true`.
 
-Remove the retained `DEBATE_DENY_ACTIVE_SENTINEL` path on every route. Preserve the scratch directory only when a failed local artifact is needed for diagnostics; otherwise remove it. Run lifecycle cancel for an operator cancellation, lifecycle early return only for a non-error pre-title return, and lifecycle failure for every other failure. End immediately after the shared terminal result and one concise user-facing status. Never schedule another turn.
+Remove the retained `DENY_EDIT_WRITE_SENTINEL` path on every route. Preserve the scratch directory only when a failed local artifact is needed for diagnostics; otherwise remove it. Run lifecycle cancel for an operator cancellation, lifecycle early return only for a non-error pre-title return, and lifecycle failure for every other failure. End immediately after the shared terminal result and one concise user-facing status. Never schedule another turn.

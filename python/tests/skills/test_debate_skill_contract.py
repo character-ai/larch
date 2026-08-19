@@ -27,10 +27,15 @@ def test_public_surface_and_lifecycle_are_declared() -> None:
 
 def test_pre_title_dependency_gates_are_ordered() -> None:
     text = _skill()
-    title_start = text.index("--mode start")
-    assert text.index("confirm `SendMessage` is present") < title_start
-    assert text.index("both `CODEX_PRESENT` and `CURSOR_PRESENT`") < title_start
-    assert text.index("debate init") < title_start
+    init_run = text.index("debate init-run")
+    assert text.index("confirm `SendMessage` is present") < init_run
+    assert text.index("both `CODEX_PRESENT` and `CURSOR_PRESENT`") < init_run
+    # The composite adopts the title only after the durable state exists; the
+    # standalone start transition no longer appears in the SKILL.
+    assert "debate title-transition" not in text
+    assert "--mode start" not in text
+    assert "state_created=true" in text
+    assert "title_adopted=true" in text
     assert "unavailable vendor: <cursor|codex>" in text
     assert "proceeding with two live slots" in text
 
@@ -57,8 +62,11 @@ def test_persistent_panel_and_claude_ingestion_are_explicit() -> None:
     assert "--claude-input-file" in text
     assert "Never use an ambient last-session selector" in text
     assert "<slot>-round-<ROUND>-prompt.md" in text
-    assert "DEBATE_DENY_ACTIVE_SENTINEL=%s" in text
-    assert "retained `DEBATE_DENY_ACTIVE_SENTINEL` path" in text
+    # The scoped Write-hook sentinel is setup-owned: one fence activates it and
+    # emits the path; no hand-written activation fence remains.
+    assert "--deny-edit-write debate" in text
+    assert "retained `DENY_EDIT_WRITE_SENTINEL` path" in text
+    assert "DEBATE_DENY_ACTIVE_SENTINEL" not in text
 
 
 def test_generated_handoffs_are_validated_before_use() -> None:

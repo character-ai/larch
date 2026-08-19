@@ -11,12 +11,13 @@ mod debate_commands_tests {
 
     use super::super::{
         AdjudicateArgs, AdjudicationBackend, DebateError, InitInputs, SynthesisBackend,
-        TurnOutcome, TurnRequest, compose_round_digest, default_runner, envelope, initialize,
-        input_file_runner, one_dispatch_value, parse_args, parse_operator_adjudication_row,
-        point_values, proposal_parts, run_abort, run_abort_run, run_adjudicate,
-        run_adjudication_preview, run_publish_finish, run_publish_prepare, run_publish_run,
-        run_record_turn, run_round_external, run_round_ingest, run_round_prep, run_synthesize,
-        strict_bool, synthesis_input, voter_paths,
+        TurnOutcome, TurnRequest, compose_round_digest, composite_envelope, default_runner,
+        envelope, init_run_extra, initialize, input_file_runner, one_dispatch_value, parse_args,
+        parse_operator_adjudication_row, point_values, proposal_parts, run_abort, run_abort_run,
+        run_adjudicate, run_adjudication_preview, run_init_run, run_publish_finish,
+        run_publish_prepare, run_publish_run, run_record_turn, run_round_external,
+        run_round_ingest, run_round_prep, run_synthesize, strict_bool, synthesis_input,
+        voter_paths,
     };
     use crate::github_service::with_test_github_service;
     use larch_adapters::TemporaryRoot;
@@ -1832,5 +1833,198 @@ mod debate_commands_tests {
         ))
         .expect_err("strict bool");
         assert_eq!(error.error_class, "validation");
+    }
+
+    // -----------------------------------------------------------------------
+    // init-run composite verb (#8655)
+    // -----------------------------------------------------------------------
+
+    /// Fresh debate/work/log roots with the source metadata and subject file
+    /// seeded for `init-run` (init inputs come from the metadata file). The
+    /// returned debate root is canonical so confined file flags resolve.
+    fn seed_init_run_root() -> (PathBuf, PathBuf, PathBuf) {
+        let debate = unique_dir("root");
+        let work = unique_dir("work");
+        let log = unique_dir("log");
+        let root = TemporaryRoot::resolve(Some(&debate)).expect("root");
+        seed_debate_source(&root);
+        std::fs::write(root.path().join("debate-subject.md"), SUBJECT).expect("seed subject");
+        (root.path().to_path_buf(), work, log)
+    }
+
+    fn init_run_parsed(debate: &Path, work: &Path, log: &Path) -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (
+                "--debate-tmpdir".to_owned(),
+                debate.to_string_lossy().into_owned(),
+            ),
+            ("--expected-fingerprint".to_owned(), "ABSENT".to_owned()),
+            (
+                "--repo-workdir".to_owned(),
+                work.to_string_lossy().into_owned(),
+            ),
+            ("--log-root".to_owned(), log.to_string_lossy().into_owned()),
+            ("--run-id".to_owned(), "run-1".to_owned()),
+            ("--point-universe-json".to_owned(), "[1,2]".to_owned()),
+            ("--cursor-present".to_owned(), "true".to_owned()),
+            ("--codex-present".to_owned(), "true".to_owned()),
+            ("--claude-present".to_owned(), "true".to_owned()),
+            (
+                "--source-metadata-file".to_owned(),
+                debate
+                    .join("debate-source.json")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            (
+                "--subject-file".to_owned(),
+                debate
+                    .join("debate-subject.md")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+        ])
+    }
+
+    /// The four start-transition exchanges: snapshot read at the prepared
+    /// original title, the compare-and-swap to the debating title, and the
+    /// post-swap read-back.
+    fn start_transition_exchanges() -> Vec<IssueServiceExchange> {
+        let original = "Choose a queue design";
+        let debating = "[DEBATING] Choose a queue design";
+        let prepared = "2026-08-05T12:00:00Z";
+        let after = "2026-08-05T12:00:01Z";
+        vec![
+            issue_exchange(original, prepared),
+            issue_exchange(original, prepared),
+            issue_exchange(debating, after),
+            issue_exchange(debating, after),
+        ]
+    }
+
+    #[test]
+    fn init_run_adopts_title_and_reports_both_flags() {
+        let (debate, work, log) = seed_init_run_root();
+        let (factory, server) = stub_factory(start_transition_exchanges());
+        let outcome = with_test_github_service(factory, || {
+            run_init_run(&init_run_parsed(&debate, &work, &log), &fake_bootstrap)
+        })
+        .expect("init-run succeeds");
+        assert_eq!(server.finish().expect("stub finished").len(), 4);
+        // The persisted state is the init state: 64-hex fingerprint, no round.
+        assert_eq!(outcome.state.fingerprint.len(), 64);
+        assert!(
+            outcome
+                .state
+                .fingerprint
+                .chars()
+                .all(|character| character.is_ascii_digit() || character.is_ascii_lowercase())
+        );
+        assert!(debate.join("debate-state.json").exists());
+        // The composite envelope reports both abort-funnel booleans separately.
+        let env = composite_envelope(
+            true,
+            "init-run",
+            Some(&outcome.state),
+            None,
+            None,
+            init_run_extra(Some(&outcome.state), true, true),
+        );
+        assert_eq!(
+            env,
+            format!(
+                "{{\"error_class\":null,\"fingerprint\":\"{}\",\"ok\":true,\"operation\":\"init-run\",\"phase\":\"BLIND_ROUND_1\",\"schema_version\":2,\"slot_result\":null,\"state_created\":true,\"terminal_outcome\":null,\"title_adopted\":true,\"warning\":\"\"}}",
+                outcome.state.fingerprint
+            )
+        );
+    }
+
+    #[test]
+    fn init_run_stale_snapshot_is_a_partial_failure_with_state() {
+        let (debate, work, log) = seed_init_run_root();
+        // A foreign live title refuses the start transition after init
+        // already persisted the state.
+        let (factory, server) = stub_factory(vec![issue_exchange(
+            "Operator-owned replacement",
+            "2026-08-05T12:00:02Z",
+        )]);
+        let failure = with_test_github_service(factory, || {
+            run_init_run(&init_run_parsed(&debate, &work, &log), &fake_bootstrap)
+        })
+        .expect_err("stale snapshot refuses title adoption");
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+        assert_eq!(failure.error.error_class, "publication_failure");
+        assert_eq!(failure.error.exit_code, 10);
+        let state = failure
+            .state
+            .as_deref()
+            .expect("state persisted before the title transition");
+        assert_eq!(state.fingerprint.len(), 64);
+        assert!(debate.join("debate-state.json").exists());
+        // The failure envelope carries the init fingerprint and both booleans
+        // so the SKILL enters the Step 6 funnel with STATE_CREATED=true.
+        let env = composite_envelope(
+            false,
+            "init-run",
+            failure.state.as_deref(),
+            None,
+            Some(failure.error.error_class),
+            init_run_extra(failure.state.as_deref(), true, false),
+        );
+        assert!(env.contains("\"state_created\":true"));
+        assert!(env.contains("\"title_adopted\":false"));
+        assert!(env.contains("\"error_class\":\"publication_failure\""));
+        assert!(env.contains(&format!("\"fingerprint\":\"{}\"", state.fingerprint)));
+    }
+
+    #[test]
+    fn init_run_two_unavailable_vendors_is_validation_without_state() {
+        let (debate, work, log) = seed_init_run_root();
+        let mut parsed = init_run_parsed(&debate, &work, &log);
+        let _ = parsed.insert("--cursor-present".to_owned(), "false".to_owned());
+        let _ = parsed.insert("--codex-present".to_owned(), "false".to_owned());
+        // No GitHub stub: a refused init must not reach the title owner.
+        let failure =
+            run_init_run(&parsed, &fake_bootstrap).expect_err("two unavailable vendors refuse");
+        assert_eq!(failure.error.error_class, "validation");
+        assert_eq!(failure.error.exit_code, 2);
+        assert!(failure.state.is_none());
+        assert!(!debate.join("debate-state.json").exists());
+    }
+
+    #[test]
+    fn init_run_refuses_an_existing_state_without_traffic() {
+        let (debate, work, log) = seed_init_run_root();
+        let inputs = init_inputs(&debate, &work, &log);
+        let _ = initialize(&inputs, &fake_bootstrap).expect("first init");
+        // No GitHub stub: the refusal happens before any title transition.
+        let failure = run_init_run(&init_run_parsed(&debate, &work, &log), &fake_bootstrap)
+            .expect_err("existing debate-state.json refuses");
+        assert_eq!(failure.error.error_class, "validation");
+        assert!(failure.state.is_none());
+    }
+
+    #[test]
+    fn init_run_threads_the_one_vendor_warning_into_the_extra_key() {
+        let (debate, work, log) = seed_init_run_root();
+        let mut parsed = init_run_parsed(&debate, &work, &log);
+        let _ = parsed.insert("--cursor-present".to_owned(), "false".to_owned());
+        let (factory, server) = stub_factory(start_transition_exchanges());
+        let outcome = with_test_github_service(factory, || run_init_run(&parsed, &fake_bootstrap))
+            .expect("init-run succeeds with one unavailable vendor");
+        assert_eq!(server.finish().expect("stub finished").len(), 4);
+        assert_eq!(
+            outcome.state.initialization.warning,
+            "unavailable vendor: cursor"
+        );
+        let env = composite_envelope(
+            true,
+            "init-run",
+            Some(&outcome.state),
+            None,
+            None,
+            init_run_extra(Some(&outcome.state), true, true),
+        );
+        assert!(env.contains("\"warning\":\"unavailable vendor: cursor\""));
     }
 }
