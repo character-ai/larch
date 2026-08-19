@@ -4,6 +4,20 @@ use crate::{
     DESIGNED_PREFIX, DONE_PREFIX, GitHubIssue, GitHubIssueState, IMPLEMENTING_PREFIX,
     UMBRELLA_PREFIX, UMBRELLA_PROPOSAL_MARKER,
 };
+
+/// Open-leaf title prefix written while `/design` is in flight.
+pub const DESIGNING_PREFIX: &str = "[DESIGNING] ";
+
+/// Title prefixes that keep an open direct leaf out of next-leaf candidacy.
+///
+/// Idle `[LEAF OF N]` titles remain selectable. Closed leaves never reach this
+/// list because selection already filters on `open`.
+pub const COMPLETE_UMBRELLA_NON_CANDIDATE_PREFIXES: [&str; 4] = [
+    DESIGNING_PREFIX,
+    DESIGNED_PREFIX,
+    IMPLEMENTING_PREFIX,
+    DONE_PREFIX,
+];
 /// Final child-output marker accepted before independent state verification.
 pub const COMPLETE_UMBRELLA_CHILD_COMPLETE: &str = "COMPLETE_UMBRELLA_CHILD_STATUS=complete";
 /// Final child-output marker for a leaf that needs the full `/design` lifecycle.
@@ -15,8 +29,19 @@ pub const COMPLETE_UMBRELLA_CHILD_NEEDS_DESIGN: &str =
 pub struct CompleteUmbrellaLeaf {
     pub number: u64,
     pub open: bool,
+    /// True when the open leaf must not launch: `[DESIGNING]`, `[DESIGNED]`,
+    /// `[IMPLEMENTING]`, or open `[DONE]` drift. Remains open so an otherwise
+    /// empty candidate set reports deadlock instead of a premature audit.
     pub implementing: bool,
     pub open_blockers: Vec<u64>,
+}
+
+/// Return whether an open leaf title is excluded from next-leaf candidacy.
+#[must_use]
+pub fn complete_umbrella_leaf_non_candidate(title: &str) -> bool {
+    COMPLETE_UMBRELLA_NON_CANDIDATE_PREFIXES
+        .iter()
+        .any(|prefix| title.starts_with(prefix))
 }
 
 /// The next action derived from one fresh direct-leaf snapshot.
@@ -184,9 +209,13 @@ pub fn validate_complete_umbrella_leaf(issue: &GitHubIssue, umbrella: u64) -> Re
     let prefix = umbrella_leaf_prefix(umbrella);
     let title_valid = match issue.state {
         GitHubIssueState::Open => {
+            // Admit in-flight and drifted open shapes so graph read can skip
+            // them as non-candidates instead of hard-failing the whole run.
             has_title_payload(&issue.title, &prefix)
+                || has_title_payload(&issue.title, &format!("{DESIGNING_PREFIX}{prefix}"))
                 || has_title_payload(&issue.title, &format!("{DESIGNED_PREFIX}{prefix}"))
                 || has_title_payload(&issue.title, &format!("{IMPLEMENTING_PREFIX}{prefix}"))
+                || has_title_payload(&issue.title, &format!("{DONE_PREFIX}{prefix}"))
         }
         GitHubIssueState::Closed => {
             has_title_payload(&issue.title, &format!("{DONE_PREFIX}{prefix}"))
@@ -376,6 +405,60 @@ mod tests {
     }
 
     #[test]
+    fn non_candidate_prefixes_cover_designing_designed_implementing_and_open_done() {
+        assert!(complete_umbrella_leaf_non_candidate(
+            "[DESIGNING] [LEAF OF 5] Task"
+        ));
+        assert!(complete_umbrella_leaf_non_candidate(
+            "[DESIGNED] [LEAF OF 5] Task"
+        ));
+        assert!(complete_umbrella_leaf_non_candidate(
+            "[IMPLEMENTING] [LEAF OF 5] Task"
+        ));
+        assert!(complete_umbrella_leaf_non_candidate("[DONE] [LEAF OF 5] Task"));
+        assert!(!complete_umbrella_leaf_non_candidate("[LEAF OF 5] Task"));
+        assert!(!complete_umbrella_leaf_non_candidate(
+            "Re: [DESIGNED] [LEAF OF 5] Task"
+        ));
+    }
+
+    #[test]
+    fn selection_skips_designing_designed_and_open_done_without_hard_fail() {
+        let designing = CompleteUmbrellaLeaf {
+            number: 3,
+            open: true,
+            implementing: true,
+            open_blockers: Vec::new(),
+        };
+        let designed = CompleteUmbrellaLeaf {
+            number: 5,
+            open: true,
+            implementing: true,
+            open_blockers: Vec::new(),
+        };
+        let open_done = CompleteUmbrellaLeaf {
+            number: 7,
+            open: true,
+            implementing: true,
+            open_blockers: Vec::new(),
+        };
+        let idle = CompleteUmbrellaLeaf {
+            number: 11,
+            open: true,
+            implementing: false,
+            open_blockers: Vec::new(),
+        };
+        assert_eq!(
+            select_complete_umbrella_leaf(&[designing.clone(), designed.clone(), idle.clone()], &[]),
+            CompleteUmbrellaNext::Launch(11)
+        );
+        assert_eq!(
+            select_complete_umbrella_leaf(&[designing, designed, open_done], &[]),
+            CompleteUmbrellaNext::Deadlocked(vec![3, 5, 7])
+        );
+    }
+
+    #[test]
     fn title_transitions_change_only_the_workflow_prefix() {
         let original = format!("{UMBRELLA_PREFIX}Ship the feature");
         let active = complete_umbrella_start_title(&original).expect("start title");
@@ -469,6 +552,13 @@ mod tests {
         );
         assert!(
             validate_complete_umbrella_leaf(
+                &leaf("[DESIGNING] [LEAF OF 5] Task", GitHubIssueState::Open),
+                5
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_complete_umbrella_leaf(
                 &leaf("[DESIGNED] [LEAF OF 5] Task", GitHubIssueState::Open),
                 5
             )
@@ -477,6 +567,13 @@ mod tests {
         assert!(
             validate_complete_umbrella_leaf(
                 &leaf("[IMPLEMENTING] [LEAF OF 5] Task", GitHubIssueState::Open),
+                5
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_complete_umbrella_leaf(
+                &leaf("[DONE] [LEAF OF 5] Task", GitHubIssueState::Open),
                 5
             )
             .is_ok()

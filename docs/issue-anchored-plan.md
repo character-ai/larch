@@ -71,12 +71,13 @@ outcome and reports
 `/design <leaf>` without launching implementation, adding an active title, or
 writing ship state. The parent strips a stale `[IMPLEMENTING]` prefix left by
 an older run so `/design` can admit the leaf; idle and `[DESIGNED]` titles are
-unchanged. Issue-body metadata cannot authorize this thin path to suppress the
+unchanged by that reset. Issue-body metadata cannot authorize this thin path to suppress the
 trigger. In particular, a published `oversize_override: operator` trailer has
 no run-local authority sidecar and is therefore untrusted at this gate. A full
 `/design` pass can rework the plan. A resulting `[DESIGNED] [LEAF OF N]` title
-remains selectable when the plan fits the thin route; an oversized designed
-leaf can instead use the direct `/implement` lifecycle.
+is excluded from `/complete-umbrella` candidacy like `[DESIGNING]`,
+`[IMPLEMENTING]`, and open `[DONE]`; an oversized designed leaf can instead
+use the direct `/implement` lifecycle.
 
 For a parent whose body declares a `#<N> [CHIEF UMBRELLA]` relationship, the
 ship driver also applies the following read-only Rust line-budget advisory.

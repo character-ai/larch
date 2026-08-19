@@ -27,7 +27,8 @@ use larch_core::{
     GitHubIssueState, GitHubRepositoryRef, GitHubService, Head, IMPLEMENTING_PREFIX,
     IssueMutationField, IssueMutationRequest, KvDocument, ParseOptions, ProcessRequest,
     RepositoryRead, StatusOptions, VendorLaunchRequest, VendorProgram, build_claude_argv,
-    complete_umbrella_child_prompt, complete_umbrella_done_title, complete_umbrella_relaunch_title,
+    complete_umbrella_child_prompt, complete_umbrella_done_title,
+    complete_umbrella_leaf_non_candidate, complete_umbrella_relaunch_title,
     complete_umbrella_start_title, emit_kv, has_umbrella_proposal, is_controlling_umbrella_title,
     is_transient_claude_api_error, parse_claude_envelope, redact, redact_issue_mutation_request,
     select_complete_umbrella_leaf, single_line, umbrella_leaf_opening, umbrella_leaf_prefix,
@@ -979,7 +980,7 @@ fn selection_leaves(leaves: &[LeafState]) -> Vec<CompleteUmbrellaLeaf> {
         .map(|leaf| CompleteUmbrellaLeaf {
             number: leaf.issue.number,
             open: leaf.issue.state == GitHubIssueState::Open,
-            implementing: leaf.issue.title.starts_with(IMPLEMENTING_PREFIX),
+            implementing: complete_umbrella_leaf_non_candidate(&leaf.issue.title),
             open_blockers: leaf.open_blockers.clone(),
         })
         .collect()
@@ -1673,8 +1674,10 @@ async fn read_graph(
         }
         // Closed leaves are already resolved: exclude them from candidacy and
         // do not fail closed on lifecycle-title drift. Strict [DONE] identity
-        // remains on verify-child for the leaf this run just shipped, and on
-        // open-leaf validation below.
+        // remains on verify-child for the leaf this run just shipped.
+        // Open in-flight / drifted titles ([DESIGNING], [DESIGNED],
+        // [IMPLEMENTING], open [DONE]) are admitted then excluded from
+        // candidacy so sibling leaves can still progress.
         if issue.state == GitHubIssueState::Open {
             validate_complete_umbrella_leaf(&issue, umbrella)?;
         } else if issue.is_pull_request {
