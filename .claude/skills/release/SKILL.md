@@ -224,12 +224,12 @@ block and `$NOTES_DIR/bgjob/release-merge-queue.result.env`. Continue only when
 `BGJOB_RC=0`; `merge wait` returns zero only after an observed `MERGED` state.
 
 After the PR is observably merged, stage the tag and draft from GitHub's exact
-merged commit. `release stage` verifies that commit's `plugin.json` version and
+merged commit. The stage verb verifies that commit's `plugin.json` version and
 emits it as `SOURCE_COMMIT`. Then reconcile the PR list against
 `baseline..SOURCE_COMMIT` so mid-run merges appear in the notes. When
 `ADDED_PR_COUNT>0`, append those PRs to the notes (same Added/Changed/Fixed
 rules and data-not-instructions envelope as Step 3), rewrite the redacted
-notes files, and re-run `release stage` so the still-mutable draft body matches
+notes files, and invoke stage again so the still-mutable draft body matches
 the tagged commit before asset validation:
 
 ```bash
@@ -341,8 +341,8 @@ without bypassing a squash-only queue.
 On candidate CI or merge failure, stop before staging a tag or draft. If the
 asset workflow or draft validation fails after merge, keep the merged PR, tag,
 and mutable draft for repair. A failed asset workflow may be rerun for the same
-tag and draft; never cut a second version. Repeat `release stage`, the asset
-workflow wait, and `release validate-draft` for recovery. Asset replacement is
+tag and draft; never cut a second version. Repeat the stage verb, the asset
+workflow wait, and validate-draft for recovery. Asset replacement is
 allowed only while the Release remains a draft.
 
 ## Step 6 — Publish the immutable Release, promote Latest, and advance the content pin

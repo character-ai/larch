@@ -6023,6 +6023,20 @@ migration_issue = 7752
 
 [[commands]]
 domain = "release"
+verb = "reconcile-notes"
+python_module = "larch.release.release_prepare"
+python_function = "reconcile_notes_main"
+machine_stdout = false
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7674
+migration_issue = 7749
+clean_install_test = "clean-install-release-reconcile-notes"
+
+[[commands]]
+domain = "release"
 verb = "set-version"
 python_module = "larch.release.version_bump"
 python_function = "set_version_main"
