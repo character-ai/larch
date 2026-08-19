@@ -11,6 +11,19 @@ Use this contract for long-running larch helpers that have migrated off Claude b
 
 Never treat the `bgjob wait` shell exit code, `BGJOB_STATUS=DONE` alone, launcher stdout, wrapper stdout, or compatibility sidecars as sufficient for continuation.
 
+## Clock and sleep invariant
+
+The daemon measures runtime budgets, owner grace, and wake grace with a
+suspend-pausing monotonic clock. It writes `HEARTBEAT_EPOCH` on every monitor
+poll. Wall-clock epochs are used only for logs and cross-process TTLs such as
+registry-heartbeat staleness and foreground wait-lease freshness.
+
+When a wall-clock jump reveals that the host slept, the daemon refreshes the
+registry heartbeat, resets owner validation, and grants one wait-lease window
+before it may orphan the child. Advancing the wall clock without advancing the
+monotonic clock never spends the runtime budget. A foreground waiter must still
+repeat the documented wait command to refresh its lease after resume.
+
 ## Wrapper launch example
 
 ```bash
