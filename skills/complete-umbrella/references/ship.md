@@ -33,6 +33,8 @@ Route only on `SHIP_STATUS`:
 
 Do not poll while the driver runs. Do not spawn a CI fixer when checks are pending or green. Do not spawn a conflict fixer unless the driver returned `needs_conflict_fix`.
 
+When you are a re-spawned ship attempt after an earlier interrupted or failed ship, resume from the durable handoff instead of restarting from scratch: the deterministic driver reads the persisted `complete-umbrella-ship.env` and re-enters `ship-leaf`, which pushes any local-only CI-fix commit on the leaf branch before refreshing CI. Do not discard the existing `complete-umbrella-ship.env`, `ci-fix-round-*.md`, or local branch commits. The orchestrator, not this phase, owns the bounded five-attempt ship-retry policy and the 180-second wait between attempts.
+
 After verified completion, write `$SESSION_TMPDIR/ship-summary.md` with only the PR number, PR URL, final issue state, final local HEAD, and `SHIP_STATUS=complete`.
 
 After verified completion, end with only:
