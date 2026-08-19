@@ -68,7 +68,7 @@ unmigrated launcher commands); **R** = residual gap named below.
 | `scripts/larch.sh agent dispatch-voters` | ✅ inherit | ✅ backstop | R batch | **I/R** | Voter 1 failure site token: `agent dispatch-voters voter1`. |
 | `scripts/larch.sh agent dispatch-waterfall` | ✅ inherit | ✅ backstop | R batch | **I/R** | Waterfall dropped-slot output-path exposure is residual. |
 | `scripts/larch.sh review-and-fix apply-findings` | ✅ inherit | ✅ backstop | R batch | **I/R** | The Rust repair owner forwards through the typed vendor launchers; per-tool sink + batch append is residual. |
-| `python/cli.py scout dynamic-archetypes` | ✅ inherit | ✅ backstop | R | **I/R** | Cursor tier via `agent launch-review` (**D**), Claude tier via `scripts/larch.sh agent launch-claude-subprocess` (**D**). Tier-specific raw stems + direct-Claude site-aware logging are residual; stale Codex-scout row is the incident's dropped path. |
+| `scripts/larch.sh scout dynamic-archetypes` | ✅ inherit | ✅ backstop | R | **I/R** | Cursor tier via `agent launch-review` (**D**), Claude tier via `scripts/larch.sh agent launch-claude-subprocess` (**D**). Tier-specific raw stems + direct-Claude site-aware logging are residual; stale Codex-scout row is the incident's dropped path. |
 | `scripts/generate-code-flow-diagram.sh` | ✅ inherit | R | R | **I/R** | Claude subprocess via `scripts/larch.sh agent launch-claude-subprocess` (carrier saved); `code-flow-diagram.raw.md` site-aware execution-issues + batch is residual. |
 | `python/cli.py checks lint-fix` | ✅ inherit | ✅ backstop | R batch | **I/R** | Codex/Cursor dispatch inherits; per-tool carrier resolve + batch is residual. |
 | `scripts/larch.sh agent compose-collector-failure-log` / `crates/larch-adapters/src/vendor_diagnostics.rs` | ✅ inherit | ✅ | R | **R** | Collector failure log composition now lives in the Rust adapter/CLI surface. |
@@ -95,7 +95,7 @@ the carrier into its `run-log append-failure` source and (b) call
    then batch-append; expose the dropped-slot output path.
 5. `review-and-fix CLI` `run_coder_dispatch_*` give-up: explicit per-tool sinks +
    batch append.
-6. `plan_scout.py`: tier-specific raw stems
+6. `scout dynamic-archetypes`: tier-specific raw stems
    (`${OUTPUT}.raw.cursor` / `.raw.claude`) + direct-Claude tier site-aware
    logging.
 7. `generate-code-flow-diagram.sh`: resolve `code-flow-diagram.raw.md` carrier +

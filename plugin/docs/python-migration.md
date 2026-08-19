@@ -105,9 +105,31 @@ calls `_clone_expected_tmpdir_prefix`, and Step 2 still calls the in-process
 `normalize_coder_scout()` library function. Preflight reads issues through the
 Octocrab `GitHubService` per the #7672 spike instead of shelling out to
 `gh issue view`, and resolves the repository root through `gix` per #7671.
-Three siblings remain Python and are invoked through `python_verb`:
-`issue governance-gate` (extended additively with `--preflight-envelope`),
-`scout filter-manifest`, and `ci main-health`.
+Two siblings remain Python and are invoked through `python_verb`:
+`issue governance-gate` (extended additively with `--preflight-envelope`) and
+`ci main-health`. `scout filter-manifest` was the third until #8582 made it Rust.
+
+### Plan scouting and archetype filtering cutover
+
+Issue #8582 moved all three `scout` commands to Rust atomically:
+`scout dynamic-archetypes`, `scout plan-archetypes`, and
+`scout filter-manifest`. `crates/larch-core/src/design/plan_scout.rs` owns the
+pure half — the reserved-slug tables, manifest validation, fenced-JSON salvage,
+the untrusted-text checks, and byte-stable manifest rendering — while
+`crates/larch-cli/src/scout_commands.rs` owns the three command lines and the
+effectful Cursor-then-Claude waterfall. `python/larch/design/plan_scout.py` and
+its pytest module are deleted and the registry milestones are complete.
+
+The three Rust siblings that previously spawned `scout filter-manifest` through
+Python now call the in-process `filter_manifest_paths` seam:
+`implement_commands::normalize_scout_manifest`,
+`review_dispatch_panel::filter_dynamic_manifest`, and
+`drafter_commands::filter_drafter_scout`. Two of those three discarded the
+subprocess's WARN stream, so the seam returns warnings rather than publishing
+them and only the dispatch panel re-emits them. `review dispatch-panel` reaches
+`scout dynamic-archetypes` through `run_verified_larch` instead, because that
+verb's own `KEY=value` stream must stay captured rather than merge into the
+panel's contract stdout.
 
 ### Implement Step 5-7a review-routing cutover
 

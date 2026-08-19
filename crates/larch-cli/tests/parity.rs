@@ -200,7 +200,13 @@ impl CleanInstallCase {
             | "clean-install-design-step0-init"
             | "clean-install-design-step0-abort-cleanup"
             | "clean-install-design-step0-ap-continue"
-            | "clean-install-design-step0c" => 2,
+            | "clean-install-design-step0c"
+            // The three scout verbs declared `add_help=False`, so the
+            // clean-install `--help` token reaches each parser's own
+            // required-argument refusal and exits 2.
+            | "clean-install-scout-dynamic-archetypes"
+            | "clean-install-scout-filter-manifest"
+            | "clean-install-scout-plan-archetypes" => 2,
             // The three remaining publication verbs mirror the retired Python
             // module, which caught the argparse `SystemExit` and emitted each
             // verb's own publication-failure envelope, so the clean-install
@@ -933,6 +939,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "title-eligibility",
     ),
     CleanInstallCase::new("clean-install-named-block-write", "named-block", "write"),
+    CleanInstallCase::new(
+        "clean-install-scout-dynamic-archetypes",
+        "scout",
+        "dynamic-archetypes",
+    ),
+    CleanInstallCase::new(
+        "clean-install-scout-filter-manifest",
+        "scout",
+        "filter-manifest",
+    ),
+    CleanInstallCase::new(
+        "clean-install-scout-plan-archetypes",
+        "scout",
+        "plan-archetypes",
+    ),
     CleanInstallCase::new("clean-install-plan-scope-paths", "plan", "scope-paths"),
     CleanInstallCase::new("clean-install-plan-auto-fix-commands", "plan", "auto-fix-commands"),
     CleanInstallCase::new("clean-install-plan-check-size", "plan", "check-size"),

@@ -15,7 +15,7 @@ more already-sliced files (test_execution_issues/
 test_finalize/
 test_plan_review), plus the #4459 Bucket-1 full-file duplicate group
 (test_run_logs/test_implement_dispatch/test_redact/test_release/
-test_design_lifecycle/test_decompose/test_plan_scout/
+test_design_lifecycle/test_decompose/
 test_design_summary), against regression. It does **not** yet enforce the
 invariant on the heavier `-k`-sliced files whose re-partition moves many
 tests between shards and needs wall-time re-measurement
@@ -62,7 +62,6 @@ ENFORCED = (
     "python/tests/release/test_release.py",
     "python/tests/design/test_design_lifecycle.py",
     "python/tests/design/test_decompose.py",
-    "python/tests/design/test_plan_scout.py",
     "python/tests/design/test_design_summary.py",
 )
 

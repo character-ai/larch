@@ -7070,11 +7070,13 @@ verb = "dynamic-archetypes"
 python_module = "larch.design.plan_scout"
 python_function = "dynamic_archetypes_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8582
+clean_install_test = "clean-install-scout-dynamic-archetypes"
 
 [[commands]]
 domain = "scout"
@@ -7082,11 +7084,13 @@ verb = "filter-manifest"
 python_module = "larch.design.plan_scout"
 python_function = "filter_manifest_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8582
+clean_install_test = "clean-install-scout-filter-manifest"
 
 [[commands]]
 domain = "scout"
@@ -7094,11 +7098,13 @@ verb = "plan-archetypes"
 python_module = "larch.design.plan_scout"
 python_function = "plan_archetypes_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8582
+clean_install_test = "clean-install-scout-plan-archetypes"
 
 [[commands]]
 domain = "session"
@@ -9164,12 +9170,6 @@ python = []
 rust = ["stall-recovery chat-print", "stall-recovery classify", "stall-recovery compose-report", "stall-recovery dedup-tier-a-report", "stall-recovery init-attempts", "stall-recovery is-larch-dev-clone", "stall-recovery normalize-file-failure-report-env", "stall-recovery populate-sensitive-corpus", "stall-recovery validate-terminal-state", "stall-recovery validate-token"]
 
 [[callers]]
-path = "python/larch/design/plan_scout.py"
-kind = "python-runtime"
-python = []
-rust = ["agent launch-claude-subprocess", "agent launch-review", "plan scope-paths"]
-
-[[callers]]
 path = "python/larch/git/pr_body.py"
 kind = "python-runtime"
 python = []
@@ -9508,8 +9508,8 @@ rust = []
 [[callers]]
 path = "skills/design/references/plan-review-runtime.md"
 kind = "skill"
-python = ["decompose panel-dispatch", "render plan-review", "render specialist", "render voter", "scout filter-manifest"]
-rust = ["agent launch-claude-review", "bgjob wait", "plan-review panel-dispatch", "plan-review run", "plan-review step3-entry-preview", "plan-review voter-dispatch"]
+python = ["decompose panel-dispatch", "render plan-review", "render specialist", "render voter"]
+rust = ["agent launch-claude-review", "bgjob wait", "plan-review panel-dispatch", "plan-review run", "plan-review step3-entry-preview", "plan-review voter-dispatch", "scout filter-manifest"]
 
 [[callers]]
 path = "skills/design/references/plan-review.md"
@@ -10186,8 +10186,8 @@ rust = ["review compose-findings", "review core", "review-and-fix apply-findings
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["checks run-relevant", "render specialist", "render voter", "scout dynamic-archetypes"]
-rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review aggregate-findings", "review check-reviewer-failure-threshold", "review collect-findings", "review core", "review dispatch-panel", "review emit-tally", "review gather-context", "review log-phase", "review prune-nit-findings", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "session cleanup-tmpdir", "session setup", "token claude-source"]
+python = ["checks run-relevant", "render specialist", "render voter"]
+rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review aggregate-findings", "review check-reviewer-failure-threshold", "review collect-findings", "review core", "review dispatch-panel", "review emit-tally", "review gather-context", "review log-phase", "review prune-nit-findings", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "scout dynamic-archetypes", "session cleanup-tmpdir", "session setup", "token claude-source"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"

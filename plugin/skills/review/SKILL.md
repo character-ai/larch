@@ -25,7 +25,7 @@ Commands: `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh review core` and `review compo
 
 `review reviewer-prune`, reached through `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`, owns prune-decision status and env writing.
 
-Dynamic reviewer scout contract and harness: `${CLAUDE_PLUGIN_ROOT}/python/cli.py scout dynamic-archetypes` / `${CLAUDE_PLUGIN_ROOT}/python/larch/design/plan_scout.py` / `${CLAUDE_PLUGIN_ROOT}/python/tests/design/test_plan_scout.py`.
+Dynamic reviewer scout contract and harness: `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh scout dynamic-archetypes` / `crates/larch-cli/src/scout_commands.rs` / `crates/larch-core/src/design/plan_scout.rs` / `crates/larch-cli/tests/scout_migrated_parity.rs`.
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup

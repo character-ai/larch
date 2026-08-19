@@ -483,7 +483,7 @@ test-launch-codex-exec:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test drafter_commands codex_exec
 
 test-scout-plan-archetypes-wrapper:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_plan_scout.py -q -k plan_wrapper
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test scout_migrated_parity plan_wrapper
 
 test-dispatch-plan-review-panel:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_dispatch
@@ -743,7 +743,7 @@ test-review-dispatch-panel:
 	$(HARNESS_MARK) --label $@ -- env LARCH_BINARY=target/debug/larch bash scripts/test-review-dispatch-panel.sh
 
 test-scout-dynamic-archetypes:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_plan_scout.py -q -k 'not plan_wrapper'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test scout_migrated_parity dynamic_
 
 test-dispatch-plan-voters:
 	cargo build --locked --package larch-cli

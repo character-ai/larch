@@ -4,7 +4,7 @@ debate.adjudication	AskUserQuestion	default operator decisions or autonomous ano
 debate.publication	/issue	verified source creation + proposal filing + bidirectional links	skills/debate/SKILL.md
 design.plan_review.cursor_archetypes	Cursor	Architecture/Standards Innovation/Exploration Pragmatism/Safety Requirements/Completeness	skills/design/references/plan-review-runtime.md
 design.plan_review.codex_archetypes	Codex	Architecture/Standards Innovation/Exploration Pragmatism/Safety Requirements/Completeness	skills/design/references/plan-review-runtime.md
-design.plan_review.dynamic_archetypes	up to 1	scout proposes specialists fanned into Cursor+Codex dyn slots	python/larch/design/plan_scout.py
+design.plan_review.dynamic_archetypes	up to 1	scout proposes specialists fanned into Cursor+Codex dyn slots	crates/larch-cli/src/scout_commands.rs
 design.plan_review.panel_slots	round gated static plus dynamic	NDJSON manifest from scripts/larch.sh plan-review panel-dispatch via paths-file sidecar	crates/larch-cli/src/plan_review_commands.rs
 design.decompose.split_path	AskUserQuestion	main-agent inline proposal + single AskUserQuestion Partition/Override/chat	skills/design/references/decompose-panel.md
 design.decompose.umbrella_handoff	/umbrella	exact approved batch + dependencies + in-place original conversion	skills/design/references/decompose-panel.md

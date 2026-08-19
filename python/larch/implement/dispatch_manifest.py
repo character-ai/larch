@@ -20,7 +20,6 @@ from larch.implement.dispatch_helpers import (
     _emit_kv,
     _git,
     _git_stdout,
-    _invoke_cli,
     _invoke_larch,
     _parse_kv,
     _write_bytes_atomic,
@@ -239,7 +238,7 @@ def normalize_coder_scout(
     status = "missing-or-invalid"
     try:
         if raw_count is not None:
-            result = _invoke_cli(
+            result = _invoke_larch(
                 [
                     "scout",
                     "filter-manifest",

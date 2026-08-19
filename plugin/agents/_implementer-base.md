@@ -17,7 +17,7 @@ Before exit, atomically write `<SCOUT_MANIFEST_PATH>` as a best-effort Step 5 si
 {"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"single-line reason","prompt_body":"2-6 sentence focus directive"}]}
 ```
 
-Use short lowercase slugs, preferably `dyn-<topic>`. Do not duplicate static reviewers or reserved slugs (`correctness`, `edge-cases`, `testing`, `generic`, `structure`, `plan-fidelity`, `security`; authoritative `REVIEW_RESERVED` in `python/plan_scout.py`). Keep `rationale` single-line and `prompt_body` about changed code to inspect, not output format. Scout sidecar failure is reported but nonblocking.
+Use short lowercase slugs, preferably `dyn-<topic>`. Do not duplicate static reviewers or reserved slugs (`correctness`, `edge-cases`, `testing`, `generic`, `structure`, `plan-fidelity`, `security`; authoritative `REVIEW_RESERVED` in `crates/larch-core/src/design/plan_scout.rs`). Keep `rationale` single-line and `prompt_body` about changed code to inspect, not output format. Scout sidecar failure is reported but nonblocking.
 
 Emit a `dyn-reuse` reviewer when the change adds a substantial helper or module, the plan names an existing sibling or canonical owner, an extraction occurred, or the plan records a deliberate `G-Dup-1` exception. Direct it to search for overlapping implementations and verify that the planned owner was reused. Otherwise do not add a reuse specialist merely to fill the sidecar.
 
