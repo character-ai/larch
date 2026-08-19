@@ -190,6 +190,11 @@ fn command_dispatch_rejects_invalid_inputs_before_remote_work() {
             umbrella: 0,
             ..leaf()
         }),
+        CompleteUmbrellaCommand::RecoverOrphanedChild(RecoverOrphanedChildArguments {
+            leaf: leaf(),
+            root: PathBuf::from("relative"),
+            result_env: PathBuf::from("result.env"),
+        }),
         CompleteUmbrellaCommand::ResetLeaf(ResetLeafArguments {
             leaf: LeafArguments {
                 umbrella: 0,
@@ -225,18 +230,58 @@ fn child_terminal_status_accepts_only_complete_success_marker() {
         Some(ChildResultStatus::Complete)
     );
     assert_eq!(
+        child_terminal_status("summary\nCOMPLETE_UMBRELLA_CHILD_STATUS=needs-design\n"),
+        Some(ChildResultStatus::NeedsDesign)
+    );
+    assert_eq!(
         child_terminal_status(
             "summary\nCOMPLETE_UMBRELLA_CHILD_STATUS=needs-orchestrator-finalize\n"
         ),
         None
     );
     assert!(ChildResultStatus::Complete.envelope_complete());
+    assert!(!ChildResultStatus::NeedsDesign.envelope_complete());
     assert!(!ChildResultStatus::Failed.envelope_complete());
     assert_eq!(
         child_terminal_status("COMPLETE_UMBRELLA_CHILD_STATUS=failed\n"),
         None
     );
     assert_eq!(child_terminal_status("summary\n"), None);
+}
+
+#[test]
+fn orphaned_child_recovery_requires_the_exact_transport_and_leaf_identity() {
+    let valid =
+        format!("BGJOB_RC=orphaned\nSTEP=complete-umbrella-leaf-{LEAF}\nCHILD_ISSUE={LEAF}\n");
+    assert!(validate_orphaned_child_result(&valid, LEAF).is_ok());
+    assert!(
+        validate_orphaned_child_result(
+            &format!("BGJOB_RC=timeout\nSTEP=complete-umbrella-leaf-{LEAF}\n"),
+            LEAF,
+        )
+        .is_err()
+    );
+    assert!(
+        validate_orphaned_child_result(
+            &format!("BGJOB_RC=orphaned\nSTEP=complete-umbrella-leaf-{GAP}\n"),
+            LEAF,
+        )
+        .is_err()
+    );
+    assert!(
+        validate_orphaned_child_result(
+            &format!("BGJOB_RC=orphaned\nSTEP=complete-umbrella-leaf-{LEAF}\nCHILD_ISSUE={GAP}\n"),
+            LEAF,
+        )
+        .is_err()
+    );
+    assert!(
+        validate_orphaned_child_result(
+            &format!("BGJOB_RC=orphaned\nBGJOB_RC=0\nSTEP=complete-umbrella-leaf-{LEAF}\n"),
+            LEAF,
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -503,6 +548,40 @@ async fn reset_leaf_remote_is_idempotent_for_an_idle_leaf() {
     reset_leaf_remote(&client, &Cancellation::new(), &repository(), &arguments)
         .await
         .expect("already idle");
+
+    let requests = server.finish().expect("stub completed");
+    assert!(requests.iter().all(|request| request.method != "PATCH"));
+}
+
+#[tokio::test]
+async fn reset_leaf_remote_preserves_a_designed_leaf_for_design_reentry() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let body = format!("{}\n\nTask.", umbrella_leaf_opening(UMBRELLA));
+    let designed_leaf = issue_json(
+        LEAF,
+        410,
+        "[DESIGNED] [LEAF OF 40] Task",
+        &body,
+        "open",
+        BEFORE,
+    );
+    let (client, server) = service(open_graph(&parent, &designed_leaf));
+    let arguments = LeafArguments {
+        repository: String::from("o/r"),
+        umbrella: UMBRELLA,
+        leaf: LEAF,
+    };
+
+    reset_leaf_remote(&client, &Cancellation::new(), &repository(), &arguments)
+        .await
+        .expect("designed leaf remains design-admissible");
 
     let requests = server.finish().expect("stub completed");
     assert!(requests.iter().all(|request| request.method != "PATCH"));
@@ -1033,6 +1112,44 @@ async fn child_verification_reads_the_fresh_closed_graph() {
     verify_child_remote(&service, &Cancellation::new(), &repository(), &arguments)
         .await
         .expect("verified child");
+    server.join().expect("stub completed");
+}
+
+#[tokio::test]
+async fn orphaned_child_recovery_accepts_an_exact_result_after_remote_completion() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let leaf = issue_json(
+        LEAF,
+        410,
+        "[DONE] [LEAF OF 40] Implement it",
+        &format!("{}\n\nDone.", umbrella_leaf_opening(UMBRELLA)),
+        "closed",
+        BEFORE,
+    );
+    let (service, server) = service(closed_graph(&parent, &leaf));
+    let arguments = LeafArguments {
+        repository: String::from("o/r"),
+        umbrella: UMBRELLA,
+        leaf: LEAF,
+    };
+    let result = format!("BGJOB_RC=orphaned\nSTEP=complete-umbrella-leaf-{LEAF}\n");
+
+    recover_orphaned_child_remote(
+        &service,
+        &Cancellation::new(),
+        &repository(),
+        &arguments,
+        &result,
+    )
+    .await
+    .expect("remote completion recovers the orphaned transport");
     server.join().expect("stub completed");
 }
 
