@@ -525,7 +525,7 @@ def design_run_launcher_text(pid: str, plugin_root: str) -> str:
         '    exec "$PLUGIN_ROOT/scripts/larch.sh" design "$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         "    ;;\n"
         "  step1d5|step1d7|step1e-reentry)\n"
-        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design "$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    exec "$PLUGIN_ROOT/scripts/larch.sh" design "$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         "    ;;\n"
         "  step6|step6-prelude|step6-cleanup)\n"
         '    exec python3 "$PLUGIN_ROOT/python/cli.py" design "$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
