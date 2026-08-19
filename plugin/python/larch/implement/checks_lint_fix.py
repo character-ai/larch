@@ -58,12 +58,7 @@ from larch.implement.checks_run_relevant import (
 )
 from larch.implement.dispatch_helpers import ResultEnvCaptureRows, result_env_capture_rows
 
-from larch.implement.self_edit_log import (
-    file_sha256,
-    normalize_path,
-    read_self_edits,
-    record_self_edits,
-)
+from larch.implement.self_edit_log import record_self_edits
 
 _SITE_LABELS: Final[dict[str, str]] = {
     "step3": "Step 3",
@@ -540,46 +535,6 @@ def _run_repair_loop_foreground(
     )
     _emit_repair_loop_outcome(action=action, loop=loop)
     return 0 if action in {"continue", "main-agent-edit"} else 1
-
-
-def checks_self_edit_log_main(argv: list[str] | None = None) -> int:
-    """Show self-edit attribution records (issue #6876).
-
-    The orchestrator consults this before concluding that a between-action
-    working-tree change came from a concurrent/external runner. With ``--path``,
-    ``SELF_EDIT_ATTRIBUTED`` reports whether one of this run's own spawned
-    subprocesses changed that path; adding ``--repo-root`` also reports
-    ``SELF_EDIT_CONTENT_MATCHES`` (the file's current content equals a recorded
-    post-edit hash).
-    """
-    parser = argparse.ArgumentParser(prog="cli.py checks self-edit-log")
-    _ = parser.add_argument("--tmpdir", required=True)
-    _ = parser.add_argument("--path", default="")
-    _ = parser.add_argument("--repo-root", default="")
-    args = parser.parse_args(argv)
-    canonical_tmp = validate_tmpdir(args.tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
-    if canonical_tmp is None:
-        print("SELF_EDIT_LOG_STATUS=tmpdir-validation")
-        return 2
-    records = read_self_edits(canonical_tmp)
-    if args.path:
-        query = normalize_path(args.path)
-        rows = [record for record in records if record.path == query]
-        print(f"SELF_EDIT_ATTRIBUTED={'true' if rows else 'false'}")
-        if args.repo_root and rows:
-            current = file_sha256(args.repo_root, query)
-            fresh = any(record.post_sha256 == current for record in rows)
-            print(f"SELF_EDIT_CONTENT_MATCHES={'true' if fresh else 'false'}")
-    else:
-        print(f"SELF_EDIT_COUNT={len(records)}")
-        rows = records
-    for record in rows:
-        print(
-            f"SELF_EDIT source={record.source} recorded_epoch_s={record.recorded_epoch_s} "
-            f"post_sha256={record.post_sha256} path={record.path}"
-        )
-    print("SELF_EDIT_LOG_STATUS=ok")
-    return 0
 
 
 def _site_label(site: str) -> str:

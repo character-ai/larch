@@ -24,7 +24,7 @@ Terminal logs phase:
 ```
 
 The normal path uses the composite
-`python/cli.py implement step-18-gate-logs-flush`. The standalone phases remain
+`scripts/larch.sh implement step-18-gate-logs-flush`. The standalone phases remain
 for the active-stall breakout path.
 
 ## Gate phase
@@ -83,6 +83,5 @@ Step 18b KVs, and marker lines remain on captured stdout.
 ## Edit in sync
 
 Update `skills/implement/SKILL.md`, `skills/implement/scripts/step-19.md`,
-`python/larch/implement/dispatch_step18.py`,
-`python/larch/implement/dispatch_step19.py`, the focused tests, runtime
-projection, and `docs/linting.md` when this contract changes.
+`crates/larch-cli/src/implement_terminal_commands.rs`, the focused tests,
+runtime projection, and `docs/linting.md` when this contract changes.

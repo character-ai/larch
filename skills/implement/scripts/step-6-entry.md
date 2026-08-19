@@ -13,7 +13,7 @@ Step 6 review boundary bgjob launcher. The foreground wrapper resolves persisted
 
 ## Identity contract
 
-Independent of `run-step-checks.sh --site step6`. Production Step 6 live and completed rejoin paths use the shared classifier (`python3 python/cli.py implement checks-result-identity`) with terminal actions `continue`, `stall`, `checks-failed`, and `skip-to-7a`. Identity-valid `NEXT_ACTION=skip-to-7a` rejoins and preserves existing routing.
+Independent of `run-step-checks.sh --site step6`. Production Step 6 live and completed rejoin paths use the shared classifier (`scripts/larch.sh implement checks-result-identity`) with terminal actions `continue`, `stall`, `checks-failed`, and `skip-to-7a`. Identity-valid `NEXT_ACTION=skip-to-7a` rejoins and preserves existing routing.
 
 Child mode receives the validated persisted `REPO_ROOT` and immutable launch identity, executes against that root, revalidates identity before checks and before terminal publication, and converts either mismatch into a non-reusable `NEXT_ACTION=identity-integrity-failed` envelope.
 

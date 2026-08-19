@@ -10,7 +10,7 @@ cleanup fails closed and preserves the session.
 The wrapper delegates to:
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement step-19 \
+"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" implement step-19 \
   --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 

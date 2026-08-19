@@ -1283,6 +1283,8 @@ pub fn gather_branch_context_for_review(output_dir: &Path) -> Result<BranchConte
         .block_on(git.exact_diff(
             ExactDiffRequest {
                 cached: false,
+                binary: false,
+                no_ext_diff: false,
                 unified_context: Some(20),
                 name_only: false,
                 name_status: false,
@@ -1299,6 +1301,8 @@ pub fn gather_branch_context_for_review(output_dir: &Path) -> Result<BranchConte
         .block_on(git.exact_diff(
             ExactDiffRequest {
                 cached: false,
+                binary: false,
+                no_ext_diff: false,
                 unified_context: None,
                 name_only: true,
                 name_status: false,

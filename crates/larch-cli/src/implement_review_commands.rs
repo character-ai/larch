@@ -1324,7 +1324,7 @@ fn read_result_rows(path: &Path, tmpdir: &Path) -> Result<Option<HashMap<String,
 // ---------------------------------------------------------------------------
 
 fn resolve_session_repo_root(tmpdir: &Path) -> Result<PathBuf, String> {
-    let output = resolve_repo_root_output(tmpdir)?;
+    let output = resolve_repo_root_output(tmpdir);
     if !output.status().success() {
         let err = String::from_utf8_lossy(output.stderr());
         let message = if err.trim().is_empty() {
@@ -1844,8 +1844,26 @@ mod tests {
         clear_test_hooks, install_test_larch, install_test_python,
     };
     use larch_core::ProcessStatus;
+    use larch_test_support::{GitFixture, GitRepository};
     use std::ffi::OsStr;
     use tempfile::TempDir;
+
+    /// Seed a real repository plus session env for the in-process identity verbs.
+    ///
+    /// `implement checks-result-identity` is Rust-owned and computed in process,
+    /// so these paths need a repository rather than a stubbed Python child.
+    fn seed_identity(tmpdir: &Path) -> (GitRepository, LaunchIdentity) {
+        let repository = GitRepository::builder(GitFixture::Refs)
+            .build()
+            .expect("git fixture");
+        fs::write(
+            tmpdir.join("session-env.sh"),
+            format!("REPO_ROOT={}\n", repository.root().display()),
+        )
+        .expect("session env");
+        let identity = checks_launch_identity(tmpdir).expect("launch identity");
+        (repository, identity)
+    }
 
     fn out(code: i32, stdout: &str) -> ProcessOutput {
         ProcessOutput::new(
@@ -2220,15 +2238,16 @@ mod tests {
     }
 
     #[test]
-    fn resolve_session_repo_root_reads_python_repo_root() {
+    fn resolve_session_repo_root_reads_persisted_repo_root() {
         let dir = TempDir::new().unwrap();
         let _guard = arm_plugin_root(&dir);
-        install_test_python(|_args| Ok(out(0, "REPO_ROOT=/repo/here\n")));
+        let (repository, identity) = seed_identity(dir.path());
         assert_eq!(
             resolve_session_repo_root(dir.path()).unwrap(),
-            PathBuf::from("/repo/here")
+            identity.repo_root
         );
-        install_test_python(|_args| Ok(out(1, "")));
+        drop(repository);
+        fs::remove_file(dir.path().join("session-env.sh")).unwrap();
         assert!(resolve_session_repo_root(dir.path()).is_err());
     }
 
@@ -2469,7 +2488,7 @@ mod tests {
     fn checks_step5_resume_pass_runs_resume_leg() {
         let tmp = TempDir::new().unwrap();
         let _guard = arm_plugin_root(&tmp);
-        install_test_python(|_a| Ok(out(0, "REPO_ROOT=/repo\n")));
+        let _repository = seed_identity(tmp.path());
         install_test_larch(|_c, _r, args| match arg_at(args, 0).as_str() {
             "checks" => Ok(out(
                 0,
@@ -2488,7 +2507,7 @@ mod tests {
     fn checks_step5_resume_fail_emits_checks_failed() {
         let tmp = TempDir::new().unwrap();
         let _guard = arm_plugin_root(&tmp);
-        install_test_python(|_a| Ok(out(0, "REPO_ROOT=/repo\n")));
+        let _repository = seed_identity(tmp.path());
         install_test_larch(|_c, _r, _a| Ok(out(2, "")));
         let (rc, text) = run_checks_step5_resume(tmp.path(), "step5", "2");
         assert_eq!(rc, 0);
@@ -2499,7 +2518,6 @@ mod tests {
     fn checks_step5_resume_repo_root_failure_bails() {
         let tmp = TempDir::new().unwrap();
         let _guard = arm_plugin_root(&tmp);
-        install_test_python(|_a| Ok(out(1, "")));
         let (rc, _text) = run_checks_step5_resume(tmp.path(), "step5", "2");
         assert_eq!(rc, 2);
     }
@@ -2572,30 +2590,11 @@ mod tests {
         assert_eq!(checkpoint_execution_issues(tmp.path(), "r1"), "ok");
     }
 
-    /// Mock the two-step identity resolution (`resolve-repo-root` + `compute`).
-    fn install_identity_python(repo_root: &str) {
-        let repo_root = repo_root.to_owned();
-        install_test_python(move |args| {
-            let verb = args
-                .get(2)
-                .map(|a| a.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            if verb == "resolve-repo-root" {
-                Ok(out(0, &format!("REPO_ROOT={repo_root}\n")))
-            } else {
-                Ok(out(
-                    0,
-                    "CHECKS_INPUT_HEAD_SHA=head1\nCHECKS_INPUT_TREE_FP=fp1\nCHECKS_INPUT_FP_SCHEMA=v1\n",
-                ))
-            }
-        });
-    }
-
     #[test]
     fn publish_step5_child_appends_identity_rows() {
         let tmp = TempDir::new().unwrap();
         let _guard = arm_plugin_root(&tmp);
-        install_identity_python(&tmp.path().to_string_lossy());
+        let (_repository, identity) = seed_identity(tmp.path());
         let merge = tmp.path().join("child.env");
         assert!(publish_step5_child(
             tmp.path(),
@@ -2604,21 +2603,21 @@ mod tests {
         ));
         let written = fs::read_to_string(&merge).unwrap();
         assert!(written.contains("STEP5_REVIEW_STATUS=complete"));
-        assert!(written.contains("CHECKS_INPUT_HEAD_SHA=head1"));
+        assert!(written.contains(&format!("{CHECKS_HEAD}={}", identity.head_sha)));
     }
 
     #[test]
     fn step5_result_identity_ok_matches_live_identity() {
         let tmp = TempDir::new().unwrap();
         let _guard = arm_plugin_root(&tmp);
-        install_identity_python(&tmp.path().to_string_lossy());
+        let (_repository, identity) = seed_identity(tmp.path());
         let matching = map(&[
-            ("CHECKS_INPUT_HEAD_SHA", "head1"),
-            ("CHECKS_INPUT_TREE_FP", "fp1"),
-            ("CHECKS_INPUT_FP_SCHEMA", "v1"),
+            (CHECKS_HEAD, identity.head_sha.as_str()),
+            (CHECKS_FP, identity.tree_fp.as_str()),
+            (CHECKS_SCHEMA, identity.schema.as_str()),
         ]);
         assert!(step5_result_identity_ok(tmp.path(), &matching));
-        let stale = map(&[("CHECKS_INPUT_HEAD_SHA", "other")]);
+        let stale = map(&[(CHECKS_HEAD, "other")]);
         assert!(!step5_result_identity_ok(tmp.path(), &stale));
     }
 
@@ -2626,10 +2625,11 @@ mod tests {
     fn step5_canonical_state_complete_when_identity_matches() {
         let tmp = TempDir::new().unwrap();
         let _guard = arm_plugin_root(&tmp);
-        install_identity_python(&tmp.path().to_string_lossy());
+        let (_repository, identity) = seed_identity(tmp.path());
         let mut body = format!(
             "STEP={STEP5_REVIEW_STEP}\nBGJOB_RC=0\nSTEP5_REVIEW_STATUS=complete\n\
-             CHECKS_INPUT_HEAD_SHA=head1\nCHECKS_INPUT_TREE_FP=fp1\nCHECKS_INPUT_FP_SCHEMA=v1\n"
+             {CHECKS_HEAD}={}\n{CHECKS_FP}={}\n{CHECKS_SCHEMA}={}\n",
+            identity.head_sha, identity.tree_fp, identity.schema
         );
         for key in STEP5_RESULT_ENVELOPE_KEYS {
             if *key != "STEP5_REVIEW_STATUS" {

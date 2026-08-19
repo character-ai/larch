@@ -187,22 +187,6 @@ from larch.implement.dispatch_ship import (
     step8_ship_main,
 )
 
-# --- step 18 gate and terminal logs flush ---
-from larch.implement.dispatch_step18 import (
-    StallLayers,
-    _emit_stall_layers,
-    _normalize_outcome_for_step18,
-    _read_stall_layer_from_file,
-    _resolve_stall_layers,
-    _resolve_stall_memory_layer,
-    _stall_layer_active,
-    step_18_gate_logs_flush_main,
-    step_18_main,
-)
-
-# --- step 19 cleanup ---
-from larch.implement.dispatch_step19 import _should_restore_finalize, _terminalization_record_valid, step_19_main
-
 # --- recovery paths and implement commit ---
 from larch.implement.dispatch_recovery import (
     RecoveryPorcelainInputs,

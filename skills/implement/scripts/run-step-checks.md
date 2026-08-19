@@ -21,7 +21,7 @@ Live-row mismatch fails closed: the wrapper emits an error and exits without del
 
 Child mode receives the validated `REPO_ROOT` and immutable launch identity, executes with cwd and `CLAUDE_PROJECT_DIR` bound to that root, revalidates identity immediately before checks and again before publishing the terminal merge envelope, and publishes a non-reusable `NEXT_ACTION=identity-integrity-failed` envelope on drift.
 
-Shared classifier: `python3 python/cli.py implement checks-result-identity`.
+Shared classifier: `scripts/larch.sh implement checks-result-identity`.
 
 ## KV grammar
 

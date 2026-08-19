@@ -34,6 +34,7 @@ mod blocker_commands;
 pub(crate) mod bootstrap_commands;
 mod bootstrap_support;
 mod calibration_commands;
+mod checks_identity_commands;
 mod child_process;
 mod ci_launcher_commands;
 mod ci_selection;
@@ -71,6 +72,7 @@ mod implement_dispatch_commands;
 mod implement_launcher_commands;
 mod implement_preflight_commands;
 mod implement_review_commands;
+mod implement_terminal_commands;
 mod issue_commands;
 mod issue_create_commands;
 mod issue_dependency_commands;
@@ -216,6 +218,9 @@ enum Domain {
     /// Collect GitHub Actions timing inputs and resolve trusted source runs.
     #[command(subcommand)]
     CiTiming(CiTimingCommand),
+    /// `/implement` checks-loop attribution reads.
+    #[command(subcommand)]
+    Checks(ChecksCommand),
     /// Fail-closed Rust CI selection and history helpers.
     #[command(subcommand)]
     Ci(CiCommand),
@@ -961,6 +966,9 @@ enum AdmissionCommand {
 
 #[derive(Subcommand)]
 enum ImplementCommand {
+    /// Compute, classify, or validate the checks bgjob input identity.
+    #[command(name = "checks-result-identity", disable_help_flag = true)]
+    ChecksResultIdentity(RawCompatibilityArguments),
     /// Run the Step 5 checks front-half then forward the resume leg.
     #[command(name = "checks-step5-resume", disable_help_flag = true)]
     ChecksStep5Resume(RawCompatibilityArguments),
@@ -997,6 +1005,22 @@ enum ImplementCommand {
     /// Launch or run the Step 7a pre-ship checkpoint and code-flow diagram.
     #[command(name = "step-7a", disable_help_flag = true)]
     Step7a(RawCompatibilityArguments),
+    /// Run one Step 18 phase: the stall gate or the terminal logs flush.
+    #[command(name = "step-18", disable_help_flag = true)]
+    Step18(RawCompatibilityArguments),
+    /// Run the Step 18 stall gate and terminal logs flush as one composite.
+    #[command(name = "step-18-gate-logs-flush", disable_help_flag = true)]
+    Step18GateLogsFlush(RawCompatibilityArguments),
+    /// Tear the session down after Step 18 recorded run-log terminalization.
+    #[command(name = "step-19", disable_help_flag = true)]
+    Step19(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum ChecksCommand {
+    /// Report the self-edit attribution records for one implement session.
+    #[command(name = "self-edit-log", disable_help_flag = true)]
+    SelfEditLog(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2256,7 +2280,13 @@ fn run(
         Domain::Admission(AdmissionCommand::Preflight(arguments)) => {
             Ok(admission_commands::preflight(&arguments.arguments))
         }
+        Domain::Checks(ChecksCommand::SelfEditLog(arguments)) => Ok(
+            checks_identity_commands::self_edit_log(&arguments.arguments),
+        ),
         Domain::Implement(command) => Ok(match command {
+            ImplementCommand::ChecksResultIdentity(arguments) => {
+                checks_identity_commands::checks_result_identity(&arguments.arguments)
+            }
             ImplementCommand::ChecksStep5Resume(arguments) => {
                 implement_review_commands::checks_step5_resume(&arguments.arguments)
             }
@@ -2292,6 +2322,15 @@ fn run(
             }
             ImplementCommand::Step7a(arguments) => {
                 implement_review_commands::step7a(&arguments.arguments)
+            }
+            ImplementCommand::Step18(arguments) => {
+                implement_terminal_commands::step_18(&arguments.arguments)
+            }
+            ImplementCommand::Step18GateLogsFlush(arguments) => {
+                implement_terminal_commands::step_18_gate_logs_flush(&arguments.arguments)
+            }
+            ImplementCommand::Step19(arguments) => {
+                implement_terminal_commands::step_19(&arguments.arguments)
             }
         }),
         Domain::Blocker(BlockerCommand::AllOpen(arguments)) => {

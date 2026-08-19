@@ -852,6 +852,8 @@ fn git_changed_paths(repo_root: &Path) -> Result<Vec<String>, String> {
         .block_on(runtime.git_cli().exact_diff(
             ExactDiffRequest {
                 cached: false,
+                binary: false,
+                no_ext_diff: false,
                 unified_context: None,
                 name_only: true,
                 name_status: false,

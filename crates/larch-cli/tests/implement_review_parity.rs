@@ -7,6 +7,7 @@
 use std::{fs, os::unix::fs::PermissionsExt as _, path::Path};
 
 use assert_cmd::Command as AssertCommand;
+use larch_test_support::{GitFixture, GitRepository};
 use tempfile::TempDir;
 
 const LARCH_STUB: &str = r#"#!/usr/bin/env bash
@@ -20,22 +21,13 @@ esac
 exit 0
 "#;
 
-const PYTHON_STUB: &str = r#"#!/usr/bin/env python3
-import os
+// The checks-input identity verbs are Rust-owned and run in process, so the
+// stub only has to stand in as a silent, successful delegated composite.
+const PYTHON_STUB: &str = r"#!/usr/bin/env python3
 import sys
 
-argv = sys.argv[1:]
-if argv[:3] == ["implement", "checks-result-identity", "resolve-repo-root"]:
-    print("REPO_ROOT=" + os.environ.get("IMPLEMENT_TMPDIR", ""))
-elif argv[:3] == ["implement", "checks-result-identity", "compute"]:
-    print("CHECKS_INPUT_HEAD_SHA=abc123")
-    print("CHECKS_INPUT_TREE_FP=fp1")
-    print("CHECKS_INPUT_FP_SCHEMA=v1")
-elif argv[:3] == ["implement", "checks-result-identity", "classify"]:
-    print("STATE=absent")
-    print("REASON=")
 sys.exit(0)
-"#;
+";
 
 struct Fixture {
     _root: TempDir,
@@ -76,6 +68,23 @@ fn larch(plugin: &Path, tmpdir: &Path) -> AssertCommand {
 
 fn stdout_of(output: &std::process::Output) -> String {
     String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+/// Seed a real repository and the session env the in-process identity verbs read.
+///
+/// `checks-step5-resume` resolves `REPO_ROOT` from `session-env.sh` and then
+/// fingerprints that worktree in process, so the fixture needs a Git toplevel
+/// with a resolvable `HEAD` rather than a stubbed child.
+fn seed_session_repo(tmpdir: &Path) -> GitRepository {
+    let repository = GitRepository::builder(GitFixture::Refs)
+        .build()
+        .expect("git fixture");
+    fs::write(
+        tmpdir.join("session-env.sh"),
+        format!("REPO_ROOT={}\n", repository.root().display()),
+    )
+    .expect("write session env");
+    repository
 }
 
 #[test]
@@ -176,6 +185,7 @@ fn step5_resume_non_numeric_round_is_rejected() {
 #[test]
 fn checks_step5_resume_relays_checks_line_then_resume_leg() {
     let fixture = fixture();
+    let _repository = seed_session_repo(&fixture.tmpdir);
     let output = larch(&fixture.plugin, &fixture.tmpdir)
         .args([
             "implement",
@@ -218,6 +228,7 @@ fn checks_step5_resume_non_numeric_round_is_rejected() {
 #[test]
 fn step6_entry_parent_relays_bgjob_adapter_stdout() {
     let fixture = fixture();
+    let _repository = seed_session_repo(&fixture.tmpdir);
     let output = larch(&fixture.plugin, &fixture.tmpdir)
         .args(["implement", "step-6-entry", "--forked-target", "false"])
         .output()
