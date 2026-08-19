@@ -199,7 +199,7 @@ impl Step0Runner for LiveStep0Runner {
         env: &[(String, String)],
         merge_stderr: bool,
     ) -> ChildOutcome {
-        let mut command = Command::new(entrypoint(plugin_root));
+        let mut command = Command::new(entrypoint(plugin_root)); // lint-subprocess-via-runner: ok LiveStep0Runner is the design Step 0 subprocess seam that spawns the larch.sh/python entrypoint
         command.args(args);
         command.env("CLAUDE_PLUGIN_ROOT", plugin_root);
         for (key, value) in env {
@@ -382,7 +382,7 @@ fn require_plugin_root(value: &str) -> Result<PathBuf, ExitCode> {
 /// Encode `value` with `printf %q` via bash. On non-zero bash exit, empty
 /// values yield `''` and everything else falls back to single-quote wrapping.
 fn bash_percent_q(value: &str) -> String {
-    let output = Command::new("bash")
+    let output = Command::new("bash") // lint-subprocess-via-runner: ok the bash %q codec must invoke bash directly to mirror the frozen design_step0_env.py encoder
         .args(["-c", "printf \"%q\" \"$1\"", "_", value])
         .output();
     match output {
@@ -1729,7 +1729,7 @@ fn run_step0_init_driver(
         if !outcome.stderr.is_empty() {
             eprint_line(&outcome.stderr);
         }
-        let shown = if init_status.is_empty() {
+        let shown = if init_status.is_empty() { // lint-status-routing: ok init_status is a raw INIT_STATUS wire string read from the child result map, not a routed enum
             "unknown"
         } else {
             init_status
