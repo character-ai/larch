@@ -982,6 +982,91 @@ fn pointer_publication_holds_the_deletion_lease_until_cleanup_can_recheck() {
 }
 
 #[test]
+fn setup_deny_edit_write_creates_the_sentinel_and_emits_its_path() {
+    let sandbox = Sandbox::new();
+    let output = sandbox.run(&[
+        "--prefix",
+        "deny-sentinel",
+        "--skip-preflight",
+        "--skip-repo-check",
+        "--deny-edit-write",
+        "debate",
+    ]);
+    let (stdout, stderr) = output_text(&output);
+    assert!(output.status.success(), "{stderr}");
+    let sentinel = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("DENY_EDIT_WRITE_SENTINEL="))
+        .map(PathBuf::from)
+        .expect("DENY_EDIT_WRITE_SENTINEL");
+    assert!(sentinel.is_file());
+    assert_eq!(
+        sentinel.parent(),
+        Some(sandbox.path("cache/larch/deny-edit-write-active").as_path())
+    );
+    let name = sentinel
+        .file_name()
+        .expect("sentinel name")
+        .to_string_lossy()
+        .into_owned();
+    let suffix = name.strip_prefix("debate-").expect("token prefix");
+    assert!(
+        !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit()),
+        "{name}"
+    );
+    // Empty content, matching the hand-written `: >` fence it replaces.
+    assert_eq!(fs::read(&sentinel).expect("sentinel bytes"), b"");
+}
+
+#[test]
+fn setup_deny_edit_write_unknown_token_is_a_usage_error_before_any_work() {
+    let sandbox = Sandbox::new();
+    let output = sandbox.run(&[
+        "--prefix",
+        "deny-unknown",
+        "--skip-preflight",
+        "--skip-repo-check",
+        "--deny-edit-write",
+        "bogus",
+    ]);
+    let (stdout, stderr) = output_text(&output);
+    assert_eq!(output.status.code(), Some(4));
+    assert!(stdout.is_empty());
+    assert!(
+        stderr.contains("argument --deny-edit-write: invalid choice: 'bogus'"),
+        "{stderr}"
+    );
+    assert!(!sandbox.path("cache/larch/sessions").exists());
+    assert!(!sandbox.path("cache/larch/deny-edit-write-active").exists());
+}
+
+#[test]
+fn setup_deny_edit_write_fails_closed_without_a_cache_home() {
+    let sandbox = Sandbox::new();
+    let output = run_setup(
+        &sandbox.root,
+        &[
+            "--prefix",
+            "deny-no-home",
+            "--skip-preflight",
+            "--skip-repo-check",
+            "--deny-edit-write",
+            "debate",
+        ],
+        &[("XDG_CACHE_HOME", ""), ("HOME", "")],
+    );
+    let (stdout, stderr) = output_text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stdout.is_empty());
+    assert!(
+        stderr.contains(
+            "failed to activate deny-edit-write sentinel: XDG_CACHE_HOME and HOME are unset"
+        ),
+        "{stderr}"
+    );
+}
+
+#[test]
 fn malformed_caller_env_aborts_before_session_creation() {
     let sandbox = Sandbox::new();
     let caller = sandbox.path("caller.env");
@@ -1057,7 +1142,8 @@ fn setup_argument_refusals_match_the_legacy_argparse_usage_bytes() {
         "                     [--check-reviewers] [--skip-codex-probe]\n",
         "                     [--skip-cursor-probe]\n",
         "                     [--write-session-env WRITE_SESSION_ENV]\n",
-        "                     [--caller-env CALLER_ENV]",
+        "                     [--caller-env CALLER_ENV]\n",
+        "                     [--deny-edit-write DENY_EDIT_WRITE]",
     );
     for (arguments, error) in [
         (

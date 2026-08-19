@@ -30,6 +30,10 @@ Emitted when `--check-reviewers` is used:
 - `CODEX_PRESENT`
 - `CURSOR_PRESENT`
 
+Emitted when `--deny-edit-write <token>` is passed (token must be a recognized `scripts/deny-edit-write.sh` allowlist token; setup fails closed without leaving a sentinel when activation cannot be proven):
+
+- `DENY_EDIT_WRITE_SENTINEL` (absolute path of the setup-owned scoped Write-hook activation sentinel)
+
 Optional caller-derived stdout keys (when present in caller-env and forwarded):
 
 - `LARCH_TOKEN_SESSION_ID`
