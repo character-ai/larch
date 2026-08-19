@@ -452,10 +452,7 @@ mod tests {
             open_blockers: Vec::new(),
         };
         assert_eq!(
-            select_complete_umbrella_leaf(
-                &[designing.clone(), designed.clone(), idle.clone()],
-                &[]
-            ),
+            select_complete_umbrella_leaf(&[designing.clone(), designed.clone(), idle], &[]),
             CompleteUmbrellaNext::Launch(11)
         );
         assert_eq!(
