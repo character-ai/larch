@@ -1673,6 +1673,23 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "step-7a",
     ),
     CleanInstallCase::new(
+        "clean-install-implement-checks-result-identity",
+        "implement",
+        "checks-result-identity",
+    ),
+    CleanInstallCase::new("clean-install-implement-step-18", "implement", "step-18"),
+    CleanInstallCase::new(
+        "clean-install-implement-step-18-gate-logs-flush",
+        "implement",
+        "step-18-gate-logs-flush",
+    ),
+    CleanInstallCase::new("clean-install-implement-step-19", "implement", "step-19"),
+    CleanInstallCase::new(
+        "clean-install-checks-self-edit-log",
+        "checks",
+        "self-edit-log",
+    ),
+    CleanInstallCase::new(
         "clean-install-gh-agnix-ensure-label",
         "gh",
         "agnix-ensure-label",

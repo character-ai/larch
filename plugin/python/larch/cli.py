@@ -20,7 +20,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("checks", "repair-loop"): ("larch.implement.checks", "checks_repair_loop_main", True),
     ("checks", "contains-pins"): ("larch.implement.checks", "check_contains_pins_main", True),
     ("checks", "rust-clippy"): ("larch.implement.checks", "rust_clippy_main", False),
-    ("checks", "self-edit-log"): ("larch.implement.checks", "checks_self_edit_log_main", True),
     ("ci", "distill-log"): ("larch.implement.ci", "distill_log_main", False),
     ("ci", "prepare-rust-integration-artifact"): (
         "larch.implement.rust_policy_candidate",
@@ -64,14 +63,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("implement", "step-8-seed-initial"): ("larch.implement.implement_dispatch", "step8_seed_initial_main", False),
     ("implement", "step-8-ship"): ("larch.implement.implement_dispatch", "step8_ship_main", False),
     ("implement", "step-8-oos-checkpoint"): ("larch.implement.implement_dispatch", "step8_oos_checkpoint_main", True),
-    ("implement", "step-18"): ("larch.implement.implement_dispatch", "step_18_main", True),
-    ("implement", "step-18-gate-logs-flush"): ("larch.implement.implement_dispatch", "step_18_gate_logs_flush_main", True),
-    ("implement", "step-19"): ("larch.implement.implement_dispatch", "step_19_main", True),
-    ("implement", "checks-result-identity"): (
-        "larch.implement.checks_result_identity",
-        "checks_result_identity_main",
-        False,
-    ),
     ("architectural-guidelines", "read"): ("larch.core.architectural_guidelines", "read_main", True),
     ("architectural-assessment", "materialize"): ("larch.implement.architectural_assessment", "materialize_main", True),
     ("architectural-assessment", "submit"): ("larch.implement.architectural_assessment", "submit_main", True),

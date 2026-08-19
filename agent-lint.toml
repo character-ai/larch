@@ -1230,9 +1230,11 @@ closure-max-content-tokens = 26303
 # python/cli.py), adding eight measured conditional tokens.
 # Issue #8577 retargets the design parse-flags/route/init-runparams citations to
 # scripts/larch.sh the same way, adding three measured conditional tokens.
+# Issue #8614 retargets the shared final-summary Step 18 citation to
+# scripts/larch.sh, adding one measured conditional token.
 conditional-max-lines = 779
-conditional-max-tokens = 19685
-conditional-max-content-tokens = 19613
+conditional-max-tokens = 19686
+conditional-max-content-tokens = 19614
 
 [[lint.prompt-source-budgets]]
 name = "implement"

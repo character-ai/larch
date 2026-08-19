@@ -256,7 +256,7 @@ def run(repo_root: Path) -> list[str]:
             "python/cli.py ship pre-driver",
             "skills/implement/scripts/step-8-ship.sh",
             "skills/implement/scripts/step-8-oos-checkpoint.sh",
-            'python/cli.py implement step-18-gate-logs-flush --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-tracking-memory "${STALL_TRACKING:-false}" --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"',
+            'scripts/larch.sh implement step-18-gate-logs-flush --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-tracking-memory "${STALL_TRACKING:-false}" --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"',
             'skills/implement/scripts/step-18.sh --phase logs-flush --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"',
             'skills/implement/scripts/step-19.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"',
         ]:
@@ -300,7 +300,7 @@ def run(repo_root: Path) -> list[str]:
         require("python/larch/implement/dispatch_commit_route.py", "_checks_step_for_site", "checks site mapping present")
         require("python/larch/implement/dispatch_commit_route.py", "--repo-root", "commit-route forwards --repo-root to checks run-relevant")
         require("python/larch/implement/dispatch_commit_route.py", "_session_validated_repo_root", "commit-route validates persisted REPO_ROOT")
-        require("python/larch/implement/checks_result_identity.py", "CHECKS_TERMINAL_ACTIONS", "checks identity helper uses shared terminal-action set")
+        require("crates/larch-cli/src/checks_identity_commands.rs", "CHECKS_TERMINAL_ACTIONS", "checks identity owner uses shared terminal-action set")
 
         step5_text = Path("skills/implement/scripts/step-5-review.sh").read_text()
         require("skills/implement/scripts/step-5-review.sh", 'implement step-5-review "$@"', "step-5-review wrapper delegates to Python")
@@ -319,28 +319,17 @@ def run(repo_root: Path) -> list[str]:
         forbid("crates/larch-cli/src/review_and_fix_commands.rs", '"git", "add", "--pathspec-from-file"', "staging owned by commit_main only")
         require("crates/larch-cli/src/review_and_fix_commands.rs", '"git", "commit", "--only", "--pathspec-from-file"', "commit-fixes pathspec-only commit")
         require("python/larch/implement/dispatch_helpers.py", "LARCH_TIMING_LEDGER", "commit-implementation telemetry self-rehydration")
-        require("skills/implement/scripts/step-18.sh", 'implement step-18 "$@"', "step-18 wrapper delegates to Python")
+        terminal_owner = "crates/larch-cli/src/implement_terminal_commands.rs"
+        require("skills/implement/scripts/step-18.sh", 'implement step-18 "$@"', "step-18 wrapper delegates to larch")
         forbid("skills/implement/scripts/step-18.sh", "print_summary_markers", "step-18 wrapper must not retain finalize helpers")
-        require("python/larch/implement/dispatch_step18.py", "def step_18_main", "step-18 Python entry present")
-        require(
-            "python/larch/implement/dispatch_step18.py", "def _step18_logs_flush", "step-18 logs flush owned by Python"
-        )
-        require("python/larch/implement/dispatch_step18.py", "---LARCH-SUMMARY-FINAL-BEGIN---", "step-18 begin marker in Python")
-        forbid(
-            "python/larch/implement/dispatch_step18.py",
-            "restore-finalize-state",
-            "step-18 must not restore cleanup state",
-        )
-        forbid("python/larch/implement/dispatch_step18.py", "implement-finalize", "step-18 must not invoke teardown")
-        require("python/larch/implement/dispatch_step18.py", "final-report", "step-18 live step18b path in Python")
-        require("skills/implement/scripts/step-19.sh", 'implement step-19 "$@"', "step-19 wrapper delegates to Python")
-        require("python/larch/implement/dispatch_step19.py", "def step_19_main", "step-19 Python entry present")
-        require(
-            "python/larch/implement/dispatch_step19.py",
-            "restore-finalize-state",
-            "step-19 restore finalize argv in Python",
-        )
-        require("python/larch/implement/dispatch_step19.py", "implement-finalize", "step-19 teardown argv in Python")
+        require(terminal_owner, "pub fn step_18", "step-18 Rust entry present")
+        require(terminal_owner, "fn step18_logs_flush", "step-18 logs flush owned by Rust")
+        require(terminal_owner, "---LARCH-SUMMARY-FINAL-BEGIN---", "step-18 begin marker in Rust")
+        require(terminal_owner, "final-report", "step-18 live step18b path in Rust")
+        require("skills/implement/scripts/step-19.sh", 'implement step-19 "$@"', "step-19 wrapper delegates to larch")
+        require(terminal_owner, "pub fn step_19", "step-19 Rust entry present")
+        require(terminal_owner, "restore-finalize-state", "step-19 restore finalize argv in Rust")
+        require(terminal_owner, "implement-finalize", "step-19 teardown argv in Rust")
         forbid("skills/implement/scripts/step-18.sh", 'cleanup.sh" --help', "step-18 must not resurrect cleanup smoke")
         forbid("skills/implement/scripts/step-18.sh", "token report --full", "step-18 must not resurrect full token report")
         forbid("skills/implement/scripts/step-18.sh", "Step 18 — cleanup", "step-18 must not resurrect cleanup telemetry mark")
@@ -367,16 +356,9 @@ def run(repo_root: Path) -> list[str]:
         require("python/larch/cli.py", '("ship", "pre-driver"): ("larch.implement.implement_dispatch", "ship_pre_driver_main", True)', "ship pre-driver CLI registry")
         require("python/larch/cli.py", '"ship_pre_driver_main", True),', "ship pre-driver machine stdout contract")
         require("python/larch/cli.py", "NEXT_ACTION=stall", "ship pre-driver pre-version stall fast path")
-        require("python/larch/cli.py", '("implement", "step-18-gate-logs-flush"): (', "Step 18 composite CLI registry")
-        require("python/larch/cli.py", '"step_18_gate_logs_flush_main",', "Step 18 composite machine stdout contract")
-        require(
-            "python/larch/cli.py",
-            '("implement", "step-19"): ("larch.implement.implement_dispatch", "step_19_main", True)',
-            "Step 19 CLI registry",
-        )
-        require(
-            "python/larch/implement/dispatch_step18.py", "def step_18_gate_logs_flush_main", "Step 18 composite handler"
-        )
+        require("crates/larch-cli/src/main.rs", 'name = "step-18-gate-logs-flush"', "Step 18 composite CLI registry")
+        require("crates/larch-cli/src/main.rs", 'name = "step-19"', "Step 19 CLI registry")
+        require(terminal_owner, "pub fn step_18_gate_logs_flush", "Step 18 composite handler")
         require("python/larch/implement/dispatch_ship.py", "def ship_pre_driver_main", "ship pre-driver handler")
         require("python/larch/implement/dispatch_ship.py", '["implement", "step-8-python-guard"]', "ship pre-driver runs guard first")
         require("python/larch/implement/dispatch_ship.py", '["implement", "step-8-seed-initial"]', "ship pre-driver conditional seeder")
@@ -531,7 +513,7 @@ def run(repo_root: Path) -> list[str]:
         require(skill, "captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout", "SKILL Step 17 captured foreground stdout source")
         require(
             skill,
-            "captured foreground `python/cli.py implement step-18-gate-logs-flush` Bash wrapper stdout",
+            "captured foreground `scripts/larch.sh implement step-18-gate-logs-flush` Bash wrapper stdout",
             "SKILL Step 18 composite stdout source",
         )
         require(
@@ -555,7 +537,7 @@ def run(repo_root: Path) -> list[str]:
         require_near(
             skill,
             logs_flush_read,
-            '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-18-gate-logs-flush',
+            '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh implement step-18-gate-logs-flush',
             "Step 18 logs-flush read before composite fence",
             1600,
         )
@@ -580,7 +562,7 @@ def run(repo_root: Path) -> list[str]:
         )
         require(
             skill,
-            "Proceed without re-running `python/cli.py implement step-18-gate-logs-flush` after terminal recovery completes.",
+            "Proceed without re-running `scripts/larch.sh implement step-18-gate-logs-flush` after terminal recovery completes.",
             "SKILL Step 18a no composite re-run after terminal recovery",
         )
         require(skill, "Parse `STALL_RECOVERY_REQUIRED` and the four `STALL_TRACKING_*` KVs from captured composite stdout immediately after the composite fence returns.", "SKILL Step 18a parses stall KVs from composite stdout")
@@ -1134,10 +1116,11 @@ def run(repo_root: Path) -> list[str]:
             'architectural-assessment submit --implement-tmpdir "$IMPLEMENT_TMPDIR" --repo-root "$REPO_ROOT" --kind <kind> --state <state> --note-file "$IMPLEMENT_TMPDIR/assessment-note-<kind>.md"',
             "SKILL first-submit command must stay unchanged and free of --allow-exception (#7216)",
         )
-        for needle in ["DESIGN_TMPDIR", "LARCH_TIMING_SKILL"]:
-            require("python/larch/implement/dispatch_step18.py", needle, f"step-18 {needle}")
-        for needle in ["_should_restore_finalize", "restore-finalize-state", "implement-finalize"]:
-            require("python/larch/implement/dispatch_step19.py", needle, f"step-19 {needle}")
+        terminal_owner = "crates/larch-cli/src/implement_terminal_commands.rs"
+        for needle in ["DesignTmpdir", "LarchTimingSkill"]:
+            require(terminal_owner, needle, f"step-18 {needle}")
+        for needle in ["should_restore_finalize", "restore-finalize-state", "implement-finalize"]:
+            require(terminal_owner, needle, f"step-19 {needle}")
         # Thin wrapper must not retain the old Bash finalize body.
         for needle in [
             "_restore_finalize=false",
@@ -1299,4 +1282,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 387
+LEGACY_ASSERTION_LABEL_COUNT = 384

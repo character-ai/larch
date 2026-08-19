@@ -273,15 +273,22 @@ def _checks_pass(captured: dict[str, str]) -> bool:
 
 def _session_validated_repo_root(implement_tmpdir: Path) -> Path:
     """Resolve persisted session REPO_ROOT; fail closed when absent or invalid."""
-    from larch.implement.checks_result_identity import (  # noqa: PLC0415 - deferred import, only the session repo-root resolution path needs checks_result_identity
-        ChecksIdentityError,
-        resolve_session_repo_root,
+    result = _invoke_larch(
+        [
+            "implement",
+            "checks-result-identity",
+            "resolve-repo-root",
+            "--implement-tmpdir",
+            str(implement_tmpdir),
+        ]
     )
-
-    try:
-        return resolve_session_repo_root(implement_tmpdir)
-    except ChecksIdentityError as exc:
-        raise ShipError(f"checks-commit-route: {exc}") from exc
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip() or "resolve-repo-root failed"
+        raise ShipError(f"checks-commit-route: {detail.removeprefix('ERROR=')}")
+    root = larch_io.kv_value(text=result.stdout or "", key="REPO_ROOT", first_match=True).strip()
+    if not root:
+        raise ShipError("checks-commit-route: REPO_ROOT missing from resolve-repo-root")
+    return Path(root)
 
 
 def _run_relevant_checks_for_site(

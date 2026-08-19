@@ -79,6 +79,10 @@ git_op!(VersionRequest, Version);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExactDiffRequest {
     pub cached: bool,
+    /// Emit `--binary` so binary hunks survive a byte-exact patch capture.
+    pub binary: bool,
+    /// Emit `--no-ext-diff` so a configured external differ cannot alter bytes.
+    pub no_ext_diff: bool,
     /// Fixed unified-context width for callers that need patch text.
     pub unified_context: Option<u16>,
     pub name_only: bool,
@@ -100,6 +104,12 @@ impl ExactDiffRequest {
         let mut a = Vec::new();
         if self.cached {
             a.push("--cached".into());
+        }
+        if self.binary {
+            a.push("--binary".into());
+        }
+        if self.no_ext_diff {
+            a.push("--no-ext-diff".into());
         }
         if let Some(context) = self.unified_context {
             a.push(format!("-U{context}").into());

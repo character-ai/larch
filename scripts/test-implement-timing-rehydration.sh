@@ -50,9 +50,9 @@ command grep -Fq '_rehydrate_larch_triplet(implement_tmpdir)' python/larch/imple
 command grep -Fq 'fn record_step5_handoff_timing' crates/larch-cli/src/implement_review_commands.rs || fail 'Rust Step 5 review owner does not mark review-handoff timing'
 command grep -Fq 'OsString::from("Step 5: review handoff")' crates/larch-cli/src/implement_review_commands.rs || fail 'Rust Step 5 review owner does not mark implement timing'
 command grep -Fq 'LARCH_TIMING_LEDGER' python/larch/implement/dispatch_helpers.py || fail 'dispatch_helpers does not resolve LARCH_TIMING_LEDGER'
-command grep -Fq '_rehydrate_larch_triplet(implement_tmpdir)' python/larch/implement/dispatch_step18.py || fail 'step-18 Python does not rehydrate telemetry keys'
-command grep -Fq '"LARCH_TIMING_SKILL": "implement"' python/larch/implement/dispatch_step18.py || fail 'step-18 Python does not mark implement timing'
-command grep -Fq 'implement step-18 "$@"' skills/implement/scripts/step-18.sh || fail 'step-18.sh does not delegate to Python step-18'
+command grep -Fq 'rehydrate_session(&tmpdir)' crates/larch-cli/src/implement_terminal_commands.rs || fail 'step-18 Rust owner does not rehydrate telemetry keys'
+command grep -Fq 'ChildEnvironment::LarchTimingSkill' crates/larch-cli/src/implement_terminal_commands.rs || fail 'step-18 Rust owner does not mark implement timing'
+command grep -Fq 'implement step-18 "$@"' skills/implement/scripts/step-18.sh || fail 'step-18.sh does not delegate to the Rust step-18'
 
 # run_dispatch_main now lives in dispatch_step2.py; check there and fall back to implement_dispatch.py
 ( command grep -Fq '_rehydrate_larch_triplet(tmpdir)' python/larch/implement/dispatch_step2.py || command grep -Fq '_rehydrate_larch_triplet(tmpdir)' python/larch/implement/implement_dispatch.py ) || fail 'run_dispatch_main does not rehydrate telemetry keys'
@@ -99,21 +99,20 @@ PY
 
 # Invariant E (#3425): closing marks stay inside Step 18 before terminal
 # snapshot preparation, while teardown remains Step 19-owned.
-finalizer="python/larch/implement/dispatch_step18.py"
-cleanup="python/larch/implement/dispatch_step19.py"
-done_mark_line=$(awk '/Step 18 — logs flush/ {print NR; exit}' "$finalizer")
-snapshot_call_line=$(awk '/run_log_rc = _complete_terminal_run_log/ {print NR; exit}' "$finalizer")
-[ -n "$done_mark_line" ] || fail 'dispatch_step18.py lacks Step 18 logs-flush mark'
-[ -n "$snapshot_call_line" ] || fail 'dispatch_step18.py lacks terminal snapshot call'
+terminal="crates/larch-cli/src/implement_terminal_commands.rs"
+done_mark_line=$(awk '/Step 18 — logs flush/ {print NR; exit}' "$terminal")
+snapshot_call_line=$(awk '/complete_terminal_run_log\(root, tmpdir/ {print NR; exit}' "$terminal")
+[ -n "$done_mark_line" ] || fail 'implement_terminal_commands.rs lacks Step 18 logs-flush mark'
+[ -n "$snapshot_call_line" ] || fail 'implement_terminal_commands.rs lacks terminal snapshot call'
 [ "$done_mark_line" -lt "$snapshot_call_line" ] || fail 'Step 18 logs-flush mark must precede terminal snapshot preparation'
 finalize_invocations=$(command grep -Fc '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-18.sh' "$skill_file" || true)
 [ "$finalize_invocations" -eq 1 ] || fail "expected one step-18.sh invocation in SKILL.md, found $finalize_invocations"
-command grep -Fq '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-18-gate-logs-flush' "$skill_file" || fail 'SKILL.md lacks composite Step 18 launcher'
-command grep -Fq '"implement-finalize",' "$cleanup" || fail 'dispatch_step19.py lacks exact teardown argv'
-command grep -Fq '"final-report", "step18b"' "$finalizer" || fail 'dispatch_step18.py lacks live step18b argv'
-command grep -Fq 'def _print_summary_markers' "$finalizer" || fail 'dispatch_step18.py lacks marker helper'
-command grep -Fq 'implement step-18 "$@"' skills/implement/scripts/step-18.sh || fail 'step-18.sh must remain a thin Python delegate'
-command grep -Fq 'implement step-19 "$@"' skills/implement/scripts/step-19.sh || fail 'step-19.sh must remain a thin Python delegate'
+command grep -Fq '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh implement step-18-gate-logs-flush' "$skill_file" || fail 'SKILL.md lacks composite Step 18 launcher'
+command grep -Fq '"implement-finalize"' "$terminal" || fail 'implement_terminal_commands.rs lacks exact teardown argv'
+command grep -Fq '"final-report",' "$terminal" || fail 'implement_terminal_commands.rs lacks live step18b argv'
+command grep -Fq 'fn print_summary_markers' "$terminal" || fail 'implement_terminal_commands.rs lacks marker helper'
+command grep -Fq 'implement step-18 "$@"' skills/implement/scripts/step-18.sh || fail 'step-18.sh must remain a thin larch delegate'
+command grep -Fq 'implement step-19 "$@"' skills/implement/scripts/step-19.sh || fail 'step-19.sh must remain a thin larch delegate'
 
 # Invariant F (#4286): round timing duplicate probe returns success when the row exists.
 step5_owner="crates/larch-cli/src/implement_review_commands.rs"

@@ -8,7 +8,7 @@ external runner, producing a false alarm and an unnecessary operator halt.
 
 Each mutating subprocess records the repo-relative paths it changed here (one
 row per path: recorded epoch seconds, source, path, post-edit sha256). The
-orchestrator consults the log via ``checks self-edit-log show`` before ever
+orchestrator consults the log via ``checks self-edit-log`` before ever
 concluding that a working-tree change came from another runner: process
 introspection (``ps``) and ``stat`` mtime cannot attribute an edit once the
 spawning subprocess has exited, so the log is the authority.

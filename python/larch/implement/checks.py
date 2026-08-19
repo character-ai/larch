@@ -33,7 +33,6 @@ from larch.implement.checks_lint_fix import (
     run_checks_phase,
     checks_lint_fix_main,
     checks_repair_loop_main,
-    checks_self_edit_log_main,
 )
 
 __all__ = [
@@ -45,7 +44,6 @@ __all__ = [
     "checks_lint_fix_main",
     "checks_repair_loop_main",
     "checks_run_relevant_main",
-    "checks_self_edit_log_main",
     "coder_delta_guards",
     "escalate",
     "external_defaults",

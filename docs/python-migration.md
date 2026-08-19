@@ -44,6 +44,50 @@ selector, runtime fallback, or staged consumer split. The storage contract in
 `docs/run-log-archive.md` survives the owner change; the Python implementation
 does not.
 
+### Implement Step 18 and Step 19 terminal cutover
+
+Issue #8614 moved five commands to Rust: `implement step-18`,
+`implement step-18-gate-logs-flush`, `implement step-19`,
+`implement checks-result-identity`, and `checks self-edit-log`. Callers enter
+through `scripts/larch.sh`; `python/larch/implement/dispatch_step18.py`,
+`dispatch_step19.py`, and `checks_result_identity.py` are deleted;
+`checks_self_edit_log_main` and the five CLI registrations are removed; and the
+registry milestones are complete.
+`crates/larch-cli/src/implement_terminal_commands.rs` owns the three terminal
+verbs, `crates/larch-cli/src/checks_identity_commands.rs` owns the two identity
+verbs, and `larch_core::implement::{identity, self_edit_log}` own the pure
+fingerprint, classifier, and attribution-log logic. A new `checks` domain
+carries only `self-edit-log`.
+
+`python/larch/implement/self_edit_log.py` stays. The leaf body listed it as
+superseded, but `checks_run_relevant.py`, `checks_lint_fix.py`, and
+`dispatch_commit_route.py` still call `record_self_edits`, `digest_paths`,
+`file_sha256`, and `read_self_edits` in process, and those modules belong to
+later leaves. Only the CLI verb flipped.
+
+Three boundaries moved deliberately. The four Rust `delegate_python` identity
+call sites in `implement_dispatch_commands.rs` became in-process core calls,
+because Python can no longer own a flipped command.
+`dispatch_commit_route.py::_session_validated_repo_root` now runs
+`implement checks-result-identity resolve-repo-root` through the shared
+`_invoke_larch` resolver, which chief #7687 defines as a Rust consumer rather
+than a fallback. And the Step 18 `token report` mark now runs through
+`scripts/larch.sh` with the rest of the closing quartet; the retired owner sent
+it to `python/cli.py`, where the verb has not been registered since #8507, so it
+could only ever fail silently.
+
+`implement-finalize teardown` stays Python-owned and is reached through the one
+`python_verb` seam. The fingerprint keeps schema token `v1` and its byte-for-byte
+input order, so a result env persisted before the flip still classifies as
+`matching`; `ExactDiffRequest` gained closed `binary` and `no_ext_diff` fields
+rather than argv forwarding, and untracked enumeration moved to
+`RepositoryRead::status`, whose file set matches porcelain `--untracked-files=all`.
+The bounded diff capture fails closed instead of fingerprinting truncated bytes.
+
+The `show` token documented for `checks self-edit-log` is dropped. The retired
+`argparse` parser declared no positional, so
+`checks self-edit-log show --tmpdir ...` always exited 2.
+
 ### Implement bootstrap and preflight cutover
 
 Issue #8609 moved exactly five commands to Rust: `implement clone-tag`,

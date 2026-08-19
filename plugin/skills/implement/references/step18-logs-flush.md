@@ -7,7 +7,7 @@ terminal snapshot preparation, and lifecycle publication.
 
 **When to load**: **MANDATORY READ ENTIRE FILE** at Step 18 entry, after the
 Step 18 banner and before
-`python/cli.py implement step-18-gate-logs-flush`.
+`scripts/larch.sh implement step-18-gate-logs-flush`.
 
 ## Stall recovery gate
 

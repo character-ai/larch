@@ -614,7 +614,12 @@ fn strip_cr_bytes(value: &[u8], policy: CrStrip) -> &[u8] {
     }
 }
 
-fn split_one_shell_token(input: &str) -> Option<String> {
+/// Decode a right-hand side that is exactly one POSIX shell token.
+///
+/// Returns `None` when the input decodes to zero or more than one token, which
+/// is the boundary `shlex.split(value)` length check draws in the Python owner.
+#[must_use]
+pub fn split_one_shell_token(input: &str) -> Option<String> {
     #[derive(Clone, Copy, Eq, PartialEq)]
     enum Quote {
         None,

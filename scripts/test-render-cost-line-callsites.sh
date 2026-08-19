@@ -51,7 +51,7 @@ step18_launcher='"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/imp
 # shellcheck disable=SC2016
 grep -Fq "$step18_launcher" "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must invoke step-18.sh logs-flush phase'
 # shellcheck disable=SC2016
-step18_composite='"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-18-gate-logs-flush --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-tracking-memory "${STALL_TRACKING:-false}" --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"'
+step18_composite='"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh implement step-18-gate-logs-flush --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-tracking-memory "${STALL_TRACKING:-false}" --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"'
 # shellcheck disable=SC2016
 grep -Fq "$step18_composite" "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must invoke composite gate-logs-flush path'
 # shellcheck disable=SC2016
@@ -61,7 +61,7 @@ grep -Fq 'markers `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-EN
 # shellcheck disable=SC2016
 grep -Fq 'captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind Step 17 captured foreground stdout source'
 # shellcheck disable=SC2016
-grep -Fq 'captured foreground `python/cli.py implement step-18-gate-logs-flush` Bash wrapper stdout' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind Step 18 composite stdout source'
+grep -Fq 'captured foreground `scripts/larch.sh implement step-18-gate-logs-flush` Bash wrapper stdout' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind Step 18 composite stdout source'
 # shellcheck disable=SC2016
 grep -Fq 'captured foreground `step-18.sh --phase logs-flush` Bash wrapper stdout' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind Step 18b captured foreground stdout source'
 grep -Fq 'not asynchronous notification output' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must forbid async-notification as implement summary source'
@@ -72,7 +72,7 @@ grep -Fq '**⚠ Step 18: EMIT_BODY=true but marker pair missing from logs-flush 
 grep -Fq 'STEP17_EMITTED_FOR_STEP18' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 logs-flush fence must bind STEP17_EMITTED_FOR_STEP18'
 grep -Fq 'Relay teardown tail records verbatim from captured Step 19 stdout.' "$REPO/skills/implement/SKILL.md" || fail 'Step 19 teardown tail relay must be pinned'
 # shellcheck disable=SC2016
-grep -Fq 'The Step 18 Python wrapper writes `.step17-emitted` before final-report refresh' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must persist top-chat emission sentinel'
+grep -Fq 'The Step 18 wrapper writes `.step17-emitted` before final-report refresh' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must persist top-chat emission sentinel'
 # shellcheck disable=SC2016
 step18_block=$(awk '
     /"\$HOME\/\.cache\/larch\/sessions\/implement-run-\$PPID\.sh" skills\/implement\/scripts\/step-18\.sh --phase logs-flush/ { in_block=1 }
@@ -116,7 +116,7 @@ grep -Fq 'Use this profile for `/design` final `bgjob wait` `DONE` stdout and th
 grep -Fq 'final `bgjob wait` `DONE` stdout plus matching `$DESIGN_TMPDIR/bgjob/<step>.result.env` after `BGJOB_RC=0` and required-KV validation' "$shared_final_summary" || fail 'shared final-summary emit must include design bgjob source binding'
 grep -Fq '`/implement` Step 17 marker-first' "$shared_final_summary" || fail 'shared final-summary emit must include implement Step 17 callsite binding'
 grep -Fq '`/implement` Step 18b marker-first' "$shared_final_summary" || fail 'shared final-summary emit must include implement Step 18b callsite binding'
-grep -Fq 'green path: captured foreground `python/cli.py implement step-18-gate-logs-flush` stdout when `NEXT_ACTION=logs-flush-done`' "$shared_final_summary" || fail 'shared final-summary emit must include composite green-path binding'
+grep -Fq 'green path: captured foreground `scripts/larch.sh implement step-18-gate-logs-flush` stdout when `NEXT_ACTION=logs-flush-done`' "$shared_final_summary" || fail 'shared final-summary emit must include composite green-path binding'
 grep -Fq 'non-green path: captured foreground `step-18.sh --phase logs-flush` stdout on stall-recovery and escalation-filing branches' "$shared_final_summary" || fail 'shared final-summary emit must include breakout logs-flush binding'
 grep -Fq 'Skip marker extraction entirely; do not scan prior tool output for markers.' "$shared_final_summary" || fail 'shared final-summary emit must pin file-only no-marker behavior'
 

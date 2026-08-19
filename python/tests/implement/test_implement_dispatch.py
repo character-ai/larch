@@ -4,10 +4,8 @@ from __future__ import annotations
 import errno
 import fcntl
 import json
-import os
 import signal
 import subprocess
-import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,8 +26,6 @@ from larch.implement import (
     dispatch_leg,
     dispatch_manifest,
     dispatch_ship,
-    dispatch_step18,
-    dispatch_step19,
     dispatch_step2,
     dispatch_recovery,
     self_edit_log,
@@ -43,9 +39,35 @@ from larch.core import logging_util
 from larch.issue import migration_governance
 from larch.outcomes import Outcome
 from larch.report import run_log_batch
-from larch.state import finalize
 
 from test_support import make_implement_tmpdir
+
+@pytest.fixture(autouse=True)
+def _answer_resolve_repo_root(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """Answer the out-of-process `checks-result-identity resolve-repo-root` verb.
+
+    That verb is Rust-owned now, and the verified bootstrap needs an installed
+    larch binary a unit test does not have. This reads the same persisted
+    session key the command reads and leaves every other verb untouched.
+    """
+    real_invoke = dispatch_commit_route._invoke_larch
+
+    def fake_invoke(args: Sequence[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        argv = [str(item) for item in args]
+        if argv[:3] != ["implement", "checks-result-identity", "resolve-repo-root"]:
+            return real_invoke(args, **cast("Any", kwargs))
+        tmpdir = Path(argv[argv.index("--implement-tmpdir") + 1])
+        root = (
+            larch_io.read_kv(path=tmpdir / "session-env.sh", key="REPO_ROOT", default="", first_match=True)
+            .strip()
+            .strip("'\"")
+        )
+        if not root:
+            return subprocess.CompletedProcess(argv, 2, "", "ERROR=REPO_ROOT missing from session-env.sh\n")
+        return subprocess.CompletedProcess(argv, 0, f"REPO_ROOT={root}\n", "")
+
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_larch", fake_invoke)
+
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", "-C", str(repo), *args], text=True, capture_output=True, check=False)
@@ -433,11 +455,11 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert ("implement", "step-5-resume") not in _REGISTRY
     assert ("implement", "step-7a") not in _REGISTRY
     assert _REGISTRY[("implement", "step-8-ship")][:2] == ("larch.implement.implement_dispatch", "step8_ship_main")
-    assert _REGISTRY[("implement", "step-18-gate-logs-flush")][:2] == (
-        "larch.implement.implement_dispatch",
-        "step_18_gate_logs_flush_main",
-    )
-    assert _REGISTRY[("implement", "step-19")][:2] == ("larch.implement.implement_dispatch", "step_19_main")
+    assert ("implement", "step-18") not in _REGISTRY
+    assert ("implement", "step-18-gate-logs-flush") not in _REGISTRY
+    assert ("implement", "step-19") not in _REGISTRY
+    assert ("implement", "checks-result-identity") not in _REGISTRY
+    assert ("checks", "self-edit-log") not in _REGISTRY
     assert ("implement", "run-step-checks") not in _REGISTRY
     assert _REGISTRY[("ship", "pre-driver")][:2] == ("larch.implement.implement_dispatch", "ship_pre_driver_main")
     assert _REGISTRY[("ship", "pre-fix-rebase")][:2] == ("larch.implement.implement_dispatch", "ship_pre_fix_rebase_main")
@@ -2064,335 +2086,6 @@ def test_step8_oos_checkpoint_resolves_run_id_from_single_ndjson_without_state_r
     assert capsys.readouterr().out == "OOS_CHECKPOINT_RC=0\nNEXT_ACTION=reship\n"
     assert (run_dir / "run-statistics.md").read_text(encoding="utf-8") == "Run ndjson-run: 1 OOS issue(s) filed.\n"
     assert "OOS_PENDING=false\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
-
-
-@pytest.mark.parametrize(
-    ("value", "active"),
-    [("", False), ("false", False), ("true", True), ("1", True), ("maybe", True)],
-)
-def test_step18_stall_layer_active_matches_shell(value: str, active: bool) -> None:
-    assert implement_dispatch._stall_layer_active(value) is active
-
-
-@pytest.mark.parametrize(
-    ("arg", "env_value", "expected"),
-    [
-        ("", "", "false"),
-        ("", "true", "true"),
-        ("true", "false", "true"),
-        ("false", "true", "false"),
-        ("1", "false", "1"),
-        ("maybe", "true", "maybe"),
-    ],
-)
-def test_step18_resolve_stall_memory_layer(arg: str, env_value: str, expected: str) -> None:
-    assert implement_dispatch._resolve_stall_memory_layer(stall_tracking_memory_arg=arg, env_stall_tracking=env_value) == expected
-
-
-def _install_step18_normalize(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    succeeded: bool,
-    outcome: str = "pr-created",
-    pr_number: str = "1",
-    calls: list[list[str]] | None = None,
-) -> None:
-    def fake_capture(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        assert Path(args[0]).name == "larch.sh"
-        if calls is not None:
-            calls.append(list(args[1:]))
-        return subprocess.CompletedProcess(
-            list(args),
-            0,
-            (
-                f"IMPLEMENT_NORMALIZED_OUTCOME={outcome}\n"
-                f"IMPLEMENT_PR_NUMBER={pr_number}\n"
-                f"IMPLEMENT_OUTCOME_SUCCEEDED={'true' if succeeded else 'false'}\n"
-            ),
-            "",
-        )
-
-    monkeypatch.setattr(dispatch_step18.proc, "run", fake_capture)
-
-
-def _install_step18_logs_flush(
-    monkeypatch: pytest.MonkeyPatch, *, calls: list[list[str]], rc: int = 0, stdout: str = "EMIT_BODY=false\n"
-) -> None:
-    def fake_logs_flush(*, implement_tmpdir: Path, step17_emitted: str) -> int:
-        calls.append(["step-18-logs-flush", str(implement_tmpdir), "--step17-emitted", step17_emitted])
-        if stdout:
-            sys.stdout.write(stdout)
-            sys.stdout.flush()
-        if rc:
-            sys.stderr.write("logs flush stderr\n")
-            sys.stderr.flush()
-        return rc
-
-    monkeypatch.setattr(dispatch_step18, "_step18_logs_flush", fake_logs_flush)
-
-
-def test_step18_gate_logs_flush_no_stall_runs_logs_flush_and_forwards_stdout(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("STALL_TRACKING", "false")
-    normalize_calls: list[list[str]] = []
-    logs_flush_calls: list[list[str]] = []
-    _install_step18_normalize(monkeypatch, succeeded=False, calls=normalize_calls)
-    _install_step18_logs_flush(
-        monkeypatch,
-        calls=logs_flush_calls,
-        stdout="---LARCH-SUMMARY-FINAL-BEGIN---\nbody\n---LARCH-SUMMARY-FINAL-END---\n",
-    )
-
-    assert (
-        implement_dispatch.step_18_gate_logs_flush_main(
-            ["--implement-tmpdir", str(tmp), "--stall-tracking-memory", "", "--step17-emitted", "true"]
-        )
-        == 0
-    )
-
-    captured = capsys.readouterr()
-    assert "STALL_TRACKING_MEMORY=false\n" in captured.out
-    assert "STALL_RECOVERY_REQUIRED=false\n" in captured.out
-    assert "⏩ 18a: stall recovery; no stall detected\n" in captured.out
-    assert "IMPLEMENT_OUTCOME_SUCCEEDED=false\n" in captured.out
-    assert "---LARCH-SUMMARY-FINAL-BEGIN---\nbody\n---LARCH-SUMMARY-FINAL-END---\n" in captured.out
-    assert captured.out.rstrip().endswith("NEXT_ACTION=logs-flush-done")
-    assert normalize_calls == [[
-        "stall-recovery",
-        "normalize-outcome",
-        "--implement-tmpdir",
-        str(tmp),
-        "--in-memory-stall-tracking",
-        "false",
-    ]]
-    assert logs_flush_calls == [["step-18-logs-flush", str(tmp), "--step17-emitted", "true"]]
-
-
-def test_step18_gate_logs_flush_empty_tmpdir_argv_falls_back_to_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    monkeypatch.setenv("STALL_TRACKING", "false")
-    logs_flush_calls: list[list[str]] = []
-    _install_step18_normalize(monkeypatch, succeeded=False)
-    _install_step18_logs_flush(monkeypatch, calls=logs_flush_calls)
-
-    assert implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", ""]) == 0
-
-    assert logs_flush_calls
-    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=logs-flush-done")
-
-
-def test_step18_gate_logs_flush_active_stall_breaks_out_without_logs_flush(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    (tmp / "ship-pr-state.sh").write_text("STALL_TRACKING=1\n", encoding="utf-8")
-    monkeypatch.setattr(
-        dispatch_step18.proc, "run", lambda *_a, **_k: pytest.fail("normalize-outcome should not run for active stall")
-    )
-    monkeypatch.setattr(
-        implement_dispatch.subprocess,
-        "run",
-        lambda *_a, **_k: pytest.fail("finalize should not run for active stall"),
-    )
-
-    assert implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", str(tmp)]) == 0
-
-    captured = capsys.readouterr()
-    assert "STALL_TRACKING_DISK=1\n" in captured.out
-    assert "STALL_RECOVERY_REQUIRED=true\n" in captured.out
-    assert captured.out.rstrip().endswith("NEXT_ACTION=stall-recovery")
-
-
-def test_step18_gate_logs_flush_refuses_terminal_shipping_without_pr(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    _install_step18_normalize(monkeypatch, succeeded=False, outcome="shipping", pr_number="")
-
-    def fake_append_execution_issue(
-        _runner: object, *, log: str, category: str, entry: str, **_kwargs: object
-    ) -> SimpleNamespace:
-        Path(log).write_text(f"### {category}\n\n{entry}\n", encoding="utf-8")
-        return SimpleNamespace(failed=False, status="appended", error="")
-
-    monkeypatch.setattr(run_log_batch.rust_runtime, "execution_issues_append", fake_append_execution_issue)
-    monkeypatch.setattr(
-        implement_dispatch.subprocess,
-        "run",
-        lambda *_a, **_k: pytest.fail("finalize must not run for terminal shipping without a PR"),
-    )
-
-    assert (
-        implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", str(tmp)]) == config.EXIT_INTERNAL_ERROR
-    )
-
-    captured = capsys.readouterr()
-    assert "IMPLEMENT_NORMALIZED_OUTCOME=shipping\n" in captured.out
-    assert "STALL_RECOVERY_REQUIRED=true\n" in captured.out
-    assert "TERMINAL_FINALIZE_REFUSED=true\n" in captured.out
-    assert "STATUS=blocked\n" in captured.out
-    assert "OUTCOME=stalled\n" in captured.out
-    assert captured.out.rstrip().endswith("NEXT_ACTION=tool-failure")
-    state = finalize.read_finalize_state(tmp / "finalize-state.sh")
-    assert state["BAIL_REASON"] == "step18-terminal-shipping-without-pr"
-    assert state["EXIT_CODE"] == str(config.EXIT_INTERNAL_ERROR)
-    assert state["PHASE"] == "stalled"
-    assert state["STALL_STEP"] == "8"
-    assert state["STALL_TRACKING"] == "true"
-    assert state["STEP18_GATE_REFUSAL"] == "step18-terminal-shipping-without-pr"
-    execution_issues = (tmp / "execution-issues.md").read_text(encoding="utf-8")
-    assert "### Tool Failures" in execution_issues
-    assert "Step 18 terminal gate" in execution_issues
-
-
-def test_step18_gate_logs_flush_abandoned_checks_bgjob_breaks_out_without_logs_flush(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setattr(dispatch_step18, "_abandoned_checks_bgjob_stall_step", lambda _tmpdir: "3")
-    monkeypatch.setattr(
-        dispatch_step18.proc, "run", lambda *_a, **_k: pytest.fail("normalize-outcome should not run for active stall")
-    )
-    monkeypatch.setattr(
-        implement_dispatch.subprocess,
-        "run",
-        lambda *_a, **_k: pytest.fail("finalize should not run for active stall"),
-    )
-
-    assert implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", str(tmp)]) == 0
-
-    captured = capsys.readouterr()
-    assert "STALL_TRACKING_ABANDONED_MARKER=true\n" in captured.out
-    assert "STALL_TRACKING_DISK=false\n" in captured.out
-    assert "STALL_RECOVERY_REQUIRED=true\n" in captured.out
-    assert captured.out.rstrip().endswith("NEXT_ACTION=stall-recovery")
-
-
-def test_step18_gate_logs_flush_outcome_false_skips_filing_even_with_evidence(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    (tmp / "stall-recovery-escalation-fallback.tsv").write_text("site=step8\n", encoding="utf-8")
-    _install_step18_normalize(monkeypatch, succeeded=False)
-    logs_flush_calls: list[list[str]] = []
-    _install_step18_logs_flush(monkeypatch, calls=logs_flush_calls)
-
-    assert implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", str(tmp)]) == 0
-
-    assert logs_flush_calls
-    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=logs-flush-done")
-
-
-def test_step18_gate_logs_flush_terminal_sentinel_skips_filing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    (tmp / "stall-recovery-terminal-report.env").write_text("TERMINAL=true\n", encoding="utf-8")
-    (tmp / "stall-recovery-escalation-record-failure.env").write_text("FAILED=true\n", encoding="utf-8")
-    _install_step18_normalize(monkeypatch, succeeded=True)
-    logs_flush_calls: list[list[str]] = []
-    _install_step18_logs_flush(monkeypatch, calls=logs_flush_calls)
-
-    assert implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", str(tmp)]) == 0
-
-    assert logs_flush_calls
-    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=logs-flush-done")
-
-
-def test_step18_gate_logs_flush_escalation_success_sentinel_skips_filing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    (tmp / "stall-recovery-escalation-success.env").write_text("FILED=true\n", encoding="utf-8")
-    (tmp / "stall-recovery-escalation-record-failure.env").write_text("FAILED=true\n", encoding="utf-8")
-    _install_step18_normalize(monkeypatch, succeeded=True)
-    logs_flush_calls: list[list[str]] = []
-    _install_step18_logs_flush(monkeypatch, calls=logs_flush_calls)
-
-    assert implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", str(tmp)]) == 0
-
-    assert logs_flush_calls
-    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=logs-flush-done")
-
-
-def test_step18_gate_logs_flush_preserves_logs_flush_rc(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    _install_step18_normalize(monkeypatch, succeeded=False)
-    logs_flush_calls: list[list[str]] = []
-    _install_step18_logs_flush(monkeypatch, calls=logs_flush_calls, rc=9, stdout="EMIT_BODY=true\n")
-
-    assert implement_dispatch.step_18_gate_logs_flush_main(["--implement-tmpdir", str(tmp)]) == 9
-
-    captured = capsys.readouterr()
-    assert "EMIT_BODY=true\n" in captured.out
-    assert "logs flush stderr\n" in captured.err
-    assert captured.out.rstrip().endswith("NEXT_ACTION=logs-flush-failed")
-
-
-def test_step19_refuses_cleanup_without_terminalization_record(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    monkeypatch.setattr(
-        dispatch_step19, "_run_cli_forward", lambda *_args, **_kwargs: pytest.fail("teardown must not run")
-    )
-
-    assert implement_dispatch.step_19_main(["--implement-tmpdir", str(tmp)]) == config.EXIT_INTERNAL_ERROR
-
-    captured = capsys.readouterr()
-    assert "CLEANUP_BLOCKED=run-log-not-terminalized" in captured.out
-    assert "terminalization is not recorded" in captured.err
-
-
-def test_step19_runs_only_cleanup_after_terminalization(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    (tmp / ".run-log-terminalized").write_text(
-        "RUN_LOG_TERMINALIZED=true\nRUN_LOG_PUBLICATION=published\nLIFECYCLE_TERMINALIZED=true\n", encoding="utf-8"
-    )
-    invoked: list[list[str]] = []
-    forwarded: list[list[str]] = []
-
-    def fake_invoke(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        invoked.append(list(args))
-        return subprocess.CompletedProcess(list(args), 0, "", "")
-
-    def fake_forward(args: Sequence[str], **_kwargs: object) -> int:
-        forwarded.append(list(args))
-        return 0
-
-    # `session clear-implement-pointer` is Rust-owned (issue #8058), so Step 19
-    # reaches it through the verified bootstrap script rather than the Python CLI.
-    monkeypatch.setattr(dispatch_step19, "_run_larch", fake_invoke)
-    monkeypatch.setattr(dispatch_step19, "_run_cli_forward", fake_forward)
-
-    assert implement_dispatch.step_19_main(["--implement-tmpdir", str(tmp)]) == 0
-    assert not any(call[:1] == ["run-log"] for call in invoked + forwarded)
-    assert invoked == [
-        [
-            str(dispatch_step19._larch_entrypoint()),  # pyright: ignore[reportPrivateUsage]  # shared dispatch helper
-            "session",
-            "clear-implement-pointer",
-            "--claude-pid",
-            str(os.getppid()),
-        ]
-    ]
-    assert forwarded == [
-        [
-            "implement-finalize",
-            "teardown",
-            "--state-file",
-            str(tmp / "finalize-state.sh"),
-            "--implement-tmpdir",
-            str(tmp),
-        ]
-    ]
 
 
 def test_step8_oos_checkpoint_filed_count_ignores_stale_sentinel_without_ndjson(
@@ -4236,7 +3929,7 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     assert 'implement run-step-checks "$@"' in run_step_checks
     assert "bgjob start" not in run_step_checks
     assert '"implement-checks-step5-self-review", 14700' in dispatch_commit
-    assert "checks_result_identity" in dispatch_commit
+    assert "checks-result-identity" in dispatch_commit
     assert "step_checks_result_env_state" not in dispatch_commit
     assert 'implement step-6-entry "$@"' in step6_entry_sh
     assert "bgjob start" not in step6_entry_sh
@@ -4244,11 +3937,10 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     assert "_session_validated_repo_root" in dispatch_commit
     assert '"--repo-root"' in dispatch_commit or "'--repo-root'" in dispatch_commit
     assert "CLAUDE_PROJECT_DIR" in dispatch_commit
-    identity_mod = (root / "python" / "larch" / "implement" / "checks_result_identity.py").read_text(
+    identity_mod = (root / "crates" / "larch-core" / "src" / "implement" / "identity.rs").read_text(
         encoding="utf-8"
     )
-    assert "CHECKS_TERMINAL_ACTIONS" in identity_mod
-    assert "identity-integrity-failed" in identity_mod or "CHECKS_IDENTITY_INTEGRITY_FAILED_ACTION" in identity_mod
+    assert "CHECKS_IDENTITY_INTEGRITY_FAILED_ACTION" in identity_mod
     assert "BGJOB_STATUS=STARTED STEP=implement-step6-checks PGID=<n>" in skill
     assert "scripts/larch.sh bgjob wait --step implement-step6-checks" in skill
     assert "checks-commit-route --checks-site step5-self-review" not in skill

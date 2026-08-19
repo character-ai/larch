@@ -387,6 +387,8 @@ mod tests {
         check(
             &ExactDiffRequest {
                 cached: true,
+                binary: false,
+                no_ext_diff: false,
                 unified_context: None,
                 name_only: true,
                 name_status: false,
@@ -405,6 +407,22 @@ mod tests {
                 "--",
                 "tracked.txt",
             ],
+        );
+        check(
+            &ExactDiffRequest {
+                cached: true,
+                binary: true,
+                no_ext_diff: true,
+                unified_context: None,
+                name_only: false,
+                name_status: false,
+                quiet: false,
+                exit_code: false,
+                base: None,
+                head: None,
+                paths: Vec::new(),
+            },
+            &["diff", "--cached", "--binary", "--no-ext-diff"],
         );
         check(
             &ConfigMutationRequest::Set {
@@ -682,6 +700,8 @@ mod tests {
         assert!(
             ExactDiffRequest {
                 cached: false,
+                binary: false,
+                no_ext_diff: false,
                 unified_context: None,
                 name_only: true,
                 name_status: true,
@@ -800,6 +820,8 @@ mod tests {
         assert_argv(
             &ExactDiffRequest {
                 cached: false,
+                binary: false,
+                no_ext_diff: false,
                 unified_context: None,
                 name_only: false,
                 name_status: true,
