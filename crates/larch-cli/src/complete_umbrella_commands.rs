@@ -1572,8 +1572,8 @@ fn decide_resume_recovery(
             )
         }
         Some(
-            result @ (DurableChildResult::TransientApi
-            | DurableChildResult::IncompleteEnvelopeShip),
+            result
+            @ (DurableChildResult::TransientApi | DurableChildResult::IncompleteEnvelopeShip),
         ) => decision(
             ResumeAction::Failed,
             reset,
