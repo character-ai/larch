@@ -58,25 +58,27 @@ raw issue prose or the issue title as a plan.
 
 ## Complete-umbrella leaf admission and Chief migration budget
 
-Every `/complete-umbrella` leaf passes an additional mechanical plan-contract
-admission gate.
-The recon/design phase first preserves an existing issue plan exactly or, when
-none exists, writes a concrete plan through
-`scripts/larch.sh named-block write --marker plan`. Only then may its prepare
-driver add `[IMPLEMENTING]`. The driver validates exactly one issue-body plan
-against the existing M1/M2 contract before that transition or any ship-state
-write. Leaf plan size alone never routes to design; an oversized but otherwise
-valid plan is admitted and implemented in the thin leaf child.
+`/complete-umbrella` does not apply the `/implement` M1/M2 plan-contract gate
+to a leaf. Recon/design preserves an existing issue plan exactly or, when none
+exists, writes a concrete plan through
+`scripts/larch.sh named-block write --marker plan`. Its implementation brief
+and the actionable leaf body drive the later phases. The prepare driver binds
+the `[IMPLEMENTING]` title mutation to the live leaf snapshot without parsing
+or validating the durable plan.
 
-A plan-contract defect returns the bounded `needs-design`
-outcome and reports
-`/design <leaf>` without launching implementation, adding an active title, or
-writing ship state. The parent strips a stale `[IMPLEMENTING]` prefix left by
-an older run so `/design` can admit the leaf; idle and `[DESIGNED]` titles are
-unchanged by that reset. A full
-`/design` pass can rework the plan. A resulting `[DESIGNED] [LEAF OF N]` title
-is excluded from `/complete-umbrella` candidacy like `[DESIGNING]`,
-`[IMPLEMENTING]`, and open `[DONE]`.
+Recon/design returns the bounded `needs-design` outcome only when the existing
+plan block is malformed or the leaf body contains no discernible requested
+outcome, requirement, implementation task, or acceptance criterion. A missing
+plan, a recon-authored plan that does not meet the full M1/M2 grammar, leaf
+size, uncertainty, or cross-leaf sequencing concern does not block an
+otherwise actionable leaf. Recon/design makes the narrowest evidence-based
+decision for integration concerns and continues. An eligible `needs-design`
+outcome reports `/design <leaf>` without launching implementation, adding an
+active title, or writing ship state. The parent strips a stale
+`[IMPLEMENTING]` prefix left by an older run so `/design` can admit the leaf;
+idle and `[DESIGNED]` titles are unchanged by that reset. A resulting
+`[DESIGNED] [LEAF OF N]` title is excluded from `/complete-umbrella` candidacy
+like `[DESIGNING]`, `[IMPLEMENTING]`, and open `[DONE]`.
 
 For a parent whose body declares a `#<N> [CHIEF UMBRELLA]` relationship, the
 ship driver also applies the following read-only Rust line-budget advisory.

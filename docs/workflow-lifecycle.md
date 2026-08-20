@@ -203,16 +203,17 @@ invoking model session. Repeating the same command rebinds a live wait lease or
 resets and reselects a stale active leaf against the original tmpdir. See
 [Complete Umbrella Recovery](complete-umbrella-recovery.md).
 
-For every `/complete-umbrella` leaf, recon/design preserves an existing valid
-issue-anchored plan or writes one when absent. Before the prepare driver can
-move the leaf to `[IMPLEMENTING]` or write ship state, it validates that plan
-contract. A plan-contract defect
-returns a bounded
-`needs-design` outcome and reports `/design <leaf>` without launching the
-implementation phase, adding an active title, or writing ship state. Leaf plan
-size alone never routes to design. The parent
-clears a stale `[IMPLEMENTING]` prefix so the design lifecycle can admit the
-leaf.
+For every `/complete-umbrella` leaf, recon/design preserves an existing plan or
+writes one when absent, then produces the implementation brief. It returns a
+bounded `needs-design` outcome only for a malformed existing plan block or a
+leaf body with no discernible requested outcome, requirement, implementation
+task, or acceptance criterion. A missing plan, full M1/M2 grammar defect, leaf
+size, uncertainty, or cross-leaf sequencing concern does not block an
+otherwise actionable leaf. The prepare driver binds the `[IMPLEMENTING]`
+mutation to the live leaf snapshot without validating the plan contract. An
+eligible `needs-design` outcome occurs before that title or ship-state mutation
+and reports `/design <leaf>`. The parent clears a stale `[IMPLEMENTING]` prefix
+so the design lifecycle can admit the leaf.
 
 For a parent that names a Chief umbrella, the managed ship driver counts merge-base-to-head added
 non-generated Rust lines, including tests, immediately before queue submission

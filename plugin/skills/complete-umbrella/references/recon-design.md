@@ -10,12 +10,24 @@ Read `phase-common.md` in this directory in full before acting.
 
 The spawn prompt supplies `REPOSITORY`, `UMBRELLA`, `LEAF`, `REPO_ROOT`, and `HANDOFF_ROOT`. Require positive numeric issue IDs, exact `OWNER/REPO` syntax, the current working directory as `REPO_ROOT`, and `HANDOFF_ROOT=$SESSION_TMPDIR`.
 
-The prepare driver is the leaf admission and plan-contract gate, so do not run
-it until this phase has materialized a valid durable plan. Then:
+The recon/design phase owns leaf actionability. The prepare driver only starts
+the mutation state after this phase has produced its handoffs. It does not
+validate a durable plan. Then:
 
 1. Read `AGENTS.md`, `ARCHITECTURAL_INVARIANTS.md`, and `ARCHITECTURAL_GUIDELINES.md` when present. Follow their repository rules.
 2. Fetch the full leaf and umbrella issue bodies into `leaf-issue.md` and `umbrella-issue.md` below `$SESSION_TMPDIR`. Redirect the `gh issue view` output to those files. Do not return issue text in tool output.
-3. Read both issue files in full. Inspect relevant precedent pull requests and the target source. Use no more than five precedent PRs.
+3. Read both issue files in full. Route to `needs-design` only when the existing
+   plan block is malformed as described in Step 5, or when the leaf body is
+   totally unactionable. A body is actionable when it contains any discernible
+   requested outcome, requirement, implementation task, or acceptance
+   criterion. It does not need a durable plan or every one of those fields. An
+   absent plan block, M1/M2 grammar gaps, uncertainty, cross-leaf ordering,
+   atomic-cutover concerns, integration risk, and competing implementation
+   choices are not `needs-design` reasons. Resolve those concerns with the
+   narrowest evidence-based decision, preserve backward compatibility when
+   practical, and follow an umbrella-level atomic-cutover rule when one exists.
+   Inspect relevant precedent pull requests and the target source. Use no more
+   than five precedent PRs.
 4. Inspect only enough repository context to identify the implementation. Batch independent `Read`, `Grep`, and `Glob` calls.
 5. Materialize any existing durable plan before drafting a replacement:
 
@@ -35,7 +47,15 @@ extracted plan exactly. Do not replace or republish it. This includes a plan
 published by a prior full `/design` run.
 
 6. Write `$SESSION_TMPDIR/design-brief.md`. Include requirements, relevant architectural rules, file-and-line anchors, exact code and test surfaces, generated or projected companions, stale callers to sweep, local checks, and a parity plan. If a differential harness is needed, require an assertion that proves a success path executed.
-7. Only when `BLOCK_PRESENT=false`, write `$SESSION_TMPDIR/plan.md` as a concrete executable plan. It must satisfy the issue-anchored M1/M2 contract: firm file headings, ordered steps, closed ownership decisions, acceptance, breaking-change/migration treatment, and a terminal `diff_lines:` line. It is a new plan, not evidence of an approval that did not occur. Publish exactly that file through the canonical wire owner:
+7. Only when `BLOCK_PRESENT=false`, write `$SESSION_TMPDIR/plan.md` as a
+   concrete executable plan. Use the issue-anchored M1/M2 structure: firm file
+   headings, ordered steps, closed ownership decisions, acceptance,
+   breaking-change or migration treatment, and a terminal `diff_lines:` line.
+   The plan records this autonomous decision. It is not evidence of an
+   approval that did not occur, and its prior absence is not an admission
+   failure. Do not stop or route to `needs-design` over an M1/M2 grammar gap;
+   make the narrowest concrete plan the evidence supports. Publish exactly
+   that file through the canonical wire owner:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" named-block write \
@@ -57,16 +77,18 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" complete-umbrella ship-leaf \
   --leaf "<LEAF>"
 ```
 
-On `SHIP_STATUS=prepared`, require the driver to have verified the live plan
-before it adds `[IMPLEMENTING]`; it changes no other title bytes. Do not echo `SHIP_STATUS`
-or any prepare-driver output in your final response.
+On `SHIP_STATUS=prepared`, require the driver to have bound the
+`[IMPLEMENTING]` change to the live leaf snapshot; it changes no other title
+bytes. Do not echo `SHIP_STATUS` or any prepare-driver output in your final
+response.
 
-If Step 5 reported a malformed durable plan, or if
-`SHIP_STATUS=needs-design`, write `$SESSION_TMPDIR/needs-design.md` with one
-short line naming the leaf and the required command `/design <LEAF>`. The
-plan-contract route occurs before the prepare driver adds an active title or
-writes ship state. The parent may later clear a stale active title from an
-older run. Do not implement, review, or ship. End with only:
+If Step 3 found a totally unactionable body, or Step 5 reported a malformed
+existing durable plan block, write `$SESSION_TMPDIR/needs-design.md` with one
+short line naming the leaf, the eligible reason, and the required command
+`/design <LEAF>`. These are the only `needs-design` routes. They occur before
+the prepare driver adds an active title or writes ship state. The parent may
+later clear a stale active title from an older run. Do not implement, review,
+or ship. End with only:
 
 ```text
 PHASE_STATUS=needs-design

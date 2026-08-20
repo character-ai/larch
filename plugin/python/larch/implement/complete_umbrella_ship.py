@@ -17,11 +17,7 @@ from larch.core.proc import CommandResult, Runner
 from larch.errors import ShipError
 from larch.git import gh, git, pr_body, push
 from larch.implement import ci, ci_monitor
-from larch.issue import (
-    issue_mutation,
-    issue_wire,
-    tracking_issue,
-)
+from larch.issue import issue_mutation, tracking_issue
 from larch.state.session_env import is_allowed_session_tmpdir
 
 SleepFn = Callable[[float], None]
@@ -109,10 +105,6 @@ class LeafShipOutcome:
     ci_errors_file: str = ""
     conflict_files: str = ""
     detail: str = ""
-
-
-class _LeafPlanNeedsDesign(ShipError):
-    """A durable plan contract defect that requires the full design lifecycle."""
 
 
 @dataclass(frozen=True)
@@ -486,29 +478,6 @@ def _is_chief_migration_umbrella(runner: Runner, request: LeafShipRequest) -> bo
     return _CHIEF_MIGRATION_UMBRELLA_RE.search(parent.body) is not None
 
 
-def _require_leaf_plan(
-    runner: Runner,
-    request: LeafShipRequest,
-    *,
-    issue_body: str,
-) -> str:
-    """Validate and return durable M1/M2 plan evidence before implementation."""
-    result = issue_wire.validate_issue_plan(
-        issue_body=issue_body,
-        repo_root=request.repo_root,
-        tracked_paths=frozenset(git.ls_files(runner, cwd=str(request.repo_root))),
-    )
-    if not result.ok:
-        raise _LeafPlanNeedsDesign(
-            "complete-umbrella leaf requires a valid issue plan: "
-            + ",".join(result.defects)
-        )
-    plan_inner, malformed = issue_wire.parse_named_block(body=issue_body, marker="plan")
-    if plan_inner is None or malformed:
-        raise _LeafPlanNeedsDesign("validated leaf plan could not be materialized")
-    return plan_inner
-
-
 def _parse_numstat_count(value: str) -> int | None:
     if value == "-":
         return None
@@ -646,13 +615,6 @@ def prepare_leaf(
     )
     if snapshot.state.upper() != "OPEN":
         raise ShipError("leaf must be open before implementation starts")
-    try:
-        _ = _require_leaf_plan(runner, request, issue_body=snapshot.body)
-    except _LeafPlanNeedsDesign:
-        return LeafShipOutcome(
-            status="needs-design",
-            detail=f"run /design {request.leaf} before implementation (plan-contract)",
-        )
     title = _active_leaf_title(snapshot.title, umbrella=request.umbrella)
     if title != snapshot.title:
         mutation = issue_mutation.apply(
