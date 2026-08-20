@@ -305,7 +305,7 @@ fn child_harness_hard_fails_a_noncompletion_envelope() {
 #[test]
 fn child_harness_classifies_incomplete_envelope_with_durable_ship_progress() {
     let (root, mut command) = fixture(
-        "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"result\":\"staying paused per your interruption... I will wait for your direction.\",\"origin\":{\"kind\":\"task-notification\"},\"stop_reason\":\"end_turn\"}'\n",
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"result\":\"staying paused per your interruption... I will wait for your direction.\",\"stop_reason\":\"end_turn\"}'\n",
     );
     let handoff = root.path().join("complete-umbrella-leaf-42");
     fs::create_dir_all(&handoff).expect("leaf handoff root");
