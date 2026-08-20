@@ -1457,13 +1457,15 @@ fn emit_summary_line(tmpdir: &Path, manifest: Option<&Path>) -> ExitCode {
 mod scope_disposition_unit_tests {
     use std::{
         ffi::OsString,
+        fmt::Write as _,
         fs,
-        path::{Path, PathBuf},
-        process::{Command, ExitCode},
+        path::PathBuf,
+        process::ExitCode,
         sync::{Arc, Mutex},
     };
 
     use larch_core::{ProcessOutput, ProcessStatus};
+    use larch_test_support::{GitFixture, GitRepository};
     use tempfile::TempDir;
 
     use super::{
@@ -1535,17 +1537,6 @@ mod scope_disposition_unit_tests {
         )
     }
 
-    fn git(repo: &Path, arguments: &[&str]) {
-        let status = Command::new("git")
-            .args(arguments)
-            .current_dir(repo)
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_CONFIG_SYSTEM", "/dev/null")
-            .status()
-            .expect("git");
-        assert!(status.success(), "git {arguments:?}");
-    }
-
     fn os(values: &[&str]) -> Vec<OsString> {
         values.iter().map(OsString::from).collect()
     }
@@ -1558,76 +1549,80 @@ mod scope_disposition_unit_tests {
         format!("{:?}", ExitCode::from(value))
     }
 
-    fn fixture(plan_paths: &[&str], existing: &[&str]) -> (TempDir, PathBuf, PathBuf) {
-        let root = TempDir::new().expect("root");
-        let repo = root.path().join("repo");
-        let tmpdir = root.path().join("tmp");
-        fs::create_dir_all(&repo).expect("repo");
-        fs::create_dir_all(&tmpdir).expect("tmp");
-        git(&repo, &["init", "--quiet", "-b", "main"]);
-        git(&repo, &["config", "user.email", "larch@example.invalid"]);
-        git(&repo, &["config", "user.name", "larch"]);
-        git(&repo, &["config", "commit.gpgsign", "false"]);
-        fs::write(repo.join("README.md"), "base\n").expect("readme");
-        git(&repo, &["add", "README.md"]);
-        git(&repo, &["commit", "--quiet", "-m", "base"]);
-        let repo = fs::canonicalize(&repo).expect("canonical repo");
-        let tmpdir = fs::canonicalize(&tmpdir).expect("canonical tmp");
-        let head = String::from_utf8(
-            Command::new("git")
-                .args(["rev-parse", "HEAD"])
-                .current_dir(&repo)
-                .output()
-                .expect("rev-parse")
-                .stdout,
-        )
-        .expect("utf8");
+    fn fixture(plan_paths: &[&str], existing: &[&str]) -> (GitRepository, TempDir, PathBuf) {
+        let repository = GitRepository::builder(GitFixture::Refs)
+            .build()
+            .expect("git fixture");
+        let session = TempDir::new().expect("session root");
+        let tmp_path = session.path().join("tmp");
+        fs::create_dir_all(&tmp_path).expect("tmp");
+        let tmpdir = fs::canonicalize(&tmp_path).expect("canonical tmp");
+        let head = repository
+            .git(["rev-parse", "HEAD"])
+            .expect("rev-parse");
+        assert!(head.success(), "rev-parse failed");
+        let head = String::from_utf8(head.stdout).expect("utf8");
         fs::write(tmpdir.join("step2-baseline.txt"), head.trim()).expect("baseline");
         fs::write(tmpdir.join("session-id"), "unit-scope\n").expect("session");
         let mut plan = String::from("## Files\n");
         for path in plan_paths {
-            plan.push_str(&format!("### NEW: `{path}`\n"));
+            writeln!(plan, "### NEW: `{path}`").expect("plan line");
         }
         fs::write(tmpdir.join("plan.txt"), plan).expect("plan");
         for path in existing {
-            fs::write(repo.join(path), "touched\n").expect("touch");
+            repository
+                .write(path, b"touched\n")
+                .expect("touch plan path");
         }
-        (root, repo, tmpdir)
+        (repository, session, tmpdir)
     }
 
-    fn coverage_fixture() -> (TempDir, PathBuf, PathBuf) {
-        let (root, repo, tmpdir) = fixture(&["a.txt", "b.txt"], &["a.txt"]);
-        let coverage = compute_and_write(&tmpdir, &repo, None, None).expect("compute coverage");
+    fn coverage_fixture() -> (GitRepository, TempDir, PathBuf) {
+        let (repository, session, tmpdir) = fixture(&["a.txt", "b.txt"], &["a.txt"]);
+        let coverage =
+            compute_and_write(&tmpdir, repository.root(), None, None).expect("compute coverage");
         assert_eq!(coverage.band, "high");
-        (root, repo, tmpdir)
+        (repository, session, tmpdir)
     }
 
     #[test]
     fn scope_disposition_cli_covers_compute_validate_summary_and_deferred() {
-        let (_root, repo, tmpdir) = fixture(&["a.txt", "b.txt"], &["a.txt"]);
+        let (repository, _session, tmpdir) = fixture(&["a.txt", "b.txt"], &["a.txt"]);
         let tmp = tmpdir.display().to_string();
-        let repo_s = repo.display().to_string();
+        let repo_s = repository.root().display().to_string();
         assert_eq!(
             code(scope_disposition(&os(&[
-                "compute", "--tmpdir", &tmp, "--repo-root", &repo_s,
+                "compute",
+                "--tmpdir",
+                &tmp,
+                "--repo-root",
+                &repo_s,
             ]))),
             expected(0)
         );
         assert_eq!(
             code(scope_disposition(&os(&[
-                "validate-ship", "--tmpdir", &tmp, "--repo-root", &repo_s,
+                "validate-ship",
+                "--tmpdir",
+                &tmp,
+                "--repo-root",
+                &repo_s,
             ]))),
             expected(3)
         );
         assert_eq!(
             code(scope_disposition(&os(&[
-                "render-deferred-inventory", "--tmpdir", &tmp, "--repo-root", &repo_s,
+                "render-deferred-inventory",
+                "--tmpdir",
+                &tmp,
+                "--repo-root",
+                &repo_s,
             ]))),
             expected(0)
         );
         fs::write(
             tmpdir.join("session-env.sh"),
-            format!("REPO_ROOT={}\n", repo.display()),
+            format!("REPO_ROOT={}\n", repository.root().display()),
         )
         .expect("session env");
         assert_eq!(
@@ -1636,13 +1631,23 @@ mod scope_disposition_unit_tests {
         );
         assert_eq!(
             code(scope_disposition(&os(&[
-                "record", "--tmpdir", &tmp, "--repo-root", &repo_s, "--disposition", "bail-rescope",
+                "record",
+                "--tmpdir",
+                &tmp,
+                "--repo-root",
+                &repo_s,
+                "--disposition",
+                "bail-rescope",
             ]))),
             expected(0)
         );
         assert_eq!(
             code(scope_disposition(&os(&[
-                "validate-ship", "--tmpdir", &tmp, "--repo-root", &repo_s,
+                "validate-ship",
+                "--tmpdir",
+                &tmp,
+                "--repo-root",
+                &repo_s,
             ]))),
             expected(3)
         );
@@ -1650,22 +1655,30 @@ mod scope_disposition_unit_tests {
 
     #[test]
     fn scope_disposition_cli_invalidates_stale_fingerprint_and_accepts_advisory() {
-        let (_root, repo, tmpdir) = fixture(&["a.txt"], &["a.txt"]);
+        let (repository, _session, tmpdir) = fixture(&["a.txt"], &["a.txt"]);
         let tmp = tmpdir.display().to_string();
-        let repo_s = repo.display().to_string();
+        let repo_s = repository.root().display().to_string();
         assert_eq!(
             code(scope_disposition(&os(&[
-                "compute", "--tmpdir", &tmp, "--repo-root", &repo_s,
+                "compute",
+                "--tmpdir",
+                &tmp,
+                "--repo-root",
+                &repo_s,
             ]))),
             expected(0)
         );
         assert_eq!(
             code(scope_disposition(&os(&[
-                "validate-ship", "--tmpdir", &tmp, "--repo-root", &repo_s,
+                "validate-ship",
+                "--tmpdir",
+                &tmp,
+                "--repo-root",
+                &repo_s,
             ]))),
             expected(0)
         );
-        let (_root2, repo2, tmpdir2) = coverage_fixture();
+        let (repository2, _session2, tmpdir2) = coverage_fixture();
         let disposition = tmpdir2.join("scope-disposition.json");
         fs::write(
             &disposition,
@@ -1681,7 +1694,7 @@ mod scope_disposition_unit_tests {
                 "--tmpdir",
                 &tmpdir2.display().to_string(),
                 "--repo-root",
-                &repo2.display().to_string(),
+                &repository2.root().display().to_string(),
             ]))),
             expected(3)
         );
@@ -1690,7 +1703,7 @@ mod scope_disposition_unit_tests {
 
     #[test]
     fn scope_disposition_cli_filters_manifest_todos_and_may_update() {
-        let (_root, repo, tmpdir) = fixture(&["a.txt"], &["a.txt"]);
+        let (repository, _session, tmpdir) = fixture(&["a.txt"], &["a.txt"]);
         let manifest = tmpdir.join("manifest.json");
         fs::write(
             &manifest,
@@ -1698,7 +1711,7 @@ mod scope_disposition_unit_tests {
         )
         .expect("manifest");
         let tmp = tmpdir.display().to_string();
-        let repo_s = repo.display().to_string();
+        let repo_s = repository.root().display().to_string();
         assert_eq!(
             code(scope_disposition(&os(&[
                 "compute",
@@ -1718,7 +1731,11 @@ mod scope_disposition_unit_tests {
         .expect("plan");
         assert_eq!(
             code(scope_disposition(&os(&[
-                "compute", "--tmpdir", &tmp, "--repo-root", &repo_s,
+                "compute",
+                "--tmpdir",
+                &tmp,
+                "--repo-root",
+                &repo_s,
             ]))),
             expected(0)
         );
@@ -1726,30 +1743,19 @@ mod scope_disposition_unit_tests {
 
     #[test]
     fn scope_disposition_cli_uses_live_origin_and_forked_remote_selection() {
-        let (root, repo, tmpdir) = fixture(&["a.txt"], &[]);
-        let origin = root.path().join("origin.git");
-        git(
-            root.path(),
-            &[
-                "init", "--quiet", "--bare", "-b", "main", &origin.display().to_string(),
-            ],
-        );
-        git(&repo, &["remote", "add", "origin", &origin.display().to_string()]);
-        git(&repo, &["push", "-q", "-u", "origin", "main"]);
-        git(&origin, &["symbolic-ref", "HEAD", "refs/heads/main"]);
-        git(&repo, &["remote", "set-head", "origin", "main"]);
-        fs::write(repo.join("a.txt"), "touched\n").expect("touch");
+        // GitFixture::Refs already has a resolvable origin/HEAD.
+        let (repository, _session, tmpdir) = fixture(&["a.txt"], &["a.txt"]);
         assert_eq!(
             code(scope_disposition(&os(&[
                 "compute",
                 "--tmpdir",
                 &tmpdir.display().to_string(),
                 "--repo-root",
-                &repo.display().to_string(),
+                &repository.root().display().to_string(),
             ]))),
             expected(0)
         );
-        let (_root2, repo2, tmpdir2) = fixture(&["a.txt", "b.txt"], &["a.txt"]);
+        let (repository2, _session2, tmpdir2) = fixture(&["a.txt", "b.txt"], &["a.txt"]);
         fs::write(
             tmpdir2.join("session-env.sh"),
             "FORKED_TARGET=true\nREPO_ROOT=ignored\n",
@@ -1761,7 +1767,7 @@ mod scope_disposition_unit_tests {
                 "--tmpdir",
                 &tmpdir2.display().to_string(),
                 "--repo-root",
-                &repo2.display().to_string(),
+                &repository2.root().display().to_string(),
             ]))),
             expected(0)
         );
@@ -1771,7 +1777,10 @@ mod scope_disposition_unit_tests {
     fn scope_disposition_cli_usage_and_missing_tmpdir_fail_closed() {
         assert_eq!(code(scope_disposition(&os(&["-h"]))), expected(0));
         assert_eq!(code(scope_disposition(&os(&[]))), expected(2));
-        assert_eq!(code(scope_disposition(&os(&["not-an-action"]))), expected(2));
+        assert_eq!(
+            code(scope_disposition(&os(&["not-an-action"]))),
+            expected(2)
+        );
         assert_eq!(
             code(scope_disposition(&os(&[
                 "compute",
@@ -1795,14 +1804,14 @@ mod scope_disposition_unit_tests {
 
     #[test]
     fn proceed_partial_cli_refuses_without_tracking_issue() {
-        let (_root, repo, tmpdir) = coverage_fixture();
+        let (repository, _session, tmpdir) = coverage_fixture();
         assert_eq!(
             code(scope_disposition(&os(&[
                 "record",
                 "--tmpdir",
                 &tmpdir.display().to_string(),
                 "--repo-root",
-                &repo.display().to_string(),
+                &repository.root().display().to_string(),
                 "--disposition",
                 "proceed-partial",
             ]))),
@@ -1826,8 +1835,8 @@ mod scope_disposition_unit_tests {
 
     #[test]
     fn proceed_partial_records_followup_through_the_verified_larch_hook() {
-        let (root, repo, tmpdir) = coverage_fixture();
-        declare_plugin_root(root.path());
+        let (repository, session, tmpdir) = coverage_fixture();
+        declare_plugin_root(session.path());
         let calls = Arc::new(Mutex::new(Vec::<String>::new()));
         let observed = calls.clone();
         install_test_larch(move |_cwd, _root, args| {
@@ -1855,7 +1864,7 @@ mod scope_disposition_unit_tests {
         let record = record_disposition(
             &tmpdir,
             "proceed-partial",
-            &repo,
+            repository.root(),
             None,
             "o/r",
             "42",
@@ -1870,7 +1879,7 @@ mod scope_disposition_unit_tests {
             .expect("load")
             .expect("present");
         assert_eq!(loaded.followup_issue_number, "99");
-        let seen = calls.lock().expect("lock");
+        let seen = calls.lock().expect("lock").clone();
         assert!(
             seen.iter().any(|row| row.starts_with("issue create-one")),
             "seen={seen:?}"
@@ -1892,9 +1901,10 @@ mod scope_disposition_unit_tests {
 
     #[test]
     fn proceed_partial_reuses_an_existing_matching_followup() {
-        let (root, repo, tmpdir) = coverage_fixture();
-        declare_plugin_root(root.path());
-        let coverage = compute_and_write(&tmpdir, &repo, None, None).expect("coverage");
+        let (repository, session, tmpdir) = coverage_fixture();
+        declare_plugin_root(session.path());
+        let coverage =
+            compute_and_write(&tmpdir, repository.root(), None, None).expect("coverage");
         fs::write(
             tmpdir.join("scope-disposition.json"),
             format!(
@@ -1905,7 +1915,15 @@ mod scope_disposition_unit_tests {
         .expect("seed disposition");
         install_test_larch(|_c, _r, _a| Ok(out(2, "should-not-create")));
 
-        let record = record_disposition(&tmpdir, "proceed-partial", &repo, None, "o/r", "42", "");
+        let record = record_disposition(
+            &tmpdir,
+            "proceed-partial",
+            repository.root(),
+            None,
+            "o/r",
+            "42",
+            "",
+        );
         clear_test_hooks();
         let record = record.expect("reuse");
         assert_eq!(record.followup_issue_number, "77");
