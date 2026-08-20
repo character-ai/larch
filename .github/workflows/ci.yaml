@@ -872,6 +872,13 @@ jobs:
           sparse-checkout-cone-mode: false
       - id: main-cache-keys
         uses: ./.github/actions/main-cache-keys
+      # `checks run-relevant` spawns `pre-commit`; install it so the coverage
+      # run can exercise that path (#8616).
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install pre-commit for relevant-checks coverage
+        run: python -m pip install pre-commit
       - uses: ./.github/actions/rust-coverage
         env:
           CARGO_INPUTS_CACHE_KEY: ${{ steps.main-cache-keys.outputs.cargo-inputs }}
@@ -1220,6 +1227,13 @@ jobs:
           sparse-checkout-cone-mode: false
       - id: main-cache-keys
         uses: ./.github/actions/main-cache-keys
+      # `checks run-relevant` spawns `pre-commit`; install it so the coverage
+      # run can exercise that path (#8616).
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install pre-commit for relevant-checks coverage
+        run: python -m pip install pre-commit
       - uses: ./.github/actions/rust-coverage
         env:
           CARGO_INPUTS_CACHE_KEY: ${{ steps.main-cache-keys.outputs.cargo-inputs }}
@@ -1282,6 +1296,13 @@ jobs:
           sparse-checkout-cone-mode: false
       - id: main-cache-keys
         uses: ./.github/actions/main-cache-keys
+      # `checks run-relevant` spawns `pre-commit`; install it so the coverage
+      # run can exercise that path (#8616).
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install pre-commit for relevant-checks coverage
+        run: python -m pip install pre-commit
       - uses: ./.github/actions/rust-coverage
         env:
           CARGO_INPUTS_CACHE_KEY: ${{ steps.main-cache-keys.outputs.cargo-inputs }}

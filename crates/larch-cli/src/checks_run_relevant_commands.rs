@@ -803,7 +803,7 @@ mod tests {
     }
 
     fn git(repo: &Path, args: &[&str]) {
-        let status = Command::new("git")
+        let status = Command::new("git") // lint-subprocess-via-runner: ok test fixture builds a throwaway repo
             .args(args)
             .current_dir(repo)
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
@@ -965,6 +965,159 @@ mod tests {
         if let Some(redacted) = &result.redacted_log_path {
             assert!(Path::new(redacted).is_file());
         }
+    }
+
+    fn precommit_on_path() -> bool {
+        precommit_available()
+    }
+
+    #[test]
+    fn contains_pins_reads_a_changed_files_scope() {
+        let repo = TempDir::new().expect("repo");
+        let root = fs::canonicalize(repo.path()).expect("canonical");
+        let scripts = root.join("scripts");
+        fs::create_dir_all(&scripts).expect("scripts");
+        fs::write(root.join("target.txt"), "present\n").expect("target");
+        fs::write(
+            scripts.join("test-scope.sh"),
+            "T=\"$REPO_ROOT/target.txt\"\ncontains \"$T\" \"present\" \"ok\"\n",
+        )
+        .expect("script");
+        let changed = root.join("changed.txt");
+        fs::write(&changed, "README.md\n").expect("changed");
+        // The changed scope excludes both the script and its target, so the
+        // assertion is skipped and no defect is reported.
+        let code = check_contains_pins(&[
+            OsString::from("--repo-root"),
+            OsString::from(&root),
+            OsString::from("--changed-files"),
+            OsString::from(&changed),
+        ]);
+        assert_eq!(code, ExitCode::SUCCESS);
+    }
+
+    #[test]
+    fn run_relevant_checks_runs_the_rust_fallback_for_a_deleted_crate_file() {
+        let repo = init_repo();
+        let root = repo.path();
+        let crate_dir = root.join("crates").join("demo").join("src");
+        fs::create_dir_all(&crate_dir).expect("crate dir");
+        let rs = crate_dir.join("lib.rs");
+        fs::write(&rs, "pub fn demo() {}\n").expect("rs");
+        git(root, &["add", "-A"]);
+        git(root, &["commit", "-q", "-m", "add crate"]);
+        fs::remove_file(&rs).expect("remove rs");
+        // The Rust change set now has a deleted, non-regular path, so the bounded
+        // Rust Clippy fallback runs. Without a plugin root the delegated
+        // `checks rust-clippy` verb fails, so the run fails closed.
+        let session = SessionDir::new();
+        let result = run_relevant_checks(
+            "step3",
+            &session.path.to_string_lossy(),
+            &root.to_string_lossy(),
+        );
+        assert!(!result.ok, "rust fallback failure fails closed: {result:?}");
+    }
+
+    #[test]
+    fn run_relevant_checks_runs_precommit_on_a_regular_file() {
+        if !precommit_on_path() {
+            return;
+        }
+        let repo = init_repo();
+        let root = repo.path();
+        fs::write(
+            root.join(".pre-commit-config.yaml"),
+            "repos:\n  - repo: local\n    hooks:\n      - id: fail\n        name: fail\n        entry: bash -c 'echo boom; exit 1'\n        language: system\n        files: .\n",
+        )
+        .expect("config");
+        fs::write(root.join("changed.py"), "print('x')\n").expect("py");
+        git(root, &["add", "-A"]);
+        let session = SessionDir::new();
+        let result = run_relevant_checks(
+            "step3",
+            &session.path.to_string_lossy(),
+            &root.to_string_lossy(),
+        );
+        assert!(!result.ok, "failing pre-commit hook fails the run: {result:?}");
+        assert_eq!(result.phase, "pre-commit");
+        let digest = result.digest_file_path.expect("digest written");
+        assert!(Path::new(&digest).is_file());
+    }
+
+    #[test]
+    fn checks_run_relevant_entrypoint_renders_success_and_errors() {
+        // Missing --site is a usage error; --help prints and exits zero.
+        assert_eq!(
+            checks_run_relevant(&[]),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            checks_run_relevant(&[OsString::from("--help")]),
+            ExitCode::SUCCESS
+        );
+        // A full success dispatch through the argv handler on a fresh repo.
+        let repo = init_repo();
+        let session = SessionDir::new();
+        let code = checks_run_relevant(&[
+            OsString::from("--site"),
+            OsString::from("step3"),
+            OsString::from("--tmpdir"),
+            OsString::from(session.path.as_os_str()),
+            OsString::from("--repo-root"),
+            OsString::from(repo.path()),
+            OsString::from("--allow-skip"),
+        ]);
+        assert_eq!(code, ExitCode::SUCCESS);
+    }
+
+    #[test]
+    fn check_contains_pins_entrypoint_reports_defects_and_errors() {
+        assert_eq!(
+            check_contains_pins(&[OsString::from("--help")]),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            check_contains_pins(&[
+                OsString::from("--repo-root"),
+                OsString::from("/larch-cov-not-a-dir"),
+            ]),
+            ExitCode::from(2)
+        );
+        assert_eq!(
+            check_contains_pins(&[
+                OsString::from("--repo-root"),
+                OsString::from("/larch-cov-not-a-dir"),
+                OsString::from("--changed-files"),
+                OsString::from("/larch-cov-missing-changed"),
+            ]),
+            ExitCode::from(2)
+        );
+        // A repo whose harness pins an absent literal reports one defect.
+        let repo = TempDir::new().expect("repo");
+        let root = fs::canonicalize(repo.path()).expect("canonical");
+        let scripts = root.join("scripts");
+        fs::create_dir_all(&scripts).expect("scripts");
+        fs::write(root.join("target.txt"), "present\n").expect("target");
+        fs::write(
+            scripts.join("test-defect.sh"),
+            "T=\"$REPO_ROOT/target.txt\"\ncontains \"$T\" \"absent\" \"ok\"\n",
+        )
+        .expect("script");
+        let code = check_contains_pins(&[
+            OsString::from("--repo-root"),
+            OsString::from(&root),
+        ]);
+        assert_eq!(code, ExitCode::from(1));
+    }
+
+    #[test]
+    fn render_reports_warn_and_skip() {
+        let mut ok = ChecksResult::failure("step3", 0, "x");
+        ok.ok = true;
+        ok.warn = Some("agent-lint-missing".to_owned());
+        ok.failure_reason = None;
+        assert!(ok.render(false).0.ends_with("WARN=agent-lint-missing"));
     }
 
     #[test]
