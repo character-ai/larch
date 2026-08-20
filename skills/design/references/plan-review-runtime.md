@@ -205,7 +205,7 @@ If no findings were rejected, write an empty `$DESIGN_TMPDIR/rejected-findings.m
 
 ## Related: decomposition panel
 
-Step **2b.5 Split-path** uses this panel's **availability-gated `--no-fallback`** contract, not the legacy three-tier waterfall. Its decomposition manifest (four archetypes × present vendors) is built by `python/cli.py decompose panel-dispatch`. Normative orchestration, degraded presentation, aggregator merge, `/larch:issue` batch filing, and original-issue close live in `skills/design/references/decompose-panel.md`; read that file on Split-path entry.
+Step **2b.5 Split-path** uses this panel's **availability-gated `--no-fallback`** contract, not the legacy three-tier waterfall. Its decomposition manifest (four archetypes × present vendors) is built by `scripts/larch.sh decompose panel-dispatch`. Normative orchestration, degraded presentation, aggregator merge, `/larch:issue` batch filing, and original-issue close live in `skills/design/references/decompose-panel.md`; read that file on Split-path entry.
 
 ## Scope anchor and scope reductions
 
