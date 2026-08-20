@@ -279,6 +279,85 @@ mod tests {
     }
 
     #[test]
+    fn digest_paths_maps_each_path_to_its_sha() {
+        let root = TempDir::new().expect("temp");
+        fs::write(root.path().join("a.txt"), "x").expect("write");
+        let map = digest_paths(root.path(), &["a.txt".to_owned(), "b.txt".to_owned()]);
+        assert_eq!(
+            map["a.txt"],
+            "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+        );
+        assert_eq!(map["b.txt"], "missing");
+    }
+
+    #[test]
+    fn record_self_edits_appends_deduplicated_rows() {
+        let repo = TempDir::new().expect("repo");
+        fs::write(repo.path().join("a.py"), "one").expect("a");
+        fs::write(repo.path().join("b.py"), "two").expect("b");
+        let tmpdir = TempDir::new().expect("tmpdir");
+        let written = record_self_edits(
+            tmpdir.path(),
+            "pre-commit autofix!",
+            &[
+                "a.py".to_owned(),
+                "a.py".to_owned(),
+                String::new(),
+                "b.py".to_owned(),
+            ],
+            repo.path(),
+            Some(1234),
+        );
+        assert_eq!(written, 2, "duplicate and empty paths are dropped");
+        let records = read_self_edits(tmpdir.path());
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].source, "pre-commit-autofix-");
+        assert_eq!(records[0].recorded_epoch_s, 1234);
+        assert_eq!(records[0].path, "a.py");
+        // A second call appends without a duplicate header.
+        let again = record_self_edits(
+            tmpdir.path(),
+            "src",
+            &["b.py".to_owned()],
+            repo.path(),
+            Some(9),
+        );
+        assert_eq!(again, 1);
+        assert_eq!(read_self_edits(tmpdir.path()).len(), 3);
+    }
+
+    #[test]
+    fn record_self_edits_fails_closed_on_a_bad_tmpdir_or_no_paths() {
+        let repo = TempDir::new().expect("repo");
+        assert_eq!(
+            record_self_edits(
+                std::path::Path::new("/larch-record-missing"),
+                "src",
+                &["a.py".to_owned()],
+                repo.path(),
+                Some(1),
+            ),
+            0
+        );
+        let tmpdir = TempDir::new().expect("tmpdir");
+        assert_eq!(
+            record_self_edits(tmpdir.path(), "src", &[], repo.path(), Some(1)),
+            0
+        );
+        assert_eq!(
+            record_self_edits(
+                tmpdir.path(),
+                "src",
+                &[String::new(), "  ".to_owned()],
+                repo.path(),
+                Some(1),
+            ),
+            0,
+            "whitespace-only paths normalize to empty and are dropped"
+        );
+    }
+
+    #[test]
     fn validate_session_tmpdir_requires_prefix_and_root() {
         assert!(validate_session_tmpdir("relative").is_none());
         assert!(validate_session_tmpdir("/larch-self-edit-missing").is_none());
