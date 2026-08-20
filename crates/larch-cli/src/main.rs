@@ -20,12 +20,12 @@ use crate::argparse_compat::python_io_error;
 
 mod admission_commands;
 mod agent_commands;
-mod architectural_assessment_commands;
 mod agent_review;
 mod analysis_state;
 mod analyze_bugs_commands;
 mod analyze_bugs_sweep;
 mod analyze_issues_commands;
+mod architectural_assessment_commands;
 mod argparse_compat;
 mod audit_runs_commands;
 mod audit_umbrella_commands;
@@ -2275,7 +2275,9 @@ fn run(
                 architectural_assessment_commands::submit_command(&arguments.arguments)
             }
             ArchitecturalAssessmentCommand::FinalReportSections(arguments) => {
-                architectural_assessment_commands::final_report_sections_command(&arguments.arguments)
+                architectural_assessment_commands::final_report_sections_command(
+                    &arguments.arguments,
+                )
             }
             ArchitecturalAssessmentCommand::SanitizeDetail(arguments) => {
                 architectural_assessment_commands::sanitize_detail_command(&arguments.arguments)

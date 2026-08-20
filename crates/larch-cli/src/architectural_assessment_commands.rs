@@ -6,7 +6,6 @@
 //! owns argparse-compatible argv, live Git via `/usr/bin/git`, and KEY=value
 //! stdout contracts.
 
-
 #![allow(clippy::too_many_lines)]
 use std::{
     env,
@@ -35,11 +34,9 @@ const MATERIALIZE_USAGE: &str = "usage: cli.py architectural-assessment material
 const SUBMIT_PROGRAM: &str = "cli.py architectural-assessment submit";
 const SUBMIT_USAGE: &str = "usage: cli.py architectural-assessment submit [-h] --kind KIND --state STATE --note-file NOTE_FILE [--allow-exception] [--repo-root REPO_ROOT] [--implement-tmpdir IMPLEMENT_TMPDIR]";
 const SANITIZE_PROGRAM: &str = "cli.py architectural-assessment sanitize-detail";
-const SANITIZE_USAGE: &str =
-    "usage: cli.py architectural-assessment sanitize-detail [-h] --implement-tmpdir IMPLEMENT_TMPDIR";
+const SANITIZE_USAGE: &str = "usage: cli.py architectural-assessment sanitize-detail [-h] --implement-tmpdir IMPLEMENT_TMPDIR";
 const FINAL_PROGRAM: &str = "cli.py architectural-assessment final-report-sections";
-const FINAL_USAGE: &str =
-    "usage: cli.py architectural-assessment final-report-sections [-h] --implement-tmpdir IMPLEMENT_TMPDIR";
+const FINAL_USAGE: &str = "usage: cli.py architectural-assessment final-report-sections [-h] --implement-tmpdir IMPLEMENT_TMPDIR";
 
 /// Live Git adapter for assessment identity and diff materialization.
 ///
@@ -76,7 +73,10 @@ impl AssessmentGit for LiveAssessmentGit {
 
 fn git_read(repo_root: &Path, argv: &[&str]) -> Result<String, String> {
     let mut command = Command::new(GIT_BIN);
-    command.args(argv).current_dir(repo_root).stdin(Stdio::null());
+    command
+        .args(argv)
+        .current_dir(repo_root)
+        .stdin(Stdio::null());
     let output = command
         .output()
         .map_err(|error| sanitize_diagnostic_line(&error.to_string()))?;
@@ -105,7 +105,9 @@ fn implementation_diff_for_head(
         .stdin(Stdio::null())
         .output()
         .map_err(|error| error.to_string())?;
-    let base_sha = String::from_utf8_lossy(&merge_base.stdout).trim().to_owned();
+    let base_sha = String::from_utf8_lossy(&merge_base.stdout)
+        .trim()
+        .to_owned();
     if !merge_base.status.success() || base_sha.is_empty() {
         let stderr = String::from_utf8_lossy(&merge_base.stderr);
         let stdout = String::from_utf8_lossy(&merge_base.stdout);
@@ -118,13 +120,7 @@ fn implementation_diff_for_head(
     }
     let range = format!("{base_sha}..{head_sha}");
     let diff = Command::new(GIT_BIN)
-        .args([
-            "diff",
-            &range,
-            "--",
-            ".",
-            ":(exclude)larch-logs/**",
-        ])
+        .args(["diff", &range, "--", ".", ":(exclude)larch-logs/**"])
         .current_dir(repo_root)
         .stdin(Stdio::null())
         .output()
@@ -175,7 +171,11 @@ fn incremental_paths(
     Ok(paths)
 }
 
-fn option_or_env(parsed: &crate::argparse_compat::ParsedCommandLine, option: &str, variable: &str) -> String {
+fn option_or_env(
+    parsed: &crate::argparse_compat::ParsedCommandLine,
+    option: &str,
+    variable: &str,
+) -> String {
     match parsed.value(option) {
         Some(value) if !value.is_empty() => value.to_string_lossy().into_owned(),
         _ => env::var(variable).unwrap_or_default(),
@@ -346,7 +346,9 @@ pub fn materialize_command(arguments: &[OsString]) -> ExitCode {
             "ASSESSMENT_KIND_{upper}_KNOWLEDGE_PATH={}",
             evidence.knowledge_path.display()
         ));
-        lines.push(format!("ASSESSMENT_KIND_{upper}_PRIOR_NOTE_PATH={prior_value}"));
+        lines.push(format!(
+            "ASSESSMENT_KIND_{upper}_PRIOR_NOTE_PATH={prior_value}"
+        ));
         lines.push(format!(
             "ASSESSMENT_KIND_{upper}_HEAD_SHA={}",
             evidence.head_sha
@@ -405,7 +407,9 @@ pub fn submit_command(arguments: &[OsString]) -> ExitCode {
     let implement_tmpdir = PathBuf::from(implement_tmpdir);
     let kind = os_to_string(parsed.value("--kind").unwrap_or_default());
     let state = os_to_string(parsed.value("--state").unwrap_or_default());
-    let note_file = PathBuf::from(os_to_string(parsed.value("--note-file").unwrap_or_default()));
+    let note_file = PathBuf::from(os_to_string(
+        parsed.value("--note-file").unwrap_or_default(),
+    ));
     let allow_exception = parsed.flag("--allow-exception");
     let note = match normalize_kinds(&[kind.as_str()])
         .and_then(|_kinds| read_regular(&note_file, &implement_tmpdir))
@@ -461,11 +465,7 @@ fn print_complete(result: &AssessmentResult) {
         "ASSESSMENT_STATUS=complete".to_owned(),
         format!("ASSESSMENT_KIND={}", result.kind.key()),
         format!("ASSESSMENT_STATE={}", result.state),
-        format!(
-            "ASSESSMENT_RESULTS={}:{}",
-            result.kind.key(),
-            result.state
-        ),
+        format!("ASSESSMENT_RESULTS={}:{}", result.kind.key(), result.state),
         format!("ASSESSMENT_HEAD_SHA={}", result.head_sha),
         format!("ASSESSMENT_BASE_REF={}", result.base_ref),
         format!("ASSESSMENT_DIFF_FINGERPRINT={}", result.diff_fingerprint),
@@ -474,12 +474,7 @@ fn print_complete(result: &AssessmentResult) {
 
 /// Run `architectural-assessment sanitize-detail`.
 pub fn sanitize_detail_command(arguments: &[OsString]) -> ExitCode {
-    let parsed = parse_with_flags(
-        arguments,
-        &["--implement-tmpdir"],
-        &["-h", "--help"],
-        0,
-    );
+    let parsed = parse_with_flags(arguments, &["--implement-tmpdir"], &["-h", "--help"], 0);
     if parsed.flag("-h") || parsed.flag("--help") {
         let help = format!(
             "{SANITIZE_USAGE}\n\noptional arguments:\n  -h, --help            show this help message and exit\n  --implement-tmpdir IMPLEMENT_TMPDIR\n"
@@ -516,12 +511,7 @@ pub fn sanitize_detail_command(arguments: &[OsString]) -> ExitCode {
 
 /// Run `architectural-assessment final-report-sections`.
 pub fn final_report_sections_command(arguments: &[OsString]) -> ExitCode {
-    let parsed = parse_with_flags(
-        arguments,
-        &["--implement-tmpdir"],
-        &["-h", "--help"],
-        0,
-    );
+    let parsed = parse_with_flags(arguments, &["--implement-tmpdir"], &["-h", "--help"], 0);
     if parsed.flag("-h") || parsed.flag("--help") {
         let help = format!(
             "{FINAL_USAGE}\n\noptional arguments:\n  -h, --help            show this help message and exit\n  --implement-tmpdir IMPLEMENT_TMPDIR\n"

@@ -98,7 +98,10 @@ fn materialize_usage_error_without_paths() {
         .assert()
         .code(2);
     let out = stdout_of(&assertion);
-    assert!(out.contains("ASSESSMENT_MATERIALIZE_STATUS=usage-error"), "{out}");
+    assert!(
+        out.contains("ASSESSMENT_MATERIALIZE_STATUS=usage-error"),
+        "{out}"
+    );
     assert!(out.contains("ASSESSMENT_DETAIL="), "{out}");
 }
 
@@ -167,10 +170,12 @@ fn materialize_docs_only_diff_is_deterministic_clean() {
         .success();
     let out = stdout_of(&assertion);
     assert!(out.contains("ASSESSMENT_MATERIALIZE_STATUS=ok"), "{out}");
-    assert!(out.contains("ASSESSMENT_DETERMINISTIC_KINDS=guidelines"), "{out}");
     assert!(
-        out.lines()
-            .any(|line| line == "ASSESSMENT_PENDING_KINDS="),
+        out.contains("ASSESSMENT_DETERMINISTIC_KINDS=guidelines"),
+        "{out}"
+    );
+    assert!(
+        out.lines().any(|line| line == "ASSESSMENT_PENDING_KINDS="),
         "{out}"
     );
 }
@@ -206,10 +211,22 @@ fn materialize_code_diff_is_pending() {
     let out = stdout_of(&assertion);
     assert!(out.contains("ASSESSMENT_MATERIALIZE_STATUS=ok"), "{out}");
     assert!(out.contains("ASSESSMENT_PENDING_KINDS=guidelines"), "{out}");
-    assert!(out.contains("ASSESSMENT_KIND_GUIDELINES_DIFF_PATH="), "{out}");
-    assert!(out.contains("ASSESSMENT_KIND_GUIDELINES_KNOWLEDGE_PATH="), "{out}");
-    assert!(out.contains("ASSESSMENT_KIND_GUIDELINES_HEAD_SHA="), "{out}");
-    assert!(out.contains("ASSESSMENT_KIND_GUIDELINES_DIFF_FINGERPRINT="), "{out}");
+    assert!(
+        out.contains("ASSESSMENT_KIND_GUIDELINES_DIFF_PATH="),
+        "{out}"
+    );
+    assert!(
+        out.contains("ASSESSMENT_KIND_GUIDELINES_KNOWLEDGE_PATH="),
+        "{out}"
+    );
+    assert!(
+        out.contains("ASSESSMENT_KIND_GUIDELINES_HEAD_SHA="),
+        "{out}"
+    );
+    assert!(
+        out.contains("ASSESSMENT_KIND_GUIDELINES_DIFF_FINGERPRINT="),
+        "{out}"
+    );
 }
 
 #[test]

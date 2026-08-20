@@ -47,8 +47,7 @@ pub const ASSESSMENT_OUTCOME_CLEAN: &str = "clean";
 pub const ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME: &str = "invalid-explicit-outcome";
 pub const ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH: &str =
     "clean-outcome-prose-mismatch: identifier citation found in clean note";
-pub const ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA: &str =
-    "missing-or-invalid-outcome-metadata";
+pub const ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA: &str = "missing-or-invalid-outcome-metadata";
 pub const ASSESSMENT_RESULT_REAUTHOR_REQUIRED: &str = "reauthor-required";
 pub const REASON_DETERMINISTIC_CLEAN: &str = "deterministic-clean";
 pub const REASON_UNAVAILABLE: &str = "unavailable";
@@ -277,11 +276,7 @@ fn diff_paths(diff_text: &str) -> Option<Vec<String>> {
         }
         paths.push(left.to_owned());
     }
-    if paths.is_empty() {
-        None
-    } else {
-        Some(paths)
-    }
+    if paths.is_empty() { None } else { Some(paths) }
 }
 
 fn is_safe_rel_path(path: &str) -> bool {
@@ -304,7 +299,10 @@ fn is_safe_rel_path(path: &str) -> bool {
 /// Sanitize one diagnostic for a line-oriented handoff.
 #[must_use]
 pub fn sanitize_detail(text: &str, implement_tmpdir: &Path) -> String {
-    let redacted = redact_outbound(text).replace(&implement_tmpdir.display().to_string(), "<implement-tmpdir>");
+    let redacted = redact_outbound(text).replace(
+        &implement_tmpdir.display().to_string(),
+        "<implement-tmpdir>",
+    );
     let flattened: String = redacted
         .chars()
         .map(|character| {
@@ -330,7 +328,8 @@ pub fn final_report_sections(implement_tmpdir: &Path, head_sha: &str) -> String 
         (AssessmentKind::Invariants, "Architectural invariants"),
         (AssessmentKind::Guidelines, "Architectural guidelines"),
     ] {
-        if let Ok(Some(section)) = consumable_note_section(implement_tmpdir, kind, heading, head_sha)
+        if let Ok(Some(section)) =
+            consumable_note_section(implement_tmpdir, kind, heading, head_sha)
         {
             sections.push(section.trim_end_matches('\n').to_owned());
         }
@@ -348,9 +347,7 @@ fn consumable_note_section(
     heading: &str,
     head_sha: &str,
 ) -> Result<Option<String>, ()> {
-    if head_sha.is_empty()
-        || !note_consumable(implement_tmpdir, head_sha, kind, "", None, None)
-    {
+    if head_sha.is_empty() || !note_consumable(implement_tmpdir, head_sha, kind, "", None, None) {
         return Ok(None);
     }
     let note = fs::read_to_string(durable_note_path(implement_tmpdir, kind)).map_err(|_| ())?;
@@ -378,7 +375,11 @@ fn reauthor_status(reason: &str) -> String {
     format!("{ASSESSMENT_RESULT_REAUTHOR_REQUIRED}:{bounded}")
 }
 
-fn kind_paths(kind: AssessmentKind, implement_tmpdir: &Path, repo_root: &Path) -> (PathBuf, PathBuf, PathBuf) {
+fn kind_paths(
+    kind: AssessmentKind,
+    implement_tmpdir: &Path,
+    repo_root: &Path,
+) -> (PathBuf, PathBuf, PathBuf) {
     (
         implement_tmpdir.join(kind.materialize_env_filename()),
         implement_tmpdir.join(kind.materialized_diff_filename()),
@@ -430,16 +431,25 @@ pub fn validate_materialization(
         || metadata.get("STATUS").map(String::as_str) != Some("present")
         || metadata.get(status_key).map(String::as_str) != Some("present")
     {
-        return Err(format!("incomplete {} materialization metadata", kind.key()));
+        return Err(format!(
+            "incomplete {} materialization metadata",
+            kind.key()
+        ));
     }
     let head_sha = metadata["HEAD_SHA"].clone();
     let base_ref = metadata["BASE_REF"].clone();
     validate_recorded_identity(&head_sha, &base_ref)?;
-    let resolved_head = git.git_read(repo_root, &["rev-parse", "--verify", &format!("{head_sha}^{{commit}}")])?;
+    let resolved_head = git.git_read(
+        repo_root,
+        &["rev-parse", "--verify", &format!("{head_sha}^{{commit}}")],
+    )?;
     if resolved_head != head_sha {
         return Err(format!("{} covered HEAD is not canonical", kind.key()));
     }
-    let _ = git.git_read(repo_root, &["rev-parse", "--verify", &format!("{base_ref}^{{commit}}")])?;
+    let _ = git.git_read(
+        repo_root,
+        &["rev-parse", "--verify", &format!("{base_ref}^{{commit}}")],
+    )?;
     let diff_path = PathBuf::from(&metadata["DIFF_SNAPSHOT"]);
     if !same_resolved_path(&diff_path, &expected_diff_path) {
         return Err(format!("{} diff snapshot path mismatch", kind.key()));
@@ -481,7 +491,9 @@ fn validate_recorded_identity(head_sha: &str, base_ref: &str) -> Result<(), Stri
     if COMMIT_RE.captures(head_sha).is_none() {
         return Err("materialization HEAD_SHA is invalid".to_owned());
     }
-    if BASE_REF_RE.captures(base_ref).is_none() || base_ref.starts_with('-') || !base_ref.contains('/')
+    if BASE_REF_RE.captures(base_ref).is_none()
+        || base_ref.starts_with('-')
+        || !base_ref.contains('/')
     {
         return Err("materialization BASE_REF is invalid".to_owned());
     }
@@ -609,8 +621,7 @@ pub enum SubmitError {
 impl std::fmt::Display for SubmitError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Value(text)
-            | Self::Io(text) => formatter.write_str(text),
+            Self::Value(text) | Self::Io(text) => formatter.write_str(text),
             Self::HeadDrift(error) => formatter.write_str(&error.0),
             Self::Reauthor(error) => formatter.write_str(&error.0),
             Self::LogPending(error) => formatter.write_str(&error.0),
@@ -823,7 +834,10 @@ fn read_knowledge(
             return Ok((
                 "invalid",
                 String::new(),
-                format!("{} is invalid: symlinks are not read", kind.knowledge_filename()),
+                format!(
+                    "{} is invalid: symlinks are not read",
+                    kind.knowledge_filename()
+                ),
             ));
         }
         Ok(meta) if meta.is_dir() => {
@@ -852,7 +866,10 @@ fn read_knowledge(
         return Ok((
             "invalid",
             String::new(),
-            format!("{} is invalid: path escapes repo root", kind.knowledge_filename()),
+            format!(
+                "{} is invalid: path escapes repo root",
+                kind.knowledge_filename()
+            ),
         ));
     }
     match fs::read_to_string(path) {
@@ -973,11 +990,15 @@ fn authored_note_valid(kind: AssessmentKind, implement_tmpdir: &Path, outcome: &
 /// Whether authored outcome metadata is consistent with its note.
 #[must_use]
 pub fn authored_outcome_valid(note: &str, outcome: &str, invariant: bool) -> bool {
-    validate_authored_outcome(note, outcome, if invariant {
-        AssessmentKind::Invariants
-    } else {
-        AssessmentKind::Guidelines
-    })
+    validate_authored_outcome(
+        note,
+        outcome,
+        if invariant {
+            AssessmentKind::Invariants
+        } else {
+            AssessmentKind::Guidelines
+        },
+    )
     .is_ok()
 }
 
@@ -1066,7 +1087,10 @@ fn outcome_valid(
         .or_else(|| metadata.get("HEAD_SHA"))
         .map(String::as_str)
         .unwrap_or_default();
-    base == metadata.get("BASE_REF").map(String::as_str).unwrap_or_default()
+    base == metadata
+        .get("BASE_REF")
+        .map(String::as_str)
+        .unwrap_or_default()
         && head == expected_head
 }
 
@@ -1162,9 +1186,13 @@ fn note_identity(metadata: &BTreeMap<String, String>) -> Option<(String, String,
         .map_or("", String::as_str)
         .trim()
         .to_owned();
-    let new_format = ["NOTE_STATE", "AUTHORED_DIFF_FINGERPRINT", "COVERED_DIFF_FINGERPRINT"]
-        .iter()
-        .any(|key| metadata.contains_key(*key));
+    let new_format = [
+        "NOTE_STATE",
+        "AUTHORED_DIFF_FINGERPRINT",
+        "COVERED_DIFF_FINGERPRINT",
+    ]
+    .iter()
+    .any(|key| metadata.contains_key(*key));
     let note_state = {
         let raw = metadata.get("NOTE_STATE").map_or("", String::as_str).trim();
         if raw.is_empty() {
@@ -1278,7 +1306,11 @@ fn advance_note_coverage(
     if git
         .git_read(
             repo_root,
-            &["rev-parse", "--verify", &format!("{stored_head}^{{commit}}")],
+            &[
+                "rev-parse",
+                "--verify",
+                &format!("{stored_head}^{{commit}}"),
+            ],
         )
         .is_err()
     {
@@ -1321,7 +1353,10 @@ fn advance_note_coverage(
     let mut refreshed = metadata.clone();
     refreshed.insert("NOTE_STATE".to_owned(), note_state);
     refreshed.insert("AUTHORED_DIFF_FINGERPRINT".to_owned(), authored);
-    refreshed.insert("COVERED_DIFF_FINGERPRINT".to_owned(), covered_fingerprint.clone());
+    refreshed.insert(
+        "COVERED_DIFF_FINGERPRINT".to_owned(),
+        covered_fingerprint.clone(),
+    );
     refreshed.insert("DIFF_FINGERPRINT".to_owned(), covered_fingerprint);
     refreshed.insert(
         "DIFF_SNAPSHOT".to_owned(),
@@ -1399,14 +1434,8 @@ fn repair_current_outcome(
         return Err(PrepareErr::HeadDrift);
     }
     let metadata = read_env_lenient(&durable_note_env_path(implement_tmpdir, kind));
-    let state = metadata
-        .get("ASSESSMENT_KIND")
-        .cloned()
-        .unwrap_or_default();
-    let allowed = [
-        ASSESSMENT_OUTCOME_CLEAN,
-        kind.non_clean_authored_outcome(),
-    ];
+    let state = metadata.get("ASSESSMENT_KIND").cloned().unwrap_or_default();
+    let allowed = [ASSESSMENT_OUTCOME_CLEAN, kind.non_clean_authored_outcome()];
     if !allowed.contains(&state.as_str()) {
         let _ = invalidate_implement_note(implement_tmpdir, kind);
         return Ok(reauthor_status(ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME));
@@ -1414,9 +1443,7 @@ fn repair_current_outcome(
     let Ok(note) = read_regular(&durable_note_path(implement_tmpdir, kind), implement_tmpdir)
     else {
         let _ = invalidate_implement_note(implement_tmpdir, kind);
-        return Ok(reauthor_status(
-            ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA,
-        ));
+        return Ok(reauthor_status(ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA));
     };
     if !authored_outcome_valid(&note, &state, kind.is_invariant()) {
         let _ = invalidate_implement_note(implement_tmpdir, kind);
@@ -1510,13 +1537,19 @@ pub fn write_deterministic_clean_note(
     let diff_path = implement_tmpdir.join(kind.materialized_diff_filename());
     write_text_atomic(&diff_path, diff_text)?;
     let mut metadata = BTreeMap::new();
-    metadata.insert("NOTE_STATE".to_owned(), NOTE_STATE_DETERMINISTIC_CLEAN.to_owned());
+    metadata.insert(
+        "NOTE_STATE".to_owned(),
+        NOTE_STATE_DETERMINISTIC_CLEAN.to_owned(),
+    );
     metadata.insert("ASSESSED_HEAD_SHA".to_owned(), head_sha.to_owned());
     metadata.insert("DIFF_FINGERPRINT".to_owned(), fingerprint.clone());
     metadata.insert("AUTHORED_DIFF_FINGERPRINT".to_owned(), fingerprint.clone());
     metadata.insert("COVERED_DIFF_FINGERPRINT".to_owned(), fingerprint);
     metadata.insert("DIFF_SNAPSHOT".to_owned(), diff_path.display().to_string());
-    metadata.insert("ASSESSMENT_KIND".to_owned(), ASSESSMENT_OUTCOME_CLEAN.to_owned());
+    metadata.insert(
+        "ASSESSMENT_KIND".to_owned(),
+        ASSESSMENT_OUTCOME_CLEAN.to_owned(),
+    );
     write_implement_note(
         implement_tmpdir,
         kind.clean_presentation_note(),
@@ -1550,9 +1583,7 @@ fn persist_result(
         git,
     )
     .map_err(|error| match error {
-        ComposeWriteError::Reauthor(reason) => {
-            SubmitError::Reauthor(ReauthorRequired(reason))
-        }
+        ComposeWriteError::Reauthor(reason) => SubmitError::Reauthor(ReauthorRequired(reason)),
         ComposeWriteError::Other(message) => SubmitError::Value(message),
     })?;
     write_outcome(
@@ -1658,9 +1689,13 @@ fn durable_metadata_text(
     base_ref: &str,
     status_key: &str,
 ) -> String {
-    let new_format = ["NOTE_STATE", "AUTHORED_DIFF_FINGERPRINT", "COVERED_DIFF_FINGERPRINT"]
-        .iter()
-        .any(|key| metadata.get(*key).is_some_and(|value| !value.is_empty()));
+    let new_format = [
+        "NOTE_STATE",
+        "AUTHORED_DIFF_FINGERPRINT",
+        "COVERED_DIFF_FINGERPRINT",
+    ]
+    .iter()
+    .any(|key| metadata.get(*key).is_some_and(|value| !value.is_empty()));
     let identity = note_identity(metadata);
     let note_state = identity.as_ref().map_or_else(
         || {
@@ -1671,28 +1706,24 @@ fn durable_metadata_text(
         },
         |identity| identity.0.clone(),
     );
-    let authored = identity
-        .as_ref()
-        .map_or_else(
-            || {
-                metadata
-                    .get("AUTHORED_DIFF_FINGERPRINT")
-                    .cloned()
-                    .unwrap_or_default()
-            },
-            |identity| identity.1.clone(),
-        );
-    let covered = identity
-        .as_ref()
-        .map_or_else(
-            || {
-                metadata
-                    .get("COVERED_DIFF_FINGERPRINT")
-                    .cloned()
-                    .unwrap_or_default()
-            },
-            |identity| identity.2.clone(),
-        );
+    let authored = identity.as_ref().map_or_else(
+        || {
+            metadata
+                .get("AUTHORED_DIFF_FINGERPRINT")
+                .cloned()
+                .unwrap_or_default()
+        },
+        |identity| identity.1.clone(),
+    );
+    let covered = identity.as_ref().map_or_else(
+        || {
+            metadata
+                .get("COVERED_DIFF_FINGERPRINT")
+                .cloned()
+                .unwrap_or_default()
+        },
+        |identity| identity.2.clone(),
+    );
     let compatibility = if covered.is_empty() {
         metadata
             .get("DIFF_FINGERPRINT")
@@ -1709,10 +1740,7 @@ fn durable_metadata_text(
             "AUTHORED_DIFF_FINGERPRINT={}",
             env_escape(&authored)
         ));
-        lines.push(format!(
-            "COVERED_DIFF_FINGERPRINT={}",
-            env_escape(&covered)
-        ));
+        lines.push(format!("COVERED_DIFF_FINGERPRINT={}", env_escape(&covered)));
     }
     lines.extend([
         format!("HEAD_SHA={}", env_escape(head_sha)),
@@ -1735,11 +1763,7 @@ fn durable_metadata_text(
         ),
         format!(
             "{status_key}={}",
-            env_escape(
-                metadata
-                    .get(status_key)
-                    .map_or("present", String::as_str)
-            )
+            env_escape(metadata.get(status_key).map_or("present", String::as_str))
         ),
         format!(
             "ASSESSMENT_KIND={}",
@@ -1772,10 +1796,7 @@ fn write_outcome(
     record.insert("step".to_owned(), json!("8"));
     record.insert("outcome".to_owned(), json!(outcome));
     record.insert("reason".to_owned(), json!(reason));
-    record.insert(
-        "detail".to_owned(),
-        json!(bounded_detail(detail)),
-    );
+    record.insert("detail".to_owned(), json!(bounded_detail(detail)));
     record.insert(status_field.to_owned(), json!("present"));
     record.insert(
         "head_sha".to_owned(),
@@ -1808,7 +1829,11 @@ fn classify_ship_outcome(
     note_state: &str,
 ) -> (&'static str, &'static str, &'static str) {
     if note_state == NOTE_STATE_DETERMINISTIC_CLEAN {
-        return ("clean", REASON_DETERMINISTIC_CLEAN, ASSESSMENT_OUTCOME_CLEAN);
+        return (
+            "clean",
+            REASON_DETERMINISTIC_CLEAN,
+            ASSESSMENT_OUTCOME_CLEAN,
+        );
     }
     if note_state == NOTE_STATE_UNAVAILABLE {
         return ("dropped", REASON_UNAVAILABLE, "");
@@ -1880,11 +1905,8 @@ pub fn append_deviation_note(implement_tmpdir: &Path, note: &str) -> &'static st
     if kept.is_empty() {
         return "duplicate";
     }
-    let composed = compose_execution_issue(
-        &existing,
-        EXECUTION_WARNINGS_CATEGORY,
-        &kept.join("\n"),
-    );
+    let composed =
+        compose_execution_issue(&existing, EXECUTION_WARNINGS_CATEGORY, &kept.join("\n"));
     if write_text_atomic(&issue_log, &composed).is_err() {
         return "failed";
     }
@@ -2019,14 +2041,11 @@ fn remove_artifact(path: &Path) -> Result<(), String> {
 }
 
 fn resolve_dir(path: &Path) -> Result<PathBuf, String> {
-    let meta = path
-        .symlink_metadata()
-        .map_err(|error| error.to_string())?;
+    let meta = path.symlink_metadata().map_err(|error| error.to_string())?;
     if meta.file_type().is_symlink() || !meta.is_dir() {
         return Err("repo root and implement tmpdir must be non-symlink directories".to_owned());
     }
-    path.canonicalize()
-        .map_err(|error| error.to_string())
+    path.canonicalize().map_err(|error| error.to_string())
 }
 
 fn under(path: &Path, root: &Path) -> bool {
@@ -2111,16 +2130,15 @@ fn write_text_atomic(path: &Path, text: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AssessmentKind, NOTE_STATE_DETERMINISTIC_CLEAN, authored_outcome_valid, deterministic_out_of_scope,
-        diff_fingerprint, durable_note_path, note_consumable, normalize_kinds,
-        write_deterministic_clean_note,
+        AssessmentKind, NOTE_STATE_DETERMINISTIC_CLEAN, authored_outcome_valid,
+        deterministic_out_of_scope, diff_fingerprint, durable_note_path, normalize_kinds,
+        note_consumable, write_deterministic_clean_note,
     };
     use std::fs;
 
     #[test]
     fn normalize_kinds_deduplicates_and_orders() {
-        let kinds =
-            normalize_kinds(&["guidelines", "invariants", "guidelines"]).expect("kinds");
+        let kinds = normalize_kinds(&["guidelines", "invariants", "guidelines"]).expect("kinds");
         assert_eq!(
             kinds,
             vec![AssessmentKind::Invariants, AssessmentKind::Guidelines]

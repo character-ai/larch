@@ -3,84 +3,85 @@ Larch workflow automation
 Usage: larch <COMMAND>
 
 Commands:
-  admission               `/implement` entry admission, preflight, and fork bootstrap
-  agent                   Vendor-agent launch and diagnostic commands
-  review                  Review pipeline commands
-  review-and-fix          Repair code-review findings
-  plan-review             Plan-review workflow commands
-  alias                   Alias generation and target-resolution helpers
-  blocker                 Issue blocker discovery
-  block-issue             Native issue blocked-by dependency mutations
-  calibration-replay      Recorded voter-calibration fixture replay commands
-  cleanup                 Remove stale larch session directories and pointers
-  bgjob                   Durable background-job compatibility commands
-  ci-timing               Collect GitHub Actions timing inputs and resolve trusted source runs
-  checks                  `/implement` checks-loop attribution reads
-  ci                      Fail-closed Rust CI selection, history helpers, and main-cache candidates
-  complete-umbrella       Serially complete and audit every direct leaf of one umbrella issue
-  audit-umbrella          Audit one managed umbrella and reconcile its exhaustive corrective batch
-  combine-issues          Combine related issues while preserving their dependency graph
-  debate                  Durable two-round debate protocol commands
-  dirty-tree              Working-tree checkpoint and scope compatibility commands
-  deps                    The `/deps` open-issue dependency audit: reads, plan, and one apply
-  design                  `/design` Step 0 argv parsing, routing, and run-params initialization
-  difficulty              Difficulty rating, record, panel, and label commands
-  difficulty-calibration  Retrospective predicted-versus-realized difficulty analysis
-  execution-issues        The `/implement` execution-issue ledger lifecycle
-  external-defaults       External tool default readers
-  example                 Non-production commands that exercise dispatcher wiring
-  fluff-analysis          The `/fluff-analysis` review-fluff report
-  git                     Local Git repository commands
-  hook                    Advisory Claude Code hook commands
-  implement               `/implement` bootstrap, preflight, scout, recovery, and step checks
-  issue                   GitHub issue reads and issue-body wire helpers
-  plan-block              The `larch:plan` issue-body block carrying the `/design` handoff
-  status                  Inspect the installed larch and external tool health
-  named-block             One named `larch:<marker>` issue-body block
-  plan                    Implementation-plan readers
-  scout                   Dynamic reviewer archetype scouting and manifest filtering
-  tracking-issue          The tracking issue's lifecycle: reads, comments, titles, and summaries
-  triage                  Pre-`/design` issue verification: evidence, probes, and the one write
-  umbrella                Durable `/umbrella` preparation, record state, and completion proof
-  untrusted               Envelopes that mark fetched text as data, never instructions
-  kv                      Exact `KEY=value` stream readers
-  lint                    Repository policy lint commands
-  plugin                  Plugin metadata commands
-  progress                Clone-scoped progress breadcrumbs and the larch statusline
-  generate                Regenerate or verify committed developer artifacts
-  gantt                   Generic ASCII Gantt rendering
-  render                  Rust-owned runtime prompt and view renderers
-  analyze-issues          Issue-backlog report rendering
-  audit-runs              Run-log audit preflight, titles, advisory, mapping, scanning, and closure
-  analyze-bugs            Bounded filed-bug evidence and verification commands
-  rejected-analysis       Recover verified rejected code-review findings from run logs
-  learn-from-bugs         Prepare compact bug-learning evidence and maintain its durable marker
-  validate-merged         Inspect recent first-parent merges for possible unfiled bugs
-  object-store            Narrow provider transports used by Python-owned run-log workflows
-  net                     Fixed-endpoint connectivity helpers
-  oos                     Composition, capping, ordering, and disposition of a run's OOS batch
-  release                 Release-maintenance commands
-  repo                    Repository-scoped developer commands
-  residual-bash           List retained Bash paths from the residual manifest
-  final-report            Terminal `/implement` final-report composition and publication
-  report-tokens           Token-cost analysis over the synchronized run-log corpus
-  research                The `/research` preparation commands: banner, planner, findings, citations
-  eval                    The `/research` evaluation commands: output validation and the eval harness
-  rebalance-tests         CI test-rebalance planning, verification, and checked orchestration
-  session                 Session state compatibility commands
-  slack                   Slack announcement helpers
-  stall-recovery          Stall-recovery state and validation commands
-  test-shard              Pack and rewrite deterministic test-shard assignments
-  verify                  Small side-effect verification helpers
-  timing                  Timing-ledger marks, records, dumps, and reports
-  token                   Token-ledger marks, vendor rows, dumps, and lane telemetry
-  gh                      GitHub workflow helper commands
-  push                    Push commands with typed Git network operations
-  run-log                 Committed run-log identity and layout helpers
-  voting                  Vote parsing, tally state, panel rendering, and parse-rate checks
-  voter-calibration       Voter calibration snapshot and analyzer commands
-  upgrade-larch           Upgrade the installed larch plugin and executable
-  help                    Print this message or the help of the given subcommand(s)
+  admission                 `/implement` entry admission, preflight, and fork bootstrap
+  agent                     Vendor-agent launch and diagnostic commands
+  review                    Review pipeline commands
+  review-and-fix            Repair code-review findings
+  plan-review               Plan-review workflow commands
+  alias                     Alias generation and target-resolution helpers
+  blocker                   Issue blocker discovery
+  block-issue               Native issue blocked-by dependency mutations
+  calibration-replay        Recorded voter-calibration fixture replay commands
+  cleanup                   Remove stale larch session directories and pointers
+  bgjob                     Durable background-job compatibility commands
+  ci-timing                 Collect GitHub Actions timing inputs and resolve trusted source runs
+  checks                    `/implement` checks-loop attribution reads
+  ci                        Fail-closed Rust CI selection and history helpers
+  architectural-assessment  Step 8 architectural assessment materialize/submit/report helpers
+  complete-umbrella         Serially complete and audit every direct leaf of one umbrella issue
+  audit-umbrella            Audit one managed umbrella and reconcile its exhaustive corrective batch
+  combine-issues            Combine related issues while preserving their dependency graph
+  debate                    Durable two-round debate protocol commands
+  dirty-tree                Working-tree checkpoint and scope compatibility commands
+  deps                      The `/deps` open-issue dependency audit: reads, plan, and one apply
+  design                    `/design` Step 0 argv parsing, routing, and run-params initialization
+  difficulty                Difficulty rating, record, panel, and label commands
+  difficulty-calibration    Retrospective predicted-versus-realized difficulty analysis
+  execution-issues          The `/implement` execution-issue ledger lifecycle
+  external-defaults         External tool default readers
+  example                   Non-production commands that exercise dispatcher wiring
+  fluff-analysis            The `/fluff-analysis` review-fluff report
+  git                       Local Git repository commands
+  hook                      Advisory Claude Code hook commands
+  implement                 `/implement` bootstrap, preflight, scout, recovery, and step checks
+  issue                     GitHub issue reads and issue-body wire helpers
+  plan-block                The `larch:plan` issue-body block carrying the `/design` handoff
+  status                    Inspect the installed larch and external tool health
+  named-block               One named `larch:<marker>` issue-body block
+  plan                      Implementation-plan readers
+  scout                     Dynamic reviewer archetype scouting and manifest filtering
+  tracking-issue            The tracking issue's lifecycle: reads, comments, titles, and summaries
+  triage                    Pre-`/design` issue verification: evidence, probes, and the one write
+  umbrella                  Durable `/umbrella` preparation, record state, and completion proof
+  untrusted                 Envelopes that mark fetched text as data, never instructions
+  kv                        Exact `KEY=value` stream readers
+  lint                      Repository policy lint commands
+  plugin                    Plugin metadata commands
+  progress                  Clone-scoped progress breadcrumbs and the larch statusline
+  generate                  Regenerate or verify committed developer artifacts
+  gantt                     Generic ASCII Gantt rendering
+  render                    Rust-owned runtime prompt and view renderers
+  analyze-issues            Issue-backlog report rendering
+  audit-runs                Run-log audit preflight, titles, advisory, mapping, scanning, and closure
+  analyze-bugs              Bounded filed-bug evidence and verification commands
+  rejected-analysis         Recover verified rejected code-review findings from run logs
+  learn-from-bugs           Prepare compact bug-learning evidence and maintain its durable marker
+  validate-merged           Inspect recent first-parent merges for possible unfiled bugs
+  object-store              Narrow provider transports used by Python-owned run-log workflows
+  net                       Fixed-endpoint connectivity helpers
+  oos                       Composition, capping, ordering, and disposition of a run's OOS batch
+  release                   Release-maintenance commands
+  repo                      Repository-scoped developer commands
+  residual-bash             List retained Bash paths from the residual manifest
+  final-report              Terminal `/implement` final-report composition and publication
+  report-tokens             Token-cost analysis over the synchronized run-log corpus
+  research                  The `/research` preparation commands: banner, planner, findings, citations
+  eval                      The `/research` evaluation commands: output validation and the eval harness
+  rebalance-tests           CI test-rebalance planning, verification, and checked orchestration
+  session                   Session state compatibility commands
+  slack                     Slack announcement helpers
+  stall-recovery            Stall-recovery state and validation commands
+  test-shard                Pack and rewrite deterministic test-shard assignments
+  verify                    Small side-effect verification helpers
+  timing                    Timing-ledger marks, records, dumps, and reports
+  token                     Token-ledger marks, vendor rows, dumps, and lane telemetry
+  gh                        GitHub workflow helper commands
+  push                      Push commands with typed Git network operations
+  run-log                   Committed run-log identity and layout helpers
+  voting                    Vote parsing, tally state, panel rendering, and parse-rate checks
+  voter-calibration         Voter calibration snapshot and analyzer commands
+  upgrade-larch             Upgrade the installed larch plugin and executable
+  help                      Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help
