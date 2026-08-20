@@ -9157,7 +9157,7 @@ rust = ["block-issue *", "dirty-tree *", "execution-issues *", "final-report wri
 path = "python/larch/design/design_core.py"
 kind = "python-runtime"
 python = []
-rust = ["design failure-report", "design read-result-env", "design stage-terminal-state", "plan-review step3-state", "run-log append-failure", "timing mark"]
+rust = ["design failure-report", "design log-publish", "design read-result-env", "design stage-terminal-state", "plan-review step3-state", "run-log append-failure", "timing mark"]
 
 [[callers]]
 path = "python/larch/design/design_dialectic.py"

@@ -1494,9 +1494,11 @@ def _publish_terminal_final_summary(
     outcome: str,
     repo: str = "",
 ) -> tuple[int, bool]:
-    from larch.design import design_log_publish_flow  # noqa: PLC0415
-
+    plugin_root = Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3]))
     args = [
+        str(larch_entrypoint(plugin_root)),
+        "design",
+        "log-publish",
         "--design-tmpdir",
         str(design_tmpdir),
         "--run-id",
@@ -1510,11 +1512,10 @@ def _publish_terminal_final_summary(
         args.extend(["--repo", repo])
     stdout_log = design_tmpdir / "design-log-publish.terminal.stdout.log"
     stderr_log = design_tmpdir / "design-log-publish.terminal.stderr.log"
-    rc = 1
-    with stdout_log.open("w", encoding="utf-8") as out, stderr_log.open("w", encoding="utf-8") as err:
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            rc = int(design_log_publish_flow.log_publish_main(args))
-    stdout_text = stdout_log.read_text(encoding="utf-8", errors="replace") if stdout_log.is_file() else ""
-    publish_ok = _parse_contract_value(stdout_text, "PUBLISH_OK")
-    recovery_branch = _parse_contract_value(stdout_text, "RECOVERY_BRANCH")
+    completed = subprocess.run(args, capture_output=True, text=True, check=False)
+    _ = stdout_log.write_text(completed.stdout, encoding="utf-8")
+    _ = stderr_log.write_text(completed.stderr, encoding="utf-8")
+    rc = int(completed.returncode)
+    publish_ok = _parse_contract_value(completed.stdout, "PUBLISH_OK")
+    recovery_branch = _parse_contract_value(completed.stdout, "RECOVERY_BRANCH")
     return rc, rc == 0 and publish_ok == "true" and not recovery_branch
