@@ -58,26 +58,25 @@ raw issue prose or the issue title as a plan.
 
 ## Complete-umbrella leaf admission and Chief migration budget
 
-Every `/complete-umbrella` leaf passes an additional mechanical admission gate.
+Every `/complete-umbrella` leaf passes an additional mechanical plan-contract
+admission gate.
 The recon/design phase first preserves an existing issue plan exactly or, when
 none exists, writes a concrete plan through
 `scripts/larch.sh named-block write --marker plan`. Only then may its prepare
 driver add `[IMPLEMENTING]`. The driver validates exactly one issue-body plan
-against the existing M1/M2 contract and runs the canonical plan-size check
-before that transition or any ship-state write.
+against the existing M1/M2 contract before that transition or any ship-state
+write. Leaf plan size alone never routes to design; an oversized but otherwise
+valid plan is admitted and implemented in the thin leaf child.
 
-A plan-contract defect or hard size trigger returns the bounded `needs-design`
+A plan-contract defect returns the bounded `needs-design`
 outcome and reports
 `/design <leaf>` without launching implementation, adding an active title, or
 writing ship state. The parent strips a stale `[IMPLEMENTING]` prefix left by
 an older run so `/design` can admit the leaf; idle and `[DESIGNED]` titles are
-unchanged by that reset. Issue-body metadata cannot authorize this thin path to suppress the
-trigger. In particular, a published `oversize_override: operator` trailer has
-no run-local authority sidecar and is therefore untrusted at this gate. A full
+unchanged by that reset. A full
 `/design` pass can rework the plan. A resulting `[DESIGNED] [LEAF OF N]` title
 is excluded from `/complete-umbrella` candidacy like `[DESIGNING]`,
-`[IMPLEMENTING]`, and open `[DONE]`; an oversized designed leaf can instead
-use the direct `/implement` lifecycle.
+`[IMPLEMENTING]`, and open `[DONE]`.
 
 For a parent whose body declares a `#<N> [CHIEF UMBRELLA]` relationship, the
 ship driver also applies the following read-only Rust line-budget advisory.

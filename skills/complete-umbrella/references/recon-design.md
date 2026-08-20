@@ -10,8 +10,8 @@ Read `phase-common.md` in this directory in full before acting.
 
 The spawn prompt supplies `REPOSITORY`, `UMBRELLA`, `LEAF`, `REPO_ROOT`, and `HANDOFF_ROOT`. Require positive numeric issue IDs, exact `OWNER/REPO` syntax, the current working directory as `REPO_ROOT`, and `HANDOFF_ROOT=$SESSION_TMPDIR`.
 
-The prepare driver is the leaf admission and plan-size gate, so do not run it
-until this phase has materialized a valid durable plan. Then:
+The prepare driver is the leaf admission and plan-contract gate, so do not run
+it until this phase has materialized a valid durable plan. Then:
 
 1. Read `AGENTS.md`, `ARCHITECTURAL_INVARIANTS.md`, and `ARCHITECTURAL_GUIDELINES.md` when present. Follow their repository rules.
 2. Fetch the full leaf and umbrella issue bodies into `leaf-issue.md` and `umbrella-issue.md` below `$SESSION_TMPDIR`. Redirect the `gh issue view` output to those files. Do not return issue text in tool output.
@@ -35,7 +35,7 @@ extracted plan exactly. Do not replace or republish it. This includes a plan
 published by a prior full `/design` run.
 
 6. Write `$SESSION_TMPDIR/design-brief.md`. Include requirements, relevant architectural rules, file-and-line anchors, exact code and test surfaces, generated or projected companions, stale callers to sweep, local checks, and a parity plan. If a differential harness is needed, require an assertion that proves a success path executed.
-7. Only when `BLOCK_PRESENT=false`, write `$SESSION_TMPDIR/plan.md` as a concrete executable plan. It must satisfy the issue-anchored M1/M2 contract: firm file headings, ordered steps, closed ownership decisions, acceptance, breaking-change/migration treatment, and a terminal `diff_lines:` line. It is a new plan, not evidence of an approval that did not occur. Never add `oversize_override: operator`. Publish exactly that file through the canonical wire owner:
+7. Only when `BLOCK_PRESENT=false`, write `$SESSION_TMPDIR/plan.md` as a concrete executable plan. It must satisfy the issue-anchored M1/M2 contract: firm file headings, ordered steps, closed ownership decisions, acceptance, breaking-change/migration treatment, and a terminal `diff_lines:` line. It is a new plan, not evidence of an approval that did not occur. Publish exactly that file through the canonical wire owner:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" named-block write \
@@ -63,8 +63,8 @@ or any prepare-driver output in your final response.
 
 If Step 5 reported a malformed durable plan, or if
 `SHIP_STATUS=needs-design`, write `$SESSION_TMPDIR/needs-design.md` with one
-short line naming the leaf and the required command `/design <LEAF>`. The size
-or plan-contract route occurs before the prepare driver adds an active title or
+short line naming the leaf and the required command `/design <LEAF>`. The
+plan-contract route occurs before the prepare driver adds an active title or
 writes ship state. The parent may later clear a stale active title from an
 older run. Do not implement, review, or ship. End with only:
 
