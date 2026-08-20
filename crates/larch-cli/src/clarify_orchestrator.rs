@@ -569,14 +569,16 @@ fn handle_fetch(
     if let Some(repo) = &repo_present {
         rows.push(("REPO", repo));
     }
-    if let Err(error) =
-        write_result_env(&design_tmpdir.join(".design-clarify-request.env"), &rows[1..])
-    {
+    if let Err(error) = write_result_env(
+        &design_tmpdir.join(".design-clarify-request.env"),
+        &rows[1..],
+    ) {
         return emit_write_failure(&error);
     }
-    if let Err(error) =
-        write_result_env(&design_tmpdir.join(".design-clarify-fetch-result.env"), &rows)
-    {
+    if let Err(error) = write_result_env(
+        &design_tmpdir.join(".design-clarify-fetch-result.env"),
+        &rows,
+    ) {
         return emit_write_failure(&error);
     }
     emit_design_kvs(&rows);
@@ -841,9 +843,10 @@ fn publish_finalize(tail: &PublishTail<'_>) -> ExitCode {
         ("RENAMED", &renamed),
         ("SUMMARY_OUTCOME", "cancelled-clarify"),
     ];
-    if let Err(error) =
-        write_result_env(&design_tmpdir.join(".design-clarify-publish-result.env"), &rows)
-    {
+    if let Err(error) = write_result_env(
+        &design_tmpdir.join(".design-clarify-publish-result.env"),
+        &rows,
+    ) {
         return emit_write_failure(&error);
     }
     emit_design_kvs(&rows);

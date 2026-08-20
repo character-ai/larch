@@ -1427,8 +1427,8 @@ mod tests {
         load_record_data, match_floors, maybe_audit_upgrade, merge_existing_record_fields,
         next_tier, normalize_tier, panel_shape_for_tier, plan_difficulty, rating_from_tier,
         read_changed_paths, read_rating_file, refresh_existing_record, resolve_panel_tier,
-        sanitize_rationale, threshold_panel_for_tier, tier_ceiling, tier_max, tier_rank,
-        rewrite_plan_difficulty, tier_valid, trailing_plan_difficulty, trailing_plan_metadata_lines,
+        rewrite_plan_difficulty, sanitize_rationale, threshold_panel_for_tier, tier_ceiling,
+        tier_max, tier_rank, tier_valid, trailing_plan_difficulty, trailing_plan_metadata_lines,
         validate_rating_object, write_record_map,
     };
     use serde_json::{Map, json};
@@ -1464,7 +1464,10 @@ mod tests {
     fn rewrite_plan_difficulty_ignores_invalid_tier_and_missing_trailers() {
         let plan = "## Plan\n\ndifficulty: MODERATE\n";
         assert_eq!(rewrite_plan_difficulty(plan, "BOGUS"), plan);
-        assert_eq!(rewrite_plan_difficulty("just prose\n", HARD), "just prose\n");
+        assert_eq!(
+            rewrite_plan_difficulty("just prose\n", HARD),
+            "just prose\n"
+        );
     }
     use std::path::Path;
     use tempfile::TempDir;

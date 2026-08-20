@@ -12,6 +12,7 @@ Commands:
   blocker                   Issue blocker discovery
   block-issue               Native issue blocked-by dependency mutations
   calibration-replay        Recorded voter-calibration fixture replay commands
+  clarify                   The `/design` clarification round-trip: state, comments, and labels
   cleanup                   Remove stale larch session directories and pointers
   bgjob                     Durable background-job compatibility commands
   ci-timing                 Collect GitHub Actions timing inputs and resolve trusted source runs

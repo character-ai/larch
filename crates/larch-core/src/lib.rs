@@ -175,11 +175,6 @@ pub use connectivity::{
 
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
 pub use design::{
-    CLARIFY_LABEL_COLOR, CLARIFY_LABEL_DESCRIPTION, CLARIFY_LABEL_NAME, ClarifyEvent, ClarifyKind,
-    ClarifyState, evaluate_comment_bodies, evaluate_events, events_from_comment_bodies,
-    request_body_remainder,
-};
-pub use design::{
     CANONICAL_TRAILER_ORDER, FIRM_HEADING_KINDS, FORCE_PLAN_CONTRACT_ERROR, HEADING_KINDS,
     HeadingEvent, HeadingKind, HeadingMatch, M1_DEFECT_TOKENS, M2_DEFECT_TOKENS,
     OPTIONAL_SIZE_TRAILER_KEYS, OVERSIZE_OVERRIDE_OPERATOR, OptionalMetadata,
@@ -194,11 +189,16 @@ pub use design::{
     render_plan_command_tsv, set_oversize_override_text, validate_difficulty_metadata,
     validate_plan_contract,
 };
+pub use design::{
+    CLARIFY_LABEL_COLOR, CLARIFY_LABEL_DESCRIPTION, CLARIFY_LABEL_NAME, ClarifyEvent, ClarifyKind,
+    ClarifyState, evaluate_comment_bodies, evaluate_events, events_from_comment_bodies,
+    request_body_remainder,
+};
 pub use difficulty::{
-    AUDIT_DENOMINATOR, BuildRecord, CODEX_MODEL_ROLE, CONFIDENCES, DifficultyFloor,
-    DifficultyRating, FLOOR_MANIFEST_RELPATH, FloorMatch, FloorResult, HARD, MODERATE,
-    MergeExplicit, RATIONALE_MAX_CHARS, RUBRIC, SCHEMA_VERSION, TIER_CEILING, TIERS, TRIVIAL,
-    DESIGN_RAW_RATING_BASENAME, DIFFICULTY_RECORD_BASENAME, TierResolution, blank_merge_explicit,
+    AUDIT_DENOMINATOR, BuildRecord, CODEX_MODEL_ROLE, CONFIDENCES, DESIGN_RAW_RATING_BASENAME,
+    DIFFICULTY_RECORD_BASENAME, DifficultyFloor, DifficultyRating, FLOOR_MANIFEST_RELPATH,
+    FloorMatch, FloorResult, HARD, MODERATE, MergeExplicit, RATIONALE_MAX_CHARS, RUBRIC,
+    SCHEMA_VERSION, TIER_CEILING, TIERS, TRIVIAL, TierResolution, blank_merge_explicit,
     build_record, bump_for_confidence, codex_review_model_role, difficulty_line, dump_record,
     known_labels, label_for_tier, load_floor_manifest, load_record_data, match_floors,
     maybe_audit_upgrade, merge_existing_record_fields, next_tier, normalize_tier,
