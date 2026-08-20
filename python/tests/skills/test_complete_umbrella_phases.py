@@ -70,10 +70,10 @@ def test_ship_is_deterministic_and_fixer_is_failure_only() -> None:
 
 def test_managed_leaf_phases_persist_and_verify_gate_evidence() -> None:
     recon = _read("recon-design.md")
-    assert "valid durable plan" in recon
+    assert "It does not\nvalidate a durable plan." in recon
     assert "named-block write" in recon
     assert "--marker plan" in recon
-    assert "before it adds `[IMPLEMENTING]`" in recon
+    assert "bound the\n`[IMPLEMENTING]` change to the live leaf snapshot" in recon
 
     review = _read("adversarial-review.md")
     assert "--mode line-budget" in review
@@ -82,12 +82,23 @@ def test_managed_leaf_phases_persist_and_verify_gate_evidence() -> None:
     assert "do not edit or publish the" in review
 
 
-def test_recon_routes_malformed_plans_before_implementation() -> None:
+def test_recon_routes_only_malformed_plans_or_unactionable_bodies() -> None:
     recon = _read("recon-design.md")
+    normalized = " ".join(recon.split())
     assert "plan-block read" in recon
     assert "Do not replace or republish it." in recon
     assert "MALFORMED=<reason>" in recon
-    assert "SHIP_STATUS=needs-design" in recon
+    assert "body is totally unactionable" in normalized
+    assert "A body is actionable when it contains any discernible" in normalized
+    assert "absent plan block, M1/M2 grammar gaps" in normalized
+    assert "cross-leaf ordering" in normalized
+    assert "narrowest evidence-based decision" in normalized
+    assert "These are the only `needs-design` routes." in recon
+    assert (
+        "Do not stop or route to `needs-design` over an M1/M2 grammar gap"
+        in normalized
+    )
+    assert "SHIP_STATUS=needs-design" not in recon
     assert "PHASE_STATUS=needs-design" in recon
     assert "HANDOFF_FILE=needs-design.md" in recon
     assert "oversize_override" not in recon
