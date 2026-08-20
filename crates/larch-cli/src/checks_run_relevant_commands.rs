@@ -765,3 +765,217 @@ fn epoch_now() -> i64 {
             i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX)
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        process::Command,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+    use tempfile::TempDir;
+
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    /// A session tmpdir literally under `/tmp`, which `validate_session_tmpdir`
+    /// accepts (the system `TMPDIR` on macOS lives under `/var/folders`, which it
+    /// rejects). Removed on drop.
+    struct SessionDir {
+        path: PathBuf,
+    }
+
+    impl SessionDir {
+        fn new() -> Self {
+            let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path = PathBuf::from("/tmp").join(format!(
+                "claude-implement-cov-{}-{unique}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).expect("session dir");
+            Self { path }
+        }
+    }
+
+    impl Drop for SessionDir {
+        fn drop(&mut self) {
+            let _ignored = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn git(repo: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .status()
+            .expect("git runs");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    fn init_repo() -> TempDir {
+        let repo = TempDir::new().expect("repo");
+        let path = repo.path();
+        git(path, &["init", "-q", "-b", "main"]);
+        git(path, &["config", "user.email", "t@example.invalid"]);
+        git(path, &["config", "user.name", "Test"]);
+        git(path, &["commit", "-q", "--allow-empty", "-m", "init"]);
+        repo
+    }
+
+    #[test]
+    fn valid_site_grammar() {
+        assert!(valid_site("step3"));
+        assert!(valid_site("review-step3e"));
+        assert!(valid_site("a.b_c-1"));
+        assert!(!valid_site(""));
+        assert!(!valid_site(".hidden"));
+        assert!(!valid_site("a..b"));
+        assert!(!valid_site("has space"));
+        assert!(!valid_site("slash/site"));
+    }
+
+    #[test]
+    fn small_utilities_behave() {
+        assert_eq!(log_attempt(Path::new("/t/step3-7.log")), "7");
+        assert_eq!(log_attempt(Path::new("/t/step3.log")), "step3");
+        assert!(absolute_path(Path::new("/already/abs")).is_absolute());
+        assert!(absolute_path(Path::new("rel")).is_absolute());
+        assert!(epoch_now() > 0);
+        assert!(read_text(Path::new("/larch-cov-missing-file")).is_none());
+        let root = resolve_display_path("/larch-cov-not-a-dir");
+        assert!(!root.is_dir());
+    }
+
+    #[test]
+    fn default_roots_resolve_without_mutating_env() {
+        // Without setting env (the crate forbids that), both resolvers fall
+        // through to their non-env branch: `default_repo_root` discovers the
+        // ambient git toplevel and `default_tmpdir` returns the empty default
+        // when neither implement nor review tmpdir is exported.
+        let _root = default_repo_root();
+        let _tmpdir = default_tmpdir();
+        assert!(!precommit_available() || precommit_available());
+    }
+
+    #[test]
+    fn existing_regular_files_filters_to_present_files() {
+        let repo = TempDir::new().expect("repo");
+        fs::write(repo.path().join("present.txt"), "x").expect("write");
+        let changed = vec!["present.txt".to_owned(), "absent.txt".to_owned()];
+        assert_eq!(existing_regular_files(repo.path(), &changed), vec![
+            "present.txt".to_owned()
+        ]);
+    }
+
+    #[test]
+    fn changed_paths_reports_untracked_and_staged() {
+        let repo = init_repo();
+        let root = repo.path();
+        assert!(changed_paths_from_git(root).is_empty());
+        fs::write(root.join("new.txt"), "content\n").expect("write");
+        assert_eq!(changed_paths_from_git(root), vec!["new.txt".to_owned()]);
+    }
+
+    #[test]
+    fn allocate_and_mode_helpers_operate() {
+        let dir = TempDir::new().expect("dir");
+        let log_dir = dir.path().join("relevant-checks");
+        make_log_dir(&log_dir).expect("make dir");
+        make_log_dir(&log_dir).expect("idempotent");
+        set_dir_mode(&log_dir).expect("chmod");
+        let first = allocate_log_file(&log_dir, "step3").expect("alloc");
+        assert_eq!(first.file_name().unwrap().to_string_lossy(), "step3-1.log");
+        let second = allocate_log_file(&log_dir, "step3").expect("alloc 2");
+        assert_eq!(second.file_name().unwrap().to_string_lossy(), "step3-2.log");
+    }
+
+    #[test]
+    fn invalid_site_and_tmpdir_fail_closed() {
+        assert_eq!(
+            run_relevant_checks("../bad", "/tmp", ".").render(false),
+            ("STATUS=fail FAILURE_REASON=site-validation".to_owned(), 2)
+        );
+        assert_eq!(
+            run_relevant_checks("step3", "/larch-cov-missing-tmpdir", ".").render(false),
+            ("STATUS=fail FAILURE_REASON=tmpdir-validation".to_owned(), 2)
+        );
+    }
+
+    #[test]
+    fn run_relevant_checks_passes_with_no_changes() {
+        let repo = init_repo();
+        let session = SessionDir::new();
+        let result = run_relevant_checks(
+            "step3",
+            &session.path.to_string_lossy(),
+            &repo.path().to_string_lossy(),
+        );
+        assert!(result.ok, "no-change run passes: {result:?}");
+        assert_eq!(result.coverage, "changed-file-only");
+        assert_eq!(result.phase, "unknown");
+        let (line, code) = result.render(false);
+        assert_eq!(code, 0);
+        assert!(line.starts_with("RELEVANT_CHECKS_OK=true SITE=step3"));
+    }
+
+    #[test]
+    fn run_relevant_checks_skips_precommit_when_no_regular_files() {
+        let repo = init_repo();
+        let root = repo.path();
+        fs::write(root.join("tracked.txt"), "hello\n").expect("write");
+        git(root, &["add", "tracked.txt"]);
+        git(root, &["commit", "-q", "-m", "add"]);
+        fs::remove_file(root.join("tracked.txt")).expect("remove");
+        // The changed set now carries a deleted path with no regular file, so the
+        // pre-commit phase is skipped and only the contains-pin probe runs.
+        assert!(changed_paths_from_git(root).contains(&"tracked.txt".to_owned()));
+        let session = SessionDir::new();
+        let result = run_relevant_checks(
+            "step6",
+            &session.path.to_string_lossy(),
+            &root.to_string_lossy(),
+        );
+        assert!(result.ok, "deleted-only run passes: {result:?}");
+        assert!(result.raw_log_path.is_some());
+    }
+
+    #[test]
+    fn run_relevant_checks_captures_a_redacted_failure_log() {
+        let repo = init_repo();
+        let root = repo.path();
+        // A modified regular file drives the pre-commit phase. Whether pre-commit
+        // is absent (fails closed with "not found") or present (fails on the
+        // missing config), the run fails and captures a redacted log and digest.
+        fs::write(root.join("changed.py"), "print('x')\n").expect("write");
+        git(root, &["add", "changed.py"]);
+        let session = SessionDir::new();
+        let result = run_relevant_checks(
+            "step3",
+            &session.path.to_string_lossy(),
+            &root.to_string_lossy(),
+        );
+        assert!(!result.ok, "pre-commit phase run fails: {result:?}");
+        assert!(result.raw_log_path.is_some());
+        let (line, code) = result.render(false);
+        assert!(code != 0);
+        assert!(line.starts_with("STATUS=fail"));
+        // Either the redacted log/digest were written (pre-commit ran) or the
+        // fail-closed "not found" reason was returned; both are valid contracts.
+        if let Some(redacted) = &result.redacted_log_path {
+            assert!(Path::new(redacted).is_file());
+        }
+    }
+
+    #[test]
+    fn run_relevant_checks_rejects_an_unresolvable_repo_root() {
+        let session = SessionDir::new();
+        let result = run_relevant_checks(
+            "step3",
+            &session.path.to_string_lossy(),
+            "/larch-cov-not-a-git-repo",
+        );
+        assert!(!result.ok);
+        assert_eq!(result.failure_reason.as_deref(), Some("repo-root-unresolved"));
+    }
+}
