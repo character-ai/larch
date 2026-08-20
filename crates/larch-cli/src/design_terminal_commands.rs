@@ -33,8 +33,8 @@ use crate::{
     design_commands::{PAUSE_LOAD_TIMEOUT, quote_single},
     design_step0_commands::{
         ChildOutcome, Env, LiveStep0Runner, Step0Runner, env_get, exit_from_i32, load_wrapper_env,
-        parse_wrapper_args, phase_driver_read_result_env, require_plugin_root, resolve_owned_run_id,
-        utf8_arguments,
+        parse_wrapper_args, phase_driver_read_result_env, require_plugin_root,
+        resolve_owned_run_id, utf8_arguments,
     },
     design_step1_commands::append_failure_args,
     github_repository_resolution::repository_ref,
@@ -1773,7 +1773,7 @@ fn file_tier_a_after_compose(ctx: &FailureCtx, body_file: &Path) {
             return;
         }
         let clean_status = clean_status_token(&status);
-        if clean_status.is_empty() {
+        if clean_status == "" {
             "tier-a-dedup-status-unexpected".to_owned()
         } else {
             format!("tier-a-dedup-status-unexpected:{clean_status}")
@@ -1829,12 +1829,12 @@ fn handle_compose_outcome(
     let last_output_nonempty = last_output.metadata().map(|m| m.len() > 0).unwrap_or(false);
     let retry_evidence_present = panel_failure_evidence_present(ctx)
         || (kind == "escalation-success" && escalation_evidence_present(ctx));
-    if status.is_empty() && retry_evidence_present && last_output_nonempty { // lint-status-routing: ok status is a plain env-file KV string, not a routed enum variant
+    if status == "" && retry_evidence_present && last_output_nonempty {
         if last_surface == "issue-input" {
             file_tier_a_after_compose(ctx, last_output);
             status = ctx.compose_env_key("STALL_RECOVERY_REPORT_STATUS");
         }
-        if status.is_empty() { // lint-status-routing: ok status is a plain env-file KV string, not a routed enum variant
+        if status == "" {
             ctx.write_fallback_chat("compose-status-missing");
             return;
         }
@@ -1871,7 +1871,7 @@ fn handle_compose_outcome(
         }
         return;
     }
-    if status.is_empty() { // lint-status-routing: ok status is a plain env-file KV string, not a routed enum variant
+    if status == "" {
         ctx.write_fallback_chat("compose-status-missing");
     } else {
         ctx.write_fallback_chat(&format!("compose-status-{status}"));

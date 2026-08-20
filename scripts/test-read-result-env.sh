@@ -8,6 +8,21 @@ SUBJECT="$ROOT/scripts/read-result-env.sh"
 SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/test-read-result-env.XXXXXX")
 trap 'rm -rf "$SCRATCH"' EXIT
 
+# `design read-result-env` is Rust-owned (#8580); read-result-env.sh delegates to
+# scripts/larch.sh. A binary-free harness shard (LARCH_BINARY="") cannot exercise
+# it, so probe for a built binary and skip loudly when absent. The verb itself is
+# covered by the design-terminal parity and clean-install parity tests.
+for candidate in "${LARCH_BINARY:-}" "$ROOT/target/release/larch" "$ROOT/target/debug/larch"; do
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+        export LARCH_BINARY="$candidate"
+        break
+    fi
+done
+if [ -z "${LARCH_BINARY:-}" ] || [ ! -x "${LARCH_BINARY:-}" ]; then
+    echo "SKIP: read-result-env harness (no built larch binary; read-result-env is Rust-owned #8580, covered by parity + clean-install tests)" >&2
+    exit 0
+fi
+
 PASS=0
 FAIL=0
 RC=0
