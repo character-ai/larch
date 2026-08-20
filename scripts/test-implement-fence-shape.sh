@@ -238,9 +238,9 @@ try:
     reship_start = skill_text.index('- **`reship`**:', assessments_start)
     assessments_slice = skill_text[assessments_start:reship_start]
     normalization = assessments_slice.index('python/cli.py ship normalize-assessment-handoff --implement-tmpdir "$IMPLEMENT_TMPDIR"')
-    materialize = assessments_slice.index('python/cli.py architectural-assessment materialize')
+    materialize = assessments_slice.index('scripts/larch.sh architectural-assessment materialize')
     assessor = assessments_slice.index('`larch:arch-assessor`')
-    submit = assessments_slice.index('python/cli.py architectural-assessment submit')
+    submit = assessments_slice.index('scripts/larch.sh architectural-assessment submit')
     relaunch = assessments_slice.index('return to the Step 8 ship launcher above exactly once')
     if not (normalization < materialize < assessor < submit < relaunch):
         errors.append('assessment branch must normalize, materialize, spawn one arch-assessor subagent, submit, then allow one Step 8 ship relaunch')

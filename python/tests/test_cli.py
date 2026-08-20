@@ -113,36 +113,13 @@ def test_report_tokens_analyze_is_not_a_python_command() -> None:
     assert cli.main(["report-tokens", "analyze", "--skill", "implement"]) == 2
 
 
-def test_architectural_assessment_sanitizer_dispatches_as_machine_stdout() -> None:
-    mock_main = MagicMock(return_value=0)
-    module = MagicMock(sanitize_detail_main=mock_main)
-    with patch.dict("sys.modules", {"larch.implement.architectural_assessment": module}):
-        rc = cli.main(["architectural-assessment", "sanitize-detail", "--implement-tmpdir", "/tmp/x"])
-
-    assert rc == 0
-    mock_main.assert_called_once_with(["--implement-tmpdir", "/tmp/x"])
-    assert ("architectural-assessment", "sanitize-detail") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
-
-
-@pytest.mark.parametrize(
-    "extra_args",
-    [[], ["--implement-tmpdir", "/path/that/does/not/exist"]],
-    ids=["missing-argument", "invalid-tmpdir"],
-)
-def test_architectural_assessment_sanitizer_fails_without_echoing_stdin(extra_args: list[str]) -> None:
-    token = "ghp_" + "x" * 30
-
-    completed = subprocess.run(
-        [sys.executable, str(CLI_PATH), "architectural-assessment", "sanitize-detail", *extra_args],
-        input=token,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert completed.returncode == 2
-    assert token not in completed.stdout
-    assert token not in completed.stderr
+def test_architectural_assessment_entrypoint_is_retired() -> None:
+    assert ("architectural-assessment", "materialize") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert ("architectural-assessment", "submit") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert ("architectural-assessment", "sanitize-detail") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert ("architectural-assessment", "final-report-sections") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert ("architectural-assessment", "sanitize-detail") not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+    assert cli.main(["architectural-assessment", "sanitize-detail", "--implement-tmpdir", "/tmp/x"]) == 2
 
 
 def test_run_log_validate_run_id_entrypoint_is_retired() -> None:
@@ -309,16 +286,6 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
             "ship_pre_fix_rebase_main",
         ),
         (["ship", "route-exit"], "larch.implement.implement_dispatch", "ship_route_exit_main"),
-        (
-            ["architectural-assessment", "materialize", "--kind", "guidelines"],
-            "larch.implement.architectural_assessment",
-            "materialize_main",
-        ),
-        (
-            ["architectural-assessment", "submit", "--kind", "guidelines", "--state", "clean", "--note-file", "/tmp/x"],
-            "larch.implement.architectural_assessment",
-            "submit_main",
-        ),
         (["ship", "reconcile-manual-merge"], "larch.implement.ship_recovery", "reconcile_manual_merge_main"),
         (["implement", "commit-route"], "larch.implement.implement_dispatch", "commit_route_main"),
     ]

@@ -2,7 +2,7 @@
 
 **Consumer**: `/implement` Step 8 durable route documentation for normalized `NEXT_ACTION=assessments` requests that include `invariants`. The dormant `NEXT_ACTION=invariants-assessment` compatibility alias normalizes to `NEXT_ACTION=assessments` with `DETAIL=invariants` before the materialize step.
 
-**Contract**: The read-only `larch:arch-assessor` subagent authors the assessment note from materialized evidence paths; `python/cli.py architectural-assessment materialize` and `architectural-assessment submit` own deterministic filtering, identity validation, and durable persistence. This file is a route reference, not an assessment-work prompt.
+**Contract**: The read-only `larch:arch-assessor` subagent authors the assessment note from materialized evidence paths; `scripts/larch.sh architectural-assessment materialize` and `architectural-assessment submit` own deterministic filtering, identity validation, and durable persistence. This file is a route reference, not an assessment-work prompt.
 
 **When to load**: Load only to inspect the durable route contract. Do not load it to author an assessment.
 

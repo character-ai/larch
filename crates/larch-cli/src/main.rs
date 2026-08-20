@@ -25,6 +25,7 @@ mod analysis_state;
 mod analyze_bugs_commands;
 mod analyze_bugs_sweep;
 mod analyze_issues_commands;
+mod architectural_assessment_commands;
 mod argparse_compat;
 mod audit_runs_commands;
 mod audit_umbrella_commands;
@@ -230,6 +231,9 @@ enum Domain {
     /// Fail-closed Rust CI selection, history helpers, and main-cache candidates.
     #[command(subcommand)]
     Ci(CiCommand),
+    /// Step 8 architectural assessment materialize/submit/report helpers.
+    #[command(subcommand, name = "architectural-assessment")]
+    ArchitecturalAssessment(ArchitecturalAssessmentCommand),
     /// Serially complete and audit every direct leaf of one umbrella issue.
     #[command(subcommand)]
     CompleteUmbrella(CompleteUmbrellaCommand),
@@ -1550,6 +1554,22 @@ enum ExecutionIssuesCommand {
 }
 
 #[derive(Subcommand)]
+enum ArchitecturalAssessmentCommand {
+    /// Materialize assessment evidence paths for the arch-assessor subagent.
+    #[command(disable_help_flag = true)]
+    Materialize(RawCompatibilityArguments),
+    /// Persist one authored assessment note fail-closed.
+    #[command(disable_help_flag = true)]
+    Submit(RawCompatibilityArguments),
+    /// Print architectural sections for the terminal final report.
+    #[command(name = "final-report-sections", disable_help_flag = true)]
+    FinalReportSections(RawCompatibilityArguments),
+    /// Sanitize one diagnostic line for an assessor handoff.
+    #[command(name = "sanitize-detail", disable_help_flag = true)]
+    SanitizeDetail(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
 enum OosCommand {
     /// Materialize external implementer observations into accepted-OOS blocks.
     #[command(name = "materialize-manifest", disable_help_flag = true)]
@@ -2247,6 +2267,22 @@ fn run(
         }
         Domain::CiTiming(command) => Ok(ci_timing::run(command)),
         Domain::Ci(command) => Ok(ci_selection::run(command)),
+        Domain::ArchitecturalAssessment(command) => Ok(match command {
+            ArchitecturalAssessmentCommand::Materialize(arguments) => {
+                architectural_assessment_commands::materialize_command(&arguments.arguments)
+            }
+            ArchitecturalAssessmentCommand::Submit(arguments) => {
+                architectural_assessment_commands::submit_command(&arguments.arguments)
+            }
+            ArchitecturalAssessmentCommand::FinalReportSections(arguments) => {
+                architectural_assessment_commands::final_report_sections_command(
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalAssessmentCommand::SanitizeDetail(arguments) => {
+                architectural_assessment_commands::sanitize_detail_command(&arguments.arguments)
+            }
+        }),
         Domain::AuditUmbrella(command) => Ok(audit_umbrella_commands::run(command)),
         Domain::CompleteUmbrella(command) => Ok(complete_umbrella_commands::run(command)),
         Domain::Net(command) => Ok(net_commands::run(command)),

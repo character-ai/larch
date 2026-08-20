@@ -32,6 +32,7 @@ crates/larch-cli/src/audit_umbrella_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/audit_runs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/analyze_bugs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/analyze_bugs_sweep.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/architectural_assessment_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/bootstrap_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/checks_identity_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/ci_selection.rs	gix-read	#7671	typed-read
@@ -91,7 +92,6 @@ python/larch/git/merge.py	later-domain	#7681	fetch,log,show
 python/larch/git/pr.py	later-domain	#7681	branch,checkout,config,push
 python/larch/git/pr_body.py	later-domain	#7681	diff,merge-base,rev-parse
 python/larch/git/rebase.py	later-domain	#7681	checkout
-python/larch/implement/architectural_assessment.py	later-domain	#7681	rev-parse
 python/larch/implement/checks_lint_fix.py	later-domain	#7681	checkout,diff,merge-base,reset,rev-parse
 python/larch/implement/ci_monitor.py	later-domain	#7681	ls-remote,rev-list,symbolic-ref
 python/larch/implement/dispatch_helpers.py	later-domain	#7681	dynamic
