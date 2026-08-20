@@ -2405,11 +2405,13 @@ verb = "postplan-emit"
 python_module = "larch.design.design_postplan"
 python_function = "postplan_emit_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8583
+clean_install_test = "clean-install-design-postplan-emit"
 
 [[commands]]
 domain = "design"
@@ -2688,11 +2690,13 @@ verb = "step2b-drafter"
 python_module = "larch.design.design_step2b"
 python_function = "step2b_drafter_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8583
+clean_install_test = "clean-install-design-step2b-drafter"
 
 [[commands]]
 domain = "design"
@@ -2700,11 +2704,13 @@ verb = "step2b-postplan"
 python_module = "larch.design.design_step2b"
 python_function = "step2b_postplan_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8583
+clean_install_test = "clean-install-design-step2b-postplan"
 
 [[commands]]
 domain = "design"
@@ -2748,11 +2754,13 @@ verb = "step3b-entry"
 python_module = "larch.design.design_step3b"
 python_function = "step3b_entry_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8583
+clean_install_test = "clean-install-design-step3b-entry"
 
 [[commands]]
 domain = "design"
@@ -9196,28 +9204,10 @@ python = []
 rust = ["design log-publish", "named-block write"]
 
 [[callers]]
-path = "python/larch/design/design_postplan.py"
-kind = "python-runtime"
-python = []
-rust = ["plan check-size", "plan validate", "plan-review drift-baseline", "plan-review emit", "plan-review json-get-bool", "run-log append-failure"]
-
-[[callers]]
 path = "python/larch/design/design_settle.py"
 kind = "python-runtime"
 python = []
-rust = ["design settle-next-action", "plan-review gate-b-dedup"]
-
-[[callers]]
-path = "python/larch/design/design_step2b.py"
-kind = "python-runtime"
-python = []
-rust = ["agent launch-claude-drafter", "agent launch-codex-drafter", "plan-review preview", "run-log append-entry", "run-log append-failure", "token append-record", "token record-vendor-sidecar"]
-
-[[callers]]
-path = "python/larch/design/design_step3b.py"
-kind = "python-runtime"
-python = []
-rust = ["plan-review finalize"]
+rust = ["design settle-next-action", "design step2b-postplan", "plan-review gate-b-dedup"]
 
 [[callers]]
 path = "python/larch/design/design_step5c.py"
@@ -9480,8 +9470,8 @@ rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps 
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design file-oos-prepare", "design pause-load", "design postplan-emit", "design prelude", "design render-final-summary", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "mermaid sanitize"]
-rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "design driver", "design init-runparams", "design log-publish", "design parse-flags", "design publish", "design read-result-env", "design route", "design step0-session", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
+python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design file-oos-prepare", "design pause-load", "design prelude", "design render-final-summary", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step5c", "mermaid sanitize"]
+rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "design driver", "design init-runparams", "design log-publish", "design parse-flags", "design postplan-emit", "design publish", "design read-result-env", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step3b-entry", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -9498,8 +9488,8 @@ rust = []
 [[callers]]
 path = "skills/design/references/approval-gates-gate-b.md"
 kind = "skill"
-python = ["design postplan-emit", "design render-gate", "design step2b-postplan", "design step35-settle"]
-rust = ["plan check-size", "plan revise-waterfall", "plan-review gate-b-counts", "plan-review gate-b-finding-line", "plan-review preview"]
+python = ["design render-gate", "design step35-settle"]
+rust = ["design postplan-emit", "design step2b-postplan", "plan check-size", "plan revise-waterfall", "plan-review gate-b-counts", "plan-review gate-b-finding-line", "plan-review preview"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-gate-c.md"
@@ -9510,8 +9500,8 @@ rust = ["design read-result-env", "plan-review filter-gate-b-skipped", "plan-rev
 [[callers]]
 path = "skills/design/references/approval-gates.md"
 kind = "skill"
-python = ["design render-gate", "design step2b-postplan", "design step35-settle"]
-rust = ["plan revise-waterfall"]
+python = ["design render-gate", "design step35-settle"]
+rust = ["design step2b-postplan", "plan revise-waterfall"]
 
 [[callers]]
 path = "skills/design/references/brainstorm.md"
@@ -9534,14 +9524,14 @@ rust = []
 [[callers]]
 path = "skills/design/references/dialectic-clarifier.md"
 kind = "skill"
-python = ["design dialectic-write-candidates", "design step2b-postplan", "design step35-settle"]
-rust = ["agent launch-claude-subprocess"]
+python = ["design dialectic-write-candidates", "design step35-settle"]
+rust = ["agent launch-claude-subprocess", "design step2b-postplan"]
 
 [[callers]]
 path = "skills/design/references/discussion-rounds.md"
 kind = "skill"
-python = ["design step2b-postplan", "design step35-settle"]
-rust = ["plan-review gate-b-dedup"]
+python = ["design step35-settle"]
+rust = ["design step2b-postplan", "plan-review gate-b-dedup"]
 
 [[callers]]
 path = "skills/design/references/finalize-step5-failures.md"
@@ -9558,8 +9548,8 @@ rust = ["design read-result-env", "issue add-blocked-by", "run-log append-failur
 [[callers]]
 path = "skills/design/references/flags.md"
 kind = "skill"
-python = ["design postplan-emit", "design step5c"]
-rust = ["design parse-flags", "plan check-size", "session write-run-params"]
+python = ["design step5c"]
+rust = ["design parse-flags", "design postplan-emit", "plan check-size", "session write-run-params"]
 
 [[callers]]
 path = "skills/design/references/oos-step5b-dispatch.md"
@@ -9588,26 +9578,26 @@ rust = ["plan-review step3-state"]
 [[callers]]
 path = "skills/design/references/settle-rc-dispatch.md"
 kind = "skill"
-python = ["design step2b-postplan", "design step35-settle"]
-rust = ["design settle-next-action", "plan set-oversize-override"]
+python = ["design step35-settle"]
+rust = ["design settle-next-action", "design step2b-postplan", "plan set-oversize-override"]
 
 [[callers]]
 path = "skills/design/references/step2b-drafter-failsafe.md"
 kind = "skill"
-python = ["design step2b-postplan"]
-rust = []
+python = []
+rust = ["design step2b-postplan"]
 
 [[callers]]
 path = "skills/design/references/step2b5-rc-handling.md"
 kind = "skill"
-python = ["design step2b-postplan", "design step2b5"]
-rust = ["plan check-size"]
+python = ["design step2b5"]
+rust = ["design step2b-postplan", "plan check-size"]
 
 [[callers]]
 path = "skills/design/references/validator-failure.md"
 kind = "skill"
-python = ["design step2b-postplan"]
-rust = ["named-block write", "plan validator-autofix", "run-log append-failure"]
+python = []
+rust = ["design step2b-postplan", "named-block write", "plan validator-autofix", "run-log append-failure"]
 
 [[callers]]
 path = "skills/design/scripts/check-plan-size.md"

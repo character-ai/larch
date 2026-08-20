@@ -807,8 +807,8 @@ pub fn require_design_tmpdir(env: &Env, design_tmpdir: Option<&str>) -> Result<P
     Ok(resolve_like_python(&path))
 }
 
-/// Bridge to the still-Python `design pause-save`; returns its exit code.
-fn pause_save_bridge(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
+/// Build the still-Python `design pause-save` argv shared by every bridge site.
+pub fn pause_save_arguments(design_tmpdir: &Path, issue: &str, repo: &str) -> Vec<OsString> {
     let mut arguments: Vec<OsString> = vec![
         "design".into(),
         "pause-save".into(),
@@ -821,10 +821,45 @@ fn pause_save_bridge(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
         arguments.push("--repo".into());
         arguments.push(repo.into());
     }
-    match run_python_verb(arguments, PAUSE_LOAD_TIMEOUT) {
+    arguments
+}
+
+/// Bridge to the still-Python `design pause-save`; returns its exit code.
+pub fn pause_save_bridge(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
+    match run_python_verb(pause_save_arguments(design_tmpdir, issue, repo), PAUSE_LOAD_TIMEOUT) {
         Ok(output) => output.status().code().unwrap_or(1),
         Err(_error) => 1,
     }
+}
+
+/// Bridge to `design pause-save`, returning its exit code and captured streams.
+pub fn pause_save_captured(design_tmpdir: &Path, issue: &str, repo: &str) -> (i32, String, String) {
+    run_python_verb(pause_save_arguments(design_tmpdir, issue, repo), PAUSE_LOAD_TIMEOUT)
+        .map_or((1, String::new(), String::new()), |output| {
+            output.decoded_streams()
+        })
+}
+
+/// Refuse a symlink target, then atomically publish `contents`. Returns `false`
+/// on any trust-boundary miss or I/O failure.
+pub fn atomic_write_string(path: &Path, contents: &str) -> bool {
+    if path.is_symlink() {
+        return false;
+    }
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let name = path.file_name().map_or_else(
+        || ".result.env".to_owned(),
+        |value| value.to_string_lossy().into_owned(),
+    );
+    let temporary = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+    fs::write(&temporary, contents)
+        .and_then(|()| fs::rename(&temporary, path))
+        .inspect_err(|_error| {
+            let _ = fs::remove_file(&temporary);
+        })
+        .is_ok()
 }
 
 /// If a pause is requested, run pause-save and yield its exit code.

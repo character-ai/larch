@@ -33,7 +33,6 @@ JSON
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
-python3 -m py_compile "$ROOT/python/larch/design/design_postplan.py" || fail 'design_postplan.py py_compile failed'
 python3 -m py_compile "$ROOT/python/larch/design/design_gate_render.py" || fail 'design_gate_render.py py_compile failed'
 python3 -m py_compile "$ROOT/python/larch/design/design_settle.py" || fail 'design_settle.py py_compile failed'
 

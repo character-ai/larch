@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -11,7 +10,7 @@ from ._structure_label_inventory import assertion_labels
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 17
+LEGACY_ASSERTION_LABEL_COUNT = 16
 
 
 def run(repo_root: Path) -> list[str]:
@@ -71,34 +70,9 @@ def run(repo_root: Path) -> list[str]:
         if (p("skills/design/scripts") / name).exists(): failures.append(f"retired script still exists: {name}")
         if f"skills/design/scripts/{name}" not in migrated_text: failures.append(f"migrated-scripts.tsv missing {name}")
 
-    lifecycle_paths = (
-        "python/larch/design/design_core.py",
-        "python/larch/design/design_step2b.py", "python/larch/design/design_step5c.py",
-        "python/larch/design/design_step6.py", "python/larch/design/design_step5b.py",
-    )
-    lifecycle = "\n".join(read(p(name)) for name in lifecycle_paths)
-    start = lifecycle.find("def _shared_step2b_postplan_body(")
-    end = lifecycle.find("def step2b_postplan_main(", start)
-    shared = lifecycle[start:end] if start >= 0 and end >= 0 else ""
-    if 'return PostplanResult(11, "POSTPLAN_RC=11\\nPOSTPLAN_STATUS=pause-save\\n", "pause-save")' not in shared:
-        failures.append("shared postplan body must return rc11 rows without printing")
-    for row in ('print("POSTPLAN_RC=11")', 'print("POSTPLAN_STATUS=pause-save")'):
-        if row in shared: failures.append(f"shared postplan body must not print {row[7:-2]} directly")
-
-    def classifier(plan_text: str) -> str:
-        from larch.design.design_step3b import diagram_required
-
-        with tempfile.TemporaryDirectory() as tmp:
-            plan_file = Path(tmp) / "plan.txt"
-            _ = plan_file.write_text(plan_text, encoding="utf-8")
-            return "true" if diagram_required(plan_file=plan_file) else "false"
-    for expected, plan_text, label in (
-        ("false", "## Files to modify/create\n### MAY_UPDATE: docs/issue-anchored-plan.md", "MAY_UPDATE docs path must not require diagram"),
-        ("false", "## Files to modify/create\n### MAY_UPDATE: `docs/issue-anchored-plan.md`", "MAY_UPDATE backtick docs path must not require diagram"),
-        ("true", "## Files to modify/create\n### MAY_UPDATE: skills/design/scripts/foo.sh", "MAY_UPDATE script path must require diagram"),
-    ):
-        actual = classifier(plan_text)
-        if actual != expected: failures.append(f"{label}: expected {expected} got {actual}")
+    # The Step 2b post-plan body and the Step 5b.5 diagram classifier moved to
+    # Rust (#8583); their structure is guarded by the design_step2b parity and
+    # unit tests in crates/larch-cli, not by these Python-source pins.
 
     gate_c = p("skills/design/references/approval-gates-gate-c.md")
     gate_lines = read(gate_c).splitlines()

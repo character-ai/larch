@@ -25,8 +25,8 @@ use crate::clarify_commands::{
     clarify_state, is_positive_int_text,
 };
 use crate::design_step0_commands::{
-    Env, clarify_failure_stage_args, exit_from_i32, load_source_env, phase_driver_read_result_env,
-    require_design_tmpdir, stage_terminal_state_bridge,
+    Env, atomic_write_string, clarify_failure_stage_args, exit_from_i32, load_source_env,
+    phase_driver_read_result_env, require_design_tmpdir, stage_terminal_state_bridge,
 };
 use crate::github_repository_resolution::validate_repo_slug;
 use crate::implement_dispatch_commands::{delegate_verified_larch, run_verified_larch_env_in};
@@ -228,17 +228,11 @@ pub fn write_result_env(path: &Path, rows: &[(&str, &str)], allow: &[&str]) -> R
         body.push_str(value);
         body.push('\n');
     }
-    let name = path.file_name().map_or_else(
-        || ".result.env".to_owned(),
-        |value| value.to_string_lossy().into_owned(),
-    );
-    let temporary = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
-    fs::write(&temporary, &body)
-        .and_then(|()| fs::rename(&temporary, path))
-        .map_err(|error| {
-            let _ = fs::remove_file(&temporary);
-            error.to_string()
-        })
+    if atomic_write_string(path, &body) {
+        Ok(())
+    } else {
+        Err(format!("failed to write result env: {}", path.display()))
+    }
 }
 
 /// Build the `named-block write --marker plan` argv both phase machines run.

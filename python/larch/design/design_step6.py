@@ -29,8 +29,24 @@ from larch.design.design_core import (
     _validate_design_tmpdir_arg,
     design_bgjob_result_env_path,
 )
-from larch.design.design_step2b import _read_simple_env
+from larch import io as larch_io
 from larch.design.design_step5c import STEP5C_STATUS_ALLOW_KEYS, STEP6_INFO_ICON
+
+
+def _read_simple_env(*, path: Path, allow: set[str]) -> dict[str, str]:
+    """Read an allowlisted `KEY=value` sidecar, dropping CR/LF-bearing values.
+
+    Local owner after the Step 2b drafting/post-plan commands moved to Rust
+    (#8583); the drafting module that previously exported this helper is retired.
+    """
+    if path.is_symlink() or not path.is_file():
+        return {}
+    try:
+        text = larch_io.read_text(path, errors="replace")
+    except OSError:
+        return {}
+    values = larch_io.parse_kv(text, allowed_keys=allow)
+    return {key: value for key, value in values.items() if "\n" not in value and "\r" not in value}
 
 
 def _read_step5c_status_sidecar(design_tmpdir: Path) -> dict[str, str]:

@@ -1521,7 +1521,7 @@ fn binary_bool(value: &str, binary: &str) -> bool {
     }
 }
 
-fn which_binary(binary: &str) -> bool {
+pub fn which_binary(binary: &str) -> bool {
     env::var_os("PATH")
         .is_some_and(|paths| env::split_paths(&paths).any(|dir| dir.join(binary).is_file()))
 }

@@ -641,6 +641,7 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 - The shared postplan helper calls `postplan_emit_main` and `pause_save_main` in-process. Rehydration exports merged session keys to `os.environ` before those calls.
 - The thin-wrapper rc contract is preserved: nonfatal postplan outcomes emit stdout rows and exit 0, fatal emit rc `1` or `2` maps to process exit 1, and pause paths `sys.exit` after pause-save.
 - Structure and pytest harnesses now target the Python authorities while the launcher remains the compatibility fence for prompt-side calls.
+- Superseded by the Rust migration: `#8583` ported `step2b-drafter`, `step2b-postplan`, `postplan-emit`, and `step3b-entry` to `crates/larch-cli/src/design_step2b_commands.rs`, retiring `design_step2b.py`, `design_postplan.py`, and `design_step3b.py`; consumers now dispatch through `scripts/larch.sh design ...`.
 
 ## E3 terminal Bash sweep
 
