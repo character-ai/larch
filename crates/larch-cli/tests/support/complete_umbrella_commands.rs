@@ -537,7 +537,7 @@ fn run_pointer_invalid_fields_fail_closed() {
     );
     assert!(
         CompleteUmbrellaRunPointer::parse(
-            &valid.replace("TRANSIENT_ATTEMPT_COUNT=0", "TRANSIENT_ATTEMPT_COUNT=9")
+            &valid.replace("TRANSIENT_ATTEMPT_COUNT=0", "TRANSIENT_ATTEMPT_COUNT=21")
         )
         .is_err()
     );
