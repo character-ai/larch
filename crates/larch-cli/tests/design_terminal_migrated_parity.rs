@@ -199,7 +199,10 @@ fn read_result_env_cases() -> Vec<ParityCase> {
                 "--output",
                 "{sandbox}/design/out.env",
             ],
-            vec![SeedFile::text(&format!("{DESIGN_RELATIVE}/in.env"), "FOO=bar\n")],
+            vec![SeedFile::text(
+                &format!("{DESIGN_RELATIVE}/in.env"),
+                "FOO=bar\n",
+            )],
         ),
     ]
 }

@@ -23,8 +23,10 @@ integration tests.
 from __future__ import annotations
 
 import csv
+import functools
 import gzip
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -2480,6 +2482,24 @@ def _voting_compose_tally_record(arguments: list[str]) -> int:
     return 0
 
 
+def _design_terminal_verb(arguments: list[str], *, verb: str) -> int:
+    """Delegate a migrated ``/design`` terminal verb to the frozen reference.
+
+    The four terminal verbs (``read-result-env``, ``stage-terminal-state``,
+    ``failure-report``, ``step-final-summary``) moved to the Rust owner in
+    #8580, so a Python-only test run reaches their consumer behavior through the
+    byte-frozen Python reference that the Rust parity harness also drives.
+    """
+    _bind_larch_package()
+    reference = _plugin_root() / "fixtures" / "rust-parity" / "design_terminal_migrated_reference.py"
+    spec = importlib.util.spec_from_file_location("_stub_design_terminal_reference", reference)
+    if spec is None or spec.loader is None:
+        return 2
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return int(module.main([verb, *arguments]))
+
+
 def main(arguments: list[str]) -> int:
     result = 2
     if arguments == ["--version"]:
@@ -2490,6 +2510,10 @@ def main(arguments: list[str]) -> int:
         result = 0
     else:
         handlers: dict[tuple[str, str], Callable[[list[str]], int]] = {
+            ("design", "read-result-env"): functools.partial(_design_terminal_verb, verb="read-result-env"),
+            ("design", "stage-terminal-state"): functools.partial(_design_terminal_verb, verb="stage-terminal-state"),
+            ("design", "failure-report"): functools.partial(_design_terminal_verb, verb="failure-report"),
+            ("design", "step-final-summary"): functools.partial(_design_terminal_verb, verb="step-final-summary"),
             ("agent", "classify-diff"): _classify,
             ("agent", "wait-reviewers"): _wait,
             ("agent", "gather-branch-context"): _gather,

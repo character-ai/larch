@@ -164,7 +164,10 @@ fn validate_core_design_tmpdir(candidate: &str) -> Result<PathBuf, String> {
 }
 
 /// Port of `phase_driver_read_result_env`: CR-free, allowlisted, order-preserving.
-fn phase_driver_read_result_env(path: &Path, allowed: &[String]) -> Result<Vec<(String, String)>, ()> {
+fn phase_driver_read_result_env(
+    path: &Path,
+    allowed: &[String],
+) -> Result<Vec<(String, String)>, ()> {
     if is_symlink(path) || !path.is_file() {
         return Err(());
     }
@@ -172,7 +175,10 @@ fn phase_driver_read_result_env(path: &Path, allowed: &[String]) -> Result<Vec<(
         Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
         Err(_error) => return Err(()),
     };
-    let cleaned: Vec<&str> = raw.split('\n').filter(|line| !line.contains('\r')).collect();
+    let cleaned: Vec<&str> = raw
+        .split('\n')
+        .filter(|line| !line.contains('\r'))
+        .collect();
     let text = cleaned.join("\n");
     let document =
         KvDocument::parse(&text, ParseOptions::legacy()).expect("legacy parser is non-rejecting");
@@ -343,7 +349,10 @@ fn parse_read_result_env_args(argv: &[String]) -> Option<ReadResultEnvArgs> {
             Some((name, value)) if name.starts_with("--") => (name, Some(value.to_owned())),
             _ => (token, None),
         };
-        let bound = matches!(name, "--input" | "--fallback-input" | "--allow" | "--output");
+        let bound = matches!(
+            name,
+            "--input" | "--fallback-input" | "--allow" | "--output"
+        );
         if bound {
             let value = if let Some(value) = inline_value {
                 value
@@ -474,7 +483,8 @@ pub fn read_result_env(arguments: &[OsString]) -> ExitCode {
     } else {
         Some(PathBuf::from(&parsed.fallback_input))
     };
-    let (source_path, warning) = resolve_read_result_env_source(&input_path, fallback_path.as_deref());
+    let (source_path, warning) =
+        resolve_read_result_env_source(&input_path, fallback_path.as_deref());
     if !warning.is_empty() {
         println!("{warning}");
     }
@@ -677,7 +687,9 @@ fn safe_failure_detail_log(raw: &str, design_tmpdir: &Path) -> Result<(), String
     let candidate = Path::new(raw);
     let resolved = resolve_like_python(candidate);
     let under = resolved == design_tmpdir
-        || resolved.ancestors().any(|ancestor| ancestor == design_tmpdir);
+        || resolved
+            .ancestors()
+            .any(|ancestor| ancestor == design_tmpdir);
     if !under {
         return Err("--failure-detail-log must be under --design-tmpdir".to_owned());
     }
@@ -778,9 +790,24 @@ fn stage_terminal_state_core(
             return (2, Vec::new());
         }
         let mut token_args = base.clone();
-        token_args.extend(["--token-kind".to_owned(), kind.to_owned(), "--value".to_owned(), value.clone()]);
-        if run_stall(runner, plugin_root, "validate-token", &token_args, None, None) != 0 {
-            core_diagnostic(&format!("{STAGE_ERR_PREFIX} {kind} is not a valid token: {value}"));
+        token_args.extend([
+            "--token-kind".to_owned(),
+            kind.to_owned(),
+            "--value".to_owned(),
+            value.clone(),
+        ]);
+        if run_stall(
+            runner,
+            plugin_root,
+            "validate-token",
+            &token_args,
+            None,
+            None,
+        ) != 0
+        {
+            core_diagnostic(&format!(
+                "{STAGE_ERR_PREFIX} {kind} is not a valid token: {value}"
+            ));
             return (2, Vec::new());
         }
     }
@@ -792,14 +819,31 @@ fn stage_terminal_state_core(
             continue;
         }
         let mut token_args = base.clone();
-        token_args.extend(["--token-kind".to_owned(), kind.to_owned(), "--value".to_owned(), value.clone()]);
-        if run_stall(runner, plugin_root, "validate-token", &token_args, None, None) != 0 {
-            core_diagnostic(&format!("{STAGE_ERR_PREFIX} {kind} is not a valid token: {value}"));
+        token_args.extend([
+            "--token-kind".to_owned(),
+            kind.to_owned(),
+            "--value".to_owned(),
+            value.clone(),
+        ]);
+        if run_stall(
+            runner,
+            plugin_root,
+            "validate-token",
+            &token_args,
+            None,
+            None,
+        ) != 0
+        {
+            core_diagnostic(&format!(
+                "{STAGE_ERR_PREFIX} {kind} is not a valid token: {value}"
+            ));
             return (2, Vec::new());
         }
     }
     if parsed.exit_code != "unknown" && !parsed.exit_code.chars().all(|c| c.is_ascii_digit()) {
-        core_diagnostic(&format!("{STAGE_ERR_PREFIX} --exit-code must be an integer or unknown"));
+        core_diagnostic(&format!(
+            "{STAGE_ERR_PREFIX} --exit-code must be an integer or unknown"
+        ));
         return (2, Vec::new());
     }
     if let Err(message) = safe_failure_detail_log(&parsed.failure_detail_log, &design_tmpdir) {
@@ -813,7 +857,9 @@ fn stage_terminal_state_core(
     let state_file = design_tmpdir.join("design-failure-terminal-state.env");
     if state_file.exists() || is_symlink(&state_file) {
         if is_symlink(&state_file) || !state_file.is_file() {
-            core_diagnostic(&format!("{STAGE_ERR_PREFIX} existing terminal state is unsafe"));
+            core_diagnostic(&format!(
+                "{STAGE_ERR_PREFIX} existing terminal state is unsafe"
+            ));
             return (2, Vec::new());
         }
         let old = read_env_values(
@@ -827,7 +873,10 @@ fn stage_terminal_state_core(
             let rows = vec![
                 ("STAGED".to_owned(), "false".to_owned()),
                 ("PRESERVED".to_owned(), "true".to_owned()),
-                ("TERMINAL_STATE_FILE".to_owned(), state_file.display().to_string()),
+                (
+                    "TERMINAL_STATE_FILE".to_owned(),
+                    state_file.display().to_string(),
+                ),
             ];
             emit_rows(&rows);
             return (0, rows.iter().map(|(k, v)| format!("{k}={v}")).collect());
@@ -867,7 +916,9 @@ fn stage_terminal_state_core(
     }
     let body = format!("{}\n", lines.join("\n"));
     if fs::write(&candidate, &body).is_err() {
-        core_diagnostic(&format!("{STAGE_ERR_PREFIX} candidate terminal state failed validation"));
+        core_diagnostic(&format!(
+            "{STAGE_ERR_PREFIX} candidate terminal state failed validation"
+        ));
         return (2, Vec::new());
     }
     let mut validate_args = base;
@@ -875,15 +926,28 @@ fn stage_terminal_state_core(
         "--primary-state-file".to_owned(),
         candidate.display().to_string(),
     ]);
-    if run_stall(runner, plugin_root, "validate-terminal-state", &validate_args, None, None) != 0 {
+    if run_stall(
+        runner,
+        plugin_root,
+        "validate-terminal-state",
+        &validate_args,
+        None,
+        None,
+    ) != 0
+    {
         let _ = fs::remove_file(&candidate);
-        core_diagnostic(&format!("{STAGE_ERR_PREFIX} candidate terminal state failed validation"));
+        core_diagnostic(&format!(
+            "{STAGE_ERR_PREFIX} candidate terminal state failed validation"
+        ));
         return (2, Vec::new());
     }
     let _ = fs::rename(&candidate, &state_file);
     let rows = vec![
         ("STAGED".to_owned(), "true".to_owned()),
-        ("TERMINAL_STATE_FILE".to_owned(), state_file.display().to_string()),
+        (
+            "TERMINAL_STATE_FILE".to_owned(),
+            state_file.display().to_string(),
+        ),
     ];
     emit_rows(&rows);
     (0, rows.iter().map(|(k, v)| format!("{k}={v}")).collect())
@@ -948,7 +1012,10 @@ fn parse_failure_args(argv: &[String]) -> FailureArgs {
             Some((name, value)) if name.starts_with("--") => (name, Some(value.to_owned())),
             _ => (token, None),
         };
-        if matches!(name, "--design-tmpdir" | "--outcome" | "--repo" | "--issue" | "--run-id") {
+        if matches!(
+            name,
+            "--design-tmpdir" | "--outcome" | "--repo" | "--issue" | "--run-id"
+        ) {
             let value = inline_value.unwrap_or_else(|| {
                 index += 1;
                 argv.get(index).cloned().unwrap_or_default()
@@ -1001,7 +1068,6 @@ impl FailureCtx<'_> {
         }
     }
 
-
     fn append_run_log_audit(&self, reason: &str) {
         let detail = self.path("design-failure-audit.log");
         let _ = fs::write(&detail, format!("design failure report audit: {reason}\n"));
@@ -1014,7 +1080,14 @@ impl FailureCtx<'_> {
         );
     }
 
-    fn append_failure(&self, site: &str, tool: &str, exit_code: &str, category: &str, output_file: &Path) {
+    fn append_failure(
+        &self,
+        site: &str,
+        tool: &str,
+        exit_code: &str,
+        category: &str,
+        output_file: &Path,
+    ) {
         let args = vec![
             "run-log".to_owned(),
             "append-failure".to_owned(),
@@ -1067,10 +1140,7 @@ impl FailureCtx<'_> {
         );
         println!("DESIGN_FAILURE_REPORT_DECISION=fallback-print-required");
         println!("DESIGN_FAILURE_REPORT_REASON={reason}");
-        println!(
-            "DESIGN_FAILURE_REPORT_ARTIFACT={}",
-            chat_print.display()
-        );
+        println!("DESIGN_FAILURE_REPORT_ARTIFACT={}", chat_print.display());
     }
 
     fn tier_a_forked(&self) -> bool {
@@ -1152,17 +1222,27 @@ impl FailureCtx<'_> {
         let mut args = self.base();
         args.extend([
             "--sensitive-corpus-file".to_owned(),
-            self.path("design-failure-sensitive-corpus.env").display().to_string(),
+            self.path("design-failure-sensitive-corpus.env")
+                .display()
+                .to_string(),
             "--classification-file".to_owned(),
             actual_class.display().to_string(),
             "--attempts-file".to_owned(),
-            self.path("design-failure-attempts.env").display().to_string(),
+            self.path("design-failure-attempts.env")
+                .display()
+                .to_string(),
             "--escalation-ledger-file".to_owned(),
-            self.path("design-failure-escalation-ledger.tsv").display().to_string(),
+            self.path("design-failure-escalation-ledger.tsv")
+                .display()
+                .to_string(),
             "--escalation-fallback-file".to_owned(),
-            self.path("design-failure-escalation-fallback.tsv").display().to_string(),
+            self.path("design-failure-escalation-fallback.tsv")
+                .display()
+                .to_string(),
             "--record-failure-marker".to_owned(),
-            self.path("design-failure-escalation-record-failure.env").display().to_string(),
+            self.path("design-failure-escalation-record-failure.env")
+                .display()
+                .to_string(),
         ]);
         run_stall(
             self.runner,
@@ -1291,7 +1371,10 @@ fn failure_report_terminal(ctx: &FailureCtx, terminal_state: &Path) -> (i32, Vec
         ctx.write_fallback_chat("invalid-terminal-state");
         return (0, Vec::new());
     }
-    let state = read_env_values(terminal_state, &[("FAILURE_OUTCOME", ""), ("SUMMARY_OUTCOME", "")]);
+    let state = read_env_values(
+        terminal_state,
+        &[("FAILURE_OUTCOME", ""), ("SUMMARY_OUTCOME", "")],
+    );
     let failure_outcome = env_value(&state, "FAILURE_OUTCOME");
     if !failure_outcome.is_empty() && failure_outcome != ctx.outcome {
         ctx.append_run_log_audit("terminal-state-outcome-mismatch");
@@ -1308,9 +1391,18 @@ fn failure_report_terminal(ctx: &FailureCtx, terminal_state: &Path) -> (i32, Vec
     let mut init_args = ctx.base();
     init_args.extend([
         "--attempts-file".to_owned(),
-        ctx.path("design-failure-attempts.env").display().to_string(),
+        ctx.path("design-failure-attempts.env")
+            .display()
+            .to_string(),
     ]);
-    let _ = run_stall(ctx.runner, &ctx.plugin_root, "init-attempts", &init_args, None, None);
+    let _ = run_stall(
+        ctx.runner,
+        &ctx.plugin_root,
+        "init-attempts",
+        &init_args,
+        None,
+        None,
+    );
     let classify_out = ctx.path("design-failure-classify.env");
     let mut classify_args = ctx.base();
     classify_args.extend(state_overrides(ctx));
@@ -1341,13 +1433,21 @@ fn failure_report_terminal(ctx: &FailureCtx, terminal_state: &Path) -> (i32, Vec
         "--classification-file".to_owned(),
         class_file.display().to_string(),
         "--attempts-file".to_owned(),
-        ctx.path("design-failure-attempts.env").display().to_string(),
+        ctx.path("design-failure-attempts.env")
+            .display()
+            .to_string(),
         "--root-cause-file".to_owned(),
-        ctx.path("design-failure-root-cause.md").display().to_string(),
+        ctx.path("design-failure-root-cause.md")
+            .display()
+            .to_string(),
         "--bounded-root-cause-file".to_owned(),
-        ctx.path("design-failure-bounded-root-cause.md").display().to_string(),
+        ctx.path("design-failure-bounded-root-cause.md")
+            .display()
+            .to_string(),
         "--sensitive-corpus-file".to_owned(),
-        ctx.path("design-failure-sensitive-corpus.env").display().to_string(),
+        ctx.path("design-failure-sensitive-corpus.env")
+            .display()
+            .to_string(),
         "--output-file".to_owned(),
         output.display().to_string(),
     ]);
@@ -1384,9 +1484,18 @@ fn failure_report_escalation(ctx: &FailureCtx) -> (i32, Vec<String>) {
     let mut init_args = ctx.base();
     init_args.extend([
         "--attempts-file".to_owned(),
-        ctx.path("design-failure-attempts.env").display().to_string(),
+        ctx.path("design-failure-attempts.env")
+            .display()
+            .to_string(),
     ]);
-    let _ = run_stall(ctx.runner, &ctx.plugin_root, "init-attempts", &init_args, None, None);
+    let _ = run_stall(
+        ctx.runner,
+        &ctx.plugin_root,
+        "init-attempts",
+        &init_args,
+        None,
+        None,
+    );
     let surface = ctx.report_surface();
     let output = ctx.report_output_file(surface);
     if !ctx.populate_sensitive(None) {
@@ -1401,19 +1510,33 @@ fn failure_report_escalation(ctx: &FailureCtx) -> (i32, Vec<String>) {
         "--surface".to_owned(),
         surface.to_owned(),
         "--attempts-file".to_owned(),
-        ctx.path("design-failure-attempts.env").display().to_string(),
+        ctx.path("design-failure-attempts.env")
+            .display()
+            .to_string(),
         "--escalation-ledger-file".to_owned(),
-        ctx.path("design-failure-escalation-ledger.tsv").display().to_string(),
+        ctx.path("design-failure-escalation-ledger.tsv")
+            .display()
+            .to_string(),
         "--escalation-fallback-file".to_owned(),
-        ctx.path("design-failure-escalation-fallback.tsv").display().to_string(),
+        ctx.path("design-failure-escalation-fallback.tsv")
+            .display()
+            .to_string(),
         "--record-failure-marker".to_owned(),
-        ctx.path("design-failure-escalation-record-failure.env").display().to_string(),
+        ctx.path("design-failure-escalation-record-failure.env")
+            .display()
+            .to_string(),
         "--root-cause-file".to_owned(),
-        ctx.path("design-failure-root-cause.md").display().to_string(),
+        ctx.path("design-failure-root-cause.md")
+            .display()
+            .to_string(),
         "--bounded-root-cause-file".to_owned(),
-        ctx.path("design-failure-bounded-root-cause.md").display().to_string(),
+        ctx.path("design-failure-bounded-root-cause.md")
+            .display()
+            .to_string(),
         "--sensitive-corpus-file".to_owned(),
-        ctx.path("design-failure-sensitive-corpus.env").display().to_string(),
+        ctx.path("design-failure-sensitive-corpus.env")
+            .display()
+            .to_string(),
         "--output-file".to_owned(),
         output.display().to_string(),
     ]);
@@ -1448,13 +1571,18 @@ fn failure_report_escalation(ctx: &FailureCtx) -> (i32, Vec<String>) {
 fn state_overrides(ctx: &FailureCtx) -> Vec<String> {
     let mut out = vec![
         "--primary-state-file".to_owned(),
-        ctx.path("design-failure-terminal-state.env").display().to_string(),
+        ctx.path("design-failure-terminal-state.env")
+            .display()
+            .to_string(),
         "--session-env-file".to_owned(),
         ctx.path("source-env.sh").display().to_string(),
     ];
     let finalize = ctx.path("finalize-state.sh");
     if finalize.is_file() {
-        out.extend(["--finalize-state-file".to_owned(), finalize.display().to_string()]);
+        out.extend([
+            "--finalize-state-file".to_owned(),
+            finalize.display().to_string(),
+        ]);
     }
     out
 }
@@ -1463,7 +1591,11 @@ fn safe_root_summary_from_state(ctx: &FailureCtx) -> String {
     let terminal_state = ctx.path("design-failure-terminal-state.env");
     let values = read_env_values(
         &terminal_state,
-        &[("SITE", "unknown"), ("TRIGGER", "unknown"), ("FAILURE_OUTCOME", &ctx.outcome)],
+        &[
+            ("SITE", "unknown"),
+            ("TRIGGER", "unknown"),
+            ("FAILURE_OUTCOME", &ctx.outcome),
+        ],
     );
     format!(
         "{} at {} via {}\n",
@@ -1479,14 +1611,25 @@ fn prepare_root_cause(ctx: &FailureCtx, kind: &str) {
     let bounded_root_file = ctx.path("design-failure-bounded-root-cause.md");
     let (verdict, summary) = if kind == "terminal" {
         let hint = read_env_value(&terminal_state, "ROOT_CAUSE_HINT", "");
-        let verdict = if matches!(hint.as_str(), "larch-defect" | "environment" | "operator-action") {
+        let verdict = if matches!(
+            hint.as_str(),
+            "larch-defect" | "environment" | "operator-action"
+        ) {
             hint
         } else {
             "larch-defect".to_owned()
         };
-        (verdict, safe_root_summary_from_state(ctx).trim_end_matches('\n').to_owned())
+        (
+            verdict,
+            safe_root_summary_from_state(ctx)
+                .trim_end_matches('\n')
+                .to_owned(),
+        )
     } else {
-        ("larch-defect".to_owned(), "design escalation reached main-agent recovery".to_owned())
+        (
+            "larch-defect".to_owned(),
+            "design escalation reached main-agent recovery".to_owned(),
+        )
     };
     let _ = fs::write(
         &root_file,
@@ -1603,7 +1746,10 @@ fn panel_failure_evidence_present(ctx: &FailureCtx) -> bool {
 }
 
 fn file_tier_a_after_compose(ctx: &FailureCtx, body_file: &Path) {
-    if !ctx.compose_env_key("STALL_RECOVERY_REPORT_STATUS").is_empty() {
+    if !ctx
+        .compose_env_key("STALL_RECOVERY_REPORT_STATUS")
+        .is_empty()
+    {
         return;
     }
     let source_env = ctx.path("source-env.sh");
@@ -1697,7 +1843,8 @@ fn append_fallback(ctx: &FailureCtx, reason: &str) {
     let compose_env = ctx.compose_env();
     let mut existing = fs::read(&compose_env).unwrap_or_default();
     existing.extend_from_slice(b"STALL_RECOVERY_REPORT_STATUS=fallback-print-required\n");
-    existing.extend_from_slice(format!("STALL_RECOVERY_REPORT_FALLBACK_REASON={reason}\n").as_bytes());
+    existing
+        .extend_from_slice(format!("STALL_RECOVERY_REPORT_FALLBACK_REASON={reason}\n").as_bytes());
     let _ = fs::write(&compose_env, existing);
 }
 
@@ -1793,7 +1940,10 @@ fn validated_publish_state(design_tmpdir: &Path, path: &Path) -> Option<Vec<(Str
     Some(values)
 }
 
-fn validated_salvage_publish_result(design_tmpdir: &Path, path: &Path) -> Option<Vec<(String, String)>> {
+fn validated_salvage_publish_result(
+    design_tmpdir: &Path,
+    path: &Path,
+) -> Option<Vec<(String, String)>> {
     let values = validated_publish_state(design_tmpdir, path)?;
     let get = |key: &str| env_value(&values, key).to_owned();
     let attempt_id = get("PUBLISH_ATTEMPT_ID");
@@ -1807,7 +1957,9 @@ fn validated_salvage_publish_result(design_tmpdir: &Path, path: &Path) -> Option
     if !matches!(get("PUBLISH_RC_SOURCE").as_str(), "returned" | "exception") {
         return None;
     }
-    if !(get("PLAN_WRITE_OK") == "true" && get("RENAMED") == "true" && get("LOG_PUBLISH_COMPLETED") == "true")
+    if !(get("PLAN_WRITE_OK") == "true"
+        && get("RENAMED") == "true"
+        && get("LOG_PUBLISH_COMPLETED") == "true")
     {
         return None;
     }
@@ -1815,8 +1967,11 @@ fn validated_salvage_publish_result(design_tmpdir: &Path, path: &Path) -> Option
 }
 
 fn salvage_success_proven(design_tmpdir: &Path) -> bool {
-    validated_salvage_publish_result(design_tmpdir, &design_tmpdir.join(DESIGN_PUBLISH_RESULT_FILE))
-        .is_some()
+    validated_salvage_publish_result(
+        design_tmpdir,
+        &design_tmpdir.join(DESIGN_PUBLISH_RESULT_FILE),
+    )
+    .is_some()
 }
 
 fn resolve_report_repo(url: &str, fallback: &str) -> String {
@@ -1824,7 +1979,9 @@ fn resolve_report_repo(url: &str, fallback: &str) -> String {
         let rest = &url[idx + "github.com/".len()..];
         if let Some(issues_idx) = rest.find("/issues/") {
             let slug = &rest[..issues_idx];
-            if slug.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-' | '/'))
+            if slug
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-' | '/'))
                 && slug.matches('/').count() == 1
             {
                 return slug.to_owned();
@@ -1889,7 +2046,13 @@ fn reconcile_failed_publish_tail_report(
     } else {
         let audit = ctx.path("design-failure-reconcile-audit.log");
         let _ = fs::write(&audit, format!("{detail}\n"));
-        ctx.append_failure("design failure reconcile", "gh issue", "1", "Warnings", &audit);
+        ctx.append_failure(
+            "design failure reconcile",
+            "gh issue",
+            "1",
+            "Warnings",
+            &audit,
+        );
         let _ = append_execution_issue(
             ctx,
             &format!(
@@ -1926,7 +2089,11 @@ fn append_execution_issue(ctx: &FailureCtx, message: &str) -> Result<(), ()> {
 /// Port of `_reconcile_post_recovery_comment`. The auth gate and fallback are
 /// byte-faithful; the authorized-live gh comment/close runs through the shared
 /// `IssueMutationOwner` (a narrow production-only path never exercised offline).
-fn reconcile_post_recovery_comment(ctx: &FailureCtx, report_issue: &str, repo: &str) -> (bool, String) {
+fn reconcile_post_recovery_comment(
+    ctx: &FailureCtx,
+    report_issue: &str,
+    repo: &str,
+) -> (bool, String) {
     let source_env = ctx.path("source-env.sh");
     let context_file = if source_env.is_file() {
         Some(source_env.as_path())
@@ -1951,7 +2118,10 @@ fn reconcile_post_recovery_comment(ctx: &FailureCtx, report_issue: &str, repo: &
     if redacted.contains("[content truncated") {
         return (false, "redact-secrets failed".to_owned());
     }
-    let _ = fs::write(ctx.path("design-failure-reconcile-comment.redacted.md"), &redacted);
+    let _ = fs::write(
+        ctx.path("design-failure-reconcile-comment.redacted.md"),
+        &redacted,
+    );
     let Ok(issue_number) = report_issue.parse::<u64>() else {
         return (false, "gh issue comment failed".to_owned());
     };
@@ -2040,7 +2210,9 @@ fn step_final_summary_with(arguments: &[OsString], runner: &dyn Step0Runner) -> 
     let env = load_wrapper_env(&ns);
     let raw_tmpdir = env_get(&env, "DESIGN_TMPDIR", "");
     if raw_tmpdir.is_empty() {
-        core_diagnostic(&format!("{FINAL_SUMMARY_ERR_PREFIX} DESIGN_TMPDIR required"));
+        core_diagnostic(&format!(
+            "{FINAL_SUMMARY_ERR_PREFIX} DESIGN_TMPDIR required"
+        ));
         return ExitCode::from(1);
     }
     let design_tmpdir = match validate_core_design_tmpdir(raw_tmpdir) {
@@ -2050,10 +2222,11 @@ fn step_final_summary_with(arguments: &[OsString], runner: &dyn Step0Runner) -> 
             return ExitCode::from(1);
         }
     };
-    let plugin_root = match require_plugin_root(env_get(&env, "CLAUDE_PLUGIN_ROOT", &ns.plugin_root)) {
-        Ok(root) => root,
-        Err(_code) => PathBuf::from(env_get(&env, "CLAUDE_PLUGIN_ROOT", "")),
-    };
+    let plugin_root =
+        match require_plugin_root(env_get(&env, "CLAUDE_PLUGIN_ROOT", &ns.plugin_root)) {
+            Ok(root) => root,
+            Err(_code) => PathBuf::from(env_get(&env, "CLAUDE_PLUGIN_ROOT", "")),
+        };
     let core_rc = step_final_summary_core(runner, &plugin_root, &env, &design_tmpdir);
     // `step_final_summary_main`: rc 2/3 pass through; else success when the
     // result env landed.
@@ -2084,8 +2257,10 @@ fn step_final_summary_core(
         return pause_save(runner, plugin_root, design_tmpdir, &ctx);
     }
     let _ = fs::remove_file(design_tmpdir.join(".design-step-final-summary-result.env"));
-    if matches!(ctx.summary_outcome.as_str(), "cancelled-clarify" | "failed-clarify")
-        && has_nonempty_final_summary(&disk_final_summary)
+    if matches!(
+        ctx.summary_outcome.as_str(),
+        "cancelled-clarify" | "failed-clarify"
+    ) && has_nonempty_final_summary(&disk_final_summary)
     {
         let rc = emit_and_complete_final_summary(
             design_tmpdir,
@@ -2095,7 +2270,13 @@ fn step_final_summary_core(
         return rc;
     }
     if is_terminal_publish_outcome(&ctx.summary_outcome) {
-        let rc = run_terminal_publish_final_summary(runner, plugin_root, design_tmpdir, &ctx, &disk_final_summary);
+        let rc = run_terminal_publish_final_summary(
+            runner,
+            plugin_root,
+            design_tmpdir,
+            &ctx,
+            &disk_final_summary,
+        );
         try_deactivate_design_run(runner, plugin_root, design_tmpdir);
         return rc;
     }
@@ -2108,7 +2289,12 @@ fn is_terminal_publish_outcome(outcome: &str) -> bool {
     outcome.starts_with("cancelled-") && outcome != "cancelled-clarify"
 }
 
-fn pause_save(runner: &dyn Step0Runner, plugin_root: &Path, design_tmpdir: &Path, ctx: &SummaryCtx) -> i32 {
+fn pause_save(
+    runner: &dyn Step0Runner,
+    plugin_root: &Path,
+    design_tmpdir: &Path,
+    ctx: &SummaryCtx,
+) -> i32 {
     let mut args = vec![
         "design".to_owned(),
         "pause-save".to_owned(),
@@ -2126,7 +2312,12 @@ fn pause_save(runner: &dyn Step0Runner, plugin_root: &Path, design_tmpdir: &Path
 /// Port of `_emit_and_complete_final_summary`.
 fn emit_and_complete_final_summary(design_tmpdir: &Path, final_summary_path: &str) -> i32 {
     let summary_path = PathBuf::from(final_summary_path);
-    if summary_path.is_file() && summary_path.metadata().map(|m| m.len() > 0).unwrap_or(false) {
+    if summary_path.is_file()
+        && summary_path
+            .metadata()
+            .map(|m| m.len() > 0)
+            .unwrap_or(false)
+    {
         println!("{ENV_FINAL_SUMMARY_PATH}={final_summary_path}");
         println!("{LARCH_FINAL_SUMMARY_BEGIN_MARKER}");
         println!("{LARCH_FINAL_SUMMARY_END_MARKER}");
@@ -2198,7 +2389,8 @@ fn run_terminal_publish_final_summary(
             &format!("design log publish failed for terminal summary (exit {publish_rc}){suffix}"),
         );
     }
-    if !upsert_final_summary_from_disk(runner, plugin_root, design_tmpdir, ctx, final_summary_path) {
+    if !upsert_final_summary_from_disk(runner, plugin_root, design_tmpdir, ctx, final_summary_path)
+    {
         return record_terminal_summary_error(
             design_tmpdir,
             "tracking-issue upsert-summary failed for terminal final summary",
@@ -2237,7 +2429,10 @@ fn publish_terminal_final_summary(design_tmpdir: &Path, ctx: &SummaryCtx) -> (i3
             let stdout_text = String::from_utf8_lossy(output.stdout()).into_owned();
             let publish_ok = kv_last_value(&stdout_text, "PUBLISH_OK");
             let recovery_branch = kv_last_value(&stdout_text, "RECOVERY_BRANCH");
-            (rc, rc == 0 && publish_ok == "true" && recovery_branch.is_empty())
+            (
+                rc,
+                rc == 0 && publish_ok == "true" && recovery_branch.is_empty(),
+            )
         }
         Err(_error) => {
             let _ = fs::write(&stdout_log, b"");
@@ -2267,7 +2462,8 @@ fn terminal_publish_error_detail(design_tmpdir: &Path) -> String {
         return String::new();
     };
     if meta.len() > TERMINAL_PUBLISH_DIAGNOSTIC_BYTE_CAP {
-        return "terminal publish diagnostic unavailable because stderr exceeds the bounded scan".to_owned();
+        return "terminal publish diagnostic unavailable because stderr exceeds the bounded scan"
+            .to_owned();
     }
     let Ok(bytes) = fs::read(&stderr_log) else {
         return String::new();
@@ -2282,7 +2478,10 @@ fn safe_terminal_publish_detail(text: &str) -> String {
     }
     let flattened = sanitize_diagnostic_line(&redacted.replace(['\r', '\n'], " "));
     let flattened = flattened.trim();
-    flattened.chars().take(TERMINAL_PUBLISH_DIAGNOSTIC_CHAR_CAP).collect()
+    flattened
+        .chars()
+        .take(TERMINAL_PUBLISH_DIAGNOSTIC_CHAR_CAP)
+        .collect()
 }
 
 fn record_terminal_summary_error(design_tmpdir: &Path, message: &str) -> i32 {
@@ -2310,7 +2509,10 @@ fn upsert_final_summary_from_disk(
 ) -> bool {
     if is_symlink(final_summary_path)
         || !final_summary_path.is_file()
-        || final_summary_path.metadata().map(|m| m.len() == 0).unwrap_or(true)
+        || final_summary_path
+            .metadata()
+            .map(|m| m.len() == 0)
+            .unwrap_or(true)
     {
         return false;
     }
@@ -2335,7 +2537,11 @@ fn upsert_final_summary_from_disk(
 }
 
 /// Port of `_run_rendered_final_summary` + `_render_final_summary_post_publish`.
-fn run_rendered_final_summary(design_tmpdir: &Path, ctx: &SummaryCtx, final_summary_path: &str) -> i32 {
+fn run_rendered_final_summary(
+    design_tmpdir: &Path,
+    ctx: &SummaryCtx,
+    final_summary_path: &str,
+) -> i32 {
     let render_rc = render_final_summary_post_publish(design_tmpdir, ctx);
     if render_rc != 0 {
         return render_rc;
@@ -2431,7 +2637,9 @@ fn resolve_owned_run_id(design_tmpdir: &Path) -> Option<String> {
             }
         }
     }
-    candidates.into_iter().find(|value| is_valid_owned_run_id(value))
+    candidates
+        .into_iter()
+        .find(|value| is_valid_owned_run_id(value))
 }
 
 fn is_valid_owned_run_id(value: &str) -> bool {
@@ -2454,8 +2662,9 @@ mod tests {
     use crate::design_step0_commands::{ChildOutcome, Step0Runner};
 
     use super::{
-        classify_input, clean_status_token, is_terminal_publish_outcome, ledger_row_has_escalation_evidence,
-        preferred_bgjob_result_input, resolve_read_result_env_source, resolve_report_repo, valid_var_name,
+        classify_input, clean_status_token, is_terminal_publish_outcome,
+        ledger_row_has_escalation_evidence, preferred_bgjob_result_input,
+        resolve_read_result_env_source, resolve_report_repo, valid_var_name,
     };
 
     struct RecordingRunner {
@@ -2554,7 +2763,9 @@ mod tests {
 
     #[test]
     fn ledger_row_escalation_evidence_gates_step3_review() {
-        assert!(ledger_row_has_escalation_evidence("site=step2\ttrigger=failed"));
+        assert!(ledger_row_has_escalation_evidence(
+            "site=step2\ttrigger=failed"
+        ));
         assert!(!ledger_row_has_escalation_evidence(
             "site=step3-review\ttrigger=passed"
         ));
@@ -2582,10 +2793,14 @@ mod tests {
     fn stage_unknown_option_is_exit_two() {
         let session = design_dir();
         let runner = RecordingRunner::new(Vec::new());
-        let args: Vec<OsString> = ["--design-tmpdir", session.root().to_str().expect("utf8"), "--nope"]
-            .iter()
-            .map(OsString::from)
-            .collect();
+        let args: Vec<OsString> = [
+            "--design-tmpdir",
+            session.root().to_str().expect("utf8"),
+            "--nope",
+        ]
+        .iter()
+        .map(OsString::from)
+        .collect();
         let code = super::stage_terminal_state_with(&args, &runner);
         assert_eq!(code, std::process::ExitCode::from(2));
     }

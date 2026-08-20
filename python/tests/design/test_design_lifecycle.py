@@ -74,99 +74,6 @@ def test_phase_driver_read_result_env_refuses_symlink(tmp_path: Path) -> None:
         phase_driver_read_result_env(path=link, allow_keys=["INIT_STATUS"])  # pyright: ignore[reportUnusedCallResult]
 
 
-def test_design_read_result_env_cli_writes_sourceable_output(tmp_path: Path) -> None:
-    source = tmp_path / "source.env"
-    output = tmp_path / "out.env"
-    source.write_text("INIT_STATUS=ok\nRUN_PARAMS_PATH=Bob's run\nSECRET=drop\n", encoding="utf-8")  # pyright: ignore[reportUnusedCallResult]
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(CLI),
-            "design",
-            "read-result-env",
-            "--input",
-            str(source),
-            "--allow",
-            "INIT_STATUS",
-            "--allow",
-            "RUN_PARAMS_PATH",
-            "--output",
-            str(output),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0
-    assert "INIT_STATUS='ok'" in output.read_text(encoding="utf-8")
-    assert "RUN_PARAMS_PATH='Bob'\"'\"'s run'" in output.read_text(encoding="utf-8")
-
-
-def test_design_read_result_env_prefers_step5c_bgjob_result(tmp_path: Path) -> None:
-    legacy = tmp_path / ".design-step5c-status.env"
-    output = tmp_path / "out.env"
-    bgjob = tmp_path / "bgjob" / "design-step5c.result.env"
-    bgjob.parent.mkdir()
-    legacy.write_text("PLAN_WRITE_OK=false\nPUBLISH_RC=1\n", encoding="utf-8")
-    bgjob.write_text("BGJOB_RC=0\nSTEP=design-step5c\nPLAN_WRITE_OK=true\nPUBLISH_RC=0\n", encoding="utf-8")
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(CLI),
-            "design",
-            "read-result-env",
-            "--input",
-            str(legacy),
-            "--allow",
-            "PLAN_WRITE_OK",
-            "--allow",
-            "PUBLISH_RC",
-            "--output",
-            str(output),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0
-    text = output.read_text(encoding="utf-8")
-    assert "PLAN_WRITE_OK='true'" in text
-    assert "PUBLISH_RC='0'" in text
-
-
-def test_design_read_result_env_prefers_step4_tail_bgjob_result(tmp_path: Path) -> None:
-    legacy = tmp_path / ".design-step4-tail-result.env"
-    output = tmp_path / "out.env"
-    bgjob = tmp_path / "bgjob" / "design-step4-tail.result.env"
-    bgjob.parent.mkdir()
-    legacy.write_text("SKIP_APPROVE_REQUESTED_GATEC=false\nGATEC_PREVIEW_PATH=/tmp/legacy\n", encoding="utf-8")
-    bgjob.write_text("BGJOB_RC=0\nSTEP=design-step4-tail\nSKIP_APPROVE_REQUESTED_GATEC=true\nGATEC_PREVIEW_PATH=/tmp/bgjob\n", encoding="utf-8")
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(CLI),
-            "design",
-            "read-result-env",
-            "--input",
-            str(legacy),
-            "--allow",
-            "SKIP_APPROVE_REQUESTED_GATEC",
-            "--allow",
-            "GATEC_PREVIEW_PATH",
-            "--output",
-            str(output),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0
-    text = output.read_text(encoding="utf-8")
-    assert "SKIP_APPROVE_REQUESTED_GATEC='true'" in text
-    assert "GATEC_PREVIEW_PATH='/tmp/bgjob'" in text
-
-
-
 def test_decode_bash_percent_q_decodes_utf8_byte_escaped_emoji() -> None:
     assert design_core._decode_bash_percent_q("$'\\360\\237\\230\\200'") == "😀"  # pyright: ignore[reportPrivateUsage]
 
@@ -1184,38 +1091,6 @@ def test_capture_contract_stream_restores_fd3_for_quiet_init(tmp_path: Path, mon
 
 
 
-
-
-def test_step_final_summary_cli_subprocess_emits_markers_on_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
-    (tmp_path / "final-summary.md").write_text("cli summary\n", encoding="utf-8")
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(CLI.parent)
-    env[config.ENV_DESIGN_TMPDIR] = str(tmp_path.resolve())
-    env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(CLI),
-            "design",
-            "step-final-summary",
-            "--session-env-path",
-            str(env_path),
-            "--claude-pid",
-            "123",
-            "--outcome",
-            "approved",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
-    )
-    assert result.returncode == 0
-    assert f"FINAL_SUMMARY_PATH={tmp_path / 'final-summary.md'}" in result.stdout
-    assert "LARCH_FINAL_SUMMARY_BEGIN" in result.stdout
-    assert "LARCH_FINAL_SUMMARY_END" in result.stdout
-    assert "cli summary" not in result.stdout
 
 
 def _capture_core_contract(
