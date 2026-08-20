@@ -1224,12 +1224,14 @@ mod libc {
 mod tests {
     use super::{
         CandidateContract, CandidateRequest, CandidateSource, MAX_MANIFEST_BYTES, SCHEMA_VERSION,
-        parse_tool_versions, promote_candidate, read_manifest, stage_candidate,
+        parse_maximum_bytes, parse_source, parse_tool_versions, promote_candidate, read_manifest,
+        stage_candidate, valid_member_path, verify_candidate,
     };
+    use serde_json::{Map, Value};
     use std::{
         collections::BTreeMap,
         fs,
-        path::Path,
+        path::{Path, PathBuf},
         time::{Duration, UNIX_EPOCH},
     };
 
@@ -1239,6 +1241,7 @@ mod tests {
     const PRODUCER_REF: &str = "refs/heads/gh-readonly-queue/main/pr-8362-0123456789abcdef";
     const SOURCE_SHA: &str = "0123456789abcdef0123456789abcdef01234567";
     const SOURCE_MTIME_NS: i64 = 1_700_000_000_123_456_789;
+    const TRANSPORT_MTIME_NS: i64 = 1_700_000_100_987_654_321;
 
     fn set_mtime(path: &Path, mtime_ns: i64) {
         let modified = UNIX_EPOCH
@@ -1298,18 +1301,68 @@ mod tests {
         }
     }
 
+    fn rewrite_manifest(candidate_dir: &Path, edit: impl FnOnce(&mut Map<String, Value>)) {
+        let path = candidate_dir.join("manifest.json");
+        let mut manifest = read_manifest(&path).expect("manifest");
+        edit(&mut manifest);
+        fs::write(
+            &path,
+            format!("{}\n", Value::Object(manifest)),
+        )
+        .expect("rewrite");
+    }
+
     #[test]
-    fn stage_promote_and_reject_contract_failures() {
+    fn parsers_accept_valid_cli_shapes_and_reject_malformed_ones() {
+        let source = parse_source("llvm-cov-target=/tmp/target").expect("source");
+        assert_eq!(source.name, "llvm-cov-target");
+        assert_eq!(source.path, PathBuf::from("/tmp/target"));
+        assert!(parse_source("bad").is_err());
+        assert!(parse_source("=missing-name").is_err());
+        assert!(parse_source("bad name=/tmp").is_err());
+        assert_eq!(parse_maximum_bytes("0").expect("zero"), 0);
+        assert_eq!(parse_maximum_bytes("42").expect("bytes"), 42);
+        assert!(parse_maximum_bytes("-1").is_err());
+        assert!(parse_maximum_bytes("1a").is_err());
+        let versions = parse_tool_versions(&[
+            "rustc=rustc test".into(),
+            "cargo-llvm-cov=cargo-llvm-cov 0.8.7".into(),
+        ])
+        .expect("versions");
+        assert_eq!(versions.len(), 2);
+        assert!(parse_tool_versions(&["rustc".into()]).is_err());
+        assert!(parse_tool_versions(&["rustc=".into()]).is_err());
+        assert!(parse_tool_versions(&["rustc=line\nbreak".into()]).is_err());
+        assert!(parse_tool_versions(&["rustc=a".into(), "rustc=b".into()]).is_err());
+        assert!(!valid_member_path("payload/../escape"));
+        assert!(!valid_member_path("payload/registry/../../escape"));
+        assert!(!valid_member_path("payload/registry/control\nname"));
+        assert!(!valid_member_path(r"payload/registry\\escape"));
+        assert!(valid_member_path(
+            "payload/registry/cache/index.crates.io-1949cf8c6b5b557f/wasip2-1.0.4+wasi-0.2.12.crate"
+        ));
+    }
+
+    #[test]
+    fn stage_promote_restores_mtime_and_mode_after_transport_drift() {
         let root = tempfile::tempdir().expect("tempdir");
         let request = make_request(root.path(), "candidate");
         let staged = stage_candidate(&request).expect("stage");
+        let verified = verify_candidate(&request.candidate_dir, &contract(&request)).expect("verify");
+        assert_eq!(verified.total_bytes, staged.total_bytes);
+        assert_eq!(staged.cache_class, "coverage-target");
+        assert_eq!(staged.artifact_name, "main-cache-coverage-target-candidate");
         let manifest =
             read_manifest(&request.candidate_dir.join("manifest.json")).expect("manifest");
         assert_eq!(
             manifest
                 .get("schema_version")
-                .and_then(serde_json::Value::as_u64),
+                .and_then(Value::as_u64),
             Some(SCHEMA_VERSION)
+        );
+        assert_eq!(
+            manifest.get("cache_key").and_then(Value::as_str),
+            Some("coverage-target-deps-v2-Linux-X64-identity")
         );
         let dependency = request
             .candidate_dir
@@ -1321,8 +1374,8 @@ mod tests {
             .find(|member| member.path.ends_with("dependency.json"))
             .expect("dependency member")
             .mtime_ns;
-        set_mtime(&dependency, expected_mtime.saturating_add(99));
-        set_mtime(&executable, expected_mtime.saturating_add(99));
+        set_mtime(&dependency, TRANSPORT_MTIME_NS);
+        set_mtime(&executable, TRANSPORT_MTIME_NS);
         #[cfg(unix)]
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o644)).expect("chmod");
         let promoted = promote_candidate(
@@ -1343,33 +1396,354 @@ mod tests {
                 meta.mtime() * 1_000_000_000 + meta.mtime_nsec(),
                 expected_mtime
             );
+            let exe = root
+                .path()
+                .join("promoted/llvm-cov-target/larch")
+                .metadata()
+                .expect("exe meta");
+            assert_ne!(exe.mode() & 0o111, 0);
         }
+    }
 
+    #[test]
+    fn cargo_inputs_accept_safe_path_punctuation_and_omit_empty_git_dir() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let registry = root.path().join("registry");
+        for relative in [
+            "cache/index.crates.io-1949cf8c6b5b557f/wasip2-1.0.4+wasi-0.2.12.crate",
+            "index/index.crates.io-1949cf8c6b5b557f/.cache/nu/-a/nu-ansi-term",
+            "src/index.crates.io-1949cf8c6b5b557f/example-1.0.0/generated/_impls.rs",
+            "src/index.crates.io-1949cf8c6b5b557f/example-1.0.0/Rust Project Developers (#) [@]~",
+        ] {
+            let path = registry.join(relative);
+            fs::create_dir_all(path.parent().expect("parent")).expect("parents");
+            fs::write(&path, "cache payload\n").expect("write");
+        }
+        let git = root.path().join("git");
+        fs::create_dir_all(&git).expect("git");
+        let request = CandidateRequest {
+            artifact_name: "main-cache-cargo-inputs-candidate".into(),
+            cache_class: "cargo-inputs".into(),
+            cache_key: "cargo-inputs-v2-Linux-X64-identity".into(),
+            candidate_dir: root.path().join("candidate"),
+            maximum_bytes: 1024 * 1024,
+            producer_event: "merge_group".into(),
+            producer_job: "rust-lint".into(),
+            producer_ref: PRODUCER_REF.into(),
+            source_sha: SOURCE_SHA.into(),
+            sources: vec![
+                CandidateSource {
+                    name: "registry".into(),
+                    path: registry,
+                },
+                CandidateSource {
+                    name: "git".into(),
+                    path: git,
+                },
+            ],
+            tool_versions: BTreeMap::from([
+                ("cargo".into(), "cargo test".into()),
+                ("rustc".into(), "rustc test".into()),
+            ]),
+        };
+        stage_candidate(&request).expect("stage");
+        fs::remove_dir(request.candidate_dir.join("payload/git")).expect("omit empty git");
+        promote_candidate(
+            &request.candidate_dir,
+            &root.path().join("promoted"),
+            &contract(&request),
+        )
+        .expect("promote");
+        assert!(
+            root.path()
+                .join("promoted/registry/cache/index.crates.io-1949cf8c6b5b557f/wasip2-1.0.4+wasi-0.2.12.crate")
+                .is_file()
+        );
+        assert!(!root.path().join("promoted/git").exists());
+    }
+
+    #[test]
+    fn members_are_lexically_sorted_across_files_and_directories() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let source = root.path().join("source");
+        let nested = source.join("async-std/docs/src/concepts");
+        fs::create_dir_all(&nested).expect("nested");
+        fs::write(
+            source.join("async-std/docs/src/concepts.md"),
+            "root documentation\n",
+        )
+        .expect("root doc");
+        fs::write(nested.join("async-read-write.md"), "nested documentation\n").expect("nested doc");
+        let request = CandidateRequest {
+            artifact_name: "main-cache-cargo-inputs-candidate".into(),
+            cache_class: "cargo-inputs".into(),
+            cache_key: "cargo-inputs-v2-Linux-X64-identity".into(),
+            candidate_dir: root.path().join("candidate"),
+            maximum_bytes: 1024 * 1024,
+            producer_event: "merge_group".into(),
+            producer_job: "rust-lint".into(),
+            producer_ref: PRODUCER_REF.into(),
+            source_sha: SOURCE_SHA.into(),
+            sources: vec![CandidateSource {
+                name: "registry".into(),
+                path: source,
+            }],
+            tool_versions: BTreeMap::from([
+                ("cargo".into(), "cargo test".into()),
+                ("rustc".into(), "rustc test".into()),
+            ]),
+        };
+        let staged = stage_candidate(&request).expect("stage");
+        let paths: Vec<_> = staged.members.iter().map(|member| member.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            [
+                "payload/registry/async-std/docs/src/concepts.md",
+                "payload/registry/async-std/docs/src/concepts/async-read-write.md",
+            ]
+        );
+    }
+
+    #[test]
+    fn stage_rejects_invalid_provenance_symlinks_duplicates_and_oversize() {
+        let root = tempfile::tempdir().expect("tempdir");
         let mut bad_event = make_request(root.path(), "bad-event");
         bad_event.producer_event = "pull_request".into();
-        assert!(stage_candidate(&bad_event).is_err());
-        assert!(parse_tool_versions(&["rustc=line\nbreak".into()]).is_err());
+        assert!(stage_candidate(&bad_event)
+            .expect_err("event")
+            .to_string()
+            .contains("producer event"));
+        let mut bad_ref = make_request(root.path(), "bad-ref");
+        bad_ref.producer_ref = "refs/heads/main".into();
+        assert!(stage_candidate(&bad_ref)
+            .expect_err("ref")
+            .to_string()
+            .contains("producer ref"));
+        let mut multiline = make_request(root.path(), "multiline");
+        multiline.tool_versions = BTreeMap::from([(
+            "cargo-nextest".into(),
+            "cargo-nextest 0.9.137\nrelease: 0.9.137".into(),
+        )]);
+        assert!(stage_candidate(&multiline).is_err());
+
+        #[cfg(unix)]
+        {
+            let link_root = root.path().join("symlink");
+            fs::create_dir_all(link_root.join("source")).expect("source");
+            fs::write(link_root.join("target"), "target\n").expect("target");
+            std::os::unix::fs::symlink(
+                link_root.join("target"),
+                link_root.join("source/link"),
+            )
+            .expect("symlink");
+            let mut request = make_request(&link_root, "candidate");
+            request.sources[0].path = link_root.join("source");
+            request.maximum_bytes = 0;
+            assert!(stage_candidate(&request)
+                .expect_err("symlink")
+                .to_string()
+                .contains("symlink"));
+        }
+
+        let existing = make_request(root.path(), "existing");
+        stage_candidate(&existing).expect("first stage");
+        assert!(stage_candidate(&existing)
+            .expect_err("duplicate")
+            .to_string()
+            .contains("already exists"));
+
+        let mut oversize = make_request(root.path(), "oversize");
+        oversize.maximum_bytes = 1;
+        assert!(stage_candidate(&oversize)
+            .expect_err("oversize")
+            .to_string()
+            .contains("exceeds its maximum size"));
+
         let huge = root.path().join("huge.json");
         let huge_len = usize::try_from(MAX_MANIFEST_BYTES)
             .expect("manifest bound fits usize")
             .saturating_add(1);
         fs::write(&huge, "x".repeat(huge_len)).expect("write");
         assert!(read_manifest(&huge).is_err());
+    }
 
-        let tampered = make_request(root.path(), "tampered");
-        stage_candidate(&tampered).expect("stage");
+    #[test]
+    fn promote_rejects_tampering_and_contract_mismatches() {
+        let root = tempfile::tempdir().expect("tempdir");
+
+        let altered = make_request(root.path(), "altered");
+        stage_candidate(&altered).expect("stage");
         fs::write(
-            tampered.candidate_dir.join("payload/llvm-cov-target/larch"),
+            altered.candidate_dir.join("payload/llvm-cov-target/larch"),
             b"altered",
         )
         .expect("alter");
-        assert!(
-            promote_candidate(
-                &tampered.candidate_dir,
-                &root.path().join("out-tamper"),
-                &contract(&tampered),
+        assert!(promote_candidate(
+            &altered.candidate_dir,
+            &root.path().join("out-altered"),
+            &contract(&altered),
+        )
+        .expect_err("members")
+        .to_string()
+        .contains("members do not match"));
+
+        let missing = make_request(root.path(), "missing");
+        stage_candidate(&missing).expect("stage");
+        fs::remove_file(
+            missing
+                .candidate_dir
+                .join("payload/llvm-cov-target/.fingerprint/dependency.json"),
+        )
+        .expect("remove");
+        assert!(promote_candidate(
+            &missing.candidate_dir,
+            &root.path().join("out-missing"),
+            &contract(&missing),
+        )
+        .is_err());
+
+        let empty = make_request(root.path(), "empty-manifest");
+        stage_candidate(&empty).expect("stage");
+        fs::write(empty.candidate_dir.join("manifest.json"), "{}\n").expect("empty");
+        assert!(promote_candidate(
+            &empty.candidate_dir,
+            &root.path().join("out-empty"),
+            &contract(&empty),
+        )
+        .expect_err("schema")
+        .to_string()
+        .contains("unexpected schema"));
+
+        let identity = make_request(root.path(), "identity");
+        stage_candidate(&identity).expect("stage");
+        let mut wrong_name = contract(&identity);
+        wrong_name.artifact_name = "main-cache-rust-policy-candidate".into();
+        assert!(promote_candidate(
+            &identity.candidate_dir,
+            &root.path().join("out-name"),
+            &wrong_name,
+        )
+        .expect_err("name")
+        .to_string()
+        .contains("artifact name"));
+        let mut wrong_key = contract(&identity);
+        wrong_key.cache_key = "coverage-target-deps-v2-Linux-X64-other".into();
+        assert!(promote_candidate(
+            &identity.candidate_dir,
+            &root.path().join("out-key"),
+            &wrong_key,
+        )
+        .expect_err("key")
+        .to_string()
+        .contains("cache key"));
+        let mut wrong_sha = contract(&identity);
+        wrong_sha.source_sha = "fedcba9876543210fedcba9876543210fedcba98".into();
+        assert!(promote_candidate(
+            &identity.candidate_dir,
+            &root.path().join("out-sha"),
+            &wrong_sha,
+        )
+        .expect_err("sha")
+        .to_string()
+        .contains("source SHA"));
+        let mut wrong_tools = contract(&identity);
+        wrong_tools.expected_tool_versions =
+            BTreeMap::from([("cargo-llvm-cov".into(), "cargo-llvm-cov 0.8.8".into())]);
+        assert!(promote_candidate(
+            &identity.candidate_dir,
+            &root.path().join("out-tools"),
+            &wrong_tools,
+        )
+        .expect_err("tools")
+        .to_string()
+        .contains("tool versions"));
+    }
+
+    #[test]
+    fn promote_rejects_digest_mtime_and_schema_tampering() {
+        let root = tempfile::tempdir().expect("tempdir");
+
+        for field in ["artifact_sha256", "key_input_digest"] {
+            let request = make_request(root.path(), &format!("digest-{field}"));
+            stage_candidate(&request).expect("stage");
+            rewrite_manifest(&request.candidate_dir, |manifest| {
+                manifest.insert(field.to_owned(), Value::String("0".repeat(64)));
+            });
+            let err = promote_candidate(
+                &request.candidate_dir,
+                &root.path().join(format!("out-{field}")),
+                &contract(&request),
             )
-            .is_err()
-        );
+            .expect_err("digest");
+            let message = err.to_string();
+            assert!(
+                message.contains("artifact digest") || message.contains("cache key identity"),
+                "{message}"
+            );
+        }
+
+        let mtime = make_request(root.path(), "mtime");
+        stage_candidate(&mtime).expect("stage");
+        rewrite_manifest(&mtime.candidate_dir, |manifest| {
+            let members = manifest
+                .get_mut("members")
+                .and_then(Value::as_array_mut)
+                .expect("members");
+            let member = members[0].as_object_mut().expect("member");
+            let current = member.get("mtime_ns").and_then(Value::as_i64).expect("mtime");
+            member.insert("mtime_ns".into(), Value::from(current + 1));
+        });
+        assert!(promote_candidate(
+            &mtime.candidate_dir,
+            &root.path().join("out-mtime"),
+            &contract(&mtime),
+        )
+        .expect_err("mtime digest")
+        .to_string()
+        .contains("artifact digest"));
+
+        for bad in [
+            Value::Null,
+            Value::String("1700000000123456789".into()),
+            Value::Bool(true),
+            Value::from(-1),
+        ] {
+            let request = make_request(root.path(), &format!("bad-mtime-{bad}"));
+            stage_candidate(&request).expect("stage");
+            rewrite_manifest(&request.candidate_dir, |manifest| {
+                let members = manifest
+                    .get_mut("members")
+                    .and_then(Value::as_array_mut)
+                    .expect("members");
+                members[0]
+                    .as_object_mut()
+                    .expect("member")
+                    .insert("mtime_ns".into(), bad.clone());
+            });
+            assert!(
+                promote_candidate(
+                    &request.candidate_dir,
+                    &root.path().join(format!("out-bad-mtime-{bad}")),
+                    &contract(&request),
+                )
+                .expect_err("mtime")
+                .to_string()
+                .contains("mtime_ns is invalid")
+            );
+        }
+
+        let legacy = make_request(root.path(), "legacy");
+        stage_candidate(&legacy).expect("stage");
+        rewrite_manifest(&legacy.candidate_dir, |manifest| {
+            manifest.insert("schema_version".into(), Value::from(1));
+        });
+        assert!(promote_candidate(
+            &legacy.candidate_dir,
+            &root.path().join("out-legacy"),
+            &contract(&legacy),
+        )
+        .expect_err("schema")
+        .to_string()
+        .contains("unsupported schema version"));
     }
 }
