@@ -39,6 +39,7 @@ crates/larch-cli/src/checks_run_relevant_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/checks_rust_clippy_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/ci_selection.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/complete_umbrella_commands.rs	git-cli	#7671	typed-cli,typed-read
+crates/larch-cli/src/design_log_publish_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/design_step1_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/dirty_tree_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/developer_tooling_commands.rs	gix-read	#7671	typed-read
@@ -88,7 +89,6 @@ python/larch/core/architectural_guidelines.py	later-domain	#7686	diff,merge-base
 python/larch/core/coder_delta_guards.py	later-domain	#7686	config,diff,ls-files,submodule
 python/larch/core/forked_repo.py	later-domain	#7682	config,ls-remote,merge-base,remote,rev-parse,show-ref,status,submodule,worktree
 python/larch/core/redact.py	later-domain	#7686	submodule
-crates/larch-cli/src/design_log_publish_commands.rs	later-domain	#8592	-
 python/larch/design/design_step2b.py	later-domain	#7680	dynamic
 python/larch/git/gh.py	later-domain	#7676	remote
 python/larch/git/git.py	later-domain	#7681	add,branch,checkout,commit,diff,diff-tree,fetch,log,ls-files,ls-remote,ls-tree,merge-base,push,rebase,reset,restore,rev-list,rev-parse,rm,show,show-ref,status,symbolic-ref
