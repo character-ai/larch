@@ -863,9 +863,10 @@ mod tests {
         let repo = TempDir::new().expect("repo");
         fs::write(repo.path().join("present.txt"), "x").expect("write");
         let changed = vec!["present.txt".to_owned(), "absent.txt".to_owned()];
-        assert_eq!(existing_regular_files(repo.path(), &changed), vec![
-            "present.txt".to_owned()
-        ]);
+        assert_eq!(
+            existing_regular_files(repo.path(), &changed),
+            vec!["present.txt".to_owned()]
+        );
     }
 
     #[test]
@@ -1039,7 +1040,10 @@ mod tests {
             &session.path.to_string_lossy(),
             &root.to_string_lossy(),
         );
-        assert!(!result.ok, "failing pre-commit hook fails the run: {result:?}");
+        assert!(
+            !result.ok,
+            "failing pre-commit hook fails the run: {result:?}"
+        );
         assert_eq!(result.phase, "pre-commit");
         let digest = result.digest_file_path.expect("digest written");
         assert!(Path::new(&digest).is_file());
@@ -1048,10 +1052,7 @@ mod tests {
     #[test]
     fn checks_run_relevant_entrypoint_renders_success_and_errors() {
         // Missing --site is a usage error; --help prints and exits zero.
-        assert_eq!(
-            checks_run_relevant(&[]),
-            ExitCode::from(2)
-        );
+        assert_eq!(checks_run_relevant(&[]), ExitCode::from(2));
         assert_eq!(
             checks_run_relevant(&[OsString::from("--help")]),
             ExitCode::SUCCESS
@@ -1104,10 +1105,7 @@ mod tests {
             "T=\"$REPO_ROOT/target.txt\"\ncontains \"$T\" \"absent\" \"ok\"\n",
         )
         .expect("script");
-        let code = check_contains_pins(&[
-            OsString::from("--repo-root"),
-            OsString::from(&root),
-        ]);
+        let code = check_contains_pins(&[OsString::from("--repo-root"), OsString::from(&root)]);
         assert_eq!(code, ExitCode::from(1));
     }
 
@@ -1129,6 +1127,9 @@ mod tests {
             "/larch-cov-not-a-git-repo",
         );
         assert!(!result.ok);
-        assert_eq!(result.failure_reason.as_deref(), Some("repo-root-unresolved"));
+        assert_eq!(
+            result.failure_reason.as_deref(),
+            Some("repo-root-unresolved")
+        );
     }
 }
