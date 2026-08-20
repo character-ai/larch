@@ -108,14 +108,21 @@ def test_default_adjudication_batches_operator_questions() -> None:
     assert "For every point, ask one `AskUserQuestion`" not in contract
 
 
-def test_issue_pattern_b_and_cross_links_are_verified() -> None:
+def test_issue_creation_and_cross_links_are_verified() -> None:
     text = _skill()
-    assert text.count("--sentinel-file") >= 3
-    assert text.count("verify skill-called") >= 2
-    assert "ISSUES_CREATED=1" in text
-    assert "ISSUES_FAILED=0" in text
+    # Both source (Step 1) and proposal (Step 5) file through the direct
+    # `issue create-one` CLI, not the `/issue` skill; no sentinel-verify turns.
+    assert text.count('scripts/larch.sh" issue create-one') == 2
+    assert text.count("verify skill-called") == 0
+    assert "--operator-invoked" in text
+    assert "ISSUE_NUMBER" in text
+    assert "ISSUE_URL" in text
+    # No skill-relay remnants remain. (`--lifecycle-parent-context` legitimately
+    # stays in Step 0 for the debate skill's own `run-log lifecycle-start`.)
+    assert "Skill tool" not in text
+    assert "Pattern B" not in text
+    assert "/issue --" not in text
     assert '--title-prefix "[PROPOSAL]"' in text
-    assert "`/issue` owns case-insensitive prefix deduplication" in text
     assert "proposal-linked-body.md" in text
     assert "The proposal body now links to the source and the source comment links to the proposal" in text
     assert "<!-- larch:debate-proposal runid=$RUN_ID -->" in text
