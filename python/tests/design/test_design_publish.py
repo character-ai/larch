@@ -15,7 +15,9 @@ import subprocess
 import sys
 from contextlib import chdir, nullcontext, redirect_stderr, redirect_stdout
 from io import StringIO
+from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 from unittest import mock
 
 import pytest
@@ -79,7 +81,12 @@ def _install_log_publish_stub(
         *args: object,
         **kwargs: object,
     ) -> subprocess.CompletedProcess[str]:
-        argv = [str(part) for part in (list(cmd) if isinstance(cmd, (list, tuple)) else [cmd])]
+        parts: Sequence[object]
+        if isinstance(cmd, (list, tuple)):
+            parts = cast("Sequence[object]", cmd)
+        else:
+            parts = [cmd]
+        argv = [str(part) for part in parts]
         if _is_design_log_publish(argv):
             calls.append(_LogPublishCall(argv))
             return _log_publish_completed_from_env(argv)

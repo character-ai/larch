@@ -172,7 +172,7 @@ pub fn assessment_required(
 
 /// Classify whether a path is a present regular assessment artifact.
 #[must_use]
-pub fn assessment_present(is_file: bool, is_symlink: bool) -> bool {
+pub const fn assessment_present(is_file: bool, is_symlink: bool) -> bool {
     is_file && !is_symlink
 }
 
