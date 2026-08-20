@@ -1034,6 +1034,7 @@ type PlanCoverage = crate::implement_scope_disposition_commands::PlanCoverageVie
 #[cfg(test)]
 mod route_tests {
     use super::*;
+    use super::fixtures::*;
 
     fn sample_coverage(fingerprint: &str, disposition_required: bool) -> PlanCoverage {
         crate::implement_scope_disposition_commands::PlanCoverage {

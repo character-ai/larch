@@ -1314,74 +1314,79 @@ include!("implement_step2_commands_route.rs");
 // top-level commands file), because `include!` flattens them into one module.
 // ---------------------------------------------------------------------------
 
+/// Shared Step 2 test fixtures. Nested under `#[cfg(test)]` so the tempfile-dir
+/// lint skips ambient constructors the way it does for every other test module.
 #[cfg(test)]
-fn test_arguments(values: &[&str]) -> Vec<OsString> {
-    values.iter().map(OsString::from).collect()
-}
+mod fixtures {
+    use super::*;
 
-#[cfg(test)]
-fn test_write_fixture(path: &Path, text: &str) {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).expect("fixture parent dir");
+    pub(super) fn test_arguments(values: &[&str]) -> Vec<OsString> {
+        values.iter().map(OsString::from).collect()
     }
-    fs::write(path, text).expect("write fixture file");
-}
 
-#[cfg(test)]
-fn test_git(root: &Path, args: &[&str]) {
-    let status = std::process::Command::new("git") // lint-subprocess-via-runner: ok test-only Git fixture
-        .arg("-C")
-        .arg(root)
-        .args(args)
-        .status()
-        .expect("run git fixture");
-    assert!(status.success(), "git {args:?} failed");
-}
-
-#[cfg(test)]
-fn test_init_repo() -> tempfile::TempDir {
-    let dir = tempfile::tempdir().expect("repo");
-    test_git(dir.path(), &["init", "--quiet"]);
-    test_git(dir.path(), &["config", "user.email", "t@example.invalid"]);
-    test_git(dir.path(), &["config", "user.name", "T"]);
-    dir
-}
-
-#[cfg(test)]
-fn test_commit_everything(root: &Path, message: &str) {
-    test_git(root, &["add", "--all"]);
-    test_git(root, &["commit", "--quiet", "-m", message]);
-}
-
-/// A minimal, otherwise-empty `Step2Request` for one coder.
-#[cfg(test)]
-fn test_base_step2_request(tmpdir: &Path, coder: &str) -> Step2Request {
-    Step2Request {
-        tmpdir: tmpdir.to_path_buf(),
-        plan_file: tmpdir.join("plan.txt"),
-        feature_file: tmpdir.join("feature-description.txt"),
-        coder: coder.to_owned(),
-        cursor_present: String::new(),
-        codex_binary_found: String::new(),
-        cursor_binary_found: String::new(),
-        answers: String::new(),
-        completion_retry: false,
-        difficulty: String::new(),
+    pub(super) fn test_write_fixture(path: &Path, text: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("fixture parent dir");
+        }
+        fs::write(path, text).expect("write fixture file");
     }
-}
 
-/// A `DispatchState` laid out under `tmpdir` for `coder`, creating `repo_root`.
-#[cfg(test)]
-fn test_dispatch_state(tmpdir: &tempfile::TempDir, repo_root: &Path, coder: &str) -> DispatchState {
-    fs::create_dir_all(repo_root).expect("repo root");
-    let plugin_root = tmpdir.path().join("plugin-root");
-    let request = test_base_step2_request(tmpdir.path(), coder);
-    dispatch_state(&request, repo_root, &plugin_root).expect("dispatch state")
+    pub(super) fn test_git(root: &Path, args: &[&str]) {
+        let status = std::process::Command::new("git") // lint-subprocess-via-runner: ok test-only Git fixture
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .status()
+            .expect("run git fixture");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    pub(super) fn test_init_repo() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("repo");
+        test_git(dir.path(), &["init", "--quiet"]);
+        test_git(dir.path(), &["config", "user.email", "t@example.invalid"]);
+        test_git(dir.path(), &["config", "user.name", "T"]);
+        dir
+    }
+
+    pub(super) fn test_commit_everything(root: &Path, message: &str) {
+        test_git(root, &["add", "--all"]);
+        test_git(root, &["commit", "--quiet", "-m", message]);
+    }
+
+    /// A minimal, otherwise-empty `Step2Request` for one coder.
+    pub(super) fn test_base_step2_request(tmpdir: &Path, coder: &str) -> Step2Request {
+        Step2Request {
+            tmpdir: tmpdir.to_path_buf(),
+            plan_file: tmpdir.join("plan.txt"),
+            feature_file: tmpdir.join("feature-description.txt"),
+            coder: coder.to_owned(),
+            cursor_present: String::new(),
+            codex_binary_found: String::new(),
+            cursor_binary_found: String::new(),
+            answers: String::new(),
+            completion_retry: false,
+            difficulty: String::new(),
+        }
+    }
+
+    /// A `DispatchState` laid out under `tmpdir` for `coder`, creating `repo_root`.
+    pub(super) fn test_dispatch_state(
+        tmpdir: &tempfile::TempDir,
+        repo_root: &Path,
+        coder: &str,
+    ) -> DispatchState {
+        fs::create_dir_all(repo_root).expect("repo root");
+        let plugin_root = tmpdir.path().join("plugin-root");
+        let request = test_base_step2_request(tmpdir.path(), coder);
+        dispatch_state(&request, repo_root, &plugin_root).expect("dispatch state")
+    }
 }
 
 #[cfg(test)]
 mod impl_tests {
     use super::*;
+    use super::fixtures::*;
 
     // -- run-dispatch: parse_run_dispatch -----------------------------------
 

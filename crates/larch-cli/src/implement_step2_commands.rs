@@ -218,6 +218,7 @@ fn text(value: Option<&OsStr>) -> String {
 
 #[cfg(test)]
 mod commands_tests {
+    use super::fixtures::*;
     use super::*;
 
     #[test]
