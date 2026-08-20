@@ -462,11 +462,11 @@ Run relevant local checks from Python: changed-file `pre-commit`, bounded change
 
 ### Changed-path Rust Clippy selector
 
-**Path**: `python/cli.py checks rust-clippy`
+**Path**: `scripts/larch.sh checks rust-clippy`
 
 **Arguments**: `--repo-root DIR (--changed-from-git | <repository-relative-rust-path>...)`
 
-This non-skill entrypoint maps changed Rust paths through locked Cargo metadata,
+This Rust-owned non-skill entrypoint maps changed Rust paths through locked Cargo metadata,
 then runs only the affected package defaults or explicit target. It prints the
 selected packages, targets, command, and `RUST_CLIPPY_HOOK_RAN=true` proof
 marker on success. The normal local contract uses default features with

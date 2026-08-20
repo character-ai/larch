@@ -37,8 +37,10 @@ mod bootstrap_support;
 mod calibration_commands;
 mod checks_identity_commands;
 mod checks_run_relevant_commands;
+mod checks_rust_clippy_commands;
 mod child_process;
 mod ci_launcher_commands;
+mod ci_policy_candidate_commands;
 mod ci_selection;
 mod ci_timing;
 pub(crate) mod claude_commands;
@@ -1051,6 +1053,9 @@ enum ImplementCommand {
 
 #[derive(Subcommand)]
 enum ChecksCommand {
+    /// Run the bounded changed-path Cargo Clippy selection.
+    #[command(name = "rust-clippy", disable_help_flag = true)]
+    RustClippy(RawCompatibilityArguments),
     /// Report the self-edit attribution records for one implement session.
     #[command(name = "self-edit-log", disable_help_flag = true)]
     SelfEditLog(RawCompatibilityArguments),
@@ -2460,6 +2465,9 @@ fn run(
         Domain::Admission(AdmissionCommand::Preflight(arguments)) => {
             Ok(admission_commands::preflight(&arguments.arguments))
         }
+        Domain::Checks(ChecksCommand::RustClippy(arguments)) => Ok(
+            checks_rust_clippy_commands::rust_clippy(&arguments.arguments),
+        ),
         Domain::Checks(ChecksCommand::SelfEditLog(arguments)) => Ok(
             checks_identity_commands::self_edit_log(&arguments.arguments),
         ),

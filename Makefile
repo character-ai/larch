@@ -64,10 +64,19 @@ py-test:
 	# PYTEST_SHARD_COUNT, see python/conftest.py) can be rebalanced by wall time.
 	cd python && $(PYTHON) -m pytest --durations=0
 
-.PHONY: rust-check rust-fmt rust-clippy rust-build rust-test rust-deny rust-lint
+.PHONY: rust-check rust-clippy-binary rust-fmt rust-clippy rust-build rust-test rust-deny rust-lint
+
+# Build the larch binary the Rust-owned changed-path clippy gate runs through,
+# unless the caller already supplied a prebuilt LARCH_BINARY.
+rust-clippy-binary:
+	@cargo build --quiet --locked --package larch-cli --bin larch
 
 rust-check:
-	python3 python/cli.py checks rust-clippy --repo-root "$$(pwd -P)" --changed-from-git
+	@if [ -z "$${LARCH_BINARY:-}" ]; then \
+		cargo build --quiet --locked --package larch-cli --bin larch || exit 1; \
+		export LARCH_BINARY="$$(pwd -P)/target/debug/larch"; \
+	fi; \
+	CLAUDE_PLUGIN_ROOT="$$(pwd -P)" scripts/larch.sh checks rust-clippy --repo-root "$$(pwd -P)" --changed-from-git
 
 rust-fmt:
 	cargo fmt --all -- --check

@@ -1339,11 +1339,13 @@ verb = "rust-clippy"
 python_module = "larch.implement.checks"
 python_function = "rust_clippy_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 8013
+migration_issue = 8617
+clean_install_test = "clean-install-checks-rust-clippy"
 
 [[commands]]
 domain = "checks"
@@ -1439,11 +1441,13 @@ verb = "prepare-rust-integration-artifact"
 python_module = "larch.implement.rust_policy_candidate"
 python_function = "prepare_integration_artifact_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 8319
+migration_issue = 8617
+clean_install_test = "clean-install-ci-prepare-rust-integration-artifact"
 
 [[commands]]
 domain = "ci"
@@ -1451,11 +1455,13 @@ verb = "promote-rust-policy-candidate"
 python_module = "larch.implement.rust_policy_candidate"
 python_function = "promote_policy_candidate_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 8362
+migration_issue = 8617
+clean_install_test = "clean-install-ci-promote-rust-policy-candidate"
 
 [[commands]]
 domain = "ci"
@@ -1517,11 +1523,13 @@ verb = "stage-rust-policy-candidate"
 python_module = "larch.implement.rust_policy_candidate"
 python_function = "stage_policy_candidate_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 8319
+migration_issue = 8617
+clean_install_test = "clean-install-ci-stage-rust-policy-candidate"
 
 [[commands]]
 domain = "ci"
@@ -9030,14 +9038,14 @@ clean_install_test = "clean-install-voting-write-tally"
 [[callers]]
 path = ".github/workflows/ci.yaml"
 kind = "ci"
-python = ["ci stage-rust-policy-candidate"]
-rust = ["checks contains-pins", "ci gitleaks-base", "ci rust-select", "ci rust-select-summary", "ci stage-main-cache-candidate", "release plugin-runtime"]
+python = []
+rust = ["checks contains-pins", "ci gitleaks-base", "ci rust-select", "ci rust-select-summary", "ci stage-main-cache-candidate", "ci stage-rust-policy-candidate", "release plugin-runtime"]
 
 [[callers]]
 path = ".github/workflows/main-cache-publication.yaml"
 kind = "ci"
-python = ["ci promote-rust-policy-candidate"]
-rust = ["ci verify-main-cache-candidate"]
+python = []
+rust = ["ci promote-rust-policy-candidate", "ci verify-main-cache-candidate"]
 
 [[callers]]
 path = ".github/workflows/migration-governance.yaml"
@@ -9054,14 +9062,14 @@ rust = ["release asset-candidate", "release collect-assets", "release package-as
 [[callers]]
 path = ".pre-commit-config.yaml"
 kind = "ci"
-python = ["checks rust-clippy"]
-rust = ["checks run-relevant", "lint gitleaks"]
+python = []
+rust = ["checks run-relevant", "checks rust-clippy", "lint gitleaks"]
 
 [[callers]]
 path = "Makefile"
 kind = "ci"
-python = ["checks rust-clippy"]
-rust = ["eval research"]
+python = []
+rust = ["checks rust-clippy", "eval research"]
 
 [[callers]]
 path = "agents/_implementer-base.md"
@@ -9235,7 +9243,7 @@ rust = ["agent launch-claude-lint-fix", "agent launch-codex-exec", "bgjob start"
 path = "python/larch/implement/checks_run_relevant.py"
 kind = "python-runtime"
 python = []
-rust = ["timing mark", "timing record-vendor-task", "token mark"]
+rust = ["checks rust-clippy", "timing mark", "timing record-vendor-task", "token mark"]
 
 [[callers]]
 path = "python/larch/implement/ci_monitor.py"

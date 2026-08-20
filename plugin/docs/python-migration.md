@@ -88,6 +88,36 @@ The `show` token documented for `checks self-edit-log` is dropped. The retired
 `argparse` parser declared no positional, so
 `checks self-edit-log show --tmpdir ...` always exited 2.
 
+### Rust clippy gate and rust-policy candidate cutover
+
+`checks rust-clippy`, `ci prepare-rust-integration-artifact`,
+`ci stage-rust-policy-candidate`, and `ci promote-rust-policy-candidate` flipped
+owner to Rust in one PR (#8617), retiring `python/larch/implement/rust_clippy.py`
+and `python/larch/implement/rust_policy_candidate.py` with their four
+registrations.
+
+- `crates/larch-cli/src/checks_rust_clippy_commands.rs` owns the changed-path
+  clippy selection: the `RUST_CLIPPY_CHANGED_PATHS`/`SELECTED_PACKAGES`/
+  `SELECTED_TARGETS`/`COMMAND`/`HOOK_RAN` stdout grammar, the workspace-vs-package
+  selection rules over `cargo metadata`, and the exit codes are byte-compatible
+  with the retired owner. `cargo`/`clippy` remain child processes; the changed-set
+  Git discovery reuses the typed repository port and `GitCommandRuntime`.
+- `crates/larch-cli/src/ci_policy_candidate_commands.rs` owns the coverage-artifact
+  writer, the fixed-provenance candidate stage, and the trusted-main promotion,
+  preserving the bundle filenames, the `"{checksum}  larch\n"` grammar, the
+  `current-checkout`/`merge-group`/`refs/heads/main` provenance strings, and the
+  stable `CandidateError` messages. It is the new `global-input:rust-ci-workflow`
+  selector input that the retired Python module was.
+- Consumers cut to `scripts/larch.sh`: the `.github/actions/rust-coverage`,
+  `ci.yaml`, and `main-cache-publication.yaml` steps set `LARCH_BINARY` to the
+  coverage, integration-artifact, or promoted bundle executable; `Makefile`
+  `rust-check` and the `.pre-commit-config.yaml` `cargo-clippy` hook build a local
+  `larch` (via `make rust-clippy-binary`, never an inline `cargo build` in the
+  bounded on-commit entry); and the still-Python `checks run-relevant` fallback
+  execs `scripts/larch.sh checks rust-clippy`. The three shared helpers
+  `is_rust_relevant_path`, `bounded_cargo_env`, and `changed_paths_from_git` that
+  `checks_run_relevant.py` still needs moved into that module.
+
 ### Implement bootstrap and preflight cutover
 
 Issue #8609 moved exactly five commands to Rust: `implement clone-tag`,

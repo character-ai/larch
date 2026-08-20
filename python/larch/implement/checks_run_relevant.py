@@ -33,11 +33,53 @@ from larch.report.tokens import (
     _locked_tsv_append,  # pyright: ignore[reportPrivateUsage]
 )
 from larch.implement.self_edit_log import digest_paths, record_self_edits
-from larch.implement.rust_clippy import (
-    bounded_cargo_env,
-    changed_paths_from_git,
-    is_rust_relevant_path,
+
+_RUST_WORKSPACE_INPUTS: Final[frozenset[str]] = frozenset(
+    {"Cargo.lock", "Cargo.toml", "deny.toml", "rust-toolchain.toml"}
 )
+
+
+def is_rust_relevant_path(path: str) -> bool:
+    """Whether a repository-relative path needs the bounded Rust selector."""
+    return (
+        path in _RUST_WORKSPACE_INPUTS
+        or path.startswith(".cargo/")
+        or (path.startswith("crates/") and path.endswith((".rs", "/Cargo.toml")))
+    )
+
+
+def bounded_cargo_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Return the single non-incremental, no-debug local Cargo configuration."""
+    env = dict(os.environ if base is None else base)
+    env.update(
+        {
+            config.ENV_CARGO_INCREMENTAL: "0",
+            config.ENV_CARGO_PROFILE_DEV_DEBUG: "0",
+            config.ENV_CARGO_PROFILE_TEST_DEBUG: "0",
+        }
+    )
+    return env
+
+
+def _rust_git_lines(*, runner: Runner, argv: Sequence[str], cwd: str) -> tuple[str, ...]:
+    result = runner.run(argv, cwd=cwd)
+    if result.returncode != 0:
+        return ()
+    return tuple(line.strip() for line in result.stdout.splitlines() if line.strip())
+
+
+def changed_paths_from_git(*, runner: Runner, cwd: str) -> tuple[str, ...]:
+    """Return the common branch, index, worktree, and untracked change set."""
+    branch_diff: tuple[str, ...] = ()
+    if runner.run(["git", "rev-parse", "--verify", "origin/main"], cwd=cwd).returncode == 0:
+        branch_diff = _rust_git_lines(runner=runner, argv=["git", "diff", "--name-only", "origin/main...HEAD"], cwd=cwd)
+    elif runner.run(["git", "rev-parse", "--verify", "main"], cwd=cwd).returncode == 0:
+        branch_diff = _rust_git_lines(runner=runner, argv=["git", "diff", "--name-only", "main...HEAD"], cwd=cwd)
+    staged = _rust_git_lines(runner=runner, argv=["git", "diff", "--cached", "--name-only"], cwd=cwd)
+    unstaged = _rust_git_lines(runner=runner, argv=["git", "diff", "--name-only"], cwd=cwd)
+    untracked = _rust_git_lines(runner=runner, argv=["git", "ls-files", "--others", "--exclude-standard"], cwd=cwd)
+    return tuple(sorted({*branch_diff, *staged, *unstaged, *untracked}))
+
 
 _RCC_MAX_ITER_CAP: Final = 6
 CHECKS_FAILURE_DIGEST_MAX_BYTES: Final = 8192
@@ -542,12 +584,11 @@ def _run_bounded_rust_fallback(
             f"{', '.join(request.changed)} ===\n"
         ),
     )
-    cli_path = Path(__file__).resolve().parents[2] / "cli.py"
+    entrypoint_root = Path(__file__).resolve().parents[3]
     result = _run_logged(
         runner=runner,
         argv=[
-            sys.executable,
-            str(cli_path),
+            str(larch_entrypoint(entrypoint_root)),
             "checks",
             "rust-clippy",
             "--repo-root",
@@ -556,7 +597,7 @@ def _run_bounded_rust_fallback(
         ],
         cwd=str(request.repo),
         log_fd=request.log_fd,
-        env=bounded_cargo_env(request.env),
+        env=bounded_cargo_env(larch_entrypoint_env(entrypoint_root, base=request.env)),
     )
     if result.returncode != 0:
         return result.returncode

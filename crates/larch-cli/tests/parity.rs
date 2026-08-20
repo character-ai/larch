@@ -1523,6 +1523,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-ci-timing-pytest", "ci-timing", "pytest"),
     CleanInstallCase::new("clean-install-ci-gitleaks-base", "ci", "gitleaks-base"),
+    CleanInstallCase::new(
+        "clean-install-ci-prepare-rust-integration-artifact",
+        "ci",
+        "prepare-rust-integration-artifact",
+    ),
+    CleanInstallCase::new(
+        "clean-install-ci-promote-rust-policy-candidate",
+        "ci",
+        "promote-rust-policy-candidate",
+    ),
+    CleanInstallCase::new(
+        "clean-install-ci-stage-rust-policy-candidate",
+        "ci",
+        "stage-rust-policy-candidate",
+    ),
     CleanInstallCase::new("clean-install-ci-rust-select", "ci", "rust-select"),
     CleanInstallCase::new(
         "clean-install-ci-rust-select-summary",
@@ -1791,6 +1806,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "step-18-gate-logs-flush",
     ),
     CleanInstallCase::new("clean-install-implement-step-19", "implement", "step-19"),
+    CleanInstallCase::new("clean-install-checks-rust-clippy", "checks", "rust-clippy"),
     CleanInstallCase::new(
         "clean-install-checks-self-edit-log",
         "checks",

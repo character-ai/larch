@@ -3716,7 +3716,8 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     assert "ruff check --fix" in precommit
     assert "id: pyright" in precommit
     assert "pyright --project python/pyrightconfig.json" in precommit
-    assert hooks["cargo-clippy"]["entry"] == "python3 python/cli.py checks rust-clippy --repo-root ."
+    assert 'scripts/larch.sh" checks rust-clippy --repo-root .' in hooks["cargo-clippy"]["entry"]
+    assert "python3 python/cli.py" not in hooks["cargo-clippy"]["entry"]
     assert "\\.cargo/.*" in hooks["cargo-clippy"]["files"]
     assert hooks["cargo-clippy"]["pass_filenames"] == "true"
     assert hooks["cargo-clippy"]["verbose"] == "true"
@@ -5758,7 +5759,7 @@ def test_run_relevant_checks_deleted_rust_path_uses_bounded_fallback_once(
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is True
     assert len(calls) == 1
-    assert calls[0][0][2:4] == ["checks", "rust-clippy"]
+    assert calls[0][0][1:3] == ["checks", "rust-clippy"]
     assert "make" not in calls[0][0]
     assert calls[0][1][config.ENV_CARGO_INCREMENTAL] == "0"
 
@@ -5796,7 +5797,7 @@ def test_run_relevant_checks_non_regular_rust_skips_hook_and_falls_back_once(
     assert len(calls) == 2
     assert calls[0][0][0] == "pre-commit"
     assert _crr._RUST_CLIPPY_HOOK_ID in calls[0][1][config.ENV_PRECOMMIT_SKIP]  # pyright: ignore[reportPrivateUsage]
-    assert calls[1][0][2:4] == ["checks", "rust-clippy"]
+    assert calls[1][0][1:3] == ["checks", "rust-clippy"]
 
 
 def test_run_relevant_checks_rust_hook_without_marker_fails_without_second_configuration(

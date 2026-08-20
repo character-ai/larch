@@ -554,7 +554,9 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        python3 "$GITHUB_WORKSPACE/python/cli.py" ci prepare-rust-integration-artifact \
+        CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" \
+          LARCH_BINARY="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch" \
+          "$GITHUB_WORKSPACE/scripts/larch.sh" ci prepare-rust-integration-artifact \
           --coverage-larch "$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch" \
           --artifact-dir "$RUNNER_TEMP/larch-linux-test-binary" \
           --source-sha "$GITHUB_SHA" \
@@ -577,6 +579,13 @@ runs:
         set -euo pipefail
         coverage_target_dir="$GITHUB_WORKSPACE/target/llvm-cov-target"
         test -d "$coverage_target_dir"
+        # `cargo clean --workspace` below removes the coverage-built larch, but
+        # the candidate-staging step still needs a version-matched executable to
+        # reach its Rust command through the verified bootstrap. Preserve a copy
+        # outside the pruned target directory before the clean removes it.
+        if [ -x "$coverage_target_dir/debug/larch" ]; then
+          cp "$coverage_target_dir/debug/larch" "$RUNNER_TEMP/coverage-larch-preserved"
+        fi
         find "$coverage_target_dir" -type f \( \
           -name '*.profraw' -o -name '*-profraw-list' -o -name '*.profdata' -o -name '*.lcov' -o \
           -name 'lcov.info' -o -name 'rust-coverage-phases.tsv' \
@@ -777,7 +786,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch" \
+        CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$RUNNER_TEMP/coverage-larch-preserved" \
           "$GITHUB_WORKSPACE/scripts/larch.sh" ci stage-main-cache-candidate \
           --artifact-name main-cache-coverage-target-candidate \
           --cache-class coverage-target \
