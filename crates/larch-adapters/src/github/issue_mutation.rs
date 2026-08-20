@@ -7,12 +7,12 @@
 
 use larch_core::{
     CreatedIssue, GitHubCloseReason, GitHubComment, GitHubIssue, GitHubIssueCreate,
-    GitHubIssueEdit, GitHubIssueState, GitHubRepositoryRef, GitHubService, IssueCreateRequest,
-    IssueMutationError, IssueMutationField, IssueMutationRequest, IssueMutationSnapshot,
-    ProcessCancellation, VerifiedIssueMutation, mutation_postcondition, mutation_would_change,
-    redact_issue_create_request, redact_issue_mutation_request, redact_issue_text_outbound,
-    same_mutation_identity, snapshot_is_strictly_newer, validate_issue_mutation_request,
-    verify_authorized_body_change, verify_created_issue,
+    GitHubIssueEdit, GitHubIssueState, GitHubOperationError, GitHubRepositoryRef, GitHubService,
+    IssueCreateRequest, IssueMutationError, IssueMutationField, IssueMutationRequest,
+    IssueMutationSnapshot, ProcessCancellation, VerifiedIssueMutation, mutation_postcondition,
+    mutation_would_change, redact_issue_create_request, redact_issue_mutation_request,
+    redact_issue_text_outbound, same_mutation_identity, snapshot_is_strictly_newer,
+    validate_issue_mutation_request, verify_authorized_body_change, verify_created_issue,
 };
 
 use super::{
@@ -87,7 +87,7 @@ impl<'service> IssueMutationOwner<'service> {
             .service
             .issue(repository, issue, cancellation)
             .await
-            .map_err(|_| IssueMutationError::new("read-failed"))?;
+            .map_err(|error| mutation_error_for("read-failed", &error))?;
         snapshot_from_issue(repository, issue, response)
     }
 
@@ -437,7 +437,7 @@ impl<'service> IssueMutationOwner<'service> {
             self.service
                 .edit_issue(&edit, cancellation)
                 .await
-                .map_err(|_| IssueMutationError::new("write-failed"))?;
+                .map_err(|error| mutation_error_for("write-failed", &error))?;
         }
         self.update_labels(cancellation, request, before).await
     }
@@ -496,6 +496,20 @@ fn authorize(authorization: &LiveMutationRequest<'_>) -> Result<(), IssueMutatio
     match check_live_mutation_auth(authorization) {
         LiveMutationDecision::Authorized(_) => Ok(()),
         LiveMutationDecision::Refused(reason) => Err(IssueMutationError::new(reason)),
+    }
+}
+
+/// Build a mutation refusal that preserves its stable reason token while
+/// carrying whether the underlying GitHub failure never reached the server, so
+/// an offline-aware caller can retry the network-unreachable class.
+const fn mutation_error_for(
+    reason: &'static str,
+    error: &GitHubOperationError,
+) -> IssueMutationError {
+    if error.is_unreachable() {
+        IssueMutationError::unreachable(reason)
+    } else {
+        IssueMutationError::new(reason)
     }
 }
 

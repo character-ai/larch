@@ -15,6 +15,7 @@ from larch.git import merge as merge_module
 from larch.core import rust_runtime as run_log_flush
 from larch.report import run_log_manifest
 from larch.core.proc import CommandResult
+from larch.errors import TransientNetworkError
 
 if TYPE_CHECKING:
     from larch.core.run_context import RunContext
@@ -1327,3 +1328,40 @@ def test_post_flush_redaction_failed_still_errors(monkeypatch: pytest.MonkeyPatc
     result = merge_module._post_flush(runner=RecordingRunner(), ctx=_ctx(), merge_result=config.MERGE_RESULT_MERGED)  # pylint: disable=protected-access
     assert result is not None
     assert result.result == config.MERGE_RESULT_ERROR
+
+
+def test_submit_merge_raises_transient_network_error() -> None:
+    argv = ("gh", "pr", "merge", "7", "--repo", "o/r", "--squash", "--admin")
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                argv,
+                1,
+                "",
+                "fatal: could not connect to server: Connection refused",
+                0.01,
+            ),
+        ],
+    )
+    with pytest.raises(TransientNetworkError):
+        _ = merge_module._submit_merge(runner, 7, repo="o/r", cwd=None, admin=True)  # pylint: disable=protected-access
+
+
+def test_submit_merge_returns_a_permanent_failure_result() -> None:
+    argv = ("gh", "pr", "merge", "7", "--repo", "o/r", "--squash", "--admin")
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(argv, 1, "", "Pull Request is not mergeable", 0.01),
+        ],
+    )
+    result = merge_module._submit_merge(runner, 7, repo="o/r", cwd=None, admin=True)  # pylint: disable=protected-access
+    assert result.returncode == 1
+
+
+def test_submit_merge_returns_success_without_raising() -> None:
+    argv = ("gh", "pr", "merge", "7", "--repo", "o/r", "--squash", "--admin")
+    runner = RecordingRunner(
+        responses=[CommandResult(argv, 0, "", "", 0.01)],
+    )
+    result = merge_module._submit_merge(runner, 7, repo="o/r", cwd=None, admin=True)  # pylint: disable=protected-access
+    assert result.returncode == 0

@@ -12,8 +12,9 @@ use crate::{
 };
 use clap::{Args, Subcommand};
 use larch_adapters::{
-    FetchRequest, GitRef, GitRefspec, GitRemote, GixRepository, PathIntent, RebaseRequest,
-    SystemProcessIdentityHost, TemporaryRoot, TokioProcessRunner, assert_no_symlink_ancestors,
+    FetchRequest, GitCliError, GitRef, GitRefspec, GitRemote, GixRepository, PathIntent,
+    RebaseRequest, SystemProcessIdentityHost, TemporaryRoot, TokioProcessRunner,
+    assert_no_symlink_ancestors,
     bgjob_recovery::{BgjobRecoveryOutcome, read_completed_result, recover_abandoned_entry},
     create_directories,
     github::{
@@ -26,23 +27,26 @@ use larch_adapters::{
 use larch_core::{
     COMPLETE_UMBRELLA_CHILD_COMPLETE, COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN,
     COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API, COMPLETE_UMBRELLA_CHILD_NEEDS_DESIGN,
-    ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext, DEFAULT_NET_WAIT_CEILING,
-    DONE_PREFIX, DuplicatePolicy, EnvFile, ExternalProcessRunner, ExternalProgram,
-    GitHubCloseReason, GitHubIssue, GitHubIssueState, GitHubRepositoryRef, GitHubService, Head,
-    IMPLEMENTING_PREFIX, IssueMutationField, IssueMutationRequest, KvDocument, ParseOptions,
-    ProcessRequest, RepositoryRead, StatusOptions, VendorLaunchRequest, VendorProgram,
+    ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext, ConnectivityWait,
+    DEFAULT_NET_WAIT_CEILING, DONE_PREFIX, DuplicatePolicy, EnvFile, ExternalProcessRunner,
+    ExternalProgram, GitHubCloseReason, GitHubIssue, GitHubIssueState, GitHubRepositoryRef,
+    GitHubService, Head, IMPLEMENTING_PREFIX, IssueMutationError, IssueMutationField,
+    IssueMutationRequest, KvDocument, OfflineRetryMetrics, ParseOptions, ProcessErrorKind,
+    ProcessRequest, RepositoryRead, StatusOptions, Unreachable, VendorLaunchRequest, VendorProgram,
     WaitOnlineResult, build_claude_argv, checked_dir, child_liveness,
     complete_umbrella_child_prompt, complete_umbrella_done_title,
     complete_umbrella_leaf_non_candidate, complete_umbrella_relaunch_title,
-    complete_umbrella_start_title, daemon_liveness, emit_kv, has_umbrella_proposal,
-    is_controlling_umbrella_title, is_transient_claude_api_error, is_valid_claude_pid,
-    iter_entries, parse_claude_envelope, private_atomic_write, read_confined_regular_tail, redact,
-    redact_issue_mutation_request, refresh_wait_lease_for_pid, result_env_path,
-    select_complete_umbrella_leaf, session_pointer_root, single_line, umbrella_leaf_opening,
-    umbrella_leaf_prefix, validate_complete_umbrella_leaf, validate_complete_umbrella_parent,
+    complete_umbrella_start_title, daemon_liveness, emit_kv, git_output_is_unreachable,
+    has_umbrella_proposal, is_controlling_umbrella_title, is_transient_claude_api_error,
+    is_valid_claude_pid, iter_entries, parse_claude_envelope, private_atomic_write,
+    read_confined_regular_tail, redact, redact_issue_mutation_request, refresh_wait_lease_for_pid,
+    result_env_path, retry_while_unreachable, select_complete_umbrella_leaf, session_pointer_root,
+    single_line, umbrella_leaf_opening, umbrella_leaf_prefix, validate_complete_umbrella_leaf,
+    validate_complete_umbrella_parent,
 };
 use serde::Serialize;
 use std::{
+    cell::Cell,
     collections::BTreeSet,
     env,
     ffi::OsString,
@@ -51,6 +55,7 @@ use std::{
     num::NonZeroUsize,
     path::{Component, Path, PathBuf},
     process::ExitCode,
+    sync::atomic::{AtomicBool, Ordering},
     thread,
     time::Duration,
 };
@@ -552,6 +557,209 @@ fn remove_regular_pointer(path: &Path, root: &Path) -> Result<(), String> {
     }
 }
 
+/// Retry budget for the offline-aware parent-step and sync-proof helpers: a
+/// bounded guard against a flapping link retrying without end. The connectivity
+/// wait's own ceiling is the primary bound; this caps repeated online/offline
+/// flaps within one verb.
+const MAX_PARENT_STEP_OFFLINE_RETRIES: u32 = 5;
+
+/// A GitHub operation error that can report the network-unreachable class.
+/// Both the adapter's inherent-method error and the `GitHubService` trait error
+/// carry the distinction, so [`NetSignal`] records either.
+trait GithubErrorClass: std::fmt::Display {
+    fn is_unreachable(&self) -> bool;
+}
+
+impl GithubErrorClass for larch_adapters::github::GitHubOperationError {
+    fn is_unreachable(&self) -> bool {
+        // The inherent method takes priority over this trait method, so this
+        // reports the transport classification without recursing.
+        self.is_unreachable()
+    }
+}
+
+impl GithubErrorClass for larch_core::GitHubOperationError {
+    fn is_unreachable(&self) -> bool {
+        self.is_unreachable()
+    }
+}
+
+impl GithubErrorClass for IssueMutationError {
+    fn is_unreachable(&self) -> bool {
+        // The freshness-checked mutation owner preserves the unreachable class
+        // through its stable reason tokens, so start / reset-leaf / finish
+        // retry a title mutation that drops mid-verb.
+        self.is_unreachable()
+    }
+}
+
+/// Captures whether the most recent GitHub call in the current attempt failed
+/// because the request never reached GitHub (the `Unreachable` class). It is
+/// threaded through the read and mutation helpers so the offline-aware retry
+/// driver branches on that class without re-parsing a stringified error. The
+/// flag lives in an `AtomicBool` so a `&NetSignal` stays `Send`-safe when it is
+/// captured by the `with_github_service` async operation.
+#[derive(Default)]
+struct NetSignal(AtomicBool);
+
+impl NetSignal {
+    const fn new() -> Self {
+        Self(AtomicBool::new(false))
+    }
+
+    fn reset(&self) {
+        self.0.store(false, Ordering::Relaxed);
+    }
+
+    fn triggered(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+
+    /// Record one GitHub operation error, flagging the unreachable class, and
+    /// return its stringified detail for the existing `String` error channel.
+    /// Generic over the two GitHub error types the complete-umbrella verbs meet:
+    /// the adapter's inherent-method error and the `GitHubService` trait error.
+    fn record<E: GithubErrorClass>(&self, error: &E) -> String {
+        if error.is_unreachable() {
+            self.0.store(true, Ordering::Relaxed);
+        }
+        error.to_string()
+    }
+
+    /// Flag the current attempt as network-unreachable. Used by the git
+    /// transport path, whose subprocess errors are classified from output text
+    /// rather than a typed kind.
+    fn flag_unreachable(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Classify a git CLI failure as network-unreachable by its subprocess output.
+///
+/// A fetch that never reached the remote prints one of the fixed DNS,
+/// refused/reset-connection, or connect-timeout diagnostics on stderr, or times
+/// out with no output. HTTP-level remote refusals keep their status text and
+/// are left fail-closed.
+fn git_cli_error_is_unreachable(error: &GitCliError) -> bool {
+    match error {
+        GitCliError::Failed(result) => {
+            git_output_is_unreachable(result.safe_stderr().as_str())
+                || git_output_is_unreachable(result.safe_stdout().as_str())
+        }
+        GitCliError::Process(process) => process.kind() == ProcessErrorKind::TimedOut,
+        GitCliError::Input(_) | GitCliError::Request(_) => false,
+    }
+}
+
+/// A parent-step or sync-proof failure that carries whether it was
+/// network-unreachable, so the shared retry driver can wait it out.
+struct OfflineAwareError {
+    detail: String,
+    unreachable: bool,
+}
+
+impl OfflineAwareError {
+    fn into_detail(self) -> String {
+        self.detail
+    }
+}
+
+impl Unreachable for OfflineAwareError {
+    fn is_unreachable(&self) -> bool {
+        self.unreachable
+    }
+}
+
+/// Wait for connectivity once and adapt the count-only result into the shared
+/// retry driver's connectivity-wait shape.
+fn wait_online_once(ceiling_s: u64) -> ConnectivityWait {
+    match wait_online_for(Duration::from_secs(ceiling_s)) {
+        Ok(result) => ConnectivityWait::new(
+            result.online(),
+            result.waited().as_secs(),
+            u64::from(result.probe_attempts()),
+        ),
+        // A wait that cannot even be set up (only cancellation today) leaves the
+        // caller offline, so the driver fails closed with the original error.
+        Err(_error) => ConnectivityWait::new(false, 0, 0),
+    }
+}
+
+/// Drive one operation with offline-aware retry, returning its outcome and the
+/// recorded connectivity metrics.
+///
+/// On a network-unreachable failure the driver waits out a bounded connectivity
+/// window and re-runs the whole operation, which re-reads state so a mutation
+/// that already landed converges instead of double-applying. Every other
+/// failure fails closed exactly as before. The operation records the
+/// unreachable class into the supplied [`NetSignal`], which the driver resets
+/// before each attempt.
+fn drive_offline_retry<T>(
+    ceiling_s: u64,
+    operation: impl FnMut(&NetSignal) -> Result<T, String>,
+) -> (Result<T, String>, OfflineRetryMetrics) {
+    drive_offline_retry_with(operation, || wait_online_once(ceiling_s))
+}
+
+/// Testable core of [`drive_offline_retry`] with an injected connectivity wait,
+/// so unit tests exercise the retry, fail-closed, and metric branches without
+/// touching the network.
+fn drive_offline_retry_with<T>(
+    mut operation: impl FnMut(&NetSignal) -> Result<T, String>,
+    mut wait: impl FnMut() -> ConnectivityWait,
+) -> (Result<T, String>, OfflineRetryMetrics) {
+    let net = NetSignal::new();
+    let mut metrics = OfflineRetryMetrics::default();
+    let outcome = retry_while_unreachable(
+        &mut metrics,
+        MAX_PARENT_STEP_OFFLINE_RETRIES,
+        || {
+            net.reset();
+            operation(&net).map_err(|detail| OfflineAwareError {
+                detail,
+                unreachable: net.triggered(),
+            })
+        },
+        &mut wait,
+    )
+    .map_err(OfflineAwareError::into_detail);
+    (outcome, metrics)
+}
+
+/// Run one standalone GitHub verb with offline-aware retry and emit its retry
+/// metrics as KVs for run-log visibility.
+fn run_offline_github<T>(
+    ceiling_s: u64,
+    operation: impl FnMut(&NetSignal) -> Result<T, String>,
+) -> Result<T, String> {
+    let (outcome, metrics) = drive_offline_retry(ceiling_s, operation);
+    emit_offline_metrics(metrics);
+    outcome
+}
+
+/// Run one run-leaves parent step with offline-aware retry, folding its retry
+/// metrics into the driver's running accumulator instead of emitting KVs, since
+/// the run-leaves loop reports them once through its own result envelope.
+fn retry_offline_into<T>(
+    ceiling_s: u64,
+    accumulator: &Cell<OfflineRetryMetrics>,
+    operation: impl FnMut(&NetSignal) -> Result<T, String>,
+) -> Result<T, String> {
+    let (outcome, metrics) = drive_offline_retry(ceiling_s, operation);
+    accumulator.set(accumulator.get().merged(metrics));
+    outcome
+}
+
+/// Emit the offline-aware retry metrics as KVs for run-log visibility.
+fn emit_offline_metrics(metrics: OfflineRetryMetrics) {
+    emit_kv("NET_RETRY_COUNT", &metrics.retry_count().to_string());
+    emit_kv("NET_WAIT_SECONDS", &metrics.wait_seconds().to_string());
+    emit_kv(
+        "NET_PROBE_ATTEMPT_COUNT",
+        &metrics.probe_attempts().to_string(),
+    );
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ChildResultStatus {
     Complete,
@@ -945,6 +1153,7 @@ struct RunLeavesMetrics {
     net_wait_seconds: u64,
     leaf_reset_attempt_count: u64,
     reset_backoff_seconds: u64,
+    parent_step_retry_count: u64,
 }
 
 impl RunLeavesMetrics {
@@ -957,7 +1166,21 @@ impl RunLeavesMetrics {
             .saturating_add(result.waited().as_secs());
     }
 
-    fn rows(self) -> [(&'static str, String); 6] {
+    /// Fold the parent-step offline-retry counters (from `read_graph`,
+    /// `sync_main`, and `reset_leaf`) into the run totals: probe rounds and
+    /// waited seconds join the shared connectivity counters, and re-runs land in
+    /// their own parent-step counter distinct from the child transient retries.
+    const fn record_offline(&mut self, offline: OfflineRetryMetrics) {
+        self.net_probe_attempt_count = self
+            .net_probe_attempt_count
+            .saturating_add(offline.probe_attempts());
+        self.net_wait_seconds = self.net_wait_seconds.saturating_add(offline.wait_seconds());
+        self.parent_step_retry_count = self
+            .parent_step_retry_count
+            .saturating_add(offline.retry_count());
+    }
+
+    fn rows(self) -> [(&'static str, String); 7] {
         [
             ("CHILD_ATTEMPT_COUNT", self.child_attempt_count.to_string()),
             (
@@ -976,6 +1199,10 @@ impl RunLeavesMetrics {
             (
                 "RESET_BACKOFF_SECONDS",
                 self.reset_backoff_seconds.to_string(),
+            ),
+            (
+                "PARENT_STEP_RETRY_COUNT",
+                self.parent_step_retry_count.to_string(),
             ),
         ]
     }
@@ -1014,6 +1241,7 @@ impl RunLeavesEnvelope {
             "NET_WAIT_SECONDS",
             "NEXT_ACTION",
             "OPEN_LEAF_COUNT",
+            "PARENT_STEP_RETRY_COUNT",
             "RESET_BACKOFF_SECONDS",
             "SNAPSHOT_WRITTEN",
             "TRANSIENT_CHILD_RETRY_COUNT",
@@ -1080,6 +1308,12 @@ trait RunLeavesOperations {
     fn wait_reset_backoff(&mut self, duration: Duration);
     fn write_result(&mut self, envelope: &RunLeavesEnvelope) -> Result<(), String>;
     fn transient_attempt_count(&self, leaf: u64) -> u8;
+    /// Take and reset the parent-step offline-retry metrics accumulated by the
+    /// offline-aware `read_graph`, `sync_main`, and `reset_leaf` calls. The
+    /// default is empty for operations that do no offline-aware retry.
+    fn take_offline_metrics(&mut self) -> OfflineRetryMetrics {
+        OfflineRetryMetrics::default()
+    }
 }
 
 #[must_use]
@@ -1123,10 +1357,12 @@ fn start(arguments: &StartArguments) -> Result<(), String> {
         tmpdir,
         arguments.claude_pid,
     ))?;
-    with_github_service(async |service, cancellation| {
-        start_remote(service, cancellation, &repository, arguments.issue).await
-    })
-    .map_err(ServiceFailure::into_detail)?;
+    run_offline_github(DEFAULT_NET_WAIT_CEILING.as_secs(), |net| {
+        with_github_service(async |service, cancellation| {
+            start_remote(service, cancellation, &repository, arguments.issue, net).await
+        })
+        .map_err(ServiceFailure::into_detail)
+    })?;
     let mut state = record.state.clone();
     state.current_step = RunPointerStep::Select;
     let record = store.update(&record, state)?;
@@ -1148,6 +1384,7 @@ async fn start_remote(
     cancellation: &Cancellation,
     repository: &GitHubRepositoryRef,
     issue: u64,
+    net: &NetSignal,
 ) -> Result<(), String> {
     // Read the full leaf graph and confirm the umbrella is runnable before any
     // title mutation. A blocked (open non-leaf parent blocker) or deadlocked
@@ -1155,7 +1392,7 @@ async fn start_remote(
     // instead of stranding [IMPLEMENTING] with zero work and no active run
     // (#8663). read_graph also rejects nested umbrellas, subsuming the standalone
     // require_top_level_umbrella pre-check.
-    let graph = read_graph(service, cancellation, repository, issue).await?;
+    let graph = read_graph(service, cancellation, repository, issue, net).await?;
     if graph.parent.state != GitHubIssueState::Open {
         return Err("umbrella target is not open".to_owned());
     }
@@ -1164,7 +1401,7 @@ async fn start_remote(
     let before = owner
         .read_snapshot(repository, issue, cancellation)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     if before.state != GitHubIssueState::Open || !has_umbrella_proposal(&before.body) {
         return Err("parent changed before the active-title mutation".to_owned());
     }
@@ -1173,7 +1410,7 @@ async fn start_remote(
     let verified = owner
         .apply(cancellation, &operator_authorization(), &request)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     if verified.after.state != GitHubIssueState::Open
         || !verified.after.title.starts_with(IMPLEMENTING_PREFIX)
     {
@@ -1438,7 +1675,14 @@ fn resume_audit_requires_reselection(
     pointer: &CompleteUmbrellaRunPointer,
 ) -> Result<bool, String> {
     with_github_service(async |service, cancellation| {
-        let graph = read_graph(service, cancellation, repository, pointer.umbrella).await?;
+        let graph = read_graph(
+            service,
+            cancellation,
+            repository,
+            pointer.umbrella,
+            &NetSignal::new(),
+        )
+        .await?;
         audit_graph_requires_reselection(&graph)
     })
     .map_err(ServiceFailure::into_detail)
@@ -1526,14 +1770,35 @@ fn resume_leaf_state(
     operator_invoked: bool,
 ) -> Result<Option<ResumeLeafState>, String> {
     with_github_service(async |service, cancellation| {
-        let mut graph = read_graph(service, cancellation, repository, pointer.umbrella).await?;
+        let mut graph = read_graph(
+            service,
+            cancellation,
+            repository,
+            pointer.umbrella,
+            &NetSignal::new(),
+        )
+        .await?;
         if require_active_parent(&graph).is_err() {
             if pointer.current_step != RunPointerStep::Start {
                 return Err("resume target parent is not active".to_owned());
             }
             require_operator(operator_invoked)?;
-            start_remote(service, cancellation, repository, pointer.umbrella).await?;
-            graph = read_graph(service, cancellation, repository, pointer.umbrella).await?;
+            start_remote(
+                service,
+                cancellation,
+                repository,
+                pointer.umbrella,
+                &NetSignal::new(),
+            )
+            .await?;
+            graph = read_graph(
+                service,
+                cancellation,
+                repository,
+                pointer.umbrella,
+                &NetSignal::new(),
+            )
+            .await?;
             require_active_parent(&graph)?;
         }
         let Some(leaf_number) = pointer.current_leaf else {
@@ -1576,7 +1841,14 @@ fn reset_resume_leaf_if_active(
         leaf,
     };
     with_github_service(async |service, cancellation| {
-        reset_leaf_remote(service, cancellation, repository, &arguments).await
+        reset_leaf_remote(
+            service,
+            cancellation,
+            repository,
+            &arguments,
+            &NetSignal::new(),
+        )
+        .await
     })
     .map_err(ServiceFailure::into_detail)
 }
@@ -1655,10 +1927,12 @@ fn clear_pointer(arguments: &ClearPointerArguments) -> Result<(), String> {
 fn next(arguments: &NextArguments) -> Result<(), String> {
     require_issue(arguments.issue, "--issue")?;
     let repository = parse_repository(&arguments.repository)?;
-    let graph = with_github_service(async |service, cancellation| {
-        read_graph(service, cancellation, &repository, arguments.issue).await
-    })
-    .map_err(ServiceFailure::into_detail)?;
+    let graph = run_offline_github(DEFAULT_NET_WAIT_CEILING.as_secs(), |net| {
+        with_github_service(async |service, cancellation| {
+            read_graph(service, cancellation, &repository, arguments.issue, net).await
+        })
+        .map_err(ServiceFailure::into_detail)
+    })?;
     emit_next(arguments, &graph)?;
     let tmpdir = canonical_directory(&arguments.output_root, "--output-root")?;
     let store = RunPointerStore::live()?;
@@ -1711,7 +1985,12 @@ fn execute_run_leaves(
     operations: &mut impl RunLeavesOperations,
 ) -> Result<usize, RunLeavesFailure> {
     let mut metrics = RunLeavesMetrics::default();
-    match drive_run_leaves(operations, &mut metrics) {
+    let outcome = drive_run_leaves(operations, &mut metrics);
+    // Fold the parent-step offline-retry waits and re-runs into the run totals
+    // before either envelope is rendered, so the result reports connectivity
+    // waits from every path, not only the child transient loop.
+    metrics.record_offline(operations.take_offline_metrics());
+    match outcome {
         Ok(completed) => {
             let envelope = RunLeavesEnvelope::Audit { completed, metrics };
             operations
@@ -1994,6 +2273,7 @@ struct LiveRunLeavesOperations<'a> {
     driver_root: PathBuf,
     pointer_store: RunPointerStore,
     pointer: RunPointerRecord,
+    offline: Cell<OfflineRetryMetrics>,
 }
 
 impl<'a> LiveRunLeavesOperations<'a> {
@@ -2046,6 +2326,7 @@ impl<'a> LiveRunLeavesOperations<'a> {
             driver_root,
             pointer_store,
             pointer,
+            offline: Cell::new(OfflineRetryMetrics::default()),
         })
     }
 
@@ -2066,16 +2347,19 @@ impl<'a> LiveRunLeavesOperations<'a> {
 
 impl RunLeavesOperations for LiveRunLeavesOperations<'_> {
     fn read_graph(&mut self) -> Result<GraphState, String> {
-        with_github_service(async |service, cancellation| {
-            read_graph(
-                service,
-                cancellation,
-                &self.repository,
-                self.arguments.umbrella,
-            )
-            .await
+        retry_offline_into(self.arguments.net_wait_ceiling_s, &self.offline, |net| {
+            with_github_service(async |service, cancellation| {
+                read_graph(
+                    service,
+                    cancellation,
+                    &self.repository,
+                    self.arguments.umbrella,
+                    net,
+                )
+                .await
+            })
+            .map_err(ServiceFailure::into_detail)
         })
-        .map_err(ServiceFailure::into_detail)
     }
 
     fn write_snapshot(&mut self, graph: &GraphState) -> Result<(), String> {
@@ -2088,7 +2372,9 @@ impl RunLeavesOperations for LiveRunLeavesOperations<'_> {
     }
 
     fn sync_main(&mut self) -> Result<(), String> {
-        synchronize_main(&self.repo_root)
+        retry_offline_into(self.arguments.net_wait_ceiling_s, &self.offline, |net| {
+            synchronize_main(&self.repo_root, net)
+        })
     }
 
     fn run_child(&mut self, leaf: u64) -> ChildAttempt {
@@ -2124,14 +2410,20 @@ impl RunLeavesOperations for LiveRunLeavesOperations<'_> {
             umbrella: self.arguments.umbrella,
             leaf,
         };
-        with_github_service(async |service, cancellation| {
-            reset_leaf_remote(service, cancellation, &self.repository, &arguments).await
+        retry_offline_into(self.arguments.net_wait_ceiling_s, &self.offline, |net| {
+            with_github_service(async |service, cancellation| {
+                reset_leaf_remote(service, cancellation, &self.repository, &arguments, net).await
+            })
+            .map_err(ServiceFailure::into_detail)
         })
-        .map_err(ServiceFailure::into_detail)
     }
 
     fn wait_reset_backoff(&mut self, duration: Duration) {
         thread::sleep(duration);
+    }
+
+    fn take_offline_metrics(&mut self) -> OfflineRetryMetrics {
+        self.offline.replace(OfflineRetryMetrics::default())
     }
 
     fn write_result(&mut self, envelope: &RunLeavesEnvelope) -> Result<(), String> {
@@ -2248,25 +2540,30 @@ fn classify_child_attempt(
     }
 }
 
-fn synchronize_main(repo_root: &Path) -> Result<(), String> {
+fn synchronize_main(repo_root: &Path, net: &NetSignal) -> Result<(), String> {
     require_clean_main(repo_root, "before synchronization")?;
     let remote = GitRemote::new("origin").map_err(|error| error.to_string())?;
     let refspec = GitRefspec::new("refs/heads/main:refs/remotes/origin/main")
         .map_err(|error| error.to_string())?;
     let upstream = GitRef::new("origin/main").map_err(|error| error.to_string())?;
     let runtime = GitCommandRuntime::for_repository(repo_root)?;
-    runtime
-        .runtime
-        .block_on(runtime.git_cli().fetch(
-            FetchRequest {
-                remote,
-                refspec: Some(refspec),
-                quiet: true,
-                no_tags: true,
-            },
-            &runtime.cancellation,
-        ))
-        .map_err(|error| format!("git fetch origin/main failed: {error}"))?;
+    if let Err(error) = runtime.runtime.block_on(runtime.git_cli().fetch(
+        FetchRequest {
+            remote,
+            refspec: Some(refspec),
+            quiet: true,
+            no_tags: true,
+        },
+        &runtime.cancellation,
+    )) {
+        // The fetch is the only remote-touching step; an offline wake fails it
+        // with a DNS or connect diagnostic, so flag it for the offline-aware
+        // retry while every other sync-proof failure stays fail-closed.
+        if git_cli_error_is_unreachable(&error) {
+            net.flag_unreachable();
+        }
+        return Err(format!("git fetch origin/main failed: {error}"));
+    }
     if let Err(error) = runtime.runtime.block_on(runtime.git_cli().rebase(
         RebaseRequest::Start {
             onto: None,
@@ -2546,10 +2843,12 @@ fn verify_child(arguments: &LeafArguments) -> Result<(), String> {
     require_issue(arguments.umbrella, "--umbrella")?;
     require_issue(arguments.leaf, "--leaf")?;
     let repository = parse_repository(&arguments.repository)?;
-    with_github_service(async |service, cancellation| {
-        verify_child_remote(service, cancellation, &repository, arguments).await
-    })
-    .map_err(ServiceFailure::into_detail)?;
+    run_offline_github(DEFAULT_NET_WAIT_CEILING.as_secs(), |net| {
+        with_github_service(async |service, cancellation| {
+            verify_child_remote(service, cancellation, &repository, arguments, net).await
+        })
+        .map_err(ServiceFailure::into_detail)
+    })?;
     emit_kv("CHILD_VERIFIED", "true");
     emit_kv("CHILD_ISSUE", &arguments.leaf.to_string());
     Ok(())
@@ -2567,11 +2866,20 @@ fn recover_orphaned_child(arguments: &RecoverOrphanedChildArguments) -> Result<(
         "--result-env",
         64 * 1024,
     )?;
-    with_github_service(async |service, cancellation| {
-        recover_orphaned_child_remote(service, cancellation, &repository, &arguments.leaf, &result)
+    run_offline_github(DEFAULT_NET_WAIT_CEILING.as_secs(), |net| {
+        with_github_service(async |service, cancellation| {
+            recover_orphaned_child_remote(
+                service,
+                cancellation,
+                &repository,
+                &arguments.leaf,
+                &result,
+                net,
+            )
             .await
-    })
-    .map_err(ServiceFailure::into_detail)?;
+        })
+        .map_err(ServiceFailure::into_detail)
+    })?;
     emit_kv("CHILD_RECOVERED", "true");
     emit_kv("CHILD_ISSUE", &arguments.leaf.leaf.to_string());
     Ok(())
@@ -2583,9 +2891,10 @@ async fn recover_orphaned_child_remote(
     repository: &GitHubRepositoryRef,
     arguments: &LeafArguments,
     result: &str,
+    net: &NetSignal,
 ) -> Result<(), String> {
     validate_orphaned_child_result(result, arguments.leaf)?;
-    verify_child_remote(service, cancellation, repository, arguments).await
+    verify_child_remote(service, cancellation, repository, arguments, net).await
 }
 
 fn validate_orphaned_child_result(text: &str, leaf: u64) -> Result<(), String> {
@@ -2623,10 +2932,12 @@ fn reset_leaf(arguments: &ResetLeafArguments) -> Result<(), String> {
     require_issue(arguments.leaf.umbrella, "--umbrella")?;
     require_issue(arguments.leaf.leaf, "--leaf")?;
     let repository = parse_repository(&arguments.leaf.repository)?;
-    with_github_service(async |service, cancellation| {
-        reset_leaf_remote(service, cancellation, &repository, &arguments.leaf).await
-    })
-    .map_err(ServiceFailure::into_detail)?;
+    run_offline_github(DEFAULT_NET_WAIT_CEILING.as_secs(), |net| {
+        with_github_service(async |service, cancellation| {
+            reset_leaf_remote(service, cancellation, &repository, &arguments.leaf, net).await
+        })
+        .map_err(ServiceFailure::into_detail)
+    })?;
     emit_kv("LEAF_RESET", "true");
     emit_kv("LEAF_ISSUE", &arguments.leaf.leaf.to_string());
     Ok(())
@@ -2637,8 +2948,9 @@ async fn reset_leaf_remote(
     cancellation: &Cancellation,
     repository: &GitHubRepositoryRef,
     arguments: &LeafArguments,
+    net: &NetSignal,
 ) -> Result<(), String> {
-    let graph = read_graph(service, cancellation, repository, arguments.umbrella).await?;
+    let graph = read_graph(service, cancellation, repository, arguments.umbrella, net).await?;
     let Some(leaf) = graph
         .leaves
         .iter()
@@ -2659,7 +2971,7 @@ async fn reset_leaf_remote(
     let before = owner
         .read_snapshot(repository, arguments.leaf, cancellation)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     if before.state != GitHubIssueState::Open {
         return Err("leaf changed before the relaunch-title mutation".to_owned());
     }
@@ -2672,7 +2984,7 @@ async fn reset_leaf_remote(
     let verified = owner
         .apply(cancellation, &operator_authorization(), &request)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     if verified.after.state != GitHubIssueState::Open || verified.after.title != title {
         return Err("idle leaf title read-back failed".to_owned());
     }
@@ -2684,8 +2996,9 @@ async fn verify_child_remote(
     cancellation: &Cancellation,
     repository: &GitHubRepositoryRef,
     arguments: &LeafArguments,
+    net: &NetSignal,
 ) -> Result<(), String> {
-    let graph = read_graph(service, cancellation, repository, arguments.umbrella).await?;
+    let graph = read_graph(service, cancellation, repository, arguments.umbrella, net).await?;
     verify_child_in_graph(&graph, arguments.leaf)
 }
 
@@ -2697,17 +3010,20 @@ fn attach_leaf(arguments: &AttachLeafArguments) -> Result<(), String> {
     let repository_name = format!("{}/{}", repository.owner(), repository.name());
     let tmpdir = canonical_directory(&arguments.files.root, "--expected-root")?;
     let expected = read_expected_audit_leaf(arguments.leaf.umbrella, &arguments.files)?;
-    with_github_service(async |service, cancellation| {
-        attach_leaf_remote(
-            service,
-            cancellation,
-            &repository,
-            &arguments.leaf,
-            &expected,
-        )
-        .await
-    })
-    .map_err(ServiceFailure::into_detail)?;
+    run_offline_github(DEFAULT_NET_WAIT_CEILING.as_secs(), |net| {
+        with_github_service(async |service, cancellation| {
+            attach_leaf_remote(
+                service,
+                cancellation,
+                &repository,
+                &arguments.leaf,
+                &expected,
+                net,
+            )
+            .await
+        })
+        .map_err(ServiceFailure::into_detail)
+    })?;
     let store = RunPointerStore::live()?;
     checkpoint_reselection(&store, &repository_name, arguments.leaf.umbrella, &tmpdir)?;
     emit_kv("LEAF_ATTACHED", "true");
@@ -2791,10 +3107,12 @@ async fn attach_leaf_remote(
     repository: &GitHubRepositoryRef,
     arguments: &LeafArguments,
     expected: &ExpectedAuditLeaf,
+    net: &NetSignal,
 ) -> Result<(), String> {
-    let leaf = validate_attachment(service, cancellation, repository, arguments, expected).await?;
-    apply_attachment(service, cancellation, repository, arguments, &leaf).await?;
-    verify_attachment(service, cancellation, repository, arguments).await
+    let leaf =
+        validate_attachment(service, cancellation, repository, arguments, expected, net).await?;
+    apply_attachment(service, cancellation, repository, arguments, &leaf, net).await?;
+    verify_attachment(service, cancellation, repository, arguments, net).await
 }
 
 async fn validate_attachment(
@@ -2803,20 +3121,21 @@ async fn validate_attachment(
     repository: &GitHubRepositoryRef,
     arguments: &LeafArguments,
     expected: &ExpectedAuditLeaf,
+    net: &NetSignal,
 ) -> Result<GitHubIssue, String> {
     let parent = service
         .issue(repository, arguments.umbrella, cancellation)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     validate_complete_umbrella_parent(&parent, true)?;
-    require_top_level_umbrella(service, cancellation, repository, arguments.umbrella).await?;
+    require_top_level_umbrella(service, cancellation, repository, arguments.umbrella, net).await?;
     if !parent.title.starts_with(IMPLEMENTING_PREFIX) {
         return Err("parent is not active".to_owned());
     }
     let leaf = service
         .issue(repository, arguments.leaf, cancellation)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     if leaf.state != GitHubIssueState::Open {
         return Err("audit-created leaf must be open".to_owned());
     }
@@ -2835,7 +3154,7 @@ async fn validate_attachment(
             leaf.number,
         )
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|error| net.record(&error))?
         .is_empty()
     {
         return Err("audit-created child is not a leaf".to_owned());
@@ -2848,7 +3167,7 @@ async fn validate_attachment(
             leaf.number,
         )
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|error| net.record(&error))?
         .is_some_and(|parent| parent.issue_number() != arguments.umbrella)
     {
         return Err("audit-created child already belongs to another parent".to_owned());
@@ -2862,6 +3181,7 @@ async fn apply_attachment(
     repository: &GitHubRepositoryRef,
     arguments: &LeafArguments,
     leaf: &GitHubIssue,
+    net: &NetSignal,
 ) -> Result<(), String> {
     let authorization = operator_authorization();
     service
@@ -2876,11 +3196,11 @@ async fn apply_attachment(
             },
         )
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     let parent = service
         .issue(repository, arguments.umbrella, cancellation)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     validate_complete_umbrella_parent(&parent, true)?;
     if !parent.title.starts_with(IMPLEMENTING_PREFIX) {
         return Err("parent changed before dependency attachment".to_owned());
@@ -2898,7 +3218,7 @@ async fn apply_attachment(
             },
         )
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     Ok(())
 }
 
@@ -2907,8 +3227,9 @@ async fn verify_attachment(
     cancellation: &Cancellation,
     repository: &GitHubRepositoryRef,
     arguments: &LeafArguments,
+    net: &NetSignal,
 ) -> Result<(), String> {
-    let graph = read_graph(service, cancellation, repository, arguments.umbrella).await?;
+    let graph = read_graph(service, cancellation, repository, arguments.umbrella, net).await?;
     let attached = graph
         .leaves
         .iter()
@@ -2921,7 +3242,7 @@ async fn verify_attachment(
             arguments.umbrella,
         )
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|error| net.record(&error))?
         .iter()
         .any(|blocker| blocker.issue_number() == arguments.leaf);
     if attached && blocks_parent {
@@ -2938,10 +3259,12 @@ fn finish(arguments: &FinishArguments) -> Result<(), String> {
     let repository_name = format!("{}/{}", repository.owner(), repository.name());
     let store = RunPointerStore::live()?;
     let pointer = store.resume_candidate(&repository_name, arguments.issue)?;
-    with_github_service(async |service, cancellation| {
-        finish_remote(service, cancellation, &repository, arguments.issue).await
-    })
-    .map_err(ServiceFailure::into_detail)?;
+    run_offline_github(DEFAULT_NET_WAIT_CEILING.as_secs(), |net| {
+        with_github_service(async |service, cancellation| {
+            finish_remote(service, cancellation, &repository, arguments.issue, net).await
+        })
+        .map_err(ServiceFailure::into_detail)
+    })?;
     if let Some(pointer) = pointer {
         store.remove(&pointer)?;
     }
@@ -2956,8 +3279,9 @@ async fn finish_remote(
     cancellation: &Cancellation,
     repository: &GitHubRepositoryRef,
     issue: u64,
+    net: &NetSignal,
 ) -> Result<(), String> {
-    let graph = read_graph(service, cancellation, repository, issue).await?;
+    let graph = read_graph(service, cancellation, repository, issue, net).await?;
     require_no_open_orphan_blockers(&graph)?;
     if graph
         .leaves
@@ -2984,7 +3308,7 @@ async fn finish_remote(
     let before = owner
         .read_snapshot(repository, issue, cancellation)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     if before.state != GitHubIssueState::Open || !has_umbrella_proposal(&before.body) {
         return Err("parent changed before completion".to_owned());
     }
@@ -2993,8 +3317,8 @@ async fn finish_remote(
     owner
         .apply(cancellation, &authorization, &request)
         .await
-        .map_err(|error| error.to_string())?;
-    let before_close = read_graph(service, cancellation, repository, issue).await?;
+        .map_err(|error| net.record(&error))?;
+    let before_close = read_graph(service, cancellation, repository, issue, net).await?;
     require_no_open_orphan_blockers(&before_close)?;
     if before_close
         .leaves
@@ -3013,11 +3337,11 @@ async fn finish_remote(
             cancellation,
         )
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     if closed.state != GitHubIssueState::Closed || !closed.title.starts_with(DONE_PREFIX) {
         return Err("parent close read-back failed".to_owned());
     }
-    let final_graph = read_graph(service, cancellation, repository, issue).await?;
+    let final_graph = read_graph(service, cancellation, repository, issue, net).await?;
     require_no_open_orphan_blockers(&final_graph)?;
     if final_graph.parent.state != GitHubIssueState::Closed
         || !final_graph.parent.title.starts_with(DONE_PREFIX)
@@ -3036,11 +3360,12 @@ async fn read_graph(
     cancellation: &Cancellation,
     repository: &GitHubRepositoryRef,
     umbrella: u64,
+    net: &NetSignal,
 ) -> Result<GraphState, String> {
     let parent = service
         .issue(repository, umbrella, cancellation)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     validate_complete_umbrella_parent(&parent, false)?;
     let references = service
         .list_sub_issues(
@@ -3050,14 +3375,21 @@ async fn read_graph(
             umbrella,
         )
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     if references.len() > MAX_DIRECT_LEAVES {
         return Err(format!(
             "umbrella has more than {MAX_DIRECT_LEAVES} direct leaves"
         ));
     }
-    let open_orphan_blockers =
-        read_open_orphan_blockers(service, cancellation, repository, umbrella, &references).await?;
+    let open_orphan_blockers = read_open_orphan_blockers(
+        service,
+        cancellation,
+        repository,
+        umbrella,
+        &references,
+        net,
+    )
+    .await?;
     let mut seen = BTreeSet::new();
     let mut leaves = Vec::with_capacity(references.len());
     for reference in references {
@@ -3067,7 +3399,7 @@ async fn read_graph(
         let issue = service
             .issue(repository, reference.issue_number(), cancellation)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| net.record(&error))?;
         if is_controlling_umbrella_title(&issue.title) {
             return Err("nested umbrellas are not supported".to_owned());
         }
@@ -3093,7 +3425,7 @@ async fn read_graph(
                 issue.number,
             )
             .await
-            .map_err(|error| error.to_string())?
+            .map_err(|error| net.record(&error))?
             .is_empty()
         {
             return Err(format!("direct child #{} is not a leaf", issue.number));
@@ -3107,7 +3439,7 @@ async fn read_graph(
                     issue.number,
                 )
                 .await
-                .map_err(|error| error.to_string())?
+                .map_err(|error| net.record(&error))?
                 .into_iter()
                 .filter(larch_adapters::github::DependencyRef::is_open)
                 .map(|blocker| blocker.issue_number())
@@ -3136,6 +3468,7 @@ async fn read_open_orphan_blockers(
     repository: &GitHubRepositoryRef,
     umbrella: u64,
     references: &[larch_adapters::github::SubIssueRef],
+    net: &NetSignal,
 ) -> Result<Vec<u64>, String> {
     let parent_blockers = service
         .list_blocked_by(
@@ -3145,7 +3478,7 @@ async fn read_open_orphan_blockers(
             umbrella,
         )
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     let parent_blocker_numbers = parent_blockers
         .iter()
         .map(larch_adapters::github::DependencyRef::issue_number)
@@ -3204,6 +3537,7 @@ async fn require_top_level_umbrella(
     cancellation: &Cancellation,
     repository: &GitHubRepositoryRef,
     umbrella: u64,
+    net: &NetSignal,
 ) -> Result<(), String> {
     let references = service
         .list_sub_issues(
@@ -3213,12 +3547,12 @@ async fn require_top_level_umbrella(
             umbrella,
         )
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| net.record(&error))?;
     for reference in references {
         let child = service
             .issue(repository, reference.issue_number(), cancellation)
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| net.record(&error))?;
         if is_controlling_umbrella_title(&child.title) {
             return Err("nested umbrellas are not supported".to_owned());
         }

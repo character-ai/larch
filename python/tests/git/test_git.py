@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from larch.git import git
+from larch.core import config
 from larch.core import logging_util
 from larch.core import retry
 from larch.errors import ShipError
@@ -46,6 +47,49 @@ def _immediate_retry(
 ) -> retry.RetryResult[CommandResult]:
     value, rc, _content = fn()
     return retry.RetryResult(value=value, attempts=1, last_returncode=rc)
+
+
+def test_push_retries_a_network_unreachable_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(config, "TRANSIENT_RETRY_BACKOFF_SEC", (0, 0))
+    argv = ("git", "push", "origin", "HEAD:refs/heads/topic")
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                argv,
+                1,
+                "",
+                "fatal: unable to access 'https://github.com/o/r.git/': Could not resolve host: github.com",
+                0.01,
+            ),
+            CommandResult(argv, 0, "", "", 0.01),
+        ],
+    )
+    result = git.push(runner, "origin", "HEAD:refs/heads/topic")
+    assert result.returncode == 0
+    assert len(runner.calls) == 2
+
+
+def test_push_does_not_retry_a_permanent_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(config, "TRANSIENT_RETRY_BACKOFF_SEC", (0, 0))
+    argv = ("git", "push", "origin", "HEAD:refs/heads/topic")
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                argv,
+                1,
+                "",
+                "! [rejected] main -> main (non-fast-forward)",
+                0.01,
+            ),
+        ],
+    )
+    result = git.push(runner, "origin", "HEAD:refs/heads/topic")
+    assert result.returncode == 1
+    assert len(runner.calls) == 1
 
 
 def test_rev_parse_builds_argv() -> None:

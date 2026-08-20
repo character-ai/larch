@@ -19,9 +19,9 @@ from larch.git import git
 from larch.core import logging_util
 from larch.core import redact
 from larch.report import run_log_manifest
-from larch.errors import ShipError
-from larch.core.proc import Runner
-from larch.core.retry import with_transient_retry
+from larch.errors import ShipError, TransientNetworkError
+from larch.core.proc import CommandResult, Runner
+from larch.core.retry import is_network_unreachable_signature, with_transient_retry
 from larch.core.run_context import RunContext
 from larch.core import proc
 
@@ -57,6 +57,49 @@ def redact_merge_diagnostic(text: str) -> str:
 def _has_merge_conflict_signal(error: str | None) -> bool:
     lowered = (error or "").lower()
     return any(signal in lowered for signal in _MERGE_CONFLICT_SIGNALS)
+
+
+def _submit_merge(
+    runner: Runner,
+    pr_num: int,
+    *,
+    repo: str,
+    cwd: str | None,
+    merge_method: str = "squash",
+    admin: bool = False,
+    delete_branch: bool = False,
+    merge_queue: bool = False,
+) -> CommandResult:
+    """Submit one merge, converting a network-unreachable failure into a
+    ``TransientNetworkError``.
+
+    A laptop that wakes offline mid-ship hits a DNS or connect failure on the
+    merge submission. Raising ``TransientNetworkError`` routes it into the ship
+    driver's existing bounded transient-retry, whose idempotent re-entry
+    (:func:`_merge_noop_if_pr_closed`) re-reads the merged state on reship, so a
+    submission that landed but lost its acknowledgement converges on the merged
+    result instead of re-merging. HTTP-level merge refusals (branch protection,
+    policy, conflict) carry no transient-net signature and stay classified as
+    permanent failures for the caller.
+    """
+    result = gh.pr_merge(
+        runner,
+        pr_num,
+        repo=repo,
+        merge_method=merge_method,
+        admin=admin,
+        delete_branch=delete_branch,
+        merge_queue=merge_queue,
+        cwd=cwd,
+    )
+    if result.returncode != 0 and is_network_unreachable_signature(
+        result.stderr + result.stdout
+    ):
+        raise TransientNetworkError(
+            f"merge submission failed with a network-unreachable error for PR #{pr_num}",
+            result=result,
+        )
+    return result
 
 
 def merge_pr(
@@ -574,7 +617,7 @@ def _attempt_merge(
         )
 
     if queue_enabled:
-        queued = gh.pr_merge(
+        queued = _submit_merge(
             runner,
             pr_num,
             repo=ctx.repo,
@@ -613,7 +656,7 @@ def _attempt_merge(
         )
 
     if ctx.no_admin_fallback:
-        result = gh.pr_merge(
+        result = _submit_merge(
             runner,
             pr_num,
             repo=ctx.repo,
@@ -635,7 +678,7 @@ def _attempt_merge(
             cwd=cwd,
         )
 
-    admin = gh.pr_merge(
+    admin = _submit_merge(
         runner,
         pr_num,
         repo=ctx.repo,
@@ -647,7 +690,7 @@ def _attempt_merge(
         return MergeResult(result=config.MERGE_RESULT_ADMIN_MERGED, error="")
     admin_diag = redact_merge_diagnostic(admin.stderr + admin.stdout)
 
-    plain = gh.pr_merge(
+    plain = _submit_merge(
         runner,
         pr_num,
         repo=ctx.repo,

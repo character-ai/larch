@@ -460,6 +460,20 @@ pub(crate) fn octocrab_status(error: &octocrab::Error) -> Option<u16> {
     }
 }
 
+/// Classify an octocrab error as network-unreachable: a failure that never
+/// produced an HTTP response, so the request never reached GitHub. With the
+/// hyper default client, a DNS failure, connect timeout, or refused or reset
+/// connection surfaces through the tower connector as `Service` or directly as
+/// `Hyper`. Every `GitHub` variant carries an HTTP status, so an HTTP 4xx or
+/// 5xx never qualifies, and serialization or URI faults stay classified as
+/// ordinary transport failures.
+pub(crate) const fn octocrab_is_unreachable(error: &octocrab::Error) -> bool {
+    matches!(
+        error,
+        octocrab::Error::Service { .. } | octocrab::Error::Hyper { .. }
+    )
+}
+
 pub(crate) type GitHubRawResponse =
     http::Response<http_body_util::combinators::BoxBody<Bytes, octocrab::Error>>;
 

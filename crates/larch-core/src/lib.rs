@@ -35,6 +35,7 @@ mod message_error;
 mod migration_audit;
 mod migration_governance;
 mod object_store;
+mod offline_retry;
 mod ordered_json;
 mod outcome;
 mod plan_scope;
@@ -375,6 +376,10 @@ pub use migration_governance::{
 };
 pub use object_store::{
     ObjectPage, ObjectStore, ObjectStoreError, ObjectStoreFuture, RemoteObject,
+};
+pub use offline_retry::{
+    ConnectivityWait, OfflineRetryMetrics, Unreachable, git_output_is_unreachable,
+    retry_while_unreachable,
 };
 pub use ordered_json::OrderedJson;
 pub use outcome::{ExitCode, WorkflowOutcome};

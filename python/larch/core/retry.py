@@ -18,6 +18,38 @@ def default_sleeper(seconds: float) -> None:
     time.sleep(seconds)
 
 
+_NETWORK_UNREACHABLE_SIGNATURES = (
+    "could not resolve host",
+    "could not resolve hostname",
+    "couldn't resolve host",
+    "temporary failure in name resolution",
+    "name or service not known",
+    "connection refused",
+    "connection reset",
+    "connection timed out",
+    "operation timed out",
+    "failed to connect to",
+    "couldn't connect to server",
+    "network is unreachable",
+    "no route to host",
+    "unable to look up",
+)
+
+
+def is_network_unreachable_signature(text: str) -> bool:
+    """Classify stderr/stdout as a network-unreachable failure: the request never
+    reached the server (DNS failure, connect timeout, or a refused or reset
+    connection).
+
+    Narrower than :func:`is_transient_net_signature`: it deliberately excludes
+    HTTP-level failures (4xx/5xx) and read timeouts on a live connection, mirroring
+    the Rust adapter's ``Unreachable`` classification. Offline-aware push and merge
+    retry only this class so HTTP-level failures stay fail-closed.
+    """
+    lowered = text.lower()
+    return any(signature in lowered for signature in _NETWORK_UNREACHABLE_SIGNATURES)
+
+
 def is_transient_net_signature(text: str) -> bool:
     """Classify stderr/stdout blobs for transient network failures."""
     if "no such hosted" in text or "no such hostname" in text:
@@ -80,18 +112,22 @@ def with_transient_retry(
     fn: Callable[[], tuple[T, int, str]],
     *,
     predicate: Callable[[str], bool] | None = None,
+    net_signature: Callable[[str], bool] = is_transient_net_signature,
     sleeper: Sleeper = default_sleeper,
     max_attempts: int = config.TRANSIENT_RETRY_MAX_ATTEMPTS,
 ) -> RetryResult[T]:
-    """Retry fn up to max_attempts when predicate(content) or transient signature.
+    """Retry fn up to max_attempts when predicate(content) or a net signature.
 
-    fn returns (value, returncode, combined_output).
+    fn returns (value, returncode, combined_output). ``net_signature`` selects the
+    network-failure class that is retryable on a non-zero exit; the default is the
+    broad transient class, but offline-aware push callers pass the narrower
+    :func:`is_network_unreachable_signature` so HTTP 5xx stays fail-closed.
     """
     pred: Callable[[str], bool] = predicate or (lambda _content: False)
     for attempt in range(1, max_attempts + 1):
         value, rc, content = fn()
         transient = pred(content)
-        if not transient and rc != 0 and is_transient_net_signature(content):
+        if not transient and rc != 0 and net_signature(content):
             transient = True
         if not transient:
             return RetryResult(value=value, attempts=attempt, last_returncode=rc)

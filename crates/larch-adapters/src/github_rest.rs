@@ -1,7 +1,8 @@
 //! Bounded repository, issue, comment, label, and search operations.
 
 use crate::github::{
-    GitHubCompletionError, OctocrabGitHubService, github_utc_timestamp, octocrab_status,
+    GitHubCompletionError, OctocrabGitHubService, github_utc_timestamp, octocrab_is_unreachable,
+    octocrab_status,
 };
 use larch_core::{
     GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue, GitHubIssueBodyMode,
@@ -1040,8 +1041,26 @@ fn map_octocrab_error(
 ) -> GitHubOperationError {
     let status = octocrab_status(error);
     let detail = service.redact_diagnostic(error.to_string());
-    let kind = classify_status(status, detail.as_str());
+    let kind = classify_octocrab_kind(octocrab_is_unreachable(error), status, detail.as_str());
     GitHubOperationError::new(kind, status, retry_after_from_error(error), detail.as_str())
+}
+
+/// Choose the operation-error kind for one octocrab failure.
+///
+/// A connection-level failure never carried an HTTP status, so it classifies as
+/// `Unreachable` before the status table maps its `None` status to the broader
+/// `Transport` class. HTTP 5xx keeps its `Some(5xx)` status and stays
+/// `Transport`, so an offline-aware caller retries only the former.
+fn classify_octocrab_kind(
+    unreachable: bool,
+    status: Option<u16>,
+    detail: &str,
+) -> GitHubOperationErrorKind {
+    if unreachable {
+        GitHubOperationErrorKind::Unreachable
+    } else {
+        classify_status(status, detail)
+    }
 }
 
 fn classify_status(status: Option<u16>, detail: &str) -> GitHubOperationErrorKind {
@@ -1277,12 +1296,32 @@ mod tests {
     #[test]
     fn conversion_validation_mapping_and_reconciliation_are_typed() {
         use GitHubOperationErrorKind::{
-            LimitExceeded, MalformedResponse, Permission, RateLimited, SsoRequired,
+            LimitExceeded, MalformedResponse, NotFound, Permission, RateLimited, SsoRequired,
+            Transport, Unreachable,
         };
         assert_eq!(classify_status(Some(403), "SAML SSO"), SsoRequired);
         assert_eq!(classify_status(Some(403), "forbidden"), Permission);
         assert_eq!(classify_status(Some(429), "slow down"), RateLimited);
         assert_eq!(classify_status(Some(200), "invalid"), MalformedResponse);
+        // A connection-level failure classifies as Unreachable, while HTTP 5xx,
+        // 4xx, and status-less non-connection faults keep their existing kinds
+        // so an offline-aware caller retries only the unreachable class.
+        assert_eq!(
+            classify_octocrab_kind(true, None, "Service Error: connection refused"),
+            Unreachable
+        );
+        assert_eq!(
+            classify_octocrab_kind(false, Some(500), "server error"),
+            Transport
+        );
+        assert_eq!(
+            classify_octocrab_kind(false, None, "invalid response body"),
+            Transport
+        );
+        assert_eq!(
+            classify_octocrab_kind(false, Some(404), "missing"),
+            NotFound
+        );
         let mut limits = models::RateLimit::default();
         limits.resources.core.limit = 5_000;
         limits.resources.core.remaining = 0;
