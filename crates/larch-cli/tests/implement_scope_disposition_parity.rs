@@ -15,7 +15,7 @@ use assert_cmd::Command as AssertCommand;
 use tempfile::TempDir;
 
 struct Fixture {
-    _root: TempDir,
+    root: TempDir,
     repo: PathBuf,
     tmpdir: PathBuf,
 }
@@ -68,11 +68,7 @@ fn fixture(plan_paths: &[&str], existing: &[&str]) -> Fixture {
     for path in existing {
         fs::write(repo.join(path), "touched\n").expect("touched file");
     }
-    Fixture {
-        _root: root,
-        repo,
-        tmpdir,
-    }
+    Fixture { root, repo, tmpdir }
 }
 
 fn run(fixture: &Fixture, arguments: &[&str]) -> (i32, String) {
@@ -401,7 +397,7 @@ fn record_bail_rescope_persists_without_followup_filing() {
 #[test]
 fn compute_uses_live_merge_base_when_origin_head_resolves() {
     let fixture = fixture(&["a.txt"], &[]);
-    let origin = fixture._root.path().join("origin.git");
+    let origin = fixture.root.path().join("origin.git");
     let status = Command::new("git")
         .args([
             "init",
@@ -430,7 +426,12 @@ fn compute_uses_live_merge_base_when_origin_head_resolves() {
     assert_eq!(code, 0, "stdout: {stdout}");
     assert_eq!(kv(&stdout, "PLAN_COVERAGE_TOUCHED"), "1");
     assert_eq!(kv(&stdout, "PLAN_COVERAGE_BAND"), "advisory");
-    assert!(!fixture.tmpdir.join("scope-fallback-provenance.json").is_file());
+    assert!(
+        !fixture
+            .tmpdir
+            .join("scope-fallback-provenance.json")
+            .is_file()
+    );
 }
 
 #[test]
