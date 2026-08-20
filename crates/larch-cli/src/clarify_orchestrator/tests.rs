@@ -405,9 +405,95 @@ mod clarify_orchestrator_tests {
     fn parse_args_requires_phase_and_positive_issue() {
         assert!(parse_design_clarify_args(&osargs(&["--issue", "7"])).is_err());
         assert!(parse_design_clarify_args(&osargs(&["--phase", "fetch", "--issue", "0"])).is_err());
-        let parsed =
-            parse_design_clarify_args(&osargs(&["--phase", "fetch", "--issue", "7"])).unwrap();
-        assert_eq!(parsed.phase, "fetch");
-        assert_eq!(parsed.issue, "7");
+        assert!(parse_design_clarify_args(&osargs(&["--phase", "bogus", "--issue", "7"])).is_err());
+        assert!(parse_design_clarify_args(&osargs(&["--unknown", "x"])).is_err());
+        assert!(parse_design_clarify_args(&osargs(&["--issue"])).is_err());
+        assert!(parse_design_clarify_args(&osargs(&["--help"])).is_err());
+        assert!(
+            parse_design_clarify_args(&osargs(&[
+                "--phase",
+                "publish",
+                "--issue",
+                "7",
+                "--claude-pid",
+                "x",
+            ]))
+            .is_err()
+        );
+        let parsed = parse_design_clarify_args(&osargs(&[
+            "--phase",
+            "publish",
+            "--issue",
+            "7",
+            "--claude-pid",
+            "42",
+        ]))
+        .unwrap();
+        assert_eq!(parsed.phase, "publish");
+        assert_eq!(parsed.claude_pid, "42");
+    }
+
+    #[test]
+    fn pure_helpers_cover_their_branches() {
+        assert_eq!(kv_last("A=1\r\nB=2\nB=3\n", "B"), "3");
+        assert_eq!(kv_last("A=1\n", "MISSING"), "");
+        assert_eq!(osargs(&["a", "b"]).len(), 2);
+        let dir = TempDir::new().unwrap();
+        let present = dir.path().join("p.md");
+        fs::write(&present, "body").unwrap();
+        assert!(publish_artifact_ok(present.to_str().unwrap()));
+        assert!(!publish_artifact_ok(
+            dir.path().join("absent").to_str().unwrap()
+        ));
+        let empty = dir.path().join("empty.md");
+        fs::write(&empty, "").unwrap();
+        assert!(!publish_artifact_ok(empty.to_str().unwrap()));
+        assert_eq!(read_lossy(present.to_str().unwrap()), "body");
+        assert_eq!(read_lossy(dir.path().join("absent").to_str().unwrap()), "");
+    }
+
+    #[test]
+    fn resolve_publish_difficulty_reads_plan_and_sidecar() {
+        let dir = TempDir::new().unwrap();
+        // No sidecar, difficulty from the plan trailer.
+        let (rating, invalid) =
+            resolve_publish_difficulty_rating(dir.path(), "## Plan\n\ndifficulty: HARD\n");
+        assert!(!invalid);
+        assert_eq!(rating.unwrap().adjusted_tier, "HARD");
+        // No sidecar and no difficulty metadata -> neither a rating nor invalid.
+        let (none, invalid) = resolve_publish_difficulty_rating(dir.path(), "just prose\n");
+        assert!(none.is_none() && !invalid);
+        // A present-but-unparseable raw sidecar is the invalid case.
+        fs::write(
+            dir.path().join("design-difficulty-rating.raw.json"),
+            "{ not json",
+        )
+        .unwrap();
+        let (none, invalid) = resolve_publish_difficulty_rating(dir.path(), "## Plan\n");
+        assert!(none.is_none() && invalid);
+    }
+
+    #[test]
+    fn clarify_publish_status_precedence() {
+        let dir = TempDir::new().unwrap();
+        assert_eq!(clarify_publish_status(dir.path(), "true"), "ok");
+        assert_eq!(
+            clarify_publish_status(dir.path(), "false"),
+            "log-publish-failed"
+        );
+        fs::write(dir.path().join("summary-upsert.x.failure.log"), "x").unwrap();
+        assert_eq!(
+            clarify_publish_status(dir.path(), "false"),
+            "summary-upsert-failed"
+        );
+        fs::write(
+            dir.path().join("design-log-publish.stdout"),
+            "RECOVERY_BRANCH=r\n",
+        )
+        .unwrap();
+        assert_eq!(
+            clarify_publish_status(dir.path(), "false"),
+            "log-publish-recovery"
+        );
     }
 }
