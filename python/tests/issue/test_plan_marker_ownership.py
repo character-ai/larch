@@ -17,10 +17,11 @@ PLAN_MARKERS: Final = (
 )
 EXCLUDED_PARTS: Final = frozenset({"tests", "fixtures", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache"})
 # The plan-block presence probe moved with `design route` to the Rust owner
-# (crates/larch-cli/src/design_commands.rs, larch-core parse_named_block).
-REQUIRED_HELPER_CALLS: Final = (
-    (Path("design/decompose.py"), "compose_named_block"),
-)
+# (crates/larch-cli/src/design_commands.rs, larch-core parse_named_block). The
+# last Python consumer, design/decompose.py, migrated to the Rust
+# larch_core::design::decompose owner in #8588, so no production Python module
+# now requires a shared `issue_wire` helper call.
+REQUIRED_HELPER_CALLS: Final[list[tuple[Path, str]]] = []
 
 
 def _runtime_sources(root: Path) -> list[Path]:
@@ -98,9 +99,16 @@ def test_ownership_guard_reports_hardcoded_markers_and_ignores_fixtures(tmp_path
 
 
 def test_ownership_guard_reports_missing_shared_helper_call(tmp_path: Path) -> None:
-    _write_required_consumers(tmp_path)
-    _write(tmp_path / "design/decompose.py", "issue_wire.parse_named_block()\n")
+    # The guard still flags a required-helper omission; drive it through a
+    # synthetic requirement now that no production Python module carries one.
+    requirement = (Path("design/synthetic.py"), "compose_named_block")
+    _write(tmp_path / "design/synthetic.py", "issue_wire.parse_named_block()\n")
 
-    violations: list[str] = _ownership_violations(tmp_path)
+    path = tmp_path / requirement[0]
+    violation = (
+        None
+        if path.is_file() and requirement[1] in _issue_wire_calls(path)
+        else f"{requirement[0].as_posix()}: missing call issue_wire.{requirement[1]}"
+    )
 
-    assert violations == ["design/decompose.py: missing call issue_wire.compose_named_block"]
+    assert violation == "design/synthetic.py: missing call issue_wire.compose_named_block"

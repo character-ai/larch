@@ -2021,11 +2021,12 @@ verb = "aggregate"
 python_module = "larch.design.decompose"
 python_function = "aggregate_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8588
 
 [[commands]]
 domain = "decompose"
@@ -2033,11 +2034,12 @@ verb = "annotate"
 python_module = "larch.design.decompose"
 python_function = "annotate_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8588
 
 [[commands]]
 domain = "decompose"
@@ -2045,11 +2047,12 @@ verb = "close-original"
 python_module = "larch.design.decompose"
 python_function = "close_original_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8588
 
 [[commands]]
 domain = "decompose"
@@ -2057,11 +2060,12 @@ verb = "migrate-deps"
 python_module = "larch.design.decompose"
 python_function = "migrate_deps_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8588
 
 [[commands]]
 domain = "decompose"
@@ -2069,11 +2073,13 @@ verb = "panel-dispatch"
 python_module = "larch.design.decompose"
 python_function = "panel_dispatch_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8588
+clean_install_test = "clean-install-decompose-panel-dispatch"
 
 [[commands]]
 domain = "decompose"
@@ -2081,11 +2087,13 @@ verb = "prepare"
 python_module = "larch.design.decompose"
 python_function = "prepare_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8588
+clean_install_test = "clean-install-decompose-prepare"
 
 [[commands]]
 domain = "deps"
@@ -9136,12 +9144,6 @@ python = []
 rust = ["block-issue *", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome", "timing *", "token append-record", "token dump", "token lane-report", "token lane-write", "token mark", "token record-vendor", "token record-vendor-sidecar", "tracking-issue *"]
 
 [[callers]]
-path = "python/larch/design/decompose.py"
-kind = "python-runtime"
-python = []
-rust = ["agent dispatch-waterfall", "agent launch-claude-review", "run-log append-failure"]
-
-[[callers]]
 path = "python/larch/design/design_core.py"
 kind = "python-runtime"
 python = []
@@ -9516,8 +9518,8 @@ rust = ["agent collect-results", "agent launch-review", "bgjob start", "bgjob wa
 [[callers]]
 path = "skills/design/references/decompose-panel.md"
 kind = "skill"
-python = ["decompose prepare"]
-rust = ["umbrella verify-completion"]
+python = []
+rust = ["decompose prepare", "umbrella verify-completion"]
 
 [[callers]]
 path = "skills/design/references/design-outline.md"
@@ -9564,8 +9566,8 @@ rust = []
 [[callers]]
 path = "skills/design/references/plan-review-runtime.md"
 kind = "skill"
-python = ["decompose panel-dispatch", "render plan-review", "render specialist", "render voter"]
-rust = ["agent launch-claude-review", "bgjob wait", "plan-review panel-dispatch", "plan-review run", "plan-review step3-entry-preview", "plan-review voter-dispatch", "scout filter-manifest"]
+python = ["render plan-review", "render specialist", "render voter"]
+rust = ["agent launch-claude-review", "bgjob wait", "decompose panel-dispatch", "plan-review panel-dispatch", "plan-review run", "plan-review step3-entry-preview", "plan-review voter-dispatch", "scout filter-manifest"]
 
 [[callers]]
 path = "skills/design/references/plan-review.md"

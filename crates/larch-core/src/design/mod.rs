@@ -4,6 +4,7 @@
 //! registration stays with later leaves.
 
 mod clarify;
+mod decompose;
 mod plan_grammar;
 mod plan_quality;
 mod plan_scout;
@@ -12,6 +13,15 @@ pub use clarify::{
     CLARIFY_LABEL_COLOR, CLARIFY_LABEL_DESCRIPTION, CLARIFY_LABEL_NAME, ClarifyEvent, ClarifyKind,
     ClarifyState, evaluate_comment_bodies, evaluate_events, events_from_comment_bodies,
     request_body_remainder,
+};
+pub use decompose::{
+    BuildOutcome, DECOMPOSE_ARCHETYPES, DependencyGraph, DependencyMigration, FiledPiece,
+    MIN_PARTITION_PIECES, PLAN_STUB_INNER, PROMPT_PREFIX_LINE_MAX, PartitionEdge, apply_migration,
+    build_partition, derive_acceptance, derive_firm_headings, intra_piece_postcondition,
+    is_ascii_digits, live_original_edges_match_migration, migration_postcondition,
+    neutralize_markdown_h3_line_starts, normalize_firm_heading, parse_dependency,
+    parse_filed_pieces, parse_intra_piece_edges, parse_issue_url, piece_field, piece_metadata,
+    prefixed_piece_title, replacement_edges, scope_tokens, split_firm_headings,
 };
 
 pub use plan_grammar::{

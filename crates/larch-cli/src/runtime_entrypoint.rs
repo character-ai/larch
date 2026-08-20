@@ -74,6 +74,22 @@ const VERIFIED_LARCH_CONTEXT: &[ChildEnvironment] = &[
     ChildEnvironment::XdgConfigHome,
 ];
 
+/// Reduce a composed process result to `(exit_code, stdout)`.
+///
+/// The nested-composition callers that run a verified larch verb or a Python
+/// verb and then branch on its exit code and captured stdout share this
+/// projection: a missing exit code and a start failure both read as `1`.
+#[must_use]
+pub fn code_and_stdout(result: Result<ProcessOutput, String>) -> (i32, String) {
+    match result {
+        Ok(output) => (
+            output.status().code().unwrap_or(1),
+            String::from_utf8_lossy(output.stdout()).into_owned(),
+        ),
+        Err(_error) => (1, String::new()),
+    }
+}
+
 /// Resolve and run the verified larch entrypoint with the supplied command.
 ///
 /// # Errors

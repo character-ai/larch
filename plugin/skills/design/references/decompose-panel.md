@@ -32,7 +32,7 @@ Declare only necessary dependencies. Independent pieces stay independent.
 Run:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose prepare \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" decompose prepare \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --partition-file "$DESIGN_TMPDIR/decompose/inline-partition.md" \
   ${ISSUE_NUMBER:+--issue-number "$ISSUE_NUMBER"}
