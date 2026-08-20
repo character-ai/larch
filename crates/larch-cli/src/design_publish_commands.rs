@@ -604,7 +604,7 @@ const fn state_token(state: GitHubIssueState) -> &'static str {
 }
 
 /// Bind a plan named-block write to the active run id, matching
-/// `issue_wire_commands::named_block_lease` (RUN_ID / LARCH_RUN_ID / SESSION_ID).
+/// `issue_wire_commands::named_block_lease` (`RUN_ID` / `LARCH_RUN_ID` / `SESSION_ID`).
 fn plan_named_block_lease() -> Option<IssueMutationLease> {
     for key in ["RUN_ID", "LARCH_RUN_ID", "SESSION_ID"] {
         if let Ok(value) = std::env::var(key) {

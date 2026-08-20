@@ -1077,6 +1077,7 @@ def test_capture_contract_stream_restores_fd3_for_quiet_init(tmp_path: Path, mon
 
 
 
+
 def _capture_core_contract(
     core_fn: Callable[..., tuple[int, list[str]]],
     argv: list[str],
