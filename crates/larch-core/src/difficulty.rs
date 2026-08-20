@@ -29,6 +29,10 @@ pub const AUDIT_DENOMINATOR: i64 = 30;
 pub const TIER_CEILING: i64 = 2;
 /// Codex model role shared by every tier.
 pub const CODEX_MODEL_ROLE: &str = "review";
+/// Basename of the raw design difficulty-rating sidecar.
+pub const DESIGN_RAW_RATING_BASENAME: &str = "design-difficulty-rating.raw.json";
+/// Basename of the merged difficulty record run logs consume.
+pub const DIFFICULTY_RECORD_BASENAME: &str = "difficulty-rating.json";
 /// Plugin-relative floor table.
 pub const FLOOR_MANIFEST_RELPATH: &str = "docs/difficulty-floor-globs.tsv";
 /// Fallback rationale used when synthesizing a panel record.
@@ -1214,6 +1218,54 @@ fn trailing_metadata_span(lines: &[String]) -> Option<(usize, usize)> {
     Some((end.saturating_sub(trailers.len()), end))
 }
 
+/// Split `text` into lines while retaining each line's terminator.
+fn split_keepends(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut rest = text;
+    while let Some(index) = rest.find('\n') {
+        out.push(rest[..=index].to_owned());
+        rest = &rest[index + 1..];
+    }
+    if !rest.is_empty() {
+        out.push(rest.to_owned());
+    }
+    out
+}
+
+/// Rewrite (or insert) the plan's trailing `difficulty:` line to `tier`.
+///
+/// A verbatim port of the Python `rewrite_plan_difficulty`: the difficulty line
+/// inside the final contiguous trailer block is replaced in place, or inserted
+/// above any `diff_lines:` trailer when absent. Returns `text` unchanged when
+/// `tier` is not canonical or the plan carries no trailer block.
+#[must_use]
+pub fn rewrite_plan_difficulty(text: &str, tier: &str) -> String {
+    if !tier_valid(tier) {
+        return text.to_owned();
+    }
+    let plain: Vec<String> = text.lines().map(str::to_owned).collect();
+    let Some((start, end)) = trailing_metadata_span(&plain) else {
+        return text.to_owned();
+    };
+    let mut lines = split_keepends(text);
+    if end > lines.len() {
+        return text.to_owned();
+    }
+    for line in lines.iter_mut().take(end).skip(start) {
+        if line.starts_with("difficulty:") {
+            let newline = if line.ends_with('\n') { "\n" } else { "" };
+            *line = format!("difficulty: {tier}{newline}");
+            return lines.concat();
+        }
+    }
+    let mut insert_at = end;
+    while insert_at > start && lines[insert_at - 1].starts_with("diff_lines:") {
+        insert_at -= 1;
+    }
+    lines.insert(insert_at, format!("difficulty: {tier}\n"));
+    lines.concat()
+}
+
 fn parse_final_trailers(text: &str) -> Vec<(String, String, String)> {
     let mut lines: Vec<&str> = text.lines().collect();
     while lines.last().is_some_and(|line| line.trim().is_empty()) {
@@ -1375,11 +1427,48 @@ mod tests {
         load_record_data, match_floors, maybe_audit_upgrade, merge_existing_record_fields,
         next_tier, normalize_tier, panel_shape_for_tier, plan_difficulty, rating_from_tier,
         read_changed_paths, read_rating_file, refresh_existing_record, resolve_panel_tier,
-        sanitize_rationale, threshold_panel_for_tier, tier_ceiling, tier_max, tier_rank,
-        tier_valid, trailing_plan_difficulty, trailing_plan_metadata_lines, validate_rating_object,
-        write_record_map,
+        rewrite_plan_difficulty, sanitize_rationale, threshold_panel_for_tier, tier_ceiling,
+        tier_max, tier_rank, tier_valid, trailing_plan_difficulty, trailing_plan_metadata_lines,
+        validate_rating_object, write_record_map,
     };
     use serde_json::{Map, json};
+
+    #[test]
+    fn rewrite_plan_difficulty_replaces_in_place() {
+        let plan = "## Plan\n\nDo it.\n\ndifficulty: MODERATE\n";
+        assert_eq!(
+            rewrite_plan_difficulty(plan, HARD),
+            "## Plan\n\nDo it.\n\ndifficulty: HARD\n",
+        );
+    }
+
+    #[test]
+    fn rewrite_plan_difficulty_inserts_above_diff_lines() {
+        let plan = "## Plan\n\nDo it.\n\ndiff_lines: 12\n";
+        assert_eq!(
+            rewrite_plan_difficulty(plan, MODERATE),
+            "## Plan\n\nDo it.\n\ndifficulty: MODERATE\ndiff_lines: 12\n",
+        );
+    }
+
+    #[test]
+    fn rewrite_plan_difficulty_no_trailing_newline_is_stable() {
+        let plan = "## Plan\n\nDo it.\n\ndifficulty: MODERATE";
+        assert_eq!(
+            rewrite_plan_difficulty(plan, HARD),
+            "## Plan\n\nDo it.\n\ndifficulty: HARD",
+        );
+    }
+
+    #[test]
+    fn rewrite_plan_difficulty_ignores_invalid_tier_and_missing_trailers() {
+        let plan = "## Plan\n\ndifficulty: MODERATE\n";
+        assert_eq!(rewrite_plan_difficulty(plan, "BOGUS"), plan);
+        assert_eq!(
+            rewrite_plan_difficulty("just prose\n", HARD),
+            "just prose\n"
+        );
+    }
     use std::path::Path;
     use tempfile::TempDir;
 

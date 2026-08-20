@@ -3,14 +3,14 @@
 This document is the **LIVE** normative wire format for exchanging a plan
 through a GitHub **issue body** and completing a **clarification round-trip** in
 issue **comments** before `/implement` proceeds. Helpers under
-`scripts/larch.sh plan-block ...`, `scripts/larch.sh named-block write`, `python/clarify.py`, and the
-`python/cli.py clarify` state, comment-post, and label verbs are what
+`scripts/larch.sh plan-block ...`, `scripts/larch.sh named-block write`, `crates/larch-core/src/design/clarify.rs`, and the
+`scripts/larch.sh clarify` state, comment-post, and label verbs are what
 `/design` and `/implement` use:
 `/implement` **Preflight** (`skills/implement/SKILL.md` — issue-anchored
 plan) reads the plan block, runs the executable-plan contract (M1/M2), runs the
 in-prompt plan-adequacy audit on non-force runs, and on
 refuse posts a clarify request and label via
-`python/cli.py clarify comment-post` / `python/cli.py clarify label`
+`scripts/larch.sh clarify comment-post` / `scripts/larch.sh clarify label`
 (exit **3**).
 `/implement --force` skips the in-prompt plan-adequacy audit and may bypass the
 `[DESIGNED]` title prefix, but still requires a valid `larch:plan` block;
@@ -274,9 +274,9 @@ Recovery branches must use the `larch-log-design-` prefix.
 ## Clarification Comment Markers
 
 **Live workflow:** `/implement` Preflight on `AUDIT=refuse` posts a
-`larch:clarify-request` via `python/cli.py clarify comment-post` (after
-`python/cli.py clarify state` computes the next id) and adds
-`needs-design-clarification` via `python/cli.py clarify label`. `/design`
+`larch:clarify-request` via `scripts/larch.sh clarify comment-post` (after
+`scripts/larch.sh clarify state` computes the next id) and adds
+`needs-design-clarification` via `scripts/larch.sh clarify label`. `/design`
 posts the matching
 `larch:clarify-response` after updating the plan body and removes the label.
 
@@ -334,10 +334,10 @@ Rules:
 ## Label State Machine
 
 The `needs-design-clarification` label tracks whether the plan is currently
-awaiting a clarification response. **`python/cli.py clarify label`** is the
+awaiting a clarification response. **`scripts/larch.sh clarify label`** is the
 idempotent add/remove helper; `/implement` Preflight refuse calls `--action add`
 after posting the request; `/design` removes the label after posting the
-response (see `python/clarify.py`).
+response (see `crates/larch-core/src/design/clarify.rs`).
 
 | Event | Label action |
 |---|---|
@@ -345,7 +345,7 @@ response (see `python/clarify.py`).
 | `/design` posts the matching `larch:clarify-response` | Remove `needs-design-clarification` |
 
 The `STATE` values below describe the **semantic** situation implied by markers
-and labels. **`python/cli.py clarify state`** derives `STATE` from the comment
+and labels. **`scripts/larch.sh clarify state`** derives `STATE` from the comment
 stream; `/implement` Preflight calls it before posting a new request (ambiguous
 state → exit **3** without mutating the issue).
 
@@ -434,7 +434,7 @@ written as `BYPASS kind=<token> issue=<number>`.
 
 ## `NEXT_ID` and clarify posting
 
-`/implement` Preflight refuse reads `python/cli.py clarify state` stdout for
+`/implement` Preflight refuse reads `scripts/larch.sh clarify state` stdout for
 `STATE=` and `LAST_REQUEST_ID=`. **`NEXT_ID`**: if `STATE=clean` or
 `LAST_REQUEST_ID` is empty,
 use `1`; else `LAST_REQUEST_ID + 1`. Do not reuse or skip ids — pairing is by
@@ -460,7 +460,7 @@ operator-visible “finish the existing clarify thread first” outcome instead
 | `clean` | No open clarification request; plan is current |
 | `awaiting-response` | A `larch:clarify-request` exists with no matching response yet |
 | `response-pending` | A matched response exists for the latest request **and** every lower-numbered request id that appears in the thread has a response; `/implement` has not yet re-checked |
-| `ambiguous` | Marker pairing, ordering, or id monotonicity is broken — see the **Rules** list above and `python/clarify.py` |
+| `ambiguous` | Marker pairing, ordering, or id monotonicity is broken — see the **Rules** list above and `crates/larch-core/src/design/clarify.rs` |
 
 ## Lifecycle Examples
 
@@ -525,7 +525,7 @@ Those concerns live in `skills/design/SKILL.md`, `skills/implement/references/pr
 ## See also
 
 - **`skills/implement/references/preflight-plan-audit.md`** — fixed Preflight plan adequacy rubric.
-- **`skills/implement/SKILL.md`** — **Preflight orchestration** (read block via `scripts/larch.sh plan-block read`, `NEXT_ID`, `python/cli.py clarify comment-post` + `python/cli.py clarify label`, exit codes **2** vs **3**).
+- **`skills/implement/SKILL.md`** — **Preflight orchestration** (read block via `scripts/larch.sh plan-block read`, `NEXT_ID`, `scripts/larch.sh clarify comment-post` + `scripts/larch.sh clarify label`, exit codes **2** vs **3**).
 - **`skills/design/SKILL.md`** — `/design`, `scripts/larch.sh named-block write --marker plan`, and clarify **response** posting after plan updates.
 
 ## /implement firm-heading coverage

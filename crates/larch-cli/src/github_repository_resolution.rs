@@ -234,10 +234,18 @@ fn emit_resolve_repo(result: ResolveRepoResult) -> u8 {
 /// when neither answers, so callers can report their own refusal.
 #[must_use]
 pub fn ambient_repo() -> Option<String> {
+    ambient_repo_resolution().repo().map(str::to_owned)
+}
+
+/// Ambient repository discovery, keeping the valid/invalid/absent distinction.
+///
+/// `ambient_repo` collapses invalid and absent into `None`; callers that route
+/// those two outcomes to different exit codes (the clarify verbs) read the full
+/// [`RepoResolution`] here.
+#[must_use]
+pub fn ambient_repo_resolution() -> RepoResolution {
     let repository = open_cwd_repository();
     resolve_repo_detailed(repository.as_ref(), query_github_repository)
-        .repo()
-        .map(str::to_owned)
 }
 
 /// Resolve one configured remote of the current checkout to its `OWNER/REPO`.

@@ -4,16 +4,17 @@ Offline harness for `design-clarify.sh`.
 
 ## Coverage
 
-- Valid wrapper argv delegates to `python/cli.py design clarify`.
+- Valid wrapper argv delegates to `scripts/larch.sh design clarify`.
 - Delegation rebuilds `_delegate_args` with `--session-env-path`,
   `--claude-pid`, `--phase`, and `--issue` instead of forwarding consumed
   `"$@"`.
 - Invalid `--phase`, `--issue`, and `--claude-pid` are rejected before
   delegation with exit 2.
 
-Python phase behavior, result env trust boundaries, fetch failure tokens,
+Phase behavior, result env trust boundaries, fetch failure tokens,
 pause-save termination, publish redaction, and publish failure routing are
-covered by `python/test_clarify.py`.
+covered by the Rust owner's in-crate tests in
+`crates/larch-cli/src/clarify_orchestrator/tests.rs`.
 
 ## Invocation
 
