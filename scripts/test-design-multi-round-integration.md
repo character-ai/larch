@@ -1,6 +1,6 @@
 # test-design-multi-round-integration.sh
 
-Offline cross-script harness for one-pass Rust `plan-review run` output, automatic multi-round Step 3 re-entry, and `design-log-publish.sh` fail-closed rules.
+Offline cross-script harness for one-pass Rust `plan-review run` output, automatic multi-round Step 3 re-entry, and Rust `design log-publish` fail-closed rules.
 
 ## Invocation
 
@@ -21,12 +21,13 @@ The first legacy shell-override branch exits 0 with a skip message when the reti
 - Round 2 fails if the materialized embedded loop script leaves stale `.step3-review-result.env` in place before dispatch
 - Raw reviewer outputs remain excluded from `round-N/` snapshots
 - `findings-classification.tsv` survives terminal round snapshots
-- `design-log-publish.sh` publishes the same sorted `plan-review/` file list produced by the loop snapshot
-- `design-log-publish.sh` rejects `unknown.bin` under `round-1/` (`PUBLISH_OK=false`)
+- `scripts/larch.sh design log-publish` publishes the same sorted `plan-review/` file list produced by the loop snapshot
+- `scripts/larch.sh design log-publish` rejects `unknown.bin` under `round-1/` (`PUBLISH_OK=false`)
 - Symlink under `plan-review/` rejected fail-closed
 
 ## Related harnesses
 
-- `python/test_design_log_publish_flow.py`
+- `crates/larch-core/src/design/log_publish.rs` (`publish_excluded`)
+- `crates/larch-cli/src/design_log_publish_commands.rs`
 - `crates/larch-cli/tests/plan_review_loop_commands.rs`
 - `crates/larch-cli/src/plan_review_commands.rs`

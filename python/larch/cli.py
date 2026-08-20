@@ -156,7 +156,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("design", "step6-cleanup"): ("larch.design.design_step6", "step6_cleanup_main", True),
     ("design", "postplan-emit"): ("larch.design.design_postplan", "postplan_emit_main", True),
     ("design", "publish"): ("larch.design.design_publish", "publish_main", True),
-    ("design", "log-publish"): ("larch.design.design_log_publish_flow", "log_publish_main", True),
     ("design", "pause-save"): ("larch.design.design_pause", "pause_save_main", True),
     ("design", "pause-load"): ("larch.design.design_pause", "pause_load_main", True),
     ("design", "render-gate"): ("larch.design.design_gate_render", "render_gate_main", True),

@@ -35,7 +35,7 @@ HARNESS_MARK ?= sh -c 'timer=target/harness-mark/larch-harness-mark; LARCH_HARNE
 .PHONY: test-stall-recovery-report test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3 test-step-18b-final-report
 .PHONY: test-resolve-upstream-larch-repo test-file-failure-report-cross-repo
 .PHONY: test-design-pause-resume
-.PHONY: test-design-step1d5 test-design-log-ship
+.PHONY: test-design-step1d5
 .PHONY: test-review-design-step3-loop
 .PHONY: test-read-result-env
 .PHONY: test-launch-codex-exec test-launch-drafters test-launch-ci-fixers test-implement-launchers
@@ -390,10 +390,9 @@ test-invoke-plan-validator:
 test-file-design-oos:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_oos.py
 
+# Rust-owned design log-publish (#8592); archive selection filter coverage.
 test-design-log-publish:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_log_publish_flow.py
-
-
+	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-core --lib design::log_publish::
 
 test-emit-plan:
 	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --test plan_review_commands emit_and_rejected_findings_bytes_are_frozen
@@ -1015,6 +1014,3 @@ test-design-step-validator-autofix:
 
 test-design-step1d5:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'step1d5'
-
-test-design-log-ship:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_log_ship.py
