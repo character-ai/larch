@@ -401,7 +401,7 @@ pub use offline_retry::{
 };
 pub use ordered_json::OrderedJson;
 pub use outcome::{ExitCode, WorkflowOutcome};
-pub use plan_scope::{SCOPE_PATH_FALLBACK, extract_scope_paths};
+pub use plan_scope::{SCOPE_PATH_FALLBACK, extract_firm_scope_paths, extract_scope_paths};
 pub use process::{
     ChildEnvironment, ExternalProcessRunner, ExternalProgram, GitCliOperation, GitHubCliOperation,
     HostUtilityProgram, LarchProgram, ProcessCancellation, ProcessError, ProcessErrorKind,

@@ -29,6 +29,7 @@ from larch.implement import (
     dispatch_ship,
     dispatch_step2,
     dispatch_recovery,
+    scope_disposition,
     self_edit_log,
     ship_state,
 )
@@ -6394,21 +6395,11 @@ def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
         )
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
-    real_read_text = Path.read_text
-
-    def fake_read_text(self: Path, encoding: str | None = None, errors: str | None = None) -> str:
-        if self == plan_path:
-            raise OSError("synthetic plan read failure")
-        return real_read_text(self, encoding=encoding, errors=errors)
-
-    # Plan coverage now reads through the trusted I/O primitive, so the failure
-    # must surface there in addition to the legacy Path.read_text guard.
-    real_read_trusted_text = larch_io.read_trusted_text
-
-    def fake_read_trusted_text(path, *, root, **kwargs):  # type: ignore[no-untyped-def]
-        if Path(path) == plan_path:
-            raise OSError("synthetic plan read failure")
-        return real_read_trusted_text(path, root=root, **kwargs)
+    # Coverage computation belongs to the Rust `implement scope-disposition`
+    # owner, so the unreadable-plan refusal arrives as its ShipError rather than
+    # an in-process reader failure.
+    def refuse_compute(**_kwargs: object) -> scope_disposition.PlanCoverage:
+        raise dispatch_ship.ShipError("synthetic plan read failure")
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
     monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
@@ -6416,8 +6407,7 @@ def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
     monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
     monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
-    monkeypatch.setattr(Path, "read_text", fake_read_text)
-    monkeypatch.setattr(larch_io, "read_trusted_text", fake_read_trusted_text)
+    monkeypatch.setattr(scope_disposition, "compute_and_write_coverage", refuse_compute)
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(plan_path),

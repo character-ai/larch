@@ -75,6 +75,7 @@ mod implement_dispatch_commands;
 mod implement_launcher_commands;
 mod implement_preflight_commands;
 mod implement_review_commands;
+mod implement_scope_disposition_commands;
 mod implement_ship_commands;
 mod implement_terminal_commands;
 mod issue_commands;
@@ -1003,6 +1004,9 @@ enum ImplementCommand {
     /// Launch or rejoin the per-site checks bgjob composite.
     #[command(name = "run-step-checks", disable_help_flag = true)]
     RunStepChecks(RawCompatibilityArguments),
+    /// Compute, record, or validate the plan-coverage scope disposition.
+    #[command(name = "scope-disposition", disable_help_flag = true)]
+    ScopeDisposition(RawCompatibilityArguments),
     /// Validate Step 0 flags, rehydrate a resume, and adopt the run lifecycle.
     #[command(name = "step-0-bootstrap", disable_help_flag = true)]
     Step0Bootstrap(RawCompatibilityArguments),
@@ -2473,6 +2477,9 @@ fn run(
             }
             ImplementCommand::RunStepChecks(arguments) => {
                 implement_dispatch_commands::run_step_checks(&arguments.arguments)
+            }
+            ImplementCommand::ScopeDisposition(arguments) => {
+                implement_scope_disposition_commands::scope_disposition(&arguments.arguments)
             }
             ImplementCommand::Step0Bootstrap(arguments) => {
                 implement_commands::step0_bootstrap(&arguments.arguments)

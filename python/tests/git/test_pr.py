@@ -17,7 +17,7 @@ from larch.git import pr as pr_module
 from larch.errors import NeedsUserInput, ShipError
 from larch.core.proc import CommandResult, Runner
 
-from test_support import RecordingRunner, make_run_context, write_required_plan_coverage
+from test_support import RecordingRunner, force_scope_disposition_refusal, make_run_context
 
 if TYPE_CHECKING:
     from larch.core.run_context import RunContext
@@ -738,18 +738,6 @@ def test_create_branch_main_no_kvs_on_non_success(
     assert "ACTION" not in out
 
 
-def _write_required_coverage(tmp_path: Path) -> None:
-    write_required_plan_coverage(tmp_path, fingerprint="fp-required")
-
-
-def _write_scope_required_plan(tmp_path: Path) -> None:
-    lines = ["## Files to modify/create"]
-    for index in range(85):
-        lines.append(f"### UPDATED: pkg/file_{index}.py")
-    _ = (tmp_path / "plan.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    _ = (tmp_path / "step2-baseline.txt").write_text("BASE\n", encoding="utf-8")
-
-
 def _mutating_calls(runner: RecordingRunner) -> list[list[str]]:
     return [
         call
@@ -764,7 +752,7 @@ def test_create_main_scope_disposition_refusal_needs_user_without_mutation(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    _write_scope_required_plan(tmp_path)
+    force_scope_disposition_refusal(monkeypatch)
     body = tmp_path / "body.md"
     _ = body.write_text("body", encoding="utf-8")
     runner = RecordingRunner()
@@ -786,8 +774,9 @@ def test_create_main_scope_disposition_refusal_needs_user_without_mutation(
 
 def test_ensure_pr_scope_disposition_refuses_before_push(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _write_scope_required_plan(tmp_path)
+    force_scope_disposition_refusal(monkeypatch)
     runner = RecordingRunner()
     ctx = _ctx(tmpdir=str(tmp_path))
 
@@ -801,9 +790,7 @@ def test_create_pr_parity_manifest_only_refuses_before_push(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ = (tmp_path / "manifest.json").write_text(
-        '{"todos_left":["finish"]}\n', encoding="utf-8"
-    )
+    force_scope_disposition_refusal(monkeypatch)
     monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
     runner = RecordingRunner(responses=[_HEAD_FEAT, _PORCELAIN_CLEAN], strict=True)
 
@@ -823,7 +810,7 @@ def test_push_open_pr_branch_refuses_before_push(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _write_required_coverage(tmp_path)
+    force_scope_disposition_refusal(monkeypatch)
     monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
     runner = RecordingRunner(responses=[_PORCELAIN_CLEAN], strict=True)
 
@@ -838,7 +825,7 @@ def test_body_update_main_scope_disposition_refusal_no_edit(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    _write_scope_required_plan(tmp_path)
+    force_scope_disposition_refusal(monkeypatch)
     body = tmp_path / "body.md"
     _ = body.write_text("body", encoding="utf-8")
     runner = RecordingRunner()

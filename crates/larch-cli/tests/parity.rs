@@ -901,6 +901,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-implement-preflight", "implement", "preflight"),
     CleanInstallCase::new(
+        "clean-install-implement-scope-disposition",
+        "implement",
+        "scope-disposition",
+    ),
+    CleanInstallCase::new(
         "clean-install-implement-step-0-bootstrap",
         "implement",
         "step-0-bootstrap",

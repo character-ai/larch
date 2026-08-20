@@ -45,7 +45,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("implement", "run-dispatch"): ("larch.implement.implement_dispatch", "run_dispatch_main", False),
     ("implement", "commit"): ("larch.implement.implement_dispatch", "commit_main", False),
     ("implement", "commit-route"): ("larch.implement.implement_dispatch", "commit_route_main", True),
-    ("implement", "scope-disposition"): ("larch.implement.scope_disposition", "scope_disposition_main", True),
     ("implement", "checks-commit-route"): ("larch.implement.implement_dispatch", "checks_commit_route_main", True),
     ("implement", "kill-active-leg"): ("larch.implement.implement_dispatch", "kill_active_leg_main", False),
     ("implement", "step-2-post-dispatch"): ("larch.implement.implement_dispatch", "step2_post_dispatch_main", False),

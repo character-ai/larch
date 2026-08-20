@@ -1155,35 +1155,15 @@ fn parse_assessments(text: &str) -> BTreeMap<String, String> {
     parsed
 }
 
-/// Read the plan-coverage line from its Python owner.
+/// Read the plan-coverage line from its Rust scope-disposition owner.
 ///
-/// A non-zero exit is a genuine coverage-integrity failure and fails the report;
-/// the expected post-merge stale-fingerprint mismatch degrades to an empty line
-/// inside the owner itself.
+/// The owner runs in this process after #8612, so a returned error is a genuine
+/// coverage-integrity failure and fails the report; the expected post-merge
+/// stale-fingerprint mismatch degrades to an empty line inside the owner itself.
 fn plan_coverage_line(tmpdir: &Path) -> Result<String, String> {
-    let arguments: Vec<OsString> = vec![
-        "implement".into(),
-        "scope-disposition".into(),
-        "summary-line".into(),
-        "--tmpdir".into(),
-        OsString::from(tmpdir),
-    ];
-    match delegate(tmpdir, arguments) {
-        // A launch failure is not a coverage-integrity failure; the terminal
-        // report degrades to no coverage line rather than refusing to publish.
-        Err(_unavailable) => Ok(String::new()),
-        Ok((0, stdout)) => Ok(kv_value(&stdout, "PLAN_COVERAGE_LINE")),
-        Ok((_code, stdout)) => {
-            // Only the explicit envelope key marks a coverage-integrity
-            // failure. Any other non-zero exit is an unreachable helper, which
-            // degrades the section instead of refusing to publish the report.
-            let error = kv_value(&stdout, "PLAN_COVERAGE_ERROR");
-            if error.is_empty() {
-                Ok(String::new())
-            } else {
-                Err(format!("plan coverage summary failed: {error}"))
-            }
-        }
+    match crate::implement_scope_disposition_commands::plan_coverage_report_line(tmpdir, None) {
+        Ok(line) => Ok(line),
+        Err(error) => Err(format!("plan coverage summary failed: {error}")),
     }
 }
 

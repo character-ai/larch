@@ -25,6 +25,27 @@ pub const SCOPE_PATH_FALLBACK: &str = "skills/design/SKILL.md";
 /// result is never empty: it falls back to [`SCOPE_PATH_FALLBACK`].
 #[must_use]
 pub fn extract_scope_paths(plan: &str) -> Vec<String> {
+    let paths = collect_scope_paths(plan, true);
+    if paths.is_empty() {
+        vec![SCOPE_PATH_FALLBACK.to_owned()]
+    } else {
+        paths
+    }
+}
+
+/// Return only the firm scope paths a plan declares, with no fallback.
+///
+/// `### MAY_UPDATE:` names an optional path, so plan-coverage attribution — which
+/// judges whether declared work landed — excludes it and reports an empty result
+/// for a plan that declares no firm path rather than substituting
+/// [`SCOPE_PATH_FALLBACK`]. Ports Python `extract_scope_paths(use_fallback=False,
+/// include_optional=False)`.
+#[must_use]
+pub fn extract_firm_scope_paths(plan: &str) -> Vec<String> {
+    collect_scope_paths(plan, false)
+}
+
+fn collect_scope_paths(plan: &str, include_optional: bool) -> Vec<String> {
     let lines = visible_plan_lines(plan);
     let has_scope_section = lines
         .iter()
@@ -36,7 +57,10 @@ pub fn extract_scope_paths(plan: &str) -> Vec<String> {
             in_section = true;
             continue;
         }
-        if in_section && let Some(tail) = recognized_heading_tail(line) {
+        if in_section && let Some((kind, tail)) = recognized_heading(line) {
+            if kind == "MAY_UPDATE" && !include_optional {
+                continue;
+            }
             for candidate in heading_paths(tail) {
                 if !candidate.starts_with('+') && !paths.contains(&candidate) {
                     paths.push(candidate);
@@ -48,11 +72,7 @@ pub fn extract_scope_paths(plan: &str) -> Vec<String> {
             break;
         }
     }
-    if paths.is_empty() {
-        vec![SCOPE_PATH_FALLBACK.to_owned()]
-    } else {
-        paths
-    }
+    paths
 }
 
 fn visible_plan_lines(text: &str) -> Vec<&str> {
@@ -122,7 +142,7 @@ fn is_generic_level_two(line: &str) -> bool {
     rest.is_empty() || rest.starts_with([' ', '\t'])
 }
 
-fn recognized_heading_tail(line: &str) -> Option<&str> {
+fn recognized_heading(line: &str) -> Option<(&'static str, &str)> {
     let rest = line
         .strip_prefix("###")
         .or_else(|| line.strip_prefix("##"))?;
@@ -130,9 +150,13 @@ fn recognized_heading_tail(line: &str) -> Option<&str> {
     if leading.len() == rest.len() {
         return None;
     }
-    let after_kind = ["NEW", "UPDATED", "REWRITTEN", "MAY_UPDATE"]
-        .iter()
-        .find_map(|kind| leading.strip_prefix(kind))?;
+    let (kind, after_kind) = ["NEW", "UPDATED", "REWRITTEN", "MAY_UPDATE"]
+        .into_iter()
+        .find_map(|kind| leading.strip_prefix(kind).map(|tail| (kind, tail)))?;
+    recognized_heading_tail(after_kind).map(|tail| (kind, tail))
+}
+
+fn recognized_heading_tail(after_kind: &str) -> Option<&str> {
     if let Some(tail) = after_kind.strip_prefix(':') {
         let path = tail.trim_matches([' ', '\t']);
         return (!path.is_empty()).then_some(path);
@@ -188,7 +212,7 @@ fn backtick_paths(tail: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{SCOPE_PATH_FALLBACK, extract_scope_paths};
+    use super::{SCOPE_PATH_FALLBACK, extract_firm_scope_paths, extract_scope_paths};
 
     #[test]
     fn a_scope_section_bounds_collection_and_stops_at_the_next_section() {
@@ -232,5 +256,18 @@ mod tests {
             extract_scope_paths(plan),
             vec![SCOPE_PATH_FALLBACK.to_owned()]
         );
+    }
+
+    #[test]
+    fn firm_extraction_drops_optional_headings_and_never_falls_back() {
+        let plan = concat!(
+            "## Files to modify\n",
+            "### NEW: `a.rs`\n",
+            "### MAY_UPDATE: `optional.rs`\n",
+        );
+
+        assert_eq!(extract_firm_scope_paths(plan), vec!["a.rs".to_owned()]);
+        assert!(extract_firm_scope_paths("### MAY_UPDATE: `only.rs`\n").is_empty());
+        assert!(extract_firm_scope_paths("prose only\n").is_empty());
     }
 }
