@@ -32,6 +32,7 @@ crates/larch-cli/src/audit_umbrella_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/audit_runs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/analyze_bugs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/analyze_bugs_sweep.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/architectural_assessment_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/bootstrap_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/checks_identity_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/ci_selection.rs	gix-read	#7671	typed-read

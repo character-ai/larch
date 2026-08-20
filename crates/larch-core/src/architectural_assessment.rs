@@ -23,7 +23,8 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-    AssessmentKind, bgjob_daemon::redact_outbound, compose_execution_issue,
+    AssessmentKind, DuplicateInputPolicy, DuplicatePolicy, KvDocument, MalformedLinePolicy,
+    ParseOptions, bgjob_daemon::redact_outbound, compose_execution_issue,
     execution_issue_body_keys, execution_issue_chunks, execution_issue_sections,
     existing_execution_issue_keys, implement::write_bytes_atomic,
     logging_util::sanitize_diagnostic_line, redact_batch_payload, redaction::redact,
@@ -2067,7 +2068,11 @@ fn regular_file(path: &Path) -> bool {
         .is_ok_and(|meta| meta.is_file() && !meta.file_type().is_symlink())
 }
 
-fn read_regular(path: &Path, root: &Path) -> Result<String, String> {
+/// Read a non-symlink regular file confined under `root`.
+///
+/// # Errors
+/// Returns when `path` escapes `root`, is not a regular file, or cannot be read.
+pub fn read_regular(path: &Path, root: &Path) -> Result<String, String> {
     if !under(path, root) || !regular_file(path) {
         return Err(format!(
             "invalid evidence file: {}",
@@ -2081,24 +2086,17 @@ fn read_regular(path: &Path, root: &Path) -> Result<String, String> {
 
 fn read_env_strict(path: &Path, root: &Path) -> Result<BTreeMap<String, String>, String> {
     let text = read_regular(path, root)?;
+    let mut options = ParseOptions::legacy();
+    options.malformed_lines = MalformedLinePolicy::Reject;
+    options.duplicates = DuplicateInputPolicy::Reject;
+    let document = KvDocument::parse(&text, options)
+        .map_err(|_error| "malformed or duplicate materialization field".to_owned())?;
     let mut values = BTreeMap::new();
-    for line in text.lines() {
-        if line.is_empty() {
-            continue;
+    for row in document.rows() {
+        if row.key().is_empty() {
+            return Err("malformed or duplicate materialization field: <empty>".to_owned());
         }
-        let Some((key, value)) = line.split_once('=') else {
-            return Err(format!(
-                "malformed or duplicate materialization field: {}",
-                if line.is_empty() { "<empty>" } else { line }
-            ));
-        };
-        if key.is_empty() || values.contains_key(key) {
-            return Err(format!(
-                "malformed or duplicate materialization field: {}",
-                if key.is_empty() { "<empty>" } else { key }
-            ));
-        }
-        values.insert(key.to_owned(), value.to_owned());
+        values.insert(row.key().to_owned(), row.value().to_owned());
     }
     Ok(values)
 }
@@ -2110,13 +2108,10 @@ fn read_env_lenient(path: &Path) -> BTreeMap<String, String> {
     let Ok(text) = fs::read_to_string(path) else {
         return BTreeMap::new();
     };
-    let mut values = BTreeMap::new();
-    for line in text.lines() {
-        if let Some((key, value)) = line.split_once('=') {
-            values.insert(key.to_owned(), value.to_owned());
-        }
-    }
-    values
+    let Ok(document) = KvDocument::parse(&text, ParseOptions::legacy()) else {
+        return BTreeMap::new();
+    };
+    document.select(DuplicatePolicy::Last)
 }
 
 fn env_escape(value: &str) -> String {

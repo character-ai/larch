@@ -85,7 +85,7 @@ pub use architectural_assessment::{
     NOTE_STATE_UNAVAILABLE, REASON_DETERMINISTIC_CLEAN, REASON_UNAVAILABLE, ReauthorRequired,
     SubmitError, append_deviation_note, authored_outcome_valid, deterministic_out_of_scope,
     diff_fingerprint, durable_note_path, final_report_sections, materialize, normalize_kinds,
-    note_consumable, sanitize_detail, submit, validate_materialization,
+    note_consumable, read_regular, sanitize_detail, submit, validate_materialization,
     write_deterministic_clean_note,
 };
 pub use architectural_guidelines::{

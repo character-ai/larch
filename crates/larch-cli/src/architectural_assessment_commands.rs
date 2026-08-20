@@ -3,31 +3,35 @@
 //! Four verbs matching `larch.implement.architectural_assessment`:
 //! `materialize`, `submit`, `final-report-sections`, and `sanitize-detail`.
 //! Library logic lives in [`larch_core::architectural_assessment`]; this module
-//! owns argparse-compatible argv, live Git via `/usr/bin/git`, and KEY=value
-//! stdout contracts.
+//! owns argparse-compatible argv, live Git via the typed repository and
+//! `ExactDiff` ports, and KEY=value stdout contracts.
 
 #![allow(clippy::too_many_lines)]
 use std::{
     env,
     ffi::{OsStr, OsString},
-    fs,
     io::{self, Read as _, Write as _},
     path::{Path, PathBuf},
-    process::{Command, ExitCode, Stdio},
+    process::ExitCode,
 };
 
+use larch_adapters::{
+    ExactDiffRequest, GitPath, GitRef, GixRepository, is_regular_file, path_under,
+};
 use larch_core::{
-    AssessmentGit, AssessmentResult, EXIT_HEAD_DRIFT, MAX_SANITIZE_DETAIL_BYTES, SubmitError,
-    durable_note_path, final_report_sections, materialize, normalize_kinds, sanitize_detail,
-    sanitize_diagnostic_line, submit,
+    AssessmentGit, AssessmentResult, EXIT_HEAD_DRIFT, MAX_SANITIZE_DETAIL_BYTES, RepositoryRead,
+    Revision, SubmitError, durable_note_path, final_report_sections, materialize, normalize_kinds,
+    read_regular, sanitize_detail, sanitize_diagnostic_line, submit,
 };
 
-use crate::argparse_compat::{finish_parse, parse_with_flags, write_stdout};
+use crate::{
+    argparse_compat::{finish_parse, parse_with_flags, write_stdout},
+    git_command_runtime::GitCommandRuntime,
+};
 
 const EXIT_OK: u8 = 0;
 const EXIT_INTERNAL: u8 = 1;
 const EXIT_USAGE: u8 = 2;
-const GIT_BIN: &str = "/usr/bin/git";
 
 const MATERIALIZE_PROGRAM: &str = "cli.py architectural-assessment materialize";
 const MATERIALIZE_USAGE: &str = "usage: cli.py architectural-assessment materialize [-h] [--kind KIND] [--repo-root REPO_ROOT] [--implement-tmpdir IMPLEMENT_TMPDIR]";
@@ -40,9 +44,8 @@ const FINAL_USAGE: &str = "usage: cli.py architectural-assessment final-report-s
 
 /// Live Git adapter for assessment identity and diff materialization.
 ///
-/// Typed `GitCli` lacks peel syntax (`^{commit}`), merge-base, exclude
-/// pathspecs, and NUL name-only diffs, so this mirrors Python `_git_read` /
-/// `_materialize_implementation_diff_for_head` via `/usr/bin/git`.
+/// Peel (`^{commit}`), merge-base, exclude pathspecs, and rename-aware path
+/// listings are expressed through [`GixRepository`] and typed `exact_diff`.
 #[derive(Debug, Default)]
 pub struct LiveAssessmentGit;
 
@@ -71,25 +74,28 @@ impl AssessmentGit for LiveAssessmentGit {
     }
 }
 
+fn open_repository(repo_root: &Path) -> Result<GixRepository, String> {
+    GixRepository::open(repo_root).map_err(|error| sanitize_diagnostic_line(&error.to_string()))
+}
+
+fn resolve_revision(repository: &GixRepository, revision: &str) -> Result<String, String> {
+    repository
+        .resolve_revision(&Revision::new(revision.as_bytes()))
+        .map(|id| id.to_hex())
+        .map_err(|error| sanitize_diagnostic_line(&error.to_string()))
+}
+
 fn git_read(repo_root: &Path, argv: &[&str]) -> Result<String, String> {
-    let mut command = Command::new(GIT_BIN);
-    command
-        .args(argv)
-        .current_dir(repo_root)
-        .stdin(Stdio::null());
-    let output = command
-        .output()
-        .map_err(|error| sanitize_diagnostic_line(&error.to_string()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let detail = if stderr.trim().is_empty() {
-            "git validation failed"
-        } else {
-            stderr.trim()
-        };
-        return Err(sanitize_diagnostic_line(detail));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+    let revision = match argv {
+        ["rev-parse", revision] | ["rev-parse", "--verify", revision] => *revision,
+        _ => {
+            return Err(sanitize_diagnostic_line(&format!(
+                "unsupported assessment git_read argv: {argv:?}"
+            )));
+        }
+    };
+    let repository = open_repository(repo_root)?;
+    resolve_revision(&repository, revision)
 }
 
 fn implementation_diff_for_head(
@@ -98,43 +104,49 @@ fn implementation_diff_for_head(
     base_remote: &str,
     base_ref: &str,
 ) -> Result<String, String> {
+    let repository = open_repository(repo_root)?;
     let target = format!("{base_remote}/{base_ref}");
-    let merge_base = Command::new(GIT_BIN)
-        .args(["merge-base", head_sha, &target])
-        .current_dir(repo_root)
-        .stdin(Stdio::null())
-        .output()
+    let head = repository
+        .resolve_revision(&Revision::new(head_sha.as_bytes()))
         .map_err(|error| error.to_string())?;
-    let base_sha = String::from_utf8_lossy(&merge_base.stdout)
-        .trim()
-        .to_owned();
-    if !merge_base.status.success() || base_sha.is_empty() {
-        let stderr = String::from_utf8_lossy(&merge_base.stderr);
-        let stdout = String::from_utf8_lossy(&merge_base.stdout);
-        let fallback = format!("could not resolve merge base for {target}");
-        let message = [stderr.trim(), stdout.trim()]
-            .into_iter()
-            .find(|text| !text.is_empty())
-            .unwrap_or(fallback.as_str());
-        return Err(message.to_owned());
-    }
-    let range = format!("{base_sha}..{head_sha}");
-    let diff = Command::new(GIT_BIN)
-        .args(["diff", &range, "--", ".", ":(exclude)larch-logs/**"])
-        .current_dir(repo_root)
-        .stdin(Stdio::null())
-        .output()
+    let base = repository
+        .resolve_revision(&Revision::new(target.as_bytes()))
+        .map_err(|_error| format!("could not resolve merge base for {target}"))?;
+    let merge_base = repository
+        .merge_base(&head, &base)
+        .map_err(|_error| format!("could not resolve merge base for {target}"))?;
+    let base_ref = GitRef::new(merge_base.to_hex()).map_err(|error| error.to_string())?;
+    let head_ref = GitRef::new(head_sha).map_err(|error| error.to_string())?;
+    // Keep the exclude pathspec explicit beside the ExactDiff call so this
+    // surface stays distinct from the agent branch-context helper.
+    let paths = vec![
+        GitPath::new(".").map_err(|error| error.to_string())?,
+        GitPath::new(":(exclude)larch-logs/**").map_err(|error| error.to_string())?,
+    ];
+    let runtime = GitCommandRuntime::for_repository(repo_root)?;
+    let result = runtime
+        .runtime
+        .block_on(runtime.git_cli().exact_diff(
+            ExactDiffRequest {
+                cached: false,
+                binary: false,
+                no_ext_diff: false,
+                unified_context: None,
+                name_only: false,
+                name_status: false,
+                quiet: false,
+                exit_code: false,
+                base: Some(base_ref),
+                head: Some(head_ref),
+                paths,
+            },
+            &runtime.cancellation,
+        ))
         .map_err(|error| error.to_string())?;
-    if !diff.status.success() {
-        let stderr = String::from_utf8_lossy(&diff.stderr);
-        let stdout = String::from_utf8_lossy(&diff.stdout);
-        let detail = [stderr.trim(), stdout.trim()]
-            .into_iter()
-            .find(|text| !text.is_empty())
-            .unwrap_or("git diff failed");
-        return Err(detail.to_owned());
+    if result.truncated() {
+        return Err("git diff output exceeded the capture limit".to_owned());
     }
-    Ok(String::from_utf8_lossy(&diff.stdout).into_owned())
+    Ok(String::from_utf8_lossy(result.output().stdout()).into_owned())
 }
 
 fn incremental_paths(
@@ -142,31 +154,45 @@ fn incremental_paths(
     old_head: &str,
     new_head: &str,
 ) -> Result<Vec<String>, String> {
-    let range = format!("{old_head}..{new_head}");
-    let output = Command::new(GIT_BIN)
-        .args(["diff", "--no-renames", "--name-only", "-z", &range, "--"])
-        .current_dir(repo_root)
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|error| error.to_string())?;
-    if !output.status.success() || !output.stderr.is_empty() || output.stdout.is_empty() {
-        return Err("incremental path listing failed".to_owned());
-    }
-    if !output.stdout.ends_with(b"\0") {
-        return Err("incremental path listing incomplete".to_owned());
-    }
-    let body = &output.stdout[..output.stdout.len() - 1];
-    if body.is_empty() {
-        return Err("incremental path listing empty".to_owned());
-    }
+    let repository = open_repository(repo_root)?;
+    let old_id = repository
+        .resolve_revision(&Revision::new(old_head.as_bytes()))
+        .map_err(|_error| "incremental path listing failed".to_owned())?;
+    let new_id = repository
+        .resolve_revision(&Revision::new(new_head.as_bytes()))
+        .map_err(|_error| "incremental path listing failed".to_owned())?;
+    let old_tree = repository
+        .resolve_revision(&Revision::new(
+            format!("{}^{{tree}}", old_id.to_hex()).into_bytes(),
+        ))
+        .map_err(|_error| "incremental path listing failed".to_owned())?;
+    let new_tree = repository
+        .resolve_revision(&Revision::new(
+            format!("{}^{{tree}}", new_id.to_hex()).into_bytes(),
+        ))
+        .map_err(|_error| "incremental path listing failed".to_owned())?;
+    let changes = repository
+        .tree_changes(&old_tree, &new_tree)
+        .map_err(|_error| "incremental path listing failed".to_owned())?;
     let mut paths = Vec::new();
-    for raw in body.split(|byte| *byte == 0) {
-        if raw.is_empty() {
+    for change in changes.entries() {
+        if let Some(source) = &change.source_path {
+            let source = String::from_utf8(source.as_bytes().to_vec())
+                .map_err(|_error| "incremental path listing is not UTF-8".to_owned())?;
+            if source.is_empty() {
+                return Err("incremental path listing contains an empty path".to_owned());
+            }
+            paths.push(source);
+        }
+        let path = String::from_utf8(change.path.as_bytes().to_vec())
+            .map_err(|_error| "incremental path listing is not UTF-8".to_owned())?;
+        if path.is_empty() {
             return Err("incremental path listing contains an empty path".to_owned());
         }
-        let path = std::str::from_utf8(raw)
-            .map_err(|_error| "incremental path listing is not UTF-8".to_owned())?;
-        paths.push(path.to_owned());
+        paths.push(path);
+    }
+    if paths.is_empty() {
+        return Err("incremental path listing empty".to_owned());
     }
     Ok(paths)
 }
@@ -186,41 +212,17 @@ fn os_to_string(value: &OsStr) -> String {
     value.to_string_lossy().into_owned()
 }
 
-fn regular_file(path: &Path) -> bool {
-    path.symlink_metadata()
-        .is_ok_and(|meta| meta.is_file() && !meta.file_type().is_symlink())
-}
-
-fn under(path: &Path, root: &Path) -> bool {
-    let (Ok(path), Ok(root)) = (path.canonicalize(), root.canonicalize()) else {
-        return false;
-    };
-    path == root || path.starts_with(&root)
-}
-
-fn read_regular(path: &Path, root: &Path) -> Result<String, String> {
-    if !under(path, root) || !regular_file(path) {
-        return Err(format!(
-            "invalid evidence file: {}",
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("<unknown>")
-        ));
-    }
-    fs::read_to_string(path).map_err(|error| error.to_string())
-}
-
 fn current_head_sha() -> String {
-    let output = Command::new(GIT_BIN)
-        .args(["rev-parse", "HEAD"])
-        .stdin(Stdio::null())
-        .output();
-    match output {
-        Ok(completed) if completed.status.success() => {
-            String::from_utf8_lossy(&completed.stdout).trim().to_owned()
-        }
-        _ => String::new(),
-    }
+    env::current_dir()
+        .ok()
+        .and_then(|cwd| GixRepository::discover(cwd).ok())
+        .and_then(|repository| {
+            repository
+                .resolve_revision(&Revision::new(b"HEAD"))
+                .ok()
+                .map(|id| id.to_hex())
+        })
+        .unwrap_or_default()
 }
 
 fn print_lines(lines: &[String]) {
@@ -333,7 +335,7 @@ pub fn materialize_command(arguments: &[OsString]) -> ExitCode {
     for evidence in &pending {
         let upper = evidence.kind.key().to_ascii_uppercase();
         let prior = durable_note_path(&implement_tmpdir, evidence.kind);
-        let prior_value = if regular_file(&prior) && under(&prior, &implement_tmpdir) {
+        let prior_value = if is_regular_file(&prior) && path_under(&prior, &implement_tmpdir) {
             prior.display().to_string()
         } else {
             String::new()
