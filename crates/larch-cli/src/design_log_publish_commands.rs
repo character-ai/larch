@@ -245,6 +245,7 @@ fn dry_run_publish(request: &LogPublishRequest, outcome: &str) -> LogPublishResu
     }
 }
 
+#[derive(Debug)]
 struct SecretScrubFailure;
 
 #[allow(clippy::too_many_lines)] // One verb, one Python main ported branch for branch.
@@ -929,6 +930,23 @@ fn plugin_root_or_default() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::symlink;
+    use tempfile::TempDir;
+
+    fn sample_run_id() -> &'static str {
+        "ABCDEF01-2345-6789-ABCD-EF0123456789"
+    }
+
+    fn base_args(tmpdir: &Path) -> Vec<OsString> {
+        vec![
+            OsString::from("--design-tmpdir"),
+            OsString::from(tmpdir),
+            OsString::from("--run-id"),
+            OsString::from(sample_run_id()),
+            OsString::from("--issue"),
+            OsString::from("42"),
+        ]
+    }
 
     #[test]
     fn parse_requires_core_flags() {
@@ -937,13 +955,34 @@ mod tests {
             OsString::from("--design-tmpdir"),
             OsString::from("/tmp/d"),
             OsString::from("--run-id"),
-            OsString::from("ABCDEF01-2345-6789-ABCD-EF0123456789"),
+            OsString::from(sample_run_id()),
             OsString::from("--issue"),
             OsString::from("42"),
         ])
         .expect("parsed");
         assert_eq!(parsed.reason, "final");
         assert!(!parsed.dry_run);
+    }
+
+    #[test]
+    fn parse_accepts_pause_reason_and_dry_run() {
+        let parsed = parse_arguments(&[
+            OsString::from("--design-tmpdir"),
+            OsString::from("/tmp/d"),
+            OsString::from("--run-id"),
+            OsString::from(sample_run_id()),
+            OsString::from("--issue"),
+            OsString::from("7"),
+            OsString::from("--reason"),
+            OsString::from("pause"),
+            OsString::from("--outcome"),
+            OsString::from("paused"),
+            OsString::from("--dry-run"),
+        ])
+        .expect("parsed");
+        assert_eq!(parsed.reason, "pause");
+        assert_eq!(parsed.outcome, "paused");
+        assert!(parsed.dry_run);
     }
 
     #[test]
@@ -964,10 +1003,210 @@ mod tests {
     }
 
     #[test]
+    fn parse_keeps_issue_and_reason_for_runtime_validation() {
+        let parsed = parse_arguments(&[
+            OsString::from("--design-tmpdir"),
+            OsString::from("/tmp/d"),
+            OsString::from("--run-id"),
+            OsString::from(sample_run_id()),
+            OsString::from("--issue"),
+            OsString::from("0"),
+            OsString::from("--reason"),
+            OsString::from("other"),
+        ])
+        .expect("parse accepts; run_log_publish rejects");
+        assert_eq!(parsed.issue, "0");
+        assert_eq!(parsed.reason, "other");
+        let result = run_log_publish(&parsed);
+        assert!(!result.publish_ok);
+    }
+
+    #[test]
     fn kv_last_prefers_final_row() {
         assert_eq!(
             kv_last("PUBLISH_OK=false\nPUBLISH_OK=true\n", "PUBLISH_OK"),
             "true"
         );
+        assert_eq!(kv_last("A=1\r\nA=2\n", "A"), "2");
+        assert_eq!(kv_last("A=1\n", "MISSING"), "");
+    }
+
+    #[test]
+    fn failed_helper_preserves_scrub_token() {
+        assert_eq!(
+            failed(1, Some("3")),
+            LogPublishResult {
+                publish_ok: false,
+                exit_code: 1,
+                secret_scrub_violations: Some("3".to_owned()),
+                ..LogPublishResult::default()
+            }
+        );
+    }
+
+    #[test]
+    fn persist_metadata_writes_sidecar() {
+        let dir = TempDir::new().unwrap();
+        persist_metadata(dir.path(), "remote/key", "/cache/dir");
+        let text = fs::read_to_string(dir.path().join(".design-log-publish-metadata.env")).unwrap();
+        assert!(text.contains("DESIGN_LOG_REMOTE_KEY=remote/key\n"));
+        assert!(text.contains("DESIGN_LOG_CACHE_DIR=/cache/dir\n"));
+    }
+
+    #[test]
+    fn clear_completed_removes_file_and_directory() {
+        let dir = TempDir::new().unwrap();
+        let completed = dir.path().join(".completed");
+        fs::write(&completed, "x").unwrap();
+        clear_completed(dir.path());
+        assert!(!completed.exists());
+
+        fs::create_dir_all(completed.join("nested")).unwrap();
+        clear_completed(dir.path());
+        assert!(!completed.exists());
+    }
+
+    #[test]
+    fn copy_tree_redacted_copies_file_and_skips_excluded() {
+        let src = TempDir::new().unwrap();
+        let dest = TempDir::new().unwrap();
+        fs::write(src.path().join("keep.txt"), "hello").unwrap();
+        fs::write(src.path().join("lane.events.jsonl"), "raw").unwrap();
+        fs::create_dir(src.path().join("plan-autofix")).unwrap();
+        fs::write(src.path().join("plan-autofix").join("x.txt"), "x").unwrap();
+
+        let (ok, findings) = copy_tree_redacted(src.path(), dest.path()).unwrap();
+        assert!(ok);
+        assert_eq!(findings, 0);
+        assert_eq!(
+            fs::read_to_string(dest.path().join("keep.txt")).unwrap(),
+            "hello\n"
+        );
+        assert!(!dest.path().join("lane.events.jsonl").exists());
+        assert!(!dest.path().join("plan-autofix").exists());
+    }
+
+    #[test]
+    fn copy_tree_redacted_rejects_symlink_sources() {
+        let src = TempDir::new().unwrap();
+        let dest = TempDir::new().unwrap();
+        let target = src.path().join("real.txt");
+        fs::write(&target, "body").unwrap();
+        let link = src.path().join("link.txt");
+        symlink(&target, &link).unwrap();
+        let (ok, findings) = copy_tree_redacted(&link, &dest.path().join("link.txt")).unwrap();
+        assert!(!ok);
+        assert_eq!(findings, 0);
+    }
+
+    #[test]
+    fn resolve_summary_mode_reads_json_then_source_env() {
+        let dir = TempDir::new().unwrap();
+        assert_eq!(resolve_summary_mode(dir.path()), "N/A");
+
+        fs::write(dir.path().join("run-params.json"), r#"{"mode":"heavy"}"#).unwrap();
+        assert_eq!(resolve_summary_mode(dir.path()), "heavy");
+
+        let dir2 = TempDir::new().unwrap();
+        fs::write(dir2.path().join("source-env.sh"), "MODE=light\n").unwrap();
+        assert_eq!(resolve_summary_mode(dir2.path()), "light");
+    }
+
+    #[test]
+    fn assessment_warning_records_when_required_and_missing() {
+        let design = TempDir::new().unwrap();
+        let repo = TempDir::new().unwrap();
+        fs::write(repo.path().join(INVARIANTS_FILENAME), "invariant body\n").unwrap();
+        record_one_assessment_warning(
+            design.path(),
+            "approved",
+            repo.path(),
+            INVARIANTS_FILENAME,
+            INVARIANT_ASSESSMENT_ARTIFACT,
+            "invariant-assessment",
+            true,
+        );
+        assert!(
+            design
+                .path()
+                .join(".missing-invariant-assessment-warning")
+                .is_file()
+        );
+        let issues = fs::read_to_string(design.path().join("execution-issues.md")).unwrap();
+        assert!(issues.contains("invariant-assessment"));
+    }
+
+    #[test]
+    fn assessment_warning_skips_when_not_required() {
+        let design = TempDir::new().unwrap();
+        let repo = TempDir::new().unwrap();
+        record_one_assessment_warning(
+            design.path(),
+            "failed-clarify",
+            repo.path(),
+            INVARIANTS_FILENAME,
+            INVARIANT_ASSESSMENT_ARTIFACT,
+            "invariant-assessment",
+            true,
+        );
+        assert!(
+            !design
+                .path()
+                .join(".missing-invariant-assessment-warning")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn append_transcript_warning_writes_execution_issue() {
+        let dir = TempDir::new().unwrap();
+        append_transcript_warning(dir.path(), "5c", "hoist-failed", "could not hoist");
+        let text = fs::read_to_string(dir.path().join("execution-issues.md")).unwrap();
+        assert!(text.contains("design Step 5c session-transcript hoist-failed"));
+        assert!(text.contains("could not hoist"));
+    }
+
+    #[test]
+    fn which_finds_existing_path_entry() {
+        assert!(which("sh").is_some() || which("bash").is_some());
+        assert!(which("definitely-not-a-binary-xyz").is_none());
+    }
+
+    #[test]
+    fn plugin_root_or_default_is_nonempty() {
+        assert!(!plugin_root_or_default().as_os_str().is_empty());
+    }
+
+    #[test]
+    fn log_publish_main_rejects_missing_tmpdir() {
+        let code = log_publish_main(&base_args(Path::new("/tmp/does-not-exist-larch-8592")));
+        assert_eq!(code, ExitCode::from(0));
+    }
+
+    #[test]
+    fn run_log_publish_rejects_missing_directory() {
+        let request = LogPublishRequest {
+            design_tmpdir: PathBuf::from("/tmp/missing-design-tmpdir-8592"),
+            run_id: sample_run_id().to_owned(),
+            issue: "42".to_owned(),
+            repo: String::new(),
+            reason: "final".to_owned(),
+            outcome: String::new(),
+            dry_run: false,
+        };
+        let result = run_log_publish(&request);
+        assert!(!result.publish_ok);
+        assert_eq!(result.exit_code, 0);
+    }
+
+    #[test]
+    fn emit_log_publish_result_is_callable() {
+        emit_log_publish_result(&LogPublishResult {
+            publish_ok: true,
+            exit_code: 0,
+            remote_key: "k".to_owned(),
+            cache_dir: "c".to_owned(),
+            secret_scrub_violations: Some("0".to_owned()),
+        });
     }
 }

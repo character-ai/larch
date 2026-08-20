@@ -188,6 +188,12 @@ mod tests {
         assert!(!publish_excluded("aggregator-output.txt", false, false));
         assert!(publish_excluded("plan-autofix", true, false));
         assert!(publish_excluded(".completed", true, false));
+        assert!(publish_excluded("larch-logs", true, false));
+        assert!(publish_excluded("source-env.sh", false, false));
+        assert!(publish_excluded("claude-source.env", false, false));
+        assert!(publish_excluded("lane.sidecar.history", false, false));
+        assert!(publish_excluded("tool.prompt", false, false));
+        assert!(publish_excluded("tool.meta", false, false));
     }
 
     #[test]
@@ -196,6 +202,8 @@ mod tests {
         assert!(!publish_excluded("issue-body.txt", false, false));
         assert!(publish_excluded("panel-manifest.ndjson", false, true));
         assert!(!publish_excluded("panel-manifest.ndjson", false, false));
+        assert!(publish_excluded("architecture-diagram.md", false, true));
+        assert!(publish_excluded("issue.json", false, true));
     }
 
     #[test]
@@ -207,6 +215,26 @@ mod tests {
         assert_eq!(lifecycle_outcome("final", "approved"), "success");
         assert_eq!(lifecycle_outcome("pause", "approved"), "early-return");
         assert_eq!(lifecycle_outcome("final", "failed-gate"), "failure");
+        assert_eq!(lifecycle_outcome("final", "approved-partition"), "success");
+        assert_eq!(lifecycle_outcome("final", "cancelled-clarify"), "cancelled");
+    }
+
+    #[test]
+    fn default_outcome_for_reason_matches_python() {
+        assert_eq!(default_outcome_for_reason("pause"), "paused");
+        assert_eq!(default_outcome_for_reason("final"), "approved");
+        assert_eq!(default_outcome_for_reason("other"), "approved");
+    }
+
+    #[test]
+    fn assessment_required_and_present_helpers() {
+        assert!(assessment_required("approved", true, true));
+        assert!(assessment_required("approved-partition", true, true));
+        assert!(!assessment_required("approved", false, true));
+        assert!(!assessment_required("failed-clarify", true, true));
+        assert!(assessment_present(true, false));
+        assert!(!assessment_present(true, true));
+        assert!(!assessment_present(false, false));
     }
 
     #[test]
