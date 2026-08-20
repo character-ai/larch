@@ -2310,45 +2310,10 @@ def test_core_style_ctx_subprocess_env_preserves_path_and_home(
 
 
 
-def _step2b_design_fixture(design: Path) -> None:
-    (design / "approach-synthesis.txt").write_text("NO_SKETCHES\n", encoding="utf-8")
-    (design / "contested-decisions.md").write_text("NO_CONTESTED_DECISIONS\n", encoding="utf-8")
-    (design / "dialectic-resolutions.md").write_text("", encoding="utf-8")
-    (design / "feature-description.txt").write_text("feature\n", encoding="utf-8")
 
 
 
 
-def _patch_successful_codex_drafter(monkeypatch: pytest.MonkeyPatch, design: Path) -> None:
-    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
-    monkeypatch.setenv("ISSUE_NUMBER", "42")
-    monkeypatch.setenv("LARCH_DESIGN_DRAFTER", "codex")
-
-    def fake_run(
-        argv: Sequence[object],
-        *,
-        text: bool = False,
-        capture_output: bool = False,
-        check: bool = False,
-        **_kwargs: object,
-    ) -> subprocess.CompletedProcess[str]:
-        del text, capture_output, check
-        args = [str(item) for item in argv]
-        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["status", "--porcelain"]:
-            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
-        if args[:3] == ["git", "-C", str(Path.cwd())] and args[3:] == ["rev-parse", "--show-toplevel"]:
-            return subprocess.CompletedProcess(args=args, returncode=0, stdout=str(CLI.parent.parent) + "\n", stderr="")
-        if args[1:3] == ["agent", "launch-codex-drafter"]:
-            (design / "plan.txt").write_text(plan_body(diff_lines=1), encoding="utf-8")
-            (design / "step2b-drafter-status.txt").write_text("PLAN_WRITTEN=true\n", encoding="utf-8")
-        if args[1:3] == ["plan-review", "preview"]:
-            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
-        if args[2:4] == ["design", "dialectic-promote-candidates"]:
-            return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
-        return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
 
 
 
