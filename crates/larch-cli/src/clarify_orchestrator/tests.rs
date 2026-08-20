@@ -274,14 +274,8 @@ mod clarify_orchestrator_tests {
         seed_publish(dir.path());
         let effects = FakeEffects::default();
         // named-block, sync-labels, run-log write, log-publish, upsert-summary, rename
-        let runner = FakeRunner::new().queue_larch(&[
-            "",
-            "",
-            "",
-            "PUBLISH_OK=true\n",
-            "",
-            "RENAMED=true\n",
-        ]);
+        let runner =
+            FakeRunner::new().queue_larch(&["", "", "", "PUBLISH_OK=true\n", "", "RENAMED=true\n"]);
         let mut env = env_with_repo(dir.path());
         let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
         let result =

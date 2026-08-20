@@ -209,8 +209,7 @@ fn run_log_publish(request: &LogPublishRequest) -> LogPublishResult {
         );
     }
 
-    if let Ok((publish_ok, remote_key, cache_dir, scrub)) = publish_design_logs(request, &outcome)
-    {
+    if let Ok((publish_ok, remote_key, cache_dir, scrub)) = publish_design_logs(request, &outcome) {
         persist_metadata(&request.design_tmpdir, &remote_key, &cache_dir);
         LogPublishResult {
             publish_ok,
