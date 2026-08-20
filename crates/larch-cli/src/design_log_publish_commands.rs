@@ -738,9 +738,12 @@ fn capture_design_transcript(request: &LogPublishRequest, warning_step_label: &s
     };
     let (code, stdout, _) = output_streams(&output);
     let status = kv_last(&stdout, "SESSION_TRANSCRIPT_STATUS");
-    if !status.is_empty() {
-        println!("SESSION_TRANSCRIPT_STATUS={status}");
-        let _ = std::io::stdout().flush();
+    match status.as_str() {
+        "" => {}
+        status => {
+            println!("SESSION_TRANSCRIPT_STATUS={status}");
+            let _ = std::io::stdout().flush();
+        }
     }
     let staged = staging_root
         .join("design")
