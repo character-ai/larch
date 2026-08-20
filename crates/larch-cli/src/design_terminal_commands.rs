@@ -33,8 +33,10 @@ use crate::{
     design_commands::{PAUSE_LOAD_TIMEOUT, quote_single},
     design_step0_commands::{
         ChildOutcome, Env, LiveStep0Runner, Step0Runner, env_get, exit_from_i32, load_wrapper_env,
-        parse_wrapper_args, require_plugin_root, utf8_arguments,
+        parse_wrapper_args, phase_driver_read_result_env, require_plugin_root, resolve_owned_run_id,
+        utf8_arguments,
     },
+    design_step1_commands::append_failure_args,
     github_repository_resolution::repository_ref,
     github_service::with_github_service,
     python_verb::run_python_verb,
@@ -163,47 +165,27 @@ fn validate_core_design_tmpdir(candidate: &str) -> Result<PathBuf, String> {
     }
 }
 
-/// Port of `phase_driver_read_result_env`: CR-free, allowlisted, order-preserving.
-fn phase_driver_read_result_env(
-    path: &Path,
-    allowed: &[String],
-) -> Result<Vec<(String, String)>, ()> {
-    if is_symlink(path) || !path.is_file() {
-        return Err(());
-    }
-    let raw = match fs::read(path) {
-        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-        Err(_error) => return Err(()),
-    };
-    let cleaned: Vec<&str> = raw
-        .split('\n')
-        .filter(|line| !line.contains('\r'))
-        .collect();
-    let text = cleaned.join("\n");
-    let document =
-        KvDocument::parse(&text, ParseOptions::legacy()).expect("legacy parser is non-rejecting");
-    Ok(document
-        .rows()
-        .iter()
-        .filter(|row| allowed.iter().any(|key| key == row.key()))
-        .map(|row| (row.key().to_owned(), row.value().to_owned()))
-        .collect())
-}
-
 fn is_symlink(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink())
+}
+
+/// UTF-8-lossy text of a regular (non-symlink) file, or `None` for a symlink,
+/// non-file, or read error. Shared preamble for the `read_env_*` readers.
+fn read_env_text(path: &Path) -> Option<String> {
+    if is_symlink(path) || !path.is_file() {
+        return None;
+    }
+    fs::read(path)
+        .ok()
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// First `KEY=` value with `_read_env_value` semantics: symlink/non-file/error
 /// yield the default; an empty value also yields the default.
 fn read_env_value(path: &Path, key: &str, default: &str) -> String {
-    if is_symlink(path) || !path.is_file() {
-        return default.to_owned();
-    }
-    let Ok(bytes) = fs::read(path) else {
+    let Some(text) = read_env_text(path) else {
         return default.to_owned();
     };
-    let text = String::from_utf8_lossy(&bytes);
     let prefix = format!("{key}=");
     for line in text.split('\n') {
         if let Some(value) = line.strip_prefix(&prefix) {
@@ -219,13 +201,9 @@ fn read_env_value(path: &Path, key: &str, default: &str) -> String {
 
 /// Last non-empty `KEY=` value with `_read_env_value_last` semantics.
 fn read_env_value_last(path: &Path, key: &str, default: &str) -> String {
-    if is_symlink(path) || !path.is_file() {
-        return default.to_owned();
-    }
-    let Ok(bytes) = fs::read(path) else {
+    let Some(text) = read_env_text(path) else {
         return default.to_owned();
     };
-    let text = String::from_utf8_lossy(&bytes);
     let prefix = format!("{key}=");
     let mut found = default.to_owned();
     for line in text.split('\n') {
@@ -244,20 +222,17 @@ fn read_env_values(path: &Path, defaults: &[(&str, &str)]) -> Vec<(String, Strin
         .iter()
         .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
         .collect();
-    if is_symlink(path) || !path.is_file() {
-        return out;
-    }
-    let Ok(bytes) = fs::read(path) else {
+    let Some(text) = read_env_text(path) else {
         return out;
     };
-    let text = String::from_utf8_lossy(&bytes);
     for line in text.split('\n') {
         if line.is_empty() {
             continue;
         }
-        let Some((key, value)) = line.split_once('=') else {
+        let Some(equals) = line.find('=') else {
             continue;
         };
+        let (key, value) = (&line[..equals], &line[equals + 1..]);
         if value.is_empty() {
             continue;
         }
@@ -345,8 +320,10 @@ fn parse_read_result_env_args(argv: &[String]) -> Option<ReadResultEnvArgs> {
     let mut index = 0;
     while index < argv.len() {
         let token = argv[index].as_str();
-        let (name, inline_value) = match token.split_once('=') {
-            Some((name, value)) if name.starts_with("--") => (name, Some(value.to_owned())),
+        let (name, inline_value) = match token.find('=') {
+            Some(pos) if token.starts_with("--") => {
+                (&token[..pos], Some(token[pos + 1..].to_owned()))
+            }
             _ => (token, None),
         };
         let bound = matches!(
@@ -509,7 +486,8 @@ pub fn read_result_env(arguments: &[OsString]) -> ExitCode {
             .unwrap_or(0)
     ));
     replay_warn_error(&source_path);
-    let Ok(pairs) = phase_driver_read_result_env(&source_path, &parsed.allow) else {
+    let allow_refs: Vec<&str> = parsed.allow.iter().map(String::as_str).collect();
+    let Ok(pairs) = phase_driver_read_result_env(&source_path, &allow_refs) else {
         return ExitCode::from(1);
     };
     let mut body = String::new();
@@ -620,8 +598,10 @@ fn parse_stage_args(argv: &[String]) -> Option<StageArgs> {
     let mut index = 0;
     while index < argv.len() {
         let token = argv[index].as_str();
-        let (name, inline_value) = match token.split_once('=') {
-            Some((name, value)) if name.starts_with("--") => (name, Some(value.to_owned())),
+        let (name, inline_value) = match token.find('=') {
+            Some(pos) if token.starts_with("--") => {
+                (&token[..pos], Some(token[pos + 1..].to_owned()))
+            }
             _ => (token, None),
         };
         if STAGE_VALUE_FLAGS.contains(&name) {
@@ -1008,8 +988,10 @@ fn parse_failure_args(argv: &[String]) -> FailureArgs {
     let mut index = 0;
     while index < argv.len() {
         let token = argv[index].as_str();
-        let (name, inline_value) = match token.split_once('=') {
-            Some((name, value)) if name.starts_with("--") => (name, Some(value.to_owned())),
+        let (name, inline_value) = match token.find('=') {
+            Some(pos) if token.starts_with("--") => {
+                (&token[..pos], Some(token[pos + 1..].to_owned()))
+            }
             _ => (token, None),
         };
         if matches!(
@@ -1088,23 +1070,14 @@ impl FailureCtx<'_> {
         category: &str,
         output_file: &Path,
     ) {
-        let args = vec![
-            "run-log".to_owned(),
-            "append-failure".to_owned(),
-            "--log".to_owned(),
+        let args = append_failure_args(
             self.path("execution-issues.md").display().to_string(),
-            "--site".to_owned(),
-            site.to_owned(),
-            "--tool".to_owned(),
-            tool.to_owned(),
-            "--exit-code".to_owned(),
-            exit_code.to_owned(),
-            "--category".to_owned(),
-            category.to_owned(),
-            "--output-file".to_owned(),
-            output_file.display().to_string(),
-            "--redact".to_owned(),
-        ];
+            site,
+            tool,
+            exit_code,
+            category,
+            output_file,
+        );
         let _ = self.runner.run(&self.plugin_root, &args, &[], false);
     }
 
@@ -1165,13 +1138,9 @@ impl FailureCtx<'_> {
         if !root.is_empty() {
             return root;
         }
-        // `repo_root_probe`: git rev-parse --show-toplevel.
-        std::process::Command::new("git") // lint-subprocess-via-runner: ok mirrors the frozen repo_root_probe git toplevel probe
-            .args(["rev-parse", "--show-toplevel"])
-            .output()
-            .ok()
-            .filter(|out| out.status.success())
-            .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+        // `repo_root_probe`: resolve the working-tree root like the Python owner.
+        std::env::current_dir()
+            .map(|dir| resolve_like_python(&dir).display().to_string())
             .unwrap_or_default()
     }
 
@@ -1860,12 +1829,12 @@ fn handle_compose_outcome(
     let last_output_nonempty = last_output.metadata().map(|m| m.len() > 0).unwrap_or(false);
     let retry_evidence_present = panel_failure_evidence_present(ctx)
         || (kind == "escalation-success" && escalation_evidence_present(ctx));
-    if status.is_empty() && retry_evidence_present && last_output_nonempty {
+    if status.is_empty() && retry_evidence_present && last_output_nonempty { // lint-status-routing: ok status is a plain env-file KV string, not a routed enum variant
         if last_surface == "issue-input" {
             file_tier_a_after_compose(ctx, last_output);
             status = ctx.compose_env_key("STALL_RECOVERY_REPORT_STATUS");
         }
-        if status.is_empty() {
+        if status.is_empty() { // lint-status-routing: ok status is a plain env-file KV string, not a routed enum variant
             ctx.write_fallback_chat("compose-status-missing");
             return;
         }
@@ -1902,7 +1871,7 @@ fn handle_compose_outcome(
         }
         return;
     }
-    if status.is_empty() {
+    if status.is_empty() { // lint-status-routing: ok status is a plain env-file KV string, not a routed enum variant
         ctx.write_fallback_chat("compose-status-missing");
     } else {
         ctx.write_fallback_chat(&format!("compose-status-{status}"));
@@ -1931,7 +1900,8 @@ fn validated_publish_state(design_tmpdir: &Path, path: &Path) -> Option<Vec<(Str
         if raw_line.is_empty() || raw_line.starts_with('#') {
             continue;
         }
-        let (key, value) = raw_line.split_once('=')?;
+        let equals = raw_line.find('=')?;
+        let (key, value) = (&raw_line[..equals], &raw_line[equals + 1..]);
         if values.iter().any(|(existing, _)| existing == key) {
             return None;
         }
@@ -2611,46 +2581,6 @@ fn try_deactivate_design_run(runner: &dyn Step0Runner, plugin_root: &Path, desig
         &[],
         false,
     );
-}
-
-/// Port of `progress_file.resolve_owned_run_id` for the deactivate path.
-fn resolve_owned_run_id(design_tmpdir: &Path) -> Option<String> {
-    let mut candidates: Vec<String> = Vec::new();
-    if let Ok(value) = std::env::var("LARCH_RUN_ID")
-        && !value.is_empty()
-    {
-        candidates.push(value);
-    }
-    for name in ["session-env.sh", "source-env.sh"] {
-        let Ok(text) = fs::read_to_string(design_tmpdir.join(name)) else {
-            continue;
-        };
-        for line in text.lines() {
-            for prefix in ["LARCH_RUN_ID=", "export LARCH_RUN_ID="] {
-                if let Some(rest) = line.strip_prefix(prefix) {
-                    candidates.push(
-                        rest.trim()
-                            .trim_matches(|c: char| c == '\'' || c == '"')
-                            .to_owned(),
-                    );
-                }
-            }
-        }
-    }
-    candidates
-        .into_iter()
-        .find(|value| is_valid_owned_run_id(value))
-}
-
-fn is_valid_owned_run_id(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 128
-        && value != "."
-        && value != ".."
-        && value != "current"
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
 #[cfg(test)]

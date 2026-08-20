@@ -845,7 +845,7 @@ pub fn exit_from_i32(code: i32) -> ExitCode {
 }
 
 /// Port of `phase_driver_read_result_env`: CR-free, allowlisted, order-preserving.
-fn phase_driver_read_result_env(
+pub fn phase_driver_read_result_env(
     path: &Path,
     allowed: &[&str],
 ) -> Result<Vec<(String, String)>, ()> {
@@ -1375,7 +1375,7 @@ fn is_valid_owned_run_id(value: &str) -> bool {
 /// Port of `progress_file.resolve_owned_run_id` for the abort path: process
 /// `LARCH_RUN_ID`, then persisted `session-env.sh`/`source-env.sh` values,
 /// returning the first candidate that validates.
-fn resolve_owned_run_id(design_tmpdir: &Path) -> Option<String> {
+pub fn resolve_owned_run_id(design_tmpdir: &Path) -> Option<String> {
     let mut candidates: Vec<String> = Vec::new();
     if let Ok(value) = std::env::var("LARCH_RUN_ID")
         && !value.is_empty()

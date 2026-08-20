@@ -342,6 +342,23 @@ def _design_verb_plugin_root(plugin_root: Path | None) -> Path:
     return Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3]))
 
 
+def _design_verb_command(plugin_root: Path | None, verb: str, args: Sequence[str]) -> list[str]:
+    """Literal per-verb argv for the Rust-owned ``design`` seam (#8580).
+
+    Each Rust-owned verb has its own literal ``[entrypoint, "design", "<verb>", ...]``
+    list so the command-registry caller discovery records the exact verbs this
+    module dispatches rather than a ``design *`` wildcard over every design verb.
+    """
+    entrypoint = str(larch_entrypoint(_design_verb_plugin_root(plugin_root)))
+    if verb == "read-result-env":
+        return [entrypoint, "design", "read-result-env", *args]
+    if verb == "stage-terminal-state":
+        return [entrypoint, "design", "stage-terminal-state", *args]
+    if verb == "failure-report":
+        return [entrypoint, "design", "failure-report", *args]
+    raise ValueError(f"unsupported Rust-owned design verb: {verb!r}")
+
+
 def run_design_verb_captured(
     *, verb: str, args: Sequence[str], stdout_path: Path, stderr_path: Path, plugin_root: Path | None = None
 ) -> int:
@@ -352,8 +369,7 @@ def run_design_verb_captured(
     machine ``KEY=value`` rows to stdout and diagnostics to stderr, so capturing
     them to the two log paths preserves the callers' ``STAGED=`` reads.
     """
-    entrypoint = str(larch_entrypoint(_design_verb_plugin_root(plugin_root)))
-    cmd = [entrypoint, "design", verb, *args]
+    cmd = _design_verb_command(plugin_root, verb, args)
     try:
         with Path(stdout_path).open("w", encoding="utf-8") as out, Path(stderr_path).open("w", encoding="utf-8") as err:
             result = subprocess.run(cmd, stdout=out, stderr=err, check=False)  # lint-subprocess-via-runner: ok invokes the Rust-owned design verb entrypoint, capturing its streams to the caller's log files
@@ -368,8 +384,7 @@ def run_design_verb(*, verb: str, args: Sequence[str], plugin_root: Path | None 
     Used where the verb writes its payload to an ``--output`` file and the
     caller only needs the exit code (e.g. ``read-result-env`` in step5c).
     """
-    entrypoint = str(larch_entrypoint(_design_verb_plugin_root(plugin_root)))
-    cmd = [entrypoint, "design", verb, *args]
+    cmd = _design_verb_command(plugin_root, verb, args)
     try:
         result = subprocess.run(cmd, check=False)  # lint-subprocess-via-runner: ok invokes the Rust-owned design verb entrypoint for its exit code and file side effects
     except OSError:
