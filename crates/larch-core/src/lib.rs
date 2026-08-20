@@ -175,11 +175,6 @@ pub use connectivity::{
 
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
 pub use design::{
-    GUIDELINE_ASSESSMENT_ARTIFACT, INVARIANT_ASSESSMENT_ARTIFACT, assessment_present,
-    assessment_required, default_outcome_for_reason, lifecycle_outcome, publish_excluded,
-    validate_issue, validate_repo, validate_slug as validate_design_log_slug,
-};
-pub use design::{
     AssessmentCompleteness, BLOCKED_REVIEW_STATUSES, PUBLISH_RESULT_ENV_ALLOW, ReviewProvenance,
     TERMINAL_STATUSES_REQUIRING_SENTINEL, blocked_review_reason,
     check_guideline_assessment_completeness, check_invariant_assessment_completeness,
@@ -213,6 +208,11 @@ pub use design::{
     CLARIFY_LABEL_COLOR, CLARIFY_LABEL_DESCRIPTION, CLARIFY_LABEL_NAME, ClarifyEvent, ClarifyKind,
     ClarifyState, evaluate_comment_bodies, evaluate_events, events_from_comment_bodies,
     request_body_remainder,
+};
+pub use design::{
+    GUIDELINE_ASSESSMENT_ARTIFACT, INVARIANT_ASSESSMENT_ARTIFACT, assessment_present,
+    assessment_required, default_outcome_for_reason, lifecycle_outcome, publish_excluded,
+    validate_issue, validate_repo, validate_slug as validate_design_log_slug,
 };
 pub use difficulty::{
     AUDIT_DENOMINATOR, BuildRecord, CODEX_MODEL_ROLE, CONFIDENCES, DESIGN_RAW_RATING_BASENAME,
