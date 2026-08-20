@@ -3,9 +3,16 @@
 //! Leaf #8575 ports the plan grammar and plan-quality analysis core. Command
 //! registration stays with later leaves.
 
+mod clarify;
 mod plan_grammar;
 mod plan_quality;
 mod plan_scout;
+
+pub use clarify::{
+    CLARIFY_LABEL_COLOR, CLARIFY_LABEL_DESCRIPTION, CLARIFY_LABEL_NAME, ClarifyEvent, ClarifyKind,
+    ClarifyState, evaluate_comment_bodies, evaluate_events, events_from_comment_bodies,
+    request_body_remainder,
+};
 
 pub use plan_grammar::{
     CANONICAL_TRAILER_ORDER, FIRM_HEADING_KINDS, FORCE_PLAN_CONTRACT_ERROR, HEADING_KINDS,

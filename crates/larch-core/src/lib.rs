@@ -175,6 +175,11 @@ pub use connectivity::{
 
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
 pub use design::{
+    CLARIFY_LABEL_COLOR, CLARIFY_LABEL_DESCRIPTION, CLARIFY_LABEL_NAME, ClarifyEvent, ClarifyKind,
+    ClarifyState, evaluate_comment_bodies, evaluate_events, events_from_comment_bodies,
+    request_body_remainder,
+};
+pub use design::{
     CANONICAL_TRAILER_ORDER, FIRM_HEADING_KINDS, FORCE_PLAN_CONTRACT_ERROR, HEADING_KINDS,
     HeadingEvent, HeadingKind, HeadingMatch, M1_DEFECT_TOKENS, M2_DEFECT_TOKENS,
     OPTIONAL_SIZE_TRAILER_KEYS, OVERSIZE_OVERRIDE_OPERATOR, OptionalMetadata,
@@ -193,14 +198,15 @@ pub use difficulty::{
     AUDIT_DENOMINATOR, BuildRecord, CODEX_MODEL_ROLE, CONFIDENCES, DifficultyFloor,
     DifficultyRating, FLOOR_MANIFEST_RELPATH, FloorMatch, FloorResult, HARD, MODERATE,
     MergeExplicit, RATIONALE_MAX_CHARS, RUBRIC, SCHEMA_VERSION, TIER_CEILING, TIERS, TRIVIAL,
-    TierResolution, blank_merge_explicit, build_record, bump_for_confidence,
-    codex_review_model_role, difficulty_line, dump_record, known_labels, label_for_tier,
-    load_floor_manifest, load_record_data, match_floors, maybe_audit_upgrade,
-    merge_existing_record_fields, next_tier, normalize_tier, panel_shape_for_tier, plan_difficulty,
-    rating_from_tier, read_changed_paths, read_rating_file, refresh_existing_record,
-    resolve_panel_tier, sanitize_rationale, threshold_panel_for_tier, tier_ceiling, tier_max,
-    tier_rank, tier_valid, trailing_plan_difficulty, trailing_plan_metadata_lines,
-    validate_rating_object, write_record_map,
+    DESIGN_RAW_RATING_BASENAME, DIFFICULTY_RECORD_BASENAME, TierResolution, blank_merge_explicit,
+    build_record, bump_for_confidence, codex_review_model_role, difficulty_line, dump_record,
+    known_labels, label_for_tier, load_floor_manifest, load_record_data, match_floors,
+    maybe_audit_upgrade, merge_existing_record_fields, next_tier, normalize_tier,
+    panel_shape_for_tier, plan_difficulty, rating_from_tier, read_changed_paths, read_rating_file,
+    refresh_existing_record, resolve_panel_tier, rewrite_plan_difficulty, sanitize_rationale,
+    threshold_panel_for_tier, tier_ceiling, tier_max, tier_rank, tier_valid,
+    trailing_plan_difficulty, trailing_plan_metadata_lines, validate_rating_object,
+    write_record_map,
 };
 pub use difficulty_calibration::difficulty_calibration_report;
 pub use env_file::{

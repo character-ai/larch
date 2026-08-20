@@ -29,6 +29,10 @@ pub const AUDIT_DENOMINATOR: i64 = 30;
 pub const TIER_CEILING: i64 = 2;
 /// Codex model role shared by every tier.
 pub const CODEX_MODEL_ROLE: &str = "review";
+/// Basename of the raw design difficulty-rating sidecar.
+pub const DESIGN_RAW_RATING_BASENAME: &str = "design-difficulty-rating.raw.json";
+/// Basename of the merged difficulty record run logs consume.
+pub const DIFFICULTY_RECORD_BASENAME: &str = "difficulty-rating.json";
 /// Plugin-relative floor table.
 pub const FLOOR_MANIFEST_RELPATH: &str = "docs/difficulty-floor-globs.tsv";
 /// Fallback rationale used when synthesizing a panel record.
@@ -1212,6 +1216,54 @@ fn trailing_metadata_span(lines: &[String]) -> Option<(usize, usize)> {
         end -= 1;
     }
     Some((end.saturating_sub(trailers.len()), end))
+}
+
+/// Split `text` into lines while retaining each line's terminator.
+fn split_keepends(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut rest = text;
+    while let Some(index) = rest.find('\n') {
+        out.push(rest[..=index].to_owned());
+        rest = &rest[index + 1..];
+    }
+    if !rest.is_empty() {
+        out.push(rest.to_owned());
+    }
+    out
+}
+
+/// Rewrite (or insert) the plan's trailing `difficulty:` line to `tier`.
+///
+/// A verbatim port of the Python `rewrite_plan_difficulty`: the difficulty line
+/// inside the final contiguous trailer block is replaced in place, or inserted
+/// above any `diff_lines:` trailer when absent. Returns `text` unchanged when
+/// `tier` is not canonical or the plan carries no trailer block.
+#[must_use]
+pub fn rewrite_plan_difficulty(text: &str, tier: &str) -> String {
+    if !tier_valid(tier) {
+        return text.to_owned();
+    }
+    let plain: Vec<String> = text.lines().map(str::to_owned).collect();
+    let Some((start, end)) = trailing_metadata_span(&plain) else {
+        return text.to_owned();
+    };
+    let mut lines = split_keepends(text);
+    if end > lines.len() {
+        return text.to_owned();
+    }
+    for line in lines.iter_mut().take(end).skip(start) {
+        if line.starts_with("difficulty:") {
+            let newline = if line.ends_with('\n') { "\n" } else { "" };
+            *line = format!("difficulty: {tier}{newline}");
+            return lines.concat();
+        }
+    }
+    let mut insert_at = end;
+    while insert_at > start && lines[insert_at - 1].starts_with("diff_lines:") {
+        insert_at -= 1;
+    }
+    lines.insert(insert_at, format!("difficulty: {tier}\n"));
+    lines.concat()
 }
 
 fn parse_final_trailers(text: &str) -> Vec<(String, String, String)> {

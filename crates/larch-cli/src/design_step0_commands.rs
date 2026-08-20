@@ -611,7 +611,7 @@ fn load_bash_quoted_env(path: &Path, allowed: &[&str]) -> Env {
     parse_allowed_last(&normalize_splitlines(&raw), allowed, true)
 }
 
-fn load_source_env(path: &str, claude_pid: &str) -> Env {
+pub fn load_source_env(path: &str, claude_pid: &str) -> Env {
     if path.is_empty() {
         return BTreeMap::new();
     }
@@ -845,7 +845,7 @@ pub fn exit_from_i32(code: i32) -> ExitCode {
 }
 
 /// Port of `phase_driver_read_result_env`: CR-free, allowlisted, order-preserving.
-fn phase_driver_read_result_env(
+pub fn phase_driver_read_result_env(
     path: &Path,
     allowed: &[&str],
 ) -> Result<Vec<(String, String)>, ()> {
@@ -1241,7 +1241,7 @@ fn step0c_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
 
 /// Bridge to the still-Python `design stage-terminal-state`, capturing streams
 /// to the two log paths and returning its exit code.
-fn stage_terminal_state_bridge(stdout_log: &Path, stderr_log: &Path, args: &[String]) -> i32 {
+pub fn stage_terminal_state_bridge(stdout_log: &Path, stderr_log: &Path, args: &[String]) -> i32 {
     let mut arguments: Vec<OsString> = vec!["design".into(), "stage-terminal-state".into()];
     arguments.extend(args.iter().map(OsString::from));
     match run_python_verb(arguments, PAUSE_LOAD_TIMEOUT) {
@@ -1258,7 +1258,7 @@ fn stage_terminal_state_bridge(stdout_log: &Path, stderr_log: &Path, args: &[Str
     }
 }
 
-fn clarify_failure_stage_args(
+pub fn clarify_failure_stage_args(
     design_tmpdir: &Path,
     exit_code: &str,
     detail_log: &Path,
