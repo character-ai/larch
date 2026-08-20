@@ -2500,6 +2500,38 @@ def _design_terminal_verb(arguments: list[str], *, verb: str) -> int:
     return int(module.main([verb, *arguments]))
 
 
+def _stall_recovery_verb(arguments: list[str], *, verb: str) -> int:
+    """Serve the ``stall-recovery`` token validators the migrated terminal verbs nest.
+
+    The #8580 terminal reference (``stage-terminal-state``) revalidates its tokens
+    and candidate state file through the Rust-owned ``stall-recovery`` validators.
+    A Python-only test run reaches that behavior by reusing the surviving
+    ``larch.state`` token/state validators, matching the retired in-process fake.
+    """
+    _bind_larch_package()
+    from larch.state import _tokens as st  # noqa: PLC0415 - deferred until _bind_larch_package puts the package on sys.path
+    from larch.state import _validate as sv  # noqa: PLC0415 - deferred until _bind_larch_package puts the package on sys.path
+
+    values = {arguments[i]: arguments[i + 1] for i in range(len(arguments) - 1) if arguments[i].startswith("--")}
+    generic = values.get("--profile") == "generic"
+    if verb == "validate-token":
+        token = values.get("--token") or values.get("--value", "")
+        kind = values.get("--token-kind", "")
+        valid = bool(token) and not st._reject_rawish_token_value(token)  # noqa: SLF001 - reuse the shared validator
+        if valid and kind == "bail":
+            valid = st._safe_bail_reason_value(token, generic=generic)  # noqa: SLF001 - reuse the shared validator
+        elif valid and kind:
+            valid = st._safe_token(kind=kind, value=token, generic=generic)  # noqa: SLF001 - reuse the shared validator
+        print(f"TOKEN_VALID={'true' if valid else 'false'}")
+        return 0 if valid else 1
+    primary = values.get("--primary-state-file", "")
+    tmpdir = Path(values.get("--implement-tmpdir", "."))
+    state = Path(primary) if primary else tmpdir / "design-failure-terminal-state.env"
+    valid = sv._validated_terminal_state_values(tmpdir=tmpdir, state_file=state, generic=generic) is not None  # noqa: SLF001 - reuse the shared validator
+    print(f"VALID={'true' if valid else 'false'}")
+    return 0 if valid else 1
+
+
 def main(arguments: list[str]) -> int:
     result = 2
     if arguments == ["--version"]:
@@ -2514,6 +2546,8 @@ def main(arguments: list[str]) -> int:
             ("design", "stage-terminal-state"): functools.partial(_design_terminal_verb, verb="stage-terminal-state"),
             ("design", "failure-report"): functools.partial(_design_terminal_verb, verb="failure-report"),
             ("design", "step-final-summary"): functools.partial(_design_terminal_verb, verb="step-final-summary"),
+            ("stall-recovery", "validate-token"): functools.partial(_stall_recovery_verb, verb="validate-token"),
+            ("stall-recovery", "validate-terminal-state"): functools.partial(_stall_recovery_verb, verb="validate-terminal-state"),
             ("agent", "classify-diff"): _classify,
             ("agent", "wait-reviewers"): _wait,
             ("agent", "gather-branch-context"): _gather,
