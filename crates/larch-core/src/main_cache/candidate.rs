@@ -1305,11 +1305,7 @@ mod tests {
         let path = candidate_dir.join("manifest.json");
         let mut manifest = read_manifest(&path).expect("manifest");
         edit(&mut manifest);
-        fs::write(
-            &path,
-            format!("{}\n", Value::Object(manifest)),
-        )
-        .expect("rewrite");
+        fs::write(&path, format!("{}\n", Value::Object(manifest))).expect("rewrite");
     }
 
     #[test]
@@ -1348,16 +1344,15 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let request = make_request(root.path(), "candidate");
         let staged = stage_candidate(&request).expect("stage");
-        let verified = verify_candidate(&request.candidate_dir, &contract(&request)).expect("verify");
+        let verified =
+            verify_candidate(&request.candidate_dir, &contract(&request)).expect("verify");
         assert_eq!(verified.total_bytes, staged.total_bytes);
         assert_eq!(staged.cache_class, "coverage-target");
         assert_eq!(staged.artifact_name, "main-cache-coverage-target-candidate");
         let manifest =
             read_manifest(&request.candidate_dir.join("manifest.json")).expect("manifest");
         assert_eq!(
-            manifest
-                .get("schema_version")
-                .and_then(Value::as_u64),
+            manifest.get("schema_version").and_then(Value::as_u64),
             Some(SCHEMA_VERSION)
         );
         assert_eq!(
@@ -1473,7 +1468,8 @@ mod tests {
             "root documentation\n",
         )
         .expect("root doc");
-        fs::write(nested.join("async-read-write.md"), "nested documentation\n").expect("nested doc");
+        fs::write(nested.join("async-read-write.md"), "nested documentation\n")
+            .expect("nested doc");
         let request = CandidateRequest {
             artifact_name: "main-cache-cargo-inputs-candidate".into(),
             cache_class: "cargo-inputs".into(),
@@ -1494,7 +1490,11 @@ mod tests {
             ]),
         };
         let staged = stage_candidate(&request).expect("stage");
-        let paths: Vec<_> = staged.members.iter().map(|member| member.path.as_str()).collect();
+        let paths: Vec<_> = staged
+            .members
+            .iter()
+            .map(|member| member.path.as_str())
+            .collect();
         assert_eq!(
             paths,
             [
@@ -1509,16 +1509,20 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let mut bad_event = make_request(root.path(), "bad-event");
         bad_event.producer_event = "pull_request".into();
-        assert!(stage_candidate(&bad_event)
-            .expect_err("event")
-            .to_string()
-            .contains("producer event"));
+        assert!(
+            stage_candidate(&bad_event)
+                .expect_err("event")
+                .to_string()
+                .contains("producer event")
+        );
         let mut bad_ref = make_request(root.path(), "bad-ref");
         bad_ref.producer_ref = "refs/heads/main".into();
-        assert!(stage_candidate(&bad_ref)
-            .expect_err("ref")
-            .to_string()
-            .contains("producer ref"));
+        assert!(
+            stage_candidate(&bad_ref)
+                .expect_err("ref")
+                .to_string()
+                .contains("producer ref")
+        );
         let mut multiline = make_request(root.path(), "multiline");
         multiline.tool_versions = BTreeMap::from([(
             "cargo-nextest".into(),
@@ -1531,33 +1535,36 @@ mod tests {
             let link_root = root.path().join("symlink");
             fs::create_dir_all(link_root.join("source")).expect("source");
             fs::write(link_root.join("target"), "target\n").expect("target");
-            std::os::unix::fs::symlink(
-                link_root.join("target"),
-                link_root.join("source/link"),
-            )
-            .expect("symlink");
+            std::os::unix::fs::symlink(link_root.join("target"), link_root.join("source/link"))
+                .expect("symlink");
             let mut request = make_request(&link_root, "candidate");
             request.sources[0].path = link_root.join("source");
             request.maximum_bytes = 0;
-            assert!(stage_candidate(&request)
-                .expect_err("symlink")
-                .to_string()
-                .contains("symlink"));
+            assert!(
+                stage_candidate(&request)
+                    .expect_err("symlink")
+                    .to_string()
+                    .contains("symlink")
+            );
         }
 
         let existing = make_request(root.path(), "existing");
         stage_candidate(&existing).expect("first stage");
-        assert!(stage_candidate(&existing)
-            .expect_err("duplicate")
-            .to_string()
-            .contains("already exists"));
+        assert!(
+            stage_candidate(&existing)
+                .expect_err("duplicate")
+                .to_string()
+                .contains("already exists")
+        );
 
         let mut oversize = make_request(root.path(), "oversize");
         oversize.maximum_bytes = 1;
-        assert!(stage_candidate(&oversize)
-            .expect_err("oversize")
-            .to_string()
-            .contains("exceeds its maximum size"));
+        assert!(
+            stage_candidate(&oversize)
+                .expect_err("oversize")
+                .to_string()
+                .contains("exceeds its maximum size")
+        );
 
         let huge = root.path().join("huge.json");
         let huge_len = usize::try_from(MAX_MANIFEST_BYTES)
@@ -1578,14 +1585,16 @@ mod tests {
             b"altered",
         )
         .expect("alter");
-        assert!(promote_candidate(
-            &altered.candidate_dir,
-            &root.path().join("out-altered"),
-            &contract(&altered),
-        )
-        .expect_err("members")
-        .to_string()
-        .contains("members do not match"));
+        assert!(
+            promote_candidate(
+                &altered.candidate_dir,
+                &root.path().join("out-altered"),
+                &contract(&altered),
+            )
+            .expect_err("members")
+            .to_string()
+            .contains("members do not match")
+        );
 
         let missing = make_request(root.path(), "missing");
         stage_candidate(&missing).expect("stage");
@@ -1595,68 +1604,80 @@ mod tests {
                 .join("payload/llvm-cov-target/.fingerprint/dependency.json"),
         )
         .expect("remove");
-        assert!(promote_candidate(
-            &missing.candidate_dir,
-            &root.path().join("out-missing"),
-            &contract(&missing),
-        )
-        .is_err());
+        assert!(
+            promote_candidate(
+                &missing.candidate_dir,
+                &root.path().join("out-missing"),
+                &contract(&missing),
+            )
+            .is_err()
+        );
 
         let empty = make_request(root.path(), "empty-manifest");
         stage_candidate(&empty).expect("stage");
         fs::write(empty.candidate_dir.join("manifest.json"), "{}\n").expect("empty");
-        assert!(promote_candidate(
-            &empty.candidate_dir,
-            &root.path().join("out-empty"),
-            &contract(&empty),
-        )
-        .expect_err("schema")
-        .to_string()
-        .contains("unexpected schema"));
+        assert!(
+            promote_candidate(
+                &empty.candidate_dir,
+                &root.path().join("out-empty"),
+                &contract(&empty),
+            )
+            .expect_err("schema")
+            .to_string()
+            .contains("unexpected schema")
+        );
 
         let identity = make_request(root.path(), "identity");
         stage_candidate(&identity).expect("stage");
         let mut wrong_name = contract(&identity);
         wrong_name.artifact_name = "main-cache-rust-policy-candidate".into();
-        assert!(promote_candidate(
-            &identity.candidate_dir,
-            &root.path().join("out-name"),
-            &wrong_name,
-        )
-        .expect_err("name")
-        .to_string()
-        .contains("artifact name"));
+        assert!(
+            promote_candidate(
+                &identity.candidate_dir,
+                &root.path().join("out-name"),
+                &wrong_name,
+            )
+            .expect_err("name")
+            .to_string()
+            .contains("artifact name")
+        );
         let mut wrong_key = contract(&identity);
         wrong_key.cache_key = "coverage-target-deps-v2-Linux-X64-other".into();
-        assert!(promote_candidate(
-            &identity.candidate_dir,
-            &root.path().join("out-key"),
-            &wrong_key,
-        )
-        .expect_err("key")
-        .to_string()
-        .contains("cache key"));
+        assert!(
+            promote_candidate(
+                &identity.candidate_dir,
+                &root.path().join("out-key"),
+                &wrong_key,
+            )
+            .expect_err("key")
+            .to_string()
+            .contains("cache key")
+        );
         let mut wrong_sha = contract(&identity);
         wrong_sha.source_sha = "fedcba9876543210fedcba9876543210fedcba98".into();
-        assert!(promote_candidate(
-            &identity.candidate_dir,
-            &root.path().join("out-sha"),
-            &wrong_sha,
-        )
-        .expect_err("sha")
-        .to_string()
-        .contains("source SHA"));
+        assert!(
+            promote_candidate(
+                &identity.candidate_dir,
+                &root.path().join("out-sha"),
+                &wrong_sha,
+            )
+            .expect_err("sha")
+            .to_string()
+            .contains("source SHA")
+        );
         let mut wrong_tools = contract(&identity);
         wrong_tools.expected_tool_versions =
             BTreeMap::from([("cargo-llvm-cov".into(), "cargo-llvm-cov 0.8.8".into())]);
-        assert!(promote_candidate(
-            &identity.candidate_dir,
-            &root.path().join("out-tools"),
-            &wrong_tools,
-        )
-        .expect_err("tools")
-        .to_string()
-        .contains("tool versions"));
+        assert!(
+            promote_candidate(
+                &identity.candidate_dir,
+                &root.path().join("out-tools"),
+                &wrong_tools,
+            )
+            .expect_err("tools")
+            .to_string()
+            .contains("tool versions")
+        );
     }
 
     #[test]
@@ -1690,17 +1711,22 @@ mod tests {
                 .and_then(Value::as_array_mut)
                 .expect("members");
             let member = members[0].as_object_mut().expect("member");
-            let current = member.get("mtime_ns").and_then(Value::as_i64).expect("mtime");
+            let current = member
+                .get("mtime_ns")
+                .and_then(Value::as_i64)
+                .expect("mtime");
             member.insert("mtime_ns".into(), Value::from(current + 1));
         });
-        assert!(promote_candidate(
-            &mtime.candidate_dir,
-            &root.path().join("out-mtime"),
-            &contract(&mtime),
-        )
-        .expect_err("mtime digest")
-        .to_string()
-        .contains("artifact digest"));
+        assert!(
+            promote_candidate(
+                &mtime.candidate_dir,
+                &root.path().join("out-mtime"),
+                &contract(&mtime),
+            )
+            .expect_err("mtime digest")
+            .to_string()
+            .contains("artifact digest")
+        );
 
         for bad in [
             Value::Null,
@@ -1737,13 +1763,15 @@ mod tests {
         rewrite_manifest(&legacy.candidate_dir, |manifest| {
             manifest.insert("schema_version".into(), Value::from(1));
         });
-        assert!(promote_candidate(
-            &legacy.candidate_dir,
-            &root.path().join("out-legacy"),
-            &contract(&legacy),
-        )
-        .expect_err("schema")
-        .to_string()
-        .contains("unsupported schema version"));
+        assert!(
+            promote_candidate(
+                &legacy.candidate_dir,
+                &root.path().join("out-legacy"),
+                &contract(&legacy),
+            )
+            .expect_err("schema")
+            .to_string()
+            .contains("unsupported schema version")
+        );
     }
 }
