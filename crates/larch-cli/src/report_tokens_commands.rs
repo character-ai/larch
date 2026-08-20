@@ -54,7 +54,7 @@ const OPTIONS: &[&str] = &[
     "--trusted-root",
 ];
 const FLAGS: &[&str] = &["--no-issue", "--no-plot", "--operator-invoked"];
-const USAGE: &str = "usage: cli.py report-tokens analyze [-h] --skill {design,implement}\n                                    [--no-issue] [--no-plot]";
+const USAGE: &str = "usage: cli.py report-tokens analyze [-h] --skill {design,implement,debate}\n                                    [--no-issue] [--no-plot]";
 
 /// One resolved `report-tokens analyze` command line.
 struct Analyze {
@@ -134,14 +134,14 @@ fn parse_arguments(arguments: &[OsString]) -> Result<Analyze, (String, u8)> {
             .to_owned()
     };
     let skill = text("--skill");
-    if !matches!(skill.as_str(), "design" | "implement") {
+    if !matches!(skill.as_str(), "design" | "implement" | "debate") {
         let detail = if skill.is_empty() {
             "cli.py report-tokens analyze: error: the following arguments are required: --skill"
                 .to_owned()
         } else {
             format!(
                 "cli.py report-tokens analyze: error: argument --skill: \
-invalid choice: '{skill}' (choose from 'design', 'implement')"
+invalid choice: '{skill}' (choose from 'design', 'implement', 'debate')"
             )
         };
         return Err((format!("{USAGE}\n{detail}"), 2));
@@ -529,7 +529,9 @@ fn empty_report(temp: &mut TempRoot) -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::write_plots;
+    use std::ffi::OsString;
+
+    use super::{parse_arguments, write_plots};
 
     #[test]
     fn one_chart_lands_in_the_advertised_root() {
@@ -548,5 +550,34 @@ mod tests {
     fn an_unwritable_root_reports_no_chart() {
         let root = tempfile::tempdir().expect("temp root");
         assert!(write_plots(&root.path().join("absent"), "design", &[]).is_empty());
+    }
+
+    #[test]
+    fn parse_arguments_accepts_skill_debate() {
+        let request = parse_arguments(&[
+            OsString::from("--skill"),
+            OsString::from("debate"),
+            OsString::from("--no-issue"),
+            OsString::from("--no-plot"),
+        ])
+        .expect("debate is an accepted skill");
+        assert_eq!(request.skill, "debate");
+        assert!(request.no_issue);
+        assert!(request.no_plot);
+    }
+
+    #[test]
+    fn parse_arguments_rejects_unknown_skill_with_three_choices() {
+        let Err((message, code)) =
+            parse_arguments(&[OsString::from("--skill"), OsString::from("review")])
+        else {
+            panic!("unknown skill must fail");
+        };
+        assert_eq!(code, 2);
+        assert!(
+            message
+                .contains("invalid choice: 'review' (choose from 'design', 'implement', 'debate')"),
+            "unexpected rejection text: {message}"
+        );
     }
 }

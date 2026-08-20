@@ -264,9 +264,10 @@ fn daily_costs_of_no_runs_are_empty() {
 fn titles_match_the_python_owner() {
     let expected = fixture("titles.txt");
     let rendered = format!(
-        "{}\n{}\n",
+        "{}\n{}\n{}\n",
         title_for_skill("design", "2026-05-03 07:15 UTC"),
-        title_for_skill("implement", "2026-05-03 07:15 UTC")
+        title_for_skill("implement", "2026-05-03 07:15 UTC"),
+        title_for_skill("debate", "2026-05-03 07:15 UTC")
     );
     assert_eq!(rendered, expected);
 }

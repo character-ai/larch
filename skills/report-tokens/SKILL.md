@@ -2,7 +2,7 @@
 
 # larch-run-lifecycle: shared-v1 skill=report-tokens
 name: report-tokens
-description: "Use when analyzing token costs from synchronized larch run logs for `--skill=design|implement`: price token reports, optionally plot trends, and print cost-reduction suggestions."
+description: "Use when analyzing token costs from synchronized larch run logs for `--skill=design|implement|debate`: price token reports, optionally plot trends, and print cost-reduction suggestions."
 allowed-tools: Bash, Read
 ---
 
@@ -12,9 +12,9 @@ allowed-tools: Bash, Read
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
-Analyze token costs from synchronized larch run logs for the selected skill (`--skill=design|implement`) in the current Git repository. The CLI syncs once, scans the unpacked cache, reads the skill-specific token report JSON files, prices each run through `larch_core::report`, prints a markdown analysis, writes a durable NDJSON cache snapshot, renders the trend chart, and optionally posts a GitHub `[Implement Analysis Report]` or `[Design Analysis Report]` issue.
+Analyze token costs from synchronized larch run logs for the selected skill (`--skill=design|implement|debate`) in the current Git repository. The CLI syncs once, scans the unpacked cache, reads the skill-specific token report JSON files, prices each run through `larch_core::report`, prints a markdown analysis, writes a durable NDJSON cache snapshot, renders the trend chart, and optionally posts a GitHub `[Implement Analysis Report]`, `[Design Analysis Report]`, or `[Debate Analysis Report]` issue.
 
-For `--skill=implement`, reports carry no workflow dimension and graph/per-day trend output aggregates all runs into one `All runs` series/table set. For `--skill=design`, one aggregate report is generated. The filed issue intentionally omits raw per-issue JSON and actual-spend reconciliation unless `LARCH_REPORT_TOKENS_POST_ACTUAL_SPEND=1` is set.
+For `--skill=implement`, reports carry no workflow dimension and graph/per-day trend output aggregates all runs into one `All runs` series/table set. For `--skill=design` and `--skill=debate`, one aggregate report is generated. Debate run logs may record no vendor token legs; the report prices what is present and otherwise surfaces the existing empty-report gap. The filed issue intentionally omits raw per-issue JSON and actual-spend reconciliation unless `LARCH_REPORT_TOKENS_POST_ACTUAL_SPEND=1` is set.
 
 Rate overrides: set environment variables documented in `docs/configuration-and-permissions.md` before invoking. See `docs/python-migration.md` for the migration playbook.
 
@@ -22,14 +22,14 @@ Rate overrides: set environment variables documented in `docs/configuration-and-
 
 Pass any of these after the skill name (for example, `/report-tokens --skill implement --no-issue`):
 
-- `--skill <name>` (**required**): `design` or `implement`. Enum-validate before invoking the CLI; pass through to the module.
+- `--skill <name>` (**required**): `design`, `implement`, or `debate`. Enum-validate before invoking the CLI; pass through to the module.
 - `--no-issue` — skip posting the analysis report GitHub issue. `LARCH_REPORT_TOKENS_NO_ISSUE=1` has the same effect.
 - `--no-plot` — skip chart generation; text analysis is still printed. `LARCH_REPORT_TOKENS_NO_PLOT=1` has the same effect.
 - `--run-id <ID>` — flag reference: `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-id-flag.md`.
 
 <!-- step:1 — Run analysis -->
 
-Parse and validate `--skill` first. Reject missing or out-of-enum values before calling the CLI. Parse any `--no-issue`, `--no-plot`, or `--run-id <ID>` flags. The `--run-id` flag is consumed by the orchestrator and NOT forwarded to the CLI. Then:
+Parse and validate `--skill` first. Reject missing or out-of-enum values (`design`, `implement`, `debate`) before calling the CLI. Parse any `--no-issue`, `--no-plot`, or `--run-id <ID>` flags. The `--run-id` flag is consumed by the orchestrator and NOT forwarded to the CLI. Then:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" report-tokens analyze --skill "<name>" --operator-invoked [FLAGS]
