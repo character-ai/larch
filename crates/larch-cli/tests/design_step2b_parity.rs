@@ -68,6 +68,11 @@ case "${{1:-}}:${{2:-}}" in
     if [[ "${{FIXTURE_VALIDATE_DEFECTS:-}}" == true ]]; then
       printf 'VALIDATE_STATUS=defects-found\nVALIDATE_DEFECT_COUNT=1\nVALIDATE_SKIPPED_COUNT=0\nVALIDATE_UNSAFE_TOKEN_COUNT=0\n'; exit 0
     fi
+    if [[ "${{FIXTURE_MUTATE_PLAN:-}}" == true ]]; then
+      shift 2; design=""
+      while [[ $# -gt 0 ]]; do case "$1" in --design-tmpdir) design="$2"; shift 2 ;; *) shift ;; esac; done
+      printf 'rewritten by validator\n' >>"$design/plan.txt"
+    fi
     printf 'VALIDATE_STATUS=ok\nVALIDATE_DEFECT_COUNT=0\nVALIDATE_SKIPPED_COUNT=0\nVALIDATE_UNSAFE_TOKEN_COUNT=0\n'; exit 0 ;;
   plan:check-size)
     shift 2; design=""
@@ -94,6 +99,8 @@ case "${{1:-}}:${{2:-}}" in
     [[ "${{FIXTURE_SCOUT:-true}}" == true ]] && printf 'SCOUT_WRITTEN=true\n' >>"$output"
     printf 'usage\n' >"$output.token-record"
     if [[ -n "${{FIXTURE_DRAFTER_DIRTY:-}}" ]]; then printf 'STATUS=dirty\nMODE=baseline-delta\n' >"$design/step2b-drafter-status.txt.dirty-tree"; fi
+    if [[ -n "${{FIXTURE_DIALECTIC:-}}" ]]; then printf '{{"decisions":[]}}\n' >"$design/.dialectic-raw-pending.json"; fi
+    if [[ -n "${{FIXTURE_POSTPLAN_PAUSE:-}}" ]]; then : >"$design/.pause-requested"; fi
     exit "${{FIXTURE_DRAFTER_RC:-0}}" ;;
   run-log:*) exit 0 ;;
   token:*) exit 0 ;;
@@ -1036,6 +1043,144 @@ fn postplan_emit_standalone_pause_reads_issue_from_source_env() {
     assert!(
         !out(&output).contains("ERROR=issue-unresolved"),
         "stdout: {}",
+        out(&output)
+    );
+}
+
+#[test]
+fn postplan_emit_clears_stale_dialectic_when_plan_changes() {
+    let fixture = setup();
+    write_plan(&fixture.design, 20, 10);
+    // The validator rewrites plan.txt, so postplan clears stale dialectic state.
+    let output = run_with(
+        &fixture,
+        &[
+            "design",
+            "postplan-emit",
+            "--design-tmpdir",
+            fixture.design.to_str().unwrap(),
+            "--with-plan-size",
+        ],
+        &[("FIXTURE_MUTATE_PLAN", "true")],
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        out(&output).contains("POSTPLAN_EMIT_STATUS=ok"),
+        "{}",
+        out(&output)
+    );
+}
+
+#[test]
+fn step2b_postplan_fatal_prints_captured_before_abort() {
+    let fixture = setup();
+    write_plan(&fixture.design, 20, 10);
+    // A missing-diff emit makes the shared postplan body take the fatal branch,
+    // which reprints the captured output before returning non-zero.
+    let output = run_with(
+        &fixture,
+        &["design", "step2b-postplan", "--site", "step2b"],
+        &[("FIXTURE_EMIT_MISSING", "true")],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        out(&output).contains("POSTPLAN_EMIT_STATUS=missing-diff-lines"),
+        "{}",
+        out(&output)
+    );
+}
+
+#[test]
+fn step2b_postplan_completion_only_pause_hands_off() {
+    let fixture = setup();
+    fs::write(fixture.design.join(".pause-requested"), "").expect("pause");
+    let output = run(
+        &fixture,
+        &["design", "step2b-postplan", "--write-completion-only"],
+    );
+    assert!(out(&output).contains("POSTPLAN_RC=11"), "{}", out(&output));
+    assert!(fixture.design.join(".completed/step-2b.5").is_file());
+}
+
+#[test]
+fn step2b_postplan_write_step2b_completion_only_pause_hands_off() {
+    let fixture = setup();
+    fs::write(fixture.design.join(".pause-requested"), "").expect("pause");
+    let output = run(
+        &fixture,
+        &[
+            "design",
+            "step2b-postplan",
+            "--write-step2b-completion-only",
+        ],
+    );
+    assert!(out(&output).contains("POSTPLAN_RC=11"), "{}", out(&output));
+    assert!(fixture.design.join(".completed/step-2b").is_file());
+}
+
+#[test]
+fn step2b_drafter_promote_runs_when_launch_emits_candidates() {
+    let fixture = drafter_fixture();
+    let output = run_with(
+        &fixture,
+        &["design", "step2b-drafter"],
+        &[("FIXTURE_DIALECTIC", "1")],
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        out(&output).contains("DRAFTER_NEXT_ACTION=step3"),
+        "{}",
+        out(&output)
+    );
+}
+
+#[test]
+fn step2b_drafter_postplan_pause_hands_off() {
+    let fixture = drafter_fixture();
+    let output = run_with(
+        &fixture,
+        &["design", "step2b-drafter"],
+        &[("FIXTURE_POSTPLAN_PAUSE", "1")],
+    );
+    // The drafter succeeds, then postplan observes the pause request and routes to
+    // the post-plan pause handoff.
+    assert!(
+        out(&output).contains("DRAFTER_NEXT_ACTION=postplan-rc11-pause")
+            || out(&output).contains("POSTPLAN_RC=11"),
+        "stdout: {}",
+        out(&output)
+    );
+}
+
+#[test]
+fn step2b_drafter_unexpected_postplan_rc_is_failsafe() {
+    let fixture = drafter_fixture();
+    // A check-size internal error surfaces as an unexpected postplan rc, routing
+    // the drafter to the fail-safe missing-rows directive.
+    let output = run_with(
+        &fixture,
+        &["design", "step2b-drafter"],
+        &[("FIXTURE_CHECK_SIZE_RC", "3")],
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        out(&output).contains("DRAFTER_NEXT_ACTION=failsafe-missing-rows"),
+        "{}",
         out(&output)
     );
 }
