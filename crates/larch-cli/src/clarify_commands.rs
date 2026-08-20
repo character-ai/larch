@@ -568,6 +568,25 @@ fn cli_issue_ok(issue: &str, verb: &str) -> bool {
 
 /// The `clarify state` entrypoint.
 pub fn clarify_state_main(argv: &[OsString]) -> ExitCode {
+    clarify_state_main_with(&LiveEffects, argv)
+}
+
+/// The `clarify comment-fetch` entrypoint.
+pub fn clarify_comment_fetch_main(argv: &[OsString]) -> ExitCode {
+    clarify_comment_fetch_main_with(&LiveEffects, argv)
+}
+
+/// The `clarify comment-post` entrypoint.
+pub fn clarify_comment_post_main(argv: &[OsString]) -> ExitCode {
+    clarify_comment_post_main_with(&LiveEffects, argv)
+}
+
+/// The `clarify label` entrypoint.
+pub fn clarify_label_main(argv: &[OsString]) -> ExitCode {
+    clarify_label_main_with(&LiveEffects, argv)
+}
+
+fn clarify_state_main_with(effects: &dyn ClarifyEffects, argv: &[OsString]) -> ExitCode {
     let parsed = parse_args(argv, &["--issue", "--repo"], &[]);
     if parsed.help {
         eprintln!("clarify state --issue <N> [--repo OWNER/REPO]");
@@ -585,7 +604,7 @@ pub fn clarify_state_main(argv: &[OsString]) -> ExitCode {
         return ExitCode::from(1);
     }
     let repo = parsed.values.get("--repo").map(String::as_str);
-    match clarify_state(&LiveEffects, issue, repo) {
+    match clarify_state(effects, issue, repo) {
         Ok(state) => {
             emit_kv("STATE", &state.state);
             emit_kv("LAST_REQUEST_ID", &state.last_request_id);
@@ -596,8 +615,8 @@ pub fn clarify_state_main(argv: &[OsString]) -> ExitCode {
     }
 }
 
-/// The `clarify comment-fetch` entrypoint.
-pub fn clarify_comment_fetch_main(argv: &[OsString]) -> ExitCode {
+/// The `clarify comment-fetch` implementation over an injected effects seam.
+fn clarify_comment_fetch_main_with(effects: &dyn ClarifyEffects, argv: &[OsString]) -> ExitCode {
     let parsed = parse_args(argv, &["--issue", "--id", "--out", "--repo"], &[]);
     if parsed.help {
         eprintln!("clarify comment-fetch --issue <N> --id <N> --out <path> [--repo OWNER/REPO]");
@@ -617,7 +636,7 @@ pub fn clarify_comment_fetch_main(argv: &[OsString]) -> ExitCode {
     }
     let repo = parsed.values.get("--repo").map(String::as_str);
     match clarify_comment_fetch(
-        &LiveEffects,
+        effects,
         issue,
         &parsed.values["--id"],
         &parsed.values["--out"],
@@ -633,8 +652,8 @@ pub fn clarify_comment_fetch_main(argv: &[OsString]) -> ExitCode {
     }
 }
 
-/// The `clarify comment-post` entrypoint.
-pub fn clarify_comment_post_main(argv: &[OsString]) -> ExitCode {
+/// The `clarify comment-post` implementation over an injected effects seam.
+fn clarify_comment_post_main_with(effects: &dyn ClarifyEffects, argv: &[OsString]) -> ExitCode {
     let parsed = parse_args(
         argv,
         &["--issue", "--kind", "--id", "--content-file", "--repo"],
@@ -662,7 +681,7 @@ pub fn clarify_comment_post_main(argv: &[OsString]) -> ExitCode {
     }
     let repo = parsed.values.get("--repo").map(String::as_str);
     match clarify_comment_post(
-        &LiveEffects,
+        effects,
         issue,
         &parsed.values["--kind"],
         &parsed.values["--id"],
@@ -680,8 +699,8 @@ pub fn clarify_comment_post_main(argv: &[OsString]) -> ExitCode {
     }
 }
 
-/// The `clarify label` entrypoint.
-pub fn clarify_label_main(argv: &[OsString]) -> ExitCode {
+/// The `clarify label` implementation over an injected effects seam.
+fn clarify_label_main_with(effects: &dyn ClarifyEffects, argv: &[OsString]) -> ExitCode {
     let parsed = parse_args(
         argv,
         &["--issue", "--action", "--repo"],
@@ -714,7 +733,7 @@ pub fn clarify_label_main(argv: &[OsString]) -> ExitCode {
     }
     let repo = parsed.values.get("--repo").map(String::as_str);
     match clarify_label(
-        &LiveEffects,
+        effects,
         issue,
         action,
         repo,
@@ -1129,5 +1148,118 @@ mod tests {
         assert!(!is_positive_int_text("0"));
         assert!(!is_positive_int_text("abc"));
         assert!(!is_positive_int_text(""));
+    }
+
+    fn argv(parts: &[&str]) -> Vec<OsString> {
+        parts.iter().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn state_main_covers_success_and_arg_errors() {
+        let effects = FakeEffects {
+            comments: vec![comment(1, "<!-- larch:clarify-request id=1 -->")],
+            ..FakeEffects::with_repo()
+        };
+        // Success emits STATE rows; error/usage/help branches return early.
+        let _ok = clarify_state_main_with(&effects, &argv(&["--issue", "7", "--repo", "o/r"]));
+        let _bad_issue = clarify_state_main_with(&effects, &argv(&["--issue", "0"]));
+        let _missing = clarify_state_main_with(&effects, &argv(&[]));
+        let _help = clarify_state_main_with(&effects, &argv(&["--help"]));
+        let _unknown = clarify_state_main_with(&effects, &argv(&["--issue", "7", "--nope"]));
+    }
+
+    #[test]
+    fn comment_fetch_main_writes_file_and_maps_arg_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("req.md");
+        let effects = FakeEffects {
+            comments: vec![comment(9, "<!-- larch:clarify-request id=2 -->\nbody text")],
+            ..FakeEffects::with_repo()
+        };
+        let _ok = clarify_comment_fetch_main_with(
+            &effects,
+            &argv(&[
+                "--issue",
+                "7",
+                "--id",
+                "2",
+                "--out",
+                out.to_str().unwrap(),
+                "--repo",
+                "o/r",
+            ]),
+        );
+        assert_eq!(fs::read_to_string(&out).unwrap(), "body text");
+        let _missing =
+            clarify_comment_fetch_main_with(&effects, &argv(&["--issue", "7", "--id", "2"]));
+        let _bad_issue = clarify_comment_fetch_main_with(
+            &effects,
+            &argv(&["--issue", "0", "--id", "2", "--out", "x"]),
+        );
+        let _help = clarify_comment_fetch_main_with(&effects, &argv(&["--help"]));
+    }
+
+    #[test]
+    fn comment_post_main_covers_success_and_arg_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = dir.path().join("c.md");
+        fs::write(&content, "hello").unwrap();
+        let effects = FakeEffects::with_repo();
+        let _ok = clarify_comment_post_main_with(
+            &effects,
+            &argv(&[
+                "--issue",
+                "7",
+                "--kind",
+                "request",
+                "--id",
+                "1",
+                "--content-file",
+                content.to_str().unwrap(),
+                "--repo",
+                "o/r",
+            ]),
+        );
+        assert_eq!(effects.posts.borrow().len(), 1);
+        let _missing =
+            clarify_comment_post_main_with(&effects, &argv(&["--issue", "7", "--kind", "request"]));
+        let _bad_issue = clarify_comment_post_main_with(
+            &effects,
+            &argv(&[
+                "--issue",
+                "0",
+                "--kind",
+                "request",
+                "--id",
+                "1",
+                "--content-file",
+                "x",
+            ]),
+        );
+        let _help = clarify_comment_post_main_with(&effects, &argv(&["--help"]));
+    }
+
+    #[test]
+    fn label_main_covers_success_and_arg_errors() {
+        let effects = FakeEffects::with_repo();
+        let _ok = clarify_label_main_with(
+            &effects,
+            &argv(&[
+                "--issue",
+                "7",
+                "--action",
+                "add",
+                "--create-if-missing",
+                "--repo",
+                "o/r",
+            ]),
+        );
+        assert!(!effects.label_ops.borrow().is_empty());
+        let _bad_action =
+            clarify_label_main_with(&effects, &argv(&["--issue", "7", "--action", "bad"]));
+        let _missing = clarify_label_main_with(&effects, &argv(&["--issue", "7"]));
+        let _bad_issue =
+            clarify_label_main_with(&effects, &argv(&["--issue", "0", "--action", "add"]));
+        let _help = clarify_label_main_with(&effects, &argv(&["--help"]));
     }
 }
