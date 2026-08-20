@@ -1517,9 +1517,7 @@ mod tests {
             fs::read_to_string(temporary.path().join("larch-run.sh")).expect("read launcher");
         assert!(rendered.contains("trap _larch_cleanup_active_leg EXIT INT TERM"));
         assert!(rendered.contains("LARCH_ACTIVE_LEG_OWNER_TOKEN"));
-        assert!(rendered.contains(
-            "scripts/larch.sh\" implement kill-active-leg --owner-token"
-        ));
+        assert!(rendered.contains("scripts/larch.sh\" implement kill-active-leg --owner-token"));
     }
 
     #[cfg(unix)]
