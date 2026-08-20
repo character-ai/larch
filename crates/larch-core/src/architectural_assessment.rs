@@ -2205,18 +2205,25 @@ mod tests {
         }
 
         fn current_head(&self) -> String {
-            if let Some(drift) = self.drift_head.lock().expect("lock").as_ref() {
-                return drift.clone();
+            {
+                let drift = self.drift_head.lock().expect("lock");
+                if let Some(value) = drift.as_ref() {
+                    return value.clone();
+                }
             }
             if self.unique_heads {
-                let mut reads = self.head_reads.lock().expect("lock");
-                *reads += 1;
-                let value = *reads;
+                let value = {
+                    let mut reads = self.head_reads.lock().expect("lock");
+                    *reads += 1;
+                    *reads
+                };
                 return format!("{value:040x}");
             }
-            let mut sequence = self.head_sequence.lock().expect("lock");
-            if let Some(next) = sequence.pop_front() {
-                return next;
+            {
+                let mut sequence = self.head_sequence.lock().expect("lock");
+                if let Some(next) = sequence.pop_front() {
+                    return next;
+                }
             }
             if let Some(after) = &self.after_sequence {
                 return after.clone();
@@ -2336,6 +2343,7 @@ mod tests {
         (root, repo, tmpdir)
     }
 
+    #[allow(clippy::too_many_arguments)] // test fixture bundles the durable note identity fields
     fn write_durable_bundle(
         tmpdir: &Path,
         kind: AssessmentKind,
@@ -3227,7 +3235,7 @@ mod tests {
         fs::write(&diff_path2, DOCS_DIFF).expect("diff");
         fs::write(
             durable_note_path(&tmpdir2, AssessmentKind::Guidelines),
-            &format!("{}\n", AssessmentKind::Guidelines.clean_presentation_note()),
+            format!("{}\n", AssessmentKind::Guidelines.clean_presentation_note()),
         )
         .expect("note");
         let legacy = format!(
@@ -3469,14 +3477,16 @@ mod tests {
         fs::write(&meta_path, &meta).expect("corrupt");
         fs::remove_file(tmpdir.join(AssessmentKind::Guidelines.ship_outcome_sidecar_filename()))
             .ok();
-        let mut perms = fs::metadata(&tmpdir).expect("meta").permissions();
-        perms.set_readonly(true);
-        fs::set_permissions(&tmpdir, perms.clone()).expect("readonly");
-        let result = materialize(&["guidelines"], &repo, &tmpdir, &git);
-        perms.set_readonly(false);
-        fs::set_permissions(&tmpdir, perms).expect("restore");
-        // readonly may surface as invalidate survivor or write failure
-        assert!(result.is_err(), "{result:?}");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let original = fs::metadata(&tmpdir).expect("meta").permissions();
+            fs::set_permissions(&tmpdir, fs::Permissions::from_mode(0o555)).expect("readonly");
+            let result = materialize(&["guidelines"], &repo, &tmpdir, &git);
+            fs::set_permissions(&tmpdir, original).expect("restore");
+            // readonly may surface as invalidate survivor or write failure
+            assert!(result.is_err(), "{result:?}");
+        }
     }
 
     #[test]
