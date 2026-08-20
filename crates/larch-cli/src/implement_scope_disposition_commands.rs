@@ -156,10 +156,7 @@ fn choices(values: &[&str]) -> String {
 /// of re-entering the bootstrap. Callers keep the owner's own error text: an
 /// expected post-merge stale fingerprint already degrades to an empty line, so
 /// anything left is a coverage-integrity failure.
-pub fn plan_coverage_report_line(
-    tmpdir: &Path,
-    manifest: Option<&Path>,
-) -> Result<String, String> {
+pub fn plan_coverage_report_line(tmpdir: &Path, manifest: Option<&Path>) -> Result<String, String> {
     plan_coverage_summary_line(tmpdir, manifest)
 }
 
