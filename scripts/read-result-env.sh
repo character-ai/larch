@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # read-result-env.sh — safely convert result-env KVs into a sourceable allowlisted env.
 # Delegates allowlist filtering, symlink refusal, CR/LF rejection, fallback-input
-# logic, WARN/ERROR stdout replay, and single-quote encoding to the Python
-# design lifecycle helper.
+# logic, WARN/ERROR stdout replay, and single-quote encoding to the Rust
+# design lifecycle owner via larch.sh (#8580 migrated this verb off Python).
 
 set -euo pipefail
 
@@ -11,4 +11,4 @@ _REPO_ROOT="$(cd "$_RRE_SCRIPT_DIR/.." && pwd -P)"
 CLAUDE_PLUGIN_ROOT="$_REPO_ROOT"
 export CLAUDE_PLUGIN_ROOT
 
-exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design read-result-env "$@"
+exec "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" design read-result-env "$@"
