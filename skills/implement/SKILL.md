@@ -521,7 +521,7 @@ For `stall`, `main-agent-vote-required`, `coder-main-agent-required`, and `mav-r
 
 Branch on `STEP5_REVIEW_STATUS` (only when present — preflight failures without it terminate at Step 18 per above):
 
-- **`complete`**: proceed with Cross-Skill Presence Propagation, then Track Rejected Code Review Findings, then the Step 6 breadcrumb (the absorbed loop already ran `scripts/larch.sh checks run-relevant`, `python/cli.py checks lint-fix` when needed, and the substantiality / bulk-skip gates inside Bash).
+- **`complete`**: proceed with Cross-Skill Presence Propagation, then Track Rejected Code Review Findings, then the Step 6 breadcrumb (the absorbed loop already ran `scripts/larch.sh checks run-relevant`, `scripts/larch.sh checks lint-fix` when needed, and the substantiality / bulk-skip gates inside Bash).
 - **`cap-hit`**: print `**⚠ 5: code review hit $EFFECTIVE_ROUND_CAP-round cap without converging. Proceeding.**`, log to `Warnings`, then run the same post-Step-5 chain as `complete`.
 - **`self-review-required`**: print `**⚠ /implement Step 5: all external reviewers failed at runtime; falling back to Claude-subagent self-review.**`, log a `Warnings` entry in `$IMPLEMENT_TMPDIR/execution-issues.md`, then **MANDATORY: READ ENTIRE FILE**: read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` and execute it exactly as the `--self-review` branch does. Do not call `review-and-fix step5` again. Do not stall as `panel-failed`. Do not reach Step 6 before self-review finishes.
 <!-- # intentionally non-stable: step-5-resume.sh captures wall-clock time for round duration -->

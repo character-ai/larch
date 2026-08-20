@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -10,8 +9,6 @@ if TYPE_CHECKING:
     import pytest
 
 from larch.agents import agents
-from larch.implement import checks
-from larch.implement import checks_lint_fix as _clf
 from larch.implement import ci_monitor
 from larch.core import external_defaults
 from larch.git import rebase
@@ -60,61 +57,6 @@ def test_rebase_conflict_loop_uses_rebase_conflict_fixer_role(monkeypatch: pytes
 
     assert seen == ["implement.rebase_conflict_fixer"]
     assert launch_calls == ["cursor"]
-
-
-def test_checks_lint_fix_uses_lint_fix_coder_role(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    seen = _tool_order_probe(monkeypatch, checks, "implement.lint_fix_coder", ("cursor", "codex", "claude"))
-    run_parent = tmp_path / "lint-fix-loop"
-    run_parent.mkdir()
-    log = tmp_path / "checks.log"
-    log.write_text("failure\n", encoding="utf-8")
-    agent_cli = tmp_path / "cli.py"
-    agent_cli.write_text("# cli\n", encoding="utf-8")
-    run_calls: list[str] = []
-    runner = SimpleNamespace(run=lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", ""))
-
-    def fake_cursor(*_args: object, **_kwargs: object) -> int:
-        run_calls.append("cursor")
-        return 0
-
-    # The waterfall harness calls _capture_tracked_paths: (0) baseline, (1) per-attempt
-    # baseline before cursor, (2) post-dispatch current (needs useful delta).
-    capture_count: list[int] = [0]
-    def tracked_with_useful_delta(*_args: object, **_kwargs: object) -> tuple[str, ...]:
-        n = capture_count[0]
-        capture_count[0] += 1
-        # Calls 0 and 1 are pre-dispatch; call 2+ is post-dispatch for cursor.
-        return ("fixed.py",) if n >= 2 else ()  # type: ignore[return-value]
-
-    monkeypatch.setattr(_clf, "_agent_cli", lambda: agent_cli)
-    monkeypatch.setattr(_clf, "plugin_scripts_dir", lambda: tmp_path)
-    monkeypatch.setattr(_clf, "_capture_tracked_paths", tracked_with_useful_delta)
-    monkeypatch.setattr(_clf, "_capture_untracked_paths", lambda *_args, **_kwargs: ())
-    monkeypatch.setattr(checks.git, "rev_parse", lambda *_args, **_kwargs: "HEAD")
-    monkeypatch.setattr(checks.git, "current_branch", lambda *_args, **_kwargs: "feature")
-    monkeypatch.setattr(_clf, "_submodule_paths", lambda *_args, **_kwargs: ())
-    monkeypatch.setattr(checks.coder_delta_guards, "coder_forbidden_paths", lambda *_args, **_kwargs: ())
-    monkeypatch.setattr(_clf, "_run_cursor", fake_cursor)
-    monkeypatch.setattr(_clf, "_post_dispatch_forbidden_revert", lambda *_args, **_kwargs: 0)
-
-    outcome = checks.run_lint_fix(
-        runner,
-        site="step6",
-        checks_log=str(log),
-        repo_root=str(tmp_path),
-        codex_present=True,
-        cursor_present=True,
-        run_parent=str(run_parent),
-        allowed_tmpdir=str(tmp_path),
-        claude_present=True,
-    )
-
-    # The waterfall harness calls tool_order multiple times (once for budget calculation,
-    # once per tier selection). Verify all calls use the correct role_id.
-    assert seen
-    assert all(s == "implement.lint_fix_coder" for s in seen)
-    assert run_calls == ["cursor"]
-    assert outcome.coder_tool == "cursor"
 
 
 def test_ci_monitor_available_tiers_uses_ci_recovery_role(monkeypatch: pytest.MonkeyPatch) -> None:

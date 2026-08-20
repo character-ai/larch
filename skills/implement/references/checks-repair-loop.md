@@ -88,7 +88,7 @@ This branch is a ci-fixer subagent handoff. It is never a main-agent repair path
 Keep `$IMPLEMENT_TMPDIR/checks-fix-round-<site>.count`, starting at 1 and capped at 10. Exhaustion follows the existing terminal stall path. Bind `CHECKS_FIX_SITE` to the parsed `LINT_FIX_LEDGER_SITE` when present, otherwise the pinned lint site. For each allowed round, use the parsed `LINT_FIX_LEDGER_FAILURE_DETAIL_LOG` as the source when it is present; otherwise use the current `REDACTED_LOG_FILE`. Materialize the bounded, redacted evidence file before spawning the fixer. The command verifies session containment and does not expose the evidence to the main agent:
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py checks fixer-evidence --tmpdir "$IMPLEMENT_TMPDIR" --site "$CHECKS_FIX_SITE" --round "$CHECKS_FIX_ROUND" --checks-log "$CHECKS_FIX_SOURCE_LOG"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh checks fixer-evidence --tmpdir "$IMPLEMENT_TMPDIR" --site "$CHECKS_FIX_SITE" --round "$CHECKS_FIX_ROUND" --checks-log "$CHECKS_FIX_SOURCE_LOG"
 ```
 
 Require `CHECKS_FIXER_EVIDENCE_STATUS=ok` and bind `CHECKS_FIXER_EVIDENCE_FILE`. A failed or malformed evidence envelope follows the existing terminal stall path; do not substitute a raw log, tail, or prompt-side diagnosis.

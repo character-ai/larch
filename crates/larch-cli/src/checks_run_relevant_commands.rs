@@ -644,12 +644,8 @@ fn record_checks_vendor_task(canonical_tmp: &Path, start_s: i64, end_s: i64, exi
 // ---- small utilities ----
 
 fn valid_site(site: &str) -> bool {
-    !site.is_empty()
-        && !site.starts_with('.')
-        && !site.contains("..")
-        && site
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
+    // Shared site grammar with the lint-fix leaf (#8625).
+    larch_core::implement::valid_fixer_site(site)
 }
 
 fn resolve_display_path(raw: &str) -> PathBuf {
