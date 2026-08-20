@@ -82,7 +82,7 @@ def test_managed_leaf_phases_persist_and_verify_gate_evidence() -> None:
     assert "do not edit or publish the" in review
 
 
-def test_recon_routes_large_or_malformed_plans_before_implementation() -> None:
+def test_recon_routes_malformed_plans_before_implementation() -> None:
     recon = _read("recon-design.md")
     assert "plan-block read" in recon
     assert "Do not replace or republish it." in recon
@@ -90,7 +90,7 @@ def test_recon_routes_large_or_malformed_plans_before_implementation() -> None:
     assert "SHIP_STATUS=needs-design" in recon
     assert "PHASE_STATUS=needs-design" in recon
     assert "HANDOFF_FILE=needs-design.md" in recon
-    assert "Never add `oversize_override: operator`" in recon
+    assert "oversize_override" not in recon
 
     skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
         encoding="utf-8"

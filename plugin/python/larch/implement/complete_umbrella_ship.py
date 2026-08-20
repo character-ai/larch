@@ -73,13 +73,6 @@ _GENERATED_RUST_MARKERS: Final = (
 )
 _NUMSTAT_INTEGER_RE: Final = re.compile(r"^[0-9]+$")
 _NUMSTAT_HEADER_PARTS: Final = 3
-_PLAN_SIZE_INPUT_BASENAME: Final = "complete-umbrella-plan.txt"
-_PLAN_SIZE_RESULT_KEYS: Final = (
-    "OVERSIZE_OVERRIDE",
-    "PLAN_SIZE_STATUS",
-    "SIZE_TRIGGER_FIRED",
-    "TRIGGER_REASONS",
-)
 
 
 @dataclass(frozen=True)
@@ -116,12 +109,6 @@ class LeafShipOutcome:
     ci_errors_file: str = ""
     conflict_files: str = ""
     detail: str = ""
-
-
-@dataclass(frozen=True)
-class LeafPlanAdmission:
-    needs_design: bool
-    trigger_reasons: tuple[str, ...] = ()
 
 
 class _LeafPlanNeedsDesign(ShipError):
@@ -522,68 +509,6 @@ def _require_leaf_plan(
     return plan_inner
 
 
-def _plan_size_fields(stdout: str) -> dict[str, str]:
-    parsed = larch_io.parse_kv(
-        stdout,
-        duplicate_policy="all",
-        allowed_keys=_PLAN_SIZE_RESULT_KEYS,
-    )
-    fields: dict[str, str] = {}
-    for key in _PLAN_SIZE_RESULT_KEYS:
-        values = parsed.get(key, [])
-        if len(values) != 1:
-            raise ShipError(f"plan size preflight returned invalid {key}")
-        fields[key] = values[0]
-    if fields["PLAN_SIZE_STATUS"] != "ok":
-        raise ShipError("plan size preflight did not return ok")
-    if fields["SIZE_TRIGGER_FIRED"] not in {"true", "false"}:
-        raise ShipError("plan size preflight returned an invalid trigger")
-    if fields["OVERSIZE_OVERRIDE"]:
-        raise ShipError("plan size preflight accepted an untrusted override")
-    return fields
-
-
-def _assess_leaf_plan(
-    runner: Runner,
-    request: LeafShipRequest,
-    *,
-    issue_body: str,
-) -> LeafPlanAdmission:
-    """Apply the canonical size gate before the thin implementation phase."""
-    plan_inner = _require_leaf_plan(runner, request, issue_body=issue_body)
-    plan_path = request.handoff_root / _PLAN_SIZE_INPUT_BASENAME
-    try:
-        larch_io.trusted_atomic_write(
-            plan_path,
-            plan_inner,
-            root=request.handoff_root,
-            mode=0o600,
-        )
-    except OSError as exc:
-        raise ShipError(f"plan size input write failed: {exc}") from exc
-    entrypoint = repo_roots.larch_entrypoint(Path(__file__).resolve().parents[3])
-    checked = runner.run(
-        [
-            str(entrypoint),
-            "plan",
-            "check-size",
-            "--design-tmpdir",
-            str(request.handoff_root),
-            "--plan-file",
-            str(plan_path),
-        ],
-        cwd=str(request.repo_root),
-    )
-    if checked.returncode != 0:
-        raise ShipError("plan size preflight failed")
-    fields = _plan_size_fields(checked.stdout)
-    reasons = tuple(reason for reason in fields["TRIGGER_REASONS"].split(",") if reason)
-    return LeafPlanAdmission(
-        needs_design=fields["SIZE_TRIGGER_FIRED"] == "true",
-        trigger_reasons=reasons,
-    )
-
-
 def _parse_numstat_count(value: str) -> int | None:
     if value == "-":
         return None
@@ -722,21 +647,11 @@ def prepare_leaf(
     if snapshot.state.upper() != "OPEN":
         raise ShipError("leaf must be open before implementation starts")
     try:
-        admission = _assess_leaf_plan(
-            runner,
-            request,
-            issue_body=snapshot.body,
-        )
+        _ = _require_leaf_plan(runner, request, issue_body=snapshot.body)
     except _LeafPlanNeedsDesign:
         return LeafShipOutcome(
             status="needs-design",
             detail=f"run /design {request.leaf} before implementation (plan-contract)",
-        )
-    if admission.needs_design:
-        reasons = ",".join(admission.trigger_reasons) or "plan-size"
-        return LeafShipOutcome(
-            status="needs-design",
-            detail=f"run /design {request.leaf} before implementation ({reasons})",
         )
     title = _active_leaf_title(snapshot.title, umbrella=request.umbrella)
     if title != snapshot.title:
