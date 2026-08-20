@@ -37,10 +37,14 @@ mod bootstrap_support;
 mod calibration_commands;
 mod checks_identity_commands;
 mod checks_run_relevant_commands;
+mod checks_rust_clippy_commands;
 mod child_process;
 mod ci_launcher_commands;
+mod ci_policy_candidate_commands;
 mod ci_selection;
 mod ci_timing;
+mod clarify_commands;
+mod clarify_orchestrator;
 pub(crate) mod claude_commands;
 mod cleanup_commands;
 mod collector_commands;
@@ -219,6 +223,9 @@ enum Domain {
     /// Internal bootstrap commands used before installation completes.
     #[command(subcommand, hide = true)]
     Bootstrap(BootstrapCommand),
+    /// The `/design` clarification round-trip: state, comments, and labels.
+    #[command(subcommand)]
+    Clarify(ClarifyCommand),
     /// Remove stale larch session directories and pointers.
     #[command(subcommand)]
     Cleanup(CleanupCommand),
@@ -1052,6 +1059,9 @@ enum ImplementCommand {
 
 #[derive(Subcommand)]
 enum ChecksCommand {
+    /// Run the bounded changed-path Cargo Clippy selection.
+    #[command(name = "rust-clippy", disable_help_flag = true)]
+    RustClippy(RawCompatibilityArguments),
     /// Report the self-edit attribution records for one implement session.
     #[command(name = "self-edit-log", disable_help_flag = true)]
     SelfEditLog(RawCompatibilityArguments),
@@ -1211,7 +1221,39 @@ enum DebateCommand {
 }
 
 #[derive(Subcommand)]
+enum ClarifyCommand {
+    /// Evaluate the clarify thread state for one issue.
+    #[command(disable_help_flag = true)]
+    State(RawCompatibilityArguments),
+    /// Fetch one clarify request body to a file.
+    #[command(name = "comment-fetch", disable_help_flag = true)]
+    CommentFetch(RawCompatibilityArguments),
+    /// Post one clarify request or response comment.
+    #[command(name = "comment-post", disable_help_flag = true)]
+    CommentPost(RawCompatibilityArguments),
+    /// Add or remove the clarification label on one issue.
+    #[command(disable_help_flag = true)]
+    Label(RawCompatibilityArguments),
+}
+
+impl ClarifyCommand {
+    fn run(self) -> ExitCode {
+        // Raw argv: the verbs own their `--flag value` parsing and error text.
+        let arguments = std::env::args_os().skip(3).collect::<Vec<_>>();
+        match self {
+            Self::State(_) => clarify_commands::clarify_state_main(&arguments),
+            Self::CommentFetch(_) => clarify_commands::clarify_comment_fetch_main(&arguments),
+            Self::CommentPost(_) => clarify_commands::clarify_comment_post_main(&arguments),
+            Self::Label(_) => clarify_commands::clarify_label_main(&arguments),
+        }
+    }
+}
+
+#[derive(Subcommand)]
 enum DesignCommand {
+    /// Drive the Step 0b clarification fetch or publish phase.
+    #[command(disable_help_flag = true)]
+    Clarify(RawCompatibilityArguments),
     /// Validate the public `/design` argv and bind its flags.
     #[command(name = "parse-flags", disable_help_flag = true)]
     ParseFlags(RawCompatibilityArguments),
@@ -1280,6 +1322,7 @@ impl DesignCommand {
         // grammar treats `--` as a meaningful token, and clap would eat it.
         let arguments = std::env::args_os().skip(3).collect::<Vec<_>>();
         match self {
+            Self::Clarify(_) => clarify_orchestrator::design_clarify_main(&arguments),
             Self::ParseFlags(_) => design_commands::parse_flags(&arguments),
             Self::Route(_) => design_commands::route(&arguments),
             Self::InitRunparams(_) => design_commands::init_runparams(&arguments),
@@ -2292,6 +2335,7 @@ fn run(
         Domain::Bgjob(BgjobCommand::Reap(arguments)) => {
             Ok(bgjob_commands::reap(&arguments.arguments))
         }
+        Domain::Clarify(command) => Ok(command.run()),
         Domain::Cleanup(CleanupCommand::Run(arguments)) => {
             Ok(cleanup_commands::run(&arguments.arguments))
         }
@@ -2479,6 +2523,9 @@ fn run(
         Domain::Admission(AdmissionCommand::Preflight(arguments)) => {
             Ok(admission_commands::preflight(&arguments.arguments))
         }
+        Domain::Checks(ChecksCommand::RustClippy(arguments)) => Ok(
+            checks_rust_clippy_commands::rust_clippy(&arguments.arguments),
+        ),
         Domain::Checks(ChecksCommand::SelfEditLog(arguments)) => Ok(
             checks_identity_commands::self_edit_log(&arguments.arguments),
         ),

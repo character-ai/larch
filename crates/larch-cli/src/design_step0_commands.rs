@@ -611,7 +611,7 @@ fn load_bash_quoted_env(path: &Path, allowed: &[&str]) -> Env {
     parse_allowed_last(&normalize_splitlines(&raw), allowed, true)
 }
 
-fn load_source_env(path: &str, claude_pid: &str) -> Env {
+pub fn load_source_env(path: &str, claude_pid: &str) -> Env {
     if path.is_empty() {
         return BTreeMap::new();
     }
@@ -1243,7 +1243,7 @@ fn step0c_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
 /// the two log paths and returning its exit code. #8580 flipped the verb from
 /// Python to Rust and removed its Python registration, so this resolves the
 /// larch entrypoint (preferring `LARCH_BINARY`) instead of `run_python_verb`.
-fn stage_terminal_state_bridge(
+pub fn stage_terminal_state_bridge(
     plugin_root: &Path,
     stdout_log: &Path,
     stderr_log: &Path,
@@ -1267,7 +1267,7 @@ fn stage_terminal_state_bridge(
     }
 }
 
-fn clarify_failure_stage_args(
+pub fn clarify_failure_stage_args(
     design_tmpdir: &Path,
     exit_code: &str,
     detail_log: &Path,

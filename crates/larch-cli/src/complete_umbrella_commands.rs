@@ -25,16 +25,16 @@ use larch_adapters::{
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{
-    COMPLETE_UMBRELLA_CHILD_COMPLETE, COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN,
-    COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API, COMPLETE_UMBRELLA_CHILD_NEEDS_DESIGN,
-    ChildEnvironment, CompleteUmbrellaLeaf, CompleteUmbrellaNext, ConnectivityWait,
-    DEFAULT_NET_WAIT_CEILING, DONE_PREFIX, DuplicatePolicy, EnvFile, ExternalProcessRunner,
-    ExternalProgram, GitHubCloseReason, GitHubIssue, GitHubIssueState, GitHubRepositoryRef,
-    GitHubService, Head, IMPLEMENTING_PREFIX, IssueMutationError, IssueMutationField,
-    IssueMutationRequest, KvDocument, OfflineRetryMetrics, ParseOptions, ProcessErrorKind,
-    ProcessRequest, RepositoryRead, StatusOptions, Unreachable, VendorLaunchRequest, VendorProgram,
-    WaitOnlineResult, build_claude_argv, checked_dir, child_liveness,
-    complete_umbrella_child_prompt, complete_umbrella_done_title,
+    COMPLETE_UMBRELLA_CHILD_COMPLETE, COMPLETE_UMBRELLA_CHILD_FAILURE_INCOMPLETE_ENVELOPE_SHIP,
+    COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN, COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API,
+    COMPLETE_UMBRELLA_CHILD_NEEDS_DESIGN, ChildEnvironment, CompleteUmbrellaLeaf,
+    CompleteUmbrellaNext, ConnectivityWait, DEFAULT_NET_WAIT_CEILING, DONE_PREFIX, DuplicatePolicy,
+    EnvFile, ExternalProcessRunner, ExternalProgram, GitHubCloseReason, GitHubIssue,
+    GitHubIssueState, GitHubRepositoryRef, GitHubService, Head, IMPLEMENTING_PREFIX,
+    IssueMutationError, IssueMutationField, IssueMutationRequest, KvDocument, OfflineRetryMetrics,
+    ParseOptions, ProcessErrorKind, ProcessRequest, RepositoryRead, StatusOptions, Unreachable,
+    VendorLaunchRequest, VendorProgram, WaitOnlineResult, build_claude_argv, checked_dir,
+    child_liveness, complete_umbrella_child_prompt, complete_umbrella_done_title,
     complete_umbrella_leaf_non_candidate, complete_umbrella_relaunch_title,
     complete_umbrella_start_title, daemon_liveness, emit_kv, git_output_is_unreachable,
     has_umbrella_proposal, is_controlling_umbrella_title, is_transient_claude_api_error,
@@ -1041,6 +1041,7 @@ enum DurableChildResult {
     Complete,
     NeedsDesign,
     TransientApi,
+    IncompleteEnvelopeShip,
     Failed,
 }
 
@@ -1049,7 +1050,7 @@ impl DurableChildResult {
         match self {
             Self::Complete => "complete",
             Self::NeedsDesign => "needs-design",
-            Self::TransientApi | Self::Failed => "failed",
+            Self::TransientApi | Self::IncompleteEnvelopeShip | Self::Failed => "failed",
         }
     }
 
@@ -1057,8 +1058,15 @@ impl DurableChildResult {
         match self {
             Self::NeedsDesign => Some(COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN),
             Self::TransientApi => Some(COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API),
+            Self::IncompleteEnvelopeShip => {
+                Some(COMPLETE_UMBRELLA_CHILD_FAILURE_INCOMPLETE_ENVELOPE_SHIP)
+            }
             Self::Complete | Self::Failed => None,
         }
+    }
+
+    const fn is_same_leaf_relaunch(self) -> bool {
+        matches!(self, Self::TransientApi | Self::IncompleteEnvelopeShip)
     }
 }
 
@@ -1553,7 +1561,7 @@ fn decide_resume_recovery(
     }
     let reset = leaf_state == Some(ResumeLeafState::Active);
     match child_result {
-        Some(DurableChildResult::TransientApi)
+        Some(DurableChildResult::TransientApi | DurableChildResult::IncompleteEnvelopeShip)
             if pointer.transient_attempt_count < MAX_TRANSIENT_CHILD_RETRIES =>
         {
             decision(
@@ -1563,11 +1571,18 @@ fn decide_resume_recovery(
                 None,
             )
         }
-        Some(DurableChildResult::TransientApi) => decision(
+        Some(
+            result
+            @ (DurableChildResult::TransientApi | DurableChildResult::IncompleteEnvelopeShip),
+        ) => decision(
             ResumeAction::Failed,
             reset,
             pointer.transient_attempt_count,
-            Some("transient Claude API retry cap was already exhausted"),
+            Some(if result == DurableChildResult::IncompleteEnvelopeShip {
+                "incomplete-envelope ship-progress retry cap was already exhausted"
+            } else {
+                "transient Claude API retry cap was already exhausted"
+            }),
         ),
         Some(DurableChildResult::NeedsDesign) => decision(
             ResumeAction::NeedsDesign,
@@ -1751,6 +1766,12 @@ fn parse_durable_child_result(
         (Some("failed"), Some("false"), Some(COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API), 5) => {
             DurableChildResult::TransientApi
         }
+        (
+            Some("failed"),
+            Some("false"),
+            Some(COMPLETE_UMBRELLA_CHILD_FAILURE_INCOMPLETE_ENVELOPE_SHIP),
+            5,
+        ) => DurableChildResult::IncompleteEnvelopeShip,
         (Some("failed"), Some("false"), None, 4) => DurableChildResult::Failed,
         _ => return Err("durable child result has an invalid terminal shape".to_owned()),
     };
@@ -1758,7 +1779,7 @@ fn parse_durable_child_result(
         return Ok(Some(result));
     }
     if recorded_attempt.checked_add(1) == Some(transient_attempt_count)
-        && result == DurableChildResult::TransientApi
+        && result.is_same_leaf_relaunch()
     {
         return Ok(None);
     }
@@ -2532,7 +2553,10 @@ fn classify_child_attempt(
             Some(reason),
             Some("failed"),
             Some("false"),
-            Some(COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API),
+            Some(
+                COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API
+                | COMPLETE_UMBRELLA_CHILD_FAILURE_INCOMPLETE_ENVELOPE_SHIP,
+            ),
         ) => ChildAttempt::TransientApi(reason),
         (Some(reason), Some("failed"), Some("false"), None) => ChildAttempt::Failed(reason),
         (Some(reason), _, _, _) => ChildAttempt::Failed(format!(
@@ -2717,7 +2741,8 @@ fn run_child(arguments: &RunChildArguments) -> Result<(), String> {
         .map_err(|error| format!("could not create leaf handoff root: {error}"))?;
     let handoff_root_text = handoff_root
         .to_str()
-        .ok_or("leaf handoff root must be valid UTF-8")?;
+        .ok_or("leaf handoff root must be valid UTF-8")?
+        .to_owned();
     if handoff_root_text
         .chars()
         .any(|character| matches!(character, '\n' | '\r'))
@@ -2728,7 +2753,7 @@ fn run_child(arguments: &RunChildArguments) -> Result<(), String> {
         &format!("{}/{}", repository.owner(), repository.name()),
         arguments.umbrella,
         arguments.leaf,
-        handoff_root_text,
+        &handoff_root_text,
     );
     let repo_root_text = repo_root
         .to_str()
@@ -2769,14 +2794,23 @@ fn run_child(arguments: &RunChildArguments) -> Result<(), String> {
     let execution = match execution {
         Ok(execution) => execution,
         Err(error) => {
+            let failure_class = durable_ship_progress_with_pr(Path::new(&handoff_root_text))
+                .then_some(COMPLETE_UMBRELLA_CHILD_FAILURE_INCOMPLETE_ENVELOPE_SHIP);
             write_child_result(
                 arguments,
                 &output_root,
                 arguments.leaf,
                 ChildResultStatus::Failed,
-                None,
+                failure_class,
             )?;
-            return Err(format!("child process failed: {}", error.message()));
+            return Err(if failure_class.is_some() {
+                format!(
+                    "child process failed with durable ship progress: {}",
+                    error.message()
+                )
+            } else {
+                format!("child process failed: {}", error.message())
+            });
         }
     };
     let raw = String::from_utf8_lossy(execution.stdout()).into_owned();
@@ -2815,12 +2849,17 @@ fn finish_child_envelope(
         && !execution.stderr_truncated()
         && has_bounded_status;
     let result_status = result_status.unwrap_or(ChildResultStatus::Failed);
+    let handoff_root = output_root
+        .path()
+        .join(format!("complete-umbrella-leaf-{}", arguments.leaf));
     let failure_class = if bounded && result_status == ChildResultStatus::NeedsDesign {
         Some(COMPLETE_UMBRELLA_CHILD_FAILURE_NEEDS_DESIGN)
     } else if bounded {
         None
     } else if is_transient_claude_api_error(&parsed) {
         Some(COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API)
+    } else if durable_ship_progress_with_pr(&handoff_root) {
+        Some(COMPLETE_UMBRELLA_CHILD_FAILURE_INCOMPLETE_ENVELOPE_SHIP)
     } else {
         None
     };
@@ -2832,15 +2871,45 @@ fn finish_child_envelope(
         failure_class,
     )?;
     if !bounded {
-        return Err(if failure_class.is_some() {
-            "child ended on a transient Claude API failure".to_owned()
-        } else {
-            "child did not return a complete, bounded success envelope".to_owned()
+        return Err(match failure_class {
+            Some(COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API) => {
+                "child ended on a transient Claude API failure".to_owned()
+            }
+            Some(COMPLETE_UMBRELLA_CHILD_FAILURE_INCOMPLETE_ENVELOPE_SHIP) => {
+                "child returned an incomplete envelope with durable ship progress".to_owned()
+            }
+            _ => "child did not return a complete, bounded success envelope".to_owned(),
         });
     }
     emit_kv("CHILD_STATUS", result_status.value());
     emit_kv("CHILD_ISSUE", &arguments.leaf.to_string());
     Ok(())
+}
+
+/// Durable ship progress that justifies a bounded same-leaf parent relaunch.
+///
+/// Requires a regular `complete-umbrella-ship.env` with a positive `PR_NUMBER`.
+/// A live open-PR check is intentionally omitted so offline classification stays
+/// deterministic; a relaunched child re-validates remote PR state itself.
+fn durable_ship_progress_with_pr(handoff_root: &Path) -> bool {
+    let path = handoff_root.join("complete-umbrella-ship.env");
+    let Ok(metadata) = fs::symlink_metadata(&path) else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+    let Ok(text) = fs::read_to_string(&path) else {
+        return false;
+    };
+    let Ok(environment) = EnvFile::parse(&text) else {
+        return false;
+    };
+    environment
+        .values()
+        .get("PR_NUMBER")
+        .and_then(|value| value.parse::<u64>().ok())
+        .is_some_and(|number| number > 0)
 }
 
 fn verify_child(arguments: &LeafArguments) -> Result<(), String> {

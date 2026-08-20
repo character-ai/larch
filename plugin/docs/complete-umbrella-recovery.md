@@ -22,7 +22,9 @@ After the laptop wakes, run `/complete-umbrella <N>` once. The resume owner:
 - rebinds a live bgjob wait lease to the current session and returns to the
   same wait;
 - consumes an identity-bound durable child result through the existing retry
-  or failure route;
+  or failure route, including `transient-api` and `incomplete-envelope-ship`
+  (an incomplete child envelope that still left durable ship progress with a
+  positive `PR_NUMBER`);
 - ignores the immediately prior transient result after its next-attempt
   checkpoint has already been persisted, so a wake cannot consume one retry
   twice;
@@ -43,6 +45,25 @@ The normal success path removes the pointer after the parent closes. A
 terminal hard failure removes it only after lifecycle diagnostics are written.
 Session cleanup treats a valid complete-umbrella pointer as an active tmpdir
 reference, so age cleanup does not discard recoverable handoffs.
+
+## Harness false-denies
+
+Recovery assumes the verified runtime entrypoint can run. On Cursor Agent
+sessions that also load a production-telemetry plugin with Bash-wide PreToolUse
+guards (notably `smarts` pagerduty, hyperdx, changes, and log-evidence guards),
+the Shell tool may reject legitimate
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh complete-umbrella …` and `bgjob …`
+commands before execution. The reject text often names PagerDuty, log-provider,
+HyperDX, or packaged-reader policy even though the argv never touches those
+surfaces. That is a coexistence false-deny, not recoverable umbrella state.
+
+When the harness blocks `start`, `run-leaves` / `bgjob start`, `clear-pointer`,
+or `finish`, stop. Repair or upgrade the co-installed Bash-wide guards, or run
+`/complete-umbrella` in a session without those guards. Do not hand-edit
+lifecycle titles, invent an alternate shell entrypoint, or rephrase the driver
+as `gh`, curl, or wget. The skill retries an identical blocked driver at most
+once through the harness approval API when present, then hard-fails with this
+diagnosis.
 
 ## Diagnostic helper
 

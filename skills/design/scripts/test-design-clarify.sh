@@ -24,25 +24,19 @@ not_contains() {
 }
 
 ROOT="$TMP/fake-root"
-mkdir -p "$ROOT/bin" "$ROOT/python"
-: >"$ROOT/python/cli.py"
+mkdir -p "$ROOT/scripts"
 CALL_LOG="$TMP/calls.log"
-cat >"$ROOT/bin/python3" <<'SH'
+cat >"$ROOT/scripts/larch.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >>"${STUB_CALL_LOG:?}"
-if [ "${1##*/}" != "cli.py" ]; then
-  exec /usr/bin/python3 "$@"
-fi
-shift
 if [ "$*" != "${EXPECTED_DELEGATE_ARGS:?}" ]; then
   printf 'unexpected delegate argv: %s\n' "$*" >&2
   exit 99
 fi
 printf 'CLARIFY_WRAPPER_DELEGATED=true\n'
 SH
-chmod +x "$ROOT/bin/python3"
-export PATH="$ROOT/bin:$PATH"
+chmod +x "$ROOT/scripts/larch.sh"
 export CLAUDE_PLUGIN_ROOT="$ROOT"
 export STUB_CALL_LOG="$CALL_LOG"
 : >"$CALL_LOG"

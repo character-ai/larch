@@ -799,7 +799,9 @@ jobs:
             --source-sha "$GITHUB_SHA" \
             --expected-tool-version "cargo=${{ steps.rust-toolchain.outputs.cargo-version }}" \
             --expected-tool-version "rustc=${{ steps.rust-toolchain.outputs.rustc-version }}"
-          python3 python/cli.py ci promote-rust-policy-candidate \
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" \
+            LARCH_BINARY="$RUNNER_TEMP/main-cache-promoted/rust-policy-artifact/policy/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" ci promote-rust-policy-candidate \
             --artifact-dir "$RUNNER_TEMP/main-cache-promoted/rust-policy-artifact/policy" \
             --policy-dir "$RUNNER_TEMP/trusted-main-rust-policy" \
             --source-sha "$GITHUB_SHA" \

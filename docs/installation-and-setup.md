@@ -270,6 +270,8 @@ If you need stricter permissions instead (no `bypassPermissions`), drop that lin
 
 - **macOS keychain auth.** If `CURSOR_API_KEY` is unset and Cursor's keychain entry is missing or stale, larch fails with a specific, actionable error instead of Cursor's cryptic `Security process exited with code: 45`. See [macOS keychain interactions](macos-keychain-interactions.md) for the full mechanism and the fix.
 
+- **Co-installed production-guard plugins (issue #8747).** Cursor sessions that also load Bash-wide PreToolUse guards from a production-telemetry plugin (commonly `smarts` pagerduty / hyperdx / changes / log-evidence hooks) can Shell-reject legitimate `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh` drivers before execution. The reject text may name PagerDuty, log-provider, or packaged-reader policy even when the argv never touches those surfaces. `/complete-umbrella` hard-fails that false-deny after at most one harness approval retry; see [Complete Umbrella Recovery](complete-umbrella-recovery.md) § Harness false-denies. Prefer upgrading or narrowing those guards, or run larch workflows in a session without them. Do not rephrase larch drivers as `gh`, curl, or wget.
+
 ### Optionally configure run-log storage
 
 To publish remote run-log archives, create `tools-config.toml` at the consumer

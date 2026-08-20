@@ -12,6 +12,7 @@ import pytest
 
 from larch.core import config, rust_runtime
 from larch.design import design_core
+from larch.core.proc import CommandResult
 from larch.design import design_summary
 from larch.report import report_tokens_cost
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import,import-error  # pyright: ignore[reportUnusedImport]
@@ -1224,3 +1225,69 @@ def test_render_final_summary_accepts_paused_outcome(
     monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
 
     assert design_summary.render_final_summary_main(["--outcome", "paused"]) == 0
+
+
+def _summary_result(
+    argv: tuple[str, ...] = ("gh",),
+    rc: int = 0,
+    stdout: str = "",
+    stderr: str = "",
+) -> CommandResult:
+    return CommandResult(argv, rc, stdout, stderr, 0.01)
+
+
+def _seed_final_summary(tmp_path: Path, text: str = "rendered summary\n") -> Path:
+    summary = tmp_path / "final-summary.md"
+    summary.write_text(text, encoding="utf-8")
+    return summary
+
+
+def test_upsert_final_summary_from_disk_validates_and_calls_tracking_issue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    summary = _seed_final_summary(tmp_path)
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run_cli(*args: str) -> CommandResult:
+        calls.append(args)
+        return _summary_result(argv=tuple(args), rc=0)
+
+    monkeypatch.setattr(design_summary, "_run_larch", fake_run_cli)
+    assert design_summary.upsert_final_summary_from_disk(
+        design_tmpdir=tmp_path,
+        issue="7",
+        session_id="RUN1",
+        repo_args=["--repo", "owner/repo"],
+        final_summary_path=summary,
+    )
+    assert calls == [
+        (
+            "tracking-issue",
+            "upsert-summary",
+            "--issue",
+            "7",
+            "--marker",
+            "<!-- larch:final-summary v1 runid=RUN1 -->",
+            "--content-file",
+            str(summary),
+            "--repo",
+            "owner/repo",
+        )
+    ]
+
+
+def test_upsert_final_summary_from_disk_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(design_summary, "_run_cli", lambda *args: calls.append(args) or _summary_result(argv=tuple(args), rc=0))
+    assert not design_summary.upsert_final_summary_from_disk(design_tmpdir=tmp_path, issue="7", session_id="RUN1")
+    empty = tmp_path / "final-summary.md"
+    empty.write_text("", encoding="utf-8")
+    assert not design_summary.upsert_final_summary_from_disk(design_tmpdir=tmp_path, issue="7", session_id="RUN1")
+    empty.write_text("summary\n", encoding="utf-8")
+    monkeypatch.setattr(design_summary, "_run_larch", lambda *args: calls.append(args) or _summary_result(argv=tuple(args), rc=9))
+    assert not design_summary.upsert_final_summary_from_disk(design_tmpdir=tmp_path, issue="7", session_id="RUN1")
+    assert calls

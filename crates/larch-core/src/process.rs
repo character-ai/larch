@@ -958,6 +958,20 @@ impl ProcessOutput {
     pub fn stderr(&self) -> &[u8] {
         &self.stderr
     }
+
+    /// Decode this output into an exit code and lossy stdout/stderr strings.
+    ///
+    /// The exit code defaults to `1` when the process reported none, matching
+    /// the convention CLI callers use when adapting captured output.
+    #[must_use]
+    pub fn decoded_streams(&self) -> (i32, String, String) {
+        (
+            self.status.code().unwrap_or(1),
+            String::from_utf8_lossy(&self.stdout).into_owned(),
+            String::from_utf8_lossy(&self.stderr).into_owned(),
+        )
+    }
+
     #[must_use]
     pub const fn stdout_truncated(&self) -> bool {
         self.stdout_truncated

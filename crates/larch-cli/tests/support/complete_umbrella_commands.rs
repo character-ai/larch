@@ -622,6 +622,50 @@ fn resume_dead_child_result_preserves_its_failure_class_and_retry_count() {
         result.failure_class(),
         Some(COMPLETE_UMBRELLA_CHILD_FAILURE_TRANSIENT_API)
     );
+
+    let incomplete_text = format!(
+        "CHILD_STATUS=failed\nCHILD_ISSUE={LEAF}\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\nCHILD_FAILURE_CLASS={COMPLETE_UMBRELLA_CHILD_FAILURE_INCOMPLETE_ENVELOPE_SHIP}\n"
+    );
+    let incomplete = parse_durable_child_result(&incomplete_text, LEAF, 0)
+        .expect("incomplete-envelope durable result")
+        .expect("current incomplete attempt");
+    assert_eq!(incomplete, DurableChildResult::IncompleteEnvelopeShip);
+    assert_eq!(
+        incomplete.failure_class(),
+        Some(COMPLETE_UMBRELLA_CHILD_FAILURE_INCOMPLETE_ENVELOPE_SHIP)
+    );
+    assert_eq!(
+        parse_durable_child_result(&incomplete_text, LEAF, 1).expect("stale incomplete"),
+        None
+    );
+    pointer.transient_attempt_count = 0;
+    let incomplete_retry =
+        decide_resume_recovery(&pointer, Some(incomplete), Some(ResumeLeafState::Active));
+    assert_eq!(incomplete_retry.action, ResumeAction::Reselect);
+    assert_eq!(incomplete_retry.transient_attempt_count, 1);
+    pointer.transient_attempt_count = MAX_TRANSIENT_CHILD_RETRIES;
+    let incomplete_exhausted =
+        decide_resume_recovery(&pointer, Some(incomplete), Some(ResumeLeafState::Active));
+    assert_eq!(incomplete_exhausted.action, ResumeAction::Failed);
+    assert!(
+        incomplete_exhausted
+            .failure_reason
+            .expect("exhausted reason")
+            .contains("incomplete-envelope ship-progress")
+    );
+}
+
+#[test]
+fn durable_ship_progress_requires_a_positive_pr_number() {
+    let root = tempfile::tempdir().expect("handoff root");
+    assert!(!durable_ship_progress_with_pr(root.path()));
+    let path = root.path().join("complete-umbrella-ship.env");
+    fs::write(&path, "PR_NUMBER=\nSTATUS=prepared\n").expect("empty PR");
+    assert!(!durable_ship_progress_with_pr(root.path()));
+    fs::write(&path, "PR_NUMBER=0\nSTATUS=monitoring\n").expect("zero PR");
+    assert!(!durable_ship_progress_with_pr(root.path()));
+    fs::write(&path, "PR_NUMBER=8745\nSTATUS=monitoring\n").expect("open PR evidence");
+    assert!(durable_ship_progress_with_pr(root.path()));
 }
 
 #[test]
@@ -1641,6 +1685,20 @@ fn run_leaves_envelopes_and_child_results_are_exact() {
             Ok(transient),
         ),
         ChildAttempt::TransientApi("temporary API failure".to_owned())
+    );
+    let incomplete_ship = format!(
+        "CHILD_STATUS=failed\nCHILD_ISSUE={LEAF}\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\nCHILD_FAILURE_CLASS={COMPLETE_UMBRELLA_CHILD_FAILURE_INCOMPLETE_ENVELOPE_SHIP}\n"
+    );
+    assert_eq!(
+        classify_child_attempt(
+            LEAF,
+            0,
+            Err("child returned an incomplete envelope with durable ship progress".to_owned()),
+            Ok(incomplete_ship),
+        ),
+        ChildAttempt::TransientApi(
+            "child returned an incomplete envelope with durable ship progress".to_owned()
+        )
     );
 
     assert_eq!(

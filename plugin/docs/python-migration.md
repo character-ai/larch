@@ -88,6 +88,36 @@ The `show` token documented for `checks self-edit-log` is dropped. The retired
 `argparse` parser declared no positional, so
 `checks self-edit-log show --tmpdir ...` always exited 2.
 
+### Rust clippy gate and rust-policy candidate cutover
+
+`checks rust-clippy`, `ci prepare-rust-integration-artifact`,
+`ci stage-rust-policy-candidate`, and `ci promote-rust-policy-candidate` flipped
+owner to Rust in one PR (#8617), retiring `python/larch/implement/rust_clippy.py`
+and `python/larch/implement/rust_policy_candidate.py` with their four
+registrations.
+
+- `crates/larch-cli/src/checks_rust_clippy_commands.rs` owns the changed-path
+  clippy selection: the `RUST_CLIPPY_CHANGED_PATHS`/`SELECTED_PACKAGES`/
+  `SELECTED_TARGETS`/`COMMAND`/`HOOK_RAN` stdout grammar, the workspace-vs-package
+  selection rules over `cargo metadata`, and the exit codes are byte-compatible
+  with the retired owner. `cargo`/`clippy` remain child processes; the changed-set
+  Git discovery reuses the typed repository port and `GitCommandRuntime`.
+- `crates/larch-cli/src/ci_policy_candidate_commands.rs` owns the coverage-artifact
+  writer, the fixed-provenance candidate stage, and the trusted-main promotion,
+  preserving the bundle filenames, the `"{checksum}  larch\n"` grammar, the
+  `current-checkout`/`merge-group`/`refs/heads/main` provenance strings, and the
+  stable `CandidateError` messages. It is the new `global-input:rust-ci-workflow`
+  selector input that the retired Python module was.
+- Consumers cut to `scripts/larch.sh`: the `.github/actions/rust-coverage`,
+  `ci.yaml`, and `main-cache-publication.yaml` steps set `LARCH_BINARY` to the
+  coverage, integration-artifact, or promoted bundle executable; `Makefile`
+  `rust-check` and the `.pre-commit-config.yaml` `cargo-clippy` hook build a local
+  `larch` (via `make rust-clippy-binary`, never an inline `cargo build` in the
+  bounded on-commit entry); and the still-Python `checks run-relevant` fallback
+  execs `scripts/larch.sh checks rust-clippy`. The three shared helpers
+  `is_rust_relevant_path`, `bounded_cargo_env`, and `changed_paths_from_git` that
+  `checks_run_relevant.py` still needs moved into that module.
+
 ### Implement bootstrap and preflight cutover
 
 Issue #8609 moved exactly five commands to Rust: `implement clone-tag`,
@@ -581,6 +611,12 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 - `python/larch/design/design_terminal.py` is removed with its four `python/larch/cli.py` registrations (the unregistered dead `json_get_bool`/`json_get_bool_main`, already Rust-owned as `plan-review json-get-bool`, are dropped with it). The surviving pure library helpers relocated verbatim into `design_core.py`: `phase_driver_read_result_env`, `phase_driver_write_result_env`, `phase_driver_recreate_result_env`, `clarify_failure_stage_args`, and `extend_publish_failure_stage_args`. In-process sibling callers (`clarify.py`, `design_publish.py`, `decompose.py`, `design_postplan.py`, `design_summary.py`, `design_step5c.py`) repoint to those `design_core` helpers or invoke the Rust verb through the new `design_core.run_design_verb`/`run_design_verb_captured` entrypoint bridges.
 - **Ledgered temporary Python survival.** The three step-final-summary internals reused in-process by the unmigrated `design_step5c.py` (`_emit_final_summary_marked_from_disk`, `_emit_report_gate_sidecars_from_disk`, `_publish_terminal_final_summary`, plus their private support `_final_summary_stream`, `_final_summary_ready_rows`, `_upsert_final_summary_ready_into_merge_env`, `_persist_final_summary_readiness`, `_has_nonempty_final_summary`, `_parse_contract_value`) also relocated to `design_core.py`. This duplicates logic the Rust `step-final-summary` port contains; the duplication is the minimum needed to keep the unmigrated sibling working and is reconciled at #8586/#8593 when `design_step5c.py` and `design_core.py` retire.
 - The frozen parity reference is a byte-identical copy at `fixtures/rust-parity/design_terminal_frozen/design_terminal.py` behind `fixtures/rust-parity/design_terminal_migrated_reference.py`, exercised by `crates/larch-cli/tests/design_terminal_migrated_parity.rs` with goldens under `fixtures/rust-parity/goldens/design-terminal-*.golden.json`. The symlink-primary `read-result-env` warning and the live-gh tier-A / reconcile branches are covered by inline `#[cfg(test)]` unit tests because the parity sandbox rejects tree symlinks and forbids live GitHub mutation.
+
+### Design clarify state, comments, and labels cutover
+
+- `clarify state`, `clarify comment-fetch`, `clarify comment-post`, `clarify label`, and `design clarify` flipped owner to `crates/larch-cli/src/clarify_commands.rs` and `crates/larch-cli/src/clarify_orchestrator.rs` in one PR (#8587). The pure marker/state machine is `crates/larch-core/src/design/clarify.rs`; the four verbs run through the `ClarifyEffects` GitHub seam over `OctocrabGitHubService` (no runtime `gh`), and the fetch/publish phase driver runs sibling verbs through the `SiblingRunner` seam. Implementation parity, consumer cutover, and Python removal are complete for all five.
+- Consumers cut over to `scripts/larch.sh`: `skills/design/scripts/design-clarify.sh` execs `scripts/larch.sh design clarify`, and `skills/implement/references/preflight-plan-audit.md` calls `scripts/larch.sh clarify {state,comment-post,label}`. The publish orchestrator drives the Rust-owned sibling verbs (`named-block write`, `difficulty sync-labels`, `run-log write`/`append-failure`, `tracking-issue rename`/`upsert-summary`) through `delegate_verified_larch` and the still-Python `design log-publish`/`stage-terminal-state`/`pause-save` through `run_python_verb`.
+- `python/larch/design/clarify.py` and `python/tests/design/test_clarify.py` are removed with their five registrations; the two `design_summary.upsert_final_summary_from_disk` cases moved to `python/tests/design/test_design_summary.py`. The port also adds `rewrite_plan_difficulty` plus the `DESIGN_RAW_RATING_BASENAME`/`DIFFICULTY_RECORD_BASENAME` constants to `larch-core::difficulty`. Behavior is proven by the in-crate tests in `crates/larch-core/src/design/clarify.rs`, `crates/larch-cli/src/clarify_commands.rs`, and `crates/larch-cli/src/clarify_orchestrator/tests.rs`; no frozen reference is needed because no still-Python caller drives the verbs.
 
 ### C1a5 waterfall dispatcher
 

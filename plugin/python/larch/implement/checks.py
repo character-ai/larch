@@ -23,7 +23,6 @@ from larch.implement.checks_run_relevant import (
     run_contains_pins_scan,
     checks_fixer_evidence_main,
 )
-from larch.implement.rust_clippy import rust_clippy_main
 
 from larch.implement.checks_lint_fix import (
     run_lint_fix,
@@ -51,6 +50,5 @@ __all__ = [
     "run_contains_pins_scan",
     "run_lint_fix",
     "run_relevant_checks",
-    "rust_clippy_main",
     "validate_tmpdir",
 ]
