@@ -118,6 +118,17 @@ pub enum CiCommand {
     /// Verify and promote a merge-group main-cache candidate artifact.
     #[command(name = "verify-main-cache-candidate")]
     VerifyMainCacheCandidate(VerifyMainCacheCandidateArguments),
+    /// Copy a coverage executable into a proven Rust integration artifact.
+    #[command(name = "prepare-rust-integration-artifact")]
+    PrepareRustIntegrationArtifact(
+        crate::ci_policy_candidate_commands::PrepareRustIntegrationArtifactArgs,
+    ),
+    /// Stage and verify a Rust policy cache candidate under fixed provenance.
+    #[command(name = "stage-rust-policy-candidate")]
+    StageRustPolicyCandidate(crate::ci_policy_candidate_commands::StageRustPolicyCandidateArgs),
+    /// Promote a verified merge-group bundle into trusted main provenance.
+    #[command(name = "promote-rust-policy-candidate")]
+    PromoteRustPolicyCandidate(crate::ci_policy_candidate_commands::PromoteRustPolicyCandidateArgs),
 }
 
 #[derive(Args)]
@@ -289,6 +300,15 @@ pub fn run(command: CiCommand) -> ExitCode {
         CiCommand::GitleaksBase(arguments) => gitleaks_base(&arguments),
         CiCommand::StageMainCacheCandidate(arguments) => stage_main_cache_candidate(&arguments),
         CiCommand::VerifyMainCacheCandidate(arguments) => verify_main_cache_candidate(&arguments),
+        CiCommand::PrepareRustIntegrationArtifact(arguments) => ExitCode::from(
+            crate::ci_policy_candidate_commands::prepare_rust_integration_artifact(&arguments),
+        ),
+        CiCommand::StageRustPolicyCandidate(arguments) => ExitCode::from(
+            crate::ci_policy_candidate_commands::stage_rust_policy_candidate(&arguments),
+        ),
+        CiCommand::PromoteRustPolicyCandidate(arguments) => ExitCode::from(
+            crate::ci_policy_candidate_commands::promote_rust_policy_candidate(&arguments),
+        ),
     }
 }
 
@@ -729,7 +749,7 @@ fn global_input_trigger(path: &str) -> Option<&'static str> {
         | ".github/actions/rust-coverage/action.yaml"
         | "python/cli.py"
         | "python/larch/cli.py"
-        | "python/larch/implement/rust_policy_candidate.py" => {
+        | "crates/larch-cli/src/ci_policy_candidate_commands.rs" => {
             Some("global-input:rust-ci-workflow")
         }
         "crates/larch-cli/src/ci_selection.rs"

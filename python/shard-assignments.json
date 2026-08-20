@@ -644,8 +644,6 @@
   "tests/implement/test_run_step_checks.py::test_relay_scope_coverage_passes_none_manifest_when_absent": 2,
   "tests/implement/test_run_step_checks.py::test_self_review_uses_distinct_step_and_budget": 1,
   "tests/implement/test_run_step_checks.py::test_step3_composite_preserves_site_budget_and_flags": 4,
-  "tests/implement/test_rust_policy_candidate.py::test_prepare_prune_and_post_prune_candidate_stage_uses_preserved_artifact": 4,
-  "tests/implement/test_rust_policy_candidate.py::test_promote_merge_group_candidate_rewrites_provenance_after_revalidation": 2,
   "tests/implement/test_ship.py::test_admin_fallback_ci_not_ready_ignores_review_required_until_ci_settles": 1,
   "tests/implement/test_ship.py::test_changed_ci_not_ready_detail_resets_stall_guard": 4,
   "tests/implement/test_ship.py::test_ci_fix_rebase_pending_survives_head_mismatch": 1,

@@ -17,23 +17,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("checks", "fixer-evidence"): ("larch.implement.checks", "checks_fixer_evidence_main", True),
     ("checks", "lint-fix"): ("larch.implement.checks", "checks_lint_fix_main", True),
     ("checks", "repair-loop"): ("larch.implement.checks", "checks_repair_loop_main", True),
-    ("checks", "rust-clippy"): ("larch.implement.checks", "rust_clippy_main", False),
     ("ci", "distill-log"): ("larch.implement.ci", "distill_log_main", False),
-    ("ci", "prepare-rust-integration-artifact"): (
-        "larch.implement.rust_policy_candidate",
-        "prepare_integration_artifact_main",
-        False,
-    ),
-    ("ci", "stage-rust-policy-candidate"): (
-        "larch.implement.rust_policy_candidate",
-        "stage_policy_candidate_main",
-        False,
-    ),
-    ("ci", "promote-rust-policy-candidate"): (
-        "larch.implement.rust_policy_candidate",
-        "promote_policy_candidate_main",
-        False,
-    ),
     ("complete-umbrella", "ship-leaf"): (
         "larch.implement.complete_umbrella_ship",
         "main",

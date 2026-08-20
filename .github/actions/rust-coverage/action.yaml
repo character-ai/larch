@@ -554,7 +554,9 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        python3 "$GITHUB_WORKSPACE/python/cli.py" ci prepare-rust-integration-artifact \
+        CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" \
+          LARCH_BINARY="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch" \
+          "$GITHUB_WORKSPACE/scripts/larch.sh" ci prepare-rust-integration-artifact \
           --coverage-larch "$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch" \
           --artifact-dir "$RUNNER_TEMP/larch-linux-test-binary" \
           --source-sha "$GITHUB_SHA" \

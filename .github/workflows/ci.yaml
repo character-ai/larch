@@ -904,7 +904,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/main-cache-rust-policy"
-          python3 "$GITHUB_WORKSPACE/python/cli.py" ci stage-rust-policy-candidate \
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" \
+            LARCH_BINARY="$RUNNER_TEMP/larch-linux-test-binary/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" ci stage-rust-policy-candidate \
             --artifact-dir "$RUNNER_TEMP/larch-linux-test-binary" \
             --policy-dir "$RUNNER_TEMP/main-cache-rust-policy/policy" \
             --event-name "$GITHUB_EVENT_NAME" \
