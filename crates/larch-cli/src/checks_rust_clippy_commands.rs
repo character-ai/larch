@@ -77,12 +77,13 @@ struct CargoPackage {
     targets: Vec<CargoTarget>,
 }
 
-#[derive(Clone, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct TargetSelection {
     kind: String,
     name: String,
 }
 
+#[derive(Debug)]
 struct PackageSelection {
     package_name: String,
     defaults: bool,
@@ -91,11 +92,13 @@ struct PackageSelection {
 }
 
 /// Whether a changed set demands a workspace-wide lint or per-package selection.
+#[derive(Debug)]
 enum PlanKind {
     Workspace(Vec<String>),
     Packages(Vec<String>),
 }
 
+#[derive(Debug)]
 struct RustClippyPlan {
     changed_paths: Vec<String>,
     workspace: bool,
@@ -1043,5 +1046,329 @@ mod tests {
             shlex_join(&["a b".to_owned(), "plain".to_owned()]),
             "'a b' plain"
         );
+        // Mirror Python shlex.quote for an embedded single quote.
+        assert_eq!(super::shlex_quote("a'b"), "'a'\"'\"'b'");
+    }
+
+    #[test]
+    fn ambiguous_and_unmappable_paths_are_rejected() {
+        let package = cli_package();
+        let Err(error) = classify_changed_paths(&["crates/larch-cli/README.md".to_owned()]) else {
+            panic!("non-Rust path must not classify");
+        };
+        assert!(error.0.contains("not Rust-relevant"));
+        let err = plan_from_packages(&[package], vec!["crates/larch-cli/docs/x.rs".to_owned()])
+            .expect_err("unmappable");
+        assert!(err.0.contains("unmappable Rust path"));
+    }
+
+    // ---- Real-fixture coverage over Git discovery and Cargo metadata ----
+
+    use std::{fs, path::Path, path::PathBuf, process::Command};
+
+    fn git(root: &Path, args: &[&str]) {
+        let status = Command::new("git") // lint-subprocess-via-runner: ok test-only Git fixture
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .status()
+            .expect("run git fixture");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    fn write(root: &Path, rel: &str, body: &str) {
+        let path = root.join(rel);
+        fs::create_dir_all(path.parent().expect("parent")).expect("dir");
+        fs::write(path, body).expect("file");
+    }
+
+    fn init_repo() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("repo");
+        git(dir.path(), &["init", "--quiet"]);
+        git(dir.path(), &["config", "user.email", "t@example.invalid"]);
+        git(dir.path(), &["config", "user.name", "T"]);
+        dir
+    }
+
+    #[test]
+    fn git_discovery_collects_branch_index_worktree_and_untracked() {
+        let repo = init_repo();
+        let root = repo.path();
+        write(root, "crates/demo/src/lib.rs", "pub fn a() {}\n");
+        git(root, &["add", "--all"]);
+        git(root, &["commit", "--quiet", "-m", "base"]);
+        // A trusted-main ref plus a branch commit above it.
+        git(root, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        write(root, "crates/demo/src/branch.rs", "pub fn b() {}\n");
+        git(root, &["add", "--all"]);
+        git(root, &["commit", "--quiet", "-m", "branch"]);
+        // Staged, unstaged, and untracked changes.
+        write(root, "crates/demo/src/staged.rs", "pub fn s() {}\n");
+        git(root, &["add", "crates/demo/src/staged.rs"]);
+        write(root, "crates/demo/src/lib.rs", "pub fn a() -> u8 { 1 }\n");
+        write(root, "crates/demo/src/untracked.rs", "pub fn u() {}\n");
+
+        let resolved = super::resolve_repo_root(root).expect("resolve repo root");
+        assert_eq!(resolved, root.canonicalize().expect("canonical"));
+
+        let changed = super::changed_paths_from_git(&resolved).expect("changed set");
+        for expected in [
+            "crates/demo/src/branch.rs",
+            "crates/demo/src/staged.rs",
+            "crates/demo/src/lib.rs",
+            "crates/demo/src/untracked.rs",
+        ] {
+            assert!(
+                changed.contains(&expected.to_owned()),
+                "missing {expected}: {changed:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_repo_root_rejects_a_non_repository() {
+        let dir = tempfile::tempdir().expect("dir");
+        assert!(super::resolve_repo_root(dir.path()).is_err());
+    }
+
+    #[test]
+    fn cli_entry_covers_argument_and_short_circuit_paths() {
+        // Argument-shape refusals do not touch Git or Cargo.
+        let _ = super::rust_clippy(&["--help".into()]);
+        let _ = super::rust_clippy(&[]);
+        let _ = super::rust_clippy(&["--changed-from-git".into()]);
+        let _ = super::rust_clippy(&[
+            "--repo-root".into(),
+            "/tmp".into(),
+            "--changed-from-git".into(),
+            "crates/x/src/lib.rs".into(),
+        ]);
+        let _ = super::rust_clippy(&["--repo-root".into()]);
+        let _ = super::rust_clippy(&["--repo-root=/nonexistent-clippy-root".into(), "a.rs".into()]);
+
+        // A changed-from-git run with only non-Rust changes short-circuits to 0.
+        let repo = init_repo();
+        write(repo.path(), "docs/readme.md", "# doc\n");
+        git(repo.path(), &["add", "--all"]);
+        git(repo.path(), &["commit", "--quiet", "-m", "base"]);
+        write(repo.path(), "docs/other.md", "# other\n");
+        let root = repo.path().to_string_lossy().into_owned();
+        let _ = super::rust_clippy(&[
+            "--repo-root".into(),
+            root.into(),
+            "--changed-from-git".into(),
+        ]);
+    }
+
+    fn demo_workspace() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().expect("workspace");
+        let root = dir.path();
+        write(
+            root,
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"crates/demo\"]\nresolver = \"2\"\n",
+        );
+        write(
+            root,
+            "crates/demo/Cargo.toml",
+            "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        );
+        write(root, "crates/demo/src/lib.rs", "pub fn f() -> u8 { 1 }\n");
+        write(root, "crates/demo/src/main.rs", "fn main() {}\n");
+        write(root, "crates/demo/src/bin/extra.rs", "fn main() {}\n");
+        write(root, "crates/demo/tests/it.rs", "#[test]\nfn t() {}\n");
+        write(root, "crates/demo/examples/ex.rs", "fn main() {}\n");
+        write(root, "crates/demo/benches/bench.rs", "fn main() {}\n");
+        write(root, "crates/demo/build.rs", "fn main() {}\n");
+        let canonical = root.canonicalize().expect("canonical workspace");
+        (dir, canonical)
+    }
+
+    fn metadata(root: &Path) -> cargo_metadata::Metadata {
+        cargo_metadata::MetadataCommand::new()
+            .current_dir(root)
+            .no_deps()
+            .exec()
+            .expect("cargo metadata")
+    }
+
+    #[test]
+    fn selection_over_real_cargo_metadata() {
+        let (_dir, root) = demo_workspace();
+        let meta = metadata(&root);
+
+        let lib =
+            super::build_plan(&meta, &root, &["crates/demo/src/lib.rs".to_owned()]).expect("lib");
+        assert_eq!(
+            lib.commands(),
+            vec![vec![
+                "cargo",
+                "clippy",
+                "--locked",
+                "--package",
+                "demo",
+                "--",
+                "-D",
+                "warnings"
+            ]]
+        );
+
+        let test =
+            super::build_plan(&meta, &root, &["crates/demo/tests/it.rs".to_owned()]).expect("test");
+        assert_eq!(test.selected_targets(), vec!["demo:test:it"]);
+
+        let example = super::build_plan(&meta, &root, &["crates/demo/examples/ex.rs".to_owned()])
+            .expect("ex");
+        assert_eq!(example.selected_targets(), vec!["demo:example:ex"]);
+
+        let bench = super::build_plan(&meta, &root, &["crates/demo/benches/bench.rs".to_owned()])
+            .expect("bench");
+        assert_eq!(bench.selected_targets(), vec!["demo:bench:bench"]);
+
+        let extra = super::build_plan(&meta, &root, &["crates/demo/src/bin/extra.rs".to_owned()])
+            .expect("bin");
+        assert_eq!(extra.selected_targets(), vec!["demo:bin:extra"]);
+
+        let build_script =
+            super::build_plan(&meta, &root, &["crates/demo/build.rs".to_owned()]).expect("build");
+        assert_eq!(
+            build_script.selected_targets(),
+            vec!["demo:default-production"]
+        );
+
+        let mixed = super::build_plan(
+            &meta,
+            &root,
+            &[
+                "crates/demo/src/lib.rs".to_owned(),
+                "crates/demo/tests/it.rs".to_owned(),
+            ],
+        )
+        .expect("mixed");
+        assert_eq!(
+            mixed.commands(),
+            vec![vec![
+                "cargo",
+                "clippy",
+                "--locked",
+                "--package",
+                "demo",
+                "--lib",
+                "--bin",
+                "demo",
+                "--bin",
+                "extra",
+                "--test",
+                "it",
+                "--",
+                "-D",
+                "warnings",
+            ]]
+        );
+
+        // A workspace input short-circuits before metadata is consulted.
+        let workspace =
+            super::build_plan(&meta, &root, &["Cargo.toml".to_owned()]).expect("workspace");
+        assert!(workspace.workspace);
+    }
+
+    #[test]
+    fn run_reports_a_metadata_failure_outside_a_cargo_workspace() {
+        let dir = tempfile::tempdir().expect("dir");
+        // No Cargo.toml, so `cargo metadata` fails and the runner reports it.
+        let _ = super::run_changed_rust_clippy(dir.path(), &["crates/x/src/lib.rs".to_owned()]);
+    }
+
+    #[test]
+    fn cargo_configuration_inputs_force_a_workspace_lint() {
+        for input in [".cargo/config.toml", "deny.toml", "rust-toolchain.toml"] {
+            match classify_changed_paths(&[input.to_owned()]).expect("classify") {
+                PlanKind::Workspace(_) => {}
+                PlanKind::Packages(_) => panic!("{input} must force a workspace lint"),
+            }
+        }
+        assert!(
+            classify_changed_paths(&[])
+                .expect_err("empty")
+                .0
+                .contains("no changed Rust paths")
+        );
+    }
+
+    #[test]
+    fn manifest_and_shared_target_directories_select_correctly() {
+        let package = CargoPackage {
+            package_id: "id".to_owned(),
+            name: "demo".to_owned(),
+            manifest_path: "crates/demo/Cargo.toml".to_owned(),
+            root_path: "crates/demo".to_owned(),
+            targets: vec![
+                target("demo", &["lib"], "crates/demo/src/lib.rs"),
+                target("first", &["example"], "crates/demo/examples/first.rs"),
+                target("second", &["example"], "crates/demo/examples/second.rs"),
+                target("bench", &["bench"], "crates/demo/benches/bench.rs"),
+            ],
+        };
+        // A package manifest edit selects the package defaults.
+        let manifest = plan_over(std::slice::from_ref(&package), &["crates/demo/Cargo.toml"]);
+        assert_eq!(manifest.selected_targets(), vec!["demo:default-production"]);
+
+        // A file under examples/ that is not itself a target source selects every
+        // example target in the family.
+        let shared = plan_over(
+            std::slice::from_ref(&package),
+            &["crates/demo/examples/shared/util.rs"],
+        );
+        assert_eq!(
+            shared.selected_targets(),
+            vec!["demo:example:first", "demo:example:second"]
+        );
+
+        // A file under benches/ selects the bench family.
+        let bench = plan_over(
+            std::slice::from_ref(&package),
+            &["crates/demo/benches/extra/data.rs"],
+        );
+        assert_eq!(bench.selected_targets(), vec!["demo:bench:bench"]);
+    }
+
+    #[test]
+    fn ambiguous_package_and_target_ownership_is_refused() {
+        // Two packages rooted at the same directory make ownership ambiguous.
+        let a = CargoPackage {
+            package_id: "a".to_owned(),
+            name: "a".to_owned(),
+            manifest_path: "crates/shared/a/Cargo.toml".to_owned(),
+            root_path: "crates/shared".to_owned(),
+            targets: vec![target("a", &["lib"], "crates/shared/src/lib.rs")],
+        };
+        let b = CargoPackage {
+            package_id: "b".to_owned(),
+            name: "b".to_owned(),
+            manifest_path: "crates/shared/b/Cargo.toml".to_owned(),
+            root_path: "crates/shared".to_owned(),
+            targets: vec![target("b", &["lib"], "crates/shared/src/other.rs")],
+        };
+        let err = plan_from_packages(&[a, b], vec!["crates/shared/src/lib.rs".to_owned()])
+            .expect_err("ambiguous package");
+        assert!(err.0.contains("ambiguous Cargo package"), "{}", err.0);
+
+        // Two nested targets both claiming the same nested path are ambiguous.
+        let package = CargoPackage {
+            package_id: "id".to_owned(),
+            name: "demo".to_owned(),
+            manifest_path: "crates/demo/Cargo.toml".to_owned(),
+            root_path: "crates/demo".to_owned(),
+            targets: vec![
+                target("one", &["test"], "crates/demo/tests/shared.rs"),
+                target("two", &["test"], "crates/demo/tests/shared/mod.rs"),
+            ],
+        };
+        let err = plan_from_packages(
+            &[package],
+            vec!["crates/demo/tests/shared/deep.rs".to_owned()],
+        )
+        .expect_err("ambiguous target");
+        assert!(err.0.contains("ambiguous Cargo target"), "{}", err.0);
     }
 }

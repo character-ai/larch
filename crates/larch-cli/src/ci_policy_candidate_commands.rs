@@ -44,6 +44,7 @@ impl CandidateError {
 type CandidateResult<T> = Result<T, CandidateError>;
 
 /// The integrity and identity fields proven for one executable bundle.
+#[derive(Debug)]
 struct VerifiedArtifact {
     sha256: String,
     version: String,
@@ -643,5 +644,232 @@ mod tests {
         };
         let error = stage_policy_candidate(&stage, &fixed_version).expect_err("tampered");
         assert_eq!(error.0, "bundle executable checksum verification failed");
+    }
+
+    fn prepared_artifact(root: &Path) -> std::path::PathBuf {
+        let coverage = write_coverage_larch(root);
+        let artifact_dir = root.join("artifact");
+        let prepare = PrepareRustIntegrationArtifactArgs {
+            coverage_larch: coverage,
+            artifact_dir: artifact_dir.clone(),
+            source_sha: SOURCE_SHA.to_owned(),
+            rust_inputs_sha256: INPUTS_SHA.to_owned(),
+        };
+        prepare_integration_artifact(&prepare, &fixed_version).expect("prepare");
+        artifact_dir
+    }
+
+    fn executable_script(path: &Path, body: &str) {
+        fs::write(path, body).expect("script body");
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("script mode");
+    }
+
+    #[test]
+    fn read_binary_version_reads_and_rejects_the_child_output() {
+        let root = TempDir::new().expect("root");
+        let ok = root.path().join("ok");
+        executable_script(&ok, "#!/bin/sh\necho 'larch 9.9.9'\n");
+        assert_eq!(
+            super::read_binary_version(&ok).expect("version"),
+            "larch 9.9.9\n"
+        );
+
+        let failing = root.path().join("bad");
+        executable_script(&failing, "#!/bin/sh\nexit 3\n");
+        assert_eq!(
+            super::read_binary_version(&failing).expect_err("nonzero").0,
+            "bundle executable version command failed"
+        );
+
+        let missing = root.path().join("missing");
+        assert_eq!(
+            super::read_binary_version(&missing).expect_err("spawn").0,
+            "could not read bundle executable version"
+        );
+    }
+
+    #[test]
+    fn cli_wrappers_return_zero_on_success_and_one_on_failure() {
+        let root = TempDir::new().expect("root");
+        let larch = root.path().join("larch-bin");
+        executable_script(&larch, "#!/bin/sh\necho 'larch 1.0.0'\n");
+        let artifact_dir = root.path().join("artifact");
+        let ok = PrepareRustIntegrationArtifactArgs {
+            coverage_larch: larch,
+            artifact_dir: artifact_dir.clone(),
+            source_sha: SOURCE_SHA.to_owned(),
+            rust_inputs_sha256: INPUTS_SHA.to_owned(),
+        };
+        assert_eq!(super::prepare_rust_integration_artifact(&ok), 0);
+        assert!(artifact_dir.join("larch").is_file());
+
+        let bad = PrepareRustIntegrationArtifactArgs {
+            coverage_larch: root.path().join("absent"),
+            artifact_dir: root.path().join("artifact2"),
+            source_sha: SOURCE_SHA.to_owned(),
+            rust_inputs_sha256: INPUTS_SHA.to_owned(),
+        };
+        assert_eq!(super::prepare_rust_integration_artifact(&bad), 1);
+
+        let stage = StageRustPolicyCandidateArgs {
+            artifact_dir: artifact_dir.clone(),
+            policy_dir: root.path().join("policy"),
+            event_name: "push".to_owned(),
+            ref_value: "refs/heads/main".to_owned(),
+            source_sha: SOURCE_SHA.to_owned(),
+            rust_inputs_sha256: INPUTS_SHA.to_owned(),
+        };
+        assert_eq!(super::stage_rust_policy_candidate(&stage), 0);
+        assert_eq!(
+            fs::read_to_string(root.path().join("policy/producer-ref")).expect("provenance"),
+            format!("{TRUSTED_MAIN_PROVENANCE}\n")
+        );
+
+        let bad_stage = StageRustPolicyCandidateArgs {
+            artifact_dir,
+            policy_dir: root.path().join("policy2"),
+            event_name: "push".to_owned(),
+            ref_value: "refs/heads/main".to_owned(),
+            source_sha: "short".to_owned(),
+            rust_inputs_sha256: INPUTS_SHA.to_owned(),
+        };
+        assert_eq!(super::stage_rust_policy_candidate(&bad_stage), 1);
+
+        let bad_promote = PromoteRustPolicyCandidateArgs {
+            artifact_dir: root.path().join("policy"),
+            policy_dir: root.path().join("trusted"),
+            source_sha: SOURCE_SHA.to_owned(),
+            rust_inputs_sha256: INPUTS_SHA.to_owned(),
+        };
+        // The staged bundle carries refs/heads/main, not merge-group, so promote refuses.
+        assert_eq!(super::promote_rust_policy_candidate(&bad_promote), 1);
+    }
+
+    #[test]
+    fn verify_bundle_rejects_each_corrupted_field() {
+        let root = TempDir::new().expect("root");
+        let artifact_dir = prepared_artifact(root.path());
+        let check = |dir: &Path| {
+            super::verify_bundle(
+                dir,
+                CURRENT_CHECKOUT_PROVENANCE,
+                SOURCE_SHA,
+                INPUTS_SHA,
+                &fixed_version,
+            )
+        };
+        // Baseline verifies.
+        check(&artifact_dir).expect("baseline");
+
+        // Non-executable bundle.
+        fs::set_permissions(
+            artifact_dir.join("larch"),
+            fs::Permissions::from_mode(0o644),
+        )
+        .expect("chmod");
+        assert_eq!(
+            check(&artifact_dir).expect_err("non-exec").0,
+            "bundle executable is not executable"
+        );
+        fs::set_permissions(
+            artifact_dir.join("larch"),
+            fs::Permissions::from_mode(0o755),
+        )
+        .expect("chmod");
+
+        // Corrupt each metadata file in turn.
+        let cases: [(&str, &str, &str); 5] = [
+            (
+                "larch.sha256",
+                "deadbeef  larch\n",
+                "bundle checksum has an invalid format",
+            ),
+            (
+                "producer-ref",
+                "merge-group\n",
+                "producer provenance verification failed",
+            ),
+            (
+                "source-sha",
+                "ffffffffffffffffffffffffffffffffffffffff\n",
+                "source SHA verification failed",
+            ),
+            (
+                "rust-inputs-sha256",
+                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\n",
+                "Rust-input digest verification failed",
+            ),
+            ("version", "   \n", "bundle version is empty"),
+        ];
+        for (index, (file, contents, message)) in cases.into_iter().enumerate() {
+            let case_root = root.path().join(format!("case-{index}"));
+            fs::create_dir(&case_root).expect("case root");
+            let dir = prepared_artifact(&case_root);
+            fs::remove_file(dir.join(file)).expect("remove");
+            fs::write(dir.join(file), contents).expect("write");
+            assert_eq!(check(&dir).expect_err(message).0, message, "{file}");
+        }
+
+        // A version that no longer matches the executable's report.
+        let other_version =
+            |_: &Path| Ok::<String, super::CandidateError>("larch 0.0.0\n".to_owned());
+        assert_eq!(
+            super::verify_bundle(
+                &artifact_dir,
+                CURRENT_CHECKOUT_PROVENANCE,
+                SOURCE_SHA,
+                INPUTS_SHA,
+                &other_version,
+            )
+            .expect_err("version drift")
+            .0,
+            "bundle executable version verification failed"
+        );
+
+        // A missing bundle directory and a missing executable.
+        assert_eq!(
+            check(&root.path().join("absent"))
+                .expect_err("absent dir")
+                .0,
+            "executable bundle directory is unavailable"
+        );
+    }
+
+    #[test]
+    fn replace_directory_replaces_a_dir_and_rejects_a_symlink() {
+        let root = TempDir::new().expect("root");
+        let target = root.path().join("out");
+        fs::create_dir(&target).expect("dir");
+        fs::write(target.join("stale"), b"x").expect("stale");
+        super::replace_directory(&target, "policy directory").expect("replace");
+        assert!(target.is_dir());
+        assert!(!target.join("stale").exists());
+
+        let link = root.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink");
+        assert_eq!(
+            super::replace_directory(&link, "policy directory")
+                .expect_err("symlink")
+                .0,
+            "policy directory is not a regular directory"
+        );
+    }
+
+    #[test]
+    fn digest_validators_bound_their_inputs() {
+        assert!(super::require_source_sha(INPUTS_SHA).is_ok());
+        assert!(super::require_source_sha(SOURCE_SHA).is_ok());
+        assert_eq!(
+            super::require_source_sha("ABCDEF0123456789abcdef0123456789abcdef01")
+                .expect_err("uppercase")
+                .0,
+            "source SHA is invalid"
+        );
+        assert_eq!(
+            super::require_sha256("nope", "Rust-input digest")
+                .expect_err("short")
+                .0,
+            "Rust-input digest is invalid"
+        );
     }
 }

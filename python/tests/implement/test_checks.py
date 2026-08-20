@@ -3716,7 +3716,7 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
     assert "ruff check --fix" in precommit
     assert "id: pyright" in precommit
     assert "pyright --project python/pyrightconfig.json" in precommit
-    assert "scripts/larch.sh\" checks rust-clippy --repo-root ." in hooks["cargo-clippy"]["entry"]
+    assert 'scripts/larch.sh" checks rust-clippy --repo-root .' in hooks["cargo-clippy"]["entry"]
     assert "python3 python/cli.py" not in hooks["cargo-clippy"]["entry"]
     assert "\\.cargo/.*" in hooks["cargo-clippy"]["files"]
     assert hooks["cargo-clippy"]["pass_filenames"] == "true"
