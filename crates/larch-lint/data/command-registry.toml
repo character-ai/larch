@@ -1623,11 +1623,13 @@ verb = "comment-fetch"
 python_module = "larch.design.clarify"
 python_function = "clarify_comment_fetch_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8587
+clean_install_test = "clean-install-clarify-comment-fetch"
 
 [[commands]]
 domain = "clarify"
@@ -1635,11 +1637,13 @@ verb = "comment-post"
 python_module = "larch.design.clarify"
 python_function = "clarify_comment_post_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8587
+clean_install_test = "clean-install-clarify-comment-post"
 
 [[commands]]
 domain = "clarify"
@@ -1647,11 +1651,13 @@ verb = "label"
 python_module = "larch.design.clarify"
 python_function = "clarify_label_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8587
+clean_install_test = "clean-install-clarify-label"
 
 [[commands]]
 domain = "clarify"
@@ -1659,11 +1665,13 @@ verb = "state"
 python_module = "larch.design.clarify"
 python_function = "clarify_state_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8587
+clean_install_test = "clean-install-clarify-state"
 
 [[commands]]
 domain = "cleanup"
@@ -2161,11 +2169,13 @@ verb = "clarify"
 python_module = "larch.design.clarify"
 python_function = "design_clarify_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8587
+clean_install_test = "clean-install-design-clarify"
 
 [[commands]]
 domain = "design"
@@ -9600,14 +9610,14 @@ rust = ["plan-review gate-b-dedup"]
 [[callers]]
 path = "skills/design/scripts/design-clarify.md"
 kind = "skill"
-python = ["design clarify"]
-rust = []
+python = []
+rust = ["design clarify"]
 
 [[callers]]
 path = "skills/design/scripts/design-clarify.sh"
 kind = "skill"
-python = ["design clarify"]
-rust = []
+python = []
+rust = ["design clarify"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-entry.md"
@@ -9792,8 +9802,8 @@ rust = ["git phantom-probe", "push checkpoint-probe"]
 [[callers]]
 path = "skills/implement/references/preflight-plan-audit.md"
 kind = "skill"
-python = ["clarify comment-post", "clarify label", "clarify state", "redact secrets"]
-rust = ["implement preflight"]
+python = ["redact secrets"]
+rust = ["clarify comment-post", "clarify label", "clarify state", "implement preflight"]
 
 [[callers]]
 path = "skills/implement/references/rebase-checkpoint-routing.md"

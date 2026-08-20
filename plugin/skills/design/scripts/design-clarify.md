@@ -5,9 +5,9 @@ Thin wrapper for the two-phase `/design` Step 0b clarify helper.
 ## Purpose
 
 Validates wrapper argv, sources the optional session env, rebuilds
-`_delegate_args`, and delegates to `python/cli.py design clarify`. The Python
-entrypoint owns route-state fallback, pause-save termination, fetch, publish,
-result env writes, and failure routing.
+`_delegate_args`, and delegates to `scripts/larch.sh design clarify`. The
+Rust entrypoint owns route-state fallback, pause-save termination, fetch,
+publish, result env writes, and failure routing.
 
 ## Phases
 
@@ -28,13 +28,13 @@ result env writes, and failure routing.
 - Accepts the current issue explicitly through `--issue`.
 - The wrapper validates `--phase`, `--issue`, and `--claude-pid` before
   delegating. It does not forward consumed `"$@"`.
-- Python falls back to `.design-step0-route-state.env` for `REPO` when the
-  session env lacks it. Missing route state is benign. Present unreadable route
-  state emits `route-state-read-failed`; fetch stages `failed-clarify`, publish
-  does not.
+- The Rust owner falls back to `.design-step0-route-state.env` for `REPO` when
+  the session env lacks it. Missing route state is benign. Present unreadable
+  route state emits `route-state-read-failed`; fetch stages `failed-clarify`,
+  publish does not.
 - Fetch failures emit `SUMMARY_OUTCOME=failed-clarify` with the fetch status.
   `state-read-failed` and `fetch-read-failed` are legacy subprocess-only tokens
-  and are not emitted by `python/cli.py design clarify`.
+  and are not emitted by `scripts/larch.sh design clarify`.
 - Never prints request or response bodies on stdout. Bodies move through files.
 - Does not emit `--state designed`; clarify-only updates are not terminal
   design completion.
@@ -43,5 +43,6 @@ result env writes, and failure routing.
 
 Wrapper delegation and argv validation are covered by
 `skills/design/scripts/test-design-clarify.sh`. Phase behavior is covered by
-`python/test_clarify.py`. Structural pins live in
+the Rust owner's in-crate tests in
+`crates/larch-cli/src/clarify_orchestrator/tests.rs`. Structural pins live in
 `make test-design-structure`.

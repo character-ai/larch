@@ -15,14 +15,14 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use larch_core::{
-    DIFFICULTY_RECORD_BASENAME, DESIGN_RAW_RATING_BASENAME, DifficultyRating, ProcessOutput,
-    build_record, BuildRecord, plan_difficulty, read_rating_file, redact_secrets_only,
+    BuildRecord, DESIGN_RAW_RATING_BASENAME, DIFFICULTY_RECORD_BASENAME, DifficultyRating,
+    ProcessOutput, build_record, plan_difficulty, read_rating_file, redact_secrets_only,
     rewrite_plan_difficulty, validate_rating_object, write_record_map,
 };
 
 use crate::clarify_commands::{
     ClarifyEffects, LiveEffects, clarify_comment_fetch, clarify_comment_post, clarify_label,
-    clarify_state,
+    clarify_state, is_positive_int_text,
 };
 use crate::design_step0_commands::{
     Env, clarify_failure_stage_args, exit_from_i32, load_source_env, phase_driver_read_result_env,
@@ -33,11 +33,22 @@ use crate::implement_dispatch_commands::delegate_verified_larch;
 use crate::python_verb::{plugin_root_directory, run_python_verb};
 
 /// Environment keys the source-env merge carries into the driver.
-const CLARIFY_ENV_ALLOW: [&str; 5] =
-    ["CLAUDE_PLUGIN_ROOT", "DESIGN_TMPDIR", "SESSION_ID", "ISSUE_NUMBER", "REPO"];
+const CLARIFY_ENV_ALLOW: [&str; 5] = [
+    "CLAUDE_PLUGIN_ROOT",
+    "DESIGN_TMPDIR",
+    "SESSION_ID",
+    "ISSUE_NUMBER",
+    "REPO",
+];
 /// Keys read back from the fetch-phase request-state sidecar.
-const REQUEST_STATE_ALLOW: [&str; 6] =
-    ["REQUEST_ID", "REQUEST_BODY_FILE", "PLAN_FILE", "RESPONSE_FILE", "ISSUE_NUMBER", "REPO"];
+const REQUEST_STATE_ALLOW: [&str; 6] = [
+    "REQUEST_ID",
+    "REQUEST_BODY_FILE",
+    "PLAN_FILE",
+    "RESPONSE_FILE",
+    "ISSUE_NUMBER",
+    "REPO",
+];
 /// The one key recovered from the Step 0 route-state sidecar.
 const ROUTE_STATE_ALLOW: [&str; 1] = ["REPO"];
 /// Keys any clarify result-env write may carry.
@@ -78,11 +89,10 @@ pub struct CapturedRun {
 impl CapturedRun {
     fn from_output(output: Result<ProcessOutput, String>) -> Self {
         match output {
-            Ok(output) => Self {
-                rc: output.status().code().unwrap_or(1),
-                stdout: String::from_utf8_lossy(output.stdout()).into_owned(),
-                stderr: String::from_utf8_lossy(output.stderr()).into_owned(),
-            },
+            Ok(output) => {
+                let (rc, stdout, stderr) = output.decoded_streams();
+                Self { rc, stdout, stderr }
+            }
             Err(_error) => Self {
                 rc: 1,
                 stdout: String::new(),
@@ -125,11 +135,6 @@ fn osargs(parts: &[&str]) -> Vec<OsString> {
     parts.iter().map(OsString::from).collect()
 }
 
-/// True when `value` is a non-zero run of ASCII digits.
-fn is_positive_int_text(value: &str) -> bool {
-    !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()) && value != "0"
-}
-
 /// Last value for `key` in a KEY=value stream, CR-trimmed.
 fn kv_last(text: &str, key: &str) -> String {
     let prefix = format!("{key}=");
@@ -145,9 +150,10 @@ fn kv_last(text: &str, key: &str) -> String {
 
 /// Read a file as UTF-8, replacing invalid bytes.
 fn read_lossy(path: &str) -> String {
-    fs::read(path).map_or_else(|_error| String::new(), |bytes| {
-        String::from_utf8_lossy(&bytes).into_owned()
-    })
+    fs::read(path).map_or_else(
+        |_error| String::new(),
+        |bytes| String::from_utf8_lossy(&bytes).into_owned(),
+    )
 }
 
 /// True when a publish artifact is a non-empty readable regular file.
@@ -155,7 +161,9 @@ fn publish_artifact_ok(path_text: &str) -> bool {
     let path = Path::new(path_text);
     !path.is_symlink()
         && path.is_file()
-        && fs::metadata(path).map(|meta| meta.len() > 0).unwrap_or(false)
+        && fs::metadata(path)
+            .map(|meta| meta.len() > 0)
+            .unwrap_or(false)
 }
 
 /// Emit KEY=value rows to stdout, one per line.
@@ -168,7 +176,10 @@ fn emit_design_kvs(rows: &[(&str, &str)]) {
 /// Atomically write allowlisted, newline-free KEY=value rows to a result env.
 fn write_result_env(path: &Path, rows: &[(&str, &str)]) -> Result<(), String> {
     if path.is_symlink() {
-        return Err(format!("refusing to write symlink result env: {}", path.display()));
+        return Err(format!(
+            "refusing to write symlink result env: {}",
+            path.display()
+        ));
     }
     let mut body = String::new();
     for (key, value) in rows {
@@ -183,9 +194,10 @@ fn write_result_env(path: &Path, rows: &[(&str, &str)]) -> Result<(), String> {
         body.push_str(value);
         body.push('\n');
     }
-    let name = path
-        .file_name()
-        .map_or_else(|| ".result.env".to_owned(), |value| value.to_string_lossy().into_owned());
+    let name = path.file_name().map_or_else(
+        || ".result.env".to_owned(),
+        |value| value.to_string_lossy().into_owned(),
+    );
     let temporary = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
     fs::write(&temporary, &body)
         .and_then(|()| fs::rename(&temporary, path))
@@ -221,8 +233,7 @@ fn resolve_publish_difficulty_rating(
 ) -> (Option<DifficultyRating>, bool) {
     let raw_path = design_tmpdir.join(DESIGN_RAW_RATING_BASENAME);
     if raw_path.exists() || raw_path.is_symlink() {
-        return read_rating_file(&raw_path)
-            .map_or((None, true), |rating| (Some(rating), false));
+        return read_rating_file(&raw_path).map_or((None, true), |rating| (Some(rating), false));
     }
     let tier = plan_difficulty(plan_text);
     if tier.is_empty() {
@@ -325,7 +336,10 @@ fn publish_clarify_log_and_summary(
     ];
     args.extend(repo_args.iter().cloned());
     let publish = runner.run_python(&args.iter().map(OsString::from).collect::<Vec<_>>());
-    let _ = fs::write(design_tmpdir.join("design-log-publish.stdout"), &publish.stdout);
+    let _ = fs::write(
+        design_tmpdir.join("design-log-publish.stdout"),
+        &publish.stdout,
+    );
     let failure_log = design_tmpdir.join("design-log-publish.failure.log");
     let _ = fs::write(&failure_log, &publish.stderr);
     let parsed_ok = kv_last(&publish.stdout, "PUBLISH_OK");
@@ -373,7 +387,9 @@ fn upsert_final_summary_from_disk(
     let summary = design_tmpdir.join("final-summary.md");
     if summary.is_symlink()
         || !summary.is_file()
-        || fs::metadata(&summary).map(|meta| meta.len() == 0).unwrap_or(true)
+        || fs::metadata(&summary)
+            .map(|meta| meta.len() == 0)
+            .unwrap_or(true)
     {
         return false;
     }
@@ -405,7 +421,11 @@ fn clarify_publish_status(design_tmpdir: &Path, publish_ok: &str) -> String {
     }
     let publish_stdout = design_tmpdir.join("design-log-publish.stdout");
     if publish_stdout.is_file()
-        && !kv_last(&read_lossy(&publish_stdout.display().to_string()), "RECOVERY_BRANCH").is_empty()
+        && !kv_last(
+            &read_lossy(&publish_stdout.display().to_string()),
+            "RECOVERY_BRANCH",
+        )
+        .is_empty()
     {
         return "log-publish-recovery".to_owned();
     }
@@ -443,7 +463,10 @@ fn fetch_failure(
     let mut rows: Vec<(&str, &str)> = vec![("CLARIFY_FETCH_STATUS", status)];
     rows.extend_from_slice(extra_rows);
     rows.push(("SUMMARY_OUTCOME", "failed-clarify"));
-    let _ = write_result_env(&design_tmpdir.join(".design-clarify-fetch-result.env"), &rows);
+    let _ = write_result_env(
+        &design_tmpdir.join(".design-clarify-fetch-result.env"),
+        &rows,
+    );
     stage_failed_clarify(runner, design_tmpdir, exit_code, detail_log);
     emit_design_kvs(&rows);
     ExitCode::from(1)
@@ -459,7 +482,10 @@ fn publish_failure(
     let mut rows: Vec<(&str, &str)> = vec![("CLARIFY_PUBLISH_STATUS", status)];
     rows.extend_from_slice(extra_rows);
     rows.push(("SUMMARY_OUTCOME", summary));
-    let _ = write_result_env(&design_tmpdir.join(".design-clarify-publish-result.env"), &rows);
+    let _ = write_result_env(
+        &design_tmpdir.join(".design-clarify-publish-result.env"),
+        &rows,
+    );
     emit_design_kvs(&rows);
     ExitCode::from(1)
 }
@@ -478,7 +504,10 @@ fn handle_fetch(
     let request_body_file = design_tmpdir.join("clarify-request.md");
     let plan_file = design_tmpdir.join("clarify-plan.md");
     let response_file = design_tmpdir.join("clarify-response.md");
-    let repo = env.get("REPO").filter(|value| !value.is_empty()).map(String::as_str);
+    let repo = env
+        .get("REPO")
+        .filter(|value| !value.is_empty())
+        .map(String::as_str);
 
     let state = match clarify_state(effects, &args.issue, repo) {
         Ok(state) => state,
@@ -490,7 +519,11 @@ fn handle_fetch(
     };
     if state.state != "awaiting-response" || state.last_request_id.is_empty() {
         let detail = design_tmpdir.join("clarify-fetch.failure.log");
-        let shown = if state.state.is_empty() { "<empty>" } else { &state.state };
+        let shown = if state.state.is_empty() {
+            "<empty>"
+        } else {
+            &state.state
+        };
         let _ = fs::write(&detail, format!("unexpected clarify state: {shown}\n"));
         return fetch_failure(
             runner,
@@ -533,8 +566,14 @@ fn handle_fetch(
     if let Some(repo) = &repo_present {
         rows.push(("REPO", repo));
     }
-    let _ = write_result_env(&design_tmpdir.join(".design-clarify-request.env"), &rows[1..]);
-    let _ = write_result_env(&design_tmpdir.join(".design-clarify-fetch-result.env"), &rows);
+    let _ = write_result_env(
+        &design_tmpdir.join(".design-clarify-request.env"),
+        &rows[1..],
+    );
+    let _ = write_result_env(
+        &design_tmpdir.join(".design-clarify-fetch-result.env"),
+        &rows,
+    );
     emit_design_kvs(&rows);
     ExitCode::from(0)
 }
@@ -554,7 +593,12 @@ fn handle_publish(
         &design_tmpdir.join(".design-clarify-request.env"),
         &REQUEST_STATE_ALLOW,
     ) else {
-        return publish_failure(design_tmpdir, "missing-request-state", "failed-clarify", &[]);
+        return publish_failure(
+            design_tmpdir,
+            "missing-request-state",
+            "failed-clarify",
+            &[],
+        );
     };
     let request_id = request.get("REQUEST_ID").cloned().unwrap_or_default();
     if !is_positive_int_text(&request_id) {
@@ -576,23 +620,10 @@ fn handle_publish(
         return publish_failure(design_tmpdir, "missing-artifact", "failed-clarify", &[]);
     }
 
-    let plan_text = read_lossy(&plan_file);
-    let redacted = redact_secrets_only(&plan_text);
-    let (rating, raw_invalid) = resolve_publish_difficulty_rating(design_tmpdir, &plan_text);
-    if raw_invalid {
-        return publish_failure(design_tmpdir, "difficulty-sidecar-invalid", "failed-plan-write", &[]);
-    }
-    let Some(rating) = rating else {
-        return publish_failure(design_tmpdir, "missing-difficulty", "failed-plan-write", &[]);
+    let (rating, redacted_plan) = match prepare_redacted_plan(design_tmpdir, &plan_file) {
+        Ok(pair) => pair,
+        Err(code) => return code,
     };
-    let redacted = rewrite_plan_difficulty(&redacted, &rating.adjusted_tier);
-    let redacted_plan = design_tmpdir.join("clarify-plan.redacted.md");
-    let _ = fs::write(&redacted_plan, &redacted);
-    if !redacted_plan.is_file()
-        || fs::metadata(&redacted_plan).map(|meta| meta.len() == 0).unwrap_or(true)
-    {
-        return publish_failure(design_tmpdir, "redact-empty", "failed-plan-write", &[]);
-    }
 
     let repo = env.get("REPO").cloned().unwrap_or_default();
     let repo_args: Vec<String> = if repo.is_empty() {
@@ -614,7 +645,10 @@ fn handle_publish(
     plan_args.extend(repo_args.iter().cloned());
     let plan_write = runner.run_larch(&plan_args.iter().map(OsString::from).collect::<Vec<_>>());
     if plan_write.rc != 0 {
-        let _ = fs::write(design_tmpdir.join("clarify-plan-write.failure.log"), "plan-block write failed\n");
+        let _ = fs::write(
+            design_tmpdir.join("clarify-plan-write.failure.log"),
+            "plan-block write failed\n",
+        );
         return publish_failure(
             design_tmpdir,
             "plan-write-failed",
@@ -650,6 +684,51 @@ fn handle_publish(
     })
 }
 
+/// Redact the plan, resolve and rewrite its difficulty, and stage it on disk.
+///
+/// Returns the resolved rating and the redacted plan path, or the terminal
+/// exit code of the publish failure that its gate produced.
+fn prepare_redacted_plan(
+    design_tmpdir: &Path,
+    plan_file: &str,
+) -> Result<(DifficultyRating, PathBuf), ExitCode> {
+    let plan_text = read_lossy(plan_file);
+    let redacted = redact_secrets_only(&plan_text);
+    let (rating, raw_invalid) = resolve_publish_difficulty_rating(design_tmpdir, &plan_text);
+    if raw_invalid {
+        return Err(publish_failure(
+            design_tmpdir,
+            "difficulty-sidecar-invalid",
+            "failed-plan-write",
+            &[],
+        ));
+    }
+    let Some(rating) = rating else {
+        return Err(publish_failure(
+            design_tmpdir,
+            "missing-difficulty",
+            "failed-plan-write",
+            &[],
+        ));
+    };
+    let redacted = rewrite_plan_difficulty(&redacted, &rating.adjusted_tier);
+    let redacted_plan = design_tmpdir.join("clarify-plan.redacted.md");
+    let _ = fs::write(&redacted_plan, &redacted);
+    if !redacted_plan.is_file()
+        || fs::metadata(&redacted_plan)
+            .map(|meta| meta.len() == 0)
+            .unwrap_or(true)
+    {
+        return Err(publish_failure(
+            design_tmpdir,
+            "redact-empty",
+            "failed-plan-write",
+            &[],
+        ));
+    }
+    Ok((rating, redacted_plan))
+}
+
 /// The publish-phase tail: post response, drop label, publish log, rename.
 #[derive(Clone, Copy)]
 struct PublishTail<'a> {
@@ -678,8 +757,15 @@ fn publish_finalize(tail: &PublishTail<'_>) -> ExitCode {
     } = *tail;
     let repo_opt = if repo.is_empty() { None } else { Some(repo) };
 
-    if clarify_comment_post(effects, issue, "response", request_id, response_file, repo_opt)
-        .is_err()
+    if clarify_comment_post(
+        effects,
+        issue,
+        "response",
+        request_id,
+        response_file,
+        repo_opt,
+    )
+    .is_err()
     {
         let publish_ok = publish_clarify_log_and_summary(
             runner,
@@ -723,34 +809,14 @@ fn publish_finalize(tail: &PublishTail<'_>) -> ExitCode {
         "cancelled-clarify",
     );
 
-    let mut renamed = String::new();
-    if !session_id.is_empty() && publish_ok == "true" {
-        let mut rename_args = vec![
-            "tracking-issue".to_owned(),
-            "rename".to_owned(),
-            "--issue".to_owned(),
-            issue.to_owned(),
-            "--state".to_owned(),
-            "designing".to_owned(),
-        ];
-        rename_args.extend(repo_args.iter().cloned());
-        let rename = runner.run_larch(&rename_args.iter().map(OsString::from).collect::<Vec<_>>());
-        if rename.rc == 0 {
-            renamed = kv_last(&rename.stdout, "RENAMED");
-        } else {
-            "false".clone_into(&mut renamed);
-            let rename_stderr = design_tmpdir.join("clarify-rename.stderr");
-            let _ = fs::write(&rename_stderr, &rename.stderr);
-            append_clarify_failure(
-                runner,
-                design_tmpdir,
-                "design Step 0b clarify rename",
-                "scripts/larch.sh tracking-issue rename",
-                rename.rc,
-                &rename_stderr,
-            );
-        }
-    }
+    let renamed = rename_after_publish(
+        runner,
+        design_tmpdir,
+        issue,
+        repo_args,
+        session_id,
+        &publish_ok,
+    );
 
     let status = clarify_publish_status(design_tmpdir, &publish_ok);
     let rows: Vec<(&str, &str)> = vec![
@@ -760,9 +826,53 @@ fn publish_finalize(tail: &PublishTail<'_>) -> ExitCode {
         ("RENAMED", &renamed),
         ("SUMMARY_OUTCOME", "cancelled-clarify"),
     ];
-    let _ = write_result_env(&design_tmpdir.join(".design-clarify-publish-result.env"), &rows);
+    let _ = write_result_env(
+        &design_tmpdir.join(".design-clarify-publish-result.env"),
+        &rows,
+    );
     emit_design_kvs(&rows);
     ExitCode::from(0)
+}
+
+/// Rename the tracking issue back to `[DESIGNING]` when the publish landed.
+///
+/// Returns the `RENAMED` token: the child's own value on success, `"false"`
+/// on a failed rename (recorded as a warning), or empty when no rename ran.
+fn rename_after_publish(
+    runner: &dyn SiblingRunner,
+    design_tmpdir: &Path,
+    issue: &str,
+    repo_args: &[String],
+    session_id: &str,
+    publish_ok: &str,
+) -> String {
+    if session_id.is_empty() || publish_ok != "true" {
+        return String::new();
+    }
+    let mut rename_args = vec![
+        "tracking-issue".to_owned(),
+        "rename".to_owned(),
+        "--issue".to_owned(),
+        issue.to_owned(),
+        "--state".to_owned(),
+        "designing".to_owned(),
+    ];
+    rename_args.extend(repo_args.iter().cloned());
+    let rename = runner.run_larch(&rename_args.iter().map(OsString::from).collect::<Vec<_>>());
+    if rename.rc == 0 {
+        return kv_last(&rename.stdout, "RENAMED");
+    }
+    let rename_stderr = design_tmpdir.join("clarify-rename.stderr");
+    let _ = fs::write(&rename_stderr, &rename.stderr);
+    append_clarify_failure(
+        runner,
+        design_tmpdir,
+        "design Step 0b clarify rename",
+        "scripts/larch.sh tracking-issue rename",
+        rename.rc,
+        &rename_stderr,
+    );
+    "false".to_owned()
 }
 
 /// Best-effort difficulty-record persistence and run-log batch write.
@@ -823,7 +933,10 @@ fn design_clarify_usage() {
 }
 
 fn parse_design_clarify_args(argv: &[OsString]) -> Result<DesignClarifyArgs, ExitCode> {
-    let tokens: Vec<String> = argv.iter().map(|token| token.to_string_lossy().into_owned()).collect();
+    let tokens: Vec<String> = argv
+        .iter()
+        .map(|token| token.to_string_lossy().into_owned())
+        .collect();
     let mut data: BTreeMap<&str, String> = BTreeMap::new();
     let known = ["--session-env-path", "--claude-pid", "--phase", "--issue"];
     let mut index = 0;
@@ -897,7 +1010,10 @@ fn build_driver_env(args: &DesignClarifyArgs) -> Result<(Env, PathBuf), ExitCode
         let _ = env.insert("CLAUDE_PLUGIN_ROOT".to_owned(), root.display().to_string());
     }
     let design_tmpdir = require_design_tmpdir(&env, None)?;
-    let _ = env.insert("DESIGN_TMPDIR".to_owned(), design_tmpdir.display().to_string());
+    let _ = env.insert(
+        "DESIGN_TMPDIR".to_owned(),
+        design_tmpdir.display().to_string(),
+    );
     let _ = env.insert("ISSUE_NUMBER".to_owned(), args.issue.clone());
     Ok((env, design_tmpdir))
 }
@@ -943,7 +1059,12 @@ fn design_clarify_run(
                 &[],
             );
         }
-        return publish_failure(design_tmpdir, "route-state-read-failed", "failed-clarify", &[]);
+        return publish_failure(
+            design_tmpdir,
+            "route-state-read-failed",
+            "failed-clarify",
+            &[],
+        );
     }
     if let Err(code) = validate_design_repo(env.get("REPO").map_or("", String::as_str)) {
         return code;

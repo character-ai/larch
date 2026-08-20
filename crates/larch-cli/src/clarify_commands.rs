@@ -15,13 +15,13 @@ use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
+use larch_adapters::github::{IssueMutationOwner, OctocrabGitHubService};
+use larch_adapters::runtime::Cancellation;
 use larch_core::{
     CLARIFY_LABEL_COLOR, CLARIFY_LABEL_DESCRIPTION, CLARIFY_LABEL_NAME, ClarifyState,
     GitHubLabelCreate, GitHubService, IssueMutationRequest, emit_kv, evaluate_comment_bodies,
     redact, request_body_remainder,
 };
-use larch_adapters::github::{IssueMutationOwner, OctocrabGitHubService};
-use larch_adapters::runtime::Cancellation;
 
 use crate::github_repository_resolution::{
     ResolutionStatus, ambient_repo_resolution, repository_ref, validate_repo_slug,
@@ -57,8 +57,12 @@ pub trait ClarifyEffects {
     /// Idempotently create the clarification label in one repository.
     fn create_clarify_label(&self, repo: &str) -> Result<(), String>;
     /// Replace one issue's label set with `labels`.
-    fn set_issue_labels(&self, repo: &str, issue: u64, labels: BTreeSet<String>)
-    -> Result<(), String>;
+    fn set_issue_labels(
+        &self,
+        repo: &str,
+        issue: u64,
+        labels: BTreeSet<String>,
+    ) -> Result<(), String>;
 }
 
 /// How a clarify verb failed, mapped to a KEY=value row and exit code.
@@ -79,16 +83,14 @@ impl ClarifyError {
 }
 
 /// True when `value` is a non-zero run of ASCII digits.
-fn is_positive_int_text(value: &str) -> bool {
+pub fn is_positive_int_text(value: &str) -> bool {
     !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()) && value != "0"
 }
 
 /// Validate `value` as positive-integer text, raising `token` otherwise.
 fn ensure_positive(value: &str, token: &str) -> Result<u64, ClarifyError> {
     if is_positive_int_text(value) {
-        value
-            .parse()
-            .map_err(|_| ClarifyError::validation(token))
+        value.parse().map_err(|_| ClarifyError::validation(token))
     } else {
         Err(ClarifyError::validation(token))
     }
@@ -122,7 +124,9 @@ pub fn clarify_state(
     let comments = effects
         .list_comments(&resolved, number)
         .map_err(ClarifyError::Ship)?;
-    Ok(evaluate_comment_bodies(comments.iter().map(|comment| &comment.body)))
+    Ok(evaluate_comment_bodies(
+        comments.iter().map(|comment| &comment.body),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -172,12 +176,12 @@ fn write_request_body(out_file: &str, content: &str) -> Result<(), ClarifyError>
     if path.is_symlink() {
         return Err(ClarifyError::validation("write-target-symlink"));
     }
-    let name = path
-        .file_name()
-        .map_or_else(|| ".clarify".to_owned(), |value| value.to_string_lossy().into_owned());
+    let name = path.file_name().map_or_else(
+        || ".clarify".to_owned(),
+        |value| value.to_string_lossy().into_owned(),
+    );
     let temporary = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
-    let written =
-        fs::write(&temporary, content).and_then(|()| fs::rename(&temporary, path));
+    let written = fs::write(&temporary, content).and_then(|()| fs::rename(&temporary, path));
     if written.is_err() {
         let _ = fs::remove_file(&temporary);
         return Err(ClarifyError::validation("write-failed"));
@@ -400,18 +404,14 @@ impl ClarifyEffects for LiveEffects {
     }
 
     fn post_comment(&self, repo: &str, issue: u64, body: &str) -> Result<GhComment, String> {
+        let authorization = authorization_request("", "", "", true);
         with_repo(repo, issue, async |service, cancel, reference, number| {
-            IssueMutationOwner::new(service)
-                .create_comment(
-                    cancel,
-                    &authorization_request("", "", "", true),
-                    reference,
-                    number,
-                    body,
-                )
+            let owner = IssueMutationOwner::new(service);
+            let posted = owner
+                .create_comment(cancel, &authorization, reference, number, body)
                 .await
-                .map(gh_comment)
-                .map_err(|error| error.reason().to_owned())
+                .map_err(|error| error.reason().to_owned())?;
+            Ok(gh_comment(posted))
         })
     }
 
@@ -573,7 +573,11 @@ pub fn clarify_state_main(argv: &[OsString]) -> ExitCode {
         eprintln!("clarify state --issue <N> [--repo OWNER/REPO]");
         return ExitCode::from(0);
     }
-    let Some(issue) = parsed.values.get("--issue").filter(|value| !value.is_empty()) else {
+    let Some(issue) = parsed
+        .values
+        .get("--issue")
+        .filter(|value| !value.is_empty())
+    else {
         eprintln!("clarify state --issue <N> [--repo OWNER/REPO]");
         return ExitCode::from(1);
     };
@@ -811,9 +815,10 @@ mod tests {
             _issue: u64,
             labels: BTreeSet<String>,
         ) -> Result<(), String> {
-            self.label_ops
-                .borrow_mut()
-                .push(format!("set:{}", labels.into_iter().collect::<Vec<_>>().join(",")));
+            self.label_ops.borrow_mut().push(format!(
+                "set:{}",
+                labels.into_iter().collect::<Vec<_>>().join(",")
+            ));
             if let Some(error) = &self.label_error {
                 return Err(error.clone());
             }
@@ -850,7 +855,10 @@ mod tests {
     #[test]
     fn state_rejects_bad_issue_and_repo() {
         let effects = FakeEffects::with_repo();
-        assert_eq!(err_token(clarify_state(&effects, "0", Some("o/r"))), "invalid-issue");
+        assert_eq!(
+            err_token(clarify_state(&effects, "0", Some("o/r"))),
+            "invalid-issue"
+        );
         assert_eq!(
             err_token(clarify_state(&effects, "7", Some("bad..repo"))),
             "invalid-repo"
@@ -913,7 +921,13 @@ mod tests {
         let out = dir.path().join("request.md");
         let effects = FakeEffects::with_repo();
         assert_eq!(
-            err_token(clarify_comment_fetch(&effects, "7", "0", out.to_str().unwrap(), Some("o/r"))),
+            err_token(clarify_comment_fetch(
+                &effects,
+                "7",
+                "0",
+                out.to_str().unwrap(),
+                Some("o/r")
+            )),
             "invalid-id"
         );
     }
@@ -971,7 +985,14 @@ mod tests {
             ..FakeEffects::default()
         };
         assert_eq!(
-            err_token(clarify_comment_post(&effects, "7", "request", "1", "missing.md", None)),
+            err_token(clarify_comment_post(
+                &effects,
+                "7",
+                "request",
+                "1",
+                "missing.md",
+                None
+            )),
             "content file not found: missing.md"
         );
         assert!(effects.posts.borrow().is_empty());
@@ -984,11 +1005,25 @@ mod tests {
         fs::write(&content, "body").unwrap();
         let effects = FakeEffects::with_repo();
         assert_eq!(
-            err_token(clarify_comment_post(&effects, "7", "bad", "1", content.to_str().unwrap(), Some("o/r"))),
+            err_token(clarify_comment_post(
+                &effects,
+                "7",
+                "bad",
+                "1",
+                content.to_str().unwrap(),
+                Some("o/r")
+            )),
             "invalid-kind"
         );
         assert_eq!(
-            err_token(clarify_comment_post(&effects, "7", "request", "0", content.to_str().unwrap(), Some("o/r"))),
+            err_token(clarify_comment_post(
+                &effects,
+                "7",
+                "request",
+                "0",
+                content.to_str().unwrap(),
+                Some("o/r")
+            )),
             "invalid-id"
         );
     }
@@ -1000,8 +1035,15 @@ mod tests {
         fs::write(&content, [0xff, 0xfe, 0xfd]).unwrap();
         let effects = FakeEffects::with_repo();
         assert!(
-            err_token(clarify_comment_post(&effects, "7", "request", "1", content.to_str().unwrap(), Some("o/r")))
-                .contains("utf-8")
+            err_token(clarify_comment_post(
+                &effects,
+                "7",
+                "request",
+                "1",
+                content.to_str().unwrap(),
+                Some("o/r")
+            ))
+            .contains("utf-8")
         );
     }
 
@@ -1033,12 +1075,20 @@ mod tests {
             labels: vec!["Needs-Design-Clarification".to_owned()],
             ..FakeEffects::with_repo()
         };
-        assert!(clarify_label(&effects, "7", "add", Some("o/r"), false).unwrap().changed);
+        assert!(
+            clarify_label(&effects, "7", "add", Some("o/r"), false)
+                .unwrap()
+                .changed
+        );
         let effects = FakeEffects {
             labels: vec!["Needs-Design-Clarification".to_owned()],
             ..FakeEffects::with_repo()
         };
-        assert!(!clarify_label(&effects, "7", "remove", Some("o/r"), false).unwrap().changed);
+        assert!(
+            !clarify_label(&effects, "7", "remove", Some("o/r"), false)
+                .unwrap()
+                .changed
+        );
     }
 
     #[test]

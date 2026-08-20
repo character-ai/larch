@@ -84,4 +84,4 @@ _delegate_args=()
 [ -z "${CLAUDE_PID:-}" ] || _delegate_args+=(--claude-pid "$CLAUDE_PID")
 _delegate_args+=(--phase "$PHASE" --issue "$ISSUE")
 
-exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design clarify "${_delegate_args[@]}"
+exec "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" design clarify "${_delegate_args[@]}"

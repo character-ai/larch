@@ -4,7 +4,7 @@ Offline harness for `design-clarify.sh`.
 
 ## Coverage
 
-- Valid wrapper argv delegates to `python/cli.py design clarify`.
+- Valid wrapper argv delegates to `scripts/larch.sh design clarify`.
 - Delegation rebuilds `_delegate_args` with `--session-env-path`,
   `--claude-pid`, `--phase`, and `--issue` instead of forwarding consumed
   `"$@"`.
