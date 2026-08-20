@@ -26,9 +26,9 @@ pub use decompose::{
     prefixed_piece_title, replacement_edges, scope_tokens, split_firm_headings,
 };
 pub use log_publish::{
-    AssessmentCompleteness, GUIDELINE_ASSESSMENT_ARTIFACT, INVARIANT_ASSESSMENT_ARTIFACT,
-    assessment_present, assessment_required, default_outcome_for_reason, lifecycle_outcome,
-    publish_excluded, validate_issue, validate_repo, validate_slug,
+    GUIDELINE_ASSESSMENT_ARTIFACT, INVARIANT_ASSESSMENT_ARTIFACT, assessment_present,
+    assessment_required, default_outcome_for_reason, lifecycle_outcome, publish_excluded,
+    validate_issue, validate_repo, validate_slug,
 };
 
 pub use plan_grammar::{

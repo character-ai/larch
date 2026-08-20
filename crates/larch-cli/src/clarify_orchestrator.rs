@@ -208,11 +208,7 @@ fn emit_design_kvs(rows: &[(&str, &str)]) {
 }
 
 /// Atomically write allowlisted, newline-free KEY=value rows to a result env.
-pub fn write_result_env(
-    path: &Path,
-    rows: &[(&str, &str)],
-    allow: &[&str],
-) -> Result<(), String> {
+pub fn write_result_env(path: &Path, rows: &[(&str, &str)], allow: &[&str]) -> Result<(), String> {
     if path.is_symlink() {
         return Err(format!(
             "refusing to write symlink result env: {}",
@@ -696,7 +692,8 @@ fn handle_publish(
     }
     let plan_file = request.get("PLAN_FILE").cloned().unwrap_or_default();
     let response_file = request.get("RESPONSE_FILE").cloned().unwrap_or_default();
-    if !publish_artifact_ok(Path::new(&plan_file)) || !publish_artifact_ok(Path::new(&response_file))
+    if !publish_artifact_ok(Path::new(&plan_file))
+        || !publish_artifact_ok(Path::new(&response_file))
     {
         return publish_failure(design_tmpdir, "missing-artifact", "failed-clarify", &[]);
     }

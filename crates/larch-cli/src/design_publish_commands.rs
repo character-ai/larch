@@ -21,15 +21,14 @@ use larch_adapters::github::{IssueMutationOwner, OctocrabGitHubService};
 use larch_core::{
     AssessmentKind, BlockerSnapshotRow, ChildEnvironment, DESIGN_RAW_RATING_BASENAME,
     DIFFICULTY_RECORD_BASENAME, DifficultyRating, GitHubIssueState, GitHubRepositoryRef,
-    IssueMutationField, IssueMutationLease, IssueMutationRequest,
-    IssueMutationSnapshot, PLAN_MARKER, PUBLISH_RESULT_ENV_ALLOW, PlanReceipt,
-    ProcessCancellation, ReviewProvenance, blocked_review_reason, bounded_diagram_warning_body,
-    check_guideline_assessment_completeness, check_invariant_assessment_completeness,
-    count_missing_script_defects, has_designed_prefix, hash_blocker_rows, hash_owner_rows,
-    hash_plan_block, is_publish_attempt_id, is_repo_slug, parse_named_block,
-    parse_native_blocker_refs, parse_owner_block, parse_receipt, persisted_note_publishable,
-    redact_secrets_only, review_provenance, rewrite_plan_difficulty, sanitizer_reason_token,
-    splice_plan_provenance, upsert_receipt, validate_plan_contract,
+    IssueMutationField, IssueMutationLease, IssueMutationRequest, IssueMutationSnapshot,
+    PLAN_MARKER, PUBLISH_RESULT_ENV_ALLOW, PlanReceipt, ProcessCancellation, ReviewProvenance,
+    blocked_review_reason, bounded_diagram_warning_body, check_guideline_assessment_completeness,
+    check_invariant_assessment_completeness, count_missing_script_defects, has_designed_prefix,
+    hash_blocker_rows, hash_owner_rows, hash_plan_block, is_publish_attempt_id, is_repo_slug,
+    parse_named_block, parse_native_blocker_refs, parse_owner_block, parse_receipt,
+    persisted_note_publishable, redact_secrets_only, review_provenance, rewrite_plan_difficulty,
+    sanitizer_reason_token, splice_plan_provenance, upsert_receipt, validate_plan_contract,
     write_bounded_diagram_failure_log,
 };
 
@@ -38,12 +37,12 @@ use crate::clarify_orchestrator::{
     LiveRunner, SiblingRunner, kv_last, plan_named_block_args,
     publish_artifact_ok as nonempty_file, resolve_publish_difficulty_rating, write_result_env,
 };
-use crate::execution_issue_commands::read_lossy;
 use crate::design_step0_commands::{exit_from_i32, stage_terminal_state_bridge};
 use crate::design_step1_commands::consumer_repo_root;
-use crate::implement_bootstrap_continuation::resolve_revision_sha;
+use crate::execution_issue_commands::read_lossy;
 use crate::github_repository_resolution::repository_ref;
 use crate::github_service::{ServiceFailure, with_github_service};
+use crate::implement_bootstrap_continuation::resolve_revision_sha;
 use crate::issue_mutation_support::authorization_request;
 use crate::python_verb::plugin_root_directory;
 use crate::run_log_entry_commands::append_execution_issue;
@@ -514,10 +513,7 @@ fn sanitize_diagram_candidate(runner: &dyn SiblingRunner, design_tmpdir: &Path) 
     }
     skip_diagram_candidate(
         design_tmpdir,
-        &format!(
-            "sanitizer-rejected:{}",
-            sanitizer_reason_token(&combined)
-        ),
+        &format!("sanitizer-rejected:{}", sanitizer_reason_token(&combined)),
         &sanitizer.rc.to_string(),
     )
 }
@@ -871,7 +867,11 @@ fn run_log_publish(
     let publish_ok = kv_last(&publish.stdout, "PUBLISH_OK");
     rows.push(
         "PUBLISH_OK",
-        if publish_ok == "true" { "true" } else { "false" },
+        if publish_ok == "true" {
+            "true"
+        } else {
+            "false"
+        },
     );
     for (key, value) in [
         ("PR_NUMBER", kv_last(&publish.stdout, "PR_NUMBER")),
@@ -905,10 +905,7 @@ fn run_log_publish(
         return Some(RC_FAILED);
     }
     let violations = kv_last(&publish.stdout, "SECRET_SCRUB_VIOLATIONS");
-    if violations
-        .parse::<u64>()
-        .is_ok_and(|value| value > 0)
-    {
+    if violations.parse::<u64>().is_ok_and(|value| value > 0) {
         println!(
             "**⚠ SECURITY: redact scrub-log-secrets redacted {violations} \
              secret-shaped value(s) from this /design run's logs before flush. \
@@ -1018,7 +1015,9 @@ fn publish_difficulty(
     }
     let run_id = std::env::var("RUN_ID").unwrap_or_default();
     let run_id = if run_id.is_empty() {
-        read_lossy(&design_tmpdir.join("run-id.txt")).trim().to_owned()
+        read_lossy(&design_tmpdir.join("run-id.txt"))
+            .trim()
+            .to_owned()
     } else {
         run_id
     };
@@ -1099,7 +1098,10 @@ fn upsert_architecture_diagram(
             "run-log",
             "append-failure",
             "--log",
-            &design_tmpdir.join("execution-issues.md").display().to_string(),
+            &design_tmpdir
+                .join("execution-issues.md")
+                .display()
+                .to_string(),
             "--site",
             "design Step 5c.5",
             "--tool",
@@ -1178,12 +1180,21 @@ fn publish_core(
     );
     rows.push(
         "FINAL_SUMMARY_PATH",
-        &paths.design_tmpdir.join("final-summary.md").display().to_string(),
+        &paths
+            .design_tmpdir
+            .join("final-summary.md")
+            .display()
+            .to_string(),
     );
     rows.push("DESIGNED_ADMISSION_READY", "false");
     rows.push("PUBLISH_REFUSE_REASON", "");
 
-    if !paths.design_tmpdir.join(".completed").join("step-5b").is_file() {
+    if !paths
+        .design_tmpdir
+        .join(".completed")
+        .join("step-5b")
+        .is_file()
+    {
         return RC_FAILED;
     }
     if let Err(error) = checkpoint(&paths.result_env, &mut rows, "initialized") {
@@ -1215,7 +1226,11 @@ fn publish_core(
     }
 
     let provenance = review_provenance(&paths.design_tmpdir);
-    let step3_sentinel = paths.design_tmpdir.join(".completed").join("step-3").is_file();
+    let step3_sentinel = paths
+        .design_tmpdir
+        .join(".completed")
+        .join("step-3")
+        .is_file();
     let refusal = publish_refusal_reason(
         runner,
         &paths,
@@ -1251,8 +1266,7 @@ fn publish_core(
         Ok(text) => text,
         Err(code) => return code,
     };
-    let (rating, raw_invalid) =
-        resolve_publish_difficulty_rating(&paths.design_tmpdir, &plan_text);
+    let (rating, raw_invalid) = resolve_publish_difficulty_rating(&paths.design_tmpdir, &plan_text);
     if raw_invalid {
         return RC_FAILED;
     }
@@ -1409,7 +1423,10 @@ fn publish_refusal_reason(
             "check-size",
             "--design-tmpdir",
             &paths.design_tmpdir.display().to_string(),
-            &format!("--plan-file={}", paths.design_tmpdir.join("plan.txt").display()),
+            &format!(
+                "--plan-file={}",
+                paths.design_tmpdir.join("plan.txt").display()
+            ),
         ]),
         &[(ChildEnvironment::LarchQuietDisable, OsString::from("1"))],
     );
@@ -1428,11 +1445,8 @@ fn publish_refusal_reason(
 fn stage_plan_text(paths: &PublishPaths, provenance: &ReviewProvenance) -> Result<String, i32> {
     if !provenance.status.is_empty() || provenance.rounds_completed != 0 {
         let original = read_lossy(&paths.composed_plan);
-        let spliced = splice_plan_provenance(
-            &original,
-            &provenance.status,
-            provenance.rounds_completed,
-        );
+        let spliced =
+            splice_plan_provenance(&original, &provenance.status, provenance.rounds_completed);
         if fs::write(&paths.composed_plan, &spliced).is_err() {
             return Err(RC_FAILED);
         }

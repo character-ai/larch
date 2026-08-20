@@ -140,13 +140,14 @@ mod design_publish_commands_tests {
             fs::write(tmpdir.join(".completed").join("step-3"), b"").expect("step-3 sentinel");
             fs::write(tmpdir.join("plan.txt"), CONTRACT_PLAN).expect("plan.txt");
             fs::write(tmpdir.join("composed-plan.md"), CONTRACT_PLAN).expect("composed plan");
-            fs::write(
-                tmpdir.join("architecture-diagram.skipped"),
-                b"",
-            )
-            .expect("diagram skip marker");
-            fs::write(tmpdir.join(".completed").join("step-5b.5"), b"").expect("step-5b.5 sentinel");
-            Self { _root: root, tmpdir }
+            fs::write(tmpdir.join("architecture-diagram.skipped"), b"")
+                .expect("diagram skip marker");
+            fs::write(tmpdir.join(".completed").join("step-5b.5"), b"")
+                .expect("step-5b.5 sentinel");
+            Self {
+                _root: root,
+                tmpdir,
+            }
         }
 
         fn args(&self) -> PublishArgs {
@@ -206,7 +207,8 @@ mod design_publish_commands_tests {
     #[test]
     fn absent_step_5b_sentinel_fails_before_any_sibling_runs() {
         let session = Session::new();
-        fs::remove_file(session.tmpdir.join(".completed").join("step-5b")).expect("unlink sentinel");
+        fs::remove_file(session.tmpdir.join(".completed").join("step-5b"))
+            .expect("unlink sentinel");
         let runner = ScriptRunner::new(&[SIZE_OK]);
 
         let rc = publish_core(&runner, &ScriptReceipt::ok(), &session.args());
@@ -435,7 +437,8 @@ mod design_publish_commands_tests {
     #[test]
     fn a_missing_diagram_artifact_after_the_sentinel_only_warns() {
         let session = Session::ready();
-        fs::remove_file(session.tmpdir.join("architecture-diagram.skipped")).expect("unlink marker");
+        fs::remove_file(session.tmpdir.join("architecture-diagram.skipped"))
+            .expect("unlink marker");
         let runner = ScriptRunner::new(&[SIZE_OK]);
 
         let rc = publish_core(&runner, &ScriptReceipt::ok(), &session.args());
@@ -487,7 +490,9 @@ mod design_publish_commands_tests {
         let root = TempDir::new().expect("temporary root");
         let rows = super::super::Rows(vec![("NOT_ALLOWED".to_owned(), "x".to_owned())]);
 
-        assert!(super::super::write_publish_result_env(&root.path().join("out.env"), &rows).is_err());
+        assert!(
+            super::super::write_publish_result_env(&root.path().join("out.env"), &rows).is_err()
+        );
     }
 
     /// Confirm the publish rows never leak a newline into the result env.
@@ -496,7 +501,9 @@ mod design_publish_commands_tests {
         let root = TempDir::new().expect("temporary root");
         let rows = super::super::Rows(vec![("NEW_TITLE".to_owned(), "a\nb".to_owned())]);
 
-        assert!(super::super::write_publish_result_env(&root.path().join("out.env"), &rows).is_err());
+        assert!(
+            super::super::write_publish_result_env(&root.path().join("out.env"), &rows).is_err()
+        );
     }
 
     /// `Path` is only used through the helpers above; keep the import honest.

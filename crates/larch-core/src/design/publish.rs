@@ -6,8 +6,8 @@
 //! validate-log defect count stay provable offline.
 
 use std::collections::BTreeMap;
-use std::fs;
 use std::fmt::Write as _;
+use std::fs;
 use std::path::Path;
 use std::sync::LazyLock;
 
@@ -105,7 +105,10 @@ pub fn sanitizer_reason_token(output: &str) -> String {
     REASON_TOKEN_RE
         .captures(output)
         .and_then(|captures| captures.get(1))
-        .map_or_else(|| "unknown".to_owned(), |matched| matched.as_str().to_owned())
+        .map_or_else(
+            || "unknown".to_owned(),
+            |matched| matched.as_str().to_owned(),
+        )
 }
 
 /// Read a KEY=value document the way the retired Python reader did: CR-free
@@ -178,10 +181,13 @@ pub fn review_provenance(design_tmpdir: &Path) -> ReviewProvenance {
         status = match loop_status {
             "complete" => "complete".to_owned(),
             "cap-reached" | "cap-hit" => "cap-hit".to_owned(),
-            "panel-failed" | "panel-init-failed" | "panel-skipped" | "tally-error"
-            | "degraded-empty-collector" | "main-agent-vote-required" | "postplan-failed" => {
-                loop_status.to_owned()
-            }
+            "panel-failed"
+            | "panel-init-failed"
+            | "panel-skipped"
+            | "tally-error"
+            | "degraded-empty-collector"
+            | "main-agent-vote-required"
+            | "postplan-failed" => loop_status.to_owned(),
             _ => tally.clone(),
         };
     }
@@ -291,8 +297,7 @@ pub fn check_invariant_assessment_completeness(
     let artifact = AssessmentKind::Invariants.design_assessment_filename();
     let approved = APPROVED_OUTCOMES.contains(&outcome);
     let entries_present = !knowledge.content.trim().is_empty();
-    let required =
-        approved && knowledge.status == ArchitecturalStatus::Present && entries_present;
+    let required = approved && knowledge.status == ArchitecturalStatus::Present && entries_present;
     let path = design_tmpdir.join(artifact);
     let present = path.is_file() && !path.is_symlink();
     let reason = if required {
@@ -392,7 +397,11 @@ pub fn guideline_exception_valid(note: &str) -> bool {
     let [year, month, day] = parts.as_slice() else {
         return false;
     };
-    match (year.parse::<u32>(), month.parse::<u32>(), day.parse::<u32>()) {
+    match (
+        year.parse::<u32>(),
+        month.parse::<u32>(),
+        day.parse::<u32>(),
+    ) {
         (Ok(year), Ok(month), Ok(day)) => calendar_date_plausible(year, month, day),
         _ => false,
     }
@@ -448,8 +457,7 @@ pub fn blocked_review_reason(provenance: &ReviewProvenance, step3_sentinel: bool
     if provenance.present && provenance.rounds_completed == 0 {
         return "rounds_completed=0".to_owned();
     }
-    if TERMINAL_STATUSES_REQUIRING_SENTINEL.contains(&provenance.status.as_str())
-        && !step3_sentinel
+    if TERMINAL_STATUSES_REQUIRING_SENTINEL.contains(&provenance.status.as_str()) && !step3_sentinel
     {
         return format!("{} without .completed/step-3", provenance.status);
     }
@@ -615,13 +623,13 @@ mod tests {
         let clean = root.path().join("clean.md");
         fs::write(
             &clean,
-            format!(
-                "{}\n",
-                AssessmentKind::Invariants.clean_presentation_note()
-            ),
+            format!("{}\n", AssessmentKind::Invariants.clean_presentation_note()),
         )
         .expect("write");
-        assert!(persisted_note_publishable(&clean, AssessmentKind::Invariants));
+        assert!(persisted_note_publishable(
+            &clean,
+            AssessmentKind::Invariants
+        ));
 
         let violation = root.path().join("violation.md");
         fs::write(&violation, "I-Core-1 is violated by this plan.\n").expect("write");
@@ -640,7 +648,10 @@ mod tests {
         let root = TempDir::new().expect("tmpdir");
         let bare = root.path().join("bare.md");
         fs::write(&bare, "G-Py-4 applies to this plan.\n").expect("write");
-        assert!(!persisted_note_publishable(&bare, AssessmentKind::Guidelines));
+        assert!(!persisted_note_publishable(
+            &bare,
+            AssessmentKind::Guidelines
+        ));
 
         let excepted = root.path().join("excepted.md");
         fs::write(
@@ -684,7 +695,10 @@ mod tests {
              DEFECT plan kind=missing-script path=c\n",
         )
         .expect("write");
-        assert_eq!(count_missing_script_defects(&log.display().to_string()), "2");
+        assert_eq!(
+            count_missing_script_defects(&log.display().to_string()),
+            "2"
+        );
         assert_eq!(count_missing_script_defects(""), "0");
         assert_eq!(
             count_missing_script_defects(&root.path().join("absent.log").display().to_string()),
