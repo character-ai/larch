@@ -86,6 +86,7 @@ __all__ = [
     "seed_run_params",
     "write_design_source_env",
     "write_gh_pr_stub",
+    "write_required_plan_coverage",
     "write_session_env",
 ]
 
