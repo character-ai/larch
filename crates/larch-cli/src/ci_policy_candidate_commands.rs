@@ -686,6 +686,14 @@ mod tests {
             super::read_binary_version(&missing).expect_err("spawn").0,
             "could not read bundle executable version"
         );
+
+        // Exit 0 but empty stdout is still a failed version read.
+        let empty = root.path().join("empty");
+        executable_script(&empty, "#!/bin/sh\nexit 0\n");
+        assert_eq!(
+            super::read_binary_version(&empty).expect_err("empty").0,
+            "bundle executable version command failed"
+        );
     }
 
     #[test]
