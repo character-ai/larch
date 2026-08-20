@@ -36,16 +36,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         "promote_policy_candidate_main",
         False,
     ),
-    ("ci", "stage-main-cache-candidate"): (
-        "larch.implement.main_cache_candidate",
-        "stage_main_cache_candidate_main",
-        True,
-    ),
-    ("ci", "verify-main-cache-candidate"): (
-        "larch.implement.main_cache_candidate",
-        "verify_main_cache_candidate_main",
-        True,
-    ),
     ("complete-umbrella", "ship-leaf"): (
         "larch.implement.complete_umbrella_ship",
         "main",

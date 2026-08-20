@@ -643,8 +643,6 @@
   "tests/implement/test_implement_shell_scripts.py::test_token_propagation_difficulty_routing[MODERATE]": 4,
   "tests/implement/test_implement_shell_scripts.py::test_token_propagation_difficulty_routing[TRIVIAL]": 1,
   "tests/implement/test_implement_shell_scripts.py::test_token_propagation_review_and_fix_step5_default_moderate": 3,
-  "tests/implement/test_main_cache_candidate.py::test_candidate_manifest_accepts_reviewed_cargo_metadata_and_remains_bounded": 4,
-  "tests/implement/test_main_cache_candidate.py::test_stage_and_promote_cargo_inputs_accepts_safe_cargo_path_punctuation": 2,
   "tests/implement/test_run_step_checks.py::test_child_requires_complete_launch_identity": 1,
   "tests/implement/test_run_step_checks.py::test_relay_scope_coverage_passes_none_manifest_when_absent": 2,
   "tests/implement/test_run_step_checks.py::test_self_review_uses_distinct_step_and_budget": 1,

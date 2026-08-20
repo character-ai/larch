@@ -227,7 +227,7 @@ enum Domain {
     /// `/implement` checks-loop attribution reads.
     #[command(subcommand)]
     Checks(ChecksCommand),
-    /// Fail-closed Rust CI selection and history helpers.
+    /// Fail-closed Rust CI selection, history helpers, and main-cache candidates.
     #[command(subcommand)]
     Ci(CiCommand),
     /// Serially complete and audit every direct leaf of one umbrella issue.

@@ -716,7 +716,8 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        python3 "$GITHUB_WORKSPACE/python/cli.py" ci stage-main-cache-candidate \
+        CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch" \
+          "$GITHUB_WORKSPACE/scripts/larch.sh" ci stage-main-cache-candidate \
           --artifact-name main-cache-cargo-nextest-candidate \
           --cache-class cargo-nextest \
           --cache-key '${{ env.CARGO_NEXTEST_CACHE_KEY }}' \
@@ -743,7 +744,8 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        python3 "$GITHUB_WORKSPACE/python/cli.py" ci stage-main-cache-candidate \
+        CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch" \
+          "$GITHUB_WORKSPACE/scripts/larch.sh" ci stage-main-cache-candidate \
           --artifact-name main-cache-cargo-llvm-cov-candidate \
           --cache-class cargo-llvm-cov \
           --cache-key '${{ env.CARGO_LLVM_COV_CACHE_KEY }}' \
@@ -775,7 +777,8 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        python3 "$GITHUB_WORKSPACE/python/cli.py" ci stage-main-cache-candidate \
+        CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch" \
+          "$GITHUB_WORKSPACE/scripts/larch.sh" ci stage-main-cache-candidate \
           --artifact-name main-cache-coverage-target-candidate \
           --cache-class coverage-target \
           --cache-key '${{ env.COVERAGE_TARGET_CACHE_KEY }}' \

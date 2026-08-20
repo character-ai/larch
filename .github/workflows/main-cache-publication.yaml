@@ -533,11 +533,24 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ needs.main-cache-merge-group-source.outputs.run-id }}
           path: ${{ runner.temp }}/main-cache-candidates/cargo-inputs
+      - name: Build larch for main-cache candidate verification
+        if: >-
+          steps.cargo-inputs-cache.outputs.cache-hit != 'true' ||
+          steps.rust-lint-deps-cache.outputs.cache-hit != 'true' ||
+          steps.nextest-cache.outputs.cache-hit != 'true' ||
+          steps.llvm-cov-cache.outputs.cache-hit != 'true' ||
+          steps.coverage-target-cache.outputs.cache-hit != 'true' ||
+          steps.rust-policy-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          cargo build --quiet --locked --package larch-cli --bin larch \
+            --target-dir "$RUNNER_TEMP/larch-main-cache-bin"
       - name: Verify Cargo inputs candidate
         if: steps.cargo-inputs-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          python3 python/cli.py ci verify-main-cache-candidate \
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$RUNNER_TEMP/larch-main-cache-bin/debug/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" ci verify-main-cache-candidate \
             --candidate-dir "$RUNNER_TEMP/main-cache-candidates/cargo-inputs" \
             --artifact-name main-cache-cargo-inputs-candidate \
             --cache-class cargo-inputs \
@@ -585,7 +598,8 @@ jobs:
         if: steps.rust-lint-deps-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          python3 python/cli.py ci verify-main-cache-candidate \
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$RUNNER_TEMP/larch-main-cache-bin/debug/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" ci verify-main-cache-candidate \
             --candidate-dir "$RUNNER_TEMP/main-cache-candidates/rust-lint-deps" \
             --artifact-name main-cache-rust-lint-deps-candidate \
             --cache-class rust-lint-deps \
@@ -623,7 +637,8 @@ jobs:
         if: steps.nextest-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          python3 python/cli.py ci verify-main-cache-candidate \
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$RUNNER_TEMP/larch-main-cache-bin/debug/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" ci verify-main-cache-candidate \
             --candidate-dir "$RUNNER_TEMP/main-cache-candidates/cargo-nextest" \
             --artifact-name main-cache-cargo-nextest-candidate \
             --cache-class cargo-nextest \
@@ -668,7 +683,8 @@ jobs:
         if: steps.llvm-cov-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          python3 python/cli.py ci verify-main-cache-candidate \
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$RUNNER_TEMP/larch-main-cache-bin/debug/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" ci verify-main-cache-candidate \
             --candidate-dir "$RUNNER_TEMP/main-cache-candidates/cargo-llvm-cov" \
             --artifact-name main-cache-cargo-llvm-cov-candidate \
             --cache-class cargo-llvm-cov \
@@ -713,7 +729,8 @@ jobs:
         if: steps.coverage-target-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          python3 python/cli.py ci verify-main-cache-candidate \
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$RUNNER_TEMP/larch-main-cache-bin/debug/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" ci verify-main-cache-candidate \
             --candidate-dir "$RUNNER_TEMP/main-cache-candidates/coverage-target" \
             --artifact-name main-cache-coverage-target-candidate \
             --cache-class coverage-target \
@@ -770,7 +787,8 @@ jobs:
           RUST_POLICY_INPUTS_SHA256: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
         run: |
           set -euo pipefail
-          python3 python/cli.py ci verify-main-cache-candidate \
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$RUNNER_TEMP/larch-main-cache-bin/debug/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" ci verify-main-cache-candidate \
             --candidate-dir "$RUNNER_TEMP/main-cache-candidates/rust-policy" \
             --artifact-name main-cache-rust-policy-candidate \
             --cache-class rust-policy \

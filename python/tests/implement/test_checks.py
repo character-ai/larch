@@ -3942,13 +3942,13 @@ def test_main_cache_inventory_and_publication_contract() -> None:
         "\n  main-cache-probe:", 1
     )[0]
     source_resolver = (
-        repo_root / "crates" / "larch-core" / "src" / "main_cache.rs"
+        repo_root / "crates" / "larch-core" / "src" / "main_cache" / "mod.rs"
     ).read_text(encoding="utf-8")
     github_auth_config = (
         repo_root / ".github" / "actions" / "github-auth-config" / "action.yaml"
     ).read_text(encoding="utf-8")
     candidate_helper = (
-        repo_root / "python" / "larch" / "implement" / "main_cache_candidate.py"
+        repo_root / "crates" / "larch-core" / "src" / "main_cache" / "candidate.rs"
     ).read_text(encoding="utf-8")
     supply_chain = (
         repo_root / "docs" / "security" / "supply-chain-credentials-and-services.md"
@@ -4119,10 +4119,10 @@ def test_main_cache_inventory_and_publication_contract() -> None:
     assert "candidate producer ref is not a merge-queue ref" in candidate_helper
     assert "candidate payload members do not match its manifest" in candidate_helper
     assert "candidate tool versions do not match the publisher contract" in candidate_helper
-    assert "_SCHEMA_VERSION: Final = 2" in candidate_helper
-    assert '"mtime_ns": member.mtime_ns' in candidate_helper
-    assert "os.utime(" in candidate_helper
-    assert "_reject_tree_symlinks" in candidate_helper
+    assert "const SCHEMA_VERSION: u64 = 2" in candidate_helper
+    assert '"mtime_ns"' in candidate_helper
+    assert "set_times(" in candidate_helper
+    assert "reject_tree_symlinks" in candidate_helper
     assert "default: v2" in key_action
     assert "cargo-inputs=cargo-inputs-v2-" in key_action
     assert "rust-lint-deps=rust-lint-deps-v2-" in key_action

@@ -1177,7 +1177,14 @@ mod tests {
         assert!(cache_publication.contains("Save verified gitleaks binary"));
         assert!(!workflow.contains("Save verified gitleaks binary"));
         assert!(!workflow.contains("scripts/larch.sh\" lint gitleaks"));
-        assert!(!workflow.contains("cargo build --quiet --locked --package larch-cli"));
+        let gitleaks_job = workflow
+            .split("\n  gitleaks:")
+            .nth(1)
+            .expect("gitleaks job")
+            .split("\n  ")
+            .next()
+            .expect("gitleaks job body");
+        assert!(!gitleaks_job.contains("cargo build --quiet --locked --package larch-cli"));
         assert!(!precommit.contains("checks gitleaks"));
         assert!(!workflow.contains("python/larch/lint/gitleaks.py"));
     }
