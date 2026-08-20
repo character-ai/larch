@@ -220,6 +220,26 @@ mod clarify_orchestrator_tests {
     }
 
     #[test]
+    fn fetch_result_env_write_failure_does_not_report_success() {
+        let dir = TempDir::new().unwrap();
+        // A symlink at the request-state sidecar makes write_result_env refuse,
+        // so the driver must not go on to write the fetch-result env or claim ok.
+        std::os::unix::fs::symlink(
+            dir.path().join("elsewhere.env"),
+            dir.path().join(".design-clarify-request.env"),
+        )
+        .unwrap();
+        let effects = FakeEffects {
+            comments: vec![(44, "<!-- larch:clarify-request id=4 -->\nq\n".to_owned())],
+            ..FakeEffects::default()
+        };
+        let runner = FakeRunner::new();
+        let mut env = env_with_repo(dir.path());
+        let _ = design_clarify_run(&effects, &runner, &args("fetch"), &mut env, dir.path());
+        assert!(!dir.path().join(".design-clarify-fetch-result.env").exists());
+    }
+
+    #[test]
     fn fetch_unexpected_state_stages_failure() {
         let dir = TempDir::new().unwrap();
         let effects = FakeEffects::default();

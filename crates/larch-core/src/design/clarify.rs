@@ -195,9 +195,12 @@ pub fn evaluate_events(events: &[ClarifyEvent]) -> ClarifyState {
         return ClarifyState::new("awaiting-response", &rid.to_string(), &last_resp);
     }
 
-    let gap_unsat = (1..rid).any(|mid| {
-        request_ids.contains(&mid) && !response_ids.contains(&mid)
-    });
+    // Equivalent to scanning `1..rid` for a requested-but-unanswered id, but
+    // bounded by the comment count so an attacker-shaped `rid` (any `[1-9][0-9]*`
+    // marker id) cannot force a ~10^19-iteration loop.
+    let gap_unsat = request_ids
+        .iter()
+        .any(|&mid| mid < rid && !response_ids.contains(&mid));
     if gap_unsat {
         return ClarifyState::new("ambiguous", &rid.to_string(), &last_resp);
     }

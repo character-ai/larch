@@ -93,10 +93,13 @@ impl CapturedRun {
                 let (rc, stdout, stderr) = output.decoded_streams();
                 Self { rc, stdout, stderr }
             }
-            Err(_error) => Self {
+            // A dispatch failure (verified-bootstrap or spawn error) carries no
+            // child streams; keep its detail on stderr so the failure sidecars
+            // this run writes are not empty and undiagnosable.
+            Err(error) => Self {
                 rc: 1,
                 stdout: String::new(),
-                stderr: String::new(),
+                stderr: error,
             },
         }
     }
@@ -566,16 +569,28 @@ fn handle_fetch(
     if let Some(repo) = &repo_present {
         rows.push(("REPO", repo));
     }
-    let _ = write_result_env(
-        &design_tmpdir.join(".design-clarify-request.env"),
-        &rows[1..],
-    );
-    let _ = write_result_env(
-        &design_tmpdir.join(".design-clarify-fetch-result.env"),
-        &rows,
-    );
+    if let Err(error) =
+        write_result_env(&design_tmpdir.join(".design-clarify-request.env"), &rows[1..])
+    {
+        return emit_write_failure(&error);
+    }
+    if let Err(error) =
+        write_result_env(&design_tmpdir.join(".design-clarify-fetch-result.env"), &rows)
+    {
+        return emit_write_failure(&error);
+    }
     emit_design_kvs(&rows);
     ExitCode::from(0)
+}
+
+/// Report a result-env write failure the way the Python owner did: exit 2.
+///
+/// The retired Python owner raised `_ClarifyValidationError` from
+/// `_write_result_env`, which the top-level handler turned into a stderr line
+/// and exit 2; a swallowed write here would otherwise report false success.
+fn emit_write_failure(error: &str) -> ExitCode {
+    eprintln!("design-clarify.sh: {error}");
+    ExitCode::from(2)
 }
 
 // ---------------------------------------------------------------------------
@@ -826,10 +841,11 @@ fn publish_finalize(tail: &PublishTail<'_>) -> ExitCode {
         ("RENAMED", &renamed),
         ("SUMMARY_OUTCOME", "cancelled-clarify"),
     ];
-    let _ = write_result_env(
-        &design_tmpdir.join(".design-clarify-publish-result.env"),
-        &rows,
-    );
+    if let Err(error) =
+        write_result_env(&design_tmpdir.join(".design-clarify-publish-result.env"), &rows)
+    {
+        return emit_write_failure(&error);
+    }
     emit_design_kvs(&rows);
     ExitCode::from(0)
 }
