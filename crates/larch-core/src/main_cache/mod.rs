@@ -1,4 +1,13 @@
-//! Fail-closed discovery of the merge-group producer for trusted cache publication.
+//! Fail-closed discovery of the merge-group producer for trusted cache publication,
+//! plus candidate staging and verification for main-cache publication.
+
+mod candidate;
+
+pub use candidate::{
+    CandidateContract, CandidateError, CandidateMember, CandidateRequest, CandidateSource,
+    VerifiedCandidate, parse_maximum_bytes, parse_source, parse_tool_versions, promote_candidate,
+    stage_candidate, verify_candidate,
+};
 
 use crate::{
     GitHubActionsError, GitHubActionsErrorKind, GitHubActionsService, GitHubRepositoryRef,

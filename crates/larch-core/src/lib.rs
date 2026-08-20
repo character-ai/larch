@@ -347,7 +347,12 @@ pub use issue_mutation::{
     validate_issue_mutation_request, verify_authorized_body_change, verify_created_issue,
 };
 pub use logging_util::{emit_kv, sanitize_diagnostic_line};
-pub use main_cache::{resolve_main_cache_merge_group_source, validate_main_cache_source_sha};
+pub use main_cache::{
+    CandidateContract, CandidateError, CandidateMember, CandidateRequest, CandidateSource,
+    VerifiedCandidate, parse_maximum_bytes, parse_source, parse_tool_versions, promote_candidate,
+    resolve_main_cache_merge_group_source, stage_candidate, validate_main_cache_source_sha,
+    verify_candidate,
+};
 pub use migration_audit::{
     AggregateFinding, CommandAuditIssue, CommandAuditKey, DependencySnapshot, FindingCategory,
     IssueAuditEvidence, MIGRATION_AUDIT_COUNT_KEYS, MIGRATION_AUDIT_SCHEMA_VERSION,

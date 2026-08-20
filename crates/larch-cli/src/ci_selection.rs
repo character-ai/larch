@@ -18,8 +18,9 @@ use cargo_metadata::{Metadata, MetadataCommand, Package, TargetKind};
 use clap::{Args, Subcommand};
 use larch_adapters::GixRepository;
 use larch_core::{
-    ChangeKind, GitMode, GitPath, Head, ObjectId, ObjectKind, RepositoryRead, Revision, redact,
-    redact_secrets,
+    CandidateContract, CandidateRequest, ChangeKind, GitMode, GitPath, Head, ObjectId, ObjectKind,
+    RepositoryRead, Revision, parse_maximum_bytes, parse_source, parse_tool_versions,
+    promote_candidate, redact, redact_secrets, stage_candidate,
 };
 use serde::{Deserialize, Serialize};
 
@@ -111,6 +112,12 @@ pub enum CiCommand {
     RustSelectSummary(CiRustSelectSummaryArguments),
     /// Resolve the history range base used by the gitleaks workflow.
     GitleaksBase(CiGitleaksBaseArguments),
+    /// Stage a merge-group main-cache candidate artifact.
+    #[command(name = "stage-main-cache-candidate")]
+    StageMainCacheCandidate(StageMainCacheCandidateArguments),
+    /// Verify and promote a merge-group main-cache candidate artifact.
+    #[command(name = "verify-main-cache-candidate")]
+    VerifyMainCacheCandidate(VerifyMainCacheCandidateArguments),
 }
 
 #[derive(Args)]
@@ -137,6 +144,54 @@ pub struct CiGitleaksBaseArguments {
     repo_root: PathBuf,
     #[arg(long, default_value = "origin/main")]
     base_ref: String,
+}
+
+#[derive(Args)]
+pub struct StageMainCacheCandidateArguments {
+    #[arg(long = "artifact-name")]
+    artifact_name: String,
+    #[arg(long = "cache-class")]
+    cache_class: String,
+    #[arg(long = "cache-key")]
+    cache_key: String,
+    #[arg(long = "candidate-dir")]
+    candidate_dir: PathBuf,
+    #[arg(long = "maximum-bytes")]
+    maximum_bytes: String,
+    #[arg(long = "producer-event")]
+    producer_event: String,
+    #[arg(long = "producer-job")]
+    producer_job: String,
+    #[arg(long = "producer-ref")]
+    producer_ref: String,
+    #[arg(long = "source-sha")]
+    source_sha: String,
+    #[arg(long = "source", required = true)]
+    sources: Vec<String>,
+    #[arg(long = "tool-version")]
+    tool_versions: Vec<String>,
+}
+
+#[derive(Args)]
+pub struct VerifyMainCacheCandidateArguments {
+    #[arg(long = "artifact-name")]
+    artifact_name: String,
+    #[arg(long = "cache-class")]
+    cache_class: String,
+    #[arg(long = "cache-key")]
+    cache_key: String,
+    #[arg(long = "candidate-dir")]
+    candidate_dir: PathBuf,
+    #[arg(long = "maximum-bytes")]
+    maximum_bytes: String,
+    #[arg(long = "output-dir")]
+    output_dir: PathBuf,
+    #[arg(long = "producer-job")]
+    producer_job: String,
+    #[arg(long = "source-sha")]
+    source_sha: String,
+    #[arg(long = "expected-tool-version", required = true)]
+    expected_tool_versions: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -232,7 +287,76 @@ pub fn run(command: CiCommand) -> ExitCode {
             ExitCode::SUCCESS
         }
         CiCommand::GitleaksBase(arguments) => gitleaks_base(&arguments),
+        CiCommand::StageMainCacheCandidate(arguments) => stage_main_cache_candidate(&arguments),
+        CiCommand::VerifyMainCacheCandidate(arguments) => verify_main_cache_candidate(&arguments),
     }
+}
+
+fn stage_main_cache_candidate(arguments: &StageMainCacheCandidateArguments) -> ExitCode {
+    match stage_main_cache_candidate_inner(arguments) {
+        Ok(verified) => {
+            println!("CACHE_CLASS={}", verified.cache_class);
+            println!("TOTAL_BYTES={}", verified.total_bytes);
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("Main cache candidate staging failed: {error}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn verify_main_cache_candidate(arguments: &VerifyMainCacheCandidateArguments) -> ExitCode {
+    match verify_main_cache_candidate_inner(arguments) {
+        Ok(verified) => {
+            println!("CACHE_CLASS={}", verified.cache_class);
+            println!("TOTAL_BYTES={}", verified.total_bytes);
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("Main cache candidate verification failed: {error}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn stage_main_cache_candidate_inner(
+    arguments: &StageMainCacheCandidateArguments,
+) -> Result<larch_core::VerifiedCandidate, larch_core::CandidateError> {
+    let sources = arguments
+        .sources
+        .iter()
+        .map(|value| parse_source(value))
+        .collect::<Result<Vec<_>, _>>()?;
+    let request = CandidateRequest {
+        artifact_name: arguments.artifact_name.clone(),
+        cache_class: arguments.cache_class.clone(),
+        cache_key: arguments.cache_key.clone(),
+        candidate_dir: arguments.candidate_dir.clone(),
+        maximum_bytes: parse_maximum_bytes(&arguments.maximum_bytes)?,
+        producer_event: arguments.producer_event.clone(),
+        producer_job: arguments.producer_job.clone(),
+        producer_ref: arguments.producer_ref.clone(),
+        source_sha: arguments.source_sha.clone(),
+        sources,
+        tool_versions: parse_tool_versions(&arguments.tool_versions)?,
+    };
+    stage_candidate(&request)
+}
+
+fn verify_main_cache_candidate_inner(
+    arguments: &VerifyMainCacheCandidateArguments,
+) -> Result<larch_core::VerifiedCandidate, larch_core::CandidateError> {
+    let contract = CandidateContract {
+        artifact_name: arguments.artifact_name.clone(),
+        cache_class: arguments.cache_class.clone(),
+        cache_key: arguments.cache_key.clone(),
+        maximum_bytes: parse_maximum_bytes(&arguments.maximum_bytes)?,
+        producer_job: arguments.producer_job.clone(),
+        source_sha: arguments.source_sha.clone(),
+        expected_tool_versions: parse_tool_versions(&arguments.expected_tool_versions)?,
+    };
+    promote_candidate(&arguments.candidate_dir, &arguments.output_dir, &contract)
 }
 
 const fn default_schema_version() -> u64 {

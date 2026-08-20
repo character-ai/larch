@@ -716,6 +716,15 @@ jobs:
       - name: Prune workspace artifacts from Rust lint cache
         if: env.RUST_CI_MODE == 'full'
         run: cargo clean --workspace
+      - name: Build larch for main-cache candidate staging
+        if: >-
+          success() && github.event_name == 'merge_group' &&
+          (steps.cargo-inputs-cache.outputs.cache-hit != 'true' ||
+          steps.rust-lint-deps-cache.outputs.cache-hit != 'true')
+        run: |
+          set -euo pipefail
+          cargo build --quiet --locked --package larch-cli --bin larch \
+            --target-dir "$RUNNER_TEMP/larch-main-cache-bin"
       - name: Stage Cargo inputs cache candidate
         if: success() && github.event_name == 'merge_group' && steps.cargo-inputs-cache.outputs.cache-hit != 'true'
         run: |
@@ -725,7 +734,8 @@ jobs:
           # the trusted publisher reconstitutes it when artifact transport omits
           # the empty directory.
           mkdir -p "$HOME/.cargo/git"
-          python3 python/cli.py ci stage-main-cache-candidate \
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$RUNNER_TEMP/larch-main-cache-bin/debug/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" ci stage-main-cache-candidate \
             --artifact-name main-cache-cargo-inputs-candidate \
             --cache-class cargo-inputs \
             --cache-key '${{ steps.main-cache-keys.outputs.cargo-inputs }}' \
@@ -752,7 +762,8 @@ jobs:
         if: success() && github.event_name == 'merge_group' && steps.rust-lint-deps-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          python3 python/cli.py ci stage-main-cache-candidate \
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$RUNNER_TEMP/larch-main-cache-bin/debug/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" ci stage-main-cache-candidate \
             --artifact-name main-cache-rust-lint-deps-candidate \
             --cache-class rust-lint-deps \
             --cache-key '${{ steps.main-cache-keys.outputs.rust-lint-deps }}' \
@@ -893,7 +904,8 @@ jobs:
             --ref "$GITHUB_REF" \
             --source-sha "$GITHUB_SHA" \
             --rust-inputs-sha256 "$RUST_POLICY_INPUTS_SHA256"
-          python3 "$GITHUB_WORKSPACE/python/cli.py" ci stage-main-cache-candidate \
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" ci stage-main-cache-candidate \
             --artifact-name main-cache-rust-policy-candidate \
             --cache-class rust-policy \
             --cache-key '${{ steps.main-cache-keys.outputs.rust-policy }}' \
