@@ -1315,8 +1315,14 @@ mod tests {
             .candidate_dir
             .join("payload/llvm-cov-target/.fingerprint/dependency.json");
         let executable = request.candidate_dir.join("payload/llvm-cov-target/larch");
-        set_mtime(&dependency, SOURCE_MTIME_NS + 99);
-        set_mtime(&executable, SOURCE_MTIME_NS + 99);
+        let expected_mtime = staged
+            .members
+            .iter()
+            .find(|member| member.path.ends_with("dependency.json"))
+            .expect("dependency member")
+            .mtime_ns;
+        set_mtime(&dependency, expected_mtime.saturating_add(99));
+        set_mtime(&executable, expected_mtime.saturating_add(99));
         #[cfg(unix)]
         fs::set_permissions(&executable, fs::Permissions::from_mode(0o644)).expect("chmod");
         let promoted = promote_candidate(
@@ -1334,8 +1340,8 @@ mod tests {
                 .metadata()
                 .expect("meta");
             assert_eq!(
-                i64::from(meta.mtime()) * 1_000_000_000 + i64::from(meta.mtime_nsec()),
-                SOURCE_MTIME_NS
+                meta.mtime() * 1_000_000_000 + meta.mtime_nsec(),
+                expected_mtime
             );
         }
 
@@ -1344,7 +1350,10 @@ mod tests {
         assert!(stage_candidate(&bad_event).is_err());
         assert!(parse_tool_versions(&["rustc=line\nbreak".into()]).is_err());
         let huge = root.path().join("huge.json");
-        fs::write(&huge, "x".repeat((MAX_MANIFEST_BYTES as usize) + 1)).expect("write");
+        let huge_len = usize::try_from(MAX_MANIFEST_BYTES)
+            .expect("manifest bound fits usize")
+            .saturating_add(1);
+        fs::write(&huge, "x".repeat(huge_len)).expect("write");
         assert!(read_manifest(&huge).is_err());
 
         let tampered = make_request(root.path(), "tampered");
