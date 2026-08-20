@@ -930,7 +930,7 @@ case "$script" in
 esac
 
 _larch_cleanup_active_leg() {
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement kill-active-leg --owner-token "$_larch_active_leg_owner_token" --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
+  "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" implement kill-active-leg --owner-token "$_larch_active_leg_owner_token" --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
 }
 
 case "$script" in
@@ -1517,7 +1517,9 @@ mod tests {
             fs::read_to_string(temporary.path().join("larch-run.sh")).expect("read launcher");
         assert!(rendered.contains("trap _larch_cleanup_active_leg EXIT INT TERM"));
         assert!(rendered.contains("LARCH_ACTIVE_LEG_OWNER_TOKEN"));
-        assert!(rendered.contains("implement kill-active-leg --owner-token"));
+        assert!(rendered.contains(
+            "scripts/larch.sh\" implement kill-active-leg --owner-token"
+        ));
     }
 
     #[cfg(unix)]

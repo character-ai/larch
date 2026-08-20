@@ -83,10 +83,13 @@ mod implement_child_seam;
 mod implement_commands;
 mod implement_dispatch_commands;
 mod implement_launcher_commands;
+mod implement_leg_commands;
 mod implement_preflight_commands;
 mod implement_review_commands;
 mod implement_scope_disposition_commands;
 mod implement_ship_commands;
+mod implement_step2_commands;
+mod implement_step2_post_commands;
 mod implement_terminal_commands;
 mod issue_commands;
 mod issue_create_commands;
@@ -1008,9 +1011,15 @@ enum ImplementCommand {
     /// Emit this clone's tag and its expected implement tmpdir prefix.
     #[command(name = "clone-tag", disable_help_flag = true)]
     CloneTag(RawCompatibilityArguments),
+    /// Terminate a stranded active-leg process group and clear its record.
+    #[command(name = "kill-active-leg", disable_help_flag = true)]
+    KillActiveLeg(RawCompatibilityArguments),
     /// Normalize a coder-produced dynamic-archetype manifest for Step 5.
     #[command(name = "normalize-coder-scout", disable_help_flag = true)]
     NormalizeCoderScout(RawCompatibilityArguments),
+    /// Serialize and launch one Step 2 dispatch, then publish its envelope.
+    #[command(name = "run-dispatch", disable_help_flag = true)]
+    RunDispatch(RawCompatibilityArguments),
     /// Verify admission, extract the plan, and probe main's CI health.
     #[command(disable_help_flag = true)]
     Preflight(RawCompatibilityArguments),
@@ -1023,6 +1032,12 @@ enum ImplementCommand {
     /// Compute, record, or validate the plan-coverage scope disposition.
     #[command(name = "scope-disposition", disable_help_flag = true)]
     ScopeDisposition(RawCompatibilityArguments),
+    /// Probe, report, and route the Step 2 post-dispatch working-tree state.
+    #[command(name = "step-2-post-dispatch", disable_help_flag = true)]
+    Step2PostDispatch(RawCompatibilityArguments),
+    /// Run the Step 2 external-implementer dispatch and emit its contract.
+    #[command(name = "step2-dispatch", disable_help_flag = true)]
+    Step2Dispatch(RawCompatibilityArguments),
     /// Validate Step 0 flags, rehydrate a resume, and adopt the run lifecycle.
     #[command(name = "step-0-bootstrap", disable_help_flag = true)]
     Step0Bootstrap(RawCompatibilityArguments),
@@ -2594,6 +2609,9 @@ fn run(
             ImplementCommand::CloneTag(arguments) => {
                 implement_commands::clone_tag(&arguments.arguments)
             }
+            ImplementCommand::KillActiveLeg(arguments) => {
+                implement_leg_commands::kill_active_leg(&arguments.arguments)
+            }
             ImplementCommand::NormalizeCoderScout(arguments) => {
                 implement_commands::normalize_coder_scout(&arguments.arguments)
             }
@@ -2603,11 +2621,20 @@ fn run(
             ImplementCommand::RecoveryPaths(arguments) => {
                 implement_dispatch_commands::recovery_paths(&arguments.arguments)
             }
+            ImplementCommand::RunDispatch(arguments) => {
+                implement_step2_commands::run_dispatch(&arguments.arguments)
+            }
             ImplementCommand::RunStepChecks(arguments) => {
                 implement_dispatch_commands::run_step_checks(&arguments.arguments)
             }
             ImplementCommand::ScopeDisposition(arguments) => {
                 implement_scope_disposition_commands::scope_disposition(&arguments.arguments)
+            }
+            ImplementCommand::Step2Dispatch(arguments) => {
+                implement_step2_commands::step2_dispatch(&arguments.arguments)
+            }
+            ImplementCommand::Step2PostDispatch(arguments) => {
+                implement_step2_post_commands::step_2_post_dispatch(&arguments.arguments)
             }
             ImplementCommand::Step0Bootstrap(arguments) => {
                 implement_commands::step0_bootstrap(&arguments.arguments)

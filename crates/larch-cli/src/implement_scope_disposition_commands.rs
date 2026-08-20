@@ -91,24 +91,24 @@ const HIGH_COUNT: i64 = 30;
 const STALE_LIVE: &str = "coverage artifact does not match live repository inputs";
 const NO_TRUSTED_COVERAGE: &str = "scope disposition exists without trusted coverage";
 
-#[derive(Clone, Debug, PartialEq)]
-struct PlanCoverage {
-    total: i64,
-    touched: i64,
-    untouched: i64,
-    untouched_percent: i64,
-    band: String,
-    plan_paths: Vec<String>,
-    touched_paths: Vec<String>,
-    untouched_paths: Vec<String>,
-    todos_left_count: i64,
-    todos_left: Vec<String>,
-    fingerprint: String,
-    disposition_required: bool,
-    plan_fidelity_forced: bool,
-    coverage_file: String,
-    untouched_file: String,
-    todos_file: String,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlanCoverage {
+    pub total: i64,
+    pub touched: i64,
+    pub untouched: i64,
+    pub untouched_percent: i64,
+    pub band: String,
+    pub plan_paths: Vec<String>,
+    pub touched_paths: Vec<String>,
+    pub untouched_paths: Vec<String>,
+    pub todos_left_count: i64,
+    pub todos_left: Vec<String>,
+    pub fingerprint: String,
+    pub disposition_required: bool,
+    pub plan_fidelity_forced: bool,
+    pub coverage_file: String,
+    pub untouched_file: String,
+    pub todos_file: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -158,6 +158,51 @@ fn choices(values: &[&str]) -> String {
 /// anything left is a coverage-integrity failure.
 pub fn plan_coverage_report_line(tmpdir: &Path, manifest: Option<&Path>) -> Result<String, String> {
     plan_coverage_summary_line(tmpdir, manifest)
+}
+
+/// The plan-coverage measurement this module owns, for in-process callers.
+///
+/// `implement step2-dispatch` runs in this process, so it measures coverage
+/// through the owner directly instead of re-entering the bootstrap for a value
+/// it must then re-parse.
+pub type PlanCoverageView = PlanCoverage;
+
+/// Measure plan coverage without publishing any artifact.
+///
+/// # Errors
+///
+/// Returns the owner's own diagnostic when the plan or manifest cannot be read
+/// or the baseline delta cannot be resolved.
+pub fn compute_plan_coverage(
+    tmpdir: &Path,
+    repo_root: &Path,
+    plan_file: Option<&Path>,
+    manifest: Option<&Path>,
+) -> Result<PlanCoverageView, String> {
+    compute_coverage(tmpdir, repo_root, plan_file, manifest)
+}
+
+/// The plan-coverage contract rows, in the order every consumer emits them.
+///
+/// `PLAN_COVERAGE_FINGERPRINT` is deliberately absent: only this command's own
+/// envelope publishes it, and it appends the row itself.
+#[must_use]
+pub fn plan_coverage_contract_rows(coverage: &PlanCoverageView) -> Vec<(&'static str, String)> {
+    coverage_contract_rows(coverage)
+}
+
+/// Measure plan coverage and publish its artifacts under `tmpdir`.
+///
+/// # Errors
+///
+/// Returns the owner's own diagnostic when measurement or publication fails.
+pub fn compute_and_write_plan_coverage(
+    tmpdir: &Path,
+    repo_root: &Path,
+    plan_file: Option<&Path>,
+    manifest: Option<&Path>,
+) -> Result<PlanCoverageView, String> {
+    compute_and_write(tmpdir, repo_root, plan_file, manifest)
 }
 
 /// Public entry for `implement scope-disposition`.

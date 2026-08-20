@@ -729,11 +729,8 @@ fn detect_version(
 
 fn string_field(map: &serde_json::Map<String, Value>, key: &str) -> Option<String> {
     match map.get(key)? {
-        Value::String(text) => Some(text.clone()),
-        Value::Number(number) => Some(number.to_string()),
-        Value::Bool(flag) => Some(flag.to_string()),
         Value::Null => Some(String::new()),
-        _ => None,
+        other => crate::implement::json_scalar_text(other),
     }
 }
 

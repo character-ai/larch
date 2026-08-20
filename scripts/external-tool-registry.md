@@ -9,7 +9,7 @@ Single canonical source for external-tool name taxonomy and implementer-coder ta
 - `scripts/larch.sh agent model-args`
 - `scripts/larch.sh agent check-reviewers`
 - `scripts/larch.sh agent collect-results`
-- `python/cli.py implement step2-dispatch`
+- `scripts/larch.sh implement step2-dispatch`
 
 Update this list whenever a new consumer sources the registry.
 

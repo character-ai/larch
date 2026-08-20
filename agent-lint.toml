@@ -357,7 +357,7 @@ exclude = [
   "python/test_agents.py",
   "python/test_agents.py",
   # python/test_implement_dispatch.py is the offline regression
-  # harness for python/cli.py implement step2-dispatch (the /implement
+  # harness for scripts/larch.sh implement step2-dispatch (the /implement
   # Step 2 dispatcher). Referenced only from Makefile (test-step2-dispatch,
   # test-run-step2-dispatch, test-commit-implementation, test-codex-implementer,
   # test-cursor-implementer targets), docs/linting.md (operator-facing harness

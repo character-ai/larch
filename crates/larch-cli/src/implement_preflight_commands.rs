@@ -35,7 +35,9 @@ use crate::{
     blocker_commands::resolve_repo_for,
     github_service::{ServiceFailure, with_github_service},
     implement_bootstrap_continuation::resolve_revision_sha,
-    implement_child_seam::{delegate_larch_with_environment, delegate_python, resolve_plugin_root},
+    implement_child_seam::{
+        child_streams, delegate_larch_with_environment, delegate_python, resolve_plugin_root,
+    },
     implement_commands::{kv_value, read_kv_first, write_atomic},
     python_verb::publish_session_environment,
 };
@@ -868,15 +870,8 @@ fn capture(
     environment: &[(ChildEnvironment, OsString)],
     name: &str,
 ) -> (i32, String) {
-    let result = delegate_larch_with_environment(arguments, environment);
-    let (code, stdout, stderr) = match &result {
-        Ok(output) => (
-            output.status().code().unwrap_or(1),
-            String::from_utf8_lossy(output.stdout()).into_owned(),
-            String::from_utf8_lossy(output.stderr()).into_owned(),
-        ),
-        Err(detail) => (1, String::new(), format!("{detail}\n")),
-    };
+    let (code, stdout, stderr) =
+        child_streams(&delegate_larch_with_environment(arguments, environment));
     let _stdout = write_atomic(&request.tmpdir.join(format!("{name}.stdout")), &stdout);
     let _stderr = write_atomic(&request.tmpdir.join(format!("{name}.stderr")), &stderr);
     (code, stdout)

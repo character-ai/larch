@@ -3,8 +3,10 @@
 //! Recovery-path resolution, porcelain helpers, lean manifest state, and
 //! step-checks site mapping for later dispatch cutovers.
 
+mod active_leg;
 mod checks_lint_fix;
 mod contains_pins;
+mod dispatch_manifest;
 mod helpers;
 mod identity;
 mod manifest;
@@ -14,6 +16,12 @@ mod relevant_checks_digest;
 mod self_edit_log;
 mod step_checks;
 
+pub use active_leg::{
+    ACTIVE_LEG_CALLER, ACTIVE_LEG_IDENTITY_FILE, ACTIVE_LEG_KILL_LOG_FILE,
+    ACTIVE_LEG_LEGACY_PGID_FILE, ACTIVE_LEG_REASON, ENV_ACTIVE_LEG_OWNER_TOKEN, REASON_LEGACY_PGID,
+    REASON_MALFORMED, REASON_MISSING_TOKEN, record_matches, recorded_identity_from_payload,
+    refusal_event, terminate_active_leg_group,
+};
 pub use checks_lint_fix::{
     CHECKS_FIXER_MAX_ROUNDS, CLAUDE_CI_FIX_MODEL, FIXER_LANE_TIMEOUT_SEC, FixOutcome,
     LINT_FIX_ROLE_ID, NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX, PRE_SHIP_ALL_TIERS_NO_DELTA_REASON,
@@ -27,6 +35,17 @@ pub use checks_lint_fix::{
     valid_fixer_site,
 };
 pub use contains_pins::{ContainsPinsScan, normalize_rel, read_changed_scope, scan_contains_pins};
+pub use dispatch_manifest::{
+    CompletionRetryInvalid, CompletionRetryState, MANIFEST_STATUSES, PORCELAIN_MIN_PARTS,
+    RESUME_CAP, SAFE_CODERS, SUMMARY_BULLETS_MAX, WRAPPER_VALIDATION_RC,
+    child_stdout_is_claude_fallback, complete_schema_valid, declared_paths, files_touched_paths,
+    json_scalar_string, json_scalar_text, manifest_complete_salvageable, manifest_status,
+    model_value_safe, needs_qa_questions_present, oos_materialize_should_bail,
+    parse_completion_retry_state, qa_pending_valid, repaired_qa_questions,
+    require_architectural_acknowledgment, sanitize_architectural_acknowledgment,
+    sanitize_bail_reason, sanitize_manifest_obj, step2_token_mark_eligible, submodule_roots,
+    submodule_status_dirty, validate_manifest_paths, warning_bullet,
+};
 pub use helpers::{
     RecoveryParse, load_digest_map, parse_porcelain_z, rel_under_tmp, resolve_tmpdir_path,
     sha256_file, tmpdir_rel_in_repo, write_bytes_atomic, write_digest_map,

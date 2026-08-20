@@ -180,6 +180,15 @@ pub fn is_positive_decimal(value: &str) -> bool {
         && value.bytes().any(|byte| byte != b'0')
 }
 
+/// Report whether `value` spells a lowercase hexadecimal SHA-256 digest.
+#[must_use]
+pub fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
 /// A trailing boundary does not produce a final empty element.
 #[must_use]
 pub fn split_text_lines(text: &str) -> Vec<&str> {
