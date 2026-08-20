@@ -256,3 +256,260 @@ fn render_deferred_inventory_lists_untouched_firm_plan_paths() {
         "## Deferred plan inventory\n\nUntouched firm plan paths:\n- `b.txt`\n"
     );
 }
+
+fn write_manifest(tmpdir: &Path, todos: &[&str]) -> PathBuf {
+    let path = tmpdir.join("manifest.json");
+    let payload = serde_json::json!({ "todos_left": todos });
+    fs::write(&path, format!("{payload}\n")).expect("manifest");
+    path
+}
+
+#[test]
+fn compute_ignores_nonblocking_full_suite_validation_todos() {
+    let fixture = fixture(&["a.txt"], &["a.txt"]);
+    let manifest = write_manifest(
+        &fixture.tmpdir,
+        &["make py-lint and make py-test (full suites) were not completed; focused tests passed"],
+    );
+
+    let (code, stdout) = run(
+        &fixture,
+        &[
+            "compute",
+            "--tmpdir",
+            &fixture.tmpdir.display().to_string(),
+            "--repo-root",
+            &fixture.repo.display().to_string(),
+            "--manifest-path",
+            &manifest.display().to_string(),
+        ],
+    );
+
+    assert_eq!(code, 0, "stdout: {stdout}");
+    assert_eq!(kv(&stdout, "TODOS_LEFT_COUNT"), "0");
+    assert_eq!(kv(&stdout, "PLAN_COVERAGE_DISPOSITION_REQUIRED"), "false");
+    assert_eq!(
+        fs::read_to_string(fixture.tmpdir.join("plan-coverage-todos-left.txt")).expect("todos"),
+        ""
+    );
+}
+
+#[test]
+fn compute_requires_disposition_for_blocking_manifest_todos() {
+    let fixture = fixture(&["a.txt"], &["a.txt"]);
+    let manifest = write_manifest(&fixture.tmpdir, &["finish remaining docs edits"]);
+
+    let (code, stdout) = run(
+        &fixture,
+        &[
+            "compute",
+            "--tmpdir",
+            &fixture.tmpdir.display().to_string(),
+            "--repo-root",
+            &fixture.repo.display().to_string(),
+            "--manifest-path",
+            &manifest.display().to_string(),
+        ],
+    );
+
+    assert_eq!(code, 0, "stdout: {stdout}");
+    assert_eq!(kv(&stdout, "TODOS_LEFT_COUNT"), "1");
+    assert_eq!(kv(&stdout, "PLAN_COVERAGE_DISPOSITION_REQUIRED"), "true");
+    assert_eq!(
+        fs::read_to_string(fixture.tmpdir.join("plan-coverage-todos-left.txt")).expect("todos"),
+        "- finish remaining docs edits\n"
+    );
+}
+
+#[test]
+fn compute_excludes_may_update_headings_from_firm_scope() {
+    let fixture = fixture(&["a.txt"], &["a.txt"]);
+    fs::write(
+        fixture.tmpdir.join("plan.txt"),
+        "## Files\n### UPDATED: `a.txt`\n### MAY_UPDATE: `optional.md`\n",
+    )
+    .expect("plan");
+
+    let (code, stdout) = compute(&fixture);
+
+    assert_eq!(code, 0, "stdout: {stdout}");
+    assert_eq!(kv(&stdout, "PLAN_COVERAGE_TOTAL"), "1");
+    assert_eq!(kv(&stdout, "PLAN_COVERAGE_UNTOUCHED"), "0");
+    assert_eq!(kv(&stdout, "PLAN_COVERAGE_BAND"), "advisory");
+}
+
+#[test]
+fn compute_reports_middle_band_at_twenty_percent_untouched() {
+    let fixture = fixture(
+        &["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"],
+        &["a.txt", "b.txt", "c.txt", "d.txt"],
+    );
+
+    let (code, stdout) = compute(&fixture);
+
+    assert_eq!(code, 0, "stdout: {stdout}");
+    assert_eq!(kv(&stdout, "PLAN_COVERAGE_UNTOUCHED"), "1");
+    assert_eq!(kv(&stdout, "PLAN_COVERAGE_UNTOUCHED_PERCENT"), "20");
+    assert_eq!(kv(&stdout, "PLAN_COVERAGE_BAND"), "middle");
+    assert_eq!(kv(&stdout, "PLAN_COVERAGE_DISPOSITION_REQUIRED"), "false");
+    assert_eq!(kv(&stdout, "PLAN_FIDELITY_FORCED"), "true");
+}
+
+#[test]
+fn record_bail_rescope_persists_without_followup_filing() {
+    let fixture = fixture(&["a.txt", "b.txt"], &["a.txt"]);
+    let (code, stdout) = compute(&fixture);
+    assert_eq!(code, 0, "stdout: {stdout}");
+
+    let (code, stdout) = run(
+        &fixture,
+        &[
+            "record",
+            "--tmpdir",
+            &fixture.tmpdir.display().to_string(),
+            "--repo-root",
+            &fixture.repo.display().to_string(),
+            "--disposition",
+            "bail-rescope",
+        ],
+    );
+
+    assert_eq!(code, 0, "stdout: {stdout}");
+    assert_eq!(kv(&stdout, "SCOPE_DISPOSITION_RECORDED"), "true");
+    assert_eq!(kv(&stdout, "SCOPE_DISPOSITION"), "bail-rescope");
+    let body = fs::read_to_string(fixture.tmpdir.join("scope-disposition.json")).expect("record");
+    assert!(body.contains("\"disposition\": \"bail-rescope\""));
+    assert!(!body.contains("\"followup_issue_number\": \"1\""));
+
+    let (code, stdout) = run(
+        &fixture,
+        &[
+            "validate-ship",
+            "--tmpdir",
+            &fixture.tmpdir.display().to_string(),
+            "--repo-root",
+            &fixture.repo.display().to_string(),
+        ],
+    );
+    assert_eq!(code, 3, "stdout: {stdout}");
+    assert_eq!(
+        kv(&stdout, "SCOPE_DISPOSITION_REASON"),
+        "scope-disposition-bail-rescope"
+    );
+}
+
+#[test]
+fn compute_uses_live_merge_base_when_origin_head_resolves() {
+    let fixture = fixture(&["a.txt"], &[]);
+    let origin = fixture._root.path().join("origin.git");
+    let status = Command::new("git")
+        .args([
+            "init",
+            "--quiet",
+            "--bare",
+            "-b",
+            "main",
+            &origin.display().to_string(),
+        ])
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .status()
+        .expect("bare origin");
+    assert!(status.success());
+    git(
+        &fixture.repo,
+        &["remote", "add", "origin", &origin.display().to_string()],
+    );
+    git(&fixture.repo, &["push", "-q", "-u", "origin", "main"]);
+    git(&origin, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+    git(&fixture.repo, &["remote", "set-head", "origin", "main"]);
+    fs::write(fixture.repo.join("a.txt"), "touched\n").expect("touch");
+
+    let (code, stdout) = compute(&fixture);
+
+    assert_eq!(code, 0, "stdout: {stdout}");
+    assert_eq!(kv(&stdout, "PLAN_COVERAGE_TOUCHED"), "1");
+    assert_eq!(kv(&stdout, "PLAN_COVERAGE_BAND"), "advisory");
+    assert!(!fixture.tmpdir.join("scope-fallback-provenance.json").is_file());
+}
+
+#[test]
+fn summary_line_renders_live_coverage_when_repo_root_is_persisted() {
+    let fixture = fixture(&["a.txt", "b.txt"], &["a.txt"]);
+    let (code, stdout) = compute(&fixture);
+    assert_eq!(code, 0, "stdout: {stdout}");
+    fs::write(
+        fixture.tmpdir.join("session-env.sh"),
+        format!("REPO_ROOT={}\n", fixture.repo.display()),
+    )
+    .expect("session env");
+
+    let (code, stdout) = run(
+        &fixture,
+        &[
+            "summary-line",
+            "--tmpdir",
+            &fixture.tmpdir.display().to_string(),
+        ],
+    );
+
+    assert_eq!(code, 0, "stdout: {stdout}");
+    let line = kv(&stdout, "PLAN_COVERAGE_LINE");
+    assert!(
+        line.contains("1/2 firm headings") && line.contains("band: high"),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
+fn proceed_partial_record_refuses_without_repo_and_tracking_issue() {
+    let fixture = fixture(&["a.txt", "b.txt"], &["a.txt"]);
+    let (code, stdout) = compute(&fixture);
+    assert_eq!(code, 0, "stdout: {stdout}");
+
+    let output = AssertCommand::cargo_bin("larch")
+        .expect("larch binary")
+        .args([
+            "implement",
+            "scope-disposition",
+            "record",
+            "--tmpdir",
+            &fixture.tmpdir.display().to_string(),
+            "--repo-root",
+            &fixture.repo.display().to_string(),
+            "--disposition",
+            "proceed-partial",
+        ])
+        .current_dir(&fixture.repo)
+        .output()
+        .expect("record");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(output.status.code(), Some(4), "stderr: {stderr}");
+    assert!(
+        stderr.contains("proceed-partial requires --repo and --tracking-issue"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+fn validate_ship_allows_advisory_coverage_without_a_disposition() {
+    let fixture = fixture(&["a.txt"], &["a.txt"]);
+    let (code, stdout) = compute(&fixture);
+    assert_eq!(code, 0, "stdout: {stdout}");
+
+    let (code, stdout) = run(
+        &fixture,
+        &[
+            "validate-ship",
+            "--tmpdir",
+            &fixture.tmpdir.display().to_string(),
+            "--repo-root",
+            &fixture.repo.display().to_string(),
+        ],
+    );
+
+    assert_eq!(code, 0, "stdout: {stdout}");
+    assert_eq!(kv(&stdout, "SCOPE_DISPOSITION_VALID"), "true");
+    assert_eq!(kv(&stdout, "SCOPE_DISPOSITION_REQUIRED"), "false");
+}
