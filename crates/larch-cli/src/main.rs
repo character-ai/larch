@@ -55,6 +55,7 @@ mod debate_publication_commands;
 mod decompose_commands;
 mod deps_audit_commands;
 mod design_commands;
+mod design_log_publish_commands;
 mod design_step0_commands;
 mod design_step1_commands;
 mod design_terminal_commands;
@@ -1340,6 +1341,9 @@ enum DesignCommand {
     /// Emit, publish, or render the design run's final summary (#8580).
     #[command(name = "step-final-summary", disable_help_flag = true)]
     StepFinalSummary(RawCompatibilityArguments),
+    /// Publish sanitized design run logs through the shared lifecycle (#8592).
+    #[command(name = "log-publish", disable_help_flag = true)]
+    LogPublish(RawCompatibilityArguments),
 }
 
 impl DesignCommand {
@@ -1373,6 +1377,7 @@ impl DesignCommand {
             }
             Self::FailureReport(_) => design_terminal_commands::failure_report(&arguments),
             Self::StepFinalSummary(_) => design_terminal_commands::step_final_summary(&arguments),
+            Self::LogPublish(_) => design_log_publish_commands::log_publish_main(&arguments),
         }
     }
 }

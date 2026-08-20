@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from larch.report import design_diagram_log
-from larch.design import design_log_publish_flow
 
 
 def test_strip_diagram_sections_removes_diagram_bodies_and_mermaid_fences() -> None:
@@ -129,8 +128,6 @@ def test_bounded_sidecar_redacts_reason_and_excludes_bounded_log_from_publish(tm
     assert "graph TD" not in text
     assert "A-->B" not in text
     assert "sk-ant-" not in text
-    assert design_log_publish_flow._publish_excluded(  # pyright: ignore[reportPrivateUsage]
-        "design-step-5b.5-diagram-failure.bounded.log",
-        is_dir=False,
-        top_level=True,
-    )
+    # Archive selection for this basename lives in
+    # `larch_core::design::log_publish::publish_excluded` (Rust design log-publish).
+    assert sidecar.name == "design-step-5b.5-diagram-failure.bounded.log"

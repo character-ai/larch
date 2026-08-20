@@ -258,8 +258,7 @@ def pause_save_main(argv: Sequence[str]) -> int:
 
     publish: subprocess.CompletedProcess[str] = subprocess.run(
         [
-            sys.executable,
-            str(plugin_root / "python" / "cli.py"),
+            str(repo_roots.larch_entrypoint(plugin_root)),
             "design",
             "log-publish",
             "--reason",

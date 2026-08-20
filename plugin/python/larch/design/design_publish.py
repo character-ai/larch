@@ -1,10 +1,8 @@
 """Python CLI entrypoint for /design publish."""
-# pylint: disable=cyclic-import  # accepted: function-level import of design_log_publish_flow for in-process run_log_publish; flow imports this module for assessment checks and transcript capture.
 
 from __future__ import annotations
 
 import contextlib
-import io
 import os
 import re
 import subprocess
@@ -1012,42 +1010,45 @@ def _run_log_publish_after_capture(
     outcome: str,
     write_result_env_on_publish_failure: bool = True,
 ) -> int | None:
-    # Break the design_publish <-> design_log_publish_flow import cycle at the call site.
-    from larch.design import design_log_publish_flow  # noqa: PLC0415 - cycle with design_log_publish_flow
-
-    # Redirect stdout too: the prior subprocess path swallowed log-publish stdout.
-    _stdout_buf = io.StringIO()
-    stderr_buf = io.StringIO()
-    with contextlib.redirect_stdout(_stdout_buf), contextlib.redirect_stderr(stderr_buf):
-        result = design_log_publish_flow.run_log_publish(
-            design_log_publish_flow.LogPublishRequest(
-                design_tmpdir=ctx.design_tmpdir,
-                run_id=ctx.session_id,
-                issue=ctx.issue,
-                repo=ctx.repo,
-                outcome=outcome,
-                plugin_root=ctx.plugin_root,
-            )
-        )
+    # Rust owns design log-publish (#8592); reach it through the verified bootstrap.
+    argv = [
+        str(larch_entrypoint(ctx.plugin_root)),
+        "design",
+        "log-publish",
+        "--design-tmpdir",
+        str(ctx.design_tmpdir),
+        "--run-id",
+        ctx.session_id,
+        "--issue",
+        ctx.issue,
+        "--outcome",
+        outcome,
+    ]
+    if ctx.repo:
+        argv.extend(["--repo", ctx.repo])
+    completed = subprocess.run(argv, capture_output=True, text=True, check=False)
     _write_bounded_phase_stderr(
         design_tmpdir=ctx.design_tmpdir,
         filename=config.DESIGN_PUBLISH_LOG_STDERR_FILE,
-        text=stderr_buf.getvalue(),
+        text=completed.stderr,
     )
-    kvs.append(("PUBLISH_OK", "true" if result.publish_ok else "false"))
-    if result.pr_number:
-        kvs.append(("PR_NUMBER", result.pr_number))
-    if result.pr_url:
-        kvs.append(("PR_URL", result.pr_url))
-    if result.recovery_branch:
-        kvs.append(("RECOVERY_BRANCH", result.recovery_branch))
-        kvs.append(("LOG_RECOVERY_BRANCH", result.recovery_branch))
+    values = larch_io.parse_kv(completed.stdout, duplicate_policy="last")
+    publish_ok = values.get("PUBLISH_OK") == "true"
+    kvs.append(("PUBLISH_OK", "true" if publish_ok else "false"))
+    if values.get("PR_NUMBER"):
+        kvs.append(("PR_NUMBER", values["PR_NUMBER"]))
+    if values.get("PR_URL"):
+        kvs.append(("PR_URL", values["PR_URL"]))
+    if values.get("RECOVERY_BRANCH"):
+        kvs.append(("RECOVERY_BRANCH", values["RECOVERY_BRANCH"]))
+        kvs.append(("LOG_RECOVERY_BRANCH", values["RECOVERY_BRANCH"]))
     _append_archive_publication_fields(
         kvs=kvs,
-        remote_key=result.remote_key,
-        cache_dir=result.cache_dir,
+        remote_key=values.get("REMOTE_KEY", ""),
+        cache_dir=values.get("CACHE_DIR", ""),
     )
-    if result.exit_code != 0 and not result.recovery_branch:
+    exit_code = int(completed.returncode)
+    if exit_code != 0 and not values.get("RECOVERY_BRANCH"):
         _replace_kv(rows=kvs, key="PUBLISH_OK", value="false")
         if write_result_env_on_publish_failure:
             _emit_rows(kvs)
@@ -1056,7 +1057,7 @@ def _run_log_publish_after_capture(
             except OSError as exc:
                 print(str(exc), file=sys.stderr)
         return 5
-    scrub_violations = result.secret_scrub_violations or "0"
+    scrub_violations = values.get("SECRET_SCRUB_VIOLATIONS") or "0"
     if scrub_violations.isdigit() and int(scrub_violations) > 0:
         print(
             f"**⚠ SECURITY: redact scrub-log-secrets redacted {scrub_violations} "
@@ -1065,7 +1066,7 @@ def _run_log_publish_after_capture(
             "and check chat/PRs for the same value.**",
             flush=True,
         )
-    if result.exit_code == 0 and not result.publish_ok:
+    if exit_code == 0 and not publish_ok:
         if write_result_env_on_publish_failure:
             _emit_rows(kvs)
             return 0 if _write_result_env(path=result_env, rows=kvs) else 3

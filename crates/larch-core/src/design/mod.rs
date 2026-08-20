@@ -5,6 +5,7 @@
 
 mod clarify;
 mod decompose;
+mod log_publish;
 mod plan_grammar;
 mod plan_quality;
 mod plan_scout;
@@ -22,6 +23,11 @@ pub use decompose::{
     neutralize_markdown_h3_line_starts, normalize_firm_heading, parse_dependency,
     parse_filed_pieces, parse_intra_piece_edges, parse_issue_url, piece_field, piece_metadata,
     prefixed_piece_title, replacement_edges, scope_tokens, split_firm_headings,
+};
+pub use log_publish::{
+    AssessmentCompleteness, GUIDELINE_ASSESSMENT_ARTIFACT, INVARIANT_ASSESSMENT_ARTIFACT,
+    assessment_present, assessment_required, default_outcome_for_reason, lifecycle_outcome,
+    publish_excluded, validate_issue, validate_repo, validate_slug,
 };
 
 pub use plan_grammar::{

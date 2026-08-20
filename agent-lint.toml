@@ -374,7 +374,8 @@ exclude = [
   # skills/design/scripts/dedup-plan-lines.py remains as a documented
   # compatibility utility; it is not part of the Rust Step 3 loop cutover.
   "skills/design/scripts/dedup-plan-lines.py",
-  # structured invoker was ported to Python (python/design_log_publish_flow.py).
+  # structured invoker was ported to Rust (#8592;
+  # crates/larch-cli/src/design_log_publish_commands.rs).
   # scripts/pre-commit-shellcheck.sh is the parallel shellcheck wrapper invoked
   # by the local `shellcheck` pre-commit hook in `.pre-commit-config.yaml`
   # (`entry: scripts/pre-commit-shellcheck.sh`). It replaced the upstream
@@ -411,7 +412,7 @@ exclude = [
   # scripts/test-design-multi-round-integration.sh is a Makefile-only
   # regression harnesses for the /design plan-review round-artifact
   # allowlist. The runtime library/script surfaces are referenced from
-  # the Rust plan-review owner and python/design_log_publish_flow.py,
+  # the Rust plan-review owner and crates/larch-cli/src/design_log_publish_commands.rs,
   # but the harnesses themselves are not invoked from skill prose.
   "scripts/test-design-multi-round-integration.sh",
   "scripts/test-design-multi-round-integration.md",
@@ -689,11 +690,10 @@ exclude = [
   # (test-render-specialist-prompt target) and
   # (sibling contract), matching the same Makefile-only pattern.
   "scripts/test-python/cli.py render specialist",
-  # python/test_design_log_publish_flow.py exercises design log-publish
+  # Rust design::log_publish unit tests cover archive selection
   # (Makefile test-design-log-publish target). Same
-  # and python/test_design_pause.py is its Makefile-only pause/resume harness.
-  "python/test_design_log_publish_flow.py",
-  "python/test_design_pause.py",
+  # and python/tests/design/test_design_pause.py is its Makefile-only pause/resume harness.
+  "python/tests/design/test_design_pause.py",
   # test harness ships with no runtime consumers yet. Phase 3 is the
   # first consumer via skills/implement/SKILL.md (not in this phase).
   # Agent-lint does not follow sibling `source` directives or Makefile targets.

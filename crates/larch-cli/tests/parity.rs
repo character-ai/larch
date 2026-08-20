@@ -852,6 +852,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "init-runparams",
     ),
     CleanInstallCase::new("clean-install-design-driver", "design", "driver"),
+    CleanInstallCase::new("clean-install-design-log-publish", "design", "log-publish"),
     CleanInstallCase::new("clean-install-design-parse-flags", "design", "parse-flags"),
     CleanInstallCase::new("clean-install-design-route", "design", "route"),
     CleanInstallCase::new("clean-install-design-step0-parse", "design", "step0-parse"),

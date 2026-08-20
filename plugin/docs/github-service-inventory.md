@@ -143,6 +143,11 @@ process, so it joined the `tracking-issue-lifecycle` row; the remaining
 Python design verbs are enumerated on the `pull-requests` row instead of
 claiming the whole domain.
 
+The #8592 cutover moved `design log-publish` to Rust. It publishes sanitized
+design session archives through the shared run-log lifecycle (object storage /
+cache) and no longer creates a GitHub pull request, so it left the
+`pull-requests` row without joining another GitHub-service row.
+
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
 ```text
@@ -174,7 +179,7 @@ pull-request-implement-migrated	crates/larch-adapters/src/github/operations.rs	r
 pull-request-implement-retired	crates/larch-adapters/src/github/operations.rs	retired	#7681	not-applicable	complete	complete	implement step-18-gate-finalize
 pull-request-implement-terminal	crates/larch-adapters/src/github/operations.rs	rust	#7995	complete	complete	complete	implement step-18-gate-logs-flush,implement step-19
 pull-request-design-migrated	crates/larch-adapters/src/github/operations.rs	rust	#7680	complete	complete	complete	design driver,design failure-report,design read-result-env,design stage-terminal-state,design step-final-summary,design step1d5,design step1d7,design step1e-reentry
-pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	pending	pending	pending	ci behind-count,ci decide,ci distill-log,ci failed-jobs,ci main-health,ci rerun-failed,ci status,ci wait,design dialectic-clear-stale,design dialectic-gatec,design dialectic-manual,design dialectic-promote-candidates,design dialectic-validate-candidates,design dialectic-write-candidates,design file-oos-annotate,design file-oos-prepare,design log-publish,design pause-load,design pause-save,design postplan-emit,design prelude,design publish,design render-final-summary,design render-gate,design step2b-drafter,design step2b-postplan,design step2b5,design step3-continuation-entry,design step35-settle,design step3b-entry,design step5b-annotate,design step5b-prepare,design step5c,design step6,design step6-cleanup,design step6-prelude,pr *,ship *
+pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	pending	pending	pending	ci behind-count,ci decide,ci distill-log,ci failed-jobs,ci main-health,ci rerun-failed,ci status,ci wait,design dialectic-clear-stale,design dialectic-gatec,design dialectic-manual,design dialectic-promote-candidates,design dialectic-validate-candidates,design dialectic-write-candidates,design file-oos-annotate,design file-oos-prepare,design pause-load,design pause-save,design postplan-emit,design prelude,design publish,design render-final-summary,design render-gate,design step2b-drafter,design step2b-postplan,design step2b5,design step3-continuation-entry,design step35-settle,design step3b-entry,design step5b-annotate,design step5b-prepare,design step5c,design step6,design step6-cleanup,design step6-prelude,pr *,ship *
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
 repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676	complete	complete	complete	gh remote-repo,gh resolve-repo
 tracking-issue-comment-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	tracking-issue append-comment,tracking-issue read,tracking-issue upsert-summary

@@ -94,6 +94,7 @@ mod clarify_orchestrator_tests {
             self
         }
 
+        #[allow(dead_code)]
         fn queue_python(self, stdout: &[&str]) -> Self {
             *self.python_stdout.borrow_mut() = stdout.iter().map(|s| (*s).to_owned()).collect();
             self
@@ -272,9 +273,9 @@ mod clarify_orchestrator_tests {
         let dir = TempDir::new().unwrap();
         seed_publish(dir.path());
         let effects = FakeEffects::default();
-        let runner = FakeRunner::new()
-            .queue_larch(&["", "", "", "RENAMED=true\n"])
-            .queue_python(&["PUBLISH_OK=true\n"]);
+        // named-block, sync-labels, run-log write, log-publish, upsert-summary, rename
+        let runner =
+            FakeRunner::new().queue_larch(&["", "", "", "PUBLISH_OK=true\n", "", "RENAMED=true\n"]);
         let mut env = env_with_repo(dir.path());
         let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
         let result =
@@ -339,7 +340,8 @@ mod clarify_orchestrator_tests {
             post_fails: true,
             ..FakeEffects::default()
         };
-        let runner = FakeRunner::new().queue_python(&["PUBLISH_OK=true\n"]);
+        // named-block, sync-labels, run-log write, log-publish, upsert-summary
+        let runner = FakeRunner::new().queue_larch(&["", "", "", "PUBLISH_OK=true\n", ""]);
         let mut env = env_with_repo(dir.path());
         let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
         let result =

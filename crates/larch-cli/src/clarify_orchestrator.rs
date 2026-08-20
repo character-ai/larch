@@ -342,7 +342,7 @@ fn publish_clarify_log_and_summary(
         outcome.to_owned(),
     ];
     args.extend(repo_args.iter().cloned());
-    let publish = runner.run_python(&args.iter().map(OsString::from).collect::<Vec<_>>());
+    let publish = runner.run_larch(&args.iter().map(OsString::from).collect::<Vec<_>>());
     let _ = fs::write(
         design_tmpdir.join("design-log-publish.stdout"),
         &publish.stdout,

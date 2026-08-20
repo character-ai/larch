@@ -8,20 +8,8 @@ from pathlib import Path
 
 from larch.design import (
     design_core,
-    design_log_publish_flow,
     design_step5c,
 )
-
-
-def test_log_scrub_retains_last_row_crlf_and_numeric_fallback() -> None:
-    stdout = "SECRET_SCRUB_VIOLATIONS=1\r\ninvalid\nSECRET_SCRUB_VIOLATIONS= 2 \r\n"
-
-    assert design_log_publish_flow._scrub_violations(stdout) == "2"  # pyright: ignore[reportPrivateUsage] - characterize migration seam
-    assert (
-        design_log_publish_flow._scrub_violations("SECRET_SCRUB_VIOLATIONS=nope\n")
-        == "0"
-    )  # pyright: ignore[reportPrivateUsage] - characterize migration seam
-    assert design_log_publish_flow._scrub_violations("SECRET_SCRUB_VIOLATIONS=1\rSECRET_SCRUB_VIOLATIONS=2") == "2"  # pyright: ignore[reportPrivateUsage] - lone CR was a legacy row boundary
 
 
 def test_step0_env_readers_keep_allowlist_duplicate_and_empty_value_policy(
