@@ -36,6 +36,7 @@ pub(crate) mod bootstrap_commands;
 mod bootstrap_support;
 mod calibration_commands;
 mod checks_identity_commands;
+mod checks_run_relevant_commands;
 mod child_process;
 mod ci_launcher_commands;
 mod ci_selection;
@@ -1053,6 +1054,12 @@ enum ChecksCommand {
     /// Report the self-edit attribution records for one implement session.
     #[command(name = "self-edit-log", disable_help_flag = true)]
     SelfEditLog(RawCompatibilityArguments),
+    /// Run the relevant checks for one changed-file selection and capture a log.
+    #[command(name = "run-relevant", disable_help_flag = true)]
+    RunRelevant(RawCompatibilityArguments),
+    /// Assert that pinned `contains` literals are present in their targets.
+    #[command(name = "contains-pins", disable_help_flag = true)]
+    ContainsPins(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2455,6 +2462,12 @@ fn run(
         }
         Domain::Checks(ChecksCommand::SelfEditLog(arguments)) => Ok(
             checks_identity_commands::self_edit_log(&arguments.arguments),
+        ),
+        Domain::Checks(ChecksCommand::RunRelevant(arguments)) => Ok(
+            checks_run_relevant_commands::checks_run_relevant(&arguments.arguments),
+        ),
+        Domain::Checks(ChecksCommand::ContainsPins(arguments)) => Ok(
+            checks_run_relevant_commands::check_contains_pins(&arguments.arguments),
         ),
         Domain::Implement(command) => Ok(match command {
             ImplementCommand::ChecksResultIdentity(arguments) => {

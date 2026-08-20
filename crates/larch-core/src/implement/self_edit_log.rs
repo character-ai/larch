@@ -5,8 +5,11 @@
 //! that a between-action working-tree change came from another runner.
 
 use std::{
+    collections::HashMap,
     env, fs,
+    io::Write as _,
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use sha2::{Digest as _, Sha256};
@@ -15,7 +18,9 @@ use sha2::{Digest as _, Sha256};
 pub const SELF_EDIT_LOG_NAME: &str = "self-edit-log.tsv";
 
 const HEADER: &str = "recorded_epoch_s\tsource\tpath\tpost_sha256";
+const HEADER_LINE: &str = "recorded_epoch_s\tsource\tpath\tpost_sha256\n";
 const SESSION_PREFIXES: [&str; 2] = ["claude-implement-", "claude-review-"];
+const SOURCE_MAX_LEN: usize = 64;
 
 /// One recorded self-edit attribution row.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -85,6 +90,107 @@ pub fn file_sha256(repo_root: &Path, rel: &str) -> String {
         }
         Ok(_) | Err(_) => "missing".to_owned(),
     }
+}
+
+/// Map each repo-relative path to its current sha256 (see [`file_sha256`]).
+#[must_use]
+pub fn digest_paths(repo_root: &Path, paths: &[String]) -> HashMap<String, String> {
+    paths
+        .iter()
+        .map(|path| (path.clone(), file_sha256(repo_root, path)))
+        .collect()
+}
+
+/// Sanitize a source token to the `[A-Za-z0-9_.:@/-]` grammar, bounded length.
+fn sanitize_source(source: &str) -> String {
+    let cleaned: String = source
+        .trim()
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | ':' | '@' | '/' | '-') {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .take(SOURCE_MAX_LEN)
+        .collect();
+    if cleaned.is_empty() {
+        "unknown".to_owned()
+    } else {
+        cleaned
+    }
+}
+
+fn append_rows(path: &Path, rows: &[(i64, String, String, String)]) {
+    if let Some(parent) = path.parent() {
+        let _ignored = fs::create_dir_all(parent);
+    }
+    if fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        return;
+    }
+    let needs_header = fs::metadata(path).map_or(true, |meta| meta.len() == 0);
+    let Ok(mut handle) = fs::OpenOptions::new().create(true).append(true).open(path) else {
+        return;
+    };
+    if needs_header {
+        let _ignored = handle.write_all(HEADER_LINE.as_bytes());
+    }
+    for (epoch_s, source, rel_path, sha) in rows {
+        let _ignored =
+            handle.write_all(format!("{epoch_s}\t{source}\t{rel_path}\t{sha}\n").as_bytes());
+    }
+    drop(handle);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let _ignored = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+    }
+}
+
+/// Append one attribution row per changed path; returns the row count.
+///
+/// Best-effort: never panics, so a checks or repair-loop caller is never
+/// disrupted by logging. Returns 0 when the tmpdir is unusable, no paths are
+/// supplied, or any write fails. `now_epoch_s` overrides the clock for tests.
+#[must_use]
+pub fn record_self_edits(
+    tmpdir: &Path,
+    source: &str,
+    paths: &[String],
+    repo_root: &Path,
+    now_epoch_s: Option<i64>,
+) -> usize {
+    let Ok(metadata) = fs::symlink_metadata(tmpdir) else {
+        return 0;
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return 0;
+    }
+    let epoch_s = now_epoch_s.unwrap_or_else(|| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |elapsed| {
+                i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX)
+            })
+    });
+    let source_token = sanitize_source(source);
+    let mut rows: Vec<(i64, String, String, String)> = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    for raw in paths {
+        let rel = normalize_path(raw);
+        if rel.is_empty() || seen.contains(&rel) {
+            continue;
+        }
+        seen.push(rel.clone());
+        let sha = file_sha256(repo_root, &rel);
+        rows.push((epoch_s, source_token.clone(), rel, sha));
+    }
+    if rows.is_empty() {
+        return 0;
+    }
+    append_rows(&tmpdir.join(SELF_EDIT_LOG_NAME), &rows);
+    rows.len()
 }
 
 fn canonical_dir(path: &Path) -> Option<PathBuf> {
@@ -170,6 +276,85 @@ mod tests {
             "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
         );
         assert_eq!(file_sha256(root.path(), "missing.txt"), "missing");
+    }
+
+    #[test]
+    fn digest_paths_maps_each_path_to_its_sha() {
+        let root = TempDir::new().expect("temp");
+        fs::write(root.path().join("a.txt"), "x").expect("write");
+        let map = digest_paths(root.path(), &["a.txt".to_owned(), "b.txt".to_owned()]);
+        assert_eq!(
+            map["a.txt"],
+            "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+        );
+        assert_eq!(map["b.txt"], "missing");
+    }
+
+    #[test]
+    fn record_self_edits_appends_deduplicated_rows() {
+        let repo = TempDir::new().expect("repo");
+        fs::write(repo.path().join("a.py"), "one").expect("a");
+        fs::write(repo.path().join("b.py"), "two").expect("b");
+        let tmpdir = TempDir::new().expect("tmpdir");
+        let written = record_self_edits(
+            tmpdir.path(),
+            "pre-commit autofix!",
+            &[
+                "a.py".to_owned(),
+                "a.py".to_owned(),
+                String::new(),
+                "b.py".to_owned(),
+            ],
+            repo.path(),
+            Some(1234),
+        );
+        assert_eq!(written, 2, "duplicate and empty paths are dropped");
+        let records = read_self_edits(tmpdir.path());
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].source, "pre-commit-autofix-");
+        assert_eq!(records[0].recorded_epoch_s, 1234);
+        assert_eq!(records[0].path, "a.py");
+        // A second call appends without a duplicate header.
+        let again = record_self_edits(
+            tmpdir.path(),
+            "src",
+            &["b.py".to_owned()],
+            repo.path(),
+            Some(9),
+        );
+        assert_eq!(again, 1);
+        assert_eq!(read_self_edits(tmpdir.path()).len(), 3);
+    }
+
+    #[test]
+    fn record_self_edits_fails_closed_on_a_bad_tmpdir_or_no_paths() {
+        let repo = TempDir::new().expect("repo");
+        assert_eq!(
+            record_self_edits(
+                std::path::Path::new("/larch-record-missing"),
+                "src",
+                &["a.py".to_owned()],
+                repo.path(),
+                Some(1),
+            ),
+            0
+        );
+        let tmpdir = TempDir::new().expect("tmpdir");
+        assert_eq!(
+            record_self_edits(tmpdir.path(), "src", &[], repo.path(), Some(1)),
+            0
+        );
+        assert_eq!(
+            record_self_edits(
+                tmpdir.path(),
+                "src",
+                &[String::new(), "  ".to_owned()],
+                repo.path(),
+                Some(1),
+            ),
+            0,
+            "whitespace-only paths normalize to empty and are dropped"
+        );
     }
 
     #[test]

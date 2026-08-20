@@ -46,6 +46,8 @@ pub enum HostUtilityProgram {
     Pytest,
     /// Run a named, repository-defined runtime verification make target.
     Make,
+    /// Run the repository's `pre-commit` hooks over the changed-file selection.
+    PreCommit,
 }
 
 /// Approved GitHub CLI operations used to acquire the active `gh` credential.
@@ -90,6 +92,7 @@ impl HostUtilityProgram {
             Self::Security => "security",
             Self::Python3 | Self::Pytest => "python3",
             Self::Make => "make",
+            Self::PreCommit => "pre-commit",
         }
     }
 
@@ -104,6 +107,7 @@ impl HostUtilityProgram {
             Self::Python3 => "host.python-version-probe",
             Self::Pytest => "analyze-bugs.runtime-pytest",
             Self::Make => "analyze-bugs.runtime-harness",
+            Self::PreCommit => "checks.pre-commit-run",
         }
     }
 
@@ -131,6 +135,9 @@ impl HostUtilityProgram {
             }
             Self::Make => {
                 "bounded repository harness execution required to verify an analyze-bugs runtime bundle"
+            }
+            Self::PreCommit => {
+                "bounded repository pre-commit hook execution required to validate the changed-file selection for /implement relevant checks"
             }
         }
     }
@@ -571,6 +578,14 @@ pub enum ChildEnvironment {
     /// XDG cache root used by nested session setup.
     XdgCacheHome,
     XdgConfigHome,
+    /// Pre-commit hook-skip selector passed to a bounded `pre-commit run`.
+    PrecommitSkip,
+    /// Non-incremental Cargo build selector for the bounded Rust Clippy hook.
+    CargoIncremental,
+    /// Debug-info suppression for the dev profile of the bounded Rust Clippy hook.
+    CargoProfileDevDebug,
+    /// Debug-info suppression for the test profile of the bounded Rust Clippy hook.
+    CargoProfileTestDebug,
 }
 
 impl ChildEnvironment {
@@ -660,6 +675,10 @@ impl ChildEnvironment {
             Self::GhConfigDir => env::GH_CONFIG_DIR,
             Self::XdgCacheHome => env::XDG_CACHE_HOME,
             Self::XdgConfigHome => env::XDG_CONFIG_HOME,
+            Self::PrecommitSkip => "SKIP",
+            Self::CargoIncremental => "CARGO_INCREMENTAL",
+            Self::CargoProfileDevDebug => "CARGO_PROFILE_DEV_DEBUG",
+            Self::CargoProfileTestDebug => "CARGO_PROFILE_TEST_DEBUG",
         }
     }
 

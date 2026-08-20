@@ -20,7 +20,6 @@ from larch.core import redact
 from larch.core import rust_runtime
 from larch.core.repo_roots import larch_entrypoint
 from larch.errors import ShipError
-from larch.implement import checks
 from larch.implement import ship
 from larch.implement import scope_disposition
 from larch.implement.self_edit_log import file_sha256, read_self_edits
@@ -316,9 +315,10 @@ def _run_relevant_checks_for_site(
             str(root),
         ],
         deadline_ms=deadline_ms,
-        label=f"{checks.checks_run_relevant_main.__name__}:{checks_site}",
+        label=f"checks_run_relevant:{checks_site}",
         cwd=root,
         env=env,
+        runtime="larch",
     )
     if isinstance(result, subprocess.TimeoutExpired):
         return {

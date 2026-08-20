@@ -1275,11 +1275,13 @@ verb = "contains-pins"
 python_module = "larch.implement.checks"
 python_function = "check_contains_pins_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8616
+clean_install_test = "clean-install-checks-contains-pins"
 
 [[commands]]
 domain = "checks"
@@ -1323,11 +1325,13 @@ verb = "run-relevant"
 python_module = "larch.implement.checks"
 python_function = "checks_run_relevant_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8616
+clean_install_test = "clean-install-checks-run-relevant"
 
 [[commands]]
 domain = "checks"
@@ -9026,8 +9030,8 @@ clean_install_test = "clean-install-voting-write-tally"
 [[callers]]
 path = ".github/workflows/ci.yaml"
 kind = "ci"
-python = ["checks contains-pins", "ci stage-rust-policy-candidate"]
-rust = ["ci gitleaks-base", "ci rust-select", "ci rust-select-summary", "ci stage-main-cache-candidate", "release plugin-runtime"]
+python = ["ci stage-rust-policy-candidate"]
+rust = ["checks contains-pins", "ci gitleaks-base", "ci rust-select", "ci rust-select-summary", "ci stage-main-cache-candidate", "release plugin-runtime"]
 
 [[callers]]
 path = ".github/workflows/main-cache-publication.yaml"
@@ -9050,8 +9054,8 @@ rust = ["release asset-candidate", "release collect-assets", "release package-as
 [[callers]]
 path = ".pre-commit-config.yaml"
 kind = "ci"
-python = ["checks run-relevant", "checks rust-clippy"]
-rust = ["lint gitleaks"]
+python = ["checks rust-clippy"]
+rust = ["checks run-relevant", "lint gitleaks"]
 
 [[callers]]
 path = "Makefile"
@@ -9062,8 +9066,8 @@ rust = ["eval research"]
 [[callers]]
 path = "agents/_implementer-base.md"
 kind = "agent"
-python = ["checks run-relevant", "redact secrets"]
-rust = []
+python = ["redact secrets"]
+rust = ["checks run-relevant"]
 
 [[callers]]
 path = "agents/ci-fixer.md"
@@ -9224,13 +9228,13 @@ rust = []
 [[callers]]
 path = "python/larch/implement/checks_lint_fix.py"
 kind = "python-runtime"
-python = ["checks lint-fix", "checks run-relevant"]
+python = ["checks lint-fix"]
 rust = ["agent launch-claude-lint-fix", "agent launch-codex-exec", "bgjob start", "git commit", "git stage", "token append-record", "token record-vendor-sidecar"]
 
 [[callers]]
 path = "python/larch/implement/checks_run_relevant.py"
 kind = "python-runtime"
-python = ["checks run-relevant"]
+python = []
 rust = ["timing mark", "timing record-vendor-task", "token mark"]
 
 [[callers]]
@@ -9380,8 +9384,8 @@ rust = ["progress install-statusline", "progress session-reset"]
 [[callers]]
 path = "skills/alias/SKILL.md"
 kind = "skill"
-python = ["checks run-relevant"]
-rust = ["alias generate", "alias resolve-target", "verify skill-called"]
+python = []
+rust = ["alias generate", "alias resolve-target", "checks run-relevant", "verify skill-called"]
 
 [[callers]]
 path = "skills/audit-umbrella/SKILL.md"
@@ -9710,20 +9714,20 @@ rust = ["fluff-analysis analyze"]
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "implement commit", "implement run-dispatch", "implement step-16-17", "implement step-17", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "tracking post-issue"]
-rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement scope-disposition", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
+python = ["checks lint-fix", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "implement commit", "implement run-dispatch", "implement step-16-17", "implement step-17", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "tracking post-issue"]
+rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks run-relevant", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement scope-disposition", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
 kind = "skill"
-python = ["checks run-relevant", "redact secrets"]
-rust = ["agent launch-codex-implement"]
+python = ["redact secrets"]
+rust = ["agent launch-codex-implement", "checks run-relevant"]
 
 [[callers]]
 path = "skills/implement/prompts/cursor-implementer.md"
 kind = "skill"
-python = ["checks run-relevant", "redact secrets"]
-rust = ["agent launch-cursor-implement"]
+python = ["redact secrets"]
+rust = ["agent launch-cursor-implement", "checks run-relevant"]
 
 [[callers]]
 path = "skills/implement/references/architectural-guidelines-present.md"
@@ -9836,8 +9840,8 @@ rust = ["agent launch-codex-implement", "bgjob wait", "dirty-tree scope-check", 
 [[callers]]
 path = "skills/implement/references/step2-main-health-fix.md"
 kind = "skill"
-python = ["checks run-relevant", "ci main-health", "implement run-dispatch"]
-rust = []
+python = ["ci main-health", "implement run-dispatch"]
+rust = ["checks run-relevant"]
 
 [[callers]]
 path = "skills/implement/references/step5-review-branches.md"
@@ -9944,8 +9948,8 @@ rust = ["execution-issues refresh"]
 [[callers]]
 path = "skills/implement/scripts/run-step-checks.md"
 kind = "skill"
-python = ["checks run-relevant"]
-rust = ["bgjob wait", "implement checks-result-identity"]
+python = []
+rust = ["bgjob wait", "checks run-relevant", "implement checks-result-identity"]
 
 [[callers]]
 path = "skills/implement/scripts/run-step-checks.sh"
@@ -10226,20 +10230,20 @@ rust = ["agent collect-results", "agent cursor-auth-preflight", "agent cursor-wr
 [[callers]]
 path = "skills/review-and-fix/SKILL.md"
 kind = "skill"
-python = ["checks run-relevant", "redact scrub-submodule-paths"]
-rust = ["review compose-findings", "review core", "review-and-fix apply-findings", "review-and-fix step5", "timing record-round"]
+python = ["redact scrub-submodule-paths"]
+rust = ["checks run-relevant", "review compose-findings", "review core", "review-and-fix apply-findings", "review-and-fix step5", "timing record-round"]
 
 [[callers]]
 path = "skills/review/SKILL.md"
 kind = "skill"
-python = ["checks run-relevant", "render specialist", "render voter"]
-rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "review aggregate-findings", "review check-reviewer-failure-threshold", "review collect-findings", "review core", "review dispatch-panel", "review emit-tally", "review gather-context", "review log-phase", "review prune-nit-findings", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "scout dynamic-archetypes", "session cleanup-tmpdir", "session setup", "token claude-source"]
+python = ["render specialist", "render voter"]
+rust = ["agent degraded-tools-gate", "agent dispatch-voters", "agent dispatch-waterfall", "agent launch-claude-subprocess", "checks run-relevant", "review aggregate-findings", "review check-reviewer-failure-threshold", "review collect-findings", "review core", "review dispatch-panel", "review emit-tally", "review gather-context", "review log-phase", "review prune-nit-findings", "review reviewer-prune", "review tally-code-votes", "review-and-fix step5", "run-log capture-transcript", "run-log lifecycle-finalize", "run-log lifecycle-start", "run-log validate-run-id", "scout dynamic-archetypes", "session cleanup-tmpdir", "session setup", "token claude-source"]
 
 [[callers]]
 path = "skills/review/references/domain-rules.md"
 kind = "skill"
-python = ["checks run-relevant"]
-rust = []
+python = []
+rust = ["checks run-relevant"]
 
 [[callers]]
 path = "skills/review/references/heavy-worker.md"
@@ -10322,8 +10326,8 @@ rust = ["push rebase"]
 [[callers]]
 path = "skills/shared/subskill-invocation.md"
 kind = "skill"
-python = ["checks run-relevant", "ship pr"]
-rust = ["alias generate", "session setup", "verify skill-called"]
+python = ["ship pr"]
+rust = ["alias generate", "checks run-relevant", "session setup", "verify skill-called"]
 
 [[callers]]
 path = "skills/shared/topology.tsv"

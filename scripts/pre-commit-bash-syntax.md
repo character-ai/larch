@@ -18,7 +18,7 @@ developers. On Linux the system bash (5.x) catches generic syntax errors.
 ## Callers
 
 - `.pre-commit-config.yaml` `repo: local` `id: bash-syntax-check` hook (`entry: scripts/pre-commit-bash-syntax.sh`).
-- Indirectly: `make lint`, `pre-commit run bash-syntax-check`, `python3 python/cli.py checks run-relevant --site <site> --tmpdir <tmpdir>`, and the GitHub Actions `lint-local` job.
+- Indirectly: `make lint`, `pre-commit run bash-syntax-check`, `scripts/larch.sh checks run-relevant --site <site> --tmpdir <tmpdir>`, and the GitHub Actions `lint-local` job.
 
 ## Edit-in-sync rules
 

@@ -872,6 +872,13 @@ jobs:
           sparse-checkout-cone-mode: false
       - id: main-cache-keys
         uses: ./.github/actions/main-cache-keys
+      # `checks run-relevant` spawns `pre-commit`; install it so the coverage
+      # run can exercise that path (#8616).
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install pre-commit for relevant-checks coverage
+        run: python -m pip install pre-commit
       - uses: ./.github/actions/rust-coverage
         env:
           CARGO_INPUTS_CACHE_KEY: ${{ steps.main-cache-keys.outputs.cargo-inputs }}
@@ -1220,6 +1227,13 @@ jobs:
           sparse-checkout-cone-mode: false
       - id: main-cache-keys
         uses: ./.github/actions/main-cache-keys
+      # `checks run-relevant` spawns `pre-commit`; install it so the coverage
+      # run can exercise that path (#8616).
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install pre-commit for relevant-checks coverage
+        run: python -m pip install pre-commit
       - uses: ./.github/actions/rust-coverage
         env:
           CARGO_INPUTS_CACHE_KEY: ${{ steps.main-cache-keys.outputs.cargo-inputs }}
@@ -1282,6 +1296,13 @@ jobs:
           sparse-checkout-cone-mode: false
       - id: main-cache-keys
         uses: ./.github/actions/main-cache-keys
+      # `checks run-relevant` spawns `pre-commit`; install it so the coverage
+      # run can exercise that path (#8616).
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install pre-commit for relevant-checks coverage
+        run: python -m pip install pre-commit
       - uses: ./.github/actions/rust-coverage
         env:
           CARGO_INPUTS_CACHE_KEY: ${{ steps.main-cache-keys.outputs.cargo-inputs }}
@@ -1388,7 +1409,7 @@ jobs:
 
   contains-pins:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
@@ -1396,11 +1417,20 @@ jobs:
             /*
             !/larch-logs/
           sparse-checkout-cone-mode: false
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
+      - name: Install pinned Rust toolchain
+        run: |
+          rustc --version
+          cargo --version
+      - name: Build larch executable
+        run: |
+          set -euo pipefail
+          cargo build --package larch-cli --bin larch --all-features --locked
+          test -x "$GITHUB_WORKSPACE/target/debug/larch"
       - name: Run contains-pin scanner
-        run: python3 python/cli.py checks contains-pins
+        run: |
+          set -euo pipefail
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$GITHUB_WORKSPACE/target/debug/larch" \
+            "$GITHUB_WORKSPACE/scripts/larch.sh" checks contains-pins
 
   # Dedicated gitleaks gate — runs two sequential scans: (1) working-tree
   # scan (`--no-git`; formerly run inside the `lint` pre-commit hook, moved

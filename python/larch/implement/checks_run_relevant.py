@@ -22,7 +22,6 @@ from typing import Final, TextIO
 
 from larch import io as larch_io
 from larch.core import config
-from larch.core import proc
 from larch.core import redact
 from larch.core.proc import CommandResult, Runner
 from larch.core.repo_roots import RepoRootProbeOptions, larch_entrypoint, larch_entrypoint_env, repo_root_probe
@@ -164,7 +163,7 @@ def _under_root(*, path: Path, root: Path) -> bool:
 
 
 def validate_tmpdir(tmpdir: str) -> Path | None:
-    """Port of validate_tmpdir in python/cli.py checks run-relevant."""
+    """Port of validate_tmpdir in scripts/larch.sh checks run-relevant."""
     if not tmpdir.startswith("/"):
         return None
     candidate = Path(tmpdir)
@@ -1093,7 +1092,7 @@ def _run_contains_pin_phase(*, repo: Path, changed: tuple[str, ...], log_fd: int
             for path in changed:
                 _ = handle.write(f"{path}\n")
         with contextlib.redirect_stdout(_FdTextWriter(log_fd)), contextlib.redirect_stderr(_FdTextWriter(log_fd)):
-            return check_contains_pins_main(["--changed-files", str(changed_file), "--repo-root", str(repo)])
+            return run_contains_pins_scan(["--changed-files", str(changed_file), "--repo-root", str(repo)])
     finally:
         if changed_file is not None:
             with contextlib.suppress(OSError):
@@ -1474,7 +1473,13 @@ def _contains_pin_test_scripts(repo_root: Path) -> tuple[Path, ...]:
     return tuple(path for path in scripts if path.is_file())
 
 
-def check_contains_pins_main(argv: list[str] | None = None) -> int:
+def run_contains_pins_scan(argv: list[str] | None = None) -> int:
+    """Internal contains-pin scanner reused by the in-process relevant-checks phase.
+
+    The `checks contains-pins` command is Rust-owned (#8616); this helper keeps
+    the same scan for the still-Python `run_relevant_checks` phase consumed by
+    `checks lint-fix`/`repair-loop`.
+    """
     parser = argparse.ArgumentParser(prog="cli.py checks contains-pins")
     _ = parser.add_argument("--changed-files", default="")
     _ = parser.add_argument("--repo-root", default="")
@@ -1501,37 +1506,3 @@ def default_repo_root() -> str:
         return raw
     result = repo_root_probe(options=RepoRootProbeOptions(runner_cwd=Path.cwd()))
     return result.stdout.strip() if result.returncode == 0 else ""
-
-
-def checks_run_relevant_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py checks run-relevant")
-    _ = parser.add_argument("--site", required=True)
-    _ = parser.add_argument("--tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", os.environ.get("REVIEW_TMPDIR", "")))
-    _ = parser.add_argument("--repo-root", default="")
-    _ = parser.add_argument("--allow-skip", action="store_true")
-    args = parser.parse_args(argv)
-    repo_root = args.repo_root or default_repo_root()
-    result = run_relevant_checks(proc, site=args.site, tmpdir=args.tmpdir, repo_root=repo_root)
-    if result.skipped and args.allow_skip:
-        print(f"RELEVANT_CHECKS_SKIPPED=true SITE={result.site}")
-        return 0
-    if result.ok:
-        line = f"RELEVANT_CHECKS_OK=true SITE={result.site} COVERAGE={result.coverage} PHASE={result.phase}"
-        if result.warn:
-            line += f" WARN={result.warn}"
-        print(line)
-        return 0
-    reason = result.failure_reason or "checks-failed"
-    parts = ["STATUS=fail", f"FAILURE_REASON={reason}"]
-    if result.redacted_log_path:
-        parts.extend([
-            f"EXIT_CODE={result.exit_code}",
-            f"PHASE={result.phase}",
-        ])
-        if result.digest_file_path:
-            parts.append(f"DIGEST_FILE={result.digest_file_path}")
-        parts.extend([
-            f"REDACTED_LOG_FILE={result.redacted_log_path}",
-        ])
-    print(" ".join(parts))
-    return result.exit_code or 1

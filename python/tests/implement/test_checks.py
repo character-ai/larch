@@ -1410,7 +1410,7 @@ def test_run_relevant_checks_timing_failure_is_non_fatal(
     assert result.ok is True
 
 
-def test_check_contains_pins_main_success_failure_and_scope(tmp_path: Path) -> None:
+def test_run_contains_pins_scan_success_failure_and_scope(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     target = repo / "skills" / "demo" / "SKILL.md"
@@ -1422,12 +1422,12 @@ def test_check_contains_pins_main_success_failure_and_scope(tmp_path: Path) -> N
         'TARGET="$SCRIPT_DIR/../SKILL.md"\ncontains "$TARGET" "expected literal" "ok"\n',
         encoding="utf-8",
     )
-    assert checks.check_contains_pins_main(["--repo-root", str(repo)]) == 0
+    assert checks.run_contains_pins_scan(["--repo-root", str(repo)]) == 0
     target.write_text("drift\n", encoding="utf-8")
-    assert checks.check_contains_pins_main(["--repo-root", str(repo)]) == 1
+    assert checks.run_contains_pins_scan(["--repo-root", str(repo)]) == 1
     changed = tmp_path / "changed.txt"
     changed.write_text("README.md\n", encoding="utf-8")
-    assert checks.check_contains_pins_main(["--repo-root", str(repo), "--changed-files", str(changed)]) == 0
+    assert checks.run_contains_pins_scan(["--repo-root", str(repo), "--changed-files", str(changed)]) == 0
 
 def test_run_check_fix_loop_skipped_does_not_dispatch() -> None:
     def checks_runner() -> checks.ChecksResult:
@@ -3733,7 +3733,7 @@ def test_default_precommit_stage_is_bounded_and_ci_keeps_exhaustive_rust_checks(
             assert forbidden not in entry
         assert "cargo run" not in entry
     assert "contains-pins:" in workflow
-    assert "python3 python/cli.py checks contains-pins" in workflow
+    assert '"$GITHUB_WORKSPACE/scripts/larch.sh" checks contains-pins' in workflow
     assert "python-lint:" not in workflow
     assert "python-pyright:" in workflow
     assert "agent-lint:" in workflow
@@ -5886,155 +5886,6 @@ def test_run_relevant_checks_no_changes_skips_precommit_requirement(
     monkeypatch.setattr(_crr, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is True
-
-
-def test_checks_run_relevant_main_success_envelope(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    session = _checks_session(tmp_path, monkeypatch)
-
-    def fake_checks(*_args: object, **kwargs: object) -> checks.ChecksResult:
-        return checks.ChecksResult(
-            ok=True,
-            exit_code=0,
-            site=str(kwargs["site"]),
-            redacted_log_path=None,
-            phase="pre-commit",
-            coverage="changed-file-only",
-            skipped=False,
-            warn=None,
-        )
-
-    monkeypatch.setattr(_crr, "run_relevant_checks", fake_checks)
-    rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session)])
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "RELEVANT_CHECKS_OK=true" in out
-    assert "SITE=step3" in out
-
-
-def test_checks_run_relevant_main_fail_envelope(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    session = _checks_session(tmp_path, monkeypatch)
-    log = session / "fail.redacted.log"
-    log.write_text("err\n", encoding="utf-8")
-    digest = session / "fail.digest.txt"
-    digest.write_text("CHECKS_FAILURE_DIGEST v1\n", encoding="utf-8")
-
-    def fake_checks(*_args: object, **_kwargs: object) -> checks.ChecksResult:
-        return checks.ChecksResult(
-            ok=False,
-            exit_code=1,
-            site="step3",
-            redacted_log_path=str(log),
-            phase="pre-commit",
-            coverage="changed-file-only",
-            skipped=False,
-            warn=None,
-            failure_reason="checks-failed",
-            digest_file_path=str(digest),
-        )
-
-    monkeypatch.setattr(_crr, "run_relevant_checks", fake_checks)
-    rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session)])
-    out = capsys.readouterr().out
-    assert rc == 1
-    assert "STATUS=fail" in out
-    assert "DIGEST_FILE=" in out
-    assert "REDACTED_LOG_FILE=" in out
-    assert out.index("DIGEST_FILE=") < out.index("REDACTED_LOG_FILE=")
-
-
-def test_checks_run_relevant_main_no_validation_envelope_includes_digest(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    session = _checks_session(tmp_path, monkeypatch)
-    log = session / "fail.redacted.log"
-    log.write_text("err\n", encoding="utf-8")
-    digest = session / "fail.digest.txt"
-    digest.write_text("CHECKS_FAILURE_DIGEST v1\n", encoding="utf-8")
-
-    def fake_checks(*_args: object, **_kwargs: object) -> checks.ChecksResult:
-        return checks.ChecksResult(
-            ok=False,
-            exit_code=2,
-            site="step3",
-            redacted_log_path=str(log),
-            phase="none",
-            coverage="none",
-            skipped=False,
-            warn=None,
-            failure_reason="no-validation-phases",
-            digest_file_path=str(digest),
-        )
-
-    monkeypatch.setattr(_crr, "run_relevant_checks", fake_checks)
-    rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session)])
-    out = capsys.readouterr().out
-    assert rc == 2
-    assert "FAILURE_REASON=no-validation-phases" in out
-    assert out.index("DIGEST_FILE=") < out.index("REDACTED_LOG_FILE=")
-
-
-def test_checks_run_relevant_main_allow_skip_envelope(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    session = _checks_session(tmp_path, monkeypatch)
-
-    def fake_checks(*_args: object, **kwargs: object) -> checks.ChecksResult:
-        return checks.ChecksResult(
-            ok=False,
-            exit_code=0,
-            site=str(kwargs["site"]),
-            redacted_log_path=None,
-            phase="none",
-            coverage="none",
-            skipped=True,
-            warn=None,
-        )
-
-    monkeypatch.setattr(_crr, "run_relevant_checks", fake_checks)
-    rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session), "--allow-skip"])
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "RELEVANT_CHECKS_SKIPPED=true" in out
-
-
-def test_checks_run_relevant_main_without_allow_skip_never_emits_skipped(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    session = _checks_session(tmp_path, monkeypatch)
-
-    def fake_checks(*_args: object, **_kwargs: object) -> checks.ChecksResult:
-        return checks.ChecksResult(
-            ok=False,
-            exit_code=2,
-            site="step3",
-            redacted_log_path=None,
-            phase="none",
-            coverage="none",
-            skipped=True,
-            warn=None,
-            failure_reason="checks-failed",
-        )
-
-    monkeypatch.setattr(_crr, "run_relevant_checks", fake_checks)
-    rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session)])
-    out = capsys.readouterr().out
-    assert rc == 2
-    assert "RELEVANT_CHECKS_SKIPPED" not in out
-    assert "STATUS=fail" in out
 
 
 def test_checks_lint_fix_main_main_agent_required_envelope(

@@ -3342,7 +3342,7 @@ def test_run_relevant_checks_for_site_does_not_allow_skip(
                 str(Path(__file__).resolve().parents[3]),
             ],
             1234,
-            "checks_run_relevant_main:step6",
+            "checks_run_relevant:step6",
         )
     ]
 

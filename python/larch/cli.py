@@ -14,11 +14,9 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("checks", "run-relevant"): ("larch.implement.checks", "checks_run_relevant_main", True),
     ("checks", "fixer-evidence"): ("larch.implement.checks", "checks_fixer_evidence_main", True),
     ("checks", "lint-fix"): ("larch.implement.checks", "checks_lint_fix_main", True),
     ("checks", "repair-loop"): ("larch.implement.checks", "checks_repair_loop_main", True),
-    ("checks", "contains-pins"): ("larch.implement.checks", "check_contains_pins_main", True),
     ("checks", "rust-clippy"): ("larch.implement.checks", "rust_clippy_main", False),
     ("ci", "distill-log"): ("larch.implement.ci", "distill_log_main", False),
     ("ci", "prepare-rust-integration-artifact"): (

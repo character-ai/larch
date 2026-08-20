@@ -17,7 +17,7 @@
 ## Callers
 
 - `.pre-commit-config.yaml` `repo: local` `id: shellcheck` hook (`entry: scripts/pre-commit-shellcheck.sh`).
-- Indirectly: `make shellcheck`, `make lint`, `pre-commit run shellcheck`, `python3 python/cli.py checks run-relevant --site <site> --tmpdir <tmpdir>`, and the GitHub Actions `shellcheck` job.
+- Indirectly: `make shellcheck`, `make lint`, `pre-commit run shellcheck`, `scripts/larch.sh checks run-relevant --site <site> --tmpdir <tmpdir>`, and the GitHub Actions `shellcheck` job.
 
 ## Edit-in-sync rules
 

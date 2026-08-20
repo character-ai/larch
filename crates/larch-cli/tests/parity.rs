@@ -1797,6 +1797,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "self-edit-log",
     ),
     CleanInstallCase::new(
+        "clean-install-checks-run-relevant",
+        "checks",
+        "run-relevant",
+    ),
+    CleanInstallCase::new(
+        "clean-install-checks-contains-pins",
+        "checks",
+        "contains-pins",
+    ),
+    CleanInstallCase::new(
         "clean-install-gh-agnix-ensure-label",
         "gh",
         "agnix-ensure-label",
