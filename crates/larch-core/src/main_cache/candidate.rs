@@ -17,24 +17,20 @@ use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 
 static CACHE_CLASS_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9-]{0,63}$").expect("cache class regex"));
-static CACHE_KEY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,511}$").expect("cache key regex")
-});
+static CACHE_KEY_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,511}$").expect("cache key regex"));
 static ARTIFACT_NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^main-cache-[a-z][a-z0-9-]{0,63}-candidate$").expect("artifact name regex")
 });
 static PRODUCER_REF_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^refs/heads/gh-readonly-queue/main/[A-Za-z0-9._/-]+$")
-        .expect("producer ref regex")
+    Regex::new(r"^refs/heads/gh-readonly-queue/main/[A-Za-z0-9._/-]+$").expect("producer ref regex")
 });
 static SHA256_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[0-9a-f]{64}$").expect("sha256 regex"));
-static SOURCE_NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$").expect("source name regex")
-});
-static SOURCE_SHA_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$").expect("source sha regex")
-});
+static SOURCE_NAME_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$").expect("source name regex"));
+static SOURCE_SHA_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$").expect("source sha regex"));
 
 const MANIFEST_FILENAME: &str = "manifest.json";
 const PAYLOAD_DIRECTORY: &str = "payload";
@@ -136,8 +132,10 @@ pub struct VerifiedCandidate {
 /// Returns [`CandidateError`] when the request is invalid or staging fails.
 pub fn stage_candidate(request: &CandidateRequest) -> Result<VerifiedCandidate, CandidateError> {
     validate_stage_request(request)?;
-    let tool_versions =
-        validated_tool_versions(&Value::Object(map_from_versions(&request.tool_versions)), "candidate tool versions")?;
+    let tool_versions = validated_tool_versions(
+        &Value::Object(map_from_versions(&request.tool_versions)),
+        "candidate tool versions",
+    )?;
     create_empty_directory(&request.candidate_dir, "candidate directory")?;
     let payload = request.candidate_dir.join(PAYLOAD_DIRECTORY);
     create_empty_directory(&payload, "candidate payload")?;
@@ -207,10 +205,7 @@ pub fn stage_candidate(request: &CandidateRequest) -> Result<VerifiedCandidate, 
         "source_sha".to_owned(),
         Value::String(request.source_sha.clone()),
     );
-    manifest.insert(
-        "total_bytes".to_owned(),
-        Value::Number(total_bytes.into()),
-    );
+    manifest.insert("total_bytes".to_owned(), Value::Number(total_bytes.into()));
     manifest.insert(
         "tool_versions".to_owned(),
         Value::Object(map_from_versions(&tool_versions)),
@@ -255,7 +250,11 @@ pub fn verify_candidate(
             "candidate payload members do not match its manifest",
         ));
     }
-    let total_bytes = verified.members.iter().map(|member| member.size).sum::<u64>();
+    let total_bytes = verified
+        .members
+        .iter()
+        .map(|member| member.size)
+        .sum::<u64>();
     if total_bytes != verified.total_bytes {
         return Err(CandidateError::new(
             "candidate payload size does not match its manifest",
@@ -419,16 +418,7 @@ fn valid_member_path(path: &str) -> bool {
         if component.chars().any(|ch| {
             matches!(
                 ch,
-                '/' | '\\'
-                    | ':'
-                    | '*'
-                    | '?'
-                    | '"'
-                    | '<'
-                    | '>'
-                    | '|'
-                    | '\0'..='\x1f'
-                    | '\x7f'
+                '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0'..='\x1f' | '\x7f'
             )
         }) {
             return false;
@@ -575,7 +565,8 @@ fn copy_regular_file(source: &Path, destination: &Path, label: &str) -> Result<(
             "{label} is not a regular file"
         )));
     }
-    fs::copy(source, destination).map_err(|_| CandidateError::new(format!("could not copy {label}")))?;
+    fs::copy(source, destination)
+        .map_err(|_| CandidateError::new(format!("could not copy {label}")))?;
     Ok(())
 }
 
@@ -620,9 +611,7 @@ fn walk_regular_files(directory: &Path) -> Result<Vec<PathBuf>, CandidateError> 
         let path = child.path();
         let status = lstat(&path, "candidate payload entry")?;
         if status.file_type().is_symlink() {
-            return Err(CandidateError::new(
-                "candidate payload contains a symlink",
-            ));
+            return Err(CandidateError::new("candidate payload contains a symlink"));
         }
         if status.is_file() {
             files.push(path);
@@ -741,7 +730,10 @@ fn require_manifest_shape(manifest: &Map<String, Value>) -> Result<(), Candidate
     Ok(())
 }
 
-fn require_manifest_string(manifest: &Map<String, Value>, key: &str) -> Result<String, CandidateError> {
+fn require_manifest_string(
+    manifest: &Map<String, Value>,
+    key: &str,
+) -> Result<String, CandidateError> {
     match manifest.get(key) {
         Some(Value::String(value)) => Ok(value.clone()),
         _ => Err(CandidateError::new(format!(
@@ -752,16 +744,18 @@ fn require_manifest_string(manifest: &Map<String, Value>, key: &str) -> Result<S
 
 fn require_manifest_u64(manifest: &Map<String, Value>, key: &str) -> Result<u64, CandidateError> {
     match manifest.get(key) {
-        Some(Value::Number(number)) => number.as_u64().ok_or_else(|| {
-            CandidateError::new(format!("candidate manifest {key} is invalid"))
-        }),
+        Some(Value::Number(number)) => number
+            .as_u64()
+            .ok_or_else(|| CandidateError::new(format!("candidate manifest {key} is invalid"))),
         _ => Err(CandidateError::new(format!(
             "candidate manifest {key} is invalid"
         ))),
     }
 }
 
-fn parse_verified_manifest(manifest: &Map<String, Value>) -> Result<VerifiedCandidate, CandidateError> {
+fn parse_verified_manifest(
+    manifest: &Map<String, Value>,
+) -> Result<VerifiedCandidate, CandidateError> {
     let artifact_name = require_manifest_string(manifest, "artifact_name")?;
     let artifact_digest = require_manifest_string(manifest, "artifact_sha256")?;
     let cache_class = require_manifest_string(manifest, "cache_class")?;
@@ -833,9 +827,7 @@ fn require_manifest_contract(
         ));
     }
     if verified.producer_job != contract.producer_job {
-        return Err(CandidateError::new(
-            "candidate producer job does not match",
-        ));
+        return Err(CandidateError::new("candidate producer job does not match"));
     }
     if !PRODUCER_REF_RE.is_match(&verified.producer_ref) {
         return Err(CandidateError::new(
@@ -917,9 +909,9 @@ fn parse_members(manifest: &Map<String, Value>) -> Result<Vec<CandidateMember>, 
         }
         .ok_or_else(|| CandidateError::new("candidate manifest member size is invalid"))?;
         let mtime_ns = match raw_member.get("mtime_ns") {
-            Some(Value::Number(number)) => number
-                .as_i64()
-                .ok_or_else(|| CandidateError::new("candidate manifest member mtime_ns is invalid")),
+            Some(Value::Number(number)) => number.as_i64().ok_or_else(|| {
+                CandidateError::new("candidate manifest member mtime_ns is invalid")
+            }),
             _ => Err(CandidateError::new(
                 "candidate manifest member mtime_ns is invalid",
             )),
@@ -1030,7 +1022,10 @@ fn restore_member_metadata(
 fn parse_manifest_tool_versions(
     manifest: &Map<String, Value>,
 ) -> Result<BTreeMap<String, String>, CandidateError> {
-    let raw = manifest.get("tool_versions").cloned().unwrap_or(Value::Null);
+    let raw = manifest
+        .get("tool_versions")
+        .cloned()
+        .unwrap_or(Value::Null);
     validated_tool_versions(&raw, "candidate manifest tool versions")
 }
 
@@ -1081,8 +1076,8 @@ fn lstat(path: &Path, label: &str) -> Result<fs::Metadata, CandidateError> {
 }
 
 fn sha256_file(path: &Path) -> Result<String, CandidateError> {
-    let mut file =
-        File::open(path).map_err(|_| CandidateError::new("candidate payload member is unreadable"))?;
+    let mut file = File::open(path)
+        .map_err(|_| CandidateError::new("candidate payload member is unreadable"))?;
     let mut digest = Sha256::new();
     let mut buffer = vec![0_u8; HASH_CHUNK_BYTES];
     loop {
@@ -1188,8 +1183,9 @@ fn set_mode_and_mtime(
             .map_err(|_| CandidateError::new("could not restore candidate member metadata"))?;
         let modified = UNIX_EPOCH
             .checked_add(Duration::new(
-                u64::try_from(seconds)
-                    .map_err(|_| CandidateError::new("could not restore candidate member metadata"))?,
+                u64::try_from(seconds).map_err(|_| {
+                    CandidateError::new("could not restore candidate member metadata")
+                })?,
                 nanos,
             ))
             .ok_or_else(|| CandidateError::new("could not restore candidate member metadata"))?;
@@ -1307,9 +1303,12 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let request = make_request(root.path(), "candidate");
         let staged = stage_candidate(&request).expect("stage");
-        let manifest = read_manifest(&request.candidate_dir.join("manifest.json")).expect("manifest");
+        let manifest =
+            read_manifest(&request.candidate_dir.join("manifest.json")).expect("manifest");
         assert_eq!(
-            manifest.get("schema_version").and_then(serde_json::Value::as_u64),
+            manifest
+                .get("schema_version")
+                .and_then(serde_json::Value::as_u64),
             Some(SCHEMA_VERSION)
         );
         let dependency = request

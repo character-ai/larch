@@ -904,7 +904,7 @@ jobs:
             --ref "$GITHUB_REF" \
             --source-sha "$GITHUB_SHA" \
             --rust-inputs-sha256 "$RUST_POLICY_INPUTS_SHA256"
-          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$GITHUB_WORKSPACE/target/llvm-cov-target/debug/larch" \
+          CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE" LARCH_BINARY="$RUNNER_TEMP/larch-linux-test-binary/larch" \
             "$GITHUB_WORKSPACE/scripts/larch.sh" ci stage-main-cache-candidate \
             --artifact-name main-cache-rust-policy-candidate \
             --cache-class rust-policy \
