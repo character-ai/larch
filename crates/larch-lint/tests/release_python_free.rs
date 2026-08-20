@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 use predicates::prelude::*;
 use support::TempRepo;
 
-const COMMANDS: [(&str, &str, u64, Option<&str>); 19] = [
+const COMMANDS: [(&str, &str, u64, Option<&str>); 20] = [
     (
         "plugin",
         "read-version",
@@ -53,6 +53,12 @@ const COMMANDS: [(&str, &str, u64, Option<&str>); 19] = [
     ),
     ("release", "promote", 7752, None),
     ("release", "promote-latest", 7752, None),
+    (
+        "release",
+        "reconcile-notes",
+        7749,
+        Some("clean-install-release-reconcile-notes"),
+    ),
     (
         "release",
         "set-version",
@@ -129,6 +135,7 @@ fn python_target(domain: &str, verb: &str) -> (&'static str, &'static str) {
         ("release", "prepare") => ("larch.release.release_prepare", "main"),
         ("release", "promote") => ("larch.release.promote_release", "promote_main"),
         ("release", "promote-latest") => ("larch.release.promote_release", "promote_latest_main"),
+        ("release", "reconcile-notes") => ("larch.release.release_prepare", "reconcile_notes_main"),
         ("release", "set-version") => ("larch.release.version_bump", "set_version_main"),
         ("release", "stage") => ("larch.release.release_finish", "stage_main"),
         ("release", "validate-assets") => ("larch.release.assets", "validate_main"),

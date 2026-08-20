@@ -29,7 +29,7 @@ struct ExpectedCommand {
     clean_install_test: Option<&'static str>,
 }
 
-const EXPECTED_COMMANDS: [ExpectedCommand; 19] = [
+const EXPECTED_COMMANDS: [ExpectedCommand; 20] = [
     ExpectedCommand::new("plugin", "read-version", 7749, Some("clean-install-plugin-read-version")),
     ExpectedCommand::new("release", "asset-candidate", 7747, Some("clean-install-release-asset-candidate")),
     ExpectedCommand::new("release", "asset-run", 7751, None),
@@ -42,6 +42,12 @@ const EXPECTED_COMMANDS: [ExpectedCommand; 19] = [
     ExpectedCommand::new("release", "prepare", 7749, Some("clean-install-release-prepare")),
     ExpectedCommand::new("release", "promote", 7752, None),
     ExpectedCommand::new("release", "promote-latest", 7752, None),
+    ExpectedCommand::new(
+        "release",
+        "reconcile-notes",
+        7749,
+        Some("clean-install-release-reconcile-notes"),
+    ),
     ExpectedCommand::new("release", "set-version", 7750, Some("clean-install-release-set-version")),
     ExpectedCommand::new("release", "stage", 7751, None),
     ExpectedCommand::new("release", "validate-assets", 7747, Some("clean-install-release-validate-assets")),
@@ -245,6 +251,7 @@ fn expected_python_target(domain: &str, verb: &str) -> Option<(&'static str, &'s
         ("release", "prepare") => Some(("larch.release.release_prepare", "main")),
         ("release", "promote") => Some(("larch.release.promote_release", "promote_main")),
         ("release", "promote-latest") => Some(("larch.release.promote_release", "promote_latest_main")),
+        ("release", "reconcile-notes") => Some(("larch.release.release_prepare", "reconcile_notes_main")),
         ("release", "set-version") => Some(("larch.release.version_bump", "set_version_main")),
         ("release", "stage") => Some(("larch.release.release_finish", "stage_main")),
         ("release", "validate-assets") => Some(("larch.release.assets", "validate_main")),

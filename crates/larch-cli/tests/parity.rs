@@ -1865,6 +1865,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-release-prepare", "release", "prepare"),
     CleanInstallCase::new(
+        "clean-install-release-reconcile-notes",
+        "release",
+        "reconcile-notes",
+    ),
+    CleanInstallCase::new(
         "clean-install-release-set-version",
         "release",
         "set-version",
