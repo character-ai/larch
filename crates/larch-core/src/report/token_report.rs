@@ -819,10 +819,10 @@ pub fn assemble_issue_body(
 /// The issue title for one skill's report.
 #[must_use]
 pub fn title_for_skill(skill: &str, timestamp: &str) -> String {
-    let label = if skill == "design" {
-        "Design"
-    } else {
-        "Implement"
+    let label = match skill {
+        "design" => "Design",
+        "debate" => "Debate",
+        _ => "Implement",
     };
     format!("[{label} Analysis Report] Token costs as of {timestamp}")
 }
