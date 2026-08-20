@@ -5,9 +5,9 @@ mod release_prepare_tests {
         ReconcileNotesArguments, ReleasePlanningService, ReleasePullRequest, apply_bump, classify,
         companion_title, flag_tokens, frontmatter, frontmatter_field, idempotency_subject,
         is_bump_subject, is_log_housekeeping, is_release_subject, pr_suffix, prepare_out_dir,
-        prepare_with_service, public_surface, read_prepared_pr_numbers, reconcile_notes_with_service,
-        release_already_cut, resolve, select_pull_requests, semver, skill_path,
-        strict_plugin_version_bytes, tsv, verify_main_worktree, verify_origin,
+        prepare_with_service, public_surface, read_prepared_pr_numbers,
+        reconcile_notes_with_service, release_already_cut, resolve, select_pull_requests, semver,
+        skill_path, strict_plugin_version_bytes, tsv, verify_main_worktree, verify_origin,
     };
     use crate::github_repository_resolution::parse_github_remote_url;
     use larch_adapters::{TemporaryRoot, github::GitHubOperationError};
@@ -887,8 +887,11 @@ mod release_prepare_tests {
         let source = resolve(&repository, "HEAD").expect("source").to_hex();
 
         let prepare_list = tempfile::NamedTempFile::new().expect("prepare list");
-        fs::write(prepare_list.path(), "42\tFeature\trelease-note\tauthor\thttps://github.com/o/r/pull/42\n")
-            .expect("write prepare list");
+        fs::write(
+            prepare_list.path(),
+            "42\tFeature\trelease-note\tauthor\thttps://github.com/o/r/pull/42\n",
+        )
+        .expect("write prepare list");
         let output = tempfile::tempdir().expect("output directory");
         let output_root = TemporaryRoot::resolve(Some(output.path())).expect("temporary root");
         let service = FakeReleaseService {
@@ -1022,7 +1025,10 @@ mod release_prepare_tests {
             "source-commit-unresolvable"
         );
 
-        checked_git(&fixture, ["commit", "--allow-empty", "--quiet", "-m", "orphan-base"]);
+        checked_git(
+            &fixture,
+            ["commit", "--allow-empty", "--quiet", "-m", "orphan-base"],
+        );
         checked_git(&fixture, ["tag", "v0.0.1"]);
         let orphan_base = resolve(&repository, "v0.0.1").expect("orphan baseline");
         checked_git(&fixture, ["reset", "--hard", "--quiet", "HEAD~1"]);
@@ -1032,9 +1038,7 @@ mod release_prepare_tests {
                 .block_on(reconcile_notes_with_service(
                     &ReconcileNotesArguments {
                         baseline_tag: "v0.0.1".to_owned(),
-                        source_commit: resolve(&disconnected, "HEAD")
-                            .expect("head")
-                            .to_hex(),
+                        source_commit: resolve(&disconnected, "HEAD").expect("head").to_hex(),
                         ..base.clone()
                     },
                     &output_root,
