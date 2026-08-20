@@ -192,6 +192,11 @@ impl CleanInstallCase {
             // argument, so each refuses with the Python `exit 2` before any
             // plugin-root guard or child dispatch. `settle-next-action` instead
             // owns a real `-h`/`--help` usage action and exits 0 (default arm).
+            // Both decompose owner verbs parse with `add_help=False`, so the
+            // clean-install `--help` token reads as an unknown flag and each
+            // refuses with the argparse usage exit after proving dispatch.
+            | "clean-install-decompose-prepare"
+            | "clean-install-decompose-panel-dispatch"
             | "clean-install-design-driver"
             | "clean-install-design-step0-parse"
             | "clean-install-design-step0-session"
@@ -824,6 +829,12 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "title-transition",
     ),
     CleanInstallCase::new("clean-install-deps-apply", "deps", "apply"),
+    CleanInstallCase::new("clean-install-decompose-prepare", "decompose", "prepare"),
+    CleanInstallCase::new(
+        "clean-install-decompose-panel-dispatch",
+        "decompose",
+        "panel-dispatch",
+    ),
     CleanInstallCase::new(
         "clean-install-design-init-runparams",
         "design",

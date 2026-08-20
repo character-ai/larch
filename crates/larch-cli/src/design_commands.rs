@@ -597,13 +597,10 @@ fn merge_router_flags(run_params: &Path, warn_lines: &mut Vec<String>, flags: &M
 type PauseLoad<'a> = &'a dyn Fn(&[OsString]) -> (i32, String);
 
 fn live_pause_load(arguments: &[OsString]) -> (i32, String) {
-    match run_python_verb(arguments.to_vec(), PAUSE_LOAD_TIMEOUT) {
-        Ok(output) => (
-            output.status().code().unwrap_or(1),
-            String::from_utf8_lossy(output.stdout()).into_owned(),
-        ),
-        Err(_error) => (1, String::new()),
-    }
+    crate::runtime_entrypoint::code_and_stdout(run_python_verb(
+        arguments.to_vec(),
+        PAUSE_LOAD_TIMEOUT,
+    ))
 }
 
 /// The `design route` entry point: Step 0b routing decision.

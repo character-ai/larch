@@ -1,7 +1,6 @@
 # pyright: reportPrivateUsage=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportArgumentType=false, reportAttributeAccessIssue=false
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,7 +13,6 @@ from larch.agents import agents
 from larch.implement import checks
 from larch.implement import checks_lint_fix as _clf
 from larch.implement import ci_monitor
-from larch.design import decompose
 from larch.core import external_defaults
 from larch.git import rebase
 
@@ -119,85 +117,11 @@ def test_checks_lint_fix_uses_lint_fix_coder_role(tmp_path: Path, monkeypatch: p
     assert outcome.coder_tool == "cursor"
 
 
-
 def test_ci_monitor_available_tiers_uses_ci_recovery_role(monkeypatch: pytest.MonkeyPatch) -> None:
     seen = _tool_order_probe(monkeypatch, ci_monitor, "implement.ci_recovery_fixer", ("codex", "claude"))
 
     assert ci_monitor._available_tiers() == ("codex", "claude")
     assert seen == ["implement.ci_recovery_fixer"]
-
-
-
-def test_decompose_panel_and_aggregator_use_decompose_roles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    seen_role_default: list[str] = []
-    seen_slots: list[str] = []
-    plan = tmp_path / "plan.txt"
-    feature = tmp_path / "feature-description.txt"
-    plan.write_text("plan\n", encoding="utf-8")
-    feature.write_text("feature\n", encoding="utf-8")
-
-    def fake_role_default(role_id: str, *_args: object, **_kwargs: object) -> config.RoleDefault:
-        seen_role_default.append(role_id)
-        assert role_id == "design.decompose_panel"
-        return config.RoleDefault(
-            role_id=role_id,
-            kind="slot_panel",
-            decompose_panel_policy=config.DecomposePanelPolicy(parallel_tools=("cursor",), panel_no_fallback=True, archetypes=decompose.DECOMPOSE_ARCHETYPES),
-        )
-
-    def fake_slot_defaults(role_id: str, *_args: object, **_kwargs: object) -> tuple[config.SlotDefault, ...]:
-        seen_slots.append(role_id)
-        if role_id == "design.decompose_panel":
-            return tuple(
-                config.SlotDefault(slot=f"sentinel-{arch}", tool="cursor", output=f"sentinel-{arch}.out", archetype=arch)
-                for arch in decompose.DECOMPOSE_ARCHETYPES
-            )
-        if role_id == "design.decompose_aggregator":
-            return (config.SlotDefault(slot="sentinel-aggregator", tool="codex", output="agg.out"),)
-        raise AssertionError(role_id)
-
-    def fake_render(_archetype: str, *, out: Path, **_kwargs: object) -> None:
-        out.write_text("prompt\n", encoding="utf-8")
-
-    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        slots_file = Path(cmd[cmd.index("--slots-file") + 1])
-        outputs = []
-        for line in slots_file.read_text(encoding="utf-8").splitlines():
-            row = json.loads(line)
-            output = Path(row["output"])
-            output.write_text("## Recommendation\nsplit\n", encoding="utf-8")
-            outputs.append(str(output))
-        paths = tmp_path / "resolved-paths.txt"
-        paths.write_text("".join(f"{path}\n" for path in outputs), encoding="utf-8")
-        return subprocess.CompletedProcess(cmd, 0, f"DISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nALL_OUTPUT_FILES_PATH={paths}\nFALLBACK_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\n", "")
-
-    monkeypatch.setattr(decompose.external_defaults, "role_default", fake_role_default)
-    monkeypatch.setattr(decompose.external_defaults, "slot_defaults", fake_slot_defaults)
-    monkeypatch.setattr(decompose, "_render_decompose_prompt", fake_render)
-    monkeypatch.setattr(decompose.subprocess, "run", fake_run)
-
-    decompose.dispatch_panel(design_tmpdir=tmp_path, codex_present=False, cursor_present=True, mode="plan", plan_file=plan, feature_file=feature)
-    panel_outputs = tmp_path / "decompose" / "panel-outputs.ndjson"
-    status = decompose.aggregate_partition(design_tmpdir=tmp_path, panel_outputs_file=panel_outputs, codex_present=True, cursor_present=True, output=tmp_path / "partition.md")
-
-    assert status == "ok"
-    assert seen_role_default == ["design.decompose_panel"]
-    assert "design.decompose_panel" in seen_slots
-    assert "design.decompose_aggregator" in seen_slots
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def test_debate_roles_do_not_alter_existing_panels() -> None:

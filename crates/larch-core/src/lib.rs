@@ -175,6 +175,14 @@ pub use connectivity::{
 
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
 pub use design::{
+    BuildOutcome as PartitionBuildOutcome, DECOMPOSE_ARCHETYPES, DependencyGraph,
+    DependencyMigration, FiledPiece, MIN_PARTITION_PIECES, PLAN_STUB_INNER,
+    PROMPT_PREFIX_LINE_MAX as DECOMPOSE_PROMPT_PREFIX_LINE_MAX, PartitionEdge, apply_migration,
+    build_partition as build_partition_artifacts, intra_piece_postcondition, is_ascii_digits,
+    live_original_edges_match_migration, migration_postcondition, parse_filed_pieces,
+    parse_intra_piece_edges, parse_issue_url, replacement_edges,
+};
+pub use design::{
     CANONICAL_TRAILER_ORDER, FIRM_HEADING_KINDS, FORCE_PLAN_CONTRACT_ERROR, HEADING_KINDS,
     HeadingEvent, HeadingKind, HeadingMatch, M1_DEFECT_TOKENS, M2_DEFECT_TOKENS,
     OPTIONAL_SIZE_TRAILER_KEYS, OVERSIZE_OVERRIDE_OPERATOR, OptionalMetadata,

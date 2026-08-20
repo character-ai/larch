@@ -52,6 +52,7 @@ mod combine_issues_commands;
 mod complete_umbrella_commands;
 mod debate_commands;
 mod debate_publication_commands;
+mod decompose_commands;
 mod deps_audit_commands;
 mod design_commands;
 mod design_step0_commands;
@@ -261,6 +262,9 @@ enum Domain {
     /// The `/deps` open-issue dependency audit: reads, plan, and one apply.
     #[command(subcommand)]
     Deps(DepsCommand),
+    /// `/design` Split-path decomposition and panel commands.
+    #[command(subcommand)]
+    Decompose(DecomposeCommand),
     /// `/design` Step 0 argv parsing, routing, and run-params initialization.
     #[command(subcommand)]
     Design(DesignCommand),
@@ -1070,6 +1074,28 @@ enum ChecksCommand {
     /// Assert that pinned `contains` literals are present in their targets.
     #[command(name = "contains-pins", disable_help_flag = true)]
     ContainsPins(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum DecomposeCommand {
+    /// Build the hash-compatible prepared-partition artifacts.
+    #[command(disable_help_flag = true)]
+    Prepare(RawCompatibilityArguments),
+    /// Record the filed-issue mapping from an `/issue` batch capture.
+    #[command(disable_help_flag = true)]
+    Annotate(RawCompatibilityArguments),
+    /// Migrate the original issue's dependency graph onto its pieces.
+    #[command(name = "migrate-deps", disable_help_flag = true)]
+    MigrateDeps(RawCompatibilityArguments),
+    /// Comment on and close the partitioned original issue.
+    #[command(name = "close-original", disable_help_flag = true)]
+    CloseOriginal(RawCompatibilityArguments),
+    /// Dispatch the four-archetype decomposition proposal panel.
+    #[command(name = "panel-dispatch", disable_help_flag = true)]
+    PanelDispatch(RawCompatibilityArguments),
+    /// Merge the panel proposals into one canonical partition.
+    #[command(disable_help_flag = true)]
+    Aggregate(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2652,6 +2678,26 @@ fn run(
         Domain::NamedBlock(NamedBlockCommand::Write(arguments)) => {
             Ok(issue_wire_commands::named_block_write(&arguments.arguments))
         }
+        Domain::Decompose(command) => Ok(match command {
+            DecomposeCommand::Prepare(arguments) => {
+                decompose_commands::prepare_main(&arguments.arguments)
+            }
+            DecomposeCommand::Annotate(arguments) => {
+                decompose_commands::annotate_main(&arguments.arguments)
+            }
+            DecomposeCommand::MigrateDeps(arguments) => {
+                decompose_commands::migrate_deps_main(&arguments.arguments)
+            }
+            DecomposeCommand::CloseOriginal(arguments) => {
+                decompose_commands::close_original_main(&arguments.arguments)
+            }
+            DecomposeCommand::PanelDispatch(arguments) => {
+                decompose_commands::panel_dispatch_main(&arguments.arguments)
+            }
+            DecomposeCommand::Aggregate(arguments) => {
+                decompose_commands::aggregate_main(&arguments.arguments)
+            }
+        }),
         Domain::Design(command) => Ok(command.run()),
         Domain::Scout(command) => Ok(match command {
             ScoutCommand::DynamicArchetypes(arguments) => {
