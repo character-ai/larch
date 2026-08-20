@@ -150,6 +150,30 @@ points plus their exclusive helpers are removed from
 `python/larch/implement/dispatch_commit_route.py`. That module stays for the
 still-Python `commit`, `commit-route`, and `checks-commit-route` family.
 
+### Relevant-checks selection cutover
+
+Issue #8616 moved two commands to Rust: `checks run-relevant` and
+`checks contains-pins`. Callers enter through `scripts/larch.sh`; the
+`/implement` checks leg in `python/larch/implement/dispatch_commit_route.py`
+now runs `checks run-relevant` through the verified bootstrap via the
+`runtime="larch"` path of `_run_leg_with_timeout`, and the CI `contains-pins`
+job builds the executable and dispatches through `scripts/larch.sh`.
+`crates/larch-cli/src/checks_run_relevant_commands.rs` owns both verbs, reusing
+the pure selection, coverage/phase derivation, failure-digest, and contains-pin
+scanner in `crates/larch-core/src/implement/` and delegating the still-Python
+`checks rust-clippy` fallback (#8617) through `run_python_verb`. It spawns
+`pre-commit` through the new `HostUtilityProgram::PreCommit` process owner (see
+the security note in `docs/security/workflow-trust-and-mutations.md`).
+
+The Python `checks_run_relevant_main` entrypoint is deleted, and the
+`check_contains_pins_main` entrypoint is renamed to the internal
+`run_contains_pins_scan`; both the `run_relevant_checks` orchestration and that
+internal scanner stay in `python/larch/implement/checks_run_relevant.py` because
+`checks lint-fix`/`repair-loop` (#8625, #8627) still call them in process. Those
+siblings retire the residual Python. The command-registry milestones are
+complete, and the two CLI registrations plus the `checks.py` re-exports are
+removed atomically.
+
 ### Implement Step 8 ship-dispatch cutover
 
 Issue #8624 moved four commands to Rust: `implement step-8-python-guard`,

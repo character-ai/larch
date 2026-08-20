@@ -310,10 +310,10 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
     <tr><td colspan="2">Verify and install the exact release-matched Rust executable when needed, then replace the shim process with it. Local <code>--plugin-dir</code> checkouts require an explicit <code>LARCH_BINARY</code>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
-      <td><a href="docs/skills.md#relevant-checks-script"><code>python/cli.py checks run-relevant</code></a></td>
+      <td><a href="docs/skills.md#relevant-checks-script"><code>scripts/larch.sh checks run-relevant</code></a></td>
       <td><code>--site &lt;site&gt; [--tmpdir DIR] [--repo-root DIR] [--allow-skip]</code></td>
     </tr>
-    <tr><td colspan="2">Consumer-provided validation entrypoint (not a SlashCommand skill). Orchestrators call it through <code>python/cli.py checks run-relevant --site &lt;site&gt; --tmpdir &lt;tmpdir&gt;</code>. <strong>Not part of the plugin surface; each consuming repo provides its own executable script.</strong></td></tr>
+    <tr><td colspan="2">Consumer-provided validation entrypoint (not a SlashCommand skill). Orchestrators call it through <code>scripts/larch.sh checks run-relevant --site &lt;site&gt; --tmpdir &lt;tmpdir&gt;</code>. <strong>Not part of the plugin surface; each consuming repo provides its own executable script.</strong></td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#changed-path-rust-clippy-selector"><code>python/cli.py checks rust-clippy</code></a></td>

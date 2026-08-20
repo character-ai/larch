@@ -50,7 +50,7 @@ Per-tool model defaults and plugin `userConfig` environment variables stay in `p
 5. No change is required for `scripts/larch.sh agent run-external-agent`'s raw `--tool` label: it sanitizes `.meta` `TOOL=` for any input. Prefer a label-safe id (alphanumerics, `.`, `_`, `-`) so `.meta` `TOOL=` matches the registry id verbatim; non-label-safe ids may still collide after sanitization (e.g. `tool/a` and `tool?a` both become `tool_a`), so `.meta` `TOOL=` is not a bijection from arbitrary labels. Direct execution remains closed to approved typed vendor programs; add an explicit process-port variant before a new vendor executable can launch.
 6. If the new tool produces output collected by `scripts/larch.sh agent collect-results`, ensure its tool derivation can classify the new id from metadata and filenames so dispatcher fallback can attribute results.
 7. Update the relevant sibling `.md` contracts.
-8. Run `make lint` and `python3 python/cli.py checks run-relevant --site local --tmpdir "${TMPDIR:-/tmp}"`.
+8. Run `make lint` and `scripts/larch.sh checks run-relevant --site local --tmpdir "${TMPDIR:-/tmp}"`.
 
 ## Collector integration
 

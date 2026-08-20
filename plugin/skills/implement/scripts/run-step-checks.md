@@ -5,7 +5,7 @@ The wrapper resolves persisted `REPO_ROOT`, computes a checks-input identity (`H
 
 ## Caller
 
-`skills/implement/SKILL.md` invokes this wrapper for active Step 3 with `--site step3 --commit-site step4 --rebase-checkpoint-4r`. Step 5 self-review uses `--site step5-self-review --commit-site step5-self-review`. Legacy helper-only call sites may still pass only `--site SITE` to launch `python/cli.py checks run-relevant` through the same bgjob transport.
+`skills/implement/SKILL.md` invokes this wrapper for active Step 3 with `--site step3 --commit-site step4 --rebase-checkpoint-4r`. Step 5 self-review uses `--site step5-self-review --commit-site step5-self-review`. Legacy helper-only call sites may still pass only `--site SITE` to launch `scripts/larch.sh checks run-relevant` through the same bgjob transport.
 
 ## Identity contract
 

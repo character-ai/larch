@@ -103,6 +103,17 @@ five-second shutdown grace, and 64 KiB capture cap, and caps normalized failure
 evidence before it reaches private artifacts. `analyze-bugs report` is local
 only: it may render a follow-up issue body, but never mutates GitHub.
 
+`checks run-relevant` uses the closed `HostUtilityProgram::PreCommit` case
+(#8616) to run the repository's `pre-commit` hooks over the changed-file
+selection. The child inherits only the non-secret `ChildEnvironment::production`
+allowlist plus the bounded Cargo build selectors, the pre-commit hook-skip
+token, and the XDG cache/config roots; no credential variable is forwarded. The
+captured log is redacted before it reaches any private artifact, and the
+bounded Rust Clippy fallback still routes through the still-Python
+`checks rust-clippy` verb (#8617). The contains-pin probe never executes an
+external program: it reads the repository's `scripts/test-*.sh` harnesses and
+their pinned target files directly.
+
 Rust Codex-home preparation likewise creates a fresh confined directory below
 the caller's private root. It strips inherited API settings and prior trusted
 instructions from copied configuration, accepts a trusted-instructions file

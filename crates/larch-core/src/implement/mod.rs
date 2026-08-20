@@ -3,13 +3,17 @@
 //! Recovery-path resolution, porcelain helpers, lean manifest state, and
 //! step-checks site mapping for later dispatch cutovers.
 
+mod contains_pins;
 mod helpers;
 mod identity;
 mod manifest;
 mod recovery;
+mod relevant_checks;
+mod relevant_checks_digest;
 mod self_edit_log;
 mod step_checks;
 
+pub use contains_pins::{ContainsPinsScan, normalize_rel, read_changed_scope, scan_contains_pins};
 pub use helpers::{
     RecoveryParse, load_digest_map, parse_porcelain_z, rel_under_tmp, resolve_tmpdir_path,
     sha256_file, tmpdir_rel_in_repo, write_bytes_atomic, write_digest_map,
@@ -26,9 +30,14 @@ pub use manifest::{
     DispatchState, clear_external_scout_paths, manifest_legacy_fingerprint, path_under_submodule,
 };
 pub use recovery::{RecoveryPorcelainInputs, compute_recovery_paths};
+pub use relevant_checks::{
+    ChecksResult, WORKSPACE_INPUTS, coverage_from_markers, is_rust_relevant_path,
+    phase_from_markers, scan_checks_log_markers,
+};
+pub use relevant_checks_digest::build_checks_failure_digest;
 pub use self_edit_log::{
-    SELF_EDIT_LOG_NAME, SelfEditRecord, file_sha256, normalize_path, read_self_edits,
-    validate_session_tmpdir,
+    SELF_EDIT_LOG_NAME, SelfEditRecord, digest_paths, file_sha256, normalize_path, read_self_edits,
+    record_self_edits, validate_session_tmpdir,
 };
 pub use step_checks::{
     CHECKS_TERMINAL_ACTIONS, STEP6_CHECKS_STEP, StepChecksSite, checks_step_for_site,

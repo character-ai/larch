@@ -412,17 +412,23 @@ def _finalize_leg_process(process: subprocess.Popen[str], *, wait_timeout_s: flo
         process.wait(timeout=wait_timeout_s)
 
 
-def _run_leg_with_timeout(
+def _run_leg_with_timeout(  # noqa: PLR0913 - keyword-only leg parameters plus the Rust/Python runtime selector (#8616)
     *,
     argv: Sequence[str],
     deadline_ms: int,
     label: str,
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
+    runtime: Literal["python", "larch"] = "python",
 ) -> subprocess.CompletedProcess[str] | subprocess.TimeoutExpired:
     _install_leg_cleanup_hooks()
     timeout_s = max(deadline_ms, 1) / 1000
-    full_cmd = [sys.executable, str(_current_cli_path()), *argv]
+    if runtime == "larch":
+        # Rust-owned commands (e.g. `checks run-relevant`, #8616) run through the
+        # verified bootstrap script, not the Python dispatcher, per I-Runtime-1.
+        full_cmd = [str(_larch_entrypoint()), *argv]
+    else:
+        full_cmd = [sys.executable, str(_current_cli_path()), *argv]
     # pylint: disable-next=consider-using-with
     process = subprocess.Popen(
         full_cmd,

@@ -20,9 +20,8 @@ from larch.implement.checks_run_relevant import (
     normalize_max_iter,
     validate_tmpdir,
     run_relevant_checks,
-    check_contains_pins_main,
+    run_contains_pins_scan,
     checks_fixer_evidence_main,
-    checks_run_relevant_main,
 )
 from larch.implement.rust_clippy import rust_clippy_main
 
@@ -39,11 +38,9 @@ __all__ = [
     "ChecksResult",
     "FixOutcome",
     "LoopResult",
-    "check_contains_pins_main",
     "checks_fixer_evidence_main",
     "checks_lint_fix_main",
     "checks_repair_loop_main",
-    "checks_run_relevant_main",
     "coder_delta_guards",
     "escalate",
     "external_defaults",
@@ -51,6 +48,7 @@ __all__ = [
     "normalize_max_iter",
     "run_check_fix_loop",
     "run_checks_phase",
+    "run_contains_pins_scan",
     "run_lint_fix",
     "run_relevant_checks",
     "rust_clippy_main",

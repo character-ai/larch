@@ -280,7 +280,7 @@ also feed the single self-validation command in §9.
 
 ### 9. The relevant-checks contract (one command to self-validate)
 
-*Larch source: `python/cli.py checks run-relevant`, `docs/skills.md` ("Relevant checks script"), README ("Non-skill entrypoints"). Disposition: **Implement** your own.*
+*Larch source: `scripts/larch.sh checks run-relevant`, `docs/skills.md` ("Relevant checks script"), README ("Non-skill entrypoints"). Disposition: **Implement** your own.*
 
 This is the most important item in the guide, and the one most agents miss. It
 answers a single question: how does the agent know its change is good?
@@ -295,7 +295,7 @@ consuming repo provides its own at the same entrypoint. You can see the behavior
 larch expects by running the reference:
 
 ```text
-$ python3 python/cli.py checks run-relevant --site my-change --tmpdir <session dir>
+$ scripts/larch.sh checks run-relevant --site my-change --tmpdir <session dir>
 RELEVANT_CHECKS_OK=true SITE=my-change COVERAGE=full PHASE=unknown
 ```
 

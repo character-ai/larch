@@ -239,7 +239,7 @@ Then atomic-write `<MANIFEST_PATH>` and exit 0. The dispatcher validates schema,
 
 ## What you do NOT do
 
-- No `git add`, `git commit`, push, PR creation, `python/cli.py checks run-relevant`, or larch skill invocation.
+- No `git add`, `git commit`, push, PR creation, `scripts/larch.sh checks run-relevant`, or larch skill invocation.
 - No progress narration to stdout for Claude. The dispatcher captures stdout to a sidecar log.
 - Do not modify the manifest after writing it. One atomic write per invocation, then exit.
 

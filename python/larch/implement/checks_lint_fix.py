@@ -604,7 +604,7 @@ def _compose_prompt(
         )
     else:
         fix_sentence = (
-            f"Fix the repository so `python/cli.py checks run-relevant` passes for {site_label}."
+            f"Fix the repository so `scripts/larch.sh checks run-relevant` passes for {site_label}."
         )
     body = _read_log_tail(path=checks_log, max_bytes=_PROMPT_TAIL_BYTES)
     body = _sanitize_log_fence(body)
@@ -691,7 +691,7 @@ def _codex_lint_fix_prompt_appendix(site: str) -> str:
         "",
         f"This Codex lint-fix run targets machine site `{site}`.",
         "The parent orchestrator owns verification after Codex exits.",
-        f"It runs `python3 python/cli.py checks run-relevant --site {site} --tmpdir <canonical session tmpdir>` outside the Codex sandbox.",
+        f"It runs `scripts/larch.sh checks run-relevant --site {site} --tmpdir <canonical session tmpdir>` outside the Codex sandbox.",
         "Make repository file edits only.",
         "Do not run `exec_command`, shell, Bash, or `checks run-relevant` inside the Codex sandbox.",
         "Do not create ad-hoc temporary verification roots or scratch directories under `/tmp`.",

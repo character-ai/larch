@@ -452,13 +452,13 @@ Operator-run release cut for `character-ai/larch` (`disable-model-invocation: tr
 
 ### Relevant checks script
 
-**Path**: `python/cli.py checks run-relevant`
+**Path**: `scripts/larch.sh checks run-relevant`
 
 **Arguments**: `--site <site> [--tmpdir DIR] [--repo-root DIR] [--allow-skip]`
 
-**Source**: consumer repo file at `python/cli.py checks run-relevant` (larch ships a reference implementation in-tree for this repository).
+**Source**: consumer repo file at `scripts/larch.sh checks run-relevant` (larch ships a reference implementation in-tree for this repository).
 
-Run relevant local checks from Python: changed-file `pre-commit`, bounded changed-target Clippy where Rust paths are present, and contains-pin validation. It does not run broad make targets or a full-repository agent-lint scan. Human operators run it with `python3 python/cli.py checks run-relevant --site local --tmpdir <tmpdir>`, or another site label. `/implement` and `/review` use the same CLI without spending Skill-tool tokens on the green path. The default path fails closed on structural errors; `RELEVANT_CHECKS_SKIPPED=true` is reserved for explicit `--allow-skip` test paths. **Not part of the plugin SlashCommand surface.**
+Run relevant local checks from Python: changed-file `pre-commit`, bounded changed-target Clippy where Rust paths are present, and contains-pin validation. It does not run broad make targets or a full-repository agent-lint scan. Human operators run it with `scripts/larch.sh checks run-relevant --site local --tmpdir <tmpdir>`, or another site label. `/implement` and `/review` use the same CLI without spending Skill-tool tokens on the green path. The default path fails closed on structural errors; `RELEVANT_CHECKS_SKIPPED=true` is reserved for explicit `--allow-skip` test paths. **Not part of the plugin SlashCommand surface.**
 
 ### Changed-path Rust Clippy selector
 

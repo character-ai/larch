@@ -3,7 +3,7 @@
 # CI lint job uses: make lint-only (repo-wide via pre-commit run --all-files); harness
 # matrix runs make test-harnesses-N separately. Local make lint runs test-harnesses
 # then lint-only.
-# python/cli.py checks run-relevant uses: pre-commit run --files <changed-files> (scoped).
+# scripts/larch.sh checks run-relevant uses: pre-commit run --files <changed-files> (scoped).
 # The default stage accepts only bounded, filename-aware work. Repository-wide
 # policy, secret, and agent scans stay in their dedicated CI jobs or manual stage.
 # Developers use: pre-commit install (opt-in git hook)
