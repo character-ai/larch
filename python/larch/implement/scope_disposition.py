@@ -12,12 +12,10 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
+from typing import Literal, cast
 
 from larch import io as larch_io
 from larch.core import config, proc
@@ -116,34 +114,25 @@ def _run(
     action: str,
     *,
     tmpdir: Path,
-    runner: Runner = proc,
-    repo_root: Path | None = None,
-    plan_file: Path | None = None,
-    manifest_path: Path | None = None,
-    disposition: str = "",
-    repo: str = "",
-    tracking_issue_number: str = "",
-    run_id: str = "",
+    paths: Mapping[str, Path | None] | None = None,
+    fields: Mapping[str, str] | None = None,
 ) -> CommandResult:
-    """Invoke one Rust-owned action through the verified bootstrap script."""
+    """Invoke one Rust-owned action through the verified bootstrap script.
+
+    `paths` and `fields` carry the action's optional `--flag` values; empty and
+    `None` entries are omitted so each action sees only the flags it declares.
+    The bootstrap always runs through `proc`: a caller's `Runner` doubles that
+    caller's own `git`/`gh` argv, and cannot answer for the owning binary.
+    """
     argv: list[str] = [*_VERB, action, "--tmpdir", str(tmpdir)]
-    for option, value in (
-        ("--repo-root", repo_root),
-        ("--plan-file", plan_file),
-        ("--manifest-path", manifest_path),
-    ):
+    for option, value in (paths or {}).items():
         if value is not None:
             argv.extend([option, str(value)])
-    for option, text in (
-        ("--disposition", disposition),
-        ("--repo", repo),
-        ("--tracking-issue", tracking_issue_number),
-        ("--run-id", run_id),
-    ):
+    for option, text in (fields or {}).items():
         if text:
             argv.extend([option, text])
     root = Path(__file__).resolve().parents[3]
-    return runner.run(
+    return proc.run(
         [str(larch_entrypoint(root)), *argv], env=larch_entrypoint_env(root)
     )
 
@@ -226,52 +215,6 @@ def load_coverage(tmpdir: Path) -> PlanCoverage | None:
         coverage_file=str(data.get("coverage_file") or ""),
         untouched_file=str(data.get("untouched_file") or ""),
         todos_file=str(data.get("todos_file") or ""),
-    )
-
-
-def write_coverage(coverage: PlanCoverage, *, tmpdir: Path) -> None:
-    """Publish coverage wire companions for offline fixtures and tests.
-
-    Production computation belongs to the Rust owner; this helper only serializes
-    an already-built PlanCoverage into the on-disk grammar consumers expect.
-    """
-    from dataclasses import asdict
-
-    _ = larch_io.validate_trusted_directory(tmpdir)
-    larch_io.trusted_atomic_write(
-        Path(coverage.untouched_file),
-        "".join(f"{path}\n" for path in coverage.untouched_paths),
-        root=tmpdir,
-    )
-    larch_io.trusted_atomic_write(
-        Path(coverage.todos_file),
-        "".join(f"- {line}\n" for line in coverage.todos_left),
-        root=tmpdir,
-    )
-    larch_io.trusted_atomic_write(
-        coverage_path(tmpdir),
-        json.dumps(asdict(coverage), indent=2, sort_keys=True) + "\n",
-        root=tmpdir,
-    )
-    rows: list[tuple[str, object]] = [
-        ("PLAN_COVERAGE_TOTAL", coverage.total),
-        ("PLAN_COVERAGE_TOUCHED", coverage.touched),
-        ("PLAN_COVERAGE_UNTOUCHED", coverage.untouched),
-        ("PLAN_COVERAGE_UNTOUCHED_PERCENT", coverage.untouched_percent),
-        ("PLAN_COVERAGE_BAND", coverage.band),
-        ("PLAN_COVERAGE_FILE", coverage.coverage_file),
-        ("PLAN_COVERAGE_UNTOUCHED_FILE", coverage.untouched_file),
-        ("TODOS_LEFT_COUNT", coverage.todos_left_count),
-        ("TODOS_LEFT_FILE", coverage.todos_file),
-        ("PLAN_COVERAGE_FINGERPRINT", coverage.fingerprint),
-        (
-            "PLAN_COVERAGE_DISPOSITION_REQUIRED",
-            str(coverage.disposition_required).lower(),
-        ),
-        ("PLAN_FIDELITY_FORCED", str(coverage.plan_fidelity_forced).lower()),
-    ]
-    larch_io.trusted_atomic_write(
-        coverage_env_path(tmpdir), larch_io.format_kvs(rows), root=tmpdir
     )
 
 
@@ -358,7 +301,6 @@ def compute_coverage(
     repo_root: Path,
     plan_file: Path | None = None,
     manifest_path: Path | None = None,
-    runner: Runner = proc,
 ) -> PlanCoverage:
     """Recompute and republish plan coverage through the Rust owner.
 
@@ -368,10 +310,11 @@ def compute_coverage(
     result = _run(
         "compute",
         tmpdir=tmpdir,
-        repo_root=repo_root,
-        plan_file=plan_file,
-        manifest_path=manifest_path,
-        runner=runner,
+        paths={
+            "--repo-root": repo_root,
+            "--plan-file": plan_file,
+            "--manifest-path": manifest_path,
+        },
     )
     if result.returncode != config.EXIT_OK:
         raise ShipError(_refusal(result, "compute"))
@@ -387,14 +330,12 @@ def compute_and_write_coverage(
     repo_root: Path,
     plan_file: Path | None = None,
     manifest_path: Path | None = None,
-    runner: Runner = proc,
 ) -> PlanCoverage:
     return compute_coverage(
         tmpdir=tmpdir,
         repo_root=repo_root,
         plan_file=plan_file,
         manifest_path=manifest_path,
-        runner=runner,
     )
 
 
@@ -419,15 +360,12 @@ def validate_disposition_for_ship(
     tmpdir: Path,
     repo_root: Path,
     manifest_path: Path | None = None,
-    runner: Runner = proc,
 ) -> ValidationResult:
     result = _require(
         _run(
             "validate-ship",
             tmpdir=tmpdir,
-            repo_root=repo_root,
-            manifest_path=manifest_path,
-            runner=runner,
+            paths={"--repo-root": repo_root, "--manifest-path": manifest_path},
         ),
         "validate-ship",
     )
@@ -439,15 +377,12 @@ def invalidate_stale_disposition(
     tmpdir: Path,
     repo_root: Path,
     manifest_path: Path | None = None,
-    runner: Runner = proc,
 ) -> ValidationResult:
     result = _require(
         _run(
             "invalidate-if-stale",
             tmpdir=tmpdir,
-            repo_root=repo_root,
-            manifest_path=manifest_path,
-            runner=runner,
+            paths={"--repo-root": repo_root, "--manifest-path": manifest_path},
         ),
         "invalidate-if-stale",
     )
@@ -459,13 +394,11 @@ def require_valid_disposition_for_ship(
     tmpdir: Path,
     repo_root: Path,
     manifest_path: Path | None = None,
-    runner: Runner = proc,
 ) -> None:
     if not validate_disposition_for_ship(
         tmpdir=tmpdir,
         repo_root=repo_root,
         manifest_path=manifest_path,
-        runner=runner,
     ).ok:
         raise NeedsUserInput(config.NEEDS_USER_SCOPE_DISPOSITION)
 
@@ -477,6 +410,13 @@ def require_pr_mutation_scope_disposition(
     manifest_path: Path | None = None,
     runner: Runner = proc,
 ) -> None:
+    """Refuse a PR mutation whose plan scope lacks a valid disposition.
+
+    `runner` stays in the signature for the `gh`/`pr` mutation-gate protocol;
+    the gate itself reaches its Rust owner through the verified bootstrap, not
+    through the caller's `git`/`gh` runner.
+    """
+    _ = runner
     context = _validated_implement_context(tmpdir, manifest_path=manifest_path)
     if context is None or not is_pr_mutation_gate_relevant(
         tmpdir=context.tmpdir, manifest_path=context.manifest_path
@@ -486,7 +426,6 @@ def require_pr_mutation_scope_disposition(
         tmpdir=context.tmpdir,
         repo_root=repo_root,
         manifest_path=context.manifest_path,
-        runner=runner,
     )
 
 
@@ -500,7 +439,6 @@ def record_disposition(  # noqa: PLR0913 - one keyword per recorded wire field
     run_id: str = "",
     coverage: PlanCoverage | None = None,
     manifest_path: Path | None = None,
-    runner: Runner = proc,
 ) -> DispositionRecord:
     """Record the operator's disposition through the Rust owner.
 
@@ -512,13 +450,13 @@ def record_disposition(  # noqa: PLR0913 - one keyword per recorded wire field
     result = _run(
         "record",
         tmpdir=tmpdir,
-        repo_root=repo_root,
-        manifest_path=manifest_path,
-        disposition=disposition,
-        repo=repo,
-        tracking_issue_number=tracking_issue_number,
-        run_id=run_id,
-        runner=runner,
+        paths={"--repo-root": repo_root, "--manifest-path": manifest_path},
+        fields={
+            "--disposition": disposition,
+            "--repo": repo,
+            "--tracking-issue": tracking_issue_number,
+            "--run-id": run_id,
+        },
     )
     if result.returncode != config.EXIT_OK:
         raise ShipError(_refusal(result, "record"))
@@ -533,8 +471,7 @@ def _inventory(context: ValidatedImplementContext, repo_root: Path) -> str:
     result = _run(
         "render-deferred-inventory",
         tmpdir=context.tmpdir,
-        repo_root=repo_root,
-        manifest_path=context.manifest_path,
+        paths={"--repo-root": repo_root, "--manifest-path": context.manifest_path},
     )
     if result.returncode != config.EXIT_OK:
         raise ShipError(_refusal(result, "render-deferred-inventory"))
@@ -577,7 +514,9 @@ def disposition_deferred_inventory(
 
 def plan_coverage_summary_line(tmpdir: Path, *, manifest_path: Path | None = None) -> str:
     """Render the final report's optional `- **Plan coverage**:` line body."""
-    result = _run("summary-line", tmpdir=tmpdir, manifest_path=manifest_path)
+    result = _run(
+        "summary-line", tmpdir=tmpdir, paths={"--manifest-path": manifest_path}
+    )
     fields = larch_io.parse_kv(result.stdout, cr_strip="strip")
     if result.returncode != config.EXIT_OK:
         raise ShipError(

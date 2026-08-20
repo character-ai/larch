@@ -150,6 +150,19 @@ fn choices(values: &[&str]) -> String {
         .join(", ")
 }
 
+/// Render the optional `Plan coverage` body for the terminal report.
+///
+/// `final-report write` runs in this process, so it reads the line here instead
+/// of re-entering the bootstrap. Callers keep the owner's own error text: an
+/// expected post-merge stale fingerprint already degrades to an empty line, so
+/// anything left is a coverage-integrity failure.
+pub fn plan_coverage_report_line(
+    tmpdir: &Path,
+    manifest: Option<&Path>,
+) -> Result<String, String> {
+    plan_coverage_summary_line(tmpdir, manifest)
+}
+
 /// Public entry for `implement scope-disposition`.
 pub fn scope_disposition(arguments: &[OsString]) -> ExitCode {
     let parsed = parse_with_flags(arguments, &OPTIONS, &["-h", "--help"], 1);
@@ -285,8 +298,7 @@ fn run_action(request: &ScopeRequest) -> Result<ExitCode, String> {
         }
         "invalidate-if-stale" | "validate-ship" => {
             let result = validate_for_ship(tmpdir, repo_root, manifest)?;
-            if request.action == "invalidate-if-stale"
-                && result.reason == "scope-disposition-stale"
+            if request.action == "invalidate-if-stale" && result.reason == "scope-disposition-stale"
             {
                 let _ = fs::remove_file(tmpdir.join(DISPOSITION_JSON));
             }

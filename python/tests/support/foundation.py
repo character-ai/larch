@@ -86,7 +86,6 @@ __all__ = [
     "seed_run_params",
     "write_design_source_env",
     "write_gh_pr_stub",
-    "write_required_plan_coverage",
     "write_session_env",
 ]
 
@@ -551,33 +550,6 @@ def make_adverse_push_repo(tmp_path: Path) -> tuple[Path, Path, str, str]:
     _ = _fixture_git(repo, "add", "feature.txt")
     _ = _fixture_git(repo, "commit", "-q", "-m", "feature")
     return repo, origin, _fixture_git(repo, "rev-parse", "origin/feature-x"), _fixture_git(origin, "rev-parse", "refs/heads/main")
-
-
-def write_required_plan_coverage(
-    tmp_path: Path,
-    *,
-    fingerprint: str,
-) -> None:
-    """Write the high-coverage disposition fixture used by PR tests."""
-    coverage = scope_disposition.PlanCoverage(
-        total=1,
-        touched=0,
-        untouched=1,
-        untouched_percent=100,
-        band="high",
-        plan_paths=("a.py",),
-        touched_paths=(),
-        untouched_paths=("a.py",),
-        todos_left_count=0,
-        todos_left=(),
-        fingerprint=fingerprint,
-        disposition_required=True,
-        plan_fidelity_forced=True,
-        coverage_file=str(tmp_path / "plan-coverage.json"),
-        untouched_file=str(tmp_path / "untouched.txt"),
-        todos_file=str(tmp_path / "todos.txt"),
-    )
-    scope_disposition.write_coverage(coverage, tmpdir=tmp_path)
 
 
 def force_scope_disposition_refusal(monkeypatch: pytest.MonkeyPatch) -> None:

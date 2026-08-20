@@ -375,7 +375,7 @@ cutover is named in the last column.
 | `larch.report.report_tokens_models`, `report_tokens_scan`, `report_tokens_cost`, and `tokens` | Input, pricing, and state helpers for bounded compatibility consumers and remaining Python token analytics. The seven token measurements are Rust-owned after #8508, and #8507 removed their `token report`, `token cost`, and `token render-cost-line` entrypoints. They do not implement them, `report-tokens analyze`, or a final-report writer. | #7684 owns the remaining token analytics. |
 | `larch.git.pr_body.render_run_summary` and `larch.design.design_summary` | The `render run-summary` compatibility payload for `/design`. It shares the marker grammar but is not an `/implement` final-report fallback. | #7680 owns `render run-summary` and its `/design` caller. |
 | `architectural-assessment final-report-sections` | Read-only architectural-assessment payload consumed by Rust `final-report write`. | #7681. |
-| `token compute-pr-line-counts` and `implement scope-disposition summary-line` | PR and plan-coverage payloads consumed by Rust `final-report write`. | #7681. |
+| `token compute-pr-line-counts` | PR line-count payload consumed by Rust `final-report write`. | #7681. |
 | `larch.rendering.rendering` | Prompt and diagram payload renderers outside the closed commands. | Its exact registry rows belong to #7678, #7680, #7681, #7684, or #7686; committed-artifact generation is Rust-owned by #8100. |
 
 Issue 8086 ports the scanning half of the token pipeline: ledger and transcript
@@ -464,15 +464,16 @@ token-pricing-argument derivations. The command layer reuses
 `larch_adapters::stall_recovery` for the normalized outcome, and
 `larch_adapters::run_log_manifest` for the terminal manifest stamp.
 
-Three inputs keep Python owners this leaf does not move, and each is reached
+Two inputs keep Python owners this leaf does not move, and each is reached
 through the one `python_verb` seam rather than a second implementation: PR line
-counts (`token compute-pr-line-counts`, #7681), the plan-coverage line, and the
-architectural assessment sections. The last two moved out of the deleted module
-into the Python owners of their dependencies and became verbs there:
-`implement scope-disposition summary-line` (owned by #7681 with the rest of
-`larch.implement.scope_disposition`) and
-`architectural-assessment final-report-sections` (owned by #7681 with the rest
-of `larch.implement.architectural_assessment`). `token claude-source` was a #7684
+counts (`token compute-pr-line-counts`, #7681) and the architectural assessment
+sections (`architectural-assessment final-report-sections`, owned by #7681 with
+the rest of `larch.implement.architectural_assessment`). The plan-coverage line
+was the third until #8612 completed the atomic cutover of
+`implement scope-disposition`; `final-report write` now reads it in process from
+`implement_scope_disposition_commands::plan_coverage_report_line`, so a returned
+error is a coverage-integrity failure rather than an unreachable helper.
+`token claude-source` was a #7684
 fallback reader for a missing manifest until #8557 completed its atomic cutover;
 like `tracking-issue upsert-summary` after the corrected atomic cutover in #8346,
 it is now Rust-owned and called in process by `final-report write`. Python
