@@ -1773,7 +1773,7 @@ fn file_tier_a_after_compose(ctx: &FailureCtx, body_file: &Path) {
             return;
         }
         let clean_status = clean_status_token(&status);
-        if clean_status == "" {
+        if clean_status.is_empty() {
             "tier-a-dedup-status-unexpected".to_owned()
         } else {
             format!("tier-a-dedup-status-unexpected:{clean_status}")
@@ -1817,6 +1817,10 @@ fn append_fallback(ctx: &FailureCtx, reason: &str) {
     let _ = fs::write(&compose_env, existing);
 }
 
+// `status` is a plain env-file KV string, so the larch status-routing lint forbids
+// `is_empty()` on it; comparing to "" is the sanctioned form. Allow clippy's
+// `comparison_to_empty` preference here to avoid that lint conflict.
+#[allow(clippy::comparison_to_empty)]
 fn handle_compose_outcome(
     ctx: &FailureCtx,
     kind: &str,
