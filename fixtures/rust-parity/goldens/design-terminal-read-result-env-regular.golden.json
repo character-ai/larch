@@ -1,0 +1,21 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    },
+    "design/in.env": {
+      "text": "FOO=bar\nBAZ=qux quux\nDROP=hidden\n"
+    },
+    "design/out.env": {
+      "text": "FOO='bar'\nBAZ='qux quux'\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

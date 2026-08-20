@@ -2259,11 +2259,13 @@ verb = "failure-report"
 python_module = "larch.design.design_terminal"
 python_function = "failure_report_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8580
+clean_install_test = "clean-install-design-failure-report"
 
 [[commands]]
 domain = "design"
@@ -2395,11 +2397,13 @@ verb = "read-result-env"
 python_module = "larch.design.design_terminal"
 python_function = "read_result_env_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8580
+clean_install_test = "clean-install-design-read-result-env"
 
 [[commands]]
 domain = "design"
@@ -2459,11 +2463,13 @@ verb = "stage-terminal-state"
 python_module = "larch.design.design_terminal"
 python_function = "stage_terminal_state_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8580
+clean_install_test = "clean-install-design-stage-terminal-state"
 
 [[commands]]
 domain = "design"
@@ -2471,11 +2477,13 @@ verb = "step-final-summary"
 python_module = "larch.design.design_terminal"
 python_function = "step_final_summary_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8580
+clean_install_test = "clean-install-design-step-final-summary"
 
 [[commands]]
 domain = "design"
@@ -9200,12 +9208,6 @@ path = "python/larch/design/design_summary.py"
 kind = "python-runtime"
 python = ["render run-summary"]
 rust = []
-
-[[callers]]
-path = "python/larch/design/design_terminal.py"
-kind = "python-runtime"
-python = []
-rust = ["stall-recovery chat-print", "stall-recovery classify", "stall-recovery compose-report", "stall-recovery dedup-tier-a-report", "stall-recovery init-attempts", "stall-recovery is-larch-dev-clone", "stall-recovery normalize-file-failure-report-env", "stall-recovery populate-sensitive-corpus", "stall-recovery validate-terminal-state", "stall-recovery validate-token"]
 
 [[callers]]
 path = "python/larch/git/pr_body.py"

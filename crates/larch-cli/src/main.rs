@@ -52,6 +52,7 @@ mod deps_audit_commands;
 mod design_commands;
 mod design_step0_commands;
 mod design_step1_commands;
+mod design_terminal_commands;
 mod developer_tooling_commands;
 mod difficulty_calibration_commands;
 mod difficulty_commands;
@@ -1259,6 +1260,18 @@ enum DesignCommand {
     /// Unlink the Step 1e..4b reentry sentinels (#8579).
     #[command(name = "step1e-reentry", disable_help_flag = true)]
     Step1eReentry(RawCompatibilityArguments),
+    /// Read an allowlisted phase-driver result env into a quoted output (#8580).
+    #[command(name = "read-result-env", disable_help_flag = true)]
+    ReadResultEnv(RawCompatibilityArguments),
+    /// Stage the design terminal-failure state env (#8580).
+    #[command(name = "stage-terminal-state", disable_help_flag = true)]
+    StageTerminalState(RawCompatibilityArguments),
+    /// Compose and file (or fall back on) a design failure report (#8580).
+    #[command(name = "failure-report", disable_help_flag = true)]
+    FailureReport(RawCompatibilityArguments),
+    /// Emit, publish, or render the design run's final summary (#8580).
+    #[command(name = "step-final-summary", disable_help_flag = true)]
+    StepFinalSummary(RawCompatibilityArguments),
 }
 
 impl DesignCommand {
@@ -1285,6 +1298,12 @@ impl DesignCommand {
             Self::Step1d5(_) => design_step1_commands::step1d5(&arguments),
             Self::Step1d7(_) => design_step1_commands::step1d7(&arguments),
             Self::Step1eReentry(_) => design_step1_commands::step1e_reentry(&arguments),
+            Self::ReadResultEnv(_) => design_terminal_commands::read_result_env(&arguments),
+            Self::StageTerminalState(_) => {
+                design_terminal_commands::stage_terminal_state(&arguments)
+            }
+            Self::FailureReport(_) => design_terminal_commands::failure_report(&arguments),
+            Self::StepFinalSummary(_) => design_terminal_commands::step_final_summary(&arguments),
         }
     }
 }

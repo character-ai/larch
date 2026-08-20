@@ -19,11 +19,10 @@ from larch.calibration import difficulty
 from larch.core import architectural_guidelines, config, proc
 from larch.report.run_log_batch import append_execution_issue
 from larch.design import design_core, plan_grammar
-from larch.design.design_core import capture_contract_stream_to_paths
-from larch.design.design_terminal import (
+from larch.design.design_core import (
     extend_publish_failure_stage_args,
     phase_driver_write_result_env,
-    stage_terminal_state_core,
+    run_design_verb_captured,
 )
 from larch.core.repo_roots import consumer_repo_root, larch_entrypoint
 
@@ -1123,11 +1122,11 @@ def _stage_failed_plan_write(
         str(detail_log),
     ]
     extend_publish_failure_stage_args(stage_args, values)
-    stage_rc = capture_contract_stream_to_paths(
-        stage_terminal_state_core,
-        stdout_log,
-        stderr_log,
-        stage_args,
+    stage_rc = run_design_verb_captured(
+        verb="stage-terminal-state",
+        args=stage_args,
+        stdout_path=stdout_log,
+        stderr_path=stderr_log,
     )
     staged = "STAGED=true" in stdout_log.read_text(encoding="utf-8", errors="replace") if stdout_log.is_file() else False
     if stage_rc != 0 or not staged:

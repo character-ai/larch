@@ -11,8 +11,8 @@ from pathlib import Path
 import pytest
 
 from larch.core import config, rust_runtime
+from larch.design import design_core
 from larch.design import design_summary
-from larch.design import design_terminal
 from larch.report import report_tokens_cost
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import,import-error  # pyright: ignore[reportUnusedImport]
 
@@ -497,19 +497,21 @@ def test_guideline_exception_disclosure_omitted_for_non_approved_outcome(
     assert "**Gate C guideline exception recorded:**" not in summary
 
 
-def test_failure_report_gate_uses_in_process_core(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[list[str]] = []
+def test_failure_report_gate_invokes_rust_verb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, list[str]]] = []
 
-    def fake_core(argv: list[str]) -> tuple[int, list[str]]:
-        calls.append(list(argv))
-        print("DESIGN_FAILURE_REPORT_DECISION=skip")
-        return 0, []
+    def fake_verb(*, verb: str, args: object, stdout_path: object, stderr_path: object, **_kwargs: object) -> int:
+        calls.append((verb, list(args)))  # type: ignore[arg-type]
+        Path(stdout_path).write_text("DESIGN_FAILURE_REPORT_DECISION=skip\n", encoding="utf-8")  # type: ignore[arg-type]
+        Path(stderr_path).write_text("", encoding="utf-8")  # type: ignore[arg-type]
+        return 0
 
-    monkeypatch.setattr(design_terminal, "failure_report_core", fake_core)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", fake_verb)
     design_summary._run_design_failure_report_gate(design_tmpdir=tmp_path, phase="post", outcome="approved", repo="o/r", issue="42", run_id="run-1")  # pyright: ignore[reportPrivateUsage]
     assert calls
-    assert "--outcome" in calls[0]
-    assert calls[0][calls[0].index("--outcome") + 1] == "approved"
+    assert calls[0][0] == "failure-report"
+    assert "--outcome" in calls[0][1]
+    assert calls[0][1][calls[0][1].index("--outcome") + 1] == "approved"
     assert "DESIGN_FAILURE_REPORT_DECISION=skip" in (tmp_path / "design-failure-report.stdout.log").read_text(encoding="utf-8")
     assert (tmp_path / "design-failure-report.stderr.log").is_file()
 

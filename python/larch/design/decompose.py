@@ -24,7 +24,7 @@ from larch.core import retry
 from larch.core import rust_runtime
 from larch.design import plan_grammar
 from larch.design.design_core import ROUTE_STATE_PATH
-from larch.design.design_terminal import phase_driver_read_result_env
+from larch.design.design_core import phase_driver_read_result_env
 from larch.git import gh
 from larch.issue import issue_wire
 from larch.issue.title_match import leading_square_bracket_prefix, strip_lifecycle_prefix
