@@ -2247,8 +2247,9 @@ mod tests {
     ) {
         let diff_path = tmpdir.join(kind.materialized_diff_filename());
         fs::write(&diff_path, diff_text).expect("diff snapshot");
-        let fingerprint =
-            fingerprint_override.unwrap_or(&diff_fingerprint(diff_text)).to_owned();
+        let fingerprint = fingerprint_override
+            .unwrap_or(&diff_fingerprint(diff_text))
+            .to_owned();
         let text = format!(
             "STATUS=present\n\
              HEAD_SHA={head}\n\
@@ -2328,9 +2329,7 @@ mod tests {
         assert!(!deterministic_out_of_scope(
             "rename from docs/a.md\nrename to docs/b.md\n"
         ));
-        assert!(!deterministic_out_of_scope(
-            "GIT binary patch\nliteral 1\n"
-        ));
+        assert!(!deterministic_out_of_scope("GIT binary patch\nliteral 1\n"));
     }
 
     #[test]
@@ -2348,7 +2347,10 @@ mod tests {
         assert!(!out.contains(tmp.path().to_str().expect("utf8")), "{out}");
         assert!(out.contains("<implement-tmpdir>"), "{out}");
         assert!(!out.contains(&token), "{out}");
-        assert!(out.contains("<REDACTED-TOKEN>") || !out.contains("ghp_"), "{out}");
+        assert!(
+            out.contains("<REDACTED-TOKEN>") || !out.contains("ghp_"),
+            "{out}"
+        );
         assert!(out.len() <= 500, "len={}", out.len());
         assert!(out.starts_with("lead <implement-tmpdir>"), "{out}");
     }
@@ -2447,10 +2449,7 @@ mod tests {
         )
         .expect("sidecar");
         assert!(text.contains(r#""outcome":"clean""#), "{text}");
-        assert!(
-            text.contains(r#""reason":"deterministic-clean""#),
-            "{text}"
-        );
+        assert!(text.contains(r#""reason":"deterministic-clean""#), "{text}");
         assert!(text.contains(r#""assessment_kind":"clean""#), "{text}");
         assert!(text.contains(HEAD_A), "{text}");
     }
@@ -2597,13 +2596,8 @@ mod tests {
             "STATUS=present\nHEAD_SHA=\n",
         )
         .expect("bad meta");
-        let err = validate_materialization(
-            AssessmentKind::Guidelines,
-            &repo,
-            &tmpdir,
-            &git,
-        )
-        .expect_err("incomplete");
+        let err = validate_materialization(AssessmentKind::Guidelines, &repo, &tmpdir, &git)
+            .expect_err("incomplete");
         assert!(err.contains("incomplete"), "{err}");
 
         write_materialize_env(
@@ -2615,13 +2609,8 @@ mod tests {
             &knowledge,
             None,
         );
-        let err = validate_materialization(
-            AssessmentKind::Guidelines,
-            &repo,
-            &tmpdir,
-            &git,
-        )
-        .expect_err("bad head");
+        let err = validate_materialization(AssessmentKind::Guidelines, &repo, &tmpdir, &git)
+            .expect_err("bad head");
         assert!(err.contains("HEAD_SHA is invalid"), "{err}");
 
         write_materialize_env(
@@ -2633,13 +2622,8 @@ mod tests {
             &knowledge,
             Some(&"0".repeat(64)),
         );
-        let err = validate_materialization(
-            AssessmentKind::Guidelines,
-            &repo,
-            &tmpdir,
-            &git,
-        )
-        .expect_err("fp mismatch");
+        let err = validate_materialization(AssessmentKind::Guidelines, &repo, &tmpdir, &git)
+            .expect_err("fp mismatch");
         assert!(err.contains("fingerprint mismatch"), "{err}");
     }
 
@@ -2658,13 +2642,8 @@ mod tests {
             None,
         );
         let git = FakeGit::new(HEAD_A, CODE_DIFF);
-        let evidence = validate_materialization(
-            AssessmentKind::Guidelines,
-            &repo,
-            &tmpdir,
-            &git,
-        )
-        .expect("valid");
+        let evidence = validate_materialization(AssessmentKind::Guidelines, &repo, &tmpdir, &git)
+            .expect("valid");
         assert_eq!(evidence.head_sha, HEAD_A);
         assert_eq!(evidence.base_ref, "origin/main");
         assert_eq!(evidence.diff_text, CODE_DIFF);
@@ -2760,10 +2739,7 @@ mod tests {
         let err = submit(
             "guidelines",
             "clean",
-            &format!(
-                "{}\n",
-                AssessmentKind::Guidelines.clean_presentation_note()
-            ),
+            &format!("{}\n", AssessmentKind::Guidelines.clean_presentation_note()),
             &repo,
             &tmpdir,
             false,
@@ -2789,20 +2765,9 @@ mod tests {
             None,
         );
         let git = FakeGit::new(HEAD_A, CODE_DIFF);
-        let note = format!(
-            "{}\n",
-            AssessmentKind::Guidelines.clean_presentation_note()
-        );
-        let result = submit(
-            "guidelines",
-            "clean",
-            &note,
-            &repo,
-            &tmpdir,
-            false,
-            &git,
-        )
-        .expect("submit clean");
+        let note = format!("{}\n", AssessmentKind::Guidelines.clean_presentation_note());
+        let result = submit("guidelines", "clean", &note, &repo, &tmpdir, false, &git)
+            .expect("submit clean");
         assert_eq!(result.state, "clean");
         assert_eq!(result.head_sha, HEAD_A);
         let durable = fs::read_to_string(durable_note_path(&tmpdir, AssessmentKind::Guidelines))
@@ -2891,8 +2856,7 @@ mod tests {
         let (_root, repo, tmpdir) = setup_repo_tmpdir();
         write_guidelines_knowledge(&repo);
         let git = FakeGit::new(HEAD_A, DOCS_DIFF);
-        let (statuses, _) =
-            materialize(&["guidelines"], &repo, &tmpdir, &git).expect("first");
+        let (statuses, _) = materialize(&["guidelines"], &repo, &tmpdir, &git).expect("first");
         assert_eq!(
             statuses.get("guidelines").map(String::as_str),
             Some("deterministic-clean")
@@ -2905,14 +2869,8 @@ mod tests {
             Some("handled")
         );
         assert!(
-            already_handled(
-                AssessmentKind::Guidelines,
-                &repo,
-                &tmpdir,
-                HEAD_A,
-                &git,
-            )
-            .expect("already")
+            already_handled(AssessmentKind::Guidelines, &repo, &tmpdir, HEAD_A, &git,)
+                .expect("already")
         );
     }
 
