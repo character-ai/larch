@@ -303,6 +303,31 @@ fn child_harness_hard_fails_a_noncompletion_envelope() {
 
 #[cfg(unix)]
 #[test]
+fn child_harness_classifies_incomplete_envelope_with_durable_ship_progress() {
+    let (root, mut command) = fixture(
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"result\":\"staying paused per your interruption... I will wait for your direction.\",\"stop_reason\":\"end_turn\"}'\n",
+    );
+    let handoff = root.path().join("complete-umbrella-leaf-42");
+    fs::create_dir_all(&handoff).expect("leaf handoff root");
+    write(
+        &handoff.join("complete-umbrella-ship.env"),
+        "SCHEMA=1\nREPOSITORY=owner/repo\nUMBRELLA=40\nLEAF=42\nBRANCH=complete-umbrella/leaf-42\nHEAD_SHA=0123456789abcdef0123456789abcdef01234567\nPR_NUMBER=8745\nPR_URL=https://example.test/pr/8745\nSTATUS=monitoring\nCI_ERRORS_FILE=\nCI_FIX_ATTEMPTS=1\nCONFLICT_FILES=\nCONFLICT_FIX_ATTEMPTS=0\nMAIN_RECONCILE_ATTEMPTS=2\n",
+    );
+    command
+        .args(child_arguments(root.path()))
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "child returned an incomplete envelope with durable ship progress",
+        ));
+    assert_eq!(
+        fs::read_to_string(root.path().join("child.env")).expect("recoverable result env"),
+        "CHILD_STATUS=failed\nCHILD_ISSUE=42\nCHILD_ENVELOPE_COMPLETE=false\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\nCHILD_FAILURE_CLASS=incomplete-envelope-ship\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn child_harness_classifies_a_transient_claude_api_envelope() {
     let (root, mut command) = fixture(
         "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"is_error\":true,\"terminal_reason\":\"api_error\",\"result\":\"API Error: ENOTFOUND\"}'\n",

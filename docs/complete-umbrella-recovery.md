@@ -22,7 +22,9 @@ After the laptop wakes, run `/complete-umbrella <N>` once. The resume owner:
 - rebinds a live bgjob wait lease to the current session and returns to the
   same wait;
 - consumes an identity-bound durable child result through the existing retry
-  or failure route;
+  or failure route, including `transient-api` and `incomplete-envelope-ship`
+  (an incomplete child envelope that still left durable ship progress with a
+  positive `PR_NUMBER`);
 - ignores the immediately prior transient result after its next-attempt
   checkpoint has already been persisted, so a wake cannot consume one retry
   twice;
