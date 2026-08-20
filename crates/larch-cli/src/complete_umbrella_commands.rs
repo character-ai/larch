@@ -64,8 +64,9 @@ const MAX_DIRECT_LEAVES: usize = 100;
 const CHILD_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 const CHILD_SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 const CHILD_OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
-const MAX_TRANSIENT_CHILD_RETRIES: u8 = 2;
+const MAX_TRANSIENT_CHILD_RETRIES: u8 = 20;
 const MAX_TRANSIENT_RESET_ATTEMPTS: u8 = 3;
+const TRANSIENT_CHILD_RETRY_SLEEP: Duration = Duration::from_secs(60);
 const TRANSIENT_RESET_INITIAL_BACKOFF: Duration = Duration::from_secs(2);
 const TRANSIENT_RESET_MAX_BACKOFF: Duration = Duration::from_secs(4);
 const RUN_LEAVES_STEP: &str = "complete-umbrella-leaves";
@@ -2147,6 +2148,9 @@ fn run_child_attempts(
                 if transient_retries < MAX_TRANSIENT_CHILD_RETRIES =>
             {
                 recover_transient_leaf(operations, leaf, metrics)?;
+                // Fixed cooldown between child relaunches; distinct from reset-mutation
+                // backoff recorded in RESET_BACKOFF_SECONDS.
+                operations.wait_reset_backoff(TRANSIENT_CHILD_RETRY_SLEEP);
                 transient_retries += 1;
                 write_run_leaves_progress(
                     operations,
