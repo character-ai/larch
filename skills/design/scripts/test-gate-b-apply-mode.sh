@@ -8,7 +8,7 @@ export LARCH_QUIET_DISABLE=1
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 CLI="$ROOT/python/cli.py"
 LARCH="$ROOT/scripts/larch.sh"
-POSTPLAN_CLI=(python3 "$CLI" design postplan-emit)
+POSTPLAN_CLI=("$LARCH" design postplan-emit)
 SETTLE=(python3 "$CLI" design step35-settle)
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 APPROVAL_GATES="$ROOT/skills/design/references/approval-gates-gate-b.md"
@@ -171,6 +171,59 @@ if [[ "\${1:-}" == design && "\${2:-}" == settle-next-action ]]; then
     exit 0
   fi
   exit 2
+fi
+# The Step 2b post-plan verbs moved to Rust (#8583). This lane has no compiled
+# artifact, so the fixture reproduces their two observable side effects: the
+# plan-size decision and result-env write for postplan-emit, and the anchored
+# POSTPLAN_RC row plus completion marker for step2b-postplan.
+larch_plan_size_decision() {
+  local design="\$1"
+  local plan_lines diff_lines size_trigger=false drift_trigger=false
+  plan_lines=\$(wc -l <"\$design/plan.txt" | tr -d ' ')
+  diff_lines=\$(awk '/^diff_lines: [0-9]+\$/ { value=\$2 } END { print value+0 }' "\$design/plan.txt")
+  if [[ "\$plan_lines" -ge 800 ]]; then size_trigger=true; fi
+  if [[ -f "\$design/drift-baseline.env" ]]; then
+    local baseline_plan multiple
+    baseline_plan=\$(awk -F= '\$1=="BASELINE_PLAN_LINES" { print \$2+0 }' "\$design/drift-baseline.env")
+    multiple=\${LARCH_DESIGN_DRIFT_MULTIPLE:-2}
+    if [[ "\$baseline_plan" -gt 0 && "\$plan_lines" -ge \$((baseline_plan * multiple)) ]]; then drift_trigger=true; fi
+  fi
+  PLAN_SIZE_STATUS=under-threshold; POSTPLAN_RC=0; STEP2B5_NEXT_ACTION=under-threshold
+  if [[ "\$size_trigger" == true ]]; then
+    PLAN_SIZE_STATUS=plan-size-trigger; POSTPLAN_RC=12; STEP2B5_NEXT_ACTION=hard-trigger
+  elif [[ "\$drift_trigger" == true ]]; then
+    PLAN_SIZE_STATUS=drift-advisory; POSTPLAN_RC=0; STEP2B5_NEXT_ACTION=drift-advisory
+  fi
+  PLAN_LINES="\$plan_lines"; DIFF_LINES="\$diff_lines"
+  SIZE_TRIGGER_FIRED="\$size_trigger"; DRIFT_TRIGGER_FIRED="\$drift_trigger"
+}
+if [[ "\${1:-}" == design && "\${2:-}" == postplan-emit ]]; then
+  shift 2
+  design=""
+  while [[ \$# -gt 0 ]]; do case "\$1" in --design-tmpdir) design="\$2"; shift 2 ;; *) shift ;; esac; done
+  larch_plan_size_decision "\$design"
+  printf 'POSTPLAN_EMIT_STATUS=ok\nEMIT_PLAN_STATUS=ok\nDIFF_LINES=%s\nVALIDATE_STATUS=ok\nPLAN_SIZE_STATUS=%s\nSIZE_TRIGGER_FIRED=%s\nPLAN_LINES=%s\nDRIFT_TRIGGER_FIRED=%s\nSTEP2B5_NEXT_ACTION=%s\n' \
+    "\$DIFF_LINES" "\$PLAN_SIZE_STATUS" "\$SIZE_TRIGGER_FIRED" "\$PLAN_LINES" "\$DRIFT_TRIGGER_FIRED" "\$STEP2B5_NEXT_ACTION" \
+    >"\$design/.design-postplan-emit-result.env"
+  cat "\$design/.design-postplan-emit-result.env"
+  exit "\$POSTPLAN_RC"
+fi
+if [[ "\${1:-}" == design && "\${2:-}" == step2b-postplan ]]; then
+  shift 2
+  site=""
+  while [[ \$# -gt 0 ]]; do case "\$1" in --site) site="\$2"; shift 2 ;; *) shift ;; esac; done
+  design="\${DESIGN_TMPDIR:-}"
+  larch_plan_size_decision "\$design"
+  status=ok
+  case "\$POSTPLAN_RC" in
+    12) status=plan-size-trigger ;;
+    0) status=ok ;;
+  esac
+  mkdir -p "\$design/.completed"
+  : >"\$design/.completed/step-2b.5"
+  if [[ -z "\$site" || "\$site" == step2b ]]; then : >"\$design/.completed/step-2b"; fi
+  printf 'POSTPLAN_RC=%s\nPOSTPLAN_STATUS=%s\n' "\$POSTPLAN_RC" "\$status"
+  exit 0
 fi
 exit 2
 EOF

@@ -826,7 +826,10 @@ pub fn pause_save_arguments(design_tmpdir: &Path, issue: &str, repo: &str) -> Ve
 
 /// Bridge to the still-Python `design pause-save`; returns its exit code.
 pub fn pause_save_bridge(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
-    match run_python_verb(pause_save_arguments(design_tmpdir, issue, repo), PAUSE_LOAD_TIMEOUT) {
+    match run_python_verb(
+        pause_save_arguments(design_tmpdir, issue, repo),
+        PAUSE_LOAD_TIMEOUT,
+    ) {
         Ok(output) => output.status().code().unwrap_or(1),
         Err(_error) => 1,
     }
@@ -834,10 +837,13 @@ pub fn pause_save_bridge(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
 
 /// Bridge to `design pause-save`, returning its exit code and captured streams.
 pub fn pause_save_captured(design_tmpdir: &Path, issue: &str, repo: &str) -> (i32, String, String) {
-    run_python_verb(pause_save_arguments(design_tmpdir, issue, repo), PAUSE_LOAD_TIMEOUT)
-        .map_or((1, String::new(), String::new()), |output| {
-            output.decoded_streams()
-        })
+    run_python_verb(
+        pause_save_arguments(design_tmpdir, issue, repo),
+        PAUSE_LOAD_TIMEOUT,
+    )
+    .map_or((1, String::new(), String::new()), |output| {
+        output.decoded_streams()
+    })
 }
 
 /// Refuse a symlink target, then atomically publish `contents`. Returns `false`

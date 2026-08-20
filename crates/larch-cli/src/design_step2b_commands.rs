@@ -419,7 +419,8 @@ fn postplan_emit_run(
 
     let plan_path = design_tmpdir.join("plan.txt");
     let entry_plan_bytes = fs::read(&plan_path).unwrap_or_default();
-    let plan_empty = !plan_path.is_file() || fs::metadata(&plan_path).map(|m| m.len()).unwrap_or(0) == 0;
+    let plan_empty =
+        !plan_path.is_file() || fs::metadata(&plan_path).map(|m| m.len()).unwrap_or(0) == 0;
     if plan_empty {
         kv.set("POSTPLAN_EMIT_STATUS", "missing-plan");
         postplan_flush(out, &result_env, &kv);
@@ -430,7 +431,10 @@ fn postplan_emit_run(
         kv.set("POSTPLAN_EMIT_STATUS", "paused");
         if with_plan_size {
             postplan_flush(out, &result_env, &kv);
-            emit(out, "**⏸ /design Step 2b: pause requested; saving design state.**");
+            emit(
+                out,
+                "**⏸ /design Step 2b: pause requested; saving design state.**",
+            );
             return 11;
         }
         return postplan_emit_standalone_pause(out, design_tmpdir, &result_env, &mut kv);
@@ -493,14 +497,7 @@ fn postplan_emit_run(
         "VALIDATE_LOG_FILE",
     ] {
         if let Some(value) = validate_kv.get(key) {
-            match key {
-                "VALIDATE_STATUS" => kv.set("VALIDATE_STATUS", value.clone()),
-                "VALIDATE_DEFECT_COUNT" => kv.set("VALIDATE_DEFECT_COUNT", value.clone()),
-                "VALIDATE_SKIPPED_COUNT" => kv.set("VALIDATE_SKIPPED_COUNT", value.clone()),
-                "VALIDATE_UNSAFE_TOKEN_COUNT" => kv.set("VALIDATE_UNSAFE_TOKEN_COUNT", value.clone()),
-                "VALIDATE_LOG_FILE" => kv.set("VALIDATE_LOG_FILE", value.clone()),
-                _ => {}
-            }
+            kv.set(key, value.clone());
         }
     }
     let validate_status = kv.get_or("VALIDATE_STATUS", "").to_owned();
@@ -583,7 +580,10 @@ fn postplan_emit_plan_size(
     );
     kv.set("FIRM_HEADINGS", kv_get(&size_kv, "FIRM_HEADINGS", ""));
     kv.set("SURFACES_TOUCHED", kv_get(&size_kv, "SURFACES_TOUCHED", ""));
-    kv.set("OVERSIZE_OVERRIDE", kv_get(&size_kv, "OVERSIZE_OVERRIDE", ""));
+    kv.set(
+        "OVERSIZE_OVERRIDE",
+        kv_get(&size_kv, "OVERSIZE_OVERRIDE", ""),
+    );
     kv.set("SOFT_ADVISORY", kv_get(&size_kv, "SOFT_ADVISORY", "false"));
     kv.set(
         "DRIFT_TRIGGER_FIRED",
@@ -593,8 +593,14 @@ fn postplan_emit_plan_size(
         "DRIFT_MULTIPLE",
         kv_get(&size_kv, "DRIFT_MULTIPLE", &drift_multiple_default),
     );
-    kv.set("DRIFT_PLAN_RATIO", kv_get(&size_kv, "DRIFT_PLAN_RATIO", "1"));
-    kv.set("DRIFT_DIFF_RATIO", kv_get(&size_kv, "DRIFT_DIFF_RATIO", "1"));
+    kv.set(
+        "DRIFT_PLAN_RATIO",
+        kv_get(&size_kv, "DRIFT_PLAN_RATIO", "1"),
+    );
+    kv.set(
+        "DRIFT_DIFF_RATIO",
+        kv_get(&size_kv, "DRIFT_DIFF_RATIO", "1"),
+    );
     kv.set(
         "BASELINE_PLAN_LINES",
         kv_get(&size_kv, "BASELINE_PLAN_LINES", ""),
@@ -622,7 +628,10 @@ fn postplan_emit_plan_size(
         postplan_flush(out, result_env, kv);
         return step2b5.exit_rc;
     }
-    if snapshot_original && !kv.get_or("PLAN_LINES", "").is_empty() && !kv.get_or("DIFF_LINES", "").is_empty() {
+    if snapshot_original
+        && !kv.get_or("PLAN_LINES", "").is_empty()
+        && !kv.get_or("DIFF_LINES", "").is_empty()
+    {
         let plan_lines = kv.get_or("PLAN_LINES", "").to_owned();
         let diff_lines = kv.get_or("DIFF_LINES", "").to_owned();
         let _ = run_larch(
@@ -845,7 +854,9 @@ fn self_log_check_size_failure(
 /// `repo_roots.plugin_root`'s repository-root derivation for tests.
 fn plugin_root_from_env() -> PathBuf {
     match std::env::var_os("CLAUDE_PLUGIN_ROOT") {
-        Some(value) if !value.is_empty() && value != "${CLAUDE_PLUGIN_ROOT}" => PathBuf::from(value),
+        Some(value) if !value.is_empty() && value != "${CLAUDE_PLUGIN_ROOT}" => {
+            PathBuf::from(value)
+        }
         _ => PathBuf::from("."),
     }
 }
@@ -1143,7 +1154,10 @@ fn postplan_decide(
         return PostplanDecision {
             postplan_rc: 0,
             status: "ok".to_owned(),
-            rows: vec!["POSTPLAN_RC=0\n".to_owned(), "POSTPLAN_STATUS=ok\n".to_owned()],
+            rows: vec![
+                "POSTPLAN_RC=0\n".to_owned(),
+                "POSTPLAN_STATUS=ok\n".to_owned(),
+            ],
             touches,
             ..PostplanDecision::default()
         };
@@ -1250,7 +1264,10 @@ fn postplan_decide(
         };
     }
     let fatal = match rc {
-        2 => "**⚠ Step 2b: design-postplan-emit.sh configuration error (exit 2); aborting /design.**".to_owned(),
+        2 => {
+            "**⚠ Step 2b: design-postplan-emit.sh configuration error (exit 2); aborting /design.**"
+                .to_owned()
+        }
         1 => "**⚠ Step 2b: design-postplan-emit.sh failed (exit 1); aborting /design.**".to_owned(),
         other => format!(
             "**⚠ Step 2b: design-postplan-emit.sh unexpected exit ({other}); aborting /design.**"
@@ -1453,7 +1470,10 @@ fn exact_line_file(path: &Path, expected: &str) -> bool {
 }
 
 fn read_lossy(path: &Path) -> String {
-    read_optional_utf8_lossy(path).ok().flatten().unwrap_or_default()
+    read_optional_utf8_lossy(path)
+        .ok()
+        .flatten()
+        .unwrap_or_default()
 }
 
 /// `issue_wire.emit_untrusted_file_block(...).rstrip("\n")`.
@@ -1464,7 +1484,10 @@ fn untrusted_file_block_trimmed(tag: &str, path: &Path) -> String {
 }
 
 /// Read one architectural knowledge file, mirroring the implement launcher owner.
-fn read_architectural_knowledge(repo_root: &Path, kind: ArchitecturalKind) -> ArchitecturalKnowledge {
+fn read_architectural_knowledge(
+    repo_root: &Path,
+    kind: ArchitecturalKind,
+) -> ArchitecturalKnowledge {
     let path = repo_root.join(kind.filename());
     let Ok(metadata) = fs::symlink_metadata(&path) else {
         return ArchitecturalKnowledge::absent();
@@ -1504,7 +1527,11 @@ fn run_larch_inherit(plugin_root: &Path, args: &[String], env: &[(&str, &str)]) 
     for (key, value) in env {
         command.env(key, value);
     }
-    command.status().ok().and_then(|status| status.code()).unwrap_or(1)
+    command
+        .status()
+        .ok()
+        .and_then(|status| status.code())
+        .unwrap_or(1)
 }
 
 /// Porcelain probe through the typed gix owner shared with the drafter launcher,
@@ -1523,7 +1550,8 @@ fn folded_step2a_sentinel_prep(design_tmpdir: &Path) -> i32 {
         && let Ok(text) = fs::read_to_string(&run_params)
         && let Ok(value) = serde_json::from_str::<serde_json::Value>(&text)
     {
-        brainstorm_requested = value.get("brainstorm_requested") == Some(&serde_json::Value::Bool(true));
+        brainstorm_requested =
+            value.get("brainstorm_requested") == Some(&serde_json::Value::Bool(true));
     }
 
     let no_sketches = "NO_SKETCHES";
@@ -1664,10 +1692,9 @@ struct VendorResult {
 
 /// `_resolve_step2b_drafter_vendor`.
 fn resolve_step2b_drafter_vendor() -> VendorResult {
-    let codex_present =
-        std::env::var("LARCH_CODEX_BINARY_FOUND").ok().as_deref() == Some("true") || which_binary("codex");
-    let cursor_present = std::env::var("LARCH_CURSOR_BINARY_FOUND").ok().as_deref()
-        == Some("true")
+    let codex_present = std::env::var("LARCH_CODEX_BINARY_FOUND").ok().as_deref() == Some("true")
+        || which_binary("codex");
+    let cursor_present = std::env::var("LARCH_CURSOR_BINARY_FOUND").ok().as_deref() == Some("true")
         || which_binary("cursor");
     let env_map: BTreeMap<String, String> = std::env::vars().collect();
     let ResolveResult {
@@ -1958,7 +1985,11 @@ fn detect_step2b_drafter_dirty_block(design_tmpdir: &Path) -> DirtyState {
     }
 }
 
-fn warn_step2b_missing_scout_if_needed(status_text: &str, design_tmpdir: &Path, plugin_root: &Path) {
+fn warn_step2b_missing_scout_if_needed(
+    status_text: &str,
+    design_tmpdir: &Path,
+    plugin_root: &Path,
+) {
     if status_text.contains("SCOUT_WRITTEN=true") {
         return;
     }
@@ -2159,10 +2190,16 @@ fn handle_step2b_drafter_success(
     handle_step2b_drafter_postplan_result(design_tmpdir, &vendor.vendor, &postplan, issue, repo)
 }
 
-fn handle_step2b_drafter_dirty_recovery(design_tmpdir: &Path, vendor: &str, dirty_reason: &str) -> i32 {
+fn handle_step2b_drafter_dirty_recovery(
+    design_tmpdir: &Path,
+    vendor: &str,
+    dirty_reason: &str,
+) -> i32 {
     write_text(
         &design_tmpdir.join("dirty-tree-detected.env"),
-        &format!("STATUS=dirty\nSTAGE=step-2b-drafter\nRECOVERY_REQUIRED=true\nREASON={dirty_reason}\n"),
+        &format!(
+            "STATUS=dirty\nSTAGE=step-2b-drafter\nRECOVERY_REQUIRED=true\nREASON={dirty_reason}\n"
+        ),
     );
     println!(
         "**⚠ 2b: drafter subprocess may have introduced working-tree mutations; dirty-tree recovery is required before fallback.**"
@@ -2212,7 +2249,9 @@ fn handle_step2b_drafter_inline_fallback(
             "--category",
             "Warnings",
             "--output-file",
-            &design_tmpdir.join("step2b-drafter-fallback.log").to_string_lossy(),
+            &design_tmpdir
+                .join("step2b-drafter-fallback.log")
+                .to_string_lossy(),
             "--redact",
         ],
         &[],
@@ -2250,7 +2289,9 @@ pub fn step2b_drafter(arguments: &[OsString]) -> ExitCode {
     let result = read_step2b_drafter_result(&run.design_tmpdir, drafter_rc);
     let dirty_state = detect_step2b_drafter_dirty_block(&run.design_tmpdir);
     if result.structural_ok && !dirty_state.dirty_block {
-        return exit_from_i32(handle_step2b_drafter_success(&run, &vendor, &result, &issue, &repo));
+        return exit_from_i32(handle_step2b_drafter_success(
+            &run, &vendor, &result, &issue, &repo,
+        ));
     }
     if dirty_state.dirty_block {
         return exit_from_i32(handle_step2b_drafter_dirty_recovery(
@@ -2299,7 +2340,10 @@ fn compose_drafter_prompt(design_tmpdir: &Path, plugin_root: &Path) {
         String::new(),
         "Readability style (trusted):".to_owned(),
     ];
-    let readability = plugin_root.join("skills").join("shared").join("readability-style.md");
+    let readability = plugin_root
+        .join("skills")
+        .join("shared")
+        .join("readability-style.md");
     if readability.is_file() {
         lines.push(read_lossy(&readability).trim_end_matches('\n').to_owned());
     }
@@ -2329,9 +2373,21 @@ fn compose_drafter_prompt(design_tmpdir: &Path, plugin_root: &Path) {
         "Optional advisory status may be included between LARCH_STATUS_BEGIN and LARCH_STATUS_END, but the summary, plan, and optional scout sentinels above are the only parsed contract.".to_owned(),
     ]);
     for (filename, heading, tag) in [
-        ("feature-description.txt", "Untrusted feature description:", "feature_description"),
-        ("approach-synthesis.txt", "Untrusted approach synthesis:", "approach_synthesis"),
-        ("discussion-round1.md", "Untrusted discussion round 1:", "discussion_round1"),
+        (
+            "feature-description.txt",
+            "Untrusted feature description:",
+            "feature_description",
+        ),
+        (
+            "approach-synthesis.txt",
+            "Untrusted approach synthesis:",
+            "approach_synthesis",
+        ),
+        (
+            "discussion-round1.md",
+            "Untrusted discussion round 1:",
+            "discussion_round1",
+        ),
         ("brainstorm.md", "Untrusted brainstorm:", "brainstorm"),
     ] {
         let path = design_tmpdir.join(filename);
@@ -2458,7 +2514,10 @@ fn is_architectural_path(path: &str) -> bool {
         path = path[1..path.len() - 1].trim();
     }
     let normalized = path.replace('\\', "/");
-    let parts: Vec<&str> = normalized.split('/').filter(|part| !part.is_empty()).collect();
+    let parts: Vec<&str> = normalized
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .collect();
     if parts.is_empty() || parts.contains(&"SKILL.md") {
         return true;
     }
@@ -2494,7 +2553,10 @@ fn diagram_required(plan_file: &Path) -> bool {
         .into_iter()
         .filter(|heading| heading.level == 3)
         .collect();
-    headings.is_empty() || headings.iter().any(|heading| is_architectural_path(&heading.path))
+    headings.is_empty()
+        || headings
+            .iter()
+            .any(|heading| is_architectural_path(&heading.path))
 }
 
 fn call_pause_save(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
@@ -2509,7 +2571,10 @@ fn mark_design_timing(plugin_root: &Path, label: &str) {
     let _ = run_larch(
         plugin_root,
         &["timing", "mark", label],
-        &[("LARCH_TIMING_SKILL", "design"), ("CLAUDE_PLUGIN_ROOT", &root)],
+        &[
+            ("LARCH_TIMING_SKILL", "design"),
+            ("CLAUDE_PLUGIN_ROOT", &root),
+        ],
     );
 }
 
@@ -2532,9 +2597,16 @@ fn run_finalize(plugin_root: &Path, design_tmpdir: &Path) -> i32 {
         ],
         &[],
     );
-    if write_capture(&design_tmpdir.join("step3b-finalize-driver.stdout"), &outcome.stdout).is_err()
-        || write_capture(&design_tmpdir.join("step3b-finalize-driver.stderr"), &outcome.stderr)
-            .is_err()
+    if write_capture(
+        &design_tmpdir.join("step3b-finalize-driver.stdout"),
+        &outcome.stdout,
+    )
+    .is_err()
+        || write_capture(
+            &design_tmpdir.join("step3b-finalize-driver.stderr"),
+            &outcome.stderr,
+        )
+        .is_err()
     {
         return 1;
     }
@@ -2725,10 +2797,7 @@ mod tests {
             step2b5_next_action_for(2, &size_kv(&[]), false).action,
             "rc2-warning"
         );
-        assert_eq!(
-            step2b5_next_action_for(7, &size_kv(&[]), false).exit_rc,
-            7
-        );
+        assert_eq!(step2b5_next_action_for(7, &size_kv(&[]), false).exit_rc, 7);
         assert_eq!(
             step2b5_next_action_for(0, &size_kv(&[("SIZE_TRIGGER_FIRED", "true")]), true).action,
             "hard-trigger"
@@ -2753,37 +2822,93 @@ mod tests {
 
     #[test]
     fn postplan_decide_ok_touches_step_sentinels() {
-        let decision = postplan_decide(&paths(), "step2b", 0, "", &BTreeMap::new(), "", "false", false, false);
+        let decision = postplan_decide(
+            &paths(),
+            "step2b",
+            0,
+            "",
+            &BTreeMap::new(),
+            "",
+            "false",
+            false,
+            false,
+        );
         assert_eq!(decision.postplan_rc, 0);
         assert_eq!(decision.status, "ok");
         assert_eq!(decision.touches.len(), 2);
         assert_eq!(
             decision.rows,
-            vec!["POSTPLAN_RC=0\n".to_owned(), "POSTPLAN_STATUS=ok\n".to_owned()]
+            vec![
+                "POSTPLAN_RC=0\n".to_owned(),
+                "POSTPLAN_STATUS=ok\n".to_owned()
+            ]
         );
     }
 
     #[test]
     fn postplan_decide_ok_non_initial_site_skips_step2b_marker() {
-        let decision = postplan_decide(&paths(), "gate-c", 0, "", &BTreeMap::new(), "", "false", false, false);
+        let decision = postplan_decide(
+            &paths(),
+            "gate-c",
+            0,
+            "",
+            &BTreeMap::new(),
+            "",
+            "false",
+            false,
+            false,
+        );
         assert_eq!(decision.touches.len(), 1);
     }
 
     #[test]
     fn postplan_decide_rc10_drafter_schedules_inline_retry() {
-        let validate = size_kv(&[("VALIDATE_STATUS", "defects-found"), ("VALIDATE_DEFECT_COUNT", "2")]);
-        let decision = postplan_decide(&paths(), "step2b", 10, "", &validate, "drafter", "false", false, true);
+        let validate = size_kv(&[
+            ("VALIDATE_STATUS", "defects-found"),
+            ("VALIDATE_DEFECT_COUNT", "2"),
+        ]);
+        let decision = postplan_decide(
+            &paths(),
+            "step2b",
+            10,
+            "",
+            &validate,
+            "drafter",
+            "false",
+            false,
+            true,
+        );
         assert!(decision.inline_retry_scheduled);
         assert!(decision.clear_scout_manifests);
         assert_eq!(decision.writes.len(), 2);
         assert_eq!(decision.unlinks.len(), 1);
-        assert!(decision.rows.iter().any(|row| row == "SCOUT_STALE_CLEARED=true\n"));
-        assert!(decision.rows.iter().any(|row| row == "VALIDATE_STATUS=defects-found\n"));
+        assert!(
+            decision
+                .rows
+                .iter()
+                .any(|row| row == "SCOUT_STALE_CLEARED=true\n")
+        );
+        assert!(
+            decision
+                .rows
+                .iter()
+                .any(|row| row == "VALIDATE_STATUS=defects-found\n")
+        );
     }
 
     #[test]
     fn postplan_decide_rc10_fallback_used_skips_retry() {
-        let decision = postplan_decide(&paths(), "step2b", 10, "", &BTreeMap::new(), "drafter", "true", false, false);
+        let decision = postplan_decide(
+            &paths(),
+            "step2b",
+            10,
+            "",
+            &BTreeMap::new(),
+            "drafter",
+            "true",
+            false,
+            false,
+        );
         assert!(!decision.inline_retry_scheduled);
         assert!(decision.touches.is_empty());
         assert!(decision.writes.is_empty());
@@ -2791,14 +2916,52 @@ mod tests {
 
     #[test]
     fn postplan_decide_rc10_dirty_recovery_skips_retry() {
-        let decision = postplan_decide(&paths(), "step2b", 10, "", &BTreeMap::new(), "drafter", "false", true, false);
+        let decision = postplan_decide(
+            &paths(),
+            "step2b",
+            10,
+            "",
+            &BTreeMap::new(),
+            "drafter",
+            "false",
+            true,
+            false,
+        );
         assert!(!decision.inline_retry_scheduled);
     }
 
     #[test]
     fn postplan_decide_rc12_and_rc13_touch_step2b() {
-        assert_eq!(postplan_decide(&paths(), "step2b", 12, "", &BTreeMap::new(), "", "false", false, false).postplan_rc, 12);
-        assert_eq!(postplan_decide(&paths(), "step2b", 13, "", &BTreeMap::new(), "", "false", false, false).status, "partition-requested");
+        assert_eq!(
+            postplan_decide(
+                &paths(),
+                "step2b",
+                12,
+                "",
+                &BTreeMap::new(),
+                "",
+                "false",
+                false,
+                false
+            )
+            .postplan_rc,
+            12
+        );
+        assert_eq!(
+            postplan_decide(
+                &paths(),
+                "step2b",
+                13,
+                "",
+                &BTreeMap::new(),
+                "",
+                "false",
+                false,
+                false
+            )
+            .status,
+            "partition-requested"
+        );
     }
 
     #[test]
@@ -2820,7 +2983,17 @@ mod tests {
 
     #[test]
     fn postplan_decide_fatal_sets_capture_flag() {
-        let decision = postplan_decide(&paths(), "step2b", 1, "", &BTreeMap::new(), "", "false", false, false);
+        let decision = postplan_decide(
+            &paths(),
+            "step2b",
+            1,
+            "",
+            &BTreeMap::new(),
+            "",
+            "false",
+            false,
+            false,
+        );
         assert_eq!(decision.postplan_rc, 1);
         assert!(decision.print_captured_before_return);
         assert!(decision.fatal_stderr.contains("exit 1"));
@@ -2842,9 +3015,14 @@ mod tests {
             parse_probe_value("DIALECTIC_GATEC_DEBATE_REQUIRED=true\n").as_deref(),
             Some("true")
         );
-        assert_eq!(parse_probe_value("DIALECTIC_GATEC_DEBATE_REQUIRED=maybe\n"), None);
         assert_eq!(
-            parse_probe_value("DIALECTIC_GATEC_DEBATE_REQUIRED=true\nDIALECTIC_GATEC_DEBATE_REQUIRED=false\n"),
+            parse_probe_value("DIALECTIC_GATEC_DEBATE_REQUIRED=maybe\n"),
+            None
+        );
+        assert_eq!(
+            parse_probe_value(
+                "DIALECTIC_GATEC_DEBATE_REQUIRED=true\nDIALECTIC_GATEC_DEBATE_REQUIRED=false\n"
+            ),
             None
         );
         assert_eq!(parse_probe_value("other=1\n"), None);
