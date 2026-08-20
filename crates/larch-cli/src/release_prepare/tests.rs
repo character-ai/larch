@@ -16,6 +16,7 @@ mod release_prepare_tests {
     use std::{
         collections::{BTreeMap, BTreeSet},
         fs,
+        path::Path,
     };
 
     #[derive(Default)]
@@ -904,7 +905,7 @@ mod release_prepare_tests {
         let arguments = ReconcileNotesArguments {
             repository: GitHubRepositoryRef::new("o", "r").expect("repository reference"),
             baseline_tag: "v1.2.3".to_owned(),
-            source_commit: source.clone(),
+            source_commit: source,
             pr_list: prepare_list.path().to_path_buf(),
             exclude_pr: 0,
             out_dir: output.path().to_path_buf(),
@@ -957,10 +958,9 @@ mod release_prepare_tests {
     }
 
     #[test]
-    fn reconcile_notes_maps_baseline_and_pr_list_failures() {
+    fn reconcile_notes_maps_resolve_failures() {
         let fixture = release_repository();
         let repository = GixRepository::open(fixture.root()).expect("open repository");
-        let source = resolve(&repository, "HEAD").expect("source").to_hex();
         let prepare_list = tempfile::NamedTempFile::new().expect("prepare list");
         fs::write(prepare_list.path(), "42\tFeature\n").expect("write prepare list");
         let output = tempfile::tempdir().expect("output directory");
@@ -970,67 +970,55 @@ mod release_prepare_tests {
         let base = ReconcileNotesArguments {
             repository: GitHubRepositoryRef::new("o", "r").expect("repository reference"),
             baseline_tag: "v1.2.3".to_owned(),
-            source_commit: source,
+            source_commit: resolve(&repository, "HEAD").expect("source").to_hex(),
             pr_list: prepare_list.path().to_path_buf(),
             exclude_pr: 0,
             out_dir: output.path().to_path_buf(),
         };
-
-        assert_eq!(
-            runtime
-                .block_on(reconcile_notes_with_service(
-                    &ReconcileNotesArguments {
-                        baseline_tag: "latest".to_owned(),
-                        ..base.clone()
-                    },
-                    &output_root,
-                    &repository,
-                    &service,
-                    &Cancellation::new(),
-                ))
-                .expect_err("invalid baseline")
-                .token,
-            "invalid-baseline-tag"
-        );
-        assert_eq!(
-            runtime
-                .block_on(reconcile_notes_with_service(
-                    &ReconcileNotesArguments {
-                        baseline_tag: "v9.9.9".to_owned(),
-                        ..base.clone()
-                    },
-                    &output_root,
-                    &repository,
-                    &service,
-                    &Cancellation::new(),
-                ))
-                .expect_err("missing baseline")
-                .token,
-            "baseline-tag-unresolvable"
-        );
-        assert_eq!(
-            runtime
-                .block_on(reconcile_notes_with_service(
-                    &ReconcileNotesArguments {
-                        source_commit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef".to_owned(),
-                        ..base.clone()
-                    },
-                    &output_root,
-                    &repository,
-                    &service,
-                    &Cancellation::new(),
-                ))
-                .expect_err("missing source")
-                .token,
-            "source-commit-unresolvable"
-        );
+        let cases = [
+            (
+                ReconcileNotesArguments {
+                    baseline_tag: "latest".to_owned(),
+                    ..base.clone()
+                },
+                "invalid-baseline-tag",
+            ),
+            (
+                ReconcileNotesArguments {
+                    baseline_tag: "v9.9.9".to_owned(),
+                    ..base.clone()
+                },
+                "baseline-tag-unresolvable",
+            ),
+            (
+                ReconcileNotesArguments {
+                    source_commit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef".to_owned(),
+                    ..base.clone()
+                },
+                "source-commit-unresolvable",
+            ),
+        ];
+        for (arguments, token) in cases {
+            assert_eq!(
+                runtime
+                    .block_on(reconcile_notes_with_service(
+                        &arguments,
+                        &output_root,
+                        &repository,
+                        &service,
+                        &Cancellation::new(),
+                    ))
+                    .expect_err(token)
+                    .token,
+                token
+            );
+        }
 
         checked_git(
             &fixture,
             ["commit", "--allow-empty", "--quiet", "-m", "orphan-base"],
         );
         checked_git(&fixture, ["tag", "v0.0.1"]);
-        let orphan_base = resolve(&repository, "v0.0.1").expect("orphan baseline");
         checked_git(&fixture, ["reset", "--hard", "--quiet", "HEAD~1"]);
         let disconnected = GixRepository::open(fixture.root()).expect("reopen");
         assert_eq!(
@@ -1039,7 +1027,7 @@ mod release_prepare_tests {
                     &ReconcileNotesArguments {
                         baseline_tag: "v0.0.1".to_owned(),
                         source_commit: resolve(&disconnected, "HEAD").expect("head").to_hex(),
-                        ..base.clone()
+                        ..base
                     },
                     &output_root,
                     &disconnected,
@@ -1050,8 +1038,12 @@ mod release_prepare_tests {
                 .token,
             "baseline-not-on-main"
         );
-        let _ = orphan_base;
+    }
 
+    #[test]
+    fn read_prepared_pr_numbers_rejects_bad_rows() {
+        let prepare_list = tempfile::NamedTempFile::new().expect("prepare list");
+        fs::write(prepare_list.path(), "42\tFeature\n").expect("write prepare list");
         assert_eq!(
             read_prepared_pr_numbers(prepare_list.path())
                 .expect("valid prepared list")
@@ -1068,7 +1060,7 @@ mod release_prepare_tests {
             "pr-list-read-failed"
         );
         assert_eq!(
-            read_prepared_pr_numbers(&output.path().join("missing.tsv"))
+            read_prepared_pr_numbers(Path::new("/tmp/larch-missing-pr-list.tsv"))
                 .expect_err("missing prepared list")
                 .token,
             "pr-list-read-failed"
