@@ -208,3 +208,20 @@ def test_top_level_rehydrates_the_durable_run_pointer_before_start() -> None:
     assert "Set `RESUME_ACTION=reselect`, then return immediately to Step 1" in skill
     assert "complete-umbrella clear-pointer" in skill
     assert "POINTER_CLEARED=true" in skill
+
+
+def test_top_level_hard_fails_cursor_production_guard_false_denies() -> None:
+    skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    recovery = (
+        REPO_ROOT / "docs" / "complete-umbrella-recovery.md"
+    ).read_text(encoding="utf-8")
+    assert "Cursor + production-guard false-deny" in skill
+    assert "request_smart_mode_approval=true" in skill
+    assert "packaged reader" in skill
+    assert "Do not rephrase the driver as `gh`, curl, wget" in skill
+    assert "## Harness false-denies" in recovery
+    assert "coexistence false-deny" in recovery
+    assert "pagerduty, hyperdx, changes, and log-evidence guards" in recovery
+    assert "Do not hand-edit" in recovery
