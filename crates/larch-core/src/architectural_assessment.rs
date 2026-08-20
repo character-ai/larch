@@ -2125,11 +2125,160 @@ fn write_text_atomic(path: &Path, text: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AssessmentKind, NOTE_STATE_DETERMINISTIC_CLEAN, authored_outcome_valid,
-        deterministic_out_of_scope, diff_fingerprint, durable_note_path, normalize_kinds,
-        note_consumable, write_deterministic_clean_note,
+        ASSESSMENT_OUTCOME_CLEAN, AssessmentGit, AssessmentKind, AssessmentResult,
+        MAX_ASSESSMENT_CHARS, NOTE_STATE_AUTHORED, NOTE_STATE_DETERMINISTIC_CLEAN, SubmitError,
+        already_handled, append_deviation_note, authored_outcome_valid, deterministic_out_of_scope,
+        diff_fingerprint, durable_note_path, final_report_sections, materialize, normalize_kinds,
+        note_consumable, sanitize_detail, submit, validate_materialization,
+        write_deterministic_clean_note, write_outcome,
     };
-    use std::fs;
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        sync::Mutex,
+    };
+
+    const HEAD_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const HEAD_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const DOCS_DIFF: &str = "diff --git a/docs/a.md b/docs/a.md\n";
+    const CODE_DIFF: &str = "diff --git a/python/a.py b/python/a.py\n";
+
+    /// Fixed-HEAD / fixed-diff git stub for offline assessment coverage.
+    struct FakeGit {
+        head: String,
+        /// When set, `rev-parse HEAD` returns this instead of `head` (submit drift).
+        drift_head: Mutex<Option<String>>,
+        diff: String,
+        incremental: Vec<String>,
+        fail_read: Mutex<bool>,
+    }
+
+    impl FakeGit {
+        fn new(head: &str, diff: &str) -> Self {
+            Self {
+                head: head.to_owned(),
+                drift_head: Mutex::new(None),
+                diff: diff.to_owned(),
+                incremental: Vec::new(),
+                fail_read: Mutex::new(false),
+            }
+        }
+
+        fn with_drift(self, drift: &str) -> Self {
+            *self.drift_head.lock().expect("lock") = Some(drift.to_owned());
+            self
+        }
+    }
+
+    impl AssessmentGit for FakeGit {
+        fn git_read(&self, _repo_root: &Path, argv: &[&str]) -> Result<String, String> {
+            if *self.fail_read.lock().expect("lock") {
+                return Err("fake git read failed".to_owned());
+            }
+            let joined = argv.join(" ");
+            if joined == "rev-parse HEAD" || joined == "rev-parse --verify HEAD^{commit}" {
+                if let Some(drift) = self.drift_head.lock().expect("lock").as_ref() {
+                    return Ok(drift.clone());
+                }
+                return Ok(self.head.clone());
+            }
+            if argv.len() >= 3 && argv[0] == "rev-parse" && argv[1] == "--verify" {
+                let target = argv[2];
+                if let Some(token) = target.strip_suffix("^{commit}") {
+                    if token == "HEAD" {
+                        if let Some(drift) = self.drift_head.lock().expect("lock").as_ref() {
+                            return Ok(drift.clone());
+                        }
+                        return Ok(self.head.clone());
+                    }
+                    if token.contains('/') {
+                        return Ok(self.head.clone());
+                    }
+                    return Ok(token.to_owned());
+                }
+            }
+            Err(format!("unexpected fake git_read argv: {argv:?}"))
+        }
+
+        fn implementation_diff_for_head(
+            &self,
+            _repo_root: &Path,
+            _head_sha: &str,
+            _base_remote: &str,
+            _base_ref: &str,
+        ) -> Result<String, String> {
+            Ok(self.diff.clone())
+        }
+
+        fn incremental_paths(
+            &self,
+            _repo_root: &Path,
+            _old_head: &str,
+            _new_head: &str,
+        ) -> Result<Vec<String>, String> {
+            Ok(self.incremental.clone())
+        }
+    }
+
+    fn write_guidelines_knowledge(repo: &Path) {
+        fs::write(
+            repo.join("ARCHITECTURAL_GUIDELINES.md"),
+            "### G-Py-4: Fail loudly\n\nBody.\n",
+        )
+        .expect("guidelines knowledge");
+    }
+
+    fn write_invariants_knowledge(repo: &Path) {
+        fs::write(
+            repo.join("ARCHITECTURAL_INVARIANTS.md"),
+            "### I-Core-1: Keep boundaries\n\nBody.\n",
+        )
+        .expect("invariants knowledge");
+    }
+
+    fn write_materialize_env(
+        tmpdir: &Path,
+        kind: AssessmentKind,
+        head: &str,
+        base_ref: &str,
+        diff_text: &str,
+        knowledge_path: &Path,
+        fingerprint_override: Option<&str>,
+    ) {
+        let diff_path = tmpdir.join(kind.materialized_diff_filename());
+        fs::write(&diff_path, diff_text).expect("diff snapshot");
+        let fingerprint =
+            fingerprint_override.unwrap_or(&diff_fingerprint(diff_text)).to_owned();
+        let text = format!(
+            "STATUS=present\n\
+             HEAD_SHA={head}\n\
+             ASSESSED_HEAD_SHA={head}\n\
+             BASE_REF={base_ref}\n\
+             NOTE_STATE={NOTE_STATE_AUTHORED}\n\
+             DIFF_FINGERPRINT={fingerprint}\n\
+             AUTHORED_DIFF_FINGERPRINT={fingerprint}\n\
+             COVERED_DIFF_FINGERPRINT={fingerprint}\n\
+             DIFF_SNAPSHOT={}\n\
+             {}=present\n\
+             {}={}\n\
+             ASSESSMENT_KIND=\n\
+             WRITTEN_AT=2026-01-01T00:00:00Z\n",
+            diff_path.display(),
+            kind.status_env_key(),
+            kind.path_env_key(),
+            knowledge_path.display(),
+        );
+        fs::write(tmpdir.join(kind.materialize_env_filename()), text).expect("materialize env");
+    }
+
+    fn setup_repo_tmpdir() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let root = tempfile::tempdir().expect("root");
+        let repo = root.path().join("repo");
+        let tmpdir = root.path().join("implement");
+        fs::create_dir_all(&repo).expect("repo");
+        fs::create_dir_all(&tmpdir).expect("tmpdir");
+        (root, repo, tmpdir)
+    }
 
     #[test]
     fn normalize_kinds_deduplicates_and_orders() {
@@ -2173,6 +2322,67 @@ mod tests {
         ));
         assert!(!deterministic_out_of_scope("diff --git a/../x b/../x\n"));
         assert!(!deterministic_out_of_scope(""));
+        assert!(!deterministic_out_of_scope(
+            "diff --git a/docs/noext b/docs/noext\n"
+        ));
+        assert!(!deterministic_out_of_scope(
+            "rename from docs/a.md\nrename to docs/b.md\n"
+        ));
+        assert!(!deterministic_out_of_scope(
+            "GIT binary patch\nliteral 1\n"
+        ));
+    }
+
+    #[test]
+    fn sanitize_detail_redacts_path_flattens_and_truncates() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let token = format!("ghp_{}", "x".repeat(30));
+        let input = format!(
+            "lead\n{}{}\t{token}{}",
+            tmp.path().display(),
+            "\u{0001}",
+            "Z".repeat(600)
+        );
+        let out = sanitize_detail(&input, tmp.path());
+        assert!(!out.contains('\n'), "{out:?}");
+        assert!(!out.contains(tmp.path().to_str().expect("utf8")), "{out}");
+        assert!(out.contains("<implement-tmpdir>"), "{out}");
+        assert!(!out.contains(&token), "{out}");
+        assert!(out.contains("<REDACTED-TOKEN>") || !out.contains("ghp_"), "{out}");
+        assert!(out.len() <= 500, "len={}", out.len());
+        assert!(out.starts_with("lead <implement-tmpdir>"), "{out}");
+    }
+
+    #[test]
+    fn final_report_sections_empty_when_notes_missing_or_head_wrong() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        assert_eq!(final_report_sections(tmp.path(), HEAD_A), "");
+        write_deterministic_clean_note(
+            tmp.path(),
+            HEAD_A,
+            "origin/main",
+            DOCS_DIFF,
+            AssessmentKind::Guidelines,
+        )
+        .expect("write");
+        assert_eq!(final_report_sections(tmp.path(), HEAD_B), "");
+    }
+
+    #[test]
+    fn final_report_sections_renders_consumable_guidelines_note() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        write_deterministic_clean_note(
+            tmp.path(),
+            HEAD_A,
+            "origin/main",
+            DOCS_DIFF,
+            AssessmentKind::Guidelines,
+        )
+        .expect("write");
+        let report = final_report_sections(tmp.path(), HEAD_A);
+        assert!(report.contains("## Architectural guidelines"), "{report}");
+        assert!(report.contains("no deviations identified"), "{report}");
+        assert!(!report.contains("## Architectural invariants"), "{report}");
     }
 
     #[test]
@@ -2210,6 +2420,65 @@ mod tests {
     }
 
     #[test]
+    fn write_outcome_writes_valid_ship_sidecar() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let result = AssessmentResult {
+            kind: AssessmentKind::Guidelines,
+            state: ASSESSMENT_OUTCOME_CLEAN.to_owned(),
+            assessment: AssessmentKind::Guidelines
+                .clean_presentation_note()
+                .to_owned(),
+            head_sha: HEAD_A.to_owned(),
+            base_ref: "origin/main".to_owned(),
+            diff_fingerprint: diff_fingerprint(DOCS_DIFF),
+            knowledge_sha256: "d".repeat(64),
+        };
+        write_outcome(
+            AssessmentKind::Guidelines,
+            tmp.path(),
+            &result,
+            NOTE_STATE_DETERMINISTIC_CLEAN,
+            "",
+        )
+        .expect("write outcome");
+        let text = fs::read_to_string(
+            tmp.path()
+                .join(AssessmentKind::Guidelines.ship_outcome_sidecar_filename()),
+        )
+        .expect("sidecar");
+        assert!(text.contains(r#""outcome":"clean""#), "{text}");
+        assert!(
+            text.contains(r#""reason":"deterministic-clean""#),
+            "{text}"
+        );
+        assert!(text.contains(r#""assessment_kind":"clean""#), "{text}");
+        assert!(text.contains(HEAD_A), "{text}");
+    }
+
+    #[test]
+    fn write_outcome_rejects_empty_head() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let result = AssessmentResult {
+            kind: AssessmentKind::Invariants,
+            state: "violation".to_owned(),
+            assessment: "I-Core-1 broken\n".to_owned(),
+            head_sha: String::new(),
+            base_ref: "origin/main".to_owned(),
+            diff_fingerprint: "f".repeat(64),
+            knowledge_sha256: "d".repeat(64),
+        };
+        let err = write_outcome(
+            AssessmentKind::Invariants,
+            tmp.path(),
+            &result,
+            NOTE_STATE_AUTHORED,
+            "detail",
+        )
+        .expect_err("empty head");
+        assert!(err.contains("head_sha is empty"), "{err}");
+    }
+
+    #[test]
     fn note_consumable_rejects_head_mismatch_without_repo() {
         let tmp = tempfile::tempdir().expect("tmpdir");
         let head = "b".repeat(40);
@@ -2232,7 +2501,29 @@ mod tests {
     }
 
     #[test]
-    fn authored_outcome_valid_rejects_clean_with_identifier() {
+    fn note_consumable_with_fake_git_when_live_fingerprint_matches() {
+        let (_root, repo, tmpdir) = setup_repo_tmpdir();
+        write_deterministic_clean_note(
+            &tmpdir,
+            HEAD_A,
+            "origin/main",
+            DOCS_DIFF,
+            AssessmentKind::Guidelines,
+        )
+        .expect("write");
+        let git = FakeGit::new(HEAD_A, DOCS_DIFF);
+        assert!(note_consumable(
+            &tmpdir,
+            HEAD_A,
+            AssessmentKind::Guidelines,
+            "origin/main",
+            Some(repo.as_path()),
+            Some(&git as &dyn AssessmentGit),
+        ));
+    }
+
+    #[test]
+    fn authored_outcome_valid_clean_violation_and_deviation_cases() {
         assert!(authored_outcome_valid(
             "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.\n",
             "clean",
@@ -2243,5 +2534,430 @@ mod tests {
             "clean",
             false
         ));
+        assert!(authored_outcome_valid(
+            "Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.\n",
+            "clean",
+            true
+        ));
+        assert!(authored_outcome_valid(
+            "I-Core-1 is violated by the new helper.\n",
+            "violation",
+            true
+        ));
+        assert!(authored_outcome_valid(
+            "G-Py-4 is bent for this ship ladder step.\n",
+            "deviation",
+            false
+        ));
+        assert!(!authored_outcome_valid(
+            "I-Core-1 is violated by the new helper.\n",
+            "deviation",
+            true
+        ));
+        assert!(!authored_outcome_valid(
+            "G-Py-4 is bent for this ship ladder step.\n",
+            "violation",
+            false
+        ));
+        assert!(!authored_outcome_valid("anything", "bogus", false));
+        assert!(!authored_outcome_valid("", "clean", false));
+    }
+
+    #[test]
+    fn append_deviation_note_ok_duplicate_and_failed() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        assert_eq!(append_deviation_note(tmp.path(), "   \n"), "failed");
+        assert_eq!(
+            append_deviation_note(tmp.path(), "G-Py-4 bent for tests."),
+            "ok"
+        );
+        let log = fs::read_to_string(tmp.path().join("execution-issues.md")).expect("log");
+        assert!(log.contains("G-Py-4 bent for tests."), "{log}");
+        assert_eq!(
+            append_deviation_note(tmp.path(), "G-Py-4 bent for tests."),
+            "duplicate"
+        );
+        let blocked = tempfile::tempdir().expect("blocked");
+        fs::create_dir_all(blocked.path().join("execution-issues.md")).expect("dir collision");
+        assert_eq!(
+            append_deviation_note(blocked.path(), "G-Py-4 again."),
+            "failed"
+        );
+    }
+
+    #[test]
+    fn validate_materialization_rejects_incomplete_and_fingerprint_mismatch() {
+        let (_root, repo, tmpdir) = setup_repo_tmpdir();
+        write_guidelines_knowledge(&repo);
+        let knowledge = repo.join("ARCHITECTURAL_GUIDELINES.md");
+        let git = FakeGit::new(HEAD_A, CODE_DIFF);
+
+        fs::write(
+            tmpdir.join(AssessmentKind::Guidelines.materialize_env_filename()),
+            "STATUS=present\nHEAD_SHA=\n",
+        )
+        .expect("bad meta");
+        let err = validate_materialization(
+            AssessmentKind::Guidelines,
+            &repo,
+            &tmpdir,
+            &git,
+        )
+        .expect_err("incomplete");
+        assert!(err.contains("incomplete"), "{err}");
+
+        write_materialize_env(
+            &tmpdir,
+            AssessmentKind::Guidelines,
+            "not-a-sha",
+            "origin/main",
+            CODE_DIFF,
+            &knowledge,
+            None,
+        );
+        let err = validate_materialization(
+            AssessmentKind::Guidelines,
+            &repo,
+            &tmpdir,
+            &git,
+        )
+        .expect_err("bad head");
+        assert!(err.contains("HEAD_SHA is invalid"), "{err}");
+
+        write_materialize_env(
+            &tmpdir,
+            AssessmentKind::Guidelines,
+            HEAD_A,
+            "origin/main",
+            CODE_DIFF,
+            &knowledge,
+            Some(&"0".repeat(64)),
+        );
+        let err = validate_materialization(
+            AssessmentKind::Guidelines,
+            &repo,
+            &tmpdir,
+            &git,
+        )
+        .expect_err("fp mismatch");
+        assert!(err.contains("fingerprint mismatch"), "{err}");
+    }
+
+    #[test]
+    fn validate_materialization_accepts_matching_stubbed_identity() {
+        let (_root, repo, tmpdir) = setup_repo_tmpdir();
+        write_guidelines_knowledge(&repo);
+        let knowledge = repo.join("ARCHITECTURAL_GUIDELINES.md");
+        write_materialize_env(
+            &tmpdir,
+            AssessmentKind::Guidelines,
+            HEAD_A,
+            "origin/main",
+            CODE_DIFF,
+            &knowledge,
+            None,
+        );
+        let git = FakeGit::new(HEAD_A, CODE_DIFF);
+        let evidence = validate_materialization(
+            AssessmentKind::Guidelines,
+            &repo,
+            &tmpdir,
+            &git,
+        )
+        .expect("valid");
+        assert_eq!(evidence.head_sha, HEAD_A);
+        assert_eq!(evidence.base_ref, "origin/main");
+        assert_eq!(evidence.diff_text, CODE_DIFF);
+        assert!(evidence.identifiers.contains("G-Py-4"));
+    }
+
+    #[test]
+    fn submit_rejects_bad_state_empty_note_and_exception_gate() {
+        let (_root, repo, tmpdir) = setup_repo_tmpdir();
+        write_guidelines_knowledge(&repo);
+        let knowledge = repo.join("ARCHITECTURAL_GUIDELINES.md");
+        write_materialize_env(
+            &tmpdir,
+            AssessmentKind::Guidelines,
+            HEAD_A,
+            "origin/main",
+            CODE_DIFF,
+            &knowledge,
+            None,
+        );
+        let git = FakeGit::new(HEAD_A, CODE_DIFF);
+
+        let err = submit(
+            "guidelines",
+            "violation",
+            "G-Py-4 note\n",
+            &repo,
+            &tmpdir,
+            false,
+            &git,
+        )
+        .expect_err("bad state");
+        assert!(matches!(err, SubmitError::Value(_)), "{err}");
+        assert!(err.to_string().contains("unsupported"), "{err}");
+
+        let err = submit(
+            "guidelines",
+            "deviation",
+            "   \n",
+            &repo,
+            &tmpdir,
+            false,
+            &git,
+        )
+        .expect_err("empty");
+        assert!(err.to_string().contains("empty or oversized"), "{err}");
+
+        let oversized = "x".repeat(MAX_ASSESSMENT_CHARS + 1);
+        let err = submit(
+            "guidelines",
+            "deviation",
+            &oversized,
+            &repo,
+            &tmpdir,
+            false,
+            &git,
+        )
+        .expect_err("oversized");
+        assert!(err.to_string().contains("empty or oversized"), "{err}");
+
+        let err = submit(
+            "guidelines",
+            "deviation",
+            "G-Py-4 applies.\nException: pragmatic (author: main-agent, date: 2026-07-13)\n",
+            &repo,
+            &tmpdir,
+            false,
+            &git,
+        )
+        .expect_err("exception gate");
+        assert!(
+            err.to_string().contains("documented-exception")
+                || err.to_string().contains("allow-exception"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn submit_rejects_head_drift_after_materialize() {
+        let (_root, repo, tmpdir) = setup_repo_tmpdir();
+        write_guidelines_knowledge(&repo);
+        let knowledge = repo.join("ARCHITECTURAL_GUIDELINES.md");
+        write_materialize_env(
+            &tmpdir,
+            AssessmentKind::Guidelines,
+            HEAD_A,
+            "origin/main",
+            CODE_DIFF,
+            &knowledge,
+            None,
+        );
+        let git = FakeGit::new(HEAD_A, CODE_DIFF).with_drift(HEAD_B);
+        let err = submit(
+            "guidelines",
+            "clean",
+            &format!(
+                "{}\n",
+                AssessmentKind::Guidelines.clean_presentation_note()
+            ),
+            &repo,
+            &tmpdir,
+            false,
+            &git,
+        )
+        .expect_err("drift");
+        assert!(matches!(err, SubmitError::HeadDrift(_)), "{err}");
+        assert!(err.to_string().contains("HEAD changed"), "{err}");
+    }
+
+    #[test]
+    fn submit_persists_clean_guidelines_assessment() {
+        let (_root, repo, tmpdir) = setup_repo_tmpdir();
+        write_guidelines_knowledge(&repo);
+        let knowledge = repo.join("ARCHITECTURAL_GUIDELINES.md");
+        write_materialize_env(
+            &tmpdir,
+            AssessmentKind::Guidelines,
+            HEAD_A,
+            "origin/main",
+            CODE_DIFF,
+            &knowledge,
+            None,
+        );
+        let git = FakeGit::new(HEAD_A, CODE_DIFF);
+        let note = format!(
+            "{}\n",
+            AssessmentKind::Guidelines.clean_presentation_note()
+        );
+        let result = submit(
+            "guidelines",
+            "clean",
+            &note,
+            &repo,
+            &tmpdir,
+            false,
+            &git,
+        )
+        .expect("submit clean");
+        assert_eq!(result.state, "clean");
+        assert_eq!(result.head_sha, HEAD_A);
+        let durable = fs::read_to_string(durable_note_path(&tmpdir, AssessmentKind::Guidelines))
+            .expect("note");
+        assert!(durable.contains("no deviations identified"), "{durable}");
+        let sidecar = fs::read_to_string(
+            tmpdir.join(AssessmentKind::Guidelines.ship_outcome_sidecar_filename()),
+        )
+        .expect("sidecar");
+        assert!(sidecar.contains(r#""outcome":"clean""#), "{sidecar}");
+    }
+
+    #[test]
+    fn submit_persists_deviation_and_appends_warning() {
+        let (_root, repo, tmpdir) = setup_repo_tmpdir();
+        write_guidelines_knowledge(&repo);
+        let knowledge = repo.join("ARCHITECTURAL_GUIDELINES.md");
+        write_materialize_env(
+            &tmpdir,
+            AssessmentKind::Guidelines,
+            HEAD_A,
+            "origin/main",
+            CODE_DIFF,
+            &knowledge,
+            None,
+        );
+        let git = FakeGit::new(HEAD_A, CODE_DIFF);
+        let result = submit(
+            "guidelines",
+            "deviation",
+            "G-Py-4 is bent for the coverage ladder.\n",
+            &repo,
+            &tmpdir,
+            false,
+            &git,
+        )
+        .expect("submit deviation");
+        assert_eq!(result.state, "deviation");
+        let log = fs::read_to_string(tmpdir.join("execution-issues.md")).expect("log");
+        assert!(log.contains("G-Py-4"), "{log}");
+        let sidecar = fs::read_to_string(
+            tmpdir.join(AssessmentKind::Guidelines.ship_outcome_sidecar_filename()),
+        )
+        .expect("sidecar");
+        assert!(sidecar.contains(r#""outcome":"pinned""#), "{sidecar}");
+    }
+
+    #[test]
+    fn materialize_docs_only_diff_is_deterministic_clean() {
+        let (_root, repo, tmpdir) = setup_repo_tmpdir();
+        write_guidelines_knowledge(&repo);
+        let git = FakeGit::new(HEAD_A, DOCS_DIFF);
+        let (statuses, pending) =
+            materialize(&["guidelines"], &repo, &tmpdir, &git).expect("materialize");
+        assert!(pending.is_empty(), "{pending:?}");
+        assert_eq!(
+            statuses.get("guidelines").map(String::as_str),
+            Some("deterministic-clean")
+        );
+        assert!(note_consumable(
+            &tmpdir,
+            HEAD_A,
+            AssessmentKind::Guidelines,
+            "origin/main",
+            None,
+            None,
+        ));
+    }
+
+    #[test]
+    fn materialize_code_diff_returns_pending_evidence() {
+        let (_root, repo, tmpdir) = setup_repo_tmpdir();
+        write_guidelines_knowledge(&repo);
+        let git = FakeGit::new(HEAD_A, CODE_DIFF);
+        let (statuses, pending) =
+            materialize(&["guidelines"], &repo, &tmpdir, &git).expect("materialize");
+        assert!(statuses.is_empty(), "{statuses:?}");
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].kind, AssessmentKind::Guidelines);
+        assert_eq!(pending[0].diff_text, CODE_DIFF);
+        assert!(pending[0].identifiers.contains("G-Py-4"));
+    }
+
+    #[test]
+    fn materialize_reports_handled_when_note_already_consumable() {
+        let (_root, repo, tmpdir) = setup_repo_tmpdir();
+        write_guidelines_knowledge(&repo);
+        let git = FakeGit::new(HEAD_A, DOCS_DIFF);
+        let (statuses, _) =
+            materialize(&["guidelines"], &repo, &tmpdir, &git).expect("first");
+        assert_eq!(
+            statuses.get("guidelines").map(String::as_str),
+            Some("deterministic-clean")
+        );
+        let (statuses, pending) =
+            materialize(&["guidelines"], &repo, &tmpdir, &git).expect("second");
+        assert!(pending.is_empty(), "{pending:?}");
+        assert_eq!(
+            statuses.get("guidelines").map(String::as_str),
+            Some("handled")
+        );
+        assert!(
+            already_handled(
+                AssessmentKind::Guidelines,
+                &repo,
+                &tmpdir,
+                HEAD_A,
+                &git,
+            )
+            .expect("already")
+        );
+    }
+
+    #[test]
+    fn materialize_invariants_with_code_diff_is_pending() {
+        let (_root, repo, tmpdir) = setup_repo_tmpdir();
+        write_invariants_knowledge(&repo);
+        let git = FakeGit::new(HEAD_A, CODE_DIFF);
+        let (statuses, pending) =
+            materialize(&["invariants"], &repo, &tmpdir, &git).expect("materialize");
+        assert!(statuses.is_empty(), "{statuses:?}");
+        assert_eq!(pending.len(), 1);
+        assert!(pending[0].identifiers.contains("I-Core-1"));
+    }
+
+    #[test]
+    fn submit_invariant_violation_persists_outcome() {
+        let (_root, repo, tmpdir) = setup_repo_tmpdir();
+        write_invariants_knowledge(&repo);
+        let knowledge = repo.join("ARCHITECTURAL_INVARIANTS.md");
+        write_materialize_env(
+            &tmpdir,
+            AssessmentKind::Invariants,
+            HEAD_A,
+            "origin/main",
+            CODE_DIFF,
+            &knowledge,
+            None,
+        );
+        let git = FakeGit::new(HEAD_A, CODE_DIFF);
+        let result = submit(
+            "invariants",
+            "violation",
+            "I-Core-1 is violated by the coverage helper.\n",
+            &repo,
+            &tmpdir,
+            false,
+            &git,
+        )
+        .expect("submit violation");
+        assert_eq!(result.state, "violation");
+        let sidecar = fs::read_to_string(
+            tmpdir.join(AssessmentKind::Invariants.ship_outcome_sidecar_filename()),
+        )
+        .expect("sidecar");
+        assert!(sidecar.contains(r#""outcome":"violation""#), "{sidecar}");
     }
 }

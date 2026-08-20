@@ -16,7 +16,7 @@ Commands:
   bgjob                     Durable background-job compatibility commands
   ci-timing                 Collect GitHub Actions timing inputs and resolve trusted source runs
   checks                    `/implement` checks-loop attribution reads
-  ci                        Fail-closed Rust CI selection and history helpers
+  ci                        Fail-closed Rust CI selection, history helpers, and main-cache candidates
   architectural-assessment  Step 8 architectural assessment materialize/submit/report helpers
   complete-umbrella         Serially complete and audit every direct leaf of one umbrella issue
   audit-umbrella            Audit one managed umbrella and reconcile its exhaustive corrective batch

@@ -358,3 +358,107 @@ fn final_report_sections_empty_when_notes_missing() {
         .success();
     assert_eq!(stdout_of(&assertion), "");
 }
+
+#[test]
+fn final_report_sections_renders_after_deterministic_clean_materialize() {
+    let root = TempDir::new().expect("temp");
+    let (repo, _initial_head) = real_repo_with_origin_main(root.path());
+    fs::write(
+        repo.join("ARCHITECTURAL_GUIDELINES.md"),
+        "### G-Py-4: Fail loudly\n",
+    )
+    .expect("guidelines");
+    git(&repo, &["add", "ARCHITECTURAL_GUIDELINES.md"]);
+    git(&repo, &["commit", "-m", "guidelines knowledge"]);
+    git(&repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    fs::create_dir_all(repo.join("docs")).expect("docs");
+    fs::write(repo.join("docs/a.md"), "docs\n").expect("docs file");
+    git(&repo, &["add", "docs/a.md"]);
+    git(&repo, &["commit", "-m", "docs only"]);
+    let tmpdir = root.path().join("implement");
+    fs::create_dir_all(&tmpdir).expect("tmpdir");
+
+    larch(&repo)
+        .args([
+            "architectural-assessment",
+            "materialize",
+            "--kind",
+            "guidelines",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--implement-tmpdir",
+            tmpdir.to_str().expect("utf8"),
+        ])
+        .assert()
+        .success();
+
+    // final-report-sections resolves HEAD from cwd via gix discover.
+    let assertion = larch(&repo)
+        .args([
+            "architectural-assessment",
+            "final-report-sections",
+            "--implement-tmpdir",
+            tmpdir.to_str().expect("utf8"),
+        ])
+        .assert()
+        .success();
+    let out = stdout_of(&assertion);
+    assert!(out.contains("## Architectural guidelines"), "{out}");
+    assert!(out.contains("no deviations identified"), "{out}");
+}
+
+#[test]
+fn submit_rejects_empty_note_file() {
+    let root = TempDir::new().expect("temp");
+    let (repo, _head) = real_repo_with_origin_main(root.path());
+    fs::write(repo.join("app.py"), "print('hi')\n").expect("code");
+    fs::write(
+        repo.join("ARCHITECTURAL_GUIDELINES.md"),
+        "### G-Py-4: Fail loudly\n",
+    )
+    .expect("guidelines");
+    git(&repo, &["add", "app.py", "ARCHITECTURAL_GUIDELINES.md"]);
+    git(&repo, &["commit", "-m", "code"]);
+    let tmpdir = root.path().join("implement");
+    fs::create_dir_all(&tmpdir).expect("tmpdir");
+
+    larch(root.path())
+        .args([
+            "architectural-assessment",
+            "materialize",
+            "--kind",
+            "guidelines",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--implement-tmpdir",
+            tmpdir.to_str().expect("utf8"),
+        ])
+        .assert()
+        .success();
+
+    let note = tmpdir.join("empty-note.md");
+    fs::write(&note, "   \n").expect("empty note");
+    let assertion = larch(root.path())
+        .args([
+            "architectural-assessment",
+            "submit",
+            "--kind",
+            "guidelines",
+            "--state",
+            "deviation",
+            "--note-file",
+            note.to_str().expect("utf8"),
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--implement-tmpdir",
+            tmpdir.to_str().expect("utf8"),
+        ])
+        .assert()
+        .code(1);
+    let out = stdout_of(&assertion);
+    assert!(out.contains("ASSESSMENT_STATUS=failed"), "{out}");
+    assert!(
+        out.contains("empty") || out.contains("oversized") || out.contains("ASSESSMENT_DETAIL="),
+        "{out}"
+    );
+}
