@@ -49,6 +49,8 @@ crates/larch-cli/src/implement_bootstrap_continuation.rs	git-cli	#7671	typed-cli
 crates/larch-cli/src/implement_dispatch_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/implement_preflight_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/implement_review_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/implement_scope_disposition_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/implement_scope_disposition_commands_impl.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/launcher_support.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/learn_from_bugs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/migration_audit_commands.rs	git-cli	#7671	typed-cli,typed-read
@@ -98,7 +100,6 @@ python/larch/implement/dispatch_helpers.py	later-domain	#7681	dynamic
 python/larch/implement/dispatch_recovery.py	later-domain	#7681	rev-parse
 python/larch/implement/dispatch_step2.py	later-domain	#7681	rev-parse
 python/larch/implement/rust_clippy.py	later-domain	#7681	diff,ls-files,rev-parse
-python/larch/implement/scope_disposition.py	later-domain	#7681	dynamic-consumer
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base
 python/larch/report/storage_config.py	later-domain	#7683	dynamic
 python/larch/state/finalize.py	later-domain	#7677	branch,check-ref-format,checkout,ls-remote,pull,rev-list,rev-parse,show-ref,stash,symbolic-ref
