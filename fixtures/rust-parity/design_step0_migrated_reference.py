@@ -12,8 +12,11 @@ keeping those copies byte-frozen (the third is described at its call site):
 1. The frozen modules cross-import one another as ``larch.design.design_step0_env``
    etc. They are registered in ``sys.modules`` under their original dotted names
    before execution so those intra-package imports resolve to the frozen copies
-   even after production removal, while ``design_core``/``design_terminal``/
-   ``design_pause`` continue to resolve to the surviving package modules.
+   even after production removal, while ``design_core``/``design_pause`` continue
+   to resolve to the surviving package modules. ``design_terminal`` was retired in
+   #8580, so its byte-frozen copy from ``design_terminal_frozen/`` is registered
+   under ``larch.design.design_terminal`` the same way, keeping the frozen step0
+   modules' ``from larch.design.design_terminal import ...`` line resolvable.
 2. Subprocesses that ran through ``repo_roots.larch_entrypoint`` (design
    parse-flags/route/init-runparams, session setup/write-design-env, run-log,
    agent, progress, token, timing) prefer the harness-provided larch binary
@@ -29,6 +32,7 @@ import sys
 from pathlib import Path
 
 FROZEN = Path(__file__).resolve().parent / "design_step0_frozen"
+TERMINAL_FROZEN = Path(__file__).resolve().parent / "design_terminal_frozen"
 
 # Documented adjustment 3: the harness runs both sides under `LANG=C`. On
 # CPython, PEP 538 C-locale coercion injects `LC_CTYPE=UTF-8` into this
@@ -66,6 +70,10 @@ def _load(name: str, path: Path):
     return module
 
 
+# `design_terminal` was retired in #8580; register its byte-frozen copy under the
+# original dotted name so the frozen step0 module's
+# `from larch.design.design_terminal import ...` resolves to pre-cutover behavior.
+_load("larch.design.design_terminal", TERMINAL_FROZEN / "design_terminal.py")
 _env = _load("larch.design.design_step0_env", FROZEN / "design_step0_env.py")
 _session = _load("larch.design.design_session", FROZEN / "design_session.py")
 _step0 = _load("larch.design.design_step0", FROZEN / "design_step0.py")

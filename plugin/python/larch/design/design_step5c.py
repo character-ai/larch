@@ -28,8 +28,11 @@ from larch.design.design_core import (
     _design_require_plugin_root,
     _design_tmpdir,
     _emit_core_kvs,
+    _emit_final_summary_marked_from_disk,
+    _emit_report_gate_sidecars_from_disk,
     _parse_common_wrapper_args,
     _print_text,
+    _publish_terminal_final_summary,
     _read_env_value,
     _rehydrate_wrapper_env,
     _step2b5_self_log,
@@ -37,16 +40,11 @@ from larch.design.design_core import (
     _validate_design_tmpdir_arg,
     _append_failure,
     design_write_merge_env,
-    load_bash_quoted_env,
-    step2b5_next_action_for,
-)
-from larch.design.design_terminal import (
-    _emit_final_summary_marked_from_disk,
-    _emit_report_gate_sidecars_from_disk,
-    _publish_terminal_final_summary,
     extend_publish_failure_stage_args,
-    read_result_env_main,
-    stage_terminal_state_core,
+    load_bash_quoted_env,
+    run_design_verb,
+    run_design_verb_captured,
+    step2b5_next_action_for,
 )
 from larch.design.design_summary import resolve_summary_mode
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
@@ -198,7 +196,7 @@ def _step5c_safe_publish_env(
         for key in STEP5C_PUBLISH_RESULT_ALLOW_KEYS:
             argv.extend(["--allow", key])
         argv.extend(["--output", str(safe_path)])
-        rre_rc = read_result_env_main(argv)
+        rre_rc = run_design_verb(verb="read-result-env", args=argv)
         if rre_rc != 0:
             return int(rre_rc), {}, stdout_fallback
         values = load_bash_quoted_env(path=safe_path, allow_keys=STEP5C_PUBLISH_RESULT_ALLOW_KEYS)
@@ -278,11 +276,11 @@ def _step5c_stage_failed_publish_tail(
         str(detail_log),
     ]
     extend_publish_failure_stage_args(stage_args, result_env)
-    stage_rc = _capture_contract_stream_to_paths(
-        stage_terminal_state_core,
-        stdout_log,
-        stderr_log,
-        stage_args,
+    stage_rc = run_design_verb_captured(
+        verb="stage-terminal-state",
+        args=stage_args,
+        stdout_path=stdout_log,
+        stderr_path=stderr_log,
     )
     if _read_env_value(path=stdout_log, key="STAGED", default="") == "false":
         _append_failure(

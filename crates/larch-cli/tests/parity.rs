@@ -82,7 +82,11 @@ impl CleanInstallCase {
             | "clean-install-session-local-cleanup"
             // `plan validator-autofix` refuses missing `DESIGN_TMPDIR` before
             // `--help`, matching the frozen Python wrapper order.
-            | "clean-install-plan-validator-autofix" => 1,
+            | "clean-install-plan-validator-autofix"
+            // `design read-result-env` parses with `add_help=False`; the
+            // clean-install `--help` token is an extra argument, so the verb
+            // prints its usage and exits 1 like the frozen Python parser.
+            | "clean-install-design-read-result-env" => 1,
             // `design parse-flags` owns the frozen Step 0-pre grammar: the
             // clean-install `--help` token is an unrecognized public flag and
             // refuses with the Python validation exit code, matching the
@@ -116,6 +120,13 @@ impl CleanInstallCase {
             | "clean-install-triage-probe"
             | "clean-install-untrusted-redact-stream"
             | "clean-install-untrusted-xml-escape-attr"
+            // The `design stage-terminal-state`/`failure-report` wrappers
+            // validate `--design-tmpdir` before `--help`, and
+            // `step-final-summary` refuses the unknown wrapper argument, so each
+            // exits 2 like the frozen Python owner.
+            | "clean-install-design-stage-terminal-state"
+            | "clean-install-design-failure-report"
+            | "clean-install-design-step-final-summary"
             // Neither final-report verb declares a `--help` action either, so
             // the clean-install token reads as an unrecognized argument and each
             // refuses for its missing `--implement-tmpdir`.
@@ -868,6 +879,26 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-design-settle-next-action",
         "design",
         "settle-next-action",
+    ),
+    CleanInstallCase::new(
+        "clean-install-design-read-result-env",
+        "design",
+        "read-result-env",
+    ),
+    CleanInstallCase::new(
+        "clean-install-design-stage-terminal-state",
+        "design",
+        "stage-terminal-state",
+    ),
+    CleanInstallCase::new(
+        "clean-install-design-failure-report",
+        "design",
+        "failure-report",
+    ),
+    CleanInstallCase::new(
+        "clean-install-design-step-final-summary",
+        "design",
+        "step-final-summary",
     ),
     CleanInstallCase::new("clean-install-deps-explicit-refs", "deps", "explicit-refs"),
     CleanInstallCase::new("clean-install-deps-fetch", "deps", "fetch"),

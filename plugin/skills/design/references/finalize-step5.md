@@ -93,7 +93,7 @@ When `_publish_rc=4`, enter the shared branch with parsed `VALIDATE_*` / `PUBLIS
 
 When `_publish_rc=3`, the publish tail may have completed but `.design-publish-result.env` could not be written. Parse the captured stdout fallback (`_publish_stdout_file`) and continue Step 5c items 5-7 with the warning above. Do not treat exit 3 as publish-tail incomplete.
 
-When `_publish_rc` is in `{0, 1, 3, 4}`, parse through `python/cli.py design read-result-env --input "$DESIGN_TMPDIR/.design-step5c-status.env"` after bgjob `DONE`; the helper prefers `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` and falls back to the legacy status env only when absent. Gate success on `BGJOB_RC=0`. Exit 1 is the normal plan-block-write failure path. Do not abort solely because `_publish_rc=1`.
+When `_publish_rc` is in `{0, 1, 3, 4}`, parse through `scripts/larch.sh design read-result-env --input "$DESIGN_TMPDIR/.design-step5c-status.env"` after bgjob `DONE`; the helper prefers `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` and falls back to the legacy status env only when absent. Gate success on `BGJOB_RC=0`. Exit 1 is the normal plan-block-write failure path. Do not abort solely because `_publish_rc=1`.
 
 **Driver WARN replay (top chat):** After the Bash block, when `_publish_rc` ∈ {0, 1, 3} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat before terminal final-summary emission. Do not leave them only as `WARN=` machine lines inside Bash output.
 

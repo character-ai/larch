@@ -1,0 +1,18 @@
+{
+  "exit_code": 1,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    },
+    "design/in.env": {
+      "text": "FOO=bar\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: read-result-env.sh --input PATH [--fallback-input PATH] --allow KEY ... --output PATH\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

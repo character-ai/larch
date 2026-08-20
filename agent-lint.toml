@@ -1235,9 +1235,12 @@ closure-max-content-tokens = 26303
 # Issue #8578 retargets the nine design Step 0 verb citations
 # (settle-next-action and step0-*) to scripts/larch.sh the same way, adding
 # seventeen measured conditional tokens.
+# Issue #8580 retargets the design read-result-env/stage-terminal-state/
+# failure-report citations to scripts/larch.sh the same way, adding three
+# measured conditional tokens.
 conditional-max-lines = 779
-conditional-max-tokens = 19703
-conditional-max-content-tokens = 19631
+conditional-max-tokens = 19706
+conditional-max-content-tokens = 19634
 
 [[lint.prompt-source-budgets]]
 name = "implement"

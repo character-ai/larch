@@ -210,6 +210,34 @@ fn kv_first(text: &str, key: &str) -> Option<String> {
 // run-log append-failure and best-effort children through the Step 0 seam
 // ---------------------------------------------------------------------------
 
+/// Canonical `run-log append-failure` argv, shared with the design terminal owner.
+pub fn append_failure_args(
+    log_path: String,
+    site: &str,
+    tool: &str,
+    exit_code: &str,
+    category: &str,
+    output_file: &Path,
+) -> Vec<String> {
+    vec![
+        "run-log".to_owned(),
+        "append-failure".to_owned(),
+        "--log".to_owned(),
+        log_path,
+        "--site".to_owned(),
+        site.to_owned(),
+        "--tool".to_owned(),
+        tool.to_owned(),
+        "--exit-code".to_owned(),
+        exit_code.to_owned(),
+        "--category".to_owned(),
+        category.to_owned(),
+        "--output-file".to_owned(),
+        output_file.display().to_string(),
+        "--redact".to_owned(),
+    ]
+}
+
 /// Port of `_append_failure`: the canonical `run-log append-failure` child.
 #[allow(clippy::too_many_arguments)] // Mirrors the frozen `append_failure` request fields verbatim.
 fn append_failure(
@@ -222,26 +250,17 @@ fn append_failure(
     category: &str,
     output_file: &Path,
 ) -> bool {
-    let args = vec![
-        "run-log".to_owned(),
-        "append-failure".to_owned(),
-        "--log".to_owned(),
+    let args = append_failure_args(
         design_tmpdir
             .join("execution-issues.md")
             .display()
             .to_string(),
-        "--site".to_owned(),
-        site.to_owned(),
-        "--tool".to_owned(),
-        tool.to_owned(),
-        "--exit-code".to_owned(),
-        exit_code.to_owned(),
-        "--category".to_owned(),
-        category.to_owned(),
-        "--output-file".to_owned(),
-        output_file.display().to_string(),
-        "--redact".to_owned(),
-    ];
+        site,
+        tool,
+        exit_code,
+        category,
+        output_file,
+    );
     runner.run(plugin_root, &args, &[], false).code == 0
 }
 

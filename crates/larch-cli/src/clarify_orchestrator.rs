@@ -295,7 +295,11 @@ fn stage_failed_clarify(
     }
     let stdout_log = design_tmpdir.join("design-clarify-stage.stdout.log");
     let stderr_log = design_tmpdir.join("design-clarify-stage.stderr.log");
+    // #8580 flipped `design stage-terminal-state` to a Rust owner reached through
+    // the larch entrypoint, so the bridge now needs the resolved plugin root.
+    let plugin_root = plugin_root_directory().unwrap_or_default();
     let rc = stage_terminal_state_bridge(
+        &plugin_root,
         &stdout_log,
         &stderr_log,
         &clarify_failure_stage_args(design_tmpdir, &exit_code.to_string(), detail_log),

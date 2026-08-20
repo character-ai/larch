@@ -21,9 +21,6 @@ EXPECTED = {
         ("pause-load", "larch.design.design_pause", "pause_load_main"),
         ("render-gate", "larch.design.design_gate_render", "render_gate_main"),
         ("render-final-summary", "larch.design.design_summary", "render_final_summary_main"),
-        ("stage-terminal-state", "larch.design.design_terminal", "stage_terminal_state_main"),
-        ("failure-report", "larch.design.design_terminal", "failure_report_main"),
-        ("step-final-summary", "larch.design.design_terminal", "step_final_summary_main"),
         ("file-oos-prepare", "larch.design.design_oos", "file_oos_prepare_main"),
         ("file-oos-annotate", "larch.design.design_oos", "file_oos_annotate_main"),
     )
