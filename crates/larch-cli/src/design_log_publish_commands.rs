@@ -209,21 +209,19 @@ fn run_log_publish(request: &LogPublishRequest) -> LogPublishResult {
         );
     }
 
-    match publish_design_logs(request, &outcome) {
-        Ok((publish_ok, remote_key, cache_dir, scrub)) => {
-            persist_metadata(&request.design_tmpdir, &remote_key, &cache_dir);
-            LogPublishResult {
-                publish_ok,
-                exit_code: if publish_ok { 0 } else { 1 },
-                remote_key,
-                cache_dir,
-                secret_scrub_violations: Some(scrub),
-            }
+    if let Ok((publish_ok, remote_key, cache_dir, scrub)) = publish_design_logs(request, &outcome)
+    {
+        persist_metadata(&request.design_tmpdir, &remote_key, &cache_dir);
+        LogPublishResult {
+            publish_ok,
+            exit_code: u8::from(!publish_ok),
+            remote_key,
+            cache_dir,
+            secret_scrub_violations: Some(scrub),
         }
-        Err(SecretScrubFailure) => {
-            eprintln!("design log-publish: secret scrub failed: secret survived scrubbing");
-            failed(1, Some("0"))
-        }
+    } else {
+        eprintln!("design log-publish: secret scrub failed: secret survived scrubbing");
+        failed(1, Some("0"))
     }
 }
 
@@ -250,6 +248,7 @@ fn dry_run_publish(request: &LogPublishRequest, outcome: &str) -> LogPublishResu
 
 struct SecretScrubFailure;
 
+#[allow(clippy::too_many_lines)] // One verb, one Python main ported branch for branch.
 fn publish_design_logs(
     request: &LogPublishRequest,
     outcome: &str,
@@ -257,7 +256,7 @@ fn publish_design_logs(
     let Some(repo_root) = discover_repo_root() else {
         return Ok((false, String::new(), String::new(), "0".to_owned()));
     };
-    let lifecycle = match run_verified_larch_with_timeout(
+    let lifecycle = if let Ok(output) = run_verified_larch_with_timeout(
         &[
             OsString::from("run-log"),
             OsString::from("lifecycle-start"),
@@ -272,18 +271,15 @@ fn publish_design_logs(
         ],
         LIFECYCLE_TIMEOUT,
     ) {
-        Ok(output) => {
-            let (code, stdout, _) = output_streams(&output);
-            if code != 0 {
-                eprintln!("design log-publish: lifecycle context unavailable");
-                return Ok((false, String::new(), String::new(), "0".to_owned()));
-            }
-            stdout
-        }
-        Err(_) => {
+        let (code, stdout, _) = output_streams(&output);
+        if code != 0 {
             eprintln!("design log-publish: lifecycle context unavailable");
             return Ok((false, String::new(), String::new(), "0".to_owned()));
         }
+        stdout
+    } else {
+        eprintln!("design log-publish: lifecycle context unavailable");
+        return Ok((false, String::new(), String::new(), "0".to_owned()));
     };
     let run_dir = kv_last(&lifecycle, "RUN_DIR");
     let log_root = kv_last(&lifecycle, "LOG_ROOT");
@@ -480,7 +476,7 @@ fn copy_tree_redacted(source: &Path, dest: &Path) -> Result<(bool, u64), SecretS
                 );
                 return Err(SecretScrubFailure);
             }
-            scrubbed = residual.text().to_owned();
+            residual.text().clone_into(&mut scrubbed);
         }
         if !scrubbed.is_empty() && !scrubbed.ends_with('\n') {
             scrubbed.push('\n');
@@ -590,7 +586,7 @@ fn record_one_assessment_warning(
             .map(|meta| meta.file_type().is_symlink())
             .unwrap_or(false),
     );
-    if !(required && !present) {
+    if !required || present {
         return;
     }
     let _ = append_execution_issue(
@@ -654,19 +650,17 @@ fn render_final_summary_before_copy(request: &LogPublishRequest, outcome: &str) 
 
 fn resolve_summary_mode(design_tmpdir: &Path) -> String {
     let run_params = design_tmpdir.join("run-params.json");
-    if run_params.is_file() && !run_params.is_symlink() {
-        if let Ok(text) = fs::read_to_string(&run_params) {
-            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
-                if let Some(mode) = value
-                    .get("mode")
-                    .or_else(|| value.get("MODE"))
-                    .and_then(|v| v.as_str())
-                    .filter(|mode| !mode.is_empty())
-                {
-                    return mode.to_owned();
-                }
-            }
-        }
+    if run_params.is_file()
+        && !run_params.is_symlink()
+        && let Ok(text) = fs::read_to_string(&run_params)
+        && let Ok(value) = serde_json::from_str::<serde_json::Value>(&text)
+        && let Some(mode) = value
+            .get("mode")
+            .or_else(|| value.get("MODE"))
+            .and_then(|v| v.as_str())
+            .filter(|mode| !mode.is_empty())
+    {
+        return mode.to_owned();
     }
     let source = design_tmpdir.join("source-env.sh");
     if let Ok(text) = fs::read_to_string(&source) {
@@ -777,15 +771,14 @@ fn materialize_claude_source_snapshot(
 ) -> Option<PathBuf> {
     let snapshot = design_tmpdir.join("claude-source.env");
     if snapshot.is_file() {
-        if let Ok(text) = fs::read_to_string(&snapshot) {
-            if !text.is_empty()
-                && !kv_last(&text, "TRANSCRIPT_PATH").is_empty()
-                && !kv_last(&text, "SESSION_DIR").is_empty()
-                && !kv_last(&text, "SESSION_UUID").is_empty()
-                && Path::new(&kv_last(&text, "TRANSCRIPT_PATH")).is_file()
-            {
-                return Some(snapshot);
-            }
+        if let Ok(text) = fs::read_to_string(&snapshot)
+            && !text.is_empty()
+            && !kv_last(&text, "TRANSCRIPT_PATH").is_empty()
+            && !kv_last(&text, "SESSION_DIR").is_empty()
+            && !kv_last(&text, "SESSION_UUID").is_empty()
+            && Path::new(&kv_last(&text, "TRANSCRIPT_PATH")).is_file()
+        {
+            return Some(snapshot);
         }
         let _ = fs::remove_file(&snapshot);
     }
@@ -798,40 +791,30 @@ fn materialize_claude_source_snapshot(
         );
         return None;
     }
-    match run_verified_larch(&[OsString::from("token"), OsString::from("claude-source")]) {
-        Ok(output) => {
-            let (code, stdout, _) = output_streams(&output);
-            if code == 0 && stdout.contains("TRANSCRIPT_PATH=") {
-                if fs::write(&snapshot, &stdout).is_err() {
-                    append_transcript_warning(
-                        design_tmpdir,
-                        warning_step_label,
-                        "snapshot-write-failed",
-                        "Claude source snapshot write failed; transcript capture skipped",
-                    );
-                    return None;
-                }
-                Some(snapshot)
-            } else {
+    if let Ok(output) =
+        run_verified_larch(&[OsString::from("token"), OsString::from("claude-source")])
+    {
+        let (code, stdout, _) = output_streams(&output);
+        if code == 0 && stdout.contains("TRANSCRIPT_PATH=") {
+            if fs::write(&snapshot, &stdout).is_err() {
                 append_transcript_warning(
                     design_tmpdir,
                     warning_step_label,
-                    "snapshot-skipped",
-                    "Claude source snapshot materialization failed; transcript capture skipped.",
+                    "snapshot-write-failed",
+                    "Claude source snapshot write failed; transcript capture skipped",
                 );
-                None
+                return None;
             }
-        }
-        Err(_) => {
-            append_transcript_warning(
-                design_tmpdir,
-                warning_step_label,
-                "snapshot-skipped",
-                "Claude source snapshot materialization failed; transcript capture skipped.",
-            );
-            None
+            return Some(snapshot);
         }
     }
+    append_transcript_warning(
+        design_tmpdir,
+        warning_step_label,
+        "snapshot-skipped",
+        "Claude source snapshot materialization failed; transcript capture skipped.",
+    );
+    None
 }
 
 fn refresh_design_source_env(
@@ -865,8 +848,17 @@ fn refresh_design_source_env(
         args.push(OsString::from("--repo"));
         args.push(OsString::from(&request.repo));
     }
-    match run_verified_larch(&args) {
-        Ok(output) => {
+    run_verified_larch(&args).map_or_else(
+        |_| {
+            append_transcript_warning(
+                &request.design_tmpdir,
+                warning_step_label,
+                "source-env-refresh-failed",
+                "could not persist LARCH_CLAUDE_SOURCE_FILE; continuing with transcript capture.",
+            );
+            false
+        },
+        |output| {
             let (code, _, _) = output_streams(&output);
             if code == 0 {
                 true
@@ -879,17 +871,8 @@ fn refresh_design_source_env(
                 );
                 false
             }
-        }
-        Err(_) => {
-            append_transcript_warning(
-                &request.design_tmpdir,
-                warning_step_label,
-                "source-env-refresh-failed",
-                "could not persist LARCH_CLAUDE_SOURCE_FILE; continuing with transcript capture.",
-            );
-            false
-        }
-    }
+        },
+    )
 }
 
 fn append_transcript_warning(
@@ -937,8 +920,7 @@ fn plugin_root_or_default() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(Path::parent)
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| PathBuf::from("."))
+            .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
     })
 }
 
