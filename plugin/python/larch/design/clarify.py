@@ -15,7 +15,6 @@ from typing import NamedTuple, NoReturn, cast
 from larch.calibration import difficulty
 from larch.design import design_publish
 from larch.design import design_core
-from larch.design import design_terminal
 from larch.design import design_pause
 from larch.design import design_summary
 from larch.git import gh
@@ -750,7 +749,7 @@ def _build_driver_env(args: DesignClarifyArgs) -> tuple[dict[str, str], Path, Pa
 
 def _write_result_env(*, path: str | Path, rows: list[tuple[str, str]]) -> None:
     try:
-        design_terminal.phase_driver_write_result_env(
+        design_core.phase_driver_write_result_env(
             path=path, kvs=rows, allow_keys=CLARIFY_RESULT_ENV_ALLOW
         )
     except (OSError, ValueError) as exc:
@@ -761,7 +760,7 @@ def _read_result_env(*, path: str | Path, allow_keys: frozenset[str]) -> dict[st
     source = Path(path)
     if source.is_symlink() or not source.is_file():
         raise OSError(f"result env is not a regular file: {source}")
-    return dict(design_terminal.phase_driver_read_result_env(path=source, allow_keys=allow_keys))
+    return dict(design_core.phase_driver_read_result_env(path=source, allow_keys=allow_keys))
 
 
 def _load_route_state_repo(*, env: dict[str, str], design_tmpdir: Path) -> bool:
@@ -857,15 +856,16 @@ def _stage_failed_clarify(
         detail_log.write_text("clarify failure\n", encoding="utf-8")
     stdout_log = design_tmpdir / "design-clarify-stage.stdout.log"
     stderr_log = design_tmpdir / "design-clarify-stage.stderr.log"
-    rc = design_core.capture_contract_stream_to_paths(
-        design_terminal.stage_terminal_state_core,
-        stdout_log,
-        stderr_log,
-        design_terminal.clarify_failure_stage_args(
+    rc = design_core.run_design_verb_captured(
+        verb="stage-terminal-state",
+        args=design_core.clarify_failure_stage_args(
             design_tmpdir=design_tmpdir,
             exit_code=str(exit_code),
             detail_log=detail_log,
         ),
+        stdout_path=stdout_log,
+        stderr_path=stderr_log,
+        plugin_root=plugin_root,
     )
     if rc != 0:
         _append_clarify_failure(

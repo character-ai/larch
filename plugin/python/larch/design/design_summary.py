@@ -484,8 +484,7 @@ def _run_design_failure_report_gate(
 ) -> None:
     if phase != "post":
         return
-    from larch.design.design_core import capture_contract_stream_to_paths  # noqa: PLC0415 - local import preserves the design_summary/design_terminal cycle break.
-    from larch.design.design_terminal import failure_report_core  # noqa: PLC0415 - local import preserves the design_summary/design_terminal cycle break.
+    from larch.design.design_core import run_design_verb_captured  # noqa: PLC0415 - local import keeps design_summary independent of design_core import order.
 
     ex_log = design_tmpdir / "execution-issues.md"
     ex_before = ex_log.stat().st_size if ex_log.is_file() else 0
@@ -502,7 +501,7 @@ def _run_design_failure_report_gate(
     if run_id:
         cmd += ["--run-id", run_id]
 
-    gate_rc = capture_contract_stream_to_paths(failure_report_core, out_file, err_file, cmd)
+    gate_rc = run_design_verb_captured(verb="failure-report", args=cmd, stdout_path=out_file, stderr_path=err_file)
     if gate_rc != 0:
         _run_larch(  # pyright: ignore[reportUnusedCallResult]
             "run-log", "append-failure",

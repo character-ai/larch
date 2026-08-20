@@ -1239,16 +1239,25 @@ fn step0c_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
 // `step0-clarify-hard-halt`
 // ---------------------------------------------------------------------------
 
-/// Bridge to the still-Python `design stage-terminal-state`, capturing streams
-/// to the two log paths and returning its exit code.
-fn stage_terminal_state_bridge(stdout_log: &Path, stderr_log: &Path, args: &[String]) -> i32 {
-    let mut arguments: Vec<OsString> = vec!["design".into(), "stage-terminal-state".into()];
-    arguments.extend(args.iter().map(OsString::from));
-    match run_python_verb(arguments, PAUSE_LOAD_TIMEOUT) {
+/// Bridge to the Rust-owned `design stage-terminal-state`, capturing streams to
+/// the two log paths and returning its exit code. #8580 flipped the verb from
+/// Python to Rust and removed its Python registration, so this resolves the
+/// larch entrypoint (preferring `LARCH_BINARY`) instead of `run_python_verb`.
+fn stage_terminal_state_bridge(
+    plugin_root: &Path,
+    stdout_log: &Path,
+    stderr_log: &Path,
+    args: &[String],
+) -> i32 {
+    let mut command = Command::new(entrypoint(plugin_root)); // lint-subprocess-via-runner: ok resolves the larch entrypoint to the Rust-owned design stage-terminal-state verb
+    command.env("CLAUDE_PLUGIN_ROOT", plugin_root);
+    command.arg("design").arg("stage-terminal-state");
+    command.args(args);
+    match command.output() {
         Ok(output) => {
-            let _ = fs::write(stdout_log, output.stdout());
-            let _ = fs::write(stderr_log, output.stderr());
-            output.status().code().unwrap_or(1)
+            let _ = fs::write(stdout_log, &output.stdout);
+            let _ = fs::write(stderr_log, &output.stderr);
+            output.status.code().unwrap_or(1)
         }
         Err(_error) => {
             let _ = fs::write(stdout_log, b"");
@@ -1334,6 +1343,7 @@ pub fn step0_clarify_hard_halt(arguments: &[OsString]) -> ExitCode {
         &ns.exit_code
     };
     let _stage_rc = stage_terminal_state_bridge(
+        Path::new(&plugin_root_value),
         &stdout_log,
         &stderr_log,
         &clarify_failure_stage_args(&design_tmpdir, exit_code, &detail),
