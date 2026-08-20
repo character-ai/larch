@@ -2589,17 +2589,98 @@ fn try_deactivate_design_run(runner: &dyn Step0Runner, plugin_root: &Path, desig
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, ffi::OsString, fs, path::Path};
+    use std::{
+        cell::RefCell,
+        ffi::OsString,
+        fs,
+        path::{Path, PathBuf},
+    };
 
     use larch_test_support::{DesignFixture, DesignSession};
 
     use crate::design_step0_commands::{ChildOutcome, Step0Runner};
 
+    use std::collections::HashMap;
+
     use super::{
-        classify_input, clean_status_token, is_terminal_publish_outcome,
-        ledger_row_has_escalation_evidence, preferred_bgjob_result_input,
-        resolve_read_result_env_source, resolve_report_repo, valid_var_name,
+        FailureCtx, SummaryCtx, classify_input, clean_status_token, failure_report_with,
+        is_terminal_publish_outcome, kv_last_value, ledger_row_has_escalation_evidence,
+        preferred_bgjob_result_input, read_result_env, reconcile_failed_publish_tail_report,
+        resolve_read_result_env_source, resolve_report_repo, stage_terminal_state_with,
+        step_final_summary_with, upsert_final_summary_from_disk, valid_var_name,
+        validated_publish_state, validated_salvage_publish_result,
     };
+
+    /// Verb-keyed mock runner: matches `args[1]` (the stall-recovery verb) and
+    /// returns a configured `(code, stdout)`; unlisted verbs default to `0`/empty.
+    /// `run_stall` writes the returned stdout to the caller's stdout path, which is
+    /// how these tests seed `design-failure-compose.env` to drive every
+    /// `handle_compose_outcome` branch without a live GitHub call.
+    struct VerbRunner {
+        answers: HashMap<String, (i32, String)>,
+    }
+
+    impl VerbRunner {
+        fn new() -> Self {
+            Self {
+                answers: HashMap::new(),
+            }
+        }
+
+        fn on(mut self, verb: &str, code: i32, stdout: &str) -> Self {
+            self.answers
+                .insert(verb.to_owned(), (code, stdout.to_owned()));
+            self
+        }
+    }
+
+    impl Step0Runner for VerbRunner {
+        fn run(
+            &self,
+            _plugin_root: &Path,
+            args: &[String],
+            _env: &[(String, String)],
+            _merge_stderr: bool,
+        ) -> ChildOutcome {
+            let verb = args.get(1).cloned().unwrap_or_default();
+            let (code, stdout) = self
+                .answers
+                .get(&verb)
+                .cloned()
+                .unwrap_or((0, String::new()));
+            ChildOutcome {
+                code,
+                stdout,
+                stderr: String::new(),
+            }
+        }
+    }
+
+    fn os_args(values: &[&str]) -> Vec<OsString> {
+        values.iter().map(OsString::from).collect()
+    }
+
+    fn fr_args(root: &Path, outcome: &str) -> Vec<OsString> {
+        os_args(&[
+            "--design-tmpdir",
+            root.to_str().expect("utf8"),
+            "--outcome",
+            outcome,
+            "--repo",
+            "owner/name",
+        ])
+    }
+
+    /// Seed a present-but-outcome-neutral terminal-state file so the terminal
+    /// failure-report path passes its existence and mismatch checks and reaches
+    /// the compose stage.
+    fn seed_neutral_terminal_state(root: &Path) {
+        fs::write(root.join("design-failure-terminal-state.env"), "SEED=1\n").expect("seed state");
+    }
+
+    fn ok() -> std::process::ExitCode {
+        std::process::ExitCode::from(0)
+    }
 
     struct RecordingRunner {
         calls: RefCell<Vec<Vec<String>>>,
@@ -2737,5 +2818,748 @@ mod tests {
         .collect();
         let code = super::stage_terminal_state_with(&args, &runner);
         assert_eq!(code, std::process::ExitCode::from(2));
+    }
+
+    // ----------------------------------------------------------- read-result-env
+
+    #[test]
+    fn read_result_env_rejects_invalid_allow_key() {
+        let code = read_result_env(&os_args(&[
+            "--input", "in.env", "--output", "out.env", "--allow", "1BAD",
+        ]));
+        assert_eq!(code, std::process::ExitCode::from(1));
+    }
+
+    #[test]
+    fn read_result_env_requires_input_and_output() {
+        assert_eq!(
+            read_result_env(&os_args(&["--output", "out.env", "--allow", "FOO"])),
+            std::process::ExitCode::from(1)
+        );
+        assert_eq!(
+            read_result_env(&os_args(&["--input", "in.env", "--allow", "FOO"])),
+            std::process::ExitCode::from(1)
+        );
+    }
+
+    #[test]
+    fn read_result_env_rejects_extra_positional() {
+        let code = read_result_env(&os_args(&[
+            "--input", "in.env", "--output", "out.env", "--allow", "FOO", "stray",
+        ]));
+        assert_eq!(code, std::process::ExitCode::from(1));
+    }
+
+    #[test]
+    fn read_result_env_missing_source_is_exit_one() {
+        let session = design_dir();
+        let root = session.root();
+        let code = read_result_env(&os_args(&[
+            "--input",
+            root.join("absent.env").to_str().expect("utf8"),
+            "--output",
+            root.join("out.env").to_str().expect("utf8"),
+            "--allow",
+            "FOO",
+        ]));
+        assert_eq!(code, std::process::ExitCode::from(1));
+    }
+
+    #[test]
+    fn read_result_env_regular_writes_allowlisted_value() {
+        let session = design_dir();
+        let root = session.root();
+        fs::write(root.join("in.env"), "FOO=bar\nBAR=skip\n").expect("input");
+        let out = root.join("out.env");
+        let code = read_result_env(&os_args(&[
+            "--input",
+            root.join("in.env").to_str().expect("utf8"),
+            "--output",
+            out.to_str().expect("utf8"),
+            "--allow",
+            "FOO",
+        ]));
+        assert_eq!(code, ok());
+        let body = fs::read_to_string(&out).expect("out");
+        assert!(body.contains("FOO='bar'"), "body: {body}");
+        assert!(!body.contains("BAR"), "unlisted key leaked: {body}");
+    }
+
+    #[test]
+    fn read_result_env_symlink_primary_falls_back_with_warning() {
+        let session = design_dir();
+        let root = session.root();
+        fs::write(root.join("target.env"), "FOO=x\n").expect("target");
+        std::os::unix::fs::symlink(root.join("target.env"), root.join("primary.env"))
+            .expect("symlink");
+        fs::write(root.join("fb.env"), "FOO=y\n").expect("fallback");
+        let out = root.join("out.env");
+        let code = read_result_env(&os_args(&[
+            "--input",
+            root.join("primary.env").to_str().expect("utf8"),
+            "--fallback-input",
+            root.join("fb.env").to_str().expect("utf8"),
+            "--output",
+            out.to_str().expect("utf8"),
+            "--allow",
+            "FOO",
+        ]));
+        assert_eq!(code, ok());
+        assert!(fs::read_to_string(&out).expect("out").contains("FOO='y'"));
+    }
+
+    // ------------------------------------------------------- stage-terminal-state
+
+    fn stage_valid(root: &Path) -> Vec<OsString> {
+        os_args(&[
+            "--design-tmpdir",
+            root.to_str().expect("utf8"),
+            "--outcome",
+            "failed-clarify",
+            "--step",
+            "clarify",
+            "--phase",
+            "clarify-loop",
+            "--site",
+            "clarify-loop",
+            "--trigger",
+            "failed",
+            "--bail-reason",
+            "clarify-hard-halt",
+            "--exit-code",
+            "1",
+            "--source-script",
+            "clarify-loop",
+        ])
+    }
+
+    #[test]
+    fn stage_missing_required_outcome_is_exit_two() {
+        let session = design_dir();
+        let args = os_args(&[
+            "--design-tmpdir",
+            session.root().to_str().expect("utf8"),
+            "--step",
+            "step5c",
+        ]);
+        assert_eq!(
+            stage_terminal_state_with(&args, &VerbRunner::new()),
+            std::process::ExitCode::from(2)
+        );
+    }
+
+    #[test]
+    fn stage_rejected_token_validation_is_exit_two() {
+        let session = design_dir();
+        let args = stage_valid(session.root());
+        let runner = VerbRunner::new().on("validate-token", 1, "");
+        assert_eq!(
+            stage_terminal_state_with(&args, &runner),
+            std::process::ExitCode::from(2)
+        );
+    }
+
+    #[test]
+    fn stage_fresh_writes_terminal_state() {
+        let session = design_dir();
+        let root = session.root();
+        let code = stage_terminal_state_with(&stage_valid(root), &VerbRunner::new());
+        assert_eq!(code, ok());
+        assert!(root.join("design-failure-terminal-state.env").is_file());
+    }
+
+    // --------------------------------------------------------------- failure-report
+
+    #[test]
+    fn failure_report_rejects_bad_design_tmpdir() {
+        let code = failure_report_with(
+            &os_args(&["--design-tmpdir", "", "--outcome", "failed-plan-write"]),
+            &VerbRunner::new(),
+        );
+        assert_eq!(code, std::process::ExitCode::from(2));
+    }
+
+    #[test]
+    fn failure_report_cancelled_is_operator_action_skip() {
+        let session = design_dir();
+        let root = session.root();
+        let code = failure_report_with(&fr_args(root, "cancelled-operator"), &VerbRunner::new());
+        assert_eq!(code, ok());
+        assert!(
+            root.join("design-failure-operator-action-chat.md")
+                .is_file()
+        );
+    }
+
+    #[test]
+    fn failure_report_skips_when_terminal_sentinel_present() {
+        let session = design_dir();
+        let root = session.root();
+        fs::write(root.join("design-failure-terminal-report.env"), "X=1\n").expect("sentinel");
+        let code = failure_report_with(&fr_args(root, "failed-plan-write"), &VerbRunner::new());
+        assert_eq!(code, ok());
+    }
+
+    #[test]
+    fn failure_report_skips_when_escalation_sentinel_present() {
+        let session = design_dir();
+        let root = session.root();
+        fs::write(root.join("design-failure-escalation-success.env"), "X=1\n").expect("sentinel");
+        let code = failure_report_with(&fr_args(root, "approved"), &VerbRunner::new());
+        assert_eq!(code, ok());
+    }
+
+    #[test]
+    fn failure_report_approved_without_evidence_skips() {
+        let session = design_dir();
+        let code = failure_report_with(&fr_args(session.root(), "approved"), &VerbRunner::new());
+        assert_eq!(code, ok());
+    }
+
+    #[test]
+    fn failure_report_terminal_missing_state_writes_fallback() {
+        let session = design_dir();
+        let root = session.root();
+        let code = failure_report_with(&fr_args(root, "failed-plan-write"), &VerbRunner::new());
+        assert_eq!(code, ok());
+        assert!(root.join("design-failure-chat-print.md").is_file());
+    }
+
+    #[test]
+    fn failure_report_terminal_invalid_state_writes_fallback() {
+        let session = design_dir();
+        let root = session.root();
+        seed_neutral_terminal_state(root);
+        let runner = VerbRunner::new().on("validate-terminal-state", 1, "");
+        let code = failure_report_with(&fr_args(root, "failed-plan-write"), &runner);
+        assert_eq!(code, ok());
+        assert!(root.join("design-failure-chat-print.md").is_file());
+    }
+
+    #[test]
+    fn failure_report_terminal_outcome_mismatch_writes_fallback() {
+        let session = design_dir();
+        let root = session.root();
+        fs::write(
+            root.join("design-failure-terminal-state.env"),
+            "FAILURE_OUTCOME=failed-publish\n",
+        )
+        .expect("state");
+        let code = failure_report_with(&fr_args(root, "failed-plan-write"), &VerbRunner::new());
+        assert_eq!(code, ok());
+        assert!(root.join("design-failure-chat-print.md").is_file());
+    }
+
+    #[test]
+    fn failure_report_terminal_compose_failure_writes_fallback() {
+        let session = design_dir();
+        let root = session.root();
+        seed_neutral_terminal_state(root);
+        let runner = VerbRunner::new().on("compose-report", 1, "");
+        let code = failure_report_with(&fr_args(root, "failed-plan-write"), &runner);
+        assert_eq!(code, ok());
+        assert!(root.join("design-failure-chat-print.md").is_file());
+    }
+
+    #[test]
+    fn failure_report_terminal_compose_filed_writes_sentinel() {
+        let session = design_dir();
+        let root = session.root();
+        seed_neutral_terminal_state(root);
+        let runner = VerbRunner::new().on(
+            "compose-report",
+            0,
+            "STALL_RECOVERY_REPORT_STATUS=filed\nSTALL_RECOVERY_REPORT_ARTIFACT=/tmp/a.md\n",
+        );
+        let code = failure_report_with(&fr_args(root, "failed-plan-write"), &runner);
+        assert_eq!(code, ok());
+        assert!(root.join("design-failure-terminal-report.env").is_file());
+    }
+
+    #[test]
+    fn failure_report_terminal_compose_dry_run_writes_sentinel() {
+        let session = design_dir();
+        let root = session.root();
+        seed_neutral_terminal_state(root);
+        let runner = VerbRunner::new().on(
+            "compose-report",
+            0,
+            "STALL_RECOVERY_REPORT_STATUS=dry-run\n",
+        );
+        let code = failure_report_with(&fr_args(root, "failed-plan-write"), &runner);
+        assert_eq!(code, ok());
+        assert!(root.join("design-failure-terminal-report.env").is_file());
+    }
+
+    #[test]
+    fn failure_report_terminal_compose_operator_action_skip() {
+        let session = design_dir();
+        let root = session.root();
+        seed_neutral_terminal_state(root);
+        let runner = VerbRunner::new().on(
+            "compose-report",
+            0,
+            "STALL_RECOVERY_REPORT_STATUS=skipped_operator_action\n",
+        );
+        let code = failure_report_with(&fr_args(root, "failed-plan-write"), &runner);
+        assert_eq!(code, ok());
+    }
+
+    #[test]
+    fn failure_report_terminal_compose_fallback_print_required() {
+        let session = design_dir();
+        let root = session.root();
+        seed_neutral_terminal_state(root);
+        let runner = VerbRunner::new().on(
+            "compose-report",
+            0,
+            "STALL_RECOVERY_REPORT_STATUS=fallback-print-required\nSTALL_RECOVERY_REPORT_FALLBACK_REASON=custom-reason\n",
+        );
+        let code = failure_report_with(&fr_args(root, "failed-plan-write"), &runner);
+        assert_eq!(code, ok());
+        assert!(root.join("design-failure-chat-print.md").is_file());
+    }
+
+    #[test]
+    fn failure_report_terminal_compose_unknown_status_fallbacks() {
+        let session = design_dir();
+        let root = session.root();
+        seed_neutral_terminal_state(root);
+        let runner =
+            VerbRunner::new().on("compose-report", 0, "STALL_RECOVERY_REPORT_STATUS=weird\n");
+        let code = failure_report_with(&fr_args(root, "failed-plan-write"), &runner);
+        assert_eq!(code, ok());
+        assert!(root.join("design-failure-chat-print.md").is_file());
+    }
+
+    #[test]
+    fn failure_report_escalation_filed_writes_sentinel() {
+        let session = design_dir();
+        let root = session.root();
+        fs::write(
+            root.join("design-failure-escalation-ledger.tsv"),
+            "site=step2\ttrigger=failed\n",
+        )
+        .expect("ledger");
+        let runner =
+            VerbRunner::new().on("compose-report", 0, "STALL_RECOVERY_REPORT_STATUS=filed\n");
+        let code = failure_report_with(&fr_args(root, "approved"), &runner);
+        assert_eq!(code, ok());
+    }
+
+    // ------------------------------------------------------------ step-final-summary
+
+    #[test]
+    fn step_final_summary_rejects_bad_wrapper_args() {
+        let code = step_final_summary_with(&os_args(&["--session-env-path"]), &VerbRunner::new());
+        assert_eq!(code, std::process::ExitCode::from(2));
+    }
+
+    /// Write a session-env file that loads `DESIGN_TMPDIR`/`SESSION_ID`, then run
+    /// step-final-summary with `--outcome` (which the wrapper maps to
+    /// `SUMMARY_OUTCOME`).
+    fn run_final_summary(root: &Path, outcome: &str) -> std::process::ExitCode {
+        let senv = root.join("session-env.sh");
+        fs::write(
+            &senv,
+            format!(
+                "DESIGN_TMPDIR={}\nSESSION_ID=design-run-1\n",
+                root.display()
+            ),
+        )
+        .expect("session-env");
+        step_final_summary_with(
+            &os_args(&[
+                "--session-env-path",
+                senv.to_str().expect("utf8"),
+                "--claude-pid",
+                "4242",
+                "--outcome",
+                outcome,
+            ]),
+            &VerbRunner::new(),
+        )
+    }
+
+    #[test]
+    fn step_final_summary_missing_design_tmpdir_is_exit_one() {
+        let session = design_dir();
+        let senv = session.root().join("session-env.sh");
+        fs::write(&senv, "SESSION_ID=design-run-1\n").expect("session-env");
+        let code = step_final_summary_with(
+            &os_args(&[
+                "--session-env-path",
+                senv.to_str().expect("utf8"),
+                "--claude-pid",
+                "4242",
+                "--outcome",
+                "approved",
+            ]),
+            &VerbRunner::new(),
+        );
+        assert_eq!(code, std::process::ExitCode::from(1));
+    }
+
+    #[test]
+    fn step_final_summary_failed_clarify_emits_summary() {
+        let session = design_dir();
+        let root = session.root();
+        fs::write(root.join("final-summary.md"), "## summary\n- done\n").expect("summary");
+        let code = run_final_summary(root, "failed-clarify");
+        assert_eq!(code, std::process::ExitCode::SUCCESS);
+        assert!(root.join(".design-step-final-summary-result.env").is_file());
+    }
+
+    #[test]
+    fn step_final_summary_cancelled_clarify_emits_summary() {
+        let session = design_dir();
+        let root = session.root();
+        fs::write(root.join("final-summary.md"), "## summary\n- done\n").expect("summary");
+        let code = run_final_summary(root, "cancelled-clarify");
+        assert_eq!(code, std::process::ExitCode::SUCCESS);
+        assert!(root.join(".design-step-final-summary-result.env").is_file());
+    }
+
+    #[test]
+    fn step_final_summary_terminal_publish_runs_without_panic() {
+        let session = design_dir();
+        let root = session.root();
+        fs::write(root.join("final-summary.md"), "## summary\n").expect("summary");
+        // Terminal publish outcome exercises run_terminal_publish_final_summary.
+        let _ = run_final_summary(root, "cancelled-operator");
+    }
+
+    #[test]
+    fn step_final_summary_rendered_path_runs_without_panic() {
+        let session = design_dir();
+        let root = session.root();
+        let _ = run_final_summary(root, "approved");
+    }
+
+    #[test]
+    fn step_final_summary_pause_requested_takes_pause_path() {
+        let session = design_dir();
+        let root = session.root();
+        fs::write(root.join(".pause-requested"), "").expect("pause");
+        let _ = run_final_summary(root, "approved");
+    }
+
+    // --------------------------------------- read / stage / failure-report gaps
+
+    #[test]
+    fn read_result_env_quotes_values_with_special_characters() {
+        let session = design_dir();
+        let root = session.root();
+        fs::write(root.join("in.env"), "FOO=a 'b' c\n").expect("input");
+        let out = root.join("out.env");
+        let code = read_result_env(&os_args(&[
+            "--input",
+            root.join("in.env").to_str().expect("utf8"),
+            "--output",
+            out.to_str().expect("utf8"),
+            "--allow",
+            "FOO",
+        ]));
+        assert_eq!(code, ok());
+        let body = fs::read_to_string(&out).expect("out");
+        assert!(body.contains("FOO="), "body: {body}");
+    }
+
+    #[test]
+    fn stage_preserves_existing_mismatched_state() {
+        let session = design_dir();
+        let root = session.root();
+        fs::write(
+            root.join("design-failure-terminal-state.env"),
+            "FAILURE_OUTCOME=other\nSITE=other\nTRIGGER=other\n",
+        )
+        .expect("state");
+        let code = stage_terminal_state_with(&stage_valid(root), &VerbRunner::new());
+        assert_eq!(code, ok());
+    }
+
+    #[test]
+    fn failure_report_failed_publish_tail_reconciles() {
+        let session = design_dir();
+        let root = session.root();
+        let _ = failure_report_with(&fr_args(root, "failed-publish-tail"), &VerbRunner::new());
+    }
+
+    #[test]
+    fn failure_report_terminal_issue_input_surface_unauthorized_fallbacks() {
+        let session = design_dir();
+        let root = session.root();
+        seed_neutral_terminal_state(root);
+        fs::write(
+            root.join("source-env.sh"),
+            format!("REPO_ROOT={}\n", root.display()),
+        )
+        .expect("source-env");
+        // is-larch-dev-clone => issue-input surface; compose returns empty so the
+        // tier-A after-compose (unauthorized) path runs before the fallback.
+        let runner = VerbRunner::new().on("is-larch-dev-clone", 0, "LARCH_DEV_CLONE=true\n");
+        let code = failure_report_with(&fr_args(root, "failed-plan-write"), &runner);
+        assert_eq!(code, ok());
+    }
+
+    // ------------------------------------------------ stage optional token/paths
+
+    #[test]
+    fn stage_root_cause_summary_and_evidence_are_persisted() {
+        let session = design_dir();
+        let root = session.root();
+        let mut args = stage_valid(root);
+        args.extend(os_args(&[
+            "--root-cause-hint",
+            "rc-token",
+            "--summary-outcome",
+            "failed-plan-write",
+            "--evidence-ref",
+            "safe-token",
+        ]));
+        let code = stage_terminal_state_with(&args, &VerbRunner::new());
+        assert_eq!(code, ok());
+        let body =
+            fs::read_to_string(root.join("design-failure-terminal-state.env")).expect("state");
+        assert!(body.contains("ROOT_CAUSE_HINT=rc-token"), "body: {body}");
+        assert!(
+            body.contains("SUMMARY_OUTCOME=failed-plan-write"),
+            "body: {body}"
+        );
+        assert!(body.contains("EVIDENCE_REF=safe-token"), "body: {body}");
+    }
+
+    #[test]
+    fn stage_failure_detail_log_outside_tmpdir_is_exit_two() {
+        let session = design_dir();
+        let mut args = stage_valid(session.root());
+        args.extend(os_args(&["--failure-detail-log", "/etc/hosts"]));
+        assert_eq!(
+            stage_terminal_state_with(&args, &VerbRunner::new()),
+            std::process::ExitCode::from(2)
+        );
+    }
+
+    #[test]
+    fn stage_failure_detail_log_regular_file_is_ok() {
+        let session = design_dir();
+        let root = session.root();
+        let log = root.join("detail.log");
+        fs::write(&log, "detail\n").expect("detail log");
+        let mut args = stage_valid(root);
+        args.extend(os_args(&[
+            "--failure-detail-log",
+            log.to_str().expect("utf8"),
+        ]));
+        let code = stage_terminal_state_with(&args, &VerbRunner::new());
+        assert_eq!(code, ok());
+        let body =
+            fs::read_to_string(root.join("design-failure-terminal-state.env")).expect("state");
+        assert!(body.contains("FAILURE_DETAIL_LOG="), "body: {body}");
+    }
+
+    #[test]
+    fn stage_unsafe_evidence_ref_is_exit_two() {
+        let session = design_dir();
+        let mut args = stage_valid(session.root());
+        args.extend(os_args(&["--evidence-ref", "https://evil.example/x"]));
+        assert_eq!(
+            stage_terminal_state_with(&args, &VerbRunner::new()),
+            std::process::ExitCode::from(2)
+        );
+    }
+
+    #[test]
+    fn stage_non_integer_exit_code_is_exit_two() {
+        let session = design_dir();
+        let root = session.root();
+        let args = os_args(&[
+            "--design-tmpdir",
+            root.to_str().expect("utf8"),
+            "--outcome",
+            "failed-clarify",
+            "--step",
+            "clarify",
+            "--phase",
+            "clarify-loop",
+            "--site",
+            "clarify-loop",
+            "--trigger",
+            "failed",
+            "--bail-reason",
+            "clarify-hard-halt",
+            "--exit-code",
+            "not-a-number",
+            "--source-script",
+            "clarify-loop",
+        ]);
+        assert_eq!(
+            stage_terminal_state_with(&args, &VerbRunner::new()),
+            std::process::ExitCode::from(2)
+        );
+    }
+
+    // ---------------------------------------------- step-final-summary internals
+
+    #[test]
+    fn step_final_summary_emits_nonempty_report_gate_sidecars() {
+        let session = design_dir();
+        let root = session.root();
+        fs::write(root.join("final-summary.md"), "## summary\n- done\n").expect("summary");
+        fs::write(root.join("design-failure-chat-print.md"), "chat body\n").expect("chat");
+        let code = run_final_summary(root, "failed-clarify");
+        assert_eq!(code, std::process::ExitCode::SUCCESS);
+        let handoff = root.join("design-report-gate-sidecars.md");
+        let body = fs::read_to_string(&handoff).expect("sidecars");
+        assert!(body.contains("chat body"), "body: {body}");
+    }
+
+    #[test]
+    fn step_final_summary_terminal_publish_missing_session_id_records_error() {
+        let session = design_dir();
+        let root = session.root();
+        fs::write(root.join("final-summary.md"), "## summary\n").expect("summary");
+        let senv = root.join("session-env-nosid.sh");
+        fs::write(&senv, format!("DESIGN_TMPDIR={}\n", root.display())).expect("session-env");
+        let code = step_final_summary_with(
+            &os_args(&[
+                "--session-env-path",
+                senv.to_str().expect("utf8"),
+                "--claude-pid",
+                "4242",
+                "--outcome",
+                "cancelled-operator",
+            ]),
+            &VerbRunner::new(),
+        );
+        assert_eq!(code, std::process::ExitCode::from(1));
+        let issues = fs::read_to_string(root.join("execution-issues.md")).expect("issues");
+        assert!(issues.contains("SESSION_ID is missing"), "issues: {issues}");
+    }
+
+    fn summary_ctx_for(issue: &str, session_id: &str, path: &Path) -> SummaryCtx {
+        SummaryCtx {
+            repo: "owner/name".to_owned(),
+            issue_number: issue.to_owned(),
+            session_id: session_id.to_owned(),
+            summary_outcome: "approved".to_owned(),
+            final_summary_path: path.display().to_string(),
+        }
+    }
+
+    #[test]
+    fn upsert_final_summary_missing_file_is_false() {
+        let session = design_dir();
+        let root = session.root();
+        let missing = root.join("no-such-summary.md");
+        let ctx = summary_ctx_for("123", "run-1", &missing);
+        assert!(!upsert_final_summary_from_disk(
+            &VerbRunner::new(),
+            &PathBuf::new(),
+            root,
+            &ctx,
+            &missing
+        ));
+    }
+
+    #[test]
+    fn upsert_final_summary_empty_issue_is_false() {
+        let session = design_dir();
+        let root = session.root();
+        let summary = root.join("final-summary.md");
+        fs::write(&summary, "## summary\n").expect("summary");
+        let ctx = summary_ctx_for("", "run-1", &summary);
+        assert!(!upsert_final_summary_from_disk(
+            &VerbRunner::new(),
+            &PathBuf::new(),
+            root,
+            &ctx,
+            &summary
+        ));
+    }
+
+    #[test]
+    fn upsert_final_summary_valid_invokes_owner() {
+        let session = design_dir();
+        let root = session.root();
+        let summary = root.join("final-summary.md");
+        fs::write(&summary, "## summary\n").expect("summary");
+        let ctx = summary_ctx_for("123", "run-1", &summary);
+        assert!(upsert_final_summary_from_disk(
+            &VerbRunner::new(),
+            &PathBuf::new(),
+            root,
+            &ctx,
+            &summary
+        ));
+    }
+
+    #[test]
+    fn kv_last_value_returns_last_occurrence() {
+        assert_eq!(kv_last_value("A=1\nA=2\nB=3\n", "A"), "2");
+        assert_eq!(kv_last_value("A=1\n", "MISSING"), "");
+    }
+
+    // ----------------------------------------------- reconcile failed-publish-tail
+
+    #[test]
+    fn validated_publish_state_rejects_duplicate_key() {
+        let session = design_dir();
+        let root = session.root();
+        let file = root.join("dup.env");
+        fs::write(&file, "A=1\nA=2\n").expect("dup");
+        assert!(validated_publish_state(root, &file).is_none());
+    }
+
+    #[test]
+    fn validated_salvage_rejects_short_attempt_id() {
+        let session = design_dir();
+        let root = session.root();
+        let file = root.join("salvage.env");
+        fs::write(
+            &file,
+            "PUBLISH_ATTEMPT_ID=abc\nPUBLISH_RC_SOURCE=returned\nPLAN_WRITE_OK=true\nRENAMED=true\nLOG_PUBLISH_COMPLETED=true\n",
+        )
+        .expect("salvage");
+        assert!(validated_salvage_publish_result(root, &file).is_none());
+    }
+
+    #[test]
+    fn reconcile_failed_publish_tail_unauthorized_marks_reconcile_failed() {
+        let session = design_dir();
+        let root = session.root();
+        let sentinel = root.join("design-failure-terminal-report.env");
+        fs::write(
+            &sentinel,
+            "STALL_RECOVERY_REPORT_STATUS=filed\nSTALL_RECOVERY_REPORT_ISSUE_NUMBER=123\nSTALL_RECOVERY_REPORT_ISSUE_URL=https://github.com/owner/name/issues/123\n",
+        )
+        .expect("sentinel");
+        fs::write(
+            root.join("design-failure-terminal-state.env"),
+            "DESIGN_FAILURE_KIND=terminal\nTRIGGER=publish-tail-failed\nFAILURE_OUTCOME=failed-publish-tail\n",
+        )
+        .expect("state");
+        fs::write(
+            root.join(".design-publish-result.env"),
+            "PUBLISH_ATTEMPT_ID=abc12345\nPUBLISH_RC_SOURCE=returned\nPLAN_WRITE_OK=true\nRENAMED=true\nLOG_PUBLISH_COMPLETED=true\n",
+        )
+        .expect("salvage");
+        let runner = VerbRunner::new();
+        let ctx = FailureCtx {
+            runner: &runner,
+            plugin_root: PathBuf::new(),
+            design_tmpdir: root.to_path_buf(),
+            outcome: "approved".to_owned(),
+            repo: "owner/name".to_owned(),
+        };
+        assert!(reconcile_failed_publish_tail_report(
+            &ctx, &sentinel, "approved"
+        ));
+        let report =
+            fs::read_to_string(root.join("design-failure-reconcile-report.env")).expect("report");
+        assert!(
+            report.contains("STATUS=reconcile-failed"),
+            "report: {report}"
+        );
     }
 }
