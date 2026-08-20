@@ -15,8 +15,10 @@ from typing import TYPE_CHECKING, Any, Final, Self, TypeVar, cast
 if TYPE_CHECKING:
     import pytest
 
+from larch.core import config
 from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext
+from larch.errors import NeedsUserInput
 from larch.implement import scope_disposition
 
 from tests.support.repo_contract import ROOT, repo_root
@@ -59,6 +61,7 @@ __all__ = [
     "capture_start",
     "codex_usage_stdout",
     "completed",
+    "force_scope_disposition_refusal",
     "gh_pr_view",
     "gh_result",
     "install_larch_bgjob_adapter_capture",
@@ -83,7 +86,6 @@ __all__ = [
     "seed_run_params",
     "write_design_source_env",
     "write_gh_pr_stub",
-    "write_required_plan_coverage",
     "write_session_env",
 ]
 
@@ -557,14 +559,39 @@ def write_required_plan_coverage(
 ) -> None:
     """Write the high-coverage disposition fixture used by PR tests."""
     coverage = scope_disposition.PlanCoverage(
-        total=1, touched=0, untouched=1, untouched_percent=100, band="high",
-        plan_paths=("a.py",), touched_paths=(), untouched_paths=("a.py",),
-        todos_left_count=0, todos_left=(), fingerprint=fingerprint,
-        disposition_required=True, plan_fidelity_forced=True,
+        total=1,
+        touched=0,
+        untouched=1,
+        untouched_percent=100,
+        band="high",
+        plan_paths=("a.py",),
+        touched_paths=(),
+        untouched_paths=("a.py",),
+        todos_left_count=0,
+        todos_left=(),
+        fingerprint=fingerprint,
+        disposition_required=True,
+        plan_fidelity_forced=True,
         coverage_file=str(tmp_path / "plan-coverage.json"),
-        untouched_file=str(tmp_path / "untouched.txt"), todos_file=str(tmp_path / "todos.txt"),
+        untouched_file=str(tmp_path / "untouched.txt"),
+        todos_file=str(tmp_path / "todos.txt"),
     )
     scope_disposition.write_coverage(coverage, tmpdir=tmp_path)
+
+
+def force_scope_disposition_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the PR-mutation scope gate refuse, without spawning its Rust owner.
+
+    Coverage attribution and banding are owned by `implement scope-disposition`
+    in Rust, so PR-side tests assert only that a refusal blocks mutation.
+    """
+
+    def _refuse(**_kwargs: object) -> None:
+        raise NeedsUserInput(config.NEEDS_USER_SCOPE_DISPOSITION)
+
+    monkeypatch.setattr(
+        scope_disposition, "require_pr_mutation_scope_disposition", _refuse
+    )
 
 
 # Shared RunContext defaults for ship-pr unit tests; override fields via

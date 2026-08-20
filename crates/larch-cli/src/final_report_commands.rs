@@ -1155,7 +1155,7 @@ fn parse_assessments(text: &str) -> BTreeMap<String, String> {
     parsed
 }
 
-/// Read the plan-coverage line from its Python owner.
+/// Read the plan-coverage line from its Rust scope-disposition owner.
 ///
 /// A non-zero exit is a genuine coverage-integrity failure and fails the report;
 /// the expected post-merge stale-fingerprint mismatch degrades to an empty line

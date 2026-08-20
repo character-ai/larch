@@ -17,7 +17,7 @@ from larch.git import pr as pr_module
 from larch.errors import NeedsUserInput, ShipError
 from larch.core.proc import CommandResult, Runner
 
-from test_support import RecordingRunner, make_run_context, write_required_plan_coverage
+from test_support import RecordingRunner, force_scope_disposition_refusal, make_run_context
 
 if TYPE_CHECKING:
     from larch.core.run_context import RunContext

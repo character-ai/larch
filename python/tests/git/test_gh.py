@@ -14,7 +14,7 @@ from larch.errors import NeedsUserInput, ShipError, TransientNetworkError
 from larch.core.proc import CommandResult
 
 from test_support import RecordingRunner as _RecordingRunner
-from test_support import write_required_plan_coverage
+from test_support import force_scope_disposition_refusal
 
 
 @dataclass
@@ -1620,15 +1620,11 @@ def test_issue_create_adds_repo_and_surfaces_failure() -> None:
     assert "o/r" in runner.calls[0]
 
 
-def _write_scope_required_coverage(tmp_path: Path) -> None:
-    write_required_plan_coverage(tmp_path, fingerprint="fp-required")
-
-
 def test_pr_edit_body_file_scope_refusal_no_edit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _write_scope_required_coverage(tmp_path)
+    force_scope_disposition_refusal(monkeypatch)
     body = tmp_path / "body.md"
     _ = body.write_text("body", encoding="utf-8")
     runner = RecordingRunner(strict=True)
@@ -1646,7 +1642,7 @@ def test_pr_edit_body_scope_refusal_raises_no_edit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _write_scope_required_coverage(tmp_path)
+    force_scope_disposition_refusal(monkeypatch)
     runner = RecordingRunner(strict=True)
     monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
 
