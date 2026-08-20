@@ -215,3 +215,92 @@ fn text(value: Option<&OsStr>) -> String {
         .map(|value| value.to_string_lossy().into_owned())
         .unwrap_or_default()
 }
+
+#[cfg(test)]
+mod commands_tests {
+    use super::*;
+
+    #[test]
+    fn text_defaults_empty_and_passes_through() {
+        assert_eq!(text(None), "");
+        assert_eq!(text(Some(OsStr::new("value"))), "value");
+    }
+
+    #[test]
+    fn run_dispatch_requires_a_coder() {
+        let code = run_dispatch(&test_arguments(&["--implement-tmpdir", "/nonexistent"]));
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::from(2)));
+    }
+
+    #[test]
+    fn run_dispatch_help_exits_success() {
+        let code = run_dispatch(&test_arguments(&["--help"]));
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+    }
+
+    #[test]
+    fn step2_dispatch_help_exits_success() {
+        let code = step2_dispatch(&test_arguments(&["--help"]));
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+    }
+
+    #[test]
+    fn step2_dispatch_requires_a_directory_tmpdir() {
+        let code = step2_dispatch(&test_arguments(&[
+            "--tmpdir",
+            "/nonexistent/step2/tmpdir",
+            "--plan-file",
+            "/nonexistent/step2/tmpdir/plan.txt",
+            "--feature-file",
+            "/nonexistent/step2/tmpdir/feature.txt",
+            "--coder",
+            "codex",
+        ]));
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::from(2)));
+    }
+
+    /// A full `step2-dispatch` run for the `claude` coder never launches an
+    /// external process: it is a same-process fallback, so it is safe to run
+    /// end to end against a scratch tmpdir.
+    #[test]
+    fn step2_dispatch_full_run_falls_back_to_claude_for_the_claude_coder() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        test_write_fixture(&dir.path().join("plan.txt"), "plan\n");
+        test_write_fixture(&dir.path().join("feature.txt"), "feature\n");
+        let code = step2_dispatch(&test_arguments(&[
+            "--tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--plan-file",
+            dir.path().join("plan.txt").to_str().expect("utf8"),
+            "--feature-file",
+            dir.path().join("feature.txt").to_str().expect("utf8"),
+            "--coder",
+            "claude",
+        ]));
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        assert!(dir.path().join("step2-baseline.txt").is_file());
+    }
+
+    /// Ditto for a coder whose binary is explicitly reported absent: the
+    /// dispatcher falls back to Claude before it would launch anything.
+    #[test]
+    fn step2_dispatch_full_run_falls_back_to_claude_when_the_binary_is_absent() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        test_write_fixture(&dir.path().join("plan.txt"), "plan\n");
+        test_write_fixture(&dir.path().join("feature.txt"), "feature\n");
+        let code = step2_dispatch(&test_arguments(&[
+            "--tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--plan-file",
+            dir.path().join("plan.txt").to_str().expect("utf8"),
+            "--feature-file",
+            dir.path().join("feature.txt").to_str().expect("utf8"),
+            "--coder",
+            "codex",
+            "--codex-binary-found",
+            "false",
+        ]));
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        assert!(dir.path().join("step2-baseline.txt").is_file());
+    }
+}

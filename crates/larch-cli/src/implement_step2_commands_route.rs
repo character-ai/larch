@@ -1030,3 +1030,534 @@ fn compute_plan_coverage(
 }
 
 type PlanCoverage = crate::implement_scope_disposition_commands::PlanCoverageView;
+
+#[cfg(test)]
+mod route_tests {
+    use super::*;
+
+    fn sample_coverage(fingerprint: &str, disposition_required: bool) -> PlanCoverage {
+        crate::implement_scope_disposition_commands::PlanCoverage {
+            total: 4,
+            touched: 3,
+            untouched: 1,
+            untouched_percent: 25,
+            band: "LOW".to_owned(),
+            plan_paths: vec!["a.rs".to_owned()],
+            touched_paths: vec!["a.rs".to_owned()],
+            untouched_paths: vec!["b.rs".to_owned()],
+            todos_left_count: 0,
+            todos_left: Vec::new(),
+            fingerprint: fingerprint.to_owned(),
+            disposition_required,
+            plan_fidelity_forced: false,
+            coverage_file: String::new(),
+            untouched_file: String::new(),
+            todos_file: String::new(),
+        }
+    }
+
+    // -- launcher_args ---------------------------------------------------------
+
+    #[test]
+    fn launcher_args_names_the_launcher_and_its_bounded_artifact_paths() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        let args: Vec<String> = launcher_args(&state)
+            .into_iter()
+            .map(|part| part.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(args[0], "agent");
+        assert_eq!(args[1], "launch-codex-implement");
+        assert!(args.contains(&"--transcript-path".to_owned()));
+        assert!(args.contains(&"--manifest-path".to_owned()));
+        assert!(args.contains(&"--timeout".to_owned()));
+        assert!(args.contains(&LAUNCHER_TIMEOUT_SECONDS.to_owned()));
+    }
+
+    #[test]
+    fn launcher_args_includes_difficulty_for_codex_and_cursor_but_not_claude() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        for coder in ["codex", "cursor"] {
+            let mut state = test_dispatch_state(&tmpdir, &repo_root, coder);
+            state.difficulty = "HARD".to_owned();
+            let args: Vec<String> = launcher_args(&state)
+                .into_iter()
+                .map(|part| part.to_string_lossy().into_owned())
+                .collect();
+            assert!(args.contains(&"--difficulty".to_owned()), "{coder}: {args:?}");
+            assert!(args.contains(&"HARD".to_owned()), "{coder}: {args:?}");
+        }
+        let mut claude_state = test_dispatch_state(&tmpdir, &repo_root, "claude");
+        claude_state.difficulty = "HARD".to_owned();
+        let args: Vec<String> = launcher_args(&claude_state)
+            .into_iter()
+            .map(|part| part.to_string_lossy().into_owned())
+            .collect();
+        assert!(!args.contains(&"--difficulty".to_owned()), "{args:?}");
+    }
+
+    #[test]
+    fn launcher_args_includes_answers_and_completion_retry_files_when_present() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let mut state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        let answers = tmpdir.path().join("answers.json");
+        test_write_fixture(&answers, "{}");
+        state.answers_file = Some(answers.clone());
+        test_write_fixture(&state.completion_retry_feedback_file, "feedback\n");
+        let args: Vec<String> = launcher_args(&state)
+            .into_iter()
+            .map(|part| part.to_string_lossy().into_owned())
+            .collect();
+        assert!(args.contains(&"--answers-file".to_owned()));
+        assert!(args.contains(&answers.to_string_lossy().into_owned()));
+        assert!(args.contains(&"--completion-retry-file".to_owned()));
+    }
+
+    // -- manifest reading -------------------------------------------------------
+
+    #[test]
+    fn manifest_complete_salvageable_file_reads_schema_and_status() {
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("manifest.json");
+        assert!(!manifest_complete_salvageable_file(&path));
+        test_write_fixture(&path, r#"{"schema_version": 1, "status": "complete"}"#);
+        assert!(manifest_complete_salvageable_file(&path));
+        test_write_fixture(&path, r#"{"schema_version": 1, "status": "bailed"}"#);
+        assert!(!manifest_complete_salvageable_file(&path));
+        test_write_fixture(&path, "not json");
+        assert!(!manifest_complete_salvageable_file(&path));
+    }
+
+    #[test]
+    fn read_json_parses_valid_json_and_refuses_the_rest() {
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("value.json");
+        assert!(read_json(&path).is_none());
+        test_write_fixture(&path, "not json");
+        assert!(read_json(&path).is_none());
+        test_write_fixture(&path, r#"{"a": 1}"#);
+        assert_eq!(read_json(&path), Some(serde_json::json!({"a": 1})));
+    }
+
+    // -- codex gate --------------------------------------------------------------
+
+    #[test]
+    fn codex_gate_after_launch_is_none_for_non_codex_coders() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "cursor");
+        assert!(codex_gate_after_launch(&state, "anything").is_none());
+    }
+
+    #[test]
+    fn codex_gate_after_launch_is_none_when_the_manifest_is_already_salvageable() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        test_write_fixture(
+            &state.manifest_path,
+            r#"{"schema_version": 1, "status": "complete"}"#,
+        );
+        assert!(codex_gate_after_launch(&state, "anything").is_none());
+    }
+
+    #[test]
+    fn codex_gate_dispatch_result_falls_back_to_claude_when_the_tree_is_untouched() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let mut state = test_dispatch_state(&tmpdir, repo.path(), "codex");
+        state.baseline_sha = head_sha(repo.path());
+        let detail = detect_codex_cli_gate("Model metadata for gpt-5 not found", "gpt-5")
+            .expect("gate detail");
+        let code = codex_gate_dispatch_result(&state, &detail);
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        assert!(tmpdir.path().join("step2-baseline.txt").is_file());
+    }
+
+    #[test]
+    fn codex_gate_dispatch_result_bails_when_the_tree_has_moved() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        // baseline_sha is left empty, which never matches the repo's real head.
+        let state = test_dispatch_state(&tmpdir, repo.path(), "codex");
+        let detail = detect_codex_cli_gate("Model metadata for gpt-5 not found", "gpt-5")
+            .expect("gate detail");
+        let code = codex_gate_dispatch_result(&state, &detail);
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        assert!(
+            !tmpdir.path().join("step2-baseline.txt").is_file(),
+            "a bail must not write a claude-fallback baseline"
+        );
+    }
+
+    // -- rater model resolution ---------------------------------------------
+
+    #[test]
+    fn first_model_value_prefers_the_session_record_over_the_default() {
+        let dir = tempfile::tempdir().expect("dir");
+        let session = dir.path().join("session-env.sh");
+        test_write_fixture(&session, "LARCH_CODEX_MODEL=gpt-codex-custom\n");
+        let value = first_model_value(
+            &session,
+            &["LARCH_CODEX_MODEL", "CLAUDE_PLUGIN_OPTION_CODEX_MODEL"],
+            "fallback-model",
+        );
+        assert_eq!(value, "gpt-codex-custom");
+    }
+
+    #[test]
+    fn first_model_value_falls_back_to_the_default_when_unset() {
+        let dir = tempfile::tempdir().expect("dir");
+        let session = dir.path().join("session-env.sh");
+        let value = first_model_value(&session, &["LARCH_CODEX_MODEL"], "fallback-model");
+        assert_eq!(value, "fallback-model");
+    }
+
+    #[test]
+    fn resolve_implement_rater_model_dispatches_by_tool_and_sanitizes() {
+        let dir = tempfile::tempdir().expect("dir");
+        let session = dir.path().join("session-env.sh");
+        assert_eq!(resolve_implement_rater_model("other", &session, ""), "unknown");
+        assert!(!resolve_implement_rater_model("cursor", &session, "").is_empty());
+        assert!(!resolve_implement_rater_model("codex", &session, "").is_empty());
+    }
+
+    // -- needs_qa repair / post-implementer safety --------------------------
+
+    #[test]
+    fn repair_needs_qa_questions_repairs_from_qa_pending_when_absent() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        test_write_fixture(
+            &state.qa_pending_path,
+            r#"{"items": [{"area": "scope", "risk": "unclear", "suggested_check": "ask"}]}"#,
+        );
+        let object = Map::new();
+        let bail = repair_needs_qa_questions(&state, &object);
+        assert!(bail.is_none(), "{bail:?}");
+        let repaired = fs::read_to_string(&state.qa_pending_path).expect("repaired qa");
+        assert!(repaired.contains("questions"));
+    }
+
+    #[test]
+    fn repair_needs_qa_questions_bails_without_any_recoverable_questions() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        let object = Map::new();
+        let bail = repair_needs_qa_questions(&state, &object);
+        assert_eq!(bail, Some("manifest-schema-invalid".to_owned()));
+    }
+
+    #[test]
+    fn post_implementer_safety_reason_is_none_for_a_clean_matching_tree() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let mut state = test_dispatch_state(&tmpdir, repo.path(), "codex");
+        state.spawn_branch = abbrev_ref(repo.path());
+        assert_eq!(post_implementer_safety_reason(&state), None);
+    }
+
+    #[test]
+    fn post_implementer_safety_reason_flags_a_branch_change() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let mut state = test_dispatch_state(&tmpdir, repo.path(), "codex");
+        state.spawn_branch = "some-other-branch".to_owned();
+        assert_eq!(
+            post_implementer_safety_reason(&state),
+            Some("branch-changed".to_owned())
+        );
+    }
+
+    #[test]
+    fn post_implementer_safety_reason_flags_head_movement_for_cursor() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let mut state = test_dispatch_state(&tmpdir, repo.path(), "cursor");
+        state.spawn_branch = abbrev_ref(repo.path());
+        state.baseline_sha = "0".repeat(40);
+        assert!(state.requires_head_unchanged);
+        assert_eq!(
+            post_implementer_safety_reason(&state),
+            Some("cursor-modified-history".to_owned())
+        );
+    }
+
+    #[test]
+    fn post_implementer_safety_reason_flags_a_path_inside_a_declared_submodule() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        test_write_fixture(
+            &repo.path().join(".gitmodules"),
+            "[submodule \"vendor\"]\n\tpath = vendor\n",
+        );
+        test_git(repo.path(), &["add", ".gitmodules"]);
+        test_commit_everything(repo.path(), "add submodule declaration");
+        fs::create_dir_all(repo.path().join("vendor")).expect("vendor dir");
+        test_write_fixture(&repo.path().join("vendor/file.txt"), "inside\n");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let mut state = test_dispatch_state(&tmpdir, repo.path(), "codex");
+        state.spawn_branch = abbrev_ref(repo.path());
+        assert_eq!(
+            post_implementer_safety_reason(&state),
+            Some("submodule-dirty".to_owned())
+        );
+    }
+
+    // -- manifest-invalid recovery -------------------------------------------
+
+    #[test]
+    fn manifest_invalid_bail_reason_rejects_a_non_object_manifest() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        assert_eq!(
+            manifest_invalid_bail_reason(&state, "", None),
+            Some("manifest-schema-invalid".to_owned())
+        );
+        let array = serde_json::json!([1, 2, 3]);
+        assert_eq!(
+            manifest_invalid_bail_reason(&state, "", Some(&array)),
+            Some("manifest-schema-invalid".to_owned())
+        );
+    }
+
+    #[test]
+    fn manifest_invalid_bail_reason_rejects_a_declared_status_without_legacy_shape() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        let object = serde_json::json!({"status": "needs_qa"});
+        assert_eq!(
+            manifest_invalid_bail_reason(&state, "needs_qa", Some(&object)),
+            Some("manifest-schema-invalid".to_owned())
+        );
+    }
+
+    #[test]
+    fn emit_manifest_invalid_or_recover_bails_for_an_undeclared_status() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        let code = emit_manifest_invalid_or_recover(&state, "", None);
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+    }
+
+    #[test]
+    fn recovery_paths_submodule_clean_reports_true_without_any_submodules() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        fs::write(&state.recovery_paths_file, b"src/lib.rs\0src/main.rs\0")
+            .expect("recovery paths");
+        assert!(recovery_paths_submodule_clean(&state));
+    }
+
+    #[test]
+    fn recovery_paths_submodule_clean_flags_a_path_inside_a_declared_submodule() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        fs::create_dir_all(&repo_root).expect("repo root");
+        test_write_fixture(
+            &repo_root.join(".gitmodules"),
+            "[submodule \"vendor\"]\n\tpath = vendor\n",
+        );
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        fs::write(&state.recovery_paths_file, b"vendor/file.txt\0").expect("recovery paths");
+        assert!(!recovery_paths_submodule_clean(&state));
+    }
+
+    #[test]
+    fn recovery_paths_submodule_clean_fails_closed_without_a_recovery_file() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        assert!(!recovery_paths_submodule_clean(&state));
+    }
+
+    #[test]
+    fn finalize_manifest_invalid_recovery_renames_the_raw_manifest_and_writes_metadata() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        test_write_fixture(&state.manifest_raw_path, r#"{"status": "bogus"}"#);
+        finalize_manifest_invalid_recovery(&state);
+        assert!(!state.manifest_raw_path.exists());
+        assert!(tmpdir.path().join("manifest-raw.invalid.json").is_file());
+        let metadata =
+            fs::read_to_string(tmpdir.path().join("recovery-metadata.json")).expect("metadata");
+        assert!(metadata.contains("manifest-schema-invalid"));
+        assert!(metadata.contains("codex"));
+    }
+
+    // -- complete-manifest commit --------------------------------------------
+
+    #[test]
+    fn commit_complete_manifest_commits_and_returns_no_exit_code() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        test_write_fixture(&repo.path().join("a.txt"), "two\n");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let state = test_dispatch_state(&tmpdir, repo.path(), "codex");
+        let object = serde_json::json!({"commit_message": "Implement feature X"})
+            .as_object()
+            .expect("object")
+            .clone();
+        let outcome = commit_complete_manifest(&state, &object);
+        assert!(outcome.is_none(), "a successful commit must not return an exit code");
+    }
+
+    #[test]
+    fn commit_complete_manifest_reports_failure_and_discards_both_manifests() {
+        let repo = test_init_repo(); // no commits, nothing staged: git commit fails.
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let state = test_dispatch_state(&tmpdir, repo.path(), "codex");
+        test_write_fixture(&state.manifest_path, "{}");
+        test_write_fixture(&state.manifest_raw_path, "{}");
+        let object = serde_json::json!({"commit_message": "no-op"})
+            .as_object()
+            .expect("object")
+            .clone();
+        let outcome = commit_complete_manifest(&state, &object);
+        assert!(outcome.is_some());
+        assert!(!state.manifest_path.exists());
+        assert!(!state.manifest_raw_path.exists());
+    }
+
+    // -- completion retry ------------------------------------------------------
+
+    #[test]
+    fn read_completion_retry_state_reads_missing_valid_and_invalid_records() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        assert_eq!(read_completion_retry_state(&state), Ok(None));
+        let fingerprint = "f".repeat(64);
+        test_write_fixture(
+            &state.completion_retry_state_file,
+            &format!("COMPLETION_RETRY_COUNT=2\nPLAN_COVERAGE_FINGERPRINT={fingerprint}\n"),
+        );
+        let retry = read_completion_retry_state(&state)
+            .expect("valid retry state")
+            .expect("some");
+        assert_eq!(retry.count, 2);
+        assert_eq!(retry.fingerprint, fingerprint);
+        test_write_fixture(
+            &state.completion_retry_state_file,
+            "COMPLETION_RETRY_COUNT=not-a-number\n",
+        );
+        assert!(read_completion_retry_state(&state).is_err());
+    }
+
+    #[test]
+    fn retry_incomplete_completion_stops_once_the_cap_is_exhausted() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let mut request = test_base_step2_request(tmpdir.path(), "codex");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        let fingerprint = "a".repeat(64);
+        test_write_fixture(
+            &state.completion_retry_state_file,
+            &format!("COMPLETION_RETRY_COUNT=3\nPLAN_COVERAGE_FINGERPRINT={fingerprint}\n"),
+        );
+        let coverage = sample_coverage(&fingerprint, true);
+        let result = retry_incomplete_completion(&mut request, &state, &coverage);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn retry_incomplete_completion_bails_on_an_invalid_retry_record() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let mut request = test_base_step2_request(tmpdir.path(), "codex");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        test_write_fixture(
+            &state.completion_retry_state_file,
+            "COMPLETION_RETRY_COUNT=not-a-number\n",
+        );
+        let coverage = sample_coverage(&"a".repeat(64), true);
+        let result = retry_incomplete_completion(&mut request, &state, &coverage);
+        assert!(result.is_some());
+    }
+
+    // -- terminal contract / coverage rows ------------------------------------
+
+    #[test]
+    fn emit_terminal_contract_reports_success_for_every_routed_status() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        let object = Map::new();
+        for status in ["complete", "needs_qa", "bailed"] {
+            let code = emit_terminal_contract(&state, status, &object, None, 0, false);
+            assert_eq!(
+                format!("{code:?}"),
+                format!("{:?}", ExitCode::SUCCESS),
+                "status={status}"
+            );
+        }
+    }
+
+    #[test]
+    fn emit_terminal_contract_reports_uncovered_plan_paths_and_a_coverage_row() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        let object = Map::new();
+        let coverage = sample_coverage(&"a".repeat(64), false);
+        let code = emit_terminal_contract(&state, "complete", &object, Some(&coverage), 3, true);
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+    }
+
+    #[test]
+    fn emit_terminal_contract_bails_when_the_completion_retry_record_is_invalid() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        test_write_fixture(
+            &state.completion_retry_state_file,
+            "COMPLETION_RETRY_COUNT=not-a-number\n",
+        );
+        let object = Map::new();
+        let code = emit_terminal_contract(&state, "complete", &object, None, 0, false);
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+    }
+
+    #[test]
+    fn coverage_rows_forwards_to_the_scope_disposition_contract() {
+        let coverage = sample_coverage(&"a".repeat(64), false);
+        let rows = coverage_rows(&coverage);
+        assert!(!rows.is_empty());
+    }
+
+    // -- quota detection -------------------------------------------------------
+
+    #[test]
+    fn quota_failure_detects_rate_limit_signatures_and_ignores_clean_logs() {
+        let dir = tempfile::tempdir().expect("dir");
+        let quota_log = dir.path().join("quota.log");
+        test_write_fixture(&quota_log, "Error: usage limit reached, please retry later\n");
+        assert!(quota_failure(&quota_log));
+        let clean_log = dir.path().join("clean.log");
+        test_write_fixture(&clean_log, "all good\n");
+        assert!(!quota_failure(&clean_log));
+        assert!(!quota_failure(&dir.path().join("missing.log")));
+    }
+}

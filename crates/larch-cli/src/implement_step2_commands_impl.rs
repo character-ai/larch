@@ -1307,3 +1307,982 @@ fn read_issue_body(issue: &str, repo_slug: &str) -> Option<String> {
 }
 
 include!("implement_step2_commands_route.rs");
+
+// ---------------------------------------------------------------------------
+// shared test fixtures (#8623 coverage): reused by every test module spliced
+// into this compatibility unit (this file, its route include, and the
+// top-level commands file), because `include!` flattens them into one module.
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+fn test_arguments(values: &[&str]) -> Vec<OsString> {
+    values.iter().map(OsString::from).collect()
+}
+
+#[cfg(test)]
+fn test_write_fixture(path: &Path, text: &str) {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("fixture parent dir");
+    }
+    fs::write(path, text).expect("write fixture file");
+}
+
+#[cfg(test)]
+fn test_git(root: &Path, args: &[&str]) {
+    let status = std::process::Command::new("git") // lint-subprocess-via-runner: ok test-only Git fixture
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .status()
+        .expect("run git fixture");
+    assert!(status.success(), "git {args:?} failed");
+}
+
+#[cfg(test)]
+fn test_init_repo() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("repo");
+    test_git(dir.path(), &["init", "--quiet"]);
+    test_git(dir.path(), &["config", "user.email", "t@example.invalid"]);
+    test_git(dir.path(), &["config", "user.name", "T"]);
+    dir
+}
+
+#[cfg(test)]
+fn test_commit_everything(root: &Path, message: &str) {
+    test_git(root, &["add", "--all"]);
+    test_git(root, &["commit", "--quiet", "-m", message]);
+}
+
+/// A minimal, otherwise-empty `Step2Request` for one coder.
+#[cfg(test)]
+fn test_base_step2_request(tmpdir: &Path, coder: &str) -> Step2Request {
+    Step2Request {
+        tmpdir: tmpdir.to_path_buf(),
+        plan_file: tmpdir.join("plan.txt"),
+        feature_file: tmpdir.join("feature-description.txt"),
+        coder: coder.to_owned(),
+        cursor_present: String::new(),
+        codex_binary_found: String::new(),
+        cursor_binary_found: String::new(),
+        answers: String::new(),
+        completion_retry: false,
+        difficulty: String::new(),
+    }
+}
+
+/// A `DispatchState` laid out under `tmpdir` for `coder`, creating `repo_root`.
+#[cfg(test)]
+fn test_dispatch_state(tmpdir: &tempfile::TempDir, repo_root: &Path, coder: &str) -> DispatchState {
+    fs::create_dir_all(repo_root).expect("repo root");
+    let plugin_root = tmpdir.path().join("plugin-root");
+    let request = test_base_step2_request(tmpdir.path(), coder);
+    dispatch_state(&request, repo_root, &plugin_root).expect("dispatch state")
+}
+
+#[cfg(test)]
+mod impl_tests {
+    use super::*;
+
+    // -- run-dispatch: parse_run_dispatch -----------------------------------
+
+    /// A minimal, fully valid `run-dispatch` fixture tmpdir.
+    fn run_dispatch_fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let plugin_root = dir.path().join("plugin-root");
+        fs::create_dir_all(&plugin_root).expect("plugin root");
+        test_write_fixture(
+            &dir.path().join("session-env.sh"),
+            &format!("LARCH_CLAUDE_PLUGIN_ROOT={}\n", plugin_root.display()),
+        );
+        test_write_fixture(&dir.path().join("feature-description.txt"), "feature\n");
+        test_write_fixture(&dir.path().join("plan.txt"), "plan\n");
+        dir
+    }
+
+    #[test]
+    fn parse_run_dispatch_requires_coder() {
+        let dir = run_dispatch_fixture();
+        let result = parse_run_dispatch(&test_arguments(&[
+            "--implement-tmpdir",
+            dir.path().to_str().expect("utf8"),
+        ]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_run_dispatch_rejects_bad_difficulty_choice() {
+        let dir = run_dispatch_fixture();
+        let result = parse_run_dispatch(&test_arguments(&[
+            "--implement-tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--coder",
+            "codex",
+            "--difficulty",
+            "BOGUS",
+        ]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_run_dispatch_requires_bgjob_child_and_merge_result_env_together() {
+        let dir = run_dispatch_fixture();
+        assert!(
+            parse_run_dispatch(&test_arguments(&[
+                "--implement-tmpdir",
+                dir.path().to_str().expect("utf8"),
+                "--coder",
+                "codex",
+                "--bgjob-child",
+            ]))
+            .is_err()
+        );
+        assert!(
+            parse_run_dispatch(&test_arguments(&[
+                "--implement-tmpdir",
+                dir.path().to_str().expect("utf8"),
+                "--coder",
+                "codex",
+                "--merge-result-env",
+                "/tmp/does-not-matter.env",
+            ]))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn parse_run_dispatch_requires_tmpdir_directory() {
+        let result = parse_run_dispatch(&test_arguments(&[
+            "--implement-tmpdir",
+            "/nonexistent/path/for/larch/tests",
+            "--coder",
+            "codex",
+        ]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_run_dispatch_requires_session_files_present() {
+        for missing in ["session-env.sh", "feature-description.txt", "plan.txt"] {
+            let dir = run_dispatch_fixture();
+            fs::remove_file(dir.path().join(missing)).expect("remove fixture file");
+            let result = parse_run_dispatch(&test_arguments(&[
+                "--implement-tmpdir",
+                dir.path().to_str().expect("utf8"),
+                "--coder",
+                "codex",
+            ]));
+            assert!(result.is_err(), "missing {missing} must refuse");
+        }
+    }
+
+    #[test]
+    fn parse_run_dispatch_rejects_missing_answers_path() {
+        let dir = run_dispatch_fixture();
+        let result = parse_run_dispatch(&test_arguments(&[
+            "--implement-tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--coder",
+            "codex",
+            "--answers",
+            "/nonexistent/answers.json",
+        ]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_run_dispatch_rejects_nondirectory_plugin_root() {
+        let dir = run_dispatch_fixture();
+        test_write_fixture(
+            &dir.path().join("session-env.sh"),
+            "LARCH_CLAUDE_PLUGIN_ROOT=/no/such/plugin/root\n",
+        );
+        let result = parse_run_dispatch(&test_arguments(&[
+            "--implement-tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--coder",
+            "codex",
+        ]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_run_dispatch_builds_expected_child_argv_and_resolves_difficulty() {
+        let dir = run_dispatch_fixture();
+        test_write_fixture(&dir.path().join("run-flags.sh"), "DIFFICULTY_OVERRIDE=HARD\n");
+        let request = parse_run_dispatch(&test_arguments(&[
+            "--implement-tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--coder",
+            "codex",
+        ]))
+        .expect("valid request");
+        assert_eq!(request.coder, "codex");
+        let child: Vec<String> = request
+            .child
+            .iter()
+            .map(|part| part.to_string_lossy().into_owned())
+            .collect();
+        assert!(child.contains(&"step2-dispatch".to_owned()));
+        assert!(child.contains(&"--difficulty".to_owned()));
+        assert!(child.contains(&"HARD".to_owned()));
+    }
+
+    #[test]
+    fn parse_run_dispatch_explicit_difficulty_overrides_the_resolved_one() {
+        let dir = run_dispatch_fixture();
+        test_write_fixture(&dir.path().join("run-flags.sh"), "DIFFICULTY_OVERRIDE=HARD\n");
+        let request = parse_run_dispatch(&test_arguments(&[
+            "--implement-tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--coder",
+            "codex",
+            "--difficulty",
+            "TRIVIAL",
+        ]))
+        .expect("valid request");
+        let child: Vec<String> = request
+            .child
+            .iter()
+            .map(|part| part.to_string_lossy().into_owned())
+            .collect();
+        assert!(child.iter().any(|part| part == "TRIVIAL"));
+        assert!(!child.iter().any(|part| part == "HARD"));
+    }
+
+    // -- run-dispatch: small helpers -----------------------------------------
+
+    #[test]
+    fn resolve_run_dispatch_plugin_root_prefers_the_session_record() {
+        let dir = tempfile::tempdir().expect("dir");
+        let session = dir.path().join("session-env.sh");
+        test_write_fixture(&session, "LARCH_CLAUDE_PLUGIN_ROOT=/some/recorded/root\n");
+        assert_eq!(
+            resolve_run_dispatch_plugin_root(&session),
+            PathBuf::from("/some/recorded/root")
+        );
+    }
+
+    #[test]
+    fn resolve_run_dispatch_plugin_root_falls_back_without_a_session_record() {
+        let dir = tempfile::tempdir().expect("dir");
+        let session = dir.path().join("session-env.sh");
+        let resolved = resolve_run_dispatch_plugin_root(&session);
+        assert!(!resolved.as_os_str().is_empty());
+    }
+
+    #[test]
+    fn binary_available_prefers_the_session_record_over_the_path_probe() {
+        let dir = tempfile::tempdir().expect("dir");
+        let session = dir.path().join("session-env.sh");
+        test_write_fixture(&session, "CODEX_BINARY_FOUND=true\n");
+        assert_eq!(binary_available(&session, "CODEX_BINARY_FOUND", "codex"), "true");
+        test_write_fixture(&session, "CODEX_BINARY_FOUND=false\n");
+        assert_eq!(binary_available(&session, "CODEX_BINARY_FOUND", "codex"), "false");
+    }
+
+    #[test]
+    fn binary_available_falls_back_to_the_path_probe_when_unrecorded() {
+        let dir = tempfile::tempdir().expect("dir");
+        let session = dir.path().join("session-env.sh"); // absent
+        let value = binary_available(
+            &session,
+            "CODEX_BINARY_FOUND",
+            "definitely-not-a-real-binary-xyz123",
+        );
+        assert_eq!(value, "false");
+    }
+
+    #[test]
+    fn resolve_step2_effective_difficulty_prefers_override_then_prior_then_empty() {
+        let dir = tempfile::tempdir().expect("dir");
+        assert_eq!(resolve_step2_effective_difficulty(dir.path()), "");
+        test_write_fixture(
+            &dir.path().join("difficulty-prior.env"),
+            "DESIGN_DIFFICULTY=MODERATE\n",
+        );
+        assert_eq!(resolve_step2_effective_difficulty(dir.path()), "MODERATE");
+        test_write_fixture(&dir.path().join("run-flags.sh"), "DIFFICULTY_OVERRIDE=HARD\n");
+        assert_eq!(resolve_step2_effective_difficulty(dir.path()), "HARD");
+    }
+
+    #[test]
+    fn write_step2_telemetry_sentinel_marks_true() {
+        let dir = tempfile::tempdir().expect("dir");
+        write_step2_telemetry_sentinel(dir.path());
+        let content =
+            fs::read_to_string(dir.path().join(".step2-telemetry-marked")).expect("sentinel");
+        assert_eq!(content, "true\n");
+    }
+
+    #[test]
+    fn publish_bgjob_envelope_writes_under_tmpdir() {
+        let dir = tempfile::tempdir().expect("dir");
+        let target = dir.path().join("merge-result.env");
+        assert!(publish_bgjob_envelope(dir.path(), &target, "STATUS=complete\n"));
+        assert_eq!(fs::read_to_string(&target).expect("read"), "STATUS=complete\n");
+    }
+
+    #[test]
+    fn publish_bgjob_envelope_refuses_paths_outside_tmpdir() {
+        let dir = tempfile::tempdir().expect("dir");
+        let outside = tempfile::tempdir().expect("outside");
+        let target = outside.path().join("merge-result.env");
+        assert!(!publish_bgjob_envelope(dir.path(), &target, "STATUS=complete\n"));
+        assert!(!target.exists());
+    }
+
+    #[test]
+    fn clear_external_dispatch_seed_blanks_only_named_keys() {
+        let dir = tempfile::tempdir().expect("dir");
+        test_write_fixture(
+            &dir.path().join("ship-seed-input.env"),
+            "RUN_FLAG=keep\nMANIFEST_PATH=/old.json\nDISPATCHER_COMMITTED=true\n",
+        );
+        clear_external_dispatch_seed(dir.path());
+        let text = fs::read_to_string(dir.path().join("ship-seed-input.env")).expect("seed");
+        assert_eq!(text, "RUN_FLAG=keep\nMANIFEST_PATH=\nDISPATCHER_COMMITTED=\n");
+    }
+
+    #[test]
+    fn clear_external_dispatch_seed_creates_absent_keys() {
+        let dir = tempfile::tempdir().expect("dir");
+        clear_external_dispatch_seed(dir.path());
+        let text = fs::read_to_string(dir.path().join("ship-seed-input.env")).expect("seed");
+        assert!(text.contains("MANIFEST_PATH=\n"));
+        assert!(text.contains("DISPATCHER_COMMITTED=\n"));
+    }
+
+    // -- git probes -----------------------------------------------------------
+
+    #[test]
+    fn working_tree_struct_dedupes_and_sorts_paths() {
+        let mut tree = WorkingTree {
+            staged: vec!["b.rs".to_owned(), "a.rs".to_owned()],
+            unstaged: vec!["a.rs".to_owned(), "c.rs".to_owned()],
+            untracked: vec!["d.rs".to_owned()],
+            submodule_modified: false,
+        };
+        assert_eq!(
+            tree.tracked_changes(),
+            vec!["a.rs".to_owned(), "b.rs".to_owned(), "c.rs".to_owned()]
+        );
+        assert!(tree.dirty());
+        assert_eq!(
+            tree.all_paths(),
+            vec![
+                "a.rs".to_owned(),
+                "b.rs".to_owned(),
+                "c.rs".to_owned(),
+                "d.rs".to_owned()
+            ]
+        );
+        tree.staged.clear();
+        tree.unstaged.clear();
+        tree.untracked.clear();
+        assert!(!tree.dirty());
+    }
+
+    #[test]
+    fn head_sha_is_empty_before_any_commit_then_a_full_hex_digest_after() {
+        let repo = test_init_repo();
+        assert_eq!(head_sha(repo.path()), "");
+        test_write_fixture(&repo.path().join("a.txt"), "hello\n");
+        test_commit_everything(repo.path(), "base");
+        let sha = head_sha(repo.path());
+        assert_eq!(sha.len(), 40);
+        assert!(sha.chars().all(|character| character.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn symbolic_branch_and_abbrev_ref_report_the_checked_out_branch() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "hello\n");
+        test_commit_everything(repo.path(), "base");
+        let branch = symbolic_branch(repo.path());
+        assert!(!branch.is_empty());
+        assert_eq!(abbrev_ref(repo.path()), branch);
+    }
+
+    #[test]
+    fn abbrev_ref_reports_head_for_a_detached_checkout() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "hello\n");
+        test_commit_everything(repo.path(), "base");
+        let sha = head_sha(repo.path());
+        test_git(repo.path(), &["checkout", "--quiet", &sha]);
+        assert_eq!(symbolic_branch(repo.path()), "");
+        assert_eq!(abbrev_ref(repo.path()), "HEAD");
+    }
+
+    #[test]
+    fn working_tree_reports_staged_unstaged_and_untracked_paths() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        test_write_fixture(&repo.path().join("a.txt"), "two\n");
+        test_write_fixture(&repo.path().join("staged.txt"), "s\n");
+        test_git(repo.path(), &["add", "staged.txt"]);
+        test_write_fixture(&repo.path().join("untracked.txt"), "u\n");
+        let tree = working_tree(repo.path()).expect("working tree");
+        assert!(tree.dirty());
+        assert!(tree.tracked_changes().contains(&"a.txt".to_owned()));
+        assert!(tree.tracked_changes().contains(&"staged.txt".to_owned()));
+        assert!(tree.all_paths().contains(&"untracked.txt".to_owned()));
+    }
+
+    #[test]
+    fn submodule_roots_reads_nested_gitmodules_and_skips_unsafe_declarations() {
+        let dir = tempfile::tempdir().expect("dir");
+        test_write_fixture(
+            &dir.path().join(".gitmodules"),
+            "[submodule \"vendor\"]\n\tpath = vendor/one\n\turl = https://example.invalid/one.git\n[submodule \"bad\"]\n\tpath = ../escape\n[submodule \"blank\"]\n\tpath = /\n",
+        );
+        fs::create_dir_all(dir.path().join("vendor/one")).expect("nested dir");
+        test_write_fixture(
+            &dir.path().join("vendor/one/.gitmodules"),
+            "[submodule \"nested\"]\n\tpath = nested/two\n",
+        );
+        let roots = submodule_roots(dir.path());
+        assert!(roots.contains(&"vendor/one".to_owned()));
+        assert!(roots.contains(&"vendor/one/nested/two".to_owned()));
+        assert!(!roots.iter().any(|root| root.contains("..")));
+        assert_eq!(roots.len(), 2, "{roots:?}");
+    }
+
+    #[test]
+    fn submodule_status_text_lists_declared_roots() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        test_write_fixture(&repo.path().join(".gitmodules"), "[submodule \"vendor\"]\n\tpath = vendor\n");
+        let text = submodule_status_text(repo.path());
+        assert!(text.starts_with(' '), "{text:?}");
+        assert!(text.contains("vendor"));
+    }
+
+    #[test]
+    fn commit_all_commits_staged_changes() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_git(repo.path(), &["add", "a.txt"]);
+        let message_file = repo.path().join("msg.txt");
+        test_write_fixture(&message_file, "test commit\n");
+        commit_all(repo.path(), &message_file).expect("commit succeeds");
+        assert!(!head_sha(repo.path()).is_empty());
+    }
+
+    #[test]
+    fn commit_all_reports_a_failure_when_nothing_is_staged() {
+        let repo = test_init_repo();
+        // The message file must live outside the repository: inside it, `git
+        // add --all` would stage it and the "nothing to commit" failure this
+        // test wants would never happen.
+        let outside = tempfile::tempdir().expect("outside dir");
+        let message_file = outside.path().join("msg.txt");
+        test_write_fixture(&message_file, "empty commit\n");
+        assert!(commit_all(repo.path(), &message_file).is_err());
+    }
+
+    // -- dispatch_state / emit_bailed / emit_claude_fallback -----------------
+
+    #[test]
+    fn dispatch_state_routes_codex_manifest_under_its_own_out_directory() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        assert_eq!(
+            state.manifest_path,
+            tmpdir.path().join("codex-step2-out").join("manifest.json")
+        );
+        assert!(tmpdir.path().join("codex-step2-out").is_dir());
+        assert_eq!(state.resume_count_file, tmpdir.path().join("codex-resume-count.txt"));
+        assert!(!state.requires_head_unchanged);
+        assert_eq!(state.nonzero_exit_warn_token, "WARN_CODEX_NONZERO_EXIT");
+    }
+
+    #[test]
+    fn dispatch_state_keeps_cursor_manifest_directly_under_tmpdir() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "cursor");
+        assert_eq!(state.manifest_path, tmpdir.path().join("manifest.json"));
+        assert!(state.requires_head_unchanged);
+        assert!(state.nonzero_exit_warn_token.is_empty());
+    }
+
+    #[test]
+    fn dispatch_state_keeps_claude_manifest_directly_under_tmpdir() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "claude");
+        assert_eq!(state.manifest_path, tmpdir.path().join("manifest.json"));
+        assert!(!state.requires_head_unchanged);
+        assert!(state.nonzero_exit_warn_token.is_empty());
+    }
+
+    #[test]
+    fn nonempty_file_requires_a_nonempty_regular_file() {
+        let dir = tempfile::tempdir().expect("dir");
+        assert!(!nonempty_file(&dir.path().join("missing.txt")));
+        let empty = dir.path().join("empty.txt");
+        test_write_fixture(&empty, "");
+        assert!(!nonempty_file(&empty));
+        let present = dir.path().join("present.txt");
+        test_write_fixture(&present, "data");
+        assert!(nonempty_file(&present));
+    }
+
+    #[test]
+    fn emit_bailed_returns_success_with_and_without_the_manifest_row() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        test_write_fixture(&state.transcript_path, "transcript output\n");
+        assert_eq!(
+            format!("{:?}", emit_bailed(&state, "some-reason", true)),
+            format!("{:?}", ExitCode::SUCCESS)
+        );
+        assert_eq!(
+            format!("{:?}", emit_bailed(&state, "some-reason", false)),
+            format!("{:?}", ExitCode::SUCCESS)
+        );
+    }
+
+    #[test]
+    fn clear_external_scout_state_removes_every_declared_scout_path() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        for path in clear_external_scout_paths(tmpdir.path()) {
+            test_write_fixture(&path, "stale\n");
+        }
+        clear_external_scout_state(tmpdir.path());
+        for path in clear_external_scout_paths(tmpdir.path()) {
+            assert!(!path.exists(), "{path:?} should have been removed");
+        }
+    }
+
+    #[test]
+    fn ensure_step2_baseline_writes_the_head_sha_once() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        ensure_step2_baseline(tmpdir.path(), Some(repo.path()));
+        let baseline =
+            fs::read_to_string(tmpdir.path().join("step2-baseline.txt")).expect("baseline");
+        assert_eq!(baseline.trim(), head_sha(repo.path()));
+        let other_repo = test_init_repo();
+        test_write_fixture(&other_repo.path().join("b.txt"), "two\n");
+        test_commit_everything(other_repo.path(), "other");
+        ensure_step2_baseline(tmpdir.path(), Some(other_repo.path()));
+        let unchanged =
+            fs::read_to_string(tmpdir.path().join("step2-baseline.txt")).expect("baseline");
+        assert_eq!(unchanged, baseline, "a recorded baseline must not be overwritten");
+    }
+
+    #[test]
+    fn emit_claude_fallback_ensures_baseline_and_clears_scout_state() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        for path in clear_external_scout_paths(tmpdir.path()) {
+            test_write_fixture(&path, "stale\n");
+        }
+        emit_claude_fallback(tmpdir.path(), Some(repo.path()), "reason", "codex");
+        assert!(tmpdir.path().join("step2-baseline.txt").is_file());
+        for path in clear_external_scout_paths(tmpdir.path()) {
+            assert!(!path.exists());
+        }
+    }
+
+    #[test]
+    fn external_implementer_prompt_path_builds_the_conventional_layout() {
+        let plugin_root = Path::new("/plugin/root");
+        let path = external_implementer_prompt_path(plugin_root, "codex");
+        assert_eq!(
+            path,
+            PathBuf::from("/plugin/root/skills/implement/prompts/codex-implementer.md")
+        );
+    }
+
+    #[test]
+    fn clone_request_copies_every_field() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let mut request = test_base_step2_request(tmpdir.path(), "codex");
+        request.answers = "answers.json".to_owned();
+        request.completion_retry = true;
+        request.difficulty = "HARD".to_owned();
+        let cloned = clone_request(&request);
+        assert_eq!(cloned.coder, request.coder);
+        assert_eq!(cloned.answers, request.answers);
+        assert_eq!(cloned.completion_retry, request.completion_retry);
+        assert_eq!(cloned.difficulty, request.difficulty);
+        assert_eq!(cloned.tmpdir, request.tmpdir);
+    }
+
+    // -- resume / prior-attempt / adopt-identity ------------------------------
+
+    #[test]
+    fn resume_count_reads_a_recorded_count_and_rejects_garbage() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        assert_eq!(resume_count(&state).expect("count"), 0);
+        test_write_fixture(&state.resume_count_file, "3\n");
+        assert_eq!(resume_count(&state).expect("count"), 3);
+        test_write_fixture(&state.resume_count_file, "not-a-number\n");
+        assert!(resume_count(&state).is_err());
+    }
+
+    #[test]
+    fn resume_count_charges_the_answers_file_and_requires_it_to_exist() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let mut state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        state.answers_file = Some(tmpdir.path().join("missing-answers.json"));
+        assert!(resume_count(&state).is_err());
+        let answers = tmpdir.path().join("answers.json");
+        test_write_fixture(&answers, "{}");
+        state.answers_file = Some(answers);
+        assert_eq!(resume_count(&state).expect("count"), 1);
+        let recorded = fs::read_to_string(&state.resume_count_file).expect("count file");
+        assert_eq!(recorded.trim(), "1");
+    }
+
+    #[test]
+    fn prior_attempt_unfinalized_is_false_without_a_prelaunch_snapshot() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        assert!(!prior_attempt_unfinalized(&state));
+    }
+
+    #[test]
+    fn prior_attempt_unfinalized_is_false_when_a_resume_carries_answers() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let mut state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        test_write_fixture(&state.prelaunch_porcelain, "");
+        test_write_fixture(&state.prelaunch_digests, "");
+        state.answers_file = Some(tmpdir.path().join("answers.json"));
+        assert!(!prior_attempt_unfinalized(&state));
+    }
+
+    #[test]
+    fn write_prelaunch_baseline_skips_when_answers_present_or_already_captured() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let mut state = test_dispatch_state(&tmpdir, repo.path(), "codex");
+        state.answers_file = Some(tmpdir.path().join("answers.json"));
+        write_prelaunch_baseline(&state);
+        assert!(!state.prelaunch_porcelain.exists());
+        state.answers_file = None;
+        write_prelaunch_baseline(&state);
+        assert!(state.prelaunch_porcelain.exists());
+        let before = fs::read(&state.prelaunch_porcelain).expect("snapshot");
+        test_write_fixture(&repo.path().join("b.txt"), "two\n");
+        write_prelaunch_baseline(&state);
+        let after = fs::read(&state.prelaunch_porcelain).expect("snapshot");
+        assert_eq!(before, after, "an existing snapshot must not be recomputed");
+    }
+
+    #[test]
+    fn adopt_spawn_identity_records_baseline_and_branch_on_first_use() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        test_git(repo.path(), &["checkout", "--quiet", "-b", "feature-branch"]);
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let mut state = test_dispatch_state(&tmpdir, repo.path(), "codex");
+        let bail = adopt_spawn_identity(&mut state);
+        assert!(bail.is_none(), "{bail:?}");
+        assert_eq!(state.spawn_branch, "feature-branch");
+        assert_eq!(state.baseline_sha, head_sha(repo.path()));
+        assert_eq!(fs::read_to_string(&state.spawn_coder_file).expect("coder"), "codex\n");
+    }
+
+    #[test]
+    fn adopt_spawn_identity_rejects_a_coder_mismatch_on_tmpdir_reuse() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let mut state = test_dispatch_state(&tmpdir, repo.path(), "codex");
+        test_write_fixture(&state.spawn_coder_file, "cursor\n");
+        let bail = adopt_spawn_identity(&mut state);
+        assert_eq!(bail, Some("coder-mismatch-tmpdir-reuse".to_owned()));
+    }
+
+    #[test]
+    fn adopt_spawn_identity_prohibits_detached_head_for_an_issue_anchored_run() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let sha = head_sha(repo.path());
+        test_git(repo.path(), &["checkout", "--quiet", &sha]);
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        test_write_fixture(&tmpdir.path().join("session-env.sh"), "ISSUE_NUMBER=123\n");
+        let mut state = test_dispatch_state(&tmpdir, repo.path(), "codex");
+        let bail = adopt_spawn_identity(&mut state);
+        assert_eq!(bail, Some("detached-head-prohibited".to_owned()));
+    }
+
+    #[test]
+    fn adopt_spawn_identity_prohibits_main_branch_for_an_issue_anchored_run() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        test_git(repo.path(), &["branch", "-m", "main"]);
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        test_write_fixture(&tmpdir.path().join("session-env.sh"), "ISSUE_NUMBER=123\n");
+        let mut state = test_dispatch_state(&tmpdir, repo.path(), "codex");
+        let bail = adopt_spawn_identity(&mut state);
+        assert_eq!(bail, Some("main-branch-prohibited".to_owned()));
+    }
+
+    #[test]
+    fn adopt_spawn_identity_allows_main_branch_for_a_forked_target_run() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        test_git(repo.path(), &["branch", "-m", "main"]);
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        test_write_fixture(
+            &tmpdir.path().join("session-env.sh"),
+            "ISSUE_NUMBER=123\nFORKED_TARGET=true\n",
+        );
+        let mut state = test_dispatch_state(&tmpdir, repo.path(), "codex");
+        let bail = adopt_spawn_identity(&mut state);
+        assert!(bail.is_none(), "{bail:?}");
+    }
+
+    // -- architectural knowledge / issue body ---------------------------------
+
+    #[test]
+    fn architectural_knowledge_required_prefers_the_launcher_snapshot() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        assert!(!architectural_knowledge_required(&state));
+        test_write_fixture(
+            &tmpdir.path().join(ARCH_KNOWLEDGE_SNAPSHOT),
+            "ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n",
+        );
+        assert!(architectural_knowledge_required(&state));
+        test_write_fixture(
+            &tmpdir.path().join(ARCH_KNOWLEDGE_SNAPSHOT),
+            "ARCHITECTURAL_KNOWLEDGE_REQUIRED=false\n",
+        );
+        assert!(!architectural_knowledge_required(&state));
+    }
+
+    #[test]
+    fn architectural_knowledge_required_falls_back_to_reading_repo_files() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let repo_root = tmpdir.path().join("repo");
+        let state = test_dispatch_state(&tmpdir, &repo_root, "codex");
+        assert!(!architectural_knowledge_required(&state));
+        test_write_fixture(&repo_root.join("ARCHITECTURAL_INVARIANTS.md"), "# Invariant\nBody\n");
+        assert!(architectural_knowledge_required(&state));
+    }
+
+    #[test]
+    fn read_issue_body_rejects_a_non_numeric_issue() {
+        assert!(read_issue_body("not-a-number", "owner/repo").is_none());
+    }
+
+    #[test]
+    fn read_issue_body_rejects_a_repo_slug_without_a_slash() {
+        assert!(read_issue_body("123", "no-slash").is_none());
+    }
+
+    // -- step2-dispatch argv --------------------------------------------------
+
+    fn step2_fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        test_write_fixture(&dir.path().join("plan.txt"), "plan\n");
+        test_write_fixture(&dir.path().join("feature.txt"), "feature\n");
+        dir
+    }
+
+    #[test]
+    fn step2_dispatch_argv_requires_coder_or_codex_available() {
+        let dir = step2_fixture();
+        let result = step2_dispatch_argv(&test_arguments(&[
+            "--tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--plan-file",
+            dir.path().join("plan.txt").to_str().expect("utf8"),
+            "--feature-file",
+            dir.path().join("feature.txt").to_str().expect("utf8"),
+        ]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn step2_dispatch_argv_rejects_coder_and_codex_available_together() {
+        let dir = step2_fixture();
+        let result = step2_dispatch_argv(&test_arguments(&[
+            "--tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--plan-file",
+            dir.path().join("plan.txt").to_str().expect("utf8"),
+            "--feature-file",
+            dir.path().join("feature.txt").to_str().expect("utf8"),
+            "--coder",
+            "codex",
+            "--codex-available",
+            "true",
+        ]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn step2_dispatch_argv_maps_deprecated_codex_available_true_to_codex() {
+        let dir = step2_fixture();
+        let request = step2_dispatch_argv(&test_arguments(&[
+            "--tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--plan-file",
+            dir.path().join("plan.txt").to_str().expect("utf8"),
+            "--feature-file",
+            dir.path().join("feature.txt").to_str().expect("utf8"),
+            "--codex-available",
+            "true",
+        ]))
+        .expect("request");
+        assert_eq!(request.coder, "codex");
+    }
+
+    #[test]
+    fn step2_dispatch_argv_maps_deprecated_codex_available_false_to_claude() {
+        let dir = step2_fixture();
+        let request = step2_dispatch_argv(&test_arguments(&[
+            "--tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--plan-file",
+            dir.path().join("plan.txt").to_str().expect("utf8"),
+            "--feature-file",
+            dir.path().join("feature.txt").to_str().expect("utf8"),
+            "--codex-available",
+            "false",
+        ]))
+        .expect("request");
+        assert_eq!(request.coder, "claude");
+    }
+
+    #[test]
+    fn step2_dispatch_argv_rejects_a_bogus_codex_available_value() {
+        let dir = step2_fixture();
+        let result = step2_dispatch_argv(&test_arguments(&[
+            "--tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--plan-file",
+            dir.path().join("plan.txt").to_str().expect("utf8"),
+            "--feature-file",
+            dir.path().join("feature.txt").to_str().expect("utf8"),
+            "--codex-available",
+            "maybe",
+        ]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn step2_dispatch_argv_rejects_an_unsafe_coder() {
+        let dir = step2_fixture();
+        let result = step2_dispatch_argv(&test_arguments(&[
+            "--tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--plan-file",
+            dir.path().join("plan.txt").to_str().expect("utf8"),
+            "--feature-file",
+            dir.path().join("feature.txt").to_str().expect("utf8"),
+            "--coder",
+            "gemini",
+        ]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn step2_dispatch_argv_rejects_a_non_boolean_flag_value() {
+        let dir = step2_fixture();
+        let result = step2_dispatch_argv(&test_arguments(&[
+            "--tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--plan-file",
+            dir.path().join("plan.txt").to_str().expect("utf8"),
+            "--feature-file",
+            dir.path().join("feature.txt").to_str().expect("utf8"),
+            "--coder",
+            "codex",
+            "--cursor-present",
+            "maybe",
+        ]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn step2_dispatch_argv_requires_an_existing_tmpdir() {
+        let result = step2_dispatch_argv(&test_arguments(&[
+            "--tmpdir",
+            "/nonexistent/step2/tmpdir",
+            "--plan-file",
+            "/nonexistent/step2/tmpdir/plan.txt",
+            "--feature-file",
+            "/nonexistent/step2/tmpdir/feature.txt",
+            "--coder",
+            "codex",
+        ]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn step2_dispatch_argv_requires_plan_and_feature_files_to_exist() {
+        let dir = tempfile::tempdir().expect("dir");
+        let result = step2_dispatch_argv(&test_arguments(&[
+            "--tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--plan-file",
+            dir.path().join("missing-plan.txt").to_str().expect("utf8"),
+            "--feature-file",
+            dir.path().join("missing-feature.txt").to_str().expect("utf8"),
+            "--coder",
+            "codex",
+        ]));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn step2_dispatch_argv_builds_a_valid_request_and_resolves_difficulty() {
+        let dir = step2_fixture();
+        test_write_fixture(&dir.path().join("difficulty-prior.env"), "DESIGN_DIFFICULTY=HARD\n");
+        let request = step2_dispatch_argv(&test_arguments(&[
+            "--tmpdir",
+            dir.path().to_str().expect("utf8"),
+            "--plan-file",
+            dir.path().join("plan.txt").to_str().expect("utf8"),
+            "--feature-file",
+            dir.path().join("feature.txt").to_str().expect("utf8"),
+            "--coder",
+            "cursor",
+            "--completion-retry",
+        ]))
+        .expect("request");
+        assert_eq!(request.coder, "cursor");
+        assert!(request.completion_retry);
+        assert_eq!(request.difficulty, "HARD");
+    }
+
+    #[test]
+    fn publish_step2_child_environment_reads_session_identity_files() {
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        test_write_fixture(&tmpdir.path().join("session-id"), "abc123\n");
+        test_write_fixture(&tmpdir.path().join("claude-source.env"), "SOURCE=x\n");
+        // Exercises the session-id and claude-source.env row paths; the
+        // published rows land in a cross-test global, so this intentionally
+        // does not assert on shared state.
+        publish_step2_child_environment(tmpdir.path());
+    }
+}
