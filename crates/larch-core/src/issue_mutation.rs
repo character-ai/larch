@@ -117,19 +117,41 @@ pub struct VerifiedIssueMutation {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct IssueMutationError {
     reason: &'static str,
+    unreachable: bool,
 }
 
 impl IssueMutationError {
     /// Build a refusal with one of the owner contract's stable reason tokens.
     #[must_use]
     pub const fn new(reason: &'static str) -> Self {
-        Self { reason }
+        Self {
+            reason,
+            unreachable: false,
+        }
+    }
+
+    /// Build a refusal whose underlying GitHub failure never reached the server
+    /// (DNS failure, connect timeout, or a refused or reset connection). An
+    /// offline-aware caller retries this class within a bounded connectivity
+    /// window; the reason token is unchanged for every existing consumer.
+    #[must_use]
+    pub const fn unreachable(reason: &'static str) -> Self {
+        Self {
+            reason,
+            unreachable: true,
+        }
     }
 
     /// Return the stable machine-readable refusal reason.
     #[must_use]
     pub const fn reason(self) -> &'static str {
         self.reason
+    }
+
+    /// Return whether the underlying GitHub failure never reached the server.
+    #[must_use]
+    pub const fn is_unreachable(&self) -> bool {
+        self.unreachable
     }
 }
 

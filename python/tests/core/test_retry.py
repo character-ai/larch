@@ -107,3 +107,32 @@ def test_with_transient_retry_reuses_last_backoff() -> None:
     result = retry.with_transient_retry(fn, sleeper=sleeps.append, max_attempts=4)
     assert result.attempts == 4
     assert sleeps == [2.0, 4.0, 4.0]
+
+
+def test_is_network_unreachable_signature_excludes_http_5xx() -> None:
+    assert retry.is_network_unreachable_signature("fatal: Could not resolve host: github.com")
+    assert retry.is_network_unreachable_signature("ssh: connect to host port 22: Connection refused")
+    assert retry.is_network_unreachable_signature("Failed to connect to github.com: Operation timed out")
+    # HTTP-level and non-connectivity failures stay fail-closed.
+    assert not retry.is_network_unreachable_signature("The requested URL returned error: 500")
+    assert not retry.is_network_unreachable_signature("HTTP 502 Bad Gateway")
+    assert not retry.is_network_unreachable_signature("! [rejected] main -> main (non-fast-forward)")
+
+
+def test_with_transient_retry_honors_a_narrow_net_signature() -> None:
+    sleeps: list[float] = []
+    attempts = {"n": 0}
+
+    def fn() -> tuple[str, int, str]:
+        attempts["n"] += 1
+        # A 5xx is transient under the default policy but not network-unreachable.
+        return "", 1, "gh: HTTP 502 Bad Gateway"
+
+    result = retry.with_transient_retry(
+        fn,
+        net_signature=retry.is_network_unreachable_signature,
+        sleeper=sleeps.append,
+        max_attempts=4,
+    )
+    assert result.attempts == 1
+    assert sleeps == []

@@ -15,7 +15,7 @@ from larch.core import config
 from larch.core import redact
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
-from larch.core.retry import with_transient_retry
+from larch.core.retry import is_network_unreachable_signature, with_transient_retry
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 
 _GIT_REF_LABEL_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
@@ -95,6 +95,33 @@ def _ensure_success(result: CommandResult) -> CommandResult:
         msg = f"git command failed ({result.returncode}): {' '.join(result.argv)}"
         raise ShipError(msg)
     return result
+
+
+def _push_with_offline_retry(
+    runner: Runner,
+    argv: Sequence[str],
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Retry a network-unreachable git push within a bounded window.
+
+    A laptop that wakes offline mid-ship hits a DNS or connect failure on the
+    first push. A push is idempotent under retry: a plain push that already
+    landed reports the branch up to date, and a ``--force-with-lease`` push
+    whose landing was lost fails its lease check instead of double-applying, so
+    the network-unreachable class is safe to retry. HTTP-level rejections
+    (protected branch, non-fast-forward) carry no transient-net signature and
+    fail closed exactly as before.
+    """
+
+    def attempt() -> tuple[CommandResult, int, str]:
+        res = _run(runner, argv, cwd=cwd)
+        return res, res.returncode, res.stdout + res.stderr
+
+    return with_transient_retry(
+        attempt,
+        net_signature=is_network_unreachable_signature,
+    ).value
 
 def rev_parse(runner: Runner, ref: str, *, cwd: str | None = None) -> str:
     result = _ensure_success(_run(runner, ["git", "rev-parse", ref], cwd=cwd))
@@ -188,7 +215,7 @@ def push(
     *,
     cwd: str | None = None,
 ) -> CommandResult:
-    return _run(runner, ["git", "push", remote, refspec], cwd=cwd)
+    return _push_with_offline_retry(runner, ["git", "push", remote, refspec], cwd=cwd)
 
 def force_push_with_lease(
     runner: Runner,
@@ -197,7 +224,7 @@ def force_push_with_lease(
     *,
     cwd: str | None = None,
 ) -> CommandResult:
-    return _run(
+    return _push_with_offline_retry(
         runner,
         ["git", "push", "--force-with-lease", remote, refspec],
         cwd=cwd,
@@ -709,7 +736,7 @@ def force_push_with_lease_expecting(
 ) -> CommandResult:
     lease = f"{refspec}:{expected_oid}"
     push_refspec = f"{refspec}:{refspec}"
-    return _run(
+    return _push_with_offline_retry(
         runner,
         ["git", "push", f"--force-with-lease={lease}", remote, push_refspec],
         cwd=cwd,
@@ -865,7 +892,7 @@ def push_set_upstream(
     *,
     cwd: str | None = None,
 ) -> CommandResult:
-    return _run(runner, ["git", "push", "-u", remote, refspec], cwd=cwd)
+    return _push_with_offline_retry(runner, ["git", "push", "-u", remote, refspec], cwd=cwd)
 
 def force_push_recovery(
     runner: Runner,
@@ -910,7 +937,7 @@ def force_push_recovery(
     def _lease_push() -> CommandResult:
         if expected_remote_oid:
             lease = f"refs/heads/{resolved_branch}:{expected_remote_oid}"
-            return _run(
+            return _push_with_offline_retry(
                 runner,
                 ["git", "push", f"--force-with-lease={lease}", remote, refspec],
                 cwd=cwd,

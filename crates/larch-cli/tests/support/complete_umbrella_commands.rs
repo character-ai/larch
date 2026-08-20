@@ -1605,7 +1605,7 @@ fn run_leaves_envelopes_and_child_results_are_exact() {
         }
         .render()
         .expect("failure envelope"),
-        "CHILD_ATTEMPT_COUNT=0\nFAILED_LEAF=41\nFAILED_STEP=run-child\nFAILURE_REASON=first second\nLEAF_RESET_ATTEMPT_COUNT=0\nNET_PROBE_ATTEMPT_COUNT=0\nNET_WAIT_SECONDS=0\nNEXT_ACTION=failed\nRESET_BACKOFF_SECONDS=0\nTRANSIENT_CHILD_RETRY_COUNT=0\n"
+        "CHILD_ATTEMPT_COUNT=0\nFAILED_LEAF=41\nFAILED_STEP=run-child\nFAILURE_REASON=first second\nLEAF_RESET_ATTEMPT_COUNT=0\nNET_PROBE_ATTEMPT_COUNT=0\nNET_WAIT_SECONDS=0\nNEXT_ACTION=failed\nPARENT_STEP_RETRY_COUNT=0\nRESET_BACKOFF_SECONDS=0\nTRANSIENT_CHILD_RETRY_COUNT=0\n"
     );
 
     let complete = format!(
@@ -1645,7 +1645,7 @@ fn run_leaves_envelopes_and_child_results_are_exact() {
         }
         .render()
         .expect("progress envelope"),
-        "CHILD_ATTEMPT_COUNT=0\nCOMPLETED_LEAF_COUNT=2\nCURRENT_LEAF=41\nLEAF_RESET_ATTEMPT_COUNT=0\nNET_PROBE_ATTEMPT_COUNT=0\nNET_WAIT_SECONDS=0\nNEXT_ACTION=verify\nRESET_BACKOFF_SECONDS=0\nTRANSIENT_CHILD_RETRY_COUNT=0\n"
+        "CHILD_ATTEMPT_COUNT=0\nCOMPLETED_LEAF_COUNT=2\nCURRENT_LEAF=41\nLEAF_RESET_ATTEMPT_COUNT=0\nNET_PROBE_ATTEMPT_COUNT=0\nNET_WAIT_SECONDS=0\nNEXT_ACTION=verify\nPARENT_STEP_RETRY_COUNT=0\nRESET_BACKOFF_SECONDS=0\nTRANSIENT_CHILD_RETRY_COUNT=0\n"
     );
     assert_eq!(
         RunLeavesEnvelope::Audit {
@@ -1654,7 +1654,7 @@ fn run_leaves_envelopes_and_child_results_are_exact() {
         }
         .render()
         .expect("audit envelope"),
-        "CHILD_ATTEMPT_COUNT=0\nCOMPLETED_LEAF_COUNT=3\nLEAF_RESET_ATTEMPT_COUNT=0\nNET_PROBE_ATTEMPT_COUNT=0\nNET_WAIT_SECONDS=0\nNEXT_ACTION=audit\nOPEN_LEAF_COUNT=0\nRESET_BACKOFF_SECONDS=0\nSNAPSHOT_WRITTEN=true\nTRANSIENT_CHILD_RETRY_COUNT=0\n"
+        "CHILD_ATTEMPT_COUNT=0\nCOMPLETED_LEAF_COUNT=3\nLEAF_RESET_ATTEMPT_COUNT=0\nNET_PROBE_ATTEMPT_COUNT=0\nNET_WAIT_SECONDS=0\nNEXT_ACTION=audit\nOPEN_LEAF_COUNT=0\nPARENT_STEP_RETRY_COUNT=0\nRESET_BACKOFF_SECONDS=0\nSNAPSHOT_WRITTEN=true\nTRANSIENT_CHILD_RETRY_COUNT=0\n"
     );
     let unspecified = RunLeavesFailure::failed("read-graph", None, "");
     assert_eq!(unspecified.reason, "unspecified failure");
@@ -1841,7 +1841,7 @@ fn live_run_leaves_confines_state_and_writes_caller_owned_files() {
         .expect("caller-owned result");
     assert_eq!(
         fs::read_to_string(&arguments.result_env).expect("result text"),
-        "CHILD_ATTEMPT_COUNT=0\nCOMPLETED_LEAF_COUNT=0\nCURRENT_LEAF=41\nLEAF_RESET_ATTEMPT_COUNT=0\nNET_PROBE_ATTEMPT_COUNT=0\nNET_WAIT_SECONDS=0\nNEXT_ACTION=launch\nRESET_BACKOFF_SECONDS=0\nTRANSIENT_CHILD_RETRY_COUNT=0\n"
+        "CHILD_ATTEMPT_COUNT=0\nCOMPLETED_LEAF_COUNT=0\nCURRENT_LEAF=41\nLEAF_RESET_ATTEMPT_COUNT=0\nNET_PROBE_ATTEMPT_COUNT=0\nNET_WAIT_SECONDS=0\nNEXT_ACTION=launch\nPARENT_STEP_RETRY_COUNT=0\nRESET_BACKOFF_SECONDS=0\nTRANSIENT_CHILD_RETRY_COUNT=0\n"
     );
     exercise_live_pointer_checkpoints(&mut operations);
 
@@ -1892,6 +1892,27 @@ fn live_run_leaves_rejects_outputs_inside_its_private_state_root() {
 }
 
 #[test]
+fn run_leaves_main_sync_reports_a_failed_fetch_without_flagging_offline() {
+    let repository = GitRepository::builder(GitFixture::Refs)
+        .build()
+        .expect("Git fixture");
+    let missing = repository.workspace_root().join("absent-remote.git");
+    let missing_text = missing.to_str().expect("UTF-8 fixture path");
+    let output = repository
+        .git(["remote", "add", "origin", missing_text])
+        .expect("fixture Git command");
+    assert!(output.success(), "fixture Git command failed: {output:?}");
+    // A missing local remote fails the fetch with a non-connectivity diagnostic,
+    // so the sync proof reports it and never classifies it as offline.
+    let error = synchronize_main(repository.root(), &NetSignal::new())
+        .expect_err("fetch against a missing remote fails");
+    assert!(
+        error.contains("git fetch origin/main failed"),
+        "unexpected sync error: {error}"
+    );
+}
+
+#[test]
 fn run_leaves_main_sync_fast_forwards_and_rejects_another_branch() {
     let repository = GitRepository::builder(GitFixture::Refs)
         .build()
@@ -1919,7 +1940,7 @@ fn run_leaves_main_sync_fast_forwards_and_rejects_another_branch() {
         assert!(output.success(), "fixture Git command failed: {output:?}");
     }
 
-    synchronize_main(repository.root()).expect("fast-forward main");
+    synchronize_main(repository.root(), &NetSignal::new()).expect("fast-forward main");
     let head = repository
         .git(["rev-parse", "HEAD"])
         .expect("local revision");
@@ -1956,7 +1977,8 @@ fn run_leaves_main_sync_fast_forwards_and_rejects_another_branch() {
             "local conflict command failed: {output:?}"
         );
     }
-    let error = synchronize_main(repository.root()).expect_err("conflicting rebase");
+    let error =
+        synchronize_main(repository.root(), &NetSignal::new()).expect_err("conflicting rebase");
     assert!(error.contains("git rebase origin/main failed"));
     assert!(error.contains("rebase aborted"));
 
@@ -1965,7 +1987,7 @@ fn run_leaves_main_sync_fast_forwards_and_rejects_another_branch() {
         .expect("topic checkout");
     assert!(checkout.success(), "topic checkout failed: {checkout:?}");
     assert!(
-        synchronize_main(repository.root())
+        synchronize_main(repository.root(), &NetSignal::new())
             .expect_err("non-main checkout")
             .contains("not on branch main")
     );
@@ -1980,7 +2002,7 @@ fn run_leaves_main_sync_rejects_dirty_detached_and_nonrepositories() {
         .write("untracked.txt", b"dirty\n")
         .expect("dirty fixture file");
     assert!(
-        synchronize_main(dirty.root())
+        synchronize_main(dirty.root(), &NetSignal::new())
             .expect_err("dirty worktree")
             .contains("working tree is not clean")
     );
@@ -1993,14 +2015,14 @@ fn run_leaves_main_sync_rejects_dirty_detached_and_nonrepositories() {
         .expect("detached checkout");
     assert!(checkout.success(), "detached checkout failed: {checkout:?}");
     assert!(
-        synchronize_main(detached.root())
+        synchronize_main(detached.root(), &NetSignal::new())
             .expect_err("detached worktree")
             .contains("not on branch main")
     );
 
     let not_repository = tempfile::tempdir().expect("non-repository directory");
     assert!(
-        synchronize_main(not_repository.path())
+        synchronize_main(not_repository.path(), &NetSignal::new())
             .expect_err("non-repository")
             .contains("cannot open repository")
     );
@@ -2103,9 +2125,15 @@ async fn start_remote_applies_only_the_active_title_transition() {
         response(200, &active),
     ]);
 
-    start_remote(&client, &Cancellation::new(), &repository(), UMBRELLA)
-        .await
-        .expect("active transition");
+    start_remote(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
+    .expect("active transition");
 
     let requests = server.finish().expect("stub completed");
     assert_eq!(
@@ -2151,9 +2179,15 @@ async fn start_refuses_an_open_non_leaf_parent_blocker_without_renaming() {
         response(200, "[]"),
     ]);
 
-    let error = start_remote(&client, &Cancellation::new(), &repository(), UMBRELLA)
-        .await
-        .expect_err("open non-leaf parent blocker must refuse start");
+    let error = start_remote(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
+    .expect_err("open non-leaf parent blocker must refuse start");
     assert_eq!(
         error,
         "cannot start while open non-leaf parent blockers remain: 42"
@@ -2189,9 +2223,15 @@ async fn start_refuses_a_deadlocked_umbrella_without_renaming() {
         response(200, refs(&[(99, 990, "open")])),
     ]);
 
-    let error = start_remote(&client, &Cancellation::new(), &repository(), UMBRELLA)
-        .await
-        .expect_err("a fully blocked leaf graph must refuse start");
+    let error = start_remote(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
+    .expect_err("a fully blocked leaf graph must refuse start");
     assert_eq!(
         error,
         "cannot start a deadlocked umbrella while every open leaf is blocked: 41"
@@ -2234,9 +2274,15 @@ async fn reset_leaf_remote_strips_only_the_active_prefix() {
         leaf: LEAF,
     };
 
-    reset_leaf_remote(&client, &Cancellation::new(), &repository(), &arguments)
-        .await
-        .expect("idle transition");
+    reset_leaf_remote(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        &arguments,
+        &NetSignal::new(),
+    )
+    .await
+    .expect("idle transition");
 
     let requests = server.finish().expect("stub completed");
     assert_eq!(
@@ -2267,9 +2313,15 @@ async fn reset_leaf_remote_is_idempotent_for_an_idle_leaf() {
         leaf: LEAF,
     };
 
-    reset_leaf_remote(&client, &Cancellation::new(), &repository(), &arguments)
-        .await
-        .expect("already idle");
+    reset_leaf_remote(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        &arguments,
+        &NetSignal::new(),
+    )
+    .await
+    .expect("already idle");
 
     let requests = server.finish().expect("stub completed");
     assert!(requests.iter().all(|request| request.method != "PATCH"));
@@ -2301,9 +2353,15 @@ async fn reset_leaf_remote_preserves_a_designed_leaf_for_design_reentry() {
         leaf: LEAF,
     };
 
-    reset_leaf_remote(&client, &Cancellation::new(), &repository(), &arguments)
-        .await
-        .expect("designed leaf remains design-admissible");
+    reset_leaf_remote(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        &arguments,
+        &NetSignal::new(),
+    )
+    .await
+    .expect("designed leaf remains design-admissible");
 
     let requests = server.finish().expect("stub completed");
     assert!(requests.iter().all(|request| request.method != "PATCH"));
@@ -2348,6 +2406,7 @@ async fn attachment_is_idempotent_and_replays_both_native_edges_with_exact_read_
         &repository(),
         &arguments,
         &expected,
+        &NetSignal::new(),
     )
     .await
     .expect("verified attachment");
@@ -2357,6 +2416,7 @@ async fn attachment_is_idempotent_and_replays_both_native_edges_with_exact_read_
         &repository(),
         &arguments,
         &expected,
+        &NetSignal::new(),
     )
     .await
     .expect("idempotent attachment");
@@ -2440,6 +2500,7 @@ async fn attachment_stops_when_the_parent_finishes_between_edges() {
             &repository(),
             &arguments,
             &expected,
+            &NetSignal::new(),
         )
         .await
         .is_err()
@@ -2511,9 +2572,15 @@ async fn finish_remote_proves_closed_leaves_and_ignores_closed_historical_extra_
     ));
     let (service, server) = service(exchanges);
 
-    finish_remote(&service, &Cancellation::new(), &repository(), UMBRELLA)
-        .await
-        .expect("verified finish");
+    finish_remote(
+        &service,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
+    .expect("verified finish");
 
     let requests = server.finish().expect("stub completed");
     assert_eq!(
@@ -2553,9 +2620,15 @@ async fn finish_refuses_an_open_non_leaf_parent_blocker() {
         &[(LEAF, 410, "closed"), (GAP, 420, "open")],
     ));
 
-    let error = finish_remote(&client, &Cancellation::new(), &repository(), UMBRELLA)
-        .await
-        .expect_err("open non-leaf parent blocker must refuse completion");
+    let error = finish_remote(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
+    .expect_err("open non-leaf parent blocker must refuse completion");
     assert_eq!(
         error,
         "cannot finish while open non-leaf parent blockers remain: 42"
@@ -2591,9 +2664,15 @@ async fn next_graph_reports_an_open_non_leaf_parent_blocker_separately() {
         response(200, "[]"),
     ]);
 
-    let graph = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA)
-        .await
-        .expect("valid direct leaf with a separately reported parent blocker");
+    let graph = read_graph(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
+    .expect("valid direct leaf with a separately reported parent blocker");
     assert_eq!(graph.open_orphan_blockers, vec![GAP]);
     let selection = select_complete_umbrella_leaf(
         &selection_leaves(&graph.leaves),
@@ -2670,9 +2749,15 @@ async fn next_excludes_closed_leaves_with_stale_or_arbitrary_titles() {
         response(200, "[]"),
     ]);
 
-    let graph = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA)
-        .await
-        .expect("closed title drift must not abort next enumeration");
+    let graph = read_graph(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
+    .expect("closed title drift must not abort next enumeration");
     assert_eq!(graph.leaves.len(), 3);
     let selection = select_complete_umbrella_leaf(
         &selection_leaves(&graph.leaves),
@@ -2766,9 +2851,15 @@ async fn next_skips_open_designing_designed_and_done_without_aborting() {
         response(200, "[]"),
     ]);
 
-    let graph = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA)
-        .await
-        .expect("in-flight and open-DONE leaves must not abort next enumeration");
+    let graph = read_graph(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
+    .expect("in-flight and open-DONE leaves must not abort next enumeration");
     assert_eq!(graph.leaves.len(), 4);
     let selection = select_complete_umbrella_leaf(
         &selection_leaves(&graph.leaves),
@@ -2812,9 +2903,15 @@ async fn next_deadlocks_when_only_non_candidate_open_leaves_remain() {
         response(200, "[]"),
         response(200, "[]"),
     ]);
-    let graph = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA)
-        .await
-        .expect("open DONE drift must enumerate then deadlock");
+    let graph = read_graph(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
+    .expect("open DONE drift must enumerate then deadlock");
     let selection = select_complete_umbrella_leaf(
         &selection_leaves(&graph.leaves),
         &graph.open_orphan_blockers,
@@ -2853,7 +2950,14 @@ async fn graph_diagnostics_still_name_open_leaf_lifecycle_failures() {
         response(200, refs(&[(LEAF, 410, "open")])),
         response(200, &invalid_title),
     ]);
-    let Err(error) = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA).await
+    let Err(error) = read_graph(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
     else {
         panic!("unsupported open leaf title must remain exact");
     };
@@ -2877,7 +2981,14 @@ async fn graph_diagnostics_still_name_open_leaf_lifecycle_failures() {
         response(200, refs(&[(LEAF, 410, "open")])),
         response(200, &invalid_body),
     ]);
-    let Err(error) = read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA).await
+    let Err(error) = read_graph(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
     else {
         panic!("open leaf body must retain the exact opening");
     };
@@ -2934,9 +3045,15 @@ async fn finish_accepts_closed_leaves_with_stale_implementing_titles() {
     exchanges.extend(closed_graph(&closed_parent, &stale_leaf));
     let (service, server) = service(exchanges);
 
-    finish_remote(&service, &Cancellation::new(), &repository(), UMBRELLA)
-        .await
-        .expect("stale closed leaf titles must not block finish");
+    finish_remote(
+        &service,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
+    .expect("stale closed leaf titles must not block finish");
 
     let requests = server.finish().expect("stub completed");
     assert!(requests.iter().any(|request| {
@@ -2970,9 +3087,15 @@ async fn child_verification_reads_the_fresh_closed_graph() {
         leaf: LEAF,
     };
 
-    verify_child_remote(&service, &Cancellation::new(), &repository(), &arguments)
-        .await
-        .expect("verified child");
+    verify_child_remote(
+        &service,
+        &Cancellation::new(),
+        &repository(),
+        &arguments,
+        &NetSignal::new(),
+    )
+    .await
+    .expect("verified child");
     server.join().expect("stub completed");
 }
 
@@ -3008,6 +3131,7 @@ async fn orphaned_child_recovery_accepts_an_exact_result_after_remote_completion
         &repository(),
         &arguments,
         &result,
+        &NetSignal::new(),
     )
     .await
     .expect("remote completion recovers the orphaned transport");
@@ -3039,9 +3163,15 @@ async fn child_verification_still_requires_exact_done_title_on_the_shipped_leaf(
         leaf: LEAF,
     };
 
-    let error = verify_child_remote(&service, &Cancellation::new(), &repository(), &arguments)
-        .await
-        .expect_err("verify-child must keep the exact [DONE] assertion");
+    let error = verify_child_remote(
+        &service,
+        &Cancellation::new(),
+        &repository(),
+        &arguments,
+        &NetSignal::new(),
+    )
+    .await
+    .expect_err("verify-child must keep the exact [DONE] assertion");
     assert_eq!(
         error,
         "child must be closed with the exact [DONE] leaf prefix"
@@ -3050,6 +3180,7 @@ async fn child_verification_still_requires_exact_done_title_on_the_shipped_leaf(
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)] // One contiguous lifecycle-rejection matrix stays reviewable.
 async fn remote_graph_checks_reject_incomplete_or_nested_lifecycles() {
     let active_parent = issue_json(
         UMBRELLA,
@@ -3098,8 +3229,14 @@ async fn remote_graph_checks_reject_incomplete_or_nested_lifecycles() {
         response(200, refs(&[(99, 990, "open")])),
         response(200, &nested_child),
     ]);
-    let Err(nested_error) =
-        read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA).await
+    let Err(nested_error) = read_graph(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
     else {
         panic!("umbrella children must refuse");
     };
@@ -3112,24 +3249,42 @@ async fn remote_graph_checks_reject_incomplete_or_nested_lifecycles() {
         response(200, "[]"),
     ]);
     assert!(
-        read_graph(&client, &Cancellation::new(), &repository(), UMBRELLA,)
-            .await
-            .is_err()
+        read_graph(
+            &client,
+            &Cancellation::new(),
+            &repository(),
+            UMBRELLA,
+            &NetSignal::new()
+        )
+        .await
+        .is_err()
     );
     server.join().expect("missing edge stub completed");
 
     let (client, server) = service(open_graph(&active_parent, &open_leaf));
     assert!(
-        finish_remote(&client, &Cancellation::new(), &repository(), UMBRELLA,)
-            .await
-            .is_err()
+        finish_remote(
+            &client,
+            &Cancellation::new(),
+            &repository(),
+            UMBRELLA,
+            &NetSignal::new()
+        )
+        .await
+        .is_err()
     );
     server.join().expect("open leaf stub completed");
 
     let (client, server) = service(closed_graph(&done_parent, &closed_leaf));
-    finish_remote(&client, &Cancellation::new(), &repository(), UMBRELLA)
-        .await
-        .expect("closed done graph is idempotent");
+    finish_remote(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
+    .expect("closed done graph is idempotent");
     server.join().expect("closed graph stub completed");
 
     let (client, server) = service(vec![
@@ -3143,9 +3298,15 @@ async fn remote_graph_checks_reject_incomplete_or_nested_lifecycles() {
         leaf: GAP,
     };
     assert!(
-        verify_child_remote(&client, &Cancellation::new(), &repository(), &arguments)
-            .await
-            .is_err()
+        verify_child_remote(
+            &client,
+            &Cancellation::new(),
+            &repository(),
+            &arguments,
+            &NetSignal::new()
+        )
+        .await
+        .is_err()
     );
     server.join().expect("missing child stub completed");
 }
@@ -3311,4 +3472,167 @@ fn expected_files_reject_symlinks_and_oversize_content() {
             .expect("bounded regular file"),
         "four"
     );
+}
+
+#[test]
+fn drive_offline_retry_returns_online_success_without_waiting() {
+    let mut waits = 0_u32;
+    let (outcome, metrics) = drive_offline_retry_with(
+        |_net| Ok::<_, String>("ok".to_owned()),
+        || {
+            waits += 1;
+            ConnectivityWait::new(true, 0, 0)
+        },
+    );
+    assert_eq!(outcome.expect("online success"), "ok");
+    assert_eq!(waits, 0);
+    assert_eq!(metrics, OfflineRetryMetrics::default());
+}
+
+#[test]
+fn drive_offline_retry_waits_out_an_unreachable_failure_then_succeeds() {
+    let mut attempts = 0_u32;
+    let (outcome, metrics) = drive_offline_retry_with(
+        |net| {
+            attempts += 1;
+            if attempts < 3 {
+                net.flag_unreachable();
+                Err("offline".to_owned())
+            } else {
+                Ok::<_, String>("recovered".to_owned())
+            }
+        },
+        || ConnectivityWait::new(true, 4, 2),
+    );
+    assert_eq!(outcome.expect("recovers after waiting"), "recovered");
+    assert_eq!(attempts, 3);
+    assert_eq!(metrics.retry_count(), 2);
+    assert_eq!(metrics.wait_seconds(), 8);
+    assert_eq!(metrics.probe_attempts(), 4);
+}
+
+#[test]
+fn drive_offline_retry_fails_closed_when_the_window_is_exhausted() {
+    let mut attempts = 0_u32;
+    let (outcome, metrics) = drive_offline_retry_with(
+        |net| {
+            attempts += 1;
+            net.flag_unreachable();
+            Err::<(), _>("offline".to_owned())
+        },
+        || ConnectivityWait::new(false, 9, 3),
+    );
+    assert_eq!(
+        outcome.expect_err("exhausted window fails closed"),
+        "offline"
+    );
+    assert_eq!(attempts, 1);
+    assert_eq!(metrics.retry_count(), 0);
+    assert_eq!(metrics.wait_seconds(), 9);
+    assert_eq!(metrics.probe_attempts(), 3);
+}
+
+#[test]
+fn drive_offline_retry_does_not_retry_a_reachable_failure() {
+    let mut waited = false;
+    let (outcome, metrics) = drive_offline_retry_with(
+        |_net| Err::<(), _>("gh api request failed: 404".to_owned()),
+        || {
+            waited = true;
+            ConnectivityWait::new(true, 1, 1)
+        },
+    );
+    assert_eq!(
+        outcome.expect_err("a reachable failure fails closed"),
+        "gh api request failed: 404"
+    );
+    assert!(!waited, "a reachable failure never probes connectivity");
+    assert_eq!(metrics, OfflineRetryMetrics::default());
+}
+
+#[test]
+fn retry_offline_into_folds_a_succeeding_step_without_touching_the_network() {
+    let accumulator = std::cell::Cell::new(OfflineRetryMetrics::default());
+    let outcome: Result<u64, String> =
+        retry_offline_into(1, &accumulator, |_net| Ok::<_, String>(7));
+    assert_eq!(outcome.expect("online success"), 7);
+    // A first-attempt success never waits, so the accumulator stays empty.
+    assert_eq!(accumulator.get(), OfflineRetryMetrics::default());
+}
+
+#[test]
+fn live_run_leaves_operations_offline_wrappers_are_exercised() {
+    let repository_fixture = GitRepository::builder(GitFixture::Refs)
+        .build()
+        .expect("Git fixture");
+    // An origin pointing at an absent local remote fails the fetch with a
+    // non-connectivity diagnostic, covering the sync-proof offline wrapper and
+    // the git classification without touching the network.
+    let missing = repository_fixture
+        .workspace_root()
+        .join("absent-remote.git");
+    let missing_text = missing.to_str().expect("UTF-8 fixture path");
+    let remote_add = repository_fixture
+        .git(["remote", "add", "origin", missing_text])
+        .expect("fixture remote add");
+    assert!(remote_add.success(), "remote add failed: {remote_add:?}");
+
+    let output_root = tempfile::tempdir().expect("temporary output root");
+    let arguments = RunLeavesArguments {
+        repository: String::from("o/r"),
+        repo_root: repository_fixture.root().to_path_buf(),
+        umbrella: UMBRELLA,
+        model: String::from("claude-opus-4-1"),
+        output_root: output_root.path().to_path_buf(),
+        output: output_root.path().join("snapshot.json"),
+        result_env: output_root.path().join("run-leaves.env"),
+        net_wait_ceiling_s: DEFAULT_NET_WAIT_CEILING.as_secs(),
+        operator_invoked: true,
+    };
+    let pointer_root = tempfile::tempdir().expect("pointer root");
+    let pointer_store = RunPointerStore::at(pointer_root.path());
+    pointer_store
+        .create(CompleteUmbrellaRunPointer {
+            current_step: RunPointerStep::Select,
+            ..CompleteUmbrellaRunPointer::initial(
+                String::from("o/r"),
+                UMBRELLA,
+                fs::canonicalize(output_root.path()).expect("canonical output root"),
+                123,
+            )
+        })
+        .expect("run pointer");
+    let mut operations = LiveRunLeavesOperations::new_with_store(&arguments, pointer_store)
+        .expect("live operations");
+
+    // sync_main: a reachable-but-failed fetch fails closed through the offline
+    // wrapper with no retry.
+    let sync_error = operations
+        .sync_main()
+        .expect_err("missing origin fails the sync proof");
+    assert!(
+        sync_error.contains("git fetch origin/main failed"),
+        "unexpected sync error: {sync_error}"
+    );
+
+    // read_graph: a full graph read through the stub covers the offline wrapper's
+    // first-attempt success path.
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let leaf_body = format!("{}\n\nTask.", umbrella_leaf_opening(UMBRELLA));
+    let leaf = issue_json(LEAF, 410, "[LEAF OF 40] Task", &leaf_body, "open", BEFORE);
+    let server = IssueServiceStub::start(open_graph(&parent, &leaf)).expect("graph stub");
+    let base = server.base_url().to_owned();
+    let github: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+        Arc::new(move || OctocrabGitHubService::with_test_base(&base));
+    let graph = with_test_github_service(github, || operations.read_graph())
+        .expect("offline-aware graph read");
+    assert_eq!(graph.leaves.len(), 1);
+    assert_eq!(server.finish().expect("graph requests").len(), 6);
 }

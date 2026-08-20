@@ -143,6 +143,12 @@ pub enum GitHubOperationErrorKind {
     MalformedResponse,
     LimitExceeded,
     Transport,
+    /// The request never reached GitHub: DNS failure, connect timeout, or a
+    /// refused or reset connection. Distinct from `Transport`, which also
+    /// covers HTTP 5xx and other post-connection transport faults, so an
+    /// offline-aware caller can retry this class while leaving HTTP-level
+    /// failures fail-closed.
+    Unreachable,
     AmbiguousMutation,
     Cancelled,
     DeadlineExceeded,
@@ -175,6 +181,15 @@ impl GitHubOperationError {
     #[must_use]
     pub const fn kind(&self) -> GitHubOperationErrorKind {
         self.kind
+    }
+
+    /// Return whether the request never reached GitHub (DNS failure, connect
+    /// timeout, or a refused or reset connection). Offline-aware callers retry
+    /// this class within a bounded connectivity window; every other kind,
+    /// including HTTP 4xx and 5xx, stays fail-closed.
+    #[must_use]
+    pub const fn is_unreachable(&self) -> bool {
+        matches!(self.kind, GitHubOperationErrorKind::Unreachable)
     }
 
     #[must_use]

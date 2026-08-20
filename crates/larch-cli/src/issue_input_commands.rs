@@ -540,6 +540,7 @@ impl SnapshotFailure {
             Self::Kind(Kind::Cancelled) => format!("GitHub request was cancelled for repo {repo}"),
             Self::Kind(
                 Kind::Transport
+                | Kind::Unreachable
                 | Kind::MalformedResponse
                 | Kind::InvalidInput
                 | Kind::AmbiguousMutation,

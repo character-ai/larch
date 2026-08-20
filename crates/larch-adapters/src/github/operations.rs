@@ -9,7 +9,8 @@
 
 use super::{
     GitHubCompletionError, LiveMutationDecision, LiveMutationRequest, OctocrabGitHubService,
-    check_live_mutation_auth, collect_bounded_response, github_utc_timestamp, octocrab_status,
+    check_live_mutation_auth, collect_bounded_response, github_utc_timestamp,
+    octocrab_is_unreachable, octocrab_status,
 };
 use chrono::{DateTime, Utc};
 use http::header::LINK;
@@ -69,6 +70,11 @@ pub enum GitHubOperationError {
     AmbiguousMutation,
     /// A transport or unexpected API failure, redacted and length-bounded.
     Transport(SafeText),
+    /// The request never reached GitHub: DNS failure, connect timeout, or a
+    /// refused or reset connection. Distinct from `Transport`, which also
+    /// covers HTTP 5xx and other post-connection faults, so an offline-aware
+    /// caller can retry this class while HTTP-level failures stay fail-closed.
+    Unreachable(SafeText),
     /// A response did not match the typed contract at the named field.
     Malformed(&'static str),
     /// A GraphQL response carried an `errors` member, so it fails closed.
@@ -104,6 +110,9 @@ impl fmt::Display for GitHubOperationError {
                 "GitHub mutation outcome is uncertain; reconciliation did not prove its postcondition",
             ),
             Self::Transport(detail) => write!(formatter, "GitHub transport failure: {detail}"),
+            Self::Unreachable(detail) => {
+                write!(formatter, "GitHub is unreachable: {detail}")
+            }
             Self::Malformed(field) => {
                 write!(
                     formatter,
@@ -137,6 +146,17 @@ impl fmt::Display for GitHubOperationError {
 }
 
 impl Error for GitHubOperationError {}
+
+impl GitHubOperationError {
+    /// Return whether the request never reached GitHub (DNS failure, connect
+    /// timeout, or a refused or reset connection). Offline-aware callers retry
+    /// this class within a bounded connectivity window; every other variant,
+    /// HTTP 4xx and 5xx included, stays fail-closed.
+    #[must_use]
+    pub const fn is_unreachable(&self) -> bool {
+        matches!(self, Self::Unreachable(_))
+    }
+}
 
 /// Open or closed lifecycle state of a pull request.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2077,7 +2097,15 @@ impl OctocrabGitHubService {
             return GitHubOperationError::Unauthorized;
         }
         let bounded: String = error.to_string().chars().take(DIAGNOSTIC_LIMIT).collect();
-        GitHubOperationError::Transport(self.redactor.safe_text(bounded))
+        let detail = self.redactor.safe_text(bounded);
+        // A connection-level failure never reached GitHub, so classify it
+        // distinctly from a post-connection transport fault such as HTTP 5xx,
+        // which an offline-aware caller must not retry.
+        if octocrab_is_unreachable(error) {
+            GitHubOperationError::Unreachable(detail)
+        } else {
+            GitHubOperationError::Transport(detail)
+        }
     }
 }
 
@@ -2239,6 +2267,7 @@ const fn requires_merge_reconciliation(error: &GitHubOperationError) -> bool {
     matches!(
         error,
         GitHubOperationError::Transport(_)
+            | GitHubOperationError::Unreachable(_)
             | GitHubOperationError::AmbiguousMutation
             | GitHubOperationError::DeadlineExceeded
             | GitHubOperationError::Malformed(_)
@@ -2298,6 +2327,7 @@ const fn requires_sub_issue_reconciliation(error: &GitHubOperationError) -> bool
     matches!(
         error,
         GitHubOperationError::Transport(_)
+            | GitHubOperationError::Unreachable(_)
             | GitHubOperationError::AmbiguousMutation
             | GitHubOperationError::DeadlineExceeded
             | GitHubOperationError::Malformed(_)
