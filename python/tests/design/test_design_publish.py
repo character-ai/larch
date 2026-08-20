@@ -15,55 +15,84 @@ import subprocess
 import sys
 from contextlib import chdir, nullcontext, redirect_stderr, redirect_stdout
 from io import StringIO
+from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 from unittest import mock
 
 import pytest
 
 from larch.calibration import difficulty
 from larch.core import config
-from larch.design import design_log_publish_flow
 from larch.design import design_publish
 from larch.design import design_step5c
 from larch.design import plan_grammar
 from tests.support.design_wire import diff_lines_trailer, plan_body, write_result_env
 
 
-def _log_publish_result_from_env() -> design_log_publish_flow.LogPublishResult:
-    """Mirror the former fake-cli design log-publish env contract for in-process stubs."""
+class _LogPublishCall:
+    """Recorded argv for a stubbed `design log-publish` subprocess."""
+
+    def __init__(self, argv: list[str]) -> None:
+        self.argv = argv
+
+    @property
+    def outcome(self) -> str:
+        if "--outcome" not in self.argv:
+            return ""
+        return self.argv[self.argv.index("--outcome") + 1]
+
+
+def _log_publish_completed_from_env(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+    """Mirror the fake-cli design log-publish KV/exit contract for subprocess stubs."""
     rc = int(os.environ.get("FAKE_CLI_LOG_PUBLISH_RC", "0"))
-    if os.environ.get("FAKE_CLI_LOG_PUBLISH_PARTIAL") == "1":
-        return design_log_publish_flow.LogPublishResult(publish_ok=False, exit_code=rc)
-    ok = os.environ.get("FAKE_CLI_LOG_PUBLISH_OK", "true") == "true"
-    pr_number = ""
-    pr_url = ""
-    if os.environ.get("FAKE_CLI_LOG_PUBLISH_PR", "1") == "1":
-        pr_number = "99"
-        pr_url = "https://github.com/owner/repo/pull/99"
-    recovery = os.environ.get("FAKE_CLI_LOG_PUBLISH_RECOVERY_BRANCH", "")
+    lines: list[str] = []
+    if os.environ.get("FAKE_CLI_LOG_PUBLISH_PARTIAL") != "1":
+        lines.append("PUBLISH_OK=" + os.environ.get("FAKE_CLI_LOG_PUBLISH_OK", "true"))
+        if os.environ.get("FAKE_CLI_LOG_PUBLISH_PR", "1") == "1":
+            lines.append("PR_NUMBER=99")
+            lines.append("PR_URL=https://github.com/owner/repo/pull/99")
+        recovery = os.environ.get("FAKE_CLI_LOG_PUBLISH_RECOVERY_BRANCH", "")
+        if recovery:
+            lines.append(f"RECOVERY_BRANCH={recovery}")
     scrub = os.environ.get("FAKE_CLI_SCRUB_VIOLATIONS")
-    return design_log_publish_flow.LogPublishResult(
-        publish_ok=ok,
-        exit_code=rc,
-        pr_number=pr_number,
-        pr_url=pr_url,
-        recovery_branch=recovery,
-        secret_scrub_violations=scrub,
-    )
+    if scrub:
+        lines.append(f"SECRET_SCRUB_VIOLATIONS={scrub}")
+    stdout = ("\n".join(lines) + "\n") if lines else ""
+    return subprocess.CompletedProcess(cmd, rc, stdout=stdout, stderr="")
+
+
+def _is_design_log_publish(cmd: list[str]) -> bool:
+    for index in range(len(cmd) - 1):
+        if cmd[index] == "design" and cmd[index + 1] == "log-publish":
+            return True
+    return False
 
 
 def _install_log_publish_stub(
     monkeypatch: pytest.MonkeyPatch,
-) -> list[design_log_publish_flow.LogPublishRequest]:
-    calls: list[design_log_publish_flow.LogPublishRequest] = []
+) -> list[_LogPublishCall]:
+    """Stub `design log-publish` at the subprocess boundary (Rust owner via larch_entrypoint)."""
+    calls: list[_LogPublishCall] = []
+    real_run = design_publish.subprocess.run
 
     def stub(
-        request: design_log_publish_flow.LogPublishRequest,
-    ) -> design_log_publish_flow.LogPublishResult:
-        calls.append(request)
-        return _log_publish_result_from_env()
+        cmd: object,
+        *args: object,
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        parts: Sequence[object]
+        if isinstance(cmd, (list, tuple)):
+            parts = cast("Sequence[object]", cmd)
+        else:
+            parts = [cmd]
+        argv = [str(part) for part in parts]
+        if _is_design_log_publish(argv):
+            calls.append(_LogPublishCall(argv))
+            return _log_publish_completed_from_env(argv)
+        return real_run(cmd, *args, **kwargs)  # type: ignore[arg-type,call-arg,misc]
 
-    monkeypatch.setattr(design_log_publish_flow, "run_log_publish", stub)
+    monkeypatch.setattr(design_publish.subprocess, "run", stub)
     return calls
 
 
@@ -147,8 +176,8 @@ def _publish_tests_start_outside_repo(tmp_path: Path, monkeypatch: pytest.Monkey
 
 
 @pytest.fixture(autouse=True)
-def _stub_inprocess_log_publish(monkeypatch: pytest.MonkeyPatch) -> list[design_log_publish_flow.LogPublishRequest]:  # pyright: ignore[reportUnusedFunction]
-    """Stub in-process log-publish so design publish tests never hit real git publish."""
+def _stub_inprocess_log_publish(monkeypatch: pytest.MonkeyPatch) -> list[_LogPublishCall]:  # pyright: ignore[reportUnusedFunction]
+    """Stub design log-publish subprocess so design publish tests never hit a real binary."""
     return _install_log_publish_stub(monkeypatch)
 
 
@@ -2482,7 +2511,7 @@ def test_publish_checkpoint_failure_propagates_instead_of_using_stale_state(
 def test_publish_delegates_to_log_publish_without_inline_capture(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    _stub_inprocess_log_publish: list[design_log_publish_flow.LogPublishRequest],
+    _stub_inprocess_log_publish: list[_LogPublishCall],
 ) -> None:
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")

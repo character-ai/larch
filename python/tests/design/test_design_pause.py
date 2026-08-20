@@ -3,11 +3,7 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
-import io
-import os
-import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable
@@ -17,12 +13,8 @@ from types import SimpleNamespace
 import pytest
 from larch.core import repo_roots
 from larch.design import design_pause
-from larch.design import design_log_publish_flow
-from larch.design import design_summary
-from larch.report import run_lifecycle, run_logs
+from larch.report import run_lifecycle
 from larch.report.storage_config import StorageBase, ToolRepositoryStorage
-from test_support import operator_repo_with_remote as _operator_repo_with_remote
-from test_support import write_gh_pr_stub as _write_gh_stub
 
 # Marker delimiters mirror design_pause._PAUSE_START / _PAUSE_END (a stable wire format). Using
 # literals here keeps the test from reaching into private module members; a delimiter mismatch
@@ -376,8 +368,8 @@ def test_pause_save_uses_real_log_publish_path(
     monkeypatch: pytest.MonkeyPatch,
     capsys: object,
 ) -> None:
-    repo = _operator_repo_with_remote(tmp_path)
-    monkeypatch.chdir(repo)  # type: ignore[attr-defined]
+    """pause_save routes through `larch_entrypoint` `design log-publish` (Rust #8592)."""
+    _patch_enabled_pause_context(monkeypatch=monkeypatch, tmp_path=tmp_path)
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-1c").write_text("", encoding="utf-8")
@@ -385,145 +377,33 @@ def test_pause_save_uses_real_log_publish_path(
         "export SESSION_ID=RUN1\nexport REPO=owner/repo\n", encoding="utf-8"
     )
     _ = (design / "artifact.txt").write_text("artifact", encoding="utf-8")
-    bin_dir = tmp_path / "bin"
-    _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
-
-    upsert_calls: list[list[str]] = []
-    original_run_cli = design_summary._run_cli  # pyright: ignore[reportPrivateUsage]
-    real_run = subprocess.run
-
-    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
-        if args[:2] == ("tracking-issue", "upsert-summary"):
-            upsert_calls.append(list(args))
-            return subprocess.CompletedProcess(
-                ["cli.py", *args], 0, stdout="", stderr=""
-            )
-        return original_run_cli(*args)
-
-    def fake_render_main(argv: list[str]) -> int:
-        design_tmpdir = Path(argv[argv.index("--design-tmpdir") + 1])
-        session_id = (
-            argv[argv.index("--session-id") + 1] if "--session-id" in argv else "RUN1"
-        )
-        outcome = argv[argv.index("--outcome") + 1]
-        _ = (design_tmpdir / "final-summary.md").write_text(
-            f"## /design run {session_id}: {outcome}\n\n"
-            f"- **Outcome**: {outcome}\n"
-            "<!-- larch:run-summary v=1 -->\n",
-            encoding="utf-8",
-        )
-        return 0
-
-    def fake_run(
-        cmd: list[str], *_args: object, **_kwargs: object
-    ) -> subprocess.CompletedProcess[str]:
-        if len(cmd) >= 4 and cmd[2:4] == ["design", "log-publish"]:
-            out = io.StringIO()
-            err = io.StringIO()
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                try:
-                    subprocess.run = real_run  # type: ignore[assignment]
-                    rc = design_log_publish_flow.log_publish_main(cmd[4:])
-                finally:
-                    subprocess.run = fake_run  # type: ignore[assignment]
-            return subprocess.CompletedProcess(
-                cmd, rc, stdout=out.getvalue(), stderr=err.getvalue()
-            )
-        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-
-    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")  # type: ignore[attr-defined]
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))  # type: ignore[attr-defined]
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))  # type: ignore[attr-defined]
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))  # type: ignore[attr-defined]
 
     def fake_issue_view_body(*_args: object, **_kwargs: object) -> str:
         return "issue body\n"
 
-    def fake_capture_design_transcript(**_kwargs: object) -> bool:
-        design_tmpdir = getattr(_kwargs.get("ctx"), "design_tmpdir", None)
-        if isinstance(design_tmpdir, Path):
-            _ = (design_tmpdir / "session-transcript.jsonl").write_bytes(b"")
-        return True
-
     monkeypatch.setattr(design_pause.gh, "issue_view_body", fake_issue_view_body)  # type: ignore[attr-defined]
-    monkeypatch.setattr(
-        design_log_publish_flow.design_publish,
-        "capture_design_transcript",
-        fake_capture_design_transcript,
-    )  # type: ignore[attr-defined]
-    cache_dir = tmp_path / "pause-cache"
 
-    def fake_publish_log_run(**kwargs: object) -> tuple[object, int]:
-        log_root = kwargs["log_root"]
-        assert isinstance(log_root, Path)
-        _ = shutil.copytree(log_root / "design" / "RUN1", cache_dir)
-        result = run_lifecycle.run_log_publish.PublicationResult(
-            remote_key="run-logs/design/RUN1.tar.gz",
-            archive_sha256="a" * 64,
-            cache_dir=cache_dir,
-            remote_status=run_lifecycle.run_log_publish.RemotePublicationStatus.CREATED,
-            cache_status=run_lifecycle.run_log_publish.CachePublicationStatus.PROMOTED,
-        )
-        return result, 0
+    publish_calls: list[list[str]] = []
 
-    storage_root = run_lifecycle.storage_config.ToolRepositoryStorage(
-        run_lifecycle.storage_config.StorageBase("s3", "test-bucket"),
-        "test-repo",
-    )
+    def fake_run(
+        cmd: list[str], *_args: object, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        argv = [str(part) for part in cmd]
+        if "log-publish" in argv:
+            publish_calls.append(argv)
+            design_tmpdir = Path(argv[argv.index("--design-tmpdir") + 1])
+            _ = (design_tmpdir / ".design-log-publish-metadata.env").write_text(
+                "PUBLISH_OK=true\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(
+                argv, 0, stdout="PUBLISH_OK=true\n", stderr=""
+            )
+        if "named-block" in argv:
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
-    def fake_storage_root(**_kwargs: object) -> object:
-        return storage_root
-
-    monkeypatch.setattr(
-        run_lifecycle.storage_config,
-        "load_tool_repository_storage",
-        fake_storage_root,
-    )
-    log_root = design / "larch-logs"
-    initialized = run_logs.log_init(
-        log_root=log_root,
-        skill="design",
-        run_id="RUN1",
-    )
-    started = run_lifecycle.LifecycleStart(
-        repo_root=repo,
-        storage_root=storage_root,
-        skill="design",
-        run_id="RUN1",
-        log_root=log_root,
-        run_dir=initialized.path.parent,
-        context_file=tmp_path / "context.json",
-    )
-    monkeypatch.setattr(
-        repo_roots,
-        "repo_root_probe",
-        _repo_probe(repo),
-    )
-
-    def fake_load_context(**_kwargs: object) -> run_lifecycle.LifecycleStart:
-        return started
-
-    monkeypatch.setattr(
-        design_pause.run_lifecycle,
-        "load_run_context",
-        fake_load_context,
-    )
-    def fake_finish_run(**kwargs: object) -> run_lifecycle.LifecycleTerminal:
-        publication, violations = fake_publish_log_run(log_root=started.log_root)
-        assert isinstance(publication, run_lifecycle.run_log_publish.PublicationResult)
-        outcome = kwargs["outcome"]
-        assert isinstance(outcome, str)
-        return run_lifecycle.LifecycleTerminal(
-            outcome=outcome,
-            publication=publication,
-            secret_scrub_violations=violations,
-        )
-
-    monkeypatch.setattr(run_lifecycle, "finish_run", fake_finish_run)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render_main)  # type: ignore[attr-defined]
-    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # type: ignore[attr-defined]  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(design_pause.subprocess, "run", fake_run)  # type: ignore[attr-defined]
-
     rc = design_pause.pause_save_main(
         ["--design-tmpdir", str(design), "--issue", "9", "--repo", "owner/repo"]
     )
@@ -531,12 +411,14 @@ def test_pause_save_uses_real_log_publish_path(
 
     assert rc == 0
     assert "PAUSE_OK=true" in out
-    assert not upsert_calls
+    assert publish_calls
+    publish_call = publish_calls[0]
+    assert publish_call[1:3] == ["design", "log-publish"]
+    assert Path(publish_call[0]).name == "larch.sh"
+    assert publish_call[publish_call.index("--reason") + 1] == "pause"
+    assert publish_call[publish_call.index("--outcome") + 1] == "paused"
     assert (design / ".design-log-publish-metadata.env").is_file()
-    summary_body = (cache_dir / "final-summary.md").read_text(encoding="utf-8")
-    assert "## /design run" in summary_body
-    assert "<!-- larch:run-summary v=1 -->" in summary_body
-    assert "## /design run RUN1: paused" in summary_body
+    assert (design / "pause-state.txt").is_file()
 
 
 def test_pause_save_rejects_non_allowlisted_tmpdir(capsys: object) -> None:

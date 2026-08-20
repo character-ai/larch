@@ -55,6 +55,7 @@ mod debate_publication_commands;
 mod decompose_commands;
 mod deps_audit_commands;
 mod design_commands;
+mod design_log_publish_commands;
 mod design_step0_commands;
 mod design_step1_commands;
 mod developer_tooling_commands;
@@ -1327,6 +1328,9 @@ enum DesignCommand {
     /// Unlink the Step 1e..4b reentry sentinels (#8579).
     #[command(name = "step1e-reentry", disable_help_flag = true)]
     Step1eReentry(RawCompatibilityArguments),
+    /// Publish sanitized design run logs through the shared lifecycle (#8592).
+    #[command(name = "log-publish", disable_help_flag = true)]
+    LogPublish(RawCompatibilityArguments),
 }
 
 impl DesignCommand {
@@ -1354,6 +1358,7 @@ impl DesignCommand {
             Self::Step1d5(_) => design_step1_commands::step1d5(&arguments),
             Self::Step1d7(_) => design_step1_commands::step1d7(&arguments),
             Self::Step1eReentry(_) => design_step1_commands::step1e_reentry(&arguments),
+            Self::LogPublish(_) => design_log_publish_commands::log_publish_main(&arguments),
         }
     }
 }

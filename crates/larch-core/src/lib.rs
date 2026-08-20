@@ -175,6 +175,11 @@ pub use connectivity::{
 
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
 pub use design::{
+    AssessmentCompleteness, GUIDELINE_ASSESSMENT_ARTIFACT, INVARIANT_ASSESSMENT_ARTIFACT,
+    assessment_present, assessment_required, default_outcome_for_reason, lifecycle_outcome,
+    publish_excluded, validate_issue, validate_repo, validate_slug as validate_design_log_slug,
+};
+pub use design::{
     BuildOutcome as PartitionBuildOutcome, DECOMPOSE_ARCHETYPES, DependencyGraph,
     DependencyMigration, FiledPiece, MIN_PARTITION_PIECES, PLAN_STUB_INNER,
     PROMPT_PREFIX_LINE_MAX as DECOMPOSE_PROMPT_PREFIX_LINE_MAX, PartitionEdge, apply_migration,

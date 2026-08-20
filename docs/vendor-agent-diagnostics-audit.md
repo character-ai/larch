@@ -50,7 +50,7 @@ unmigrated launcher commands); **R** = residual gap named below.
 | `scripts/larch.sh agent launch-review` (cursor) | ✅ | ✅ | ✅ | **D** | Same as codex lane; `.diag` archived before truncation. |
 | `scripts/larch.sh agent launch-claude-subprocess` | ✅ | via wrappers | ✅ | **D** | F7 carrier on the direct-Claude path: entry-clear, compose-on-failure, clear-on-success. Site-aware logging owned by wrappers. |
 | `scripts/larch.sh run-log prepare-terminal-snapshot` | — | — | ✅ | **D** | Rust sorts and merges per-slot parts, then atomically replaces the batch. |
-| `python/cli.py design log-publish` | — | — | ✅ design | **D** | Stages `*.failure-diag` (redacted); denies raw `*.sidecar.history` / `*.raw.cursor` / `*.raw.claude` / `scout-plan-manifest.json.raw.*`. |
+| `scripts/larch.sh design log-publish` | — | — | ✅ design | **D** | Stages `*.failure-diag` (redacted); denies raw `*.sidecar.history` / `*.raw.cursor` / `*.raw.claude` / `scout-plan-manifest.json.raw.*`. |
 | `python/larch/report/run_logs.py` | — | — | ✅ implement | **D** | `vendor-failure-diagnostics .txt replace none` slug. |
 | `scripts/larch.sh run-log write-round` | — | — | ✅ implement | **D** | Rust `round_artifact_included` keeps `*.failure-diag` / `*.sidecar.history` / `*.events.history` denied (batch is the sole durable path; F14). |
 | `scripts/larch.sh plan-review run` | ✅ | — | ✅ design | **D** | Preserves `*.failure-diag` in plan-review round snapshots. |

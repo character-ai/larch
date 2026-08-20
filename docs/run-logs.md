@@ -114,7 +114,7 @@ larch-logs/                 # session staging only
       architectural-invariant-assessment.md
       architectural-guideline-assessment.md
       accepted-plan-findings-audit.md
-      (design session artifacts: files from `$DESIGN_TMPDIR` plus `render-cache/` subtree, filtered to exclude raw per-lane transcripts and sidecars via `design_log_publish_flow._publish_excluded`, then trimmed and redacted per `python/design_log_publish_flow.py`; `composed-plan.diff` is a unified diff of `composed-plan.md` vs final `plan.txt` — reconstruct with `patch plan.txt composed-plan.diff -o composed-plan.md`)
+      (design session artifacts: files from `$DESIGN_TMPDIR` plus `render-cache/` subtree, filtered to exclude raw per-lane transcripts and sidecars via `larch_core::design::log_publish::publish_excluded`, then trimmed and redacted by Rust `design log-publish` in `crates/larch-cli/src/design_log_publish_commands.rs`; `composed-plan.diff` is a unified diff of `composed-plan.md` vs final `plan.txt` — reconstruct with `patch plan.txt composed-plan.diff -o composed-plan.md`)
       plan-review/
         round-<N>/
           findings-classification.tsv
@@ -267,13 +267,16 @@ published normally.
 
 ### Design publication selection
 
-`python/larch/design/design_log_publish_flow.py` owns design-log selection.
+`scripts/larch.sh design log-publish` (Rust owner
+`crates/larch-cli/src/design_log_publish_commands.rs`, filter
+`larch_core::design::log_publish::publish_excluded`) owns design-log selection.
 Its exclusions apply by basename at every copied depth. Raw Codex event
 streams, plan-review transcripts, rendered prompts, launch stderr, producer
 sidecars, collector failure logs, dropped-slot raw diagnostics, token carriers,
 and the `plan-autofix/` draft tree stay session-local. Normal final logs also
 exclude `.completed/`; pause snapshots retain the top-level completion
-sentinels needed for resume provenance.
+sentinels needed for resume provenance. The retired Python
+`design_log_ship` helper is gone; the `ship design-log` CLI already exits 2.
 
 The `plan-review/` tree uses the per-round contract below. The publisher drops
 the obsolete `round-<N>/revise/` tree and cumulative or redundant round files.
@@ -290,10 +293,10 @@ example. The path shape is shared across publishing skill roots, so
 the same directory artifact may exist as `design/<RUN_ID>/breadcrumbs/`,
 `review/<RUN_ID>/breadcrumbs/`, or `research/<RUN_ID>/breadcrumbs/` when a
 publisher wires that helper for that skill. The landed callers are the
-`/implement` terminal publisher and `python/cli.py design log-publish`.
+`/implement` terminal publisher and `scripts/larch.sh design log-publish`.
 
 `breadcrumbs/` is a directory artifact, not a larch-log batch. The implement
-publisher and `python/cli.py design log-publish` reach the Rust owner through
+publisher and `scripts/larch.sh design log-publish` reach the Rust owner through
 `scripts/larch.sh run-log publish-breadcrumbs`, and the shared run lifecycle
 calls that owner directly. Session-tmpdir
 `breadcrumbs/` paths (`$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
@@ -432,7 +435,7 @@ for the authoritative producer contract and harness coverage.
 
 ### design plan-review per-round artifacts
 
-Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each single-pass Step 3 review entry produces forensic artifacts. The list below is a **representative** selection grouped by producer. `python/larch/design/design_log_publish_flow.py` is the authoritative archive-selection filter, and [Design publication selection](#design-publication-selection) explains its operator-facing contract.
+Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each single-pass Step 3 review entry produces forensic artifacts. The list below is a **representative** selection grouped by producer. `larch_core::design::log_publish::publish_excluded` (via `scripts/larch.sh design log-publish`) is the authoritative archive-selection filter, and [Design publication selection](#design-publication-selection) explains its operator-facing contract.
 
 #### Findings
 
@@ -642,7 +645,7 @@ Markdown explanation of the version bump classification: which bump type was cho
 
 ### final-summary.md
 
-**Mode**: replace. **Written**: [`scripts/larch.sh final-report write`](../skills/implement/scripts/write-final-report.md) owns the `/implement` body, its durable `larch-logs/implement/<RUN_ID>/final-summary.md` write, and its tracking-issue `larch:final-summary` upsert. For `/design`, the #7680-owned Python `render run-summary` payload remains inside the #7680 design workflow: `python/cli.py design log-publish` renders the enriched `final-summary.md` in the design tmpdir before copying the published snapshot, with tracking-comment upserts suppressed in that pre-copy render. Step 5c and clarify then run the authoritative follow-up `python/cli.py design render-final-summary` pass that upserts the marker-keyed tracking comment.
+**Mode**: replace. **Written**: [`scripts/larch.sh final-report write`](../skills/implement/scripts/write-final-report.md) owns the `/implement` body, its durable `larch-logs/implement/<RUN_ID>/final-summary.md` write, and its tracking-issue `larch:final-summary` upsert. For `/design`, the #8592 Rust `design log-publish` owner renders the enriched `final-summary.md` in the design tmpdir before copying the published snapshot, with tracking-comment upserts suppressed in that pre-copy render. Step 5c and clarify then run the authoritative follow-up `python/cli.py design render-final-summary` pass that upserts the marker-keyed tracking comment.
 
 Published **rich markdown** projection of the run: outcome, mode flags, token totals (Claude / Codex / Cursor / Claude (subprocess) — the spawned-process Claude reviewer/voter/CI/scout lane, machine name `claude_sub`, priced at Claude rates and summed into the total), optional per-lane USD estimates from `larch_core::report::RATE_TABLE`, duration, plan/code review tallies, OOS and execution-issue counts, log directory pointer, the difficulty bullet, the main-agent model, reasoning effort, and larch plugin version (the `- **Main agent model**:`, `- **Effort**:`, and `- **Larch version**:` bullets, read from the run manifest via `--manifest-path` with live fallbacks), and operator-facing notes (fork dry-run, draft, no-merge, upstream issue, fork OOS stubs). The `/implement` body is produced by Rust `larch_core::report::run_summary`: it begins with a `## /<skill> run <run-id>: <outcome>` heading and a normalized markdown bullet list (including `**PR**:` when a PR is known; `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, `failed-*`, or `publish-skipped`; the other fields follow the renderer contract). A versioned HTML sentinel (`<!-- larch:run-summary v=1 -->`) appears on its own line after that bullet block (and before any optional trailing note lines) so consumers can detect the standardized block while the opening line stays human-readable. The `- **PR**:` bullet is omitted when no PR number is known; otherwise `#<number> — <url>` or `#<number>` when the URL is unknown. When `RUN_LOGS_PATH=N/A`, the renderer must not synthesize a fallback log path for `RUN_ID=unknown`, `failed-publish`, or `publish-skipped` outcomes. The #7680 Python renderer uses the same marker grammar for its bounded `/design` payload; it is not an `/implement` final-report fallback. The tracking-issue `larch:final-summary` comment is the canonical live projection once upserted.
 
@@ -814,7 +817,7 @@ during Step 18 terminal snapshot preparation. The terminal archive contains the
 final `final-summary.md`. Runs that never reach PR creation still run terminal
 snapshot preparation and may refresh the tracking summary with `PR: N/A`.
 
-For `/design`, `python/cli.py design log-publish` renders `final-summary.md`
+For `/design`, `scripts/larch.sh design log-publish` renders `final-summary.md`
 before publishing the run tree. Step 5c and clarify follow with a post-publish
 `python/cli.py design render-final-summary` pass that upserts the same
 marker-keyed tracking comment when an issue number is configured.
