@@ -23,7 +23,6 @@ from larch.core.run_context import RunContext
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
 from larch.git import git, gh, rebase
 from larch.implement import ship
-from larch.implement.architectural_assessment import normalize_kinds
 from larch.implement import scope_disposition
 from larch.implement.dispatch_helpers import (
     _emit_kv,
@@ -34,6 +33,20 @@ from larch.implement.dispatch_helpers import (
     _resolve_repo_root,
     _write_text_atomic,
 )
+
+_ASSESSMENT_KIND_ORDER = (config.ASSESSMENT_KIND_INVARIANTS, config.ASSESSMENT_KIND_GUIDELINES)
+
+
+def _normalize_assessment_kinds(raw_kinds: list[str]) -> tuple[str, ...]:
+    """Validate, deduplicate, and order requested assessment kinds."""
+    requested = set(raw_kinds)
+    supported = set(_ASSESSMENT_KIND_ORDER)
+    if not requested:
+        raise ValueError("at least one --kind is required")
+    unknown = requested - supported
+    if unknown:
+        raise ValueError(f"unsupported assessment kind: {sorted(unknown)[0]}")
+    return tuple(kind for kind in _ASSESSMENT_KIND_ORDER if kind in requested)
 
 SHIP_ROUTE_EXIT_NEEDS_USER = 3
 SHIP_ROUTE_EXIT_STALLED = 4
@@ -835,7 +848,7 @@ def _normalize_assessment_handoff(*, implement_tmpdir: Path) -> tuple[str, tuple
     requested = raw_kinds.split(",")
     if any(not kind for kind in requested) or len(set(requested)) != len(requested):
         raise ValueError("assessment kinds must not contain empty or duplicate tokens")
-    kinds = normalize_kinds(requested)
+    kinds = _normalize_assessment_kinds(requested)
     canonical = ",".join(kinds)
     # #7171: strip the stale NEEDS_USER_REASON while normalizing so the assessment
     # reship does not read it as a terminal needs-user bail. This gate is being

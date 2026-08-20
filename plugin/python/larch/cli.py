@@ -50,18 +50,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("implement", "kill-active-leg"): ("larch.implement.implement_dispatch", "kill_active_leg_main", False),
     ("implement", "step-2-post-dispatch"): ("larch.implement.implement_dispatch", "step2_post_dispatch_main", False),
     ("architectural-guidelines", "read"): ("larch.core.architectural_guidelines", "read_main", True),
-    ("architectural-assessment", "materialize"): ("larch.implement.architectural_assessment", "materialize_main", True),
-    ("architectural-assessment", "submit"): ("larch.implement.architectural_assessment", "submit_main", True),
-    ("architectural-assessment", "final-report-sections"): (
-        "larch.implement.architectural_assessment",
-        "final_report_sections_main",
-        True,
-    ),
-    ("architectural-assessment", "sanitize-detail"): (
-        "larch.implement.architectural_assessment",
-        "sanitize_detail_main",
-        True,
-    ),
     ("architectural-invariants", "read"): ("larch.core.architectural_guidelines", "invariants_read_main", True),
     ("architectural-guidelines", "present-note"): ("larch.core.architectural_guidelines", "present_note_main", True),
     ("architectural-invariants", "present-note"): (

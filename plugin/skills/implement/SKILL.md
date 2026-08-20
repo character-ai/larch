@@ -699,7 +699,7 @@ Capture `ASSESSMENT_REQUESTED_KINDS` from the normalization fence stdout. Then r
 **Materialize.** Run, then read its stdout:
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py architectural-assessment materialize --implement-tmpdir "$IMPLEMENT_TMPDIR" --repo-root "$REPO_ROOT" --kind <each requested kind>
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh architectural-assessment materialize --implement-tmpdir "$IMPLEMENT_TMPDIR" --repo-root "$REPO_ROOT" --kind <each requested kind>
 ```
 
 Require `ASSESSMENT_MATERIALIZE_STATUS=ok`. `ASSESSMENT_PENDING_KINDS` lists the kinds still needing a subagent; `ASSESSMENT_DETERMINISTIC_KINDS` lists kinds already resolved `deterministic-clean` or `handled` (docs-only diffs persist `deterministic-clean` with zero subagent spawns). `ASSESSMENT_LOG_PENDING_KINDS` lists kinds whose deviation outcome persisted but whose execution-issues deviation-warning append failed; re-run this materialize fence once for those kinds to retry the warning record. It is best-effort run-log completeness, never a merge blocker, and needs no subagent. The main agent reads only the per-kind `ASSESSMENT_KIND_<UPPER>_DIFF_PATH`, `ASSESSMENT_KIND_<UPPER>_KNOWLEDGE_PATH`, and `ASSESSMENT_KIND_<UPPER>_PRIOR_NOTE_PATH` values; it does not Read those files.
@@ -709,7 +709,7 @@ Require `ASSESSMENT_MATERIALIZE_STATUS=ok`. `ASSESSMENT_PENDING_KINDS` lists the
 **Parse and submit.** Parse the subagent's final message: per pending kind it must contain one `ASSESSMENT_KIND=<kind>` line, one `ASSESSMENT_STATE=<state>` line, and one fenced note block, per `agents/arch-assessor.md`. For each pending kind, write that kind's fenced note body to `$IMPLEMENT_TMPDIR/assessment-note-<kind>.md`, then run:
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py architectural-assessment submit --implement-tmpdir "$IMPLEMENT_TMPDIR" --repo-root "$REPO_ROOT" --kind <kind> --state <state> --note-file "$IMPLEMENT_TMPDIR/assessment-note-<kind>.md"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh architectural-assessment submit --implement-tmpdir "$IMPLEMENT_TMPDIR" --repo-root "$REPO_ROOT" --kind <kind> --state <state> --note-file "$IMPLEMENT_TMPDIR/assessment-note-<kind>.md"
 ```
 
 `submit` revalidates identity fail-closed (HEAD unchanged since materialize, fingerprint match), validates the state token and note shape/size, redacts, atomic-writes the same durable surfaces Step 16-17 read, and emits `ASSESSMENT_STATUS=complete` plus `ASSESSMENT_RESULTS=<kind>:<state>` on success. Require `ASSESSMENT_STATUS=complete` for every pending kind. A `submit` exit code `10` means HEAD drifted between materialize and submit: re-run materialize and spawn a fresh `larch:arch-assessor` for that kind, bounded at two attempts per kind, then existing Step 8 `tool-failure` handling. An unparseable final message, or `submit` `ASSESSMENT_STATUS=invalid-note`, gets exactly one fresh `larch:arch-assessor` respawn; if that also fails, route to existing Step 8 `tool-failure` handling. Nothing persists from a bad message: `submit` revalidates everything fail-closed. Do not reinterpret stale, partial, or fail-closed output as success.

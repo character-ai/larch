@@ -5,10 +5,10 @@
 //! knowledge sections, `summary-final.md`, the committed run-log copy, the
 //! manifest reconcile, and the tracking-issue upsert.
 //!
-//! Three inputs still have Python owners this leaf does not move: PR line
-//! counts, the plan-coverage line, and the architectural assessment sections.
-//! Each is reached through the single
-//! [`crate::python_verb`] seam rather than a second implementation.
+//! Two inputs still have Python owners this leaf does not move: PR line
+//! counts and the plan-coverage line. Those remain behind the single
+//! [`crate::python_verb`] seam. Architectural assessment sections are rendered
+//! in-process via [`crate::architectural_assessment_commands`].
 
 use std::{
     collections::BTreeMap,
@@ -1189,16 +1189,7 @@ fn plan_coverage_line(tmpdir: &Path) -> Result<String, String> {
 
 /// Read the architectural invariant and guideline sections, fail-soft.
 fn architectural_sections(tmpdir: &Path) -> String {
-    let arguments: Vec<OsString> = vec![
-        "architectural-assessment".into(),
-        "final-report-sections".into(),
-        "--implement-tmpdir".into(),
-        OsString::from(tmpdir),
-    ];
-    match delegate(tmpdir, arguments) {
-        Ok((0, stdout)) => stdout,
-        _unavailable => String::new(),
-    }
+    crate::architectural_assessment_commands::architectural_sections_for_report(tmpdir)
 }
 
 /// Append the needs-user execution issue, or resolve a superseded one.

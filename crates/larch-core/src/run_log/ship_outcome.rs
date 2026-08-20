@@ -46,11 +46,15 @@ pub enum AssessmentKind {
 pub const SHIP_OUTCOME_CUTOVER_VERSION: (u64, u64, u64) = (52, 4, 16);
 
 impl AssessmentKind {
-    const fn is_invariant(self) -> bool {
+    /// Whether this kind is the invariant lifecycle.
+    #[must_use]
+    pub const fn is_invariant(self) -> bool {
         matches!(self, Self::Invariants)
     }
 
-    const fn key(self) -> &'static str {
+    /// Canonical kind token (`guidelines` / `invariants`).
+    #[must_use]
+    pub const fn key(self) -> &'static str {
         match self {
             Self::Guidelines => "guidelines",
             Self::Invariants => "invariants",
@@ -64,10 +68,102 @@ impl AssessmentKind {
         }
     }
 
-    const fn status_field(self) -> &'static str {
+    /// JSON field name for the knowledge-status slot on ship-outcome sidecars.
+    #[must_use]
+    pub const fn status_field(self) -> &'static str {
         match self {
             Self::Guidelines => "guidelines_status",
             Self::Invariants => "invariants_status",
+        }
+    }
+
+    /// Env-file key for knowledge status (`GUIDELINES_STATUS` / `INVARIANTS_STATUS`).
+    #[must_use]
+    pub const fn status_env_key(self) -> &'static str {
+        match self {
+            Self::Guidelines => "GUIDELINES_STATUS",
+            Self::Invariants => "INVARIANTS_STATUS",
+        }
+    }
+
+    /// Env-file key for the knowledge path (`GUIDELINES_PATH` / `INVARIANTS_PATH`).
+    #[must_use]
+    pub const fn path_env_key(self) -> &'static str {
+        match self {
+            Self::Guidelines => "GUIDELINES_PATH",
+            Self::Invariants => "INVARIANTS_PATH",
+        }
+    }
+
+    /// Repo-root knowledge filename.
+    #[must_use]
+    pub const fn knowledge_filename(self) -> &'static str {
+        match self {
+            Self::Guidelines => "ARCHITECTURAL_GUIDELINES.md",
+            Self::Invariants => "ARCHITECTURAL_INVARIANTS.md",
+        }
+    }
+
+    /// Compose-time materialize env sidecar basename.
+    #[must_use]
+    pub const fn materialize_env_filename(self) -> &'static str {
+        match self {
+            Self::Guidelines => "architectural-guideline-materialize.env",
+            Self::Invariants => "architectural-invariant-materialize.env",
+        }
+    }
+
+    /// Frozen implementation-diff snapshot basename.
+    #[must_use]
+    pub const fn materialized_diff_filename(self) -> &'static str {
+        match self {
+            Self::Guidelines => "architectural-guideline-materialized-diff.txt",
+            Self::Invariants => "architectural-invariant-materialized-diff.txt",
+        }
+    }
+
+    /// Durable assessment note basename.
+    #[must_use]
+    pub const fn durable_note_filename(self) -> &'static str {
+        match self {
+            Self::Guidelines => "architectural-guideline-note.md",
+            Self::Invariants => "architectural-invariant-note.md",
+        }
+    }
+
+    /// Durable assessment note metadata env basename.
+    #[must_use]
+    pub const fn durable_note_env_filename(self) -> &'static str {
+        match self {
+            Self::Guidelines => "architectural-guideline-note.meta.env",
+            Self::Invariants => "architectural-invariant-note.meta.env",
+        }
+    }
+
+    /// Staged assessment note basename.
+    #[must_use]
+    pub const fn staged_assessment_filename(self) -> &'static str {
+        match self {
+            Self::Guidelines => "architectural-guideline-staged-assessment.md",
+            Self::Invariants => "architectural-invariant-staged-assessment.md",
+        }
+    }
+
+    /// Staged assessment metadata env basename.
+    #[must_use]
+    pub const fn staged_assessment_env_filename(self) -> &'static str {
+        match self {
+            Self::Guidelines => "architectural-guideline-staged-assessment.env",
+            Self::Invariants => "architectural-invariant-staged-assessment.env",
+        }
+    }
+
+    /// Dropped-note notice basename.
+    #[must_use]
+    pub const fn dropped_note_filename(self) -> &'static str {
+        match self {
+            Self::Guidelines => "architectural-guideline-drop-notice.txt",
+            Self::Invariants => "architectural-invariant-drop-notice.txt",
         }
     }
 
@@ -85,7 +181,9 @@ impl AssessmentKind {
         }
     }
 
-    const fn non_clean_authored_outcome(self) -> &'static str {
+    /// Authored non-clean outcome token (`deviation` / `violation`).
+    #[must_use]
+    pub const fn non_clean_authored_outcome(self) -> &'static str {
         match self {
             Self::Guidelines => "deviation",
             Self::Invariants => "violation",

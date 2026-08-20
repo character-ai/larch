@@ -31,11 +31,6 @@ EXPECTED = {
     )
 }
 AGENT_EXPECTED: dict[tuple[str, str], tuple[str, str]] = {}
-ARCHITECTURAL_ASSESSMENT_EXPECTED = {
-    ("architectural-assessment", "materialize"): ("larch.implement.architectural_assessment", "materialize_main"),
-    ("architectural-assessment", "submit"): ("larch.implement.architectural_assessment", "submit_main"),
-    ("architectural-assessment", "sanitize-detail"): ("larch.implement.architectural_assessment", "sanitize_detail_main"),
-}
 ARCHITECTURAL_GUIDELINES_EXPECTED = {
     ("architectural-invariants", "read"): ("larch.core.architectural_guidelines", "invariants_read_main"),
     ("architectural-guidelines", "read"): ("larch.core.architectural_guidelines", "read_main"),
@@ -73,11 +68,13 @@ def test_design_port_registry_entries_are_machine_stdout() -> None:
     for key, target in AGENT_EXPECTED.items():
         module_name, func_name, _machine_stdout = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]
         assert (module_name, func_name) == target
-    for key, target in ARCHITECTURAL_ASSESSMENT_EXPECTED.items():
-        module_name, func_name, machine_stdout = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]
-        assert (module_name, func_name) == target
-        assert machine_stdout is True
-        assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+    for key in (
+        ("architectural-assessment", "materialize"),
+        ("architectural-assessment", "submit"),
+        ("architectural-assessment", "sanitize-detail"),
+        ("architectural-assessment", "final-report-sections"),
+    ):
+        assert key not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     for key, target in ARCHITECTURAL_GUIDELINES_EXPECTED.items():
         module_name, func_name, machine_stdout = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]
         assert (module_name, func_name) == target

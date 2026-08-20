@@ -566,6 +566,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "resolve-target",
     ),
     CleanInstallCase::new(
+        "clean-install-architectural-assessment-materialize",
+        "architectural-assessment",
+        "materialize",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-assessment-submit",
+        "architectural-assessment",
+        "submit",
+    ),
+    CleanInstallCase::new(
         "clean-install-analyze-bugs-ledger",
         "analyze-bugs",
         "ledger",

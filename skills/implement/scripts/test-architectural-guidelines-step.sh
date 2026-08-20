@@ -39,7 +39,7 @@ contains "$SKILL" 'Step 8 owns the subagent assessment route. After later `HEAD`
 contains "$SKILL" 'python/cli.py ship normalize-assessment-handoff --implement-tmpdir "$IMPLEMENT_TMPDIR"' 'normalization fence'
 contains "$SKILL" 'rewrites the legacy aliases to `NEXT_ACTION=assessments`, persists canonical `DETAIL`, and emits the canonical kind list.' 'alias normalization and canonicalization'
 contains "$SKILL" 'Do not repair malformed data, add a kind token, or add a fallback parser.' 'malformed detail fail closed'
-contains "$SKILL" 'python/cli.py architectural-assessment materialize --implement-tmpdir "$IMPLEMENT_TMPDIR" --repo-root "$REPO_ROOT" --kind <each requested kind>' 'materialize fence'
+contains "$SKILL" 'scripts/larch.sh architectural-assessment materialize --implement-tmpdir "$IMPLEMENT_TMPDIR" --repo-root "$REPO_ROOT" --kind <each requested kind>' 'materialize fence'
 contains "$SKILL" 'spawn exactly one Agent-tool subagent with `subagent_type` `larch:arch-assessor`, covering every pending kind' 'subagent authoring'
 contains "$SKILL" 'A `submit` exit code `10` means HEAD drifted between materialize and submit' 'head-drift retry'
 contains "$SKILL" 'Capture `ASSESSMENT_REQUESTED_KINDS` from the normalization fence stdout.' 'normalization stdout binding'

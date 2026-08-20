@@ -14,7 +14,6 @@ import pytest
 
 from larch.core import config, rust_runtime
 from larch.core import rust_runtime as run_log_flush
-from larch.implement import architectural_assessment
 from larch.report import run_log_batch
 from larch.report import run_log_manifest
 from larch.implement import ship
@@ -7707,16 +7706,10 @@ def _write_minimal_final_report_state(tmp_path: Path) -> None:
     (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
 
 
-def _stub_final_report_head_sha(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(architectural_assessment, "_current_head_sha", lambda: "head")
-
-
 def test_guidelines_invalidate_removes_note_from_final_report(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_minimal_final_report_state(tmp_path)
-    _stub_final_report_head_sha(monkeypatch)
     ship.architectural_guidelines.write_implement_note(
         implement_tmpdir=tmp_path,
         note_text="Guideline note\n",
@@ -7727,16 +7720,13 @@ def test_guidelines_invalidate_removes_note_from_final_report(
 
     ship_guidelines._invalidate_guidelines_note(str(tmp_path))
 
-    assert "## Architectural guidelines" not in architectural_assessment.final_report_sections(tmp_path)
     assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
 
 
 def test_guidelines_staged_mismatch_does_not_create_drop_notice_for_final_report(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_minimal_final_report_state(tmp_path)
-    _stub_final_report_head_sha(monkeypatch)
     ship.architectural_guidelines.write_staged_assessment(
         outcome="clean",
         implement_tmpdir=tmp_path,
@@ -7748,7 +7738,8 @@ def test_guidelines_staged_mismatch_does_not_create_drop_notice_for_final_report
     )
     ship_guidelines._invalidate_guidelines_note(str(tmp_path))
 
-    assert "## Architectural guidelines" not in architectural_assessment.final_report_sections(tmp_path)
+    assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
+    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
 
 
 def _stub_happy_ship_mocks(monkeypatch: pytest.MonkeyPatch) -> None:

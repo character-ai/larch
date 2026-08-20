@@ -1,6 +1,7 @@
 //! Domain types, use cases, and effect-free service ports for larch.
 
 mod admission;
+pub mod architectural_assessment;
 mod architectural_guidelines;
 mod attestation;
 mod audit_umbrella;
@@ -74,6 +75,18 @@ mod voter_calibration;
 pub use admission::{
     DESIGNED_PREFIX, GateDecision, MANAGED_PREFIXES, entry_gate, has_designed_prefix,
     has_managed_prefix, has_report_prefix, normal_issue, parse_prose_blockers, single_line,
+};
+pub use architectural_assessment::{
+    ASSESSMENT_OUTCOME_CLEAN, ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH,
+    ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME, ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA,
+    ASSESSMENT_RESULT_REAUTHOR_REQUIRED, AssessmentGit, AssessmentResult, DeviationLogPending,
+    EXIT_HEAD_DRIFT, HeadDrift, KIND_ORDER, MAX_ASSESSMENT_CHARS, MAX_SANITIZE_DETAIL_BYTES,
+    MaterializedEvidence, NOTE_STATE_AUTHORED, NOTE_STATE_DETERMINISTIC_CLEAN,
+    NOTE_STATE_UNAVAILABLE, REASON_DETERMINISTIC_CLEAN, REASON_UNAVAILABLE, ReauthorRequired,
+    SubmitError, append_deviation_note, authored_outcome_valid, deterministic_out_of_scope,
+    diff_fingerprint, durable_note_path, final_report_sections, materialize, note_consumable,
+    normalize_kinds, sanitize_detail, submit, validate_materialization,
+    write_deterministic_clean_note,
 };
 pub use architectural_guidelines::{
     ArchitecturalKind, ArchitecturalKnowledge, ArchitecturalStatus, GUIDELINE_HEADING_RE,
