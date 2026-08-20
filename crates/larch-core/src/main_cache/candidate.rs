@@ -292,8 +292,8 @@ pub fn promote_candidate(
 /// # Errors
 ///
 /// Returns [`CandidateError`] when the grammar or name is invalid.
-pub fn parse_source(value: &str) -> Result<CandidateSource, CandidateError> {
-    let Some((name, raw_path)) = value.split_once('=') else {
+pub fn parse_source(arg: &str) -> Result<CandidateSource, CandidateError> {
+    let Some((name, raw_path)) = arg.split_once('=') else {
         return Err(CandidateError::new("candidate source must use NAME=PATH"));
     };
     if raw_path.is_empty() {
@@ -327,10 +327,10 @@ pub fn parse_maximum_bytes(value: &str) -> Result<u64, CandidateError> {
 /// # Errors
 ///
 /// Returns [`CandidateError`] when any entry is malformed or duplicated.
-pub fn parse_tool_versions(values: &[String]) -> Result<BTreeMap<String, String>, CandidateError> {
+pub fn parse_tool_versions(tokens: &[String]) -> Result<BTreeMap<String, String>, CandidateError> {
     let mut tool_versions = BTreeMap::new();
-    for value in values {
-        let Some((name, version)) = value.split_once('=') else {
+    for token in tokens {
+        let Some((name, version)) = token.split_once('=') else {
             return Err(CandidateError::new(
                 "candidate tool version must use NAME=VALUE",
             ));
