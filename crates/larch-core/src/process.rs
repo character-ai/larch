@@ -496,6 +496,10 @@ pub enum ChildEnvironment {
     ClaudeSubprocessHookExempt,
     /// Disables quiet stream routing inside a delegated larch verb.
     LarchQuietDisable,
+    /// Requires a trailing plan `difficulty:` trailer in a delegated
+    /// `plan validate`. Only the `/design` publish path sets it, so it is
+    /// passed explicitly rather than inherited.
+    LarchRequirePlanDifficulty,
     /// Optional Codex effort override passed to a nested larch composition.
     LarchCodexEffort,
     /// Optional Codex fixer model override passed to a nested larch composition.
@@ -630,6 +634,7 @@ impl ChildEnvironment {
             Self::RunId => "RUN_ID",
             Self::ClaudeSubprocessHookExempt => env::LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT,
             Self::LarchQuietDisable => "LARCH_QUIET_DISABLE",
+            Self::LarchRequirePlanDifficulty => "LARCH_REQUIRE_PLAN_DIFFICULTY",
             Self::LarchCodexEffort => env::LARCH_CODEX_EFFORT,
             Self::LarchCodexFixModel => env::LARCH_CODEX_FIX_MODEL,
             Self::LarchCodexModel => env::LARCH_CODEX_MODEL,

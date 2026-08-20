@@ -19,7 +19,7 @@ from larch.core import architectural_guidelines, proc, redact, rust_runtime
 from larch.report import exec_issue_detail
 from larch.report import review_phase_detail
 from larch.report import storage_config
-from larch.design.design_publish import review_provenance
+from larch.design.design_core import review_provenance
 from larch.git.pr_body import _map_outcome_display  # pyright: ignore[reportPrivateUsage]
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch.report.report_tokens_cost import CODEX_MINI_MODELS, CURSOR_GROK_MODELS

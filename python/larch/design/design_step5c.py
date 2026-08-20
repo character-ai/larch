@@ -443,16 +443,26 @@ def _read_phase_tail(design_tmpdir: Path, filename: str) -> str:
     return path.read_text(encoding="utf-8", errors="replace")[-config.DESIGN_PUBLISH_TAIL_BYTE_CAP :]
 
 
-def _step5c_invoke_publish_core(publish_args: list[str]) -> int:
-    from larch.design.design_publish import publish_core  # noqa: PLC0415
+def _step5c_invoke_publish_core(publish_args: list[str], *, plugin_root: Path) -> int:
+    """Run the Rust-owned ``design publish`` verb (#8591).
 
+    The caller redirects ``sys.stdout``/``sys.stderr`` to the publish stream
+    files, so the child's streams are replayed there rather than inherited.
+    """
     try:
-        return int(publish_core(publish_args))
-    except SystemExit as exc:
-        return int(exc.code) if isinstance(exc.code, int) else 5
-    except BaseException:
+        result = subprocess.run(
+            [str(larch_entrypoint(plugin_root)), "design", "publish", *publish_args],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=larch_entrypoint_env(plugin_root),
+        )
+    except OSError:
         _core_print_exc()
         return 5
+    _ = sys.stdout.write(result.stdout or "")
+    _ = sys.stderr.write(result.stderr or "")
+    return int(result.returncode)
 
 
 def _split_plan_body_and_trailers(lines: list[str]) -> tuple[list[str], list[str]]:
@@ -624,6 +634,27 @@ def _auto_compose_plan_md(design_tmpdir: Path) -> None:
     )
 
 
+def compose_plan_md_main(argv: Sequence[str]) -> int:
+    """Recompose ``composed-plan.md`` from ``plan.txt`` for Rust ``design publish``.
+
+    Publish deletes the prior composition so a stale plan cannot reach the
+    issue, then recomposes; the composition rules stay with their Step 5c owner
+    (#8591).
+    """
+    args = list(argv)
+    if len(args) != 2 or args[0] != "--design-tmpdir":
+        _core_diagnostic("usage: cli.py design compose-plan-md --design-tmpdir DIR")
+        return 2
+    design_tmpdir = Path(args[1])
+    plan_txt = design_tmpdir / "plan.txt"
+    if not plan_txt.is_file() or plan_txt.stat().st_size == 0:
+        return 0
+    with contextlib.suppress(OSError):
+        (design_tmpdir / "composed-plan.md").unlink()
+    _auto_compose_plan_md(design_tmpdir)
+    return 0
+
+
 def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     old_environ = os.environ.copy()
     design_tmpdir: Path | None = None
@@ -723,6 +754,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 publish_stdout_file,
                 publish_stderr_file,
                 publish_args,
+                plugin_root=plugin_root,
             )
 
             if publish_rc == 2 or publish_rc not in {0, 1, 3, 4, 5}:

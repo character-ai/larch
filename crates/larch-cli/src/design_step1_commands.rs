@@ -748,7 +748,7 @@ const DRIVER_DISPATCH_ACTIONS: [&str; 4] =
     ["EMIT_PLAN", "TALLY", "FINALIZE", "VALIDATE_PLAN_COMMANDS"];
 
 /// The consumer repository's git toplevel, or `None` outside a work tree.
-fn consumer_repo_root() -> Option<PathBuf> {
+pub fn consumer_repo_root() -> Option<PathBuf> {
     let work_dir = GixRepository::discover(std::env::current_dir().ok()?)
         .ok()?
         .location()

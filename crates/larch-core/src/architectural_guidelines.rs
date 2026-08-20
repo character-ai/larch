@@ -2,9 +2,10 @@
 //! implement-prompt block composed from it.
 //!
 //! This module owns the `I-*` and `G-*` heading regexes for the whole
-//! workspace, so no other Rust source re-derives them. Reading the files is a
-//! caller concern: everything here works on already-decoded text.
+//! workspace, so no other Rust source re-derives them, and it owns the one
+//! repository-root read every caller shares.
 
+use std::path::Path;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -139,6 +140,49 @@ impl ArchitecturalKnowledge {
             content: content.into(),
             warning: String::new(),
         }
+    }
+}
+
+/// Read one architectural knowledge file from the repository root.
+///
+/// Symlinks, directories, and unreadable files are `Invalid` rather than
+/// `Absent`, so a tampered knowledge file cannot silently disable the Gate C
+/// assessment requirement it would otherwise impose.
+#[must_use]
+pub fn read_architectural_knowledge(
+    repo_root: &Path,
+    kind: ArchitecturalKind,
+) -> ArchitecturalKnowledge {
+    let filename = kind.filename();
+    let path = repo_root.join(filename);
+    let Ok(metadata) = std::fs::symlink_metadata(&path) else {
+        return ArchitecturalKnowledge::absent();
+    };
+    if metadata.is_symlink() {
+        return ArchitecturalKnowledge::invalid(format!(
+            "{filename} is invalid: symlinks are not read"
+        ));
+    }
+    if metadata.is_dir() {
+        return ArchitecturalKnowledge::invalid(format!(
+            "{filename} is invalid: expected a regular file, found a directory"
+        ));
+    }
+    if !metadata.is_file() {
+        return ArchitecturalKnowledge::invalid(format!(
+            "{filename} is invalid: expected a regular file"
+        ));
+    }
+    match std::fs::read(&path) {
+        Ok(bytes) => match String::from_utf8(bytes) {
+            Ok(text) => ArchitecturalKnowledge::present(parse_entries(kind, &text)),
+            Err(error) => ArchitecturalKnowledge::invalid(format!(
+                "{filename} is invalid: unreadable file ({error})"
+            )),
+        },
+        Err(error) => ArchitecturalKnowledge::invalid(format!(
+            "{filename} is invalid: unreadable file ({error})"
+        )),
     }
 }
 

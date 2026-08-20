@@ -393,10 +393,11 @@ mod clarify_orchestrator_tests {
         let target = dir.path().join("result.env");
         let link = dir.path().join("link.env");
         std::os::unix::fs::symlink(&target, &link).unwrap();
-        assert!(write_result_env(&link, &[("REQUEST_ID", "1")]).is_err());
-        assert!(write_result_env(&target, &[("REQUEST_ID", "bad\nvalue")]).is_err());
-        assert!(write_result_env(&target, &[("UNEXPECTED", "1")]).is_err());
-        write_result_env(&target, &[("REQUEST_ID", "1"), ("PLAN_FILE", "2")]).unwrap();
+        let allow = &CLARIFY_RESULT_ENV_ALLOW;
+        assert!(write_result_env(&link, &[("REQUEST_ID", "1")], allow).is_err());
+        assert!(write_result_env(&target, &[("REQUEST_ID", "bad\nvalue")], allow).is_err());
+        assert!(write_result_env(&target, &[("UNEXPECTED", "1")], allow).is_err());
+        write_result_env(&target, &[("REQUEST_ID", "1"), ("PLAN_FILE", "2")], allow).unwrap();
         assert_eq!(
             fs::read_to_string(&target).unwrap(),
             "REQUEST_ID=1\nPLAN_FILE=2\n"
@@ -443,13 +444,11 @@ mod clarify_orchestrator_tests {
         let dir = TempDir::new().unwrap();
         let present = dir.path().join("p.md");
         fs::write(&present, "body").unwrap();
-        assert!(publish_artifact_ok(present.to_str().unwrap()));
-        assert!(!publish_artifact_ok(
-            dir.path().join("absent").to_str().unwrap()
-        ));
+        assert!(publish_artifact_ok(&present));
+        assert!(!publish_artifact_ok(&dir.path().join("absent")));
         let empty = dir.path().join("empty.md");
         fs::write(&empty, "").unwrap();
-        assert!(!publish_artifact_ok(empty.to_str().unwrap()));
+        assert!(!publish_artifact_ok(&empty));
         assert_eq!(read_lossy(present.to_str().unwrap()), "body");
         assert_eq!(read_lossy(dir.path().join("absent").to_str().unwrap()), "");
     }

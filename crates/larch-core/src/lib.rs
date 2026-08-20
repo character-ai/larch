@@ -83,15 +83,15 @@ pub use architectural_assessment::{
     EXIT_HEAD_DRIFT, HeadDrift, KIND_ORDER, MAX_ASSESSMENT_CHARS, MAX_SANITIZE_DETAIL_BYTES,
     MaterializedEvidence, NOTE_STATE_AUTHORED, NOTE_STATE_DETERMINISTIC_CLEAN,
     NOTE_STATE_UNAVAILABLE, REASON_DETERMINISTIC_CLEAN, REASON_UNAVAILABLE, ReauthorRequired,
-    SubmitError, append_deviation_note, authored_outcome_valid, deterministic_out_of_scope,
-    diff_fingerprint, durable_note_path, final_report_sections, materialize, normalize_kinds,
-    note_consumable, read_regular, sanitize_detail, submit, validate_materialization,
-    write_deterministic_clean_note,
+    SubmitError, append_deviation_note, authored_outcome_valid, classify_note_for_kind,
+    deterministic_out_of_scope, diff_fingerprint, durable_note_path, final_report_sections,
+    materialize, normalize_kinds, note_consumable, read_regular, sanitize_detail, submit,
+    validate_materialization, write_deterministic_clean_note,
 };
 pub use architectural_guidelines::{
     ArchitecturalKind, ArchitecturalKnowledge, ArchitecturalStatus, GUIDELINE_HEADING_RE,
     GUIDELINES_FILENAME, INVARIANT_HEADING_RE, INVARIANTS_FILENAME, entry_text, knowledge_block,
-    parse_entries,
+    parse_entries, read_architectural_knowledge,
 };
 pub use attestation::{
     ArtifactAttestationRequest, AttestationInputError, AttestationInputErrorKind,
@@ -206,6 +206,13 @@ pub use design::{
     CLARIFY_LABEL_COLOR, CLARIFY_LABEL_DESCRIPTION, CLARIFY_LABEL_NAME, ClarifyEvent, ClarifyKind,
     ClarifyState, evaluate_comment_bodies, evaluate_events, events_from_comment_bodies,
     request_body_remainder,
+};
+pub use design::{
+    AssessmentCompleteness, BLOCKED_REVIEW_STATUSES, PUBLISH_RESULT_ENV_ALLOW, ReviewProvenance,
+    TERMINAL_STATUSES_REQUIRING_SENTINEL, blocked_review_reason,
+    check_guideline_assessment_completeness, check_invariant_assessment_completeness,
+    count_missing_script_defects, guideline_exception_valid, is_publish_attempt_id, is_repo_slug,
+    persisted_note_publishable, review_provenance, sanitizer_reason_token, splice_plan_provenance,
 };
 pub use difficulty::{
     AUDIT_DENOMINATOR, BuildRecord, CODEX_MODEL_ROLE, CONFIDENCES, DESIGN_RAW_RATING_BASENAME,
@@ -486,7 +493,8 @@ pub use report::{
     TokenReportError, TokenReportInputs, TokenRunRecord, TokenScanEvent, TokenScanWarning,
     TokenScanWarningKind, TokenStepMark, TokenUsageRow, TokenVendor, TranscriptError,
     TranscriptWarnings, VendorTotals, WARN_CATEGORY, aggregate_vendor_tokens,
-    build_issue_detail_section, build_report_from_ledgers, claude_effective_cache_create,
+    bounded_diagram_warning_body, build_issue_detail_section, build_report_from_ledgers,
+    claude_effective_cache_create,
     claude_usage_rows, count_issue_groups, count_load_result, cursor_buckets_are_detailed,
     display_rates, effective_vendor_total, exact_rate_row, execution_issue_identity, fallback_cost,
     format_money, full_report, full_report_with_observations, ledger_step_marks,
@@ -501,7 +509,7 @@ pub use report::{
     run_log_batch_specs, run_log_ledger_path, run_record, run_started_at_strict,
     run_started_at_without_manifest, safe_int, sanitize_diagram_capture, strip_diagram_sections,
     structured_body_dedupe_keys, summary_report, token_phase_rows, token_report_basename,
-    transcript_sources, vendor_totals_from_report,
+    transcript_sources, vendor_totals_from_report, write_bounded_diagram_failure_log,
 };
 pub use retry::{
     AttemptOutcome, DeterministicJitter, Jitter, RetryClass, RetryDecision, RetryObservation,
