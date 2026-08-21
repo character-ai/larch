@@ -6,7 +6,6 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
-CLI="$ROOT/python/cli.py"
 LARCH="$ROOT/scripts/larch.sh"
 POSTPLAN_CLI=("$LARCH" design postplan-emit)
 SETTLE=("$LARCH" design step35-settle)
