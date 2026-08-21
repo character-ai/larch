@@ -106,6 +106,15 @@ const SKIP_PREFIX_PATH_OWNERS: &[(&str, &str)] = &[
 
 #[derive(Subcommand)]
 pub enum CiCommand {
+    /// Choose the next action from one CI status snapshot.
+    #[command(disable_help_flag = true)]
+    Decide(crate::ci_monitor_commands::Arguments),
+    /// Read one pull request's CI, merge, and behind state.
+    #[command(disable_help_flag = true)]
+    Status(crate::ci_monitor_commands::Arguments),
+    /// Poll pull-request CI until the next workflow action is known.
+    #[command(disable_help_flag = true)]
+    Wait(crate::ci_monitor_commands::Arguments),
     /// Propose a fail-closed Rust CI selection for a pull-request candidate.
     RustSelect(CiRustSelectArguments),
     /// Render the selector result as a bounded GitHub step summary.
@@ -262,6 +271,9 @@ struct WorkspacePackage {
 
 pub fn run(command: CiCommand) -> ExitCode {
     match command {
+        CiCommand::Decide(arguments) => crate::ci_monitor_commands::decide(&arguments),
+        CiCommand::Status(arguments) => crate::ci_monitor_commands::status(&arguments),
+        CiCommand::Wait(arguments) => crate::ci_monitor_commands::wait(&arguments),
         CiCommand::RustSelect(arguments) => {
             let selection = select(
                 &arguments.event_name,

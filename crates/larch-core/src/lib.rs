@@ -7,6 +7,7 @@ mod attestation;
 mod audit_umbrella;
 mod bgjob;
 mod bgjob_daemon;
+mod ci_monitor;
 mod ci_timing;
 mod complete_umbrella;
 mod config;
@@ -173,6 +174,12 @@ pub use connectivity::{
     WaitOnlineError, WaitOnlinePolicy, WaitOnlinePolicyError, WaitOnlineResult, wait_online,
 };
 
+pub use ci_monitor::{
+    CI_MAX_FIX_ATTEMPTS, CI_MAX_ITERATIONS, CI_MAX_REBASES, CI_POLL_INTERVAL_SECONDS,
+    CI_STATUS_FAILURE_LIMIT, CheckObservation, CiCounters, CiDecision, CiStatus, CiStatusKind,
+    StatusFailureState, classify_checks, conflicted as ci_merge_state_conflicted,
+    decide as ci_decide,
+};
 pub use context::{RunId, RunIdError, RunIdErrorKind, RuntimeContext};
 pub use design::{
     AssessmentCompleteness, BLOCKED_REVIEW_STATUSES, PUBLISH_RESULT_ENV_ALLOW, ReviewProvenance,
@@ -263,10 +270,11 @@ pub use github::{
     GitHubIssueState, GitHubLabel, GitHubLabelCreate, GitHubListOutcome, GitHubListStop,
     GitHubMutationOutcome, GitHubOperationError, GitHubOperationErrorKind, GitHubRateLimitInputs,
     GitHubRepository, GitHubRepositoryRef, GitHubRequestKind, GitHubResponseLimits,
-    GitHubRetryAction, GitHubService, GitHubTransportPolicy, ReconciledMutation, ReleaseDataError,
-    ReleaseDataErrorKind, ReleaseState, RemoteAsset, TagObjectId, WorkflowDispatchRequest,
-    WorkflowJob, WorkflowLogArchive, WorkflowRun, WorkflowRunFilters, classify_github_retry,
-    reconcile_mutation, require_asset_content_type, resolve_issue_list, resolve_tag_object_id,
+    GitHubRetryAction, GitHubService, GitHubTransportPolicy, PullRequestCiState,
+    PullRequestMergeState, ReconciledMutation, ReleaseDataError, ReleaseDataErrorKind,
+    ReleaseState, RemoteAsset, TagObjectId, WorkflowDispatchRequest, WorkflowJob,
+    WorkflowLogArchive, WorkflowRun, WorkflowRunFilters, classify_github_retry, reconcile_mutation,
+    require_asset_content_type, resolve_issue_list, resolve_tag_object_id,
     select_release_for_staging, select_release_for_tag,
 };
 pub use github_actions::{RunLogsOutput, run_logs, run_logs_setup_failure, workflow_path};

@@ -543,12 +543,12 @@ exclude = [
   "scripts/commit-release notes.md",
   "scripts/test-commit-release notes.md",
   # (acceptance criterion #6, issue #2852).
-  # python/cli.py ci wait's EXIT-trap-writes-.done behavior under SIGTERM and
+  # scripts/larch.sh ci wait's output-file completion behavior under SIGTERM and
   # the backward-compat default-mode (stdout) contract. Closes #842 (leaked
   # polling-loop on signal-kill). Two sub-tests exercise file-mode and
   # default-mode invariants. Referenced only from Makefile
   # (sibling contract). python/ci_monitor.py is the sibling contract for
-  # python/cli.py ci wait, referenced from skills/implement/SKILL.md (Steps 10
+  # scripts/larch.sh ci wait, referenced from skills/implement/SKILL.md (Steps 10
   # and 12a) and skills/implement/references/conflict-resolution.md
   # via prose pointers — agent-lint reachability follows the harness pattern.
   "python/ci_monitor.py",
@@ -916,9 +916,6 @@ exclude = [
   "python/cli.py pr create",
   # bash; its create-pr/merge-pr callers migrated to python/cli.py pr create /
   # merge pr, so G004 no longer sees a structured invocation edge.
-  "python/cli.py ci wait",
-  "python/cli.py ci status",
-  "python/cli.py ci decide",
   "python/cli.py ci behind-count",
 
 ]

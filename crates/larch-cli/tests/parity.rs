@@ -80,6 +80,8 @@ impl CleanInstallCase {
             // reports its own breadcrumb refusal exit.
             | "clean-install-render-lane-status"
             | "clean-install-session-local-cleanup"
+            | "clean-install-ci-decide"
+            | "clean-install-ci-wait"
             // `plan validator-autofix` refuses missing `DESIGN_TMPDIR` before
             // `--help`, matching the frozen Python wrapper order.
             | "clean-install-plan-validator-autofix"
@@ -1605,6 +1607,9 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-ci-timing-pytest", "ci-timing", "pytest"),
     CleanInstallCase::new("clean-install-ci-gitleaks-base", "ci", "gitleaks-base"),
+    CleanInstallCase::new("clean-install-ci-decide", "ci", "decide"),
+    CleanInstallCase::new("clean-install-ci-status", "ci", "status"),
+    CleanInstallCase::new("clean-install-ci-wait", "ci", "wait"),
     CleanInstallCase::new(
         "clean-install-ci-prepare-rust-integration-artifact",
         "ci",

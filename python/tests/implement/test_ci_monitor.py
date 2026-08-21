@@ -103,6 +103,86 @@ def _cr(argv: Sequence[str], rc: int = 0, stdout: str = "", stderr: str = "") ->
     return CommandResult(tuple(argv), rc, stdout, stderr, 0.01)
 
 
+def test_poll_ci_consumes_rust_wait_wire_through_verified_entrypoint() -> None:
+    runner = RecordingRunner(
+        prefix_responses=[
+            (
+                (_RUST_GIT, "ci", "wait"),
+                _cr(
+                    (_RUST_GIT, "ci", "wait"),
+                    stdout=(
+                        "ACTION=evaluate_failure\n"
+                        "CI_STATUS=fail\n"
+                        "BEHIND_COUNT=2\n"
+                        "CONFLICTED=false\n"
+                        "FAILED_RUN_ID=123\n"
+                        "BAIL_REASON=\n"
+                        "ITERATION=4\n"
+                        "ELAPSED=8\n"
+                    ),
+                ),
+            ),
+        ],
+    )
+
+    status, decision = ci_monitor.poll_ci(
+        runner,
+        pr=7,
+        repo="o/r",
+        base_remote="upstream",
+        base_ref="main",
+        empty_checks_grace=12,
+        empty_checks_startup_deadline_sec=30,
+        iteration=4,
+        rebase_count=1,
+        fix_attempts=2,
+        timeout=60,
+    )
+
+    assert status == ci_monitor.CiStatus("fail", 2, "123", conflicted=False)
+    assert decision == ci_monitor.Decision("evaluate_failure")
+    argv = runner.calls[0]
+    assert argv[:3] == (_RUST_GIT, "ci", "wait")
+    assert argv[argv.index("--base-remote") + 1] == "upstream"
+    assert argv[argv.index("--empty-checks-startup-deadline") + 1] == "30"
+
+
+def test_poll_ci_fails_closed_on_invalid_rust_wait_wire() -> None:
+    runner = RecordingRunner(
+        prefix_responses=[
+            (
+                (_RUST_GIT, "ci", "wait"),
+                _cr(
+                    (_RUST_GIT, "ci", "wait"),
+                    stdout=(
+                        "ACTION=merge\n"
+                        "CI_STATUS=pass\n"
+                        "BEHIND_COUNT=0\n"
+                        "CONFLICTED=false\n"
+                        "FAILED_RUN_ID=\n"
+                        "ITERATION=0\n"
+                        "ELAPSED=1\n"
+                    ),
+                ),
+            ),
+        ],
+    )
+    status, decision = ci_monitor.poll_ci(
+        runner,
+        pr=7,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        timeout=1,
+    )
+    assert status.status == "error"
+    assert decision == ci_monitor.Decision("bail", config.CI_WAIT_BAIL_UNEXPECTED_EXIT)
+
+
 def test_available_tiers_tracks_config_order() -> None:
     assert ci_monitor._available_tiers() == config.FIXER_TIER_ORDER  # pylint: disable=protected-access
 
@@ -462,245 +542,6 @@ def test_default_launch_fn_dedups_repeated_external_token_sidecar(
     assert len(set(seen_ids)) == 1
 
 
-@pytest.mark.parametrize(
-    ("status", "behind", "conflicted", "iteration", "rebase_count", "fix_attempts", "expected"),
-    [
-        ("merged", 0, False, 0, 0, 0, "already_merged"),
-        ("pass", 0, False, 0, 0, 0, "merge"),
-        ("pass", 1, False, 0, 0, 0, "merge"),
-        ("pass", 1, True, 0, 0, 0, "rebase"),
-        ("pending", 1, False, 0, 0, 0, "wait"),
-        ("pending", 0, False, 0, 0, 0, "wait"),
-        ("fail", 1, False, 0, 0, 0, "rebase_then_evaluate"),
-        ("fail", 0, False, 0, 0, 0, "evaluate_failure"),
-        ("error", 0, False, 0, 0, 0, "bail"),
-        ("pass", 0, False, 50, 0, 0, "merge"),
-        ("pending", 0, False, 50, 0, 0, "bail"),
-        ("fail", 0, False, 0, 0, 10, "bail"),
-        ("fail", 0, False, 0, 20, 0, "bail"),
-    ],
-)
-def test_decide_parity_table(
-    status: str,
-    behind: int,
-    conflicted: bool,
-    iteration: int,
-    rebase_count: int,
-    fix_attempts: int,
-    expected: str,
-) -> None:
-    ci_status = ci_monitor.CiStatus(
-        status=status,
-        behind_count=behind,
-        failed_run_id=None,
-        conflicted=conflicted,
-    )
-    decision = ci_monitor.decide(
-        ci_status,
-        iteration=iteration,
-        rebase_count=rebase_count,
-        fix_attempts=fix_attempts,
-    )
-    assert decision.action == expected
-
-
-def test_decide_fail_behind_preserves_failed_run_before_rebase() -> None:
-    decision = ci_monitor.decide(
-        ci_monitor.CiStatus(
-            status="fail",
-            behind_count=1,
-            failed_run_id="999",
-            conflicted=False,
-        ),
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-    )
-
-    assert decision.action == "evaluate_failure"
-
-
-def test_decide_pending_behind_waits_for_inflight_ci() -> None:
-    """A pending run on a behind-but-unconflicted branch waits, never rebases.
-
-    Rebasing a healthy in-flight run force-pushes a new head that must
-    re-register checks, which previously produced a false no-ci-checks-observed
-    stall (issue #5217). The branch is squash-mergeable while behind, so the
-    monitor waits for CI to finish on the current head.
-    """
-    decision = ci_monitor.decide(
-        ci_monitor.CiStatus(status="pending", behind_count=3, failed_run_id=None),
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-    )
-    assert decision.action == "wait"
-
-
-@pytest.mark.parametrize(
-    ("status", "iteration", "rebase_count", "fix_attempts", "expected_reason"),
-    [
-        ("error", 0, 0, 0, config.CI_DECIDE_BAIL_STATUS_ERROR),
-        ("pending", config.CI_MONITOR_MAX_ITERATIONS, 0, 0, config.CI_DECIDE_BAIL_TIMEOUT),
-        ("pending", 0, config.CI_MONITOR_MAX_REBASES, 0, config.CI_DECIDE_BAIL_TOO_MANY_REBASES),
-        ("fail", 0, 0, config.CI_MONITOR_MAX_FIX_ATTEMPTS, config.CI_DECIDE_BAIL_FIX_ATTEMPTS_EXHAUSTED),
-    ],
-)
-def test_decide_bail_reasons_match_ci_decide_tokens(
-    status: str,
-    iteration: int,
-    rebase_count: int,
-    fix_attempts: int,
-    expected_reason: str,
-) -> None:
-    decision = ci_monitor.decide(
-        ci_monitor.CiStatus(status=status, behind_count=0, failed_run_id=None),
-        iteration=iteration,
-        rebase_count=rebase_count,
-        fix_attempts=fix_attempts,
-    )
-    assert decision.action == "bail"
-    assert decision.bail_reason == expected_reason
-
-
-def test_gather_status_merged_short_circuit() -> None:
-    runner = RecordingRunner(_status(merged=True))
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
-    assert status.status == "merged"
-    assert status.behind_count == 0
-
-
-@pytest.mark.parametrize(
-    ("merge_state", "expected_conflicted"),
-    [
-        ("DIRTY", True),
-        ("UNKNOWN", True),
-        ("BEHIND", False),
-        ("CLEAN", False),
-    ],
-)
-def test_gather_status_conflicted_from_merge_state(
-    merge_state: str,
-    expected_conflicted: bool,
-) -> None:
-    runner = RecordingRunner(_status(status="pass", merge_state=merge_state))
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
-    assert status.conflicted is expected_conflicted
-
-
-def test_gather_status_fail_extracts_run_id() -> None:
-    runner = RecordingRunner(_status(status="fail"))
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
-    assert status.status == "fail"
-    assert status.failed_run_id == "999"
-    assert status.checks_observed is True
-    assert status.checks_empty is False
-
-
-def test_gather_status_fetch_fail_pending() -> None:
-    responses = _status(status="pass")
-    responses[("git", "fetch", "origin", "main", "--quiet")] = _cr(
-        ("git", "fetch"),
-        rc=1,
-    )
-    runner = RecordingRunner(responses)
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
-    assert status.status == "pending"
-    assert status.behind_count == 0
-    assert status.checks_observed is False
-    assert status.checks_empty is False
-
-
-def test_gather_status_pr_view_failure_still_probes_checks() -> None:
-    responses = _status(status="pass")
-    responses[
-        (
-            "gh",
-            "pr",
-            "view",
-            "1",
-            "--repo",
-            "o/r",
-            "--json",
-            "number,url,state,headRefName,mergedAt,mergeStateStatus",
-        )
-    ] = _cr(("gh", "pr", "view"), rc=1)
-    runner = RecordingRunner(responses)
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
-    assert status.status == "pass"
-    assert status.conflicted is True
-
-
-def test_gather_status_behind_probe_fail_preserves_checks_status() -> None:
-    responses = _status(status="pass")
-    responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(
-        ("git", "rev-list", "--count"),
-        rc=1,
-    )
-    runner = RecordingRunner(responses)
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
-    assert status.status == "pass"
-    assert status.behind_count == 0
-    assert status.checks_observed is True
-    assert status.checks_empty is False
-
-
-def test_gather_status_behind_probe_fail_preserves_empty_rollup_observation() -> None:
-    responses = _status(status="empty")
-    responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(
-        ("git", "rev-list", "--count"),
-        rc=1,
-    )
-    runner = RecordingRunner(responses)
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
-    assert status.status == "pending"
-    assert status.behind_count == 0
-    assert status.checks_observed is True
-    assert status.checks_empty is True
-
-
-def test_gather_status_empty_checks_without_grace_records_empty_observation() -> None:
-    runner = RecordingRunner(_status(status="empty"))
-
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r", empty_checks_grace=0)
-
-    assert status.status == "pending"
-    assert status.checks_empty is True
-    assert status.checks_observed is True
-
-
-@pytest.mark.parametrize("check_status", ["pass", "pending", "fail"])
-def test_gather_status_non_empty_checks_record_observed_not_empty(check_status: str) -> None:
-    runner = RecordingRunner(_status(status=check_status))
-
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r", empty_checks_grace=0)
-
-    assert status.status == check_status
-    assert status.checks_empty is False
-    assert status.checks_observed is True
-
-
-def test_gather_status_empty_checks_grace() -> None:
-    responses = _status(status="empty")
-    runner = RecordingRunner(responses)
-    sleeps: list[float] = []
-
-    def sleep_fn(sec: float) -> None:
-        sleeps.append(sec)
-
-    status = ci_monitor.gather_status(
-        runner,
-        pr=1,
-        repo="o/r",
-        empty_checks_grace=5,
-        sleep_fn=sleep_fn,
-    )
-    assert status.status == "NO_CHECKS"
-    assert status.checks_empty is True
-    assert status.checks_observed is True
-    assert sleeps == [5.0]
-
-
 def test_checks_rollup_empty_zero_row_json() -> None:
     runner = RecordingRunner(_status(status="empty"))
 
@@ -807,573 +648,6 @@ def test_resolve_checks_observation_uses_same_text_fallback_for_non_empty_rollup
     assert observation.observed is True
 
 
-def test_gather_status_squash_merge_race() -> None:
-    responses = _status(status="pass", behind=2)
-    responses[("git", "log", "--format=%s", "HEAD..origin/main")] = ok(("git", "log"), "Squash feature (#1)\n")
-    runner = RecordingRunner(responses)
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
-    assert status.status == "merged"
-    assert status.behind_count == 0
-
-
-def test_poll_ci_returns_on_first_non_wait() -> None:
-    runner = RecordingRunner(_status(status="pass"))
-    status, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        sleep_fn=lambda _s: None,
-    )
-    assert status.status == "pass"
-    assert decision.action == "merge"
-
-
-def test_poll_ci_budget_exhaustion_bails() -> None:
-    runner = RecordingRunner(_status(status="pending", behind=0))
-    _, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=10.0,
-        sleep_fn=lambda _s: None,
-    )
-    assert decision.action == "bail"
-    assert decision.bail_reason == config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED
-
-
-def test_poll_ci_startup_deadline_empty_rollup_bails_no_blocking_sleep() -> None:
-    runner = RecordingRunner(_status(status="empty"))
-    json_key = (
-        "gh",
-        "pr",
-        "checks",
-        "1",
-        "--repo",
-        "o/r",
-        "--json",
-        "name,state,bucket,link",
-    )
-    text_key = ("gh", "pr", "checks", "1", "--repo", "o/r")
-    now = {"value": 0.0}
-    sleeps: list[float] = []
-
-    def clock() -> float:
-        return now["value"]
-
-    def sleep_fn(sec: float) -> None:
-        sleeps.append(sec)
-        now["value"] += sec
-
-    status, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        empty_checks_startup_deadline_sec=20,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=100.0,
-        sleep_fn=sleep_fn,
-        clock=clock,
-    )
-
-    assert status.status == "NO_CHECKS"
-    assert status.behind_count == 0
-    assert status.checks_empty is True
-    assert status.checks_observed is True
-    assert decision.action == "bail"
-    assert decision.bail_reason == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
-    assert sleeps == [
-        float(config.CI_WAIT_POLL_INTERVAL_SEC),
-        float(config.CI_WAIT_POLL_INTERVAL_SEC),
-    ]
-    assert runner.calls.count(json_key) == 3
-    assert runner.calls.count(text_key) == 3
-
-
-def test_poll_ci_startup_deadline_clears_when_checks_appear() -> None:
-    responses = _status(status="empty")
-    json_key = (
-        "gh",
-        "pr",
-        "checks",
-        "1",
-        "--repo",
-        "o/r",
-        "--json",
-        "name,state,bucket,link",
-    )
-    empty = ok(("gh", "pr", "checks"), "[]")
-    pending = ok(("gh", "pr", "checks"), json.dumps([{"name": "lint", "state": "IN_PROGRESS", "bucket": "pending", "link": ""}]))
-    runner = RecordingRunner(responses)
-    runner.sequential[json_key] = [empty, empty, pending, empty, empty]
-    now = {"value": 0.0}
-    sleeps: list[float] = []
-
-    def clock() -> float:
-        return now["value"]
-
-    def sleep_fn(sec: float) -> None:
-        sleeps.append(sec)
-        now["value"] += sec
-
-    status, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        empty_checks_startup_deadline_sec=20,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=50.0,
-        sleep_fn=sleep_fn,
-        clock=clock,
-    )
-
-    assert status.status == "pending"
-    assert decision.action == "bail"
-    assert decision.bail_reason == config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED
-    assert sleeps == [10.0, 10.0, 10.0, 10.0, 10.0]
-    assert runner.calls.count(json_key) == 5
-    assert runner.calls.count(("gh", "pr", "checks", "1", "--repo", "o/r")) == 4
-
-
-def test_poll_ci_startup_deadline_ignores_pending_in_flight_checks() -> None:
-    runner = RecordingRunner(_status(status="pending"))
-    now = {"value": 0.0}
-    sleeps: list[float] = []
-
-    def clock() -> float:
-        return now["value"]
-
-    def sleep_fn(sec: float) -> None:
-        sleeps.append(sec)
-        now["value"] += sec
-
-    status, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        empty_checks_startup_deadline_sec=10,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=20.0,
-        sleep_fn=sleep_fn,
-        clock=clock,
-    )
-
-    assert status.status == "pending"
-    assert decision.action == "bail"
-    assert decision.bail_reason == config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED
-    assert sleeps == [10.0, 10.0]
-
-
-def test_poll_ci_startup_deadline_does_not_run_before_non_wait_decision() -> None:
-    runner = RecordingRunner(_status(status="pending", behind=1))
-
-    status, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        empty_checks_startup_deadline_sec=10,
-        iteration=0,
-        # rebase_count at the cap forces a decisive non-wait "bail"; pending now
-        # always waits even when behind (issue #5217), so the cap is how this test
-        # still exercises the "decide returned non-wait" short-circuit.
-        rebase_count=config.CI_MONITOR_MAX_REBASES,
-        fix_attempts=0,
-        timeout=100.0,
-        sleep_fn=lambda _s: None,
-    )
-
-    assert status.status == "pending"
-    assert status.checks_empty is False
-    assert status.checks_observed is True
-    assert decision.action == "bail"
-    assert ("gh", "pr", "checks", "1", "--repo", "o/r") not in runner.calls
-
-
-def test_poll_ci_startup_deadline_expiry_returns_before_next_sleep(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    runner = RecordingRunner(_status(status="empty"))
-    now = {"value": 0.0}
-    sleeps: list[float] = []
-
-    def clock() -> float:
-        return now["value"]
-
-    def sleep_fn(sec: float) -> None:
-        sleeps.append(sec)
-        now["value"] += sec
-
-    status, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        empty_checks_startup_deadline_sec=10,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=100.0,
-        sleep_fn=sleep_fn,
-        clock=clock,
-    )
-    captured = capsys.readouterr()
-
-    assert status.status == "NO_CHECKS"
-    assert status.checks_empty is True
-    assert status.checks_observed is True
-    assert decision.bail_reason == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
-    assert sleeps == [10.0]
-    assert "poll 1/" in captured.err
-    assert "poll 2/" not in captured.err
-
-
-def test_poll_ci_startup_deadline_expiry_copies_live_snapshot_fields(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    live = ci_monitor.CiStatus(
-        status="pending",
-        behind_count=4,
-        failed_run_id="77",
-        conflicted=True,
-        pr_view_ok=False,
-        checks_empty=True,
-        checks_observed=True,
-    )
-
-    def fake_gather_status(*_args: object, **_kwargs: object) -> ci_monitor.CiStatus:
-        return live
-
-    def always_wait(
-        _status: ci_monitor.CiStatus,
-        **_kwargs: object,
-    ) -> ci_monitor.Decision:
-        return ci_monitor.Decision(action="wait")
-
-    now = {"value": 0.0}
-
-    def sleep_fn(sec: float) -> None:
-        now["value"] += sec
-
-    monkeypatch.setattr(ci_monitor, "gather_status", fake_gather_status)
-    monkeypatch.setattr(ci_monitor, "decide", always_wait)
-
-    status, decision = ci_monitor.poll_ci(
-        RecordingRunner(),
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        empty_checks_startup_deadline_sec=10,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=100.0,
-        sleep_fn=sleep_fn,
-        clock=lambda: now["value"],
-    )
-
-    assert status == ci_monitor.CiStatus(
-        status="NO_CHECKS",
-        behind_count=4,
-        failed_run_id="77",
-        conflicted=True,
-        pr_view_ok=False,
-        checks_empty=True,
-        checks_observed=True,
-    )
-    assert decision.bail_reason == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
-
-
-def test_poll_ci_startup_deadline_accumulates_when_behind_probe_fails() -> None:
-    responses = _status(status="empty")
-    responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(
-        ("git", "rev-list", "--count"),
-        rc=1,
-    )
-    runner = RecordingRunner(responses)
-    now = {"value": 0.0}
-
-    def sleep_fn(sec: float) -> None:
-        now["value"] += sec
-
-    status, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        empty_checks_startup_deadline_sec=10,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=100.0,
-        sleep_fn=sleep_fn,
-        clock=lambda: now["value"],
-    )
-
-    assert status.status == "NO_CHECKS"
-    assert status.checks_empty is True
-    assert status.checks_observed is True
-    assert decision.bail_reason == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
-
-
-def test_poll_ci_fetch_failure_does_not_clear_startup_deadline_accounting() -> None:
-    responses = _status(status="empty")
-    fetch_key = ("git", "fetch", "origin", "main", "--quiet")
-    responses[fetch_key] = ok(("git", "fetch"))
-    runner = RecordingRunner(responses)
-    runner.sequential[fetch_key] = [
-        ok(("git", "fetch")),
-        _cr(("git", "fetch"), 1),
-        ok(("git", "fetch")),
-    ]
-    now = {"value": 0.0}
-
-    def sleep_fn(sec: float) -> None:
-        now["value"] += sec
-
-    status, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        empty_checks_startup_deadline_sec=20,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=100.0,
-        sleep_fn=sleep_fn,
-        clock=lambda: now["value"],
-    )
-
-    assert status.status == "NO_CHECKS"
-    assert status.checks_empty is True
-    assert status.checks_observed is True
-    assert decision.bail_reason == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
-    assert runner.calls.count(fetch_key) == 3
-    assert runner.calls.count(
-        (
-            "gh",
-            "pr",
-            "checks",
-            "1",
-            "--repo",
-            "o/r",
-            "--json",
-            "name,state,bucket,link",
-        )
-    ) == 2
-
-
-def test_poll_ci_startup_deadline_zero_preserves_empty_pending_timeout() -> None:
-    runner = RecordingRunner(_status(status="empty"))
-
-    status, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        empty_checks_startup_deadline_sec=0,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=10.0,
-        sleep_fn=lambda _s: None,
-    )
-
-    assert status.status == "pending"
-    assert decision.action == "bail"
-    assert decision.bail_reason == config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED
-
-
-def test_poll_ci_repeated_status_errors_use_stale_token(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fake_gather_status(*_args: object, **_kwargs: object) -> ci_monitor.CiStatus:
-        return ci_monitor.CiStatus(status="error", behind_count=0, failed_run_id=None)
-
-    monkeypatch.setattr(ci_monitor, "gather_status", fake_gather_status)
-    _, decision = ci_monitor.poll_ci(
-        RecordingRunner(),
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=60.0,
-        sleep_fn=lambda _s: None,
-    )
-    assert decision.action == "bail"
-    assert decision.bail_reason == config.CI_WAIT_BAIL_STATUS_STALE
-
-
-def test_poll_ci_error_normalization_preserves_checks_observation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fake_gather_status(*_args: object, **_kwargs: object) -> ci_monitor.CiStatus:
-        return ci_monitor.CiStatus(
-            status="",
-            behind_count=0,
-            failed_run_id="55",
-            conflicted=True,
-            pr_view_ok=False,
-            checks_empty=True,
-            checks_observed=True,
-        )
-
-    monkeypatch.setattr(ci_monitor, "gather_status", fake_gather_status)
-
-    status, decision = ci_monitor.poll_ci(
-        RecordingRunner(),
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=10.0,
-        sleep_fn=lambda _s: None,
-    )
-
-    assert status.status == "pending"
-    assert status.failed_run_id == "55"
-    assert status.conflicted is True
-    assert status.pr_view_ok is False
-    assert status.checks_empty is True
-    assert status.checks_observed is True
-    assert decision.bail_reason == config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED
-
-
-def test_poll_ci_emits_poll_breadcrumb_to_stderr(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    runner = RecordingRunner(_status(status="pending", behind=0))
-    clock_values = iter((1.0, 8.0, 8.0))
-    _, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=10.0,
-        sleep_fn=lambda _s: None,
-        clock=lambda: next(clock_values, 8.0),
-    )
-    captured = capsys.readouterr()
-    assert decision.action == "bail"
-    assert captured.out == ""
-    assert "ci_monitor: poll 1/" in captured.err
-    assert "after 7s" in captured.err
-    assert "sleeping" in captured.err
-
-
-def test_poll_ci_pr_view_fail_open_triggers_rebase_when_behind() -> None:
-    responses = _status(status="pass", behind=1)
-    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt,mergeStateStatus")] = _cr(
-        ("gh", "pr", "view"),
-        rc=1,
-    )
-    runner = RecordingRunner(responses)
-    _, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=1000.0,
-        sleep_fn=lambda _s: None,
-    )
-    assert decision.action == "rebase"
-
-
-def test_poll_ci_retry_preserves_conflicted_state(monkeypatch: pytest.MonkeyPatch) -> None:
-    status_calls = {"n": 0}
-
-    def fake_gather_status(*_args: object, **_kwargs: object) -> ci_monitor.CiStatus:
-        status_calls["n"] += 1
-        if status_calls["n"] == 1:
-            return ci_monitor.CiStatus(
-                status="",
-                behind_count=2,
-                failed_run_id=None,
-                conflicted=True,
-                pr_view_ok=False,
-            )
-        return ci_monitor.CiStatus(
-            status="pass",
-            behind_count=2,
-            failed_run_id=None,
-            conflicted=True,
-            pr_view_ok=True,
-        )
-
-    monkeypatch.setattr(ci_monitor, "gather_status", fake_gather_status)
-    _, decision = ci_monitor.poll_ci(
-        RecordingRunner({}),
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=1000.0,
-        sleep_fn=lambda _s: None,
-    )
-    assert decision.action == "rebase"
-
-
 def test_monitor_evaluate_failure_bails_to_first_fixer(monkeypatch: pytest.MonkeyPatch) -> None:
     """Failed CI with no rebase needed → immediate first-fixer-non-health bail.
 
@@ -1421,20 +695,54 @@ def test_monitor_transient_bail_maps_to_transient(monkeypatch: pytest.MonkeyPatc
     assert result.result.detail == "HTTP 502 Bad Gateway"
 
 
-def test_monitor_already_merged_short_circuit_ok() -> None:
-    runner = RecordingRunner(_status(merged=True))
+@pytest.mark.parametrize(
+    ("status", "decision", "goto_rebase", "outcome", "detail"),
+    [
+        ("merged", ci_monitor.Decision("already_merged"), False, Outcome.OK, ""),
+        ("pass", ci_monitor.Decision("merge"), False, Outcome.OK, ""),
+        ("pass", ci_monitor.Decision("rebase"), True, Outcome.OK, ""),
+        ("fail", ci_monitor.Decision("rebase_then_evaluate"), True, Outcome.OK, ""),
+        (
+            "fail",
+            ci_monitor.Decision("bail", "fix-attempts-exhausted"),
+            False,
+            Outcome.NEEDS_USER_INPUT,
+            "fix-attempts-exhausted",
+        ),
+        ("pending", ci_monitor.Decision("bail", "ci-timeout"), False, Outcome.STALLED, "ci-timeout"),
+    ],
+)
+def test_monitor_preserves_rust_wait_state_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+    decision: ci_monitor.Decision,
+    goto_rebase: bool,
+    outcome: Outcome,
+    detail: str,
+) -> None:
+    observed = ci_monitor.CiStatus(status, 2, "42", conflicted=True)
 
+    def fake_poll_ci(*_args: object, **_kwargs: object) -> tuple[ci_monitor.CiStatus, ci_monitor.Decision]:
+        return observed, decision
+
+    monkeypatch.setattr(ci_monitor, "poll_ci", fake_poll_ci)
     result = ci_monitor.monitor(
-        runner,
+        RecordingRunner(),
         pr=1,
         repo="o/r",
-        sleep_fn=lambda _s: None,
+        iteration=4,
+        ci_fix_rebase_pending=True,
     )
 
-    assert result.action == "already_merged"
-    assert result.ci_status == "merged"
-    assert result.result.outcome is Outcome.OK
-    assert result.goto_rebase is False
+    assert result.action == decision.action
+    assert result.ci_status == status
+    assert result.behind_count == 2
+    assert result.failed_run_id == "42"
+    assert result.goto_rebase is goto_rebase
+    assert result.iterations == 4
+    assert result.result.outcome is outcome
+    assert result.result.detail == detail
+    assert result.ci_fix_rebase_pending is True
 
 
 def test_wait_for_pr_merge_observes_open_then_merged(
@@ -1518,60 +826,6 @@ def test_wait_for_pr_merge_times_out_without_claiming_completion() -> None:
             poll_interval=1,
             sleep_fn=lambda _delay: None,
         )
-
-
-def test_monitor_pr_view_probe_fail_open_rebases_when_behind() -> None:
-    responses = _status(status="pass", behind=1)
-    responses[
-        (
-            "gh",
-            "pr",
-            "view",
-            "1",
-            "--repo",
-            "o/r",
-            "--json",
-            "number,url,state,headRefName,mergedAt,mergeStateStatus",
-        )
-    ] = _cr(("gh", "pr", "view"), rc=1)
-    runner = RecordingRunner(responses)
-
-    result = ci_monitor.monitor(
-        runner,
-        pr=1,
-        repo="o/r",
-        sleep_fn=lambda _s: None,
-    )
-
-    assert result.action == "rebase"
-    assert result.goto_rebase is True
-    assert result.ci_status == "pass"
-
-
-def test_poll_ci_suspend_not_charged() -> None:
-    runner = RecordingRunner(_status(status="pending", behind=0))
-    clock_values = [0.0, 70.0, 70.0, 140.0, 210.0, 280.0]
-
-    def clock() -> float:
-        if clock_values:
-            return clock_values.pop(0)
-        return 9999.0
-
-    _, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=30.0,
-        sleep_fn=lambda _s: None,
-        clock=clock,
-    )
-    assert decision.action == "bail"
 
 
 def test_classify_failed_jobs_matrix_and_fixable() -> None:
@@ -2863,50 +2117,6 @@ def test_evaluate_failure_error_logs_defers_fix() -> None:
     assert not any(c[:4] == ("gh", "run", "view", "42") and "--json" in c for c in runner.calls)
 
 
-def test_monitor_merge_ok_no_goto() -> None:
-    runner = RecordingRunner(_status(status="pass"))
-    result = ci_monitor.monitor(
-        runner,
-        pr=1,
-        repo="o/r",
-        sleep_fn=lambda _s: None,
-    )
-    assert result.result.outcome == Outcome.OK
-    assert result.goto_rebase is False
-
-
-def test_monitor_fail_behind_preserves_failed_run_id_for_handoff() -> None:
-    responses = _status(status="fail", behind=1)
-    runner = RecordingRunner(responses)
-
-    result = ci_monitor.monitor(
-        runner,
-        pr=1,
-        repo="o/r",
-        sleep_fn=lambda _s: None,
-    )
-    assert result.action == "evaluate_failure"
-    assert result.failed_run_id == "999"
-    assert result.result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.goto_rebase is False
-    # Behind + failed CI preserves the failed run before any rebase.
-    assert not any(c[:3] == ("gh", "run", "view") for c in runner.calls)
-    assert not any(c[:3] == ("gh", "run", "rerun") for c in runner.calls)
-
-
-def test_monitor_fix_attempts_exhausted_needs_user_input() -> None:
-    runner = RecordingRunner(_status(status="pending"))
-    result = ci_monitor.monitor(
-        runner,
-        pr=1,
-        repo="o/r",
-        fix_attempts=10,
-        sleep_fn=lambda _s: None,
-    )
-    assert result.result.outcome == Outcome.NEEDS_USER_INPUT
-    assert result.result.detail == "fix-attempts-exhausted"
-
-
 def test_redact_in_collect_failed_logs_unit() -> None:
     sample = "token ghp_" + "x" * 40
     redacted = redact.redact(sample)
@@ -2914,25 +2124,6 @@ def test_redact_in_collect_failed_logs_unit() -> None:
 
 
 # FINDING_14: poll_ci NO_CHECKS bail
-def test_poll_ci_no_checks_bail() -> None:
-    """Empty checks with grace → NO_CHECKS bail from poll_ci."""
-    responses = _status(status="empty")
-    runner = RecordingRunner(responses)
-    status, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=5,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        sleep_fn=lambda _s: None,
-    )
-    assert decision.action == "bail"
-    assert status.status == "NO_CHECKS"
-    assert decision.bail_reason == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
 
 
 # FINDING_15: run_ci_fix head-changed
@@ -3082,18 +2273,6 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
 
 
 # FINDING_12: monitor driver mapping tests
-def test_monitor_timeout_bail_stalled() -> None:
-    """Iteration cap reached → bail → STALLED."""
-    runner = RecordingRunner(_status(status="pending"))
-    result = ci_monitor.monitor(
-        runner,
-        pr=1,
-        repo="o/r",
-        iteration=config.CI_MONITOR_MAX_ITERATIONS,
-        sleep_fn=lambda _s: None,
-    )
-    assert result.result.outcome == Outcome.STALLED
-    assert result.result.detail == "ci-timeout"
 
 
 def test_checks_status_required_true_is_checks_only_and_uses_required_json() -> None:
@@ -3127,70 +2306,6 @@ def test_checks_status_required_true_is_checks_only_and_uses_required_json() -> 
             "--required",
         ),
     ]
-
-
-def test_gather_status_required_true_passes_required_to_json_checks() -> None:
-    responses = _status(status="pass")
-    responses[
-        (
-            "gh",
-            "pr",
-            "checks",
-            "1",
-            "--repo",
-            "o/r",
-            "--json",
-            "name,state,bucket,link",
-            "--required",
-        )
-    ] = ok(("gh", "pr", "checks"), json.dumps([{"name": "ci", "bucket": "pass"}]))
-    runner = RecordingRunner(responses)
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r", required=True)
-    assert status.status == "pass"
-    assert (
-        "gh",
-        "pr",
-        "checks",
-        "1",
-        "--repo",
-        "o/r",
-        "--json",
-        "name,state,bucket,link",
-        "--required",
-    ) in runner.calls
-
-
-def test_poll_ci_required_true_forwards_required_to_gather() -> None:
-    responses = _status(status="pass")
-    responses[
-        (
-            "gh",
-            "pr",
-            "checks",
-            "1",
-            "--repo",
-            "o/r",
-            "--json",
-            "name,state,bucket,link",
-            "--required",
-        )
-    ] = ok(("gh", "pr", "checks"), json.dumps([{"name": "ci", "bucket": "pass"}]))
-    runner = RecordingRunner(responses)
-    status, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        required=True,
-    )
-    assert status.status == "pass"
-    assert decision.action == "merge"
-    assert any(call[-1] == "--required" for call in runner.calls if call[:3] == ("gh", "pr", "checks"))
 
 
 def test_required_text_fallback_invokes_gh_required_not_public_helper() -> None:
@@ -3323,154 +2438,6 @@ _PR_CHECKS_JSON_KEY = (
     "--json",
     "name,state,bucket,link",
 )
-
-
-def test_gather_status_pr_view_timeout_returns_error() -> None:
-    # A hung gh pr view (EXIT_TIMEOUT) must surface as a status failure, not be
-    # swallowed into a checks-derived status, so poll_ci can count it (#5066).
-    responses = _status(status="pass")
-    responses[_PR_VIEW_KEY] = _cr(("gh", "pr", "view"), rc=config.EXIT_TIMEOUT)
-    runner = RecordingRunner(responses)
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
-    assert status.status == "error"
-    assert status.pr_view_ok is False
-
-
-def test_poll_ci_pr_view_timeout_bails_status_stale() -> None:
-    responses = _status(status="pass")
-    responses[_PR_VIEW_KEY] = _cr(("gh", "pr", "view"), rc=config.EXIT_TIMEOUT)
-    runner = RecordingRunner(responses)
-    _, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=60.0,
-        sleep_fn=lambda _s: None,
-        clock=lambda: 0.0,
-    )
-    assert decision.action == "bail"
-    assert decision.bail_reason == config.CI_WAIT_BAIL_STATUS_STALE
-
-
-def test_gather_status_pr_checks_timeout_returns_error() -> None:
-    responses = _status(status="pass")
-    responses[_PR_CHECKS_JSON_KEY] = _cr(("gh", "pr", "checks"), rc=config.EXIT_TIMEOUT)
-    runner = RecordingRunner(responses)
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
-    assert status.status == "error"
-    assert status.checks_observed is False
-
-
-def test_poll_ci_pr_checks_timeout_bails_status_stale() -> None:
-    responses = _status(status="pass")
-    responses[_PR_CHECKS_JSON_KEY] = _cr(("gh", "pr", "checks"), rc=config.EXIT_TIMEOUT)
-    runner = RecordingRunner(responses)
-    _, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=60.0,
-        sleep_fn=lambda _s: None,
-        clock=lambda: 0.0,
-    )
-    assert decision.action == "bail"
-    assert decision.bail_reason == config.CI_WAIT_BAIL_STATUS_STALE
-
-
-def test_gather_status_fetch_timeout_returns_error() -> None:
-    responses = _status(status="pass")
-    responses[("git", "fetch", "origin", "main", "--quiet")] = _cr(
-        ("git", "fetch"),
-        rc=config.EXIT_TIMEOUT,
-    )
-    runner = RecordingRunner(responses)
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
-    assert status.status == "error"
-    assert status.checks_observed is False
-
-
-def test_gather_status_behind_count_timeout_preserves_checks_observation() -> None:
-    responses = _status(status="pass")
-    responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(
-        ("git", "rev-list", "--count"),
-        rc=config.EXIT_TIMEOUT,
-    )
-    runner = RecordingRunner(responses)
-    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
-    assert status.status == "pending"
-    assert status.checks_observed is True
-    assert status.behind_count == 0
-
-
-def test_poll_ci_emits_query_heartbeat_and_transition_breadcrumbs(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    runner = RecordingRunner(_status(status="pass"))
-    _, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        sleep_fn=lambda _s: None,
-    )
-    captured = capsys.readouterr()
-    assert decision.action == "merge"
-    assert captured.out == ""
-    assert "CI status query #1 in progress" in captured.err
-    assert "-> merge" in captured.err
-
-
-def test_poll_ci_suspend_gap_emits_breadcrumb(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    runner = RecordingRunner(_status(status="pending", behind=0))
-    now = {"value": 0.0}
-    sleep_calls = {"n": 0}
-
-    def clock() -> float:
-        return now["value"]
-
-    def sleep_fn(_sec: float) -> None:
-        sleep_calls["n"] += 1
-        # Simulate a host-suspend real-time gap on the first poll only so the loop
-        # still terminates on poll-budget exhaustion afterward.
-        now["value"] += 200.0 if sleep_calls["n"] == 1 else 10.0
-
-    _, decision = ci_monitor.poll_ci(
-        runner,
-        pr=1,
-        repo="o/r",
-        base_remote="origin",
-        base_ref="main",
-        empty_checks_grace=0,
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        timeout=30.0,
-        sleep_fn=sleep_fn,
-        clock=clock,
-    )
-    captured = capsys.readouterr()
-    assert decision.action == "bail"
-    assert decision.bail_reason == config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED
-    assert "host suspend" in captured.err
 
 
 def test_verify_job_locally_uses_run_aware_breadcrumb(

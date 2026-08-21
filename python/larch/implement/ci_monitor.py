@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 import os
 import re
 import tempfile
@@ -23,7 +22,7 @@ from larch.core import logging_util
 from larch.core import redact
 from larch.core import retry
 from larch.core import rust_runtime as run_log_flush
-from larch.core.repo_roots import larch_entrypoint
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.report import run_log_manifest
 from larch.report import progress_file
 from larch.agents.agents import TierAttempt
@@ -34,7 +33,6 @@ from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext
 
 _IN_PROGRESS_MSG = "is still in progress; logs will be available"
-_CI_SUSPEND_THRESHOLD_SEC = 60.0
 _RUN_ID_RE = re.compile(r"runs/(\d+)")
 _MATRIX_SLICE_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*)\s+\((\d+)\)$")
 _MATRIX_ANY_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*)\s+\(([^)]*)\)$")
@@ -143,66 +141,6 @@ class MonitorResult:
     ci_fix_rebase_pending: bool = False
 
 
-def _conflicted_from_merge_state(merge_state: str | None) -> bool:
-    """Mirror ci status CONFLICTED derivation (conservative for UNKNOWN/empty)."""
-    if not merge_state:
-        return True
-    if merge_state == "DIRTY":
-        return True
-    if merge_state in ("CLEAN", "BEHIND", "BLOCKED", "UNSTABLE", "HAS_HOOKS"):
-        return False
-    if merge_state == "UNKNOWN":
-        return True
-    return True
-
-
-def decide(
-    status: CiStatus,
-    *,
-    iteration: int,
-    rebase_count: int,
-    fix_attempts: int,
-) -> Decision:
-    """Pure port of ci decide decision matrix."""
-    if status.status == "merged":
-        return Decision(action="already_merged")
-    if status.status == "error":
-        return Decision(
-            action="bail",
-            bail_reason=config.CI_DECIDE_BAIL_STATUS_ERROR,
-        )
-    behind = status.behind_count > 0
-    if status.status == "pass" and (not behind or not status.conflicted):
-        return Decision(action="merge")
-    if iteration >= config.CI_MONITOR_MAX_ITERATIONS:
-        return Decision(
-            action="bail",
-            bail_reason=config.CI_DECIDE_BAIL_TIMEOUT,
-        )
-    if rebase_count >= config.CI_MONITOR_MAX_REBASES:
-        return Decision(
-            action="bail",
-            bail_reason=config.CI_DECIDE_BAIL_TOO_MANY_REBASES,
-        )
-    if fix_attempts >= config.CI_MONITOR_MAX_FIX_ATTEMPTS:
-        return Decision(action="bail", bail_reason=config.CI_DECIDE_BAIL_FIX_ATTEMPTS_EXHAUSTED)
-    if status.status == "pending":
-        # Wait out an in-flight run on the current head even when behind main. A
-        # behind-but-unconflicted branch is squash-mergeable, so rebasing a
-        # pending run would only discard healthy CI and force-push a new head
-        # that must re-register checks from scratch -- the false
-        # no-ci-checks-observed stall of issue #5217. A genuine conflict still
-        # rebases once the run resolves to pass+behind+conflicted above.
-        return Decision(action="wait")
-    if status.status == "pass":
-        return Decision(action="rebase")
-    if status.status == "fail":
-        return Decision(
-            action="rebase_then_evaluate" if behind and not status.failed_run_id else "evaluate_failure",
-        )
-    return Decision(action="wait")
-
-
 def _extract_run_id(link: str) -> str | None:
     match = _RUN_ID_RE.search(link)
     return match.group(1) if match else None
@@ -236,26 +174,6 @@ def _raise_on_status_query_timeout(result: CommandResult, *, label: str) -> None
             f"({' '.join(result.argv)})"
         )
         raise gh.GhReadTimeout(msg)
-
-
-def _ci_status_for_query_timeout(
-    *,
-    conflicted: bool,
-    pr_view_ok: bool,
-    label: str,
-) -> CiStatus:
-    _warn_stderr(
-        f"gather_status: {label} timed out after "
-        f"{config.CI_STATUS_QUERY_TIMEOUT_SEC:.0f}s; treating as CI status failure",
-    )
-    return CiStatus(
-        status="error",
-        behind_count=0,
-        failed_run_id=None,
-        conflicted=conflicted,
-        pr_view_ok=pr_view_ok,
-        checks_observed=False,
-    )
 
 
 def _behind_count(
@@ -313,20 +231,6 @@ def behind_count(
         cwd=cwd,
     )
     return probe.count if probe.count is not None else 0
-
-
-def _squash_merge_race(
-    runner: Runner,
-    *,
-    pr: int,
-    base_remote: str,
-    base_ref: str,
-    cwd: str | None,
-) -> bool:
-    base = f"{base_remote}/{base_ref}"
-    subjects = git.try_log_subjects(runner, f"HEAD..{base}", cwd=cwd)
-    needle = f"(#{pr})"
-    return any(needle in subject for subject in subjects.subjects)
 
 
 def _parse_check_rows(parsed: object) -> list[dict[str, object]]:
@@ -572,222 +476,6 @@ def checks_status(
     )
 
 
-@dataclass(frozen=True)
-class _AfterPrViewQuery:
-    pr: int
-    repo: str
-    base_remote: str
-    base_ref: str
-    empty_checks_grace: int
-    sleep_fn: SleepFn
-    cwd: str | None
-    required: bool
-    conflicted: bool
-    pr_view_ok: bool
-
-
-def _gather_git_checks_and_behind(
-    *, runner: Runner,
-    query: _AfterPrViewQuery,
-) -> CiStatus | tuple[ChecksObservation, BehindProbe]:
-    try:
-        fetch = git.fetch(
-            runner,
-            query.base_remote,
-            query.base_ref,
-            cwd=query.cwd,
-            timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC,
-        )
-        _raise_on_status_query_timeout(fetch, label="git fetch")
-        if fetch.returncode != 0:
-            return CiStatus(
-                status="pending",
-                behind_count=0,
-                failed_run_id=None,
-                conflicted=query.conflicted,
-                checks_empty=False,
-                checks_observed=False,
-            )
-        observation = _resolve_checks_observation(
-            runner,
-            pr=query.pr,
-            repo=query.repo,
-            empty_checks_grace=query.empty_checks_grace,
-            sleep_fn=query.sleep_fn,
-            cwd=query.cwd,
-            required=query.required,
-        )
-        behind_probe = _behind_count(
-            runner,
-            base_remote=query.base_remote,
-            base_ref=query.base_ref,
-            cwd=query.cwd,
-        )
-    except gh.GhReadTimeout as exc:
-        label = str(exc).split(" timed out after ", maxsplit=1)[0]
-        return _ci_status_for_query_timeout(
-            conflicted=query.conflicted,
-            pr_view_ok=query.pr_view_ok,
-            label=label,
-        )
-    return observation, behind_probe
-
-
-def gather_status(
-    runner: Runner,
-    *,
-    pr: int,
-    repo: str,
-    base_remote: str = "origin",
-    base_ref: str = "main",
-    empty_checks_grace: int = 0,
-    sleep_fn: SleepFn = time.sleep,
-    cwd: str | None = None,
-    required: bool = False,
-) -> CiStatus:
-    """Port of ci status."""
-    conflicted = True
-    pr_view_ok = True
-    try:
-        pr_info = gh.pr_view(
-            runner,
-            pr,
-            repo=repo,
-            cwd=cwd,
-            timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC,
-        )
-    except gh.GhReadTimeout:
-        return _ci_status_for_query_timeout(
-            conflicted=True,
-            pr_view_ok=False,
-            label="gh pr view",
-        )
-    except Exception:  # pylint: disable=broad-except
-        pr_info = None
-        pr_view_ok = False
-    if pr_info is not None:
-        if pr_info.state.upper() == "MERGED":
-            return CiStatus(status="merged", behind_count=0, failed_run_id=None, conflicted=False)
-        conflicted = _conflicted_from_merge_state(pr_info.merge_state_status)
-
-    gathered = _gather_git_checks_and_behind(runner=runner, query=_AfterPrViewQuery(
-            pr=pr,
-            repo=repo,
-            base_remote=base_remote,
-            base_ref=base_ref,
-            empty_checks_grace=empty_checks_grace,
-            sleep_fn=sleep_fn,
-            cwd=cwd,
-            required=required,
-            conflicted=conflicted,
-            pr_view_ok=pr_view_ok,
-        ))
-    if isinstance(gathered, CiStatus):
-        return gathered
-    observation, behind_probe = gathered
-    if behind_probe.timed_out:
-        return CiStatus(
-            status="pending",
-            behind_count=0,
-            failed_run_id=observation.failed_run_id,
-            conflicted=conflicted,
-            pr_view_ok=pr_view_ok,
-            checks_empty=observation.rollup_empty,
-            checks_observed=observation.observed,
-        )
-    behind = behind_probe.count if behind_probe.count is not None else 0
-    if behind > 0 and _squash_merge_race(
-        runner,
-        pr=pr,
-        base_remote=base_remote,
-        base_ref=base_ref,
-        cwd=cwd,
-    ):
-        return CiStatus(
-            status="merged",
-            behind_count=0,
-            failed_run_id=None,
-            conflicted=False,
-            checks_empty=observation.rollup_empty,
-            checks_observed=observation.observed,
-        )
-    return CiStatus(
-        status=observation.status,
-        behind_count=behind,
-        failed_run_id=observation.failed_run_id,
-        conflicted=conflicted,
-        pr_view_ok=pr_view_ok,
-        checks_empty=observation.rollup_empty,
-        checks_observed=observation.observed,
-    )
-
-
-def _coerce_status_failure(
-    *, status: CiStatus,
-    ci_failures: int,
-) -> tuple[CiStatus, int, Decision | None]:
-    """Track consecutive status failures: bail past the threshold, else degrade to pending."""
-    if status.status and status.status != "error":
-        return status, 0, None
-    ci_failures += 1
-    if ci_failures >= config.CI_MONITOR_STATUS_FAILURE_BAIL:
-        return (
-            CiStatus(status="error", behind_count=0, failed_run_id=None),
-            ci_failures,
-            Decision(action="bail", bail_reason=config.CI_WAIT_BAIL_STATUS_STALE),
-        )
-    degraded = CiStatus(
-        status="pending",
-        behind_count=status.behind_count,
-        failed_run_id=status.failed_run_id,
-        conflicted=status.conflicted,
-        pr_view_ok=status.pr_view_ok,
-        checks_empty=status.checks_empty,
-        checks_observed=status.checks_observed,
-    )
-    return degraded, ci_failures, None
-
-
-def _startup_deadline_step(
-    status: CiStatus,
-    *,
-    active: bool,
-    empty_since: float | None,
-    deadline_sec: int,
-    clock: ClockFn,
-) -> tuple[bool, float | None, tuple[CiStatus, Decision] | None]:
-    """Advance the empty-checks startup-deadline state machine for one poll.
-
-    Returns the next (active, empty_since) state plus a terminal
-    (status, decision) pair when the deadline elapses, else None.
-    """
-    if not active:
-        return active, empty_since, None
-    if status.checks_observed and status.checks_empty:
-        now = clock()
-        if empty_since is None:
-            empty_since = now
-        if now - empty_since >= deadline_sec:
-            decision = Decision(
-                action="bail",
-                bail_reason=config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
-            )
-            terminal = CiStatus(
-                status="NO_CHECKS",
-                behind_count=status.behind_count,
-                failed_run_id=status.failed_run_id,
-                conflicted=status.conflicted,
-                pr_view_ok=status.pr_view_ok,
-                checks_empty=True,
-                checks_observed=status.checks_observed,
-            )
-            return active, empty_since, (terminal, decision)
-        return active, empty_since, None
-    if status.checks_observed:
-        return False, None, None
-    return active, empty_since, None
-
-
 def poll_ci(
     runner: Runner,
     *,
@@ -804,112 +492,114 @@ def poll_ci(
     sleep_fn: SleepFn = time.sleep,
     clock: ClockFn = time.monotonic,
     cwd: str | None = None,
-    required: bool = False,  # Callers that restrict to required checks must pass required=True.
+    required: bool = False,
 ) -> tuple[CiStatus, Decision]:
-    """Port of ci wait poll loop."""
-    max_polls = max(1, math.ceil(timeout / config.CI_WAIT_POLL_INTERVAL_SEC))
-    checks = 0
-    ci_failures = 0
-    poll_interval = float(config.CI_WAIT_POLL_INTERVAL_SEC)
-    started_at = clock()
-    last_status = CiStatus(status="pending", behind_count=0, failed_run_id=None)
-    startup_deadline_active = empty_checks_startup_deadline_sec > 0
-    startup_empty_since: float | None = None
-
-    def _emit_exit(*, label: str, decision: Decision) -> None:
-        # Transition breadcrumb so the operator can see polling ended and why,
-        # instead of a stale "poll N pending" being the last visible line (#5066).
-        elapsed = max(0.0, clock() - started_at)
-        suffix = f" ({decision.bail_reason})" if decision.bail_reason else ""
-        _warn_stderr(
-            f"ci_monitor: CI {label} after {elapsed:.0f}s -> {decision.action}{suffix}",
+    """Consume the Rust-owned CI polling command through the verified wrapper."""
+    if required:
+        msg = "required-only polling is not supported by the Rust CI monitor"
+        raise ValueError(msg)
+    _ = sleep_fn, clock
+    result = runner.run(
+        [
+            str(larch_entrypoint(_REPO_ROOT)),
+            "ci",
+            "wait",
+            "--pr",
+            str(pr),
+            "--repo",
+            repo,
+            "--base-remote",
+            base_remote,
+            "--base-ref",
+            base_ref,
+            "--empty-checks-grace",
+            str(empty_checks_grace),
+            "--empty-checks-startup-deadline",
+            str(empty_checks_startup_deadline_sec),
+            "--iteration",
+            str(iteration),
+            "--rebase-count",
+            str(rebase_count),
+            "--fix-attempts",
+            str(fix_attempts),
+            "--timeout",
+            str(int(timeout)),
+        ],
+        cwd=cwd,
+        env=larch_entrypoint_env(_REPO_ROOT),
+        timeout=None,
+    )
+    fields = larch_io.parse_kv(
+        result.stdout,
+        duplicate_policy="last",
+        allowed_keys={
+            "ACTION",
+            "CI_STATUS",
+            "BEHIND_COUNT",
+            "CONFLICTED",
+            "FAILED_RUN_ID",
+            "BAIL_REASON",
+            "ITERATION",
+            "ELAPSED",
+        },
+    )
+    if result.returncode != 0:
+        return _unexpected_wait_result()
+    try:
+        required_fields = {
+            "ACTION",
+            "CI_STATUS",
+            "BEHIND_COUNT",
+            "CONFLICTED",
+            "FAILED_RUN_ID",
+            "BAIL_REASON",
+            "ITERATION",
+            "ELAPSED",
+        }
+        if not required_fields.issubset(fields):
+            return _unexpected_wait_result()
+        status_text = str(fields["CI_STATUS"])
+        conflicted_text = str(fields["CONFLICTED"]).lower()
+        action = str(fields["ACTION"])
+        behind_count = int(fields["BEHIND_COUNT"])
+        wire_iteration = int(fields["ITERATION"])
+        elapsed = int(fields["ELAPSED"])
+        if status_text not in {"pass", "fail", "pending", "merged", "error", "NO_CHECKS"}:
+            return _unexpected_wait_result()
+        if conflicted_text not in {"true", "false"} or behind_count < 0:
+            return _unexpected_wait_result()
+        if wire_iteration != iteration or elapsed < 0:
+            return _unexpected_wait_result()
+        if action not in {
+            "already_merged",
+            "bail",
+            "evaluate_failure",
+            "merge",
+            "rebase",
+            "rebase_then_evaluate",
+            "wait",
+        }:
+            return _unexpected_wait_result()
+        status = CiStatus(
+            status=status_text,
+            behind_count=behind_count,
+            failed_run_id=str(fields.get("FAILED_RUN_ID", "")) or None,
+            conflicted=conflicted_text == "true",
         )
-
-    while True:
-        if checks >= max_polls:
-            decision = Decision(
-                action="bail",
-                bail_reason=config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED,
-            )
-            _emit_exit(label=last_status.status, decision=decision)
-            return last_status, decision
-
-        # Heartbeat before the in-flight status query so a hang inside
-        # gather_status is visible (last line is "CI status query #N in
-        # progress") rather than masquerading as a normal "poll N pending;
-        # sleeping" line (#5066).
-        query_elapsed = max(0.0, clock() - started_at)
-        _warn_stderr(
-            f"ci_monitor: CI status query #{checks + 1} in progress "
-            f"after {query_elapsed:.0f}s",
+        decision = Decision(
+            action=action,
+            bail_reason=str(fields.get("BAIL_REASON", "")) or None,
         )
-        status = gather_status(
-            runner,
-            pr=pr,
-            repo=repo,
-            base_remote=base_remote,
-            base_ref=base_ref,
-            empty_checks_grace=empty_checks_grace,
-            sleep_fn=sleep_fn,
-            cwd=cwd,
-            required=required,
-        )
+    except (KeyError, TypeError, ValueError):
+        return _unexpected_wait_result()
+    return status, decision
 
-        status, ci_failures, fail_decision = _coerce_status_failure(status=status, ci_failures=ci_failures)
-        if fail_decision is not None:
-            _emit_exit(label="error", decision=fail_decision)
-            return status, fail_decision
 
-        last_status = status
-
-        if status.status == "NO_CHECKS":
-            decision = Decision(
-                action="bail",
-                bail_reason=config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
-            )
-            _emit_exit(label="NO_CHECKS", decision=decision)
-            return status, decision
-
-        decision = decide(
-            status,
-            iteration=iteration,
-            rebase_count=rebase_count,
-            fix_attempts=fix_attempts,
-        )
-        if decision.action != "wait":
-            _emit_exit(label=status.status, decision=decision)
-            return status, decision
-
-        startup_deadline_active, startup_empty_since, startup_terminal = _startup_deadline_step(
-            status,
-            active=startup_deadline_active,
-            empty_since=startup_empty_since,
-            deadline_sec=empty_checks_startup_deadline_sec,
-            clock=clock,
-        )
-        if startup_terminal is not None:
-            _emit_exit(label="NO_CHECKS", decision=startup_terminal[1])
-            return startup_terminal
-
-        checks += 1
-        elapsed = max(0.0, clock() - started_at)
-        _warn_stderr(
-            f"ci_monitor: poll {checks}/{max_polls} pending after {elapsed:.0f}s; "
-            f"sleeping {poll_interval:.0f}s",
-        )
-        iter_start = clock()
-        sleep_fn(poll_interval)
-        iter_delta = clock() - iter_start
-        if iter_delta > _CI_SUSPEND_THRESHOLD_SEC:
-            # A large real-time gap means the process was suspended (e.g. host
-            # sleep) with time.monotonic paused; explain the non-advancing poll
-            # counter instead of leaving it silent (#5066).
-            _warn_stderr(
-                f"ci_monitor: detected {iter_delta:.0f}s real-time gap during poll "
-                f"{checks} (threshold {_CI_SUSPEND_THRESHOLD_SEC:.0f}s); probable "
-                "host suspend, not counting this poll",
-            )
-            checks -= 1
+def _unexpected_wait_result() -> tuple[CiStatus, Decision]:
+    return (
+        CiStatus(status="error", behind_count=0, failed_run_id=None),
+        Decision(action="bail", bail_reason=config.CI_WAIT_BAIL_UNEXPECTED_EXIT),
+    )
 
 
 def wait_for_pr_merge(

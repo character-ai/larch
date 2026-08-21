@@ -1383,11 +1383,13 @@ verb = "decide"
 python_module = "larch.implement.ci"
 python_function = "decide_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8619
+clean_install_test = "clean-install-ci-decide"
 
 [[commands]]
 domain = "ci"
@@ -1541,11 +1543,13 @@ verb = "status"
 python_module = "larch.implement.ci"
 python_function = "status_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8619
+clean_install_test = "clean-install-ci-status"
 
 [[commands]]
 domain = "ci"
@@ -1567,11 +1571,13 @@ verb = "wait"
 python_module = "larch.implement.ci"
 python_function = "wait_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8619
+clean_install_test = "clean-install-ci-wait"
 
 [[commands]]
 domain = "ci-timing"
@@ -9263,7 +9269,7 @@ rust = ["checks rust-clippy", "timing mark", "timing record-vendor-task", "token
 path = "python/larch/implement/ci_monitor.py"
 kind = "python-runtime"
 python = []
-rust = ["git commit", "git rebase-abort", "git stage", "push rebase"]
+rust = ["ci wait", "git commit", "git rebase-abort", "git stage", "push rebase"]
 
 [[callers]]
 path = "python/larch/implement/complete_umbrella_ship.py"
@@ -9736,8 +9742,8 @@ rust = ["fluff-analysis analyze"]
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["ci distill-log", "ci main-health", "ci status", "ci wait", "diagram code-flow", "diagrams upsert", "implement commit", "implement step-16-17", "implement step-17", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "tracking post-issue"]
-rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
+python = ["ci distill-log", "ci main-health", "diagram code-flow", "diagrams upsert", "implement commit", "implement step-16-17", "implement step-17", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "tracking post-issue"]
+rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci status", "ci wait", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"

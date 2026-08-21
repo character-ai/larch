@@ -285,7 +285,6 @@ STALL_RECOVERY_NEEDS_USER_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
 SUBPROCESS_DEFAULT_TIMEOUT_SEC: Final = 1800
 CI_WAIT_TIMEOUT_SEC: Final = 1800
 FIXER_LANE_TIMEOUT_SEC: Final = 1800
-CI_WAIT_POLL_INTERVAL_SEC: Final = 10
 # `/complete-umbrella` keeps its leaf ship phase out of the model loop. The
 # standalone driver owns one long CI wait and refreshes GitHub at this fixed
 # cadence. Keep this distinct from the interactive `/implement` monitor.
@@ -311,13 +310,9 @@ MERGE_QUEUE_SUBMISSION_VERIFY_INTERVAL_SEC: Final = 1
 # gh pr checks). Dedicated and far shorter than SUBPROCESS_DEFAULT_TIMEOUT_SEC so
 # a single hung gh read cannot block gather_status for the whole poll budget
 # (issue #5066). A hung query hits this timeout, returns exit EXIT_TIMEOUT, and a
-# pr-view timeout counts toward CI_MONITOR_STATUS_FAILURE_BAIL (bail with
-# CI_WAIT_BAIL_STATUS_STALE after the threshold).
+# Poll-time read timeouts count toward the Rust monitor's bounded consecutive
+# failure threshold before it returns CI_WAIT_BAIL_STATUS_STALE.
 CI_STATUS_QUERY_TIMEOUT_SEC: Final = 120
-# Default empty-checks grace for the manual `ci status` / `ci wait` CLIs: a
-# runless PR head (zero attached checks) classifies as NO_CHECKS within this
-# window instead of polling the full CI_WAIT_TIMEOUT_SEC budget (issue #4924).
-CI_WAIT_EMPTY_CHECKS_GRACE_SEC: Final = 120
 MAIN_HEALTH_DEFAULT_WORKFLOW: Final = "CI"
 MAIN_HEALTH_RUN_LIST_LIMIT: Final = 20
 MAIN_HEALTH_MAX_TRANSIENT_RETRIES: Final = 1
@@ -1061,15 +1056,10 @@ TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX: Final = "chore(larch-logs): "
 CLASSIFY_SCOPE_DIRS: Final[tuple[str, ...]] = ("skills", "agents")
 APPLY_BUMP_ALLOWED_UNTRACKED_SUFFIXES: Final = (".launcher-stderr", ".redacted.log")
 
-# CI monitor loop (Phase 6)
-CI_MONITOR_MAX_ITERATIONS: Final = 50
 SHIP_MERGE_LOOP_MAX_ITERATIONS: Final = 50
 SHIP_MERGE_CI_NOT_READY_STALL_THRESHOLD: Final = 3
-CI_MONITOR_MAX_REBASES: Final = 20
-CI_MONITOR_MAX_FIX_ATTEMPTS: Final = 10
 CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS: Final = 3
 CI_MONITOR_TRANSIENT_RERUN_MAX: Final = 1
-CI_MONITOR_STATUS_FAILURE_BAIL: Final = 3
 CI_MONITOR_LOG_TAIL_LINES: Final = 100
 CI_MONITOR_IN_PROGRESS_POLL_INTERVAL: Final = 15
 CI_MONITOR_IN_PROGRESS_TIMEOUT: Final = 3600
