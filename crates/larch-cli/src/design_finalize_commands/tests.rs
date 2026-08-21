@@ -174,6 +174,18 @@ mod design_finalize_commands_tests {
         }
     }
 
+    fn failure_status() -> BTreeMap<String, String> {
+        status(&[
+            ("LATEST_PHASE", "rename"),
+            ("PLAN_WRITE_OK", "true"),
+            ("PUBLISH_OK", "false"),
+            ("RENAMED", "false"),
+            ("LOG_PUBLISH_ATTEMPTED", "true"),
+            ("LOG_PUBLISH_COMPLETED", "false"),
+            ("PR_URL", "https://example.test/pr/1"),
+        ])
+    }
+
     #[test]
     fn plan_composition_helpers_cover_headers_trailers_and_acceptance() {
         let (_sandbox, design, _plugin) = fixture();
@@ -338,7 +350,7 @@ mod design_finalize_commands_tests {
     }
 
     #[test]
-    fn failure_summary_helpers_cover_staging_and_confinement() {
+    fn failure_detail_helpers_cover_diagnostics_and_staging() {
         let (_sandbox, design, plugin) = fixture();
         write(
             design.join("design-publish-rename.stderr.log"),
@@ -348,15 +360,7 @@ mod design_finalize_commands_tests {
             design.join("design-publish-log.stderr.log"),
             "log publish failed\n",
         );
-        let result = status(&[
-            ("LATEST_PHASE", "rename"),
-            ("PLAN_WRITE_OK", "true"),
-            ("PUBLISH_OK", "false"),
-            ("RENAMED", "false"),
-            ("LOG_PUBLISH_ATTEMPTED", "true"),
-            ("LOG_PUBLISH_COMPLETED", "false"),
-            ("PR_URL", "https://example.test/pr/1"),
-        ]);
+        let result = failure_status();
         render_publish_failure_detail(
             &design,
             5,
@@ -385,7 +389,12 @@ mod design_finalize_commands_tests {
         );
         assert!(publish_evidence_present(&design, ""));
         fs::remove_file(design.join(".design-publish-result.env")).unwrap();
+    }
 
+    #[test]
+    fn failure_summary_helpers_cover_publication_and_confinement() {
+        let (_sandbox, design, plugin) = fixture();
+        let result = failure_status();
         let empty_ctx = context("", "");
         assert!(!try_central_failed_summary(
             &QueueRunner::default(),
