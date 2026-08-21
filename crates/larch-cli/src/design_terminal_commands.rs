@@ -561,7 +561,7 @@ const STAGE_VALUE_FLAGS: [&str; 24] = [
 ];
 
 /// Optional publish-state flags shared with `design publish` failure staging.
-pub(crate) const STAGE_EXTRA_FLAGS: [(&str, &str); 11] = [
+pub const STAGE_EXTRA_FLAGS: [(&str, &str); 11] = [
     ("--publish-attempt-id", "PUBLISH_ATTEMPT_ID"),
     ("--publish-rc-source", "PUBLISH_RC_SOURCE"),
     ("--latest-phase", "LATEST_PHASE"),
