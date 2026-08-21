@@ -18,9 +18,9 @@ use std::{
 
 use larch_adapters::GixRepository;
 use larch_core::{
-    DuplicatePolicy, KvDocument, ParseOptions, ProcessOutput, RepositoryRead as _, Revision,
-    StatusOptions, emit_kv, private_atomic_write, read_confined_regular_text,
-    read_confined_result_env, read_universal_newlines,
+    DuplicatePolicy, KvDocument, MalformedLinePolicy, ParseOptions, ProcessOutput,
+    RepositoryRead as _, Revision, StatusOptions, emit_kv, private_atomic_write,
+    read_confined_regular_text, read_confined_result_env, read_universal_newlines,
 };
 
 use crate::{
@@ -30,8 +30,9 @@ use crate::{
         delegate_verified_larch, opt_string, rehydrate_session, resolve_repo_root_output,
     },
     implement_scope_disposition_commands::validate_ship_disposition,
-    implement_ship_commands::patch_ship_state_keys,
+    implement_ship_commands::{patch_ship_state_keys, state_has_shell_kv},
     push_network::current_branch_from,
+    push_rebase::sorted_lossy_unmerged_paths,
 };
 
 const ROUTE_PROGRAM: &str = "cli.py ship route-exit";
@@ -632,14 +633,7 @@ fn unmerged_paths(cwd: &Path) -> String {
     let Ok(status) = repository.local_status(&StatusOptions::default()) else {
         return String::new();
     };
-    let mut paths: Vec<String> = status
-        .unmerged
-        .iter()
-        .map(|entry| String::from_utf8_lossy(entry.path.as_bytes()).into_owned())
-        .collect();
-    paths.sort();
-    paths.dedup();
-    paths.join(",")
+    sorted_lossy_unmerged_paths(&status).join(",")
 }
 
 fn conflict_fields(conflicts: &str) -> BTreeMap<String, String> {
@@ -725,15 +719,24 @@ fn patch_handoff(tmpdir: &Path, updates: &[(&str, String)]) -> Result<(), String
     let handoff_path = tmpdir.join(HANDOFF_ENV);
     let mut fields: Vec<(String, String)> = if safe_regular(&handoff_path) {
         read_universal_newlines(&handoff_path).map_or_else(Vec::new, |text| {
-            text.lines()
-                .filter_map(|line| line.split_once('='))
-                .filter(|(key, _)| !key.is_empty())
-                .fold(Vec::new(), |mut rows, (key, value)| {
-                    if !rows.iter().any(|row: &(String, String)| row.0 == key) {
-                        rows.push((key.to_owned(), value.to_owned()));
-                    }
-                    rows
-                })
+            KvDocument::parse(&text, ParseOptions::legacy()).map_or_else(
+                |_| Vec::new(),
+                |document| {
+                    document
+                        .rows()
+                        .iter()
+                        .filter(|row| !row.key().is_empty())
+                        .fold(Vec::new(), |mut rows, row| {
+                            if !rows
+                                .iter()
+                                .any(|existing: &(String, String)| existing.0 == row.key())
+                            {
+                                rows.push((row.key().to_owned(), row.value().to_owned()));
+                            }
+                            rows
+                        })
+                },
+            )
         })
     } else {
         Vec::new()
@@ -862,21 +865,6 @@ fn resolve_manifest(tmpdir: &Path, state: &Path) -> Option<PathBuf> {
     ]
     .into_iter()
     .find(|path| path.is_file())
-}
-
-fn state_has_shell_kv(path: &Path) -> bool {
-    read_universal_newlines(path).is_some_and(|text| {
-        text.lines().any(|line| {
-            let Some((key, _value)) = line.split_once('=') else {
-                return false;
-            };
-            let mut chars = key.chars();
-            chars
-                .next()
-                .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
-                && chars.all(|character| character.is_ascii_alphanumeric() || character == '_')
-        })
-    })
 }
 
 fn read_route_result(tmpdir: &Path) -> Result<(i32, BTreeMap<String, String>), String> {
@@ -1201,18 +1189,22 @@ fn assessment_detail(tmpdir: &Path, fields: &BTreeMap<String, String>) -> Result
 }
 
 fn parse_fields(text: &str, reject_malformed: bool) -> Result<BTreeMap<String, String>, String> {
+    if reject_malformed && text.lines().any(str::is_empty) {
+        return Err(String::new());
+    }
+    let mut options = ParseOptions::legacy();
+    if reject_malformed {
+        options.malformed_lines = MalformedLinePolicy::Reject;
+    }
+    let document = KvDocument::parse(text, options).map_err(|_| String::new())?;
     let mut fields = BTreeMap::new();
-    for line in text.lines() {
-        let Some((key, value)) = line.split_once('=') else {
-            if reject_malformed {
-                return Err(String::new());
-            }
-            continue;
-        };
-        if (reject_malformed && key.is_empty())
-            || fields.insert(key.to_owned(), value.to_owned()).is_some()
+    for row in document.rows() {
+        if (reject_malformed && row.key().is_empty())
+            || fields
+                .insert(row.key().to_owned(), row.value().to_owned())
+                .is_some()
         {
-            return Err(key.to_owned());
+            return Err(row.key().to_owned());
         }
     }
     Ok(fields)

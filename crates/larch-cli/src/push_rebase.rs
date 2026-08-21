@@ -19,7 +19,9 @@ use larch_adapters::{
     TokioProcessRunner,
     runtime::{Cancellation, LarchRuntime},
 };
-use larch_core::{ConfigKey, ObjectId, RepositoryRead, Revision, StatusOptions, emit_kv};
+use larch_core::{
+    ConfigKey, ObjectId, RepositoryRead, RepositoryStatus, Revision, StatusOptions, emit_kv,
+};
 
 use crate::git_commands::is_transient_net;
 use crate::push_network::current_branch;
@@ -640,6 +642,18 @@ fn current_unmerged_conflict_files() -> String {
     unmerged_paths().join(",")
 }
 
+/// Render conflict paths with the legacy lossy ordering and deduplication contract.
+pub fn sorted_lossy_unmerged_paths(status: &RepositoryStatus) -> Vec<String> {
+    let mut paths: Vec<String> = status
+        .unmerged
+        .iter()
+        .map(|entry| String::from_utf8_lossy(entry.path.as_bytes()).into_owned())
+        .collect();
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
 fn is_empty_or_already_applied(text: &str) -> bool {
     let lowered = text.to_ascii_lowercase();
     lowered.contains("nothing to commit")
@@ -931,14 +945,7 @@ fn unmerged_paths() -> Vec<String> {
     let Ok(status) = repository.local_status(&StatusOptions::default()) else {
         return Vec::new();
     };
-    let mut paths: Vec<String> = status
-        .unmerged
-        .iter()
-        .map(|entry| String::from_utf8_lossy(entry.path.as_bytes()).into_owned())
-        .collect();
-    paths.sort();
-    paths.dedup();
-    paths
+    sorted_lossy_unmerged_paths(&status)
 }
 
 fn conflict_upstream_deleted(path: &str) -> bool {
@@ -1027,4 +1034,32 @@ fn collapse_whitespace(text: &str) -> String {
 /// Guard `emit_kv` inputs against newlines while preserving Python's single-lining.
 fn single_line(text: &str) -> String {
     text.replace(['\n', '\r'], " ")
+}
+
+#[cfg(test)]
+mod tests {
+    use larch_core::{ConflictKind, GitPath, RepositoryStatus, UnmergedEntry};
+
+    use super::sorted_lossy_unmerged_paths;
+
+    #[test]
+    fn lossy_unmerged_paths_preserve_legacy_sort_and_deduplication() {
+        let unmerged = [b"zeta".as_slice(), b"alpha".as_slice(), &[0xff], &[0xfe]]
+            .into_iter()
+            .map(|path| UnmergedEntry {
+                path: GitPath::new(path),
+                kind: ConflictKind::BothModified,
+                stages: Vec::new(),
+            })
+            .collect();
+        let status = RepositoryStatus {
+            unmerged,
+            ..RepositoryStatus::default()
+        };
+
+        assert_eq!(
+            sorted_lossy_unmerged_paths(&status),
+            vec!["alpha", "zeta", "�"]
+        );
+    }
 }

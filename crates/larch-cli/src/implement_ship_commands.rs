@@ -867,7 +867,7 @@ fn delegate_python_forward(arguments: Vec<OsString>, timeout: Duration) -> ExitC
     }
 }
 
-fn state_has_shell_kv(path: &Path) -> bool {
+pub fn state_has_shell_kv(path: &Path) -> bool {
     read_kv_document(path).is_some_and(|document| {
         document.rows().iter().any(|row| {
             let key = row.key();
