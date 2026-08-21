@@ -40,7 +40,7 @@ use regex::Regex;
 use serde_json::{Map, Value, json};
 
 use crate::{
-    argparse_compat::{parse_with_flags, usage_error},
+    argparse_compat::{ascii_digits, parse_with_flags, usage_error},
     github_repository_resolution::{ambient_repo, repository_ref, validate_repo_slug},
     github_service::with_github_service,
     run_log_publication_commands::synchronized_corpus_root,
@@ -704,22 +704,15 @@ fn nonempty_option(
 }
 
 fn digits_usize(value: &str) -> Option<usize> {
-    (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
-        .then(|| value.parse().ok())
-        .flatten()
+    ascii_digits(value)
 }
 
 fn digits_u64(value: &str) -> Option<u64> {
-    (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
-        .then(|| value.parse().ok())
-        .flatten()
-        .filter(|value| *value > 0)
+    ascii_digits::<u64>(value).filter(|value| *value > 0)
 }
 
 fn digits_i64(value: &str) -> Option<i64> {
-    (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
-        .then(|| value.parse().ok())
-        .flatten()
+    ascii_digits(value)
 }
 
 fn issue_json(issue: &GitHubIssue, closure_references: Option<&[String]>) -> Value {

@@ -344,8 +344,7 @@ exclude = [
   "python/pr.py",
   "python/design_step_log.py",
   # The failed-jobs classifier is invoked by ship-pr and Makefile-only tests;
-  # agent-lint does not follow those Python CLI edges.
-  "python/cli.py ci failed-jobs",
+  # agent-lint does not follow those Python library edges.
   "python/ci_monitor.py",
   # Makefile-only harness for metadata summary publication. Runtime reachability
   # is through Step 0 helpers, not direct SKILL.md invocation.
@@ -904,13 +903,9 @@ exclude = [
   "scripts/test-prompt-template-invariants.md",
   # Python ship driver owns these legacy shell helpers now; agent-lint does not
   # follow the Python CLI call graph for G004 reachability.
-  "python/cli.py ci rerun-failed",
   "python/cli.py pr body-update",
   "python/cli.py merge pr",
   "python/cli.py pr create",
-  # bash; its create-pr/merge-pr callers migrated to python/cli.py pr create /
-  # merge pr, so G004 no longer sees a structured invocation edge.
-  "python/cli.py ci behind-count",
 
 ]
 

@@ -277,6 +277,7 @@ fn completed_run() -> WorkflowRun {
         conclusion: Some("failure".to_owned()),
         head_sha: "a".repeat(40),
         event: "push".to_owned(),
+        workflow_name: "CI".to_owned(),
         attempt: 1,
     }
 }

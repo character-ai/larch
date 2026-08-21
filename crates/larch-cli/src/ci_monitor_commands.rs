@@ -1,10 +1,15 @@
 //! Rust owner for `ci decide`, `ci status`, and the CI polling loop.
 
-use crate::argparse_compat::{ParsedCommandLine, missing, parse_python_int, parse_with_flags};
+use crate::{
+    argparse_compat::{
+        ParsedCommandLine, missing, option_text as text, parse_python_int, parse_with_flags,
+    },
+    github_repository_resolution::{commits_behind_base, repository_ref, valid_git_label},
+};
 use clap::Args;
 use larch_adapters::{
-    FetchRequest, GitCli, GitCliError, GitCliPolicy, GitRefspec, GitRemote, GixRepository,
-    TokioProcessRunner, classify_process_error,
+    FetchRequest, GitCli, GitCliError, GitCliPolicy, GitRefspec, GitRemote, TokioProcessRunner,
+    classify_process_error,
     github::OctocrabGitHubService,
     runtime::{Cancellation, LarchRuntime, ShutdownSignal, wait_for_shutdown_signal},
 };
@@ -12,8 +17,8 @@ use larch_core::{
     CI_POLL_INTERVAL_SECONDS, CheckRun, CiCounters, CiDecision, CiStatus, CiStatusKind,
     ExternalProcessRunner, GitHubActionsError, GitHubActionsErrorKind, GitHubActionsService,
     GitHubRepositoryRef, ProcessCancellation, ProcessErrorKind, PullRequestCiState,
-    PullRequestMergeState, RepositoryRead, Revision, StatusFailureState, ci_decide,
-    ci_merge_state_conflicted, classify_checks, private_atomic_write,
+    PullRequestMergeState, StatusFailureState, ci_decide, ci_merge_state_conflicted,
+    classify_checks, private_atomic_write,
 };
 use std::{
     ffi::OsString,
@@ -467,33 +472,13 @@ fn alias_value(parsed: &ParsedCommandLine, left: &str, right: &str) -> Option<St
         .map(|(_, value)| value.to_string_lossy().into_owned())
 }
 
-fn text(parsed: &ParsedCommandLine, option: &str, default: &str) -> String {
-    parsed.value(option).map_or_else(
-        || default.to_owned(),
-        |value| value.to_string_lossy().into_owned(),
-    )
-}
-
 fn optional_text(parsed: &ParsedCommandLine, option: &str) -> Option<String> {
     let value = text(parsed, option, "");
     (!value.is_empty()).then_some(value)
 }
 
-fn valid_git_label(value: &str) -> bool {
-    !value.is_empty()
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"._/-".contains(&byte))
-}
-
 fn parse_repository(value: &str) -> Result<GitHubRepositoryRef, String> {
-    let Some((owner, name)) = value.split_once('/') else {
-        return Err("repository must use OWNER/REPO form".to_owned());
-    };
-    if name.contains('/') {
-        return Err("repository must use OWNER/REPO form".to_owned());
-    }
-    GitHubRepositoryRef::new(owner, name).map_err(|error| error.to_string())
+    repository_ref(value).map_err(|()| "repository must use OWNER/REPO form".to_owned())
 }
 
 fn live_status(arguments: &StatusArguments) -> Result<CiStatus, String> {
@@ -654,17 +639,7 @@ async fn check_runs(
 }
 
 fn behind_state(cwd: &Path, arguments: &StatusArguments) -> Result<(usize, bool), String> {
-    let repository = GixRepository::discover(cwd).map_err(|error| error.to_string())?;
-    let head = repository
-        .resolve_revision(&Revision::new(b"HEAD".to_vec()))
-        .map_err(|error| error.to_string())?;
-    let base_name = format!("{}/{}", arguments.base_remote, arguments.base_ref);
-    let base = repository
-        .resolve_revision(&Revision::new(base_name.into_bytes()))
-        .map_err(|error| error.to_string())?;
-    let commits = repository
-        .walk_commits_range(&head, &base, usize::MAX)
-        .map_err(|error| error.to_string())?;
+    let commits = commits_behind_base(cwd, &arguments.base_remote, &arguments.base_ref)?;
     let needle = format!("(#{})", arguments.pr).into_bytes();
     let merged = !commits.is_empty()
         && commits

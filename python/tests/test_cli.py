@@ -217,7 +217,7 @@ def test_lazy_import_top_level_only_argparse_importlib_sys() -> None:
 
 
 def test_affected_registry_targets_resolve_to_domain_modules() -> None:
-    affected = {"larch.git.git", "larch.git.push", "larch.git.pr", "larch.git.merge", "larch.git.gh", "larch.implement.ci"}
+    affected = {"larch.git.git", "larch.git.push", "larch.git.pr", "larch.git.merge", "larch.git.gh"}
     retired = {"git_cli", "push_cli", "pr_cli", "merge_cli", "gh_cli", "ci_cli", "git", "push", "pr", "merge", "gh"}
     checked = 0
     for module_name, func_name, _machine_stdout in cli._REGISTRY.values():  # pyright: ignore[reportPrivateUsage]
@@ -226,7 +226,7 @@ def test_affected_registry_targets_resolve_to_domain_modules() -> None:
             module = importlib.import_module(module_name)
             assert getattr(module, func_name) is not None
             checked += 1
-    assert checked == 12
+    assert checked == 7
 
 
 def test_all_registry_targets_resolve_to_callable_mains() -> None:

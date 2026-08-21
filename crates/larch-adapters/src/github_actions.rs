@@ -40,6 +40,8 @@ struct RunDto {
     head_sha: String,
     #[serde(default)]
     event: String,
+    #[serde(default)]
+    name: String,
     #[serde(default = "default_attempt")]
     run_attempt: u32,
 }
@@ -56,6 +58,7 @@ impl RunDto {
             conclusion: self.conclusion,
             head_sha: self.head_sha,
             event: self.event,
+            workflow_name: self.name,
             attempt: self.run_attempt,
         }
     }
@@ -917,6 +920,7 @@ fn validate_run(service: &OctocrabGitHubService, run: &RunDto) -> Result<(), Git
         "workflow run conclusion",
     )?;
     validate_string(service, &run.head_sha, "workflow run head SHA")?;
+    validate_string(service, &run.name, "workflow run name")?;
     validate_string(service, &run.event, "workflow run event")
 }
 

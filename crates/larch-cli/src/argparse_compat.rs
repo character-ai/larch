@@ -541,6 +541,27 @@ pub fn python_repr(value: &str) -> String {
     output
 }
 
+/// Parse a bare unsigned decimal literal: ASCII digits and nothing else.
+///
+/// Unlike [`parse_python_int`], this admits no sign, no underscore separator,
+/// and no surrounding whitespace, so a caller can refuse a malformed
+/// identifier before it reaches a service.
+#[must_use]
+pub fn ascii_digits<T: std::str::FromStr>(value: &str) -> Option<T> {
+    (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+        .then(|| value.parse().ok())
+        .flatten()
+}
+
+/// Read one parsed option as lossy UTF-8, falling back to `default`.
+#[must_use]
+pub fn option_text(parsed: &ParsedCommandLine, option: &str, default: &str) -> String {
+    parsed.value(option).map_or_else(
+        || default.to_owned(),
+        |value| value.to_string_lossy().into_owned(),
+    )
+}
+
 /// Resolve a nonempty `--out` option to the report output path.
 #[must_use]
 pub fn optional_out_path(parsed: &ParsedCommandLine) -> Option<PathBuf> {

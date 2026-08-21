@@ -7,14 +7,15 @@
 use std::{
     env,
     io::{self, Write},
+    path::Path,
     process::ExitCode,
 };
 
 use crate::github_service::{ServiceFailure, with_github_service};
 use larch_adapters::GixRepository;
 use larch_core::{
-    GitHubIssueState, GitHubLabel, GitHubLabelCreate, GitHubRepositoryRef, GitHubService, Remote,
-    RepositoryRead, SafeText,
+    Commit, GitHubIssueState, GitHubLabel, GitHubLabelCreate, GitHubRepositoryRef, GitHubService,
+    Remote, RepositoryRead, Revision, SafeText,
 };
 use serde::Serialize;
 
@@ -273,6 +274,47 @@ pub fn repository_remote_fetch_url(repository: &GixRepository, remote: &str) -> 
 /// Returns `()` for a slug without a separator or with an invalid component.
 pub fn repository_ref(slug: &str) -> Result<GitHubRepositoryRef, ()> {
     parse_repository_ref(slug)
+}
+
+/// Report whether `value` is safe to pass as a Git remote or ref label.
+///
+/// Callers validate operator-supplied labels before building a revision or a
+/// fetch request so a rejected label reports its own refusal rather than a
+/// deep transport error.
+#[must_use]
+pub fn valid_git_label(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._/-".contains(&byte))
+}
+
+/// List the commits reachable from `<base_remote>/<base_ref>` but not `HEAD`.
+///
+/// This is the single gix read behind every "how far behind the base branch is
+/// this checkout" question. The caller supplies the working directory and
+/// decides what a failure means.
+///
+/// # Errors
+/// Returns the failing gix read's message when the repository, either
+/// revision, or the walk cannot be resolved.
+pub fn commits_behind_base(
+    cwd: &Path,
+    base_remote: &str,
+    base_ref: &str,
+) -> Result<Vec<Commit>, String> {
+    let repository = GixRepository::discover(cwd).map_err(|error| error.to_string())?;
+    let head = repository
+        .resolve_revision(&Revision::new(b"HEAD".to_vec()))
+        .map_err(|error| error.to_string())?;
+    let base = repository
+        .resolve_revision(&Revision::new(
+            format!("{base_remote}/{base_ref}").into_bytes(),
+        ))
+        .map_err(|error| error.to_string())?;
+    repository
+        .walk_commits_range(&head, &base, usize::MAX)
+        .map_err(|error| error.to_string())
 }
 
 fn resolve_repo_command(args: &[String]) -> ResolveRepoResult {

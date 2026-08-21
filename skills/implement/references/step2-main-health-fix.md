@@ -12,4 +12,4 @@
 4. Repair on the current feature branch. Do not call `step-8-ship`, `ship pre-driver`, or post-PR CI-fix machinery from this pre-PR path.
 5. Run `scripts/larch.sh checks run-relevant`. Commit the repair with a message that names the main-health repair.
 6. Write repair ownership back to `$IMPLEMENT_TMPDIR/main-health.env`: `MAIN_HEALTH_REPAIR_COMMITTED=true`, `MAIN_HEALTH_REPAIR_FAILED_RUN_ID`, `MAIN_HEALTH_REPAIR_BASE_SHA`, and `MAIN_HEALTH_REPAIR_HEAD`.
-7. Refresh `python/cli.py ci main-health` for evidence and logging only. Do not require `MAIN_CI_STATUS=pass` on the default branch before `implement run-dispatch`; branch verification plus the repair marker own the handoff.
+7. Refresh `scripts/larch.sh ci main-health` for evidence and logging only. Do not require `MAIN_CI_STATUS=pass` on the default branch before `implement run-dispatch`; branch verification plus the repair marker own the handoff.

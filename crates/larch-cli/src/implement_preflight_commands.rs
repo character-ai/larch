@@ -3,9 +3,9 @@
 //! Preflight only sequences commands that already own their policy. `admission
 //! gate` decides admission, `plan-block read` and the shared plan grammar decide
 //! the executable-plan contract, the still-Python `issue governance-gate`
-//! decides migration governance, and the still-Python `ci main-health` decides
-//! main's CI health. This module adds no policy of its own; it publishes one
-//! self-validated machine envelope for the skill to parse.
+//! decides migration governance, and `ci main-health` decides main's CI health.
+//! This module adds no policy of its own; it publishes one self-validated
+//! machine envelope for the skill to parse.
 //!
 //! Issue snapshots come from the Octocrab-backed `GitHubService` whose sole
 //! credential is `gh auth token` (issue #7672), and the declared base scope is
@@ -708,42 +708,15 @@ fn read_main_health(request: &Request) -> Vec<(&'static str, String)> {
     let Some(repo) = resolve_repo_for(Some(&request.repo)) else {
         return main_health_error("repo resolution failed");
     };
-    // `ci main-health` remains Python-owned, so its status policy has one owner.
-    let output = delegate_python(
-        vec![
-            OsString::from("ci"),
-            OsString::from("main-health"),
-            OsString::from("--repo"),
-            OsString::from(repo),
-            OsString::from("--base-ref"),
-            OsString::from("main"),
+    match crate::ci_failure_commands::preflight_main_health(&repo, "main") {
+        Ok(status) => vec![
+            ("MAIN_CI_STATUS", single_line(&status.status)),
+            ("MAIN_FAILED_RUN_ID", single_line(&status.failed_run_id)),
+            ("MAIN_HEALTH_HEAD_SHA", single_line(&status.head_sha)),
+            ("MAIN_HEALTH_DETAIL", single_line(&status.detail)),
         ],
-        PYTHON_SIBLING_TIMEOUT,
-    );
-    let Ok(output) = output else {
-        return main_health_error("main-health probe failed: cannot start ci main-health");
-    };
-    let stdout = String::from_utf8_lossy(output.stdout()).into_owned();
-    if !output.status().success() {
-        let detail = String::from_utf8_lossy(output.stderr()).into_owned();
-        let detail = if detail.trim().is_empty() {
-            output.status().code().unwrap_or(1).to_string()
-        } else {
-            detail
-        };
-        return main_health_error(&format!("main-health probe failed: {detail}"));
+        Err(detail) => main_health_error(&format!("main-health probe failed: {detail}")),
     }
-    if !MAIN_HEALTH_KEYS.iter().all(|key| {
-        stdout
-            .lines()
-            .any(|line| line.starts_with(&format!("{key}=")))
-    }) {
-        return main_health_error("main-health probe omitted required keys");
-    }
-    MAIN_HEALTH_KEYS
-        .iter()
-        .map(|key| (*key, single_line(&kv_value(&stdout, key))))
-        .collect()
 }
 
 fn main_health_error(detail: &str) -> Vec<(&'static str, String)> {
@@ -1631,50 +1604,80 @@ mod tests {
         assert_eq!(malformed_terminal_metadata(""), None);
     }
 
+    /// Answer every `main-health` read with one completed `CI` push run.
+    fn health_service(
+        conclusion: &str,
+    ) -> (
+        Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync>,
+        IssueServiceStub,
+    ) {
+        let runs = json!({"workflow_runs": [{
+            "id": 91,
+            "status": "completed",
+            "conclusion": conclusion,
+            "head_sha": "abc",
+            "event": "push",
+            "name": "CI",
+            "run_attempt": 1,
+        }]});
+        service([IssueServiceExchange::any_json(
+            200,
+            serde_json::to_vec(&runs).expect("runs body"),
+        )
+        .expect("runs response")])
+    }
+
     #[test]
-    fn main_health_reports_the_python_owners_verdict() {
+    fn main_health_reports_the_typed_services_verdict() {
         clear_hooks();
         let root = TempDir::new().expect("temp");
-        install_python(|arguments| {
-            assert!(arguments.contains(&OsString::from("main-health")));
-            Ok(output(
-                0,
-                "MAIN_CI_STATUS=pass\nMAIN_FAILED_RUN_ID=\nMAIN_HEALTH_HEAD_SHA=abc\nMAIN_HEALTH_DETAIL=green\n",
-                "",
-            ))
-        });
+        let (github, server) = health_service("success");
 
-        let rows = main_health_rows(&request(root.path(), false));
+        let rows =
+            with_test_github_service(github, || main_health_rows(&request(root.path(), false)));
 
         assert_eq!(rows[0], ("MAIN_CI_STATUS", "pass".to_owned()));
         assert_eq!(rows[2], ("MAIN_HEALTH_HEAD_SHA", "abc".to_owned()));
         assert_eq!(
             fs::read_to_string(root.path().join("main-health.env")).expect("env"),
-            "MAIN_CI_STATUS=pass\nMAIN_FAILED_RUN_ID=\nMAIN_HEALTH_HEAD_SHA=abc\nMAIN_HEALTH_DETAIL=green\n"
+            "MAIN_CI_STATUS=pass\nMAIN_FAILED_RUN_ID=\nMAIN_HEALTH_HEAD_SHA=abc\nMAIN_HEALTH_DETAIL=run 91 completed successfully\n"
         );
+        drop(server);
         clear_hooks();
     }
 
     #[test]
     fn every_main_health_failure_degrades_to_one_error_row() {
+        clear_hooks();
         let root = TempDir::new().expect("temp");
         let subject = request(root.path(), false);
 
-        clear_hooks();
-        install_python(|_arguments| Ok(output(0, "MAIN_CI_STATUS=pass\n", "")));
+        let (github, server) = health_service("failure");
+        let failed = with_test_github_service(github, || read_main_health(&subject));
+        assert_eq!(failed[0], ("MAIN_CI_STATUS", "fail".to_owned()));
+        assert_eq!(failed[1], ("MAIN_FAILED_RUN_ID", "91".to_owned()));
+        drop(server);
+
+        let (refusing, refusing_server) =
+            service([
+                IssueServiceExchange::any_json(500, b"{}".to_vec()).expect("refusal response")
+            ]);
+        let refused = with_test_github_service(refusing, || read_main_health(&subject));
+        assert_eq!(refused[0], ("MAIN_CI_STATUS", "error".to_owned()));
+        assert!(!refused[3].1.is_empty());
+        drop(refusing_server);
+
+        let unresolvable = Request {
+            repo: "not a repo".to_owned(),
+            ..request(root.path(), false)
+        };
         assert_eq!(
-            read_main_health(&subject)[0],
-            ("MAIN_CI_STATUS", "error".to_owned())
+            read_main_health(&unresolvable)[3],
+            (
+                "MAIN_HEALTH_DETAIL",
+                "main-health probe failed: --repo must be owner/name".to_owned()
+            )
         );
-
-        install_python(|_arguments| Ok(output(3, "", "probe exploded\n")));
-        assert!(read_main_health(&subject)[3].1.contains("probe exploded"));
-
-        install_python(|_arguments| Ok(output(3, "", "")));
-        assert!(read_main_health(&subject)[3].1.contains('3'));
-
-        install_python(|_arguments| Err("cannot start ci main-health".to_owned()));
-        assert!(read_main_health(&subject)[3].1.contains("cannot start"));
         clear_hooks();
     }
 
@@ -1683,18 +1686,14 @@ mod tests {
         clear_hooks();
         let root = TempDir::new().expect("temp");
         fs::create_dir(root.path().join("main-health.env")).expect("blocking directory");
-        install_python(|_arguments| {
-            Ok(output(
-                0,
-                "MAIN_CI_STATUS=pass\nMAIN_FAILED_RUN_ID=\nMAIN_HEALTH_HEAD_SHA=abc\nMAIN_HEALTH_DETAIL=green\n",
-                "",
-            ))
-        });
+        let (github, server) = health_service("success");
 
-        let rows = main_health_rows(&request(root.path(), false));
+        let rows =
+            with_test_github_service(github, || main_health_rows(&request(root.path(), false)));
 
         assert_eq!(rows[0], ("MAIN_CI_STATUS", "error".to_owned()));
         assert!(rows[3].1.contains("cannot write main-health.env"));
+        drop(server);
         clear_hooks();
     }
 
@@ -1873,29 +1872,24 @@ mod tests {
         install_larch(|_arguments, _environment| {
             Ok(output(0, "ADMISSION_RESULT=pass\nRESUME=false\n", ""))
         });
-        install_python(|arguments| {
-            if arguments.contains(&OsString::from("main-health")) {
-                return Ok(output(
-                    0,
-                    "MAIN_CI_STATUS=pass\nMAIN_FAILED_RUN_ID=\nMAIN_HEALTH_HEAD_SHA=abc\nMAIN_HEALTH_DETAIL=green\n",
-                    "",
-                ));
-            }
-            Ok(output(0, "SEMANTIC_REASONS=\nREPORT_ONLY_COUNT=0\n", ""))
-        });
+        install_python(|_arguments| Ok(output(0, "SEMANTIC_REASONS=\nREPORT_ONLY_COUNT=0\n", "")));
         let plan = VALID_PLAN.replace("Cargo.toml", "tracked.txt");
-        let (github, server) = service([IssueServiceExchange::json(
-            "GET",
-            "/repos/owner/repo/issues/12",
-            200,
-            serde_json::to_vec(&issue_response(
-                12,
-                "[DESIGNED] Fix the gate",
-                &plan_body(&plan),
-            ))
-            .expect("issue body"),
-        )
-        .expect("issue response")]);
+        let (github, server) = service([
+            IssueServiceExchange::json(
+                "GET",
+                "/repos/owner/repo/issues/12",
+                200,
+                serde_json::to_vec(&issue_response(
+                    12,
+                    "[DESIGNED] Fix the gate",
+                    &plan_body(&plan),
+                ))
+                .expect("issue body"),
+            )
+            .expect("issue response"),
+            IssueServiceExchange::any_json(200, br#"{"workflow_runs":[]}"#.to_vec())
+                .expect("runs response"),
+        ]);
 
         let code = with_test_github_service(github, || run(&request(&tmpdir, false)));
 
@@ -1905,7 +1899,7 @@ mod tests {
             plan
         );
         assert!(tmpdir.join("main-health.env").is_file());
-        server.join().expect("one issue read");
+        server.join().expect("the issue and main-health reads");
         clear_hooks();
     }
 
