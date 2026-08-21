@@ -1482,7 +1482,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn git(dir: &Path, args: &[&str]) {
-        let output = Command::new("git")
+        let output = Command::new("git") // lint-subprocess-via-runner: ok test-only helper builds a throwaway git repo; the shared runner is product-only
             .args(args)
             .current_dir(dir)
             .env("GIT_AUTHOR_NAME", "t")
