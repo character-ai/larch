@@ -7,9 +7,9 @@
 use std::{env, time::Duration};
 
 use crate::{
-    BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BgjobError, COMMAND_LOG_LIMIT, KvDocument, ParseOptions,
-    ProcessIdentityHost, RecordedProcessIdentity, ValidationResult, bounded_command, redact,
-    reject_line_value, validate_process_identity,
+    BGJOB_ELAPSED_KEY, BGJOB_RC_KEY, BgjobError, COMMAND_LOG_LIMIT, DuplicatePolicy, KvDocument,
+    ParseOptions, ProcessIdentityHost, RecordedProcessIdentity, ValidationResult, bounded_command,
+    redact, reject_line_value, validate_process_identity,
 };
 
 /// Stable waiting status token.
@@ -53,8 +53,16 @@ pub const BGJOB_OWNER_VALIDATION_FAILURE_THRESHOLD: u32 = 3;
 pub const BGJOB_DAEMON_POLL_INTERVAL_S: f64 = 1.0;
 /// Minimum excess wall-clock advance that identifies a suspended daemon.
 pub const BGJOB_SUSPEND_MIN_GAP_S: f64 = 30.0;
-/// Trailing stderr bytes a dead-daemon report may quote.
+/// Trailing bytes from each child log a dead-daemon report may quote.
 pub const BGJOB_LOG_TAIL_BYTES: usize = 4096;
+/// DEAD-envelope key for a daemon's numeric exit code.
+pub const BGJOB_DAEMON_EXIT_KEY: &str = "DAEMON_EXIT";
+/// DEAD-envelope key for a daemon's terminating signal number.
+pub const BGJOB_DAEMON_SIGNAL_KEY: &str = "DAEMON_SIGNAL";
+/// DEAD-envelope key for the bounded child stdout tail.
+pub const BGJOB_STDOUT_TAIL_KEY: &str = "STDOUT_TAIL";
+/// DEAD-envelope key for the bounded child stderr tail.
+pub const BGJOB_STDERR_TAIL_KEY: &str = "STDERR_TAIL";
 /// Test-only override for the owner grace window.
 pub const ENV_TEST_BGJOB_OWNER_GRACE_S: &str = "LARCH_TEST_BGJOB_OWNER_GRACE_S";
 /// Test-only override for the daemon poll interval.
@@ -75,6 +83,35 @@ pub const BGJOB_STEP_KEY: &str = "STEP";
 pub const BGJOB_START_EPOCH_KEY: &str = "START_EPOCH";
 
 const MIN_PACKED_ROW_TOKENS: usize = 2;
+const DAEMON_STATE_KEY: &str = "DAEMON_STATE";
+const DAEMON_PID_KEY: &str = "DAEMON_PID";
+const DAEMON_STATE_PENDING: &str = "PENDING";
+const DAEMON_STATE_TERMINATED: &str = "TERMINATED";
+const LOG_TAIL_OMISSION_MARKER: &str = "[... earlier bytes omitted ...]\n";
+const LOG_TAIL_PARTIAL_OMISSION_MARKER: &str = "[... earlier bytes and partial line omitted ...]\n";
+
+/// Supervisor-authored state for one detached daemon process.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DaemonStatus {
+    /// The supervisor has bound the sidecar to this daemon and released it.
+    Pending {
+        /// Daemon process ID recorded before its startup gate opens.
+        pid: i32,
+    },
+    /// The supervisor reaped this daemon and captured how it terminated.
+    Terminated(DaemonTermination),
+}
+
+/// Process termination evidence captured by the daemon's direct parent.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DaemonTermination {
+    /// Daemon process ID this evidence describes.
+    pub pid: i32,
+    /// Numeric exit code when the daemon exited normally.
+    pub exit: Option<i32>,
+    /// Signal number when a signal terminated the daemon.
+    pub signal: Option<i32>,
+}
 
 /// Consecutive owner-validation failures and when the grace clock started.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -478,6 +515,75 @@ pub fn startup_in_progress(rows: &[(String, String)], step: &str, now_epoch: i64
     lookup(BGJOB_STEP_KEY) == Some(step) && (0..=BGJOB_STARTUP_GRACE_S).contains(&age_s)
 }
 
+/// Compose the canonical supervisor-to-wait daemon-status rows.
+#[must_use]
+pub fn daemon_status_rows(status: DaemonStatus) -> Vec<(String, String)> {
+    match status {
+        DaemonStatus::Pending { pid } => vec![
+            (DAEMON_STATE_KEY.to_owned(), DAEMON_STATE_PENDING.to_owned()),
+            (DAEMON_PID_KEY.to_owned(), pid.to_string()),
+        ],
+        DaemonStatus::Terminated(termination) => vec![
+            (
+                DAEMON_STATE_KEY.to_owned(),
+                DAEMON_STATE_TERMINATED.to_owned(),
+            ),
+            (DAEMON_PID_KEY.to_owned(), termination.pid.to_string()),
+            (
+                BGJOB_DAEMON_EXIT_KEY.to_owned(),
+                termination
+                    .exit
+                    .map_or_else(String::new, |value| value.to_string()),
+            ),
+            (
+                BGJOB_DAEMON_SIGNAL_KEY.to_owned(),
+                termination
+                    .signal
+                    .map_or_else(String::new, |value| value.to_string()),
+            ),
+        ],
+    }
+}
+
+/// Parse one canonical daemon-status sidecar.
+///
+/// The exact-byte check rejects duplicate or extra fields. A terminal record
+/// must carry exactly one of a non-negative exit code or a positive signal.
+#[must_use]
+pub fn parse_daemon_status(text: &str) -> Option<DaemonStatus> {
+    let document = KvDocument::parse(text, ParseOptions::environment()).ok()?;
+    let values = document.select(DuplicatePolicy::First);
+    let value = |key: &str| values.get(key).map(String::as_str);
+    let pid = value(DAEMON_PID_KEY)?
+        .parse::<i32>()
+        .ok()
+        .filter(|pid| *pid > 0)?;
+    let status = match value(DAEMON_STATE_KEY)? {
+        DAEMON_STATE_PENDING => DaemonStatus::Pending { pid },
+        DAEMON_STATE_TERMINATED => {
+            let parse_optional = |key: &str| -> Option<Option<i32>> {
+                let raw = value(key)?;
+                if raw.is_empty() {
+                    Some(None)
+                } else {
+                    raw.parse::<i32>().ok().map(Some)
+                }
+            };
+            let exit = parse_optional(BGJOB_DAEMON_EXIT_KEY)?;
+            let signal = parse_optional(BGJOB_DAEMON_SIGNAL_KEY)?;
+            if exit.is_some() == signal.is_some()
+                || exit.is_some_and(|code| code < 0)
+                || signal.is_some_and(|number| number <= 0)
+            {
+                return None;
+            }
+            DaemonStatus::Terminated(DaemonTermination { pid, exit, signal })
+        }
+        _ => return None,
+    };
+    (render_rows(&daemon_status_rows(status)) == text).then_some(status)
+}
+
 /// Compose the redacted diagnostic appended to stderr when a job is orphaned.
 #[must_use]
 pub fn orphan_diagnostic(
@@ -524,17 +630,51 @@ pub fn render_rows(rows: &[(String, String)]) -> String {
     rendered
 }
 
-/// Quote the trailing stderr bytes a dead-daemon report carries on one line.
+/// Quote the trailing log bytes a dead-daemon report carries on one line.
 #[must_use]
 pub fn log_tail(text: &str) -> String {
-    let start = text
-        .char_indices()
-        .rev()
-        .take(BGJOB_LOG_TAIL_BYTES)
-        .last()
-        .map_or(0, |(index, _)| index);
-    let tail = text.get(start..).unwrap_or_default();
-    redact_outbound(tail).replace('\n', "\\n")
+    let bytes = text.as_bytes();
+    let omitted = bytes.len() > BGJOB_LOG_TAIL_BYTES;
+    let start = bytes
+        .len()
+        .saturating_sub(BGJOB_LOG_TAIL_BYTES.saturating_add(1));
+    log_tail_bytes(&bytes[start..], omitted)
+}
+
+/// Render one bounded log chunk as a redacted single-line value.
+///
+/// A truncated reader may include one byte immediately before the final
+/// [`BGJOB_LOG_TAIL_BYTES`] bytes. That boundary byte proves whether the tail
+/// starts on a whole line. Otherwise, discard the leading partial line before
+/// naming the omission and rendering the remaining whole lines.
+#[must_use]
+pub fn log_tail_bytes(bytes: &[u8], earlier_omitted: bool) -> String {
+    let (tail, starts_on_line_boundary) = if earlier_omitted && bytes.len() > BGJOB_LOG_TAIL_BYTES {
+        let tail_start = bytes.len().saturating_sub(BGJOB_LOG_TAIL_BYTES);
+        (&bytes[tail_start..], bytes[tail_start - 1] == b'\n')
+    } else {
+        (bytes, false)
+    };
+    let start = if earlier_omitted && !starts_on_line_boundary {
+        tail.iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(tail.len(), |index| index.saturating_add(1))
+    } else {
+        0
+    };
+    let tail = String::from_utf8_lossy(&tail[start..]);
+    let mut diagnostic = String::new();
+    if earlier_omitted {
+        diagnostic.push_str(if starts_on_line_boundary {
+            LOG_TAIL_OMISSION_MARKER
+        } else {
+            LOG_TAIL_PARTIAL_OMISSION_MARKER
+        });
+    }
+    diagnostic.push_str(&tail);
+    redact_outbound(&diagnostic)
+        .replace('\r', "\\r")
+        .replace('\n', "\\n")
 }
 
 /// Redact outbound diagnostics while preserving the caller's newline intent.
@@ -572,11 +712,12 @@ fn is_packed_token(token: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        BGJOB_OWNER_GRACE_S, ENV_TEST_BGJOB_OWNER_GRACE_S, MonitorLivenessState,
-        OwnerValidationState, check_monitor_liveness, check_owner_validation, is_packed_token,
-        log_tail, merge_rows, ordered_rows, orphan_diagnostic, parse_timing_override,
-        redact_outbound, render_rows, result_rows, startup_in_progress, startup_rows,
-        timing_override_or_default,
+        BGJOB_LOG_TAIL_BYTES, BGJOB_OWNER_GRACE_S, DaemonStatus, DaemonTermination,
+        ENV_TEST_BGJOB_OWNER_GRACE_S, MonitorLivenessState, OwnerValidationState,
+        check_monitor_liveness, check_owner_validation, daemon_status_rows, is_packed_token,
+        log_tail, log_tail_bytes, merge_rows, ordered_rows, orphan_diagnostic, parse_daemon_status,
+        parse_timing_override, redact_outbound, render_rows, result_rows, startup_in_progress,
+        startup_rows, timing_override_or_default,
     };
     use crate::{
         IdentityProbeOutput, ProcessBirthIdentity, ProcessBirthIdentityProbeOutput,
@@ -939,10 +1080,66 @@ mod tests {
 
         assert_eq!(log_tail("first\nsecond\n"), "first\\nsecond\\n");
         assert_eq!(log_tail(""), "");
+        let oversized = format!("partial{}\nkept\n", "x".repeat(BGJOB_LOG_TAIL_BYTES));
+        assert_eq!(
+            log_tail(&oversized),
+            "[... earlier bytes and partial line omitted ...]\\nkept\\n"
+        );
+        let boundary = format!(
+            "discarded\n{}\n",
+            "k".repeat(BGJOB_LOG_TAIL_BYTES.saturating_sub(1))
+        );
+        assert_eq!(
+            log_tail(&boundary),
+            format!(
+                "[... earlier bytes omitted ...]\\n{}\\n",
+                "k".repeat(BGJOB_LOG_TAIL_BYTES.saturating_sub(1))
+            )
+        );
+        assert_eq!(
+            log_tail_bytes(b"partial\nkept\r\n", true),
+            "[... earlier bytes and partial line omitted ...]\\nkept\\r\\n"
+        );
         assert_eq!(redact_outbound("plain"), "plain");
         assert_eq!(
             render_rows(&[("BAD".to_owned(), "one\ntwo".to_owned())]),
             ""
         );
+    }
+
+    #[test]
+    fn daemon_status_codec_binds_mutually_exclusive_termination_evidence_to_pid() {
+        let pending = DaemonStatus::Pending { pid: 4321 };
+        let pending_text = render_rows(&daemon_status_rows(pending));
+        assert_eq!(pending_text, "DAEMON_STATE=PENDING\nDAEMON_PID=4321\n");
+        assert_eq!(parse_daemon_status(&pending_text), Some(pending));
+
+        let exited = DaemonStatus::Terminated(DaemonTermination {
+            pid: 4321,
+            exit: Some(2),
+            signal: None,
+        });
+        let exited_text = render_rows(&daemon_status_rows(exited));
+        assert_eq!(
+            exited_text,
+            "DAEMON_STATE=TERMINATED\nDAEMON_PID=4321\nDAEMON_EXIT=2\nDAEMON_SIGNAL=\n"
+        );
+        assert_eq!(parse_daemon_status(&exited_text), Some(exited));
+
+        let signaled = DaemonStatus::Terminated(DaemonTermination {
+            pid: 4321,
+            exit: None,
+            signal: Some(9),
+        });
+        let signaled_text = render_rows(&daemon_status_rows(signaled));
+        assert_eq!(parse_daemon_status(&signaled_text), Some(signaled));
+        assert!(
+            parse_daemon_status(
+                "DAEMON_STATE=TERMINATED\nDAEMON_PID=4321\nDAEMON_EXIT=2\nDAEMON_SIGNAL=9\n"
+            )
+            .is_none()
+        );
+        assert!(parse_daemon_status("DAEMON_STATE=TERMINATED\nDAEMON_PID=4321\nDAEMON_EXIT=2\nDAEMON_SIGNAL=\nEXTRA=bad\n").is_none());
+        assert!(parse_daemon_status("DAEMON_STATE=PENDING\nDAEMON_PID=-1\n").is_none());
     }
 }

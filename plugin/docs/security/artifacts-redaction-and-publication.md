@@ -155,7 +155,8 @@ environments, and raw retry metadata. Examples include:
 
 - `*.events.jsonl`, raw agent transcripts, prompts, and launch stdout or stderr;
 - `.meta` files with `CMD_JSON`, JSON response envelopes, and retry sidecars;
-- bgjob result envs, daemon logs, registry state, and completion sentinels;
+- bgjob result envs, daemon-status sidecars, logs, registry state, and
+  completion sentinels;
 - in-loop token, timing, and transcript refresh sidecars;
 - CI, lint, design-publish, and vendor diagnostic carriers;
 - session envs, finalize state, plugin-root state, and timing ledgers.
@@ -296,6 +297,17 @@ the tail. The default is 30 lines. After line limiting, the tail passes through
 temporary-path and secret redaction, then a 5120-byte cap. Successful launches
 remove stale tail sidecars. Batch collection deduplicates repeated root-cause
 tails.
+
+Bgjob DEAD recovery may expose `DAEMON_EXIT`, `DAEMON_SIGNAL`, `STDOUT_TAIL`,
+and `STDERR_TAIL`. The exit and signal fields are mutually exclusive and come
+from a confined supervisor sidecar whose daemon PID must match the durable
+registry identity. Empty fields mean the evidence was unavailable. Each stream
+tail retains at most 4096 bytes from its confined regular log. The reader may
+inspect one preceding byte to prove an exact line boundary. When earlier bytes
+were omitted and that boundary is not proven, the renderer drops the leading
+partial line and adds an explicit omission marker. It then applies the shared
+temporary-path and secret redactor and escapes line breaks before emitting the
+`KEY=value` row. The raw logs and status sidecar remain private session state.
 
 The Rust-owned `agent compose-collector-failure-log` command reads its local
 reviewer and stderr sidecars through `larch_adapters::vendor_diagnostics`,
@@ -661,6 +673,7 @@ egress contract.
 | Design pause and resume | Rust owns marker parsing, issue identity checks, verified cache lookup, confined restore staging, and marker cleanup in `crates/larch-core/src/design/pause.rs` and `crates/larch-cli/src/design_pause_commands.rs` (#8589). Python has no pause command or fallback. |
 | Run-log archive, sync, and object publication | Rust owns archive creation, materialization, standalone sync, shared lifecycle publication, cache promotion, and `run-log storage-preflight` through `crates/larch-adapters/src/run_lifecycle.rs`, `google_storage.rs`, and `s3_storage.rs`. The same provider-neutral object-store port validates pagination, names, sizes, archive materialization, and repair rollback. The legacy Python object-store adapter remains for compatibility/test callers only and is not a production command owner. |
 | Agent diagnostic bounds and carriers | `python/larch/agents/agents.py` and `_failure_diag.py` |
+| Bgjob DEAD diagnostics | `crates/larch-core/src/bgjob_daemon.rs` owns the status and bounded-tail codec; `crates/larch-cli/src/bgjob_commands.rs` owns supervised capture and rendering |
 | Residual Bash egress call sites | Thin scripts call the Python redaction owner or the Rust run-log owner before forwarding untrusted content; plain shell error helpers are not independent redactors |
 | Tier B public-file validation | `crates/larch-core/src/stall_recovery.rs`, `crates/larch-adapters/src/stall_recovery.rs`, and `crates/larch-cli/src/stall_recovery_commands.rs` |
 | Stall classification, normalization, attempts, and escalation ledgers | `crates/larch-core/src/stall_recovery.rs`, `crates/larch-adapters/src/stall_recovery.rs`, and `crates/larch-cli/src/stall_recovery_commands.rs` |

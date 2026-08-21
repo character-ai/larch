@@ -42,6 +42,8 @@ pub const BGJOB_STARTUP_ENV_SUFFIX: &str = ".startup.env";
 pub const BGJOB_INPUT_FP_SUFFIX: &str = ".input-fp";
 /// Durable worker-completion witness suffix.
 pub const BGJOB_WORKER_STATUS_SUFFIX: &str = ".worker-status.env";
+/// Supervisor-authored daemon termination status suffix.
+pub const BGJOB_DAEMON_STATUS_SUFFIX: &str = ".daemon-status.env";
 /// Registry key refreshed by the daemon on every monitor poll.
 pub const BGJOB_HEARTBEAT_EPOCH_KEY: &str = "HEARTBEAT_EPOCH";
 /// Seconds without a daemon heartbeat before a registry row is stale.
@@ -581,6 +583,26 @@ pub fn worker_status_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobErr
         &root.join(format!("{step}{BGJOB_WORKER_STATUS_SUFFIX}")),
         &root,
         "worker status env",
+    )
+}
+
+/// Return the supervisor-authored daemon-status path for `step`.
+///
+/// The detached supervisor binds this sidecar to the daemon PID before it
+/// releases the daemon's private startup gate. A foreground recovery can then
+/// consume only termination evidence produced for the daemon identity in its
+/// registry row.
+///
+/// # Errors
+///
+/// Returns an error when `tmpdir` or `step` is unsafe.
+pub fn daemon_status_path(tmpdir: &Path, step: &str) -> Result<PathBuf, BgjobError> {
+    let step = validate_slug(step, "step")?;
+    let root = bgjob_dir(tmpdir)?;
+    ensure_under(
+        &root.join(format!("{step}{BGJOB_DAEMON_STATUS_SUFFIX}")),
+        &root,
+        "daemon status env",
     )
 }
 
@@ -2335,13 +2357,13 @@ pub fn epoch_now() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        BGJOB_RESULT_ENV_SUFFIX, BGJOB_STARTUP_ENV_SUFFIX, BgjobError, CompletionTransactionState,
-        RECOVERY_LEASE_MALFORMED_STALE_AFTER, REGISTRY_SENTINEL_PREFIX, RecoveryClaim,
-        RecoveryLeaseFaultPhase, RegistryEntry, absolute_path, bgjob_dir, checked_dir,
-        child_liveness, claim_recovery, completion_result_is_visible, daemon_liveness,
-        default_run_id, ensure_directory, ensure_under, entry_expired, entry_expired_at, epoch_now,
-        expand_home, finish_completion_transaction, has_live_entry_at, identity_rows,
-        iter_entries_at, log_paths, parse_identity, prepare_completion_transaction,
+        BGJOB_DAEMON_STATUS_SUFFIX, BGJOB_RESULT_ENV_SUFFIX, BGJOB_STARTUP_ENV_SUFFIX, BgjobError,
+        CompletionTransactionState, RECOVERY_LEASE_MALFORMED_STALE_AFTER, REGISTRY_SENTINEL_PREFIX,
+        RecoveryClaim, RecoveryLeaseFaultPhase, RegistryEntry, absolute_path, bgjob_dir,
+        checked_dir, child_liveness, claim_recovery, completion_result_is_visible, daemon_liveness,
+        daemon_status_path, default_run_id, ensure_directory, ensure_under, entry_expired,
+        entry_expired_at, epoch_now, expand_home, finish_completion_transaction, has_live_entry_at,
+        identity_rows, iter_entries_at, log_paths, parse_identity, prepare_completion_transaction,
         private_atomic_write, read_completion_transaction, read_entry, read_recovery_lease,
         refresh_wait_lease, refresh_wait_lease_at, refresh_wait_lease_for_pid, registry_path,
         reject_line_value, release_recovery_claim, render_rows, resolve_candidate, resolve_run_id,
@@ -2576,6 +2598,7 @@ mod tests {
         let sandbox = tempfile::tempdir().expect("tempdir");
         assert!(validate_slug("bad/step", "step").is_err());
         assert!(result_env_path(sandbox.path(), "bad/step").is_err());
+        assert!(daemon_status_path(sandbox.path(), "bad/step").is_err());
         assert_eq!(
             default_run_id(sandbox.path(), PathBuf::from("/tmp/left").as_path()),
             default_run_id(sandbox.path(), PathBuf::from("/tmp/right").as_path())
@@ -2584,6 +2607,11 @@ mod tests {
             result_env_path(sandbox.path(), "demo-step")
                 .expect("path")
                 .ends_with(format!("demo-step{BGJOB_RESULT_ENV_SUFFIX}"))
+        );
+        assert!(
+            daemon_status_path(sandbox.path(), "demo-step")
+                .expect("daemon status path")
+                .ends_with(format!("demo-step{BGJOB_DAEMON_STATUS_SUFFIX}"))
         );
     }
 

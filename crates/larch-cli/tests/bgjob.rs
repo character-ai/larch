@@ -997,6 +997,41 @@ fn daemon_crashes_at_every_startup_phase_without_stranding_its_worker_group() {
 }
 
 #[test]
+fn daemon_internal_failure_reports_its_exit_code_before_dead_recovery() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("daemon-exit");
+    let phases = sandbox.root.path().join("daemon-exit-phases");
+    fs::create_dir_all(&phases).expect("phase directory");
+    fs::write(phases.join("after-acknowledgement.armed"), "").expect("arm barrier");
+    let started = raw_larch(&sandbox)
+        .args(["bgjob", "start", "--step", "daemon-exit"])
+        .arg("--tmpdir")
+        .arg(&tmpdir)
+        .args([
+            "--budget-s",
+            "60",
+            "--owner-pid",
+            &std::process::id().to_string(),
+            "--",
+            "/bin/sh",
+            "-c",
+            "exec sleep 60",
+        ])
+        .env(ENV_TEST_BGJOB_PHASE_BARRIER_DIR, &phases)
+        .output()
+        .expect("start daemon-exit job");
+    assert!(started.status.success(), "{started:?}");
+    let reached = phases.join("after-acknowledgement.reached");
+    wait_for_file(&reached, "after acknowledgement barrier");
+    fs::create_dir(phases.join("after-acknowledgement.release")).expect("unsafe release fixture");
+
+    let settled = wait_until_settled(&sandbox, "daemon-exit", &tmpdir);
+    assert!(settled.contains("BGJOB_STATUS=DEAD"), "{settled:?}");
+    assert!(settled.contains("DAEMON_EXIT=2\n"), "{settled:?}");
+    assert!(settled.contains("DAEMON_SIGNAL=\n"), "{settled:?}");
+}
+
+#[test]
 fn concurrent_adapters_rejoin_the_one_startup_record_before_acknowledgement() {
     let sandbox = Sandbox::new();
     let tmpdir = sandbox.session("concurrent-adapt");
@@ -1203,12 +1238,37 @@ fn an_externally_killed_daemon_recovers_its_child_before_reporting_dead() {
         &tmpdir,
         "60",
         std::process::id().try_into().expect("pid"),
-        &["/bin/sh", "-c", "while true; do sleep 1; done"],
+        &[
+            "/bin/sh",
+            "-c",
+            "printf 'child stdout evidence\\n'; printf 'child stderr evidence\\n' >&2; while true; do sleep 1; done",
+        ],
     );
     assert!(started_pgid(&stdout, "external-kill") > 0);
 
     let row = registry_row(&sandbox, "external-kill");
     let entry = read_entry(&row).expect("registry entry");
+    let evidence_deadline = Instant::now() + DEADLINE;
+    while Instant::now() < evidence_deadline
+        && (!fs::read_to_string(&entry.stdout_log)
+            .unwrap_or_default()
+            .contains("child stdout evidence")
+            || !fs::read_to_string(&entry.stderr_log)
+                .unwrap_or_default()
+                .contains("child stderr evidence"))
+    {
+        sleep(Duration::from_millis(10));
+    }
+    assert!(
+        fs::read_to_string(&entry.stdout_log)
+            .expect("stdout log")
+            .contains("child stdout evidence")
+    );
+    assert!(
+        fs::read_to_string(&entry.stderr_log)
+            .expect("stderr log")
+            .contains("child stderr evidence")
+    );
     nix::sys::signal::kill(
         nix::unistd::Pid::from_raw(entry.daemon.pid),
         nix::sys::signal::Signal::SIGKILL,
@@ -1228,6 +1288,16 @@ fn an_externally_killed_daemon_recovers_its_child_before_reporting_dead() {
         settled.contains("BGJOB_DIAG=daemon-dead-recovered"),
         "{settled:?}"
     );
+    assert!(settled.contains("DAEMON_EXIT=\n"), "{settled:?}");
+    assert!(settled.contains("DAEMON_SIGNAL=9\n"), "{settled:?}");
+    assert!(
+        settled.contains("STDOUT_TAIL=child stdout evidence\\n"),
+        "{settled:?}"
+    );
+    assert!(
+        settled.contains("STDERR_TAIL=child stderr evidence\\n"),
+        "{settled:?}"
+    );
     assert!(!pid_is_live(entry.child.pid), "recovery left child alive");
     assert_group_gone(entry.child.pgid, "external daemon death");
     assert!(!row.exists(), "recovery retained the registry row");
@@ -1235,6 +1305,59 @@ fn an_externally_killed_daemon_recovers_its_child_before_reporting_dead() {
         !tmpdir.join("bgjob/external-kill.result.env").exists(),
         "recovery left a partial result envelope"
     );
+}
+
+#[test]
+fn dead_recovery_ignores_termination_evidence_for_a_different_daemon_pid() {
+    let sandbox = Sandbox::new();
+    let tmpdir = sandbox.session("mismatched-daemon-status");
+    let stdout = start(
+        &sandbox,
+        "mismatched-daemon-status",
+        &tmpdir,
+        "60",
+        std::process::id().try_into().expect("pid"),
+        &["/bin/sh", "-c", "exec sleep 60"],
+    );
+    assert!(started_pgid(&stdout, "mismatched-daemon-status") > 0);
+
+    let row = registry_row(&sandbox, "mismatched-daemon-status");
+    let entry = read_entry(&row).expect("registry entry");
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(entry.daemon.pid),
+        nix::sys::signal::Signal::SIGKILL,
+    )
+    .expect("kill daemon");
+
+    let status_path = tmpdir.join("bgjob/mismatched-daemon-status.daemon-status.env");
+    let deadline = Instant::now() + DEADLINE;
+    while Instant::now() < deadline
+        && !fs::read_to_string(&status_path)
+            .unwrap_or_default()
+            .contains("DAEMON_STATE=TERMINATED\n")
+    {
+        sleep(Duration::from_millis(10));
+    }
+    assert!(
+        fs::read_to_string(&status_path)
+            .expect("daemon status")
+            .contains("DAEMON_STATE=TERMINATED\n")
+    );
+    let mismatched_pid = entry.daemon.pid.checked_add(1).expect("different pid");
+    fs::write(
+        &status_path,
+        format!(
+            "DAEMON_STATE=TERMINATED\nDAEMON_PID={mismatched_pid}\nDAEMON_EXIT=7\nDAEMON_SIGNAL=\n"
+        ),
+    )
+    .expect("replace daemon status with stale evidence");
+
+    let settled = wait_until_settled(&sandbox, "mismatched-daemon-status", &tmpdir);
+    assert!(settled.contains("BGJOB_STATUS=DEAD"), "{settled:?}");
+    assert!(settled.contains("DAEMON_EXIT=\n"), "{settled:?}");
+    assert!(settled.contains("DAEMON_SIGNAL=\n"), "{settled:?}");
+    assert_group_gone(entry.child.pgid, "mismatched daemon status");
+    assert!(!row.exists(), "recovery retained the registry row");
 }
 
 #[test]
@@ -1296,7 +1419,7 @@ fn dead_missing_pid_wait_returns_dead_without_a_process_panic() {
     assert_eq!(output.stderr, b"");
     assert_eq!(
         output.stdout,
-        b"BGJOB_STATUS=DEAD\nBGJOB_DIAG=daemon-dead-recovered\nSTDERR_TAIL=\n"
+        b"BGJOB_STATUS=DEAD\nBGJOB_DIAG=daemon-dead-recovered\nSTDERR_TAIL=\nDAEMON_EXIT=\nDAEMON_SIGNAL=\nSTDOUT_TAIL=\n"
     );
     assert!(
         !row.exists(),

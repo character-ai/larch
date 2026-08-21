@@ -221,7 +221,7 @@ def test_top_level_rehydrates_the_durable_run_pointer_before_start() -> None:
     assert "POINTER_CLEARED=true" in skill
 
 
-def test_top_level_hard_fails_cursor_production_guard_false_denies() -> None:
+def test_top_level_bounds_host_agnostic_production_guard_false_denies() -> None:
     skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
         encoding="utf-8"
     )
@@ -235,22 +235,31 @@ def test_top_level_hard_fails_cursor_production_guard_false_denies() -> None:
     security = (
         REPO_ROOT / "docs" / "security" / "workflow-trust-and-mutations.md"
     ).read_text(encoding="utf-8")
-    assert "Cursor + production-guard false-deny" in skill
-    assert "request_smart_mode_approval=true" not in skill
+    assert "Production-guard false-deny" in skill
     assert "packaged reader" in skill
     assert "Do not rephrase the driver as `gh`, curl, wget" in skill
     assert "## Harness false-denies" in recovery
-    assert "coexistence false-deny" in recovery
     for guard in ("pagerduty", "hyperdx", "changes", "log-evidence"):
         assert guard in recovery
-    assert "Do not hand-edit" in recovery
+    assert "hand-edit lifecycle titles" in recovery
     for text in (skill, recovery, installation, catalog, security):
-        assert "v2.0.3" in text
-        assert "request_smart_mode_approval" not in text
+        prose = " ".join(text.split())
+        assert "v2.0.3" in prose
+        assert "guard is unavailable" in prose
+        assert "Claude Code" in prose
+        assert "request_smart_mode_approval=true" not in prose
+    for text in (skill, recovery, installation, security):
+        assert "character-tech/smarts#909" in " ".join(text.split())
+    for text in (skill, recovery, security):
+        prose = " ".join(text.split())
+        assert "request_smart_mode_approval" in prose
+        assert "has no" in prose
     assert "`permissionDecision: deny`" in recovery
     assert "`pd`" in recovery
     assert "`--tmpdir`" in recovery
-    assert "Attempt each remaining Failure-rule diagnostic" in skill
+    assert "repeat the identical denied workflow-driver command once" in skill
+    assert "Attempt each remaining diagnostic and cleanup command at most once" in skill
+    assert "with no guard retry" in skill
     assert "stop without claiming terminal success" in skill
     assert "preserve any pointer and the session tmpdir" in recovery
     assert "## Co-installed PreToolUse gates" in security

@@ -1,10 +1,10 @@
 //! Rust-owned background-job daemon start, wait, status, and reap.
 //!
-//! `start` validates its request, then re-executes this same binary in the
-//! detached daemon role. The daemon owns the child process group, the durable
-//! registry row, and the completed result envelope; `wait` is the only
-//! foreground reader of that envelope.
-//! Runtime budgets and wake grace use the daemon's monotonic clock. Registry
+//! `start` validates its request, then re-executes this same binary as a
+//! detached supervisor. The supervisor directly reaps a gated daemon monitor;
+//! the monitor owns the child process group, durable registry row, and completed
+//! result envelope. `wait` is the only foreground reader of that envelope.
+//! Runtime budgets and wake grace use the monitor's monotonic clock. Registry
 //! heartbeat and foreground wait-lease TTLs use wall-clock epochs because they
 //! cross process boundaries.
 
@@ -17,23 +17,25 @@ use larch_adapters::{
     },
 };
 use larch_core::{
-    BGJOB_RC_ORPHANED, BGJOB_RC_TIMEOUT, BGJOB_STATUS_DEAD, BGJOB_STATUS_DONE, BGJOB_STATUS_KEY,
-    BGJOB_STATUS_STARTED, BGJOB_STATUS_WAIT, BGJOB_WAIT_DEFAULT_CHUNK_S,
+    BGJOB_DAEMON_EXIT_KEY, BGJOB_DAEMON_SIGNAL_KEY, BGJOB_LOG_TAIL_BYTES, BGJOB_RC_ORPHANED,
+    BGJOB_RC_TIMEOUT, BGJOB_STATUS_DEAD, BGJOB_STATUS_DONE, BGJOB_STATUS_KEY, BGJOB_STATUS_STARTED,
+    BGJOB_STATUS_WAIT, BGJOB_STDERR_TAIL_KEY, BGJOB_STDOUT_TAIL_KEY, BGJOB_WAIT_DEFAULT_CHUNK_S,
     BGJOB_WAIT_HARD_DEADLINE_GRACE_S, BGJOB_WAIT_LEASE_TTL_S, BGJOB_WAIT_MAX_CHUNK_S, BgjobError,
-    ENV_BGJOB_CAFFEINATE, JobSpec, MonitorLivenessState, OwnerIdentity, ProcessBirthIdentity,
-    ProcessIdentityHost, ProcessIdentityValidationPolicy, RecordedProcessIdentity, RegistryEntry,
-    ValidationResult, bgjob_dir, check_monitor_liveness, checked_dir, child_liveness,
-    clear_completion_residue, collect_process_group_members_checked, confirm_process_group_absent,
-    daemon_liveness, daemon_poll_interval_s, ensure_under, epoch_now,
-    finish_completion_transaction, iter_entries, log_paths, log_tail, merge_rows, ordered_rows,
-    orphan_diagnostic, owner_grace_s, owner_pid_candidate, phase_barrier,
-    prepare_completion_transaction, private_atomic_write, read_entry, read_for,
-    read_merge_result_env, read_process_identity, refresh_wait_lease, registry_path, render_rows,
-    resolve_run_id, result_env_path, result_rows, startup_ack_timeout_s, startup_env_path,
-    startup_in_progress, startup_rows, terminate_validated_process_group_with_policy, unlink_entry,
-    validate_merge_result_env, validate_run_id, validate_slug, validate_terminal_stdout_key,
-    validate_timing_overrides, wait_lease_is_fresh_at, worker_status_path, write_entry,
-    write_entry_at,
+    DaemonStatus, DaemonTermination, ENV_BGJOB_CAFFEINATE, JobSpec, MonitorLivenessState,
+    OwnerIdentity, ProcessBirthIdentity, ProcessIdentityHost, ProcessIdentityValidationPolicy,
+    RecordedProcessIdentity, RegistryEntry, ValidationResult, bgjob_dir, check_monitor_liveness,
+    checked_dir, child_liveness, clear_completion_residue, collect_process_group_members_checked,
+    confirm_process_group_absent, daemon_liveness, daemon_poll_interval_s, daemon_status_path,
+    daemon_status_rows, ensure_under, epoch_now, finish_completion_transaction, iter_entries,
+    log_paths, log_tail_bytes, merge_rows, ordered_rows, orphan_diagnostic, owner_grace_s,
+    owner_pid_candidate, parse_daemon_status, phase_barrier, prepare_completion_transaction,
+    private_atomic_write, read_confined_regular_tail, read_confined_result_env, read_entry,
+    read_for, read_merge_result_env, read_process_identity, refresh_wait_lease, registry_path,
+    render_rows, resolve_run_id, result_env_path, result_rows, startup_ack_timeout_s,
+    startup_env_path, startup_in_progress, startup_rows,
+    terminate_validated_process_group_with_policy, unlink_entry, validate_merge_result_env,
+    validate_run_id, validate_slug, validate_terminal_stdout_key, validate_timing_overrides,
+    wait_lease_is_fresh_at, worker_status_path, write_entry, write_entry_at,
 };
 use nix::{
     sys::signal::{Signal, killpg},
@@ -51,8 +53,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Marks the re-executed process that owns the detached monitor loop.
+/// Marks a re-executed process in the detached daemon topology.
 const ENV_DAEMON_ROLE: &str = "LARCH_BGJOB_DAEMON_ROLE";
+/// Marks the supervised process that owns the existing daemon monitor loop.
+const ENV_DAEMON_MONITOR_ROLE: &str = "LARCH_BGJOB_DAEMON_MONITOR_ROLE";
 /// Carries the owner identity the launching process already captured.
 const ENV_DAEMON_OWNER: &str = "LARCH_BGJOB_DAEMON_OWNER";
 /// Marks the worker gated until the daemon publishes its durable registry row.
@@ -67,15 +71,31 @@ const CAFFEINATE_PATH: &str = "/usr/bin/caffeinate";
 const IDENTITY_CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
 const IDENTITY_CAPTURE_SLEEP: Duration = Duration::from_millis(50);
 const CHILD_REAP_TIMEOUT: Duration = Duration::from_secs(5);
+const DAEMON_STATUS_READ_GRACE: Duration = Duration::from_secs(1);
+const DAEMON_STATUS_READ_POLL: Duration = Duration::from_millis(10);
 const MIN_POLL_SLEEP: f64 = 0.05;
 const DAEMON_CALLER: &str = "bgjob-daemon";
 const REAP_CALLER: &str = "bgjob-reap";
 const RECOVERY_CALLER: &str = "bgjob-recovery";
 const WORKER_GATE: &str = "START\n";
+const DAEMON_GATE: &str = "START\n";
 
 struct SpawnedWorker {
     child: Child,
     gate: Option<ChildStdin>,
+}
+
+struct SpawnedDaemonMonitor {
+    child: Child,
+    gate: Option<ChildStdin>,
+}
+
+#[derive(Debug, Default)]
+struct DeadDaemonEvidence {
+    daemon_exit: String,
+    daemon_signal: String,
+    stdout_tail: String,
+    stderr_tail: String,
 }
 
 struct AcknowledgementFailure {
@@ -143,7 +163,13 @@ pub fn start(arguments: &[OsString]) -> ExitCode {
         // diagnostics: a post-acknowledgement write would race a closed reader.
         return build_spec(&parsed, inherited_owner())
             .map_err(|error| one_line(&error))
-            .and_then(|spec| daemon_body(&spec))
+            .and_then(|spec| {
+                if env::var_os(ENV_DAEMON_MONITOR_ROLE).is_some() {
+                    await_daemon_gate().and_then(|()| daemon_body(&spec))
+                } else {
+                    daemon_supervisor_body(&spec)
+                }
+            })
             .map_or_else(|_| ExitCode::from(2), |()| ExitCode::SUCCESS);
     }
     match launch(&parsed) {
@@ -296,6 +322,7 @@ pub fn spawn_daemon(spec: &JobSpec, extra_env: &[(String, String)]) -> Result<St
     // Rehydration is job input, never authority to select an internal role.
     command
         .env(ENV_DAEMON_ROLE, "1")
+        .env_remove(ENV_DAEMON_MONITOR_ROLE)
         .env_remove(ENV_WORKER_ROLE)
         .env_remove(ENV_WORKER_TMPDIR)
         .env_remove(ENV_WORKER_STEP);
@@ -383,7 +410,10 @@ fn teardown_unacknowledged_daemon(
     spec: &JobSpec,
     reader: Option<std::thread::JoinHandle<()>>,
 ) {
-    let _ = daemon.kill();
+    // Once the supervisor has detached, its inherited process group also
+    // contains the gated daemon monitor. Before `setsid` succeeds this falls
+    // back to the direct child, so it never signals the launcher's own group.
+    kill_direct_child_group(daemon);
     let _ = daemon.wait();
     if let Some(reader) = reader {
         let _ = reader.join();
@@ -707,10 +737,122 @@ fn env_string(name: &str) -> String {
 // Daemon role
 // ---------------------------------------------------------------------------
 
-fn daemon_body(spec: &JobSpec) -> Result<(), String> {
+fn daemon_supervisor_body(spec: &JobSpec) -> Result<(), String> {
     // Detach from the launching session so the job outlives its orchestrator
-    // shell, exactly as the Python daemon's `setsid` did.
+    // shell. This direct parent stays alive only to reap the daemon monitor and
+    // persist its exit code or signal for a later foreground recovery.
     setsid().map_err(|error| one_line(&error))?;
+    let root = bgjob_dir(&spec.tmpdir).map_err(|error| one_line(&error))?;
+    fs::create_dir_all(&root).map_err(|error| one_line(&error))?;
+    let status_path =
+        daemon_status_path(&spec.tmpdir, &spec.step).map_err(|error| one_line(&error))?;
+    let mut daemon = spawn_daemon_monitor(spec).map_err(|error| one_line(&error))?;
+    let daemon_pid = match i32::try_from(daemon.child.id()) {
+        Ok(pid) => pid,
+        Err(error) => {
+            let _ = daemon.child.kill();
+            let _ = daemon.child.wait();
+            return Err(one_line(&error));
+        }
+    };
+    if let Err(error) = private_atomic_write(
+        &status_path,
+        &render_rows(&daemon_status_rows(DaemonStatus::Pending {
+            pid: daemon_pid,
+        })),
+        &root,
+    ) {
+        let _ = daemon.child.kill();
+        let _ = daemon.child.wait();
+        return Err(one_line(&error));
+    }
+    if let Err(error) = release_daemon_monitor(&mut daemon) {
+        let _ = daemon.child.kill();
+        let status = daemon
+            .child
+            .wait()
+            .map_err(|wait_error| one_line(&wait_error))?;
+        write_daemon_termination(&status_path, &root, daemon_pid, status)?;
+        return Err(error);
+    }
+    let status = daemon.child.wait().map_err(|error| one_line(&error))?;
+    write_daemon_termination(&status_path, &root, daemon_pid, status)
+}
+
+fn spawn_daemon_monitor(spec: &JobSpec) -> std::io::Result<SpawnedDaemonMonitor> {
+    let executable = env::current_exe()?;
+    let mut command = Command::new(executable); // lint-subprocess-via-runner: ok the detached supervisor must directly reap its daemon monitor
+    command
+        .args(daemon_arguments(spec))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::null())
+        .env(ENV_DAEMON_ROLE, "1")
+        .env(ENV_DAEMON_MONITOR_ROLE, "1")
+        .env_remove(ENV_WORKER_ROLE)
+        .env_remove(ENV_WORKER_TMPDIR)
+        .env_remove(ENV_WORKER_STEP);
+    let mut child = command.spawn()?;
+    let Some(gate) = child.stdin.take() else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(std::io::Error::other("daemon monitor gate unavailable"));
+    };
+    Ok(SpawnedDaemonMonitor {
+        child,
+        gate: Some(gate),
+    })
+}
+
+fn release_daemon_monitor(daemon: &mut SpawnedDaemonMonitor) -> Result<(), String> {
+    let Some(mut gate) = daemon.gate.take() else {
+        return Err("daemon-monitor-gate-unavailable".to_owned());
+    };
+    gate.write_all(DAEMON_GATE.as_bytes())
+        .and_then(|()| gate.flush())
+        .map_err(|error| one_line(&error))
+}
+
+fn await_daemon_gate() -> Result<(), String> {
+    let mut gate = String::new();
+    BufReader::new(std::io::stdin())
+        .read_line(&mut gate)
+        .map_err(|error| one_line(&error))?;
+    if gate == DAEMON_GATE {
+        Ok(())
+    } else {
+        Err("daemon-monitor-gate-not-released".to_owned())
+    }
+}
+
+fn write_daemon_termination(
+    path: &Path,
+    root: &Path,
+    pid: i32,
+    status: std::process::ExitStatus,
+) -> Result<(), String> {
+    let termination = match (status.code(), status.signal()) {
+        (Some(exit), None) => DaemonTermination {
+            pid,
+            exit: Some(exit),
+            signal: None,
+        },
+        (None, Some(signal)) => DaemonTermination {
+            pid,
+            exit: None,
+            signal: Some(signal),
+        },
+        _ => return Err("daemon-monitor-termination-unavailable".to_owned()),
+    };
+    private_atomic_write(
+        path,
+        &render_rows(&daemon_status_rows(DaemonStatus::Terminated(termination))),
+        root,
+    )
+    .map_err(|error| one_line(&error))
+}
+
+fn daemon_body(spec: &JobSpec) -> Result<(), String> {
     // Capture the persistent worker leader before releasing its private gate.
     let host = SystemProcessIdentityHost::new();
     fs::create_dir_all(&spec.log_dir).map_err(|error| one_line(&error))?;
@@ -924,6 +1066,7 @@ fn spawn_job(spec: &JobSpec, stdout: File, stderr: File) -> std::io::Result<Spaw
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr))
         .env_remove(ENV_DAEMON_ROLE)
+        .env_remove(ENV_DAEMON_MONITOR_ROLE)
         .env_remove(ENV_DAEMON_OWNER)
         .env(ENV_WORKER_ROLE, "1")
         .env(ENV_WORKER_TMPDIR, &spec.tmpdir)
@@ -1064,6 +1207,7 @@ fn worker_body(arguments: &[OsString]) -> Result<String, String> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .env_remove(ENV_DAEMON_ROLE)
+        .env_remove(ENV_DAEMON_MONITOR_ROLE)
         .env_remove(ENV_DAEMON_OWNER)
         .env_remove(ENV_WORKER_ROLE)
         .env_remove(ENV_WORKER_TMPDIR)
@@ -1432,18 +1576,21 @@ fn wait_once(parsed: &WaitArguments) -> Result<String, String> {
                 "daemon-dead-wait",
             ) {
                 BgjobRecoveryOutcome::Recovered => {
-                    let tail = stderr_tail(&entry);
+                    let evidence = dead_daemon_evidence(&entry);
                     return Ok(dead_rows(&[
                         ("BGJOB_DIAG", "daemon-dead-recovered"),
-                        ("STDERR_TAIL", tail.as_str()),
+                        (BGJOB_STDERR_TAIL_KEY, evidence.stderr_tail.as_str()),
+                        (BGJOB_DAEMON_EXIT_KEY, evidence.daemon_exit.as_str()),
+                        (BGJOB_DAEMON_SIGNAL_KEY, evidence.daemon_signal.as_str()),
+                        (BGJOB_STDOUT_TAIL_KEY, evidence.stdout_tail.as_str()),
                     ]));
                 }
                 BgjobRecoveryOutcome::Failed(reason) => {
-                    let tail = stderr_tail(&entry);
+                    let evidence = dead_daemon_evidence(&entry);
                     return Ok(retryable_recovery_rows(
                         parsed.max_wait_s,
                         &recovery_diag(&reason),
-                        &tail,
+                        &evidence,
                     ));
                 }
                 BgjobRecoveryOutcome::Busy | BgjobRecoveryOutcome::Gone => {
@@ -1511,15 +1658,56 @@ fn poll_sleep(poll_interval_s: f64, deadline: Instant) -> Duration {
     Duration::from_secs_f64(poll_interval_s.min(remaining).max(MIN_POLL_SLEEP))
 }
 
-fn stderr_tail(entry: &RegistryEntry) -> String {
-    let path = &entry.stderr_log;
-    if fs::symlink_metadata(path)
-        .is_ok_and(|metadata| metadata.file_type().is_symlink() || !metadata.is_file())
-    {
-        return String::new();
+fn dead_daemon_evidence(entry: &RegistryEntry) -> DeadDaemonEvidence {
+    let (daemon_exit, daemon_signal) = daemon_termination_evidence(entry);
+    DeadDaemonEvidence {
+        daemon_exit,
+        daemon_signal,
+        stdout_tail: child_log_tail(entry, &entry.stdout_log, "stdout log is unsafe"),
+        stderr_tail: child_log_tail(entry, &entry.stderr_log, "stderr log is unsafe"),
     }
-    fs::read(path)
-        .map(|bytes| log_tail(&String::from_utf8_lossy(&bytes)))
+}
+
+fn daemon_termination_evidence(entry: &RegistryEntry) -> (String, String) {
+    let Ok(path) = daemon_status_path(&entry.tmpdir, &entry.step) else {
+        return (String::new(), String::new());
+    };
+    let deadline = Instant::now() + DAEMON_STATUS_READ_GRACE;
+    loop {
+        let status = read_confined_result_env(&path, &entry.tmpdir)
+            .ok()
+            .flatten()
+            .and_then(|text| parse_daemon_status(&text));
+        match status {
+            Some(DaemonStatus::Terminated(termination)) if termination.pid == entry.daemon.pid => {
+                return (
+                    termination
+                        .exit
+                        .map_or_else(String::new, |value| value.to_string()),
+                    termination
+                        .signal
+                        .map_or_else(String::new, |value| value.to_string()),
+                );
+            }
+            Some(DaemonStatus::Pending { pid })
+                if pid == entry.daemon.pid && Instant::now() < deadline =>
+            {
+                thread::sleep(DAEMON_STATUS_READ_POLL);
+            }
+            _ => return (String::new(), String::new()),
+        }
+    }
+}
+
+fn child_log_tail(entry: &RegistryEntry, path: &Path, message: &str) -> String {
+    let byte_limit = u64::try_from(BGJOB_LOG_TAIL_BYTES.saturating_add(1)).unwrap_or(u64::MAX);
+    read_confined_regular_tail(path, &entry.log_dir, byte_limit, message)
+        .map(|(bytes, earlier_omitted)| {
+            log_tail_bytes(
+                &bytes,
+                earlier_omitted || bytes.len() > BGJOB_LOG_TAIL_BYTES,
+            )
+        })
         .unwrap_or_default()
 }
 
@@ -1548,13 +1736,28 @@ fn wait_rows(max_wait_s: i64) -> String {
 /// Report a recovery that still owns a durable row without falsely making it
 /// terminal. Callers repeat their ordinary wait; a later recovery claimant can
 /// either prove the process group absent or publish the normal result.
-fn retryable_recovery_rows(max_wait_s: i64, reason: &str, tail: &str) -> String {
+fn retryable_recovery_rows(max_wait_s: i64, reason: &str, evidence: &DeadDaemonEvidence) -> String {
     render_rows(&[
         (BGJOB_STATUS_KEY.to_owned(), BGJOB_STATUS_WAIT.to_owned()),
         ("ELAPSED_S".to_owned(), max_wait_s.to_string()),
         ("BGJOB_RECOVERY".to_owned(), "retryable".to_owned()),
         ("BGJOB_DIAG".to_owned(), reason.to_owned()),
-        ("STDERR_TAIL".to_owned(), tail.to_owned()),
+        (
+            BGJOB_STDERR_TAIL_KEY.to_owned(),
+            evidence.stderr_tail.clone(),
+        ),
+        (
+            BGJOB_DAEMON_EXIT_KEY.to_owned(),
+            evidence.daemon_exit.clone(),
+        ),
+        (
+            BGJOB_DAEMON_SIGNAL_KEY.to_owned(),
+            evidence.daemon_signal.clone(),
+        ),
+        (
+            BGJOB_STDOUT_TAIL_KEY.to_owned(),
+            evidence.stdout_tail.clone(),
+        ),
     ])
 }
 
