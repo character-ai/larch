@@ -280,7 +280,7 @@ fn flowchart_rejects_pipe(line: &str) -> bool {
 mod tests {
     use super::{ShipPrBody, compose_ship_pr_body, ship_pr_title};
 
-    fn input<'a>(mermaid: &'a str) -> ShipPrBody<'a> {
+    fn input(mermaid: &str) -> ShipPrBody<'_> {
         ShipPrBody {
             summary: "- Ship the Rust driver.\n",
             mermaid,
