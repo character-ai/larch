@@ -7,6 +7,7 @@ mod clarify;
 mod decompose;
 mod dialectic;
 mod log_publish;
+mod oos;
 mod pause;
 mod plan_grammar;
 mod plan_quality;
@@ -37,6 +38,12 @@ pub use log_publish::{
     GUIDELINE_ASSESSMENT_ARTIFACT, INVARIANT_ASSESSMENT_ARTIFACT, assessment_present,
     assessment_required, default_outcome_for_reason, lifecycle_outcome, publish_excluded,
     validate_issue, validate_repo, validate_slug,
+};
+pub use oos::{
+    DesignOosAnnotation, DesignOosIssueOutput, design_oos_annotate, design_oos_has_filed_urls,
+    design_oos_has_priority, design_oos_identity_signature, design_oos_priority_map,
+    design_oos_promote_pool, design_oos_recover_accepted, design_oos_unfiled,
+    parse_design_oos_issue_output,
 };
 pub use pause::{
     DESIGN_PAUSE_END, DESIGN_PAUSE_START, PauseMarker, determine_pause_step, parse_pause_marker,

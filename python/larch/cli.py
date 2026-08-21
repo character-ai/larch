@@ -133,8 +133,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("design", "step6-prelude"): ("larch.design.design_step6", "step6_prelude_main", True),
     ("design", "step6-cleanup"): ("larch.design.design_step6", "step6_cleanup_main", True),
     ("design", "compose-plan-md"): ("larch.design.design_step5c", "compose_plan_md_main", True),
-    ("design", "file-oos-prepare"): ("larch.design.design_oos", "file_oos_prepare_main", True),
-    ("design", "file-oos-annotate"): ("larch.design.design_oos", "file_oos_annotate_main", True),
     ("render", "specialist"): ("larch.rendering.rendering", "render_specialist_main", False),
     ("render", "voter"): ("larch.rendering.rendering", "render_voter_main", False),
     ("render", "plan-review"): ("larch.rendering.rendering", "render_plan_review_main", False),

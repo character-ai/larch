@@ -904,6 +904,19 @@ owned by `oos_commands.rs` and `larch_core::issue::oos_disposition` behind
 `crates/larch-cli/src/oos_file_commands.rs` refuses post-checkpoint completion
 while the sidecar remains.
 
+Design Step 5b preparation and annotation are Rust-owned by
+`crates/larch-cli/src/design_oos_commands.rs` behind
+`scripts/larch.sh design file-oos-prepare|file-oos-annotate`. The owner keeps
+accepted files, sentinels, and retry sidecars under validated, non-symlinked
+temporary or cache roots. High-risk `oos-correctness` provisioning uses the
+typed GitHub label service after the shared live-mutation gate accepts the
+session context, matching run ID, and trusted design root; direct recovery must
+instead name `--operator-invoked`. Label application reads the issue snapshot,
+applies the field-scoped label replacement through `IssueMutationOwner`, and
+accepts success only after read-back. Missing authorization or repository
+identity, ambiguous slot mapping, or any label failure preserves the pending
+marker and fails closed.
+
 Review and design tally/aggregation modules retain their distinct source-side
 classification responsibilities. Under receiving umbrella #7681,
 `crates/larch-cli/src/implement_ship_commands.rs` owns Step 8 dispatch, typed
@@ -918,7 +931,8 @@ result/handoff reads and shared-core ship-state patches. The surviving
 `python/larch/issue/file_oos.py` callers use in-process block parsing/counting
 and title normalization under receiving umbrella #7680; the module is not an
 OOS command owner or fallback. Rust tests in `implement_ship_parity.rs`,
-`ship_pre_driver_parity.rs`, `ship_state_parity.rs`, `oos_commands.rs`,
+`ship_pre_driver_parity.rs`, `ship_state_parity.rs`,
+`design_oos_migrated_parity.rs`, `design_oos_commands.rs`, `oos_commands.rs`,
 `oos_file_commands.rs`, `oos_batch.rs`,
 `oos_disposition.rs`, and `oos_record.rs` cover Step 8 wire parity, manifest
 materialization, field variants, private routing, and checkpoint refusal.

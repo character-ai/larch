@@ -233,6 +233,12 @@ pub use design::{
     pause_body_hash, publish_excluded, render_pause_state, strip_pause_markers, valid_pause_step,
     validate_issue, validate_repo, validate_slug as validate_design_log_slug,
 };
+pub use design::{
+    DesignOosAnnotation, DesignOosIssueOutput, design_oos_annotate, design_oos_has_filed_urls,
+    design_oos_has_priority, design_oos_identity_signature, design_oos_priority_map,
+    design_oos_promote_pool, design_oos_recover_accepted, design_oos_unfiled,
+    parse_design_oos_issue_output,
+};
 pub use difficulty::{
     AUDIT_DENOMINATOR, BuildRecord, CODEX_MODEL_ROLE, CONFIDENCES, DESIGN_RAW_RATING_BASENAME,
     DIFFICULTY_RECORD_BASENAME, DifficultyFloor, DifficultyRating, FLOOR_MANIFEST_RELPATH,

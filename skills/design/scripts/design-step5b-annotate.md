@@ -25,4 +25,4 @@ Thin launcher-compat wrapper for the `/design` Step 5b annotate block.
 
 ## Harness
 
-Covered by `python/test_design_oos.py`, `python/test_design_cli_ports.py`, and `make test-design-structure`.
+Covered by `crates/larch-cli/tests/design_oos_migrated_parity.rs`, the in-crate design OOS tests, and `make test-design-structure`.

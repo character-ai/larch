@@ -285,11 +285,11 @@ pub fn render_blocks(blocks: &[AcceptedBlock]) -> String {
 /// Count the OOS blocks one composed document carries.
 #[must_use]
 pub fn combined_block_count(text: &str) -> usize {
-    combined_blocks(text).len()
+    combined_oos_blocks(text).len()
 }
 
 /// Return the OOS blocks of one composed document, in order.
-fn combined_blocks(text: &str) -> Vec<String> {
+pub fn combined_oos_blocks(text: &str) -> Vec<String> {
     parse_oos_blocks(text, BlockBoundary::ItemHeading)
         .into_iter()
         .filter(|block| block.kind == OosItemKind::Oos)
@@ -360,7 +360,7 @@ pub fn priority_by_combined_item(
         .filter(|block| !block.stable_id.is_empty())
         .map(|block| (block.stable_id.as_str(), block.priority))
         .collect();
-    combined_blocks(combined_text)
+    combined_oos_blocks(combined_text)
         .iter()
         .enumerate()
         .filter_map(|(offset, block)| {
@@ -761,7 +761,7 @@ pub fn priority_urls(
     let Some(combined_text) = combined_text else {
         return urls;
     };
-    let combined = combined_blocks(combined_text);
+    let combined = combined_oos_blocks(combined_text);
     let priority_indices: HashSet<usize> = combined
         .iter()
         .enumerate()

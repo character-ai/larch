@@ -28,17 +28,17 @@ use std::{
     time::Duration,
 };
 
-use larch_adapters::github::IssueMutationOwner;
+use larch_adapters::github::{IssueMutationOwner, LiveMutationRequest};
 use larch_core::{
     AcceptedBlock, AcceptedSource, FILE_CONFLICT_DEFAULT_CLUSTER_CAP,
     FILE_CONFLICT_DEFAULT_GLOBAL_CAP, FiledIssue, GitHubLabelCreate, GitHubRepositoryRef,
     GitHubService as _, IssueMutationRequest, ManifestDocument, OOS_CORRECTNESS_LABEL,
     OOS_CORRECTNESS_LABEL_COLOR, OOS_CORRECTNESS_LABEL_DESCRIPTION, ParsedItem,
     combined_block_count, dedupe_filed, ensure_ascii_json, is_capped_rollup_body,
-    issue_number_from_url, ndjson_filed_evidence, parse_intra_batch_deps, parse_issue_input,
-    priority_by_combined_item, priority_urls, read_universal_newlines, render_blocks,
-    render_oos_ndjson, render_recovery_evidence, render_sentinel, sanitize_public_text,
-    sentinel_urls, split_persisted_matches, split_to_github_limit, stable_ids_by_combined_item,
+    ndjson_filed_evidence, parse_intra_batch_deps, parse_issue_input, priority_by_combined_item,
+    priority_urls, read_universal_newlines, render_blocks, render_oos_ndjson,
+    render_recovery_evidence, render_sentinel, sanitize_public_text, sentinel_urls,
+    split_persisted_matches, split_to_github_limit, stable_ids_by_combined_item,
     summarize_to_github_limit, topological_create_order, unsigned_integer,
     validate_issue_cap_input, working_batch, wrap_oos_body,
 };
@@ -159,6 +159,83 @@ impl LiveFiling {
     }
 }
 
+/// Provision the shared high-risk OOS label through the typed GitHub service.
+pub fn ensure_priority_label(repo: &str) -> Result<(), String> {
+    let repository = LiveFiling::repository(repo)?;
+    let request = GitHubLabelCreate {
+        repo: repository.clone(),
+        name: OOS_CORRECTNESS_LABEL.to_owned(),
+        color: OOS_CORRECTNESS_LABEL_COLOR.to_owned(),
+        description: OOS_CORRECTNESS_LABEL_DESCRIPTION.to_owned(),
+    };
+    match with_github_service(async |service, cancellation| {
+        if service
+            .list_labels(&repository, cancellation)
+            .await
+            .is_ok_and(|labels| labels.iter().any(|label| label.name == request.name))
+        {
+            return Ok(Ok(()));
+        }
+        Ok(service
+            .create_label(&request, cancellation)
+            .await
+            .map(|_label| ())
+            .map_err(|error| error.to_string()))
+    }) {
+        Ok(result) => result,
+        Err(ServiceFailure::Setup(detail) | ServiceFailure::Operation(detail)) => Err(detail),
+    }
+}
+
+/// Parse an exact issue URL only when it names the selected repository.
+fn priority_issue_number(repository: &GitHubRepositoryRef, url: &str) -> Option<u64> {
+    let mut segments = url.strip_prefix("https://github.com/")?.split('/');
+    let owner = segments.next()?;
+    let name = segments.next()?;
+    let kind = segments.next()?;
+    let number = segments.next()?;
+    if segments.next().is_some()
+        || !owner.eq_ignore_ascii_case(repository.owner())
+        || !name.eq_ignore_ascii_case(repository.name())
+        || kind != "issues"
+    {
+        return None;
+    }
+    unsigned_integer(number)
+}
+
+/// Add the shared high-risk label and verify the issue mutation by read-back.
+pub fn apply_priority_label(
+    repo: &str,
+    url: &str,
+    authorization: &LiveMutationRequest<'_>,
+) -> Result<(), String> {
+    let repository = LiveFiling::repository(repo)?;
+    let number = priority_issue_number(&repository, url)
+        .ok_or_else(|| format!("issue URL does not belong to {repo}: {url}"))?;
+    match with_github_service(async |service, cancellation| {
+        let owner = IssueMutationOwner::new(service);
+        let snapshot = match owner.read_snapshot(&repository, number, cancellation).await {
+            Ok(snapshot) => snapshot,
+            Err(error) => return Ok(Err(error.to_string())),
+        };
+        let mut labels = snapshot.labels.clone();
+        let _added = labels.insert(OOS_CORRECTNESS_LABEL.to_owned());
+        Ok(owner
+            .apply(
+                cancellation,
+                authorization,
+                &IssueMutationRequest::replace_labels(&snapshot, labels),
+            )
+            .await
+            .map(|_verified| ())
+            .map_err(|error| error.to_string()))
+    }) {
+        Ok(result) => result,
+        Err(ServiceFailure::Setup(detail) | ServiceFailure::Operation(detail)) => Err(detail),
+    }
+}
+
 impl FilingGateway for LiveFiling {
     fn probe_blocker(&self, repo: &str, issue_number: &str) -> Result<(), String> {
         let repository = Self::repository(repo)?;
@@ -216,61 +293,13 @@ impl FilingGateway for LiveFiling {
     }
 
     fn ensure_priority_label(&self, repo: &str) -> Result<(), String> {
-        let repository = Self::repository(repo)?;
-        let request = GitHubLabelCreate {
-            repo: repository.clone(),
-            name: OOS_CORRECTNESS_LABEL.to_owned(),
-            color: OOS_CORRECTNESS_LABEL_COLOR.to_owned(),
-            description: OOS_CORRECTNESS_LABEL_DESCRIPTION.to_owned(),
-        };
-        match with_github_service(async |service, cancellation| {
-            // An existing label is the postcondition this asks for, so a
-            // create that collides with one already present is a success.
-            if service
-                .list_labels(&repository, cancellation)
-                .await
-                .is_ok_and(|labels| labels.iter().any(|label| label.name == request.name))
-            {
-                return Ok(Ok(()));
-            }
-            Ok(service
-                .create_label(&request, cancellation)
-                .await
-                .map(|_label| ())
-                .map_err(|error| error.to_string()))
-        }) {
-            Ok(result) => result,
-            Err(ServiceFailure::Setup(detail) | ServiceFailure::Operation(detail)) => Err(detail),
-        }
+        ensure_priority_label(repo)
     }
 
     fn apply_priority_label(&self, repo: &str, url: &str) -> Result<(), String> {
-        let repository = Self::repository(repo)?;
-        let number = unsigned_integer(&issue_number_from_url(url))
-            .ok_or_else(|| format!("could not parse issue number from {url}"))?;
         let authorization =
             authorization_request(&self.context_file, &self.run_id, &self.trusted_root, false);
-        match with_github_service(async |service, cancellation| {
-            let owner = IssueMutationOwner::new(service);
-            let snapshot = match owner.read_snapshot(&repository, number, cancellation).await {
-                Ok(snapshot) => snapshot,
-                Err(error) => return Ok(Err(error.to_string())),
-            };
-            let mut labels = snapshot.labels.clone();
-            let _added = labels.insert(OOS_CORRECTNESS_LABEL.to_owned());
-            Ok(owner
-                .apply(
-                    cancellation,
-                    &authorization,
-                    &IssueMutationRequest::replace_labels(&snapshot, labels),
-                )
-                .await
-                .map(|_verified| ())
-                .map_err(|error| error.to_string()))
-        }) {
-            Ok(result) => result,
-            Err(ServiceFailure::Setup(detail) | ServiceFailure::Operation(detail)) => Err(detail),
-        }
+        apply_priority_label(repo, url, &authorization)
     }
 
     fn codex_available(&self) -> bool {
@@ -1548,9 +1577,10 @@ fn backfill_priority_labels(
 mod tests {
     use super::{
         BatchInputs, BatchResult, CreateRequest, CreatedRow, FailureMode, FileRequest,
-        FilingGateway, Payload, Recovered, Session, drive, report_batch_failure, run_issue_batch,
+        FilingGateway, Payload, Recovered, Session, drive, priority_issue_number,
+        report_batch_failure, run_issue_batch,
     };
-    use larch_core::{AcceptedBlock, FiledIssue};
+    use larch_core::{AcceptedBlock, FiledIssue, GitHubRepositoryRef};
     use std::{
         cell::RefCell,
         collections::{BTreeMap, HashSet},
@@ -1568,6 +1598,26 @@ mod tests {
         LabelProvision,
         LabelApply,
         Probe,
+    }
+
+    #[test]
+    fn priority_issue_url_is_bound_to_the_selected_repository() {
+        let repository = GitHubRepositoryRef::new("character-ai", "larch").expect("repository");
+        assert_eq!(
+            priority_issue_number(
+                &repository,
+                "https://github.com/Character-AI/LARCH/issues/8590"
+            ),
+            Some(8590)
+        );
+        for url in [
+            "https://github.com/other/larch/issues/8590",
+            "https://github.com/character-ai/other/issues/8590",
+            "https://github.com/character-ai/larch/pull/8590",
+            "https://github.com/character-ai/larch/issues/8590?wrong=1",
+        ] {
+            assert_eq!(priority_issue_number(&repository, url), None, "{url}");
+        }
     }
 
     /// One scripted gateway, recording what the driver asked it to do.

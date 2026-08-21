@@ -82,6 +82,12 @@ redacted title, body, and label-name set. The other eight leaf #8578 verbs
 reach no GitHub service, so they left the `pull-requests` row without joining
 another.
 
+The `labels` and `design-oos-label-mutations` rows record the #8590 cutover of
+`design file-oos-annotate`. Following the #7672 canonical result, label
+provisioning uses the typed label service and issue-label application uses the
+shared mutation owner with read-back. `design file-oos-prepare` reaches no
+GitHub service. Both commands left the broad pending `pull-requests` row.
+
 The three `tracking-issue-*` rows record the corrected atomic cutover in #8346
 of the six tracking-issue lifecycle verbs. `tracking-issue-comment-reads`
 covers the three verbs that list comments: `read` renders the issue and its
@@ -183,7 +189,8 @@ audit-pull-requests	crates/larch-adapters/src/github/operations.rs	rust	#7682	co
 rebalance-pull-requests	crates/larch-adapters/src/github/operations.rs	rust	#7685	complete	complete	complete	issue migration-audit,rebalance-tests run
 combine-issues	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	combine-issues *
 label-dependency-mutations	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	block-issue *
-labels	crates/larch-adapters/src/github_rest.rs	rust	#7680	complete	complete	complete	clarify label
+labels	crates/larch-adapters/src/github_rest.rs	rust	#7680	complete	complete	complete	clarify label,design file-oos-annotate
+design-oos-label-mutations	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7680	complete	complete	complete	design file-oos-annotate
 agnix-label-provision	crates/larch-adapters/src/github_rest.rs	rust	#7685	complete	complete	complete	gh agnix-ensure-label
 pull-request-implement	crates/larch-adapters/src/github/operations.rs	python	#7681	pending	pending	pending	implement checks-commit-route,implement cleanup,implement commit,implement commit-route,implement step-16,implement step-16-16a,implement step-16-17,implement step-17
 pull-request-implement-dispatch	crates/larch-adapters/src/github/operations.rs	rust	#7681	complete	complete	complete	implement kill-active-leg,implement recovery-paths,implement run-dispatch,implement run-step-checks,implement step-2-post-dispatch,implement step2-dispatch
@@ -191,8 +198,8 @@ pull-request-implement-migrated	crates/larch-adapters/src/github/operations.rs	r
 pull-request-implement-retired	crates/larch-adapters/src/github/operations.rs	retired	#7681	not-applicable	complete	complete	implement step-18-gate-finalize
 pull-request-implement-terminal	crates/larch-adapters/src/github/operations.rs	rust	#7995	complete	complete	complete	implement step-18-gate-logs-flush,implement step-19
 pull-request-ci-monitor	crates/larch-adapters/src/github_actions.rs	rust	#7681	complete	complete	complete	ci behind-count,ci decide,ci distill-log,ci failed-jobs,ci main-health,ci rerun-failed,ci status,ci wait
-pull-request-design-migrated	crates/larch-adapters/src/github/operations.rs	rust	#7680	complete	complete	complete	design dialectic-clear-stale,design dialectic-promote-candidates,design dialectic-validate-candidates,design dialectic-write-candidates,design driver,design failure-report,design pause-load,design pause-save,design publish,design read-result-env,design render-final-summary,design render-gate,design stage-terminal-state,design step-final-summary,design step1d5,design step1d7,design step1e-reentry,design step35-settle,design step5b-annotate,design step5b-prepare
-pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	pending	pending	pending	design dialectic-gatec,design dialectic-manual,design file-oos-annotate,design file-oos-prepare,design prelude,design step2b5,design step3-continuation-entry,design step5c,design step6,design step6-cleanup,design step6-prelude,pr *,ship pr,ship reconcile-manual-merge
+pull-request-design-migrated	crates/larch-adapters/src/github/operations.rs	rust	#7680	complete	complete	complete	design dialectic-clear-stale,design dialectic-promote-candidates,design dialectic-validate-candidates,design dialectic-write-candidates,design driver,design failure-report,design file-oos-annotate,design file-oos-prepare,design pause-load,design pause-save,design publish,design read-result-env,design render-final-summary,design render-gate,design stage-terminal-state,design step-final-summary,design step1d5,design step1d7,design step1e-reentry,design step35-settle,design step5b-annotate,design step5b-prepare
+pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	pending	pending	pending	design dialectic-gatec,design dialectic-manual,design prelude,design step2b5,design step3-continuation-entry,design step5c,design step6,design step6-cleanup,design step6-prelude,pr *,ship pr,ship reconcile-manual-merge
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
 repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676,#7681	complete	complete	complete	gh remote-repo,gh resolve-repo,ship pre-fix-rebase
 tracking-issue-comment-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	tracking-issue append-comment,tracking-issue read,tracking-issue upsert-summary

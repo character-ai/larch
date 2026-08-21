@@ -239,6 +239,8 @@ impl CleanInstallCase {
             | "clean-install-design-step0c"
             | "clean-install-design-step35-settle"
             | "clean-install-plan-review-step35-settle"
+            | "clean-install-design-file-oos-prepare"
+            | "clean-install-design-file-oos-annotate"
             // The three scout verbs declared `add_help=False`, so the
             // clean-install `--help` token reaches each parser's own
             // required-argument refusal and exits 2.
@@ -788,6 +790,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-clarify-label", "clarify", "label"),
     CleanInstallCase::new("clean-install-design-clarify", "design", "clarify"),
     CleanInstallCase::new("clean-install-design-publish", "design", "publish"),
+    CleanInstallCase::new(
+        "clean-install-design-file-oos-prepare",
+        "design",
+        "file-oos-prepare",
+    ),
+    CleanInstallCase::new(
+        "clean-install-design-file-oos-annotate",
+        "design",
+        "file-oos-annotate",
+    ),
     CleanInstallCase::new(
         "clean-install-design-render-final-summary",
         "design",

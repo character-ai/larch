@@ -1,9 +1,8 @@
 //! Rust owner for `/design` Step 3.5 settlement and Step 5b annotation (#8585).
 //!
 //! This atomically replaces `design step35-settle`, `plan-review step35-settle`,
-//! `design step5b-prepare`, and `design step5b-annotate`. Rust-owned siblings
-//! run through the verified bootstrap seam; the still-Python dialectic and OOS
-//! siblings use the shared `python_verb` bridge until their owning leaves land.
+//! `design step5b-prepare`, and `design step5b-annotate`. Sibling commands run
+//! through the verified bootstrap seam.
 
 use std::{
     collections::BTreeMap,
@@ -11,7 +10,6 @@ use std::{
     fs::{self, OpenOptions},
     path::{Path, PathBuf},
     process::ExitCode,
-    time::Duration,
 };
 
 use larch_adapters::validate_design_tmpdir;
@@ -25,10 +23,9 @@ use crate::{
     design_step0_commands::{
         ChildOutcome, Env, LiveStep0Runner, Step0Runner, WrapperNs, atomic_write_string, env_get,
         load_source_env_allowed, load_wrapper_env, pause_save_arguments, require_plugin_root,
-        utf8_arguments, write_text,
+        resolve_owned_run_id, utf8_arguments, write_text,
     },
     design_step1_commands::{append_failure_args, consumer_repo_root},
-    python_verb::run_python_verb_at_root,
     voter_calibration_commands::resolve_like_python,
 };
 
@@ -39,7 +36,6 @@ const DIALECTIC_WARNING: &str = "**\u{26A0} design-step35-settle: dialectic-clea
 const STEP5B_PREPARE_LABEL: &str = "design-step5b-prepare.sh";
 const STEP5B_ANNOTATE_LABEL: &str = "design-step5b-annotate.sh";
 const STEP5B_SITE: &str = "design Step 5b";
-const PYTHON_TIMEOUT: Duration = Duration::from_secs(600);
 const STEP5B_SOURCE_ENV_ALLOW: [&str; 1] = ["REPO_ROOT"];
 
 struct CommonArgs {
@@ -228,24 +224,6 @@ fn run_larch(
 ) -> ChildOutcome {
     let args = arguments.into_iter().collect::<Vec<_>>();
     runner.run(plugin_root, &args, environment, false)
-}
-
-fn run_python(plugin_root: &Path, arguments: impl IntoIterator<Item = OsString>) -> ChildOutcome {
-    match run_python_verb_at_root(plugin_root, arguments, PYTHON_TIMEOUT) {
-        Ok(output) => {
-            let (code, stdout, stderr) = output.decoded_streams();
-            ChildOutcome {
-                code,
-                stdout,
-                stderr,
-            }
-        }
-        Err(_error) => ChildOutcome {
-            code: 1,
-            stdout: String::new(),
-            stderr: String::new(),
-        },
-    }
 }
 
 fn last_kv(rows: &[(String, String)], key: &str) -> String {
@@ -818,17 +796,65 @@ fn step5b_prelude(
     4
 }
 
-fn step5b_issue_args(env: &Env) -> Vec<OsString> {
+fn step5b_issue_args(env: &Env) -> Vec<String> {
     let mut args = Vec::new();
     let issue = env_get(env, "ISSUE_NUMBER", "");
     if !issue.is_empty() {
-        args.push(OsString::from("--issue-number"));
-        args.push(OsString::from(issue));
+        args.push("--issue-number".to_owned());
+        args.push(issue.to_owned());
     }
     let repo = env_get(env, "REPO", "");
     if !repo.is_empty() {
-        args.push(OsString::from("--repo"));
-        args.push(OsString::from(repo));
+        args.push("--repo".to_owned());
+        args.push(repo.to_owned());
+    }
+    args
+}
+
+fn step5b_mutation_args(run_id: &str, design_tmpdir: &Path) -> Vec<String> {
+    vec![
+        "--context-file".to_owned(),
+        design_tmpdir
+            .join("source-env.sh")
+            .to_string_lossy()
+            .into_owned(),
+        "--run-id".to_owned(),
+        run_id.to_owned(),
+        "--trusted-root".to_owned(),
+        design_tmpdir.to_string_lossy().into_owned(),
+    ]
+}
+
+fn step5b_prepare_args(env: &Env, design_tmpdir: &Path) -> Vec<String> {
+    let mut args = vec![
+        "design".to_owned(),
+        "file-oos-prepare".to_owned(),
+        "--design-tmpdir".to_owned(),
+        design_tmpdir.to_string_lossy().into_owned(),
+    ];
+    args.extend(step5b_issue_args(env));
+    args
+}
+
+fn step5b_annotate_args(
+    env: &Env,
+    design_tmpdir: &Path,
+    oos_issue_stdout: &Path,
+    run_id: &str,
+    label_only: bool,
+) -> Vec<String> {
+    let mut args = vec![
+        "design".to_owned(),
+        "file-oos-annotate".to_owned(),
+        "--design-tmpdir".to_owned(),
+        design_tmpdir.to_string_lossy().into_owned(),
+        "--issue-stdout-file".to_owned(),
+        oos_issue_stdout.to_string_lossy().into_owned(),
+    ];
+    args.extend(step5b_issue_args(env));
+    args.extend(step5b_mutation_args(run_id, design_tmpdir));
+    if label_only {
+        args.push("--label-only".to_owned());
     }
     args
 }
@@ -983,14 +1009,12 @@ pub fn step5b_prepare(arguments: &[OsString]) -> ExitCode {
     touch(&design_tmpdir.join(".completed/step-4b"));
     mark_design_timing(&runner, &plugin_root, "design Step 5 — finalize");
     let stderr_path = design_tmpdir.join("oos-filing-prepare.stderr.log");
-    let mut args = vec![
-        OsString::from("design"),
-        OsString::from("file-oos-prepare"),
-        OsString::from("--design-tmpdir"),
-        design_tmpdir.as_os_str().to_owned(),
-    ];
-    args.extend(step5b_issue_args(&env));
-    let child = run_python(&plugin_root, args);
+    let child = run_larch(
+        &runner,
+        &plugin_root,
+        step5b_prepare_args(&env, &design_tmpdir),
+        &[],
+    );
     write_text(&stderr_path, &child.stderr);
     let prepare_env = design_tmpdir.join("oos-filing-prepare.env");
     write_text(&prepare_env, &child.stdout);
@@ -1179,19 +1203,13 @@ pub fn step5b_annotate(arguments: &[OsString]) -> ExitCode {
     let prepare_status = last_kv(&prepare_rows, "FILE_DESIGN_OOS_STATUS");
     let prepare_next_action = last_kv(&prepare_rows, "NEXT_ACTION");
     let label_only = prepare_status == "label-only-retry" || prepare_next_action == "label-only";
-    let mut args = vec![
-        OsString::from("design"),
-        OsString::from("file-oos-annotate"),
-        OsString::from("--design-tmpdir"),
-        design_tmpdir.as_os_str().to_owned(),
-        OsString::from("--issue-stdout-file"),
-        oos_issue_stdout.as_os_str().to_owned(),
-    ];
-    args.extend(step5b_issue_args(&env));
-    if label_only {
-        args.push(OsString::from("--label-only"));
-    }
-    let child = run_python(&plugin_root, args);
+    let run_id = resolve_owned_run_id(&design_tmpdir).unwrap_or_default();
+    let child = run_larch(
+        &runner,
+        &plugin_root,
+        step5b_annotate_args(&env, &design_tmpdir, &oos_issue_stdout, &run_id, label_only),
+        &[],
+    );
     write_text(&stderr_path, &child.stderr);
     write_text(
         &design_tmpdir.join("oos-filing-annotate.stdout.txt"),
@@ -1234,8 +1252,8 @@ mod tests {
     };
 
     use super::{
-        ChildOutcome, SettleRequest, Step0Runner, parse_next_action, parse_postplan_rc,
-        step5b_next_action, step35_settle_for,
+        ChildOutcome, Env, SettleRequest, Step0Runner, parse_next_action, parse_postplan_rc,
+        step5b_annotate_args, step5b_next_action, step5b_prepare_args, step35_settle_for,
     };
 
     struct Runner {
@@ -1439,5 +1457,55 @@ mod tests {
     fn step5b_actions_are_closed_sets() {
         assert_eq!(step5b_next_action("ready"), "file-issues");
         assert_eq!(step5b_next_action("unknown"), "unknown-oos-status");
+    }
+
+    #[test]
+    fn step5b_oos_commands_use_rust_routes_and_session_authorization() {
+        let design = PathBuf::from("/tmp/larch-design-step5b");
+        let mut env = Env::new();
+        env.insert("ISSUE_NUMBER".to_owned(), "8590".to_owned());
+        env.insert("REPO".to_owned(), "character-ai/larch".to_owned());
+
+        assert_eq!(
+            step5b_prepare_args(&env, &design),
+            [
+                "design",
+                "file-oos-prepare",
+                "--design-tmpdir",
+                "/tmp/larch-design-step5b",
+                "--issue-number",
+                "8590",
+                "--repo",
+                "character-ai/larch",
+            ]
+        );
+        assert_eq!(
+            step5b_annotate_args(
+                &env,
+                &design,
+                &design.join("oos-issue.stdout.txt"),
+                "design-run-8590",
+                true,
+            ),
+            [
+                "design",
+                "file-oos-annotate",
+                "--design-tmpdir",
+                "/tmp/larch-design-step5b",
+                "--issue-stdout-file",
+                "/tmp/larch-design-step5b/oos-issue.stdout.txt",
+                "--issue-number",
+                "8590",
+                "--repo",
+                "character-ai/larch",
+                "--context-file",
+                "/tmp/larch-design-step5b/source-env.sh",
+                "--run-id",
+                "design-run-8590",
+                "--trusted-root",
+                "/tmp/larch-design-step5b",
+                "--label-only",
+            ]
+        );
     }
 }
