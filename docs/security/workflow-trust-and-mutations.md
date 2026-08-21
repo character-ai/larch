@@ -73,19 +73,27 @@ filesystem access by itself.
 
 Co-installed plugin PreToolUse hooks are independent mechanical permission
 gates. When a hook returns `permissionDecision: deny`, the command never reaches
-larch. Cursor smart-mode approval does not override that result.
-`/complete-umbrella` stops on the first identical workflow-driver denial. It
-never retries or rewrites the command to evade the guard. If the hook also
-denies a required diagnostic or pointer-cleanup command, the workflow attempts
-that command only once, preserves recoverable state, reports the missing
-postcondition, and does not claim terminal success.
+larch. Cursor smart-mode approval does not override that result, and Claude
+Code has no `request_smart_mode_approval` API. `/complete-umbrella` never
+requests approval or rewrites a command to evade the guard.
 
 `smarts` versions before v2.0.3 misclassify Cursor `Shell` commands as opaque
 input and can match the short PagerDuty marker `pd` inside `--tmpdir`. Version
 v2.0.3 routes `Shell` through bounded command classification and bounds short
-opaque markers. Cursor operators who co-install these guards must use v2.0.3 or
-newer. Treat the same denial under a current release as a new upstream guard
-regression, not as larch mutation authority.
+opaque markers. A separate current defect can fail closed with `guard is
+unavailable` when the classifier subprocess exits nonzero. The affected guards
+match Claude Code `Bash` and Cursor `Shell`, so this shape is host-agnostic. It
+is tracked upstream as
+[character-tech/smarts#909](https://github.com/character-tech/smarts/issues/909).
+
+For only the exact unavailable shape, `/complete-umbrella` retries the identical
+denied workflow-driver command once. A second unavailable result, or a positive
+policy denial such as `not approved`, enters the Failure rule. Required
+diagnostic and pointer-cleanup calls then run once with no guard retry. A denied
+cleanup preserves recoverable state, reports the missing postcondition, and
+does not claim terminal success. This bounded retry handles a transient guard
+failure. It does not authorize an alternate entrypoint or weaken a policy
+decision.
 
 Review launchers use the narrowest available CLI posture. Codex review runs use
 `--sandbox read-only`. Cursor review runs use `--mode ask`. Their launchers also
@@ -416,20 +424,27 @@ daemon `start`, `wait`, `status`, and `reap` surfaces
 `crates/larch-cli/src/bgjob_adapt.rs`, and
 `crates/larch-cli/src/bgjob_commands.rs`). The adapter confines its state files
 and holds a pinned decision lock before it reattaches or launches. `start`
-detaches the daemon by re-executing the same verified binary in a daemon role,
-and the daemon binds the owner's recorded process identity, never a bare pid, so
-a reused pid never keeps an orphaned job alive (#6604). The daemon terminates a
+re-executes the same verified binary as a detached supervisor. The supervisor
+starts a private-gated daemon monitor, binds a confined status sidecar to that
+monitor's PID, then releases its gate. It remains the monitor's direct parent so
+it can reap the monitor and atomically record either its exit code or terminating
+signal. A DEAD recovery consumes the status only when its PID matches the daemon
+identity in the registry row. A missing or mismatched sidecar grants no process
+claim and yields empty termination fields.
+
+The daemon monitor binds the owner's recorded process identity, never a bare
+pid, so a reused pid never keeps an orphaned job alive (#6604). It terminates a
 timed-out or orphaned child only through validated process-group termination.
-Before it reports `STARTED`, the daemon creates a private-gated persistent worker
-as the process-group leader, captures its and the daemon's identities, and
-atomically publishes the complete registry record. It then writes the
+Before it reports `STARTED`, the monitor creates a private-gated persistent
+worker as the process-group leader, captures its and the monitor's identities,
+and atomically publishes the complete registry record. It then writes the
 identity-bearing `registry-published` startup marker, releases the worker gate,
 and acknowledges the launcher. The adapter retains its decision lock through
 that acknowledgement, so another adapter sees the one durable launch rather
 than starting a duplicate. A bounded launcher acknowledgement timeout, closed
-pipe, or malformed acknowledgement kills the daemon and enters the same durable
-recovery path; it either proves the worker group absent or leaves the registry
-record retryable.
+pipe, or malformed acknowledgement terminates the detached supervisor group and
+enters the same durable recovery path. Recovery either proves the worker group
+absent or leaves the registry record retryable.
 Each Rust-owned persisted identity records PID, process group, normalized `ps`
 start time, command text, and a kernel birth identity. Darwin uses the `proc_pidinfo`
 BSD-process creation seconds and microseconds; Linux combines its boot UUID

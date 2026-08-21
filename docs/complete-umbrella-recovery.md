@@ -48,30 +48,41 @@ reference, so age cleanup does not discard recoverable handoffs.
 
 ## Harness false-denies
 
-Recovery assumes the verified runtime entrypoint can run. `smarts` versions
-before v2.0.3 misclassify Cursor's `Shell` tool as opaque input. Their PagerDuty
-guard then substring-matches the short `pd` executable marker inside
-`--tmpdir`. The shared shape also affects the pagerduty, hyperdx, changes, and
-log-evidence guards. Legitimate
-`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh complete-umbrella …` and `bgjob …`
-commands can therefore be rejected before execution with text that names
-PagerDuty, log-provider, HyperDX, or packaged-reader policy. That is a
-coexistence false-deny, not recoverable umbrella state.
+Recovery assumes the verified runtime entrypoint can run. Two co-installed
+production-guard failures can deny an unrelated larch driver before execution:
 
-Upgrade the co-installed `smarts` plugin to v2.0.3 or newer before running the
-workflow. That release classifies Cursor `Shell` commands through the bounded
-shell-command path and bounds short opaque markers such as `pd`. If the harness
-still blocks `start`, `run-leaves` / `bgjob start`, `clear-pointer`, or `finish`,
-stop on the first denial. Cursor smart-mode approval cannot override a
-PreToolUse `permissionDecision: deny`. Attempt each remaining lifecycle
-diagnostic and pointer-cleanup command once. If the same guard denies one,
+- `smarts` versions before v2.0.3 can misclassify Cursor `Shell` input and match
+  the short PagerDuty marker `pd` inside `--tmpdir`. Version v2.0.3 bounds that
+  classifier path and marker.
+- A current guard classifier can exit nonzero and return `guard is unavailable`.
+  The pagerduty, hyperdx, changes, and log-evidence guards match both Claude
+  Code `Bash` and Cursor `Shell`, so this transient is host-agnostic. Its
+  upstream owner is [character-tech/smarts#909](https://github.com/character-tech/smarts/issues/909).
+
+For the exact transient `guard is unavailable` shape, repeat the identical
+denied workflow-driver command once. Claude Code has no
+`request_smart_mode_approval` API, and Cursor approval cannot override a
+PreToolUse `permissionDecision: deny`, so do not request approval on either
+host. If that one retry is denied, or the first denial is a positive policy
+decision such as `not approved` or `use the bounded packaged reader`, hard-fail
+through the ordinary Failure rule. Attempt each remaining lifecycle diagnostic
+and pointer-cleanup command once, with no guard retry. If a guard denies one,
 preserve any pointer and the session tmpdir. Report the unexecuted postcondition
-without claiming terminal success. After upgrading the guard, the same
-`/complete-umbrella <N>` command can recover that state. Report a guard
-regression upstream, or run `/complete-umbrella` in a session without those
-guards. Do not hand-edit lifecycle titles, invent an alternate shell entrypoint,
-or rephrase the driver as `gh`, curl, or wget. See the canonical
+without claiming terminal success.
+
+Upgrade older `smarts` installs before retrying the workflow. For a current
+install, repair or disable the failing co-installed guards, report a regression
+upstream, or run `/complete-umbrella` in a session without those guards. The
+same `/complete-umbrella <N>` command can then recover retained state. Do not
+hand-edit lifecycle titles, invent an alternate shell entrypoint, or rephrase
+the driver as `gh`, curl, or wget. See the canonical
 [co-installed PreToolUse gate contract](security/workflow-trust-and-mutations.md#co-installed-pretooluse-gates).
+
+When `bgjob wait` reports `BGJOB_STATUS=DEAD`, it may also report the mutually
+exclusive `DAEMON_EXIT` or `DAEMON_SIGNAL` and separate `STDOUT_TAIL` and
+`STDERR_TAIL` values. Empty termination fields mean the supervisor evidence was
+unavailable, not that the daemon exited cleanly. The tails are bounded and
+redacted operator diagnostics. Keep the raw session logs private.
 
 ## Diagnostic helper
 
