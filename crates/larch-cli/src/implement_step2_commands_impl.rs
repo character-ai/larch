@@ -1331,6 +1331,24 @@ mod fixtures {
         fs::write(path, text).expect("write fixture file");
     }
 
+    /// Install one executable `scripts/larch.sh` stub under a fixture plugin root.
+    ///
+    /// `state_larch`/`run_launcher` run the verified `larch` entrypoint as a real
+    /// child process (`run_verified_larch_env_in` has no test seam), so exercising
+    /// the launch-and-route path end to end means answering that process for
+    /// real rather than intercepting a Rust-side hook. Unix-only: it shells out
+    /// through a real `#!/usr/bin/env bash` script and sets the executable bit.
+    #[cfg(unix)]
+    pub(super) fn test_stub_larch_sh(plugin_root: &Path, body: &str) {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let script = plugin_root.join("scripts/larch.sh");
+        test_write_fixture(&script, body);
+        let mut permissions = fs::metadata(&script).expect("stub metadata").permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script, permissions).expect("chmod stub");
+    }
+
     pub(super) fn test_git(root: &Path, args: &[&str]) {
         let status = std::process::Command::new("git") // lint-subprocess-via-runner: ok test-only Git fixture
             .arg("-C")

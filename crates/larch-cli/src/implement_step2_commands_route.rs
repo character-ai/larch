@@ -1561,4 +1561,249 @@ mod route_tests {
         assert!(!quota_failure(&clean_log));
         assert!(!quota_failure(&dir.path().join("missing.log")));
     }
+
+    // -- dispatch_launch_and_route / run_launcher, end to end through a real
+    // `scripts/larch.sh` stub (#8623 coverage) -------------------------------
+    //
+    // `state_larch` runs the verified `larch` entrypoint as a real child
+    // process; there is no Rust-side seam to intercept it. These tests stand
+    // up a fixture plugin root whose `scripts/larch.sh` plays the external
+    // implementer launcher, so `dispatch_launch_and_route` and everything it
+    // calls (`run_launcher`, `route_manifest`, `complete_preflight_and_commit`,
+    // `emit_terminal_contract`) run for real. The control files the stub reads
+    // live beside `--manifest-path`, which is unique per test tmpdir, so
+    // concurrent tests cannot race each other through it.
+
+    /// Answers `agent launch-{codex,cursor}-implement` and `oos
+    /// materialize-manifest`. Every other verb is a harmless no-op, matching
+    /// how the real dispatcher tolerates a failed non-fatal forwarded call.
+    #[cfg(unix)]
+    const LAUNCH_STUB: &str = r#"#!/usr/bin/env bash
+set -euo pipefail
+
+manifest=""
+qa_pending=""
+args=("$@")
+i=0
+while [ "$i" -lt "${#args[@]}" ]; do
+  case "${args[$i]}" in
+    --manifest-path) manifest="${args[$((i + 1))]}"; i=$((i + 2)) ;;
+    --qa-pending-path) qa_pending="${args[$((i + 1))]}"; i=$((i + 2)) ;;
+    *) i=$((i + 1)) ;;
+  esac
+done
+
+case "${1:-} ${2:-}" in
+  "agent launch-codex-implement"|"agent launch-cursor-implement")
+    control="$(dirname "$manifest")"
+    mode="complete"
+    if [ -f "$control/launch-stub-mode.txt" ]; then
+      mode="$(cat "$control/launch-stub-mode.txt")"
+    fi
+    count_file="$control/launch-stub-count.txt"
+    count=0
+    if [ -f "$count_file" ]; then
+      count="$(cat "$count_file")"
+    fi
+    count=$((count + 1))
+    printf '%s' "$count" > "$count_file"
+    write_manifest=true
+    if [ "$mode" = "empty-then-complete" ] && [ "$count" -eq 1 ]; then
+      write_manifest=false
+    fi
+    if [ "$write_manifest" = true ]; then
+      printf 'external edit %s\n' "$count" > repo-edit.txt
+      cp "$control/launch-stub-manifest.json" "$manifest"
+      if [ -f "$control/launch-stub-qa.json" ]; then
+        cp "$control/launch-stub-qa.json" "$qa_pending"
+      fi
+    fi
+    echo "LAUNCHER_EXIT=0"
+    if [ "$write_manifest" = true ]; then
+      echo "MANIFEST_WRITTEN=true"
+    else
+      echo "MANIFEST_WRITTEN=false"
+    fi
+    echo "STATUS=ok"
+    exit 0
+    ;;
+  "oos materialize-manifest")
+    for arg in "${args[@]}"; do
+      if [ "$arg" = "--count-only" ]; then
+        echo 0
+        exit 0
+      fi
+    done
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+"#;
+
+    #[cfg(unix)]
+    const COMPLETE_MANIFEST: &str = r#"{"schema_version":1,"status":"complete","files_touched":[{"path":"repo-edit.txt"}],"tests_added_or_modified":[],"summary_bullets":["Implemented the stub change."],"commit_message":"Implement stub feature for coverage","todos_left":[],"oos_observations":[],"difficulty":{"predicted_tier":"TRIVIAL","confidence":"high","rationale":"Stub rating for a coverage-only launch."}}"#;
+
+    /// A ready-to-launch `codex` state whose stub script and manifest control
+    /// files live under `state.manifest_path`'s own directory.
+    ///
+    /// Writes a trivial `plan.txt` (no firm-scope paths, so plan coverage is
+    /// `advisory`/non-disposition-required) and freezes `step2-baseline.txt`
+    /// up front: this repo fixture has no remote, so `resolve_baseline` falls
+    /// back to that frozen file instead of `origin/HEAD`.
+    #[cfg(unix)]
+    fn launch_stub_state(tmpdir: &tempfile::TempDir, repo_root: &Path) -> DispatchState {
+        let mut state = test_dispatch_state(tmpdir, repo_root, "codex");
+        state.baseline_sha = head_sha(repo_root);
+        state.spawn_branch = abbrev_ref(repo_root);
+        test_write_fixture(&state.plan_file, "");
+        test_write_fixture(&state.feature_file, "Coverage fixture feature.\n");
+        ensure_step2_baseline(tmpdir.path(), Some(repo_root));
+        test_stub_larch_sh(&state.plugin_root, LAUNCH_STUB);
+        state
+    }
+
+    #[cfg(unix)]
+    fn control_dir(state: &DispatchState) -> PathBuf {
+        state
+            .manifest_path
+            .parent()
+            .expect("manifest has a parent")
+            .to_path_buf()
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn dispatch_launch_and_route_commits_a_complete_manifest_and_reports_success() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let mut state = launch_stub_state(&tmpdir, repo.path());
+        test_write_fixture(
+            &control_dir(&state).join("launch-stub-manifest.json"),
+            COMPLETE_MANIFEST,
+        );
+        let mut request = test_base_step2_request(tmpdir.path(), "codex");
+        let before_head = head_sha(repo.path());
+
+        let code = dispatch_launch_and_route(&mut request, &mut state);
+
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        assert_ne!(
+            head_sha(repo.path()),
+            before_head,
+            "a complete manifest must commit the coder's edit"
+        );
+        let manifest_text = fs::read_to_string(&state.manifest_path).expect("manifest");
+        assert!(manifest_text.contains("\"complete\""));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn dispatch_launch_and_route_retries_once_then_commits_after_an_empty_first_launch() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let mut state = launch_stub_state(&tmpdir, repo.path());
+        let control = control_dir(&state);
+        test_write_fixture(&control.join("launch-stub-mode.txt"), "empty-then-complete");
+        test_write_fixture(&control.join("launch-stub-manifest.json"), COMPLETE_MANIFEST);
+        let mut request = test_base_step2_request(tmpdir.path(), "codex");
+        let before_head = head_sha(repo.path());
+
+        let code = dispatch_launch_and_route(&mut request, &mut state);
+
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        assert_eq!(
+            fs::read_to_string(control.join("launch-stub-count.txt")).expect("count"),
+            "2",
+            "an empty first launch must trigger exactly one relaunch"
+        );
+        assert_ne!(
+            head_sha(repo.path()),
+            before_head,
+            "the retried launch's complete manifest must still commit"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn dispatch_launch_and_route_routes_a_needs_qa_manifest_without_committing() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let mut state = launch_stub_state(&tmpdir, repo.path());
+        let control = control_dir(&state);
+        test_write_fixture(
+            &control.join("launch-stub-manifest.json"),
+            r#"{"schema_version":1,"status":"needs_qa","needs_qa":{"questions":[{"id":"q1","text":"Please confirm scope."}]}}"#,
+        );
+        test_write_fixture(
+            &control.join("launch-stub-qa.json"),
+            r#"{"questions":[{"id":"q1","text":"Please confirm scope."}]}"#,
+        );
+        let mut request = test_base_step2_request(tmpdir.path(), "codex");
+        let before_head = head_sha(repo.path());
+
+        let code = dispatch_launch_and_route(&mut request, &mut state);
+
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        assert_eq!(
+            head_sha(repo.path()),
+            before_head,
+            "a needs_qa manifest must not commit"
+        );
+        assert!(state.qa_pending_path.is_file());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn dispatch_launch_and_route_routes_a_bailed_manifest_without_committing() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let mut state = launch_stub_state(&tmpdir, repo.path());
+        test_write_fixture(
+            &control_dir(&state).join("launch-stub-manifest.json"),
+            r#"{"schema_version":1,"status":"bailed","bail_reason":"stub bail for coverage"}"#,
+        );
+        let mut request = test_base_step2_request(tmpdir.path(), "codex");
+        let before_head = head_sha(repo.path());
+
+        let code = dispatch_launch_and_route(&mut request, &mut state);
+
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        assert_eq!(
+            head_sha(repo.path()),
+            before_head,
+            "a bailed manifest must not commit"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn run_launcher_reports_the_external_stubs_kv_envelope() {
+        let repo = test_init_repo();
+        test_write_fixture(&repo.path().join("a.txt"), "one\n");
+        test_commit_everything(repo.path(), "base");
+        let tmpdir = tempfile::tempdir().expect("tmpdir");
+        let state = launch_stub_state(&tmpdir, repo.path());
+        test_write_fixture(
+            &control_dir(&state).join("launch-stub-manifest.json"),
+            COMPLETE_MANIFEST,
+        );
+
+        let run = run_launcher(&state);
+
+        assert_eq!(run.wrapper_rc, 0);
+        assert_eq!(run.launcher_exit, "0");
+        assert_eq!(run.manifest_written, "true");
+        assert_eq!(run.status, "ok");
+        assert!(state.manifest_path.is_file());
+    }
 }
