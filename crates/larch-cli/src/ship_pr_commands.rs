@@ -818,10 +818,12 @@ fn truthy(value: &str) -> bool {
 }
 
 fn valid_oid(value: &str) -> bool {
-    matches!(value.len(), 40 | 64)
+    let supported_width = value.len() == 40 || value.len() == 64;
+    supported_width
         && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn slug(detail: &str) -> String {
