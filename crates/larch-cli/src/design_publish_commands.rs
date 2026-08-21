@@ -1195,14 +1195,8 @@ fn publish_core(
     }
 
     // Publish recomposes composed-plan.md from plan.txt so a stale composition
-    // cannot reach the issue; the compose helper stays with its Step 5c owner.
-    let compose = runner.run_python(&osargs(&[
-        "design",
-        "compose-plan-md",
-        "--design-tmpdir",
-        &paths.design_tmpdir.display().to_string(),
-    ]));
-    print!("{}", compose.stdout);
+    // cannot reach the issue. The Rust Step 5c owner performs this in-process.
+    crate::design_finalize_commands::recompose_plan_md(&paths.design_tmpdir);
     if !nonempty_file(&paths.composed_plan) {
         rows.set("VALIDATE_STATUS", "defects-found");
         rows.set("VALIDATE_DEFECT_COUNT", "1");

@@ -297,6 +297,7 @@ mod design_publish_commands_tests {
     fn empty_composed_plan_refuses_with_the_validate_defect_rows() {
         let session = Session::new();
         fs::write(session.tmpdir.join("composed-plan.md"), "").expect("truncate composed plan");
+        fs::write(session.tmpdir.join("plan.txt"), "").expect("truncate source plan");
         let runner = ScriptRunner::new(&[SIZE_OK]);
 
         let rc = publish_core(&runner, &ScriptReceipt::ok(), &session.args());
@@ -528,11 +529,16 @@ mod design_publish_commands_tests {
     #[test]
     fn a_stale_composed_plan_is_recomposed_before_the_gates_run() {
         let session = Session::ready();
+        session.write("composed-plan.md", "stale\n");
         let runner = ScriptRunner::new(&[SIZE_OK]);
 
         let _rc = publish_core(&runner, &ScriptReceipt::ok(), &session.args());
 
-        assert!(runner.ran("design compose-plan-md"));
+        assert!(!runner.ran("design compose-plan-md"));
+        let composed = session.read("composed-plan.md");
+        assert!(!composed.contains("stale"));
+        assert!(composed.contains("### Closed decisions and ownership"));
+        assert!(composed.contains("review_status: complete"));
     }
 
     #[test]

@@ -1,7 +1,5 @@
-//! Golden-driven black-box parity for the migrated settlement and Step 5b verbs
-//! (#8585). The frozen Python reference runs from
-//! `fixtures/rust-parity/design_settle_migrated_reference.py`; each case
-//! compares streams, exit code, and captured wire files against the Rust owner.
+//! Golden-driven black-box parity for the migrated settlement and finalization
+//! verbs (#8585, #8586). Frozen Python references preserve the retired owners.
 
 #[path = "support/parity.rs"]
 #[allow(dead_code)]
@@ -39,13 +37,14 @@ fn args(values: &[&str]) -> Vec<String> {
 
 fn parity_case(
     name: &'static str,
+    reference_name: &str,
     reference_tail: &[String],
     rust_tail: &[String],
     seeds: Vec<SeedFile>,
     env_rows: &[(&str, String)],
 ) -> ParityCase {
     let root = repository_root();
-    let reference = fixture_directory().join("design_settle_migrated_reference.py");
+    let reference = fixture_directory().join(reference_name);
     let python_path = root.join("python");
     let plugin_root = root.to_string_lossy().into_owned();
     let path = env::var("PATH").expect("PATH");
@@ -90,6 +89,15 @@ fn parity_case(
 
 const DESIGN: &str = "design";
 const OOS: &str = "### OOS_1: one\n- **Severity**: major\n- **Concern**: one.\nVote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=true\n";
+const CONTRACT_PLAN: &str = concat!(
+    "## Plan\n\n",
+    "### Closed decisions and ownership\n\n- Publish keeps one owner.\n\n",
+    "### Ordered implementation\n\n1. Write the plan block.\n2. Rename the issue.\n\n",
+    "## Files to modify/create\n\n### NEW: src/lib.rs\n\n",
+    "## Acceptance\n\n- The publish rows stay allowlisted.\n\n",
+    "## Breaking changes and migration\n\nNone.\n\n",
+    "diff_lines: 12\n",
+);
 
 fn design_seed() -> Vec<SeedFile> {
     vec![SeedFile::text(&format!("{DESIGN}/.keep"), "")]
@@ -112,7 +120,117 @@ fn migrated_case(
     let reference_tail = args(tail);
     let mut rust_tail = vec![domain.to_owned()];
     rust_tail.extend(reference_tail.iter().cloned());
-    parity_case(name, &reference_tail, &rust_tail, seeds, env_rows)
+    parity_case(
+        name,
+        "design_settle_migrated_reference.py",
+        &reference_tail,
+        &rust_tail,
+        seeds,
+        env_rows,
+    )
+}
+
+fn finalize_case(name: &'static str, values: &[&str], seeds: Vec<SeedFile>) -> ParityCase {
+    let tail = args(values);
+    let mut rust_tail = vec!["design".to_owned()];
+    rust_tail.extend(tail.iter().cloned());
+    parity_case(
+        name,
+        "design_finalize_migrated_reference.py",
+        &tail,
+        &rust_tail,
+        seeds,
+        &design_env(),
+    )
+}
+
+fn gate_c_case() -> ParityCase {
+    let mut case = finalize_case(
+        "design-step5c-gate-c-refusal",
+        &["step5c", "--skip-validate"],
+        vec![
+            SeedFile::text("design/.completed/step-5b", ""),
+            SeedFile::text("design/.completed/step-3", ""),
+            SeedFile::text("design/.completed/step-5b.5", ""),
+            SeedFile::text("design/architecture-diagram.skipped", ""),
+            SeedFile::text(
+                "design/.step3-review-result.env",
+                "STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n",
+            ),
+            SeedFile::text("design/plan.txt", CONTRACT_PLAN),
+        ],
+    );
+    let plugin = fixture_directory().join("design_finalize_fake_plugin");
+    let plugin = plugin.to_string_lossy();
+    for (key, value) in [
+        ("CLAUDE_PLUGIN_ROOT", plugin.as_ref()),
+        ("ISSUE_NUMBER", "8586"),
+        ("CLAUDE_PID", "123"),
+    ] {
+        case.python = case.python.clone().env(key, value);
+        case.rust = case.rust.clone().env(key, value);
+    }
+    case
+}
+
+fn fake_publish_case(name: &'static str, mode: &str) -> ParityCase {
+    let mut case = finalize_case(
+        name,
+        &["step5c"],
+        vec![
+            SeedFile::text("design/.completed/step-5b", ""),
+            SeedFile::text("design/composed-plan.md", "## Plan\n\nReady.\n"),
+        ],
+    );
+    let plugin = fixture_directory()
+        .join("design_finalize_fake_plugin")
+        .to_string_lossy()
+        .into_owned();
+    for (key, value) in [
+        ("CLAUDE_PLUGIN_ROOT", plugin.as_str()),
+        ("LARCH_BINARY", ""),
+        ("DESIGN_FINALIZE_FAKE_MODE", mode),
+        ("ISSUE_NUMBER", "8586"),
+        ("CLAUDE_PID", "123"),
+    ] {
+        case.python = case.python.clone().env(key, value);
+        case.rust = case.rust.clone().env(key, value);
+    }
+    case
+}
+
+fn step5c_missing_step5b_case() -> ParityCase {
+    finalize_case(
+        "design-step5c-missing-step5b",
+        &[
+            "step5c",
+            "--session-env-path",
+            "{sandbox}/source-env.sh",
+            "--claude-pid",
+            "123",
+        ],
+        vec![
+            SeedFile::text("design/.keep", ""),
+            SeedFile::text("source-env.sh", "STANDALONE_HEAVY_FAILED=true\n"),
+        ],
+    )
+}
+
+fn step6_cleanup_success_case() -> ParityCase {
+    let tail = args(&["step6-cleanup", "--claude-pid", "123"]);
+    let mut rust_tail = vec!["design".to_owned()];
+    rust_tail.extend(tail.iter().cloned());
+    parity_case(
+        "design-step6-cleanup-success",
+        "design_finalize_migrated_reference.py",
+        &tail,
+        &rust_tail,
+        vec![SeedFile::text(
+            ".tmp/design/.design-step5c-status.env",
+            "PLAN_WRITE_OK=true\nPUBLISH_OK=true\nSESSION_ID=\nCLEANUP_ELIGIBLE=true\n",
+        )],
+        &[("DESIGN_TMPDIR", "{sandbox}/.tmp/design".to_owned())],
+    )
 }
 
 fn prepare_missing_assessment_case() -> ParityCase {
@@ -205,10 +323,17 @@ fn annotate_success_case() -> ParityCase {
     )
 }
 
-#[test]
-fn migrated_settle_and_step5b_match_frozen_python() {
+fn assert_cases(cases: impl IntoIterator<Item = ParityCase>) {
     let goldens = fixture_directory().join("goldens");
-    let cases = [
+    for case in cases {
+        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
+            .unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
+#[test]
+fn migrated_design_settlement_matches_frozen_python() {
+    assert_cases([
         migrated_case(
             "design-step35-settle-gate-b-missing-round",
             "design",
@@ -229,9 +354,45 @@ fn migrated_settle_and_step5b_match_frozen_python() {
         prepare_ready_case(),
         annotate_empty_stdout_case(),
         annotate_success_case(),
-    ];
-    for case in cases {
-        assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
-            .unwrap_or_else(|error| panic!("{error}"));
-    }
+    ]);
+}
+
+#[test]
+fn migrated_design_step5c_matches_frozen_python() {
+    assert_cases([
+        finalize_case(
+            "design-compose-plan-md-basic",
+            &["compose-plan-md", "--design-tmpdir", "{sandbox}/design"],
+            vec![
+                SeedFile::text("design/plan.txt", "### NEW: src/lib.rs\n- Add it.\n"),
+                SeedFile::text("design/plan-diff-stat.env", "DIFF_LINES=3\n"),
+            ],
+        ),
+        finalize_case("design-step2b5-missing-plan", &["step2b5"], design_seed()),
+        step5c_missing_step5b_case(),
+        gate_c_case(),
+        fake_publish_case("design-step5c-success", "success"),
+        fake_publish_case("design-step5c-rc5-stdout-fallback", "rc5"),
+    ]);
+}
+
+#[test]
+fn migrated_design_step6_matches_frozen_python() {
+    assert_cases([
+        finalize_case("design-step6-missing-status", &["step6"], design_seed()),
+        finalize_case(
+            "design-step6-cleanup-preserved",
+            &["step6-cleanup"],
+            vec![SeedFile::text(
+                "design/.design-step5c-status.env",
+                "PLAN_WRITE_OK=false\nCLEANUP_ELIGIBLE=false\n",
+            )],
+        ),
+        finalize_case(
+            "design-step6-prelude-missing-status",
+            &["step6-prelude"],
+            design_seed(),
+        ),
+        step6_cleanup_success_case(),
+    ]);
 }

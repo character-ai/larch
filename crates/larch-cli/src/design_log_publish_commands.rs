@@ -648,7 +648,7 @@ fn render_final_summary_before_copy(request: &LogPublishRequest, outcome: &str) 
     }
 }
 
-fn resolve_summary_mode(design_tmpdir: &Path) -> String {
+pub fn resolve_summary_mode(design_tmpdir: &Path) -> String {
     let run_params = design_tmpdir.join("run-params.json");
     if run_params.is_file()
         && !run_params.is_symlink()

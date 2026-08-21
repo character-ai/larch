@@ -6,9 +6,9 @@ Offline smoke harness for the `design-step5c.sh` thin wrapper.
 
 ## Primary coverage
 
-- Confirms the wrapper delegates to `python/cli.py design step5c`.
+- Confirms the wrapper delegates to `scripts/larch.sh design step5c`.
 - Confirms wrapper argv passthrough is preserved.
-- Confirms non-zero Python entrypoint exits propagate through the wrapper.
+- Confirms non-zero Rust entrypoint exits propagate through the wrapper.
 
 ## Edit-in-sync rules
 

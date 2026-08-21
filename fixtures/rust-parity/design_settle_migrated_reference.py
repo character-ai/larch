@@ -19,10 +19,12 @@ from larch.core import repo_roots as _repo_roots  # noqa: E402
 _ORIGINAL_ENTRYPOINT = _repo_roots.larch_entrypoint
 
 
-def _entrypoint(root: Path) -> Path:
+def _entrypoint(root: Path | None = None) -> Path:
     """Prefer the harness binary for Python-owner child commands."""
     override = os.environ.get("LARCH_BINARY")
-    return Path(override) if override else _ORIGINAL_ENTRYPOINT(root)
+    if override:
+        return Path(override)
+    return _ORIGINAL_ENTRYPOINT(root) if root is not None else _ORIGINAL_ENTRYPOINT()
 
 
 _repo_roots.larch_entrypoint = _entrypoint  # type: ignore[assignment]
@@ -38,10 +40,18 @@ def _load(name: str, path: Path):
     return module
 
 
+_core = _load(
+    "larch.design.design_core",
+    FROZEN.parent / "design_finalize_frozen" / "design_core.py",
+)
 _settle = _load("larch.design._frozen_design_settle", FROZEN / "design_settle.py")
 _oos = _load(
     "larch.design.design_oos",
     FROZEN.parent / "design_oos_frozen.py",
+)
+_step5c = _load(
+    "larch.design.design_step5c",
+    FROZEN.parent / "design_finalize_frozen" / "design_step5c.py",
 )
 _step5b = _load("larch.design._frozen_design_step5b", FROZEN / "design_step5b.py")
 

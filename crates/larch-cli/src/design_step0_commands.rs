@@ -180,6 +180,47 @@ pub trait Step0Runner {
     }
 }
 
+/// Best-effort shared progress deactivation for design cleanup paths.
+pub fn run_progress_deactivate(
+    runner: &dyn Step0Runner,
+    plugin_root: &Path,
+    repo_root: &Path,
+    run_id: &str,
+) {
+    let _ = runner.run(
+        plugin_root,
+        &[
+            "progress".to_owned(),
+            "deactivate".to_owned(),
+            "--repo-root".to_owned(),
+            repo_root.display().to_string(),
+            "--run-id".to_owned(),
+            run_id.to_owned(),
+        ],
+        &[],
+        false,
+    );
+}
+
+/// Run the shared session tmpdir cleanup command and return its captured result.
+pub fn run_session_cleanup(
+    runner: &dyn Step0Runner,
+    plugin_root: &Path,
+    design_tmpdir: &Path,
+) -> ChildOutcome {
+    runner.run(
+        plugin_root,
+        &[
+            "session".to_owned(),
+            "cleanup-tmpdir".to_owned(),
+            "--dir".to_owned(),
+            design_tmpdir.display().to_string(),
+        ],
+        &[],
+        false,
+    )
+}
+
 pub struct LiveStep0Runner;
 
 /// The larch entrypoint, preferring `LARCH_BINARY` like the frozen router.
@@ -704,7 +745,7 @@ fn design_run_path(pid: &str) -> PathBuf {
     sessions_dir().join(format!("design-run-{pid}.sh"))
 }
 
-fn validate_claude_pid(pid: &str) -> Result<(), String> {
+pub fn validate_claude_pid(pid: &str) -> Result<(), String> {
     let bytes = pid.as_bytes();
     let valid = !pid.is_empty()
         && pid.len() <= 7
@@ -769,7 +810,7 @@ fn resolve_trusted_design_session_env_source(path: &Path, claude_pid: &str) -> O
     }
 }
 
-fn reap_pid_residuals(claude_pid: &str) -> Result<(), String> {
+pub fn reap_pid_residuals(claude_pid: &str) -> Result<(), String> {
     validate_claude_pid(claude_pid)?;
     let symlink_path = design_symlink_path(claude_pid);
     validate_design_current_env_link(&symlink_path, claude_pid)?;
@@ -1549,31 +1590,9 @@ fn step0_abort_cleanup_with(arguments: &[OsString], runner: &dyn Step0Runner) ->
         resolve_owned_run_id(&design_tmpdir),
         resolve_persisted_repo_root(&design_tmpdir),
     ) {
-        let _ = runner.run(
-            &plugin_root,
-            &[
-                "progress".to_owned(),
-                "deactivate".to_owned(),
-                "--repo-root".to_owned(),
-                repo_root.display().to_string(),
-                "--run-id".to_owned(),
-                run_id,
-            ],
-            &[],
-            false,
-        );
+        run_progress_deactivate(runner, &plugin_root, &repo_root, &run_id);
     }
-    let cleanup = runner.run(
-        &plugin_root,
-        &[
-            "session".to_owned(),
-            "cleanup-tmpdir".to_owned(),
-            "--dir".to_owned(),
-            design_tmpdir.display().to_string(),
-        ],
-        &[],
-        false,
-    );
+    let cleanup = run_session_cleanup(runner, &plugin_root, &design_tmpdir);
     if cleanup.code != 0 {
         return exit_from_i32(cleanup.code);
     }

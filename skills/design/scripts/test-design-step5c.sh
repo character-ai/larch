@@ -97,13 +97,18 @@ if args[:2] == ["design", "step5c"]:
     publish_rc = "4" if refusal else "0"
     plan_write_ok = "false" if refusal else "true"
     publish_ok = "false" if refusal else "true"
-    (design_tmpdir / ".design-step5c-status.env").write_text(
+    status = (
         f"PLAN_WRITE_OK={plan_write_ok}\nPUBLISH_OK={publish_ok}\nPUBLISH_RC={publish_rc}\n"
         "VALIDATE_STATUS=ok\nFINAL_SUMMARY_PATH=/tmp/final-summary.md\n"
         f"CLEANUP_ELIGIBLE={'false' if refusal else 'true'}\n"
-        f"PUBLISH_REFUSE_REASON={refusal}\n",
+        f"PUBLISH_REFUSE_REASON={refusal}\n"
+    )
+    (design_tmpdir / ".design-step5c-status.env").write_text(
+        status,
         encoding="utf-8",
     )
+    if args[-3:-1] == ["--bgjob-child", "--merge-result-env"]:
+        Path(args[-1]).write_text(status, encoding="utf-8")
     raise SystemExit(int(os.environ.get("DESIGN_STEP5C_STUB_RC", "0")))
 raise SystemExit(2)
 PY
@@ -144,11 +149,16 @@ expected_prefix = [
     "--claude-pid",
     sys.argv[3],
 ]
-if args[:6] != expected_prefix or "--skip-validate" not in args or args[-2:] != ["--public", "value"]:
+if (
+    args[:6] != expected_prefix
+    or "--skip-validate" not in args
+    or args[-5:-3] != ["--public", "value"]
+    or args[-3:-1] != ["--bgjob-child", "--merge-result-env"]
+):
     print(f"FAIL: wrapper argv mismatch: {args!r}", file=sys.stderr)
     raise SystemExit(1)
 PY
-pass 'wrapper launches bgjob adapt and child delegates to python/cli.py design step5c'
+pass 'wrapper launches bgjob adapt and child delegates to scripts/larch.sh design step5c'
 
 grep -Fxq 'PLAN_WRITE_OK=true' "$D/bgjob/design-step5c.result.env" || fail 'bgjob result env must merge Step 5c status rows'
 grep -Fxq 'BGJOB_RC=0' "$D/bgjob/design-step5c.result.env" || fail 'bgjob result env must include BGJOB_RC'

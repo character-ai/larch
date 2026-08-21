@@ -37,6 +37,8 @@ const STALL_RECOVERY_ATTEMPT_LOCK_NAME: &str = ".stall-recovery-attempts.lock";
 const LLVM_PROFRAW_EXTENSION: &str = "profraw";
 static RFC3339_UTC: OnceLock<Regex> = OnceLock::new();
 static PROCESS_IDENTITY: OnceLock<Regex> = OnceLock::new();
+static PUBLISH_ATTEMPT_ID: OnceLock<Regex> = OnceLock::new();
+static PARENT_PROCESS: OnceLock<Regex> = OnceLock::new();
 static REFRESH_EPOCH: OnceLock<Regex> = OnceLock::new();
 static STATUSLINE_STAMP: OnceLock<Regex> = OnceLock::new();
 static CHOOSE_FROM: OnceLock<Regex> = OnceLock::new();
@@ -656,8 +658,14 @@ fn normalize_text(text: &str, sandbox_root: &Path, rules: &[NormalizationRule]) 
                 let with_pids = process_identity_pattern()
                     .replace_all(&normalized, "${1}=<PID>")
                     .into_owned();
+                let with_attempts = publish_attempt_id_pattern()
+                    .replace_all(&with_pids, "${1}=<ATTEMPT_ID>")
+                    .into_owned();
+                let with_parent = parent_process_pattern()
+                    .replace_all(&with_attempts, "parent=<PROCESS>")
+                    .into_owned();
                 refresh_epoch_pattern()
-                    .replace_all(&with_pids, "REFRESH_EPOCH=<EPOCH>")
+                    .replace_all(&with_parent, "REFRESH_EPOCH=<EPOCH>")
                     .into_owned()
             }
             NormalizationRule::StatuslineStamp => statusline_stamp_pattern()
@@ -688,6 +696,20 @@ fn process_identity_pattern() -> &'static Regex {
     PROCESS_IDENTITY.get_or_init(|| {
         Regex::new(r"(?i)\b(pid|ppid|waiter_pid)=\d+")
             .expect("process identity normalization regex should compile")
+    })
+}
+
+fn publish_attempt_id_pattern() -> &'static Regex {
+    PUBLISH_ATTEMPT_ID.get_or_init(|| {
+        Regex::new(r"(?i)\b(publish_attempt_id)=[A-Za-z0-9._-]+")
+            .expect("publish attempt ID normalization regex should compile")
+    })
+}
+
+fn parent_process_pattern() -> &'static Regex {
+    PARENT_PROCESS.get_or_init(|| {
+        Regex::new(r"\bparent=[^?\s]\S*")
+            .expect("parent process normalization regex should compile")
     })
 }
 

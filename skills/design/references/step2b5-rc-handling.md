@@ -2,15 +2,15 @@
 
 **Consumer**: `/design` retained Step 2b.5 callers and Gate A / discussion-round2 hard-size direct-entry paths.
 
-**Contract**: branch only on `STEP2B5_NEXT_ACTION`. Python chooses that action through `python/cli.py design step2b5` on retained paths and through `.design-postplan-emit-result.env` on merged direct-entry paths. Do not recompute the action from check-size rc, `SIZE_TRIGGER_FIRED`, `DRIFT_TRIGGER_FIRED`, or `partition_requested` in prompt prose.
+**Contract**: branch only on `STEP2B5_NEXT_ACTION`. Rust chooses that action through `scripts/larch.sh design step2b5` on retained paths and through `.design-postplan-emit-result.env` on merged direct-entry paths. Do not recompute the action from check-size rc, `SIZE_TRIGGER_FIRED`, `DRIFT_TRIGGER_FIRED`, or `partition_requested` in prompt prose.
 
-**When to load**: mandatory immediately before retained Step 2b.5 dispatch after `python/cli.py design step2b5` returns, including Override-after-defects and standalone Step 2b.5 recovery. Also mandatory before direct-entry dispatch for settle action `SETTLE_NEXT_ACTION=gate-a-hard-size`, where no same-turn `design step2b5` fence ran. Do not load for `SETTLE_NEXT_ACTION=gate-b-hard-size`; Gate B uses `approval-gates-gate-b.md`.
+**When to load**: mandatory immediately before retained Step 2b.5 dispatch after `scripts/larch.sh design step2b5` returns, including Override-after-defects and standalone Step 2b.5 recovery. Also mandatory before direct-entry dispatch for settle action `SETTLE_NEXT_ACTION=gate-a-hard-size`, where no same-turn `design step2b5` fence ran. Do not load for `SETTLE_NEXT_ACTION=gate-b-hard-size`; Gate B uses `approval-gates-gate-b.md`.
 
 ---
 
 ## Bind the action envelope
 
-- **Retained path**: read the final whole-line `STEP2B5_NEXT_ACTION=...` row from the `python/cli.py design step2b5` fence stdout. Also bind `STEP2B5_EXIT_RC`, `STEP2B5_STATUS`, and plan-size KVs for breadcrumbs.
+- **Retained path**: read the final whole-line `STEP2B5_NEXT_ACTION=...` row from the `scripts/larch.sh design step2b5` fence stdout. Also bind `STEP2B5_EXIT_RC`, `STEP2B5_STATUS`, and plan-size KVs for breadcrumbs.
 - **Direct-entry path**: read allowlisted KVs from `$DESIGN_TMPDIR/.design-postplan-emit-result.env` (never `source`): `STEP2B5_*`, size/diff counts, `FIRM_HEADINGS`, `SURFACES_TOUCHED`, `OVERSIZE_OVERRIDE`, advisory/drift/baseline KVs, `PLAN_SIZE_STATUS`, and `PARTITION_REQUESTED`.
 - If `STEP2B5_NEXT_ACTION` is absent, stop for repair. Do not route from process rc or raw trigger KVs when the action row is missing.
 - If `SOFT_ADVISORY=true`, print the existing mechanical-churn advisory breadcrumb before the action branch. The advisory never changes the action.

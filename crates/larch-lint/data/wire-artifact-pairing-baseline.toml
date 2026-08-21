@@ -19,8 +19,3 @@ reason = "Issue 8085 adds a Rust phase-detail reader while production difficulty
 artifact = ".ship-route-exit-handoff.env"
 side = "external-writer"
 reason = "Issue 8078 adds the Rust terminal-snapshot reader while the production writer remains in Python ship route-exit until its #7681 cutover."
-
-[[grandfathered]]
-artifact = ".design-step5c-status.env"
-side = "external-writer"
-reason = "Issue 8580 adds the Rust design read-result-env reader for the step5c status env while its production writer remains in Python design_step5c.py and the design-step5c.sh wrapper until the step5c cutover."

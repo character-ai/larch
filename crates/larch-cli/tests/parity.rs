@@ -93,6 +93,7 @@ impl CleanInstallCase {
             // then refuse on the missing `DESIGN_TMPDIR`, exiting 1.
             | "clean-install-design-step2b-drafter"
             | "clean-install-design-step2b-postplan"
+            | "clean-install-design-step5c"
             // `ci rerun-failed` prints its help and then exits with its own
             // usage code, exactly as the retired `argparse` owner did.
             | "clean-install-ci-rerun-failed"
@@ -238,6 +239,8 @@ impl CleanInstallCase {
             | "clean-install-design-step0-ap-continue"
             | "clean-install-design-step0c"
             | "clean-install-design-step35-settle"
+            | "clean-install-design-compose-plan-md"
+            | "clean-install-design-step2b5"
             | "clean-install-plan-review-step35-settle"
             | "clean-install-design-file-oos-prepare"
             | "clean-install-design-file-oos-annotate"
@@ -265,6 +268,7 @@ impl CleanInstallCase {
         }
     }
 
+    #[allow(clippy::too_many_lines)] // One comment-rich clean-install argument dispatch table.
     fn arguments(self) -> &'static [&'static str] {
         if let Some(arguments) = phase_detail_clean_install_arguments(self.id) {
             return arguments;
@@ -310,6 +314,7 @@ impl CleanInstallCase {
             "clean-install-session-validate-design-tmpdir" => {
                 &["/tmp/larch-clean-install-design-tmpdir-missing"]
             }
+            "clean-install-design-step2b5" => &["--claude-pid"],
             id if id.starts_with("clean-install-run-log-") => run_log_arguments(id),
             id if id.starts_with("clean-install-timing-") => timing_arguments(id),
             id if id.starts_with("clean-install-token-") => token_arguments(id),
@@ -952,6 +957,12 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "design",
         "step35-settle",
     ),
+    CleanInstallCase::new("clean-install-design-compose-plan-md", "design", "compose-plan-md"),
+    CleanInstallCase::new("clean-install-design-step2b5", "design", "step2b5"),
+    CleanInstallCase::new("clean-install-design-step5c", "design", "step5c"),
+    CleanInstallCase::new("clean-install-design-step6", "design", "step6"),
+    CleanInstallCase::new("clean-install-design-step6-cleanup", "design", "step6-cleanup"),
+    CleanInstallCase::new("clean-install-design-step6-prelude", "design", "step6-prelude"),
     CleanInstallCase::new(
         "clean-install-design-step5b-annotate",
         "design",

@@ -81,38 +81,12 @@ DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 export DESIGN_TMPDIR
 "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
 
-publish_step5c_result() {
-  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - \
-    "$DESIGN_TMPDIR/.design-step5c-status.env" "$MERGE_RESULT_ENV" "$DESIGN_TMPDIR" <<'PY'
-import sys
-from pathlib import Path
-
-from larch import io as larch_io
-from larch.design.design_core import design_write_merge_env
-
-source, destination, root = map(Path, sys.argv[1:4])
-values = larch_io.read_kvs(source, reject_cr=True, reject_symlink=True)
-required = {
-    "PUBLISH_RC", "PLAN_WRITE_OK", "PUBLISH_OK", "VALIDATE_STATUS",
-    "FINAL_SUMMARY_PATH", "CLEANUP_ELIGIBLE",
-}
-if not required.issubset(values):
-    raise SystemExit(1)
-design_write_merge_env(path=destination, design_tmpdir=root, rows=values.items())
-PY
-}
-
 if [ "$BGJOB_CHILD" = true ]; then
-  set +e
   if [ "${#FORWARD_ARGS[@]}" -gt 0 ]; then
-    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design step5c "${FORWARD_ARGS[@]}"
+    exec "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" design step5c "${FORWARD_ARGS[@]}" --bgjob-child --merge-result-env "$MERGE_RESULT_ENV"
   else
-    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design step5c
+    exec "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" design step5c --bgjob-child --merge-result-env "$MERGE_RESULT_ENV"
   fi
-  _step5c_rc=$?
-  set -e
-  publish_step5c_result || exit 1
-  exit "$_step5c_rc"
 fi
 
 _adapt_args=(

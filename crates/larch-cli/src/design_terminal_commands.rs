@@ -2317,7 +2317,7 @@ pub fn report_gate_sidecar_files(design_tmpdir: &Path) -> Vec<PathBuf> {
 }
 
 /// Port of `_emit_report_gate_sidecars_from_disk`.
-fn emit_report_gate_sidecars_from_disk(design_tmpdir: &Path) {
+pub fn emit_report_gate_sidecars_from_disk(design_tmpdir: &Path) {
     let handoff = design_tmpdir.join("design-report-gate-sidecars.md");
     let chunks: Vec<String> = report_gate_sidecar_files(design_tmpdir)
         .iter()

@@ -85,7 +85,7 @@ Step 5c alone sanitizes the unchanged candidate, promotes or skips it, logs sani
 
 Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line from `$DESIGN_TMPDIR/diff-lines.txt` or a best-effort estimate.
 
-The Step 5c driver delegates to `python/cli.py design step5c`, which calls the publish tail in-process. Before redaction, the tail writes review provenance, re-runs `plan check-size --design-tmpdir "$DESIGN_TMPDIR" --plan-file "$DESIGN_TMPDIR/plan.txt"`, and refuses incomplete review, size failures, missing `architectural-invariant-assessment.md`, or missing `architectural-guideline-assessment.md`. It exits 4 with `.design-publish-result.env` for composed-plan defects. On that exit, execute **### Plan command validator failure (shared)** with `--site` `design Step 5c`: preserve `$DESIGN_TMPDIR`; skip cleanup, publish, rename, and redact.
+The Step 5c driver delegates to `scripts/larch.sh design step5c`, which calls the publish tail. Before redaction, the tail writes review provenance, re-runs `plan check-size --design-tmpdir "$DESIGN_TMPDIR" --plan-file "$DESIGN_TMPDIR/plan.txt"`, and refuses incomplete review, size failures, missing `architectural-invariant-assessment.md`, or missing `architectural-guideline-assessment.md`. It exits 4 with `.design-publish-result.env` for composed-plan defects. On that exit, execute **### Plan command validator failure (shared)** with `--site` `design Step 5c`: preserve `$DESIGN_TMPDIR`; skip cleanup, publish, rename, and redact.
 
 A missing or empty `$DESIGN_TMPDIR/composed-plan.md` exits 4 with `VALIDATE_STATUS=defects-found`; Fix-and-retry composes first, then re-runs `design-step5c.sh --fresh-attempt`. Override is not offered. For ordinary composed-plan validator defects, Fix-and-retry re-runs `design-step5c.sh --fresh-attempt`; Override adds `--fresh-attempt --skip-validate`.
 
@@ -97,7 +97,7 @@ When `_publish_rc` is in `{0, 1, 3, 4}`, parse through `scripts/larch.sh design 
 
 **Driver WARN replay (top chat):** After the Bash block, when `_publish_rc` ∈ {0, 1, 3} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat before terminal final-summary emission. Do not leave them only as `WARN=` machine lines inside Bash output.
 
-Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed from file and/or stdout: on `PLAN_WRITE_OK=true`, print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`. The `python/cli.py design step5c` fence already wrote `step-5c` under the `PLAN_WRITE_OK=true` gate before leaving the fence. Rename (`RENAMED`) and Step 6 cleanup remain gated on `PUBLISH_OK` separately.
+Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed from file and/or stdout: on `PLAN_WRITE_OK=true`, print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`. The `scripts/larch.sh design step5c` fence already wrote `step-5c` under the `PLAN_WRITE_OK=true` gate before leaving the fence. Rename (`RENAMED`) and Step 6 cleanup remain gated on `PUBLISH_OK` separately.
 
 Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed, or stdout fallback populated `PLAN_WRITE_OK`: when `PLAN_WRITE_OK=false`, print `**⚠ 5: plan-block-write failed: preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup. Do not write `step-5c`.
 
@@ -108,6 +108,6 @@ Repeat any external reviewer warnings from earlier steps, including Step 0 revie
 - `**⚠ Codex not available: <reason>**`
 - `**⚠ 5b.5: arch diagram: generation failed, proceeding without diagram (<elapsed>)**`
 
-The rigid `larch:final-summary` body is produced by `scripts/larch.sh design render-final-summary` inside `python/cli.py design step5c` after the publish outcome is known. Parse `FINAL_SUMMARY_PATH` from final bgjob `DONE` stdout or result env, then use the shared Read-always readiness profile to Read/cache the body before cleanup. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer.
+The rigid `larch:final-summary` body is produced by `scripts/larch.sh design render-final-summary` inside `scripts/larch.sh design step5c` after the publish outcome is known. Parse `FINAL_SUMMARY_PATH` from final bgjob `DONE` stdout or result env, then use the shared Read-always readiness profile to Read/cache the body before cleanup. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer.
 
 When `PLAN_WRITE_OK=true`, repeat the external-reviewer warnings, then emit exactly one machine footer as the last human-visible output line of Step 5 before Step 6 cleanup. When `PLAN_WRITE_OK=false`, Step 5c already cached the summary before the `**⚠ 5: plan-block-write failed**` line. Do not invoke `scripts/larch.sh design render-final-summary` again. Step 6 is still skipped when plan write fails. In all `_publish_rc` 0, 1, or 3 paths, prompt-side emission waits until all cleanup or failure routing is complete, then emits the cached final summary as the final assistant text.
