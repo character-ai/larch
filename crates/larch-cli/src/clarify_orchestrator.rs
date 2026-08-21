@@ -15,9 +15,9 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use larch_core::{
-    BuildRecord, DESIGN_RAW_RATING_BASENAME, DIFFICULTY_RECORD_BASENAME, DifficultyRating,
-    ProcessOutput, build_record, plan_difficulty, read_rating_file, redact_secrets_only,
-    rewrite_plan_difficulty, validate_rating_object, write_record_map,
+    BuildRecord, ChildEnvironment, DESIGN_RAW_RATING_BASENAME, DIFFICULTY_RECORD_BASENAME,
+    DifficultyRating, ProcessOutput, build_record, plan_difficulty, read_rating_file,
+    redact_secrets_only, rewrite_plan_difficulty, validate_rating_object, write_record_map,
 };
 
 use crate::clarify_commands::{
@@ -29,7 +29,7 @@ use crate::design_step0_commands::{
     require_design_tmpdir, stage_terminal_state_bridge,
 };
 use crate::github_repository_resolution::validate_repo_slug;
-use crate::implement_dispatch_commands::delegate_verified_larch;
+use crate::implement_dispatch_commands::{delegate_verified_larch, run_verified_larch_env_in};
 use crate::python_verb::{plugin_root_directory, run_python_verb};
 
 /// Environment keys the source-env merge carries into the driver.
@@ -81,13 +81,13 @@ struct DesignClarifyArgs {
 
 /// One captured sibling-verb run: exit code and decoded streams.
 pub struct CapturedRun {
-    rc: i32,
-    stdout: String,
-    stderr: String,
+    pub(crate) rc: i32,
+    pub(crate) stdout: String,
+    pub(crate) stderr: String,
 }
 
 impl CapturedRun {
-    fn from_output(output: Result<ProcessOutput, String>) -> Self {
+    pub(crate) fn from_output(output: Result<ProcessOutput, String>) -> Self {
         match output {
             Ok(output) => {
                 let (rc, stdout, stderr) = output.decoded_streams();
@@ -111,12 +111,31 @@ pub trait SiblingRunner {
     fn run_larch(&self, args: &[OsString]) -> CapturedRun;
     /// Run one still-Python verb through the dispatcher.
     fn run_python(&self, args: &[OsString]) -> CapturedRun;
+
+    /// Run one Rust-owned verb with scoped environment additions.
+    ///
+    /// The default ignores the additions so an offline stub only has to answer
+    /// the two base methods; the live runner forwards them.
+    fn run_larch_env(
+        &self,
+        args: &[OsString],
+        _environment: &[(ChildEnvironment, OsString)],
+    ) -> CapturedRun {
+        self.run_larch(args)
+    }
 }
 
 /// The live runner: verified bootstrap for Rust, cli.py for Python.
 pub struct LiveRunner {
     cwd: PathBuf,
     root: PathBuf,
+}
+
+impl LiveRunner {
+    /// Build the live runner for a working directory and plugin root.
+    pub(crate) const fn new(cwd: PathBuf, root: PathBuf) -> Self {
+        Self { cwd, root }
+    }
 }
 
 impl SiblingRunner for LiveRunner {
@@ -126,6 +145,19 @@ impl SiblingRunner for LiveRunner {
 
     fn run_python(&self, args: &[OsString]) -> CapturedRun {
         CapturedRun::from_output(run_python_verb(args.iter().cloned(), SIBLING_TIMEOUT))
+    }
+
+    fn run_larch_env(
+        &self,
+        args: &[OsString],
+        environment: &[(ChildEnvironment, OsString)],
+    ) -> CapturedRun {
+        CapturedRun::from_output(run_verified_larch_env_in(
+            &self.cwd,
+            &self.root,
+            args,
+            environment,
+        ))
     }
 }
 
@@ -139,7 +171,7 @@ fn osargs(parts: &[&str]) -> Vec<OsString> {
 }
 
 /// Last value for `key` in a KEY=value stream, CR-trimmed.
-fn kv_last(text: &str, key: &str) -> String {
+pub fn kv_last(text: &str, key: &str) -> String {
     let prefix = format!("{key}=");
     let mut value = String::new();
     for line in text.split('\n') {
@@ -160,8 +192,7 @@ fn read_lossy(path: &str) -> String {
 }
 
 /// True when a publish artifact is a non-empty readable regular file.
-fn publish_artifact_ok(path_text: &str) -> bool {
-    let path = Path::new(path_text);
+pub fn publish_artifact_ok(path: &Path) -> bool {
     !path.is_symlink()
         && path.is_file()
         && fs::metadata(path)
@@ -177,7 +208,7 @@ fn emit_design_kvs(rows: &[(&str, &str)]) {
 }
 
 /// Atomically write allowlisted, newline-free KEY=value rows to a result env.
-fn write_result_env(path: &Path, rows: &[(&str, &str)]) -> Result<(), String> {
+pub fn write_result_env(path: &Path, rows: &[(&str, &str)], allow: &[&str]) -> Result<(), String> {
     if path.is_symlink() {
         return Err(format!(
             "refusing to write symlink result env: {}",
@@ -186,7 +217,7 @@ fn write_result_env(path: &Path, rows: &[(&str, &str)]) -> Result<(), String> {
     }
     let mut body = String::new();
     for (key, value) in rows {
-        if !CLARIFY_RESULT_ENV_ALLOW.contains(key) {
+        if !allow.contains(key) {
             return Err(format!("result env key is not allowlisted: {key}"));
         }
         if value.contains('\n') || value.contains('\r') {
@@ -210,6 +241,26 @@ fn write_result_env(path: &Path, rows: &[(&str, &str)]) -> Result<(), String> {
         })
 }
 
+/// Build the `named-block write --marker plan` argv both phase machines run.
+pub fn plan_named_block_args(
+    issue: &str,
+    content_file: &Path,
+    repo_args: &[String],
+) -> Vec<String> {
+    let mut args = vec![
+        "named-block".to_owned(),
+        "write".to_owned(),
+        "--marker".to_owned(),
+        "plan".to_owned(),
+        "--issue".to_owned(),
+        issue.to_owned(),
+        "--content-file".to_owned(),
+        content_file.display().to_string(),
+    ];
+    args.extend(repo_args.iter().cloned());
+    args
+}
+
 /// Read allowlisted rows from a result env, or `Err` on a trust-boundary miss.
 fn read_result_env(path: &Path, allowed: &[&str]) -> Result<Env, ()> {
     let pairs = phase_driver_read_result_env(path, allowed)?;
@@ -230,7 +281,7 @@ fn validate_design_repo(repo: &str) -> Result<(), ExitCode> {
 // ---------------------------------------------------------------------------
 
 /// Resolve the publish difficulty rating: `(rating, raw_sidecar_invalid)`.
-fn resolve_publish_difficulty_rating(
+pub fn resolve_publish_difficulty_rating(
     design_tmpdir: &Path,
     plan_text: &str,
 ) -> (Option<DifficultyRating>, bool) {
@@ -473,6 +524,7 @@ fn fetch_failure(
     let _ = write_result_env(
         &design_tmpdir.join(".design-clarify-fetch-result.env"),
         &rows,
+        &CLARIFY_RESULT_ENV_ALLOW,
     );
     stage_failed_clarify(runner, design_tmpdir, exit_code, detail_log);
     emit_design_kvs(&rows);
@@ -492,6 +544,7 @@ fn publish_failure(
     let _ = write_result_env(
         &design_tmpdir.join(".design-clarify-publish-result.env"),
         &rows,
+        &CLARIFY_RESULT_ENV_ALLOW,
     );
     emit_design_kvs(&rows);
     ExitCode::from(1)
@@ -576,12 +629,14 @@ fn handle_fetch(
     if let Err(error) = write_result_env(
         &design_tmpdir.join(".design-clarify-request.env"),
         &rows[1..],
+        &CLARIFY_RESULT_ENV_ALLOW,
     ) {
         return emit_write_failure(&error);
     }
     if let Err(error) = write_result_env(
         &design_tmpdir.join(".design-clarify-fetch-result.env"),
         &rows,
+        &CLARIFY_RESULT_ENV_ALLOW,
     ) {
         return emit_write_failure(&error);
     }
@@ -637,7 +692,9 @@ fn handle_publish(
     }
     let plan_file = request.get("PLAN_FILE").cloned().unwrap_or_default();
     let response_file = request.get("RESPONSE_FILE").cloned().unwrap_or_default();
-    if !publish_artifact_ok(&plan_file) || !publish_artifact_ok(&response_file) {
+    if !publish_artifact_ok(Path::new(&plan_file))
+        || !publish_artifact_ok(Path::new(&response_file))
+    {
         return publish_failure(design_tmpdir, "missing-artifact", "failed-clarify", &[]);
     }
 
@@ -653,17 +710,7 @@ fn handle_publish(
         vec!["--repo".to_owned(), repo.clone()]
     };
 
-    let mut plan_args = vec![
-        "named-block".to_owned(),
-        "write".to_owned(),
-        "--marker".to_owned(),
-        "plan".to_owned(),
-        "--issue".to_owned(),
-        args.issue.clone(),
-        "--content-file".to_owned(),
-        redacted_plan.display().to_string(),
-    ];
-    plan_args.extend(repo_args.iter().cloned());
+    let plan_args = plan_named_block_args(&args.issue, &redacted_plan, &repo_args);
     let plan_write = runner.run_larch(&plan_args.iter().map(OsString::from).collect::<Vec<_>>());
     if plan_write.rc != 0 {
         let _ = fs::write(
@@ -850,6 +897,7 @@ fn publish_finalize(tail: &PublishTail<'_>) -> ExitCode {
     if let Err(error) = write_result_env(
         &design_tmpdir.join(".design-clarify-publish-result.env"),
         &rows,
+        &CLARIFY_RESULT_ENV_ALLOW,
     ) {
         return emit_write_failure(&error);
     }
@@ -1134,7 +1182,7 @@ pub fn design_clarify_main(argv: &[OsString]) -> ExitCode {
         .or_else(plugin_root_directory)
         .unwrap_or_default();
     let cwd = std::env::current_dir().unwrap_or_else(|_error| PathBuf::from("."));
-    let runner = LiveRunner { cwd, root };
+    let runner = LiveRunner::new(cwd, root);
     design_clarify_run(&LiveEffects, &runner, &parsed, &mut env, &design_tmpdir)
 }
 

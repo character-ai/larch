@@ -601,7 +601,6 @@ exclude = [
   # python/design_lifecycle.py (/design Step 0b lifecycle port);
   # the test covers reentry guard and router flag recovery.
   "python/tests/design/test_design_lifecycle.py",
-  "python/test_design_publish.py",
   "python/test_design_pause.py",
   # for python/cli.py session write-design-env (Makefile test-write-design-
   # current-env target). Same Makefile-only pattern as other design test-*.
@@ -794,7 +793,6 @@ exclude = [
   # The primary modules are cited from /design runtime prose; the
   # harnesses are referenced only from Makefile.
   "python/tests/design/test_design_lifecycle.py",
-  "python/test_design_publish.py",
   "python/test_design_pause.py",
   "skills/design/scripts/test-findings-classification.md",
   "python/test_design_summary.py",

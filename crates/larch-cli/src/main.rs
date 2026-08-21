@@ -57,6 +57,7 @@ mod decompose_commands;
 mod deps_audit_commands;
 mod design_commands;
 mod design_log_publish_commands;
+mod design_publish_commands;
 mod design_step0_commands;
 mod design_step1_commands;
 mod design_terminal_commands;
@@ -1351,6 +1352,9 @@ enum DesignCommand {
     /// Publish sanitized design run logs through the shared lifecycle (#8592).
     #[command(name = "log-publish", disable_help_flag = true)]
     LogPublish(RawCompatibilityArguments),
+    /// Drive the Step 5c publish phase machine (#8591).
+    #[command(disable_help_flag = true)]
+    Publish(RawCompatibilityArguments),
 }
 
 impl DesignCommand {
@@ -1385,6 +1389,7 @@ impl DesignCommand {
             Self::FailureReport(_) => design_terminal_commands::failure_report(&arguments),
             Self::StepFinalSummary(_) => design_terminal_commands::step_final_summary(&arguments),
             Self::LogPublish(_) => design_log_publish_commands::log_publish_main(&arguments),
+            Self::Publish(_) => design_publish_commands::design_publish_main(&arguments),
         }
     }
 }

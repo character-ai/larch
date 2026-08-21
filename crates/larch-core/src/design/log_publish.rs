@@ -151,15 +151,6 @@ pub fn validate_repo(value: &str) -> bool {
     validate_slug(owner) && validate_slug(repo) && !value.contains("//")
 }
 
-/// Assessment completeness for a Gate C design note.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AssessmentCompleteness {
-    /// Whether the outcome and repo knowledge require the artifact.
-    pub required: bool,
-    /// Whether a regular (non-symlink) artifact file is present.
-    pub present: bool,
-}
-
 /// Decide whether an approved outcome requires a Gate C assessment artifact.
 #[must_use]
 pub fn assessment_required(

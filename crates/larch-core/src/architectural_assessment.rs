@@ -1036,6 +1036,24 @@ fn validate_authored_outcome(
     Ok(outcome.to_owned())
 }
 
+/// Classify one assessment note's prose for its kind.
+///
+/// Returns `clean`, the kind's non-clean outcome, or an empty string for an
+/// all-whitespace note, so publish and the fix ladder share one verdict.
+#[must_use]
+pub fn classify_note_for_kind(note: &str, kind: AssessmentKind) -> String {
+    classify_assessment_prose(
+        note,
+        kind.clean_presentation_note(),
+        if kind.is_invariant() {
+            &INVARIANT_ID_RE
+        } else {
+            &GUIDELINE_ID_RE
+        },
+        kind.non_clean_authored_outcome(),
+    )
+}
+
 fn classify_assessment_prose(
     note: &str,
     clean_lead: &str,

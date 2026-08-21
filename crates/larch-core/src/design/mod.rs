@@ -9,6 +9,7 @@ mod log_publish;
 mod plan_grammar;
 mod plan_quality;
 mod plan_scout;
+mod publish;
 
 pub use clarify::{
     CLARIFY_LABEL_COLOR, CLARIFY_LABEL_DESCRIPTION, CLARIFY_LABEL_NAME, ClarifyEvent, ClarifyKind,
@@ -25,9 +26,9 @@ pub use decompose::{
     prefixed_piece_title, replacement_edges, scope_tokens, split_firm_headings,
 };
 pub use log_publish::{
-    AssessmentCompleteness, GUIDELINE_ASSESSMENT_ARTIFACT, INVARIANT_ASSESSMENT_ARTIFACT,
-    assessment_present, assessment_required, default_outcome_for_reason, lifecycle_outcome,
-    publish_excluded, validate_issue, validate_repo, validate_slug,
+    GUIDELINE_ASSESSMENT_ARTIFACT, INVARIANT_ASSESSMENT_ARTIFACT, assessment_present,
+    assessment_required, default_outcome_for_reason, lifecycle_outcome, publish_excluded,
+    validate_issue, validate_repo, validate_slug,
 };
 
 pub use plan_grammar::{
@@ -48,6 +49,14 @@ pub use plan_quality::{
     plan_surfaces, render_plan_command_tsv, set_oversize_override_text,
     validate_difficulty_metadata,
 };
+pub use publish::{
+    AssessmentCompleteness, BLOCKED_REVIEW_STATUSES, PUBLISH_RESULT_ENV_ALLOW, ReviewProvenance,
+    TERMINAL_STATUSES_REQUIRING_SENTINEL, blocked_review_reason,
+    check_guideline_assessment_completeness, check_invariant_assessment_completeness,
+    count_missing_script_defects, guideline_exception_valid, is_publish_attempt_id, is_repo_slug,
+    persisted_note_publishable, review_provenance, sanitizer_reason_token, splice_plan_provenance,
+};
+
 pub use plan_scout::{
     DynamicArchetype, EMPTY_MANIFEST_TEXT, INVALID_ARCHETYPES_SHAPE, MAX_ARCHETYPE_WEIGHT,
     MAX_CONTEXT_BYTES, MAX_STAGED_BYTES, ManifestResult, PLAN_ONLY_RESERVED,

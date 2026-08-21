@@ -30,7 +30,6 @@ from larch.design import (
     design_step6,
 )
 from larch.design import design_pause
-from larch.design import design_publish
 from larch.core import architectural_guidelines
 from larch.core import logging_util
 from tests.support.design_wire import dialectic_candidate_json, plan_body, run_params_json
@@ -968,28 +967,6 @@ def test_step2b_postplan_gate_b_ignores_snapshot_original_flag(tmp_path: Path, m
 
 
 
-def test_stage_failed_plan_write_records_terminal_state_before_failure_report(tmp_path: Path) -> None:
-    design = tmp_path / "design"
-    design.mkdir()
-    design_publish._stage_failed_plan_write(  # pyright: ignore[reportPrivateUsage]
-        design_tmpdir=design,
-        kvs=[("PLAN_WRITE_OK", "false"), ("PUBLISH_ATTEMPT_ID", "attempt-1")],
-    )
-    state = (design / "design-failure-terminal-state.env").read_text(encoding="utf-8")
-    assert "FAILURE_OUTCOME=failed-plan-write" in state
-    assert "TRIGGER=plan-write-failed" in state
-    assert "SUMMARY_OUTCOME=failed-plan-write" in state
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1043,50 +1020,6 @@ def test_capture_contract_stream_restores_fd3_for_quiet_init(tmp_path: Path, mon
         os.close(saved_stdout)
         logging_util.reset_quiet_state()
     assert "POST_CAPTURE=ok" in contract
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1160,7 +1093,7 @@ def test_step5c_core_render_uses_ctx_snapshot_when_ambient_env_overrides_session
     monkeypatch.setattr(design_step5c, "_rehydrate_wrapper_env", rehydrate_then_ambient_override)
     seen_argv: list[list[str]] = []
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(_step5c_rows(design), end="")
         return 0
 
@@ -1171,7 +1104,7 @@ def test_step5c_core_render_uses_ctx_snapshot_when_ambient_env_overrides_session
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, _, _ = _capture_core_contract(
         design_step5c.step5c_core,
@@ -1208,7 +1141,7 @@ def test_step5c_core_render_prefers_run_params_mode_over_source_env(
     (design / "source-env.sh").write_text("export MODE=stale\n", encoding="utf-8")
     seen_argv: list[list[str]] = []
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(_step5c_rows(design), end="")
         return 0
 
@@ -1219,7 +1152,7 @@ def test_step5c_core_render_prefers_run_params_mode_over_source_env(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, _, _ = _capture_core_contract(
         design_step5c.step5c_core,
@@ -1279,7 +1212,7 @@ def test_step5c_core_allows_publish_to_complete_step5b5_result_env(
 
     publish_called: list[list[str]] = []
 
-    def fake_publish(argv: list[str]) -> int:
+    def fake_publish(argv: list[str], **_kwargs: object) -> int:
         publish_called.append(argv)
         (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
         print(_step5c_rows(design), end="")
@@ -1291,7 +1224,7 @@ def test_step5c_core_allows_publish_to_complete_step5b5_result_env(
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, _ = design_step5c.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
 
@@ -1314,11 +1247,11 @@ def test_step5c_core_pause_requested_skips_publish_and_marker(
         called.append(argv)
         return 12
 
-    def fail_publish(_argv: list[str]) -> int:
+    def fail_publish(_argv: list[str], **_kwargs: object) -> int:
         raise AssertionError("publish_core should not run on pause")
 
     monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
-    monkeypatch.setattr(design_publish, "publish_core", fail_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fail_publish)
     rc, _ = design_step5c.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 12
     assert called == [["--design-tmpdir", str(design), "--issue", "42", "--repo", "owner/repo"]]
@@ -1362,7 +1295,7 @@ def test_step5c_core_assembles_publish_argv_and_writes_merge_status(
     (design / ".larch-keepalive").write_text(f"CLONE_PATH={tmp_path}\n", encoding="utf-8")
     seen: list[list[str]] = []
 
-    def fake_publish(argv: list[str]) -> int:
+    def fake_publish(argv: list[str], **_kwargs: object) -> int:
         seen.append(argv)
         assert True
         print(_step5c_rows(design), end="")
@@ -1375,7 +1308,7 @@ def test_step5c_core_assembles_publish_argv_and_writes_merge_status(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
@@ -1429,7 +1362,7 @@ def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_
     seen_env: list[str] = []
     seen_argv: list[list[str]] = []
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(_step5c_rows(design, plan_write_ok="false", publish_ok="", final_summary=current_summary), end="")
         current_summary.write_text("current failed summary\n", encoding="utf-8")
         return 1
@@ -1442,7 +1375,7 @@ def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
@@ -1483,7 +1416,7 @@ def test_step5c_core_rc3_stdout_fallback_keeps_success_path(
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(_step5c_rows(design), end="")
         return 3
 
@@ -1493,7 +1426,7 @@ def test_step5c_core_rc3_stdout_fallback_keeps_success_path(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, _ = design_step5c.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 0
@@ -1509,7 +1442,7 @@ def test_step5c_core_rc4_emits_validator_status_sidecars_and_no_markers(
     (design / ".design-publish-result.env").write_text("PLAN_WRITE_OK=true\nVALIDATE_STATUS=ok\n", encoding="utf-8")
     (design / "design-failure-chat-print.md").write_text("sidecar body\n", encoding="utf-8")
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(
             "\n".join(
                 [
@@ -1533,7 +1466,7 @@ def test_step5c_core_rc4_emits_validator_status_sidecars_and_no_markers(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fail_render)
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
@@ -1555,7 +1488,7 @@ def test_step5c_core_rc4_missing_invariant_assessment_not_validator_defects(
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(
             "\n".join(
                 [
@@ -1574,7 +1507,7 @@ def test_step5c_core_rc4_missing_invariant_assessment_not_validator_defects(
         )
         return 4
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -1597,7 +1530,7 @@ def test_step5c_core_rc4_missing_guideline_assessment_not_validator_defects(
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(
             "\n".join(
                 [
@@ -1616,7 +1549,7 @@ def test_step5c_core_rc4_missing_guideline_assessment_not_validator_defects(
         )
         return 4
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -1649,7 +1582,7 @@ def test_step5c_core_rc4_gate_c_content_refusal_not_validator_defects(
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(
             "\n".join(
                 [
@@ -1665,7 +1598,7 @@ def test_step5c_core_rc4_gate_c_content_refusal_not_validator_defects(
         )
         return 4
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -1860,7 +1793,7 @@ def test_step5c_core_auto_composes_when_composed_plan_missing(
         encoding="utf-8",
     )
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(_step5c_rows(design), end="")
         return 0
 
@@ -1870,7 +1803,7 @@ def test_step5c_core_auto_composes_when_composed_plan_missing(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, _, _ = _capture_core_contract(
         design_step5c.step5c_core,
@@ -1894,7 +1827,7 @@ def test_step5c_core_publish_tail_abort_stages_renders_and_writes_terminal(
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
     (design / "design-failure-operator-action-chat.md").write_text("operator sidecar\n", encoding="utf-8")
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         return 2
 
     def fake_render(_argv: list[str]) -> int:
@@ -1903,7 +1836,7 @@ def test_step5c_core_publish_tail_abort_stages_renders_and_writes_terminal(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
@@ -1935,7 +1868,7 @@ def test_step5c_core_publish_tail_retries_central_publish_before_fallback(
     central_calls: list[dict[str, str]] = []
     upsert_calls: list[dict[str, object]] = []
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         return 5
 
     def fake_central(**kwargs: str) -> tuple[int, bool]:
@@ -1948,7 +1881,7 @@ def test_step5c_core_publish_tail_retries_central_publish_before_fallback(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_step5c, "_publish_terminal_final_summary", fake_central)
     monkeypatch.setattr(design_step5c, "_step5c_render_final_summary", fail_render)
     monkeypatch.setattr(design_summary, "upsert_final_summary_from_disk", lambda **kwargs: upsert_calls.append(dict(kwargs)) or True)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
@@ -1973,7 +1906,7 @@ def test_step5c_core_publish_tail_falls_back_when_central_publish_fails(
     central_calls: list[dict[str, str]] = []
     fallback_calls: list[dict[str, object]] = []
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         return 5
 
     def fake_central(**kwargs: str) -> tuple[int, bool]:
@@ -1985,7 +1918,7 @@ def test_step5c_core_publish_tail_falls_back_when_central_publish_fails(
         (design / "final-summary.md").write_text("fallback summary\n", encoding="utf-8")
         return True
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_step5c, "_publish_terminal_final_summary", fake_central)
     monkeypatch.setattr(design_step5c, "_step5c_render_final_summary", fake_render)
     rc, contract, _ = _capture_core_contract(
@@ -2009,7 +1942,7 @@ def test_step5c_core_publish_tail_skips_retry_when_publish_evidence_exists(
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", SESSION_ID="run-1")
     fallback_calls: list[str] = []
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print("PUBLISH_OK=false")
         return 5
 
@@ -2018,7 +1951,7 @@ def test_step5c_core_publish_tail_skips_retry_when_publish_evidence_exists(
         (design / "final-summary.md").write_text("fallback summary\n", encoding="utf-8")
         return True
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_step5c, "_publish_terminal_final_summary", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("central publish should not run")))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(design_step5c, "_step5c_render_final_summary", fake_render)
     rc, contract, _ = _capture_core_contract(
@@ -2040,7 +1973,7 @@ def test_step5c_core_publish_tail_falls_back_when_central_upsert_fails(
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", SESSION_ID="run-1")
     fallback_calls: list[str] = []
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         return 5
 
     def fake_central(**_kwargs: str) -> tuple[int, bool]:
@@ -2054,7 +1987,7 @@ def test_step5c_core_publish_tail_falls_back_when_central_upsert_fails(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_step5c, "_publish_terminal_final_summary", fake_central)
     monkeypatch.setattr(design_summary, "upsert_final_summary_from_disk", lambda **_kwargs: False)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(design_step5c, "_step5c_render_final_summary", fake_render)
@@ -2097,7 +2030,7 @@ def test_step5c_core_cleanup_eligibility_matrix(
         STANDALONE_HEAVY_FAILED=standalone_heavy_failed,
     )
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(_step5c_rows(design, publish_ok=publish_ok), end="")
         return 0
 
@@ -2107,7 +2040,7 @@ def test_step5c_core_cleanup_eligibility_matrix(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, _ = design_step5c.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 0
@@ -2128,7 +2061,7 @@ def test_step5c_core_empty_session_id_publish_success_is_cleanup_eligible(
     seen: list[list[str]] = []
     render_argv: list[list[str]] = []
 
-    def fake_publish(argv: list[str]) -> int:
+    def fake_publish(argv: list[str], **_kwargs: object) -> int:
         seen.append(argv)
         print(_step5c_rows(design, publish_ok=""), end="")
         return 0
@@ -2140,7 +2073,7 @@ def test_step5c_core_empty_session_id_publish_success_is_cleanup_eligible(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, _ = design_step5c.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 0
@@ -2156,7 +2089,7 @@ def test_step5c_core_publish_tail_abort_rc5_stages_and_writes_terminal(
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         return 5
 
     def fake_render(_argv: list[str]) -> int:
@@ -2165,7 +2098,7 @@ def test_step5c_core_publish_tail_abort_rc5_stages_and_writes_terminal(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
@@ -2195,7 +2128,7 @@ def test_step5c_core_success_without_final_summary_skips_markers(
     stale = design / "final-summary.md"
     stale.write_text("stale summary\n", encoding="utf-8")
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(_step5c_rows(design, final_summary=design / "missing-summary.md"), end="")
         return 0
 
@@ -2205,7 +2138,7 @@ def test_step5c_core_success_without_final_summary_skips_markers(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
@@ -2229,7 +2162,7 @@ def test_step5c_core_success_clears_bound_stale_summary_before_render(
     summary.parent.mkdir()
     summary.write_text("stale success summary\n", encoding="utf-8")
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(_step5c_rows(design, final_summary=summary), end="")
         return 0
 
@@ -2239,7 +2172,7 @@ def test_step5c_core_success_clears_bound_stale_summary_before_render(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
@@ -2263,7 +2196,7 @@ def test_step5c_core_render_failure_skips_stale_summary_markers(
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
     (design / "final-summary.md").write_text("stale summary\n", encoding="utf-8")
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(_step5c_rows(design), end="")
         return 0
 
@@ -2272,7 +2205,7 @@ def test_step5c_core_render_failure_skips_stale_summary_markers(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
@@ -2293,7 +2226,7 @@ def test_step5c_core_captures_subprocess_stdout_from_publish_tail(
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         os.write(1, b"WRITTEN=true\nMODE=write\n")
         print(_step5c_rows(design), end="")
         return 0
@@ -2304,7 +2237,7 @@ def test_step5c_core_captures_subprocess_stdout_from_publish_tail(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
@@ -2325,7 +2258,7 @@ def test_step5c_core_restores_env_ipc_keys_after_return(tmp_path: Path, monkeypa
         "SUMMARY_OUTCOME": os.environ.get("SUMMARY_OUTCOME"),
     }
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(_step5c_rows(design), end="")
         return 0
 
@@ -2335,7 +2268,7 @@ def test_step5c_core_restores_env_ipc_keys_after_return(tmp_path: Path, monkeypa
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     design_step5c.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     after = {
@@ -2375,7 +2308,7 @@ def test_step5c_core_publish_design_tmpdir_matches_ctx_on_symlinked_session_env(
     monkeypatch.setenv("DESIGN_TMPDIR", str(symlink_design))
     seen: list[list[str]] = []
 
-    def fake_publish(argv: list[str]) -> int:
+    def fake_publish(argv: list[str], **_kwargs: object) -> int:
         seen.append(argv)
         print(_step5c_rows(real_design), end="")
         return 0
@@ -2386,7 +2319,7 @@ def test_step5c_core_publish_design_tmpdir_matches_ctx_on_symlinked_session_env(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, _ = design_step5c.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 0
@@ -2403,7 +2336,7 @@ def test_step5c_main_machine_rows_visible_under_inherited_quiet(
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         print(_step5c_rows(design), end="")
         return 0
 
@@ -2413,7 +2346,7 @@ def test_step5c_main_machine_rows_visible_under_inherited_quiet(
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
     monkeypatch.setenv(config.ENV_LARCH_QUIET_ACTIVE, "1")
@@ -3706,7 +3639,7 @@ def test_step5c_rc5_uses_current_attempt_progress_and_persists_tails(
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
 
-    def fake_publish(_argv: list[str]) -> int:
+    def fake_publish(_argv: list[str], **_kwargs: object) -> int:
         attempt_id = os.environ[config.ENV_LARCH_DESIGN_PUBLISH_ATTEMPT_ID]
         (design / config.DESIGN_PUBLISH_RESULT_FILE).write_text(
             "\n".join(
@@ -3729,7 +3662,7 @@ def test_step5c_rc5_uses_current_attempt_progress_and_persists_tails(
         print("nested failure", file=sys.stderr)
         return 5
 
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     rc, _, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],

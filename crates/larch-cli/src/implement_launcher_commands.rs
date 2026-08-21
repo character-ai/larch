@@ -27,12 +27,12 @@ use larch_adapters::{
     },
 };
 use larch_core::{
-    ArchitecturalKind, ArchitecturalKnowledge, ArchitecturalStatus, CODEX_DESCRIPTOR,
-    CURSOR_DEFAULT_MODEL, CURSOR_DESCRIPTOR, CURSOR_GROK_4_6_HIGH_MODEL, ChildEnvironment,
-    CodexModelRole, ExternalAuthVerdict, LauncherArtifact, LauncherArtifactKind,
-    LauncherArtifactPaths, ModelTool, VendorLaunchRequest, VendorProgram, codex_env_auth_from_key,
-    emit_kv, external_auth_verdict, failure_diagnostic_source_candidates, is_quota_failure,
-    knowledge_block, parse_entries, render_failed_agent_stderr_tail, resolve_model_args,
+    ArchitecturalKind, ArchitecturalStatus, CODEX_DESCRIPTOR, CURSOR_DEFAULT_MODEL,
+    CURSOR_DESCRIPTOR, CURSOR_GROK_4_6_HIGH_MODEL, ChildEnvironment, CodexModelRole,
+    ExternalAuthVerdict, LauncherArtifact, LauncherArtifactKind, LauncherArtifactPaths, ModelTool,
+    VendorLaunchRequest, VendorProgram, codex_env_auth_from_key, emit_kv, external_auth_verdict,
+    failure_diagnostic_source_candidates, is_quota_failure, knowledge_block,
+    read_architectural_knowledge, render_failed_agent_stderr_tail, resolve_model_args,
     untrusted_content_block,
 };
 
@@ -399,44 +399,6 @@ fn hydrate_implement_session_environment() {
 // ---------------------------------------------------------------------------
 // Prompt composition
 // ---------------------------------------------------------------------------
-
-/// Read one architectural knowledge file from the repository root.
-fn read_architectural_knowledge(
-    repo_root: &Path,
-    kind: ArchitecturalKind,
-) -> ArchitecturalKnowledge {
-    let filename = kind.filename();
-    let path = repo_root.join(filename);
-    let Ok(metadata) = std::fs::symlink_metadata(&path) else {
-        return ArchitecturalKnowledge::absent();
-    };
-    if metadata.is_symlink() {
-        return ArchitecturalKnowledge::invalid(format!(
-            "{filename} is invalid: symlinks are not read"
-        ));
-    }
-    if metadata.is_dir() {
-        return ArchitecturalKnowledge::invalid(format!(
-            "{filename} is invalid: expected a regular file, found a directory"
-        ));
-    }
-    if !metadata.is_file() {
-        return ArchitecturalKnowledge::invalid(format!(
-            "{filename} is invalid: expected a regular file"
-        ));
-    }
-    match std::fs::read(&path) {
-        Ok(bytes) => match String::from_utf8(bytes) {
-            Ok(text) => ArchitecturalKnowledge::present(parse_entries(kind, &text)),
-            Err(error) => ArchitecturalKnowledge::invalid(format!(
-                "{filename} is invalid: unreadable file ({error})"
-            )),
-        },
-        Err(error) => ArchitecturalKnowledge::invalid(format!(
-            "{filename} is invalid: unreadable file ({error})"
-        )),
-    }
-}
 
 /// Publish whether this run must acknowledge architectural knowledge.
 fn write_architectural_knowledge_snapshot(required: bool) {

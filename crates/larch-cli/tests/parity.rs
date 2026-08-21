@@ -760,6 +760,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-clarify-comment-post", "clarify", "comment-post"),
     CleanInstallCase::new("clean-install-clarify-label", "clarify", "label"),
     CleanInstallCase::new("clean-install-design-clarify", "design", "clarify"),
+    CleanInstallCase::new("clean-install-design-publish", "design", "publish"),
     CleanInstallCase::new("clean-install-cleanup-run", "cleanup", "run"),
     CleanInstallCase::new("clean-install-combine-issues-apply", "combine-issues", "apply"),
     CleanInstallCase::new(

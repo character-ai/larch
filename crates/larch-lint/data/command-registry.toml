@@ -2199,6 +2199,18 @@ clean_install_test = "clean-install-design-clarify"
 
 [[commands]]
 domain = "design"
+verb = "compose-plan-md"
+python_module = "larch.design.design_step5c"
+python_function = "compose_plan_md_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 7680
+
+[[commands]]
+domain = "design"
 verb = "dialectic-clear-stale"
 python_module = "larch.design.design_dialectic"
 python_function = "clear_stale_main"
@@ -2417,11 +2429,13 @@ verb = "publish"
 python_module = "larch.design.design_publish"
 python_function = "publish_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8591
+clean_install_test = "clean-install-design-publish"
 
 [[commands]]
 domain = "design"
@@ -9188,12 +9202,6 @@ python = []
 rust = ["plan check-size", "plan validate", "plan-review drift-baseline", "plan-review emit", "plan-review json-get-bool", "run-log append-failure"]
 
 [[callers]]
-path = "python/larch/design/design_publish.py"
-kind = "python-runtime"
-python = ["diagrams upsert"]
-rust = ["design log-publish", "difficulty sync-labels", "difficulty write-record", "named-block write", "run-log append-failure", "run-log write", "session write-design-env", "token claude-source", "tracking-issue rename"]
-
-[[callers]]
 path = "python/larch/design/design_settle.py"
 kind = "python-runtime"
 python = []
@@ -9215,7 +9223,7 @@ rust = ["plan-review finalize"]
 path = "python/larch/design/design_step5c.py"
 kind = "python-runtime"
 python = []
-rust = ["plan check-size"]
+rust = ["design publish", "plan check-size"]
 
 [[callers]]
 path = "python/larch/design/design_step6.py"
@@ -9472,8 +9480,8 @@ rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps 
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design file-oos-prepare", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design render-final-summary", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "mermaid sanitize"]
-rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "design driver", "design init-runparams", "design log-publish", "design parse-flags", "design read-result-env", "design route", "design step0-session", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
+python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design file-oos-prepare", "design pause-load", "design postplan-emit", "design prelude", "design render-final-summary", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "mermaid sanitize"]
+rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "design driver", "design init-runparams", "design log-publish", "design parse-flags", "design publish", "design read-result-env", "design route", "design step0-session", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"

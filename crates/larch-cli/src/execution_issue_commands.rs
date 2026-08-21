@@ -356,7 +356,7 @@ fn is_run_slug(value: &str) -> bool {
 }
 
 /// Read a file as UTF-8, replacing undecodable bytes.
-fn read_lossy(path: &Path) -> String {
+pub fn read_lossy(path: &Path) -> String {
     fs::read(path).map_or_else(
         |_error| String::new(),
         |bytes| String::from_utf8_lossy(&bytes).into_owned(),
