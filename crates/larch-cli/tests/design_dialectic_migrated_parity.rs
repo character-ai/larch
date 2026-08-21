@@ -1,4 +1,4 @@
-//! Black-box parity for the four Rust-owned dialectic candidate commands (#8584).
+//! Black-box parity for the Rust-owned dialectic commands (#8584, #8593).
 
 #[path = "support/parity.rs"]
 #[allow(dead_code)]
@@ -363,6 +363,16 @@ fn argument_cases() -> Vec<ParityCase> {
             "design-dialectic-clear-stale-missing-required",
         ),
         (
+            "dialectic-gatec",
+            "design-dialectic-gatec-help",
+            "design-dialectic-gatec-missing-required",
+        ),
+        (
+            "dialectic-manual",
+            "design-dialectic-manual-help",
+            "design-dialectic-manual-missing-required",
+        ),
+        (
             "dialectic-promote-candidates",
             "design-dialectic-promote-candidates-help",
             "design-dialectic-promote-candidates-missing-required",
@@ -388,6 +398,59 @@ fn argument_cases() -> Vec<ParityCase> {
     .collect()
 }
 
+fn closure_cases() -> Vec<ParityCase> {
+    let plan = "## Plan\n\nUse JSON files.\n\ndiff_lines: 1\n";
+    let fingerprint = dialectic_plan_fingerprint(plan.as_bytes());
+    let candidate = candidate_payload(Some(&fingerprint), "option_b");
+    vec![
+        parity_case(
+            "design-dialectic-gatec-probe-absent",
+            "dialectic-gatec",
+            &strings(&["--design-tmpdir", "{sandbox}/design", "--probe-only"]),
+            design_seed(plan),
+            None,
+        ),
+        parity_case(
+            "design-dialectic-gatec-probe-required",
+            "dialectic-gatec",
+            &strings(&["--design-tmpdir", "{sandbox}/design", "--probe-only"]),
+            {
+                let mut seeds = design_seed(plan);
+                seeds.push(SeedFile::text(
+                    "design/dialectic-clarifier-candidates.json",
+                    &candidate,
+                ));
+                seeds
+            },
+            None,
+        ),
+        parity_case(
+            "design-dialectic-manual-invalid-request",
+            "dialectic-manual",
+            &strings(&[
+                "--design-tmpdir",
+                "{sandbox}/design",
+                "--request",
+                "please debate",
+            ]),
+            design_seed(plan),
+            None,
+        ),
+        parity_case(
+            "design-dialectic-manual-missing-request-file",
+            "dialectic-manual",
+            &strings(&[
+                "--design-tmpdir",
+                "{sandbox}/design",
+                "--request-file",
+                "{sandbox}/missing.txt",
+            ]),
+            design_seed(plan),
+            None,
+        ),
+    ]
+}
+
 #[test]
 fn design_dialectic_migrated_commands_match_frozen_python_reference() {
     let goldens = fixture_directory().join("goldens");
@@ -395,6 +458,7 @@ fn design_dialectic_migrated_commands_match_frozen_python_reference() {
         .into_iter()
         .chain(write_and_promote_cases())
         .chain(clear_cases())
+        .chain(closure_cases())
         .chain(argument_cases())
     {
         assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))

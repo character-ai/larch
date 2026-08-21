@@ -267,13 +267,6 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
-"clarify.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "larch/cli.py" = [
     "C901",
     "PLR0911",
@@ -286,37 +279,6 @@ ignore = [
     "PLR0915",
 ]
 "collect_results.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-]
-"decompose.py" = [
-    "C901",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"design_core.py" = [
-    "C901",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"design_step1.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-]
-"design_terminal.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"design_step_log.py" = [
     "C901",
     "PLR0911",
     "PLR0912",
@@ -399,20 +361,6 @@ ignore = [
 ]
 "phantom.py" = [
     "PLR0911",
-]
-"_plan_quality_commands.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"plan_quality.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
 ]
 "pr.py" = [
     "PLR0911",

@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: cli.py design dialectic-gatec [-h] --design-tmpdir DESIGN_TMPDIR [--probe-only]\n\noptions:\n  -h, --help            show this help message and exit\n  --design-tmpdir DESIGN_TMPDIR\n  --probe-only\n"
+  }
+}

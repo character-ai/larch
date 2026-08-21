@@ -12,11 +12,11 @@ keeping those copies byte-frozen (the third is described at its call site):
 1. The frozen modules cross-import one another as ``larch.design.design_step0_env``
    etc. They are registered in ``sys.modules`` under their original dotted names
    before execution so those intra-package imports resolve to the frozen copies
-   even after production removal. ``design_core`` continues to resolve to the
-   surviving package module. ``design_terminal`` was retired in #8580, so its
-   byte-frozen copy from ``design_terminal_frozen/`` is registered under
-   ``larch.design.design_terminal``; the retired pause import resolves to a
-   test-only Rust dispatcher.
+   even after production removal. ``design_core`` resolves to the existing
+   finalization fixture under its original module name. ``design_terminal`` was
+   retired in #8580, so its byte-frozen copy from ``design_terminal_frozen/`` is
+   registered under ``larch.design.design_terminal``; the retired pause import
+   resolves to a test-only Rust dispatcher.
 2. Subprocesses that ran through ``repo_roots.larch_entrypoint`` (design
    parse-flags/route/init-runparams, session setup/write-design-env, run-log,
    agent, progress, token, timing) prefer the harness-provided larch binary
@@ -33,6 +33,7 @@ from pathlib import Path
 
 FROZEN = Path(__file__).resolve().parent / "design_step0_frozen"
 TERMINAL_FROZEN = Path(__file__).resolve().parent / "design_terminal_frozen"
+CORE_FROZEN = Path(__file__).resolve().parent / "design_finalize_frozen" / "design_core.py"
 
 # Documented adjustment 3: the harness runs both sides under `LANG=C`. On
 # CPython, PEP 538 C-locale coercion injects `LC_CTYPE=UTF-8` into this
@@ -72,9 +73,10 @@ def _load(name: str, path: Path):
     return module
 
 
-# `design_terminal` was retired in #8580; register its byte-frozen copy under the
+# `design_core` and `design_terminal` are retired; register byte-frozen copies under
 # original dotted name so the frozen step0 module's
 # `from larch.design.design_terminal import ...` resolves to pre-cutover behavior.
+_load("larch.design.design_core", CORE_FROZEN)
 _load("larch.design.design_terminal", TERMINAL_FROZEN / "design_terminal.py")
 _env = _load("larch.design.design_step0_env", FROZEN / "design_step0_env.py")
 _session = _load("larch.design.design_session", FROZEN / "design_session.py")

@@ -73,7 +73,7 @@ Maintain `$DESIGN_TMPDIR/dialectic-clarifier-generation.txt` as a monotonic inte
 
 ## Gate C timing
 
-`dialectic-gatec` runs as foreground Python inside `design-step3b-tail.sh`. The Step 4 orchestrator backgrounds the whole tail fence only when debate may run. `dialectic-gatec` writes `.completed/dialectic-gatec-terminal`; the tail writes `.completed/step-4` after preview completes.
+`design-step3b-tail.sh` runs `scripts/larch.sh design dialectic-gatec` in the foreground. Step 4 backgrounds the tail only when debate may run. `dialectic-gatec` writes `.completed/dialectic-gatec-terminal`; the tail writes `.completed/step-4` after preview completes.
 
 Auto debate runs only when `skip_approve_requested=false` and fingerprint-valid candidates exist. On `--skip-approve`, no new auto debate launches; a fingerprint-valid cached digest may be displayed. On resume or Step 4b entry without fresh tail stdout, Gate C may re-read a fingerprint-valid digest before the prompt. On the normal same-turn path, tail stdout is authoritative and must not be duplicated.
 

@@ -1,4 +1,4 @@
-"""Frozen Python reference for the four dialectic candidate commands (#8584)."""
+"""Frozen Python reference for the design dialectic commands (#8584, #8593)."""
 from __future__ import annotations
 
 import importlib.util
@@ -23,6 +23,8 @@ _dialectic = _load()
 
 DISPATCH = {
     "dialectic-clear-stale": _dialectic.clear_stale_main,
+    "dialectic-gatec": _dialectic.gatec_main,
+    "dialectic-manual": _dialectic.manual_main,
     "dialectic-promote-candidates": _dialectic.promote_candidates_main,
     "dialectic-validate-candidates": _dialectic.validate_candidates_main,
     "dialectic-write-candidates": _dialectic.write_candidates_main,

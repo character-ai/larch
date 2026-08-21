@@ -21,7 +21,8 @@ use std::{
     process::{Command, ExitCode},
 };
 
-use larch_adapters::{PathIntent, TemporaryRoot, read_utf8};
+use larch_adapters::{PathIntent, TemporaryRoot, read_utf8, validate_design_tmpdir};
+use larch_core::cleanup_cache_sessions_root;
 use larch_core::{CommentPolicy, KvDocument, ParseOptions};
 
 use crate::{
@@ -309,6 +310,7 @@ impl Step0Runner for LiveStep0Runner {
 // Wrapper argument parsing (design_step0_env.py `_parse_wrapper_args`)
 // ---------------------------------------------------------------------------
 
+#[derive(Default)]
 pub struct WrapperNs {
     pub session_env_path: String,
     pub claude_pid: String,
@@ -320,6 +322,20 @@ pub struct WrapperNs {
     pub reason: String,
     pub tool: String,
     pub public_argv: Vec<String>,
+}
+
+/// Advance past one forward-compatible wrapper argument. Unknown value flags
+/// consume their following value; unknown booleans consume only themselves.
+pub fn next_unknown_wrapper_arg(argv: &[String], index: usize) -> usize {
+    if argv[index].starts_with("--")
+        && argv
+            .get(index + 1)
+            .is_some_and(|value| !value.starts_with("--"))
+    {
+        index + 2
+    } else {
+        index + 1
+    }
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -921,6 +937,187 @@ pub fn check_pause_and_exit(env: &Env, design_tmpdir: &Path) -> Option<ExitCode>
         return Some(exit_from_i32(code));
     }
     None
+}
+
+fn parse_session_entry_args(argv: &[String]) -> Result<WrapperNs, String> {
+    let mut ns = WrapperNs::default();
+    let mut index = 0;
+    while index < argv.len() {
+        let token = argv[index].as_str();
+        if token == "--" {
+            ns.public_argv = argv[index + 1..].to_vec();
+            break;
+        }
+        let bound = matches!(
+            token,
+            "--session-env-path" | "--claude-pid" | "--plugin-root" | "--outcome"
+        );
+        if bound {
+            if let Some(value) = argv.get(index + 1) {
+                match token {
+                    "--session-env-path" => ns.session_env_path.clone_from(value),
+                    "--claude-pid" => ns.claude_pid.clone_from(value),
+                    "--plugin-root" => ns.plugin_root.clone_from(value),
+                    "--outcome" => ns.outcome.clone_from(value),
+                    _ => {}
+                }
+                index += 2;
+                continue;
+            }
+            return Err(format!("{token} requires a value"));
+        }
+        // Preserve the retired generated-wrapper parser: unknown value flags
+        // consume one value, while unknown booleans are ignored.
+        index = next_unknown_wrapper_arg(argv, index);
+    }
+    Ok(ns)
+}
+
+fn session_entry_request(arguments: &[OsString]) -> Result<(Env, WrapperNs), ExitCode> {
+    let ns = match parse_session_entry_args(&utf8_arguments(arguments)) {
+        Ok(ns) => ns,
+        Err(error) => {
+            eprintln!("{error}");
+            return Err(ExitCode::FAILURE);
+        }
+    };
+    if !ns.session_env_path.is_empty() {
+        let source = Path::new(&ns.session_env_path);
+        if source.is_symlink()
+            && resolve_trusted_design_session_env_source(source, &ns.claude_pid).is_none()
+        {
+            eprintln!(
+                "/design wrapper: refusing untrusted session-env symlink: {}",
+                ns.session_env_path
+            );
+            return Err(ExitCode::FAILURE);
+        }
+    }
+    Ok((load_wrapper_env(&ns), ns))
+}
+
+fn print_child_streams(child: &ChildOutcome) {
+    if !child.stdout.is_empty() {
+        print!("{}", child.stdout);
+    }
+    if !child.stderr.is_empty() {
+        eprint!("{}", child.stderr);
+    }
+}
+
+fn child_environment(env: &Env) -> Vec<(String, String)> {
+    env.iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
+fn prelude_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
+    let (env, _ns) = match session_entry_request(arguments) {
+        Ok(request) => request,
+        Err(code) => return code,
+    };
+    let raw = env_get(&env, "DESIGN_TMPDIR", "");
+    if raw.is_empty() || !Path::new(raw).join(".pause-requested").is_file() {
+        return ExitCode::SUCCESS;
+    }
+    let plugin_root = PathBuf::from(env_get(&env, "CLAUDE_PLUGIN_ROOT", ""));
+    let args = pause_save_arguments(
+        Path::new(raw),
+        env_get(&env, "ISSUE_NUMBER", ""),
+        env_get(&env, "REPO", ""),
+    )
+    .into_iter()
+    .map(|value| value.to_string_lossy().into_owned())
+    .collect::<Vec<_>>();
+    let child_env = child_environment(&env);
+    let child = runner.run(&plugin_root, &args, &child_env, false);
+    print_child_streams(&child);
+    exit_from_i32(child.code)
+}
+
+/// Run the pause-only prelude shared by generated `/design` fences.
+pub fn prelude(arguments: &[OsString]) -> ExitCode {
+    prelude_with(arguments, &LiveStep0Runner)
+}
+
+fn step3_continuation_entry_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitCode {
+    let (env, _ns) = match session_entry_request(arguments) {
+        Ok(request) => request,
+        Err(code) => return code,
+    };
+    let plugin_root = match require_plugin_root(env_get(&env, "CLAUDE_PLUGIN_ROOT", "")) {
+        Ok(root) => root,
+        Err(code) => return code,
+    };
+    let raw = env_get(&env, "DESIGN_TMPDIR", "");
+    if raw.is_empty() {
+        eprintln!("/design Step 3 continuation-entry: DESIGN_TMPDIR required");
+        return ExitCode::FAILURE;
+    }
+    let cache_root = cleanup_cache_sessions_root(
+        std::env::var_os("XDG_CACHE_HOME").as_deref(),
+        std::env::var_os("HOME").as_deref(),
+    );
+    if validate_design_tmpdir(raw, std::env::var_os("TMPDIR").as_deref(), &cache_root).is_err() {
+        return ExitCode::from(2);
+    }
+    let Ok(design_tmpdir) = fs::canonicalize(raw) else {
+        return ExitCode::from(2);
+    };
+    let preview_marker = design_tmpdir.join(".step3-entry-plan-printed");
+    if let Err(error) = fs::remove_file(&preview_marker)
+        && error.kind() != std::io::ErrorKind::NotFound
+    {
+        eprintln!("{}: {error}", preview_marker.display());
+        return ExitCode::FAILURE;
+    }
+    let child_env = child_environment(&env);
+    if design_tmpdir.join(".pause-requested").is_file() {
+        let args = pause_save_arguments(
+            &design_tmpdir,
+            env_get(&env, "ISSUE_NUMBER", ""),
+            env_get(&env, "REPO", ""),
+        )
+        .into_iter()
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+        let child = runner.run(&plugin_root, &args, &child_env, false);
+        print_child_streams(&child);
+        return exit_from_i32(child.code);
+    }
+    let child = runner.run(
+        &plugin_root,
+        &[
+            "plan-review".to_owned(),
+            "step3-state".to_owned(),
+            "--design-tmpdir".to_owned(),
+            design_tmpdir.display().to_string(),
+            "--auto-continuation-entry".to_owned(),
+        ],
+        &child_env,
+        false,
+    );
+    print_child_streams(&child);
+    if child.code == 0 {
+        let mut timing_env = child_env;
+        timing_env.push(("LARCH_TIMING_SKILL".to_owned(), "design".to_owned()));
+        let _ = runner.run(
+            &plugin_root,
+            &[
+                "timing".to_owned(),
+                "mark".to_owned(),
+                "design Step 3 — auto-continuation entry".to_owned(),
+            ],
+            &timing_env,
+            false,
+        );
+    }
+    exit_from_i32(child.code)
+}
+
+/// Clear the Step 3 entry sentinel and enter the automatic continuation state.
+pub fn step3_continuation_entry(arguments: &[OsString]) -> ExitCode {
+    step3_continuation_entry_with(arguments, &LiveStep0Runner)
 }
 
 pub fn exit_from_i32(code: i32) -> ExitCode {
@@ -2687,17 +2884,33 @@ mod tests {
 
     use super::{
         ChildOutcome, Step0Runner, bash_percent_q, decode_bash_percent_q,
-        decode_shell_assignment_value, require_plugin_root, settle_next_action,
+        decode_shell_assignment_value, prelude_with, require_plugin_root, settle_next_action,
         step0_abort_cleanup_with, step0_ap_continue, step0_clarify_hard_halt, step0_parse_with,
-        step0_route_with, step0_session_with, step0c_with, validate_claude_pid,
+        step0_route_with, step0_session_with, step0c_with, step3_continuation_entry_with,
+        validate_claude_pid,
     };
 
     fn arguments(values: &[&str]) -> Vec<OsString> {
         values.iter().map(OsString::from).collect()
     }
 
+    fn entry_session_env(root: &Path, plugin: &Path) -> std::path::PathBuf {
+        let source = root.join("entry.env");
+        fs::write(
+            &source,
+            format!(
+                "CLAUDE_PLUGIN_ROOT={}\nDESIGN_TMPDIR={}\nISSUE_NUMBER=8593\nREPO=character-ai/larch\n",
+                plugin.display(),
+                root.display()
+            ),
+        )
+        .expect("session env");
+        source
+    }
+
     struct RecordingRunner {
         calls: RefCell<Vec<Vec<String>>>,
+        environments: RefCell<Vec<Vec<(String, String)>>>,
         answers: RefCell<Vec<ChildOutcome>>,
     }
 
@@ -2705,6 +2918,7 @@ mod tests {
         fn new(answers: Vec<ChildOutcome>) -> Self {
             Self {
                 calls: RefCell::new(Vec::new()),
+                environments: RefCell::new(Vec::new()),
                 answers: RefCell::new(answers),
             }
         }
@@ -2715,10 +2929,11 @@ mod tests {
             &self,
             _plugin_root: &Path,
             args: &[String],
-            _env: &[(String, String)],
+            env: &[(String, String)],
             _merge_stderr: bool,
         ) -> ChildOutcome {
             self.calls.borrow_mut().push(args.to_vec());
+            self.environments.borrow_mut().push(env.to_vec());
             // Emulate the Rust-owned `design parse-flags` child: write a valid
             // bash-quoted document to its `--output` path so the persist step
             // re-reads a well-formed default request.
@@ -2755,6 +2970,59 @@ mod tests {
                 answers.remove(0)
             }
         }
+    }
+
+    #[test]
+    fn small_entry_prelude_rehydrates_and_delegates_pause_save() {
+        let root = tempfile::tempdir_in("/tmp").expect("tempdir");
+        let plugin = root.path().join("plugin");
+        fs::create_dir(&plugin).unwrap();
+        fs::write(root.path().join(".pause-requested"), "").unwrap();
+        let source = entry_session_env(root.path(), &plugin);
+        let runner = RecordingRunner::new(vec![ok("PAUSE_OK=true\n")]);
+        let code = prelude_with(
+            &arguments(&[
+                "--session-env-path",
+                source.to_str().unwrap(),
+                "--future-wrapper-flag",
+                "ignored",
+            ]),
+            &runner,
+        );
+        assert_eq!(code, ExitCode::SUCCESS);
+        assert_eq!(runner.calls.borrow()[0][..2], ["design", "pause-save"]);
+        assert!(
+            runner.environments.borrow()[0].iter().any(
+                |(key, value)| key == "DESIGN_TMPDIR" && value == root.path().to_str().unwrap()
+            )
+        );
+        assert_eq!(
+            prelude_with(&arguments(&["--session-env-path"]), &runner),
+            ExitCode::FAILURE
+        );
+    }
+
+    #[test]
+    fn continuation_entry_clears_preview_then_marks_success() {
+        let root = tempfile::tempdir_in("/tmp").expect("tempdir");
+        let plugin = root.path().join("plugin");
+        fs::create_dir(&plugin).unwrap();
+        fs::write(root.path().join(".step3-entry-plan-printed"), "shown\n").unwrap();
+        let source = entry_session_env(root.path(), &plugin);
+        let runner = RecordingRunner::new(vec![ok("STATE=continue\n"), ok("")]);
+        let code = step3_continuation_entry_with(
+            &arguments(&["--session-env-path", source.to_str().unwrap()]),
+            &runner,
+        );
+        assert_eq!(code, ExitCode::SUCCESS);
+        assert!(!root.path().join(".step3-entry-plan-printed").exists());
+        let calls = runner.calls.borrow();
+        assert_eq!(calls[0][..2], ["plan-review", "step3-state"]);
+        assert_eq!(calls[1][..2], ["timing", "mark"]);
+        assert!(
+            runner.environments.borrow()[1]
+                .contains(&("LARCH_TIMING_SKILL".to_owned(), "design".to_owned()))
+        );
     }
 
     fn ok(stdout: &str) -> ChildOutcome {

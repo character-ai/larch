@@ -371,7 +371,7 @@ test-design-step2b-drafter:
 	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --bin larch design_step2b_commands::
 
 test-design-driver:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'phase_driver or design_read_result_env or design_driver'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test design_step1_migrated_parity
 
 test-design-clarify:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-clarify.sh
@@ -388,7 +388,7 @@ test-read-result-env:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-read-result-env.sh
 
 test-invoke-plan-validator:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k validate_plan
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_quality_migrated_parity
 
 test-file-design-oos:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-core --lib design::oos
@@ -411,23 +411,23 @@ test-gate-b-apply-mode:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-gate-b-apply-mode.sh
 
 test-trailer-helpers:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k optional_trailer
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_quality_migrated_parity
 
 test-emit-design-plan-preview:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands preview_and_finalize
 test-check-plan-size:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k check_plan_size
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_quality_migrated_parity
 
 test-auto-fix-plan-commands:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k auto_fix
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_quality_coverage auto_fix
 
 
 test-parse-plan-commands:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k parse_plan_commands
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_quality_migrated_parity
 
 
 test-validate-plan-commands:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k validate_plan
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_quality_migrated_parity
 
 test-tally-plan-review:
 	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --test plan_review_commands tally
@@ -481,7 +481,7 @@ test-finalize-plan:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands preview_and_finalize
 
 test-step0b-router-flag-recovery:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k design_route
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test design_router_migrated_parity
 
 test-brainstorm-prompts:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-brainstorm-prompts.sh
@@ -840,7 +840,7 @@ test-larch-logs-batches:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/report/test_run_logs.py -k '(batch or batches) and not execution_issues'
 
 test-compose-plan-goals-test:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k compose_plan_goals_test
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_quality_migrated_parity
 
 test-compose-collector-failure-log:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test agent_commands compose_collector_failure_log_redacts_and_writes_sections
@@ -975,13 +975,13 @@ setup:
 .PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step-final-summary test-design-step3-review test-design-step3b-tail test-design-step3b-entry test-design-step3-entry test-design-small-session-entries test-design-step0-init test-design-step5c test-design-step6 test-design-step-validator-autofix
 
 test-design-stage-terminal-state:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'stage_terminal_state or capture_contract or clarify_hard_halt'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test design_terminal_migrated_parity
 
 test-design-failure-report:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k failure_report
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test design_terminal_migrated_parity
 
 test-design-step-final-summary:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k step_final_summary
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test design_terminal_migrated_parity
 
 test-design-step3-review:
 	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test plan_review_loop_commands normalize
@@ -1001,7 +1001,7 @@ test-design-small-session-entries:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands normalize_and_session_entry
 
 test-design-step0-init:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'step0_parse or step0_session or step0_route or step0_init or step0_abort or step0_ap or step0c or step1d7 or step1e or pause_save or bash_quoted or decode_bash_percent_q or degraded_tools or relay_degraded or require_design or resolve_repo or wrapper or core_style_ctx'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test design_step0_migrated_parity
 
 test-design-step5c:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step5c.sh
@@ -1011,7 +1011,7 @@ test-design-step6:
 	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test design_settle_migrated_parity migrated_design_step6_matches_frozen_python
 
 test-design-step-validator-autofix:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k validator_autofix
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_quality_coverage validator_autofix
 
 test-design-step1d5:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'step1d5'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test design_step1_migrated_parity

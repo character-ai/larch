@@ -4,7 +4,7 @@
 
 `read-result-env.sh` safely converts a machine `KEY=VALUE` result-env file into a sourceable env file containing only caller-allowlisted keys. It refuses symlinked and non-regular inputs so orchestrators can source the generated output without reopening untrusted paths.
 
-Allowlist filtering, symlink refusal, and CR/LF rejection are delegated to `phase_driver_read_result_env` (`python/larch/design/design_terminal.py`). This script owns: fallback-input selection, WARN/ERROR stdout replay, and single-quote encoding for sourceable output.
+Allowlist filtering, symlink refusal, and CR/LF rejection are delegated to the Rust `design read-result-env` owner. This script owns fallback-input selection, WARN/ERROR stdout replay, and single-quote encoding for sourceable output.
 
 ## Argv
 

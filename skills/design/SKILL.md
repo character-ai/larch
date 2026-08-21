@@ -49,7 +49,7 @@ Follow shared/verbosity-control.md rules.
 The Claude Code Bash tool does NOT preserve shell state between calls. Step 0a writes `$DESIGN_TMPDIR/source-env.sh` with `DESIGN_TMPDIR`, `SESSION_TMPDIR`, `SESSION_ID`, `CLAUDE_PLUGIN_ROOT`, and reviewer presence/availability booleans; Step 0b refreshes it after `ISSUE_NUMBER` is known. It also updates `~/.cache/larch/sessions/current-design-env-$PPID.sh` and `~/.cache/larch/sessions/design-run-$PPID.sh` using the root Bash-tool `$PPID`; do not wrap the writer in extra `bash` layers without `--claude-pid`. After Step 0a, ported Step 0/1 fences call `design-run-$PPID.sh <verb> ...`; unported clarify and Step 2+ fences still pass `*.sh` basenames. The launcher supplies `--session-env-path` / `--claude-pid`; wrappers own rehydration and pause checks.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design prelude --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" --claude-pid "$PPID"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" design prelude --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" --claude-pid "$PPID"
 ```
 
 **Phase 7 exception**: pure-LLM Steps **1c**, **1d**, and **1e** have no standalone prelude fences: their timing marks and absorbed completion sentinels are folded into adjacent real-work hosts (see **Completion sentinels** below). Step **1d.5** is explicitly **retained** as a standalone prelude because brainstorm paths can launch and collect external Bash work. Step **1d.7** is retained with a dedicated read-only fence for `SKIP_APPROVE_REQUESTED`; see the maintainer-only sentinel host-table reference.
@@ -480,7 +480,7 @@ If Round 2-style follow-up questions need to be asked (decisions emerging from t
 **Continuation helper diagnostics**: the script-internal loop owns automatic continuation. `scripts/larch.sh plan-review continuation --design-tmpdir "$DESIGN_TMPDIR" --approve-requested "$_approve_requested"` is diagnostic only and emits `PLAN_REVIEW_CONTINUE*` KVs. With `--per-round-approval`, it returns false with reason `PLAN_REVIEW_CONTINUE_REASON=explicit-approve`. For manual recovery, run the continuation entry wrapper:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design step3-continuation-entry --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" --claude-pid "$PPID"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" design step3-continuation-entry --session-env-path "$HOME/.cache/larch/sessions/current-design-env-$PPID.sh" --claude-pid "$PPID"
 ```
 
 Loop back through the launcher-only Step 3 resume fence before launching the next review:
@@ -511,7 +511,7 @@ Do not classify plans, generate diagrams, write `architecture-diagram.*`, or run
 
 Print: `> **🔶 /design 4: rejected findings**`
 
-Step 4 routing authority is `STEP4_MODE` only. Step 3b finalize decides debate eligibility; Step 4 only launches or rejoins the bgjob tail. The full `python/cli.py design dialectic-gatec` run is a `design-step3b-tail.sh` detail.
+Step 4 routing authority is `STEP4_MODE` only. Step 3b finalize decides debate eligibility; Step 4 only launches or rejoins the bgjob tail. The full `scripts/larch.sh design dialectic-gatec` run is a `design-step3b-tail.sh` detail.
 
 Use the shared bgjob wait contract for Step 4 launch, rejoin, `WAIT`, `DEAD`, and `DONE`. Parameters: step `design-step4-tail`; tmpdir `$DESIGN_TMPDIR`; wait chunk `--max-wait-s 270`; result env `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env`; merge input `$DESIGN_TMPDIR/.design-step4-tail-result.env`; require `BGJOB_RC=0`, `SKIP_APPROVE_REQUESTED_GATEC`, rejected-findings marker KVs, and `GATEC_PREVIEW_PATH`.
 
@@ -540,7 +540,7 @@ Print: `> **🔶 /design 4b: gate C**`
 
 Execute the Gate C body in `approval-gates-gate-c.md`: it is the single normative source for Gate C behavior (Presentation, accepted-findings audit, the adverse-outcome fix ladder, Prompt, Other-handling, large-plan summary mode). Gate C has two operator-approved carve-outs from `/design`'s inline-only rule: architectural invariant/guideline assessment-note authoring runs in one read-only `larch:arch-assessor` subagent spawn, and a tier-1 adverse-outcome plan revision runs in one `larch:claude-implementer` subagent with `MODE=plan-revise`. The main agent authors no assessment prose; it owns presentation, the per-kind fix ladder (tier-1 reviser dispatch, tier-2 repair or guideline decline, Gate C settle via `scripts/larch.sh design step35-settle --site gate-c` (launcher: `design-step35-settle.sh --site gate-c`), and fresh `larch:arch-assessor` re-judgment), persistence, and the publish gate. An invariant `violation` still present after tier 2 cancels the run through the existing cancellation outcome: skip approval, Step 5, publication, and any waiver. A declined guideline `deviation` publishes only when its persisted note carries one validated documented exception, presented redacted before approval and in the `--skip-approve` terminal summary.
 
-**Mechanical Gate C plan emit**: `design-step3b-tail.sh` → optional `python/cli.py design dialectic-gatec` → `scripts/larch.sh plan-review preview --variant gatec` mirrors Step 3 preview rules. After Step 4 bgjob `DONE`, emit `GATEC_PREVIEW_PATH`; on `resume@4b` or absent same-turn capture, read `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env` first, then use disk fallbacks per `approval-gates-gate-c.md`.
+**Mechanical Gate C plan emit**: `design-step3b-tail.sh` → optional `scripts/larch.sh design dialectic-gatec` → `scripts/larch.sh plan-review preview --variant gatec` mirrors Step 3 preview rules. After Step 4 bgjob `DONE`, emit `GATEC_PREVIEW_PATH`; on `resume@4b` or absent same-turn capture, read `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env` first, then use disk fallbacks per `approval-gates-gate-c.md`.
 
 Before the Gate C `AskUserQuestion`, parse `SKIP_APPROVE_REQUESTED_GATEC=true|false` from `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env` or final `DONE` stdout, not thin tail-launcher stdout.
 

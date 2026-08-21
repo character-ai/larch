@@ -222,12 +222,6 @@ exclude = [
   "skills/design/scripts/design-step5c.md",
   "skills/design/scripts/test-design-step5c.sh",
   "skills/design/scripts/test-design-step5c.md",
-  "python/cli.py plan validator-autofix",
-  "python/cli.py design step2b-drafter",
-  "python/cli.py design step2b-postplan",
-  "python/cli.py design stage-terminal-state",
-  "python/cli.py design failure-report",
-  "python/cli.py design step-final-summary",
   "skills/implement/scripts/step-7a.sh",
   # Delegation smoke for step-7a.sh; behavioral authority is
   # python/tests/implement/test_step_7a.py (step-7a-py-harness /
@@ -326,19 +320,10 @@ exclude = [
   # skill prose, matching the same Makefile-only pattern as the other
   # run-log test-* harnesses above.
   "python/test_redact.py",
-  # Step 1 launcher split: compose-goals-test is now invoked by
-  # python/cli.py plan step1-log rather than directly from SKILL.md, and
-  # agent-lint does not follow Python-to-Python launcher edges. The launcher
-  # harness is Makefile-only (test-run-step1-plan-log target).
-  "python/cli.py plan compose-goals-test",
-  "scripts/test-compose-plan-goals-test.sh",
-  "scripts/test-compose-plan-goals-test.md",
-  "python/test_design_step_log.py",
   # Python bootstrap invokes these Step 0 shell helpers through subprocess;
   # agent-lint does not follow Python-to-Bash edges.
   "python/cli.py pr create-branch",
   "python/pr.py",
-  "python/design_step_log.py",
   # The failed-jobs classifier is invoked by ship-pr and Makefile-only tests;
   # agent-lint does not follow those Python library edges.
   "python/ci_monitor.py",
@@ -592,10 +577,6 @@ exclude = [
   # python/tests/skills/test_skill_structure.py owns alias/bug/design/implement/
   # learn-from-bugs/research/review structure pins (formerly seven Bash harnesses).
   "python/tests/skills/test_skill_structure.py",
-  # python/tests/design/test_design_lifecycle.py is a Makefile-only harness for
-  # python/design_lifecycle.py (/design Step 0b lifecycle port);
-  # the test covers reentry guard and router flag recovery.
-  "python/tests/design/test_design_lifecycle.py",
   # for python/cli.py session write-design-env (Makefile test-write-design-
   # current-env target). Same Makefile-only pattern as other design test-*.
   "skills/design/scripts/test-findings-classification.sh",
@@ -604,7 +585,6 @@ exclude = [
   "skills/design/scripts/decompose-prompts/scope-minimalist.txt",
   "skills/design/scripts/decompose-prompts/risk-isolation.txt",
   "skills/design/scripts/decompose-prompts/_common-tail.txt",
-  "python/test_design_summary.py",
   # skills/pause/scripts/test-pause-skill.sh is the offline regression harness
   # for the /larch:pause Bash block embedded in skills/pause/SKILL.md. It is
   # referenced only from Makefile (test-pause-skill target) and its sibling
@@ -673,8 +653,6 @@ exclude = [
   "scripts/test-orchestrator-scope-sync.sh",
   "scripts/test-quick-mode-docs-sync.sh",
   "scripts/test-python/cli.py render reviewer",
-  # python/test_design_lifecycle.py covers step0b router flag recovery
-  # (ported from the retired shell harness).
   # scripts/test-python/cli.py render specialist is the regression harness for
   # python/cli.py render specialist (the specialist reviewer prompt
   # renderer for /review's 5-specialist panel). The renderer itself
@@ -721,8 +699,6 @@ exclude = [
   # python/cli.py render lane-status via `source`).
   "python/rendering.py",
   # issue #3039: Makefile-only harness wired via
-  # test-render-final-summary-bash32 (now pytest python/test_design_summary.py).
-  "python/test_design_summary.py",
   # python/cli.py merge pr's admin-first / plain-fallback ordering, safety gates,
   # same-version bump race gate, and --no-admin-fallback opt-out. It stubs `gh`
   # and `git` via PATH and asserts merge outcomes plus the same-version cases
@@ -778,13 +754,7 @@ exclude = [
   "python/test_agents.py",
   "python/session_env.py (session restore-finalize-state)",
   "scripts/test-triage-structure.md",
-  # python/test_design_*.py files below are pytest harnesses for
-  # Makefile-only regression targets after the /design Python migration.
-  # The primary modules are cited from /design runtime prose; the
-  # harnesses are referenced only from Makefile.
-  "python/tests/design/test_design_lifecycle.py",
   "skills/design/scripts/test-findings-classification.md",
-  "python/test_design_summary.py",
   "skills/pause/scripts/test-pause-skill.md",
   "scripts/test-implement-timing-rehydration.md",
   # Referenced from Makefile (test-promote-release target in test-harnesses-20)
@@ -845,7 +815,7 @@ exclude = [
   # scripts/larch.sh progress render-phase-detail renders the per-round
   # review-phase detail section. It is invoked at runtime from
   # skills/implement/scripts/write-final-report.sh and
-  # python/design_summary.py through the shared Rust runtime adapter via subprocess
+  # the Rust summary owner through its shared runtime adapter via subprocess
   # edges that G004 dead-script reachability cannot discover.
   "scripts/larch.sh progress render-phase-detail",
   # scripts/larch.sh progress write-design-round-meta synthesizes per-round round-meta.json and

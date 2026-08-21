@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -202,15 +201,15 @@ def test_machine_stdout_keys_derived_from_registry() -> None:
     assert derived == cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
 
 
-def test_repointed_design_commands_retain_machine_stdout_and_defining_modules() -> None:
-    design_samples = {
-        ("design", "prelude"): ("larch.design.design_core", "prelude_main"),
-        ("design", "step3-continuation-entry"): ("larch.design.design_core", "step3_continuation_entry_main"),
-    }
-    for key, (module_name, func_name) in design_samples.items():
-        registered = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]
-        assert registered == (module_name, func_name, True)
-        assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+def test_rust_owned_design_commands_are_absent_from_python_registry() -> None:
+    for key in (
+        ("design", "prelude"),
+        ("design", "step3-continuation-entry"),
+        ("design", "dialectic-gatec"),
+        ("design", "dialectic-manual"),
+    ):
+        assert key not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+        assert key not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
     for module_name, _func_name, _machine_stdout in cli._REGISTRY.values():  # pyright: ignore[reportPrivateUsage]
         assert module_name != "larch.design.design_lifecycle"
 
@@ -218,16 +217,6 @@ def test_repointed_design_commands_retain_machine_stdout_and_defining_modules() 
 def test_rust_owned_ship_commands_are_absent_from_python_registry() -> None:
     assert ("ship", "pr") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     assert ("ship", "reconcile-manual-merge") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
-
-
-def test_design_kv_entrypoint_disables_inherited_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
-    monkeypatch.setenv("LARCH_QUIET_PID", "999999")
-    mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.design.design_core": MagicMock(prelude_main=mock_main)}):
-        rc = cli.main(["design", "prelude", "--help"])
-    assert rc == 0
-    assert os.environ["LARCH_QUIET_DISABLE"] == "1"
 
 
 # ---------------------------------------------------------------------------

@@ -1371,6 +1371,16 @@ skills/design/scripts/design-step3b-entry.md	#7485
 scripts/flush-vendor-failure-diagnostics.sh	#8078
 scripts/flush-vendor-failure-diagnostics.md	#8078
 scripts/test-flush-vendor-failure-diagnostics.sh	#8078
+python/larch/design/design_core.py	#8593
+python/larch/design/design_dialectic_debate.py	#8593
+python/larch/design/plan_quality.py	#8593
+python/tests/design/test_design_core.py	#8593
+python/tests/design/test_design_dialectic_debate.py	#8593
+python/tests/design/test_design_lifecycle.py	#8593
+python/tests/design/test_kv_codec_design_adoption.py	#8593
+python/tests/design/test_plan_quality.py	#8593
+scripts/test-compose-plan-goals-test.md	#8593
+scripts/test-compose-plan-goals-test.sh	#8593
 scripts/test-flush-vendor-failure-diagnostics.md	#8078
 python/larch/review/__init__.py	#8452
 python/larch/review/_raf_util.py	#8452

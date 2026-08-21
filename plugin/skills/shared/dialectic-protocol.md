@@ -14,7 +14,7 @@ Gate C maps **CHOSEN** from `drafter_pick`; **ALTERNATIVE** is the other option.
 
 Active clarifier artifacts live under `$DESIGN_TMPDIR`. The clarifier ballot path is `$DESIGN_TMPDIR/dialectic-ballot.txt`.
 
-`python/larch/design/design_dialectic_debate.py` assembles clarifier ballot text and writes the shared ballot file. Gate C does not use prompt-side ballot assembly.
+`crates/larch-cli/src/design_dialectic_commands.rs` assembles clarifier ballot text and writes the shared ballot file. Gate C does not use prompt-side ballot assembly.
 
 ## Ballot Format
 

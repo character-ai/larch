@@ -85,7 +85,9 @@ fn text_field(value: Option<&Value>, field: &str) -> Result<String, DialecticSha
     Ok(text)
 }
 
-fn slugify(value: &str, fallback: &str) -> String {
+/// Normalize an operator-visible decision label into the candidate-id grammar.
+#[must_use]
+pub fn dialectic_slugify(value: &str, fallback: &str) -> String {
     let mut slug = String::new();
     let mut separator_pending = false;
     for character in value.to_lowercase().chars() {
@@ -135,8 +137,8 @@ fn parse_candidate(value: &Value, index: usize) -> Result<DialecticCandidate, Di
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
         .map_or_else(
-            || slugify(&title, &fallback),
-            |value| slugify(value, &fallback),
+            || dialectic_slugify(&title, &fallback),
+            |value| dialectic_slugify(value, &fallback),
         );
     Ok(DialecticCandidate {
         id,

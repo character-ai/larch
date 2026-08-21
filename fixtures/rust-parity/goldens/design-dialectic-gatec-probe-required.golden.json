@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/dialectic-clarifier-candidates.json": {
+      "text": "{\"decisions\":[{\"drafter_pick\":\"option_b\",\"id\":\"storage-choice\",\"option_a\":\"Use SQLite\",\"option_b\":\"Use JSON files\",\"title\":\"Storage choice\",\"tradeoff\":\"Query power versus operational simplicity\",\"why_this_matters\":\"It changes runtime dependencies\"}],\"plan_fingerprint\":\"55bbdf2b5c06e6a02ad7dcfbba16d776a1ffbb35f8ce4c09b4e9459d0243ea36\"}"
+    },
+    "design/plan.txt": {
+      "text": "## Plan\n\nUse JSON files.\n\ndiff_lines: 1\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "DIALECTIC_GATEC_DEBATE_REQUIRED=true\n"
+  }
+}

@@ -14,13 +14,11 @@ and the #4459 follow-up batch that closed coverage gaps / overlaps in seven
 more already-sliced files (test_execution_issues/
 test_finalize/
 test_plan_review), plus the #4459 Bucket-1 full-file duplicate group
-(test_run_logs/test_implement_dispatch/test_redact/test_release/
-test_design_lifecycle/test_decompose/
-test_design_summary), against regression. It does **not** yet enforce the
+(test_run_logs/test_implement_dispatch/test_redact/test_release/test_decompose),
+against regression. It does **not** yet enforce the
 invariant on the heavier `-k`-sliced files whose re-partition moves many
 tests between shards and needs wall-time re-measurement
-(test_plan_quality.py,
-test_pr_body.py, test_file_oos.py); those remain tracked #4459 follow-ups.
+(test_pr_body.py, test_file_oos.py); those remain tracked #4459 follow-ups.
 To bring another file under the guard, slice its targets and add it to
 ENFORCED.
 
@@ -60,7 +58,6 @@ ENFORCED = (
     "python/tests/implement/test_implement_dispatch.py",
     "python/tests/core/test_redact.py",
     "python/tests/release/test_release.py",
-    "python/tests/design/test_design_lifecycle.py",
     "python/tests/design/test_decompose.py",
 )
 

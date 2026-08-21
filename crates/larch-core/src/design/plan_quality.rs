@@ -1,6 +1,6 @@
 //! Plan-quality analysis core for /design validation flows.
 //!
-//! Ports the pure analysis surface of `python/larch/design/plan_quality.py` and
+//! Ports the pure analysis surface of the frozen `plan_quality.py` owner and
 //! command extraction from `_plan_quality_commands.py`. Command registration,
 //! autofix, and revision waterfall stay with later leaves.
 

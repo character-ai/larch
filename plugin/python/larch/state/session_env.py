@@ -79,9 +79,8 @@ FINALIZE_STATE_CORE_KEYS = (
     "BAIL_NEEDS_USER_INPUT",
     "STALL_TRACKING",
 )
-# Shared /design wrapper-env defaults. design_step2b and plan_quality both
-# build wrapper-env dicts that overlap on this common core; defining it once
-# keeps the two literals from re-introducing a duplicate-code run (R0801).
+# Shared /design wrapper-env defaults retained by session serialization and
+# the remaining Python compatibility consumers.
 COMMON_DESIGN_ENV_DEFAULTS: dict[str, str] = {
     "DESIGN_TMPDIR": "",
     "SESSION_TMPDIR": "",
@@ -119,8 +118,7 @@ VALIDATOR_STATUS_ENV_DEFAULTS: dict[str, str] = {
     "VALIDATE_LOG_FILE": "",
     "_validator_target_file": "",
 }
-# CLI flag -> attribute/key name map shared by the design step2 wrapper parser
-# (design_step2b) and the validator wrapper parser (plan_quality).
+# CLI flag -> attribute/key name map retained for Python wrapper consumers.
 WRAPPER_VALUE_FLAGS: dict[str, str] = {
     "--session-env-path": "session_env_path",
     "--claude-pid": "claude_pid",
