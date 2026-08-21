@@ -22,7 +22,6 @@ from larch.design import (
     design_step6,
 )
 from larch.design import design_pause
-from larch.core import architectural_guidelines
 from larch.core import logging_util
 from tests.support.design_wire import plan_body
 from larch.state import session_env
