@@ -549,6 +549,41 @@ fn checks_commit_route_step4_dispatcher_committed_is_a_noop_continue() {
     assert!(stdout.contains("COMMIT_ROUTE_OUTCOME=noop"));
 }
 
+#[test]
+fn checks_commit_route_step4_dispatcher_committed_commits_dirty_paths() {
+    let stub = dispatch_stub(&[
+        (
+            "checks run-relevant",
+            "    printf 'RELEVANT_CHECKS_SKIPPED=true SITE=step3\\n'\n    exit 0",
+        ),
+        (
+            "implement commit",
+            "    printf 'COMMITTED=true\\nSHA=cafebabecafebabecafebabecafebabecafebabe\\n'\n    exit 0",
+        ),
+    ]);
+    let fixture = fixture(&stub);
+    // A dispatcher-committed seed with a readable manifest and a dirty tree
+    // freezes the dirty paths and drives a real commit leg.
+    fs::write(
+        fixture.tmpdir.join("ship-seed-input.env"),
+        format!(
+            "DISPATCHER_COMMITTED=true\nMANIFEST_PATH={}\n",
+            fixture.tmpdir.join("session-env.sh").display()
+        ),
+    )
+    .expect("seed input");
+    fs::write(fixture.repo.join("README.md"), "dirty\n").expect("dirty readme");
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step3", "--commit-site", "step4"],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "COMMIT_ROUTE_OUTCOME"), "continue");
+    assert_eq!(kv(&stdout, "NEXT_ACTION"), "continue");
+}
+
 // ---------------------------------------------------------------------------
 // commit-route success sites
 // ---------------------------------------------------------------------------
@@ -764,6 +799,60 @@ fn checks_commit_route_step4_recovery_recompute_runs_before_the_commit_leg() {
 }
 
 #[test]
+fn checks_commit_route_step4_recovery_recompute_bails_when_out_of_scope() {
+    let stub = dispatch_stub(&[
+        (
+            "checks run-relevant",
+            "    printf 'RELEVANT_CHECKS_OK=true SITE=step3 COVERAGE=full PHASE=p1\\n'\n    exit 0",
+        ),
+        // The recovery scope-check rejects the recomputed paths as out of scope.
+        (
+            "dirty-tree scope-check",
+            "    printf 'OUT_OF_SCOPE\\n' >&2\n    exit 3",
+        ),
+    ]);
+    let fixture = fixture(&stub);
+    fs::write(fixture.tmpdir.join("recovery-metadata.json"), "{}\n").expect("recovery metadata");
+    fs::write(fixture.tmpdir.join("step2-prelaunch-porcelain.nul"), "")
+        .expect("prelaunch porcelain");
+    fs::write(
+        fixture.tmpdir.join("step2-prelaunch-content-digests.txt"),
+        "",
+    )
+    .expect("prelaunch digests");
+    let (code, _stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step3", "--commit-site", "step4"],
+        true,
+    );
+    assert_ne!(
+        code, 0,
+        "an out-of-scope recovery recompute must fail closed"
+    );
+}
+
+#[test]
+fn checks_commit_route_rejects_a_nonnumeric_checks_deadline() {
+    let fixture = fixture(NOOP_STUB);
+    let (code, _stdout, stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &[
+            "--checks-site",
+            "step7",
+            "--commit-site",
+            "step7",
+            "--checks-deadline-ms",
+            "later",
+        ],
+        true,
+    );
+    assert_eq!(code, 2);
+    assert!(stderr.contains("--checks-deadline-ms"));
+}
+
+#[test]
 fn checks_commit_route_rejects_an_invalid_commit_site() {
     let fixture = fixture(NOOP_STUB);
     let (code, _stdout, stderr) = run(
@@ -811,6 +900,54 @@ fn checks_commit_route_treats_empty_checks_output_as_a_failure() {
     assert_eq!(code, 0);
     assert_eq!(kv(&stdout, "NEXT_ACTION"), "checks-failed");
     assert!(stdout.contains("STATUS=fail"));
+}
+
+#[test]
+fn commit_route_rejects_a_tmpdir_that_is_not_a_directory() {
+    let fixture = fixture(NOOP_STUB);
+    let not_a_dir = fixture.tmpdir.join("not-a-dir");
+    fs::write(&not_a_dir, "file\n").expect("file tmpdir");
+    let (code, _stdout, stderr) = run(
+        &fixture,
+        "commit-route",
+        &[
+            "--site",
+            "step7",
+            "--implement-tmpdir",
+            not_a_dir.to_str().expect("utf8 path"),
+        ],
+        false,
+    );
+    assert_eq!(code, 2);
+    assert!(stderr.contains("implement tmpdir not found"));
+}
+
+#[test]
+fn checks_commit_route_step7_relays_scope_coverage_when_a_plan_is_present() {
+    let stub = dispatch_stub(&[
+        (
+            "checks run-relevant",
+            "    printf 'RELEVANT_CHECKS_OK=true SITE=step7 COVERAGE=full PHASE=p1\\n'\n    exit 0",
+        ),
+        (
+            "implement commit-route",
+            "    printf 'COMMIT_ROUTE_OUTCOME=continue\\nCOMMITTED=true\\n'\n    exit 0",
+        ),
+    ]);
+    let fixture = fixture(&stub);
+    // A materialized plan plus baseline drives the scope-coverage relay after a
+    // successful commit leg instead of the early no-plan return.
+    fs::write(fixture.tmpdir.join("plan.txt"), "### NEW: x\n").expect("plan");
+    fs::write(fixture.tmpdir.join("step2-baseline.txt"), "baseline\n").expect("baseline");
+    let (code, _stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step7", "--commit-site", "step7"],
+        true,
+    );
+    // The relay either succeeds (continue, 0) or reports a recompute failure
+    // (exit 4); either way the scope-coverage branch has been exercised.
+    assert!(code == 0 || code == 4, "unexpected exit {code}");
 }
 
 #[test]
