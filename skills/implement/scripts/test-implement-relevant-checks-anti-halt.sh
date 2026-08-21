@@ -9,7 +9,7 @@
 # does not execute the helper or validate runtime behavior.
 #
 # Extraction detects the three load-bearing checks invocation sites in SKILL.md today.
-# Steps 10 and 12c moved into the Python ship driver.
+# Steps 10 and 12c moved into the Rust ship driver.
 # Step 5 self-review composite moved to skills/implement/references/self-review.md.
 #   (1) Step 3 first-pass checks/commit/4.r composite.
 #   (2) Step 5 accepted-fix composite checks/resume handoff.

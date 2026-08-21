@@ -80,7 +80,7 @@ Partial failures preserve verified prior evidence. An issue created during the c
 
 The driver records verified filed results in the sentinel and run-scoped `oos-issues.ndjson` before it evaluates disposition. A failed or interrupted checkpoint may therefore leave provisional filing evidence for a safe retry. That evidence alone does not prove Step 9a.1 completion.
 
-The driver composes the Rust disposition checkpoint in process. On a normal zero result, it writes `run-statistics.md` and stamps `steps_ran.step9a1`. A private security sidecar returns its distinct pending status and leaves the workflow on the #7681 continuation. The retained Python Step 8 router clears `OOS_PENDING` only after the later Rust checkpoint and its own bookkeeping succeed.
+The driver composes the Rust disposition checkpoint in process. On a normal zero result, it writes `run-statistics.md` and stamps `steps_ran.step9a1`. A private security sidecar returns its distinct pending status and leaves the workflow on the #7681 continuation. The Rust Step 8 router clears `OOS_PENDING` only after the later checkpoint and its bookkeeping succeed.
 
 ## Carve-outs
 

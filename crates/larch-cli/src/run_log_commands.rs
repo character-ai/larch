@@ -282,6 +282,28 @@ pub fn validate_run_id(arguments: &[OsString]) -> ExitCode {
     }
 }
 
+pub fn manifest_update_arguments(
+    log_root: &Path,
+    skill: &str,
+    run_id: &str,
+    fields: &[String],
+) -> Vec<OsString> {
+    let mut arguments = vec![
+        "run-log".into(),
+        "manifest".into(),
+        "--log-root".into(),
+        log_root.as_os_str().to_owned(),
+        "--skill".into(),
+        skill.into(),
+        "--run-id".into(),
+        run_id.into(),
+    ];
+    for field in fields {
+        arguments.extend(["--field".into(), field.into()]);
+    }
+    arguments
+}
+
 /// Run the Rust-owned `run-log manifest` compatibility command.
 #[must_use]
 pub fn manifest(arguments: &[OsString]) -> ExitCode {

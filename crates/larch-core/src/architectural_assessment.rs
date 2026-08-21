@@ -3,8 +3,8 @@
 //! Library owner for evidence materialization, durable-note persistence, ship
 //! outcome sidecars, detail sanitization, and final-report sections. Ported
 //! from `larch.implement.architectural_assessment` plus the used surface of
-//! `larch.core.architectural_guidelines` and ship outcome writers in
-//! `larch.implement.ship_guidelines`.
+//! `larch.core.architectural_guidelines` and the retired Python ship outcome
+//! writers. Rust now owns both the assessment substrate and ship lifecycle.
 //!
 //! Git identity and diff materialization are injected through [`AssessmentGit`]
 //! so this crate stays outside the closed Git CLI ownership boundary; the

@@ -48,14 +48,6 @@ def test_no_args_exits_0() -> None:
     assert rc == 0
 
 
-def test_dispatch_ship_pr_calls_ship_main() -> None:
-    mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.implement.ship": MagicMock(main=mock_main)}):
-        rc = cli.main(["ship", "pr", "--dry-run"])
-    mock_main.assert_called_once_with(["--dry-run"])
-    assert rc == 0
-
-
 def test_dispatch_plan_receipt_refresh_calls_governance_owner() -> None:
     mock_main = MagicMock(return_value=0)
     module = MagicMock(plan_receipt_refresh_main=mock_main)
@@ -164,23 +156,6 @@ def test_dispatch_oos_normalize_header() -> None:
     assert rc == 0
 
 
-def test_exit_passthrough_from_delegated_main() -> None:
-    mock_main = MagicMock(return_value=42)
-    with patch.dict("sys.modules", {"larch.implement.ship": MagicMock(main=mock_main)}):
-        rc = cli.main(["ship", "pr"])
-    assert rc == 42
-
-
-def test_systemexit_propagates_unchanged() -> None:
-    def _raise(*_: object) -> int:
-        raise SystemExit(3)
-
-    with patch.dict("sys.modules", {"larch.implement.ship": MagicMock(main=_raise)}):
-        with pytest.raises(SystemExit) as exc_info:
-            _ = cli.main(["ship", "pr"])
-    assert exc_info.value.code == 3
-
-
 def test_lazy_import_top_level_only_argparse_importlib_sys() -> None:
     # cli.py is now a thin shim; the real dispatcher with the lazy-import contract
     # lives in larch/cli.py.  Verify the shim itself only imports sys + larch.cli.
@@ -240,9 +215,9 @@ def test_repointed_design_commands_retain_machine_stdout_and_defining_modules() 
         assert module_name != "larch.design.design_lifecycle"
 
 
-def test_human_facing_registry_rows_keep_machine_stdout_false() -> None:
-    assert cli._REGISTRY[("ship", "pr")][2] is False  # pyright: ignore[reportPrivateUsage]
-    assert ("ship", "pr") not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+def test_rust_owned_ship_commands_are_absent_from_python_registry() -> None:
+    assert ("ship", "pr") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert ("ship", "reconcile-manual-merge") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
 
 
 def test_design_kv_entrypoint_disables_inherited_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -254,20 +229,6 @@ def test_design_kv_entrypoint_disables_inherited_quiet(monkeypatch: pytest.Monke
     assert rc == 0
     assert os.environ["LARCH_QUIET_DISABLE"] == "1"
 
-
-def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
-    monkeypatch.setenv("LARCH_QUIET_PID", "999999")
-    cases = [
-        (["ship", "reconcile-manual-merge"], "larch.implement.ship_recovery", "reconcile_manual_merge_main"),
-    ]
-    for argv, module_name, func_name in cases:
-        monkeypatch.delenv("LARCH_QUIET_DISABLE", raising=False)
-        mock_main = MagicMock(return_value=0)
-        with patch.dict("sys.modules", {module_name: MagicMock(**{func_name: mock_main})}):
-            rc = cli.main(argv)
-        assert rc == 0
-        assert os.environ["LARCH_QUIET_DISABLE"] == "1"
 
 # ---------------------------------------------------------------------------
 # Subprocess cases (integration)
@@ -282,7 +243,7 @@ def test_subprocess_help() -> None:
         check=False,
     )
     assert result.returncode == 0
-    assert "ship pr" in result.stdout
+    assert "ship pr" not in result.stdout
 
 
 def test_subprocess_unknown_domain_exits_2() -> None:
@@ -294,17 +255,6 @@ def test_subprocess_unknown_domain_exits_2() -> None:
     )
     assert result.returncode == 2
     assert "unknown subcommand" in result.stderr
-
-
-def test_subprocess_ship_pr_help() -> None:
-    result = subprocess.run(
-        [sys.executable, str(CLI_PATH), "ship", "pr", "--help"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    # ship's parser handles --help; just verify no Python error.
-    assert "Traceback" not in result.stderr
 
 
 def test_subprocess_version_guard() -> None:

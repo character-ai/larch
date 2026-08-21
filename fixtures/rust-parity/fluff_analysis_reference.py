@@ -41,10 +41,12 @@ if str(python_dir) not in sys.path:
 
 from larch.core import config, proc, repo_roots  # noqa: E402
 from larch.core.architectural_guidelines import CLEAN_INVARIANT_PRESENTATION_NOTE, CLEAN_PRESENTATION_NOTE, DESIGN_ASSESSMENT, GUIDELINE_SHIP_OUTCOME_SIDECAR, INVARIANT_DESIGN_ASSESSMENT, INVARIANT_SHIP_OUTCOME_SIDECAR, validate_invariant_ship_outcome_record  # noqa: E402
+from larch.core.assessment_kind import GUIDELINES  # noqa: E402
 from larch.core.findings import parse_canonical_heading  # noqa: E402
-from larch.implement.ship_guidelines import GUIDELINE_SHIP_REASON_TOKENS  # noqa: E402
 from larch.report import run_log_corpus  # noqa: E402
 from larch.report.run_log_manifest import implement_step8_reachable  # noqa: E402
+
+GUIDELINE_SHIP_REASON_TOKENS = GUIDELINES.ship_reason_tokens
 
 # --------------------------------------------------------------------------
 # finding-id join helpers (formerly python/larch/issue/rejected_analysis.py)

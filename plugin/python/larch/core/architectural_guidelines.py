@@ -1,6 +1,6 @@
 """ARCHITECTURAL_GUIDELINES.md reader and implement note helpers."""
 # pyright: reportUnusedCallResult=false, reportPrivateUsage=false
-# pylint: disable=cyclic-import  # accepted: function-level imports of ship_guidelines and run-log batch helpers create mutual dependencies with top-level consumers; documented via lint-layering ok comments.
+# pylint: disable=cyclic-import  # accepted: function-level run-log batch imports create mutual dependencies with top-level consumers; documented via lint-layering ok comments.
 
 from __future__ import annotations
 

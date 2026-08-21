@@ -4,7 +4,7 @@
 
 **Contract**: Single normative source for the JSON manifest Codex writes at `$IMPLEMENT_TMPDIR/manifest.json` after each implementation attempt. The dispatcher validates the manifest with `jq -e` per the rules below, then — on `status=complete` — uses `manifest.commit_message` to commit Codex's working-tree edits (`git add -A && git commit -F …`). Codex itself does NOT commit (it runs under `workspace-write` sandbox semantics that forbid `.git/` writes). Downstream SKILL.md steps consume only the validated, sanitized manifest — they never read Codex's transcript or run `git diff` to figure out what changed.
 
-**When to load**: when editing `scripts/larch.sh implement step2-dispatch` (manifest validation), `skills/implement/prompts/codex-implementer.md` / `skills/implement/prompts/cursor-implementer.md` (production), or the Python ship driver Steps 8a / 9a / 9a.1 (consumption). The `/implement` orchestrator handles only the manifest path (`MANIFEST_PATH` / `--manifest-path`); it never parses manifest JSON in-prompt.
+**When to load**: when editing `scripts/larch.sh implement step2-dispatch` (manifest validation), `skills/implement/prompts/codex-implementer.md` / `skills/implement/prompts/cursor-implementer.md` (production), or the Rust ship driver Steps 8a / 9a / 9a.1 (consumption). The `/implement` orchestrator handles only the manifest path (`MANIFEST_PATH` / `--manifest-path`); it never parses manifest JSON in-prompt.
 
 ---
 

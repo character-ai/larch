@@ -164,6 +164,7 @@ mod session_setup_commands;
 mod ship_commands;
 mod ship_pr_commands;
 mod ship_pre_driver_commands;
+mod ship_recovery_commands;
 mod slack_commands;
 mod slot_binding;
 mod stall_recovery_commands;
@@ -1106,9 +1107,12 @@ enum ImplementCommand {
 
 #[derive(Subcommand)]
 enum ShipCommand {
-    /// Run the Rust parity implementation of the fresh PR path.
+    /// Run the Rust ship PR lifecycle owner.
     #[command(name = "pr", disable_help_flag = true)]
     Pr(RawCompatibilityArguments),
+    /// Reconcile a manually merged PR into all durable ship layers.
+    #[command(name = "reconcile-manual-merge", disable_help_flag = true)]
+    ReconcileManualMerge(RawCompatibilityArguments),
     /// Normalize one architectural-assessment request handoff.
     #[command(name = "normalize-assessment-handoff", disable_help_flag = true)]
     NormalizeAssessmentHandoff(RawCompatibilityArguments),
@@ -2845,6 +2849,9 @@ fn run(
         }),
         Domain::Ship(command) => Ok(match command {
             ShipCommand::Pr(arguments) => ship_pr_commands::pr(&arguments.arguments),
+            ShipCommand::ReconcileManualMerge(arguments) => {
+                ship_recovery_commands::reconcile_manual_merge(&arguments.arguments)
+            }
             ShipCommand::NormalizeAssessmentHandoff(arguments) => {
                 ship_pre_driver_commands::normalize_assessment_handoff(&arguments.arguments)
             }

@@ -6,7 +6,7 @@
 
 ## Durable result env
 
-The Rust Step 8 dispatcher composes the shared bgjob adapter for launch and reattachment. Its child passes the adapter-provided merge-result env to the still-Python `ship pr` command as `--result-env-path`. The bgjob daemon merges the direct ship outcome KVs with `BGJOB_RC` and `STEP` into `$IMPLEMENT_TMPDIR/bgjob/implement-step8-ship.result.env`; the dispatcher neither captures nor parses ship JSON.
+The Rust Step 8 dispatcher composes the shared bgjob adapter for launch and reattachment. Its child passes the adapter-provided merge-result env to the in-process Rust `ship pr` owner as `--result-env-path`. The bgjob daemon merges the direct ship outcome KVs with `BGJOB_RC` and `STEP` into `$IMPLEMENT_TMPDIR/bgjob/implement-step8-ship.result.env`; the dispatcher does not parse ship JSON.
 
 ## `ship route-exit` contract
 
@@ -53,7 +53,7 @@ Pre-driver `NEXT_ACTION=stall` stays separate: skip ship and go directly to Step
 
 ## Step 8 CI-fix subagent records
 
-The ci-fixer subagent round loop is prose-owned in `skills/implement/SKILL.md`. The main agent appends each complete `FIXER_SUMMARY` value, beginning `failure_signature=<value>`, to `$IMPLEMENT_TMPDIR/ci-fixer-rounds.md` and parses only the subagent's three `FIXER_*` result lines (`pushed`, `no-progress`, `bail`). Subagent tokens bill to the main Claude session; attribution labels them as fixer-subagent work, not main-agent inline fixing. These are Step 8 ci-fix handoff statuses for the prose-owned subagent flow; they are not new Python ship driver `NEXT_ACTION` tokens unless a future implementation explicitly wires them into `ship route-exit`.
+The ci-fixer subagent round loop is prose-owned in `skills/implement/SKILL.md`. The main agent appends each complete `FIXER_SUMMARY` value, beginning `failure_signature=<value>`, to `$IMPLEMENT_TMPDIR/ci-fixer-rounds.md` and parses only the subagent's three `FIXER_*` result lines (`pushed`, `no-progress`, `bail`). Subagent tokens bill to the main Claude session; attribution labels them as fixer-subagent work, not main-agent inline fixing. These are Step 8 ci-fix handoff statuses for the prose-owned subagent flow; they are not new ship driver `NEXT_ACTION` tokens unless a future implementation explicitly wires them into `ship route-exit`.
 
 ## Initial state seeder contract
 
@@ -65,7 +65,7 @@ The Rust-owned `ship seed-initial-state` command owns the canonical initial `shi
 
 Post-driver Step 8+ continuations cover non-empty `PR_NUMBER`, post-cold-start `PHASE`, OOS checkpoint re-entry, transient retry, conflict resolution, or Exit 3 after PR creation. Invoke only `step-8-ship.sh` through the Step 8 bgjob start/wait pair; do not rerun the pre-driver verb. The wrapper still runs its guard and advisory phantom probe before the driver.
 
-Unexpected turn-end recovery follows the same rule: use `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` for the active driver call; the adapter rejoins a live identity-valid registry row or deliberately replaces a completed result for a reship. The Python driver reads persisted `ship-pr-state.sh` and the phase14 flag after conflict-resolution Phase 4. If the pre-driver predicate still matches, re-evaluate it first and run `scripts/larch.sh ship pre-driver` before `step-8-ship.sh`. Do not call `python/cli.py ship pr` directly from a separate foreground shell. Do not pass `--resume-phase`; resume is state-file driven.
+Unexpected turn-end recovery follows the same rule: use `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` for the active driver call; the adapter rejoins a live identity-valid registry row or deliberately replaces a completed result for a reship. The Rust driver reads persisted `ship-pr-state.sh` and the phase14 flag after conflict-resolution Phase 4. If the pre-driver predicate still matches, re-evaluate it first and run `scripts/larch.sh ship pre-driver` before `step-8-ship.sh`. Do not call a runtime-specific `ship pr` entrypoint directly from a separate foreground shell. Do not pass `--resume-phase`; resume is state-file driven.
 
 ## Terminal manifest contract
 

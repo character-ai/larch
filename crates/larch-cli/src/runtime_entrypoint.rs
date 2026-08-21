@@ -123,7 +123,7 @@ pub fn run_verified_larch_with_environment(
     run_verified_larch_with_options(arguments, environment, VERIFIED_LARCH_TIMEOUT)
 }
 
-fn run_verified_larch_with_options(
+pub fn run_verified_larch_with_options(
     arguments: &[OsString],
     environment: &[(ChildEnvironment, OsString)],
     timeout: Duration,

@@ -7578,11 +7578,13 @@ verb = "pr"
 python_module = "larch.implement.ship"
 python_function = "main"
 machine_stdout = false
-owner = "python"
+owner = "rust"
 implementation_parity = "complete"
-consumer_cutover = "pending"
-python_removal = "pending"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8628
+clean_install_test = "clean-install-ship-pr"
 
 [[commands]]
 domain = "ship"
@@ -7618,11 +7620,13 @@ verb = "reconcile-manual-merge"
 python_module = "larch.implement.ship_recovery"
 python_function = "reconcile_manual_merge_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8628
+clean_install_test = "clean-install-ship-reconcile-manual-merge"
 
 [[commands]]
 domain = "ship"
@@ -9318,12 +9322,6 @@ python = []
 rust = ["timing mark"]
 
 [[callers]]
-path = "python/larch/implement/ship_recovery.py"
-kind = "python-runtime"
-python = []
-rust = ["run-log manifest"]
-
-[[callers]]
 path = "python/larch/rendering/rendering.py"
 kind = "python-runtime"
 python = []
@@ -9758,7 +9756,7 @@ rust = ["fluff-analysis analyze"]
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["diagram code-flow", "diagrams upsert", "implement step-16-17", "implement step-17", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship pr", "tracking post-issue"]
+python = ["diagram code-flow", "diagrams upsert", "implement step-16-17", "implement step-17", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "tracking post-issue"]
 rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
 
 [[callers]]
@@ -9854,7 +9852,7 @@ rust = ["bgjob wait", "review-and-fix write-self-review-tally", "timing telemetr
 [[callers]]
 path = "skills/implement/references/ship-pr-exit-matrix.md"
 kind = "skill"
-python = ["pr checks", "ship pr"]
+python = ["pr checks"]
 rust = ["execution-issues flush", "final-report write", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit"]
 
 [[callers]]
@@ -10370,7 +10368,7 @@ rust = ["push rebase"]
 [[callers]]
 path = "skills/shared/subskill-invocation.md"
 kind = "skill"
-python = ["ship pr"]
+python = []
 rust = ["alias generate", "checks run-relevant", "session setup", "verify skill-called"]
 
 [[callers]]

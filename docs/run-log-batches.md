@@ -89,7 +89,7 @@ Schema version `1` uses:
 - `phase`: `implement`.
 - `step`: `8`.
 - `outcome`: `pinned`, `clean`, or `dropped`.
-- `reason`: stable token from `ship_guidelines.py`.
+- `reason`: stable token from `larch_core::architectural_assessment`.
 - `detail`: redacted bounded diagnostic.
 - `guidelines_status`: `present`, `absent`, or `invalid`.
 - `head_sha`, `base_ref`, and `assessment_kind`.

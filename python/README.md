@@ -1,6 +1,6 @@
 # larch Python runtime
 
-Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11 for the `/implement` Step 8+ ship driver). The shared leaf layer lives in the `larch/` package: `larch.io`, `larch.errors`, `larch.outcomes`, and the `larch.core` home for the most-depended-on leaf utilities (`proc`, `config`, `logging_util`, `redact`, `retry`, `run_context`). `/implement` Step 8+ uses `python/cli.py ship pr` (delegating to `python/ship.py`). `/report-tokens` is Rust-owned via `scripts/larch.sh report-tokens analyze`. Linters and pytest are dev/CI-only and are never imported by runtime code.
+Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. The shared leaf layer lives in the `larch/` package: `larch.io`, `larch.errors`, `larch.outcomes`, and the `larch.core` home for the most-depended-on leaf utilities (`proc`, `config`, `logging_util`, `redact`, `retry`, `run_context`). `/implement` Step 8+ and `/report-tokens` are Rust-owned through `scripts/larch.sh`. Python 3.11 remains required for the separately owned merge and finalization commands that the Rust ship lifecycle composes. Linters and pytest are dev/CI-only and are never imported by runtime code.
 
 ## Layout
 
@@ -9,27 +9,25 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
 - `larch/core/proc.py` — injectable subprocess seam
 - `larch/errors.py`, `larch/outcomes.py`, `larch/core/run_context.py` — typed errors and run context
 - `larch/io.py` — shared text, `KEY=value`, and atomic-write helpers for larch wire files
-- `larch/core/logging_util.py` — breadcrumbs + JSONL journal (observability only); `quiet_init()` owns Python stream routing, and `contract_stream()` sends ship-driver JSON to fd 3 after self-initialized quiet
+- `larch/core/logging_util.py` — breadcrumbs + JSONL journal for surviving Python commands
 - `larch/core/redact.py`, `larch/core/retry.py` — secret redaction and transient retry helpers
 - The Rust `larch lint gitleaks` command owns checksum-pinned scanner bootstrap for local pre-commit. CI uses its separately verified workflow installer so the dedicated scanner gate does not build `larch-cli`.
 - `rendering.py` — prompt renderers, Mermaid sanitizer, diagrams upserter, and generated-artifact generators now exposed through `python/cli.py` (`render`, `mermaid`, `diagrams`, and `generate` domains).
 - `voting.py` — voting, tally, parse-rate, ballot parsing, scoreboard, and focus-area enum CLI surfaces.
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
 - `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py` — bounded helpers for remaining Python token analytics and the `render run-summary` compatibility payload. Token measurements are Rust-owned after #8508, and Rust owns `token report`, `token cost`, and `token render-cost-line` after #8507; these helpers do not own `/report-tokens` or `final-report`, whose Python entrypoints retired in #8088 and #8090.
-- `rebase.py` — CI-fix rebase decision and verification surfaces used by the default Python ship driver.
+- `larch/git/rebase.py` — compatibility rebase decisions used by surviving Python workflows; the Step 8 ship lifecycle does not call it.
 - Checks selection, fixer evidence, lint-fix dispatch, and the bounded repair
   loop are Rust-owned. Their Python runtime modules retired at the #8627 atomic
   cutover; production callers enter through `scripts/larch.sh checks ...`.
-- `ci_monitor.py` — live on the default Python Step 8+ path; `python/ship.py` calls it from
-  the merge loop after PR creation to poll CI, classify failures, collect failed-job data,
-  run the fixer waterfall, and return the GOTO-Rebase signal.
+- `ci_monitor.py` — retained by the standalone `/complete-umbrella` leaf ship driver. The Rust-owned `/implement` Step 8 path uses the Rust `ci` commands directly.
 - `larch/implement/complete_umbrella_ship.py` — standalone leaf prepare and ship driver for `/complete-umbrella`. It reuses typed Git, GitHub, CI, redaction, retry, and issue-mutation owners without fabricating the `IMPLEMENT_TMPDIR` state required by `ship pr`. It persists a leaf-bound no-follow state file, waits five minutes between CI reads, emits a bounded failure digest, admin-merges green PRs, and verifies issue, branch, and synchronized-main postconditions.
-- **Phase 5** (live via default Python ship driver): `run_logs.py` is a typed Rust-command facade,
+- **Phase 5 compatibility layer**: `run_logs.py` is a typed Rust-command facade,
   `run_log_batch.py` is a parity mirror for bounded compatibility callers and the historical reader,
   and `run_log_manifest.py` is read-only. `tracking_issue.py` contains only pure
   PR-footer helpers; its lifecycle, sentinel, and GitHub behavior is Rust-owned behind
   typed `rust_runtime.py` calls through `scripts/larch.sh`. `tokens.py`,
-  `pr_body.py`, `push.py`, `pr.py`, and `merge.py` are PR/merge/logging ports with session-local
+  `pr_body.py`, `push.py`, `pr.py`, and `merge.py` are retained PR/merge/logging components with session-local
   implement staging through the Rust-owned run-log refresh, complete terminal snapshot and archive publication from
   Step 18, and log-free cleanup from Step 19. `merge.py`
   classifies the eight `python/cli.py merge pr` `MERGE_RESULT` literals; driver-only `already_merged` is
@@ -82,34 +80,22 @@ Ruff in `lint-local`, Pyright in `python-pyright`, and tests in `python-tests`. 
 Python parity tests require **bash** for shell helper comparisons. CI `python-tests` installs the required shell tooling;
 local runs without it skip those cases via `pytest.mark.skipif`.
 
-The live `/implement` path uses `python/cli.py ship pr`. Rust owns initial ship-state seeding and result-env persistence through `scripts/larch.sh`; the active Python driver retains its transition projection until the ship-driver cutover. `/report-tokens` is cut over to `scripts/larch.sh report-tokens analyze`; the `run-analysis.sh` wrapper has been retired.
+The live `/implement` path uses `scripts/larch.sh ship pr`. Rust owns the lifecycle, initial ship-state seeding, and result-env persistence. The retired Python command has no CLI registration or production fallback. `/report-tokens` is likewise cut over to `scripts/larch.sh report-tokens analyze`; the `run-analysis.sh` wrapper has been retired.
 
 ## Pre-push conflict handoff scope
 
-`rebase.py` represents the bash exit-4 `ship_pr_pre_push` conflict handoff at
-library level only. When the in-process conflict fixer waterfall exhausts on
-remaining conflicts, it writes `ship-pr-rrr-after-phase14.flag` under the
-resolved implement tmpdir and raises `PrePushConflictHandoff` with the conflict
-files plus the `ship-pr-rrr-phase14` / `ship_pr_pre_push` tokens. Flag
-write failures raise plain `Stalled` instead.
-
-`python/ship.py` now persists the handoff state for the default path. The
-`PrePushConflictHandoff` handler writes `RESUME_PHASE=ship-pr-rrr-phase14`,
-`CALLER_KIND=ship_pr_pre_push`, and `CONFLICT_FILES` to `ship-pr-state.sh`, then
-returns the normal stalled JSON/exit-4 contract. After the prompt-side
-`skills/implement/references/conflict-resolution.md` Phase 1-4 procedure
-succeeds, re-invoking the Python selector without `--resume-phase` sees
-`ship-pr-rrr-after-phase14.flag`, re-enters `run_rebase_rebump` through
-`rebase.rebase_and_push`, clears the flag plus resume tokens after a successful
-force-push, and continues CI/merge processing. If the resume tokens exist but
-the flag is absent, the Python path still returns
-`needs_user_reason=unsupported-rebase-continuation` so stale or partial handoffs
-fail closed. See `skills/implement/references/conflict-resolution.md` and issue
-`#3404` for the cross-driver handoff contract.
+The Rust ship lifecycle persists `RESUME_PHASE=ship-pr-rrr-phase14`,
+`CALLER_KIND=ship_pr_pre_push`, and `CONFLICT_FILES` when a pre-push rebase
+requires the prompt-side conflict resolver. After
+`skills/implement/references/conflict-resolution.md` completes the rebase,
+re-invoking the Step 8 wrapper resumes from durable state, clears the flag and
+handoff keys only after a successful lease-protected push, and continues CI and
+merge processing. Invalid or partial continuation tokens fail closed with
+`needs_user_reason=unsupported-rebase-continuation`.
 
 ## Phase 1 wiring outside `python/`
 
-Plan acceptance lists four non-`python/` files (Makefile, CI workflow, docs, harnesses). The Python ship driver maps `python-pyright` and `python-tests` CI jobs to `make py-typecheck` and `make py-test`; keep that wiring with the ship path.
+Plan acceptance lists four non-`python/` files (Makefile, CI workflow, docs, harnesses). Rust CI classification preserves the `python-pyright` and `python-tests` job identities; keep their `make py-typecheck` and `make py-test` wiring.
 
 ## Phase 4 scope note (branch hygiene)
 

@@ -8,8 +8,8 @@ The surviving Python pre-driver invokes `scripts/larch.sh implement step-8-pytho
 
 ## Contract
 
-Rust runs a fixed `python3 -c` version probe. On Python 3.11 or newer, the command exits `0` with no stdout. If the probe fails or Python is older, it writes `ERROR: Python ship driver requires Python 3.11 or newer` to stderr, emits the single-line STALLED JSON object on stdout, and exits `4`.
+Rust runs a fixed `python3 -c` version probe. On Python 3.11 or newer, the command exits `0` with no stdout. If the probe fails or Python is older, it writes `ERROR: Ship merge and finalize dependencies require Python 3.11 or newer` to stderr, emits the single-line STALLED JSON object on stdout, and exits `4`.
 
 ## Edit-in-sync
 
-Keep `crates/larch-cli/src/implement_ship_commands.rs`, `python/larch/implement/ship.py`'s top-level fallback, the Rust black-box parity test, and the Step 8 JSON routing contract aligned.
+Keep `crates/larch-cli/src/implement_ship_commands.rs`, the Rust black-box parity test, and the Step 8 JSON routing contract aligned.

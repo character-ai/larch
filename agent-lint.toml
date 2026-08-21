@@ -533,7 +533,7 @@ exclude = [
   # Makefile (test-drop-release notes-commit target) and the sibling .md stub,
   # matching the same Makefile-only pattern as the other test-* harnesses above.
   # as a tiny future amend primitive with a sibling contract.
-  # by implement-finalize and the Python ship driver. Its harness is Makefile-only
+  # by implement-finalize and the Rust ship lifecycle. Its harness is Makefile-only
   # (test-commit-release notes target) and its sibling docs own the contract.
   "scripts/commit-release notes.md",
   "scripts/test-commit-release notes.md",
@@ -897,8 +897,8 @@ exclude = [
   # scripts/test-prompt-template-invariants.md, not from runtime skill prose.
   "scripts/test-prompt-template-invariants.sh",
   "scripts/test-prompt-template-invariants.md",
-  # Python ship driver owns these legacy shell helpers now; agent-lint does not
-  # follow the Python CLI call graph for G004 reachability.
+  # The Rust ship lifecycle composes these retained Python helpers; agent-lint
+  # does not follow that reviewed process boundary for G004 reachability.
   "python/cli.py pr body-update",
   "python/cli.py merge pr",
   "python/cli.py pr create",
