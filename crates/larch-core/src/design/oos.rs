@@ -635,7 +635,7 @@ mod tests {
     }
 
     #[test]
-    fn priority_mapping_falls_back_without_issue_stdout() {
+    fn priority_mapping_prefers_issue_stdout_and_named_slots() {
         let two_blocks = concat!(
             "### OOS_1: docs\n- **Focus area**: documentation\n\n",
             "### OOS_2: regression\n- **Focus area**: regression\n",
@@ -687,6 +687,14 @@ mod tests {
                 Some("ISSUE_02_URL=https://github.com/o/r/issues/8\n"),
             )
             .is_empty()
+        );
+    }
+
+    #[test]
+    fn priority_mapping_falls_back_to_positional_sentinels() {
+        let two_blocks = concat!(
+            "### OOS_1: docs\n- **Focus area**: documentation\n\n",
+            "### OOS_2: regression\n- **Focus area**: regression\n",
         );
         let positional = concat!(
             "OOS_FILE_MAP\t1\thttps://github.com/o/r/issues/7\n",
