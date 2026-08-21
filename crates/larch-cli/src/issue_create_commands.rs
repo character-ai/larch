@@ -11,8 +11,9 @@
 //! Every write goes through [`IssueMutationOwner`], so outbound redaction and
 //! the live-mutation authorization gate sit on the same code path the issue
 //! field mutations already use. Authorization is checked before any GitHub
-//! contact, and creation redacts the title, body, and labels before the
-//! request is built.
+//! contact. Creation redacts the title, body, and labels. When requested, it
+//! also resolves the authenticated GitHub login and assigns that user before
+//! the request is built.
 //!
 //! Each verb keeps the hand-rolled option scanner its Python predecessor used,
 //! because `/issue` branches on the exact rows and exit codes those scanners
@@ -109,6 +110,7 @@ struct CreateArguments {
     trusted_root: String,
     dry_run: bool,
     operator_invoked: bool,
+    assign_authenticated_user: bool,
 }
 
 /// What `create-one` decided to do once its inputs were resolved.
@@ -130,6 +132,7 @@ struct LiveCreate {
     run_id: String,
     trusted_root: String,
     operator_invoked: bool,
+    assign_authenticated_user: bool,
 }
 
 /// One refused create, as the rows and exit code it publishes.
@@ -175,6 +178,11 @@ fn parse_create_arguments(arguments: &[OsString]) -> Result<CreateArguments, Str
             }
             "--operator-invoked" => {
                 parsed.operator_invoked = true;
+                index += 1;
+                continue;
+            }
+            "--assign-authenticated-user" => {
+                parsed.assign_authenticated_user = true;
                 index += 1;
                 continue;
             }
@@ -265,6 +273,7 @@ fn plan_create(arguments: &CreateArguments) -> Result<CreatePlan, CreateFailure>
         run_id: arguments.run_id.clone(),
         trusted_root: arguments.trusted_root.clone(),
         operator_invoked: arguments.operator_invoked,
+        assign_authenticated_user: arguments.assign_authenticated_user,
     }))
 }
 
@@ -346,6 +355,7 @@ fn file_issue(create: &LiveCreate) -> Result<CreatedIssue, CreateFailure> {
             repository: create.repository.clone(),
             title: create.title.clone(),
             body: create.body.clone(),
+            assign_authenticated_user: create.assign_authenticated_user,
             labels: existing_labels(service, cancellation, create).await,
         };
         Ok(create_with_rollback(service, cancellation, &authorization, &request).await)
@@ -409,6 +419,7 @@ pub struct CreateSpec<'a> {
     pub context_file: &'a str,
     pub run_id: &'a str,
     pub trusted_root: &'a str,
+    pub assign_authenticated_user: bool,
 }
 
 /// File one issue in process and report its identity or a flat refusal.
@@ -424,6 +435,7 @@ pub fn create_issue(spec: &CreateSpec<'_>) -> Result<CreatedIssue, String> {
         trusted_root: spec.trusted_root.to_owned(),
         dry_run: false,
         operator_invoked: false,
+        assign_authenticated_user: spec.assign_authenticated_user,
     };
     match plan_create(&arguments).map_err(|failure| failure.error)? {
         CreatePlan::DryRun { .. } => Err("create refused: unexpected dry run".to_owned()),
@@ -696,6 +708,7 @@ mod tests {
             "o/r",
             "--dry-run",
             "--operator-invoked",
+            "--assign-authenticated-user",
         ]))
         .expect("a usable line");
         assert_eq!(
@@ -708,6 +721,7 @@ mod tests {
                 repo: "o/r".to_owned(),
                 dry_run: true,
                 operator_invoked: true,
+                assign_authenticated_user: true,
                 ..CreateArguments::default()
             }
         );

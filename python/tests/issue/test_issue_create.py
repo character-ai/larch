@@ -198,6 +198,14 @@ def test_skill_pins_body_file_title_semantics() -> None:
         assert needle in text, needle
 
 
+def test_skill_assigns_every_created_issue_to_the_authenticated_user() -> None:
+    text = SKILL_PATH.read_text(encoding="utf-8")
+    assert text.count("--assign-authenticated-user") == 1
+    assert "requests authenticated-user assignment on every create" in text
+    assert "verifies it on the issue read-back" in text
+    assert "`/umbrella` and `/file-bug` inherit this behavior" in text
+
+
 def test_skill_pins_intra_batch_dependency_contract() -> None:
     text = SKILL_PATH.read_text(encoding="utf-8")
     needles = (

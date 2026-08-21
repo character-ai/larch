@@ -1157,6 +1157,7 @@ async fn reconcile_pending_leaf(
             repository: context.repository.clone(),
             title: leaf.title.clone(),
             body: leaf.body.clone(),
+            assign_authenticated_user: false,
             labels: Vec::new(),
         },
     )
@@ -2208,6 +2209,7 @@ mod tests {
             state_reason: String::new(),
             url: format!("https://github.com/o/r/issues/{number}"),
             author: "octo".to_owned(),
+            assignees: Vec::new(),
             labels: Vec::<GitHubLabel>::new(),
             comments: 0,
             created_at: "2026-08-01T00:00:00Z".to_owned(),

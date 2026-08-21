@@ -286,6 +286,8 @@ pub struct IssueCreateRequest {
     pub repository: GitHubRepositoryRef,
     pub title: String,
     pub body: String,
+    /// Whether the mutation owner must resolve and assign the authenticated user.
+    pub assign_authenticated_user: bool,
     pub labels: Vec<String>,
 }
 
@@ -310,6 +312,7 @@ pub fn redact_issue_create_request(
         repository: request.repository.clone(),
         title: redact_issue_text_outbound(&request.title)?,
         body: redact_issue_text_outbound(&request.body)?,
+        assign_authenticated_user: request.assign_authenticated_user,
         labels: request
             .labels
             .iter()
@@ -1099,6 +1102,7 @@ mod tests {
             state_reason: String::new(),
             url: String::from("https://github.com/owner/repo/issues/7"),
             author: String::new(),
+            assignees: Vec::new(),
             labels: Vec::new(),
             comments: 0,
             created_at: String::new(),

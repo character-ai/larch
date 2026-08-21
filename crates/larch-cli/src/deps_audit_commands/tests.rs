@@ -1149,6 +1149,7 @@ mod deps_audit_tests {
             state_reason: String::new(),
             url: String::new(),
             author: String::new(),
+            assignees: Vec::new(),
             labels: vec![
                 GitHubLabel {
                     id: 1,

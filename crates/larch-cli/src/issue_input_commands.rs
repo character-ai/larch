@@ -900,6 +900,7 @@ mod tests {
             state_reason: String::new(),
             url: format!("https://github.com/o/r/issues/{number}"),
             author: "author".to_owned(),
+            assignees: Vec::new(),
             labels: Vec::new(),
             comments: 0,
             created_at: "2026-01-01T00:00:00+00:00".to_owned(),

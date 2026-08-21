@@ -25,6 +25,12 @@ pub trait GitHubService: Send + Sync {
     /// Return the immutable transport policy enforced by this service.
     fn transport_policy(&self) -> GitHubTransportPolicy;
 
+    /// Return the login whose credential authenticated this service.
+    fn authenticated_user<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, GitHubUser>;
+
     fn repository<'a>(
         &'a self,
         repo: &'a GitHubRepositoryRef,
@@ -272,6 +278,13 @@ pub struct GitHubRepository {
     pub private: bool,
 }
 
+/// One authenticated GitHub identity.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitHubUser {
+    /// GitHub login suitable for typed assignee requests.
+    pub login: String,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GitHubIssueState {
     Open,
@@ -296,6 +309,8 @@ pub struct GitHubIssue {
     pub state_reason: String,
     pub url: String,
     pub author: String,
+    /// GitHub logins currently assigned to the issue.
+    pub assignees: Vec<String>,
     pub labels: Vec<GitHubLabel>,
     pub comments: u32,
     pub created_at: String,
@@ -514,6 +529,8 @@ pub struct GitHubIssueCreate {
     pub repo: GitHubRepositoryRef,
     pub title: String,
     pub body: String,
+    /// GitHub logins to assign atomically with creation.
+    pub assignees: Vec<String>,
     pub labels: Vec<String>,
 }
 
@@ -1699,6 +1716,7 @@ mod tests {
             state_reason: String::new(),
             url: String::new(),
             author: String::new(),
+            assignees: Vec::new(),
             labels: Vec::new(),
             comments: 0,
             created_at: String::new(),

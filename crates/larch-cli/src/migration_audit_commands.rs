@@ -1289,6 +1289,7 @@ mod tests {
             state_reason: String::new(),
             url: String::new(),
             author: String::new(),
+            assignees: Vec::new(),
             labels: Vec::new(),
             comments: 0,
             created_at: String::new(),

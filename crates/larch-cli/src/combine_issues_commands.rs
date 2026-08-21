@@ -1746,6 +1746,7 @@ fn apply(arguments: &[OsString]) -> ExitCode {
             repository: reference.clone(),
             title: title.clone(),
             body: body.clone(),
+            assign_authenticated_user: false,
             labels: Vec::new(),
         };
         let created = create_with_rollback(service, cancellation, &authorization, &request)
