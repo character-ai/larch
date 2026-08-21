@@ -289,6 +289,10 @@ fn init_git_repo() -> TempDir {
         assert!(ok, "git {args:?}");
     };
     run(&["init", "-b", "main"]);
+    // A local identity so the coder-commit path (`larch git commit` through the
+    // fixture bootstrap) succeeds on CI runners that have no global git config.
+    run(&["config", "user.email", "t@t"]);
+    run(&["config", "user.name", "t"]);
     fs::write(repo.path().join("a.txt"), "one\n").expect("seed");
     run(&["add", "."]);
     run(&["commit", "-m", "base"]);
