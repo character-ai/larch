@@ -230,13 +230,12 @@ pre-driver reaches the guard and seeder only through that verified bootstrap.
 The Python CLI registrations, re-exports, handlers, and exclusive helpers are
 removed atomically, and the command-registry milestones are complete.
 
-The retained `ship pr` engine remains Python and is reached only through the
-central Rust-to-Python migration seam. The Rust ship parent composes the shared
-bgjob adapter with completed-result replacement; the child reconstructs
-canonical argv, captures the driver's JSON result, and publishes the typed
-result env through the Rust ship-result module. The delegated process uses the
-same six-hour budget as the Step 8 bgjob, so a valid 30-minute CI wait outlives
-the default short bridge deadline.
+Issue #8628 moved `ship pr` into the Rust child in process. The Rust ship parent
+still composes the shared bgjob adapter with completed-result replacement; the
+child reconstructs canonical argv, invokes the Rust lifecycle owner, and
+publishes the typed result env through the Rust ship-result module. The Python
+3.11 probe remains because the separately owned `merge` and
+`implement-finalize` commands are retained Python dependencies.
 The Rust OOS router composes `oos disposition-checkpoint`, keeps the exact
 `OOS_CHECKPOINT_RC` and `NEXT_ACTION` grammar, writes run statistics, stamps the
 manifest, and atomically clears only `OOS_PENDING` after success.
@@ -246,19 +245,26 @@ manifest, and atomically clears only `OOS_PENDING` after success.
 `dispatch_ship_seed.py` remains for Step 2 seed-context helpers. No Python
 fallback or dual owner remains for the four migrated commands.
 
-### Ship PR parity implementation
+### Ship PR lifecycle cutover
 
-Issue #8626 added the dormant Rust `ship pr` implementation in
-`crates/larch-cli/src/ship_pr_commands.rs`. It composes the existing typed ship
-state, architectural-assessment, scope-disposition, Git, GitHub, redaction, and
-result-env owners through the fresh PR and CI-handoff boundary. Branch pushes
-use an exact remote-tip lease, and PR creation or body repair succeeds only
-after a typed read-back proves the expected open head, base, and body.
+Issue #8626 added the fresh-path parity implementation. Issue #8628 completed
+the cutover in `crates/larch-cli/src/ship_pr_commands.rs` by adding durable
+resume, CI, merge-queue, post-merge health, and recovery transitions. A resumed
+run reads the pull request through the typed GitHub adapter before any checkout
+or Git mutation, so a merged or closed pull request cannot replay a pre-merge
+write. Branch pushes use an exact remote-tip lease, and every create, merge, or
+queue result is confirmed by a typed read-back.
 
-This is implementation parity only. The command registry and production
-callers remain Python-owned until #8628 atomically ports merge and resume,
-switches every consumer through `scripts/larch.sh`, and removes the superseded
-Python modules.
+`crates/larch-cli/src/ship_recovery_commands.rs` owns
+`ship reconcile-manual-merge`. It validates run, repository, manifest, and
+merged-PR identity, updates the three durable state layers, clears all bail
+overlays, publishes the post-merge sentinel and manifest fields, and verifies
+the resulting state. The command registry and production callers now select
+Rust. `ship.py`, `ship_pr.py`, `ship_guidelines.py`, `ship_merge.py`,
+`ship_resume.py`, and `ship_recovery.py` were removed with their Python CLI
+registrations and exclusive tests. The separately owned `merge pr`,
+`merge wait`, and `implement-finalize postmerge` commands remain behind the
+reviewed Rust-to-Python process boundary.
 
 ### Ship state and result-env cutover
 
@@ -271,14 +277,10 @@ registration plus `python/larch/implement/ship_seed.py` are removed.
 
 `larch_core::implement::ship_result` owns the mixed-case Step 8 result-env
 schema, scalar normalization, CI digest pairing, path validation, and private
-atomic write. The Rust Step 8 child parses the still-Python driver's JSON and
-writes the merge env before forwarding that JSON. Direct compatibility calls
-from the Python driver use `scripts/larch.sh ship write-result-env`, including a
-validate-only preflight, so the result env has one persistence owner. The
-remaining `ship_state.py` and `ship_result.py` code is scoped to the active
-Python driver's transition projection, result model, JSON emission, and
-journaling until the ship-driver leaves cut over; it is not a seed or
-result-env command implementation.
+atomic write. The Rust lifecycle owner emits the JSON and writes the merge env
+before forwarding that contract. `ship_state.py` and `ship_result.py` remain
+only as compatibility libraries for surviving Python callers; neither is a
+production ship command owner.
 
 ### Stall-recovery mixed-runtime cutover
 

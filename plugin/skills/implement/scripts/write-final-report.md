@@ -78,7 +78,7 @@ After resolving `RUN_ID` from `parent-issue.md` or `session-id`, the script reje
 
 ## `--comment-only`
 
-Still refreshes `summary-final.md` for the upsert but **does not** overwrite `larch-logs/.../final-summary.md`. Used by the Python ship driver after PR creation so the tracking comment picks up the live URL without dirtying the run-log tree before the next flush.
+Still refreshes `summary-final.md` for the upsert but **does not** overwrite `larch-logs/.../final-summary.md`. Used after PR creation so the tracking comment picks up the live URL without dirtying the run-log tree before the next flush.
 
 ## PR line counts
 

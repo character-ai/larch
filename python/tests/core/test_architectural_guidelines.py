@@ -14,7 +14,6 @@ import pytest
 
 from larch.core import architectural_guidelines as ag
 from larch.core.assessment_kind import GUIDELINES, INVARIANTS, AssessmentKind
-from larch.implement import ship_guidelines
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -2928,13 +2927,6 @@ def test_coverage_advancement_docs_only_note_remains_consumable(tmp_path: Path) 
     )
     prepared = ag.prepare_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=h2)
     assert prepared.status == "current"
-    loaded = ship_guidelines.load_or_prepare_guidelines_note(
-        implement_tmpdir=str(tmpdir),
-        head_sha=h2,
-        base_ref="origin/main",
-        repo_root=str(repo),
-    )
-    assert loaded.needs_assessment is False
 
 
 def test_invariant_coverage_advancement_logs_only_reuses_compose_assessment(tmp_path: Path) -> None:
@@ -2961,13 +2953,6 @@ def test_invariant_coverage_advancement_logs_only_reuses_compose_assessment(tmp_
 
     prepared = ag.prepare_invariant_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=h2)
     assert prepared.status == "current"
-    loaded = ship_guidelines.load_or_prepare_invariants_note(
-        implement_tmpdir=str(tmpdir),
-        head_sha=h2,
-        base_ref="origin/main",
-        repo_root=str(repo),
-    )
-    assert loaded.needs_assessment is False
 
 
 def _symlinked_tmpdir_pair(tmp_path: Path) -> tuple[Path, Path]:
@@ -3056,13 +3041,6 @@ def test_coverage_advancement_logs_only_survives_mixed_tmpdir_path_forms(tmp_pat
         implement_tmpdir=resolved, repo_root=repo, expected_head_sha=h2
     )
     assert prepared.status == "current"
-    loaded = ship_guidelines.load_or_prepare_guidelines_note(
-        implement_tmpdir=str(resolved),
-        head_sha=h2,
-        base_ref="origin/main",
-        repo_root=str(repo),
-    )
-    assert loaded.needs_assessment is False
 
 
 def test_coverage_advancement_rejects_snapshot_not_matching_stored_head(tmp_path: Path) -> None:

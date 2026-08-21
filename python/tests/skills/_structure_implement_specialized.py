@@ -343,6 +343,8 @@ def run(repo_root: Path) -> list[str]:
         require(step0_owner, "UPSTREAM_REPO", "step-0 fork metadata upstream parse in Rust")
         require("crates/larch-cli/src/bootstrap_commands.rs", "preflight-tmpdir.env", "Rust bootstrap preflight tmpdir persistence")
         step8_owner = "crates/larch-cli/src/implement_ship_commands.rs"
+        ship_owner = "crates/larch-cli/src/ship_pr_commands.rs"
+        ship_recovery_owner = "crates/larch-cli/src/ship_recovery_commands.rs"
         ship_pre_owner = "crates/larch-cli/src/ship_pre_driver_commands.rs"
         require("skills/implement/scripts/step-8-ship.sh", 'implement step-8-ship "$@"', "step-8 ship wrapper delegates to Rust")
         require("skills/implement/scripts/step-8-ship.sh", "scripts/larch.sh", "step-8 ship wrapper uses verified bootstrap")
@@ -354,23 +356,38 @@ def run(repo_root: Path) -> list[str]:
         if Path("python/larch/implement/dispatch_ship.py").exists():
             checks.append("ship pre-driver Python module was not removed")
         require("crates/larch-cli/src/implement_commands.rs", "pub fn clone_tag", "implement clone-tag CLI handler")
-        require(step8_owner, '"ship".into()', "step-8 still-Python ship invocation")
+        require(step8_owner, "crate::ship_pr_commands::pr", "step-8 in-process Rust ship invocation")
         require(step8_owner, "run_bgjob_adapt", "step-8 bgjob adapter invocation")
-        require(
-            step8_owner,
-            "Duration::from_secs(u64::from(SHIP_BUDGET_SECONDS))",
-            "step-8 Python ship child shares the six-hour bgjob budget",
-        )
+        require(ship_owner, "pub fn pr", "ship pr Rust lifecycle owner")
+        require(ship_recovery_owner, "pub fn reconcile_manual_merge", "ship recovery Rust owner")
+        for retired in [
+            "ship.py",
+            "ship_pr.py",
+            "ship_guidelines.py",
+            "ship_merge.py",
+            "ship_resume.py",
+            "ship_recovery.py",
+        ]:
+            path = Path("python/larch/implement") / retired
+            if path.exists():
+                checks.append(f"retired Python ship owner still present: {path}")
         require("skills/implement/scripts/step-8-seed-initial.sh", 'implement step-8-seed-initial "$@"', "step-8 seed wrapper delegates to Rust")
         require("skills/implement/scripts/step-0-degraded-gate.sh", 'implement step-0-degraded-gate "$@"', "step-0 degraded-gate wrapper delegates to larch")
         forbid("python/larch/cli.py", '("ship", "pre-driver"):', "ship pre-driver Python registration removed")
         forbid("python/larch/cli.py", '("ship", "pre-fix-rebase"):', "ship pre-fix-rebase Python registration removed")
         forbid("python/larch/cli.py", '("ship", "normalize-assessment-handoff"):', "ship normalize-assessment-handoff Python registration removed")
         forbid("python/larch/cli.py", '("ship", "route-exit"):', "ship route-exit Python registration removed")
+        forbid("python/larch/cli.py", '("ship", "pr"):', "ship pr Python registration removed")
+        forbid(
+            "python/larch/cli.py",
+            '("ship", "reconcile-manual-merge"):',
+            "ship recovery Python registration removed",
+        )
         require("crates/larch-cli/src/main.rs", 'name = "pre-driver"', "ship pre-driver Rust registration")
         require("crates/larch-cli/src/main.rs", 'name = "pre-fix-rebase"', "ship pre-fix-rebase Rust registration")
         require("crates/larch-cli/src/main.rs", 'name = "normalize-assessment-handoff"', "ship normalization Rust registration")
         require("crates/larch-cli/src/main.rs", 'name = "route-exit"', "ship route-exit Rust registration")
+        require("crates/larch-cli/src/main.rs", 'ReconcileManualMerge', "ship recovery Rust registration")
         require("crates/larch-cli/src/main.rs", 'name = "step-18-gate-logs-flush"', "Step 18 composite CLI registry")
         require("crates/larch-cli/src/main.rs", 'name = "step-19"', "Step 19 CLI registry")
         require(terminal_owner, "pub fn step_18_gate_logs_flush", "Step 18 composite handler")

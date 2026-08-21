@@ -12,7 +12,7 @@ use crate::{
 /// Shared workflow outcome under the ship-result API name.
 pub use crate::WorkflowOutcome as ShipOutcome;
 
-/// JSON result emitted by the still-Python driver and reused by the Rust driver.
+/// JSON result emitted by the Rust ship lifecycle and consumed by Step 8 routing.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default)]
 pub struct ShipResult {
@@ -86,7 +86,7 @@ impl ShipResult {
 
     /// Render the driver's sorted, redacted JSON stdout contract.
     ///
-    /// Empty CI-only fields stay absent, matching the Python driver's payload.
+    /// Empty CI-only fields stay absent, preserving the published payload.
     ///
     /// # Errors
     /// Returns an error only when the typed result cannot be serialized.

@@ -1,4 +1,4 @@
-"""Exception hierarchy for ship-pr Python."""
+"""Exception hierarchy for surviving Python ship and Git helpers."""
 
 from __future__ import annotations
 

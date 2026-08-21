@@ -1,36 +1,34 @@
 //! Rust owners for the four `/implement` Step 8 ship-routing commands.
 //!
-//! The ship engine itself remains Python during the #7681 migration. These
-//! commands own its version fence, durable input reconstruction, initial state,
-//! result-env publication, bgjob adapter, and post-OOS checkpoint bookkeeping.
-//! The remaining Python ship verb uses the one reviewed migration seam. The
-//! phantom probe composes its typed Rust owner in process; Rust subprocesses
-//! enter through the verified bootstrap.
+//! These commands own the retained Python dependency fence, durable input
+//! reconstruction, initial state, bgjob adapter, and post-OOS checkpoint
+//! bookkeeping. The Rust ship driver is composed in process; its separately
+//! owned Python merge and finalize dependencies use the reviewed migration
+//! seam. Rust subprocesses enter through the verified bootstrap.
 
 use std::{
     env,
     ffi::{OsStr, OsString},
     fs,
-    io::Write as _,
     path::{Path, PathBuf},
     process::ExitCode,
     time::Duration,
 };
 
 use larch_core::{
-    DuplicatePolicy, HostUtilityProgram, KvDocument, ParseOptions, ProcessOutput, ShipResult,
-    ShipState, ndjson_filed_evidence, private_atomic_write, read_universal_newlines,
-    report::RunLogCorpus, state_file_has_kv, validate_run_id, validate_ship_result_env,
+    DuplicatePolicy, HostUtilityProgram, KvDocument, ParseOptions, ProcessOutput, ShipState,
+    ndjson_filed_evidence, private_atomic_write, read_universal_newlines, report::RunLogCorpus,
+    state_file_has_kv, validate_run_id, validate_ship_result_env,
 };
 
 use crate::{
     argparse_compat::{ParsedCommandLine, parse_required_with_help},
     child_process::run_host_utility,
-    implement_child_seam::{delegate_python, resolve_plugin_root},
+    implement_child_seam::resolve_plugin_root,
     implement_commands::expected_tmpdir_basename_prefix,
     implement_dispatch_commands::{
-        delegate_verified_larch, forward_output, opt_string, parse_command_with_tmpdir,
-        rehydrate_session, run_bgjob_adapt, safe_merge_env, tmpdir_from_env, unlink_safe,
+        delegate_verified_larch, opt_string, parse_command_with_tmpdir, rehydrate_session,
+        run_bgjob_adapt, safe_merge_env, tmpdir_from_env, unlink_safe,
     },
     tracking_issue_commands::adoption_sentinel_identity,
 };
@@ -95,8 +93,9 @@ const OOS_USAGE: &str = "usage: cli.py implement step-8-oos-checkpoint [-h]";
 const OOS_HELP: &str = "usage: cli.py implement step-8-oos-checkpoint [-h]\n\noptions:\n  -h, --help  show this help message and exit";
 const SHIP_STEP: &str = "implement-step8-ship";
 const SHIP_BUDGET_SECONDS: u32 = 21_600;
-const PYTHON_GUARD_DETAIL: &str = "Python ship driver requires Python 3.11 or newer";
-const PYTHON_GUARD_JSON: &str = "{\"detail\":\"Python ship driver requires Python 3.11 or newer\",\"failed_run_id\":\"\",\"ledger_dispatcher\":\"\",\"ledger_exit_code\":null,\"ledger_failure_detail_log\":\"\",\"ledger_phase\":\"\",\"ledger_ready\":false,\"ledger_site\":\"\",\"ledger_step\":\"\",\"ledger_trigger\":\"\",\"merge_result\":\"\",\"needs_user_reason\":\"\",\"outcome\":\"STALLED\",\"pr_number\":null,\"pr_url\":\"\"}";
+const PYTHON_GUARD_DETAIL: &str =
+    "Ship merge and finalize dependencies require Python 3.11 or newer";
+const PYTHON_GUARD_JSON: &str = "{\"detail\":\"Ship merge and finalize dependencies require Python 3.11 or newer\",\"failed_run_id\":\"\",\"ledger_dispatcher\":\"\",\"ledger_exit_code\":null,\"ledger_failure_detail_log\":\"\",\"ledger_phase\":\"\",\"ledger_ready\":false,\"ledger_site\":\"\",\"ledger_step\":\"\",\"ledger_trigger\":\"\",\"merge_result\":\"\",\"needs_user_reason\":\"\",\"outcome\":\"STALLED\",\"pr_number\":null,\"pr_url\":\"\"}";
 const SEED_OPTIONS: [&str; 10] = [
     "--merge",
     "--draft",
@@ -109,7 +108,7 @@ const SEED_OPTIONS: [&str; 10] = [
     "--bail-reason",
     "--bail-failure-detail-log",
 ];
-/// Refuse a host whose `python3` cannot run the still-Python ship engine.
+/// Refuse a host whose `python3` cannot run retained merge/finalize verbs.
 pub fn step8_python_guard(arguments: &[OsString]) -> ExitCode {
     if let Err(code) = parse_required_with_help(
         arguments,
@@ -440,61 +439,20 @@ fn step8_ship_child(tmpdir: &Path, merge_result_env: &str) -> ExitCode {
         return ExitCode::from(guard);
     }
     emit_phantom_probe();
-    let output = match delegate_python(
-        vec![
-            "ship".into(),
-            "pr".into(),
-            "--branch".into(),
-            branch.into(),
-            "--issue".into(),
-            issue.into(),
-            "--repo".into(),
-            repo.into(),
-            "--run-id".into(),
-            run_id.into(),
-            "--tmpdir".into(),
-            tmpdir.as_os_str().into(),
-            "--manifest-path".into(),
-            manifest.into(),
-            "--state-file".into(),
-            state.into_os_string(),
-            "--tool-label".into(),
-            tool.into(),
-            "--merge".into(),
-            merge.into(),
-            "--draft".into(),
-            draft.into(),
-            "--forked".into(),
-            forked.into(),
-            "--repo-unavailable".into(),
-            repo_unavailable.into(),
-            "--no-admin-fallback".into(),
-            no_admin.into(),
-            "--no-logs-commit".into(),
-            no_logs.into(),
-            "--expected-session-id".into(),
-            read_trimmed(&tmpdir.join("session-id")).into(),
-            "--expected-tmpdir-basename-prefix".into(),
-            expected_tmpdir_basename_prefix().into(),
-        ],
-        Duration::from_secs(u64::from(SHIP_BUDGET_SECONDS)),
-    ) {
-        Ok(output) => output,
-        Err(error) => {
-            eprintln!("{error}");
-            return ExitCode::from(1);
-        }
-    };
-    let parsed = ShipResult::from_json(&String::from_utf8_lossy(output.stdout()));
-    let published =
-        parsed.and_then(|result| result.write_result_env(Path::new(merge_result_env), tmpdir));
-    if let Err(error) = published {
-        let _ignored = std::io::stderr().write_all(output.stderr());
-        eprintln!("step-8-ship: result-env publish failed: {error}");
-        return ExitCode::from(1);
-    }
-    forward_output(&output);
-    ExitCode::from(u8::try_from(output.status().code().unwrap_or(1)).unwrap_or(1))
+    #[rustfmt::skip]
+    let arguments = [
+        "--branch".into(), branch.into(), "--issue".into(), issue.into(),
+        "--repo".into(), repo.into(), "--run-id".into(), run_id.into(),
+        "--tmpdir".into(), tmpdir.as_os_str().into(), "--manifest-path".into(), manifest.into(),
+        "--state-file".into(), state.into_os_string(), "--tool-label".into(), tool.into(),
+        "--merge".into(), merge.into(), "--draft".into(), draft.into(),
+        "--forked".into(), forked.into(), "--repo-unavailable".into(), repo_unavailable.into(),
+        "--no-admin-fallback".into(), no_admin.into(), "--no-logs-commit".into(), no_logs.into(),
+        "--expected-session-id".into(), read_trimmed(&tmpdir.join("session-id")).into(),
+        "--expected-tmpdir-basename-prefix".into(), expected_tmpdir_basename_prefix().into(),
+        "--result-env-path".into(), merge_result_env.into(),
+    ];
+    crate::ship_pr_commands::pr(&arguments)
 }
 
 fn emit_phantom_probe() {
@@ -605,19 +563,15 @@ fn stamp_step9a1(tmpdir: &Path, run_id: &str, value: bool) -> Result<bool, Strin
     if !manifest.is_file() {
         return Ok(false);
     }
-    let output = verified_larch(&[
-        "run-log".into(),
-        "manifest".into(),
-        "--log-root".into(),
-        tmpdir.join("larch-logs").into_os_string(),
-        "--skill".into(),
-        "implement".into(),
-        "--run-id".into(),
-        run_id.into(),
-        "--field".into(),
-        format!("steps_ran.step9a1={value}").into(),
-    ])
-    .map_err(|error| format!("run-log manifest steps_ran.step9a1 update failed: {error}"))?;
+    let fields = [format!("steps_ran.step9a1={value}")];
+    let arguments = crate::run_log_commands::manifest_update_arguments(
+        &tmpdir.join("larch-logs"),
+        "implement",
+        run_id,
+        &fields,
+    );
+    let output = verified_larch(&arguments)
+        .map_err(|error| format!("run-log manifest steps_ran.step9a1 update failed: {error}"))?;
     if !output.status().success() {
         let detail = output_detail(&output);
         return Err(format!(

@@ -55,11 +55,11 @@
 - **notes**: Architecture; should cover sentinel-reuse (Branch 1), positional `--issue` adoption (Branch 2), when `post-tracking-issue.sh` writes the sentinel after successful metadata publication, and how `RUN_ID` / manifest init interact on resume versus fresh adopt.
 
 ### eval-7: ci-fix-rebase-step12-interaction
-- **question**: How does the Python ship driver's CI-fix rebase and conflict-resolution handoff interact with `/implement` Step 12's CI+merge loop, and what differs between Step 12 hard-bail and Step 10 best-effort behavior?
+- **question**: How does the Rust ship driver's CI-fix rebase and conflict-resolution handoff interact with `/implement` Step 12's CI+merge loop, and what differs between Step 12 hard-bail and Step 10 best-effort behavior?
 - **category**: architecture
 - **expected_provenance_count**: 2
 - **expected_keywords**: conflict-resolution.md, ship_pr_pre_push, run_rebase_rebump, step12, step10, hard-bail, 12d
-- **notes**: Architecture; should explain why the Python ship driver owns CI-fix rebase/force-push sequencing, when remaining conflicts hand off through `CALLER_KIND=ship_pr_pre_push`, and why Step 12 remains the strict last-chance path while Step 10 is best-effort.
+- **notes**: Architecture; should explain why the Rust ship driver owns CI-fix rebase/force-push sequencing, when remaining conflicts hand off through `CALLER_KIND=ship_pr_pre_push`, and why Step 12 remains the strict last-chance path while Step 10 is best-effort.
 
 ### eval-8: plan-review-tenure-weighting
 - **question**: How does the `/design` plan-review voting panel weight reviewer judges by tenure, and where in the codebase is the tenure-lookup table stored?

@@ -258,7 +258,7 @@ logged under `Warnings` as Step 2 architectural-knowledge omissions.
 
 In-loop refresh sidecars (`token-report-refresh.json`, `timing-report-refresh.json`,
 `session-transcript-refresh.txt`) are volatile in-loop snapshots that are not
-published in the run tree. The Python ship driver reads them as inputs for
+published in the run tree. The run-log refresh owner reads them as inputs for
 re-rendering canonical batches (`token-report.ndjson`, `timing-report.ndjson`,
 `session-transcript.jsonl`) but does not copy the refresh files themselves into
 `larch-logs/implement/<RUN_ID>/`. Canonical reports such as `token-report.json`,

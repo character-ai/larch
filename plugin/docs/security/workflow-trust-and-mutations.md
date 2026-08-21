@@ -703,29 +703,34 @@ an execution plan. Every admitted bypass is recorded. Blocker lookup still has
 its documented fail-open behavior when GitHub dependency reads fail, so an API
 outage can produce a false negative.
 
-`python/larch/implement/ship.py` owns the active post-review pull-request, CI,
-merge, and teardown state machine. It consumes typed, bounded, redacted result
-envelopes. Pull-request creation and updates require current scope and coverage
-artifacts. CI fixes receive a bounded redacted digest, not raw failed logs.
-Conflict fixers receive validated repository-relative paths and may edit only
-the named conflict files. The driver owns staging, rebase continuation, push,
-and merge.
+`crates/larch-cli/src/ship_pr_commands.rs` owns the active post-review
+pull-request, CI, merge, resume, and post-merge state machine. It consumes typed,
+bounded, redacted result envelopes. Pull-request creation and updates require
+current scope and coverage artifacts. CI fixes receive a bounded redacted
+digest, not raw failed logs. Conflict fixers receive validated
+repository-relative paths and may edit only the named conflict files. The Rust
+owner controls staging, rebase continuation, and lease-protected push. The
+separately owned `merge pr`, `merge wait`, and `implement-finalize postmerge`
+commands remain Python behind the reviewed process boundary; every create,
+merge, and queue mutation is followed by a typed GitHub read-back.
 
 Rust owns the canonical initial ship-state schema and the Step 8 result-env
 schema. `ship seed-initial-state` validates the session root, contained state
 path, identity fields, manifest shape, line-safe values, and create-only gate
-before a private atomic write. Step 8 captures the Python driver's redacted JSON
-result, requires a typed outcome, normalizes scalars, and writes the contained
-result env before it forwards JSON. Direct Python compatibility calls enter the
-same result-env owner through `scripts/larch.sh`; no second writer is selected.
-Symlinked destinations, unsafe parents, relative or escaping result paths, and
-missing outcomes fail closed before publication.
+before a private atomic write. The Rust Step 8 child invokes the lifecycle owner
+in process, requires a typed outcome, normalizes scalars, and writes the
+contained result env before it forwards JSON. No Python `ship pr` registration
+or fallback remains. Symlinked destinations, unsafe parents, relative or
+escaping result paths, and missing outcomes fail closed before publication.
 
 Recovery never applies pre-merge mutations to a merged or closed pull request.
-Manual reconciliation first proves the repository and merged pull request, then
-writes only its closed state allowlist and verifies that stall and bail overlays
-are clear. Assessment waivers and state artifacts stay inside the validated run
-root and bind to the current run identity.
+A resumed lifecycle performs a typed pull-request read before checkout or Git
+mutation. Rust-owned manual reconciliation first proves the run, manifest,
+repository, and merged pull-request identity, then rewrites all three durable
+state layers, clears every stall and bail overlay, publishes the sentinel and
+manifest fields, and verifies the postconditions. Assessment waivers and state
+artifacts stay inside the validated run root and bind to the current run
+identity.
 
 ### Review
 
@@ -851,12 +856,11 @@ path. Stale, malformed, incomplete, unavailable, or mismatched results do not
 clear the gate. A fresh assessor judges every repair. An invariant violation
 hard-stops after the bounded fix ladder; no waiver or operator override accepts
 it. `python/larch/core/architectural_guidelines.py` and the retained Python
-assessment commands remain production owners. The dormant Rust `ship pr`
-parity implementation consumes only identity-validated durable notes, applies
-the same closed outcome grammar, binds fork assessments to `upstream/main`, and
-redacts note text before PR composition.
-The Rust Step 8 dispatcher carries closed route requests without interpreting
-assessment prose; production `ship pr` ownership does not move until #8628.
+assessment commands remain production owners. The active Rust `ship pr` owner
+consumes only identity-validated durable notes, follows the closed outcome
+grammar, binds fork assessments to `upstream/main`, and redacts note text before
+PR composition. The Rust Step 8 dispatcher carries
+closed route requests without interpreting assessment prose.
 
 ### Destructive and background workflows
 
@@ -889,13 +893,13 @@ the no-queue fallback. The development-only release command follows the normal
 queue path, then resolves and tags GitHub's recorded post-merge commit. It does
 not request an admin merge, a queue bypass, or a repository or ruleset change.
 
-The dormant Rust `ship pr` parity path reads repository state through `gix`,
+The active Rust `ship pr` path reads repository state through `gix`,
 executes fetch, rebase, and push only through the closed Git CLI adapter, and
 pushes with an exact observed remote-tip lease. Its GitHub owner reconciles an
 ambiguous create before retrying, repairs an adopted PR body without replacing
 its title, and performs a fresh typed read-back after every mutation. A stale
 qualified head owner or branch, base, state, draft flag, or redacted body fails
-closed. These controls do not authorize production cutover before #8628.
+closed.
 
 ## Security Findings in OOS Workflows
 

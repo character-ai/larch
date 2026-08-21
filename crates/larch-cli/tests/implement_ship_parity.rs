@@ -99,18 +99,6 @@ fn stderr(output: &std::process::Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
-fn python_argv(fixture: &Fixture) -> Vec<Vec<String>> {
-    fs::read_to_string(fixture.tmpdir.join("python-argv.txt"))
-        .expect("python argv")
-        .lines()
-        .map(|line| serde_json::from_str(line).expect("argv JSON"))
-        .collect()
-}
-
-fn strings(values: &[&str]) -> Vec<String> {
-    values.iter().map(|value| (*value).to_owned()).collect()
-}
-
 fn oos_checkpoint(fixture: &Fixture) -> std::process::Output {
     command(fixture)
         .args(["implement", "step-8-oos-checkpoint"])
@@ -146,11 +134,11 @@ fn python_guard_failure_preserves_json_stall_contract() {
     assert_eq!(output.status.code(), Some(4));
     assert_eq!(
         stderr(&output),
-        "ERROR: Python ship driver requires Python 3.11 or newer\n"
+        "ERROR: Ship merge and finalize dependencies require Python 3.11 or newer\n"
     );
     assert_eq!(
         stdout(&output),
-        "{\"detail\":\"Python ship driver requires Python 3.11 or newer\",\"failed_run_id\":\"\",\"ledger_dispatcher\":\"\",\"ledger_exit_code\":null,\"ledger_failure_detail_log\":\"\",\"ledger_phase\":\"\",\"ledger_ready\":false,\"ledger_site\":\"\",\"ledger_step\":\"\",\"ledger_trigger\":\"\",\"merge_result\":\"\",\"needs_user_reason\":\"\",\"outcome\":\"STALLED\",\"pr_number\":null,\"pr_url\":\"\"}\n"
+        "{\"detail\":\"Ship merge and finalize dependencies require Python 3.11 or newer\",\"failed_run_id\":\"\",\"ledger_dispatcher\":\"\",\"ledger_exit_code\":null,\"ledger_failure_detail_log\":\"\",\"ledger_phase\":\"\",\"ledger_ready\":false,\"ledger_site\":\"\",\"ledger_step\":\"\",\"ledger_trigger\":\"\",\"merge_result\":\"\",\"needs_user_reason\":\"\",\"outcome\":\"STALLED\",\"pr_number\":null,\"pr_url\":\"\"}\n"
     );
 }
 
@@ -203,7 +191,7 @@ fn ship_parent_replaces_completed_bgjob_result() {
 }
 
 #[test]
-fn ship_child_runs_guard_probe_and_canonical_python_driver() {
+fn ship_child_runs_guard_probe_and_rust_driver_in_process() {
     let fixture = fixture(0);
     fs::write(
         fixture.tmpdir.join("ship-pr-state.sh"),
@@ -222,46 +210,18 @@ fn ship_child_runs_guard_probe_and_canonical_python_driver() {
         ])
         .output()
         .expect("ship child");
-    assert!(output.status.success(), "{}", stderr(&output));
-    assert_eq!(
-        stdout(&output),
-        "{\"outcome\": \"OK\", \"pr_number\": 12, \"pr_url\": \"https://example.test/pr/12\"}\n"
-    );
+    assert_eq!(output.status.code(), Some(4), "{}", stderr(&output));
+    let result: serde_json::Value =
+        serde_json::from_str(stdout(&output).trim()).expect("driver JSON");
+    assert_eq!(result["outcome"], "STALLED");
+    assert_eq!(result["detail"], "not a Git repository");
     assert!(stderr(&output).contains("→ phantom-probe: 8-pre-ship"));
     assert!(stderr(&output).contains("PHANTOM_STATUS="));
     assert!(!fixture.tmpdir.join("larch-argv.txt").exists());
-    let tmpdir = fixture.tmpdir.display().to_string();
-    let state = fixture
-        .tmpdir
-        .join("ship-pr-state.sh")
-        .display()
-        .to_string();
-    #[rustfmt::skip]
-    let expected = strings(&[
-        "ship", "pr",
-        "--branch", "feature/ship",
-        "--issue", "8624",
-        "--repo", "owner/repo",
-        "--run-id", "run-8",
-        "--tmpdir", &tmpdir,
-        "--manifest-path", "",
-        "--state-file", &state,
-        "--tool-label", "claude",
-        "--merge", "true",
-        "--draft", "false",
-        "--forked", "false",
-        "--repo-unavailable", "false",
-        "--no-admin-fallback", "false",
-        "--no-logs-commit", "false",
-        "--expected-session-id", "",
-        "--expected-tmpdir-basename-prefix", "claude-implement-tmp-",
-    ]);
-    assert_eq!(python_argv(&fixture), vec![expected]);
+    assert!(!fixture.tmpdir.join("python-argv.txt").exists());
     let result_env = fs::read_to_string(&merge).expect("Rust result env");
-    assert!(
-        result_env.starts_with("outcome=OK\nNEEDS_USER_REASON=\nFAILED_RUN_ID=\nPR_NUMBER=12\n")
-    );
-    assert!(result_env.contains("PR_URL=https://example.test/pr/12\n"));
+    assert!(result_env.starts_with("outcome=STALLED\nNEEDS_USER_REASON=\n"));
+    assert!(result_env.contains("DETAIL=not a Git repository\n"));
     assert!(
         result_env.ends_with("CI_ERRORS_FILE=\nFAILED_JOBS_COUNT=0\nCI_ERRORS_DISTILL_CLASS=\n")
     );

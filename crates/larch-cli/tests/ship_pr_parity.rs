@@ -1,4 +1,4 @@
-//! Frozen black-box parity for the dormant Rust `ship pr` entrypoint (#8626).
+//! Black-box contracts for the Rust-owned `ship pr` entrypoint (#8628).
 
 use std::{fs, path::Path, process::Command};
 
@@ -30,25 +30,21 @@ fn git(cwd: &Path, arguments: &[&str]) {
 }
 
 #[test]
-fn help_matches_python() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let cli = root.join("python/cli.py");
-    let python = run(
-        Path::new("python3"),
-        &[cli.to_str().expect("UTF-8 path"), "ship", "pr", "--help"],
-    );
+fn help_identifies_the_rust_owner() {
     let rust = run(
         Path::new(env!("CARGO_BIN_EXE_larch")),
         &["ship", "pr", "--help"],
     );
-    assert_eq!(
-        (rust.status.code(), rust.stdout, rust.stderr),
-        (python.status.code(), python.stdout, python.stderr)
-    );
+    assert!(rust.status.success());
+    assert!(rust.stderr.is_empty());
+    let stdout = String::from_utf8(rust.stdout).expect("UTF-8 help");
+    assert!(stdout.starts_with("usage: cli.py [-h] [--branch BRANCH]"));
+    assert!(stdout.contains("Run the Rust ship-pr driver"));
+    assert!(stdout.contains("--result-env-path RESULT_ENV_PATH"));
 }
 
 #[test]
-fn argparse_failure_matches_python() {
+fn malformed_arguments_use_the_frozen_driver_result_wire() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let cli = root.join("python/cli.py");
     let python = run(
@@ -59,10 +55,27 @@ fn argparse_failure_matches_python() {
         Path::new(env!("CARGO_BIN_EXE_larch")),
         &["ship", "pr", "--unknown"],
     );
-    assert_eq!(
-        (rust.status.code(), rust.stdout, rust.stderr),
-        (python.status.code(), python.stdout, python.stderr)
+    assert_eq!(python.status.code(), Some(2));
+    assert!(python.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&python.stderr).contains("unknown subcommand 'ship' 'pr'"));
+    assert_eq!(rust.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&rust.stderr).contains("unrecognized arguments: --unknown"));
+    let value: serde_json::Value = serde_json::from_slice(&rust.stdout).expect("driver JSON");
+    assert_eq!(value["outcome"], "INTERNAL_ERROR");
+    assert_eq!(value["detail"], "argparse failed with exit 2");
+}
+
+#[test]
+fn manual_merge_recovery_retains_its_frozen_usage_contract() {
+    let output = run(
+        Path::new(env!("CARGO_BIN_EXE_larch")),
+        &["ship", "reconcile-manual-merge", "--help"],
     );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("UTF-8 help");
+    assert!(stdout.starts_with("usage: cli.py ship reconcile-manual-merge"));
+    assert!(stdout.ends_with("RECONCILE_STATUS=failed\nERROR=usage\n"));
 }
 
 #[test]
@@ -203,4 +216,10 @@ fn local_only_success_and_rebase_conflict_preserve_state_handoffs() {
             "missing {row}: {state}"
         );
     }
+    let status = run_in(&repo, Path::new("git"), &["status", "--porcelain"]);
+    assert!(status.status.success());
+    assert!(
+        String::from_utf8_lossy(&status.stdout).contains("UU conflict.txt"),
+        "conflict handoff must leave the rebase available to its resolver"
+    );
 }

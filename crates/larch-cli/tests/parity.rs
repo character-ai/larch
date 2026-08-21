@@ -99,6 +99,9 @@ impl CleanInstallCase {
             | "clean-install-ci-rerun-failed"
             | "clean-install-design-step5b-prepare"
             | "clean-install-design-step5b-annotate"
+            // Manual-merge recovery catches argparse's help SystemExit and
+            // publishes its frozen failed reconciliation envelope with exit 1.
+            | "clean-install-ship-reconcile-manual-merge"
             | "clean-install-ship-seed-initial-state" => 1,
             // `design parse-flags` owns the frozen Step 0-pre grammar: the
             // clean-install `--help` token is an unrecognized public flag and
@@ -1701,11 +1704,17 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "ship",
         "normalize-assessment-handoff",
     ),
+    CleanInstallCase::new("clean-install-ship-pr", "ship", "pr"),
     CleanInstallCase::new("clean-install-ship-pre-driver", "ship", "pre-driver"),
     CleanInstallCase::new(
         "clean-install-ship-pre-fix-rebase",
         "ship",
         "pre-fix-rebase",
+    ),
+    CleanInstallCase::new(
+        "clean-install-ship-reconcile-manual-merge",
+        "ship",
+        "reconcile-manual-merge",
     ),
     CleanInstallCase::new("clean-install-ship-route-exit", "ship", "route-exit"),
     CleanInstallCase::new("clean-install-ci-timing-harness", "ci-timing", "harness"),

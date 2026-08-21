@@ -56,12 +56,12 @@ For every mandatory sub-skill call inside an orchestrator's step, pair the call 
 
 Canonical examples:
 
-- **Step 8+ active-driver contract parse** — the orchestrator uses JSON stdout + exit code from the wrapper-internal `python/cli.py ship pr`, not `ship-pr-state.sh` continuation parsing:
+- **Step 8+ active-driver contract parse** — the orchestrator uses JSON stdout + exit code from the wrapper-internal Rust `ship pr`, not `ship-pr-state.sh` continuation parsing:
 
   ```bash
   # Parse STATUS, PHASE, OOS_PENDING, STALL_TRACKING, STALL_STEP, RESUME_PHASE,
   # CALLER_KIND, and CONFLICT_FILES (when present) from the scoped state files.
-  # On the default Python path, parse JSON stdout first and read CONFLICT_FILES from
+  # Parse JSON stdout first and read CONFLICT_FILES from
   # $IMPLEMENT_TMPDIR/ship-pr-state.sh only for the scoped Exit 4 ship_pr_pre_push handoff.
   # On Exit 4 with RESUME_PHASE=ship-pr-rrr-phase14 and CALLER_KIND=ship_pr_pre_push,
   # run conflict-resolution.md before re-invoking the active Step 8+ driver.

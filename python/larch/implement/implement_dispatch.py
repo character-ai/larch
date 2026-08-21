@@ -14,8 +14,6 @@ import subprocess
 import time
 
 from larch.issue import file_oos
-from larch.implement import ship
-
 # --- foundational helpers and primitives ---
 from larch.implement.dispatch_helpers import (
     GIT_BIN,
