@@ -12,11 +12,11 @@ keeping those copies byte-frozen (the third is described at its call site):
 1. The frozen modules cross-import one another as ``larch.design.design_step0_env``
    etc. They are registered in ``sys.modules`` under their original dotted names
    before execution so those intra-package imports resolve to the frozen copies
-   even after production removal, while ``design_core``/``design_pause`` continue
-   to resolve to the surviving package modules. ``design_terminal`` was retired in
-   #8580, so its byte-frozen copy from ``design_terminal_frozen/`` is registered
-   under ``larch.design.design_terminal`` the same way, keeping the frozen step0
-   modules' ``from larch.design.design_terminal import ...`` line resolvable.
+   even after production removal. ``design_core`` continues to resolve to the
+   surviving package module. ``design_terminal`` was retired in #8580, so its
+   byte-frozen copy from ``design_terminal_frozen/`` is registered under
+   ``larch.design.design_terminal``; the retired pause import resolves to a
+   test-only Rust dispatcher.
 2. Subprocesses that ran through ``repo_roots.larch_entrypoint`` (design
    parse-flags/route/init-runparams, session setup/write-design-env, run-log,
    agent, progress, token, timing) prefer the harness-provided larch binary
@@ -46,6 +46,7 @@ TERMINAL_FROZEN = Path(__file__).resolve().parent / "design_terminal_frozen"
 os.environ.pop("LC_CTYPE", None)
 
 from larch.core import repo_roots as _repo_roots  # noqa: E402
+from design_pause_dispatch_stub import install as _install_pause_stub  # noqa: E402
 
 _ORIGINAL_ENTRYPOINT = _repo_roots.larch_entrypoint
 
@@ -56,6 +57,7 @@ def _entrypoint(root: Path) -> str:
 
 
 _repo_roots.larch_entrypoint = _entrypoint  # type: ignore[assignment]
+_install_pause_stub()
 
 
 def _load(name: str, path: Path):

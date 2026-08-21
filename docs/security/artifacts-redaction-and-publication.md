@@ -504,10 +504,16 @@ Disabled storage skips provider construction, archive creation, upload,
 verification, cache promotion, and pending state. Local staging and
 bookkeeping remain active until terminalization, which writes universal
 terminal artifacts and removes the run and context. Errors retain diagnostic
-state. `/design` cross-session pause and resume still require a verified
-published cache, so pause rejects disabled storage before it writes a GitHub
-marker. Neither mode creates log branches, commits, pushes, pull requests, or
-merges.
+state. `/design` cross-session pause and resume require a verified published
+cache, so pause rejects disabled storage before it writes a GitHub marker. The
+Rust pause owner resolves the marker's run identity to the provider-scoped
+materialized cache and verifies its archive manifest before reading it. Resume
+then stages validated regular files beneath a private directory inside the
+validated design root, rejects symlink or non-regular destinations, and
+installs the complete snapshot — including `.completed/` — before clearing the
+marker. A missing, incomplete, or unsafe snapshot leaves the marker intact for
+retry; a permanent marker or manifest binding failure clears the stale marker.
+Neither mode creates log branches, commits, pushes, pull requests, or merges.
 
 For `/implement`, intermediate writes, appends, refreshes, and checkpoints
 update only the session staging tree. Step 18 closes the ledgers, rebuilds the
@@ -651,6 +657,7 @@ egress contract.
 | Mutable run-log flush and transcript staging | Rust owns execution-issue append, checkpoint, refresh, terminal snapshot, transcript capture, flush ordering, manifest reconciliation, and sorted vendor-diagnostic aggregation in `crates/larch-cli/src/execution_issue_commands.rs` and `run_log_flush_commands.rs`. Category-keyed chunk deduplication, the directory lock, atomic live-ledger replacement, lock-protected compare-and-clear after flush, and atomic batch replacement and append use `crates/larch-cli/src/run_log_entry_commands.rs`. Python callers use typed `scripts/larch.sh` wrappers and cannot mutate the ledger in process. The flush boundary has no remaining Python payload producer (`token mark`, `token report`, `token claude-source`, and `difficulty write-record` are Rust-owned in-process; #8506, #8507, #8557, #8501). `final-report write` additionally reads assessment payloads plus #7681 plan and PR payloads. Those Python payload commands cannot write a run-log batch, manifest, timing ledger, transcript, archive, or tracking comment. |
 | Timing ledger mutation and reports | Rust exclusively owns timing marks, vendor and round records, locking, validation, and report rendering in `crates/larch-cli/src/timing_commands.rs` (#8291); Python retains only the bounded read-only resolver in `python/larch/report/timing.py`. |
 | Run-log selection, trim, scrub, and publication | Rust owns standalone and lifecycle publication, tree redaction, durable retry, create-only remote verification, cache promotion, and breadcrumb publication through `crates/larch-adapters/src/run_lifecycle.rs` and `crates/larch-cli/src/run_log_publication_commands.rs`. Design session archives use the same lifecycle through `scripts/larch.sh design log-publish` (`crates/larch-cli/src/design_log_publish_commands.rs`, selection filter `larch_core::design::log_publish::publish_excluded`). Python retains only bounded local-state compatibility consumers; neither can publish archives or call a provider. |
+| Design pause and resume | Rust owns marker parsing, issue identity checks, verified cache lookup, confined restore staging, and marker cleanup in `crates/larch-core/src/design/pause.rs` and `crates/larch-cli/src/design_pause_commands.rs` (#8589). Python has no pause command or fallback. |
 | Run-log archive, sync, and object publication | Rust owns archive creation, materialization, standalone sync, shared lifecycle publication, cache promotion, and `run-log storage-preflight` through `crates/larch-adapters/src/run_lifecycle.rs`, `google_storage.rs`, and `s3_storage.rs`. The same provider-neutral object-store port validates pagination, names, sizes, archive materialization, and repair rollback. The legacy Python object-store adapter remains for compatibility/test callers only and is not a production command owner. |
 | Agent diagnostic bounds and carriers | `python/larch/agents/agents.py` and `_failure_diag.py` |
 | Residual Bash egress call sites | Thin scripts call the Python redaction owner or the Rust run-log owner before forwarding untrusted content; plain shell error helpers are not independent redactors |

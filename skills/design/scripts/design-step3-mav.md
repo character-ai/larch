@@ -12,7 +12,7 @@ design-step3-mav.sh --phase pre|post --session-env-path PATH --claude-pid PID --
 
 - `--phase pre` runs before the LLM reads the ballot.
 - `--phase post` runs after the LLM writes `$DESIGN_TMPDIR/voter-main-agent.txt`.
-- The wrapper sources the session env, requires a valid `DESIGN_TMPDIR`, and honors `.pause-requested` by `exec`ing `python/cli.py design pause-save` before any MAV work.
+- The wrapper sources the session env, requires a valid `DESIGN_TMPDIR`, and honors `.pause-requested` by `exec`ing `scripts/larch.sh design pause-save` before any MAV work.
 
 ## Pre phase
 

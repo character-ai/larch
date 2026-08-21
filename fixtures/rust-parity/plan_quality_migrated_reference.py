@@ -9,7 +9,11 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from design_pause_dispatch_stub import install as _install_pause_stub
+
 FROZEN = Path(__file__).resolve().parent / "plan_quality_frozen"
+
+_install_pause_stub()
 
 
 def _load(name: str, path: Path):

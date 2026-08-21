@@ -276,6 +276,11 @@ pub fn atomic_write_bytes_in(
 }
 
 /// Testable rooted variant of [`atomic_write_utf8_in`].
+///
+/// # Errors
+///
+/// Returns [`FileIoError`] when the target is unsafe, parent creation fails,
+/// the writer fails, or atomic publication cannot be completed durably.
 pub fn atomic_write_in_with(
     root: &TemporaryRoot,
     target: &Path,

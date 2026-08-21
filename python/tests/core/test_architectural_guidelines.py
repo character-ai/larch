@@ -385,7 +385,7 @@ the `.completed/` step sentinels. When a guard gains a new required artifact,
 the snapshot allowlist changes in the same commit. A resume that false-refuses
 on an artifact the pause omitted is a defect of the snapshot, not of the guard
 (#6548). Mechanical backing: the pause snapshot regression tests in
-`python/tests/design/test_design_pause.py` cover `.completed/` inclusion;
+`crates/larch-cli/src/design_pause_commands.rs` cover `.completed/` inclusion;
 extend them when the guard-read artifact set grows.
 
 ## Run-log integrity

@@ -13,8 +13,6 @@ EXPECTED = {
         ("step5b-prepare", "larch.design.design_step5b", "step5b_prepare_main"),
         ("step5b-annotate", "larch.design.design_step5b", "step5b_annotate_main"),
         ("compose-plan-md", "larch.design.design_step5c", "compose_plan_md_main"),
-        ("pause-save", "larch.design.design_pause", "pause_save_main"),
-        ("pause-load", "larch.design.design_pause", "pause_load_main"),
         ("render-gate", "larch.design.design_gate_render", "render_gate_main"),
         ("render-final-summary", "larch.design.design_summary", "render_final_summary_main"),
         ("file-oos-prepare", "larch.design.design_oos", "file_oos_prepare_main"),

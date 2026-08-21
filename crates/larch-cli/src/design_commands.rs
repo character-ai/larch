@@ -19,7 +19,6 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::ExitCode,
-    time::Duration,
 };
 
 use larch_core::{
@@ -28,13 +27,8 @@ use larch_core::{
 };
 
 use crate::{
-    python_verb::run_python_verb, session_env_commands, tracking_issue_commands,
-    voter_calibration_commands::resolve_like_python,
+    session_env_commands, tracking_issue_commands, voter_calibration_commands::resolve_like_python,
 };
-
-/// Bound for the delegated `design pause-load` bridge (leaf #8589 retires it).
-/// Raised to `pub(crate)` so the Step 0 owner reuses the same bridge bound.
-pub const PAUSE_LOAD_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The lifecycle marker whose plan-block special case reroutes. The shared
 /// larch-core `LIFECYCLE_PREFIXES` entries carry a trailing space, while
@@ -593,13 +587,12 @@ fn merge_router_flags(run_params: &Path, warn_lines: &mut Vec<String>, flags: &M
 // `design route`
 // ---------------------------------------------------------------------------
 
-/// Seam over the still-Python `design pause-load` verb: `(exit_code, stdout)`.
+/// Seam over the Rust-owned `design pause-load` verb: `(exit_code, stdout)`.
 type PauseLoad<'a> = &'a dyn Fn(&[OsString]) -> (i32, String);
 
 fn live_pause_load(arguments: &[OsString]) -> (i32, String) {
-    crate::runtime_entrypoint::code_and_stdout(run_python_verb(
-        arguments.to_vec(),
-        PAUSE_LOAD_TIMEOUT,
+    crate::runtime_entrypoint::code_and_stdout(crate::runtime_entrypoint::run_verified_larch(
+        arguments,
     ))
 }
 

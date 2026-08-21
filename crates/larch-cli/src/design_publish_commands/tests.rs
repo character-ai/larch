@@ -367,7 +367,7 @@ mod design_publish_commands_tests {
         let rc = publish_core(&runner, &ScriptReceipt::ok(), &session.args());
 
         assert_eq!(rc, 7);
-        assert!(runner.ran("design pause-save"));
+        assert!(runner.ran_larch("design pause-save"));
         assert!(!runner.ran("named-block write"));
     }
 
@@ -1216,6 +1216,7 @@ mod design_publish_commands_tests {
         let rc = publish_core(&runner, &ScriptReceipt::ok(), &publishing_args(&session));
 
         assert_eq!(rc, 0);
+        assert!(runner.ran_larch("design pause-save"));
         assert!(
             runner
                 .call("design pause-save")

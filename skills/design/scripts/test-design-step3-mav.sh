@@ -74,6 +74,9 @@ fi
 if [[ "\${1:-}" == plan-review && "\${2:-}" == persist-retally-env ]]; then
     exec "$ROOT/target/debug/larch" "\$@"
 fi
+if [[ "\${1:-}" == design && "\${2:-}" == read-result-env ]]; then
+    exec "$ROOT/target/debug/larch" "\$@"
+fi
 if [[ "\${1:-}" == plan-review && "\${2:-}" == tally ]]; then
     shift 2
     ballot="" design="" voter="" classification=""
@@ -176,34 +179,30 @@ mkdir -p "$D_PAUSE"
 FAKE_PLUGIN="$TMPROOT/fake-plugin"
 mkdir -p "$FAKE_PLUGIN/scripts"
 # The wrappers reach the Rust session verbs through the verified bootstrap.
-mkdir -p "$FAKE_PLUGIN/scripts"
 cat >"$FAKE_PLUGIN/scripts/larch.sh" <<'LARCH_STUB'
 #!/usr/bin/env bash
 set -uo pipefail
 case "${1:-} ${2:-}" in
   "session require-plugin-root"|"session validate-design-tmpdir") exit 0 ;;
+  "design pause-save")
+    shift 2
+    printf '%s' "PAUSE_STUB_ARGS="
+    previous=""
+    for argument in "$@"; do
+      if [ "$previous" = "--issue" ] && [ -z "$argument" ]; then
+        exit 7
+      fi
+      printf '<%s>' "$argument"
+      previous="$argument"
+    done
+    printf '\n'
+    exit 0
+    ;;
 esac
 printf '%s\n' "unexpected larch command: $*" >&2
 exit 64
 LARCH_STUB
 chmod +x "$FAKE_PLUGIN/scripts/larch.sh"
-mkdir -p "$FAKE_PLUGIN/python"
-cat >"$FAKE_PLUGIN/python/cli.py" <<'FAKE'
-#!/usr/bin/env python3
-import sys
-if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "require-plugin-root":
-    raise SystemExit(0)
-if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "validate-design-tmpdir":
-    raise SystemExit(0)
-if len(sys.argv) >= 3 and sys.argv[1] == "design" and sys.argv[2] == "pause-save":
-    print("PAUSE_STUB_ARGS=", end="")
-    for a in sys.argv[3:]:
-        print(f"<{a}>", end="")
-    print()
-    raise SystemExit(0)
-raise SystemExit(2)
-FAKE
-chmod +x "$FAKE_PLUGIN/python/cli.py"
 cat >"$D_PAUSE/session-env.sh" <<EOF2
 export DESIGN_TMPDIR='$D_PAUSE'
 export ISSUE_NUMBER='42'
@@ -215,22 +214,6 @@ cat >"$D_PAUSE/session-env-missing-issue.sh" <<EOF2
 export DESIGN_TMPDIR='$D_PAUSE'
 export ISSUE_NUMBER=''
 EOF2
-cat >"$FAKE_PLUGIN/python/cli.py" <<'FAKE'
-#!/usr/bin/env python3
-import sys
-if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "require-plugin-root":
-    raise SystemExit(0)
-if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "validate-design-tmpdir":
-    raise SystemExit(0)
-if len(sys.argv) >= 3 and sys.argv[1] == "design" and sys.argv[2] == "pause-save":
-    args = sys.argv[3:]
-    for i, a in enumerate(args):
-        if i > 0 and args[i-1] == "--issue" and not a:
-            raise SystemExit(7)
-    raise SystemExit(0)
-raise SystemExit(2)
-FAKE
-chmod +x "$FAKE_PLUGIN/python/cli.py"
 set +e
 _pause_missing_rc=0
 CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" "$SUBJECT" --session-env-path "$D_PAUSE/session-env-missing-issue.sh" --claude-pid test --plugin-root "$FAKE_PLUGIN" --phase pre >/dev/null 2>&1 || _pause_missing_rc=$?

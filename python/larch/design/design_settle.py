@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import io
 import os
 import shutil
 import subprocess
@@ -16,7 +15,7 @@ from typing import Final, Literal
 from larch import io as larch_io
 from larch.core import config
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
-from larch.design import design_dialectic, design_pause
+from larch.design import design_dialectic
 from larch.design.design_core import (
     WrapperArgs,
     _design_require_plugin_root,  # type: ignore[reportPrivateUsage]  # settle reuses design_core wrapper internals
@@ -184,11 +183,14 @@ def _default_pause_save(request: SettleRequest) -> ChildCapture:
     args = ["--design-tmpdir", str(request.design_tmpdir), "--issue", request.issue_number]
     if request.repo:
         args.extend(["--repo", request.repo])
-    buf = io.StringIO()
-    err = io.StringIO()
-    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
-        rc = design_pause.pause_save_main(args)
-    return ChildCapture(rc=int(rc), stdout=buf.getvalue(), stderr=err.getvalue())
+    result = subprocess.run(
+        [str(larch_entrypoint()), "design", "pause-save", *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=larch_entrypoint_env(),
+    )
+    return ChildCapture(rc=result.returncode, stdout=result.stdout, stderr=result.stderr)
 
 
 def _default_next_action(site: str, postplan_rc: int) -> ChildCapture:

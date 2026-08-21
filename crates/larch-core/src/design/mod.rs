@@ -6,6 +6,7 @@
 mod clarify;
 mod decompose;
 mod log_publish;
+mod pause;
 mod plan_grammar;
 mod plan_quality;
 mod plan_scout;
@@ -29,6 +30,10 @@ pub use log_publish::{
     GUIDELINE_ASSESSMENT_ARTIFACT, INVARIANT_ASSESSMENT_ARTIFACT, assessment_present,
     assessment_required, default_outcome_for_reason, lifecycle_outcome, publish_excluded,
     validate_issue, validate_repo, validate_slug,
+};
+pub use pause::{
+    DESIGN_PAUSE_END, DESIGN_PAUSE_START, PauseMarker, determine_pause_step, parse_pause_marker,
+    pause_body_hash, render_pause_state, strip_pause_markers, valid_pause_step,
 };
 
 pub use plan_grammar::{

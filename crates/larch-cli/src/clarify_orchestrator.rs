@@ -1149,7 +1149,7 @@ fn design_clarify_run(
         }
         return exit_from_i32(
             runner
-                .run_python(&pause_args.iter().map(OsString::from).collect::<Vec<_>>())
+                .run_larch(&pause_args.iter().map(OsString::from).collect::<Vec<_>>())
                 .rc,
         );
     }

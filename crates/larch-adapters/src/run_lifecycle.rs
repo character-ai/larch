@@ -34,7 +34,8 @@ use crate::{
     run_log_manifest::{ManifestStore, utc_now},
 };
 
-const ARCHIVE_MANIFEST_NAME: &str = "archive-manifest.json";
+/// Integrity manifest stored beside every materialized run archive.
+pub const ARCHIVE_MANIFEST_NAME: &str = "archive-manifest.json";
 const PENDING_ARCHIVE_NAME: &str = "archive.tar.gz";
 const PENDING_METADATA_NAME: &str = "retry.json";
 const ARCHIVE_MAX_MEMBERS: usize = 10_000;
@@ -2256,6 +2257,25 @@ impl PublicationPaths {
             lock_file: self.lock_file.clone(),
         }
     }
+}
+
+/// Return the one verified-cache location for a published run identity.
+///
+/// This is path derivation only. Callers must pass the result to
+/// [`verify_materialized_run_directory`] before reading it.
+///
+/// # Errors
+///
+/// Returns a lifecycle error when the skill or run ID is not a safe concrete
+/// path component.
+pub fn published_run_cache_directory(
+    homes: &LifecycleHomes,
+    storage: &ToolRepositoryStorage,
+    skill: &str,
+    run_id: &str,
+) -> Result<PathBuf, LifecycleError> {
+    validate_publication_identity(skill, run_id)?;
+    Ok(PublicationPaths::new(homes, storage, skill, run_id).cache_dir)
 }
 
 fn create_pending(

@@ -217,8 +217,10 @@ pub use design::{
     request_body_remainder,
 };
 pub use design::{
-    GUIDELINE_ASSESSMENT_ARTIFACT, INVARIANT_ASSESSMENT_ARTIFACT, assessment_present,
-    assessment_required, default_outcome_for_reason, lifecycle_outcome, publish_excluded,
+    DESIGN_PAUSE_END, DESIGN_PAUSE_START, GUIDELINE_ASSESSMENT_ARTIFACT,
+    INVARIANT_ASSESSMENT_ARTIFACT, PauseMarker, assessment_present, assessment_required,
+    default_outcome_for_reason, determine_pause_step, lifecycle_outcome, parse_pause_marker,
+    pause_body_hash, publish_excluded, render_pause_state, strip_pause_markers, valid_pause_step,
     validate_issue, validate_repo, validate_slug as validate_design_log_slug,
 };
 pub use difficulty::{

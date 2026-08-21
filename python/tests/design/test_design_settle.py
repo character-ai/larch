@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from larch.design import design_dialectic, design_pause, design_settle
+from larch.design import design_dialectic, design_settle
 from larch.design.design_settle import (
     ChildCapture,
     SettleRequest,
@@ -320,11 +320,11 @@ def test_default_pause_save_forwards_empty_issue(
     design = make_design_tmpdir(tmp_path)
     seen: list[list[str]] = []
 
-    def fake_pause(args: list[str]) -> int:
+    def fake_pause(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         seen.append(list(args))
-        return 1
+        return subprocess.CompletedProcess(args, 1, "", "")
 
-    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    monkeypatch.setattr(design_settle.subprocess, "run", fake_pause)
     _ = (design / ".pause-requested").write_text("", encoding="utf-8")
     result = step35_settle_for(
         request=SettleRequest(site="gate-a", design_tmpdir=design, issue_number=""),
@@ -332,6 +332,7 @@ def test_default_pause_save_forwards_empty_issue(
     )
     assert result.exit_rc == 1
     assert seen
+    assert seen[0][1:3] == ["design", "pause-save"]
     assert seen[0][seen[0].index("--issue") + 1] == ""
 
 

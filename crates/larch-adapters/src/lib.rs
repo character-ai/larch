@@ -40,10 +40,10 @@ pub mod statusline;
 pub use codex_home::{CodexHomeContext, CodexHomeError, CodexHomePreparer};
 pub use cursor_config::CursorConfigContext;
 pub use file_io::{
-    FileIoError, FileIoErrorKind, atomic_write_bytes, atomic_write_bytes_in, atomic_write_utf8,
-    atomic_write_utf8_in, guarded_update_env, open_confined_read, read_first_raw_key, read_kv_raw,
-    read_optional_utf8_lossy, read_session_kv_text, read_utf8, remove_optional_file,
-    rename_same_directory,
+    FileIoError, FileIoErrorKind, atomic_write_bytes, atomic_write_bytes_in, atomic_write_in_with,
+    atomic_write_utf8, atomic_write_utf8_in, guarded_update_env, open_confined_read,
+    read_first_raw_key, read_kv_raw, read_optional_utf8_lossy, read_session_kv_text, read_utf8,
+    remove_optional_file, rename_same_directory,
 };
 #[cfg(unix)]
 pub use filesystem::same_file_stat_metadata;
