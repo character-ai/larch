@@ -684,3 +684,188 @@ fn checks_commit_route_step4_commits_a_seeded_pathspec() {
     assert_eq!(kv(&stdout, "COMMIT_ROUTE_OUTCOME"), "continue");
     assert_eq!(kv(&stdout, "NEXT_ACTION"), "continue");
 }
+
+#[test]
+fn checks_commit_route_step4_commit_failure_seeds_a_stall() {
+    let stub = dispatch_stub(&[
+        (
+            "checks run-relevant",
+            "    printf 'RELEVANT_CHECKS_OK=true SITE=step3 COVERAGE=full PHASE=p1\\n'\n    exit 0",
+        ),
+        // The Step 4 implementation commit reports a failure envelope.
+        (
+            "implement commit",
+            "    printf 'COMMITTED=false\\n'\n    exit 1",
+        ),
+        ("run-log append-failure", "    exit 0"),
+        ("implement step-8-seed-initial", "    exit 0"),
+    ]);
+    let fixture = fixture(&stub);
+    fs::write(
+        fixture.tmpdir.join("implementation-commit-message.txt"),
+        "implementation commit\n",
+    )
+    .expect("implementation message");
+    fs::write(
+        fixture.tmpdir.join("implementation-commit-paths.nul"),
+        "README.md\0",
+    )
+    .expect("implementation pathspec");
+    fs::write(fixture.repo.join("README.md"), "dirty\n").expect("dirty readme");
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step3", "--commit-site", "step4"],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "COMMIT_ROUTE_OUTCOME"), "seeded-stall");
+    assert_eq!(kv(&stdout, "NEXT_ACTION"), "stall");
+    assert!(
+        fixture
+            .tmpdir
+            .join("commit-route-step4.failure.log")
+            .is_file(),
+        "a Step 4 commit failure must persist a failure log"
+    );
+}
+
+#[test]
+fn checks_commit_route_step4_recovery_recompute_runs_before_the_commit_leg() {
+    let stub = dispatch_stub(&[
+        (
+            "checks run-relevant",
+            "    printf 'RELEVANT_CHECKS_OK=true SITE=step3 COVERAGE=full PHASE=p1\\n'\n    exit 0",
+        ),
+        // The recovery scope-check keeps the recomputed paths in scope.
+        ("dirty-tree scope-check", "    exit 0"),
+    ]);
+    let fixture = fixture(&stub);
+    // A recovery seed forces run_step4_recovery_recompute to recompute the
+    // frozen paths from the prelaunch/postlaunch porcelain before committing.
+    fs::write(fixture.tmpdir.join("recovery-metadata.json"), "{}\n").expect("recovery metadata");
+    fs::write(fixture.tmpdir.join("step2-prelaunch-porcelain.nul"), "")
+        .expect("prelaunch porcelain");
+    fs::write(
+        fixture.tmpdir.join("step2-prelaunch-content-digests.txt"),
+        "",
+    )
+    .expect("prelaunch digests");
+    fs::write(fixture.tmpdir.join("plan.txt"), "plan\n").expect("plan");
+    let (code, _stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step3", "--commit-site", "step4"],
+        true,
+    );
+    // Without a recovery commit message the seed cannot resolve, so the leg
+    // reports a non-zero exit after the recompute path has been exercised.
+    assert_eq!(code, 1);
+}
+
+#[test]
+fn checks_commit_route_rejects_an_invalid_commit_site() {
+    let fixture = fixture(NOOP_STUB);
+    let (code, _stdout, stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step7", "--commit-site", "step9"],
+        true,
+    );
+    assert_eq!(code, 2);
+    assert!(stderr.contains("--commit-site"));
+}
+
+#[test]
+fn checks_commit_route_rejects_a_nonnumeric_commit_deadline() {
+    let fixture = fixture(NOOP_STUB);
+    let (code, _stdout, stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &[
+            "--checks-site",
+            "step7",
+            "--commit-site",
+            "step7",
+            "--commit-deadline-ms",
+            "soon",
+        ],
+        true,
+    );
+    assert_eq!(code, 2);
+    assert!(stderr.contains("--commit-deadline-ms"));
+}
+
+#[test]
+fn checks_commit_route_treats_empty_checks_output_as_a_failure() {
+    // The relevant-checks leg emits nothing, so the capture is synthesized into
+    // a failure envelope and the composite short-circuits to `checks-failed`.
+    let stub = dispatch_stub(&[("checks run-relevant", "    exit 0")]);
+    let fixture = fixture(&stub);
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step7", "--commit-site", "step7"],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "NEXT_ACTION"), "checks-failed");
+    assert!(stdout.contains("STATUS=fail"));
+}
+
+#[test]
+fn commit_route_seeds_a_stall_on_a_missing_commit_outcome() {
+    let stub = dispatch_stub(&[
+        (
+            "review-and-fix commit-fixes",
+            "    printf 'NOTHING=here\\n'\n    exit 0",
+        ),
+        ("run-log append-failure", "    exit 0"),
+        ("implement step-8-seed-initial", "    exit 0"),
+    ]);
+    let fixture = fixture(&stub);
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "commit-route",
+        &["--site", "step7", "--emit-next-action", "false"],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "COMMIT_ROUTE_OUTCOME"), "seeded-stall");
+}
+
+#[test]
+fn commit_route_step5_resume_handoff_stalls_on_a_dirty_tree_after_commit() {
+    let stub = dispatch_stub(&[
+        (
+            "review-and-fix commit-fixes",
+            "    printf 'COMMIT_OUTCOME=ok\\n'\n    exit 0",
+        ),
+        ("run-log append-failure", "    exit 0"),
+        ("implement step-8-seed-initial", "    exit 0"),
+    ]);
+    let fixture = fixture(&stub);
+    // The stub reports a successful commit but never cleans the tree, so the
+    // porcelain gate for the resume-handoff site converts it into a stall.
+    fs::write(fixture.repo.join("README.md"), "dirty\n").expect("dirty readme");
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "commit-route",
+        &[
+            "--site",
+            "step5-resume-handoff",
+            "--emit-next-action",
+            "false",
+        ],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "COMMIT_ROUTE_OUTCOME"), "seeded-stall");
+    assert!(
+        fixture
+            .tmpdir
+            .join("commit-route-step5-resume-handoff.failure.log")
+            .is_file(),
+        "a porcelain-gate stall must persist a failure log"
+    );
+}
