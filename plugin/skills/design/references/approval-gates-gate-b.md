@@ -49,7 +49,7 @@ The zero-findings short-circuit still precedes apply UX selection: nothing is ap
 
 Under default auto-apply (`approve_requested=false`), Gate B fires **no** finding-acceptance prompt. Only these brakes can prompt inside `### Shared post-apply pipeline`, independent of `approve_requested`:
 
-1. **Plan-size trigger** (`python/cli.py design postplan-emit` rc=12): in-loop continuation warns and continues. The unified Split-path single question fires only on prompt-side Gate B bail-out paths (`main-agent-apply-required`, `per-round-approval-required`).
+1. **Plan-size trigger** (`scripts/larch.sh design postplan-emit` rc=12): in-loop continuation warns and continues. The unified Split-path single question fires only on prompt-side Gate B bail-out paths (`main-agent-apply-required`, `per-round-approval-required`).
 2. **Plan-command validator escalation** (rc=10): cross-vendor auto-correction runs first with the `SKILL.md` shared validator contract. Fix-and-retry / Override / Cancel fires only after auto-fix is exhausted.
 
 Plan drift (`DRIFT_TRIGGER_FIRED=true`) records a warning in `execution-issues.md` and exits `0`; it no longer halts.
@@ -99,7 +99,7 @@ After the chosen findings have been applied to `plan.txt` (full accepted set or 
 4. Rewrite `plan.txt` via the Write tool with duplicates removed.
 5. Run settle through the launcher: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-b --round-num "$_gate_b_round"` (maps to `python/cli.py design step35-settle`).
 6. Do not pass `STEP3_RESUME_ROUND` before it is bound. If surrounding prose already has a validated round variable, pass it with `--round-num`; otherwise let the wrapper derive the Gate B round from `FINAL_ROUND_NUM`, `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM`.
-7. `python/cli.py design step35-settle` calls `python/cli.py design step2b-postplan --site gate-b` in-process after dedup succeeds. Settle owns the post-dedup apply-ready marker, Gate B phase writes, `POSTPLAN_RC=` parsing, and no-`plan-after-round-N.txt` contract. It forwards the Python action row. Scout-manifest clearing remains owned by `python/cli.py design step2b-postplan`.
+7. `python/cli.py design step35-settle` calls `scripts/larch.sh design step2b-postplan --site gate-b` in-process after dedup succeeds. Settle owns the post-dedup apply-ready marker, Gate B phase writes, `POSTPLAN_RC=` parsing, and no-`plan-after-round-N.txt` contract. It forwards the Python action row. Scout-manifest clearing remains owned by `scripts/larch.sh design step2b-postplan`.
 8. Settle-wrapper dispatch:
    1. **MANDATORY: READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.
    2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.

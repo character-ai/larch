@@ -279,7 +279,7 @@ This committed record is the operator-directed substitute for editing already-me
 | Sentinel | Decision | Evidence |
 |---|---|---|
 | design `.completed/step-3-terminal` | DELETE | zero refs outside `larch-logs/`; Step 3 routes on `bgjob/design-step3-review.result.env` |
-| `.completed/step-4` | KEEP | boundary-local compatibility sentinel per `skills/design/references/sentinel-host-table.md`; consumers: `python/larch/design/design_step3b.py` diagram gate, Rust plan-review downstream clear |
+| `.completed/step-4` | KEEP | boundary-local compatibility sentinel per `skills/design/references/sentinel-host-table.md`; consumers: the Rust `design step3b-entry` diagram gate, Rust plan-review downstream clear |
 | `.completed/step-5c-terminal` | DELETE | zero refs; Step 6 uses `bgjob/design-step5c.result.env` plus registry liveness |
 | `.completed/step-final-summary` | DELETE | zero refs |
 | implement `.completed/step-3-terminal` | DELETE | zero refs |

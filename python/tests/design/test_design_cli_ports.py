@@ -8,14 +8,10 @@ from larch import cli
 EXPECTED = {
     ("design", verb): (module, func, True)
     for verb, module, func in (
-        ("step2b-drafter", "larch.design.design_step2b", "step2b_drafter_main"),
-        ("step2b-postplan", "larch.design.design_step2b", "step2b_postplan_main"),
         ("step35-settle", "larch.design.design_settle", "step35_settle_main"),
-        ("step3b-entry", "larch.design.design_step3b", "step3b_entry_main"),
         ("step2b5", "larch.design.design_step5c", "step2b5_main"),
         ("step5b-prepare", "larch.design.design_step5b", "step5b_prepare_main"),
         ("step5b-annotate", "larch.design.design_step5b", "step5b_annotate_main"),
-        ("postplan-emit", "larch.design.design_postplan", "postplan_emit_main"),
         ("compose-plan-md", "larch.design.design_step5c", "compose_plan_md_main"),
         ("pause-save", "larch.design.design_pause", "pause_save_main"),
         ("pause-load", "larch.design.design_pause", "pause_load_main"),

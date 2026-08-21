@@ -478,21 +478,12 @@ def design_run_launcher_text(pid: str, plugin_root: str) -> str:
         "esac\n"
         'export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"\n'
         'case "$script" in\n'
-        "  step0-*.sh|step0c.sh|step1d5.sh|step1d7.sh|step1e-reentry.sh|design-step0-parse.sh|design-step0-session.sh|design-step0-route.sh|design-step0-clarify-hard-halt.sh|design-step0-init.sh|design-step0-abort-cleanup.sh|design-step0-ap-continue.sh|design-step0c.sh|design-step1d5.sh|design-step1d7.sh|design-step1e-reentry.sh)\n"
+        "  step0-*.sh|step0c.sh|step1d5.sh|step1d7.sh|step1e-reentry.sh|design-step0-parse.sh|design-step0-session.sh|design-step0-route.sh|design-step0-clarify-hard-halt.sh|design-step0-init.sh|design-step0-abort-cleanup.sh|design-step0-ap-continue.sh|design-step0c.sh|design-step1d5.sh|design-step1d7.sh|design-step1e-reentry.sh|design-step2b-drafter.sh|design-step2b-postplan.sh)\n"
         "    printf '%s\\n' 'ERROR=ported design wrapper must use bare verb name, not .sh' >&2\n"
         "    exit 2\n"
         "    ;;\n"
-        '  design-step2b-drafter.sh)\n'
-        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step2b-drafter --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
-        '    ;;\n'
-        '  design-step2b-postplan.sh)\n'
-        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step2b-postplan --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
-        '    ;;\n'
         '  design-step35-settle.sh)\n'
         '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step35-settle --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
-        '    ;;\n'
-        '  step3b-entry)\n'
-        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step3b-entry --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         '    ;;\n'
         '  design-step2b5.sh)\n'
         '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step2b5 --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
@@ -525,6 +516,9 @@ def design_run_launcher_text(pid: str, plugin_root: str) -> str:
         '    exec "$PLUGIN_ROOT/scripts/larch.sh" design "$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         "    ;;\n"
         "  step1d5|step1d7|step1e-reentry)\n"
+        '    exec "$PLUGIN_ROOT/scripts/larch.sh" design "$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        "    ;;\n"
+        "  step2b-drafter|step2b-postplan|step3b-entry)\n"
         '    exec "$PLUGIN_ROOT/scripts/larch.sh" design "$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         "    ;;\n"
         "  step6|step6-prelude|step6-cleanup)\n"

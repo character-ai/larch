@@ -60,6 +60,7 @@ mod design_log_publish_commands;
 mod design_publish_commands;
 mod design_step0_commands;
 mod design_step1_commands;
+mod design_step2b_commands;
 mod design_terminal_commands;
 mod developer_tooling_commands;
 mod difficulty_calibration_commands;
@@ -1355,6 +1356,18 @@ enum DesignCommand {
     /// Drive the Step 5c publish phase machine (#8591).
     #[command(disable_help_flag = true)]
     Publish(RawCompatibilityArguments),
+    /// Compose the Step 2b plan drafter and delegate postplan (#8583).
+    #[command(name = "step2b-drafter", disable_help_flag = true)]
+    Step2bDrafter(RawCompatibilityArguments),
+    /// Run the Step 2b postplan decision and completion contract (#8583).
+    #[command(name = "step2b-postplan", disable_help_flag = true)]
+    Step2bPostplan(RawCompatibilityArguments),
+    /// Emit the post-plan validation and plan-size result env (#8583).
+    #[command(name = "postplan-emit", disable_help_flag = true)]
+    PostplanEmit(RawCompatibilityArguments),
+    /// Run the Step 3b finalize or Step 5b.5 diagram entry (#8583).
+    #[command(name = "step3b-entry", disable_help_flag = true)]
+    Step3bEntry(RawCompatibilityArguments),
 }
 
 impl DesignCommand {
@@ -1390,6 +1403,10 @@ impl DesignCommand {
             Self::StepFinalSummary(_) => design_terminal_commands::step_final_summary(&arguments),
             Self::LogPublish(_) => design_log_publish_commands::log_publish_main(&arguments),
             Self::Publish(_) => design_publish_commands::design_publish_main(&arguments),
+            Self::Step2bDrafter(_) => design_step2b_commands::step2b_drafter(&arguments),
+            Self::Step2bPostplan(_) => design_step2b_commands::step2b_postplan(&arguments),
+            Self::PostplanEmit(_) => design_step2b_commands::postplan_emit(&arguments),
+            Self::Step3bEntry(_) => design_step2b_commands::step3b_entry(&arguments),
         }
     }
 }

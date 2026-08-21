@@ -86,7 +86,11 @@ impl CleanInstallCase {
             // `design read-result-env` parses with `add_help=False`; the
             // clean-install `--help` token is an extra argument, so the verb
             // prints its usage and exits 1 like the frozen Python parser.
-            | "clean-install-design-read-result-env" => 1,
+            | "clean-install-design-read-result-env"
+            // The two Step 2b wrapper verbs ignore the unbound `--help` token and
+            // then refuse on the missing `DESIGN_TMPDIR`, exiting 1.
+            | "clean-install-design-step2b-drafter"
+            | "clean-install-design-step2b-postplan" => 1,
             // `design parse-flags` owns the frozen Step 0-pre grammar: the
             // clean-install `--help` token is an unrecognized public flag and
             // refuses with the Python validation exit code, matching the
@@ -222,7 +226,12 @@ impl CleanInstallCase {
             // required-argument refusal and exits 2.
             | "clean-install-scout-dynamic-archetypes"
             | "clean-install-scout-filter-manifest"
-            | "clean-install-scout-plan-archetypes" => 2,
+            | "clean-install-scout-plan-archetypes"
+            // `step3b-entry` requires `--mode finalize|diagram`; the clean-install
+            // `--help` token carries no mode, so the entry refuses with exit 2.
+            // (`postplan-emit` owns a real `--help` action and exits 0 by default;
+            // the two Step 2b wrapper verbs join the `=> 1` arm above.)
+            | "clean-install-design-step3b-entry" => 2,
             // The three remaining publication verbs mirror the retired Python
             // module, which caught the argparse `SystemExit` and emitted each
             // verb's own publication-failure envelope, so the clean-install
@@ -761,6 +770,10 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-clarify-label", "clarify", "label"),
     CleanInstallCase::new("clean-install-design-clarify", "design", "clarify"),
     CleanInstallCase::new("clean-install-design-publish", "design", "publish"),
+    CleanInstallCase::new("clean-install-design-step2b-drafter", "design", "step2b-drafter"),
+    CleanInstallCase::new("clean-install-design-step2b-postplan", "design", "step2b-postplan"),
+    CleanInstallCase::new("clean-install-design-postplan-emit", "design", "postplan-emit"),
+    CleanInstallCase::new("clean-install-design-step3b-entry", "design", "step3b-entry"),
     CleanInstallCase::new("clean-install-cleanup-run", "cleanup", "run"),
     CleanInstallCase::new("clean-install-combine-issues-apply", "combine-issues", "apply"),
     CleanInstallCase::new(

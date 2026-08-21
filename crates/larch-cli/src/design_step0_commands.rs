@@ -807,8 +807,8 @@ pub fn require_design_tmpdir(env: &Env, design_tmpdir: Option<&str>) -> Result<P
     Ok(resolve_like_python(&path))
 }
 
-/// Bridge to the still-Python `design pause-save`; returns its exit code.
-fn pause_save_bridge(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
+/// Build the still-Python `design pause-save` argv shared by every bridge site.
+pub fn pause_save_arguments(design_tmpdir: &Path, issue: &str, repo: &str) -> Vec<OsString> {
     let mut arguments: Vec<OsString> = vec![
         "design".into(),
         "pause-save".into(),
@@ -821,10 +821,40 @@ fn pause_save_bridge(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
         arguments.push("--repo".into());
         arguments.push(repo.into());
     }
-    match run_python_verb(arguments, PAUSE_LOAD_TIMEOUT) {
+    arguments
+}
+
+/// Bridge to the still-Python `design pause-save`; returns its exit code.
+pub fn pause_save_bridge(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
+    match run_python_verb(
+        pause_save_arguments(design_tmpdir, issue, repo),
+        PAUSE_LOAD_TIMEOUT,
+    ) {
         Ok(output) => output.status().code().unwrap_or(1),
         Err(_error) => 1,
     }
+}
+
+/// Refuse a symlink target, then atomically publish `contents`. Returns `false`
+/// on any trust-boundary miss or I/O failure.
+pub fn atomic_write_string(path: &Path, contents: &str) -> bool {
+    if path.is_symlink() {
+        return false;
+    }
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let name = path.file_name().map_or_else(
+        || ".result.env".to_owned(),
+        |value| value.to_string_lossy().into_owned(),
+    );
+    let temporary = path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+    fs::write(&temporary, contents)
+        .and_then(|()| fs::rename(&temporary, path))
+        .inspect_err(|_error| {
+            let _ = fs::remove_file(&temporary);
+        })
+        .is_ok()
 }
 
 /// If a pause is requested, run pause-save and yield its exit code.
@@ -842,6 +872,18 @@ pub fn check_pause_and_exit(env: &Env, design_tmpdir: &Path) -> Option<ExitCode>
 
 pub fn exit_from_i32(code: i32) -> ExitCode {
     ExitCode::from(u8::try_from(code).unwrap_or(1))
+}
+
+/// Port of `larch_io._valid_var_name`: a non-empty name whose first character is
+/// a non-digit `[A-Za-z0-9_]` and whose remainder stays within that set.
+pub fn valid_var_name(value: &str) -> bool {
+    let mut chars = value.chars();
+    match chars.next() {
+        None => false,
+        Some(first) if first.is_ascii_digit() => false,
+        Some(first) if !(first.is_alphanumeric() || first == '_') => false,
+        Some(_) => chars.all(|ch| ch.is_alphanumeric() || ch == '_'),
+    }
 }
 
 /// Port of `phase_driver_read_result_env`: CR-free, allowlisted, order-preserving.

@@ -34,7 +34,7 @@ use crate::{
     design_step0_commands::{
         ChildOutcome, Env, LiveStep0Runner, Step0Runner, env_get, exit_from_i32, load_wrapper_env,
         parse_wrapper_args, phase_driver_read_result_env, require_plugin_root,
-        resolve_owned_run_id, utf8_arguments,
+        resolve_owned_run_id, utf8_arguments, valid_var_name,
     },
     design_step1_commands::append_failure_args,
     github_repository_resolution::repository_ref,
@@ -133,17 +133,6 @@ fn run_stall_capture(
     let mut child_args = vec!["stall-recovery".to_owned(), verb.to_owned()];
     child_args.extend(args.iter().cloned());
     runner.run(plugin_root, &child_args, &[], false)
-}
-
-/// Port of `_valid_var_name`.
-fn valid_var_name(value: &str) -> bool {
-    let mut chars = value.chars();
-    match chars.next() {
-        None => false,
-        Some(first) if first.is_ascii_digit() => false,
-        Some(first) if !(first.is_alphanumeric() || first == '_') => false,
-        Some(_) => value.chars().all(|c| c.is_alphanumeric() || c == '_'),
-    }
 }
 
 /// Port of `_validate_design_tmpdir_arg`: validate against the allowlist, then
