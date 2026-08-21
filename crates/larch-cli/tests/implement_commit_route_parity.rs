@@ -399,6 +399,69 @@ fn checks_commit_route_short_circuits_on_failed_checks() {
 }
 
 #[test]
+fn checks_commit_route_treats_a_checks_leg_spawn_failure_as_a_timeout() {
+    // With no stub the checks leg cannot spawn, so the capture is a timeout and
+    // the composite short-circuits to `checks-failed`.
+    let fixture = fixture(NOOP_STUB);
+    fs::remove_file(fixture.plugin_root.join("scripts/larch.sh")).expect("remove stub");
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step7", "--commit-site", "step7"],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "NEXT_ACTION"), "checks-failed");
+}
+
+#[test]
+fn checks_commit_route_relays_a_commit_leg_spawn_failure_as_a_stall() {
+    // The stub answers the checks leg and then deletes itself, so the commit
+    // leg cannot spawn and the composite falls through the timeout stall path.
+    let stub = dispatch_stub(&[(
+        "checks run-relevant",
+        "    printf 'RELEVANT_CHECKS_OK=true SITE=step7 COVERAGE=full PHASE=p1\\n'\n    rm -f \"$0\"\n    exit 0",
+    )]);
+    let fixture = fixture(&stub);
+    let (code, _stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step7", "--commit-site", "step7"],
+        true,
+    );
+    assert_eq!(code, 1, "a commit-leg spawn failure must fail closed");
+}
+
+#[test]
+fn checks_commit_route_step4_commit_leg_spawn_failure_seeds_a_stall() {
+    // The checks leg succeeds and removes the stub; the Step 4 implementation
+    // commit then cannot spawn and is recorded as a timeout stall.
+    let stub = dispatch_stub(&[(
+        "checks run-relevant",
+        "    printf 'RELEVANT_CHECKS_SKIPPED=true SITE=step3\\n'\n    rm -f \"$0\"\n    exit 0",
+    )]);
+    let fixture = fixture(&stub);
+    fs::write(
+        fixture.tmpdir.join("implementation-commit-message.txt"),
+        "implementation commit\n",
+    )
+    .expect("implementation message");
+    fs::write(
+        fixture.tmpdir.join("implementation-commit-paths.nul"),
+        "README.md\0",
+    )
+    .expect("implementation pathspec");
+    fs::write(fixture.repo.join("README.md"), "dirty\n").expect("dirty readme");
+    let (code, _stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step3", "--commit-site", "step4"],
+        true,
+    );
+    assert_ne!(code, 0, "a Step 4 commit spawn failure must fail closed");
+}
+
+#[test]
 fn checks_commit_route_step7_success_commits_and_checkpoints() {
     let stub = dispatch_stub(&[
         (

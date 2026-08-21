@@ -568,4 +568,59 @@ mod tests {
         std::fs::write(&file, nul_pathspec_bytes(&paths)).expect("write");
         assert_eq!(read_nul_pathspec(&file), paths);
     }
+
+    #[test]
+    fn ship_state_patch_refuses_a_symlink_and_absents_a_directory() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let missing = dir.path().join("directory-state");
+        std::fs::create_dir(&missing).expect("dir state");
+        assert_eq!(
+            patch_ship_state_stall(&missing, "5", "boom"),
+            ShipStatePatch::Absent,
+            "a non-file path seeds a fresh state"
+        );
+        #[cfg(unix)]
+        {
+            let target = dir.path().join("real-state.sh");
+            std::fs::write(&target, "PHASE=ship\n").expect("target");
+            let link = dir.path().join("linked-state.sh");
+            std::os::unix::fs::symlink(&target, &link).expect("symlink");
+            assert_eq!(
+                patch_ship_state_stall(&link, "5", "boom"),
+                ShipStatePatch::Refused,
+                "a symlinked ship state is refused"
+            );
+        }
+    }
+
+    #[test]
+    fn read_helpers_fail_soft_on_missing_files() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let missing = dir.path().join("absent");
+        assert_eq!(read_redacted_message(&missing), "");
+        assert!(read_nul_pathspec(&missing).is_empty());
+        assert!(!path_readable_nonempty(&missing));
+    }
+
+    #[test]
+    fn step3_self_edit_additions_unions_matching_records() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let repo = dir.path().join("repo");
+        let tmpdir = dir.path().join("tmp");
+        std::fs::create_dir_all(&repo).expect("repo");
+        std::fs::create_dir_all(&tmpdir).expect("tmp");
+        std::fs::write(repo.join("fixed.rs"), "fixed\n").expect("fixed file");
+        let recorded = crate::implement::self_edit_log::record_self_edits(
+            &tmpdir,
+            "lint-fix:step3",
+            &["fixed.rs".to_owned()],
+            &repo,
+            Some(0),
+        );
+        assert_eq!(recorded, 1);
+        let additions = step3_self_edit_additions(&tmpdir, &repo, &["fixed.rs".to_owned()]);
+        assert_eq!(additions, vec!["fixed.rs".to_owned()]);
+        // A path outside the dirty set is not unioned back in.
+        assert!(step3_self_edit_additions(&tmpdir, &repo, &[]).is_empty());
+    }
 }
