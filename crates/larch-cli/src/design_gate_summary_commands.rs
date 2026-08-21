@@ -1838,5 +1838,656 @@ mod tests {
         assert_eq!(parse_py_int("xx"), None);
         assert_eq!(parse_py_int("_1"), None);
         assert_eq!(parse_py_int(""), None);
+        assert_eq!(parse_py_int("1__0"), None);
+        assert_eq!(parse_py_int("1_"), None);
+    }
+
+    #[test]
+    fn render_gate_entry_exercises_error_and_help_paths() {
+        // Invalid choice, missing value, unrecognized argument, missing --gate,
+        // help, and the three happy gates all flow through render_gate.
+        let _ = render_gate(&os(&["--gate", "Z"]));
+        let _ = render_gate(&os(&["--gate"]));
+        let _ = render_gate(&os(&["--gate", "A", "--bogus"]));
+        let _ = render_gate(&os(&[]));
+        let _ = render_gate(&os(&["--help"]));
+        let _ = render_gate(&os(&["--gate", "A"]));
+        let _ = render_gate(&os(&["--gate", "B", "--accepted-count", "2"]));
+        let _ = render_gate(&os(&["--gate", "B", "--accepted-count", "-1"]));
+        let _ = render_gate(&os(&["--gate", "C"]));
+    }
+
+    #[test]
+    fn parse_gate_args_accepts_inline_equals_form() {
+        let argv = utf8_arguments(&os(&["--gate=B", "--accepted-count=4"]));
+        let parsed = parse_gate_args(&argv).expect("inline parse");
+        assert_eq!(parsed.gate, "B");
+        assert_eq!(parsed.accepted_count, 4);
+    }
+
+    #[test]
+    fn parse_gate_args_rejects_bad_int_and_bad_choice() {
+        assert!(
+            parse_gate_args(&utf8_arguments(&os(&[
+                "--gate",
+                "A",
+                "--accepted-count",
+                "nope"
+            ])))
+            .is_err()
+        );
+        assert!(
+            parse_gate_args(&utf8_arguments(&os(&[
+                "--gate",
+                "A",
+                "--approve-requested",
+                "maybe"
+            ])))
+            .is_err()
+        );
+        assert!(
+            parse_gate_args(&utf8_arguments(&os(&[
+                "--gate",
+                "A",
+                "--panel-failed",
+                "x"
+            ])))
+            .is_err()
+        );
+        assert!(
+            parse_gate_args(&utf8_arguments(&os(&[
+                "--gate",
+                "A",
+                "--accepted-audit-escalation",
+                "x"
+            ])))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn emit_gate_rows_rejects_control_characters() {
+        assert!(emit_gate_rows(&[("K".to_owned(), "line\nbreak".to_owned())]).is_err());
+        assert!(emit_gate_rows(&[("K".to_owned(), "carriage\rreturn".to_owned())]).is_err());
+        assert!(emit_gate_rows(&[("K".to_owned(), "clean".to_owned())]).is_ok());
+    }
+
+    #[test]
+    fn gate_c_approve_description_covers_flag_matrix() {
+        assert!(gate_c_approve_description(true, true).contains("acknowledge panel failure"));
+        assert!(gate_c_approve_description(false, true).contains("strong dissent"));
+        assert_eq!(
+            gate_c_approve_description(true, false),
+            "Approve the current plan and continue immediately to finalize."
+        );
+    }
+
+    #[test]
+    fn review_count_reads_and_validates_the_counter_file() {
+        assert_eq!(review_count(None), (0, ""));
+        assert_eq!(review_count(Some("")), (0, ""));
+        let dir = tempfile::tempdir().expect("tmp");
+        let path = dir.path().join("review-round-count.txt");
+        fs::write(&path, "2\n").expect("write");
+        assert_eq!(
+            review_count(Some(&dir.path().display().to_string())),
+            (2, "")
+        );
+        fs::write(&path, "abc").expect("write");
+        assert_eq!(
+            review_count(Some(&dir.path().display().to_string())),
+            (0, "non-numeric")
+        );
+        fs::write(&path, "   ").expect("write");
+        assert_eq!(
+            review_count(Some(&dir.path().display().to_string())),
+            (0, "")
+        );
+    }
+
+    #[test]
+    fn gate_c_at_cap_drops_rerun_and_flags_bad_counter() {
+        let dir = tempfile::tempdir().expect("tmp");
+        fs::write(dir.path().join("review-round-count.txt"), "5").expect("write");
+        let render = render_gate_c(Some(&dir.path().display().to_string()), false, false, false);
+        let rows = render.rows();
+        assert!(rows.iter().any(|(_, value)| value.contains("Approve, see the full plan, or discuss further?")));
+        assert!(!rows.iter().any(|(_, value)| value == "Re-run review panel"));
+        fs::write(dir.path().join("review-round-count.txt"), "xx").expect("write");
+        let warned =
+            render_gate_c(Some(&dir.path().display().to_string()), true, true, true).rows();
+        assert!(
+            warned
+                .iter()
+                .any(|(key, value)| key == "REVIEW_ROUND_COUNT_WARN" && value == "non-numeric")
+        );
+    }
+
+    #[test]
+    fn fs_helpers_classify_paths() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let file = dir.path().join("data.txt");
+        fs::write(&file, "abc").expect("write");
+        assert!(is_regular_file(&file));
+        assert!(!is_regular_file(dir.path()));
+        assert_eq!(file_size(&file), 3);
+        assert_eq!(file_size(&dir.path().join("missing")), 0);
+        assert_eq!(read_lossy(&file).as_deref(), Some("abc"));
+        assert!(read_lossy(&dir.path().join("missing")).is_none());
+        assert_eq!(os_args(&["a", "b"]).len(), 2);
+    }
+
+    #[test]
+    fn read_source_env_value_reads_export_and_plain_forms() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let path = dir.path().join("source-env.sh");
+        fs::write(&path, "export REPO_ROOT=\"/tmp/repo\"\nISSUE='42'\n").expect("write");
+        assert_eq!(read_source_env_value(&path, "REPO_ROOT"), "/tmp/repo");
+        assert_eq!(read_source_env_value(&path, "ISSUE"), "42");
+        assert_eq!(read_source_env_value(&path, "ABSENT"), "");
+        assert_eq!(
+            read_source_env_value(&dir.path().join("missing"), "REPO_ROOT"),
+            ""
+        );
+    }
+
+    #[test]
+    fn json_int_matches_python_int_coercion() {
+        assert_eq!(json_int(Some(&Value::from(5))), 5);
+        assert_eq!(json_int(Some(&Value::from(2.9))), 2);
+        assert_eq!(json_int(Some(&Value::from("x"))), 0);
+        assert_eq!(json_int(None), 0);
+    }
+
+    #[test]
+    fn kv_value_last_returns_the_final_occurrence() {
+        let text = "K=first\nK=second\r\nother=x\n";
+        assert_eq!(kv_value_last(text, "K"), "second");
+        assert_eq!(kv_value_last(text, "absent"), "");
+    }
+
+    #[test]
+    fn build_cost_args_flags_unavailable_when_zero() {
+        let empty: BTreeMap<String, i64> = BTreeMap::new();
+        assert_eq!(
+            build_cost_args(&empty),
+            vec!["--cost-unavailable".to_owned()]
+        );
+        let mut buckets: BTreeMap<String, i64> = BTreeMap::new();
+        buckets.insert("C_IN".to_owned(), 10);
+        buckets.insert("CLAUDE_T".to_owned(), 99); // _T keys excluded from the sum
+        let args = build_cost_args(&buckets);
+        assert!(args.contains(&"--claude-input-tokens".to_owned()));
+        assert!(args.contains(&"10".to_owned()));
+    }
+
+    #[test]
+    fn cursor_buckets_split_grok_from_composer() {
+        let data: Map<String, Value> = serde_json::from_str(
+            r#"{"BUCKETS_cursor_by_model":{"composer":{"input":3,"cache_read":1,"output":2}}}"#,
+        )
+        .expect("json");
+        let out = cursor_buckets_by_model(&data);
+        assert_eq!(out.get("U_IN"), Some(&3));
+        assert_eq!(out.get("U_GROK_IN"), Some(&0));
+        assert!(cursor_buckets_by_model(&Map::new()).is_empty());
+    }
+
+    #[test]
+    fn read_token_report_parses_vendor_buckets() {
+        let dir = tempfile::tempdir().expect("tmp");
+        assert!(read_token_report(dir.path()).is_empty());
+        let json = r#"{
+            "BUCKETS_claude": {"input": 4, "cache_read": 1, "cache_create_5m": 2, "cache_create_1h": 3, "output": 5},
+            "claude": {"totals": {"total": 12}},
+            "BUCKETS_codex_by_model": {"gpt": {"input": 7, "cached_input": 1, "output": 2}},
+            "BUCKETS_cursor_by_model": {"composer": {"input": 1, "cache_read": 0, "output": 1}}
+        }"#;
+        fs::write(dir.path().join("token-report-final.json"), json).expect("write");
+        let buckets = read_token_report(dir.path());
+        assert_eq!(buckets.get("C_IN"), Some(&4));
+        assert_eq!(buckets.get("CLAUDE_T"), Some(&12));
+        assert_eq!(buckets.get("D_IN"), Some(&7));
+        assert_eq!(buckets.get("U_IN"), Some(&1));
+    }
+
+    #[test]
+    fn duration_reads_hms_seconds_and_defaults() {
+        let dir = tempfile::tempdir().expect("tmp");
+        assert_eq!(duration(dir.path()), "N/A");
+        let path = dir.path().join("timing-report-final.json");
+        fs::write(&path, r#"{"total_hms": "01:02:03"}"#).expect("write");
+        assert_eq!(duration(dir.path()), "01:02:03");
+        fs::write(&path, r#"{"total_seconds": 0}"#).expect("write");
+        assert_eq!(duration(dir.path()), "N/A");
+        fs::write(&path, r#"{"total_seconds": 42}"#).expect("write");
+        assert_eq!(duration(dir.path()), "42");
+    }
+
+    #[test]
+    fn oos_info_collects_urls_from_the_sentinel() {
+        let dir = tempfile::tempdir().expect("tmp");
+        assert_eq!(oos_info(dir.path()), (0, String::new()));
+        let body = "OOS_FILE_MAP\tfile.rs\thttps://x/1\nnoise\nOOS_FILE_MAP\tb.rs\thttps://x/2\n";
+        fs::write(dir.path().join("oos-issues-created.md"), body).expect("write");
+        assert_eq!(
+            oos_info(dir.path()),
+            (2, "https://x/1\nhttps://x/2".to_owned())
+        );
+    }
+
+    #[test]
+    fn dynamic_archetypes_line_covers_status_branches() {
+        let dir = tempfile::tempdir().expect("tmp");
+        assert_eq!(
+            dynamic_archetypes_line(dir.path()),
+            "static-only, drafter absent"
+        );
+        let status = dir.path().join("step2b-drafter-status.txt");
+        fs::write(&status, "SCOUT_WRITTEN=false\nSCOUT_FAIL_REASON=timeout\n").expect("write");
+        assert_eq!(
+            dynamic_archetypes_line(dir.path()),
+            "static-only, drafter timeout"
+        );
+        fs::write(&status, "SCOUT_WRITTEN=true\n").expect("write");
+        assert_eq!(
+            dynamic_archetypes_line(dir.path()),
+            "static-only, drafter filter_failed"
+        );
+        let manifest = dir.path().join("scout-plan-manifest.json");
+        fs::write(&manifest, r#"{"archetypes": [1, 2]}"#).expect("write");
+        assert_eq!(dynamic_archetypes_line(dir.path()), "ok (2)");
+        fs::write(&manifest, r#"{"archetypes": []}"#).expect("write");
+        assert_eq!(
+            dynamic_archetypes_line(dir.path()),
+            "static-only, drafter empty"
+        );
+    }
+
+    #[test]
+    fn plan_review_and_difficulty_default_to_na_and_empty() {
+        let dir = tempfile::tempdir().expect("tmp");
+        assert_eq!(plan_review_line(dir.path()), "N/A");
+        assert_eq!(difficulty_summary_line(dir.path()), "");
+    }
+
+    #[test]
+    fn published_run_logs_path_gates_on_run_id_and_publish_flag() {
+        let dir = tempfile::tempdir().expect("tmp");
+        assert_eq!(published_run_logs_path(dir.path(), ""), "N/A");
+        assert_eq!(published_run_logs_path(dir.path(), "unknown"), "N/A");
+        assert_eq!(published_run_logs_path(dir.path(), "run-1"), "N/A");
+        fs::write(
+            dir.path().join(".design-publish-result.env"),
+            "LOG_PUBLISH_COMPLETED=false\n",
+        )
+        .expect("write");
+        assert_eq!(published_run_logs_path(dir.path(), "run-1"), "N/A");
+        fs::write(
+            dir.path().join(".design-publish-result.env"),
+            "LOG_PUBLISH_COMPLETED=true\n",
+        )
+        .expect("write");
+        let reference = published_run_logs_path(dir.path(), "run-1");
+        assert!(
+            reference.starts_with("provider `unknown`"),
+            "got {reference}"
+        );
+    }
+
+    #[test]
+    fn join_prefixed_summary_drops_blank_sections() {
+        assert_eq!(join_prefixed_summary(&[], "body"), "body");
+        assert_eq!(
+            join_prefixed_summary(&["  ".to_owned(), "\nhead\n".to_owned()], "body\n"),
+            "head\n\nbody\n"
+        );
+    }
+
+    #[test]
+    fn missing_assessment_warnings_track_marker_files() {
+        let dir = tempfile::tempdir().expect("tmp");
+        assert!(missing_assessment_summary_warnings(dir.path()).is_empty());
+        fs::write(dir.path().join(".missing-invariant-assessment-warning"), "").expect("write");
+        fs::write(dir.path().join(".missing-guideline-assessment-warning"), "").expect("write");
+        assert_eq!(missing_assessment_summary_warnings(dir.path()).len(), 2);
+        let out = dir.path().join("final-summary.md");
+        fs::write(&out, "BODY\n").expect("write");
+        prefix_missing_assessment_warnings(dir.path(), &out);
+        let body = fs::read_to_string(&out).expect("read");
+        assert!(body.contains("Missing architectural-invariant-assessment.md"));
+        assert!(body.ends_with("BODY\n"));
+    }
+
+    #[test]
+    fn guideline_exception_disclosure_prefixes_approved_summaries() {
+        let dir = tempfile::tempdir().expect("tmp");
+        assert_eq!(guideline_exception_disclosure(dir.path()), "");
+        let note = "Deviation.\nException: keep shim (author: main-agent, date: 2026-08-20)\n";
+        fs::write(dir.path().join(DESIGN_ASSESSMENT), note).expect("write");
+        let disclosure = guideline_exception_disclosure(dir.path());
+        assert!(disclosure.starts_with(GUIDELINE_EXCEPTION_DISCLOSURE_PREFIX));
+        let out = dir.path().join("final-summary.md");
+        fs::write(&out, "BODY\n").expect("write");
+        // Non-approved outcome must not prefix.
+        prefix_guideline_exception_disclosure(dir.path(), "paused", &out);
+        assert_eq!(fs::read_to_string(&out).expect("read"), "BODY\n");
+        prefix_guideline_exception_disclosure(dir.path(), "approved", &out);
+        assert!(
+            fs::read_to_string(&out)
+                .expect("read")
+                .starts_with(GUIDELINE_EXCEPTION_DISCLOSURE_PREFIX)
+        );
+    }
+
+    #[test]
+    fn write_degraded_fallback_writes_all_fields() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let out = dir.path().join("final-summary.md");
+        write_degraded_fallback(&out, "run-1", "approved", "01:00:00", 2, 1);
+        let body = fs::read_to_string(&out).expect("read");
+        assert!(body.contains("Degraded fallback"));
+        assert!(body.contains("**Duration**: 01:00:00"));
+        assert!(body.contains("**Exec issues**: 2"));
+    }
+
+    #[test]
+    fn parse_final_summary_args_maps_every_flag() {
+        let argv = utf8_arguments(&os(&[
+            "--outcome",
+            "approved",
+            "--mode",
+            "solo",
+            "--repo",
+            "o/r",
+            "--design-tmpdir",
+            "/tmp/d",
+            "--issue-number",
+            "7",
+            "--session-id",
+            "run-9",
+            "--pre-publish-only",
+            "--skip-summary-upsert",
+            "--unknown-token",
+        ]));
+        let parsed = parse_final_summary_args(&argv);
+        assert_eq!(parsed.outcome, "approved");
+        assert_eq!(parsed.mode_str, "solo");
+        assert_eq!(parsed.repo, "o/r");
+        assert_eq!(parsed.design_tmpdir_arg, "/tmp/d");
+        assert_eq!(parsed.issue_number_arg, "7");
+        assert!(parsed.issue_number_set);
+        assert_eq!(parsed.session_id_arg, "run-9");
+        assert!(parsed.session_id_set);
+        assert_eq!(parsed.phase, "pre");
+        assert!(!parsed.upsert_summary_comment);
+        let post = parse_final_summary_args(&utf8_arguments(&os(&["--post-publish-only"])));
+        assert_eq!(post.phase, "post");
+    }
+
+    fn args_with_tmpdir(outcome: &str, tmpdir: &str) -> FinalSummaryArgs {
+        FinalSummaryArgs {
+            outcome: outcome.to_owned(),
+            mode_str: "N/A".to_owned(),
+            repo: String::new(),
+            design_tmpdir_arg: tmpdir.to_owned(),
+            issue_number_arg: String::new(),
+            session_id_arg: String::new(),
+            issue_number_set: false,
+            session_id_set: false,
+            phase: "post",
+            upsert_summary_comment: true,
+        }
+    }
+
+    #[test]
+    fn resolve_validated_tmpdir_enforces_dir_and_outcome() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let good = args_with_tmpdir("approved", &dir.path().display().to_string());
+        assert_eq!(resolve_validated_tmpdir(&good).expect("ok"), dir.path());
+        let bad_outcome = args_with_tmpdir("nonsense", &dir.path().display().to_string());
+        assert!(resolve_validated_tmpdir(&bad_outcome).is_err());
+        let empty_outcome = args_with_tmpdir("", &dir.path().display().to_string());
+        assert!(resolve_validated_tmpdir(&empty_outcome).is_err());
+        let missing_dir =
+            args_with_tmpdir("approved", &dir.path().join("nope").display().to_string());
+        assert!(resolve_validated_tmpdir(&missing_dir).is_err());
+    }
+
+    #[test]
+    fn enrichment_writes_and_degrades_summaries() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let out = dir.path().join("final-summary.md");
+        fs::write(&out, "BODY\n").expect("write");
+        let load_result = load_issue_detail_groups(dir.path(), None, false);
+        assert_eq!(
+            write_enriched_post_publish_summary(dir.path(), &out, &load_result),
+            0
+        );
+        assert!(fs::read_to_string(&out).expect("read").contains("BODY"));
+        // Degraded recovery path returns non-zero and appends a warning log.
+        assert_eq!(enriched_degraded_recovery(dir.path(), &out, None), 1);
+        assert!(dir.path().join("execution-issues.md").is_file());
+    }
+
+    #[test]
+    fn review_detail_and_sidecars_handle_empty_dirs() {
+        let dir = tempfile::tempdir().expect("tmp");
+        assert_eq!(render_design_review_detail(dir.path()), "");
+        // No sidecar files present: emit is a no-op that writes no handoff.
+        emit_report_gate_sidecars_file(dir.path());
+        assert!(!dir.path().join("design-report-gate-sidecars.md").is_file());
+        fs::write(dir.path().join("design-failure-chat-print.md"), "chunk\n").expect("write");
+        emit_report_gate_sidecars_file(dir.path());
+        let handoff = dir.path().join("design-report-gate-sidecars.md");
+        assert!(handoff.is_file());
+        assert!(
+            fs::read_to_string(&handoff)
+                .expect("read")
+                .contains("chunk")
+        );
+    }
+
+    #[test]
+    fn cursor_buckets_split_grok_and_skip_non_objects() {
+        // A grok model routes to the grok triple; a non-object entry is skipped.
+        let data: Map<String, Value> = serde_json::from_str(
+            r#"{"BUCKETS_cursor_by_model":{"grok-4.5":{"input":9,"cache_read":2,"output":4},"broken":7}}"#,
+        )
+        .expect("json");
+        let out = cursor_buckets_by_model(&data);
+        assert_eq!(out.get("U_GROK_IN"), Some(&9));
+        assert_eq!(out.get("U_IN"), Some(&0));
+    }
+
+    #[test]
+    fn read_token_report_handles_mini_models_and_bad_json() {
+        let dir = tempfile::tempdir().expect("tmp");
+        // Invalid JSON yields an empty map.
+        fs::write(dir.path().join("token-report-final.json"), "not json").expect("write");
+        assert!(read_token_report(dir.path()).is_empty());
+        // A codex mini model routes to the mini triple; a non-object entry is skipped.
+        let json = r#"{
+            "BUCKETS_codex_by_model": {
+                "gpt-5.4-mini": {"input": 3, "cached_input": 1, "output": 2},
+                "gpt-5-codex": {"input": 4, "cached_input": 0, "output": 1},
+                "broken": 5
+            }
+        }"#;
+        fs::write(dir.path().join("token-report-final.json"), json).expect("write");
+        let buckets = read_token_report(dir.path());
+        assert_eq!(buckets.get("D_MINI_IN"), Some(&3));
+        assert_eq!(buckets.get("D_IN"), Some(&4));
+    }
+
+    #[test]
+    fn duration_defaults_when_keys_absent_or_json_invalid() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let path = dir.path().join("timing-report-final.json");
+        fs::write(&path, "not json").expect("write");
+        assert_eq!(duration(dir.path()), "N/A");
+        fs::write(&path, r#"{"unrelated": 1}"#).expect("write");
+        assert_eq!(duration(dir.path()), "N/A");
+    }
+
+    #[test]
+    fn oos_info_skips_short_rows() {
+        let dir = tempfile::tempdir().expect("tmp");
+        fs::write(
+            dir.path().join("oos-issues-created.md"),
+            "OOS_FILE_MAP\ttwo-fields\nOOS_FILE_MAP\tf.rs\thttps://x/9\n",
+        )
+        .expect("write");
+        assert_eq!(oos_info(dir.path()), (1, "https://x/9".to_owned()));
+    }
+
+    #[test]
+    fn dynamic_archetypes_line_treats_non_array_as_empty() {
+        let dir = tempfile::tempdir().expect("tmp");
+        fs::write(
+            dir.path().join("step2b-drafter-status.txt"),
+            "SCOUT_WRITTEN=true\n",
+        )
+        .expect("write");
+        fs::write(
+            dir.path().join("scout-plan-manifest.json"),
+            r#"{"archetypes": 7}"#,
+        )
+        .expect("write");
+        assert_eq!(
+            dynamic_archetypes_line(dir.path()),
+            "static-only, drafter empty"
+        );
+    }
+
+    #[test]
+    fn difficulty_summary_line_reads_plan_trailer() {
+        let dir = tempfile::tempdir().expect("tmp");
+        fs::write(
+            dir.path().join("plan.txt"),
+            "Plan body.\n\ndifficulty: HARD\n",
+        )
+        .expect("write");
+        assert_eq!(
+            difficulty_summary_line(dir.path()),
+            "predicted HARD; applied HARD"
+        );
+    }
+
+    #[test]
+    fn published_run_logs_path_uses_repo_root_when_present() {
+        let dir = tempfile::tempdir().expect("tmp");
+        fs::write(
+            dir.path().join(".design-publish-result.env"),
+            "LOG_PUBLISH_COMPLETED=true\n",
+        )
+        .expect("write");
+        fs::write(
+            dir.path().join("source-env.sh"),
+            format!("export REPO_ROOT=\"{}\"\n", dir.path().display()),
+        )
+        .expect("write");
+        let reference = published_run_logs_path(dir.path(), "run-1");
+        assert!(reference.contains("skill `design`"), "got {reference}");
+    }
+
+    #[test]
+    fn render_design_review_detail_walks_the_rounds_root() {
+        let dir = tempfile::tempdir().expect("tmp");
+        fs::create_dir(dir.path().join("plan-review")).expect("mkdir");
+        // A token ledger exercises latest_token_ledger's selection branch.
+        fs::write(dir.path().join("larch-tokens-1.jsonl"), "{}\n").expect("write");
+        fs::write(dir.path().join("larch-tokens-2.jsonl"), "{}\n").expect("write");
+        // The shared renderer emits its "no rounds" phase-detail header, which
+        // flows back through redaction unchanged.
+        assert!(render_design_review_detail(dir.path()).contains("Review Phase Detail"));
+    }
+
+    #[test]
+    fn write_enriched_appends_trailing_newline_when_missing() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let out = dir.path().join("final-summary.md");
+        fs::write(&out, "BODY").expect("write"); // no trailing newline
+        let load_result = load_issue_detail_groups(dir.path(), None, false);
+        assert_eq!(
+            write_enriched_post_publish_summary(dir.path(), &out, &load_result),
+            0
+        );
+    }
+
+    #[test]
+    fn prefix_missing_assessment_is_idempotent() {
+        let dir = tempfile::tempdir().expect("tmp");
+        fs::write(dir.path().join(".missing-invariant-assessment-warning"), "").expect("write");
+        let out = dir.path().join("final-summary.md");
+        // Body already carries the warning: no second prefix is added.
+        fs::write(
+            &out,
+            format!("{MISSING_INVARIANT_ASSESSMENT_SUMMARY_WARNING}\n\nBODY\n"),
+        )
+        .expect("write");
+        prefix_missing_assessment_warnings(dir.path(), &out);
+        let body = fs::read_to_string(&out).expect("read");
+        assert_eq!(
+            body.matches(MISSING_INVARIANT_ASSESSMENT_SUMMARY_WARNING)
+                .count(),
+            1
+        );
+        // A missing out file is a no-op.
+        prefix_missing_assessment_warnings(dir.path(), &dir.path().join("absent.md"));
+    }
+
+    #[test]
+    fn guideline_exception_disclosure_empty_without_active_exception() {
+        let dir = tempfile::tempdir().expect("tmp");
+        fs::write(dir.path().join(DESIGN_ASSESSMENT), "No exception here.\n").expect("write");
+        assert_eq!(guideline_exception_disclosure(dir.path()), "");
+    }
+
+    #[test]
+    fn prefix_guideline_exception_is_idempotent() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let note = "Deviation.\nException: keep shim (author: main-agent, date: 2026-08-20)\n";
+        fs::write(dir.path().join(DESIGN_ASSESSMENT), note).expect("write");
+        let disclosure = guideline_exception_disclosure(dir.path());
+        let out = dir.path().join("final-summary.md");
+        fs::write(&out, format!("{disclosure}\n\nBODY\n")).expect("write");
+        prefix_guideline_exception_disclosure(dir.path(), "approved", &out);
+        let body = fs::read_to_string(&out).expect("read");
+        assert_eq!(body.matches(&disclosure).count(), 1);
+        // Missing out file is a no-op even for an approved outcome.
+        prefix_guideline_exception_disclosure(
+            dir.path(),
+            "approved",
+            &dir.path().join("absent.md"),
+        );
+    }
+
+    #[test]
+    fn emit_report_gate_sidecars_appends_newline_to_unterminated_chunk() {
+        let dir = tempfile::tempdir().expect("tmp");
+        fs::write(
+            dir.path().join("design-failure-chat-print.md"),
+            "chunk-no-newline",
+        )
+        .expect("write");
+        emit_report_gate_sidecars_file(dir.path());
+        let handoff = dir.path().join("design-report-gate-sidecars.md");
+        assert!(fs::read_to_string(&handoff).expect("read").ends_with('\n'));
+    }
+
+    #[test]
+    fn upsert_final_summary_rejects_invalid_inputs_without_subprocess() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let out = dir.path().join("final-summary.md");
+        // Missing file.
+        assert!(!upsert_final_summary_from_disk("7", "run-1", "o/r", &out));
+        // Empty file.
+        fs::write(&out, "").expect("write");
+        assert!(!upsert_final_summary_from_disk("7", "run-1", "o/r", &out));
+        // Non-empty file but issue "0" / empty session are refused before any shell-out.
+        fs::write(&out, "body").expect("write");
+        assert!(!upsert_final_summary_from_disk("0", "run-1", "o/r", &out));
+        assert!(!upsert_final_summary_from_disk("7", "", "o/r", &out));
     }
 }

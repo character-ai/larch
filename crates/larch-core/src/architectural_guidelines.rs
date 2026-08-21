@@ -519,6 +519,30 @@ mod tests {
     }
 
     #[test]
+    fn days_in_month_tabulates_every_month() {
+        assert_eq!(days_in_month(1, false), Some(31));
+        assert_eq!(days_in_month(4, false), Some(30));
+        assert_eq!(days_in_month(2, false), Some(28));
+        assert_eq!(days_in_month(2, true), Some(29));
+        assert_eq!(days_in_month(0, false), None);
+        assert_eq!(days_in_month(13, false), None);
+    }
+
+    #[test]
+    fn exception_date_plausible_rejects_impossible_and_malformed_dates() {
+        assert!(exception_date_plausible("2024-02-29")); // leap year
+        assert!(!exception_date_plausible("2026-02-29")); // non-leap
+        assert!(!exception_date_plausible("2026-04-31")); // 30-day month
+        assert!(!exception_date_plausible("2026-13-01")); // month out of range
+        assert!(!exception_date_plausible("2026-01-00")); // day below one
+        assert!(!exception_date_plausible("2026-01")); // too few parts
+        assert!(!exception_date_plausible("2026-01-01-01")); // too many parts
+        assert!(!exception_date_plausible("abcd-01-01")); // non-numeric
+        assert!(exception_date_plausible("2000-02-29")); // divisible by 400
+        assert!(!exception_date_plausible("1900-02-29")); // divisible by 100 not 400
+    }
+
+    #[test]
     fn invariant_entries_keep_their_body_and_stop_at_foreign_headings() {
         let text = concat!(
             "# Title\n",

@@ -1116,3 +1116,105 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod reference_tests {
+    use super::{pins_disabled_publication, run_log_reference};
+    use std::fs;
+    use std::path::Path;
+
+    fn disabled_manifest_json(skill: &str, run_id: &str) -> String {
+        let namespace = "a".repeat(64);
+        format!(
+            r#"{{
+                "lifecycle_schema_version": 3,
+                "publication_mode": "disabled",
+                "storage_resolution_reason": "config-file-missing",
+                "skill": "{skill}",
+                "run_id": "{run_id}",
+                "local_namespace_id": "{namespace}",
+                "storage_base_uri": null,
+                "tool_repo_uri": null,
+                "storage_origin_id": null
+            }}"#
+        )
+    }
+
+    #[test]
+    fn pins_disabled_publication_accepts_a_well_formed_disabled_manifest() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let manifest = dir.path().join("manifest.json");
+        fs::write(&manifest, disabled_manifest_json("design", "run-1")).expect("write");
+        assert!(pins_disabled_publication("design", &manifest, "run-1"));
+    }
+
+    #[test]
+    fn pins_disabled_publication_rejects_mismatches_and_missing_files() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let manifest = dir.path().join("manifest.json");
+        // Missing file.
+        assert!(!pins_disabled_publication("design", &manifest, "run-1"));
+        // Wrong run id.
+        fs::write(&manifest, disabled_manifest_json("design", "other")).expect("write");
+        assert!(!pins_disabled_publication("design", &manifest, "run-1"));
+        // Wrong skill.
+        assert!(!pins_disabled_publication("implement", &manifest, "other"));
+        // Bad schema version.
+        fs::write(
+            &manifest,
+            disabled_manifest_json("design", "run-1").replace(
+                "\"lifecycle_schema_version\": 3",
+                "\"lifecycle_schema_version\": 1",
+            ),
+        )
+        .expect("write");
+        assert!(!pins_disabled_publication("design", &manifest, "run-1"));
+        // Non-null storage field.
+        fs::write(
+            &manifest,
+            disabled_manifest_json("design", "run-1").replace(
+                "\"storage_base_uri\": null",
+                "\"storage_base_uri\": \"gs://x\"",
+            ),
+        )
+        .expect("write");
+        assert!(!pins_disabled_publication("design", &manifest, "run-1"));
+        // Bad namespace id (not 64 hex chars).
+        fs::write(
+            &manifest,
+            disabled_manifest_json("design", "run-1").replace(&"a".repeat(64), "deadbeef"),
+        )
+        .expect("write");
+        assert!(!pins_disabled_publication("design", &manifest, "run-1"));
+        // Not JSON at all.
+        fs::write(&manifest, "not json").expect("write");
+        assert!(!pins_disabled_publication("design", &manifest, "run-1"));
+    }
+
+    #[test]
+    fn run_log_reference_reports_disabled_and_unknown_providers() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let manifest = dir.path().join("manifest.json");
+        // No manifest and no repo root: provider resolves to unknown.
+        let unknown = run_log_reference("design", None, "run-1", &manifest);
+        assert_eq!(
+            unknown,
+            "provider `unknown`, skill `design`, run ID `run-1`"
+        );
+        // A manifest pinning disabled publication answers first.
+        fs::write(&manifest, disabled_manifest_json("design", "run-1")).expect("write");
+        let disabled = run_log_reference("design", None, "run-1", &manifest);
+        assert_eq!(
+            disabled,
+            "no archive published because run-log storage was disabled, skill `design`, run ID `run-1`"
+        );
+        // Repo root that is not a resolvable larch repository stays unknown.
+        let stray: &Path = dir.path();
+        let missing = dir.path().join("absent.json");
+        let still_unknown = run_log_reference("implement", Some(stray), "run-9", &missing);
+        assert_eq!(
+            still_unknown,
+            "provider `unknown`, skill `implement`, run ID `run-9`"
+        );
+    }
+}
