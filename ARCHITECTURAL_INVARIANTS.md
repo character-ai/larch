@@ -198,10 +198,10 @@ guard. Evidence of violation: the postmerge transient retry converted through
 the generic reship path and requested a pre-fix rebase for a closed PR
 (#6668), after the #6610 fix repaired only the literal repro. Mechanical
 backing: the PR_CLOSED=true no-op guard on the pre-fix rebase in
-python/larch/implement/dispatch_ship.py, with regression tests
-test_ship_pre_fix_rebase_closed_pr_skips_physical_rebase and
-test_ship_pre_fix_rebase_closed_pr_does_not_override_conflict_handoff in
-python/tests/implement/test_implement_dispatch.py; extend the guard and tests
+crates/larch-cli/src/ship_pre_driver_commands.rs, with regression tests
+pre_fix_closed_pr_skips_every_git_mutation_but_writes_proof and
+pre_fix_conflict_handoff_precedes_the_closed_pr_skip in
+crates/larch-cli/tests/ship_pre_driver_parity.rs; extend the guard and tests
 when a new recovery route can reach a rebase or push for a closed or merged
 PR.
 

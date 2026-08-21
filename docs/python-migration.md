@@ -211,11 +211,10 @@ Issue #8624 moved four commands to Rust: `implement step-8-python-guard`,
 `implement step-8-oos-checkpoint`. `crates/larch-cli/src/implement_ship_commands.rs`
 owns their argument parsing, durable input resolution, bgjob dispatch, Python
 runtime probe, phantom probe, OOS exit mapping, and post-checkpoint bookkeeping.
-Callers and all four thin wrappers enter through `scripts/larch.sh`; the
-surviving Python pre-driver reaches the guard and seeder only through that
-verified bootstrap. The Python CLI registrations, re-exports, handlers, and
-exclusive helpers are removed atomically, and the command-registry milestones
-are complete.
+Callers and all four thin wrappers enter through `scripts/larch.sh`. The Rust
+pre-driver reaches the guard and seeder only through that verified bootstrap.
+The Python CLI registrations, re-exports, handlers, and exclusive helpers are
+removed atomically, and the command-registry milestones are complete.
 
 The retained `ship seed-initial-state` and `ship pr` engines remain Python and
 are reached only through the central Rust-to-Python migration seam. The Rust
@@ -226,8 +225,9 @@ bgjob, so a valid 30-minute CI wait outlives the default short bridge deadline.
 The Rust OOS router composes `oos disposition-checkpoint`, keeps the exact
 `OOS_CHECKPOINT_RC` and `NEXT_ACTION` grammar, writes run statistics, stamps the
 manifest, and atomically clears only `OOS_PENDING` after success.
-`dispatch_ship.py` remains for `ship pre-driver`, `ship pre-fix-rebase`,
-`ship route-exit`, and `ship normalize-assessment-handoff`.
+`crates/larch-cli/src/ship_pre_driver_commands.rs` owns `ship pre-driver`,
+`ship pre-fix-rebase`, `ship route-exit`, and
+`ship normalize-assessment-handoff`; `dispatch_ship.py` is removed.
 `dispatch_ship_seed.py` remains for Step 2 seed-context helpers. No Python
 fallback or dual owner remains for the four migrated commands.
 

@@ -154,6 +154,12 @@ mutation is the published plan receipt through the shared issue-mutation owner,
 so it left the Python `pull-requests` row for the Rust
 `pull-request-design-migrated` row.
 
+Issue #8622 moved the four ship routing and pre-fix commands to Rust.
+`ship pre-fix-rebase` resolves the checked-out repository through the typed
+`gh resolve-repo` owner, so it joins `repository-metadata`. The other three
+commands reach no GitHub service. The retained Python ship commands are
+enumerated on `pull-requests` instead of claiming the whole domain.
+
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
 ```text
@@ -186,9 +192,9 @@ pull-request-implement-retired	crates/larch-adapters/src/github/operations.rs	re
 pull-request-implement-terminal	crates/larch-adapters/src/github/operations.rs	rust	#7995	complete	complete	complete	implement step-18-gate-logs-flush,implement step-19
 pull-request-ci-monitor	crates/larch-adapters/src/github_actions.rs	rust	#7681	complete	complete	complete	ci behind-count,ci decide,ci distill-log,ci failed-jobs,ci main-health,ci rerun-failed,ci status,ci wait
 pull-request-design-migrated	crates/larch-adapters/src/github/operations.rs	rust	#7680	complete	complete	complete	design dialectic-clear-stale,design dialectic-promote-candidates,design dialectic-validate-candidates,design dialectic-write-candidates,design driver,design failure-report,design pause-load,design pause-save,design publish,design read-result-env,design stage-terminal-state,design step-final-summary,design step1d5,design step1d7,design step1e-reentry,design step35-settle,design step5b-annotate,design step5b-prepare
-pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	pending	pending	pending	design dialectic-gatec,design dialectic-manual,design file-oos-annotate,design file-oos-prepare,design prelude,design render-final-summary,design render-gate,design step2b5,design step3-continuation-entry,design step5c,design step6,design step6-cleanup,design step6-prelude,pr *,ship *
+pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7680,#7681	pending	pending	pending	design dialectic-gatec,design dialectic-manual,design file-oos-annotate,design file-oos-prepare,design prelude,design render-final-summary,design render-gate,design step2b5,design step3-continuation-entry,design step5c,design step6,design step6-cleanup,design step6-prelude,pr *,ship pr,ship reconcile-manual-merge,ship seed-initial-state
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
-repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676	complete	complete	complete	gh remote-repo,gh resolve-repo
+repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676,#7681	complete	complete	complete	gh remote-repo,gh resolve-repo,ship pre-fix-rebase
 tracking-issue-comment-reads	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	tracking-issue append-comment,tracking-issue read,tracking-issue upsert-summary
 tracking-issue-comment-mutations	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	tracking-issue append-comment,tracking-issue upsert-summary
 tracking-issue-lifecycle	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7680,#7682	complete	complete	complete	design init-runparams,tracking-issue create-issue,tracking-issue mark-false-positive,tracking-issue rename

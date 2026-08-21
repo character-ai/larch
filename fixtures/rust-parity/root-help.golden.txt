@@ -36,6 +36,7 @@ Commands:
   git                       Local Git repository commands
   hook                      Advisory Claude Code hook commands
   implement                 `/implement` bootstrap, preflight, scout, recovery, and step checks
+  ship                      Ship pre-driver routing and rebase repair commands
   issue                     GitHub issue reads and issue-body wire helpers
   plan-block                The `larch:plan` issue-body block carrying the `/design` handoff
   status                    Inspect the installed larch and external tool health

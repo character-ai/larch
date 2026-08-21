@@ -155,14 +155,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("mermaid", "sanitize"): ("larch.rendering.rendering", "mermaid_sanitize_main", False),
     ("diagrams", "upsert"): ("larch.rendering.rendering", "diagrams_upsert_main", False),
     ("ship", "pr"): ("larch.implement.ship", "main", False),
-    ("ship", "pre-driver"): ("larch.implement.implement_dispatch", "ship_pre_driver_main", True),
-    ("ship", "pre-fix-rebase"): ("larch.implement.implement_dispatch", "ship_pre_fix_rebase_main", True),
-    ("ship", "normalize-assessment-handoff"): (
-        "larch.implement.implement_dispatch",
-        "ship_normalize_assessment_handoff_main",
-        True,
-    ),
-    ("ship", "route-exit"): ("larch.implement.implement_dispatch", "ship_route_exit_main", True),
     ("ship", "reconcile-manual-merge"): ("larch.implement.ship_recovery", "reconcile_manual_merge_main", True),
     ("ship", "seed-initial-state"): ("larch.implement.ship", "seed_initial_state_main", False),
     ("token", "check-budget"): ("larch.report.tokens", "token_check_budget_main", False),
@@ -201,20 +193,12 @@ _MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset(
     key for key, (_module, _func, machine_stdout) in _REGISTRY.items() if machine_stdout
 )
 
-_SHIP_PRE_DRIVER_STALLED_JSON = '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","ledger_dispatcher":"","ledger_exit_code":null,"ledger_failure_detail_log":"","ledger_phase":"","ledger_ready":false,"ledger_site":"","ledger_step":"","ledger_trigger":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
-_MIN_SUBCOMMAND_PARTS = 2
-
-
 def _version_supported(version_info: object) -> bool:
     return tuple(version_info) >= (3, 11)  # type: ignore[arg-type]
 
 
 def _unsupported_version_exit(args: list[str]) -> int:
-    if len(args) >= _MIN_SUBCOMMAND_PARTS and args[0] == "ship" and args[1] == "pre-driver":
-        print("ERROR: Python ship driver requires Python 3.11 or newer", file=sys.stderr)
-        print(_SHIP_PRE_DRIVER_STALLED_JSON, file=sys.stderr)
-        print("NEXT_ACTION=stall")
-        return 4
+    _ = args
     print(
         "ERROR: larch cli.py requires Python 3.11 or newer",
         file=sys.stderr,

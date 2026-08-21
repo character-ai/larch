@@ -700,40 +700,63 @@ fn refresh_execution_issues(tmpdir: &Path) {
 }
 
 fn patch_oos_pending(path: &Path) -> Result<(), String> {
-    let parent = path.parent().ok_or("ship state has no parent")?;
+    patch_ship_state_keys(path, &[("OOS_PENDING", "false".to_owned())], &[])
+}
+
+/// Patch a reviewed subset of the durable ship state without widening its key
+/// or value grammar.
+pub fn patch_ship_state_keys(
+    state_path: &Path,
+    updates: &[(&str, String)],
+    removals: &[&str],
+) -> Result<(), String> {
+    let parent = state_path.parent().ok_or("ship state has no parent")?;
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    let temporary = path.with_file_name(format!(
+    let temporary = state_path.with_file_name(format!(
         "{}.tmp",
-        path.file_name().and_then(OsStr::to_str).unwrap_or_default()
+        state_path
+            .file_name()
+            .and_then(OsStr::to_str)
+            .unwrap_or_default()
     ));
-    if let Ok(metadata) = fs::symlink_metadata(path) {
+    if let Ok(metadata) = fs::symlink_metadata(state_path) {
         if metadata.file_type().is_symlink() {
             return Err(format!(
                 "refusing to write symlinked ship state path: {}",
-                path.display()
+                state_path.display()
             ));
         }
         if !metadata.is_file() {
             return Err(format!(
                 "refusing patch-only ship state write: {}",
-                path.display()
+                state_path.display()
             ));
         }
     }
     if fs::symlink_metadata(&temporary).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
         return Err(format!(
             "refusing to write symlinked ship state path: {}",
-            path.display()
+            state_path.display()
         ));
     }
-    let text = fs::read_to_string(path)
-        .map_err(|_error| format!("refusing patch-only ship state write: {}", path.display()))?;
+    let text = fs::read_to_string(state_path).map_err(|_error| {
+        format!(
+            "refusing patch-only ship state write: {}",
+            state_path.display()
+        )
+    })?;
     let document = KvDocument::parse(&text, ParseOptions::legacy())
-        .map_err(|_error| format!("cannot patch ship state: {}", path.display()))?;
+        .map_err(|_error| format!("cannot patch ship state: {}", state_path.display()))?;
+    if let Some(key) = removals
+        .iter()
+        .find(|key| !SHIP_STATE_ALLOWED_KEYS.contains(key))
+    {
+        return Err(format!("invalid ship state patch key: {key}"));
+    }
     let mut rows: Vec<(String, String)> = Vec::new();
     for row in document.rows() {
         let (key, value) = (row.key(), row.value());
-        if !SHIP_STATE_ALLOWED_KEYS.contains(&key) {
+        if !SHIP_STATE_ALLOWED_KEYS.contains(&key) || removals.contains(&key) {
             continue;
         }
         if let Some(existing) = rows.iter_mut().find(|row| row.0 == key) {
@@ -745,13 +768,18 @@ fn patch_oos_pending(path: &Path) -> Result<(), String> {
     if rows.is_empty() {
         return Err(format!(
             "refusing patch-only ship state write: {}",
-            path.display()
+            state_path.display()
         ));
     }
-    if let Some(row) = rows.iter_mut().find(|row| row.0 == "OOS_PENDING") {
-        "false".clone_into(&mut row.1);
-    } else {
-        rows.push(("OOS_PENDING".to_owned(), "false".to_owned()));
+    for (key, value) in updates {
+        if !SHIP_STATE_ALLOWED_KEYS.contains(key) {
+            return Err(format!("invalid ship state patch key: {key}"));
+        }
+        if let Some(row) = rows.iter_mut().find(|row| row.0 == *key) {
+            value.clone_into(&mut row.1);
+        } else {
+            rows.push(((*key).to_owned(), value.clone()));
+        }
     }
     validate_ship_rows(&rows)?;
     let mut body = String::new();
@@ -761,8 +789,8 @@ fn patch_oos_pending(path: &Path) -> Result<(), String> {
         body.push_str(&value);
         body.push('\n');
     }
-    private_atomic_write(path, &body, parent)
-        .map_err(|_error| format!("cannot patch ship state: {}", path.display()))
+    private_atomic_write(state_path, &body, parent)
+        .map_err(|_error| format!("cannot patch ship state: {}", state_path.display()))
 }
 
 fn validate_ship_rows(rows: &[(String, String)]) -> Result<(), String> {
@@ -839,7 +867,7 @@ fn delegate_python_forward(arguments: Vec<OsString>, timeout: Duration) -> ExitC
     }
 }
 
-fn state_has_shell_kv(path: &Path) -> bool {
+pub fn state_has_shell_kv(path: &Path) -> bool {
     read_kv_document(path).is_some_and(|document| {
         document.rows().iter().any(|row| {
             let key = row.key();

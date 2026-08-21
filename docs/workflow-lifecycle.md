@@ -268,7 +268,7 @@ Long-running migrated steps write completion through `$TMPDIR/bgjob/<step>.resul
 
 Each start truncates or recreates its merge-input env before invoking `bgjob start --merge-result-env`, so stale KVs from a prior attempt cannot satisfy a fresh wait. `BGJOB_STATUS=WAIT` means the orchestrator repeats the identical `bgjob wait` with no progress probes. `BGJOB_STATUS=DONE` is only a readiness signal until the final stdout and result env contain `BGJOB_RC=0` plus the step's required KVs.
 
-Bgjob diagnostics live beside the result env under `$TMPDIR/bgjob/`: daemon stdout and stderr logs, registry rows, and copied result KVs. Run-log capture records the published summaries after those diagnostics and result envs have driven routing. Step 8 is the narrow exception to the generic success gate: `ship route-exit` follows the current `.step-8-ship-handoff.rc` and `.step-8-ship-handoff.json` sidecars, so a numeric driver rc is route data rather than generic bgjob failure. Timeout or orphaned bgjob results still block routing.
+Bgjob diagnostics live beside the result env under `$TMPDIR/bgjob/`: daemon stdout and stderr logs, registry rows, and copied result KVs. Run-log capture records the published summaries after those diagnostics and result envs have driven routing. Step 8 is the narrow exception to the generic success gate: `ship route-exit` follows `bgjob/implement-step8-ship.result.env`, so a numeric driver rc is route data rather than generic bgjob failure. Timeout or orphaned bgjob results still block routing.
 
 Concurrent external lanes use unique `--step` slugs, for example per-reviewer or per-research-lane names. Shared slugs would clobber registry rows, daemon logs, and `$TMPDIR/bgjob/<step>.result.env`.
 
@@ -289,7 +289,7 @@ This committed record is the operator-directed substitute for editing already-me
 | `.completed/step-6-terminal` | DELETE | zero refs |
 | `.completed/step-7a-terminal` | DELETE | zero refs |
 | `.step3-terminal-persisted-this-run` | DELETE | zero refs |
-| `.step-8-ship-handoff.rc` | KEEP | route-exit consumer `python/larch/implement/dispatch_ship.py`; plan carve-out keeps the driver rc in the sidecar |
+| `.step-8-ship-handoff.rc` | DELETE | zero runtime refs; Rust `ship route-exit` reads `bgjob/implement-step8-ship.result.env` |
 ### Plan-coverage scope disposition
 
 `/implement` compares the live work against the Step 0 materialized plan at `$IMPLEMENT_TMPDIR/plan.txt`. It counts firm `### NEW:`, `### UPDATED:`, and `### REWRITTEN:` paths. It excludes `### MAY_UPDATE:`.

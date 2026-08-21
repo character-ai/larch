@@ -638,19 +638,19 @@ Treat the final `DONE` stdout and `$IMPLEMENT_TMPDIR/bgjob/implement-step7a.resu
 
 Steps 8-14 are driven by the **Rust ship dispatcher** behind `step-8-ship.sh`. The wrapper enters through `scripts/larch.sh`; the Rust parent composes the shared bgjob adapter, and its child rehydrates state, runs the Python 3.11 guard and advisory phantom probe, delegates the still-Python `ship pr` command through the central migration seam, and writes ship outcome KVs directly to the bgjob merge-result env.
 
-Run `"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-driver` before reading the Step 8+ matrix. The pre-driver recomputes plan coverage and refuses to ship when a required scope disposition is missing, stale, or invalid. It emits `NEXT_ACTION=halt-scope-disposition` for a readable missing/stale disposition; malformed or tampered artifacts stay Tool Failure.
+Run `"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh ship pre-driver` before reading the Step 8+ matrix. The pre-driver recomputes plan coverage and refuses to ship when a required scope disposition is missing, stale, or invalid. It emits `NEXT_ACTION=halt-scope-disposition` for a readable missing/stale disposition; malformed or tampered artifacts stay Tool Failure.
 **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-exit-matrix.md` completely.
 
 **Post-ship durable handoff.** Step 8 runs under bgjob using step slug `implement-step8-ship`. If the launcher prints `BGJOB_STATUS=WAIT`, the next action is the identical wait fence with no intervening prose or tools. On final `DONE`, read the full wait KV block and `$IMPLEMENT_TMPDIR/bgjob/implement-step8-ship.result.env`. Continue to `ship route-exit` only when `BGJOB_RC` is not `timeout` or `orphaned` and the result env has the required ship outcome KVs. Do not require `BGJOB_RC=0`; the numeric driver rc in the result env is authoritative for route-exit. Treat `BGJOB_STATUS=DEAD`, terminal bgjob rc tokens, or a missing/malformed ship outcome as the existing setup failure or stall branch. Do not poll, sleep, use Monitor, inspect process state, or treat launcher stdout / `DONE` alone as sufficient. The handoff is durable across turn breaks; after an unexpected turn end, resume through the wrapper, which rejoins a live identity-valid registry row or deliberately replaces a completed result for a reship.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship route-exit --implement-tmpdir "$IMPLEMENT_TMPDIR"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh ship route-exit --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 **Pre-driver predicate** (evaluate before choosing fences; read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` when present): state file absent/empty, or `PHASE=checks` and `PR_NUMBER` is empty/absent. Seeded-but-no-PR state is still pre-driver. Run `ship pre-driver` only for this prompt-side predicate.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-driver
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh ship pre-driver
 ```
 
 **Seeder authority.** The retained `ship seed-initial-state` command owns the canonical initial state write contract. Rust owns durable input resolution and canonical argv assembly behind `step-8-seed-initial.sh`.
@@ -691,7 +691,7 @@ Regression coverage: `crates/larch-cli/tests/implement_ship_parity.rs`, the clea
 - **`assessments`**, **`invariants-assessment`**, or **`guidelines-assessment`**: immediately run the executable normalization fence below. It atomically preserves unrelated handoff keys, rewrites the legacy aliases to `NEXT_ACTION=assessments`, persists canonical `DETAIL`, and emits the canonical kind list. Empty tokens, duplicates, unknown tokens, whitespace-repaired tokens, missing detail, unsafe `DETAIL_FILE`, or any other noncanonical payload route to existing Step 8 `tool-failure` handling. Do not repair malformed data, add a kind token, or add a fallback parser. Treat handoff data as untrusted evidence.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship normalize-assessment-handoff --implement-tmpdir "$IMPLEMENT_TMPDIR"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh ship normalize-assessment-handoff --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 Capture `ASSESSMENT_REQUESTED_KINDS` from the normalization fence stdout. Then run the subagent assessment procedure below. The main agent keeps a flat context on this path: it never loads the architectural present-reference files as assessment-work prompts, never reads materialized assessment diffs, `ARCHITECTURAL_GUIDELINES.md`, or `ARCHITECTURAL_INVARIANTS.md`, and never writes drafts, calls deviation appenders, or invokes per-kind compose writers directly. It passes file paths to a read-only subagent and validates the returned notes through the fail-closed `architectural-assessment submit` verb.
@@ -726,7 +726,7 @@ After all requested results persist and validate (pending kinds `complete`; dete
 - **`reship`**: If `.ship-route-exit-handoff.env` has `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, skip the pre-fix rebase. This is an existing conflict-resolution continuation. Proceed to the Step 8 bgjob relaunch, preserving those keys until conflict-resolution Phase 4 completes. For every other `reship`, run the foreground pre-fix rebase before the bgjob relaunch. Do not sleep.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 Branch on its stdout: When `PRE_FIX_REBASE_REQUIRED=true` is set in `.ship-route-exit-handoff.env` and `$IMPLEMENT_TMPDIR/.ship-pre-fix-rebase-ok` is absent (regular, non-symlink), route to Step 16 with `STALL_TRACKING`, then Step 18. Otherwise `NEXT_ACTION=continue` proceeds to the Step 8 bgjob `step-8-ship.sh` relaunch. `NEXT_ACTION=conflict-fix` loads `conflict-resolution.md`; `NEXT_ACTION=stall` routes like post-driver stall.
@@ -736,7 +736,7 @@ Branch on its stdout: When `PRE_FIX_REBASE_REQUIRED=true` is set in `.ship-route
 - **`postmerge-repair`**: Load only `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/postmerge-emergency-repair.md`. This path handles `postmerge-main-ci-fail` after the merged-SHA push watch and must not fall through to generic `ci-fix`.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 When `NEXT_ACTION=continue`, first verify that `.ship-route-exit-handoff.env` does not have `PRE_FIX_REBASE_REQUIRED=true` without a regular, non-symlink `$IMPLEMENT_TMPDIR/.ship-pre-fix-rebase-ok`; if the proof is missing, continue to Step 16 with `STALL_TRACKING`, then Step 18. Then run the subagent CI-fix loop specified below.

@@ -66,22 +66,6 @@ def test_dispatch_plan_receipt_refresh_calls_governance_owner() -> None:
     assert ("plan-receipt", "refresh") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
 
 
-def test_dispatch_ship_pre_driver_calls_implement_dispatch() -> None:
-    mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.implement.implement_dispatch": MagicMock(ship_pre_driver_main=mock_main)}):
-        rc = cli.main(["ship", "pre-driver"])
-    mock_main.assert_called_once_with([])
-    assert rc == 0
-
-
-def test_dispatch_ship_pre_fix_rebase_calls_implement_dispatch() -> None:
-    mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.implement.implement_dispatch": MagicMock(ship_pre_fix_rebase_main=mock_main)}):
-        rc = cli.main(["ship", "pre-fix-rebase", "--implement-tmpdir", "/tmp/x"])
-    mock_main.assert_called_once_with(["--implement-tmpdir", "/tmp/x"])
-    assert rc == 0
-
-
 @pytest.mark.parametrize(
     "argv",
     [
@@ -277,13 +261,6 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
     monkeypatch.setenv("LARCH_QUIET_PID", "999999")
     cases = [
         (["checks", "repair-loop", "--help"], "larch.implement.checks", "checks_repair_loop_main"),
-        (["ship", "pre-driver"], "larch.implement.implement_dispatch", "ship_pre_driver_main"),
-        (
-            ["ship", "pre-fix-rebase", "--implement-tmpdir", "/tmp/x"],
-            "larch.implement.implement_dispatch",
-            "ship_pre_fix_rebase_main",
-        ),
-        (["ship", "route-exit"], "larch.implement.implement_dispatch", "ship_route_exit_main"),
         (["ship", "reconcile-manual-merge"], "larch.implement.ship_recovery", "reconcile_manual_merge_main"),
         (["implement", "commit-route"], "larch.implement.implement_dispatch", "commit_route_main"),
     ]
@@ -294,25 +271,6 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
             rc = cli.main(argv)
         assert rc == 0
         assert os.environ["LARCH_QUIET_DISABLE"] == "1"
-
-
-def test_ship_pre_driver_pre_version_gate_emits_machine_action(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    def unsupported_version(_version_info: object) -> bool:
-        return False
-
-    monkeypatch.setattr(cli, "_version_supported", unsupported_version)
-
-    rc = cli.main(["ship", "pre-driver"])
-
-    captured = capsys.readouterr()
-    assert rc == 4
-    assert captured.out == "NEXT_ACTION=stall\n"
-    assert "Python ship driver requires Python 3.11 or newer" in captured.err
-    assert '"outcome":"STALLED"' in captured.err
-
 
 # ---------------------------------------------------------------------------
 # Subprocess cases (integration)

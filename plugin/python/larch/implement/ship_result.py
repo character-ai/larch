@@ -21,7 +21,7 @@ from larch.outcomes import Outcome, StepResult
 from larch.state import finalize
 from larch.implement.ship_state import _tmpdir_under_allowed_root, _terminal_overlay_fields, _breadcrumb
 
-# Explicit wire-key map aligned with dispatch_ship handoff vocabulary (not blanket uppercasing).
+# Explicit wire-key map aligned with the Rust route-exit vocabulary (not blanket uppercasing).
 _RESULT_ENV_WIRE_KEYS: tuple[tuple[str, str], ...] = (
     ("outcome", "outcome"),
     ("needs_user_reason", "NEEDS_USER_REASON"),
@@ -307,7 +307,7 @@ def _result_env_rows(
         (wire_key, _result_env_scalar(payload.get(source_key)))
         for source_key, wire_key in _RESULT_ENV_WIRE_KEYS
     ]
-    # CI pairing mirrors dispatch_ship._write_ship_route_handoff: always emit
+    # CI pairing mirrors the Rust route-exit handoff: always emit
     # CI_ERRORS_FILE and FAILED_JOBS_COUNT; CI_ERRORS_DISTILL_CLASS only when
     # the digest path is empty. Built from raw emit_result args, not the sparse
     # JSON-bound payload.

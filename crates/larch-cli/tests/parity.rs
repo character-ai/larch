@@ -1650,6 +1650,18 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "session",
         "resolve-trusted-design-env",
     ),
+    CleanInstallCase::new(
+        "clean-install-ship-normalize-assessment-handoff",
+        "ship",
+        "normalize-assessment-handoff",
+    ),
+    CleanInstallCase::new("clean-install-ship-pre-driver", "ship", "pre-driver"),
+    CleanInstallCase::new(
+        "clean-install-ship-pre-fix-rebase",
+        "ship",
+        "pre-fix-rebase",
+    ),
+    CleanInstallCase::new("clean-install-ship-route-exit", "ship", "route-exit"),
     CleanInstallCase::new("clean-install-ci-timing-harness", "ci-timing", "harness"),
     CleanInstallCase::new("clean-install-ci-timing-jobs", "ci-timing", "jobs"),
     CleanInstallCase::new(
