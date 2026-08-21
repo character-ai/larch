@@ -168,6 +168,11 @@ impl std::error::Error for ReauthorRequired {}
 
 /// Git operations the assessment substrate needs from the CLI adapter layer.
 pub trait AssessmentGit {
+    /// Remote and branch used as the compose-time assessment base.
+    fn compose_base(&self) -> (&str, &str) {
+        ("origin", "main")
+    }
+
     /// `git rev-parse` / verify helper returning trimmed stdout.
     ///
     /// # Errors
@@ -530,6 +535,67 @@ pub fn materialize(
     prepare_pending(&normalized, &root, &tmpdir, git)
 }
 
+/// Read one current, identity-validated assessment for the ship PR gate.
+///
+/// `None` means the caller must request or rematerialize the assessment. Notes
+/// are redacted before leaving the assessment owner.
+///
+/// # Errors
+/// Returns when a purported current note is malformed or cannot be redacted safely.
+pub fn current_ship_assessment(
+    kind: AssessmentKind,
+    repo_root: &Path,
+    implement_tmpdir: &Path,
+    head_sha: &str,
+    base_ref: &str,
+    git: &dyn AssessmentGit,
+) -> Result<Option<AssessmentResult>, String> {
+    if !note_consumable(
+        implement_tmpdir,
+        head_sha,
+        kind,
+        base_ref,
+        Some(repo_root),
+        Some(git),
+    ) {
+        return Ok(None);
+    }
+    let metadata = read_env_strict(
+        &durable_note_env_path(implement_tmpdir, kind),
+        implement_tmpdir,
+    )?;
+    if metadata.get("NOTE_STATE").map(String::as_str) == Some(NOTE_STATE_UNAVAILABLE) {
+        return Ok(None);
+    }
+    let state = metadata.get("ASSESSMENT_KIND").cloned().unwrap_or_default();
+    let note = read_regular(&durable_note_path(implement_tmpdir, kind), implement_tmpdir)?;
+    if !authored_outcome_valid(&note, &state, kind.is_invariant()) {
+        return Ok(None);
+    }
+    let assessment = redact_outbound(&note);
+    if assessment.contains("[content truncated") {
+        return Err(format!(
+            "architectural-{} note redaction failed",
+            kind.key()
+        ));
+    }
+    Ok(Some(AssessmentResult {
+        kind,
+        state,
+        assessment: assessment.trim().to_owned(),
+        head_sha: metadata.get("HEAD_SHA").cloned().unwrap_or_default(),
+        base_ref: metadata.get("BASE_REF").cloned().unwrap_or_default(),
+        diff_fingerprint: metadata
+            .get("DIFF_FINGERPRINT")
+            .cloned()
+            .unwrap_or_default(),
+        knowledge_sha256: metadata
+            .get("KNOWLEDGE_SHA256")
+            .cloned()
+            .unwrap_or_default(),
+    }))
+}
+
 /// Revalidate identity fail-closed and persist one authored assessment note.
 ///
 /// # Errors
@@ -759,8 +825,11 @@ fn prepare_compose_assessment(
         ));
     }
     let metadata = read_env_lenient(&durable_note_env_path(implement_tmpdir, kind));
-    let base_ref = metadata.get("BASE_REF").cloned().unwrap_or_default();
+    let stored_base = metadata.get("BASE_REF").cloned().unwrap_or_default();
+    let (base_remote, base_name) = git.compose_base();
+    let base_ref = format!("{base_remote}/{base_name}");
     if !current_head.is_empty()
+        && stored_base == base_ref
         && note_consumable(
             implement_tmpdir,
             &current_head,
@@ -791,9 +860,6 @@ fn prepare_compose_assessment(
             warning: String::new(),
         });
     }
-    let base_remote = "origin";
-    let base_name = "main";
-    let base_label = format!("{base_remote}/{base_name}");
     let diff_text =
         git.implementation_diff_for_head(repo_root, &current_head, base_remote, base_name)?;
     if git.git_read(repo_root, &["rev-parse", "--verify", "HEAD^{commit}"])? != current_head {
@@ -809,7 +875,7 @@ fn prepare_compose_assessment(
         implement_tmpdir,
         kind,
         &current_head,
-        &base_label,
+        &base_ref,
         &fingerprint,
         &diff_path,
         status,
@@ -954,7 +1020,8 @@ fn already_handled(
             return Ok(false);
         }
     }
-    if base_ref.is_empty()
+    let (base_remote, base_name) = git.compose_base();
+    if base_ref != format!("{base_remote}/{base_name}")
         || !note_consumable(
             implement_tmpdir,
             head_sha,
@@ -2147,9 +2214,10 @@ mod tests {
         DeviationLogPending, HeadDrift, MAX_ASSESSMENT_CHARS, NOTE_STATE_AUTHORED,
         NOTE_STATE_DETERMINISTIC_CLEAN, NOTE_STATE_UNAVAILABLE, ReauthorRequired, SubmitError,
         already_handled, append_deviation_note, authored_outcome_valid, deterministic_out_of_scope,
-        diff_fingerprint, durable_note_path, final_report_sections, materialize, normalize_kinds,
-        note_consumable, read_regular, sanitize_detail, submit, validate_materialization,
-        write_deterministic_clean_note, write_outcome,
+        diff_fingerprint, durable_note_env_path, durable_note_path, final_report_sections,
+        materialize, normalize_kinds, note_consumable, read_env_lenient, read_regular,
+        sanitize_detail, submit, validate_materialization, write_deterministic_clean_note,
+        write_outcome,
     };
     use std::{
         collections::VecDeque,
@@ -2176,6 +2244,7 @@ mod tests {
         /// When set, each HEAD query yields a unique SHA (repeated-drift harness).
         unique_heads: bool,
         head_reads: Mutex<u64>,
+        base_remote: String,
         diff: String,
         incremental: Vec<String>,
         fail_read: Mutex<bool>,
@@ -2192,6 +2261,7 @@ mod tests {
                 after_sequence: None,
                 unique_heads: false,
                 head_reads: Mutex::new(0),
+                base_remote: "origin".to_owned(),
                 diff: diff.to_owned(),
                 incremental: Vec::new(),
                 fail_read: Mutex::new(false),
@@ -2219,6 +2289,11 @@ mod tests {
 
         fn with_incremental(mut self, paths: &[&str]) -> Self {
             self.incremental = paths.iter().map(|path| (*path).to_owned()).collect();
+            self
+        }
+
+        fn with_base_remote(mut self, remote: &str) -> Self {
+            self.base_remote = remote.to_owned();
             self
         }
 
@@ -2251,6 +2326,10 @@ mod tests {
     }
 
     impl AssessmentGit for FakeGit {
+        fn compose_base(&self) -> (&str, &str) {
+            (&self.base_remote, "main")
+        }
+
         fn git_read(&self, _repo_root: &Path, argv: &[&str]) -> Result<String, String> {
             if *self.fail_read.lock().expect("lock") {
                 return Err("fake git read failed".to_owned());
@@ -3021,6 +3100,20 @@ mod tests {
     }
 
     #[test]
+    fn materialize_persists_the_port_selected_remote_identity() {
+        let (_root, repo, tmpdir) = setup_repo_tmpdir();
+        write_guidelines_knowledge(&repo);
+        let git = FakeGit::new(HEAD_A, DOCS_DIFF).with_base_remote("upstream");
+        let (statuses, pending) =
+            materialize(&["guidelines"], &repo, &tmpdir, &git).expect("fork materialization");
+        assert!(pending.is_empty());
+        assert_eq!(statuses["guidelines"], "deterministic-clean");
+        let metadata =
+            read_env_lenient(&durable_note_env_path(&tmpdir, AssessmentKind::Guidelines));
+        assert_eq!(metadata["BASE_REF"], "upstream/main");
+    }
+
+    #[test]
     fn submit_invariant_violation_persists_outcome() {
         let (_root, repo, tmpdir) = setup_repo_tmpdir();
         write_invariants_knowledge(&repo);
@@ -3695,7 +3788,7 @@ mod tests {
             Some("handled")
         );
         assert!(
-            already_handled(AssessmentKind::Guidelines, &repo, &tmpdir, HEAD_A, &git)
+            already_handled(AssessmentKind::Guidelines, &repo, &tmpdir, HEAD_A, &git,)
                 .expect("already")
         );
     }

@@ -85,6 +85,7 @@ crates/larch-cli/src/review_and_fix_commands.rs	git-cli	#7671	typed-cli,typed-re
 crates/larch-cli/src/run_log_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/session_closeout_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/session_setup_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/ship_pr_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/ship_pre_driver_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/stall_recovery_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/stall_recovery_reporting.rs	gix-read	#7671	typed-read

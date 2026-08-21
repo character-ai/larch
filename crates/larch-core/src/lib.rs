@@ -86,9 +86,9 @@ pub use architectural_assessment::{
     MaterializedEvidence, NOTE_STATE_AUTHORED, NOTE_STATE_DETERMINISTIC_CLEAN,
     NOTE_STATE_UNAVAILABLE, REASON_DETERMINISTIC_CLEAN, REASON_UNAVAILABLE, ReauthorRequired,
     SubmitError, append_deviation_note, authored_outcome_valid, classify_note_for_kind,
-    deterministic_out_of_scope, diff_fingerprint, durable_note_path, final_report_sections,
-    materialize, normalize_kinds, note_consumable, read_regular, sanitize_detail, submit,
-    validate_materialization, write_deterministic_clean_note,
+    current_ship_assessment, deterministic_out_of_scope, diff_fingerprint, durable_note_path,
+    final_report_sections, materialize, normalize_kinds, note_consumable, read_regular,
+    sanitize_detail, submit, validate_materialization, write_deterministic_clean_note,
 };
 pub use architectural_guidelines::{
     ArchitecturalKind, ArchitecturalKnowledge, ArchitecturalStatus, DESIGN_ASSESSMENT,
@@ -303,12 +303,13 @@ pub use github_auth::{GitHubToken, GitHubTokenError, GitHubTokenErrorKind, acqui
 pub use implement::{
     CHECKS_TERMINAL_ACTIONS, DispatchState, INITIAL_SHIP_STATE_KEYS, InitialShipState,
     RecoveryParse, RecoveryPorcelainInputs, SHIP_STATE_ALLOWED_KEYS, STEP6_CHECKS_STEP,
-    ShipOutcome, ShipResult, ShipResultError, ShipState, ShipStateError, StepChecksSite,
-    checks_step_for_site, clear_external_scout_paths, compute_recovery_paths, load_digest_map,
-    manifest_legacy_fingerprint, parse_porcelain_z, path_under_submodule, public_args_for_site,
-    rel_under_tmp, resolve_step_and_budget, resolve_step_name, resolve_tmpdir_path, sha256_file,
-    state_file_has_kv, tmpdir_rel_in_repo, tmpdir_under_allowed_root, validate_ship_result_env,
-    write_bytes_atomic, write_digest_map, write_initial_state,
+    ShipOutcome, ShipPrBody, ShipResult, ShipResultError, ShipState, ShipStateError,
+    StepChecksSite, checks_step_for_site, clear_external_scout_paths, compose_ship_pr_body,
+    compute_recovery_paths, load_digest_map, manifest_legacy_fingerprint, parse_porcelain_z,
+    path_under_submodule, public_args_for_site, rel_under_tmp, resolve_step_and_budget,
+    resolve_step_name, resolve_tmpdir_path, sha256_file, ship_pr_title, state_file_has_kv,
+    tmpdir_rel_in_repo, tmpdir_under_allowed_root, validate_ship_result_env, write_bytes_atomic,
+    write_digest_map, write_initial_state,
 };
 pub use issue::{
     ACCEPTED_OOS_FILENAMES, BlockBoundary, CanonicalHeading, ConflictPlan, DispositionCounters,
