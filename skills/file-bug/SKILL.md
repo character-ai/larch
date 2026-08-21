@@ -32,6 +32,7 @@ Investigate a user-described bug inline, compose a detailed issue body, then del
 - Use `[BUG]` as the default issue title prefix.
 - Use `[BUG] (URGENT)` as the issue title prefix when `--urgent` was present.
 - Never pass `--no-dedup` to `/issue`.
+- Rely on `/issue` to assign the filed bug to the GitHub user authenticated in `gh`.
 - Use only `Read`, `Grep`, `Glob`, and safe read-only `Bash` discovery for investigation.
 - Use `Write` only for files under `$BUG_TMPDIR`.
 - The `Write` hook is active only after Step 2 writes a fresh `bug-*` activation sentinel.

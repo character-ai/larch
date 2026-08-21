@@ -291,7 +291,7 @@ pub use github::{
     GitHubIssueState, GitHubLabel, GitHubLabelCreate, GitHubListOutcome, GitHubListStop,
     GitHubMutationOutcome, GitHubOperationError, GitHubOperationErrorKind, GitHubRateLimitInputs,
     GitHubRepository, GitHubRepositoryRef, GitHubRequestKind, GitHubResponseLimits,
-    GitHubRetryAction, GitHubService, GitHubTransportPolicy, PullRequestCiState,
+    GitHubRetryAction, GitHubService, GitHubTransportPolicy, GitHubUser, PullRequestCiState,
     PullRequestMergeState, ReconciledMutation, ReleaseDataError, ReleaseDataErrorKind,
     ReleaseState, RemoteAsset, TagObjectId, WorkflowDispatchRequest, WorkflowJob,
     WorkflowLogArchive, WorkflowRun, WorkflowRunFilters, classify_github_retry, reconcile_mutation,

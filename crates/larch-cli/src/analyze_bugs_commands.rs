@@ -5357,6 +5357,7 @@ mod tests {
             state_reason: String::new(),
             url: format!("https://example.invalid/issues/{number}"),
             author: "fixture".to_owned(),
+            assignees: Vec::new(),
             labels: Vec::new(),
             comments: 0,
             created_at: String::new(),

@@ -10,7 +10,7 @@ use larch_core::{
     GitHubIssueListResult, GitHubIssueListTimeoutScope, GitHubIssueScan, GitHubIssueSearch,
     GitHubIssueState, GitHubLabel, GitHubLabelCreate, GitHubListOutcome, GitHubListStop,
     GitHubOperationError, GitHubOperationErrorKind, GitHubRepository, GitHubRepositoryRef,
-    GitHubService, GitHubTransportPolicy, ProcessCancellation, resolve_issue_list,
+    GitHubService, GitHubTransportPolicy, GitHubUser, ProcessCancellation, resolve_issue_list,
 };
 use octocrab::{Page, models, params};
 use serde::Serialize;
@@ -44,6 +44,30 @@ struct IssueListCollectionOptions {
 impl GitHubService for OctocrabGitHubService {
     fn transport_policy(&self) -> GitHubTransportPolicy {
         self.policy
+    }
+
+    fn authenticated_user<'a>(
+        &'a self,
+        cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, GitHubUser> {
+        Box::pin(async move {
+            self.guarded(cancellation, async {
+                let value = self
+                    .read_with_retry(cancellation, RateBucket::Core, || async {
+                        self.client.current().user().await
+                    })
+                    .await?;
+                validate_json(&value, self.policy)?;
+                validate_string(&value.login, self.policy)?;
+                if value.login.is_empty() {
+                    return Err(malformed(
+                        "GitHub authenticated-user response omitted login",
+                    ));
+                }
+                Ok(GitHubUser { login: value.login })
+            })
+            .await
+        })
     }
 
     fn repository<'a>(
@@ -177,17 +201,23 @@ impl GitHubService for OctocrabGitHubService {
                 validate_repo(&request.repo)?;
                 validate_string(&request.title, self.policy)?;
                 validate_string(&request.body, self.policy)?;
+                for assignee in &request.assignees {
+                    validate_string(assignee, self.policy)?;
+                }
                 for label in &request.labels {
                     validate_string(label, self.policy)?;
                 }
-                let result = self
+                let issues = self
                     .client
-                    .issues(request.repo.owner(), request.repo.name())
+                    .issues(request.repo.owner(), request.repo.name());
+                let mut create = issues
                     .create(&request.title)
                     .body(&request.body)
-                    .labels(request.labels.clone())
-                    .send()
-                    .await;
+                    .labels(request.labels.clone());
+                if !request.assignees.is_empty() {
+                    create = create.assignees(request.assignees.clone());
+                }
+                let result = create.send().await;
                 match result {
                     Ok(value) => issue_from_model(value, self.policy),
                     Err(error) if transient_octocrab_error(&error) => Err(ambiguous(&error, self)),
@@ -940,6 +970,14 @@ fn issue_from_list_model(
         .into_iter()
         .map(|label| label_from_model(label, policy))
         .collect::<Result<_, _>>()?;
+    let assignees: Vec<String> = value
+        .assignees
+        .into_iter()
+        .map(|assignee| {
+            validate_string(&assignee.login, policy)?;
+            Ok(assignee.login)
+        })
+        .collect::<Result<_, GitHubOperationError>>()?;
     let url = value.html_url.to_string();
     for text in [&value.title, &body, &url, &value.user.login] {
         validate_string(text, policy)?;
@@ -953,6 +991,7 @@ fn issue_from_list_model(
         state_reason,
         url,
         author: value.user.login,
+        assignees,
         labels,
         comments: value.comments,
         created_at: github_utc_timestamp(&value.created_at),
@@ -1407,6 +1446,7 @@ mod tests {
             repo: repo.clone(),
             title: String::from("Parity title"),
             body: String::from("Parity body"),
+            assignees: vec![String::from("fixture")],
             labels: vec![String::from("bug")],
         };
         let edit = GitHubIssueEdit {
@@ -1459,6 +1499,7 @@ mod tests {
             repo: repo.clone(),
             title: String::from("new"),
             body: String::new(),
+            assignees: Vec::new(),
             labels: Vec::new(),
         };
         fails!(

@@ -5,7 +5,7 @@ use larch_core::{
     GitHubActionsService, GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue,
     GitHubIssueCreate, GitHubIssueEdit, GitHubIssueList, GitHubIssueListResult, GitHubIssueSearch,
     GitHubLabel, GitHubLabelCreate, GitHubMutationOutcome, GitHubRepository, GitHubRepositoryRef,
-    GitHubService, GitHubTransportPolicy, ProcessCancellation, WorkflowDispatchRequest,
+    GitHubService, GitHubTransportPolicy, GitHubUser, ProcessCancellation, WorkflowDispatchRequest,
     WorkflowJob, WorkflowLogArchive, WorkflowRun, WorkflowRunFilters, collect_job_timing, run_logs,
     run_logs_setup_failure, workflow_path,
 };
@@ -46,6 +46,13 @@ fn unused_actions<T>() -> GitHubActionsFuture<'static, T> {
 impl GitHubService for FakeService {
     fn transport_policy(&self) -> GitHubTransportPolicy {
         GitHubTransportPolicy::github_com()
+    }
+
+    fn authenticated_user<'a>(
+        &'a self,
+        _cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubFuture<'a, GitHubUser> {
+        unused_github()
     }
 
     fn repository<'a>(

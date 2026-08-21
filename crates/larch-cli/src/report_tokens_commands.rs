@@ -332,6 +332,7 @@ fn post_issue(
             repository: repository.clone(),
             title: title.to_owned(),
             body,
+            assign_authenticated_user: false,
             labels: Vec::new(),
         };
         // A create that fails after GitHub already opened the issue leaves an

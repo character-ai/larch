@@ -91,7 +91,8 @@ impl<'service> IssueMutationOwner<'service> {
         snapshot_from_issue(repository, issue, response)
     }
 
-    /// Create one issue, redacting every outbound string before the request.
+    /// Create one issue, redacting every outbound string before the request
+    /// and assigning it to the authenticated GitHub user when requested.
     ///
     /// Authorization is checked before GitHub is contacted at all, so an
     /// unauthorized caller never reaches the network. A usable response
@@ -100,9 +101,9 @@ impl<'service> IssueMutationOwner<'service> {
     ///
     /// # Errors
     ///
-    /// Returns `unauthorized-mutation`, `redaction-failed`, `create-failed`,
-    /// or `invalid-read-back` inside an [`IssueCreateFailure`] that names the
-    /// orphan issue when one exists.
+    /// Returns `unauthorized-mutation`, `redaction-failed`,
+    /// `assignee-read-failed`, `create-failed`, or `invalid-read-back` inside
+    /// an [`IssueCreateFailure`] that names the orphan issue when one exists.
     pub async fn create(
         &self,
         cancellation: &dyn ProcessCancellation,
@@ -112,10 +113,26 @@ impl<'service> IssueMutationOwner<'service> {
         authorize(authorization).map_err(IssueCreateFailure::without_orphan)?;
         let redacted =
             redact_issue_create_request(request).map_err(IssueCreateFailure::without_orphan)?;
+        let assignees = if redacted.assign_authenticated_user {
+            let authenticated_user = self
+                .service
+                .authenticated_user(cancellation)
+                .await
+                .map_err(|error| {
+                    IssueCreateFailure::without_orphan(IssueMutationError::new(
+                        "assignee-read-failed",
+                    ))
+                    .with_detail(error.to_string())
+                })?;
+            vec![authenticated_user.login]
+        } else {
+            Vec::new()
+        };
         let create = GitHubIssueCreate {
             repo: redacted.repository,
             title: redacted.title,
             body: redacted.body,
+            assignees,
             labels: redacted.labels,
         };
         let _mutation = self.service.mutation_lock.lock().await;
@@ -545,10 +562,19 @@ fn verify_created_read_back(
         .iter()
         .map(|label| &label.name)
         .collect::<std::collections::BTreeSet<_>>();
+    let expected_assignees = request
+        .assignees
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    let actual_assignees = issue
+        .assignees
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>();
     if &verified != echoed
         || !issue_url_matches(&verified.url, &request.repo, verified.number)
         || issue.title != request.title
         || issue.body != request.body
+        || actual_assignees != expected_assignees
         || actual_labels != expected_labels
         || issue.is_pull_request
     {
@@ -724,6 +750,27 @@ mod tests {
                 .collect(),
         );
         issue.to_string()
+    }
+
+    fn authenticated_user_json() -> String {
+        serde_json::from_str::<Value>(&issue_json("T", "B", &[], "2026-07-19T00:00:00Z"))
+            .expect("issue fixture")["user"]
+            .to_string()
+    }
+
+    fn assigned_issue_json(title: &str, body: &str, labels: &[&str]) -> String {
+        let mut issue: Value =
+            serde_json::from_str(&issue_json(title, body, labels, "2026-07-19T00:00:00Z"))
+                .expect("issue fixture");
+        let assignee = issue["user"].clone();
+        issue["assignee"] = assignee.clone();
+        issue["assignees"] = json!([assignee]);
+        issue.to_string()
+    }
+
+    fn authenticated_user_response() -> IssueServiceExchange {
+        IssueServiceExchange::json("GET", "/user", 200, authenticated_user_json())
+            .expect("authenticated-user response")
     }
 
     fn comment_json(id: u64, body: &str) -> String {
@@ -1144,14 +1191,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_create_refuses_when_the_authenticated_assignee_cannot_be_resolved() {
+        let (service, server) = service(vec![
+            IssueServiceExchange::json("GET", "/user", 403, r#"{"message":"forbidden"}"#)
+                .expect("authenticated-user refusal"),
+        ]);
+
+        let failure = IssueMutationOwner::new(&service)
+            .create(
+                &Cancellation::new(),
+                &operator_authorization(),
+                &create_request("Title", "Body", &[]),
+            )
+            .await
+            .expect_err("an unresolved assignee must fail before create");
+
+        assert_eq!(failure.error.reason(), "assignee-read-failed");
+        assert_eq!(failure.orphan, None);
+        assert_eq!(server.finish().expect("stub finished").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_create_without_assignment_request_keeps_the_existing_payload() {
+        let unassigned = issue_json("T", "B", &[], "2026-07-19T00:00:00Z");
+        let (service, server) = service(vec![
+            IssueServiceExchange::json("POST", "/repos/owner/repo/issues", 201, unassigned.clone())
+                .expect("create response"),
+            IssueServiceExchange::json("GET", "/repos/owner/repo/issues/7", 200, unassigned)
+                .expect("create read-back"),
+        ]);
+        let mut request = create_request("T", "B", &[]);
+        request.assign_authenticated_user = false;
+
+        let created = IssueMutationOwner::new(&service)
+            .create(&Cancellation::new(), &operator_authorization(), &request)
+            .await
+            .expect("unassigned create succeeds");
+        let requests = server.finish().expect("stub finished");
+        let body: Value = serde_json::from_slice(&requests[0].body.bytes).expect("create JSON");
+
+        assert_eq!(created.number, 7);
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].method, "POST");
+        assert!(body.get("assignees").is_none());
+    }
+
+    #[tokio::test]
     async fn a_create_redacts_every_outbound_string_and_reads_back_its_identity() {
-        let redacted = issue_json(
+        let redacted = assigned_issue_json(
             "Renamed <REDACTED-TOKEN>",
             "Body <REDACTED-TOKEN>",
             &["keep"],
-            "2026-07-19T00:00:00Z",
         );
         let (service, server) = service(vec![
+            authenticated_user_response(),
             IssueServiceExchange::json("POST", "/repos/owner/repo/issues", 201, redacted.clone())
                 .expect("create response"),
             IssueServiceExchange::json("GET", "/repos/owner/repo/issues/7", 200, redacted)
@@ -1172,15 +1265,44 @@ mod tests {
             .await
             .expect("create succeeds");
         let requests = server.finish().expect("stub finished");
-        let body: Value = serde_json::from_slice(&requests[0].body.bytes).expect("create JSON");
+        let body: Value = serde_json::from_slice(&requests[1].body.bytes).expect("create JSON");
 
         assert_eq!((created.number, created.id), (7, 70));
         assert_eq!(created.url, "https://github.com/owner/repo/issues/7");
-        assert_eq!(requests[0].method, "POST");
-        assert_eq!(requests[1].method, "GET");
+        assert_eq!(requests[0].method, "GET");
+        assert_eq!(requests[0].path, "/user");
+        assert_eq!(requests[1].method, "POST");
+        assert_eq!(requests[2].method, "GET");
         assert_eq!(body["title"], "Renamed <REDACTED-TOKEN>");
         assert_eq!(body["body"], "Body <REDACTED-TOKEN>");
+        assert_eq!(body["assignees"], json!(["octocat"]));
         assert_eq!(body["labels"], json!(["keep"]));
+    }
+
+    #[tokio::test]
+    async fn a_create_refuses_an_assignee_github_did_not_persist() {
+        let assigned = assigned_issue_json("T", "B", &[]);
+        let unassigned = issue_json("T", "B", &[], "2026-07-19T00:00:00Z");
+        let (service, server) = service(vec![
+            authenticated_user_response(),
+            IssueServiceExchange::json("POST", "/repos/owner/repo/issues", 201, assigned)
+                .expect("create response"),
+            IssueServiceExchange::json("GET", "/repos/owner/repo/issues/7", 200, unassigned)
+                .expect("create read-back"),
+        ]);
+
+        let failure = IssueMutationOwner::new(&service)
+            .create(
+                &Cancellation::new(),
+                &operator_authorization(),
+                &create_request("T", "B", &[]),
+            )
+            .await
+            .expect_err("a dropped assignee must fail");
+
+        assert_eq!(failure.error.reason(), "invalid-read-back");
+        assert_eq!(failure.orphan, Some(7));
+        assert_eq!(server.finish().expect("stub finished").len(), 3);
     }
 
     #[tokio::test]
@@ -1358,7 +1480,10 @@ mod tests {
             serde_json::from_str(&issue_json("T", "B", &[], "2026-07-19T00:00:00Z"))
                 .expect("issue JSON");
         echo["id"] = json!(0);
-        let (invalid_service, server) = service(vec![response(201, echo.to_string())]);
+        let (invalid_service, server) = service(vec![
+            authenticated_user_response(),
+            response(201, echo.to_string()),
+        ]);
         let owner = IssueMutationOwner::new(&invalid_service);
 
         let failure = owner
@@ -1372,13 +1497,14 @@ mod tests {
 
         assert_eq!(failure.error.reason(), "invalid-read-back");
         assert_eq!(failure.orphan, Some(7));
-        assert_eq!(server.finish().expect("stub finished").len(), 1);
+        assert_eq!(server.finish().expect("stub finished").len(), 2);
 
         let echo = issue_json("T", "B", &[], "2026-07-19T00:00:00Z");
         let mut hostile_read_back: Value =
             serde_json::from_str(&echo).expect("issue read-back fixture");
         hostile_read_back["html_url"] = json!("https://attacker.test/owner/repo/issues/7");
         let (service, server) = service(vec![
+            authenticated_user_response(),
             response(201, echo),
             response(200, hostile_read_back.to_string()),
         ]);
@@ -1392,7 +1518,7 @@ mod tests {
             .expect_err("a foreign GET read-back URL must fail");
         assert_eq!(failure.error.reason(), "invalid-read-back");
         assert_eq!(failure.orphan, Some(7));
-        assert_eq!(server.finish().expect("stub finished").len(), 2);
+        assert_eq!(server.finish().expect("stub finished").len(), 3);
     }
 
     #[tokio::test]
@@ -1557,6 +1683,7 @@ mod tests {
             repository: repository(),
             title: title.to_owned(),
             body: body.to_owned(),
+            assign_authenticated_user: true,
             labels: labels.iter().map(|label| (*label).to_owned()).collect(),
         }
     }

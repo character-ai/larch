@@ -565,6 +565,7 @@ impl TrackingEffects for LiveEffects {
                     repository: reference.clone(),
                     title: title.to_owned(),
                     body: body.to_owned(),
+                    assign_authenticated_user: false,
                     labels: Vec::new(),
                 };
                 create_with_rollback(

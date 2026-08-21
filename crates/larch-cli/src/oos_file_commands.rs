@@ -261,6 +261,7 @@ impl FilingGateway for LiveFiling {
             context_file: &self.context_file,
             run_id: &self.run_id,
             trusted_root: &self.trusted_root,
+            assign_authenticated_user: false,
         })
         .map(|created| CreatedRow {
             number: created.number,

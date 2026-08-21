@@ -1750,6 +1750,7 @@ mod tests {
             state_reason: String::new(),
             url: url.to_owned(),
             author: "reporter".to_owned(),
+            assignees: Vec::new(),
             labels: vec![GitHubLabel {
                 id: 2,
                 name: "bug".to_owned(),

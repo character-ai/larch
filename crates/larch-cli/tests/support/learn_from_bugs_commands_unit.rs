@@ -16,6 +16,7 @@ fn issue(number: u64, title: &str, body: &str) -> GitHubIssue {
         state_reason: String::new(),
         url: format!("https://example.invalid/issues/{number}"),
         author: String::new(),
+        assignees: Vec::new(),
         labels: Vec::new(),
         comments: 0,
         created_at: String::new(),
