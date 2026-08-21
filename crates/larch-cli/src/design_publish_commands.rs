@@ -38,6 +38,7 @@ use crate::clarify_orchestrator::{
 };
 use crate::design_step0_commands::{exit_from_i32, stage_terminal_state_bridge};
 use crate::design_step1_commands::consumer_repo_root;
+use crate::design_terminal_commands::STAGE_EXTRA_FLAGS;
 use crate::execution_issue_commands::read_lossy;
 use crate::github_repository_resolution::repository_ref;
 use crate::github_service::{ServiceFailure, with_github_service};
@@ -778,19 +779,7 @@ fn publish_failure_stage_args(design_tmpdir: &Path, rows: &Rows, detail_log: &Pa
         "--failure-detail-log".to_owned(),
         detail_log.display().to_string(),
     ];
-    for (flag, key) in [
-        ("--publish-attempt-id", "PUBLISH_ATTEMPT_ID"),
-        ("--publish-rc-source", "PUBLISH_RC_SOURCE"),
-        ("--latest-phase", "LATEST_PHASE"),
-        ("--plan-write-ok", "PLAN_WRITE_OK"),
-        ("--publish-ok", "PUBLISH_OK"),
-        ("--renamed", "RENAMED"),
-        ("--log-publish-attempted", "LOG_PUBLISH_ATTEMPTED"),
-        ("--log-publish-completed", "LOG_PUBLISH_COMPLETED"),
-        ("--designed-admission-ready", "DESIGNED_ADMISSION_READY"),
-        ("--pr-url", "PR_URL"),
-        ("--recovery-branch", "RECOVERY_BRANCH"),
-    ] {
+    for (flag, key) in STAGE_EXTRA_FLAGS {
         let value = rows.get(key);
         if !value.is_empty() {
             args.push(flag.to_owned());
