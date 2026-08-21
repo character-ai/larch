@@ -470,7 +470,7 @@ Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WA
 
 Print: `> **🔶 /implement 4: commit (impl)**`
 
-Step 4 is owned by the Step 3 composite. On external implementer path (`$MANIFEST_PATH` non-empty), the composite Step 4 leg returns `noop` because the dispatcher already committed `$TOOL_LABEL` edits using `manifest.commit_message`. Skip the `implement commit` invocation. Keep the skip breadcrumb: print `⏩ 4: commit (impl) status=skip reason=dispatcher-committed sha=$COMMIT_SHA elapsed=<elapsed>`. On Claude fallback, the composite invokes `python/cli.py implement commit` with the redacted message and NUL pathspec from Step 2.4. On recovery paths, it refreshes `step2-recovery-paths-final.nul` after checks and commits that pathspec. Commit messages describe WHAT and WHY, not HOW.
+Step 4 is owned by the Step 3 composite. On external implementer path (`$MANIFEST_PATH` non-empty), the composite Step 4 leg returns `noop` because the dispatcher already committed `$TOOL_LABEL` edits using `manifest.commit_message`. Skip the `implement commit` invocation. Keep the skip breadcrumb: print `⏩ 4: commit (impl) status=skip reason=dispatcher-committed sha=$COMMIT_SHA elapsed=<elapsed>`. On Claude fallback, the composite invokes `scripts/larch.sh implement commit` with the redacted message and NUL pathspec from Step 2.4. On recovery paths, it refreshes `step2-recovery-paths-final.nul` after checks and commits that pathspec. Commit messages describe WHAT and WHY, not HOW.
 
 ### Rebase onto latest main (after implementation commit)
 

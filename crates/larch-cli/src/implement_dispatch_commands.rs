@@ -495,6 +495,9 @@ fn run_step_checks_worker(
             repo_root.as_os_str().to_owned(),
         ])?
     } else {
+        // #8611: `checks-commit-route` is now Rust-owned. Route it through the
+        // verified bootstrap as a captured child so this worker keeps appending
+        // the checks identity rows to the same stdout it always relayed.
         let mut args = vec![
             OsString::from("implement"),
             OsString::from("checks-commit-route"),
@@ -507,7 +510,8 @@ fn run_step_checks_worker(
             args.push(OsString::from("--rebase-checkpoint-4r"));
         }
         args.extend([OsString::from("--forked-target"), OsString::from(forked)]);
-        delegate_python(args)?
+        let root = resolve_plugin_root().map_err(|error| format!("checks-commit-route: {error}"))?;
+        delegate_verified_larch(repo_root, &root, &args)?
     };
     let text = String::from_utf8_lossy(output.stdout()).into_owned();
     if !output.stderr().is_empty() {
@@ -983,13 +987,26 @@ pub fn run_verified_larch_env_in(
     args: &[OsString],
     extra: &[(ChildEnvironment, OsString)],
 ) -> Result<ProcessOutput, String> {
+    run_verified_larch_env_in_timeout(cwd, root, args, extra, ADAPT_TIMEOUT)
+}
+
+/// Run a verified larch verb like [`run_verified_larch_env_in`] under a caller
+/// deadline. The commit-route legs bound `checks run-relevant`, `commit-route`,
+/// and the Step 4 `commit` child with site-specific deadlines above 600s.
+pub fn run_verified_larch_env_in_timeout(
+    cwd: &Path,
+    root: &Path,
+    args: &[OsString],
+    extra: &[(ChildEnvironment, OsString)],
+    timeout: Duration,
+) -> Result<ProcessOutput, String> {
     let program = LarchProgram::bootstrap(root)
         .map_err(|error| format!("could not select verified larch entrypoint: {error}"))?;
     let mut request = bounded_request_in(
         ExternalProgram::Larch(program),
         args.iter().cloned(),
         cwd,
-        ADAPT_TIMEOUT,
+        timeout,
         ADAPT_GRACE,
         ADAPT_OUTPUT_LIMIT,
     )?;

@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 
 from larch.agents import _vendor
 from larch.implement import (
-    dispatch_commit_route,
     dispatch_manifest,
 )
 
@@ -32,23 +31,6 @@ def test_vendor_cap_status_uses_first_whitespace_token() -> None:
         runner=lambda _argv: type("R", (), {"stdout": "STATUS=under_cap TOTAL=1\n"})(),
     )
     assert miss.hit is False
-
-
-def test_whitespace_kv_first_wins_and_skips_trailing_prose() -> None:
-    line = "STATUS=fail FAILURE_REASON=x STATUS=ok trailing prose bad=1"
-    assert dispatch_commit_route._parse_whitespace_kv_line(line) == {
-        "STATUS": "fail",
-        "FAILURE_REASON": "x",
-    }
-
-
-def test_relay_commit_kvs_filters_allowed_keys(capsys: pytest.CaptureFixture[str]) -> None:
-    dispatch_commit_route._relay_commit_kvs(
-        "NEXT_ACTION=stall\nCOMMIT_OUTCOME=failed\nIGNORED=1\nNEXT_ACTION=again\n"
-    )
-    assert capsys.readouterr().out == (
-        "NEXT_ACTION=stall\nCOMMIT_OUTCOME=failed\nNEXT_ACTION=again\n"
-    )
 
 
 def test_prelaunch_index_reader_uses_first_value(tmp_path: Path) -> None:

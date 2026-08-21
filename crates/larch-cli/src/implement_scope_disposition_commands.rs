@@ -226,6 +226,28 @@ pub fn compute_and_write_plan_coverage(
     compute_and_write(tmpdir, repo_root, plan_file, manifest)
 }
 
+/// Remove a stale scope disposition and report whether it was invalidated.
+///
+/// Mirrors the `invalidate-if-stale` action for the commit-route coverage relay
+/// (#8611): a disposition whose recorded inputs no longer match the live
+/// coverage is deleted and reported as invalidated.
+///
+/// # Errors
+///
+/// Returns the owner's diagnostic when validation itself cannot complete.
+pub fn invalidate_if_stale(
+    tmpdir: &Path,
+    repo_root: &Path,
+    manifest: Option<&Path>,
+) -> Result<bool, String> {
+    let result = validate_for_ship(tmpdir, repo_root, manifest)?;
+    let stale = result.reason == "scope-disposition-stale";
+    if stale {
+        let _ = fs::remove_file(tmpdir.join(DISPOSITION_JSON));
+    }
+    Ok(stale)
+}
+
 /// Public entry for `implement scope-disposition`.
 pub fn scope_disposition(arguments: &[OsString]) -> ExitCode {
     let parsed = parse_with_flags(arguments, &OPTIONS, &["-h", "--help"], 1);
