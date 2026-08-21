@@ -408,7 +408,7 @@ pub struct GuidelineException {
 ///
 /// Shared by the two calendar-date validators (`design::publish` also calls it)
 /// so the days-in-month table lives in one place.
-pub(crate) const fn days_in_month(month: u32, leap: bool) -> Option<u32> {
+pub const fn days_in_month(month: u32, leap: bool) -> Option<u32> {
     match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => Some(31),
         4 | 6 | 9 | 11 => Some(30),

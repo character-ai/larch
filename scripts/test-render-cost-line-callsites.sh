@@ -131,7 +131,7 @@ grep -Fq 'MANDATORY: emit from byte 1 of the cached file. When it begins with `#
 grep -Fq 'MANDATORY: terminal emission starts at byte 1 of the cache. Do not skip a leading `## Review Phase Detail` section or start at the later `## /design run ...` heading.' "$design_skill" || fail 'design Step 5c must require Review Phase Detail terminal output'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn' "$design_skill" || fail 'design SKILL must pin anti-recap prose'
 grep -Fq 'parenthetical cost paraphrase such as `~$10.46`' "$design_skill" || fail 'design SKILL must pin no-cost-paraphrase prose'
-grep -Fq '**Not** gated on `python/cli.py design render-final-summary` exit 0' "$design_skill" || fail 'design SKILL must pin render-exit carve-out'
+grep -Fq '**Not** gated on `scripts/larch.sh design render-final-summary` exit 0' "$design_skill" || fail 'design SKILL must pin render-exit carve-out'
 grep -Fq 'parse `FINAL_SUMMARY_PATH=<path>` from that completed stdout and follow the `/design` Read-always readiness profile' "$design_skill" || fail 'cancellation fence must cite shared readiness profile without full binding paragraph'
 grep -Fq 'Parse `FINAL_SUMMARY_PATH=<path>` from final `bgjob wait` `DONE` stdout' "$finalize_step5_failures" || fail 'Step 5c abort path must name bgjob DONE stdout source and cite shared readiness profile'
 grep -Fq 'parse `FINAL_SUMMARY_PATH=<path>` from `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` or final `DONE` stdout, follow the `/design` Read-always readiness profile' "$design_skill" || fail 'Step 5c abort must name bgjob result env source and cite shared readiness profile'
@@ -141,7 +141,7 @@ grep -Fq 'follow the `/design` Read-always readiness profile to Read/cache the f
 grep -Fq 'Apply terminal emit **after** the plan-write failure warning or success footer decisions below, and after Step 6 cleanup when cleanup runs.' "$design_skill" || fail 'Step 5c item 5 must preserve deferred terminal ordering'
 grep -Fq 'No free-form recap may appear between or after terminal emission.' "$design_skill" || fail 'Step 5d must preserve no-recap terminal ordering token'
 grep -Fq 'Do not add post-emit recap prose, artifact bullet recaps, or parenthetical cost paraphrases such as approximate no-cost restatements.' "$shared_final_summary" || fail 'shared final-summary emit must pin recap/no-cost rule'
-render_exit_count=$(grep -cF '**Not** gated on `python/cli.py design render-final-summary` exit 0' "$design_skill") || render_exit_count=0
+render_exit_count=$(grep -cF '**Not** gated on `scripts/larch.sh design render-final-summary` exit 0' "$design_skill") || render_exit_count=0
 test "$render_exit_count" -ge 2 || fail 'design SKILL must pin render-exit carve-out in preamble and Step 5c item 5'
 if grep -Fq 'Binding: markers `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END`' "$design_skill"; then
     fail 'design SKILL must not retain marker-body Binding restatement'

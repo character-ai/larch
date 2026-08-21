@@ -9518,8 +9518,8 @@ rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps 
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design file-oos-prepare", "design prelude", "design render-final-summary", "design step2b5", "design step3-continuation-entry", "design step5c", "mermaid sanitize"]
-rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "design dialectic-write-candidates", "design driver", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design publish", "design read-result-env", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step35-settle", "design step3b-entry", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
+python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design file-oos-prepare", "design prelude", "design step2b5", "design step3-continuation-entry", "design step5c", "mermaid sanitize"]
+rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "design dialectic-write-candidates", "design driver", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step35-settle", "design step3b-entry", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -9566,8 +9566,8 @@ rust = ["decompose prepare", "umbrella verify-completion"]
 [[callers]]
 path = "skills/design/references/design-outline.md"
 kind = "skill"
-python = ["architectural-guidelines present-note", "architectural-invariants present-note", "architectural-invariants read", "design render-final-summary"]
-rust = []
+python = ["architectural-guidelines present-note", "architectural-invariants present-note", "architectural-invariants read"]
+rust = ["design render-final-summary"]
 
 [[callers]]
 path = "skills/design/references/dialectic-clarifier.md"
@@ -9590,8 +9590,8 @@ rust = ["design failure-report", "design stage-terminal-state", "stall-recovery 
 [[callers]]
 path = "skills/design/references/finalize-step5.md"
 kind = "skill"
-python = ["architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design file-oos-annotate", "design file-oos-prepare", "design render-final-summary", "design step5c", "mermaid sanitize"]
-rust = ["design read-result-env", "issue add-blocked-by", "run-log append-failure"]
+python = ["architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design file-oos-annotate", "design file-oos-prepare", "design step5c", "mermaid sanitize"]
+rust = ["design read-result-env", "design render-final-summary", "issue add-blocked-by", "run-log append-failure"]
 
 [[callers]]
 path = "skills/design/references/flags.md"

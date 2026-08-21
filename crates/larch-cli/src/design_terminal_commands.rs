@@ -2306,7 +2306,7 @@ fn emit_and_complete_final_summary(design_tmpdir: &Path, final_summary_path: &st
 ///
 /// Shared by the two design final-summary emitters; each caller reads and
 /// formats the returned files with its own encoding and write/print policy.
-pub(crate) fn report_gate_sidecar_files(design_tmpdir: &Path) -> Vec<PathBuf> {
+pub fn report_gate_sidecar_files(design_tmpdir: &Path) -> Vec<PathBuf> {
     [
         design_tmpdir.join("design-failure-chat-print.md"),
         design_tmpdir.join("design-failure-operator-action-chat.md"),

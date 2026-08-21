@@ -502,7 +502,7 @@ pub fn resolve_repository_environment_path(
 }
 
 /// Storage-resolution reasons a disabled-publication manifest may carry.
-pub(crate) const DISABLED_STORAGE_REASONS: [&str; 3] = [
+pub const DISABLED_STORAGE_REASONS: [&str; 3] = [
     "config-file-missing",
     "larch-table-missing",
     "storage-base-uri-omitted",
@@ -516,7 +516,7 @@ pub(crate) const DISABLED_STORAGE_REASONS: [&str; 3] = [
 /// clone's configuration has since changed. Otherwise the clone's own storage
 /// resolution names the provider, and any resolution failure reads as
 /// `unknown` rather than blocking the refresh.
-pub(crate) fn run_log_reference(
+pub fn run_log_reference(
     skill: &str,
     repo_root: Option<&Path>,
     run_id: &str,
@@ -545,7 +545,7 @@ pub(crate) fn run_log_reference(
 }
 
 /// Whether one lifecycle manifest pins this `skill` run to disabled publication.
-pub(crate) fn pins_disabled_publication(skill: &str, manifest: &Path, run_id: &str) -> bool {
+pub fn pins_disabled_publication(skill: &str, manifest: &Path, run_id: &str) -> bool {
     if manifest.is_symlink() || !manifest.is_file() {
         return false;
     }
