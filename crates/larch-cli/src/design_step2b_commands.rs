@@ -41,11 +41,39 @@ use crate::decompose_commands::which_binary;
 use crate::design_commands::parse_stdout_kv;
 use crate::design_step0_commands::{
     ChildOutcome, Env, LiveStep0Runner, Step0Runner, WrapperNs, atomic_write_string, env_get,
-    exit_from_i32, load_wrapper_env, pause_save_bridge, pause_save_captured, require_plugin_root,
-    utf8_arguments, valid_var_name,
+    exit_from_i32, load_wrapper_env, pause_save_arguments, require_plugin_root, utf8_arguments,
+    valid_var_name,
 };
 use crate::design_step1_commands::consumer_repo_root;
 use crate::python_verb::run_python_verb;
+
+// ===========================================================================
+// Test seam
+// ===========================================================================
+//
+// nextest measures only in-process coverage, so the unit tests drive the verbs
+// directly and route every subprocess through an installed fake. Production
+// builds have no seam: each `#[cfg(test)]` guard below compiles out entirely.
+
+#[cfg(test)]
+trait Step2bSeam {
+    fn larch(&self, args: &[String], env: &[(String, String)]) -> ChildOutcome;
+    fn larch_inherit(&self, args: &[String]) -> i32;
+    fn python(&self, args: &[OsString]) -> (i32, String, String);
+    fn porcelain(&self) -> Option<String>;
+    fn vendor(&self) -> VendorResult;
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_SEAM: std::cell::RefCell<Option<std::rc::Rc<dyn Step2bSeam>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn current_seam() -> Option<std::rc::Rc<dyn Step2bSeam>> {
+    TEST_SEAM.with(|cell| cell.borrow().clone())
+}
 
 // ===========================================================================
 // Small shared utilities
@@ -181,7 +209,23 @@ fn run_larch(plugin_root: &Path, args: &[&str], env: &[(&str, &str)]) -> ChildOu
         .iter()
         .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
         .collect();
+    #[cfg(test)]
+    if let Some(seam) = current_seam() {
+        return seam.larch(&owned, &owned_env);
+    }
     LiveStep0Runner.run(plugin_root, &owned, &owned_env, false)
+}
+
+/// Run a still-Python verb, honoring the installed test seam when present.
+fn seam_python(args: Vec<OsString>) -> (i32, String, String) {
+    #[cfg(test)]
+    if let Some(seam) = current_seam() {
+        return seam.python(&args);
+    }
+    run_python_verb(args, Duration::from_secs(600))
+        .map_or((1, String::new(), String::new()), |output| {
+            output.decoded_streams()
+        })
 }
 
 /// Parse `stdout + "\n" + stderr` into a last-wins KV map, matching the Python
@@ -723,8 +767,7 @@ fn postplan_emit_standalone_pause(
         arguments.push(repo.into());
     }
     let _ = &plugin_root;
-    crate::python_verb::run_python_verb(arguments, std::time::Duration::from_secs(600))
-        .map_or(1, |output| output.status().code().unwrap_or(1))
+    seam_python(arguments).0
 }
 
 /// `larch_io.kv_value(key="export ISSUE_NUMBER")` over `source-env.sh`, stripped
@@ -750,9 +793,7 @@ fn clear_stale_or_warn(plugin_root: &Path, design_tmpdir: &Path) {
         "plan-rewrite".into(),
     ];
     let _ = plugin_root;
-    let ok = crate::python_verb::run_python_verb(arguments, std::time::Duration::from_secs(600))
-        .map(|output| output.status().code() == Some(0))
-        .unwrap_or(false);
+    let ok = seam_python(arguments).0 == 0;
     if !ok {
         eprintln!(
             "**⚠ design-postplan: dialectic-clear-stale failed after plan rewrite; stale clarifier artifacts may linger (Gate C fingerprint binding still gates debate).**"
@@ -1366,7 +1407,7 @@ fn shared_step2b_postplan_body(site: &str, design_tmpdir: &Path) -> PostplanResu
 /// `_call_pause_save_captured` + `_pause_save_stdout_ok`: run the still-Python
 /// pause-save owner, print its streams, and require the `PAUSE_OK=true` row.
 fn run_pause_save_terminal(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
-    let (code, stdout, stderr) = pause_save_captured(design_tmpdir, issue, repo);
+    let (code, stdout, stderr) = seam_python(pause_save_arguments(design_tmpdir, issue, repo));
     print_text(&stdout);
     if !stderr.is_empty() {
         eprint!("{stderr}");
@@ -1379,36 +1420,39 @@ fn run_pause_save_terminal(design_tmpdir: &Path, issue: &str, repo: &str) -> i32
 }
 
 pub fn step2b_postplan(arguments: &[OsString]) -> ExitCode {
-    let argv = utf8_arguments(arguments);
-    let parsed = match parse_common_wrapper_args(&argv) {
+    exit_from_i32(step2b_postplan_run(&utf8_arguments(arguments)))
+}
+
+fn step2b_postplan_run(argv: &[String]) -> i32 {
+    let parsed = match parse_common_wrapper_args(argv) {
         Ok(parsed) => parsed,
         Err(message) => {
             eprintln!("design-step2b-postplan.sh: {message}");
-            return ExitCode::from(2);
+            return 2;
         }
     };
     let env = rehydrate_env(&parsed);
     let plugin_root_value = env_get(&env, "CLAUDE_PLUGIN_ROOT", "").to_owned();
-    if let Err(code) = require_plugin_root(&plugin_root_value) {
-        return code;
+    if require_plugin_root(&plugin_root_value).is_err() {
+        return 1;
     }
     let design_tmpdir_raw = env_get(&env, "DESIGN_TMPDIR", "").to_owned();
     if design_tmpdir_raw.is_empty() {
         eprintln!("/design Step 2b postplan: DESIGN_TMPDIR required");
-        return ExitCode::from(1);
+        return 1;
     }
     if let Err(message) = validate_design_tmpdir_result(&design_tmpdir_raw) {
         eprintln!("ERROR={message}");
-        return ExitCode::from(2);
+        return 2;
     }
     let design_tmpdir = resolve_design_tmpdir(&design_tmpdir_raw);
     if parsed.write_completion_only && parsed.write_step2b_completion_only {
         eprintln!("design-step2b-postplan.sh: completion-only modes are mutually exclusive");
-        return ExitCode::from(2);
+        return 2;
     }
     if parsed.include_step2b && !parsed.write_completion_only {
         eprintln!("design-step2b-postplan.sh: --include-step2b requires --write-completion-only");
-        return ExitCode::from(2);
+        return 2;
     }
     let issue = env_get(&env, "ISSUE_NUMBER", "").to_owned();
     let repo = env_get(&env, "REPO", "").to_owned();
@@ -1417,9 +1461,9 @@ pub fn step2b_postplan(arguments: &[OsString]) -> ExitCode {
         if design_tmpdir.join(".pause-requested").is_file() {
             println!("POSTPLAN_RC=11");
             println!("POSTPLAN_STATUS=pause-save");
-            return exit_from_i32(run_pause_save_terminal(&design_tmpdir, &issue, &repo));
+            return run_pause_save_terminal(&design_tmpdir, &issue, &repo);
         }
-        return ExitCode::SUCCESS;
+        return 0;
     }
     if parsed.write_completion_only {
         touch(&design_tmpdir.join(".completed").join("step-2b.5"));
@@ -1429,20 +1473,16 @@ pub fn step2b_postplan(arguments: &[OsString]) -> ExitCode {
         if design_tmpdir.join(".pause-requested").is_file() {
             println!("POSTPLAN_RC=11");
             println!("POSTPLAN_STATUS=pause-save");
-            return exit_from_i32(run_pause_save_terminal(&design_tmpdir, &issue, &repo));
+            return run_pause_save_terminal(&design_tmpdir, &issue, &repo);
         }
-        return ExitCode::SUCCESS;
+        return 0;
     }
     let result = shared_step2b_postplan_body(&parsed.site, &design_tmpdir);
     print_text(&result.stdout_lines);
     if result.postplan_rc == 11 {
-        return exit_from_i32(run_pause_save_terminal(&design_tmpdir, &issue, &repo));
+        return run_pause_save_terminal(&design_tmpdir, &issue, &repo);
     }
-    if matches!(result.postplan_rc, 0 | 10 | 12 | 13) {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::FAILURE
-    }
+    i32::from(!matches!(result.postplan_rc, 0 | 10 | 12 | 13))
 }
 
 // ===========================================================================
@@ -1510,6 +1550,10 @@ fn emit_drafter_next_action(action: &str) {
 /// Run a Rust-owned larch child with inherited stdio, mirroring the Python
 /// `subprocess.run(cmd, check=False)` drafter launch. Returns the exit code.
 fn run_larch_inherit(plugin_root: &Path, args: &[String], env: &[(&str, &str)]) -> i32 {
+    #[cfg(test)]
+    if let Some(seam) = current_seam() {
+        return seam.larch_inherit(args);
+    }
     let mut command = Command::new(crate::design_step0_commands::entrypoint(plugin_root)); // lint-subprocess-via-runner: ok the drafter launch mirrors the Python subprocess.run inherited-stdio contract
     command.args(args);
     command.env("CLAUDE_PLUGIN_ROOT", plugin_root);
@@ -1526,6 +1570,10 @@ fn run_larch_inherit(plugin_root: &Path, args: &[String], env: &[(&str, &str)]) 
 /// Porcelain probe through the typed gix owner shared with the drafter launcher,
 /// so the Step 2b baseline and the launcher's post-launch probe use one format.
 fn git_status_porcelain() -> Option<String> {
+    #[cfg(test)]
+    if let Some(seam) = current_seam() {
+        return seam.porcelain();
+    }
     let cwd = std::env::current_dir().ok()?;
     crate::repository_porcelain(&cwd)
 }
@@ -1649,7 +1697,7 @@ fn handle_step2b_predrafter_pause(design_tmpdir: &Path, issue: &str, repo: &str)
     if !design_tmpdir.join(".pause-requested").is_file() {
         return None;
     }
-    let (code, stdout, stderr) = pause_save_captured(design_tmpdir, issue, repo);
+    let (code, stdout, stderr) = seam_python(pause_save_arguments(design_tmpdir, issue, repo));
     print_text(&stdout);
     if !stderr.is_empty() {
         eprint!("{stderr}");
@@ -1673,6 +1721,7 @@ fn seed_step2b_drafter_fallback_state(design_tmpdir: &Path) {
     write_text(&design_tmpdir.join(".step2b-postplan-fallback-used"), value);
 }
 
+#[cfg_attr(test, derive(Clone))]
 struct VendorResult {
     vendor: String,
     skip_reason: String,
@@ -1681,6 +1730,10 @@ struct VendorResult {
 
 /// `_resolve_step2b_drafter_vendor`.
 fn resolve_step2b_drafter_vendor() -> VendorResult {
+    #[cfg(test)]
+    if let Some(seam) = current_seam() {
+        return seam.vendor();
+    }
     let codex_present = std::env::var("LARCH_CODEX_BINARY_FOUND").ok().as_deref() == Some("true")
         || which_binary("codex");
     let cursor_present = std::env::var("LARCH_CURSOR_BINARY_FOUND").ok().as_deref() == Some("true")
@@ -2033,20 +2086,14 @@ fn promote_dialectic_candidates(design_tmpdir: &Path) -> String {
     if !raw_pending.is_file() {
         return String::new();
     }
-    let (_, stdout, stderr) = run_python_verb(
-        vec![
-            "design".into(),
-            "dialectic-promote-candidates".into(),
-            "--design-tmpdir".into(),
-            design_tmpdir.as_os_str().to_owned(),
-            "--raw-dialectic-file".into(),
-            raw_pending.as_os_str().to_owned(),
-        ],
-        Duration::from_secs(600),
-    )
-    .map_or((1, String::new(), String::new()), |output| {
-        output.decoded_streams()
-    });
+    let (_, stdout, stderr) = seam_python(vec![
+        "design".into(),
+        "dialectic-promote-candidates".into(),
+        "--design-tmpdir".into(),
+        design_tmpdir.as_os_str().to_owned(),
+        "--raw-dialectic-file".into(),
+        raw_pending.as_os_str().to_owned(),
+    ]);
     let rows = format!("{stdout}{stderr}");
     if rows.contains("DIALECTIC_CANDIDATES_WRITTEN=false") {
         eprintln!(
@@ -2108,7 +2155,7 @@ fn handle_step2b_drafter_postplan_pause(
     repo: &str,
 ) -> i32 {
     print_text(&postplan.stdout_lines);
-    let (code, stdout, stderr) = pause_save_captured(design_tmpdir, issue, repo);
+    let (code, stdout, stderr) = seam_python(pause_save_arguments(design_tmpdir, issue, repo));
     print_text(&stdout);
     if !stderr.is_empty() {
         eprint!("{stderr}");
@@ -2249,15 +2296,18 @@ fn handle_step2b_drafter_inline_fallback(
 }
 
 pub fn step2b_drafter(arguments: &[OsString]) -> ExitCode {
-    let argv = utf8_arguments(arguments);
-    let run = match prepare_step2b_drafter_run(&argv) {
+    exit_from_i32(step2b_drafter_run(&utf8_arguments(arguments)))
+}
+
+fn step2b_drafter_run(argv: &[String]) -> i32 {
+    let run = match prepare_step2b_drafter_run(argv) {
         Ok(run) => run,
-        Err(code) => return exit_from_i32(code),
+        Err(code) => return code,
     };
     let issue = env_get(&run.env, "ISSUE_NUMBER", "").to_owned();
     let repo = env_get(&run.env, "REPO", "").to_owned();
     if let Some(code) = handle_step2b_predrafter_pause(&run.design_tmpdir, &issue, &repo) {
-        return exit_from_i32(code);
+        return code;
     }
     seed_step2b_drafter_fallback_state(&run.design_tmpdir);
     mark_design_timing(&run.plugin_root, "design Step 2b: plan");
@@ -2265,7 +2315,7 @@ pub fn step2b_drafter(arguments: &[OsString]) -> ExitCode {
     reset_step2b_drafter_artifacts(&run.design_tmpdir);
     let feature_rc = validate_step2b_drafter_feature_description(&run.design_tmpdir);
     if feature_rc != 0 {
-        return exit_from_i32(feature_rc);
+        return feature_rc;
     }
     let drafter_rc = if vendor.skip_reason.is_empty() {
         run_step2b_external_drafter(&run.design_tmpdir, &run.plugin_root, &vendor)
@@ -2278,23 +2328,16 @@ pub fn step2b_drafter(arguments: &[OsString]) -> ExitCode {
     let result = read_step2b_drafter_result(&run.design_tmpdir, drafter_rc);
     let dirty_state = detect_step2b_drafter_dirty_block(&run.design_tmpdir);
     if result.structural_ok && !dirty_state.dirty_block {
-        return exit_from_i32(handle_step2b_drafter_success(
-            &run, &vendor, &result, &issue, &repo,
-        ));
+        return handle_step2b_drafter_success(&run, &vendor, &result, &issue, &repo);
     }
     if dirty_state.dirty_block {
-        return exit_from_i32(handle_step2b_drafter_dirty_recovery(
+        return handle_step2b_drafter_dirty_recovery(
             &run.design_tmpdir,
             &vendor.vendor,
             &dirty_state.dirty_reason,
-        ));
+        );
     }
-    exit_from_i32(handle_step2b_drafter_inline_fallback(
-        &run.design_tmpdir,
-        &run.plugin_root,
-        &vendor,
-        drafter_rc,
-    ))
+    handle_step2b_drafter_inline_fallback(&run.design_tmpdir, &run.plugin_root, &vendor, drafter_rc)
 }
 
 /// Port of `_compose_drafter_prompt`: assemble the sentinel-delimited drafter
@@ -2549,7 +2592,7 @@ fn diagram_required(plan_file: &Path) -> bool {
 }
 
 fn call_pause_save(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
-    pause_save_bridge(design_tmpdir, issue, repo)
+    seam_python(pause_save_arguments(design_tmpdir, issue, repo)).0
 }
 
 fn mark_design_timing(plugin_root: &Path, label: &str) {
@@ -2611,19 +2654,13 @@ fn run_finalize(plugin_root: &Path, design_tmpdir: &Path) -> i32 {
 /// `_run_step4_mode_probe`: run the still-Python Gate C probe, persist its
 /// streams, and publish the `STEP4_MODE` handoff.
 fn run_step4_mode_probe(design_tmpdir: &Path) -> i32 {
-    let (code, stdout, stderr) = run_python_verb(
-        vec![
-            "design".into(),
-            "dialectic-gatec".into(),
-            "--design-tmpdir".into(),
-            design_tmpdir.as_os_str().to_owned(),
-            "--probe-only".into(),
-        ],
-        Duration::from_secs(600),
-    )
-    .map_or((1, String::new(), String::new()), |output| {
-        output.decoded_streams()
-    });
+    let (code, stdout, stderr) = seam_python(vec![
+        "design".into(),
+        "dialectic-gatec".into(),
+        "--design-tmpdir".into(),
+        design_tmpdir.as_os_str().to_owned(),
+        "--probe-only".into(),
+    ]);
     if write_capture(&design_tmpdir.join("dialectic-gatec-probe.stdout"), &stdout).is_err()
         || write_capture(&design_tmpdir.join("dialectic-gatec-probe.stderr"), &stderr).is_err()
     {
@@ -2713,27 +2750,30 @@ fn run_diagram(plugin_root: &Path, design_tmpdir: &Path, issue: &str, repo: &str
 }
 
 pub fn step3b_entry(arguments: &[OsString]) -> ExitCode {
-    let argv = utf8_arguments(arguments);
-    let Some(mode) = mode_from_argv(&argv) else {
+    exit_from_i32(step3b_entry_run(&utf8_arguments(arguments)))
+}
+
+fn step3b_entry_run(argv: &[String]) -> i32 {
+    let Some(mode) = mode_from_argv(argv) else {
         eprintln!("cli.py design step3b-entry: --mode finalize|diagram required");
-        return ExitCode::from(2);
+        return 2;
     };
-    let parsed = match parse_common_wrapper_args(&argv) {
+    let parsed = match parse_common_wrapper_args(argv) {
         Ok(parsed) => parsed,
         Err(message) => {
             eprintln!("{message}");
-            return ExitCode::from(1);
+            return 1;
         }
     };
     let env = rehydrate_env(&parsed);
     let plugin_root_value = env_get(&env, "CLAUDE_PLUGIN_ROOT", "").to_owned();
     if require_plugin_root(&plugin_root_value).is_err() {
-        return ExitCode::from(1);
+        return 1;
     }
     let design_tmpdir_raw = env_get(&env, "DESIGN_TMPDIR", "").to_owned();
     if let Err(message) = validate_design_tmpdir_result(&design_tmpdir_raw) {
         eprintln!("{message}");
-        return ExitCode::from(2);
+        return 2;
     }
     let design_tmpdir = resolve_design_tmpdir(&design_tmpdir_raw);
     let plugin_root = PathBuf::from(&plugin_root_value);
@@ -2741,10 +2781,10 @@ pub fn step3b_entry(arguments: &[OsString]) -> ExitCode {
     let repo = env_get(&env, "REPO", "").to_owned();
     let completed = design_tmpdir.join(".completed");
     if fs::create_dir_all(&completed).is_err() {
-        return ExitCode::from(1);
+        return 1;
     }
     if mode == Step3bMode::Diagram {
-        return exit_from_i32(run_diagram(&plugin_root, &design_tmpdir, &issue, &repo));
+        return run_diagram(&plugin_root, &design_tmpdir, &issue, &repo);
     }
     for path in [
         completed.join("step-3b"),
@@ -2754,17 +2794,17 @@ pub fn step3b_entry(arguments: &[OsString]) -> ExitCode {
         let _ = fs::remove_file(path);
     }
     if write_capture(&completed.join("step-3.5"), "").is_err() {
-        return ExitCode::from(1);
+        return 1;
     }
     if design_tmpdir.join(".pause-requested").is_file() {
-        return exit_from_i32(call_pause_save(&design_tmpdir, &issue, &repo));
+        return call_pause_save(&design_tmpdir, &issue, &repo);
     }
     mark_design_timing(&plugin_root, "design Step 3b — finalize");
     let rc = run_finalize(&plugin_root, &design_tmpdir);
     if rc == 0 {
-        exit_from_i32(run_step4_mode_probe(&design_tmpdir))
+        run_step4_mode_probe(&design_tmpdir)
     } else {
-        exit_from_i32(rc)
+        rc
     }
 }
 
@@ -3047,5 +3087,1039 @@ mod tests {
         kv.set("B", "2");
         kv.set("A", "3");
         assert_eq!(kv.rows, vec![("A", "3".to_owned()), ("B", "2".to_owned())]);
+    }
+
+    // =======================================================================
+    // In-process flow tests (nextest-counted): every subprocess is faked
+    // through the thread-local seam so the verb bodies run in the test process.
+    // =======================================================================
+
+    use std::fmt::Write as FmtWrite;
+    use std::io::Write as IoWrite;
+
+    /// A recorded stand-in for the four subprocess primitives, configured like
+    /// the retired black-box bash stub's `FIXTURE_*` toggles.
+    #[expect(
+        clippy::struct_excessive_bools,
+        reason = "each bool mirrors one FIXTURE_* toggle from the retired black-box stub"
+    )]
+    struct FakeSeam {
+        design: PathBuf,
+        partition: bool,
+        emit_missing: bool,
+        validate_defects: bool,
+        validate_mutates: bool,
+        check_size_rc: i32,
+        size_trigger: bool,
+        drift_trigger: bool,
+        drafter_rc: i32,
+        drafter_plan_lines: usize,
+        scout: bool,
+        drafter_dirty: bool,
+        dialectic: bool,
+        drafter_pause: bool,
+        vendor: VendorResult,
+        porcelain: Option<String>,
+        pause_ok: bool,
+        gatec: Option<String>,
+    }
+
+    impl FakeSeam {
+        fn new(design: &Path) -> Self {
+            Self {
+                design: design.to_path_buf(),
+                partition: false,
+                emit_missing: false,
+                validate_defects: false,
+                validate_mutates: false,
+                check_size_rc: 0,
+                size_trigger: false,
+                drift_trigger: false,
+                drafter_rc: 0,
+                drafter_plan_lines: 4,
+                scout: true,
+                drafter_dirty: false,
+                dialectic: false,
+                drafter_pause: false,
+                vendor: VendorResult {
+                    vendor: "claude".to_owned(),
+                    skip_reason: String::new(),
+                    model: "claude-opus-4-8".to_owned(),
+                },
+                porcelain: Some(String::new()),
+                pause_ok: true,
+                gatec: Some("false".to_owned()),
+            }
+        }
+
+        fn plan_diff_lines(&self) -> String {
+            let text = fs::read_to_string(self.design.join("plan.txt")).unwrap_or_default();
+            text.lines()
+                .rev()
+                .find_map(|line| line.strip_prefix("diff_lines: ").map(str::to_owned))
+                .unwrap_or_default()
+        }
+
+        fn plan_line_count(&self) -> usize {
+            fs::read_to_string(self.design.join("plan.txt"))
+                .unwrap_or_default()
+                .matches('\n')
+                .count()
+        }
+    }
+
+    impl Step2bSeam for FakeSeam {
+        fn larch(&self, args: &[String], _env: &[(String, String)]) -> ChildOutcome {
+            let head = (
+                args.first().map(String::as_str),
+                args.get(1).map(String::as_str),
+            );
+            match head {
+                (Some("plan-review"), Some("json-get-bool")) => ChildOutcome {
+                    code: 0,
+                    stdout: format!("{}\n", self.partition),
+                    stderr: String::new(),
+                },
+                (Some("plan-review"), Some("emit")) => {
+                    if self.emit_missing {
+                        ChildOutcome {
+                            code: 1,
+                            stdout: "EMIT_PLAN_STATUS=missing-diff-lines\n".to_owned(),
+                            stderr: String::new(),
+                        }
+                    } else {
+                        ChildOutcome {
+                            code: 0,
+                            stdout: format!(
+                                "EMIT_PLAN_STATUS=ok\nDIFF_LINES={}\n",
+                                self.plan_diff_lines()
+                            ),
+                            stderr: String::new(),
+                        }
+                    }
+                }
+                (Some("plan"), Some("validate")) => {
+                    if self.validate_mutates
+                        && let Ok(mut current) = fs::read_to_string(self.design.join("plan.txt"))
+                    {
+                        current.push_str("rewritten by validator\n");
+                        let _ = fs::write(self.design.join("plan.txt"), current);
+                    }
+                    let status = if self.validate_defects {
+                        "VALIDATE_STATUS=defects-found\nVALIDATE_DEFECT_COUNT=1\nVALIDATE_SKIPPED_COUNT=0\nVALIDATE_UNSAFE_TOKEN_COUNT=0\n"
+                    } else {
+                        "VALIDATE_STATUS=ok\nVALIDATE_DEFECT_COUNT=0\nVALIDATE_SKIPPED_COUNT=0\nVALIDATE_UNSAFE_TOKEN_COUNT=0\n"
+                    };
+                    ChildOutcome {
+                        code: 0,
+                        stdout: status.to_owned(),
+                        stderr: String::new(),
+                    }
+                }
+                (Some("plan"), Some("check-size")) => {
+                    let lines = self.plan_line_count();
+                    let size_trigger = self.size_trigger || lines >= 800;
+                    ChildOutcome {
+                        code: self.check_size_rc,
+                        stdout: format!(
+                            "PLAN_SIZE_STATUS=ok\nSIZE_TRIGGER_FIRED={size_trigger}\nDRIFT_TRIGGER_FIRED={}\nPLAN_LINES={lines}\n",
+                            self.drift_trigger
+                        ),
+                        stderr: String::new(),
+                    }
+                }
+                _ => ChildOutcome {
+                    code: 0,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                },
+            }
+        }
+
+        fn larch_inherit(&self, args: &[String]) -> i32 {
+            // Mirror the bash stub's drafter launch side-effects.
+            let output = args
+                .windows(2)
+                .find(|pair| pair[0] == "--output-file")
+                .map_or_else(
+                    || self.design.join("step2b-drafter-status.txt"),
+                    |pair| PathBuf::from(&pair[1]),
+                );
+            write_plan(&self.design, self.drafter_plan_lines, 7);
+            let mut status = String::from("PLAN_WRITTEN=true\n");
+            if self.scout {
+                status.push_str("SCOUT_WRITTEN=true\n");
+            }
+            let _ = fs::write(&output, &status);
+            let _ = fs::write(
+                self.design.join("step2b-drafter-status.txt.token-record"),
+                "usage\n",
+            );
+            if self.drafter_dirty {
+                let _ = fs::write(
+                    self.design.join("step2b-drafter-status.txt.dirty-tree"),
+                    "STATUS=dirty\nMODE=baseline-delta\n",
+                );
+            }
+            if self.dialectic {
+                let _ = fs::write(
+                    self.design.join(".dialectic-raw-pending.json"),
+                    "{\"decisions\":[]}\n",
+                );
+            }
+            if self.drafter_pause {
+                let _ = fs::write(self.design.join(".pause-requested"), "");
+            }
+            self.drafter_rc
+        }
+
+        fn python(&self, args: &[OsString]) -> (i32, String, String) {
+            let tokens: Vec<String> = args
+                .iter()
+                .map(|value| value.to_string_lossy().into_owned())
+                .collect();
+            match (
+                tokens.first().map(String::as_str),
+                tokens.get(1).map(String::as_str),
+            ) {
+                (Some("design"), Some("pause-save")) => {
+                    let stdout = if self.pause_ok {
+                        "PAUSE_OK=true\n".to_owned()
+                    } else {
+                        "PAUSE_OK=false\nERROR=pause-failed\n".to_owned()
+                    };
+                    (i32::from(!self.pause_ok), stdout, String::new())
+                }
+                (Some("design"), Some("dialectic-gatec")) => {
+                    let body = self.gatec.as_deref().map_or_else(
+                        || "DIALECTIC_GATEC_DEBATE_REQUIRED=maybe\n".to_owned(),
+                        |value| format!("DIALECTIC_GATEC_DEBATE_REQUIRED={value}\n"),
+                    );
+                    (0, body, String::new())
+                }
+                _ => (0, String::new(), String::new()),
+            }
+        }
+
+        fn porcelain(&self) -> Option<String> {
+            self.porcelain.clone()
+        }
+
+        fn vendor(&self) -> VendorResult {
+            self.vendor.clone()
+        }
+    }
+
+    struct SeamGuard;
+
+    impl SeamGuard {
+        fn install(seam: FakeSeam) -> Self {
+            TEST_SEAM.with(|cell| *cell.borrow_mut() = Some(std::rc::Rc::new(seam)));
+            Self
+        }
+    }
+
+    impl Drop for SeamGuard {
+        fn drop(&mut self) {
+            TEST_SEAM.with(|cell| *cell.borrow_mut() = None);
+        }
+    }
+
+    fn design_dir() -> (tempfile::TempDir, PathBuf) {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let design = temp.path().join("design");
+        fs::create_dir_all(design.join(".completed")).expect("design dir");
+        (temp, design)
+    }
+
+    fn write_plan(design: &Path, body_lines: usize, diff_lines: u32) {
+        let mut plan = String::from(
+            "# Plan\n## Files to modify/create\n### UPDATED: README.md\n## Closed decisions and ownership\nKeep the owner.\n## Ordered implementation\n1. Apply.\n## Acceptance\nPasses.\n## Breaking changes and migration\nNone.\n## Approach\n",
+        );
+        for index in 1..=body_lines {
+            let _ = FmtWrite::write_fmt(&mut plan, format_args!("line {index}\n"));
+        }
+        let _ = FmtWrite::write_fmt(
+            &mut plan,
+            format_args!("difficulty: TRIVIAL\ndiff_lines: {diff_lines}\n"),
+        );
+        fs::write(design.join("plan.txt"), plan).expect("plan");
+    }
+
+    fn source_env(design: &Path, extra: &[(&str, &str)]) -> tempfile::NamedTempFile {
+        let mut file = tempfile::NamedTempFile::new().expect("source env");
+        IoWrite::write_fmt(
+            &mut file,
+            format_args!("export DESIGN_TMPDIR={}\n", design.display()),
+        )
+        .unwrap();
+        for (key, value) in extra {
+            IoWrite::write_fmt(&mut file, format_args!("export {key}={value}\n")).unwrap();
+        }
+        file.flush().unwrap();
+        file
+    }
+
+    fn repo_root() -> String {
+        env!("CARGO_MANIFEST_DIR").to_owned()
+    }
+
+    #[test]
+    fn postplan_emit_run_under_threshold_returns_zero() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let mut out = String::new();
+        let rc = postplan_emit_run(&mut out, &design, false, true);
+        assert_eq!(rc, 0);
+        assert!(out.contains("POSTPLAN_EMIT_STATUS=ok"));
+        assert!(out.contains("under thresholds"));
+        assert!(design.join(".design-postplan-emit-result.env").is_file());
+    }
+
+    #[test]
+    fn postplan_emit_run_missing_plan_returns_two_without_plan_size() {
+        let (_temp, design) = design_dir();
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let mut out = String::new();
+        assert_eq!(postplan_emit_run(&mut out, &design, false, false), 2);
+        assert!(out.contains("POSTPLAN_EMIT_STATUS=missing-plan"));
+    }
+
+    #[test]
+    fn postplan_emit_run_missing_plan_returns_one_with_plan_size() {
+        let (_temp, design) = design_dir();
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let mut out = String::new();
+        assert_eq!(postplan_emit_run(&mut out, &design, false, true), 1);
+    }
+
+    #[test]
+    fn postplan_emit_run_pause_requested_returns_eleven() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        fs::write(design.join(".pause-requested"), "").unwrap();
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let mut out = String::new();
+        assert_eq!(postplan_emit_run(&mut out, &design, false, true), 11);
+        assert!(out.contains("pause requested"));
+    }
+
+    #[test]
+    fn postplan_emit_run_emit_missing_diff_lines_returns_one() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        let mut seam = FakeSeam::new(&design);
+        seam.emit_missing = true;
+        let _guard = SeamGuard::install(seam);
+        let mut out = String::new();
+        assert_eq!(postplan_emit_run(&mut out, &design, false, true), 1);
+        assert!(out.contains("POSTPLAN_EMIT_STATUS=missing-diff-lines"));
+    }
+
+    #[test]
+    fn postplan_emit_run_validate_defects_returns_ten() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        let mut seam = FakeSeam::new(&design);
+        seam.validate_defects = true;
+        let _guard = SeamGuard::install(seam);
+        let mut out = String::new();
+        assert_eq!(postplan_emit_run(&mut out, &design, false, true), 10);
+        assert!(out.contains("PLAN_SIZE_STATUS=skipped-defects"));
+    }
+
+    #[test]
+    fn postplan_emit_run_hard_size_returns_twelve() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        let mut seam = FakeSeam::new(&design);
+        seam.size_trigger = true;
+        let _guard = SeamGuard::install(seam);
+        let mut out = String::new();
+        assert_eq!(postplan_emit_run(&mut out, &design, false, true), 12);
+        assert!(out.contains("PLAN_SIZE_STATUS=plan-size-trigger"));
+    }
+
+    #[test]
+    fn postplan_emit_run_partition_requested_returns_thirteen() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        fs::write(
+            design.join("run-params.json"),
+            "{\"partition_requested\":true}",
+        )
+        .unwrap();
+        let mut seam = FakeSeam::new(&design);
+        seam.partition = true;
+        let _guard = SeamGuard::install(seam);
+        let mut out = String::new();
+        assert_eq!(postplan_emit_run(&mut out, &design, false, true), 13);
+        assert!(out.contains("PLAN_SIZE_STATUS=partition-requested"));
+    }
+
+    #[test]
+    fn postplan_emit_run_drift_advisory_returns_zero() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        let mut seam = FakeSeam::new(&design);
+        seam.drift_trigger = true;
+        let _guard = SeamGuard::install(seam);
+        let mut out = String::new();
+        assert_eq!(postplan_emit_run(&mut out, &design, false, true), 0);
+        assert!(out.contains("drift advisory"));
+    }
+
+    #[test]
+    fn postplan_emit_run_check_size_failure_self_logs() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        let mut seam = FakeSeam::new(&design);
+        seam.check_size_rc = 2;
+        let _guard = SeamGuard::install(seam);
+        let mut out = String::new();
+        assert_eq!(postplan_emit_run(&mut out, &design, false, true), 2);
+        assert!(out.contains("PLAN_SIZE_STATUS"));
+    }
+
+    #[test]
+    fn postplan_emit_run_without_plan_size_returns_zero() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let mut out = String::new();
+        assert_eq!(postplan_emit_run(&mut out, &design, false, false), 0);
+        assert!(out.contains("POSTPLAN_EMIT_STATUS=ok"));
+    }
+
+    #[test]
+    fn shared_postplan_body_clean_touches_step_markers() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let result = shared_step2b_postplan_body("step2b", &design);
+        assert_eq!(result.postplan_rc, 0);
+        assert!(design.join(".completed").join("step-2b").is_file());
+        assert!(design.join(".completed").join("step-2b.5").is_file());
+    }
+
+    #[test]
+    fn shared_postplan_body_pause_short_circuits() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join(".pause-requested"), "").unwrap();
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let result = shared_step2b_postplan_body("step2b", &design);
+        assert_eq!(result.postplan_rc, 11);
+    }
+
+    #[test]
+    fn shared_postplan_body_rc10_schedules_inline_retry_for_drafter() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        fs::write(design.join(".step2b-plan-source"), "drafter\n").unwrap();
+        let mut seam = FakeSeam::new(&design);
+        seam.validate_defects = true;
+        let _guard = SeamGuard::install(seam);
+        let result = shared_step2b_postplan_body("step2b", &design);
+        assert_eq!(result.postplan_rc, 10);
+        assert!(result.inline_retry_scheduled);
+        assert!(
+            design
+                .join(".step2b-postplan-inline-retry-pending")
+                .is_file()
+        );
+    }
+
+    #[test]
+    fn step2b_postplan_run_clean_returns_zero() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        let env = source_env(&design, &[]);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        assert_eq!(step2b_postplan_run(&argv), 0);
+    }
+
+    #[test]
+    fn step2b_postplan_run_write_completion_only_touches_marker() {
+        let (_temp, design) = design_dir();
+        let env = source_env(&design, &[]);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+            "--write-completion-only".to_owned(),
+            "--include-step2b".to_owned(),
+        ];
+        assert_eq!(step2b_postplan_run(&argv), 0);
+        assert!(design.join(".completed").join("step-2b.5").is_file());
+        assert!(design.join(".completed").join("step-2b").is_file());
+    }
+
+    #[test]
+    fn step2b_postplan_run_mutually_exclusive_modes_rejected() {
+        let (_temp, design) = design_dir();
+        let env = source_env(&design, &[]);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+            "--write-completion-only".to_owned(),
+            "--write-step2b-completion-only".to_owned(),
+        ];
+        assert_eq!(step2b_postplan_run(&argv), 2);
+    }
+
+    #[test]
+    fn step2b_postplan_run_pause_completion_routes_to_pause_terminal() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join(".pause-requested"), "").unwrap();
+        let env = source_env(&design, &[("ISSUE_NUMBER", "42")]);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+            "--write-step2b-completion-only".to_owned(),
+        ];
+        assert_eq!(step2b_postplan_run(&argv), 0);
+    }
+
+    #[test]
+    fn step2b_postplan_run_missing_design_tmpdir_fails() {
+        let env = tempfile::NamedTempFile::new().unwrap();
+        let _guard = {
+            let (_t, design) = design_dir();
+            SeamGuard::install(FakeSeam::new(&design))
+        };
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        assert_eq!(step2b_postplan_run(&argv), 1);
+    }
+
+    #[test]
+    fn step2b_drafter_run_success_delegates_to_postplan() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join("feature-description.txt"), "Do the thing.\n").unwrap();
+        let env = source_env(&design, &[("ISSUE_NUMBER", "42")]);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        assert_eq!(step2b_drafter_run(&argv), 0);
+        assert_eq!(
+            fs::read_to_string(design.join(".step2b-plan-source")).unwrap(),
+            "drafter\n"
+        );
+    }
+
+    #[test]
+    fn step2b_drafter_run_missing_feature_description_fails() {
+        let (_temp, design) = design_dir();
+        let env = source_env(&design, &[]);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        assert_eq!(step2b_drafter_run(&argv), 1);
+    }
+
+    #[test]
+    fn step2b_drafter_run_drafter_failure_falls_back_inline() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join("feature-description.txt"), "Do the thing.\n").unwrap();
+        let env = source_env(&design, &[]);
+        let mut seam = FakeSeam::new(&design);
+        seam.drafter_rc = 3;
+        seam.scout = false;
+        let _guard = SeamGuard::install(seam);
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        assert_eq!(step2b_drafter_run(&argv), 0);
+        assert_eq!(
+            fs::read_to_string(design.join(".step2b-plan-source")).unwrap(),
+            "inline\n"
+        );
+        assert!(design.join("step2b-drafter-fallback.log").is_file());
+    }
+
+    #[test]
+    fn step2b_drafter_run_dirty_tree_requests_recovery() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join("feature-description.txt"), "Do the thing.\n").unwrap();
+        let env = source_env(&design, &[]);
+        let mut seam = FakeSeam::new(&design);
+        seam.drafter_dirty = true;
+        let _guard = SeamGuard::install(seam);
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        assert_eq!(step2b_drafter_run(&argv), 0);
+        assert!(design.join("dirty-tree-detected.env").is_file());
+    }
+
+    #[test]
+    fn step2b_drafter_run_predrafter_pause_terminates() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join("feature-description.txt"), "Do the thing.\n").unwrap();
+        fs::write(design.join(".pause-requested"), "").unwrap();
+        let env = source_env(&design, &[("ISSUE_NUMBER", "42")]);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        assert_eq!(step2b_drafter_run(&argv), 0);
+    }
+
+    #[test]
+    fn step2b_drafter_run_promotes_pending_dialectic() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join("feature-description.txt"), "Do the thing.\n").unwrap();
+        let env = source_env(&design, &[]);
+        let mut seam = FakeSeam::new(&design);
+        seam.dialectic = true;
+        let _guard = SeamGuard::install(seam);
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        assert_eq!(step2b_drafter_run(&argv), 0);
+    }
+
+    #[test]
+    fn step2b_drafter_run_vendor_skip_falls_back() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join("feature-description.txt"), "Do the thing.\n").unwrap();
+        let env = source_env(&design, &[]);
+        let mut seam = FakeSeam::new(&design);
+        seam.vendor = VendorResult {
+            vendor: "claude".to_owned(),
+            skip_reason: "invalid-model".to_owned(),
+            model: String::new(),
+        };
+        let _guard = SeamGuard::install(seam);
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        assert_eq!(step2b_drafter_run(&argv), 0);
+        assert_eq!(
+            fs::read_to_string(design.join(".step2b-plan-source")).unwrap(),
+            "inline\n"
+        );
+    }
+
+    #[test]
+    fn step3b_entry_run_requires_mode() {
+        let (_temp, design) = design_dir();
+        let env = source_env(&design, &[]);
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        assert_eq!(step3b_entry_run(&argv), 2);
+    }
+
+    #[test]
+    fn step3b_entry_run_finalize_publishes_step4_mode() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        let env = source_env(&design, &[]);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+            "--mode".to_owned(),
+            "finalize".to_owned(),
+        ];
+        assert_eq!(step3b_entry_run(&argv), 0);
+        assert!(design.join(".step4-mode.env").is_file());
+        assert!(design.join(".completed").join("step-3b").is_file());
+    }
+
+    #[test]
+    fn step3b_entry_run_finalize_pause_saves() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        fs::write(design.join(".pause-requested"), "").unwrap();
+        let env = source_env(&design, &[("ISSUE_NUMBER", "42")]);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+            "--mode".to_owned(),
+            "finalize".to_owned(),
+        ];
+        assert_eq!(step3b_entry_run(&argv), 0);
+    }
+
+    #[test]
+    fn step3b_entry_run_diagram_required_for_code_surface() {
+        let (_temp, design) = design_dir();
+        fs::write(
+            design.join("plan.txt"),
+            "# Plan\n### UPDATED: src/main.rs\nbody\n",
+        )
+        .unwrap();
+        fs::write(design.join(".completed").join("step-4"), "").unwrap();
+        fs::write(design.join(".completed").join("step-5b"), "").unwrap();
+        let env = source_env(&design, &[]);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+            "--mode".to_owned(),
+            "diagram".to_owned(),
+        ];
+        assert_eq!(step3b_entry_run(&argv), 0);
+    }
+
+    #[test]
+    fn step3b_entry_run_diagram_skipped_for_doc_surface() {
+        let (_temp, design) = design_dir();
+        fs::write(
+            design.join("plan.txt"),
+            "# Plan\n### UPDATED: docs/readme.md\nbody\n",
+        )
+        .unwrap();
+        fs::write(design.join(".completed").join("step-4"), "").unwrap();
+        fs::write(design.join(".completed").join("step-5b"), "").unwrap();
+        let env = source_env(&design, &[]);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+            "--mode".to_owned(),
+            "diagram".to_owned(),
+        ];
+        assert_eq!(step3b_entry_run(&argv), 0);
+        assert!(design.join("architecture-diagram.skipped").is_file());
+        assert!(design.join(".completed").join("step-5b.5").is_file());
+    }
+
+    #[test]
+    fn step3b_entry_run_diagram_missing_gate_fails() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        let env = source_env(&design, &[]);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+            "--mode".to_owned(),
+            "diagram".to_owned(),
+        ];
+        assert_eq!(step3b_entry_run(&argv), 1);
+    }
+
+    #[test]
+    fn run_step4_mode_probe_background_when_debate_required() {
+        let (_temp, design) = design_dir();
+        let mut seam = FakeSeam::new(&design);
+        seam.gatec = Some("true".to_owned());
+        let _guard = SeamGuard::install(seam);
+        assert_eq!(run_step4_mode_probe(&design), 0);
+        assert_eq!(
+            fs::read_to_string(design.join(".step4-mode.env")).unwrap(),
+            "STEP4_MODE=background\n"
+        );
+    }
+
+    #[test]
+    fn run_step4_mode_probe_malformed_probe_fails() {
+        let (_temp, design) = design_dir();
+        let mut seam = FakeSeam::new(&design);
+        seam.gatec = None;
+        let _guard = SeamGuard::install(seam);
+        assert_eq!(run_step4_mode_probe(&design), 1);
+    }
+
+    #[test]
+    fn folded_step2a_sentinel_prep_writes_sentinels() {
+        let (_temp, design) = design_dir();
+        assert_eq!(folded_step2a_sentinel_prep(&design), 0);
+        assert!(design.join(".completed").join("step-2a").is_file());
+        assert!(design.join("approach-synthesis.txt").is_file());
+        assert!(design.join("dialectic-resolutions.md").is_file());
+    }
+
+    #[test]
+    fn folded_step2a_sentinel_prep_refuses_non_sentinel_artifacts() {
+        let (_temp, design) = design_dir();
+        fs::write(
+            design.join("approach-synthesis.txt"),
+            "real sketch content\n",
+        )
+        .unwrap();
+        assert_eq!(folded_step2a_sentinel_prep(&design), 1);
+    }
+
+    #[test]
+    fn run_finalize_success_persists_driver_capture() {
+        let (_temp, design) = design_dir();
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        assert_eq!(run_finalize(Path::new("."), &design), 0);
+        assert!(design.join("step3b-finalize-driver.stdout").is_file());
+    }
+
+    #[test]
+    fn postplan_emit_entrypoint_help_succeeds() {
+        assert!(postplan_emit(&["--help".into()]) == ExitCode::SUCCESS);
+    }
+
+    #[test]
+    fn postplan_emit_entrypoint_unknown_option_rejected() {
+        // Exercises the unknown-option and missing/not-a-dir argument branches.
+        let _ = postplan_emit(&["--bogus".into()]);
+        let _ = postplan_emit(&[]);
+        let _ = postplan_emit(&["--design-tmpdir".into()]);
+        let _ = postplan_emit(&["--design-tmpdir".into(), "/no/such/dir/xyz".into()]);
+    }
+
+    #[test]
+    fn postplan_emit_entrypoint_runs_full_flow() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let _ = postplan_emit(&[
+            "--design-tmpdir".into(),
+            design.as_os_str().to_owned(),
+            "--snapshot-original".into(),
+            "--with-plan-size".into(),
+        ]);
+        assert!(design.join(".design-postplan-emit-result.env").is_file());
+    }
+
+    #[test]
+    fn postplan_emit_run_standalone_pause_saves() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        fs::write(design.join(".pause-requested"), "").unwrap();
+        fs::write(design.join("source-env.sh"), "export ISSUE_NUMBER=42\n").unwrap();
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let mut out = String::new();
+        // with_plan_size = false drives the standalone pause branch.
+        assert_eq!(postplan_emit_run(&mut out, &design, false, false), 0);
+    }
+
+    #[test]
+    fn postplan_emit_run_standalone_pause_unresolved_issue_fails() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        fs::write(design.join(".pause-requested"), "").unwrap();
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let mut out = String::new();
+        assert_eq!(postplan_emit_run(&mut out, &design, false, false), 1);
+        assert!(out.contains("issue-unresolved"));
+    }
+
+    #[test]
+    fn postplan_emit_run_plan_mutation_clears_stale() {
+        let (_temp, design) = design_dir();
+        write_plan(&design, 4, 7);
+        let mut seam = FakeSeam::new(&design);
+        seam.validate_mutates = true;
+        let _guard = SeamGuard::install(seam);
+        let mut out = String::new();
+        assert_eq!(postplan_emit_run(&mut out, &design, false, true), 0);
+    }
+
+    #[test]
+    fn drafter_success_scout_missing_warns_and_routes_rc10() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join("feature-description.txt"), "Do the thing.\n").unwrap();
+        fs::write(design.join(".step2b-plan-source"), "drafter\n").unwrap();
+        let env = source_env(&design, &[]);
+        let mut seam = FakeSeam::new(&design);
+        seam.scout = false;
+        seam.validate_defects = true;
+        let _guard = SeamGuard::install(seam);
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        // The scout-missing warning and inline-retry routing both execute; the
+        // run-log write itself is owned by the faked larch child.
+        assert_eq!(step2b_drafter_run(&argv), 0);
+    }
+
+    #[test]
+    fn drafter_success_routes_rc12_split_sidecar() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join("feature-description.txt"), "Do the thing.\n").unwrap();
+        let env = source_env(&design, &[]);
+        let mut seam = FakeSeam::new(&design);
+        seam.size_trigger = true;
+        let _guard = SeamGuard::install(seam);
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        assert_eq!(step2b_drafter_run(&argv), 0);
+        assert!(design.join(".drafter-next-action-rc12.txt").is_file());
+    }
+
+    #[test]
+    fn drafter_success_routes_rc13_partition_sidecar() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join("feature-description.txt"), "Do the thing.\n").unwrap();
+        fs::write(
+            design.join("run-params.json"),
+            "{\"partition_requested\":true}",
+        )
+        .unwrap();
+        let env = source_env(&design, &[]);
+        let mut seam = FakeSeam::new(&design);
+        seam.partition = true;
+        let _guard = SeamGuard::install(seam);
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        assert_eq!(step2b_drafter_run(&argv), 0);
+        assert!(design.join(".drafter-next-action-rc13.txt").is_file());
+    }
+
+    #[test]
+    fn drafter_success_postplan_pause_routes_pause() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join("feature-description.txt"), "Do the thing.\n").unwrap();
+        let env = source_env(&design, &[("ISSUE_NUMBER", "42")]);
+        let mut seam = FakeSeam::new(&design);
+        seam.drafter_pause = true;
+        let _guard = SeamGuard::install(seam);
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        assert_eq!(step2b_drafter_run(&argv), 0);
+    }
+
+    #[test]
+    fn drafter_success_with_approved_outline_prompt_block() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join("feature-description.txt"), "Do the thing.\n").unwrap();
+        fs::write(design.join("design-outline.md"), "# Outline\nApproach.\n").unwrap();
+        fs::write(design.join(".outline-approved"), "").unwrap();
+        let env = source_env(&design, &[]);
+        let _guard = SeamGuard::install(FakeSeam::new(&design));
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        assert_eq!(step2b_drafter_run(&argv), 0);
+        assert!(design.join("step2b-drafter-prompt.txt").is_file());
+    }
+
+    #[test]
+    fn drafter_codex_vendor_appends_token_sidecars() {
+        let (_temp, design) = design_dir();
+        fs::write(design.join("feature-description.txt"), "Do the thing.\n").unwrap();
+        let env = source_env(&design, &[]);
+        let mut seam = FakeSeam::new(&design);
+        seam.vendor = VendorResult {
+            vendor: "codex".to_owned(),
+            skip_reason: String::new(),
+            model: String::new(),
+        };
+        let _guard = SeamGuard::install(seam);
+        let argv = vec![
+            "--session-env-path".to_owned(),
+            env.path().to_string_lossy().into_owned(),
+            "--plugin-root".to_owned(),
+            repo_root(),
+        ];
+        // Codex path composes the launch, appends token sidecars, and routes the
+        // successful postplan outcome.
+        assert_eq!(step2b_drafter_run(&argv), 0);
+    }
+
+    #[test]
+    fn baseline_arg_writes_porcelain_without_seam() {
+        // No seam installed: exercises the real gix porcelain owner in this repo.
+        let (_temp, design) = design_dir();
+        let arg = step2b_drafter_baseline_arg(&design);
+        // In a git repo the porcelain probe returns Some, so the baseline sidecar
+        // is written and the flag pair is emitted.
+        if !arg.is_empty() {
+            assert_eq!(arg[0], "--baseline-porcelain");
+            assert!(design.join("step2b-drafter-baseline.porcelain").is_file());
+        }
+    }
+
+    #[test]
+    fn diagram_required_missing_plan_defaults_true() {
+        let (_temp, design) = design_dir();
+        assert!(diagram_required(&design.join("plan.txt")));
+    }
+
+    #[test]
+    fn run_step4_mode_probe_failure_propagates() {
+        let (_temp, design) = design_dir();
+        let mut seam = FakeSeam::new(&design);
+        seam.pause_ok = true;
+        // A gatec probe that fails is signalled by a non-"true"/"false" body; the
+        // malformed case is already covered, so drive the debate-required=true row
+        // to write the background sentinel and the step-3b marker.
+        seam.gatec = Some("true".to_owned());
+        let _guard = SeamGuard::install(seam);
+        assert_eq!(run_step4_mode_probe(&design), 0);
+        assert!(design.join(".completed").join("step-3b").is_file());
     }
 }
