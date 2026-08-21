@@ -8,7 +8,7 @@ use std::{
 };
 
 use larch_adapters::{
-    PathIntent, TemporaryRoot, atomic_write_utf8_in, open_confined_read, read_utf8,
+    PathIntent, TemporaryRoot, atomic_write_utf8_in, read_utf8, remove_file_if_present,
 };
 use larch_core::design::{
     DialecticCandidateSet, dialectic_plan_fingerprint, parse_dialectic_candidates,
@@ -73,16 +73,7 @@ fn read_root_text(root: &TemporaryRoot, name: &str) -> Result<String, String> {
 }
 
 fn read_root_bytes(root: &TemporaryRoot, name: &str) -> Result<Vec<u8>, String> {
-    use std::io::Read as _;
-
-    let confined = root
-        .confine(root.path().join(name), PathIntent::Read)
-        .map_err(|error| error.to_string())?;
-    let mut file = open_confined_read(&confined).map_err(|error| error.to_string())?;
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)
-        .map_err(|error| error.to_string())?;
-    Ok(bytes)
+    crate::launcher_support::read_confined_bytes_checked(&root.path().join(name))
 }
 
 fn root_file_exists(root: &TemporaryRoot, name: &str) -> bool {
@@ -98,11 +89,8 @@ fn write_root_text(root: &TemporaryRoot, name: &str, text: &str) -> Result<(), S
 fn unlink_root_file(root: &TemporaryRoot, name: &str) -> Result<(), String> {
     root.revalidate().map_err(|error| error.to_string())?;
     let path = root.path().join(name);
-    match fs::remove_file(&path) {
-        Ok(()) => root.revalidate().map_err(|error| error.to_string()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(format!("{}: {error}", path.display())),
-    }
+    remove_file_if_present(&path)?;
+    root.revalidate().map_err(|error| error.to_string())
 }
 
 fn plan_bytes(root: &TemporaryRoot) -> Result<Vec<u8>, String> {
@@ -352,22 +340,29 @@ fn parse_python_int(text: &str) -> Option<i64> {
 }
 
 fn python_int(value: Option<&Value>) -> i64 {
-    match value {
-        Some(Value::Bool(value)) => i64::from(*value),
-        Some(Value::Number(value)) => value
-            .as_i64()
-            .or_else(|| value.as_u64().and_then(|value| i64::try_from(value).ok()))
-            .or_else(|| {
-                let value = value.as_f64()?;
-                value
-                    .is_finite()
-                    .then(|| value.trunc().to_string().parse().ok())
-                    .flatten()
-            })
-            .unwrap_or_default(),
-        Some(Value::String(value)) => parse_python_int(value).unwrap_or_default(),
-        _ => 0,
+    let Some(value) = value else {
+        return 0;
+    };
+    if let Some(value) = value.as_bool() {
+        return i64::from(value);
     }
+    if let Some(value) = value.as_str() {
+        return parse_python_int(value).unwrap_or_default();
+    }
+    let Some(value) = value.as_number() else {
+        return 0;
+    };
+    value
+        .as_i64()
+        .or_else(|| value.as_u64().and_then(|value| i64::try_from(value).ok()))
+        .or_else(|| {
+            let value = value.as_f64()?;
+            value
+                .is_finite()
+                .then(|| value.trunc().to_string().parse().ok())
+                .flatten()
+        })
+        .unwrap_or_default()
 }
 
 fn status_from_file(root: &TemporaryRoot) -> Option<StatusSidecar> {

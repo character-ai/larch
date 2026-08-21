@@ -483,7 +483,7 @@ mod tests {
 
     use super::*;
 
-    fn decision(id: &str, title: Value) -> Value {
+    fn decision(id: &str, title: &Value) -> Value {
         json!({
             "id": id,
             "title": title,
@@ -500,8 +500,8 @@ mod tests {
         let payload = json!({
             "plan_fingerprint": "fp",
             "decisions": [
-                decision("same", json!({"label": " Storage ", "summary": "choice"})),
-                decision("same", json!("Second")),
+                decision("same", &json!({"label": " Storage ", "summary": "choice"})),
+                decision("same", &json!("Second")),
                 false
             ]
         });
@@ -514,7 +514,7 @@ mod tests {
     #[test]
     fn required_fingerprint_rejects_stale_payload() {
         let payload =
-            json!({"plan_fingerprint": "old", "decisions": [decision("one", json!("One"))]});
+            json!({"plan_fingerprint": "old", "decisions": [decision("one", &json!("One"))]});
         assert_eq!(
             normalize_dialectic_candidates(&payload, Some("new"), true)
                 .unwrap_err()
@@ -541,7 +541,7 @@ mod tests {
         assert!(compact.starts_with("{\"plan_fingerprint\":\"caf\\u00e9\",\"decisions\":"));
         let pretty = render_dialectic_candidates_pretty(&candidates).unwrap();
         assert!(pretty.starts_with("{\n  \"decisions\": ["));
-        assert!(pretty.ends_with("\n"));
+        assert!(pretty.ends_with('\n'));
     }
 
     #[test]
@@ -549,7 +549,7 @@ mod tests {
         assert!(!dialectic_option_in_plan("SQLiteLite", "SQLite"));
         assert!(dialectic_option_in_plan("Use SQLite here.", "SQLite"));
         let candidates = normalize_dialectic_candidates(
-            &json!({"decisions": [decision("one", json!("One"))]}),
+            &json!({"decisions": [decision("one", &json!("One"))]}),
             Some("fp"),
             false,
         )
