@@ -6,10 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from larch.design import (
-    design_core,
-    design_step5c,
-)
+from larch.design import design_core
 
 
 def test_step0_env_readers_keep_allowlist_duplicate_and_empty_value_policy(
@@ -27,16 +24,3 @@ def test_step0_env_readers_keep_allowlist_duplicate_and_empty_value_policy(
     assert design_core._load_source_env(  # pyright: ignore[reportPrivateUsage] - characterize migration seam
         path=source, allow_keys={"KEEP"}
     ) == {"KEEP": ""}
-
-
-def test_optional_trailers_preserve_input_order_and_duplicates(tmp_path: Path) -> None:
-    values = tmp_path / "values.env"
-    _ = values.write_text(
-        " diff_deleted=2\r\ndiff_added=1\ndiff_deleted=3\nignored\n", newline=""
-    )
-
-    assert design_step5c._optional_trailer_lines_from_values_file(values) == [  # pyright: ignore[reportPrivateUsage] - characterize migration seam
-        "diff_deleted: 2\n",
-        "diff_added: 1\n",
-        "diff_deleted: 3\n",
-    ]

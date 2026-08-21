@@ -704,7 +704,7 @@ fn design_run_path(pid: &str) -> PathBuf {
     sessions_dir().join(format!("design-run-{pid}.sh"))
 }
 
-fn validate_claude_pid(pid: &str) -> Result<(), String> {
+pub fn validate_claude_pid(pid: &str) -> Result<(), String> {
     let bytes = pid.as_bytes();
     let valid = !pid.is_empty()
         && pid.len() <= 7
@@ -769,7 +769,7 @@ fn resolve_trusted_design_session_env_source(path: &Path, claude_pid: &str) -> O
     }
 }
 
-fn reap_pid_residuals(claude_pid: &str) -> Result<(), String> {
+pub fn reap_pid_residuals(claude_pid: &str) -> Result<(), String> {
     validate_claude_pid(claude_pid)?;
     let symlink_path = design_symlink_path(claude_pid);
     validate_design_current_env_link(&symlink_path, claude_pid)?;

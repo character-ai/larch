@@ -1005,10 +1005,10 @@ test-design-step0-init:
 
 test-design-step5c:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step5c.sh
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k step5c
+	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test design_settle_migrated_parity migrated_design_step5c_matches_frozen_python
 
 test-design-step6:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k step6
+	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test design_settle_migrated_parity migrated_design_step6_matches_frozen_python
 
 test-design-step-validator-autofix:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_plan_quality.py -k validator_autofix

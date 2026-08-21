@@ -5,13 +5,6 @@ from __future__ import annotations
 from larch import cli
 
 
-EXPECTED = {
-    ("design", verb): (module, func, True)
-    for verb, module, func in (
-        ("step2b5", "larch.design.design_step5c", "step2b5_main"),
-        ("compose-plan-md", "larch.design.design_step5c", "compose_plan_md_main"),
-    )
-}
 AGENT_EXPECTED: dict[tuple[str, str], tuple[str, str]] = {}
 ARCHITECTURAL_GUIDELINES_EXPECTED = {
     ("architectural-invariants", "read"): ("larch.core.architectural_guidelines", "invariants_read_main"),
@@ -42,9 +35,6 @@ ARCHITECTURAL_INVARIANTS_EXPECTED = {
 
 
 def test_design_port_registry_entries_are_machine_stdout() -> None:
-    for key, target in EXPECTED.items():
-        assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
-        assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
     assert ("plan", "validator-autofix") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     assert ("plan-review", "step3b-entry") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     for key in (
@@ -54,6 +44,12 @@ def test_design_port_registry_entries_are_machine_stdout() -> None:
         ("design", "step5b-annotate"),
         ("design", "file-oos-prepare"),
         ("design", "file-oos-annotate"),
+        ("design", "compose-plan-md"),
+        ("design", "step2b5"),
+        ("design", "step5c"),
+        ("design", "step6"),
+        ("design", "step6-prelude"),
+        ("design", "step6-cleanup"),
     ):
         assert key not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     for key, target in AGENT_EXPECTED.items():

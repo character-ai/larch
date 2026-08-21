@@ -42,8 +42,8 @@ use crate::decompose_commands::which_binary;
 use crate::design_commands::parse_stdout_kv;
 use crate::design_step0_commands::{
     ChildOutcome, Env, LiveStep0Runner, Step0Runner, WrapperNs, atomic_write_string, env_get,
-    exit_from_i32, load_wrapper_env, pause_save_arguments, require_plugin_root, utf8_arguments,
-    valid_var_name, write_text,
+    exit_from_i32, load_source_env_allowed, load_wrapper_env, pause_save_arguments,
+    require_plugin_root, utf8_arguments, valid_var_name, write_text,
 };
 use crate::design_step1_commands::consumer_repo_root;
 use crate::python_verb::run_python_verb;
@@ -271,7 +271,7 @@ fn kv_get<'a>(map: &'a BTreeMap<String, String>, key: &str, default: &'a str) ->
 
 /// `_print_text`: print the block, adding a trailing newline only when the text
 /// is non-empty and does not already end in one.
-fn print_text(text: &str) {
+pub fn print_text(text: &str) {
     if text.is_empty() {
         return;
     }
@@ -341,6 +341,68 @@ fn step2b5_next_action_for(
         exit_rc: 0,
         status: "under-threshold",
     }
+}
+
+/// Run the Step 2b.5 plan-size check and emit its routing envelope (#8586).
+pub fn step2b5(arguments: &[OsString]) -> ExitCode {
+    let argv = utf8_arguments(arguments);
+    let parsed = match parse_common_wrapper_args(&argv) {
+        Ok(parsed) => parsed,
+        Err(message) => {
+            eprintln!("design-step2b5.sh: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    let env = rehydrate_env(&parsed);
+    let plugin_root = match require_plugin_root(env_get(&env, "CLAUDE_PLUGIN_ROOT", "")) {
+        Ok(root) => root,
+        Err(code) => return code,
+    };
+    let design_tmpdir = PathBuf::from(env_get(&env, "DESIGN_TMPDIR", ""));
+    if design_tmpdir.join(".pause-requested").is_file() {
+        let (code, stdout, stderr) = pause_save_captured(
+            &plugin_root,
+            &design_tmpdir,
+            env_get(&env, "ISSUE_NUMBER", ""),
+            env_get(&env, "REPO", ""),
+        );
+        print_text(&stdout);
+        eprint!("{stderr}");
+        return exit_from_i32(code);
+    }
+
+    let design_tmpdir_text = design_tmpdir.display().to_string();
+    let check = run_larch(
+        &plugin_root,
+        &["plan", "check-size", "--design-tmpdir", &design_tmpdir_text],
+        &[("LARCH_QUIET_DISABLE", "1")],
+    );
+    print_text(&check.stdout);
+    let check_size_kvs = parse_kv_both(&check.stdout, &check.stderr);
+    let partition_requested = fs::read_to_string(design_tmpdir.join("run-params.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|value| {
+            value
+                .get("partition_requested")
+                .and_then(serde_json::Value::as_bool)
+        })
+        .unwrap_or(false);
+    let dispatch = step2b5_next_action_for(check.code, &check_size_kvs, partition_requested);
+    println!("STEP2B5_STATUS={}", dispatch.status);
+    println!("STEP2B5_NEXT_ACTION={}", dispatch.action);
+    println!("STEP2B5_EXIT_RC={}", dispatch.exit_rc);
+    if check.code != 0 {
+        self_log_check_size_failure(
+            &plugin_root,
+            &design_tmpdir,
+            check.code,
+            &check.stdout,
+            &check.stderr,
+            "design Step 2b.5",
+        );
+    }
+    exit_from_i32(dispatch.exit_rc)
 }
 
 // ===========================================================================
@@ -937,20 +999,21 @@ const WRAPPER_VALUE_FLAGS: &[&str] = &[
     clippy::struct_excessive_bools,
     reason = "mirrors the WrapperArgs completion-mode and snapshot flags one-for-one"
 )]
-struct WrapperArgs2b {
+pub struct WrapperArgs2b {
     session_env_path: String,
-    claude_pid: String,
+    pub claude_pid: String,
     plugin_root: String,
     site: String,
     snapshot_original: bool,
     write_completion_only: bool,
     include_step2b: bool,
     write_step2b_completion_only: bool,
+    pub skip_validate: bool,
 }
 
 /// Port of `_parse_common_wrapper_args`: bind behavior-bearing flags, consume
 /// value flags, and forward-compatibly skip retired generated wrapper args.
-fn parse_common_wrapper_args(argv: &[String]) -> Result<WrapperArgs2b, String> {
+pub fn parse_common_wrapper_args(argv: &[String]) -> Result<WrapperArgs2b, String> {
     let mut out = WrapperArgs2b::default();
     let mut index = 0;
     while index < argv.len() {
@@ -978,7 +1041,12 @@ fn parse_common_wrapper_args(argv: &[String]) -> Result<WrapperArgs2b, String> {
                 index += 1;
                 continue;
             }
-            "--skip-validate" | "--operator-cancel" => {
+            "--skip-validate" => {
+                out.skip_validate = true;
+                index += 1;
+                continue;
+            }
+            "--operator-cancel" => {
                 index += 1;
                 continue;
             }
@@ -1015,11 +1083,15 @@ fn parse_common_wrapper_args(argv: &[String]) -> Result<WrapperArgs2b, String> {
 /// Rehydrate the wrapper env through the shared Step 0 loader (source-env plus
 /// process defaults and the `--plugin-root` override), mirroring
 /// `_rehydrate_wrapper_env` for the keys the step2b verbs read.
-fn rehydrate_env(parsed: &WrapperArgs2b) -> Env {
+pub fn rehydrate_env(parsed: &WrapperArgs2b) -> Env {
     let ns = WrapperNs {
         session_env_path: parsed.session_env_path.clone(),
         claude_pid: parsed.claude_pid.clone(),
-        plugin_root: parsed.plugin_root.clone(),
+        plugin_root: if parsed.plugin_root.is_empty() {
+            std::env::var("CLAUDE_PLUGIN_ROOT").unwrap_or_default()
+        } else {
+            parsed.plugin_root.clone()
+        },
         outcome: String::new(),
         issue_number: String::new(),
         exit_code: String::new(),
@@ -1028,11 +1100,23 @@ fn rehydrate_env(parsed: &WrapperArgs2b) -> Env {
         tool: String::new(),
         public_argv: Vec::new(),
     };
-    load_wrapper_env(&ns)
+    let mut env = load_wrapper_env(&ns);
+    let _ = env.insert(
+        "STANDALONE_HEAVY_FAILED".to_owned(),
+        std::env::var("STANDALONE_HEAVY_FAILED").unwrap_or_default(),
+    );
+    for (key, value) in load_source_env_allowed(
+        &parsed.session_env_path,
+        &parsed.claude_pid,
+        &["STANDALONE_HEAVY_FAILED"],
+    ) {
+        let _ = env.insert(key, value);
+    }
+    env
 }
 
 /// `session_env.validate_design_tmpdir` through the shared adapter owner.
-fn validate_design_tmpdir_result(candidate: &str) -> Result<(), String> {
+pub fn validate_design_tmpdir_result(candidate: &str) -> Result<(), String> {
     let cache_root = cleanup_cache_sessions_root(
         std::env::var_os("XDG_CACHE_HOME").as_deref(),
         std::env::var_os("HOME").as_deref(),
@@ -1044,13 +1128,13 @@ fn validate_design_tmpdir_result(candidate: &str) -> Result<(), String> {
     )
 }
 
-fn resolve_design_tmpdir(raw: &str) -> PathBuf {
+pub fn resolve_design_tmpdir(raw: &str) -> PathBuf {
     let path = PathBuf::from(raw);
     fs::canonicalize(&path).unwrap_or(path)
 }
 
 /// `_touch`: create the parent chain, then create the file if absent.
-fn touch(path: &Path) {
+pub fn touch(path: &Path) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }

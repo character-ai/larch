@@ -35,7 +35,7 @@ Phase 7 folds absorbed prior-step sentinel writes into adjacent real-work Bash f
 | `step-4b` | Step 5b prepare prelude | before pause-check |
 | `step-5b` | Step 5b success boundary | boundary-local |
 | `step-5b.5` | post-approval diagram entry/sanitize fences | boundary-local, between `step-5b` and `step-5c` |
-| `step-5c` | `python/cli.py design step5c` fence when `PLAN_WRITE_OK=true` | in-fence gated |
+| `step-5c` | `scripts/larch.sh design step5c` fence when `PLAN_WRITE_OK=true` | in-fence gated |
 | `step-5d` | Step 6 prelude | before pause-check |
 | `step-6` | Step 6 cleanup fence | **after** pause-check |
 | Step 1e re-entry clears | Gate B(c)/Gate C(b) re-entry fence | `rm` stale `step-1e`…`step-4b` before pause-check |

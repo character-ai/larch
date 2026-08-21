@@ -486,16 +486,16 @@ def design_run_launcher_text(pid: str, plugin_root: str) -> str:
         '    exec "$PLUGIN_ROOT/scripts/larch.sh" design step35-settle --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         '    ;;\n'
         '  design-step2b5.sh)\n'
-        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step2b5 --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    exec "$PLUGIN_ROOT/scripts/larch.sh" design step2b5 --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         '    ;;\n'
         '  design-step6.sh)\n'
-        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step6 --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    exec "$PLUGIN_ROOT/scripts/larch.sh" design step6 --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         '    ;;\n'
         '  design-step6-prelude.sh)\n'
-        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step6-prelude --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    exec "$PLUGIN_ROOT/scripts/larch.sh" design step6-prelude --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         '    ;;\n'
         '  design-step6-cleanup.sh)\n'
-        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design step6-cleanup --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    exec "$PLUGIN_ROOT/scripts/larch.sh" design step6-cleanup --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         '    ;;\n'
         '  design-step-validator-autofix.sh)\n'
         '    exec "$PLUGIN_ROOT/scripts/larch.sh" plan validator-autofix --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
@@ -522,7 +522,7 @@ def design_run_launcher_text(pid: str, plugin_root: str) -> str:
         '    exec "$PLUGIN_ROOT/scripts/larch.sh" design "$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         "    ;;\n"
         "  step6|step6-prelude|step6-cleanup)\n"
-        '    exec python3 "$PLUGIN_ROOT/python/cli.py" design "$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
+        '    exec "$PLUGIN_ROOT/scripts/larch.sh" design "$script" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"\n'
         "    ;;\n"
         "  *.*)\n"
         "    printf '%s\\n' 'ERROR=design verb must be bare and must not end in .sh' >&2\n"

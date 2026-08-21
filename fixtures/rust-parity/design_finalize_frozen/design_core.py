@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import fcntl
 import io
+import json
 import os
 import re
 import shutil
@@ -20,7 +21,7 @@ from larch import io as larch_io
 from larch.core import config, logging_util, proc, rust_runtime
 from larch.core import redact
 from larch.core.ctx import Ctx
-from larch.core.repo_roots import larch_entrypoint
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.state import session_env
 from larch.state.session_env import validate_design_tmpdir
 
@@ -35,6 +36,49 @@ DESIGN_BGJOB_STEP_FINAL_SUMMARY = "design-step-final-summary"
 
 def design_bgjob_result_env_path(*, design_tmpdir: Path, step: str) -> Path:
     return design_tmpdir / config.BGJOB_TMP_SUBDIR / f"{step}{config.BGJOB_RESULT_ENV_SUFFIX}"
+
+
+def design_recreate_merge_env(*, path: Path, design_tmpdir: Path) -> None:
+    root = design_tmpdir.resolve()
+    target = path.resolve(strict=False)
+    try:
+        _ = target.relative_to(root)
+    except ValueError as exc:
+        msg = f"merge env escapes DESIGN_TMPDIR: {path}"
+        raise OSError(msg) from exc
+    if path.is_symlink():
+        msg = f"refusing to replace symlink merge env: {path}"
+        raise OSError(msg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.parent.is_symlink() or not path.parent.is_dir():
+        msg = f"merge env parent is not a regular directory: {path.parent}"
+        raise OSError(msg)
+    larch_io.atomic_write(path=path, text="", nofollow=True, mode=0o600)
+
+
+def design_write_merge_env(*, path: Path, design_tmpdir: Path, rows: Iterable[tuple[str, object]]) -> None:
+    root = design_tmpdir.resolve()
+    target = path.resolve(strict=False)
+    try:
+        _ = target.relative_to(root)
+    except ValueError as exc:
+        msg = f"merge env escapes DESIGN_TMPDIR: {path}"
+        raise OSError(msg) from exc
+    safe_rows: list[tuple[str, str]] = []
+    for key, value in rows:
+        if not key or "\n" in key or "\r" in key:
+            msg = f"invalid merge env key: {key!r}"
+            raise ValueError(msg)
+        text = str(value)
+        if "\n" in text or "\r" in text:
+            msg = f"merge env value contains newline: {key}"
+            raise ValueError(msg)
+        safe_rows.append((key, text))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.parent.is_symlink() or not path.parent.is_dir():
+        msg = f"merge env parent is not a regular directory: {path.parent}"
+        raise OSError(msg)
+    larch_io.atomic_write(path=path, text=larch_io.format_kvs(safe_rows), nofollow=True, mode=0o600)
 
 
 class _CoreUsageError(Exception):
@@ -1218,8 +1262,10 @@ def step3_continuation_entry_main(argv: Sequence[str]) -> int:
 # --- Relocated surviving library helpers from the retired design_terminal.py
 # (#8580). The four terminal/failure/summary verbs are Rust-owned in
 # crates/larch-cli/src/design_terminal_commands.rs. These pure helpers and the
-# shared helpers stay in Python because remaining design siblings import them
-# in process (clarify.py, decompose.py, and design_postplan.py). ---
+# three step-final-summary internals stay in Python because still-Python design
+# siblings import them in-process (clarify.py, decompose.py, design_postplan.py,
+# design_publish.py, design_step5c.py). The step5c-shared internals are a
+# ledgered temporary Python survival reconciled at #8586/#8593. ---
 
 
 def phase_driver_read_result_env(*, path: str | Path, allow_keys: Iterable[str]) -> list[tuple[str, str]]:
@@ -1323,6 +1369,299 @@ def phase_driver_recreate_result_env(*, path: str | Path, design_tmpdir: str | P
         raise OSError(f"result env escapes DESIGN_TMPDIR: {dest}")
     phase_driver_write_result_env(path=dest, kvs=[])
 
+
+def extend_publish_failure_stage_args(stage_args: list[str], values: Mapping[str, str]) -> None:
+    """Append optional publish state to a terminal-stage command."""
+    for flag, key in (
+        ("--publish-attempt-id", "PUBLISH_ATTEMPT_ID"),
+        ("--publish-rc-source", "PUBLISH_RC_SOURCE"),
+        ("--latest-phase", "LATEST_PHASE"),
+        ("--plan-write-ok", "PLAN_WRITE_OK"),
+        ("--publish-ok", "PUBLISH_OK"),
+        ("--renamed", "RENAMED"),
+        ("--log-publish-attempted", "LOG_PUBLISH_ATTEMPTED"),
+        ("--log-publish-completed", "LOG_PUBLISH_COMPLETED"),
+        ("--designed-admission-ready", "DESIGNED_ADMISSION_READY"),
+        ("--pr-url", "PR_URL"),
+        ("--recovery-branch", "RECOVERY_BRANCH"),
+    ):
+        value = values.get(key, "")
+        if value:
+            stage_args.extend((flag, value))
+
+
+def _final_summary_stream():
+    return logging_util.contract_stream()
+
+
+def _final_summary_ready_rows(*, final_summary_path: Path) -> list[tuple[str, str]]:
+    return [
+        (config.ENV_FINAL_SUMMARY_PATH, str(final_summary_path)),
+        (config.ENV_FINAL_SUMMARY_READY, "true"),
+    ]
+
+
+def _has_nonempty_final_summary(path: Path) -> bool:
+    return not path.is_symlink() and path.is_file() and path.stat().st_size > 0
+
+
+def _parse_contract_value(text: str, key: str) -> str:
+    return larch_io.kv_value(text=text, key=key, duplicate_policy="last")
+
+
+def _upsert_final_summary_ready_into_merge_env(
+    *,
+    design_tmpdir: Path,
+    merge_env: Path,
+    final_summary_path: Path,
+) -> None:
+    """Merge FINAL_SUMMARY_PATH/READY into a caller-owned merge env for bgjob DONE."""
+    if merge_env.is_symlink() or not merge_env.is_file():
+        return
+    existing = larch_io.read_kvs(merge_env, duplicate_policy="last", reject_symlink=True)
+    merged: list[tuple[str, str]] = []
+    for key, value in existing.items():
+        if key in {config.ENV_FINAL_SUMMARY_PATH, config.ENV_FINAL_SUMMARY_READY}:
+            continue
+        merged.append((key, value))
+    merged.extend(_final_summary_ready_rows(final_summary_path=final_summary_path))
+    design_write_merge_env(path=merge_env, design_tmpdir=design_tmpdir, rows=merged)
+
+
+def _persist_final_summary_readiness(
+    *,
+    design_tmpdir: Path,
+    final_summary_path: str,
+    merge_env: Path | None = None,
+) -> None:
+    """Write readiness KVs into merge envs that bgjob wait promotes into DONE/result.env."""
+    summary_path = Path(final_summary_path)
+    if not _has_nonempty_final_summary(summary_path):
+        return
+    design_write_merge_env(
+        path=design_tmpdir / ".design-step-final-summary-result.env",
+        design_tmpdir=design_tmpdir,
+        rows=_final_summary_ready_rows(final_summary_path=summary_path),
+    )
+    if merge_env is not None:
+        _upsert_final_summary_ready_into_merge_env(
+            design_tmpdir=design_tmpdir,
+            merge_env=merge_env,
+            final_summary_path=summary_path,
+        )
+
+
+def _emit_final_summary_marked_from_disk(
+    *,
+    design_tmpdir: Path,
+    final_summary_path: str,
+    merge_env: Path | None = None,
+) -> None:
+    summary_path = Path(final_summary_path)
+    if not summary_path.is_file() or summary_path.stat().st_size == 0:
+        return
+    stream = _final_summary_stream()
+    logging_util.emit_kv(key=config.ENV_FINAL_SUMMARY_PATH, value=str(summary_path))
+    stream.write(f"{config.LARCH_FINAL_SUMMARY_BEGIN_MARKER}\n")
+    stream.write(f"{config.LARCH_FINAL_SUMMARY_END_MARKER}\n")
+    stream.flush()
+    # Contract-stream markers are not merged into bgjob DONE/result.env (#8462).
+    # Persist an equivalent readiness KV into the step merge envs that are.
+    _persist_final_summary_readiness(
+        design_tmpdir=design_tmpdir,
+        final_summary_path=str(summary_path),
+        merge_env=merge_env,
+    )
+
+
+def _emit_report_gate_sidecars_from_disk(design_tmpdir: Path) -> None:
+    handoff = design_tmpdir / "design-report-gate-sidecars.md"
+    sidecars = (design_tmpdir / "design-failure-chat-print.md", design_tmpdir / "design-failure-operator-action-chat.md")
+    chunks = [sidecar.read_text(encoding="utf-8", errors="replace") for sidecar in sidecars if sidecar.is_file() and sidecar.stat().st_size > 0]
+    handoff.write_text(("\n".join(chunks).rstrip("\n") + "\n") if chunks else "", encoding="utf-8")
+    if handoff.stat().st_size > 0:
+        logging_util.emit_kv(key="REPORT_GATE_SIDECARS_FILE", value=str(handoff))
+
+
+def _publish_terminal_final_summary(
+    *,
+    design_tmpdir: Path,
+    run_id: str,
+    issue: str,
+    outcome: str,
+    repo: str = "",
+) -> tuple[int, bool]:
+    plugin_root = Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3]))
+    args = [
+        str(larch_entrypoint(plugin_root)),
+        "design",
+        "log-publish",
+        "--design-tmpdir",
+        str(design_tmpdir),
+        "--run-id",
+        run_id,
+        "--issue",
+        issue,
+        "--outcome",
+        outcome,
+    ]
+    if repo:
+        args.extend(["--repo", repo])
+    stdout_log = design_tmpdir / "design-log-publish.terminal.stdout.log"
+    stderr_log = design_tmpdir / "design-log-publish.terminal.stderr.log"
+    completed = subprocess.run(args, capture_output=True, text=True, check=False)
+    _ = stdout_log.write_text(completed.stdout, encoding="utf-8")
+    _ = stderr_log.write_text(completed.stderr, encoding="utf-8")
+    rc = int(completed.returncode)
+    publish_ok = _parse_contract_value(completed.stdout, "PUBLISH_OK")
+    recovery_branch = _parse_contract_value(completed.stdout, "RECOVERY_BRANCH")
+    return rc, rc == 0 and publish_ok == "true" and not recovery_branch
+
+def _read_source_env_value(*, path: Path, key: str) -> str:
+    """Read one ``KEY=value`` (or ``export KEY=value``) from a source-env file."""
+    if not path.is_file() or path.is_symlink():
+        return ""
+    export_prefix = f"export {key}="
+    prefix = f"{key}="
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith(export_prefix):
+            value = line[len(export_prefix):]
+        elif line.startswith(prefix):
+            value = line[len(prefix):]
+        else:
+            continue
+        return value.strip().strip('"').strip("'")
+    return ""
+
+
+def resolve_summary_mode(design_tmpdir: Path) -> str:
+    """Resolve the /design run mode for the final summary (relocated from #8581)."""
+    run_params = design_tmpdir / "run-params.json"
+    if run_params.is_file() and not run_params.is_symlink():
+        with contextlib.suppress(OSError, json.JSONDecodeError):
+            parsed = json.loads(run_params.read_text(encoding="utf-8"))
+            if isinstance(parsed, dict):
+                for key in ("mode", "MODE"):
+                    value = parsed.get(key)
+                    if isinstance(value, str) and value:
+                        return value
+    return _read_source_env_value(path=design_tmpdir / "source-env.sh", key="MODE") or "N/A"
+
+
+@dataclass(frozen=True)
+class FinalSummaryRenderRequest:
+    """Inputs for a non-gating final-summary render wrapper (relocated from #8581)."""
+
+    design_tmpdir: Path
+    outcome: str
+    mode: str
+    issue_number: str
+    session_id: str
+    repo: str
+    upsert_summary_comment: bool
+    stdout_log_path: Path
+    final_summary_path: Path | None = None
+
+
+def render_final_summary_for_request(request: FinalSummaryRenderRequest) -> bool:
+    """Render an enriched final summary through the Rust verb, returning success.
+
+    Relocated from the retired ``design_summary`` (#8581) and rewritten to invoke
+    the Rust ``design render-final-summary`` owner via the ``larch_entrypoint``
+    seam instead of the removed in-process command main.
+    """
+    out_file = request.design_tmpdir / "final-summary.md"
+    cleanup_paths = {out_file}
+    if request.final_summary_path is not None:
+        with contextlib.suppress(OSError):
+            summary_resolved = request.final_summary_path.resolve()
+            tmpdir_resolved = request.design_tmpdir.resolve()
+            if summary_resolved.is_relative_to(tmpdir_resolved):
+                cleanup_paths.add(summary_resolved)
+    for cleanup_path in cleanup_paths:
+        with contextlib.suppress(OSError):
+            cleanup_path.unlink()
+    args = [
+        "--outcome",
+        request.outcome,
+        "--mode",
+        request.mode or "N/A",
+        "--design-tmpdir",
+        str(request.design_tmpdir),
+        "--issue-number",
+        request.issue_number,
+    ]
+    if request.session_id:
+        args.extend(["--session-id", request.session_id])
+    args.append("--post-publish-only")
+    if request.repo:
+        args.extend(["--repo", request.repo])
+    if not request.upsert_summary_comment:
+        args.append("--skip-summary-upsert")
+    stderr_path = request.stdout_log_path.parent / f"{request.stdout_log_path.name}.stderr"
+    render_rc = 1
+    try:
+        request.stdout_log_path.parent.mkdir(parents=True, exist_ok=True)
+        render_rc = run_design_verb_captured(
+            verb="render-final-summary",
+            args=args,
+            stdout_path=request.stdout_log_path,
+            stderr_path=stderr_path,
+        )
+    except OSError as exc:
+        message = f"render-final-summary failed: {exc}"
+        print(f"design final-summary render: {message}", file=sys.stderr)
+        with contextlib.suppress(OSError):
+            _append_execution_issue(
+                design_tmpdir=request.design_tmpdir,
+                message=f"- **design-summary**: {message}",
+            )
+        render_rc = 1
+    if render_rc != 0:
+        for cleanup_path in cleanup_paths:
+            with contextlib.suppress(OSError):
+                cleanup_path.unlink()
+    return render_rc == 0
+
+
+def upsert_final_summary_from_disk(
+    *,
+    design_tmpdir: Path,
+    issue: str,
+    session_id: str,
+    repo_args: Sequence[str] | None = None,
+    final_summary_path: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> bool:
+    """Upsert a rendered final summary into the tracking issue (relocated from #8581)."""
+    del env
+    summary_path = final_summary_path or (design_tmpdir / "final-summary.md")
+    if summary_path.is_symlink() or not summary_path.is_file() or summary_path.stat().st_size == 0:
+        return False
+    if not issue or issue == "0" or not session_id:
+        return False
+    marker = f"<!-- larch:final-summary v1 runid={session_id} -->"
+    root = _design_verb_plugin_root(None)
+    ups_args: list[str] = [
+        str(larch_entrypoint(root)),
+        "tracking-issue",
+        "upsert-summary",
+        "--issue",
+        issue,
+        "--marker",
+        marker,
+        "--content-file",
+        str(summary_path),
+    ]
+    if repo_args:
+        ups_args.extend(repo_args)
+    try:
+        result = subprocess.run(  # lint-subprocess-via-runner: ok invokes the Rust-owned tracking-issue upsert-summary entrypoint for its exit code
+            ups_args, capture_output=True, text=True, check=False, env=larch_entrypoint_env(root)
+        )
+    except OSError:
+        return False
+    return result.returncode == 0
 
 
 def _read_review_round_count(design_tmpdir: Path) -> int:

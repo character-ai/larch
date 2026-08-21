@@ -59,6 +59,7 @@ mod decompose_commands;
 mod deps_audit_commands;
 mod design_commands;
 mod design_dialectic_commands;
+mod design_finalize_commands;
 mod design_gate_summary_commands;
 mod design_log_publish_commands;
 mod design_oos_commands;
@@ -1422,6 +1423,24 @@ enum DesignCommand {
     /// Drive the Step 5c publish phase machine (#8591).
     #[command(disable_help_flag = true)]
     Publish(RawCompatibilityArguments),
+    /// Recompose the Step 5c issue-body plan from canonical artifacts (#8586).
+    #[command(name = "compose-plan-md", disable_help_flag = true)]
+    ComposePlanMd(RawCompatibilityArguments),
+    /// Run the Step 2b.5 plan-size routing check (#8586).
+    #[command(name = "step2b5", disable_help_flag = true)]
+    Step2b5(RawCompatibilityArguments),
+    /// Publish the final design and emit its Step 5c result envelope (#8586).
+    #[command(name = "step5c", disable_help_flag = true)]
+    Step5c(RawCompatibilityArguments),
+    /// Run the complete Step 6 prelude and cleanup sequence (#8586).
+    #[command(name = "step6", disable_help_flag = true)]
+    Step6(RawCompatibilityArguments),
+    /// Mark Step 5d when the Step 5c result permits cleanup (#8586).
+    #[command(name = "step6-prelude", disable_help_flag = true)]
+    Step6Prelude(RawCompatibilityArguments),
+    /// Preserve or clean the completed design session (#8586).
+    #[command(name = "step6-cleanup", disable_help_flag = true)]
+    Step6Cleanup(RawCompatibilityArguments),
     /// Compose the Step 2b plan drafter and delegate postplan (#8583).
     #[command(name = "step2b-drafter", disable_help_flag = true)]
     Step2bDrafter(RawCompatibilityArguments),
@@ -1508,6 +1527,12 @@ impl DesignCommand {
             Self::StepFinalSummary(_) => design_terminal_commands::step_final_summary(&arguments),
             Self::LogPublish(_) => design_log_publish_commands::log_publish_main(&arguments),
             Self::Publish(_) => design_publish_commands::design_publish_main(&arguments),
+            Self::ComposePlanMd(_) => design_finalize_commands::compose_plan_md(&arguments),
+            Self::Step2b5(_) => design_step2b_commands::step2b5(&arguments),
+            Self::Step5c(_) => design_finalize_commands::step5c(&arguments),
+            Self::Step6(_) => design_finalize_commands::step6(&arguments),
+            Self::Step6Prelude(_) => design_finalize_commands::step6_prelude(&arguments),
+            Self::Step6Cleanup(_) => design_finalize_commands::step6_cleanup(&arguments),
             Self::Step2bDrafter(_) => design_step2b_commands::step2b_drafter(&arguments),
             Self::Step2bPostplan(_) => design_step2b_commands::step2b_postplan(&arguments),
             Self::PostplanEmit(_) => design_step2b_commands::postplan_emit(&arguments),

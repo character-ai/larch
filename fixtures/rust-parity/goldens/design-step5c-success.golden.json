@@ -1,0 +1,42 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/.completed/step-5b": {
+      "text": ""
+    },
+    "design/.completed/step-5c": {
+      "text": ""
+    },
+    "design/.design-publish-result.env": {
+      "text": "PUBLISH_ATTEMPT_ID=<ATTEMPT_ID>\nPUBLISH_RC_SOURCE=returned\nLATEST_PHASE=publish\nPLAN_WRITE_OK=true\nPUBLISH_OK=true\nLOG_PUBLISH_ATTEMPTED=false\nLOG_PUBLISH_COMPLETED=false\nRENAMED=false\nVALIDATE_STATUS=ok\n"
+    },
+    "design/.design-step-final-summary-result.env": {
+      "text": "FINAL_SUMMARY_PATH=<SANDBOX>/design/final-summary.md\nFINAL_SUMMARY_READY=true\n"
+    },
+    "design/.design-step5c-status.env": {
+      "text": "PUBLISH_RC=0\nPLAN_WRITE_OK=true\nPUBLISH_OK=true\nSTANDALONE_HEAVY_FAILED=\nSESSION_ID=\nPUBLISH_STDOUT_FALLBACK=false\nVALIDATE_STATUS=ok\nVALIDATE_DEFECT_COUNT=\nVALIDATE_SKIPPED_COUNT=\nVALIDATE_UNSAFE_TOKEN_COUNT=\nVALIDATE_MISSING_SCRIPT_COUNT=\nVALIDATE_LOG_FILE=\nPUBLISH_REFUSE_REASON=\nARCH_INVARIANT_ASSESSMENT_REQUIRED=\nARCH_INVARIANT_ASSESSMENT_PRESENT=\nARCH_INVARIANT_ASSESSMENT_STATUS=\nARCH_INVARIANT_ASSESSMENT_ARTIFACT=\nARCH_GUIDE_ASSESSMENT_REQUIRED=\nARCH_GUIDE_ASSESSMENT_PRESENT=\nARCH_GUIDE_ASSESSMENT_STATUS=\nARCH_GUIDE_ASSESSMENT_ARTIFACT=\nUPSERT_STATUS=\nARCHITECTURE_SOURCE=\nCLEANUP_ELIGIBLE=true\nFINAL_SUMMARY_PATH=<SANDBOX>/design/final-summary.md\nFINAL_SUMMARY_READY=true\n"
+    },
+    "design/composed-plan.md": {
+      "text": "## Plan\n\nReady.\n"
+    },
+    "design/design-report-gate-sidecars.md": {
+      "text": ""
+    },
+    "design/final-summary.md": {
+      "text": "offline final summary\n"
+    },
+    "design/render-final-summary.approved.stdout.log": {
+      "text": ""
+    },
+    "design/render-final-summary.approved.stdout.log.stderr": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "PUBLISH_RC=0\nPLAN_WRITE_OK=true\nPUBLISH_OK=true\nSTANDALONE_HEAVY_FAILED=\nSESSION_ID=\nPUBLISH_STDOUT_FALLBACK=false\nVALIDATE_STATUS=ok\nVALIDATE_DEFECT_COUNT=\nVALIDATE_SKIPPED_COUNT=\nVALIDATE_UNSAFE_TOKEN_COUNT=\nVALIDATE_MISSING_SCRIPT_COUNT=\nVALIDATE_LOG_FILE=\nPUBLISH_REFUSE_REASON=\nARCH_INVARIANT_ASSESSMENT_REQUIRED=\nARCH_INVARIANT_ASSESSMENT_PRESENT=\nARCH_INVARIANT_ASSESSMENT_STATUS=\nARCH_INVARIANT_ASSESSMENT_ARTIFACT=\nARCH_GUIDE_ASSESSMENT_REQUIRED=\nARCH_GUIDE_ASSESSMENT_PRESENT=\nARCH_GUIDE_ASSESSMENT_STATUS=\nARCH_GUIDE_ASSESSMENT_ARTIFACT=\nFINAL_SUMMARY_PATH=\nUPSERT_STATUS=\nARCHITECTURE_SOURCE=\nCLEANUP_ELIGIBLE=true\nFINAL_SUMMARY_PATH=<SANDBOX>/design/final-summary.md\nLARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END\n"
+  }
+}
