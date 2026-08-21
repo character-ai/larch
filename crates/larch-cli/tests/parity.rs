@@ -868,6 +868,26 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "init-runparams",
     ),
     CleanInstallCase::new("clean-install-design-driver", "design", "driver"),
+    CleanInstallCase::new(
+        "clean-install-design-dialectic-clear-stale",
+        "design",
+        "dialectic-clear-stale",
+    ),
+    CleanInstallCase::new(
+        "clean-install-design-dialectic-promote-candidates",
+        "design",
+        "dialectic-promote-candidates",
+    ),
+    CleanInstallCase::new(
+        "clean-install-design-dialectic-validate-candidates",
+        "design",
+        "dialectic-validate-candidates",
+    ),
+    CleanInstallCase::new(
+        "clean-install-design-dialectic-write-candidates",
+        "design",
+        "dialectic-write-candidates",
+    ),
     CleanInstallCase::new("clean-install-design-log-publish", "design", "log-publish"),
     CleanInstallCase::new("clean-install-design-pause-load", "design", "pause-load"),
     CleanInstallCase::new("clean-install-design-pause-save", "design", "pause-save"),

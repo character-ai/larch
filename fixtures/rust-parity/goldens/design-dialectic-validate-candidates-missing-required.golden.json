@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "DIALECTIC_CANDIDATES_VALID=false\nDIALECTIC_CANDIDATES_FAIL_REASON=invalid-JSON:-Expecting-value\n"
+  }
+}

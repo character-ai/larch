@@ -31,7 +31,7 @@ Promoted files add `plan_fingerprint`, the sha256 of the exact final `plan.txt` 
 
 `parse_drafter_output()` may parse and validate the optional JSON, but it must not write `dialectic-clarifier-candidates.json`. The drafter launcher writes valid raw JSON to `$DESIGN_TMPDIR/.dialectic-raw-pending.json` before the subprocess exits. `dialectic-promote-candidates` consumes that sidecar only after terminal Step 2b postplan success (`POSTPLAN_RC=0`) and fingerprints the final `plan.txt` bytes. Clear `.dialectic-raw-pending.json` at Step 2b drafter start and after successful promotion.
 
-Inline Step 2b fallback may call `python/cli.py design dialectic-write-candidates --design-tmpdir "$DESIGN_TMPDIR" --content-file <file>` only after the retained postplan fence succeeds. Candidate absence is non-fatal. `dialectic-resolutions.md` remains an empty legacy placeholder for this clarifier flow.
+Fallback may call `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" design dialectic-write-candidates --design-tmpdir "$DESIGN_TMPDIR" --content-file <file>` after its postplan fence succeeds. Candidate absence is non-fatal. `dialectic-resolutions.md` remains an empty legacy placeholder for this clarifier flow.
 
 ## Stale invalidation
 

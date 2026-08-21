@@ -156,7 +156,7 @@
   "tests/design/test_decompose.py::test_panel_dispatch_malformed_slots_ndjson": 1,
   "tests/design/test_decompose.py::test_panel_partial_paths_file_marks_degraded": 1,
   "tests/design/test_decompose.py::test_panel_replays_waterfall_kvs_on_contract_stream": 3,
-  "tests/design/test_design_dialectic.py::test_fail_open_debate_records_fallback_status": 4,
+  "tests/design/test_design_dialectic_debate.py::test_fail_open_debate_records_fallback_status": 4,
   "tests/design/test_design_gate_render.py::test_cli_help_and_registry_smoke": 4,
   "tests/design/test_design_gate_render.py::test_gate_a_default_prompt_fields": 2,
   "tests/design/test_design_gate_render.py::test_gate_a_without_see_full_plan": 1,

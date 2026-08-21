@@ -5,6 +5,7 @@
 
 mod clarify;
 mod decompose;
+mod dialectic;
 mod log_publish;
 mod pause;
 mod plan_grammar;
@@ -25,6 +26,12 @@ pub use decompose::{
     neutralize_markdown_h3_line_starts, normalize_firm_heading, parse_dependency,
     parse_filed_pieces, parse_intra_piece_edges, parse_issue_url, piece_field, piece_metadata,
     prefixed_piece_title, replacement_edges, scope_tokens, split_firm_headings,
+};
+pub use dialectic::{
+    DialecticCandidate, DialecticCandidateSet, DialecticShapeError, MAX_DIALECTIC_DECISIONS,
+    dialectic_option_in_plan, dialectic_plan_fingerprint, infer_dialectic_plan_choice,
+    normalize_dialectic_candidates, parse_dialectic_candidates, reconcile_dialectic_candidates,
+    render_dialectic_candidates_compact, render_dialectic_candidates_pretty,
 };
 pub use log_publish::{
     GUIDELINE_ASSESSMENT_ARTIFACT, INVARIANT_ASSESSMENT_ARTIFACT, assessment_present,

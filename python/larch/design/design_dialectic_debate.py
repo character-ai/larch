@@ -1,5 +1,5 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false
-"""Gate C dialectic clarifier helpers for /design.
+"""Still-Python Gate C debate and manual dialectic helpers for /design.
 
 The clarifier is deliberately fail-open. It binds optional drafter-declared
 forks to the exact ``plan.txt`` bytes that produced them, runs a bounded
@@ -24,13 +24,12 @@ import time
 from collections.abc import Callable, Sequence
 
 from larch.core import proc, rust_runtime
-from larch.core.repo_roots import larch_entrypoint
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 
 
 
 AUTO_CANDIDATES = "dialectic-clarifier-candidates.json"
 MANUAL_CANDIDATES = "dialectic-manual-candidates.json"
-RAW_PENDING = ".dialectic-raw-pending.json"
 STATUS_FILE = "dialectic-clarifier-status.json"
 DIGEST_FILE = "dialectic-clarifier-digest.md"
 GENERATION_FILE = "dialectic-clarifier-generation.txt"
@@ -260,14 +259,6 @@ def parse_candidate_set(path: Path, *, current_fingerprint: str | None = None) -
     return CandidateSet(plan_fingerprint=str(normalized["plan_fingerprint"]), decisions=decisions)
 
 
-def validate_candidates_content(content: str, *, current_fingerprint: str | None = None, require_fingerprint: bool = False) -> dict[str, object]:
-    try:
-        payload = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise DialecticShapeError(f"invalid JSON: {exc.msg}") from exc
-    return normalize_candidates_payload(payload, fingerprint=current_fingerprint, require_fingerprint=require_fingerprint)
-
-
 def candidates_fingerprint_valid(design_tmpdir: str | Path) -> bool:
     design = _validate_design_tmpdir(design_tmpdir)
     path = design / AUTO_CANDIDATES
@@ -394,47 +385,6 @@ def _write_status(design: Path, *, kind: str, candidates: CandidateSet, generati
     _atomic_write_json(path=design / STATUS_FILE, payload=payload)
 
 
-def _preserve_manual_status(design: Path) -> bool:
-    manual = _load_valid_candidates(design, manual=True)
-    return bool(manual is not None and _cached_digest_valid(design=design, candidates=manual, kind="manual"))
-
-
-def clear_stale(design_tmpdir: str | Path, *, reason: str) -> int:
-    del reason
-    design = _validate_design_tmpdir(design_tmpdir)
-    current = ""
-    with contextlib.suppress(DialecticShapeError, OSError):
-        current = plan_fingerprint(design)
-    auto_valid = False
-    if current and (design / AUTO_CANDIDATES).is_file():
-        with contextlib.suppress(Exception):
-            parse_candidate_set(design / AUTO_CANDIDATES, current_fingerprint=current)
-            auto_valid = True
-    if not auto_valid:
-        # RAW_PENDING is intentionally NOT removed here. It is a pre-promotion
-        # drafter sidecar owned by the drafter-start cleanup and the post-promotion
-        # unlink. A postplan plan-rewrite fires this choke point before
-        # step2b_drafter_main can promote; deleting RAW_PENDING here would silently
-        # drop a drafter-detected fork before it is promoted against the final
-        # plan bytes.
-        _safe_unlink(design / AUTO_CANDIDATES)
-    manual_preserved = _preserve_manual_status(design) if current else False
-    status = _status_from_file(design / STATUS_FILE)
-    status_valid = bool(
-        status is not None
-        and current
-        and status.plan_fingerprint == current
-        and ((status.kind == "auto" and auto_valid) or (status.kind == "manual" and manual_preserved))
-    )
-    if not status_valid:
-        _safe_unlink(design / STATUS_FILE)
-        _safe_unlink(design / DIGEST_FILE)
-    if not manual_preserved:
-        _safe_unlink(design / MANUAL_CANDIDATES)
-        _safe_unlink(design / MANUAL_REQUEST)
-    return 0
-
-
 def _option_in_plan(*, plan_text: str, option: str) -> bool:
     text = option.strip()
     if not text:
@@ -453,76 +403,6 @@ def _infer_plan_choice(*, plan_text: str, option_a: str, option_b: str) -> str:
     raise DialecticShapeError(
         "Cannot reconcile drafter_pick against final plan.txt (both options or neither appear uniquely)"
     )
-
-
-def _reconcile_candidates_against_plan(design: Path, *, normalized: dict[str, object]) -> None:
-    plan = design / "plan.txt"
-    if not plan.is_file():
-        raise DialecticShapeError("plan.txt missing for candidate reconciliation")
-    plan_text = plan.read_text(encoding="utf-8", errors="replace")
-    decisions = normalized.get("decisions")
-    if not isinstance(decisions, list):
-        return
-    for item in decisions:
-        if not isinstance(item, dict):
-            continue
-        option_a = str(item.get("option_a", ""))
-        option_b = str(item.get("option_b", ""))
-        stored_pick = item.get("drafter_pick")
-        if stored_pick not in {"option_a", "option_b"}:
-            continue
-        inferred = _infer_plan_choice(plan_text=plan_text, option_a=option_a, option_b=option_b)
-        if inferred != stored_pick:
-            raise DialecticShapeError(
-                f"drafter_pick {stored_pick} no longer matches final plan ({inferred})"
-            )
-
-
-def _promote_from_content(design: Path, *, content: str, output: Path) -> dict[str, object]:
-    normalized = validate_candidates_content(content, current_fingerprint=plan_fingerprint(design), require_fingerprint=False)
-    _reconcile_candidates_against_plan(design, normalized=normalized)
-    normalized["plan_fingerprint"] = plan_fingerprint(design)
-    _atomic_write_json(path=output, payload=normalized)
-    return normalized
-
-
-def promote_candidates(design_tmpdir: str | Path, *, raw_dialectic_file: str | Path | None = None) -> int:
-    design = _validate_design_tmpdir(design_tmpdir)
-    raw = Path(raw_dialectic_file) if raw_dialectic_file else design / RAW_PENDING
-    if not raw.is_file():
-        print("DIALECTIC_CANDIDATES_WRITTEN=false")
-        print("DIALECTIC_CANDIDATES_FAIL_REASON=absent")
-        return 0
-    try:
-        _promote_from_content(design, content=raw.read_text(encoding="utf-8"), output=design / AUTO_CANDIDATES)
-    except (OSError, DialecticShapeError) as exc:
-        print("DIALECTIC_CANDIDATES_WRITTEN=false")
-        print(f"DIALECTIC_CANDIDATES_FAIL_REASON={_kv_safe(str(exc))}")
-        return 0
-    _safe_unlink(raw)
-    print("DIALECTIC_CANDIDATES_WRITTEN=true")
-    return 0
-
-
-def write_candidates(design_tmpdir: str | Path, *, content_file: str | Path) -> int:
-    design = _validate_design_tmpdir(design_tmpdir)
-    source = Path(content_file)
-    if not source.is_file():
-        print("DIALECTIC_CANDIDATES_WRITTEN=false")
-        print("DIALECTIC_CANDIDATES_FAIL_REASON=content-file-missing")
-        return 2
-    try:
-        _promote_from_content(design, content=source.read_text(encoding="utf-8"), output=design / AUTO_CANDIDATES)
-    except (OSError, DialecticShapeError) as exc:
-        print("DIALECTIC_CANDIDATES_WRITTEN=false")
-        print(f"DIALECTIC_CANDIDATES_FAIL_REASON={_kv_safe(str(exc))}")
-        return 2
-    print("DIALECTIC_CANDIDATES_WRITTEN=true")
-    return 0
-
-
-def _kv_safe(value: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.:-]+", "-", value).strip("-")[:160] or "invalid"
 
 
 def _touch_gatec(design: Path) -> None:
@@ -874,6 +754,25 @@ def _manual_covers_auto(*, manual: CandidateSet, auto: CandidateSet) -> bool:
     return set(auto.ordered_ids).issubset(set(manual.ordered_ids))
 
 
+def _clear_stale_via_entrypoint(design: Path) -> int:
+    result = subprocess.run(
+        [
+            str(larch_entrypoint()),
+            "design",
+            "dialectic-clear-stale",
+            "--design-tmpdir",
+            str(design),
+            "--reason",
+            "gatec-stale-check",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=larch_entrypoint_env(),
+    )
+    return result.returncode
+
+
 def _run_gatec(design: Path, *, probe_only: bool = False) -> int:
     candidates = _load_valid_candidates(design)
     manual = _load_valid_candidates(design, manual=True)
@@ -896,7 +795,9 @@ def _run_gatec(design: Path, *, probe_only: bool = False) -> int:
         print((design / DIGEST_FILE).read_text(encoding="utf-8", errors="replace"), end="")
         return 0
     if candidates is None:
-        clear_stale(design, reason="gatec-stale-check")
+        stale_artifacts = (AUTO_CANDIDATES, MANUAL_CANDIDATES, STATUS_FILE, DIGEST_FILE, MANUAL_REQUEST)
+        if any((design / name).exists() or (design / name).is_symlink() for name in stale_artifacts):
+            _clear_stale_via_entrypoint(design)
         return 0
     if _skip_approve_requested(design):
         if auto_cached:
@@ -1011,52 +912,6 @@ def manual_main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
-def validate_candidates_main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py design dialectic-validate-candidates")
-    parser.add_argument("--content-file", default="")
-    parser.add_argument("--design-tmpdir", default="")
-    parser.add_argument("--require-fingerprint", action="store_true")
-    args = parser.parse_args(argv)
-    content = Path(args.content_file).read_text(encoding="utf-8") if args.content_file else sys.stdin.read()
-    current = plan_fingerprint(args.design_tmpdir) if args.design_tmpdir else None
-    try:
-        normalized = validate_candidates_content(content, current_fingerprint=current, require_fingerprint=args.require_fingerprint)
-    except DialecticShapeError as exc:
-        print(f"DIALECTIC_CANDIDATES_VALID=false\nDIALECTIC_CANDIDATES_FAIL_REASON={_kv_safe(str(exc))}")
-        return 1
-    print("DIALECTIC_CANDIDATES_VALID=true")
-    print(json.dumps(normalized, separators=(",", ":")))
-    return 0
-
-
-def promote_candidates_main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py design dialectic-promote-candidates")
-    parser.add_argument("--design-tmpdir", required=True)
-    parser.add_argument("--raw-dialectic-file", default="")
-    args = parser.parse_args(argv)
-    return promote_candidates(args.design_tmpdir, raw_dialectic_file=args.raw_dialectic_file or None)
-
-
-def write_candidates_main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py design dialectic-write-candidates")
-    parser.add_argument("--design-tmpdir", required=True)
-    parser.add_argument("--content-file", required=True)
-    args = parser.parse_args(argv)
-    return write_candidates(args.design_tmpdir, content_file=args.content_file)
-
-
-def clear_stale_main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py design dialectic-clear-stale")
-    parser.add_argument("--design-tmpdir", required=True)
-    parser.add_argument("--reason", required=True)
-    args = parser.parse_args(argv)
-    try:
-        return clear_stale(args.design_tmpdir, reason=args.reason)
-    except DialecticShapeError as exc:
-        print(f"dialectic-clear-stale: {exc}", file=sys.stderr)
-        return 2
-
-
 __all__ = [
     "Candidate",
     "CandidateSet",
@@ -1067,10 +922,8 @@ __all__ = [
     "StatusSidecar",
     "bump_generation",
     "candidates_fingerprint_valid",
-    "clear_stale",
     "plan_fingerprint",
     "read_generation",
     "should_defer_load_clarifier_reference",
-    "validate_candidates_content",
     "write_if_generation_matches",
 ]
