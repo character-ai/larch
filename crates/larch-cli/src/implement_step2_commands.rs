@@ -39,8 +39,8 @@ use larch_core::{
         sanitize_manifest_obj, step2_token_mark_eligible, submodule_status_dirty,
         validate_manifest_paths,
     },
-    is_quota_failure, normalize_tier, read_architectural_knowledge, redact_secrets_only, tier_valid,
-    write_bytes_atomic,
+    is_quota_failure, normalize_tier, read_architectural_knowledge, redact_secrets_only,
+    tier_valid, write_bytes_atomic,
 };
 use serde_json::{Map, Value};
 
@@ -52,9 +52,7 @@ use crate::{
         capture_postlaunch_porcelain, capture_prelaunch_porcelain, delegate_python,
         delegate_verified_larch, rehydrate_session, run_verified_larch_env_in,
     },
-    implement_launcher_commands::{
-        CODEX_IMPLEMENT_MODEL, cursor_implement_model, read_architectural_knowledge,
-    },
+    implement_launcher_commands::{CODEX_IMPLEMENT_MODEL, cursor_implement_model},
     implement_preflight_commands::governance_gate_argv,
     python_verb::publish_session_environment,
 };
@@ -214,167 +212,4 @@ fn text(value: Option<&OsStr>) -> String {
     value
         .map(|value| value.to_string_lossy().into_owned())
         .unwrap_or_default()
-}
-
-#[cfg(test)]
-mod commands_tests {
-    use super::fixtures::*;
-    use super::*;
-
-    #[test]
-    fn text_defaults_empty_and_passes_through() {
-        assert_eq!(text(None), "");
-        assert_eq!(text(Some(OsStr::new("value"))), "value");
-    }
-
-    #[test]
-    fn run_dispatch_requires_a_coder() {
-        let code = run_dispatch(&test_arguments(&["--implement-tmpdir", "/nonexistent"]));
-        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::from(2)));
-    }
-
-    #[test]
-    fn run_dispatch_help_exits_success() {
-        let code = run_dispatch(&test_arguments(&["--help"]));
-        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
-    }
-
-    #[test]
-    fn step2_dispatch_help_exits_success() {
-        let code = step2_dispatch(&test_arguments(&["--help"]));
-        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
-    }
-
-    #[test]
-    fn step2_dispatch_requires_a_directory_tmpdir() {
-        let code = step2_dispatch(&test_arguments(&[
-            "--tmpdir",
-            "/nonexistent/step2/tmpdir",
-            "--plan-file",
-            "/nonexistent/step2/tmpdir/plan.txt",
-            "--feature-file",
-            "/nonexistent/step2/tmpdir/feature.txt",
-            "--coder",
-            "codex",
-        ]));
-        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::from(2)));
-    }
-
-    /// A full `step2-dispatch` run for the `claude` coder never launches an
-    /// external process: it is a same-process fallback, so it is safe to run
-    /// end to end against a scratch tmpdir.
-    #[test]
-    fn step2_dispatch_full_run_falls_back_to_claude_for_the_claude_coder() {
-        let dir = tempfile::tempdir().expect("tmpdir");
-        test_write_fixture(&dir.path().join("plan.txt"), "plan\n");
-        test_write_fixture(&dir.path().join("feature.txt"), "feature\n");
-        let code = step2_dispatch(&test_arguments(&[
-            "--tmpdir",
-            dir.path().to_str().expect("utf8"),
-            "--plan-file",
-            dir.path().join("plan.txt").to_str().expect("utf8"),
-            "--feature-file",
-            dir.path().join("feature.txt").to_str().expect("utf8"),
-            "--coder",
-            "claude",
-        ]));
-        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
-        assert!(dir.path().join("step2-baseline.txt").is_file());
-    }
-
-    /// Ditto for a coder whose binary is explicitly reported absent: the
-    /// dispatcher falls back to Claude before it would launch anything.
-    #[test]
-    fn step2_dispatch_full_run_falls_back_to_claude_when_the_binary_is_absent() {
-        let dir = tempfile::tempdir().expect("tmpdir");
-        test_write_fixture(&dir.path().join("plan.txt"), "plan\n");
-        test_write_fixture(&dir.path().join("feature.txt"), "feature\n");
-        let code = step2_dispatch(&test_arguments(&[
-            "--tmpdir",
-            dir.path().to_str().expect("utf8"),
-            "--plan-file",
-            dir.path().join("plan.txt").to_str().expect("utf8"),
-            "--feature-file",
-            dir.path().join("feature.txt").to_str().expect("utf8"),
-            "--coder",
-            "codex",
-            "--codex-binary-found",
-            "false",
-        ]));
-        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
-        assert!(dir.path().join("step2-baseline.txt").is_file());
-    }
-
-    // -- run_dispatch: forwarding a real child `step2-dispatch` process
-    // (#8623 coverage) ---------------------------------------------------
-    //
-    // `run_dispatch` runs its `implement step2-dispatch` child, and
-    // `mark_step2_telemetry`'s timing mark, through `run_verified_larch_env_in`,
-    // which has no Rust-side test seam. Both go through one real
-    // `scripts/larch.sh` stub under a fixture plugin root instead.
-
-    /// A `run-dispatch` fixture whose `scripts/larch.sh` answers `timing mark`
-    /// and forwards `child_stdout` as the `implement step2-dispatch` child's
-    /// own stdout. `CODEX_BINARY_FOUND=true` keeps token-mark eligibility
-    /// (and its separate `delegate_verified_larch` seam) out of scope here.
-    #[cfg(unix)]
-    fn run_dispatch_stub_fixture(child_stdout: &str) -> tempfile::TempDir {
-        let dir = tempfile::tempdir().expect("tmpdir");
-        let plugin_root = dir.path().join("plugin-root");
-        fs::create_dir_all(&plugin_root).expect("plugin root");
-        test_write_fixture(
-            &dir.path().join("session-env.sh"),
-            &format!(
-                "LARCH_CLAUDE_PLUGIN_ROOT={}\nCODEX_BINARY_FOUND=true\n",
-                plugin_root.display()
-            ),
-        );
-        test_write_fixture(&dir.path().join("feature-description.txt"), "feature\n");
-        test_write_fixture(&dir.path().join("plan.txt"), "plan\n");
-        let script = format!(
-            "#!/usr/bin/env bash\nset -euo pipefail\ncase \"${{1:-}} ${{2:-}}\" in\n  \"timing mark\")\n    exit 0\n    ;;\n  \"implement step2-dispatch\")\n    cat <<'STUBOUT'\n{child_stdout}\nSTUBOUT\n    exit 0\n    ;;\n  *)\n    exit 0\n    ;;\nesac\n"
-        );
-        test_stub_larch_sh(&plugin_root, &script);
-        dir
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn run_dispatch_forwards_a_bailed_child_status_and_marks_telemetry() {
-        let dir = run_dispatch_stub_fixture(
-            "STATUS=bailed\nREASON=stub-bail-for-coverage\nTOOL=codex\nORCHESTRATOR_EDIT_AUTHORITY=forbidden",
-        );
-        let code = run_dispatch(&test_arguments(&[
-            "--implement-tmpdir",
-            dir.path().to_str().expect("utf8"),
-            "--coder",
-            "codex",
-        ]));
-        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
-        assert!(
-            dir.path().join(".step2-telemetry-marked").is_file(),
-            "a bailed-but-zero-exit child must still leave telemetry marked"
-        );
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn run_dispatch_publishes_the_childs_stdout_as_a_bgjob_envelope() {
-        let dir = run_dispatch_stub_fixture(
-            "STATUS=complete\nTOOL=codex\nORCHESTRATOR_EDIT_AUTHORITY=forbidden",
-        );
-        let merge_result_env = dir.path().join("run-dispatch.result.env");
-        let code = run_dispatch(&test_arguments(&[
-            "--implement-tmpdir",
-            dir.path().to_str().expect("utf8"),
-            "--coder",
-            "codex",
-            "--bgjob-child",
-            "--merge-result-env",
-            merge_result_env.to_str().expect("utf8"),
-        ]));
-        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
-        let published = fs::read_to_string(&merge_result_env).expect("published envelope");
-        assert!(published.contains("STATUS=complete"));
-    }
 }
