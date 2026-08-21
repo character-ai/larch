@@ -582,7 +582,7 @@ fn valid_pr_url(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        INITIAL_SHIP_STATE_KEYS, InitialShipState, KvDocument, ParseOptions, ShipState,
+        INITIAL_SHIP_STATE_KEYS, InitialShipState, KvDocument, KvRow, ParseOptions, ShipState,
         state_file_has_kv, write_initial_state,
     };
     use std::fs;
@@ -610,7 +610,7 @@ mod tests {
         let state = ShipState::initial(&request).expect("state");
         let text = state.render().expect("render");
         let parsed = KvDocument::parse(&text, ParseOptions::legacy()).expect("state KV");
-        let keys: Vec<_> = parsed.rows().iter().map(|row| row.key()).collect();
+        let keys: Vec<_> = parsed.rows().iter().map(KvRow::key).collect();
         assert_eq!(keys, INITIAL_SHIP_STATE_KEYS);
         assert_eq!(state.get("DRAFT"), Some("false"));
         assert_eq!(state.get("OOS_PENDING"), Some("false"));

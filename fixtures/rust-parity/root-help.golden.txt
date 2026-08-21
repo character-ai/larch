@@ -72,6 +72,7 @@ Commands:
   eval                      The `/research` evaluation commands: output validation and the eval harness
   rebalance-tests           CI test-rebalance planning, verification, and checked orchestration
   session                   Session state compatibility commands
+  ship                      Pull-request shipping state and result commands
   slack                     Slack announcement helpers
   stall-recovery            Stall-recovery state and validation commands
   test-shard                Pack and rewrite deterministic test-shard assignments
