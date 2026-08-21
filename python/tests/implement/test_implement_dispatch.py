@@ -6,7 +6,7 @@ import re
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -21,7 +21,6 @@ from larch.implement import (
 )
 from larch.implement.dispatch_helpers import resolve_tmpdir_path
 from larch.core import config
-from larch.core.proc import CommandResult
 from larch.core import logging_util
 from test_support import make_implement_tmpdir
 

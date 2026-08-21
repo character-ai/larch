@@ -6,15 +6,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 
 from larch.agents import _vendor
 from larch.implement import (
     dispatch_manifest,
 )
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def test_vendor_cap_status_uses_first_whitespace_token() -> None:
