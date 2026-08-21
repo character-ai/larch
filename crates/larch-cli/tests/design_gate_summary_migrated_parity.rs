@@ -148,6 +148,7 @@ fn gate_cases() -> Vec<ParityCase> {
             Vec::new(),
         ),
         gate_case("design-gate-summary-gate-c", &["--gate", "C"], Vec::new()),
+        gate_case("design-gate-summary-gate-help", &["--help"], Vec::new()),
         gate_case(
             "design-gate-summary-gate-c-panel-failed-escalation",
             &[

@@ -99,6 +99,30 @@ fn gate_arg_error(message: &str) -> ExitCode {
     ExitCode::from(2)
 }
 
+/// Argparse `-h`/`--help` body (below the usage line). Reproduces the frozen
+/// Python parser's auto-help so `design render-gate --help` stays byte-parity.
+const GATE_RENDER_HELP_BODY: &str = concat!(
+    "Render /design Gate A/B/C prompt copy as KEY=value rows\n",
+    "\n",
+    "options:\n",
+    "  -h, --help            show this help message and exit\n",
+    "  --gate {A,B,C}\n",
+    "  --without-see-full-plan\n",
+    "  --accepted-count ACCEPTED_COUNT\n",
+    "  --approve-requested {false,true}\n",
+    "  --design-tmpdir DESIGN_TMPDIR\n",
+    "  --panel-failed {false,true}\n",
+    "  --accepted-audit-escalation {false,true}\n",
+);
+
+/// Emit argparse's `-h`/`--help` output to stdout and exit 0.
+fn gate_help() -> ExitCode {
+    println!("{GATE_RENDER_USAGE}");
+    println!();
+    print!("{GATE_RENDER_HELP_BODY}");
+    ExitCode::SUCCESS
+}
+
 #[allow(clippy::struct_excessive_bools)] // Mirrors the render-gate CLI flag set.
 struct GateArgs {
     gate: String,
@@ -116,6 +140,7 @@ struct GateArgs {
 /// `--flag=value`, required `--gate`, `{A,B,C}` / `{false,true}` choices,
 /// integer coercion for `--accepted-count`, unrecognized-argument and
 /// missing-value diagnostics. Later occurrences win, matching argparse.
+#[allow(clippy::too_many_lines)] // Faithful mirror of the argparse parser surface.
 fn parse_gate_args(argv: &[String]) -> Result<GateArgs, ExitCode> {
     let mut gate: Option<String> = None;
     let mut without_see_full_plan = false;
@@ -194,6 +219,9 @@ fn parse_gate_args(argv: &[String]) -> Result<GateArgs, ExitCode> {
                 let value = take_value("--accepted-audit-escalation", inline, &mut i)?;
                 choice_check("--accepted-audit-escalation", &value, &["false", "true"])?;
                 accepted_audit_escalation = value;
+            }
+            "-h" | "--help" => {
+                return Err(gate_help());
             }
             _ => {
                 extras.push(token);
@@ -1161,7 +1189,9 @@ fn write_enriched_post_publish_summary(
     let Some(summary_body) = fs::read_to_string(out_file).ok() else {
         return enriched_degraded_recovery(design_tmpdir, out_file, None);
     };
-    let issue_detail = build_issue_detail_section(load_result, |_kind, _details| BTreeMap::new());
+    let issue_detail = build_issue_detail_section(load_result, |kind, details| {
+        crate::final_report_commands::assess_issue_details(design_tmpdir, kind, details)
+    });
     let detail = render_design_review_detail(design_tmpdir);
     let body = join_prefixed_summary(&[detail, issue_detail], &summary_body);
     if fs::write(out_file, &body).is_err() {
@@ -1188,7 +1218,9 @@ fn enriched_degraded_recovery(
         && let Some(degraded_body) = fs::read_to_string(out_file).ok()
     {
         let detail = render_design_review_detail(design_tmpdir);
-        let issue_detail = build_issue_detail_section(&reloaded, |_kind, _details| BTreeMap::new());
+        let issue_detail = build_issue_detail_section(&reloaded, |kind, details| {
+            crate::final_report_commands::assess_issue_details(design_tmpdir, kind, details)
+        });
         let rebuilt = if !detail.is_empty() || !issue_detail.is_empty() {
             join_prefixed_summary(&[detail, issue_detail], &degraded_body)
         } else {

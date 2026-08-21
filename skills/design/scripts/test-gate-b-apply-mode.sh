@@ -33,8 +33,6 @@ JSON
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
-python3 -m py_compile "$ROOT/python/larch/design/design_gate_render.py" || fail 'design_gate_render.py py_compile failed'
-
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/tgbam.XXXXXX")
 TMP=$(cd "$TMP" && pwd -P)
 trap 'rm -rf "$TMP"' EXIT
@@ -246,6 +244,25 @@ if [[ "\${1:-}" == design && "\${2:-}" == step2b-postplan ]]; then
   : >"\$design/.completed/step-2b.5"
   if [[ -z "\$site" || "\$site" == step2b ]]; then : >"\$design/.completed/step-2b"; fi
   printf 'POSTPLAN_RC=%s\nPOSTPLAN_STATUS=%s\n' "\$POSTPLAN_RC" "\$status"
+  exit 0
+fi
+# render-gate moved to the Rust owner (#8581). This lane has no compiled
+# artifact, so reproduce the one Gate B auto-apply breadcrumb the caller asserts.
+if [[ "\${1:-}" == design && "\${2:-}" == render-gate ]]; then
+  shift 2
+  gate="" accepted=0 approve=false
+  while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+      --gate) gate="\$2"; shift 2 ;;
+      --accepted-count) accepted="\$2"; shift 2 ;;
+      --approve-requested) approve="\$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  printf 'GATE_RENDER_STATUS=ok\nGATE=%s\n' "\$gate"
+  if [[ "\$gate" == B && "\$approve" == false ]]; then
+    printf 'AUTO_APPLY_MESSAGE=ℹ 3.5: Gate B — auto-applying %s accepted finding(s)\n' "\$accepted"
+  fi
   exit 0
 fi
 exit 2

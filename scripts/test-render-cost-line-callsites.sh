@@ -28,11 +28,11 @@ if grep -Fq '💰 Cost:' "$REPO/python/larch/report/tokens.py"; then
 fi
 pass 'token report implementation has no 💰 Cost: literal'
 
-f="$REPO/python/larch/design/design_summary.py"
-grep -Fq 'render run-summary' "$f" || fail 'design_summary.py must invoke python/cli.py render run-summary'
+f="$REPO/crates/larch-cli/src/design_gate_summary_commands.rs"
+grep -Fq 'render run-summary' "$f" || fail 'design_gate_summary_commands.rs must invoke render run-summary'
 b=$(grep -cF -- 'claude-input-tokens' "$f") || b=0
-test "$b" -ge 1 || fail 'design_summary.py must pass --claude-input-tokens to render-run-summary'
-pass 'design_summary.py render-run-summary per-bucket argv shape'
+test "$b" -ge 1 || fail 'design_gate_summary_commands.rs must pass --claude-input-tokens to render-run-summary'
+pass 'design_gate_summary_commands.rs render-run-summary per-bucket argv shape'
 
 design_skill="$REPO/skills/design/SKILL.md"
 finalize_step5_failures="$REPO/skills/design/references/finalize-step5-failures.md"
