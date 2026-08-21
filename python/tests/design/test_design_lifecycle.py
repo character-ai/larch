@@ -84,26 +84,6 @@ def test_pause_save_command_uses_rehydrated_environment(tmp_path: Path) -> None:
     assert command[command.index("--repo") + 1] == "owner/repo"
 
 
-def _write_session_env(
-    tmp_path: Path,
-    design: Path,
-    monkeypatch: pytest.MonkeyPatch | None = None,
-    **extra: str,
-) -> Path:
-    resolved = design.resolve()
-    if monkeypatch is not None:
-        monkeypatch.setenv("DESIGN_TMPDIR", str(resolved))
-    env_path = tmp_path / "source-env.sh"
-    lines = [
-        f"export DESIGN_TMPDIR={resolved}",
-        "export SESSION_ID=run-1",
-        f"export CLAUDE_PLUGIN_ROOT={CLI.parent.parent}",
-    ]
-    lines.extend(f"export {key}={value}" for key, value in extra.items())
-    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return env_path
-
-
 def _pid_residual_paths(home: Path, pid: str = "123") -> tuple[Path, Path, Path]:
     sessions = home / ".cache" / "larch" / "sessions"
     return (
@@ -168,9 +148,9 @@ def test_wrapper_session_env_parser_exports_quoted_paths(tmp_path: Path) -> None
         f"export DESIGN_TMPDIR={str(design)!r}\nexport ISSUE_NUMBER='42'\nexport CLAUDE_PLUGIN_ROOT={str(Path.cwd())!r}\n",
         encoding="utf-8",
     )
-    parsed = design_core._parse_common_wrapper_args(
+    parsed = design_core._parse_common_wrapper_args(  # pyright: ignore[reportPrivateUsage]
         ["--session-env-path", str(session_env)]
-    )  # pyright: ignore[reportPrivateUsage]
+    )
     merged = design_core._rehydrate_wrapper_env(parsed)  # pyright: ignore[reportPrivateUsage]
     assert merged["DESIGN_TMPDIR"] == str(design)
     assert os.environ["ISSUE_NUMBER"] == "42"
@@ -192,9 +172,9 @@ def test_rehydrate_wrapper_env_resolves_trusted_design_symlink(
     link = sessions / "current-design-env-123.sh"
     link.symlink_to(source)
     monkeypatch.setenv("HOME", str(home))
-    parsed = design_core._parse_common_wrapper_args(
+    parsed = design_core._parse_common_wrapper_args(  # pyright: ignore[reportPrivateUsage]
         ["--session-env-path", str(link), "--claude-pid", "123"]
-    )  # pyright: ignore[reportPrivateUsage]
+    )
     merged = design_core._rehydrate_wrapper_env(parsed)  # pyright: ignore[reportPrivateUsage]
     assert merged["DESIGN_TMPDIR"] == str(design)
     assert merged["ISSUE_NUMBER"] == "7"

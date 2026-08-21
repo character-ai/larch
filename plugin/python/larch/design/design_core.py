@@ -37,6 +37,39 @@ def design_bgjob_result_env_path(*, design_tmpdir: Path, step: str) -> Path:
     return design_tmpdir / config.BGJOB_TMP_SUBDIR / f"{step}{config.BGJOB_RESULT_ENV_SUFFIX}"
 
 
+def design_write_merge_env(
+    *, path: Path, design_tmpdir: Path, rows: Iterable[tuple[str, object]]
+) -> None:
+    """Write a child result envelope beneath the validated design directory."""
+    root = design_tmpdir.resolve()
+    target = path.resolve(strict=False)
+    try:
+        _ = target.relative_to(root)
+    except ValueError as exc:
+        msg = f"merge env escapes DESIGN_TMPDIR: {path}"
+        raise OSError(msg) from exc
+    safe_rows: list[tuple[str, str]] = []
+    for key, value in rows:
+        if not key or "\n" in key or "\r" in key:
+            msg = f"invalid merge env key: {key!r}"
+            raise ValueError(msg)
+        text = str(value)
+        if "\n" in text or "\r" in text:
+            msg = f"merge env value contains newline: {key}"
+            raise ValueError(msg)
+        safe_rows.append((key, text))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.parent.is_symlink() or not path.parent.is_dir():
+        msg = f"merge env parent is not a regular directory: {path.parent}"
+        raise OSError(msg)
+    larch_io.atomic_write(
+        path=path,
+        text=larch_io.format_kvs(safe_rows),
+        nofollow=True,
+        mode=0o600,
+    )
+
+
 class _CoreUsageError(Exception):
     """User-facing argument or validation error for ported design helpers."""
 
