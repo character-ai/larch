@@ -48,22 +48,30 @@ reference, so age cleanup does not discard recoverable handoffs.
 
 ## Harness false-denies
 
-Recovery assumes the verified runtime entrypoint can run. On Cursor Agent
-sessions that also load a production-telemetry plugin with Bash-wide PreToolUse
-guards (notably `smarts` pagerduty, hyperdx, changes, and log-evidence guards),
-the Shell tool may reject legitimate
+Recovery assumes the verified runtime entrypoint can run. `smarts` versions
+before v2.0.3 misclassify Cursor's `Shell` tool as opaque input. Their PagerDuty
+guard then substring-matches the short `pd` executable marker inside
+`--tmpdir`. The shared shape also affects the pagerduty, hyperdx, changes, and
+log-evidence guards. Legitimate
 `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh complete-umbrella …` and `bgjob …`
-commands before execution. The reject text often names PagerDuty, log-provider,
-HyperDX, or packaged-reader policy even though the argv never touches those
-surfaces. That is a coexistence false-deny, not recoverable umbrella state.
+commands can therefore be rejected before execution with text that names
+PagerDuty, log-provider, HyperDX, or packaged-reader policy. That is a
+coexistence false-deny, not recoverable umbrella state.
 
-When the harness blocks `start`, `run-leaves` / `bgjob start`, `clear-pointer`,
-or `finish`, stop. Repair or upgrade the co-installed Bash-wide guards, or run
-`/complete-umbrella` in a session without those guards. Do not hand-edit
-lifecycle titles, invent an alternate shell entrypoint, or rephrase the driver
-as `gh`, curl, or wget. The skill retries an identical blocked driver at most
-once through the harness approval API when present, then hard-fails with this
-diagnosis.
+Upgrade the co-installed `smarts` plugin to v2.0.3 or newer before running the
+workflow. That release classifies Cursor `Shell` commands through the bounded
+shell-command path and bounds short opaque markers such as `pd`. If the harness
+still blocks `start`, `run-leaves` / `bgjob start`, `clear-pointer`, or `finish`,
+stop on the first denial. Cursor smart-mode approval cannot override a
+PreToolUse `permissionDecision: deny`. Attempt each remaining lifecycle
+diagnostic and pointer-cleanup command once. If the same guard denies one,
+preserve any pointer and the session tmpdir. Report the unexecuted postcondition
+without claiming terminal success. After upgrading the guard, the same
+`/complete-umbrella <N>` command can recover that state. Report a guard
+regression upstream, or run `/complete-umbrella` in a session without those
+guards. Do not hand-edit lifecycle titles, invent an alternate shell entrypoint,
+or rephrase the driver as `gh`, curl, or wget. See the canonical
+[co-installed PreToolUse gate contract](security/workflow-trust-and-mutations.md#co-installed-pretooluse-gates).
 
 ## Diagnostic helper
 

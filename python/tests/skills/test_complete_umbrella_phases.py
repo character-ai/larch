@@ -228,11 +228,29 @@ def test_top_level_hard_fails_cursor_production_guard_false_denies() -> None:
     recovery = (
         REPO_ROOT / "docs" / "complete-umbrella-recovery.md"
     ).read_text(encoding="utf-8")
+    installation = (REPO_ROOT / "docs" / "installation-and-setup.md").read_text(
+        encoding="utf-8"
+    )
+    catalog = (REPO_ROOT / "docs" / "skills.md").read_text(encoding="utf-8")
+    security = (
+        REPO_ROOT / "docs" / "security" / "workflow-trust-and-mutations.md"
+    ).read_text(encoding="utf-8")
     assert "Cursor + production-guard false-deny" in skill
-    assert "request_smart_mode_approval=true" in skill
+    assert "request_smart_mode_approval=true" not in skill
     assert "packaged reader" in skill
     assert "Do not rephrase the driver as `gh`, curl, wget" in skill
     assert "## Harness false-denies" in recovery
     assert "coexistence false-deny" in recovery
-    assert "pagerduty, hyperdx, changes, and log-evidence guards" in recovery
+    for guard in ("pagerduty", "hyperdx", "changes", "log-evidence"):
+        assert guard in recovery
     assert "Do not hand-edit" in recovery
+    for text in (skill, recovery, installation, catalog, security):
+        assert "v2.0.3" in text
+        assert "request_smart_mode_approval" not in text
+    assert "`permissionDecision: deny`" in recovery
+    assert "`pd`" in recovery
+    assert "`--tmpdir`" in recovery
+    assert "Attempt each remaining Failure-rule diagnostic" in skill
+    assert "stop without claiming terminal success" in skill
+    assert "preserve any pointer and the session tmpdir" in recovery
+    assert "## Co-installed PreToolUse gates" in security
