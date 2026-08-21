@@ -44,7 +44,7 @@ Existing keys are preserved. Step 0 owns run flags in the same file.
 
 ## Bootstrap
 
-The wrapper requires `IMPLEMENT_TMPDIR`, resolves `${CLAUDE_PLUGIN_ROOT}`, and delegates directly to `python/cli.py implement step-2-post-dispatch`.
+The wrapper requires `IMPLEMENT_TMPDIR`, resolves `${CLAUDE_PLUGIN_ROOT}`, and delegates directly to `scripts/larch.sh implement step-2-post-dispatch`.
 
 ## Orchestrator contract
 

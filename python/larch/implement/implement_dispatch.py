@@ -67,7 +67,7 @@ from larch.implement.dispatch_helpers import (
 )
 
 # --- leg execution and process management ---
-from larch.implement.dispatch_leg import (
+from larch.implement.dispatch_leg_runner import (
     CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS,
     CHECKS_DEADLINE_MS,
     CHECKS_STEP3_BG_WAIT_TIMEOUT_S,
@@ -105,7 +105,6 @@ from larch.implement.dispatch_leg import (
     _run_leg_with_timeout,
     _timeout_stderr,
     _timeout_stdout,
-    kill_active_leg_main,
 )
 
 # --- ship seed and step 2 post-dispatch ---
@@ -117,7 +116,6 @@ from larch.implement.dispatch_ship_seed import (
     _seed_kv_nonempty,
     _upsert_seed_kv,
     _write_ship_seed_lines,
-    step2_post_dispatch_main,
 )
 
 # --- checks relay, commit route, steps 4-6 ---
@@ -213,16 +211,3 @@ from larch.implement.dispatch_manifest import (
     normalize_coder_scout,
 )
 
-# --- step 2 dispatch ---
-from larch.implement.dispatch_step2 import (
-    _append_warning,
-    _dispatch_state,
-    _explicit_plan_scope_paths,
-    _launcher_args,
-    _plan_coverage_uncovered_paths,
-    _run_launcher,
-    _working_tree_touched_paths,
-    _working_tree_touched_paths_and_failures,
-    run_dispatch_main,
-    step2_dispatch_main,
-)

@@ -876,8 +876,8 @@ test-degraded-tools-gate:
 test-no-grouped-reuse-guard:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test waterfall_commands grouped_reuse
 
-test-external-tool-registry:
-	$(HARNESS_MARK) --label $@ -- bash scripts/test-external-tool-registry.sh
+test-external-tool-registry: build-larch-cli
+	$(HARNESS_MARK) --label $@ -- env LARCH_BINARY="$(CURDIR)/target/debug/larch" bash scripts/test-external-tool-registry.sh
 
 test-launch-review:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/agents/test_launch_review.py

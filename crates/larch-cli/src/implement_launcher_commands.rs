@@ -56,7 +56,7 @@ use crate::{
 };
 
 /// Codex model every implement difficulty tier pins.
-const CODEX_IMPLEMENT_MODEL: &str = "gpt-5.6-terra";
+pub const CODEX_IMPLEMENT_MODEL: &str = "gpt-5.6-terra";
 /// Token ledger step label the Step 2 mark records under.
 // The em dash is escaped so this line stays ASCII: the duplicate-code lint
 // slices item spans by character column and would truncate a wider line.
@@ -1175,7 +1175,7 @@ fn launch_cursor(args: &ImplementArguments) -> i32 {
 }
 
 /// Resolve the Cursor implement model pinned for one difficulty tier.
-const fn cursor_implement_model(difficulty: &str) -> &'static str {
+pub const fn cursor_implement_model(difficulty: &str) -> &'static str {
     match difficulty.as_bytes() {
         b"TRIVIAL" | b"MODERATE" => CURSOR_GROK_4_6_HIGH_MODEL,
         _ => CURSOR_DEFAULT_MODEL,

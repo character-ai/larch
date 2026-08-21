@@ -1294,10 +1294,7 @@ pub fn is_commit(value: &str) -> bool {
 }
 
 fn is_sha256(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    larch_core::is_sha256_hex(value)
 }
 
 fn sorted_diff(left: &BTreeSet<String>, right: &BTreeSet<String>) -> Vec<String> {

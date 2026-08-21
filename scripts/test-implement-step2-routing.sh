@@ -10,7 +10,7 @@ export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 IMPLEMENT_SKILL="$REPO_ROOT/skills/implement/SKILL.md"
 BOOTSTRAP_RS="$REPO_ROOT/crates/larch-cli/src/implement_bootstrap_continuation.rs"
 DESIGN_SKILL="$REPO_ROOT/skills/design/SKILL.md"
-DISPATCH_PY="$REPO_ROOT/python/larch/implement/dispatch_step2.py"
+DISPATCH_RS="$REPO_ROOT/crates/larch-cli/src/implement_step2_commands_impl.rs"
 
 # `external-defaults role` is Rust-owned (#8107). Skip the live registry probe
 # when no built binary is available (Python-only harness shards).
@@ -55,8 +55,8 @@ fi
 assert_contains "$BOOTSTRAP_RS" 'fn coder_order_for_difficulty' "Rust difficulty-keyed coder preference"
 assert_contains "$BOOTSTRAP_RS" 'const CURSOR_FIRST: &[&str] = &["cursor", "codex", "claude"]' "moderate coder order"
 assert_contains "$BOOTSTRAP_RS" 'const CODEX_FIRST: &[&str] = &["codex", "cursor", "claude"]' "hard coder order"
-assert_contains "$DISPATCH_PY" 'difficulty.resolve_step2_effective_difficulty(tmpdir)' "shared dispatch difficulty resolver"
-assert_not_contains "$DISPATCH_PY" 'def _resolve_step2_difficulty' "duplicate dispatch difficulty resolver"
+assert_contains "$DISPATCH_RS" 'fn resolve_step2_effective_difficulty' "shared dispatch difficulty resolver"
+assert_not_contains "$DISPATCH_RS" 'fn resolve_step2_difficulty' "duplicate dispatch difficulty resolver"
 assert_contains "$BOOTSTRAP_RS" '.find(|candidate| match *candidate {' "single selected coder loop"
 assert_contains "$BOOTSTRAP_RS" '.unwrap_or("claude")' "claude terminal waterfall"
 assert_contains "$IMPLEMENT_SKILL" 'step-0-bootstrap.sh --mode initial' "Step 0 bootstrap invoke wrapper"

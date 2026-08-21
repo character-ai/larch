@@ -54,10 +54,10 @@ command grep -Fq 'rehydrate_session(&tmpdir)' crates/larch-cli/src/implement_ter
 command grep -Fq 'ChildEnvironment::LarchTimingSkill' crates/larch-cli/src/implement_terminal_commands.rs || fail 'step-18 Rust owner does not mark implement timing'
 command grep -Fq 'implement step-18 "$@"' skills/implement/scripts/step-18.sh || fail 'step-18.sh does not delegate to the Rust step-18'
 
-# run_dispatch_main now lives in dispatch_step2.py; check there and fall back to implement_dispatch.py
-( command grep -Fq '_rehydrate_larch_triplet(tmpdir)' python/larch/implement/dispatch_step2.py || command grep -Fq '_rehydrate_larch_triplet(tmpdir)' python/larch/implement/implement_dispatch.py ) || fail 'run_dispatch_main does not rehydrate telemetry keys'
-( command grep -Fq '.step2-telemetry-marked' python/larch/implement/dispatch_step2.py || command grep -Fq '.step2-telemetry-marked' python/larch/implement/implement_dispatch.py ) || fail 'run_dispatch_main does not guard Step 2 telemetry once-only'
-( command grep -Fq 'args.answers' python/larch/implement/dispatch_step2.py || command grep -Fq 'args.answers' python/larch/implement/implement_dispatch.py ) || fail 'run_dispatch_main does not skip telemetry on answers redispatch'
+# `implement run-dispatch` is Rust-owned (#8623).
+command grep -Fq 'rehydrate_session(&tmpdir)' crates/larch-cli/src/implement_step2_commands.rs || fail 'run-dispatch does not rehydrate telemetry keys'
+command grep -Fq '.step2-telemetry-marked' crates/larch-cli/src/implement_step2_commands_impl.rs || fail 'run-dispatch does not guard Step 2 telemetry once-only'
+command grep -Fq 'answers.is_empty()' crates/larch-cli/src/implement_step2_commands.rs || fail 'run-dispatch does not skip telemetry on answers redispatch'
 
 # Invariant C: every plugin-rooted Bash fence carries the same-fence source guard.
 python3 <<'PY'

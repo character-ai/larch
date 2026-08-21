@@ -1,9 +1,15 @@
 # pyright: reportUnusedFunction=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportPrivateUsage=false
-"""Subprocess leg execution and process-group management."""
+"""Live subprocess leg execution for the commit-route composites.
+
+Owned by `dispatch_commit_route`: it holds the timeout runner, the live
+`Popen` process-group cleanup, and the deadline constants that size the
+composite outer timeouts. The identity-validated cleanup of a *stranded*
+active-leg record belongs to the Rust `implement kill-active-leg` owner, so
+nothing here reads a record this process did not publish.
+"""
 
 from __future__ import annotations
 
-import argparse
 import atexit
 import contextlib
 import json
@@ -88,13 +94,6 @@ def _active_leg_kill_log_path(*, implement_tmpdir: str | None = None) -> Path | 
     if not tmpdir:
         return None
     return Path(tmpdir) / config.ACTIVE_LEG_KILL_LOG_FILE
-
-
-def _legacy_active_leg_pgid_path(*, implement_tmpdir: str | None = None) -> Path | None:
-    tmpdir = implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
-    if not tmpdir:
-        return None
-    return Path(tmpdir) / _ACTIVE_LEG_PGID_FILE
 
 
 def _descendants(pid: int) -> list[int]:
@@ -189,38 +188,6 @@ def _clear_active_leg_record(record: dict[str, object] | None = None) -> None:
             path.unlink(missing_ok=True)
 
 
-def _recorded_identity_from_payload(payload: dict[str, object]) -> process_identity.RecordedProcessIdentity | None:
-    try:
-        return process_identity.RecordedProcessIdentity(
-            pid=int(str(payload["pid"])),
-            pgid=int(str(payload["pgid"])),
-            start_time=str(payload["start_time"]),
-            command_signature=str(payload["command_signature"]),
-            expected_signature=str(payload.get("expected_signature", "")),
-        )
-    except (KeyError, TypeError, ValueError):
-        return None
-
-
-def _log_active_leg_refusal(*, implement_tmpdir: str, reason: str, payload: dict[str, object] | None = None) -> None:
-    pid_raw = str(payload.get("pid", "")) if payload else ""
-    pgid_raw = str(payload.get("pgid", "")) if payload else ""
-    pid = int(pid_raw) if pid_raw.isdigit() else 0
-    pgid = int(pgid_raw) if pgid_raw.isdigit() else 0
-    process_identity.append_kill_log(
-        path=_active_leg_kill_log_path(implement_tmpdir=implement_tmpdir),
-        event=process_identity.KillLogEvent(
-            event="refusal",
-            signal="",
-            pid=pid,
-            pgid=pgid,
-            command=str(payload.get("command_signature", "")) if payload else "",
-            caller="implement kill-active-leg",
-            reason=reason,
-        ),
-    )
-
-
 def _kill_leg_process_group_targets(
     *,
     pgid: int,
@@ -292,84 +259,6 @@ def _kill_leg_process_group(process: subprocess.Popen[str]) -> None:
         log_path=_active_leg_kill_log_path(),
         reason="live-popen-timeout-cleanup",
     )
-
-
-def kill_active_leg_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py implement kill-active-leg")
-    parser.add_argument("--implement-tmpdir", required=True)
-    parser.add_argument("--owner-token", default="")
-    args = parser.parse_args(argv)
-    _cleanup_legacy_active_leg_pgid(args.implement_tmpdir)
-    if not args.owner_token:
-        _log_active_leg_refusal(implement_tmpdir=args.implement_tmpdir, reason="missing-owner-token")
-        return 0
-    _kill_active_leg_json(implement_tmpdir=args.implement_tmpdir, owner_token=args.owner_token)
-    return 0
-
-
-def _kill_active_leg_json(*, implement_tmpdir: str, owner_token: str) -> None:
-    json_path = Path(implement_tmpdir) / _ACTIVE_LEG_JSON_FILE
-    if not json_path.is_file():
-        return
-    try:
-        payload = json.loads(json_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        _log_active_leg_refusal(implement_tmpdir=implement_tmpdir, reason="malformed-active-leg-record")
-        with contextlib.suppress(OSError):
-            json_path.unlink(missing_ok=True)
-        return
-    if not isinstance(payload, dict) or str(payload.get("owner_token", "")) != owner_token:
-        if not isinstance(payload, dict):
-            _log_active_leg_refusal(implement_tmpdir=implement_tmpdir, reason="malformed-active-leg-record")
-            with contextlib.suppress(OSError):
-                json_path.unlink(missing_ok=True)
-        return
-    recorded = _recorded_identity_from_payload(payload)
-    if recorded is None:
-        _log_active_leg_refusal(
-            implement_tmpdir=implement_tmpdir,
-            reason="malformed-active-leg-record",
-            payload=payload,
-        )
-        with contextlib.suppress(OSError):
-            json_path.unlink(missing_ok=True)
-        return
-    validation = process_identity.terminate_validated_process_group(
-        recorded=recorded,
-        log_path=_active_leg_kill_log_path(implement_tmpdir=implement_tmpdir),
-        caller="implement kill-active-leg",
-        reason="owner-token-cleanup",
-    )
-    if not validation.ok:
-        _log_active_leg_refusal(
-            implement_tmpdir=implement_tmpdir,
-            reason=validation.reason,
-            payload=payload,
-        )
-        return
-    try:
-        current = json.loads(json_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return
-    if isinstance(current, dict) and _record_matches_current(current=current, expected=payload):
-        with contextlib.suppress(OSError):
-            json_path.unlink(missing_ok=True)
-
-
-def _cleanup_legacy_active_leg_pgid(implement_tmpdir: str) -> None:
-    path = _legacy_active_leg_pgid_path(implement_tmpdir=implement_tmpdir)
-    if path is None or not path.is_file():
-        return
-    raw = ""
-    with contextlib.suppress(OSError):
-        raw = path.read_text(encoding="ascii", errors="replace").strip()
-    _log_active_leg_refusal(
-        implement_tmpdir=implement_tmpdir,
-        reason="legacy-active-leg-pgid-refused",
-        payload={"pid": raw, "pgid": raw, "command_signature": ""},
-    )
-    with contextlib.suppress(OSError):
-        path.unlink(missing_ok=True)
 
 
 def _kill_active_leg() -> None:

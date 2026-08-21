@@ -6,7 +6,7 @@
 #   - scripts/larch.sh agent model-args
 #   - scripts/larch.sh agent check-reviewers
 #   - scripts/larch.sh agent collect-results
-#   - python/cli.py implement step2-dispatch
+#   - scripts/larch.sh implement step2-dispatch
 #
 # Related:
 #   - scripts/larch.sh agent run-external-agent is NOT sourced from this registry and still

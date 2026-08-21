@@ -25,7 +25,7 @@ if [ "${#DISPATCH_ARGS[@]}" -gt 0 ]; then
   export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
   if [ "$BGJOB_CHILD" = true ]; then
     [ -n "$MERGE_RESULT_ENV" ] || { printf '%s\n' 'step-2-dispatch.sh: --merge-result-env is required in child mode' >&2; exit 2; }
-    exec python3 "$PLUGIN_ROOT/python/cli.py" implement run-dispatch --implement-tmpdir "$IMPLEMENT_TMPDIR" --bgjob-child --merge-result-env "$MERGE_RESULT_ENV" "${DISPATCH_ARGS[@]}"
+    exec "$PLUGIN_ROOT/scripts/larch.sh" implement run-dispatch --implement-tmpdir "$IMPLEMENT_TMPDIR" --bgjob-child --merge-result-env "$MERGE_RESULT_ENV" "${DISPATCH_ARGS[@]}"
   fi
 
   [ -n "${LARCH_CLAUDE_PID:-}" ] || LARCH_CLAUDE_PID=$PPID

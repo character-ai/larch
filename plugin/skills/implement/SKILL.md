@@ -293,7 +293,7 @@ Progressive disclosure: do not load `${CLAUDE_PLUGIN_ROOT}/skills/implement/refe
 
 Print: `> **🔶 /implement 2: implementation**`
 
-`python/cli.py implement run-dispatch` marks Step 2 token and timing telemetry internally on the first dispatch only. The mark happens after `dispatch.lock` acquisition and is skipped on `--answers` redispatch.
+`scripts/larch.sh implement run-dispatch` marks Step 2 token and timing telemetry internally on the first dispatch only. The mark happens after `dispatch.lock` acquisition and is skipped on `--answers` redispatch.
 
 <!-- step:2 entry preconditions — legal next-actions matrix -->
 
@@ -328,7 +328,7 @@ Regression coverage for this dispatcher surface lives in `python/tests/implement
 "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh bgjob wait --step implement-step2-dispatch --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
 ```
 
-The child `python/cli.py implement run-dispatch` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"` and no workflow flag; it does **not** assemble paths from `PLAN_FILE` keys in `session-env.sh`. It reads `CURSOR_BINARY_FOUND` / `CODEX_BINARY_FOUND` from `$IMPLEMENT_TMPDIR/session-env.sh` or fresh executable checks, uses `$IMPLEMENT_TMPDIR/feature-description.txt`, and if the Step 0 selected binary is missing, relays `STATUS=claude_fallback` with edit authority instead of hard-failing. Before relaying stdout, it resolves repo root and captures `step2-prelaunch-porcelain.nul` plus prelaunch digests for Step 2.4. Its full envelope is atomically published into the bgjob result env. Parse `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`, additive plan-coverage KVs, and optional recovery triplet `RECOVERY_FROM`, `RECOVERY_PRIOR_TOOL`, `RECOVERY_PATHS_FILE` only from that result env. Coverage applies only to firm `### NEW:` / `### UPDATED:` / `### REWRITTEN:` headings from `$IMPLEMENT_TMPDIR/plan.txt`, not `### MAY_UPDATE:`. Malformed coverage on a complete path fails closed in Python. Then run 2.1.5 before branching on `STATUS`. Derive:
+The child `scripts/larch.sh implement run-dispatch` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"` and no workflow flag; it does **not** assemble paths from `PLAN_FILE` keys in `session-env.sh`. It reads `CURSOR_BINARY_FOUND` / `CODEX_BINARY_FOUND` from `$IMPLEMENT_TMPDIR/session-env.sh` or fresh executable checks, uses `$IMPLEMENT_TMPDIR/feature-description.txt`, and if the Step 0 selected binary is missing, relays `STATUS=claude_fallback` with edit authority instead of hard-failing. Before relaying stdout, it resolves repo root and captures `step2-prelaunch-porcelain.nul` plus prelaunch digests for Step 2.4. Its full envelope is atomically published into the bgjob result env. Parse `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`, additive plan-coverage KVs, and optional recovery triplet `RECOVERY_FROM`, `RECOVERY_PRIOR_TOOL`, `RECOVERY_PATHS_FILE` only from that result env. Coverage applies only to firm `### NEW:` / `### UPDATED:` / `### REWRITTEN:` headings from `$IMPLEMENT_TMPDIR/plan.txt`, not `### MAY_UPDATE:`. Malformed coverage on a complete path fails closed in Python. Then run 2.1.5 before branching on `STATUS`. Derive:
 
 Set `TOOL_LABEL` to `Codex` for `TOOL=codex`, `Cursor` for `TOOL=cursor`, and `external implementer` for any other tool token.
 

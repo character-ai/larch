@@ -590,9 +590,9 @@ pub use test_shards::{
 };
 pub use text::{
     balanced_fence_line_indices, bounded_ascii_identifier, ensure_ascii_json, fence_marker,
-    file_line_regex, is_positive_decimal, is_python_whitespace, positive_integer, python_bigint,
-    python_float, python_int, python_str, split_lines_keep_ends, split_text_lines, tail_lines,
-    trim_python_whitespace, truncate_utf8_bytes, universal_newlines, unsigned_integer,
+    file_line_regex, is_positive_decimal, is_python_whitespace, is_sha256_hex, positive_integer,
+    python_bigint, python_float, python_int, python_str, split_lines_keep_ends, split_text_lines,
+    tail_lines, trim_python_whitespace, truncate_utf8_bytes, universal_newlines, unsigned_integer,
 };
 pub use time::{AsyncClock, BusinessClock, Deadline, MonotonicClock, MonotonicTime, Sleep};
 pub use upgrade_larch::{

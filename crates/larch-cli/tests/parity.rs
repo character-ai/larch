@@ -957,15 +957,35 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-implement-clone-tag", "implement", "clone-tag"),
     CleanInstallCase::new(
+        "clean-install-implement-kill-active-leg",
+        "implement",
+        "kill-active-leg",
+    ),
+    CleanInstallCase::new(
         "clean-install-implement-normalize-coder-scout",
         "implement",
         "normalize-coder-scout",
     ),
     CleanInstallCase::new("clean-install-implement-preflight", "implement", "preflight"),
     CleanInstallCase::new(
+        "clean-install-implement-run-dispatch",
+        "implement",
+        "run-dispatch",
+    ),
+    CleanInstallCase::new(
         "clean-install-implement-scope-disposition",
         "implement",
         "scope-disposition",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-step-2-post-dispatch",
+        "implement",
+        "step-2-post-dispatch",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-step2-dispatch",
+        "implement",
+        "step2-dispatch",
     ),
     CleanInstallCase::new(
         "clean-install-implement-step-0-bootstrap",

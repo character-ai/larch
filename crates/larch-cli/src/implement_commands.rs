@@ -953,7 +953,7 @@ pub fn kv_value(text: &str, key: &str) -> String {
 }
 
 /// Report whether one vendor binary is reachable on `PATH`.
-fn on_path(binary: &str) -> bool {
+pub fn on_path(binary: &str) -> bool {
     binary_on_path(binary, env::var("PATH").ok().as_deref())
 }
 

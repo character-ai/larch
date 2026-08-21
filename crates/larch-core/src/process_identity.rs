@@ -551,6 +551,43 @@ pub fn validate_process_identity_with_policy(
     recorded: &RecordedProcessIdentity,
     policy: ProcessIdentityValidationPolicy,
 ) -> ValidationResult {
+    validate_recorded_identity(host, recorded, policy, BirthIdentityPolicy::Required)
+}
+
+/// Validate a recorded identity published before birth identity was captured.
+///
+/// A record that carries a birth identity is held to it exactly as
+/// [`validate_process_identity`] does. One that does not is validated on pid,
+/// pgid, start time, and command signature alone, because refusing it outright
+/// would strand the process group its publisher asked us to clean up. Only a
+/// writer whose wire format predates the field may use this; the last such
+/// publisher is the Python commit-route leg runner, retired by #8611.
+#[must_use]
+pub fn validate_process_identity_allowing_absent_birth(
+    host: &dyn ProcessIdentityHost,
+    recorded: &RecordedProcessIdentity,
+) -> ValidationResult {
+    validate_recorded_identity(
+        host,
+        recorded,
+        ProcessIdentityValidationPolicy::ExactCommand,
+        BirthIdentityPolicy::EnforcedWhenRecorded,
+    )
+}
+
+/// Whether a record must carry a kernel process-birth identity to validate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BirthIdentityPolicy {
+    Required,
+    EnforcedWhenRecorded,
+}
+
+fn validate_recorded_identity(
+    host: &dyn ProcessIdentityHost,
+    recorded: &RecordedProcessIdentity,
+    policy: ProcessIdentityValidationPolicy,
+    birth_policy: BirthIdentityPolicy,
+) -> ValidationResult {
     let probe = probe_process_identity(host, recorded.pid, &recorded.expected_signature);
     let Some(current) = probe.identity else {
         return ValidationResult {
@@ -576,6 +613,9 @@ pub fn validate_process_identity_with_policy(
         };
     }
     let Some(recorded_birth_identity) = recorded.birth_identity.as_ref() else {
+        if birth_policy == BirthIdentityPolicy::EnforcedWhenRecorded {
+            return validate_recorded_command(recorded, current, policy);
+        }
         return ValidationResult {
             ok: false,
             reason: "missing-process-birth-identity".to_owned(),
@@ -596,6 +636,15 @@ pub fn validate_process_identity_with_policy(
             current: Some(current),
         };
     }
+    validate_recorded_command(recorded, current, policy)
+}
+
+/// Compare the command text of a process already proven to be the recorded one.
+fn validate_recorded_command(
+    recorded: &RecordedProcessIdentity,
+    current: RecordedProcessIdentity,
+    policy: ProcessIdentityValidationPolicy,
+) -> ValidationResult {
     if policy == ProcessIdentityValidationPolicy::ExactCommand {
         let recorded_command = normalize_command_signature(&recorded.command_signature);
         let current_command = normalize_command_signature(&current.command_signature);
@@ -698,7 +747,8 @@ fn sorted_object(map: &Map<String, Value>) -> Map<String, Value> {
     ordered
 }
 
-fn log_signal(
+/// Record one intended signal against a target snapshot before it is sent.
+pub fn log_signal(
     host: &dyn ProcessIdentityHost,
     log_path: Option<&Path>,
     signal: TerminateSignal,

@@ -183,7 +183,7 @@ step_plan="$step_tmp/plan.txt"
 step_feature="$step_tmp/feature.txt"
 printf 'plan\n' >"$step_plan"
 printf 'feature\n' >"$step_feature"
-step_output="$(cd /tmp && python3 "$REPO_ROOT/python/cli.py" implement step2-dispatch \
+step_output="$(cd /tmp && "$REPO_ROOT/scripts/larch.sh" implement step2-dispatch \
     --coder claude \
     --tmpdir "$step_tmp" \
     --plan-file "$step_plan" \

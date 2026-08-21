@@ -973,7 +973,15 @@ fn refuse_disposition_without_coverage(tmpdir: &Path) -> Result<String, String> 
 }
 
 fn emit_coverage(coverage: &PlanCoverage) {
-    for (key, value) in [
+    for (key, value) in coverage_contract_rows(coverage) {
+        emit_kv(key, &value);
+    }
+    emit_kv("PLAN_COVERAGE_FINGERPRINT", &coverage.fingerprint);
+}
+
+/// The coverage rows shared by every consumer of this measurement.
+fn coverage_contract_rows(coverage: &PlanCoverage) -> Vec<(&'static str, String)> {
+    vec![
         ("PLAN_COVERAGE_TOTAL", coverage.total.to_string()),
         ("PLAN_COVERAGE_TOUCHED", coverage.touched.to_string()),
         ("PLAN_COVERAGE_UNTOUCHED", coverage.untouched.to_string()),
@@ -997,10 +1005,7 @@ fn emit_coverage(coverage: &PlanCoverage) {
             "PLAN_FIDELITY_FORCED",
             coverage.plan_fidelity_forced.to_string(),
         ),
-        ("PLAN_COVERAGE_FINGERPRINT", coverage.fingerprint.clone()),
-    ] {
-        emit_kv(key, &value);
-    }
+    ]
 }
 
 fn validate_for_ship(

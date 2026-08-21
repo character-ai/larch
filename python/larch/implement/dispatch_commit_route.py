@@ -39,7 +39,7 @@ from larch.implement.dispatch_helpers import (
 )
 from larch.implement.dispatch_helpers import _resolve_repo_root as _resolve_repo_root  # noqa: PLC0414 - re-exported for test monkeypatching  # pylint: disable=useless-import-alias  # re-exported for test monkeypatching
 from larch.implement.dispatch_helpers import _invoke_cli as _invoke_cli  # noqa: PLC0414 - re-exported for test monkeypatching
-from larch.implement.dispatch_leg import (
+from larch.implement.dispatch_leg_runner import (
     _CHECKS_DEADLINE_MS,
     _COMMIT_ROUTE_DEADLINE_MS,
     _COMMIT_ROUTE_FAILURE_LOG_MAX,

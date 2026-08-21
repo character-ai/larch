@@ -30,6 +30,23 @@ std::thread_local! {
     static TEST_PLUGIN_ROOT: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
 }
 
+/// Decompose a delegated child's outcome into exit code, stdout, and stderr.
+///
+/// A seam failure reports exit 1 with the detail as newline-terminated stderr,
+/// so a caller that persists these streams records why the child never ran
+/// instead of an empty file.
+#[must_use]
+pub fn child_streams(result: &Result<ProcessOutput, String>) -> (i32, String, String) {
+    match result {
+        Ok(output) => (
+            output.status().code().unwrap_or(1),
+            String::from_utf8_lossy(output.stdout()).into_owned(),
+            String::from_utf8_lossy(output.stderr()).into_owned(),
+        ),
+        Err(detail) => (1, String::new(), format!("{detail}\n")),
+    }
+}
+
 /// Run one still-Python sibling through the shared migration-era seam.
 pub fn delegate_python(
     arguments: Vec<OsString>,

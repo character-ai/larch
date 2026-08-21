@@ -18,7 +18,7 @@ use larch_core::{
     compute_recovery_paths, daemon_liveness, ensure_under,
     implement::{
         ChecksIdentityError, ChecksInputIdentity, classify_completed_result, classify_live_seed,
-        identities_match, session_repo_root,
+        identities_match, parse_porcelain_z, session_repo_root, sha256_file,
     },
     log_paths, owner_pid_candidate, private_atomic_write, read_for, resolve_run_id,
     resolve_step_and_budget, resolve_tmpdir_path, result_env_path, validate_merge_result_env,
@@ -745,7 +745,99 @@ pub fn format_rows(rows: &[(String, String)]) -> String {
     out
 }
 
-fn capture_postlaunch_porcelain(repo_root: &Path, tmpdir: &Path) -> u8 {
+/// Snapshot the pre-launch working tree, its index state, and content digests.
+///
+/// Idempotent: an existing snapshot is the baseline a Q/A redispatch shares, so
+/// it is never rewritten. Returns `0` on success.
+pub fn capture_prelaunch_porcelain(repo_root: &Path, tmpdir: &Path) -> u8 {
+    let porcelain = tmpdir.join("step2-prelaunch-porcelain.nul");
+    if porcelain.exists() {
+        return 0;
+    }
+    let Some(snapshot) = porcelain_snapshot(repo_root) else {
+        return 1;
+    };
+    if write_bytes_atomic(&porcelain, &snapshot.data).is_err() {
+        return 1;
+    }
+    if fs::write(
+        tmpdir.join("step2-prelaunch-index.env"),
+        format!("PRELAUNCH_INDEX_NONEMPTY={}\n", snapshot.index_nonempty),
+    )
+    .is_err()
+    {
+        return 1;
+    }
+    write_prelaunch_digests(
+        repo_root,
+        &porcelain,
+        &tmpdir.join("step2-prelaunch-content-digests.txt"),
+    )
+}
+
+/// Publish one `sha256\tpath` row per porcelain path, `missing` when unreadable.
+fn write_prelaunch_digests(repo_root: &Path, porcelain: &Path, digests: &Path) -> u8 {
+    let mut text = String::new();
+    for rel in parse_porcelain_z(porcelain).paths {
+        text.push_str(&sha256_file(repo_root, &rel));
+        text.push('\t');
+        text.push_str(&rel);
+        text.push('\n');
+    }
+    u8::from(write_bytes_atomic(digests, text.as_bytes()).is_err())
+}
+
+/// One porcelain snapshot plus whether the index carries staged work.
+struct PorcelainSnapshot {
+    data: Vec<u8>,
+    index_nonempty: bool,
+}
+
+/// Probe the working tree the way `--untracked-files=all` reports it.
+///
+/// Returns `None` when the probe itself failed, which every caller treats as
+/// fail-closed rather than as a clean tree.
+pub fn untracked_local_status(repo_root: &Path) -> Option<larch_core::RepositoryStatus> {
+    let repository = GixRepository::open(repo_root).ok()?;
+    repository
+        .local_status(&StatusOptions {
+            include_untracked: true,
+            ..StatusOptions::default()
+        })
+        .ok()
+}
+
+/// Render `git status --porcelain=v1 -z --untracked-files=all` from `gix`.
+fn porcelain_snapshot(repo_root: &Path) -> Option<PorcelainSnapshot> {
+    let status = untracked_local_status(repo_root)?;
+    let mut rows = std::collections::BTreeMap::<Vec<u8>, [u8; 2]>::new();
+    let mut index_nonempty = false;
+    for change in status.tree_to_index.entries() {
+        index_nonempty = true;
+        rows.entry(change.path.as_bytes().to_vec())
+            .or_insert([b' ', b' '])[0] = status_byte(change.kind);
+    }
+    for change in status.index_to_worktree.entries() {
+        rows.entry(change.path.as_bytes().to_vec())
+            .or_insert([b' ', b' '])[1] = status_byte(change.kind);
+    }
+    for path in &status.untracked {
+        rows.insert(path.as_bytes().to_vec(), [b'?', b'?']);
+    }
+    let mut data = Vec::new();
+    for (path, code) in rows {
+        data.extend_from_slice(&code);
+        data.push(b' ');
+        data.extend_from_slice(&path);
+        data.push(0);
+    }
+    Some(PorcelainSnapshot {
+        data,
+        index_nonempty,
+    })
+}
+
+pub fn capture_postlaunch_porcelain(repo_root: &Path, tmpdir: &Path) -> u8 {
     let out = tmpdir.join("step2-postlaunch-porcelain.nul");
     let Ok(repository) = GixRepository::open(repo_root) else {
         return 1;
