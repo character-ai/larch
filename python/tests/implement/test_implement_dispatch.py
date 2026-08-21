@@ -174,7 +174,7 @@ def test_converted_bgjob_launchers_are_thin_wrappers(script_name: str, verb: str
 def test_step8_rust_patch_allowlist_matches_python_ship_state() -> None:
     source = (
         Path(__file__).resolve().parents[3]
-        / "crates/larch-cli/src/implement_ship_commands.rs"
+        / "crates/larch-core/src/implement/ship_state.rs"
     ).read_text(encoding="utf-8")
     block = source.split("const SHIP_STATE_ALLOWED_KEYS", 1)[1].split("];", 1)[0]
     rust_keys = frozenset(re.findall(r'"([A-Z][A-Z0-9_]*)"', block))

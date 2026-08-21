@@ -78,9 +78,13 @@ impl ExitCode {
 }
 
 /// Terminal outcomes shared by workflow state machines.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(
+    Clone, Copy, Debug, Default, Eq, Hash, PartialEq, serde::Deserialize, serde::Serialize,
+)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum WorkflowOutcome {
     /// The workflow completed successfully.
+    #[default]
     Ok,
     /// The workflow needs an operator decision.
     NeedsUserInput,

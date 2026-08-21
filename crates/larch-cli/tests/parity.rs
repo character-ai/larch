@@ -97,7 +97,8 @@ impl CleanInstallCase {
             // usage code, exactly as the retired `argparse` owner did.
             | "clean-install-ci-rerun-failed"
             | "clean-install-design-step5b-prepare"
-            | "clean-install-design-step5b-annotate" => 1,
+            | "clean-install-design-step5b-annotate"
+            | "clean-install-ship-seed-initial-state" => 1,
             // `design parse-flags` owns the frozen Step 0-pre grammar: the
             // clean-install `--help` token is an unrecognized public flag and
             // refuses with the Python validation exit code, matching the
@@ -1949,6 +1950,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-implement-step-8-ship",
         "implement",
         "step-8-ship",
+    ),
+    CleanInstallCase::new(
+        "clean-install-ship-seed-initial-state",
+        "ship",
+        "seed-initial-state",
+    ),
+    CleanInstallCase::new(
+        "clean-install-ship-write-result-env",
+        "ship",
+        "write-result-env",
     ),
     CleanInstallCase::new(
         "clean-install-implement-checks-result-identity",

@@ -49,8 +49,8 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
   Rust-owned run-log command.
 - `larch/core/rust_runtime.py` is the typed ship-facing facade for Rust
   `run-log refresh`, `tracking-issue`, `execution-issues`, `final-report write`,
-  and `progress` commands. It keeps established Python result and error
-  contracts without staging an artifact.
+  `progress`, and ship result-env commands. It keeps established Python result
+  and error contracts without staging an artifact.
 - `larch/report/object_store.py` remains a compatibility/test provider adapter;
   it has no production run-log command caller.
 - `tests/`: unit tests mirror package layout under `python/tests/`.
@@ -81,7 +81,7 @@ Ruff in `lint-local`, Pyright in `python-pyright`, and tests in `python-tests`. 
 Python parity tests require **bash** for shell helper comparisons. CI `python-tests` installs the required shell tooling;
 local runs without it skip those cases via `pytest.mark.skipif`.
 
-The live `/implement` path uses `python/cli.py ship pr`. `/report-tokens` is cut over to `scripts/larch.sh report-tokens analyze`; the `run-analysis.sh` wrapper has been retired.
+The live `/implement` path uses `python/cli.py ship pr`. Rust owns initial ship-state seeding and result-env persistence through `scripts/larch.sh`; the active Python driver retains its transition projection until the ship-driver cutover. `/report-tokens` is cut over to `scripts/larch.sh report-tokens analyze`; the `run-analysis.sh` wrapper has been retired.
 
 ## Pre-push conflict handoff scope
 

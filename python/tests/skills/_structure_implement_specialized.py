@@ -387,9 +387,10 @@ def run(repo_root: Path) -> list[str]:
         forbid(skill, launcher + "skills/implement/scripts/step-8-seed-initial.sh", "SKILL standalone step-8 seeder fence removed")
         forbid(skill, launcher + 'python/cli.py oos file --implement-tmpdir "$IMPLEMENT_TMPDIR"', "SKILL standalone pre-driver oos fence removed")
         require("crates/larch-cli/src/implement_commands.rs", "LARCH_CLAUDE_PID", "step-0 wrapper claude pid export in Rust")
-        require(skill, "retained `ship seed-initial-state` command owns", "ship state initial seeder authority")
+        require(skill, "Rust-owned `ship seed-initial-state` command owns", "ship state initial seeder authority")
         require(step8_owner, '"--no-admin-fallback"', "ship state no-admin fallback seeder argv")
-        require("python/larch/implement/ship_state.py", "NO_ADMIN_FALLBACK", "ship state no-admin fallback allowed key")
+        require("crates/larch-core/src/implement/ship_state.rs", '"NO_ADMIN_FALLBACK"', "ship state no-admin fallback allowed key")
+        require("crates/larch-core/src/implement/ship_result.rs", "write_result_env", "Rust ship result-env writer")
         require(skill, "## NEVER List", "NEVER list heading")
         require(skill, "NEVER call `ScheduleWakeup`", "NEVER #8 ScheduleWakeup pin")
         require(skill, "Do not spawn a Monitor", "NEVER #8 background-monitor ban")
@@ -763,7 +764,7 @@ def run(repo_root: Path) -> list[str]:
                 "**`operator-bail`**",
                 "Post-driver `stall`",
                 "**`tool-failure`**",
-                "retained `ship seed-initial-state` command owns the canonical initial",
+                "Rust-owned `ship seed-initial-state` command owns the canonical initial",
                 "CI_PASSED=true` does not append execution issues",
                 "## Terminal manifest contract",
                 "Terminal runs must leave explicit `steps_ran` values through `scripts/larch.sh final-report write`.",
@@ -1300,4 +1301,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 395
+LEGACY_ASSERTION_LABEL_COUNT = 396

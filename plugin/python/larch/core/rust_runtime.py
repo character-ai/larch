@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import subprocess
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,7 +13,7 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.core import config
 from larch.core.proc import CommandResult, ProcRunner, Runner
-from larch.core.repo_roots import larch_entrypoint
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.core.run_context import RunContext
 
 
@@ -37,6 +39,48 @@ class DirtyTreeRequest:
     arguments: tuple[str, ...]
     mode: str
     fallback: tuple[str, ...]
+
+
+def write_ship_result_env(
+    *,
+    tmpdir: str,
+    path: str | Path,
+    payload: str | None = None,
+    validate_only: bool = False,
+) -> CommandResult:
+    """Write or validate the ship result envelope through its Rust owner."""
+    if payload is None and not validate_only:
+        msg = "ship result-env payload is required"
+        raise ValueError(msg)
+    root = Path(__file__).resolve().parents[3]
+    argv = [
+        str(larch_entrypoint(root)),
+        "ship",
+        "write-result-env",
+        "--tmpdir",
+        tmpdir,
+        "--path",
+        str(path),
+    ]
+    if validate_only:
+        argv.append("--validate-only")
+    started = time.monotonic()
+    completed = subprocess.run(
+        argv,
+        input=payload,
+        capture_output=True,
+        text=True,
+        errors="replace",
+        env=larch_entrypoint_env(root),
+        check=False,
+    )
+    return CommandResult(
+        argv=tuple(argv),
+        returncode=completed.returncode,
+        stdout=completed.stdout,
+        stderr=completed.stderr,
+        duration=time.monotonic() - started,
+    )
 
 
 @dataclass(frozen=True)

@@ -156,7 +156,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("diagrams", "upsert"): ("larch.rendering.rendering", "diagrams_upsert_main", False),
     ("ship", "pr"): ("larch.implement.ship", "main", False),
     ("ship", "reconcile-manual-merge"): ("larch.implement.ship_recovery", "reconcile_manual_merge_main", True),
-    ("ship", "seed-initial-state"): ("larch.implement.ship", "seed_initial_state_main", False),
     ("token", "check-budget"): ("larch.report.tokens", "token_check_budget_main", False),
     ("token", "compute-pr-line-counts"): ("larch.report.tokens", "compute_pr_line_counts_main", False),
     ("token", "compute-pr-lines"): ("larch.report.tokens", "compute_pr_lines_main", False),
