@@ -1,5 +1,7 @@
 //! Site → bgjob step/budget mapping and pure argv builders for run-step-checks.
 
+use std::{ffi::OsString, path::Path};
+
 pub const STEP6_CHECKS_STEP: &str = "implement-step6-checks";
 pub const CHECKS_TERMINAL_ACTIONS: &[&str] = &["continue", "stall", "checks-failed", "skip-to-7a"];
 
@@ -47,6 +49,23 @@ pub fn public_args_for_site(
         args.push("--rebase-checkpoint-4r".to_owned());
     }
     args
+}
+
+/// Argv for the `checks run-relevant` leg shared by the review and
+/// checks-commit-route owners (#8611 dedup). Returns `OsString` rows so a
+/// non-UTF-8 tmpdir or repo-root path survives the delegation verbatim.
+#[must_use]
+pub fn checks_run_relevant_args(site: &str, tmpdir: &Path, repo_root: &Path) -> Vec<OsString> {
+    vec![
+        OsString::from("checks"),
+        OsString::from("run-relevant"),
+        OsString::from("--site"),
+        OsString::from(site),
+        OsString::from("--tmpdir"),
+        tmpdir.as_os_str().to_owned(),
+        OsString::from("--repo-root"),
+        repo_root.as_os_str().to_owned(),
+    ]
 }
 
 #[must_use]

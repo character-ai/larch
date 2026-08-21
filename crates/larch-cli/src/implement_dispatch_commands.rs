@@ -17,8 +17,9 @@ use larch_core::{
     ProcessStatus, RecoveryPorcelainInputs, StatusOptions, bgjob_dir, child_liveness,
     compute_recovery_paths, daemon_liveness, ensure_under,
     implement::{
-        ChecksIdentityError, ChecksInputIdentity, classify_completed_result, classify_live_seed,
-        identities_match, parse_porcelain_z, session_repo_root, sha256_file,
+        ChecksIdentityError, ChecksInputIdentity, checks_run_relevant_args,
+        classify_completed_result, classify_live_seed, identities_match, parse_porcelain_z,
+        session_repo_root, sha256_file,
     },
     log_paths, owner_pid_candidate, private_atomic_write, read_for, resolve_run_id,
     resolve_step_and_budget, resolve_tmpdir_path, result_env_path, validate_merge_result_env,
@@ -484,16 +485,7 @@ fn run_step_checks_worker(
     repo_root: &Path,
 ) -> Result<(i32, String), String> {
     let output = if commit_site.is_empty() {
-        delegate_python([
-            OsString::from("checks"),
-            OsString::from("run-relevant"),
-            OsString::from("--site"),
-            OsString::from(site),
-            OsString::from("--tmpdir"),
-            tmpdir.as_os_str().to_owned(),
-            OsString::from("--repo-root"),
-            repo_root.as_os_str().to_owned(),
-        ])?
+        delegate_python(checks_run_relevant_args(site, tmpdir, repo_root))?
     } else {
         // #8611: `checks-commit-route` is now Rust-owned. Route it through the
         // verified bootstrap as a captured child so this worker keeps appending

@@ -38,13 +38,14 @@ pub use checks_lint_fix::{
     valid_fixer_site,
 };
 pub use commit_route::{
-    CHECKS_DEADLINE_MS, COMMIT_ERROR_MAX, COMMIT_ROUTE_DEADLINE_MS, COMMIT_ROUTE_FAILURE_LOG_MAX,
-    COMMIT_ROUTE_SUCCESS_OUTCOMES, CommitRouteFailure, CommitRouteSite, STEP4_COMMIT_SITE,
-    STEP5_RESUME_COMMIT_RELAY_KEYS, ShipStatePatch, Step4CommitSeed, checks_pass,
-    checks_relay_line, commit_route_failure_log_path, commit_route_failure_log_text,
-    commit_route_site, commit_route_site_names, fold_commit_error, nul_pathspec_bytes,
-    parse_line_anchored, parse_whitespace_kv_line, patch_ship_state_stall, path_readable_nonempty,
-    read_nul_pathspec, read_redacted_message, ship_state_has_kv, step3_self_edit_additions,
+    CHECKS_DEADLINE_MS, COMMIT_ERROR_MAX, COMMIT_ROUTE_DEADLINE_MS,
+    COMMIT_ROUTE_FAILURE_LOG_MAX, COMMIT_ROUTE_SUCCESS_OUTCOMES, CommitRouteFailure,
+    CommitRouteSite, STEP4_COMMIT_SITE, STEP5_RESUME_COMMIT_RELAY_KEYS, ShipStatePatch,
+    Step4CommitSeed, checks_pass, checks_relay_line, commit_route_failure_log_path,
+    commit_route_failure_log_text, commit_route_site, commit_route_site_names, fold_commit_error,
+    nul_pathspec_bytes, parse_line_anchored, parse_whitespace_kv_line, patch_ship_state_stall,
+    path_readable_nonempty, read_nul_pathspec, read_redacted_message, ship_state_has_kv,
+    step3_self_edit_additions,
 };
 pub use contains_pins::{ContainsPinsScan, normalize_rel, read_changed_scope, scan_contains_pins};
 pub use dispatch_manifest::{
@@ -89,6 +90,6 @@ pub use ship_state::{
     state_file_has_kv, tmpdir_under_allowed_root, write_initial_state,
 };
 pub use step_checks::{
-    CHECKS_TERMINAL_ACTIONS, STEP6_CHECKS_STEP, StepChecksSite, checks_step_for_site,
-    public_args_for_site, resolve_step_and_budget, resolve_step_name,
+    CHECKS_TERMINAL_ACTIONS, STEP6_CHECKS_STEP, StepChecksSite, checks_run_relevant_args,
+    checks_step_for_site, public_args_for_site, resolve_step_and_budget, resolve_step_name,
 };

@@ -311,12 +311,7 @@ fn clear_external_dispatch_seed(tmpdir: &Path) {
 }
 
 fn discover_repo_root() -> Option<PathBuf> {
-    use std::os::unix::ffi::OsStringExt as _;
-
-    let cwd = env::current_dir().ok()?;
-    let work_dir = GixRepository::discover(&cwd).ok()?.location().work_dir?;
-    let bytes = work_dir.as_bytes().to_vec();
-    (!bytes.contains(&0)).then(|| PathBuf::from(OsString::from_vec(bytes)))
+    crate::implement_commit_route_commands::repo_root_toplevel()
 }
 
 // ---------------------------------------------------------------------------

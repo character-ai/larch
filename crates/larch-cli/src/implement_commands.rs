@@ -32,6 +32,16 @@ use crate::{
     tracking_issue_commands::adoption_sentinel_identity,
 };
 
+/// Resolve `--implement-tmpdir` with the shared `IMPLEMENT_TMPDIR` env fallback,
+/// dropping empty candidates from either source (#8611 dedup).
+pub(crate) fn resolve_implement_tmpdir(explicit: Option<&std::ffi::OsStr>) -> Option<String> {
+    explicit
+        .map(|value| value.to_string_lossy().into_owned())
+        .filter(|value| !value.is_empty())
+        .or_else(|| env::var("IMPLEMENT_TMPDIR").ok())
+        .filter(|value| !value.is_empty())
+}
+
 /// Bytes a clone tag may carry verbatim; every other byte becomes `_`.
 const CLONE_TAG_ALLOWED: &[u8] =
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";

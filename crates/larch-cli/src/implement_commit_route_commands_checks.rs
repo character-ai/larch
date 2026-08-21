@@ -51,16 +51,7 @@ fn run_relevant_checks_for_site(
             tmpdir.as_os_str().to_owned(),
         ),
     ];
-    let args = vec![
-        OsString::from("checks"),
-        OsString::from("run-relevant"),
-        OsString::from("--site"),
-        OsString::from(checks_site),
-        OsString::from("--tmpdir"),
-        tmpdir.as_os_str().to_owned(),
-        OsString::from("--repo-root"),
-        repo_root.as_os_str().to_owned(),
-    ];
+    let args = checks_run_relevant_args(checks_site, tmpdir, repo_root);
     let result = run_larch(plugin_root, repo_root, &args, &env, leg_timeout(deadline_ms));
     let output = match result {
         Ok(output) => output,

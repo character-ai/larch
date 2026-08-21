@@ -5,7 +5,7 @@
 //! the verified `scripts/larch.sh` bootstrap.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     env,
     ffi::{OsStr, OsString},
     fs,
@@ -18,7 +18,12 @@ use std::{
 use larch_adapters::GixRepository;
 use larch_core::{
     ChildEnvironment, DuplicatePolicy, KvDocument, ParseOptions, ProcessOutput, RepositoryRead,
-    Revision, parse_single_kv_row, result_env_path, write_bytes_atomic,
+    Revision,
+    implement::{
+        checks_pass, checks_relay_line, checks_run_relevant_args, parse_line_anchored,
+        parse_whitespace_kv_line,
+    },
+    parse_single_kv_row, result_env_path, write_bytes_atomic,
 };
 
 use crate::{
@@ -1341,19 +1346,10 @@ fn run_relevant_checks_for_site(
     tmpdir: &Path,
     checks_site: &str,
     repo_root: &Path,
-) -> (HashMap<String, String>, bool) {
+) -> (BTreeMap<String, String>, bool) {
     let output = larch_in(
         repo_root,
-        &[
-            OsString::from("checks"),
-            OsString::from("run-relevant"),
-            OsString::from("--site"),
-            OsString::from(checks_site),
-            OsString::from("--tmpdir"),
-            tmpdir.as_os_str().to_owned(),
-            OsString::from("--repo-root"),
-            repo_root.as_os_str().to_owned(),
-        ],
+        &checks_run_relevant_args(checks_site, tmpdir, repo_root),
     );
     let (rc, stdout) = output.map_or_else(
         |_| (1, String::new()),
@@ -1387,66 +1383,6 @@ fn run_relevant_checks_for_site(
             .or_insert_with(|| rc.to_string());
     }
     (captured, false)
-}
-
-fn checks_relay_line(captured: &HashMap<String, String>) -> String {
-    let get = |key: &str| captured.get(key).cloned().unwrap_or_default();
-    if get("RELEVANT_CHECKS_SKIPPED") == "true" {
-        return format!("RELEVANT_CHECKS_SKIPPED=true SITE={}", get("SITE"));
-    }
-    if get("RELEVANT_CHECKS_OK") == "true" {
-        let mut line = format!(
-            "RELEVANT_CHECKS_OK=true SITE={} COVERAGE={} PHASE={}",
-            get("SITE"),
-            get("COVERAGE"),
-            get("PHASE"),
-        );
-        if !get("WARN").is_empty() {
-            line.push_str(" WARN=");
-            line.push_str(&get("WARN"));
-        }
-        return line;
-    }
-    let mut parts = vec![
-        "STATUS=fail".to_owned(),
-        format!(
-            "FAILURE_REASON={}",
-            captured
-                .get("FAILURE_REASON")
-                .cloned()
-                .unwrap_or_else(|| "checks-failed".to_owned())
-        ),
-    ];
-    for key in ["EXIT_CODE", "PHASE", "DIGEST_FILE", "REDACTED_LOG_FILE"] {
-        if let Some(value) = captured.get(key).filter(|value| !value.is_empty()) {
-            parts.push(format!("{key}={value}"));
-        }
-    }
-    parts.join(" ")
-}
-
-fn checks_pass(captured: &HashMap<String, String>) -> bool {
-    if captured.get("STATUS").map(String::as_str) == Some("fail") {
-        return false;
-    }
-    captured.get("RELEVANT_CHECKS_OK").map(String::as_str) == Some("true")
-        || captured.get("RELEVANT_CHECKS_SKIPPED").map(String::as_str) == Some("true")
-}
-
-fn parse_whitespace_kv_line(line: &str) -> HashMap<String, String> {
-    let mut rows = HashMap::new();
-    for token in line.split_whitespace() {
-        if let Some((key, value)) = token.split_once('=')
-            && !key.is_empty()
-            && key
-                .bytes()
-                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
-            && !rows.contains_key(key)
-        {
-            rows.insert(key.to_owned(), value.to_owned());
-        }
-    }
-    rows
 }
 
 // ---------------------------------------------------------------------------
@@ -1682,14 +1618,6 @@ fn forward_worker(result: Result<ProcessOutput, String>) -> (i32, String) {
     }
 }
 
-fn parse_line_anchored(stdout: &str, key: &str) -> Vec<String> {
-    let prefix = format!("{key}=");
-    stdout
-        .lines()
-        .filter_map(|line| line.strip_prefix(&prefix).map(str::to_owned))
-        .collect()
-}
-
 fn relay_commit_kvs(commit_output: &str, include_next_action: bool) -> String {
     let Ok(document) = KvDocument::parse(commit_output, ParseOptions::legacy()) else {
         return String::new();
@@ -1876,7 +1804,14 @@ mod tests {
         values.iter().map(OsString::from).collect()
     }
 
-    fn map(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+    fn map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect()
+    }
+
+    fn hmap(pairs: &[(&str, &str)]) -> HashMap<String, String> {
         pairs
             .iter()
             .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
@@ -2608,13 +2543,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let _guard = arm_plugin_root(&tmp);
         let (_repository, identity) = seed_identity(tmp.path());
-        let matching = map(&[
+        let matching = hmap(&[
             (CHECKS_HEAD, identity.head_sha.as_str()),
             (CHECKS_FP, identity.tree_fp.as_str()),
             (CHECKS_SCHEMA, identity.schema.as_str()),
         ]);
         assert!(step5_result_identity_ok(tmp.path(), &matching));
-        let stale = map(&[(CHECKS_HEAD, "other")]);
+        let stale = hmap(&[(CHECKS_HEAD, "other")]);
         assert!(!step5_result_identity_ok(tmp.path(), &stale));
     }
 

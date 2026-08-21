@@ -14,6 +14,7 @@ use std::{
 };
 
 use crate::{
+    env_file::{DuplicatePolicy, KvDocument, ParseOptions},
     implement::self_edit_log::{file_sha256, read_self_edits},
     redaction::redact_secrets_only,
 };
@@ -33,63 +34,6 @@ pub const COMMIT_ROUTE_SUCCESS_OUTCOMES: [&str; 2] = ["ok", "noop"];
 pub const STEP5_RESUME_COMMIT_RELAY_KEYS: [&str; 5] =
     ["COMMITTED", "ERROR", "SHA", "COMMIT_OUTCOME", "NEXT_ACTION"];
 
-/// Ship-state keys the stall-seed patch is allowed to persist, mirroring the
-/// Python `_ALLOWED_SHIP_STATE_KEYS` allowlist so a patch never widens it.
-const ALLOWED_SHIP_STATE_KEYS: &[&str] = &[
-    "PHASE",
-    "BRANCH_NAME",
-    "ISSUE_NUMBER",
-    "RUN_ID",
-    "REPO",
-    "REPO_UNAVAILABLE",
-    "FORKED_TARGET",
-    "IMPLEMENT_TMPDIR",
-    "MANIFEST_PATH",
-    "MERGE",
-    "DRAFT",
-    "PR_CLOSED",
-    "PR_NUMBER",
-    "PR_URL",
-    "PR_TITLE",
-    "MERGE_RESULT",
-    "CI_FIX_REBASE_PENDING",
-    "CI_FIX_REBASE_PENDING_HEAD",
-    "LAST_MONITORED_HEAD",
-    "REBASE_COUNT",
-    "FIX_ATTEMPTS",
-    "ITERATION",
-    "TRANSIENT_RETRIES",
-    "RESUME_PHASE",
-    "CALLER_KIND",
-    "CONFLICT_FILES",
-    "STALL_TRACKING",
-    "STALL_STEP",
-    "EXIT_CODE",
-    "BAIL_REASON",
-    "BAIL_NEEDS_USER_INPUT",
-    "FAILED_RUN_ID",
-    "BAIL_FAILURE_DETAIL_LOG",
-    "EXPECTED_SESSION_ID",
-    "EXPECTED_TMPDIR_BASENAME_PREFIX",
-    "NO_LOGS_COMMIT",
-    "NO_ADMIN_FALLBACK",
-    "DESIGN_ONLY_DONE",
-    "DEFERRED",
-    "DONE_RENAME_APPLIED",
-    "CI_PASSED",
-    "TOOL_LABEL",
-    "OOS_PENDING",
-    "EMERGENCY_REPAIR_BRANCH",
-    "ORIGINAL_BRANCH_FORBIDDEN",
-    "MAIN_REPAIR_RUN_ID",
-    "MAIN_REPAIR_HEAD",
-    "EMERGENCY_REPAIR_PR_NUMBER",
-    "MAIN_HEALTH_REPAIR_COMMITTED",
-    "MAIN_HEALTH_REPAIR_FAILED_RUN_ID",
-    "MAIN_HEALTH_REPAIR_BASE_SHA",
-    "MAIN_HEALTH_REPAIR_HEAD",
-    "MAIN_HEALTH_HEAD_SHA",
-];
 
 /// One commit-route stall site: where a failed commit stalls and how it logs.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -173,20 +117,19 @@ pub fn parse_line_anchored(stdout: &str, key: &str) -> Vec<String> {
 /// Parse one whitespace-delimited `KEY=value` checks line (first value wins).
 #[must_use]
 pub fn parse_whitespace_kv_line(line: &str) -> BTreeMap<String, String> {
+    let joined = line.split_whitespace().collect::<Vec<_>>().join("\n");
+    let Ok(document) = KvDocument::parse(&joined, ParseOptions::legacy()) else {
+        return BTreeMap::new();
+    };
     let mut map = BTreeMap::new();
-    for token in line.split_whitespace() {
-        let Some((key, value)) = token.split_once('=') else {
-            continue;
-        };
-        if key.is_empty()
-            || !key
+    for (key, value) in document.select(DuplicatePolicy::First) {
+        if !key.is_empty()
+            && key
                 .bytes()
                 .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
         {
-            continue;
+            map.insert(key, value);
         }
-        map.entry(key.to_owned())
-            .or_insert_with(|| value.to_owned());
     }
     map
 }
@@ -289,7 +232,7 @@ pub fn fold_commit_error(stderr: &str, stdout: &str) -> String {
 }
 
 fn is_allowed_ship_key(key: &str) -> bool {
-    !key.is_empty() && ALLOWED_SHIP_STATE_KEYS.contains(&key)
+    !key.is_empty() && super::ship_state::SHIP_STATE_ALLOWED_KEYS.contains(&key)
 }
 
 /// Outcome of a durable stall-seed ship-state patch attempt.
@@ -306,10 +249,10 @@ pub enum ShipStatePatch {
 /// True when any physical line looks like `IDENT=` — the has-KV probe.
 #[must_use]
 pub fn ship_state_has_kv(text: &str) -> bool {
-    text.lines().any(|line| {
-        let Some((key, _)) = line.split_once('=') else {
-            return false;
-        };
+    let Ok(document) = KvDocument::parse(text, ParseOptions::legacy()) else {
+        return false;
+    };
+    document.select_all().keys().any(|key| {
         !key.is_empty()
             && key
                 .bytes()
@@ -350,20 +293,21 @@ pub fn patch_ship_state_stall(
             ShipStatePatch::Refused
         };
     }
+    let Ok(document) = KvDocument::parse(&text, ParseOptions::legacy()) else {
+        return ShipStatePatch::Refused;
+    };
     // Last value wins across allowed keys, preserving first-seen order.
     let mut order: Vec<String> = Vec::new();
     let mut fields: BTreeMap<String, String> = BTreeMap::new();
-    for line in text.lines() {
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
+    for row in document.rows() {
+        let key = row.key();
         if !is_allowed_ship_key(key) {
             continue;
         }
         if !fields.contains_key(key) {
             order.push(key.to_owned());
         }
-        fields.insert(key.to_owned(), value.to_owned());
+        fields.insert(key.to_owned(), row.value().to_owned());
     }
     for (key, value) in [
         ("STALL_TRACKING", "true"),

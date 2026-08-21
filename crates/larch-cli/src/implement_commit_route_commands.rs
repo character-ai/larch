@@ -24,23 +24,23 @@ use std::{
 
 use larch_adapters::GixRepository;
 use larch_core::{
-    ChildEnvironment, ProcessOutput, RepositoryRead as _, Revision, emit_kv,
+    ChildEnvironment, ParseOptions, ProcessOutput, RepositoryRead as _, Revision, emit_kv,
     implement::{
         CHECKS_DEADLINE_MS, COMMIT_ROUTE_DEADLINE_MS, COMMIT_ROUTE_SUCCESS_OUTCOMES,
         CommitRouteFailure, CommitRouteSite, STEP4_COMMIT_SITE, STEP5_RESUME_COMMIT_RELAY_KEYS,
-        ShipStatePatch, Step4CommitSeed, checks_pass, checks_relay_line,
+        ShipStatePatch, Step4CommitSeed, checks_pass, checks_relay_line, checks_run_relevant_args,
         commit_route_failure_log_path, commit_route_failure_log_text, commit_route_site,
         commit_route_site_names, fold_commit_error, nul_pathspec_bytes, parse_line_anchored,
         parse_whitespace_kv_line, patch_ship_state_stall, path_readable_nonempty,
         read_nul_pathspec, read_redacted_message, step3_self_edit_additions,
     },
-    write_bytes_atomic,
+    parse_single_kv_row, write_bytes_atomic,
 };
 
 use crate::{
     argparse_compat::{choice_error, parse_required_with_help, usage_error},
     implement_child_seam::resolve_plugin_root,
-    implement_commands::{read_kv_first, write_atomic},
+    implement_commands::{read_kv_first, resolve_implement_tmpdir, write_atomic},
     implement_dispatch_commands::{
         capture_postlaunch_porcelain, resolve_repo_root_output, run_verified_larch_env_in_timeout,
         untracked_local_status,
@@ -208,7 +208,7 @@ fn head_sha(repo_root: &Path) -> String {
 }
 
 /// Discover the git top-level of the current working directory.
-fn repo_root_toplevel() -> Option<PathBuf> {
+pub(crate) fn repo_root_toplevel() -> Option<PathBuf> {
     use std::os::unix::ffi::OsStringExt as _;
     let cwd = env::current_dir().ok()?;
     let work_dir = GixRepository::discover(&cwd).ok()?.location().work_dir?;
@@ -611,9 +611,10 @@ enum CommitRouteRun {
 
 fn relay_commit_kvs(commit_output: &str, include_next_action: bool) {
     for line in commit_output.lines() {
-        let Some((key, _)) = line.split_once('=') else {
+        let Some(row) = parse_single_kv_row(line, ParseOptions::legacy()) else {
             continue;
         };
+        let key = row.key();
         if key == "NEXT_ACTION" && !include_next_action {
             continue;
         }
@@ -811,12 +812,8 @@ pub fn commit_route(arguments: &[OsString]) -> ExitCode {
             2,
         );
     };
-    let raw_tmpdir = parsed
-        .value("--implement-tmpdir")
-        .map(|value| value.to_string_lossy().into_owned())
-        .filter(|value| !value.is_empty())
-        .or_else(|| env::var("IMPLEMENT_TMPDIR").ok())
-        .unwrap_or_default();
+    let raw_tmpdir =
+        resolve_implement_tmpdir(parsed.value("--implement-tmpdir")).unwrap_or_default();
     if raw_tmpdir.is_empty() {
         eprintln!("IMPLEMENT_TMPDIR required");
         return ExitCode::from(2);

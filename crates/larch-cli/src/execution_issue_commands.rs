@@ -1271,12 +1271,8 @@ pub fn refresh(arguments: &[OsString]) -> ExitCode {
         emit_kv("ERROR", "usage");
         return ExitCode::from(VALIDATION_FAILED_RC);
     }
-    let raw = parsed
-        .value("--implement-tmpdir")
-        .map(|value| value.to_string_lossy().into_owned())
-        .filter(|value| !value.is_empty())
-        .or_else(|| env::var("IMPLEMENT_TMPDIR").ok())
-        .filter(|value| !value.is_empty());
+    let raw =
+        crate::implement_commands::resolve_implement_tmpdir(parsed.value("--implement-tmpdir"));
     let Some(raw) = raw else {
         emit_kv("REFRESHED", "false");
         emit_kv(
