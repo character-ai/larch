@@ -1,6 +1,6 @@
 """larch.design: design, planning, and clarification subsystem.
 
-Home for the design phases: ``design_step2b``
+Home for the design phases: the workflow phase modules
 through ``design_step6`` (workflow phases), ``design_core`` (shared
 lifecycle helpers and small entry points, plus the surviving result-env and
 final-summary library helpers relocated from the retired ``design_terminal``;

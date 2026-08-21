@@ -141,27 +141,32 @@ def _default_dedup(design_tmpdir: Path) -> ChildCapture:
 
 
 def _default_postplan(request: SettleRequest, postplan_site: str) -> ChildCapture:
-    from larch.design.design_step2b import step2b_postplan_main  # noqa: PLC0415 - deferred to keep settle import light
-
+    # The Step 2b postplan owner is Rust-owned (#8583); settle reaches it through
+    # the verified bootstrap entrypoint, mirroring _default_dedup above.
     # Honor the typed request path even when callers invoke step35_settle_for
     # without going through step35_settle_main's env rehydrate.
     os.environ[config.ENV_DESIGN_TMPDIR] = str(request.design_tmpdir)
-    argv: list[str] = [
-        "--session-env-path",
-        request.session_env_path,
-        "--claude-pid",
-        request.claude_pid,
-        "--plugin-root",
-        request.plugin_root or os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, ""),
-        "--site",
-        postplan_site,
-        *request.public_argv,
-    ]
-    buf = io.StringIO()
-    err = io.StringIO()
-    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
-        rc = step2b_postplan_main(argv)
-    return ChildCapture(rc=int(rc), stdout=buf.getvalue(), stderr=err.getvalue())
+    result = subprocess.run(
+        [
+            str(larch_entrypoint()),
+            "design",
+            "step2b-postplan",
+            "--session-env-path",
+            request.session_env_path,
+            "--claude-pid",
+            request.claude_pid,
+            "--plugin-root",
+            request.plugin_root or os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, ""),
+            "--site",
+            postplan_site,
+            *request.public_argv,
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=larch_entrypoint_env(),
+    )
+    return ChildCapture(rc=result.returncode, stdout=result.stdout, stderr=result.stderr)
 
 
 def _default_dialectic_clear(design_tmpdir: Path) -> int:

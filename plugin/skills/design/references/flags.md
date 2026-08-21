@@ -28,15 +28,15 @@ Step 0-pre validation and positional classification use `scripts/larch.sh design
 
 ## Plan-size thresholds (Step 2b.5)
 
-**Merged post-plan sites** (initial Step 2b, Gate B shared post-apply, discussion-round2 / Gate A after-discussion re-emit) call `python/cli.py design postplan-emit --with-plan-size`. It runs `scripts/larch.sh plan check-size` and maps verdicts to thin-fence exit codes (`0`, `10`, `11`, `12`, `13`, `14`, `1`, `2`). **`scripts/larch.sh plan check-size` remains standalone** for retained Step 2b.5 paths.
+**Merged post-plan sites** (initial Step 2b, Gate B shared post-apply, discussion-round2 / Gate A after-discussion re-emit) call `scripts/larch.sh design postplan-emit --with-plan-size`. It runs `scripts/larch.sh plan check-size` and maps verdicts to thin-fence exit codes (`0`, `10`, `11`, `12`, `13`, `14`, `1`, `2`). **`scripts/larch.sh plan check-size` remains standalone** for retained Step 2b.5 paths.
 
 **Site-aware hard prompts**: all size-triggered paths use the unified Split-path question with Partition, Override, and Other/chat.
 
 ### `LARCH_DESIGN_DRIFT_MULTIPLE`
 
-Default `2` (positive integer; invalid values fall back to `2`). `scripts/larch.sh plan check-size` compares current plan and diff lines with `drift-baseline.env`; drift fires when either ratio exceeds the multiple. Merged `python/cli.py design postplan-emit --with-plan-size` logs to `execution-issues.md` and exits `0` after hard-size and partition checks; drift no longer prompts or halts.
+Default `2` (positive integer; invalid values fall back to `2`). `scripts/larch.sh plan check-size` compares current plan and diff lines with `drift-baseline.env`; drift fires when either ratio exceeds the multiple. Merged `scripts/larch.sh design postplan-emit --with-plan-size` logs to `execution-issues.md` and exits `0` after hard-size and partition checks; drift no longer prompts or halts.
 
-Merged fence pause-save preludes and `_postplan_rc=11` `exec` arms thread `${REPO:+--repo "$REPO"}`; `python/cli.py design postplan-emit` is not passed `--repo`.
+Merged fence pause-save preludes and `_postplan_rc=11` `exec` arms thread `${REPO:+--repo "$REPO"}`; `scripts/larch.sh design postplan-emit` is not passed `--repo`.
 
 Mechanical evaluation lives in `scripts/larch.sh plan check-size` (sibling `check-plan-size.md`). Thresholds use **strict `>`**: 800 lines does **not** trip; 801 does.
 
@@ -72,7 +72,7 @@ The helper emits reason tokens in threshold order: `plan-body-lines`, diff reaso
 
 ## Plan-command validator
 
-Post-plan validation for `plan.txt` is owned by `python/cli.py design postplan-emit` after each successful plan emit: initial Step 2b, Gate A re-entry, Gate B, and discussion-round2. Validation is unconditional; no quick-skip path or force flag exists. Step 5c validates `composed-plan.md` through `python/cli.py design step5c`, which calls the publish tail in-process before redaction unless the operator accepted proceed-anyway.
+Post-plan validation for `plan.txt` is owned by `scripts/larch.sh design postplan-emit` after each successful plan emit: initial Step 2b, Gate A re-entry, Gate B, and discussion-round2. Validation is unconditional; no quick-skip path or force flag exists. Step 5c validates `composed-plan.md` through `python/cli.py design step5c`, which calls the publish tail in-process before redaction unless the operator accepted proceed-anyway.
 
 **Defect handling**: when machine output reports `VALIDATE_STATUS=defects-found`, use the shared auto-repair-then-escalate body in `SKILL.md` (**### Plan command validator failure (shared)**).
 
