@@ -540,6 +540,13 @@ pub type GitHubActionsFuture<'service, T> =
 
 /// Typed workflow, job, check, control, and log operations.
 pub trait GitHubActionsService: GitHubService {
+    fn pull_request_ci_state<'service>(
+        &'service self,
+        repository: &'service GitHubRepositoryRef,
+        number: u64,
+        cancellation: &'service dyn ProcessCancellation,
+    ) -> GitHubActionsFuture<'service, PullRequestCiState>;
+
     fn list_workflow_runs<'service>(
         &'service self,
         repository: &'service GitHubRepositoryRef,
@@ -663,7 +670,27 @@ pub struct CheckRun {
     pub name: String,
     pub status: String,
     pub conclusion: Option<String>,
+    pub details_url: Option<String>,
     pub bucket: CheckBucket,
+}
+
+/// Pull-request fields needed by the CI monitor's typed GitHub read.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PullRequestCiState {
+    pub merged: bool,
+    pub merge_state: PullRequestMergeState,
+}
+
+/// Conservative merge-state vocabulary used by the CI decision boundary.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PullRequestMergeState {
+    Behind,
+    Blocked,
+    Clean,
+    Dirty,
+    HasHooks,
+    Unknown,
+    Unstable,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

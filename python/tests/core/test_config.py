@@ -69,14 +69,6 @@ def test_initial_empty_checks_grace_is_ship_startup_deadline() -> None:
     assert config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC < config.CI_WAIT_TIMEOUT_SEC
 
 
-def test_default_empty_checks_grace_is_bounded() -> None:
-    # The manual `ci status` / `ci wait` default must be > 0 so a runless head
-    # surfaces as NO_CHECKS within the window instead of polling the full budget
-    # (issue #4924), and shorter than the full poll timeout.
-    assert config.CI_WAIT_EMPTY_CHECKS_GRACE_SEC == 120
-    assert 0 < config.CI_WAIT_EMPTY_CHECKS_GRACE_SEC < config.CI_WAIT_TIMEOUT_SEC
-
-
 def test_ci_status_query_timeout_is_bounded() -> None:
     # The poll-time gh status query timeout must be > 0 so a hung read is bounded
     # (issue #5066), and dedicated/shorter than the full subprocess + wait budgets

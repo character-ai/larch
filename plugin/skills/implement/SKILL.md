@@ -32,7 +32,7 @@ Two invariants enforced across multiple steps. Anchor cross-step questions here;
 
 1. **Step 9a.1 OOS Sentinel Idempotency** — re-running `/implement` in the same session MUST NOT double-file vote-accepted non-security OOS. **Enforcement**: Rust-owned `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh oos file` reads accepted inputs, the sentinel, and run NDJSON; binds prior URLs by stable ID/title; and files only unmatched blocks. **Why**: durable evidence makes retries deterministic.
 
-**Fork-mode carve-out for Invariant #1**: when `forked_target=true`, Rust creates no public OOS issue, records `skipped://oos/<N>` evidence, checkpoints, and preserves accepted items in final-report text. CI comparison uses `upstream/main` via `scripts/larch.sh push rebase --base-remote upstream --base-ref main` and `python/cli.py ci status --base-remote upstream --base-ref main`.
+**Fork-mode carve-out for Invariant #1**: when `forked_target=true`, Rust creates no public OOS issue, records `skipped://oos/<N>` evidence, checkpoints, and preserves accepted items in final-report text. CI comparison uses `upstream/main` via `scripts/larch.sh push rebase --base-remote upstream --base-ref main` and `scripts/larch.sh ci status --base-remote upstream --base-ref main`.
 
 2. **Tracking-Issue Sentinel Idempotency** (umbrella #348) — re-running `/implement` in the same session MUST NOT double-adopt the wrong issue or corrupt `RUN_ID`. **Enforcement**: Step 0 checks `$IMPLEMENT_TMPDIR/parent-issue.md`; on retry it recovers prior `ISSUE_NUMBER` and `RUN_ID`, skipping Branch 2 adoption, `run-log init`, and `python/cli.py tracking post-issue`. Write the sentinel ONLY after `ISSUE_NUMBER`, `RUN_ID`, and the metadata summary comment resolve. If `run-log init` fails, set `IMPLEMENT_BAIL_REASON=tracking-init-failed`, `STALL_TRACKING=true`, skip the sentinel, skip to Step 18, and **preserve `$ISSUE_NUMBER`** so Step 18 can rename the issue to `[STALLED]` when applicable. Reserve `DEFERRED=true` for the non-stalled metadata-publication defer path (`POSTED=false` / no sentinel, then continue within Step 0). **Why**: `"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" tracking-issue upsert-summary` uses marker literals for the four slim comments, but the local sentinel remains the byte-exact session guard, parallel to Invariant #1.
 
@@ -40,7 +40,7 @@ Two invariants enforced across multiple steps. Anchor cross-step questions here;
 
 Each rule states WHY; per-site reminders reference by anchor name.
 
-1. **NEVER simply "log and return" on push failure in the Step 12 merge loop inside the active Step 8+ driver.** **Why**: `python/cli.py ci wait` and `python/cli.py merge pr` operate on remote PR state only; a log-and-return would let the merge loop proceed to `ACTION=merge` on a remote branch that never received the fix push. **How to apply**: Step 10 CI-fix paths may degrade gracefully; Step 12 family MUST bail to 12d.
+1. **NEVER simply "log and return" on push failure in the Step 12 merge loop inside the active Step 8+ driver.** **Why**: `scripts/larch.sh ci wait` and `python/cli.py merge pr` operate on remote PR state only; a log-and-return would let the merge loop proceed to `ACTION=merge` on a remote branch that never received the fix push. **How to apply**: Step 10 CI-fix paths may degrade gracefully; Step 12 family MUST bail to 12d.
 
 2. **(removed in Phase 1 #3364 — bump verification on the ship path; see `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` retirement stub.)**
 

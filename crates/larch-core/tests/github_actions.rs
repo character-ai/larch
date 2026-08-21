@@ -183,6 +183,15 @@ impl GitHubService for FakeService {
 }
 
 impl GitHubActionsService for FakeService {
+    fn pull_request_ci_state<'a>(
+        &'a self,
+        _repository: &'a GitHubRepositoryRef,
+        _number: u64,
+        _cancellation: &'a dyn ProcessCancellation,
+    ) -> GitHubActionsFuture<'a, larch_core::PullRequestCiState> {
+        unused_actions()
+    }
+
     fn list_workflow_runs<'a>(
         &'a self,
         _repository: &'a GitHubRepositoryRef,

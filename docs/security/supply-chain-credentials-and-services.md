@@ -826,6 +826,16 @@ nesting. Rerun and dispatch mutations are serialized. They honor numeric
 `Retry-After` pacing before read-back and report an ambiguous outcome when the
 read-back cannot prove the mutation happened.
 
+The Rust-owned `ci status` and `ci wait` commands combine a typed pull-request
+REST read, the fixed merge-state GraphQL query, typed check runs, a typed
+combined commit-status rollup, a typed Git fetch, and local gix commit walks. A
+non-timeout pull-request-state failure retains the legacy conservative
+`UNKNOWN` conflict state and queries the fixed `pull/<number>/head` selector,
+so the monitor can still consume independently validated check data; a deadline
+remains a status failure. The commands are read-only and have no `gh api` or
+Python fallback. `ci wait --output-file` publishes its bounded `KEY=value`
+result and completion marker through the shared private atomic wire writer.
+
 Workflow log archives have a 64 MiB and 60 second limit. The adapter follows at
 most three redirects and rejects loops, URL credentials, fragments, plaintext,
 unexpected content types, and oversize or incomplete streams. Redirect hosts

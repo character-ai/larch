@@ -406,9 +406,11 @@ pub enum ShutdownSignal {
     Interrupt,
     /// Service termination request on Unix.
     Terminate,
+    /// Terminal hangup request on Unix.
+    Hangup,
 }
 
-/// Wait for SIGINT or, on Unix, SIGTERM.
+/// Wait for SIGINT or, on Unix, SIGTERM or SIGHUP.
 ///
 /// # Errors
 ///
@@ -419,6 +421,7 @@ pub async fn wait_for_shutdown_signal() -> io::Result<ShutdownSignal> {
     {
         let mut terminate =
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        let mut hangup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())?;
         tokio::select! {
             result = tokio::signal::ctrl_c() => {
                 result.map(|()| ShutdownSignal::Interrupt)
@@ -426,6 +429,10 @@ pub async fn wait_for_shutdown_signal() -> io::Result<ShutdownSignal> {
             signal = terminate.recv() => signal.map_or_else(
                 || Err(io::Error::new(io::ErrorKind::BrokenPipe, "SIGTERM stream closed")),
                 |()| Ok(ShutdownSignal::Terminate),
+            ),
+            signal = hangup.recv() => signal.map_or_else(
+                || Err(io::Error::new(io::ErrorKind::BrokenPipe, "SIGHUP stream closed")),
+                |()| Ok(ShutdownSignal::Hangup),
             )
         }
     }

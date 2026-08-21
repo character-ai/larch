@@ -1,6 +1,8 @@
 //! Typed GitHub Actions operations over the shared authenticated transport.
 
-use crate::github::{GitHubCompletionError, OctocrabGitHubService};
+use crate::github::{
+    GitHubCompletionError, GitHubOperationError, MergeStateStatus, OctocrabGitHubService,
+};
 use bytes::Buf;
 use chrono::{DateTime, Utc};
 use http::{Response, StatusCode, header};
@@ -9,8 +11,8 @@ use http_body_util::BodyExt;
 use larch_core::{
     CheckBucket, CheckRun, GitHubActionsError, GitHubActionsErrorKind, GitHubActionsFuture,
     GitHubActionsService, GitHubMutationOutcome, GitHubRepositoryRef, GitHubService,
-    ProcessCancellation, WorkflowDispatchRequest, WorkflowJob, WorkflowLogArchive, WorkflowRun,
-    WorkflowRunFilters,
+    ProcessCancellation, PullRequestCiState, PullRequestMergeState, WorkflowDispatchRequest,
+    WorkflowJob, WorkflowLogArchive, WorkflowRun, WorkflowRunFilters,
 };
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -100,10 +102,17 @@ struct ChecksResponse {
 }
 
 #[derive(Deserialize)]
+struct CombinedStatusDto {
+    state: String,
+    total_count: u64,
+}
+
+#[derive(Deserialize)]
 struct CheckDto {
     name: String,
     status: String,
     conclusion: Option<String>,
+    details_url: Option<String>,
 }
 
 impl CheckDto {
@@ -113,6 +122,7 @@ impl CheckDto {
             name: self.name,
             status: self.status,
             conclusion: self.conclusion,
+            details_url: self.details_url,
             bucket,
         }
     }
@@ -131,7 +141,66 @@ fn check_bucket(status: &str, conclusion: Option<&str>) -> CheckBucket {
     }
 }
 
+fn commit_status_bucket(state: &str) -> CheckBucket {
+    match state {
+        "success" => CheckBucket::Pass,
+        "failure" | "error" => CheckBucket::Fail,
+        _ => CheckBucket::Pending,
+    }
+}
+
 impl GitHubActionsService for OctocrabGitHubService {
+    fn pull_request_ci_state<'service>(
+        &'service self,
+        repository: &'service GitHubRepositoryRef,
+        number: u64,
+        cancellation: &'service dyn ProcessCancellation,
+    ) -> GitHubActionsFuture<'service, PullRequestCiState> {
+        Box::pin(async move {
+            let pull_request = self
+                .get_pull_request(cancellation, repository.owner(), repository.name(), number)
+                .await
+                .map_err(|error| actions_operation_error(&error))?;
+            if pull_request.merged() {
+                return Ok(PullRequestCiState {
+                    merged: true,
+                    merge_state: PullRequestMergeState::Unknown,
+                });
+            }
+            let merge_state = match self
+                .pull_request_review_state(
+                    cancellation,
+                    repository.owner(),
+                    repository.name(),
+                    number,
+                )
+                .await
+            {
+                Ok(review) => match review.merge_state_status() {
+                    MergeStateStatus::Behind => PullRequestMergeState::Behind,
+                    MergeStateStatus::Blocked => PullRequestMergeState::Blocked,
+                    MergeStateStatus::Clean => PullRequestMergeState::Clean,
+                    MergeStateStatus::Dirty => PullRequestMergeState::Dirty,
+                    MergeStateStatus::HasHooks => PullRequestMergeState::HasHooks,
+                    MergeStateStatus::Unstable => PullRequestMergeState::Unstable,
+                    MergeStateStatus::Draft | MergeStateStatus::Unknown => {
+                        PullRequestMergeState::Unknown
+                    }
+                },
+                Err(error @ GitHubOperationError::DeadlineExceeded) => {
+                    return Err(actions_operation_error(&error));
+                }
+                // The legacy PR-view read degraded non-timeout failures to a
+                // conservative conflict assumption, then still read checks.
+                Err(_) => PullRequestMergeState::Unknown,
+            };
+            Ok(PullRequestCiState {
+                merged: false,
+                merge_state,
+            })
+        })
+    }
+
     fn list_workflow_runs<'service>(
         &'service self,
         repository: &'service GitHubRepositoryRef,
@@ -386,6 +455,25 @@ impl OctocrabGitHubService {
     ) -> Result<Vec<CheckRun>, GitHubActionsError> {
         validate_selector(git_reference, "Git reference")?;
         let mut checks = Vec::new();
+        let status_route = format!(
+            "{}/commits/{}/status",
+            repository_route(repository),
+            encode_path_segment(git_reference)
+        );
+        let status: CombinedStatusDto = self.read_json(&status_route).await?;
+        validate_string(self, &status.state, "combined commit status")?;
+        let status_check = (status.total_count > 0).then(|| CheckRun {
+            name: "commit-status-rollup".to_owned(),
+            status: status.state.clone(),
+            conclusion: Some(status.state.clone()),
+            details_url: None,
+            bucket: commit_status_bucket(&status.state),
+        });
+        let check_limit = self
+            .transport_policy()
+            .limits()
+            .items()
+            .saturating_sub(usize::from(status_check.is_some()));
         for page in 1..=self.transport_policy().limits().pages() {
             let route = format!(
                 "{}/commits/{}/check-runs?filter=latest&per_page={PAGE_SIZE}&page={page}",
@@ -402,13 +490,18 @@ impl OctocrabGitHubService {
                     check.conclusion.as_deref(),
                     "check run conclusion",
                 )?;
+                validate_optional_string(
+                    self,
+                    check.details_url.as_deref(),
+                    "check run details URL",
+                )?;
                 checks.push(check.into_core());
-                if checks.len() == self.transport_policy().limits().items() {
-                    return Ok(checks);
+                if checks.len() == check_limit {
+                    return Ok(with_combined_status(checks, status_check));
                 }
             }
             if count < PAGE_SIZE {
-                return Ok(checks);
+                return Ok(with_combined_status(checks, status_check));
             }
         }
         Err(self.error(
@@ -597,6 +690,25 @@ impl OctocrabGitHubService {
         let safe = self.redact_diagnostic(detail);
         GitHubActionsError::new(kind, safe.as_str())
     }
+}
+
+fn with_combined_status(mut checks: Vec<CheckRun>, status: Option<CheckRun>) -> Vec<CheckRun> {
+    checks.extend(status);
+    checks
+}
+
+fn actions_operation_error(error: &GitHubOperationError) -> GitHubActionsError {
+    let kind = match error {
+        GitHubOperationError::Cancelled => GitHubActionsErrorKind::Cancelled,
+        GitHubOperationError::DeadlineExceeded => GitHubActionsErrorKind::DeadlineExceeded,
+        GitHubOperationError::Unauthorized => GitHubActionsErrorKind::Authorization,
+        GitHubOperationError::RateLimited => GitHubActionsErrorKind::RateLimited,
+        GitHubOperationError::Transport(_) | GitHubOperationError::Unreachable(_) => {
+            GitHubActionsErrorKind::Transport
+        }
+        _ => GitHubActionsErrorKind::Response,
+    };
+    GitHubActionsError::new(kind, error.to_string())
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1044,6 +1156,11 @@ mod tests {
             response(
                 200,
                 json,
+                r#"{"state":"failure","total_count":1,"statuses":[]}"#,
+            ),
+            response(
+                200,
+                json,
                 r#"{"check_runs":[{"name":"check","status":"completed","conclusion":"success"}]}"#,
             ),
             response(200, json, RUN),
@@ -1064,7 +1181,10 @@ mod tests {
             );
             assert_eq!(s.workflow_run(&r, 1, &c).await.expect("run").database_id, 1);
             assert_eq!(s.workflow_jobs(&r, 1, &c).await.expect("jobs").len(), 1);
-            assert_eq!(s.check_runs(&r, "abc", &c).await.expect("checks").len(), 1);
+            let checks = s.check_runs(&r, "abc", &c).await.expect("checks");
+            assert_eq!(checks.len(), 2);
+            assert_eq!(checks[0].name, "check");
+            assert_eq!(checks[1].bucket, CheckBucket::Fail);
             assert_eq!(
                 s.rerun_workflow(&r, 1, false, &c).await.expect("rerun"),
                 GitHubMutationOutcome::Accepted
@@ -1215,6 +1335,9 @@ mod tests {
     #[test]
     fn check_classification_retains_blocking_and_nonblocking_buckets() {
         assert_eq!(check_bucket("queued", None), CheckBucket::Pending);
+        assert_eq!(commit_status_bucket("success"), CheckBucket::Pass);
+        assert_eq!(commit_status_bucket("failure"), CheckBucket::Fail);
+        assert_eq!(commit_status_bucket("pending"), CheckBucket::Pending);
         assert_eq!(
             check_bucket("completed", Some("failure")),
             CheckBucket::Fail
@@ -1239,6 +1362,68 @@ mod tests {
             check_bucket("completed", Some("stale")),
             CheckBucket::Pending
         );
+    }
+
+    #[test]
+    fn check_details_url_survives_the_typed_adapter() {
+        let check: CheckDto = serde_json::from_str(
+            r#"{"name":"test","status":"completed","conclusion":"failure","details_url":"https://github.com/o/r/actions/runs/123"}"#,
+        )
+        .expect("check run");
+        assert_eq!(
+            check.into_core().details_url.as_deref(),
+            Some("https://github.com/o/r/actions/runs/123")
+        );
+    }
+
+    #[test]
+    fn pull_request_ci_state_combines_fixed_rest_and_graphql_reads() {
+        let responses = vec![
+            response(
+                200,
+                "application/json",
+                r#"{"number":7,"state":"open","title":"CI","head":{"ref":"topic","sha":"1111111111111111111111111111111111111111"},"base":{"ref":"main"},"draft":false,"merged":false}"#,
+            ),
+            response(
+                200,
+                "application/json",
+                r#"{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED","mergeStateStatus":"DIRTY","mergeable":"CONFLICTING"}}}}"#,
+            ),
+        ];
+        let runtime = crate::runtime::LarchRuntime::new().expect("runtime");
+        runtime.block_on(async move {
+            let service = queued_service(responses);
+            let state = service
+                .pull_request_ci_state(&repository(), 7, &crate::runtime::Cancellation::new())
+                .await
+                .expect("CI state");
+            assert_eq!(state.merge_state, PullRequestMergeState::Dirty);
+            assert!(!state.merged);
+        });
+    }
+
+    #[test]
+    fn pull_request_ci_state_degrades_graphql_failure_conservatively() {
+        let responses = vec![
+            response(
+                200,
+                "application/json",
+                r#"{"number":7,"state":"open","title":"CI","head":{"ref":"topic","sha":"1111111111111111111111111111111111111111"},"base":{"ref":"main"},"draft":false,"merged":false}"#,
+            ),
+            response(
+                200,
+                "application/json",
+                r#"{"errors":[{"message":"temporary failure"}],"data":null}"#,
+            ),
+        ];
+        let runtime = crate::runtime::LarchRuntime::new().expect("runtime");
+        runtime.block_on(async move {
+            let state = queued_service(responses)
+                .pull_request_ci_state(&repository(), 7, &crate::runtime::Cancellation::new())
+                .await
+                .expect("conservative CI state");
+            assert_eq!(state.merge_state, PullRequestMergeState::Unknown);
+        });
     }
 
     #[test]
