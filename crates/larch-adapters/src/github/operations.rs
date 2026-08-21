@@ -229,7 +229,9 @@ pub struct PullRequest {
     number: u64,
     state: PullRequestState,
     title: String,
+    body: String,
     head_ref: String,
+    head_label: Option<String>,
     base_ref: String,
     draft: bool,
     merged: bool,
@@ -437,6 +439,11 @@ impl PullRequest {
     #[must_use]
     pub fn title(&self) -> &str {
         &self.title
+    }
+
+    #[must_use]
+    pub fn body(&self) -> &str {
+        &self.body
     }
 
     #[must_use]
@@ -1076,7 +1083,11 @@ impl OctocrabGitHubService {
     ) -> Result<Vec<PullRequest>, GitHubOperationError> {
         validate_repo(owner, repo)?;
         let route = format!("/repos/{owner}/{repo}/pulls");
-        let head = format!("{owner}:{head_branch}");
+        let head = if head_branch.contains(':') {
+            head_branch.to_owned()
+        } else {
+            format!("{owner}:{head_branch}")
+        };
         let parameters = [("state", "open"), ("head", head.as_str())];
         let value = self
             .fetch_json(
@@ -1129,6 +1140,62 @@ impl OctocrabGitHubService {
                     .await
             }
         }
+    }
+
+    /// Create or adopt a pull request and prove its body and branch identity.
+    ///
+    /// An adopted PR keeps its existing title, matching the legacy ship path,
+    /// but receives the current redacted body. Every mutation is followed by a
+    /// fresh typed read-back before success is returned.
+    ///
+    /// # Errors
+    /// Returns a typed error when creation, repair, or the read-back postcondition fails.
+    pub async fn ensure_pull_request(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        spec: &PullRequestSpec<'_>,
+    ) -> Result<CreatedPullRequest, GitHubOperationError> {
+        let initial = self.create_pull_request(cancellation, spec).await?;
+        let number = initial.pull_request.number;
+        let created = initial.created;
+        let body_changed =
+            !created && !same_pull_request_body(&initial.pull_request.body, spec.body);
+        if body_changed {
+            self.edit_pull_request(
+                cancellation,
+                &PullRequestEdit {
+                    owner: spec.owner,
+                    repo: spec.repo,
+                    number,
+                    title: None,
+                    body: Some(spec.body),
+                    state: None,
+                    base: None,
+                },
+            )
+            .await?;
+        }
+        let observed = if created || body_changed {
+            self.get_pull_request(cancellation, spec.owner, spec.repo, number)
+                .await?
+        } else {
+            initial.pull_request
+        };
+        let common_matches = observed.state == PullRequestState::Open
+            && same_pull_request_head(&observed, spec.owner, spec.head)
+            && observed.base_ref == spec.base
+            && same_pull_request_body(&observed.body, spec.body);
+        let create_matches =
+            !created || (observed.title == spec.title && observed.draft == spec.draft);
+        if !common_matches || !create_matches {
+            return Err(GitHubOperationError::Malformed(
+                "pull request ensure read-back",
+            ));
+        }
+        Ok(CreatedPullRequest {
+            pull_request: observed,
+            created,
+        })
     }
 
     /// Edit an existing pull request; unset fields are left unchanged.
@@ -2282,6 +2349,9 @@ fn is_git_object_id(oid: &str) -> bool {
 }
 
 fn reconcile_create(existing: &[PullRequest], head_ref: &str) -> CreatePlan {
+    let head_ref = head_ref
+        .rsplit_once(':')
+        .map_or(head_ref, |(_owner, branch)| branch);
     existing
         .iter()
         .find(|pull_request| {
@@ -2290,6 +2360,22 @@ fn reconcile_create(existing: &[PullRequest], head_ref: &str) -> CreatePlan {
         .map_or(CreatePlan::Create, |pull_request| {
             CreatePlan::ReturnExisting(pull_request.number)
         })
+}
+
+fn same_pull_request_body(observed: &str, expected: &str) -> bool {
+    observed.trim_end() == expected.trim_end()
+}
+
+fn same_pull_request_head(observed: &PullRequest, default_owner: &str, expected: &str) -> bool {
+    let (owner, branch) = expected
+        .split_once(':')
+        .unwrap_or((default_owner, expected));
+    observed.head_ref == branch
+        && observed
+            .head_label
+            .as_deref()
+            .and_then(|label| label.split_once(':'))
+            == Some((owner, branch))
 }
 
 const fn classify_dependency_write(status: u16) -> DependencyWrite {
@@ -2545,7 +2631,15 @@ fn parse_pull_request(
         number: required_u64(object, "number", "pull request number")?,
         state: parse_state(required_str(object, "state", limits, "pull request state")?.as_str())?,
         title: optional_str(object, "title", limits, "pull request title")?.unwrap_or_default(),
+        body: optional_str(object, "body", limits, "pull request body")?.unwrap_or_default(),
         head_ref: required_ref(object, "head", limits, "pull request head ref")?,
+        head_label: optional_nested_str(
+            object,
+            "head",
+            "label",
+            limits,
+            "pull request head label",
+        )?,
         base_ref: required_ref(object, "base", limits, "pull request base ref")?,
         draft: optional_bool(object, "draft", "pull request draft")?.unwrap_or(false),
         merged: optional_bool(object, "merged", "pull request merged")?.unwrap_or(false),
@@ -3006,6 +3100,20 @@ fn required_ref(
     required_str(nested, "ref", limits, context)
 }
 
+fn optional_nested_str(
+    object: &Map<String, Value>,
+    key: &str,
+    nested_key: &str,
+    limits: GitHubResponseLimits,
+    context: &'static str,
+) -> Result<Option<String>, GitHubOperationError> {
+    let nested = object
+        .get(key)
+        .and_then(Value::as_object)
+        .ok_or(GitHubOperationError::Malformed(context))?;
+    optional_str(nested, nested_key, limits, context)
+}
+
 fn optional_str(
     object: &Map<String, Value>,
     key: &str,
@@ -3052,8 +3160,9 @@ mod tests {
         parse_dependency_refs, parse_dependency_target, parse_issue_closure_references,
         parse_pull_request, parse_pull_requests, parse_release_candidate_pull_request,
         parse_review_state, parse_sub_issue_ref, parse_sub_issue_refs, reconcile_create,
-        sub_issue_present, target_has_protected_lifecycle_state, target_has_security_content,
-        validate_issue_number, validate_repo,
+        same_pull_request_body, same_pull_request_head, sub_issue_present,
+        target_has_protected_lifecycle_state, target_has_security_content, validate_issue_number,
+        validate_repo,
     };
     use super::{DependencyWrite, IssueGraphFeature, PullRequestEdit, SubIssueWrite};
     use larch_core::GitHubTransportPolicy;
@@ -3069,7 +3178,7 @@ mod tests {
             "number": number,
             "state": state,
             "title": "Add typed operations",
-            "head": { "ref": head },
+            "head": { "ref": head, "label": format!("character-ai:{head}") },
             "base": { "ref": "main" },
             "draft": false,
             "merged": false,
@@ -3088,6 +3197,26 @@ mod tests {
         assert!(!parsed.draft());
         assert!(!parsed.merged());
         assert_eq!(parsed.merge_commit_oid(), None);
+        assert!(same_pull_request_head(&parsed, "character-ai", "feature"));
+        assert!(!same_pull_request_head(
+            &parsed,
+            "character-ai",
+            "fork:feature"
+        ));
+
+        let mut fork = pull_request_value(8, "open", "feature");
+        fork["head"]["label"] = json!("fork:feature");
+        let fork = parse_pull_request(&fork, limits()).expect("valid fork pull request");
+        assert!(same_pull_request_head(
+            &fork,
+            "character-ai",
+            "fork:feature"
+        ));
+        assert!(!same_pull_request_head(
+            &fork,
+            "character-ai",
+            "other:feature"
+        ));
     }
 
     #[test]
@@ -3192,6 +3321,10 @@ mod tests {
             CreatePlan::ReturnExisting(9)
         ));
         assert!(matches!(
+            reconcile_create(&existing, "fork:feature"),
+            CreatePlan::ReturnExisting(9)
+        ));
+        assert!(matches!(
             reconcile_create(&existing, "other"),
             CreatePlan::Create
         ));
@@ -3199,6 +3332,8 @@ mod tests {
             reconcile_create(&[], "feature"),
             CreatePlan::Create
         ));
+        assert!(same_pull_request_body("Body\n", "Body"));
+        assert!(!same_pull_request_body("old", "Body"));
     }
 
     #[test]
@@ -3650,11 +3785,16 @@ mod service_tests {
     }
 
     fn pull_request_json(number: u64, state: &str, head: &str) -> String {
+        pull_request_json_with_body(number, state, head, "")
+    }
+
+    fn pull_request_json_with_body(number: u64, state: &str, head: &str, body: &str) -> String {
         json!({
             "number": number,
             "state": state,
             "title": "Typed operations",
-            "head": { "ref": head },
+            "body": body,
+            "head": { "ref": head, "label": format!("character-ai:{head}") },
             "base": { "ref": "main" },
             "draft": false,
             "merged": false,
@@ -4033,6 +4173,46 @@ mod service_tests {
                 .expect_err("original failure surfaces"),
             GitHubOperationError::Transport(_)
         ));
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn ensure_pull_request_repairs_body_and_proves_postcondition() {
+        let stale = pull_request_json_with_body(9, "open", "feature", "stale");
+        let repaired = pull_request_json_with_body(9, "open", "feature", "Body");
+        let (service, server) = stub_service(vec![
+            (200, format!("[{stale}]")),
+            (200, stale),
+            (200, repaired.clone()),
+            (200, repaired),
+        ]);
+        let ensured = service
+            .ensure_pull_request(&Cancellation::new(), &spec("feature"))
+            .await
+            .expect("repaired pull request");
+        assert!(!ensured.created());
+        assert_eq!(ensured.pull_request().body(), "Body");
+        let requests = server.requests().expect("request log");
+        assert_eq!(requests[2].method, "PATCH");
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn ensure_pull_request_rejects_failed_read_back() {
+        let created = pull_request_json_with_body(12, "open", "feature", "Body");
+        let stale = pull_request_json_with_body(12, "open", "feature", "stale");
+        let (service, server) = stub_service(vec![
+            (200, String::from("[]")),
+            (201, created),
+            (200, stale),
+        ]);
+        assert_eq!(
+            service
+                .ensure_pull_request(&Cancellation::new(), &spec("feature"))
+                .await
+                .expect_err("stale read-back must fail"),
+            GitHubOperationError::Malformed("pull request ensure read-back")
+        );
         server.join().expect("stub completed");
     }
 

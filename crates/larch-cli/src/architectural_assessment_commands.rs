@@ -46,10 +46,28 @@ const FINAL_USAGE: &str = "usage: cli.py architectural-assessment final-report-s
 ///
 /// Peel (`^{commit}`), merge-base, exclude pathspecs, and rename-aware path
 /// listings are expressed through [`GixRepository`] and typed `exact_diff`.
-#[derive(Debug, Default)]
-pub struct LiveAssessmentGit;
+#[derive(Debug)]
+pub struct LiveAssessmentGit {
+    base_remote: &'static str,
+}
+
+impl LiveAssessmentGit {
+    pub const fn for_base_remote(base_remote: &'static str) -> Self {
+        Self { base_remote }
+    }
+}
+
+impl Default for LiveAssessmentGit {
+    fn default() -> Self {
+        Self::for_base_remote("origin")
+    }
+}
 
 impl AssessmentGit for LiveAssessmentGit {
+    fn compose_base(&self) -> (&str, &str) {
+        (self.base_remote, "main")
+    }
+
     fn git_read(&self, repo_root: &Path, argv: &[&str]) -> Result<String, String> {
         git_read(repo_root, argv)
     }
@@ -283,7 +301,7 @@ pub fn materialize_command(arguments: &[OsString]) -> ExitCode {
     }
     let repo_root = PathBuf::from(repo_root);
     let implement_tmpdir = PathBuf::from(implement_tmpdir);
-    let git = LiveAssessmentGit;
+    let git = LiveAssessmentGit::default();
     let (statuses, pending) = match materialize(&kinds, &repo_root, &implement_tmpdir, &git) {
         Ok(result) => result,
         Err(error) => {
@@ -425,7 +443,7 @@ pub fn submit_command(arguments: &[OsString]) -> ExitCode {
             );
         }
     };
-    let git = LiveAssessmentGit;
+    let git = LiveAssessmentGit::default();
     match submit(
         &kind,
         &state,

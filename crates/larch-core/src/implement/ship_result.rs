@@ -5,7 +5,8 @@ use std::{fmt, path::Path};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    KeyPolicy, KvDocument, KvRow, RenderOptions, private_atomic_write, validate_merge_result_env,
+    KeyPolicy, KvDocument, KvRow, RenderOptions, private_atomic_write, redact_outbound,
+    validate_merge_result_env,
 };
 
 /// Shared workflow outcome under the ship-result API name.
@@ -81,6 +82,62 @@ impl ShipResult {
         }
         serde_json::from_value(value)
             .map_err(|error| ShipResultError::new(format!("invalid ship result JSON: {error}")))
+    }
+
+    /// Render the driver's sorted, redacted JSON stdout contract.
+    ///
+    /// Empty CI-only fields stay absent, matching the Python driver's payload.
+    ///
+    /// # Errors
+    /// Returns an error only when the typed result cannot be serialized.
+    pub fn driver_json(&self) -> Result<String, ShipResultError> {
+        let mut value = serde_json::to_value(self).map_err(|error| {
+            ShipResultError::new(format!("cannot serialize ship result: {error}"))
+        })?;
+        let object = value
+            .as_object_mut()
+            .ok_or_else(|| ShipResultError::new("cannot serialize ship result object"))?;
+        for key in [
+            "needs_user_reason",
+            "failed_run_id",
+            "pr_url",
+            "merge_result",
+            "detail",
+        ] {
+            let Some(serde_json::Value::String(text)) = object.get_mut(key) else {
+                continue;
+            };
+            if text.is_empty() {
+                continue;
+            }
+            let redacted = redact_outbound(text);
+            *text = if redacted.contains("[content truncated") {
+                "redacted".to_owned()
+            } else {
+                redacted
+            };
+        }
+        if self.ci_errors_file.is_empty() {
+            object.remove("ci_errors_file");
+        }
+        if self.ci_errors_distill_class.is_empty() {
+            object.remove("ci_errors_distill_class");
+        }
+        if self.failed_jobs_count == 0 {
+            object.remove("failed_jobs_count");
+        }
+        object
+            .iter()
+            .map(|(key, value)| {
+                Ok(format!(
+                    "{}: {}",
+                    serde_json::to_string(key)?,
+                    python_json(value)?
+                ))
+            })
+            .collect::<Result<Vec<_>, serde_json::Error>>()
+            .map(|fields| format!("{{{}}}", fields.join(", ")))
+            .map_err(|error| ShipResultError::new(format!("cannot serialize ship result: {error}")))
     }
 
     /// Render the exact ordered Step 8 result-env rows.
@@ -183,6 +240,25 @@ impl ShipResult {
     }
 }
 
+fn python_json(value: &serde_json::Value) -> Result<String, serde_json::Error> {
+    serde_json::to_string(value).map(|encoded| {
+        encoded
+            .chars()
+            .flat_map(|character| {
+                if character.is_ascii() {
+                    vec![character.to_string()]
+                } else {
+                    character
+                        .encode_utf16(&mut [0; 2])
+                        .iter()
+                        .map(|unit| format!("\\u{unit:04x}"))
+                        .collect()
+                }
+            })
+            .collect()
+    })
+}
+
 /// Prevalidate a required result-env sink before the ship driver mutates state.
 ///
 /// # Errors
@@ -269,6 +345,34 @@ mod tests {
                 .expect("result")
                 .outcome,
             ShipOutcome::Stalled
+        );
+    }
+
+    #[test]
+    fn driver_json_is_sorted_redacted_and_omits_empty_ci_fields() {
+        let secret = ["ghp", "_123456789012345678901234567890"].concat();
+        let result = ShipResult {
+            outcome: ShipOutcome::Stalled,
+            detail: secret,
+            ..ShipResult::default()
+        };
+        let text = result.driver_json().expect("driver JSON");
+        assert!(
+            text.starts_with(r#"{"detail": "<REDACTED-TOKEN>", "emergency_repair_branch": """#)
+        );
+        assert!(text.ends_with(r#""pr_url": ""}"#));
+        assert!(!text.contains("ci_errors_file"));
+        assert!(!text.contains("failed_jobs_count"));
+
+        let unicode = ShipResult {
+            detail: "caf\u{e9} \u{1f980}".to_owned(),
+            ..ShipResult::default()
+        };
+        assert!(
+            unicode
+                .driver_json()
+                .expect("Unicode driver JSON")
+                .contains(r#""detail": "caf\u00e9 \ud83e\udd80""#)
         );
     }
 }

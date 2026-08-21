@@ -830,10 +830,13 @@ The main workflow does not author, repair, or inspect assessment prose on this
 path. Stale, malformed, incomplete, unavailable, or mismatched results do not
 clear the gate. A fresh assessor judges every repair. An invariant violation
 hard-stops after the bounded fix ladder; no waiver or operator override accepts
-it. `python/larch/core/architectural_guidelines.py`, the retained Python
-assessment commands, and the `ship pr` engine own the current mixed-runtime
-assessment implementation. The Rust Step 8 dispatcher carries their closed
-route requests without interpreting assessment prose.
+it. `python/larch/core/architectural_guidelines.py` and the retained Python
+assessment commands remain production owners. The dormant Rust `ship pr`
+parity implementation consumes only identity-validated durable notes, applies
+the same closed outcome grammar, binds fork assessments to `upstream/main`, and
+redacts note text before PR composition.
+The Rust Step 8 dispatcher carries closed route requests without interpreting
+assessment prose; production `ship pr` ownership does not move until #8628.
 
 ### Destructive and background workflows
 
@@ -865,6 +868,14 @@ state. A policy-read failure stops before mutation. Direct admin merge remains
 the no-queue fallback. The development-only release command follows the normal
 queue path, then resolves and tags GitHub's recorded post-merge commit. It does
 not request an admin merge, a queue bypass, or a repository or ruleset change.
+
+The dormant Rust `ship pr` parity path reads repository state through `gix`,
+executes fetch, rebase, and push only through the closed Git CLI adapter, and
+pushes with an exact observed remote-tip lease. Its GitHub owner reconciles an
+ambiguous create before retrying, repairs an adopted PR body without replacing
+its title, and performs a fresh typed read-back after every mutation. A stale
+qualified head owner or branch, base, state, draft flag, or redacted body fails
+closed. These controls do not authorize production cutover before #8628.
 
 ## Security Findings in OOS Workflows
 

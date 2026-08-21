@@ -246,6 +246,20 @@ manifest, and atomically clears only `OOS_PENDING` after success.
 `dispatch_ship_seed.py` remains for Step 2 seed-context helpers. No Python
 fallback or dual owner remains for the four migrated commands.
 
+### Ship PR parity implementation
+
+Issue #8626 added the dormant Rust `ship pr` implementation in
+`crates/larch-cli/src/ship_pr_commands.rs`. It composes the existing typed ship
+state, architectural-assessment, scope-disposition, Git, GitHub, redaction, and
+result-env owners through the fresh PR and CI-handoff boundary. Branch pushes
+use an exact remote-tip lease, and PR creation or body repair succeeds only
+after a typed read-back proves the expected open head, base, and body.
+
+This is implementation parity only. The command registry and production
+callers remain Python-owned until #8628 atomically ports merge and resume,
+switches every consumer through `scripts/larch.sh`, and removes the superseded
+Python modules.
+
 ### Ship state and result-env cutover
 
 Issue #8621 moved `ship seed-initial-state` to

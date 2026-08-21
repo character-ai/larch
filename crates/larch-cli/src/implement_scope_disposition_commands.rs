@@ -134,6 +134,12 @@ pub struct ShipDispositionValidation {
     pub reason: String,
 }
 
+/// Trusted scope-disposition fields consumed while composing a PR body.
+pub struct ShipPrDisposition {
+    pub deferred_inventory: String,
+    pub partial: bool,
+}
+
 #[derive(Clone, Debug)]
 struct BaselineResolution {
     sha: String,
@@ -200,6 +206,23 @@ pub fn validate_ship_disposition(
     validate_for_ship(tmpdir, repo_root, manifest).map(|result| ShipDispositionValidation {
         ok: result.ok,
         reason: result.reason,
+    })
+}
+
+/// Return the canonical deferred inventory and closing-footer policy.
+///
+/// The inventory read is also the owner's trusted-coverage integrity gate.
+pub fn ship_pr_disposition(
+    tmpdir: &Path,
+    repo_root: &Path,
+    manifest: Option<&Path>,
+) -> Result<ShipPrDisposition, String> {
+    let deferred_inventory = deferred_inventory(tmpdir, repo_root, manifest)?;
+    let coverage = load_coverage(tmpdir)?;
+    let record = load_disposition(tmpdir, coverage.as_ref())?;
+    Ok(ShipPrDisposition {
+        deferred_inventory,
+        partial: record.is_some_and(|record| record.disposition == "proceed-partial"),
     })
 }
 

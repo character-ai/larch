@@ -161,6 +161,7 @@ mod session_gate_commands;
 mod session_lifecycle_commands;
 mod session_setup_commands;
 mod ship_commands;
+mod ship_pr_commands;
 mod ship_pre_driver_commands;
 mod slack_commands;
 mod slot_binding;
@@ -1104,6 +1105,9 @@ enum ImplementCommand {
 
 #[derive(Subcommand)]
 enum ShipCommand {
+    /// Run the Rust parity implementation of the fresh PR path.
+    #[command(name = "pr", disable_help_flag = true)]
+    Pr(RawCompatibilityArguments),
     /// Normalize one architectural-assessment request handoff.
     #[command(name = "normalize-assessment-handoff", disable_help_flag = true)]
     NormalizeAssessmentHandoff(RawCompatibilityArguments),
@@ -2815,6 +2819,7 @@ fn run(
             }
         }),
         Domain::Ship(command) => Ok(match command {
+            ShipCommand::Pr(arguments) => ship_pr_commands::pr(&arguments.arguments),
             ShipCommand::NormalizeAssessmentHandoff(arguments) => {
                 ship_pre_driver_commands::normalize_assessment_handoff(&arguments.arguments)
             }
