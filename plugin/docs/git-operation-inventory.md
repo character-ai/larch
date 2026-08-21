@@ -54,6 +54,7 @@ crates/larch-cli/src/drafter_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/git_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/github_repository_resolution.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/implement_bootstrap_continuation.rs	git-cli	#7671	typed-cli,typed-read
+crates/larch-cli/src/implement_commit_route_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/implement_dispatch_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/implement_preflight_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/implement_review_commands.rs	gix-read	#7671	typed-read
@@ -107,7 +108,6 @@ python/larch/git/rebase.py	later-domain	#7681	checkout
 python/larch/implement/checks_run_relevant.py	later-domain	#7681	diff,ls-files,rev-parse
 python/larch/implement/ci_monitor.py	later-domain	#7681	ls-remote,rev-list,symbolic-ref
 python/larch/implement/dispatch_helpers.py	later-domain	#7681	dynamic
-python/larch/implement/dispatch_recovery.py	later-domain	#7681	rev-parse
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base
 python/larch/report/storage_config.py	later-domain	#7683	dynamic
 python/larch/state/finalize.py	later-domain	#7677	branch,check-ref-format,checkout,ls-remote,pull,rev-list,rev-parse,show-ref,stash,symbolic-ref
