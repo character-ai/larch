@@ -1447,9 +1447,8 @@ mod design_publish_commands_tests {
             "https://example.test/repos/owner/repo/issues/{number}"
         ));
         value["repository_url"] = serde_json::json!("https://example.test/repos/owner/repo");
-        value["html_url"] = serde_json::json!(format!(
-            "https://github.com/owner/repo/issues/{number}"
-        ));
+        value["html_url"] =
+            serde_json::json!(format!("https://github.com/owner/repo/issues/{number}"));
         value["labels"] = serde_json::json!([]);
         value["updated_at"] = serde_json::json!("2026-08-20T00:00:00Z");
         value
@@ -1459,9 +1458,7 @@ mod design_publish_commands_tests {
     fn loopback_service(
         exchanges: impl IntoIterator<Item = larch_test_support::IssueServiceExchange>,
     ) -> (
-        std::sync::Arc<
-            dyn Fn() -> larch_adapters::github::OctocrabGitHubService + Send + Sync,
-        >,
+        std::sync::Arc<dyn Fn() -> larch_adapters::github::OctocrabGitHubService + Send + Sync>,
         larch_test_support::IssueServiceStub,
     ) {
         let server =
@@ -1519,11 +1516,10 @@ mod design_publish_commands_tests {
 
     #[test]
     fn an_already_current_receipt_read_verifies_without_a_second_mutation() {
-        let repository = larch_test_support::GitRepository::builder(
-            larch_test_support::GitFixture::Refs,
-        )
-        .build()
-        .expect("git fixture");
+        let repository =
+            larch_test_support::GitRepository::builder(larch_test_support::GitFixture::Refs)
+                .build()
+                .expect("git fixture");
         let base_sha = crate::implement_bootstrap_continuation::resolve_revision_sha(
             repository.root(),
             "HEAD",
@@ -1571,21 +1567,17 @@ mod design_publish_commands_tests {
 
     #[test]
     fn a_body_without_a_plan_block_refuses_the_receipt_write() {
-        let repository = larch_test_support::GitRepository::builder(
-            larch_test_support::GitFixture::Refs,
+        let repository =
+            larch_test_support::GitRepository::builder(larch_test_support::GitFixture::Refs)
+                .build()
+                .expect("git fixture");
+        let (github, server) = loopback_service([larch_test_support::IssueServiceExchange::json(
+            "GET",
+            "/repos/owner/repo/issues/8591",
+            200,
+            serde_json::to_vec(&issue_response(8591, "No plan block here.\n")).expect("issue body"),
         )
-        .build()
-        .expect("git fixture");
-        let (github, server) = loopback_service([
-            larch_test_support::IssueServiceExchange::json(
-                "GET",
-                "/repos/owner/repo/issues/8591",
-                200,
-                serde_json::to_vec(&issue_response(8591, "No plan block here.\n"))
-                    .expect("issue body"),
-            )
-            .expect("issue exchange"),
-        ]);
+        .expect("issue exchange")]);
 
         let outcome = crate::github_service::with_test_github_service(github, || {
             super::super::persist_published_plan_receipt("owner/repo", 8591, repository.root())
@@ -1597,11 +1589,10 @@ mod design_publish_commands_tests {
 
     #[test]
     fn a_documented_blocker_is_read_into_the_receipt_freshness_rows() {
-        let repository = larch_test_support::GitRepository::builder(
-            larch_test_support::GitFixture::Refs,
-        )
-        .build()
-        .expect("git fixture");
+        let repository =
+            larch_test_support::GitRepository::builder(larch_test_support::GitFixture::Refs)
+                .build()
+                .expect("git fixture");
         let base_sha = crate::implement_bootstrap_continuation::resolve_revision_sha(
             repository.root(),
             "HEAD",
@@ -1665,7 +1656,10 @@ mod design_publish_commands_tests {
         // The live writer resolves the base commit before it contacts GitHub,
         // so a directory that is not a checkout fails without any network use.
         let outcome = super::super::LiveReceiptWriter.persist("owner/repo", 8591, root.path());
-        assert!(outcome.is_err(), "a non-repository cannot supply a base sha");
+        assert!(
+            outcome.is_err(),
+            "a non-repository cannot supply a base sha"
+        );
     }
 
     #[test]

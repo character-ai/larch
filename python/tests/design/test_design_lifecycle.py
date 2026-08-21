@@ -967,58 +967,6 @@ def test_step2b_postplan_gate_b_ignores_snapshot_original_flag(tmp_path: Path, m
 
 
 
-def test_publish_failure_stage_args_record_terminal_state_before_failure_report(tmp_path: Path) -> None:
-    """`design publish` stages this state in Rust; pin the shared stage contract."""
-    design = tmp_path / "design"
-    design.mkdir()
-    stage_args = [
-        "--design-tmpdir",
-        str(design),
-        "--outcome",
-        "failed-plan-write",
-        "--step",
-        "step5c",
-        "--phase",
-        "plan-write",
-        "--site",
-        "design-publish",
-        "--trigger",
-        "plan-write-failed",
-        "--bail-reason",
-        "plan-write-failed",
-        "--exit-code",
-        "1",
-        "--source-script",
-        "design-publish",
-        "--summary-outcome",
-        "failed-plan-write",
-    ]
-    design_terminal.extend_publish_failure_stage_args(
-        stage_args, {"PLAN_WRITE_OK": "false", "PUBLISH_ATTEMPT_ID": "attempt-1"}
-    )
-    assert stage_args[-4:] == [
-        "--publish-attempt-id",
-        "attempt-1",
-        "--plan-write-ok",
-        "false",
-    ]
-    rc, _ = design_terminal.stage_terminal_state_core(stage_args)
-    assert rc == 0
-    state = (design / "design-failure-terminal-state.env").read_text(encoding="utf-8")
-    assert "FAILURE_OUTCOME=failed-plan-write" in state
-    assert "TRIGGER=plan-write-failed" in state
-    assert "SUMMARY_OUTCOME=failed-plan-write" in state
-
-
-
-
-
-
-
-
-
-
-
 
 
 

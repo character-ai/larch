@@ -123,12 +123,7 @@ mod clarify_orchestrator_tests {
                 .iter()
                 .map(|a| a.to_string_lossy().into_owned())
                 .collect();
-            let verb = call
-                .iter()
-                .take(2)
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(" ");
+            let verb = call.iter().take(2).cloned().collect::<Vec<_>>().join(" ");
             self.larch_calls.borrow_mut().push(call);
             let stdout = if self.larch_stdout.borrow().is_empty() {
                 String::new()
@@ -720,7 +715,10 @@ mod clarify_orchestrator_tests {
         let _ = design_clarify_run(&effects, &runner, &args("fetch"), &mut env, dir.path());
         let result =
             fs::read_to_string(dir.path().join(".design-clarify-fetch-result.env")).unwrap();
-        assert!(result.contains("CLARIFY_FETCH_STATUS=fetch-failed\n"), "got: {result}");
+        assert!(
+            result.contains("CLARIFY_FETCH_STATUS=fetch-failed\n"),
+            "got: {result}"
+        );
     }
 
     #[test]
