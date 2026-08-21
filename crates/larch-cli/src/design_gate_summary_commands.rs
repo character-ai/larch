@@ -81,7 +81,10 @@ impl GateRender {
         for (index, (label, description)) in self.options.iter().enumerate() {
             let position = index + 1;
             rows.push((format!("OPTION_{position}_LABEL"), label.clone()));
-            rows.push((format!("OPTION_{position}_DESCRIPTION"), description.clone()));
+            rows.push((
+                format!("OPTION_{position}_DESCRIPTION"),
+                description.clone(),
+            ));
         }
         rows.extend(self.extra.iter().cloned());
         rows
@@ -151,23 +154,27 @@ fn parse_gate_args(argv: &[String]) -> Result<GateArgs, ExitCode> {
     let mut accepted_audit_escalation = String::from("false");
     let mut extras: Vec<String> = Vec::new();
 
-    let take_value = |name: &str, inline: Option<String>, index: &mut usize| -> Result<String, ExitCode> {
-        if let Some(value) = inline {
-            return Ok(value);
-        }
-        *index += 1;
-        if *index < argv.len() {
-            Ok(argv[*index].clone())
-        } else {
-            Err(gate_arg_error(&format!("argument {name}: expected one argument")))
-        }
-    };
+    let take_value =
+        |name: &str, inline: Option<String>, index: &mut usize| -> Result<String, ExitCode> {
+            if let Some(value) = inline {
+                return Ok(value);
+            }
+            *index += 1;
+            if *index < argv.len() {
+                Ok(argv[*index].clone())
+            } else {
+                Err(gate_arg_error(&format!(
+                    "argument {name}: expected one argument"
+                )))
+            }
+        };
 
     let choice_check = |name: &str, value: &str, choices: &[&str]| -> Result<(), ExitCode> {
         if choices.contains(&value) {
             Ok(())
         } else {
-            let rendered: Vec<String> = choices.iter().map(|choice| format!("'{choice}'")).collect();
+            let rendered: Vec<String> =
+                choices.iter().map(|choice| format!("'{choice}'")).collect();
             Err(gate_arg_error(&format!(
                 "argument {name}: invalid choice: '{value}' (choose from {})",
                 rendered.join(", ")
@@ -231,7 +238,9 @@ fn parse_gate_args(argv: &[String]) -> Result<GateArgs, ExitCode> {
     }
 
     let Some(gate) = gate else {
-        return Err(gate_arg_error("the following arguments are required: --gate"));
+        return Err(gate_arg_error(
+            "the following arguments are required: --gate",
+        ));
     };
     if !extras.is_empty() {
         return Err(gate_arg_error(&format!(
@@ -284,7 +293,10 @@ fn parse_py_int(value: &str) -> Option<i64> {
         }
         normalized.push(character);
     }
-    normalized.parse::<i64>().ok().map(|magnitude| sign * magnitude)
+    normalized
+        .parse::<i64>()
+        .ok()
+        .map(|magnitude| sign * magnitude)
 }
 
 // ---------------------------------------------------------------------------
@@ -353,7 +365,9 @@ fn render_gate_b(accepted_count: i64, approve_requested: bool) -> Result<GateRen
             ("PROMPT_REQUIRED".to_owned(), "false".to_owned()),
             (
                 "AUTO_APPLY_MESSAGE".to_owned(),
-                format!("\u{2139} 3.5: Gate B — auto-applying {accepted_count} accepted finding(s)"),
+                format!(
+                    "\u{2139} 3.5: Gate B — auto-applying {accepted_count} accepted finding(s)"
+                ),
             ),
         ],
     })
@@ -388,7 +402,10 @@ fn review_count(design_tmpdir: Option<&str>) -> (i64, &'static str) {
     (raw.parse::<i64>().unwrap_or(0), "")
 }
 
-const fn gate_c_approve_description(panel_failed: bool, accepted_audit_escalation: bool) -> &'static str {
+const fn gate_c_approve_description(
+    panel_failed: bool,
+    accepted_audit_escalation: bool,
+) -> &'static str {
     if accepted_audit_escalation && panel_failed {
         return "Approve despite the main-agent accepted-findings audit's strong dissent and acknowledge panel failure, then continue immediately to finalize.";
     }
@@ -540,10 +557,8 @@ const VALID_OUTCOMES: [&str; 18] = [
 ];
 const APPROVED_OUTCOMES: [&str; 2] = ["approved", "approved-partition"];
 const OOS_FILE_MAP_FIELD_COUNT: usize = 3;
-const MISSING_INVARIANT_ASSESSMENT_SUMMARY_WARNING: &str =
-    "**\u{26a0} Missing architectural-invariant-assessment.md; Gate C assessment did not persist.**";
-const MISSING_GUIDELINE_ASSESSMENT_SUMMARY_WARNING: &str =
-    "**\u{26a0} Missing architectural-guideline-assessment.md; Gate C assessment did not persist.**";
+const MISSING_INVARIANT_ASSESSMENT_SUMMARY_WARNING: &str = "**\u{26a0} Missing architectural-invariant-assessment.md; Gate C assessment did not persist.**";
+const MISSING_GUIDELINE_ASSESSMENT_SUMMARY_WARNING: &str = "**\u{26a0} Missing architectural-guideline-assessment.md; Gate C assessment did not persist.**";
 const GUIDELINE_EXCEPTION_DISCLOSURE_PREFIX: &str = "**Gate C guideline exception recorded:**";
 /// Storage-resolution reasons a disabled-publication manifest may carry (mirror
 /// of the sibling constant in `execution_issue_commands.rs`).
@@ -559,7 +574,9 @@ const DISABLED_STORAGE_REASONS: [&str; 3] = [
 
 /// Best-effort UTF-8 read that never fails (`errors="replace"` in Python).
 fn read_lossy(path: &Path) -> Option<String> {
-    fs::read(path).ok().map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+    fs::read(path)
+        .ok()
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn is_regular_file(path: &Path) -> bool {
@@ -569,7 +586,9 @@ fn is_regular_file(path: &Path) -> bool {
 }
 
 fn file_size(path: &Path) -> u64 {
-    fs::metadata(path).map(|metadata| metadata.len()).unwrap_or(0)
+    fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0)
 }
 
 /// Port of `_read_source_env_value`.
@@ -598,10 +617,13 @@ fn read_source_env_value(path: &Path, key: &str) -> String {
 /// Coerce a JSON bucket count the way Python `int(value or 0)` does.
 fn json_int(value: Option<&Value>) -> i64 {
     match value {
-        Some(Value::Number(number)) => number.as_i64().or_else(|| {
-            #[allow(clippy::cast_possible_truncation)] // Mirrors Python int() truncation.
-            number.as_f64().map(|float| float as i64)
-        }).unwrap_or(0),
+        Some(Value::Number(number)) => number
+            .as_i64()
+            .or_else(|| {
+                #[allow(clippy::cast_possible_truncation)] // Mirrors Python int() truncation.
+                number.as_f64().map(|float| float as i64)
+            })
+            .unwrap_or(0),
         _ => 0,
     }
 }
@@ -674,21 +696,35 @@ fn read_token_report(design_tmpdir: &Path) -> BTreeMap<String, i64> {
         return BTreeMap::new();
     };
     let mut buckets: BTreeMap<String, i64> = BTreeMap::new();
-    for (vendor, prefix) in [("claude", "C"), ("codex", "D"), ("cursor", "U"), ("claude_sub", "CS")] {
+    for (vendor, prefix) in [
+        ("claude", "C"),
+        ("codex", "D"),
+        ("cursor", "U"),
+        ("claude_sub", "CS"),
+    ] {
         let bkey = format!("BUCKETS_{vendor}");
         if let Some(Value::Object(bucket)) = data.get(&bkey) {
             buckets.insert(format!("{prefix}_IN"), json_int(bucket.get("input")));
             buckets.insert(format!("{prefix}_CR"), json_int(bucket.get("cache_read")));
             if vendor == "claude" || vendor == "claude_sub" {
-                buckets.insert(format!("{prefix}_CW5"), json_int(bucket.get("cache_create_5m")));
-                buckets.insert(format!("{prefix}_CW1"), json_int(bucket.get("cache_create_1h")));
+                buckets.insert(
+                    format!("{prefix}_CW5"),
+                    json_int(bucket.get("cache_create_5m")),
+                );
+                buckets.insert(
+                    format!("{prefix}_CW1"),
+                    json_int(bucket.get("cache_create_1h")),
+                );
             }
             buckets.insert(format!("{prefix}_OUT"), json_int(bucket.get("output")));
         }
         if let Some(Value::Object(totals_owner)) = data.get(vendor)
             && let Some(Value::Object(totals)) = totals_owner.get("totals")
         {
-            buckets.insert(format!("{}_T", vendor.to_uppercase()), json_int(totals.get("total")));
+            buckets.insert(
+                format!("{}_T", vendor.to_uppercase()),
+                json_int(totals.get("total")),
+            );
         }
     }
     if let Some(Value::Object(by_model)) = data.get("BUCKETS_codex_by_model") {
@@ -789,7 +825,11 @@ fn duration(design_tmpdir: &Path) -> String {
         Some(Value::String(text)) if !text.is_empty() => text.clone(),
         Some(Value::Number(number)) => {
             let rendered = number.to_string();
-            if rendered == "0" { "N/A".to_owned() } else { rendered }
+            if rendered == "0" {
+                "N/A".to_owned()
+            } else {
+                rendered
+            }
         }
         _ => "N/A".to_owned(),
     }
@@ -824,13 +864,20 @@ fn oos_info(design_tmpdir: &Path) -> (i64, String) {
 
 /// Port of `_plan_review_line` (uses the Rust `review_provenance` owner).
 fn plan_review_line(design_tmpdir: &Path) -> String {
-    let ReviewProvenance { status, rounds_completed, present: _ } =
-        review_provenance(design_tmpdir);
+    let ReviewProvenance {
+        status,
+        rounds_completed,
+        present: _,
+    } = review_provenance(design_tmpdir);
     if status.is_empty() {
         return "N/A".to_owned();
     }
     if rounds_completed > 0 {
-        let unit = if rounds_completed == 1 { "round" } else { "rounds" };
+        let unit = if rounds_completed == 1 {
+            "round"
+        } else {
+            "rounds"
+        };
         return format!("{status} ({rounds_completed} {unit})");
     }
     status
@@ -850,14 +897,15 @@ fn dynamic_archetypes_line(design_tmpdir: &Path) -> String {
         return format!("static-only, drafter {reason}");
     }
     let manifest = design_tmpdir.join("scout-plan-manifest.json");
-    let count = match read_lossy(&manifest).and_then(|body| serde_json::from_str::<Value>(&body).ok()) {
-        Some(Value::Object(data)) => match data.get("archetypes") {
-            Some(Value::Array(items)) => items.len(),
-            _ => 0,
-        },
-        Some(_) => 0,
-        None => return "static-only, drafter filter_failed".to_owned(),
-    };
+    let count =
+        match read_lossy(&manifest).and_then(|body| serde_json::from_str::<Value>(&body).ok()) {
+            Some(Value::Object(data)) => match data.get("archetypes") {
+                Some(Value::Array(items)) => items.len(),
+                _ => 0,
+            },
+            Some(_) => 0,
+            None => return "static-only, drafter filter_failed".to_owned(),
+        };
     if count > 0 {
         format!("ok ({count})")
     } else {
@@ -887,7 +935,8 @@ fn difficulty_summary_line(design_tmpdir: &Path) -> String {
     {
         return larch_core::difficulty_line(&data);
     }
-    let raw_rating = larch_core::read_rating_file(&design_tmpdir.join(larch_core::DESIGN_RAW_RATING_BASENAME));
+    let raw_rating =
+        larch_core::read_rating_file(&design_tmpdir.join(larch_core::DESIGN_RAW_RATING_BASENAME));
     if let Some(rating) = raw_rating {
         return format!("predicted {0}; applied {0}", rating.adjusted_tier);
     }
@@ -1034,7 +1083,11 @@ fn published_run_logs_path(design_tmpdir: &Path, run_id: &str) -> String {
         .join(run_id)
         .join("manifest.json");
     design_run_log_reference(
-        if repo_root_raw.is_empty() { None } else { Some(Path::new(&repo_root_raw)) },
+        if repo_root_raw.is_empty() {
+            None
+        } else {
+            Some(Path::new(&repo_root_raw))
+        },
         run_id,
         &manifest,
     )
@@ -1076,7 +1129,9 @@ fn design_pins_disabled_publication(manifest: &Path, run_id: &str) -> bool {
         return false;
     };
     let string = |key: &str| document.get(key).and_then(Value::as_str);
-    if document.get("lifecycle_schema_version").and_then(Value::as_u64)
+    if document
+        .get("lifecycle_schema_version")
+        .and_then(Value::as_u64)
         != Some(larch_core::LIFECYCLE_SCHEMA_VERSION)
         || string("publication_mode") != Some("disabled")
         || !string("storage_resolution_reason")
@@ -1238,8 +1293,14 @@ fn enriched_degraded_recovery(
 fn missing_assessment_summary_warnings(design_tmpdir: &Path) -> Vec<String> {
     let mut warnings: Vec<String> = Vec::new();
     for (marker_name, message) in [
-        (".missing-invariant-assessment-warning", MISSING_INVARIANT_ASSESSMENT_SUMMARY_WARNING),
-        (".missing-guideline-assessment-warning", MISSING_GUIDELINE_ASSESSMENT_SUMMARY_WARNING),
+        (
+            ".missing-invariant-assessment-warning",
+            MISSING_INVARIANT_ASSESSMENT_SUMMARY_WARNING,
+        ),
+        (
+            ".missing-guideline-assessment-warning",
+            MISSING_GUIDELINE_ASSESSMENT_SUMMARY_WARNING,
+        ),
     ] {
         let marker = design_tmpdir.join(marker_name);
         if marker.exists() && !marker.is_symlink() {
@@ -1324,7 +1385,8 @@ fn emit_report_gate_sidecars_file(design_tmpdir: &Path) {
     ];
     let mut chunks: Vec<String> = Vec::new();
     for sidecar in &sidecars {
-        if sidecar.is_file() && file_size(sidecar) > 0
+        if sidecar.is_file()
+            && file_size(sidecar) > 0
             && let Some(text) = fs::read_to_string(sidecar).ok()
         {
             chunks.push(text);
@@ -1425,7 +1487,11 @@ fn invoke_render(
     let out_file = design_tmpdir.join("final-summary.md");
     let manifest_candidates = [
         design_tmpdir.join("manifest.json"),
-        design_tmpdir.join("larch-logs").join("design").join(run_id).join("manifest.json"),
+        design_tmpdir
+            .join("larch-logs")
+            .join("design")
+            .join(run_id)
+            .join("manifest.json"),
     ];
     let manifest_path = manifest_candidates
         .iter()
@@ -1619,7 +1685,11 @@ fn render_final_summary_impl(arguments: &[OsString]) -> ExitCode {
     } else {
         std::env::var("SESSION_ID").unwrap_or_default()
     };
-    let run_id = if run_id_raw.is_empty() { "unknown".to_owned() } else { run_id_raw };
+    let run_id = if run_id_raw.is_empty() {
+        "unknown".to_owned()
+    } else {
+        run_id_raw
+    };
     let issue = if parsed.issue_number_set {
         parsed.issue_number_arg.clone()
     } else {
@@ -1775,17 +1845,17 @@ mod tests {
 
     fn rows_for(values: &[&str]) -> Vec<(String, String)> {
         let argv = utf8_arguments(&os(values));
-        let args = parse_gate_args(&argv).unwrap_or_else(|_| panic!("parse {values:?}"));
-        match args.gate.as_str() {
-            "A" => render_gate_a(args.without_see_full_plan).rows(),
-            "B" => render_gate_b(args.accepted_count, args.approve_requested)
+        let parsed = parse_gate_args(&argv).unwrap_or_else(|_| panic!("parse {values:?}"));
+        match parsed.gate.as_str() {
+            "A" => render_gate_a(parsed.without_see_full_plan).rows(),
+            "B" => render_gate_b(parsed.accepted_count, parsed.approve_requested)
                 .expect("gate b")
                 .rows(),
             _ => render_gate_c(
-                args.design_tmpdir.as_deref(),
-                args.without_see_full_plan,
-                args.panel_failed,
-                args.accepted_audit_escalation,
+                parsed.design_tmpdir.as_deref(),
+                parsed.without_see_full_plan,
+                parsed.panel_failed,
+                parsed.accepted_audit_escalation,
             )
             .rows(),
         }
@@ -1816,7 +1886,10 @@ mod tests {
     #[test]
     fn gate_b_approve_requested_switches_extras() {
         let rows = rows_for(&["--gate", "B", "--approve-requested", "true"]);
-        assert!(rows.iter().any(|(key, value)| key == "PROMPT_REQUIRED" && value == "true"));
+        assert!(
+            rows.iter()
+                .any(|(key, value)| key == "PROMPT_REQUIRED" && value == "true")
+        );
         assert!(rows.iter().any(|(key, _)| key == "EXPLICIT_COPY_OWNER"));
     }
 
@@ -1830,7 +1903,10 @@ mod tests {
             "--accepted-audit-escalation",
             "true",
         ]);
-        assert_eq!(rows[5].1, "Approve final design (acknowledge panel failure)");
+        assert_eq!(
+            rows[5].1,
+            "Approve final design (acknowledge panel failure)"
+        );
     }
 
     #[test]

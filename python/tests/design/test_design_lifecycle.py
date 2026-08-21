@@ -31,7 +31,7 @@ CLI = Path(__file__).resolve().parents[2] / "cli.py"
 LARCH_ENTRYPOINT = Path(__file__).resolve().parents[3] / "scripts" / "larch.sh"
 
 
-def _as_captured(fake_render):
+def _as_captured(fake_render: Callable[[list[str]], int]) -> Callable[..., int]:
     """Adapt a legacy ``fake_render(argv) -> int`` into the Rust-verb seam.
 
     Step 5c now renders the final summary through
@@ -40,7 +40,14 @@ def _as_captured(fake_render):
     ``render_final_summary_main`` received, so existing fakes stay valid.
     """
 
-    def _captured(*, verb, args, stdout_path, stderr_path, plugin_root=None):
+    def _captured(
+        *,
+        verb: str,
+        args: Sequence[str],
+        stdout_path: Path,
+        stderr_path: Path,
+        plugin_root: Path | None = None,
+    ) -> int:
         import contextlib as _contextlib  # noqa: PLC0415
         import io as _io  # noqa: PLC0415
 
