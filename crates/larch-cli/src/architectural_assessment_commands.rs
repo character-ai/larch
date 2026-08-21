@@ -149,6 +149,7 @@ fn implementation_diff_for_head(
                 cached: false,
                 binary: false,
                 no_ext_diff: false,
+                numstat_z_rename_50: false,
                 unified_context: None,
                 name_only: false,
                 name_status: false,

@@ -53,6 +53,7 @@ mod cleanup_commands;
 mod collector_commands;
 mod combine_issues_commands;
 mod complete_umbrella_commands;
+mod complete_umbrella_ship_commands;
 mod debate_commands;
 mod debate_publication_commands;
 mod decompose_commands;

@@ -287,6 +287,10 @@ title. Open leaves still need a valid lifecycle title and first-line body.
 `verify-child` keeps the strict `[DONE]` assertion for the leaf the run just
 shipped. `finish` still requires every direct leaf to be closed before any
 parent mutation, but closed-leaf title drift no longer refuses completion.
+Issue #8629 also moved `complete-umbrella ship-leaf` to the Rust command tree.
+Its standalone state, five-minute CI cadence, merge handling, and post-merge
+verification remain independent of `/implement`; the Python owner and callers
+were removed atomically.
 
 ## Closed #7679 review boundary
 

@@ -13,7 +13,7 @@ umbrella.leaf_filing	/issue	deduplication + prepared dependency wiring + identit
 complete_umbrella.audit_gap_filing	/issue	exact no-dedup leaf filing + caller-bound graph attachment	skills/complete-umbrella/SKILL.md
 complete_umbrella.leaf_execution	bgjob	serial thin Claude orchestrator with larch skills disabled	skills/complete-umbrella/SKILL.md
 complete_umbrella.leaf_phases	fresh phase contexts	recon/design + implement + adversarial review + ship	skills/complete-umbrella/SKILL.md
-complete_umbrella.leaf_ship	Deterministic leaf ship driver	one umbrella leaf	python/larch/implement/complete_umbrella_ship.py
+complete_umbrella.leaf_ship	Deterministic leaf ship driver	one umbrella leaf	crates/larch-cli/src/complete_umbrella_ship_commands.rs
 audit_umbrella.inline_audit	one inline context	exhaustive evidence ledger and residual-gap partition	skills/audit-umbrella/SKILL.md
 audit_umbrella.batch_mutation	AuditUmbrellaCommand	immutable snapshot + exact leaf creation + native graph reconciliation + read-back	crates/larch-cli/src/audit_umbrella_commands.rs
 design.decompose.harness_panel	decompose panel-dispatch	offline panel regression coverage	crates/larch-cli/src/decompose_commands.rs

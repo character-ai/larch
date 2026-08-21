@@ -723,6 +723,7 @@ fn git_name_only(runtime: &GitCommandRuntime, base: Option<&str>, cached: bool) 
             cached,
             binary: false,
             no_ext_diff: false,
+            numstat_z_rename_50: false,
             unified_context: None,
             name_only: true,
             name_status: false,

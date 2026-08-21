@@ -21,7 +21,7 @@ Apply every in-scope fix you find. Run affected checks. Commit review fixes in o
 After the final commit, run the managed-leaf line-budget read:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" complete-umbrella ship-leaf \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" complete-umbrella ship-leaf \
   --mode line-budget \
   --repository "<REPOSITORY>" \
   --repo-root "$PWD" \

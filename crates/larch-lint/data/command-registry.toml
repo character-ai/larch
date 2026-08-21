@@ -1863,11 +1863,13 @@ verb = "ship-leaf"
 python_module = "larch.implement.complete_umbrella_ship"
 python_function = "main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 8282
+migration_issue = 8629
+clean_install_test = "clean-install-complete-umbrella-ship-leaf"
 
 [[commands]]
 domain = "debate"
@@ -9306,12 +9308,6 @@ python = []
 rust = ["ci wait", "git commit", "git rebase-abort", "git stage", "push rebase"]
 
 [[callers]]
-path = "python/larch/implement/complete_umbrella_ship.py"
-kind = "python-runtime"
-python = []
-rust = ["push rebase"]
-
-[[callers]]
 path = "python/larch/implement/dispatch_helpers.py"
 kind = "python-runtime"
 python = []
@@ -9458,8 +9454,8 @@ rust = ["agent read-claude-model", "bgjob start", "bgjob wait", "gh resolve-repo
 [[callers]]
 path = "skills/complete-umbrella/references/adversarial-review.md"
 kind = "skill"
-python = ["complete-umbrella ship-leaf"]
-rust = []
+python = []
+rust = ["complete-umbrella ship-leaf"]
 
 [[callers]]
 path = "skills/complete-umbrella/references/conflict-fix.md"
@@ -9470,14 +9466,14 @@ rust = ["git rebase-abort"]
 [[callers]]
 path = "skills/complete-umbrella/references/recon-design.md"
 kind = "skill"
-python = ["complete-umbrella ship-leaf"]
-rust = ["named-block write", "plan-block read"]
+python = []
+rust = ["complete-umbrella ship-leaf", "named-block write", "plan-block read"]
 
 [[callers]]
 path = "skills/complete-umbrella/references/ship.md"
 kind = "skill"
-python = ["complete-umbrella ship-leaf"]
-rust = []
+python = []
+rust = ["complete-umbrella ship-leaf"]
 
 [[callers]]
 path = "skills/debate/SKILL.md"

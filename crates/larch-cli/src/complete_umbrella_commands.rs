@@ -797,6 +797,9 @@ fn child_terminal_status(text: &str) -> Option<ChildResultStatus> {
 
 #[derive(Subcommand)]
 pub enum CompleteUmbrellaCommand {
+    /// Prepare, ship, verify, or measure one standalone umbrella leaf.
+    #[command(name = "ship-leaf", disable_help_flag = true)]
+    ShipLeaf(crate::complete_umbrella_ship_commands::ShipLeafArguments),
     /// Mark the parent active after validating its durable umbrella identity.
     Start(StartArguments),
     /// Recover one durable complete-umbrella run owned by an earlier session.
@@ -1328,6 +1331,9 @@ trait RunLeavesOperations {
 #[must_use]
 pub fn run(command: CompleteUmbrellaCommand) -> ExitCode {
     let result = match command {
+        CompleteUmbrellaCommand::ShipLeaf(arguments) => {
+            return crate::complete_umbrella_ship_commands::run(&arguments);
+        }
         CompleteUmbrellaCommand::Start(arguments) => start(&arguments),
         CompleteUmbrellaCommand::Resume(arguments) => resume(&arguments),
         CompleteUmbrellaCommand::ClearPointer(arguments) => clear_pointer(&arguments),
@@ -3633,7 +3639,7 @@ async fn require_top_level_umbrella(
     Ok(())
 }
 
-fn exact_title_request(
+pub fn exact_title_request(
     before: &larch_core::IssueMutationSnapshot,
     title: String,
 ) -> Result<IssueMutationRequest, String> {
@@ -3656,7 +3662,7 @@ fn exact_title_request(
     Ok(request)
 }
 
-const fn operator_authorization() -> LiveMutationRequest<'static> {
+pub const fn operator_authorization() -> LiveMutationRequest<'static> {
     LiveMutationRequest {
         context_file: None,
         operator_mode: true,

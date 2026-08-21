@@ -23,7 +23,7 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="complete_umbrella.audit_gap_filing"></a>`complete_umbrella.audit_gap_filing` | /issue | exact no-dedup leaf filing + caller-bound graph attachment | `skills/complete-umbrella/SKILL.md` |
 | <a id="complete_umbrella.leaf_execution"></a>`complete_umbrella.leaf_execution` | bgjob | serial thin Claude orchestrator with larch skills disabled | `skills/complete-umbrella/SKILL.md` |
 | <a id="complete_umbrella.leaf_phases"></a>`complete_umbrella.leaf_phases` | fresh phase contexts | recon/design + implement + adversarial review + ship | `skills/complete-umbrella/SKILL.md` |
-| <a id="complete_umbrella.leaf_ship"></a>`complete_umbrella.leaf_ship` | Deterministic leaf ship driver | one umbrella leaf | `python/larch/implement/complete_umbrella_ship.py` |
+| <a id="complete_umbrella.leaf_ship"></a>`complete_umbrella.leaf_ship` | Deterministic leaf ship driver | one umbrella leaf | `crates/larch-cli/src/complete_umbrella_ship_commands.rs` |
 | <a id="audit_umbrella.inline_audit"></a>`audit_umbrella.inline_audit` | one inline context | exhaustive evidence ledger and residual-gap partition | `skills/audit-umbrella/SKILL.md` |
 | <a id="audit_umbrella.batch_mutation"></a>`audit_umbrella.batch_mutation` | AuditUmbrellaCommand | immutable snapshot + exact leaf creation + native graph reconciliation + read-back | `crates/larch-cli/src/audit_umbrella_commands.rs` |
 | <a id="design.decompose.harness_panel"></a>`design.decompose.harness_panel` | decompose panel-dispatch | offline panel regression coverage | `crates/larch-cli/src/decompose_commands.rs` |

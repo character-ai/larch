@@ -14,11 +14,6 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("complete-umbrella", "ship-leaf"): (
-        "larch.implement.complete_umbrella_ship",
-        "main",
-        True,
-    ),
     ("architectural-guidelines", "read"): ("larch.core.architectural_guidelines", "read_main", True),
     ("architectural-invariants", "read"): ("larch.core.architectural_guidelines", "invariants_read_main", True),
     ("architectural-guidelines", "present-note"): ("larch.core.architectural_guidelines", "present_note_main", True),

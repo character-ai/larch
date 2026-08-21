@@ -167,6 +167,12 @@ commands reach no GitHub service. Issue #8628 moved `ship pr` and
 `ship reconcile-manual-merge` to the typed pull-request service. The broad
 Python row now lists only its surviving design and `pr` commands.
 
+Issue #8629 moved `complete-umbrella ship-leaf` to Rust. Pull-request reads and
+creation joined the typed ship service, while exact leaf-title transitions and
+their freshness/read-back checks use the shared issue-mutation owner. The
+Rust owner has no direct raw `gh` boundary; it composes the separately owned
+Python merge commands through the reviewed process seam until their cutover.
+
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
 ```text
@@ -189,6 +195,7 @@ audit-report-issues	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete
 audit-pull-requests	crates/larch-adapters/src/github/operations.rs	rust	#7682	complete	complete	complete	audit-runs map-runs,audit-runs preflight,audit-runs resolve-prs
 rebalance-pull-requests	crates/larch-adapters/src/github/operations.rs	rust	#7685	complete	complete	complete	issue migration-audit,rebalance-tests run
 combine-issues	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	combine-issues *
+complete-umbrella-leaf-lifecycle	crates/larch-adapters/src/github/issue_mutation.rs	rust	#8282,#8629	complete	complete	complete	complete-umbrella ship-leaf
 label-dependency-mutations	crates/larch-adapters/src/github_rest.rs	rust	#7682	complete	complete	complete	block-issue *
 labels	crates/larch-adapters/src/github_rest.rs	rust	#7680	complete	complete	complete	clarify label,design file-oos-annotate
 design-oos-label-mutations	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7680	complete	complete	complete	design file-oos-annotate
@@ -200,7 +207,7 @@ pull-request-implement-retired	crates/larch-adapters/src/github/operations.rs	re
 pull-request-implement-terminal	crates/larch-adapters/src/github/operations.rs	rust	#7995	complete	complete	complete	implement step-18-gate-logs-flush,implement step-19
 pull-request-ci-monitor	crates/larch-adapters/src/github_actions.rs	rust	#7681	complete	complete	complete	ci behind-count,ci decide,ci distill-log,ci failed-jobs,ci main-health,ci rerun-failed,ci status,ci wait
 pull-request-design-migrated	crates/larch-adapters/src/github/operations.rs	rust	#7680	complete	complete	complete	design dialectic-clear-stale,design dialectic-gatec,design dialectic-manual,design dialectic-promote-candidates,design dialectic-validate-candidates,design dialectic-write-candidates,design driver,design failure-report,design file-oos-annotate,design file-oos-prepare,design pause-load,design pause-save,design prelude,design publish,design read-result-env,design render-final-summary,design render-gate,design stage-terminal-state,design step-final-summary,design step1d5,design step1d7,design step1e-reentry,design step2b5,design step35-settle,design step3-continuation-entry,design step5b-annotate,design step5b-prepare,design step5c,design step6,design step6-cleanup,design step6-prelude
-pull-request-ship-pr	crates/larch-adapters/src/github/operations.rs	rust	#7681,#8626,#8628	complete	complete	complete	ship pr,ship reconcile-manual-merge
+pull-request-ship-pr	crates/larch-adapters/src/github/operations.rs	rust	#7681,#8282,#8626,#8628,#8629	complete	complete	complete	complete-umbrella ship-leaf,ship pr,ship reconcile-manual-merge
 pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7681	pending	pending	pending	pr *
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
 repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676,#7681	complete	complete	complete	gh remote-repo,gh resolve-repo,ship pre-fix-rebase

@@ -20,8 +20,7 @@ Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. Th
 - Checks selection, fixer evidence, lint-fix dispatch, and the bounded repair
   loop are Rust-owned. Their Python runtime modules retired at the #8627 atomic
   cutover; production callers enter through `scripts/larch.sh checks ...`.
-- `ci_monitor.py` — retained by the standalone `/complete-umbrella` leaf ship driver. The Rust-owned `/implement` Step 8 path uses the Rust `ci` commands directly.
-- `larch/implement/complete_umbrella_ship.py` — standalone leaf prepare and ship driver for `/complete-umbrella`. It reuses typed Git, GitHub, CI, redaction, retry, and issue-mutation owners without fabricating the `IMPLEMENT_TMPDIR` state required by `ship pr`. It persists a leaf-bound no-follow state file, waits five minutes between CI reads, emits a bounded failure digest, admin-merges green PRs, and verifies issue, branch, and synchronized-main postconditions.
+- `ci_monitor.py` — retained for surviving Python merge and CI callers. The Rust-owned `/implement` Step 8 and `/complete-umbrella` leaf ship paths use the Rust `ci` commands directly.
 - **Phase 5 compatibility layer**: `run_logs.py` is a typed Rust-command facade,
   `run_log_batch.py` is a parity mirror for bounded compatibility callers and the historical reader,
   and `run_log_manifest.py` is read-only. `tracking_issue.py` contains only pure

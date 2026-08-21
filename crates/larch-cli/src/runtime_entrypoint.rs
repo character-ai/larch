@@ -5,11 +5,17 @@
 //! reuse an already-owned verb.  They must not guess at `bin/larch`: the shell
 //! bootstrap owns first-use installation and version verification.
 
-use std::{env, ffi::OsString, fs, path::PathBuf, time::Duration};
+use std::{
+    env,
+    ffi::OsString,
+    fs,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use larch_core::{ChildEnvironment, ExternalProgram, LarchProgram, ProcessOutput};
 
-use crate::child_process::{bounded_request, run_bounded};
+use crate::child_process::{bounded_request, bounded_request_in, run_bounded};
 
 const PLUGIN_ROOT_ENV: &str = "CLAUDE_PLUGIN_ROOT";
 const VERIFIED_LARCH_TIMEOUT: Duration = Duration::from_secs(600);
@@ -128,6 +134,29 @@ pub fn run_verified_larch_with_options(
     environment: &[(ChildEnvironment, OsString)],
     timeout: Duration,
 ) -> Result<ProcessOutput, String> {
+    run_verified_larch_at(arguments, environment, None, timeout)
+}
+
+/// Run verified larch from a caller-validated repository directory.
+///
+/// # Errors
+/// Returns the same resolution and process errors as
+/// [`run_verified_larch_with_options`].
+pub fn run_verified_larch_with_options_in(
+    arguments: &[OsString],
+    environment: &[(ChildEnvironment, OsString)],
+    working_directory: &Path,
+    timeout: Duration,
+) -> Result<ProcessOutput, String> {
+    run_verified_larch_at(arguments, environment, Some(working_directory), timeout)
+}
+
+fn run_verified_larch_at(
+    arguments: &[OsString],
+    environment: &[(ChildEnvironment, OsString)],
+    working_directory: Option<&Path>,
+    timeout: Duration,
+) -> Result<ProcessOutput, String> {
     let root = plugin_root()?;
     let script = root.join("scripts").join("larch.sh");
     if !script.is_file() || script.is_symlink() {
@@ -135,13 +164,23 @@ pub fn run_verified_larch_with_options(
     }
     let program = LarchProgram::bootstrap(&root)
         .map_err(|error| format!("could not select verified larch entrypoint: {error}"))?;
-    let mut request = bounded_request(
-        ExternalProgram::Larch(program),
-        arguments.iter().cloned(),
-        timeout,
-        VERIFIED_LARCH_SHUTDOWN_GRACE,
-        VERIFIED_LARCH_OUTPUT_LIMIT,
-    )?;
+    let mut request = match working_directory {
+        Some(directory) => bounded_request_in(
+            ExternalProgram::Larch(program),
+            arguments.iter().cloned(),
+            directory,
+            timeout,
+            VERIFIED_LARCH_SHUTDOWN_GRACE,
+            VERIFIED_LARCH_OUTPUT_LIMIT,
+        ),
+        None => bounded_request(
+            ExternalProgram::Larch(program),
+            arguments.iter().cloned(),
+            timeout,
+            VERIFIED_LARCH_SHUTDOWN_GRACE,
+            VERIFIED_LARCH_OUTPUT_LIMIT,
+        ),
+    }?;
     for key in VERIFIED_LARCH_CONTEXT {
         if let Some(value) = env::var_os(key.name()) {
             request = request.with_environment(*key, value);
