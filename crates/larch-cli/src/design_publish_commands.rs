@@ -808,7 +808,11 @@ fn stage_failed_plan_write(design_tmpdir: &Path, rows: &Rows) {
     }
     let stdout_log = design_tmpdir.join("design-plan-write-stage.stdout.log");
     let stderr_log = design_tmpdir.join("design-plan-write-stage.stderr.log");
+    // #8580 flipped `design stage-terminal-state` to a Rust owner reached through
+    // the larch entrypoint, so the bridge now needs the resolved plugin root.
+    let plugin_root = plugin_root_directory().unwrap_or_default();
     let rc = stage_terminal_state_bridge(
+        &plugin_root,
         &stdout_log,
         &stderr_log,
         &publish_failure_stage_args(design_tmpdir, rows, &detail_log),
