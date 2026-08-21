@@ -40,16 +40,9 @@ use std::{
 use larch_adapters::assert_no_symlink_path_or_ancestors;
 use larch_core::{ChildEnvironment, ExternalProgram, LarchProgram};
 use larch_core::{
-    RecordLabels, RedactionRefusal, RunLogStorageMode, batch_contains_all_sections, emit_kv,
-    execution_issue_records, require_enabled_storage, resolve_run_log_storage, split_text_lines,
+    RecordLabels, RedactionRefusal, batch_contains_all_sections, emit_kv, execution_issue_records,
+    split_text_lines,
 };
-
-/// Storage-resolution reasons a disabled-publication manifest may carry.
-const DISABLED_STORAGE_REASONS: [&str; 3] = [
-    "config-file-missing",
-    "larch-table-missing",
-    "storage-base-uri-omitted",
-];
 use sha2::{Digest as _, Sha256};
 
 use crate::{
@@ -1296,7 +1289,9 @@ pub fn refresh(arguments: &[OsString]) -> ExitCode {
         &LiveEffects,
         Path::new(&raw),
         parsed.flag("--best-effort"),
-        &run_log_reference,
+        &|repo_root, run_id, manifest| {
+            crate::run_log_commands::run_log_reference("implement", repo_root, run_id, manifest)
+        },
     );
     emit_kv(
         "REFRESHED",
@@ -1386,82 +1381,16 @@ fn report_flush(outcome: &FlushOutcome) -> ExitCode {
     ExitCode::from(outcome.rc)
 }
 
-/// Render the provider-neutral run identity one public summary carries.
-///
-/// A lifecycle manifest that pins this run to disabled storage answers first,
-/// because a run whose archive was never published must say so even when the
-/// clone's configuration has since changed. Otherwise the clone's own storage
-/// resolution names the provider, and any resolution failure reads as
-/// `unknown` rather than blocking the refresh.
-fn run_log_reference(repo_root: Option<&Path>, run_id: &str, manifest: &Path) -> String {
-    let disabled = format!(
-        "no archive published because run-log storage was disabled, skill `implement`, run ID `{run_id}`"
-    );
-    if pins_disabled_publication(manifest, run_id) {
-        return disabled;
-    }
-    let mut provider = "unknown".to_owned();
-    if let Some(repo_root) = repo_root
-        && let Ok((repo_root, origin, environ)) =
-            crate::run_log_commands::resolve_repository_environment_path(Some(repo_root))
-        && let Ok(resolution) = resolve_run_log_storage(&repo_root, &environ, &origin)
-    {
-        if resolution.mode() == RunLogStorageMode::Disabled {
-            return disabled;
-        }
-        if let Ok(storage) = require_enabled_storage(&resolution) {
-            storage.scheme().clone_into(&mut provider);
-        }
-    }
-    format!("provider `{provider}`, skill `implement`, run ID `{run_id}`")
-}
-
-/// Whether one lifecycle manifest pins this run to disabled publication.
-fn pins_disabled_publication(manifest: &Path, run_id: &str) -> bool {
-    if manifest.is_symlink() || !manifest.is_file() {
-        return false;
-    }
-    let Ok(serde_json::Value::Object(document)) =
-        serde_json::from_str::<serde_json::Value>(&read_lossy(manifest))
-    else {
-        return false;
-    };
-    let string = |key: &str| document.get(key).and_then(serde_json::Value::as_str);
-    if document
-        .get("lifecycle_schema_version")
-        .and_then(serde_json::Value::as_u64)
-        != Some(larch_core::LIFECYCLE_SCHEMA_VERSION)
-        || string("publication_mode") != Some("disabled")
-        || !string("storage_resolution_reason")
-            .is_some_and(|reason| DISABLED_STORAGE_REASONS.contains(&reason))
-        || string("skill") != Some("implement")
-        || string("run_id") != Some(run_id)
-    {
-        return false;
-    }
-    if !string("local_namespace_id").is_some_and(|value| {
-        value.len() == 64
-            && value
-                .chars()
-                .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
-    }) {
-        return false;
-    }
-    ["storage_base_uri", "tool_repo_uri", "storage_origin_id"]
-        .iter()
-        .all(|field| document.get(*field).is_none_or(serde_json::Value::is_null))
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         EffectOutput, ExecutionIssueEffects, FLUSHED_SENTINEL, FlushArguments, FlushRequest,
         LEDGER_BASENAME, STEP7A_SENTINEL, SummaryRequest, append, collapsed_diagnostic,
         compose_summary_metadata, confined_record_destination, flush, flush_arguments,
-        flush_safety_net, flush_safety_net_with, flush_with, pins_disabled_publication,
-        plugin_version, read_kv, refresh, refresh_with, run_log_reference, sha256_file,
-        write_execution_issue_records,
+        flush_safety_net, flush_safety_net_with, flush_with, plugin_version, read_kv, refresh,
+        refresh_with, sha256_file, write_execution_issue_records,
     };
+    use crate::run_log_commands::{pins_disabled_publication, run_log_reference};
     use crate::{
         argparse_compat::parse_with_flags, run_log_entry_commands::append_execution_issue,
     };
@@ -2342,9 +2271,10 @@ mod tests {
         );
         fs::write(&manifest, &pinned).expect("manifest must be writable");
 
-        assert!(pins_disabled_publication(&manifest, "run-1"));
-        assert!(!pins_disabled_publication(&manifest, "run-2"));
+        assert!(pins_disabled_publication("implement", &manifest, "run-1"));
+        assert!(!pins_disabled_publication("implement", &manifest, "run-2"));
         assert!(!pins_disabled_publication(
+            "implement",
             &root.path().join("absent.json"),
             "run-1"
         ));
@@ -2353,9 +2283,9 @@ mod tests {
             pinned.replace("config-file-missing", "provider-configured"),
         )
         .expect("manifest must be writable");
-        assert!(!pins_disabled_publication(&manifest, "run-1"));
+        assert!(!pins_disabled_publication("implement", &manifest, "run-1"));
         fs::write(&manifest, "not json").expect("manifest must be writable");
-        assert!(!pins_disabled_publication(&manifest, "run-1"));
+        assert!(!pins_disabled_publication("implement", &manifest, "run-1"));
     }
 
     #[test]
@@ -2372,11 +2302,11 @@ mod tests {
         .expect("manifest must be writable");
 
         assert_eq!(
-            run_log_reference(None, "run-9", &manifest),
+            run_log_reference("implement", None, "run-9", &manifest),
             "no archive published because run-log storage was disabled, skill `implement`, run ID `run-9`"
         );
         assert_eq!(
-            run_log_reference(None, "run-9", &root.path().join("absent.json")),
+            run_log_reference("implement", None, "run-9", &root.path().join("absent.json")),
             "provider `unknown`, skill `implement`, run ID `run-9`"
         );
     }

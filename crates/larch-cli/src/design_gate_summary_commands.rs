@@ -560,13 +560,6 @@ const OOS_FILE_MAP_FIELD_COUNT: usize = 3;
 const MISSING_INVARIANT_ASSESSMENT_SUMMARY_WARNING: &str = "**\u{26a0} Missing architectural-invariant-assessment.md; Gate C assessment did not persist.**";
 const MISSING_GUIDELINE_ASSESSMENT_SUMMARY_WARNING: &str = "**\u{26a0} Missing architectural-guideline-assessment.md; Gate C assessment did not persist.**";
 const GUIDELINE_EXCEPTION_DISCLOSURE_PREFIX: &str = "**Gate C guideline exception recorded:**";
-/// Storage-resolution reasons a disabled-publication manifest may carry (mirror
-/// of the sibling constant in `execution_issue_commands.rs`).
-const DISABLED_STORAGE_REASONS: [&str; 3] = [
-    "config-file-missing",
-    "larch-table-missing",
-    "storage-base-uri-omitted",
-];
 
 // ---------------------------------------------------------------------------
 // render-final-summary: small filesystem/env helpers
@@ -990,27 +983,7 @@ fn persist_difficulty_record(design_tmpdir: &Path, run_id: &str) {
         let Some(rating) = raw_rating else {
             return;
         };
-        let build = larch_core::BuildRecord {
-            rater: "design",
-            rater_tool: "claude",
-            rater_model: "unknown",
-            design_rating: Some(&rating),
-            implement_rating: None,
-            fallback_rating: None,
-            changed_paths: &[],
-            floors: &[],
-            panel_skipped: "",
-            audit_upgrade: "",
-            escalations: &[],
-            override_source: "",
-            override_tier: "",
-            panel_tier: "",
-            round_cap: None,
-            codex_model_role: "",
-            audit_evaluated: None,
-            escalated_round: None,
-        };
-        if let Ok(record) = larch_core::build_record(build) {
+        if let Ok(record) = larch_core::build_design_record(&rating) {
             let _ = larch_core::write_record_map(&record_path, &record);
         }
     }
@@ -1082,7 +1055,8 @@ fn published_run_logs_path(design_tmpdir: &Path, run_id: &str) -> String {
         .join("design")
         .join(run_id)
         .join("manifest.json");
-    design_run_log_reference(
+    crate::run_log_commands::run_log_reference(
+        "design",
         if repo_root_raw.is_empty() {
             None
         } else {
@@ -1091,67 +1065,6 @@ fn published_run_logs_path(design_tmpdir: &Path, run_id: &str) -> String {
         run_id,
         &manifest,
     )
-}
-
-/// Port of `storage_config.run_log_reference` for `skill="design"`.
-fn design_run_log_reference(repo_root: Option<&Path>, run_id: &str, manifest: &Path) -> String {
-    let disabled = format!(
-        "no archive published because run-log storage was disabled, skill `design`, run ID `{run_id}`"
-    );
-    if design_pins_disabled_publication(manifest, run_id) {
-        return disabled;
-    }
-    let mut provider = "unknown".to_owned();
-    if let Some(repo_root) = repo_root
-        && let Ok((repo_root, origin, environ)) =
-            crate::run_log_commands::resolve_repository_environment_path(Some(repo_root))
-        && let Ok(resolution) = larch_core::resolve_run_log_storage(&repo_root, &environ, &origin)
-    {
-        if resolution.mode() == larch_core::RunLogStorageMode::Disabled {
-            return disabled;
-        }
-        if let Ok(storage) = larch_core::require_enabled_storage(&resolution) {
-            storage.scheme().clone_into(&mut provider);
-        }
-    }
-    format!("provider `{provider}`, skill `design`, run ID `{run_id}`")
-}
-
-/// Port of `storage_config._pins_disabled_publication` for `skill="design"`.
-fn design_pins_disabled_publication(manifest: &Path, run_id: &str) -> bool {
-    if manifest.is_symlink() || !manifest.is_file() {
-        return false;
-    }
-    let Some(text) = read_lossy(manifest) else {
-        return false;
-    };
-    let Ok(Value::Object(document)) = serde_json::from_str::<Value>(&text) else {
-        return false;
-    };
-    let string = |key: &str| document.get(key).and_then(Value::as_str);
-    if document
-        .get("lifecycle_schema_version")
-        .and_then(Value::as_u64)
-        != Some(larch_core::LIFECYCLE_SCHEMA_VERSION)
-        || string("publication_mode") != Some("disabled")
-        || !string("storage_resolution_reason")
-            .is_some_and(|reason| DISABLED_STORAGE_REASONS.contains(&reason))
-        || string("skill") != Some("design")
-        || string("run_id") != Some(run_id)
-    {
-        return false;
-    }
-    if !string("local_namespace_id").is_some_and(|value| {
-        value.len() == 64
-            && value
-                .chars()
-                .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
-    }) {
-        return false;
-    }
-    ["storage_base_uri", "tool_repo_uri", "storage_origin_id"]
-        .iter()
-        .all(|field| document.get(*field).is_none_or(Value::is_null))
 }
 
 // ---------------------------------------------------------------------------
@@ -1379,19 +1292,11 @@ fn prefix_guideline_exception_disclosure(design_tmpdir: &Path, outcome: &str, ou
 /// Port of `_emit_report_gate_sidecars_file`.
 fn emit_report_gate_sidecars_file(design_tmpdir: &Path) {
     let handoff = design_tmpdir.join("design-report-gate-sidecars.md");
-    let sidecars = [
-        design_tmpdir.join("design-failure-chat-print.md"),
-        design_tmpdir.join("design-failure-operator-action-chat.md"),
-    ];
-    let mut chunks: Vec<String> = Vec::new();
-    for sidecar in &sidecars {
-        if sidecar.is_file()
-            && file_size(sidecar) > 0
-            && let Some(text) = fs::read_to_string(sidecar).ok()
-        {
-            chunks.push(text);
-        }
-    }
+    let chunks: Vec<String> =
+        crate::design_terminal_commands::report_gate_sidecar_files(design_tmpdir)
+            .iter()
+            .filter_map(|sidecar| fs::read_to_string(sidecar).ok())
+            .collect();
     if chunks.is_empty() {
         return;
     }

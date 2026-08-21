@@ -404,6 +404,20 @@ pub struct GuidelineException {
     pub line: String,
 }
 
+/// Days in `month` (1-12) for a `leap` year, or `None` when `month` is invalid.
+///
+/// Shared by the two calendar-date validators (`design::publish` also calls it)
+/// so the days-in-month table lives in one place.
+pub(crate) const fn days_in_month(month: u32, leap: bool) -> Option<u32> {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => Some(31),
+        4 | 6 | 9 | 11 => Some(30),
+        2 if leap => Some(29),
+        2 => Some(28),
+        _ => None,
+    }
+}
+
 /// True when `date_text` parses as a real calendar date (rejects Feb 30, etc.).
 ///
 /// The caller's regex already constrains the shape and the month/day ranges;
@@ -426,14 +440,10 @@ fn exception_date_plausible(date_text: &str) -> bool {
         return false;
     }
     let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-    let days_in_month = match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if leap => 29,
-        2 => 28,
-        _ => return false,
+    let Some(days) = days_in_month(month, leap) else {
+        return false;
     };
-    day <= days_in_month
+    day <= days
 }
 
 /// Return the note's non-fenced lines that lead with `Exception:`.

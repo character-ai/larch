@@ -9,7 +9,7 @@ use larch_adapters::runtime::LarchRuntime;
 use larch_adapters::s3_storage::{R2Endpoint, S3Storage};
 use larch_core::{
     ConfigKey, ConfigScope, KvDocument, MalformedLinePolicy, ManifestUpdate, ObjectStore,
-    ObjectStoreError, ParseOptions, RepositoryRead, RunLogLayout, RunLogSlug,
+    ObjectStoreError, ParseOptions, RepositoryRead, RunLogLayout, RunLogSlug, RunLogStorageMode,
     StorageConfigurationError, StoragePreflightError, ToolRepositoryStorage, TranscriptError,
     format_preflight_stdout, render_session_transcript as render_transcript,
     repository_leaf_from_remote, require_enabled_storage, resolve_run_log_storage,
@@ -499,6 +499,85 @@ pub fn resolve_repository_environment_path(
     let (repo_root, origin) = discover_repo_identity(&start)?;
     let environ: HashMap<String, String> = env::vars().collect();
     Ok((repo_root, origin, environ))
+}
+
+/// Storage-resolution reasons a disabled-publication manifest may carry.
+pub(crate) const DISABLED_STORAGE_REASONS: [&str; 3] = [
+    "config-file-missing",
+    "larch-table-missing",
+    "storage-base-uri-omitted",
+];
+
+/// Render the provider-neutral run identity a public summary carries for
+/// `skill` (`"implement"` or `"design"`).
+///
+/// A lifecycle manifest that pins this run to disabled storage answers first,
+/// because a run whose archive was never published must say so even when the
+/// clone's configuration has since changed. Otherwise the clone's own storage
+/// resolution names the provider, and any resolution failure reads as
+/// `unknown` rather than blocking the refresh.
+pub(crate) fn run_log_reference(
+    skill: &str,
+    repo_root: Option<&Path>,
+    run_id: &str,
+    manifest: &Path,
+) -> String {
+    let disabled = format!(
+        "no archive published because run-log storage was disabled, skill `{skill}`, run ID `{run_id}`"
+    );
+    if pins_disabled_publication(skill, manifest, run_id) {
+        return disabled;
+    }
+    let mut provider = "unknown".to_owned();
+    if let Some(repo_root) = repo_root
+        && let Ok((repo_root, origin, environ)) =
+            resolve_repository_environment_path(Some(repo_root))
+        && let Ok(resolution) = resolve_run_log_storage(&repo_root, &environ, &origin)
+    {
+        if resolution.mode() == RunLogStorageMode::Disabled {
+            return disabled;
+        }
+        if let Ok(storage) = require_enabled_storage(&resolution) {
+            storage.scheme().clone_into(&mut provider);
+        }
+    }
+    format!("provider `{provider}`, skill `{skill}`, run ID `{run_id}`")
+}
+
+/// Whether one lifecycle manifest pins this `skill` run to disabled publication.
+pub(crate) fn pins_disabled_publication(skill: &str, manifest: &Path, run_id: &str) -> bool {
+    if manifest.is_symlink() || !manifest.is_file() {
+        return false;
+    }
+    let Ok(serde_json::Value::Object(document)) = serde_json::from_str::<serde_json::Value>(
+        &crate::execution_issue_commands::read_lossy(manifest),
+    ) else {
+        return false;
+    };
+    let string = |key: &str| document.get(key).and_then(serde_json::Value::as_str);
+    if document
+        .get("lifecycle_schema_version")
+        .and_then(serde_json::Value::as_u64)
+        != Some(larch_core::LIFECYCLE_SCHEMA_VERSION)
+        || string("publication_mode") != Some("disabled")
+        || !string("storage_resolution_reason")
+            .is_some_and(|reason| DISABLED_STORAGE_REASONS.contains(&reason))
+        || string("skill") != Some(skill)
+        || string("run_id") != Some(run_id)
+    {
+        return false;
+    }
+    if !string("local_namespace_id").is_some_and(|value| {
+        value.len() == 64
+            && value
+                .chars()
+                .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
+    }) {
+        return false;
+    }
+    ["storage_base_uri", "tool_repo_uri", "storage_origin_id"]
+        .iter()
+        .all(|field| document.get(*field).is_none_or(serde_json::Value::is_null))
 }
 
 pub fn preflight_enabled_storage(

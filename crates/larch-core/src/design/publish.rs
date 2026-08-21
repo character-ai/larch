@@ -362,14 +362,10 @@ fn active_exception_lines(note: &str) -> Vec<&str> {
 /// Whether `year-month-day` names a real calendar date.
 const fn calendar_date_plausible(year: u32, month: u32, day: u32) -> bool {
     let leap = year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400));
-    let length = match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if leap => 29,
-        2 => 28,
-        _ => return false,
-    };
-    day >= 1 && day <= length
+    match crate::architectural_guidelines::days_in_month(month, leap) {
+        Some(length) => day >= 1 && day <= length,
+        None => false,
+    }
 }
 
 /// Whether a deviation note carries exactly one valid documented exception.

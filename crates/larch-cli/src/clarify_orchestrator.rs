@@ -15,9 +15,9 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use larch_core::{
-    BuildRecord, ChildEnvironment, DESIGN_RAW_RATING_BASENAME, DIFFICULTY_RECORD_BASENAME,
-    DifficultyRating, ProcessOutput, build_record, plan_difficulty, read_rating_file,
-    redact_secrets_only, rewrite_plan_difficulty, validate_rating_object, write_record_map,
+    ChildEnvironment, DESIGN_RAW_RATING_BASENAME, DIFFICULTY_RECORD_BASENAME, DifficultyRating,
+    ProcessOutput, build_design_record, plan_difficulty, read_rating_file, redact_secrets_only,
+    rewrite_plan_difficulty, validate_rating_object, write_record_map,
 };
 
 use crate::clarify_commands::{
@@ -947,26 +947,7 @@ fn persist_difficulty_record(
     env: &Env,
     rating: &DifficultyRating,
 ) {
-    let Ok(record) = build_record(BuildRecord {
-        rater: "design",
-        rater_tool: "claude",
-        rater_model: "unknown",
-        design_rating: Some(rating),
-        implement_rating: None,
-        fallback_rating: None,
-        changed_paths: &[],
-        floors: &[],
-        panel_skipped: "",
-        audit_upgrade: "",
-        escalations: &[],
-        override_source: "",
-        override_tier: "",
-        panel_tier: "",
-        round_cap: None,
-        codex_model_role: "",
-        audit_evaluated: None,
-        escalated_round: None,
-    }) else {
+    let Ok(record) = build_design_record(rating) else {
         return;
     };
     let record_path = design_tmpdir.join(DIFFICULTY_RECORD_BASENAME);

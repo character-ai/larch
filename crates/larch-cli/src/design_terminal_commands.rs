@@ -2302,22 +2302,28 @@ fn emit_and_complete_final_summary(design_tmpdir: &Path, final_summary_path: &st
     0
 }
 
+/// The report-gate sidecar files that exist and are non-empty, in emit order.
+///
+/// Shared by the two design final-summary emitters; each caller reads and
+/// formats the returned files with its own encoding and write/print policy.
+pub(crate) fn report_gate_sidecar_files(design_tmpdir: &Path) -> Vec<PathBuf> {
+    [
+        design_tmpdir.join("design-failure-chat-print.md"),
+        design_tmpdir.join("design-failure-operator-action-chat.md"),
+    ]
+    .into_iter()
+    .filter(|sidecar| sidecar.is_file() && sidecar.metadata().map(|m| m.len() > 0).unwrap_or(false))
+    .collect()
+}
+
 /// Port of `_emit_report_gate_sidecars_from_disk`.
 fn emit_report_gate_sidecars_from_disk(design_tmpdir: &Path) {
     let handoff = design_tmpdir.join("design-report-gate-sidecars.md");
-    let sidecars = [
-        design_tmpdir.join("design-failure-chat-print.md"),
-        design_tmpdir.join("design-failure-operator-action-chat.md"),
-    ];
-    let mut chunks: Vec<String> = Vec::new();
-    for sidecar in &sidecars {
-        if sidecar.is_file()
-            && sidecar.metadata().map(|m| m.len() > 0).unwrap_or(false)
-            && let Ok(bytes) = fs::read(sidecar)
-        {
-            chunks.push(String::from_utf8_lossy(&bytes).into_owned());
-        }
-    }
+    let chunks: Vec<String> = report_gate_sidecar_files(design_tmpdir)
+        .iter()
+        .filter_map(|sidecar| fs::read(sidecar).ok())
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .collect();
     let text = if chunks.is_empty() {
         String::new()
     } else {
