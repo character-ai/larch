@@ -23,7 +23,10 @@ The `oos file` driver composes the cap, conflict planner, issue creation, depend
 
 ## Live route
 
-The retained #7681 Step 8 workflow router in `python/larch/implement/dispatch_ship.py` invokes `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh` directly. That root entrypoint verifies and launches the Rust binary. `crates/larch-cli/src/main.rs` dispatches the command to `oos_file_commands.rs`.
+The #7681 Step 8 workflow router in
+`crates/larch-cli/src/ship_pre_driver_commands.rs` composes the verified Rust
+entrypoint. `crates/larch-cli/src/main.rs` dispatches the filing command to
+`oos_file_commands.rs`.
 
 The route has no Python OOS command implementation, selector fallback, or direct installed-binary call.
 

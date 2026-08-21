@@ -581,9 +581,10 @@ through the typed Rust mutation path without invoking `/issue`.
 `larch_core::issue::oos_filing` owns stable filing identities and durable
 records. The behavioral authority is `oos_file_commands::tests` plus the shared
 core OOS tests. The former `larch.issue.oos_filer` command owner is gone;
-retained #7680 `larch.issue.file_oos` and #7681 `larch.implement.dispatch_ship`
-keep only their distinct in-process parsing, identity, workflow-routing, and
-post-checkpoint responsibilities (#8672 retired `larch.issue._oos`).
+retained #7680 `larch.issue.file_oos` keeps only its distinct in-process
+parsing, identity, workflow-routing, and post-checkpoint responsibilities.
+Issue #8622 retired `larch.implement.dispatch_ship`; #8672 retired
+`larch.issue._oos`.
 
 Issue 8165 ports the named-block grammar, the `larch:plan` marker, title
 eligibility and matching, the open-issue row model, and the untrusted content

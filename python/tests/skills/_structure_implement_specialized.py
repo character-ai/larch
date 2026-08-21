@@ -253,7 +253,7 @@ def run(repo_root: Path) -> list[str]:
             'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only',
             'skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"',
             'scripts/larch.sh implement step-7a --bgjob-launch true --implement-tmpdir "$IMPLEMENT_TMPDIR"',
-            "python/cli.py ship pre-driver",
+            "scripts/larch.sh ship pre-driver",
             "skills/implement/scripts/step-8-ship.sh",
             "skills/implement/scripts/step-8-oos-checkpoint.sh",
             'scripts/larch.sh implement step-18-gate-logs-flush --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-tracking-memory "${STALL_TRACKING:-false}" --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"',
@@ -343,6 +343,7 @@ def run(repo_root: Path) -> list[str]:
         require(step0_owner, "UPSTREAM_REPO", "step-0 fork metadata upstream parse in Rust")
         require("crates/larch-cli/src/bootstrap_commands.rs", "preflight-tmpdir.env", "Rust bootstrap preflight tmpdir persistence")
         step8_owner = "crates/larch-cli/src/implement_ship_commands.rs"
+        ship_pre_owner = "crates/larch-cli/src/ship_pre_driver_commands.rs"
         require("skills/implement/scripts/step-8-ship.sh", 'implement step-8-ship "$@"', "step-8 ship wrapper delegates to Rust")
         require("skills/implement/scripts/step-8-ship.sh", "scripts/larch.sh", "step-8 ship wrapper uses verified bootstrap")
         forbid("skills/implement/scripts/step-8-ship.sh", "read_state_key", "step-8 ship wrapper must not retain state rehydration")
@@ -350,7 +351,8 @@ def run(repo_root: Path) -> list[str]:
         forbid("skills/implement/scripts/step-8-python-guard.sh", "sys.version_info", "step-8 guard wrapper has no Python implementation")
         require(step8_owner, "pub fn step8_python_guard", "step-8 Python guard Rust owner")
         require(step8_owner, "PYTHON_GUARD_JSON", "step-8 stalled JSON stdout")
-        forbid("python/larch/implement/dispatch_ship.py", "step8_python_guard_main", "step-8 Python guard fallback removed")
+        if Path("python/larch/implement/dispatch_ship.py").exists():
+            checks.append("ship pre-driver Python module was not removed")
         require("crates/larch-cli/src/implement_commands.rs", "pub fn clone_tag", "implement clone-tag CLI handler")
         require(step8_owner, '"ship".into()', "step-8 still-Python ship invocation")
         require(step8_owner, "run_bgjob_adapt", "step-8 bgjob adapter invocation")
@@ -361,19 +363,26 @@ def run(repo_root: Path) -> list[str]:
         )
         require("skills/implement/scripts/step-8-seed-initial.sh", 'implement step-8-seed-initial "$@"', "step-8 seed wrapper delegates to Rust")
         require("skills/implement/scripts/step-0-degraded-gate.sh", 'implement step-0-degraded-gate "$@"', "step-0 degraded-gate wrapper delegates to larch")
-        require("python/larch/cli.py", '("ship", "pre-driver"): ("larch.implement.implement_dispatch", "ship_pre_driver_main", True)', "ship pre-driver CLI registry")
-        require("python/larch/cli.py", '"ship_pre_driver_main", True),', "ship pre-driver machine stdout contract")
-        require("python/larch/cli.py", "NEXT_ACTION=stall", "ship pre-driver pre-version stall fast path")
+        forbid("python/larch/cli.py", '("ship", "pre-driver"):', "ship pre-driver Python registration removed")
+        forbid("python/larch/cli.py", '("ship", "pre-fix-rebase"):', "ship pre-fix-rebase Python registration removed")
+        forbid("python/larch/cli.py", '("ship", "normalize-assessment-handoff"):', "ship normalize-assessment-handoff Python registration removed")
+        forbid("python/larch/cli.py", '("ship", "route-exit"):', "ship route-exit Python registration removed")
+        require("crates/larch-cli/src/main.rs", 'name = "pre-driver"', "ship pre-driver Rust registration")
+        require("crates/larch-cli/src/main.rs", 'name = "pre-fix-rebase"', "ship pre-fix-rebase Rust registration")
+        require("crates/larch-cli/src/main.rs", 'name = "normalize-assessment-handoff"', "ship normalization Rust registration")
+        require("crates/larch-cli/src/main.rs", 'name = "route-exit"', "ship route-exit Rust registration")
         require("crates/larch-cli/src/main.rs", 'name = "step-18-gate-logs-flush"', "Step 18 composite CLI registry")
         require("crates/larch-cli/src/main.rs", 'name = "step-19"', "Step 19 CLI registry")
         require(terminal_owner, "pub fn step_18_gate_logs_flush", "Step 18 composite handler")
-        require("python/larch/implement/dispatch_ship.py", "def ship_pre_driver_main", "ship pre-driver handler")
-        require("python/larch/implement/dispatch_ship.py", '["implement", "step-8-python-guard"]', "ship pre-driver runs guard first")
-        require("python/larch/implement/dispatch_ship.py", '["implement", "step-8-seed-initial"]', "ship pre-driver conditional seeder")
-        require("python/larch/implement/dispatch_ship.py", '"oos", "file",', "ship pre-driver runs oos file")
-        require("python/larch/implement/dispatch_ship.py", 'value="halt-seed"', "ship pre-driver seed halt token")
-        require("python/larch/implement/dispatch_ship.py", 'value="halt-oos"', "ship pre-driver oos halt token")
-        require("python/larch/implement/dispatch_ship.py", "_invoke_larch", "ship pre-driver uses verified Rust bootstrap")
+        require(ship_pre_owner, "pub fn pre_driver", "ship pre-driver Rust owner")
+        require(ship_pre_owner, "pub fn pre_fix_rebase", "ship pre-fix-rebase Rust owner")
+        require(ship_pre_owner, "pub fn normalize_assessment_handoff", "ship normalization Rust owner")
+        require(ship_pre_owner, "pub fn route_exit", "ship route-exit Rust owner")
+        require(ship_pre_owner, '"step-8-python-guard".into()', "ship pre-driver runs guard first")
+        require(ship_pre_owner, '"step-8-seed-initial".into()', "ship pre-driver conditional seeder")
+        require(ship_pre_owner, '"oos".into()', "ship pre-driver runs oos file")
+        require(ship_pre_owner, 'emit_kv("NEXT_ACTION", "halt-seed")', "ship pre-driver seed halt token")
+        require(ship_pre_owner, '"halt-oos"', "ship pre-driver oos halt token")
         forbid(skill, launcher + "skills/implement/scripts/step-8-python-guard.sh", "SKILL standalone step-8 guard fence removed")
         forbid(skill, launcher + "skills/implement/scripts/step-8-seed-initial.sh", "SKILL standalone step-8 seeder fence removed")
         forbid(skill, launcher + 'python/cli.py oos file --implement-tmpdir "$IMPLEMENT_TMPDIR"', "SKILL standalone pre-driver oos fence removed")
@@ -744,7 +753,7 @@ def run(repo_root: Path) -> list[str]:
         if exit_matrix.is_file():
             exit_text = exit_matrix.read_text()
             for needle in [
-                "Python-owned post-driver and OOS-checkpoint routing",
+                "Rust-owned post-driver and OOS-checkpoint routing",
                 "Preserve `RESUME_PHASE`, `CALLER_KIND`, and `CONFLICT_FILES`",
                 "## Branch semantics",
                 "**`complete`**",
@@ -961,19 +970,17 @@ def run(repo_root: Path) -> list[str]:
         require_near(
             skill,
             matrix_read,
-            '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship route-exit',
+            '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh ship route-exit',
             "Step 8+ matrix read before route-exit fence",
             2200,
         )
         require_near(
             skill,
             matrix_read,
-            '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-driver',
+            '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh ship pre-driver',
             "Step 8+ matrix read before pre-driver fence",
             1600,
         )
-        require("python/larch/cli.py", '("ship", "route-exit"): ("larch.implement.implement_dispatch", "ship_route_exit_main", True)', "ship route-exit registry")
-        require("python/larch/cli.py", '"ship_route_exit_main", True),', "ship route-exit machine stdout")
         require("python/larch/cli.py", '"commit_route_main", True),', "commit-route machine stdout")
         forbid("python/larch/cli.py", "step8_oos_checkpoint_main", "step-8-oos-checkpoint Python registration removed")
         require("crates/larch-cli/src/main.rs", 'name = "step-8-oos-checkpoint"', "step-8-oos-checkpoint Rust registration")
@@ -1293,4 +1300,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 390
+LEGACY_ASSERTION_LABEL_COUNT = 395

@@ -6,15 +6,16 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-
-import pytest
+from typing import TYPE_CHECKING
 
 from larch.agents import _vendor
 from larch.implement import (
     dispatch_commit_route,
     dispatch_manifest,
-    dispatch_ship,
 )
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_vendor_cap_status_uses_first_whitespace_token() -> None:
@@ -60,16 +61,3 @@ def test_prelaunch_index_reader_uses_first_value(tmp_path: Path) -> None:
     assert dispatch_manifest._read_prelaunch_index_nonempty(st) == "true"  # type: ignore[arg-type]  # stub state for private reader
     missing = SimpleNamespace(prelaunch_index_flag=tmp_path / "absent.env")
     assert dispatch_manifest._read_prelaunch_index_nonempty(missing) == "false"  # type: ignore[arg-type]  # stub state for private reader
-
-
-def test_assessment_handoff_rejects_duplicate_keys(tmp_path: Path) -> None:
-    handoff = tmp_path / ".ship-route-exit-handoff.env"
-    _ = handoff.write_text("OUTCOME=ok\nDETAIL=x\nOUTCOME=bad\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="duplicate handoff key: OUTCOME"):
-        _ = dispatch_ship._read_handoff_fields(handoff=handoff)
-
-    clean = tmp_path / "clean.env"
-    _ = clean.write_text("OUTCOME=ok\nDETAIL=x\nignored\n", encoding="utf-8")
-    lines, fields = dispatch_ship._read_handoff_fields(handoff=clean)
-    assert fields == {"OUTCOME": "ok", "DETAIL": "x"}
-    assert "ignored" in lines

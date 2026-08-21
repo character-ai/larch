@@ -157,6 +157,7 @@ mod session_env_commands;
 mod session_gate_commands;
 mod session_lifecycle_commands;
 mod session_setup_commands;
+mod ship_pre_driver_commands;
 mod slack_commands;
 mod slot_binding;
 mod stall_recovery_commands;
@@ -308,6 +309,9 @@ enum Domain {
     /// `/implement` bootstrap, preflight, scout, recovery, and step checks.
     #[command(subcommand)]
     Implement(ImplementCommand),
+    /// Ship pre-driver routing and rebase repair commands.
+    #[command(subcommand)]
+    Ship(ShipCommand),
     /// GitHub issue reads and issue-body wire helpers.
     #[command(subcommand)]
     Issue(IssueCommand),
@@ -1083,6 +1087,22 @@ enum ImplementCommand {
     /// Tear the session down after Step 18 recorded run-log terminalization.
     #[command(name = "step-19", disable_help_flag = true)]
     Step19(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum ShipCommand {
+    /// Normalize one architectural-assessment request handoff.
+    #[command(name = "normalize-assessment-handoff", disable_help_flag = true)]
+    NormalizeAssessmentHandoff(RawCompatibilityArguments),
+    /// Validate scope and seed state before launching the ship driver.
+    #[command(name = "pre-driver", disable_help_flag = true)]
+    PreDriver(RawCompatibilityArguments),
+    /// Repair the feature branch before a resumed ship attempt.
+    #[command(name = "pre-fix-rebase", disable_help_flag = true)]
+    PreFixRebase(RawCompatibilityArguments),
+    /// Route one completed ship-driver result to the next action.
+    #[command(name = "route-exit", disable_help_flag = true)]
+    RouteExit(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2740,6 +2760,20 @@ fn run(
             }
             ImplementCommand::Step19(arguments) => {
                 implement_terminal_commands::step_19(&arguments.arguments)
+            }
+        }),
+        Domain::Ship(command) => Ok(match command {
+            ShipCommand::NormalizeAssessmentHandoff(arguments) => {
+                ship_pre_driver_commands::normalize_assessment_handoff(&arguments.arguments)
+            }
+            ShipCommand::PreDriver(arguments) => {
+                ship_pre_driver_commands::pre_driver(&arguments.arguments)
+            }
+            ShipCommand::PreFixRebase(arguments) => {
+                ship_pre_driver_commands::pre_fix_rebase(&arguments.arguments)
+            }
+            ShipCommand::RouteExit(arguments) => {
+                ship_pre_driver_commands::route_exit(&arguments.arguments)
             }
         }),
         Domain::Blocker(BlockerCommand::AllOpen(arguments)) => {

@@ -36,7 +36,7 @@ not_contains() {
 }
 
 contains "$SKILL" 'Step 8 owns the subagent assessment route. After later `HEAD` movement, `architectural-assessment materialize` re-runs its deterministic pre-filter against incremental scope, reuses valid coverage for nonintersecting changes, and re-assesses (via a fresh `larch:arch-assessor`) only when a later code change newly intersects architectural scope.' 'step7a scoped reassessment'
-contains "$SKILL" 'python/cli.py ship normalize-assessment-handoff --implement-tmpdir "$IMPLEMENT_TMPDIR"' 'normalization fence'
+contains "$SKILL" 'scripts/larch.sh ship normalize-assessment-handoff --implement-tmpdir "$IMPLEMENT_TMPDIR"' 'normalization fence'
 contains "$SKILL" 'rewrites the legacy aliases to `NEXT_ACTION=assessments`, persists canonical `DETAIL`, and emits the canonical kind list.' 'alias normalization and canonicalization'
 contains "$SKILL" 'Do not repair malformed data, add a kind token, or add a fallback parser.' 'malformed detail fail closed'
 contains "$SKILL" 'scripts/larch.sh architectural-assessment materialize --implement-tmpdir "$IMPLEMENT_TMPDIR" --repo-root "$REPO_ROOT" --kind <each requested kind>' 'materialize fence'

@@ -1201,7 +1201,13 @@ fn valid_completion_digest(value: &str) -> bool {
         })
 }
 
-fn read_confined_regular_text(
+/// Read one UTF-8 regular file through a revalidated, no-follow descriptor.
+///
+/// # Errors
+///
+/// Returns an error when the root, parent chain, opened file, or UTF-8 payload
+/// is unsafe.
+pub fn read_confined_regular_text(
     path: &Path,
     root: &Path,
     message: &str,

@@ -128,6 +128,12 @@ struct ValidationResult {
     coverage: Option<PlanCoverage>,
 }
 
+/// The narrow ship-gate result consumed by the Rust pre-driver.
+pub struct ShipDispositionValidation {
+    pub ok: bool,
+    pub reason: String,
+}
+
 #[derive(Clone, Debug)]
 struct BaselineResolution {
     sha: String,
@@ -180,6 +186,21 @@ pub fn compute_plan_coverage(
     manifest: Option<&Path>,
 ) -> Result<PlanCoverageView, String> {
     compute_coverage(tmpdir, repo_root, plan_file, manifest)
+}
+
+/// Validate the current plan-coverage disposition before any PR mutation.
+///
+/// This keeps the pre-driver inside the canonical scope owner instead of
+/// reproducing its fingerprint and stale-artifact rules.
+pub fn validate_ship_disposition(
+    tmpdir: &Path,
+    repo_root: &Path,
+    manifest: Option<&Path>,
+) -> Result<ShipDispositionValidation, String> {
+    validate_for_ship(tmpdir, repo_root, manifest).map(|result| ShipDispositionValidation {
+        ok: result.ok,
+        reason: result.reason,
+    })
 }
 
 /// The plan-coverage contract rows, in the order every consumer emits them.

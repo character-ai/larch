@@ -151,33 +151,6 @@ from larch.implement.dispatch_commit_route import (
     commit_route_main,
 )
 
-# --- step 8+ ship ---
-from larch.implement.dispatch_ship import (
-    SHIP_ROUTE_DETAIL_FILE_MAX,
-    SHIP_ROUTE_EXIT_NEEDS_USER,
-    SHIP_ROUTE_EXIT_STALLED,
-    SHIP_ROUTE_EXIT_TRANSIENT,
-    SHIP_ROUTE_TRANSIENT_STALL_RETRY,
-    ShipRouteResult,
-    _SHIP_ROUTE_EXIT_AUTONOMOUS_REASONS,
-    _SHIP_ROUTE_EXIT_LEDGER_KEYS,
-    _classify_ship_needs_user_reason,
-    _classify_ship_route_exit,
-    _ship_route_detail_needs_file,
-    _ship_route_exit_fail,
-    _ship_route_read_retry_count,
-    _ship_route_required_str,
-    _ship_route_safe_line,
-    _ship_route_seed_transient_stall,
-    _ship_route_write_retry_count,
-    _ship_state_has_shell_kv_entries,
-    _write_ship_route_handoff,
-    ship_pre_driver_main,
-    ship_pre_fix_rebase_main,
-    ship_normalize_assessment_handoff_main,
-    ship_route_exit_main,
-)
-
 # --- recovery paths and implement commit ---
 from larch.implement.dispatch_recovery import (
     RecoveryPorcelainInputs,
@@ -210,4 +183,3 @@ from larch.implement.dispatch_manifest import (
     _write_prelaunch_baseline,
     normalize_coder_scout,
 )
-

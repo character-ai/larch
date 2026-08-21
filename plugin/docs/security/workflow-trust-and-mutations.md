@@ -899,12 +899,13 @@ classification responsibilities. Under receiving umbrella #7681,
 `crates/larch-cli/src/implement_ship_commands.rs` owns Step 8 dispatch,
 checkpoint exit mapping, canonical run-id resolution, manifest stamping, run
 statistics, and the allowlisted atomic `OOS_PENDING=false` transition.
-`python/larch/implement/dispatch_ship.py` retains only sibling pre-driver,
-pre-fix-rebase, route-exit, and assessment-handoff commands. The surviving
+`crates/larch-cli/src/ship_pre_driver_commands.rs` owns the sibling pre-driver,
+pre-fix-rebase, route-exit, and assessment-handoff commands, including confined
+result/handoff reads and allowlisted ship-state patches. The surviving
 `python/larch/issue/file_oos.py` callers use in-process block parsing/counting
 and title normalization under receiving umbrella #7680; the module is not an
 OOS command owner or fallback. Rust tests in `implement_ship_parity.rs`,
-`oos_commands.rs`, `oos_file_commands.rs`, `oos_batch.rs`,
+`ship_pre_driver_parity.rs`, `oos_commands.rs`, `oos_file_commands.rs`, `oos_batch.rs`,
 `oos_disposition.rs`, and `oos_record.rs` cover Step 8 wire parity, manifest
 materialization, field variants, private routing, and checkpoint refusal.
 
