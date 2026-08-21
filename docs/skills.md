@@ -249,7 +249,7 @@ Mine a repository's closed bug reports for recurring root-cause patterns, then p
 
 Pause a live `/design` session on the current Claude PID. The skill sources the
 current design session env, publishes the tmpdir with
-`python/cli.py design pause-save`, writes a `larch:design-pause` marker in
+`scripts/larch.sh design pause-save`, writes a `larch:design-pause` marker in
 the issue body, and exits. Re-running `/design <issue>` detects that marker in
 Step 0b, restores the tmpdir, deletes the marker, and resumes at the first
 incomplete step. If no live `/design` env is present, it reports that there is

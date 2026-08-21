@@ -601,7 +601,6 @@ exclude = [
   # python/design_lifecycle.py (/design Step 0b lifecycle port);
   # the test covers reentry guard and router flag recovery.
   "python/tests/design/test_design_lifecycle.py",
-  "python/test_design_pause.py",
   # for python/cli.py session write-design-env (Makefile test-write-design-
   # current-env target). Same Makefile-only pattern as other design test-*.
   "skills/design/scripts/test-findings-classification.sh",
@@ -689,10 +688,6 @@ exclude = [
   # (test-render-specialist-prompt target) and
   # (sibling contract), matching the same Makefile-only pattern.
   "scripts/test-python/cli.py render specialist",
-  # Rust design::log_publish unit tests cover archive selection
-  # (Makefile test-design-log-publish target). Same
-  # and python/tests/design/test_design_pause.py is its Makefile-only pause/resume harness.
-  "python/tests/design/test_design_pause.py",
   # test harness ships with no runtime consumers yet. Phase 3 is the
   # first consumer via skills/implement/SKILL.md (not in this phase).
   # Agent-lint does not follow sibling `source` directives or Makefile targets.
@@ -793,7 +788,6 @@ exclude = [
   # The primary modules are cited from /design runtime prose; the
   # harnesses are referenced only from Makefile.
   "python/tests/design/test_design_lifecycle.py",
-  "python/test_design_pause.py",
   "skills/design/scripts/test-findings-classification.md",
   "python/test_design_summary.py",
   "skills/pause/scripts/test-pause-skill.md",
@@ -1236,9 +1230,12 @@ closure-max-content-tokens = 26303
 # Issue #8583 retargets the design step2b-drafter/step2b-postplan/postplan-emit/
 # step3b-entry citations to scripts/larch.sh the same way, adding one measured
 # conditional token.
+# Issue #8589 retargets pause-save/load citations and replaces the retired
+# Python-test pointer, reducing the post-#8583 conditional closure by four
+# estimated tokens and three content tokens.
 conditional-max-lines = 779
-conditional-max-tokens = 19707
-conditional-max-content-tokens = 19635
+conditional-max-tokens = 19703
+conditional-max-content-tokens = 19632
 
 [[lint.prompt-source-budgets]]
 name = "implement"

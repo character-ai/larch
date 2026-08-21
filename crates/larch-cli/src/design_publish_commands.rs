@@ -1246,7 +1246,7 @@ fn publish_core(
             pause.push(args.repo.clone());
         }
         return runner
-            .run_python(&pause.iter().map(OsString::from).collect::<Vec<_>>())
+            .run_larch(&pause.iter().map(OsString::from).collect::<Vec<_>>())
             .rc;
     }
 

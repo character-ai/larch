@@ -21,7 +21,6 @@ from larch.design import (
     design_step5c,
     design_step6,
 )
-from larch.design import design_pause
 from larch.core import logging_util
 from tests.support.design_wire import plan_body
 from larch.state import session_env
@@ -76,9 +75,15 @@ def test_decode_bash_percent_q_malformed_utf8_byte_escape_is_safe() -> None:
     assert design_core._decode_bash_percent_q("$'\\377'") == "ÿ"  # pyright: ignore[reportPrivateUsage]
 
 
-def test_pause_save_main_accepts_wrapper_argv_without_cli_prefix(tmp_path: Path) -> None:
-    rc = design_pause.pause_save_main(["--design-tmpdir", str(tmp_path), "--issue", "0"])
-    assert rc == 0
+def test_pause_save_command_uses_rehydrated_environment(tmp_path: Path) -> None:
+    command = design_core._pause_save_command(  # pyright: ignore[reportPrivateUsage]
+        design_tmpdir=tmp_path,
+        env={"CLAUDE_PLUGIN_ROOT": str(tmp_path / "plugin"), "ISSUE_NUMBER": "42", "REPO": "owner/repo"},
+    )
+
+    assert command[1:3] == ["design", "pause-save"]
+    assert command[command.index("--issue") + 1] == "42"
+    assert command[command.index("--repo") + 1] == "owner/repo"
 
 
 def _write_session_env(tmp_path: Path, design: Path, monkeypatch: pytest.MonkeyPatch | None = None, **extra: str) -> Path:
@@ -449,12 +454,6 @@ def test_capture_contract_stream_restores_fd3_for_quiet_init(tmp_path: Path, mon
         os.close(saved_stdout)
         logging_util.reset_quiet_state()
     assert "POST_CAPTURE=ok" in contract
-
-
-
-
-
-
 def _capture_core_contract(
     core_fn: Callable[..., tuple[int, list[str]]],
     argv: list[str],
@@ -670,20 +669,20 @@ def test_step5c_core_pause_requested_skips_publish_and_marker(
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", REPO="owner/repo")
     (design / ".pause-requested").write_text("", encoding="utf-8")
-    called: list[list[str]] = []
+    called: list[tuple[Path, str, str]] = []
 
-    def fake_pause(argv: list[str]) -> int:
-        called.append(argv)
+    def fake_pause(*, design_tmpdir: Path, ctx: object) -> int:
+        called.append((design_tmpdir, str(ctx.issue_number), str(ctx.repo)))  # type: ignore[attr-defined]  # test fake receives the runtime Ctx
         return 12
 
     def fail_publish(_argv: list[str], **_kwargs: object) -> int:
         raise AssertionError("publish_core should not run on pause")
 
-    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    monkeypatch.setattr(design_step5c, "_call_pause_save", fake_pause)
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fail_publish)
     rc, _ = design_step5c.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 12
-    assert called == [["--design-tmpdir", str(design), "--issue", "42", "--repo", "owner/repo"]]
+    assert called == [(design, "42", "owner/repo")]
     assert True
     status = larch_io.read_kvs(design / ".design-step5c-status.env")
     assert status["PUBLISH_RC"] == "not-run"
@@ -697,11 +696,11 @@ def test_step5c_core_pause_requested_emits_step5c_status(
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", REPO="owner/repo")
     (design / ".pause-requested").write_text("", encoding="utf-8")
 
-    def fake_pause(_argv: list[str]) -> int:
+    def fake_pause(**_kwargs: object) -> int:
         logging_util.emit_kv(key="PAUSE_OK", value="true")
         return 0
 
-    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    monkeypatch.setattr(design_step5c, "_call_pause_save", fake_pause)
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -1969,18 +1968,18 @@ def test_step6_pause_wins_over_in_flight(
     design, env_path = _step6_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", REPO="owner/repo")
     (design / ".pause-requested").write_text("", encoding="utf-8")
     _patch_step5c_registry(monkeypatch, design, present=True, child_live=True)
-    calls: list[list[str]] = []
+    calls: list[Path] = []
 
-    def fake_pause(argv: list[str]) -> int:
-        calls.append(argv)
+    def fake_pause(*, design_tmpdir: Path, **_kwargs: object) -> int:
+        calls.append(design_tmpdir)
         return 0
 
-    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    monkeypatch.setattr(design_step6, "_call_pause_save", fake_pause)
     assert design_step6.step6_prelude_core(_step6_args(env_path)) == 0
     assert design_step6.step6_cleanup_core(_step6_args(env_path)) == 0
     captured = capsys.readouterr()
     assert len(calls) == 2
-    assert all(call == ["--design-tmpdir", str(design), "--issue", "42", "--repo", "owner/repo"] for call in calls)
+    assert calls == [design, design]
     assert "appears still in-flight" not in captured.err
 
 
@@ -1991,20 +1990,20 @@ def test_step6_prelude_writes_step5d_before_second_pause(
     design, env_path = _step6_design(tmp_path, monkeypatch)
     _write_step5c_status(design)
     original_touch = design_core._touch  # pyright: ignore[reportPrivateUsage]
-    calls: list[list[str]] = []
+    calls: list[Path] = []
 
     def fake_touch(path: Path) -> None:
         original_touch(path)
         if path == design / ".completed" / "step-5d":
             (design / ".pause-requested").write_text("", encoding="utf-8")
 
-    def fake_pause(argv: list[str]) -> int:
+    def fake_pause(*, design_tmpdir: Path, **_kwargs: object) -> int:
         assert (design / ".completed" / "step-5d").is_file()
-        calls.append(argv)
+        calls.append(design_tmpdir)
         return 7
 
     monkeypatch.setattr(design_step6, "_touch", fake_touch)
-    monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
+    monkeypatch.setattr(design_step6, "_call_pause_save", fake_pause)
     assert design_step6.step6_prelude_core(_step6_args(env_path)) == 7
     assert len(calls) == 1
 

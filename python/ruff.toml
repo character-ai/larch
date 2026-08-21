@@ -317,12 +317,6 @@ ignore = [
     "PLR0912",
     "PLR0915",
 ]
-"design_step2b.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-]
 "design_step5b.py" = [
     "C901",
     "PLR0911",
@@ -346,18 +340,6 @@ ignore = [
     "PLR0915",
 ]
 "design_oos.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-]
-"design_pause.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
-]
-"design_postplan.py" = [
     "C901",
     "PLR0911",
     "PLR0912",

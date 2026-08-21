@@ -352,7 +352,8 @@ test-design-structure:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'design_structure_pin or design_structure_specialized' -q
 
 test-design-pause-resume:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_pause.py
+	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-core --lib design::pause::
+	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --bin larch design_pause_commands::
 
 test-pause-skill:
 	$(HARNESS_MARK) --label $@ -- bash skills/pause/scripts/test-pause-skill.sh
@@ -367,7 +368,7 @@ test-decompose-file-issues:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_decompose.py -q -k 'prepare or annotate or close_original'
 
 test-design-step2b-drafter:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest -q python/tests/design/test_design_lifecycle.py -k 'step2a or step2b or guideline or dialectic_instructions or postplan_decide or postplan_executor'
+	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --bin larch design_step2b_commands::
 
 test-design-driver:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'phase_driver or design_read_result_env or design_driver'
@@ -376,10 +377,12 @@ test-design-clarify:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-clarify.sh
 
 test-design-publish:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_publish.py
+	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-core --lib design::publish::
+	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --bin larch design_publish_commands::
+	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --test design_publish_parity
 
 test-design-postplan-emit:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_postplan.py
+	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --bin larch design_step2b_commands::
 
 test-read-result-env:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-read-result-env.sh
@@ -990,7 +993,7 @@ test-design-step3b-tail:
 	$(HARNESS_MARK) --label $@ -- bash skills/design/scripts/test-design-step3b-tail.sh
 
 test-design-step3b-entry:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/design/test_design_step3b.py
+	$(HARNESS_MARK) --label $@ -- cargo test --quiet --locked --package larch-cli --bin larch design_step2b_commands::
 
 test-design-step3-entry:
 	$(HARNESS_MARK) --label $@-rust -- cargo test --locked --package larch-cli --test plan_review_loop_commands normalize_and_session_entry

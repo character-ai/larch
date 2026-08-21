@@ -21,7 +21,6 @@ from larch.core import config, logging_util, proc, rust_runtime
 from larch.core import redact
 from larch.core.ctx import Ctx
 from larch.core.repo_roots import larch_entrypoint
-from larch.design import design_pause
 from larch.state import session_env
 from larch.state.session_env import validate_design_tmpdir
 
@@ -669,26 +668,6 @@ def _run_best_effort(*, command: Sequence[str], env: Mapping[str, str] | None = 
         subprocess.run(list(command), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=dict(env) if env is not None else None, check=False)
 
 
-def _pause_args(
-    *, design_tmpdir: str | Path,
-    env: Mapping[str, str] | None = None,
-    ctx: Ctx | None = None,
-) -> list[str]:
-    if ctx is not None:
-        issue = ctx.issue_number
-        repo = ctx.repo
-    elif env is not None:
-        issue = env.get("ISSUE_NUMBER", "")
-        repo = env.get("REPO", "")
-    else:
-        issue = os.environ.get("ISSUE_NUMBER", "")
-        repo = os.environ.get("REPO", "")
-    args = ["--design-tmpdir", str(design_tmpdir), "--issue", issue]
-    if repo:
-        args.extend(["--repo", repo])
-    return args
-
-
 def _require_design_tmpdir(*, env: Mapping[str, str], design_tmpdir: str | Path | None = None) -> Path:
     raw = str(design_tmpdir or env.get("DESIGN_TMPDIR", ""))
     if not raw:
@@ -718,7 +697,7 @@ def check_pause_and_exit(*, env: Mapping[str, str], design_tmpdir: str | Path | 
         return
     tmpdir = _require_design_tmpdir(env=env, design_tmpdir=design_tmpdir)
     if (tmpdir / ".pause-requested").is_file():
-        rc = design_pause.pause_save_main(_pause_args(design_tmpdir=tmpdir, env=env))
+        rc = _call_pause_save(design_tmpdir=tmpdir, env=env)
         raise SystemExit(rc)
 
 
@@ -1123,12 +1102,26 @@ def _exact_line_file(*, path: Path, expected: str) -> bool:
         return False
 
 
-def _call_pause_save(*, design_tmpdir: Path, ctx: Ctx | None = None) -> int:
-    args = ["--design-tmpdir", str(design_tmpdir), "--issue", ctx.issue_number if ctx is not None else os.environ.get("ISSUE_NUMBER", "")]
-    repo = ctx.repo if ctx is not None else os.environ.get("REPO", "")
+def _call_pause_save(*, design_tmpdir: Path, ctx: Ctx | None = None, env: Mapping[str, str] | None = None) -> int:
+    result = _SUBPROCESS_RUN(
+        _pause_save_command(design_tmpdir=design_tmpdir, ctx=ctx, env=env),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    print(result.stdout, end="")
+    print(result.stderr, end="", file=sys.stderr)
+    return int(result.returncode)
+
+
+def _pause_save_command(*, design_tmpdir: Path, ctx: Ctx | None = None, env: Mapping[str, str] | None = None) -> list[str]:
+    values = env if env is not None else os.environ
+    args = ["--design-tmpdir", str(design_tmpdir), "--issue", ctx.issue_number if ctx is not None else values.get("ISSUE_NUMBER", "")]
+    repo = ctx.repo if ctx is not None else values.get("REPO", "")
     if repo:
         args.extend(["--repo", repo])
-    return design_pause.pause_save_main(args)
+    plugin_root = ctx.claude_plugin_root if ctx is not None else values.get("CLAUDE_PLUGIN_ROOT", "")
+    return [str(larch_entrypoint(plugin_root)), "design", "pause-save", *args]
 
 
 def _call_pause_save_captured(*, design_tmpdir: Path, ctx: Ctx | None = None) -> tuple[int, str, str]:

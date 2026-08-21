@@ -1119,12 +1119,15 @@ pub fn validator_autofix(arguments: &[OsString]) -> ExitCode {
         }
     };
     if design_tmpdir.join(".pause-requested").is_file() {
-        let _ = run_verified_larch(&[
+        let pause_arguments = vec![
             "design".into(),
             "pause-save".into(),
             "--design-tmpdir".into(),
             design_tmpdir.as_os_str().into(),
-        ]);
+            "--issue".into(),
+            env::var_os("ISSUE_NUMBER").unwrap_or_default(),
+        ];
+        let _ = run_verified_larch(&pause_arguments);
         return ExitCode::SUCCESS;
     }
     if operator_cancel {

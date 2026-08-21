@@ -322,7 +322,7 @@ if [ "$STEP3_REVIEW_HAS_RESUME_STATE" = true ]; then
   step3_review_write_resume_state
 fi
 if [ "$BGJOB_CHILD" = false ]; then
-  [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
   _adapt_args=(
     --step design-step3-review \
     --tmpdir "$DESIGN_TMPDIR" \
@@ -353,7 +353,7 @@ if [ -e "$DESIGN_TMPDIR/.step3-review-result.env" ] || [ -L "$DESIGN_TMPDIR/.ste
 fi
 
 if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
   step3_review_write_pause_result
   step3_review_publish_merge
   [ -z "$STEP3_PRIOR_SIDECAR" ] || rm -f "$STEP3_PRIOR_SIDECAR"

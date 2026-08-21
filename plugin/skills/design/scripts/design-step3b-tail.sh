@@ -99,14 +99,14 @@ PY
 }
 
 pause_save() {
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save \
+  "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" design pause-save \
     --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 }
 
 if [ "$BGJOB_CHILD" = false ]; then
   [ -n "${DESIGN_TMPDIR:-}" ] && rm -f "$DESIGN_TMPDIR/.pause-save-complete"
   if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
-    exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save \
+    exec "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" design pause-save \
       --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
   fi
   _adapt_args=(

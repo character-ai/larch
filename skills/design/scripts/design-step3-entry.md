@@ -21,4 +21,4 @@ Combines adjacent `/design` script-call blocks so `skills/design/SKILL.md` keeps
 
 ## Harness
 
-Covered by `make test-design-structure` and `python/test_design_pause.py`.
+Covered by `make test-design-structure` and `make test-design-pause-resume`.

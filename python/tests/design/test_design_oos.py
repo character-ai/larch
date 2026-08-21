@@ -11,7 +11,6 @@ import pytest
 
 from larch.design import design_step5b
 from larch.design import design_oos
-from larch.design import design_pause
 from larch.issue import issue_mutation
 from larch.errors import ShipError
 from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import,import-error  # pyright: ignore[reportUnusedImport]
@@ -1006,7 +1005,7 @@ Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=false
     assert not (tmp_path / "oos-accepted-design.md").exists()
 
 
-def test_step5b_annotate_partial_failure_routes_to_step5b5_and_step5c(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step5b_annotate_partial_failure_marks_step5b_complete(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     monkeypatch.setattr(design_step5b, "_append_failure", _fake_append_success)
     issue_stdout = tmp_path / "oos-issue.stdout.txt"
@@ -1021,9 +1020,6 @@ def test_step5b_annotate_partial_failure_routes_to_step5b5_and_step5c(tmp_path: 
     _ = design_step5b.step5b_annotate_main(_step5b_argv())
 
     assert (tmp_path / ".completed" / "step-5b").is_file()
-    assert design_pause._determine_step(design_tmpdir=tmp_path, plugin_root=Path.cwd()) == "5b.5"  # pyright: ignore[reportPrivateUsage]
-    _ = (tmp_path / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    assert design_pause._determine_step(design_tmpdir=tmp_path, plugin_root=Path.cwd()) == "5c"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_step5b_annotate_pause_returns_pause_save_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1296,7 +1292,6 @@ def test_step5b_annotate_label_failed_does_not_mark_complete(
     assert rc == 1
     assert "STEP5B_STATUS=annotate-label-failed" in out
     assert not (tmp_path / ".completed" / "step-5b").exists()
-    assert design_pause._determine_step(design_tmpdir=tmp_path, plugin_root=Path.cwd()) != "5b.5"  # pyright: ignore[reportPrivateUsage]
     assert not (tmp_path / ".completed" / "step-5b.5").exists()
 
 

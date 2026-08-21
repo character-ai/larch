@@ -14,12 +14,12 @@ Phase 7 folds absorbed prior-step sentinel writes into adjacent real-work Bash f
 
 - Bgjob result envs are the completion source of truth for migrated long-running waits. Terminal sentinels remain compatibility transition markers and are never sufficient by themselves.
 - Step 4 completion truth is `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env`; `.completed/step-4` remains a boundary-local compatibility sentinel.
-- Every absorbed prior-step write happens after `source-env` and before the `python/cli.py design pause-save` pause-check in the host fence.
+- Every absorbed prior-step write happens after `source-env` and before the `scripts/larch.sh design pause-save` pause-check in the host fence.
 - Boundary-local writes that remain at step success boundaries still follow the step-body-success rule, including `step-1d.5`, `step-4`, `step-5b`, postplan `step-2b`/`step-2b.5`, Gate-B-bypass dual writes, `step-5b.5`, and in-fence `step-5c`.
 - `step-6` remains the deliberate exception. It is written after pause-check and before `session cleanup-tmpdir` in the Step 6 cleanup fence.
 - Folding removes near-empty Bash turns, but coarsens timing-ledger granularity and widens pause latency. A pause requested during folded pure-LLM discussion is honored only at the next real Bash boundary.
 - Folded sentinels are written first at that boundary so resume skips discussion already completed before the boundary. A pause requested mid-discussion can still replay in-flight LLM work that had not reached its host fence.
-- Coverage: `${CLAUDE_PLUGIN_ROOT}/python/tests/design/test_design_pause.py` (`make test-design-pause-resume`).
+- Coverage: `crates/larch-cli/src/design_pause_commands.rs` (`make test-design-pause-resume`).
 
 ## Sentinel host table
 

@@ -11,7 +11,7 @@
 //! template: each public verb takes `&[OsString]`, returns [`ExitCode`], and
 //! defers subprocess work behind an injectable-effects seam. This owner reuses
 //! that module's `quote_single`, `parse_stdout_kv`, `kv_last`, `kv_all`,
-//! `write_kv_file`, and `PAUSE_LOAD_TIMEOUT` rather than duplicating them.
+//! and `write_kv_file` rather than duplicating them.
 
 use std::{
     collections::BTreeMap,
@@ -21,15 +21,14 @@ use std::{
     process::{Command, ExitCode},
 };
 
+use larch_adapters::{PathIntent, TemporaryRoot, read_utf8};
 use larch_core::{CommentPolicy, KvDocument, ParseOptions};
 
 use crate::{
     blocker_commands::resolve_repo_for,
-    design_commands::{
-        PAUSE_LOAD_TIMEOUT, kv_all, kv_last, parse_stdout_kv, quote_single, write_kv_file,
-    },
+    design_commands::{kv_all, kv_last, parse_stdout_kv, quote_single, write_kv_file},
     github_service::with_github_service,
-    python_verb::run_python_verb,
+    runtime_entrypoint::run_verified_larch,
     voter_calibration_commands::resolve_like_python,
 };
 
@@ -807,7 +806,7 @@ pub fn require_design_tmpdir(env: &Env, design_tmpdir: Option<&str>) -> Result<P
     Ok(resolve_like_python(&path))
 }
 
-/// Build the still-Python `design pause-save` argv shared by every bridge site.
+/// Build the Rust-owned `design pause-save` argv shared by every bridge site.
 pub fn pause_save_arguments(design_tmpdir: &Path, issue: &str, repo: &str) -> Vec<OsString> {
     let mut arguments: Vec<OsString> = vec![
         "design".into(),
@@ -824,12 +823,9 @@ pub fn pause_save_arguments(design_tmpdir: &Path, issue: &str, repo: &str) -> Ve
     arguments
 }
 
-/// Bridge to the still-Python `design pause-save`; returns its exit code.
+/// Bridge to the Rust-owned `design pause-save`; returns its exit code.
 pub fn pause_save_bridge(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
-    match run_python_verb(
-        pause_save_arguments(design_tmpdir, issue, repo),
-        PAUSE_LOAD_TIMEOUT,
-    ) {
+    match run_verified_larch(&pause_save_arguments(design_tmpdir, issue, repo)) {
         Ok(output) => output.status().code().unwrap_or(1),
         Err(_error) => 1,
     }
@@ -1447,9 +1443,14 @@ pub fn resolve_owned_run_id(design_tmpdir: &Path) -> Option<String> {
 
 /// Port of `progress_file.resolve_persisted_repo_root`: the first absolute,
 /// existing `REPO_ROOT` persisted in `source-env.sh`/`session-env.sh`.
-fn resolve_persisted_repo_root(design_tmpdir: &Path) -> Option<PathBuf> {
+pub fn resolve_persisted_repo_root(design_tmpdir: &Path) -> Option<PathBuf> {
+    let design_root = TemporaryRoot::resolve(Some(design_tmpdir)).ok()?;
     for name in ["source-env.sh", "session-env.sh"] {
-        let Ok(text) = fs::read_to_string(design_tmpdir.join(name)) else {
+        let path = design_root.path().join(name);
+        let Ok(confined) = design_root.confine(&path, PathIntent::Read) else {
+            continue;
+        };
+        let Ok(text) = read_utf8(&confined) else {
             continue;
         };
         for line in text.lines() {

@@ -44,12 +44,12 @@ out_no_env=$(run_block "$HOME1")
 echo "=== incomplete env exits cleanly without save helper ==="
 HOME2="$TMP/home-incomplete"
 PLUGIN2="$TMP/plugin-incomplete"
-mkdir -p "$HOME2/.cache/larch/sessions" "$PLUGIN2/python"
-cat >"$PLUGIN2/python/cli.py" <<'EOF_SAVE2'
-#!/usr/bin/env python3
-print("UNEXPECTED_SAVE")
+mkdir -p "$HOME2/.cache/larch/sessions" "$PLUGIN2/scripts"
+cat >"$PLUGIN2/scripts/larch.sh" <<'EOF_SAVE2'
+#!/usr/bin/env bash
+printf '%s\n' "UNEXPECTED_SAVE"
 EOF_SAVE2
-chmod +x "$PLUGIN2/python/cli.py"
+chmod +x "$PLUGIN2/scripts/larch.sh"
 ENV2="$TMP/env2.sh"
 cat >"$ENV2" <<EOF_ENV2
 export CLAUDE_PLUGIN_ROOT="$PLUGIN2"
@@ -63,7 +63,7 @@ echo "=== live session save succeeds ==="
 HOME3="$TMP/home-live"
 PLUGIN3="$TMP/plugin-live"
 DESIGN3="$TMP/design-live"
-mkdir -p "$HOME3/.cache/larch/sessions" "$PLUGIN3/scripts" "$PLUGIN3/python" "$DESIGN3"
+mkdir -p "$HOME3/.cache/larch/sessions" "$PLUGIN3/scripts" "$DESIGN3"
 cat >"$PLUGIN3/scripts/larch.sh" <<'EOF_LARCH3'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -83,17 +83,14 @@ if [[ "${1:-}" == "kv" && "${2:-}" == "get" ]]; then
   printf '%s\n' "$value"
   exit 0
 fi
+if [[ "${1:-}" == "design" && "${2:-}" == "pause-save" ]]; then
+  printf '%s\n' "PAUSE_OK=true" "STEP=2b" "RUN_ID=RUNPAUSE3"
+  exit 0
+fi
 printf 'unexpected larch args: %s\n' "$*" >&2
 exit 1
 EOF_LARCH3
 chmod +x "$PLUGIN3/scripts/larch.sh"
-cat >"$PLUGIN3/python/cli.py" <<'EOF_SAVE3'
-#!/usr/bin/env python3
-print("PAUSE_OK=true")
-print("STEP=2b")
-print("RUN_ID=RUNPAUSE3")
-EOF_SAVE3
-chmod +x "$PLUGIN3/python/cli.py"
 ENV3="$TMP/env3.sh"
 cat >"$ENV3" <<EOF_ENV3
 export CLAUDE_PLUGIN_ROOT="$PLUGIN3"
@@ -111,7 +108,7 @@ echo "=== live session save failure surfaces parsed error ==="
 HOME4="$TMP/home-fail"
 PLUGIN4="$TMP/plugin-fail"
 DESIGN4="$TMP/design-fail"
-mkdir -p "$HOME4/.cache/larch/sessions" "$PLUGIN4/scripts" "$PLUGIN4/python" "$DESIGN4"
+mkdir -p "$HOME4/.cache/larch/sessions" "$PLUGIN4/scripts" "$DESIGN4"
 cat >"$PLUGIN4/scripts/larch.sh" <<'EOF_LARCH4'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -131,16 +128,14 @@ if [[ "${1:-}" == "kv" && "${2:-}" == "get" ]]; then
   printf '%s\n' "$value"
   exit 0
 fi
+if [[ "${1:-}" == "design" && "${2:-}" == "pause-save" ]]; then
+  printf '%s\n' "PAUSE_OK=false" "ERROR=publish-and-recovery-failed"
+  exit 0
+fi
 printf 'unexpected larch args: %s\n' "$*" >&2
 exit 1
 EOF_LARCH4
 chmod +x "$PLUGIN4/scripts/larch.sh"
-cat >"$PLUGIN4/python/cli.py" <<'EOF_SAVE4'
-#!/usr/bin/env python3
-print("PAUSE_OK=false")
-print("ERROR=publish-and-recovery-failed")
-EOF_SAVE4
-chmod +x "$PLUGIN4/python/cli.py"
 ENV4="$TMP/env4.sh"
 cat >"$ENV4" <<EOF_ENV4
 export CLAUDE_PLUGIN_ROOT="$PLUGIN4"

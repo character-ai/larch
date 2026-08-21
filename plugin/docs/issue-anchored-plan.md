@@ -263,8 +263,8 @@ LOG_RECOVERY_BRANCH=<branch>   # optional
 ```
 
 The marker is written by `/larch:pause` through
-`scripts/python/cli.py design pause-save` and consumed only by `/design` through
-`scripts/python/cli.py design pause-load`. `BODY_HASH` is computed over the issue body with
+`scripts/larch.sh design pause-save` and consumed only by `/design` through
+`scripts/larch.sh design pause-load`. `BODY_HASH` is computed over the issue body with
 the pause marker stripped; resume warns with `WARN=body-drift` on mismatch and
 continues because the marker is the authoritative snapshot pointer.
 

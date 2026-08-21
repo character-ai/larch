@@ -107,7 +107,6 @@ mod clarify_orchestrator_tests {
             let _prior = self.larch_failures.borrow_mut().insert(verb.to_owned(), rc);
             self
         }
-
         fn larch_verbs(&self) -> Vec<(String, String)> {
             self.larch_calls
                 .borrow()
@@ -148,9 +147,9 @@ mod clarify_orchestrator_tests {
         }
 
         fn run_python(&self, args: &[OsString]) -> CapturedRun {
-            let call: Vec<String> = args
+            let call = args
                 .iter()
-                .map(|a| a.to_string_lossy().into_owned())
+                .map(|arg| arg.to_string_lossy().into_owned())
                 .collect();
             self.python_calls.borrow_mut().push(call);
             let stdout = if self.python_stdout.borrow().is_empty() {
@@ -730,14 +729,14 @@ mod clarify_orchestrator_tests {
         let runner = FakeRunner::new();
         let mut env = env_with_repo(dir.path());
         let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
-        let python = runner.python_calls.borrow();
-        let pause = python.first().expect("pause-save runs");
+        let larch = runner.larch_calls.borrow();
+        let pause = larch.first().expect("pause-save runs");
         assert_eq!(pause[0], "design");
         assert_eq!(pause[1], "pause-save");
         assert!(pause.contains(&"--repo".to_owned()));
         assert!(pause.contains(&"owner/repo".to_owned()));
         // The pause hand-off replaces the publish phase entirely.
-        assert!(runner.larch_calls.borrow().is_empty());
+        assert_eq!(larch.len(), 1);
         assert!(
             !dir.path()
                 .join(".design-clarify-publish-result.env")

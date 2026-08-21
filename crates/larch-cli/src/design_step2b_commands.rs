@@ -12,9 +12,9 @@
 //! `Step0Runner` child seam, and `phase_driver_read_result_env` — plus the
 //! larch-core plan-grammar, difficulty, architectural-knowledge, review-wire,
 //! and untrusted-block owners, rather than duplicating them. Still-Python
-//! sibling verbs (`design pause-save`, `design dialectic-*`) are reached through
-//! the shared `run_python_verb` bridge, and Rust-owned sibling verbs
-//! (`plan-review emit/finalize/check-size/preview/drift-baseline`,
+//! `design dialectic-*` sibling verbs are reached through the shared
+//! `run_python_verb` bridge, and Rust-owned sibling verbs (`design pause-save`,
+//! `plan-review emit/finalize/check-size/preview/drift-baseline`,
 //! `plan validate`, `agent launch-*-drafter`, `run-log`, `token`, `timing`) are
 //! reached through the verified `scripts/larch.sh` entrypoint.
 
@@ -226,6 +226,28 @@ fn seam_python(args: Vec<OsString>) -> (i32, String, String) {
         .map_or((1, String::new(), String::new()), |output| {
             output.decoded_streams()
         })
+}
+
+/// Run the Rust-owned pause publisher through the same larch child seam as the
+/// other Rust siblings. The shared argv builder preserves non-UTF-8 paths for
+/// direct callers; this wrapper flow has already normalized its argv to UTF-8.
+fn pause_save_captured(
+    plugin_root: &Path,
+    design_tmpdir: &Path,
+    issue: &str,
+    repo: &str,
+) -> (i32, String, String) {
+    let arguments = pause_save_arguments(design_tmpdir, issue, repo)
+        .iter()
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    #[cfg(test)]
+    if let Some(seam) = current_seam() {
+        let output = seam.larch(&arguments, &[]);
+        return (output.code, output.stdout, output.stderr);
+    }
+    let output = LiveStep0Runner.run(plugin_root, &arguments, &[], false);
+    (output.code, output.stdout, output.stderr)
 }
 
 /// Parse `stdout + "\n" + stderr` into a last-wins KV map, matching the Python
@@ -752,22 +774,8 @@ fn postplan_emit_standalone_pause(
         emit(out, "ERROR=issue-unresolved");
         return 1;
     }
-    let plugin_root = plugin_root_from_env();
-    let mut arguments: Vec<OsString> = vec![
-        "design".into(),
-        "pause-save".into(),
-        "--design-tmpdir".into(),
-        design_tmpdir.as_os_str().to_owned(),
-        "--issue".into(),
-        issue_number.into(),
-    ];
     let repo = std::env::var("REPO").unwrap_or_default();
-    if !repo.is_empty() {
-        arguments.push("--repo".into());
-        arguments.push(repo.into());
-    }
-    let _ = &plugin_root;
-    seam_python(arguments).0
+    pause_save_captured(&plugin_root_from_env(), design_tmpdir, &issue_number, &repo).0
 }
 
 /// `larch_io.kv_value(key="export ISSUE_NUMBER")` over `source-env.sh`, stripped
@@ -1404,10 +1412,15 @@ fn shared_step2b_postplan_body(site: &str, design_tmpdir: &Path) -> PostplanResu
     }
 }
 
-/// `_call_pause_save_captured` + `_pause_save_stdout_ok`: run the still-Python
-/// pause-save owner, print its streams, and require the `PAUSE_OK=true` row.
-fn run_pause_save_terminal(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
-    let (code, stdout, stderr) = seam_python(pause_save_arguments(design_tmpdir, issue, repo));
+/// `_call_pause_save_captured` + `_pause_save_stdout_ok`: run the Rust pause
+/// owner, print its streams, and require the `PAUSE_OK=true` row.
+fn run_pause_save_terminal(
+    plugin_root: &Path,
+    design_tmpdir: &Path,
+    issue: &str,
+    repo: &str,
+) -> i32 {
+    let (code, stdout, stderr) = pause_save_captured(plugin_root, design_tmpdir, issue, repo);
     print_text(&stdout);
     if !stderr.is_empty() {
         eprint!("{stderr}");
@@ -1433,9 +1446,10 @@ fn step2b_postplan_run(argv: &[String]) -> i32 {
     };
     let env = rehydrate_env(&parsed);
     let plugin_root_value = env_get(&env, "CLAUDE_PLUGIN_ROOT", "").to_owned();
-    if require_plugin_root(&plugin_root_value).is_err() {
-        return 1;
-    }
+    let plugin_root = match require_plugin_root(&plugin_root_value) {
+        Ok(root) => root,
+        Err(_code) => return 1,
+    };
     let design_tmpdir_raw = env_get(&env, "DESIGN_TMPDIR", "").to_owned();
     if design_tmpdir_raw.is_empty() {
         eprintln!("/design Step 2b postplan: DESIGN_TMPDIR required");
@@ -1461,7 +1475,7 @@ fn step2b_postplan_run(argv: &[String]) -> i32 {
         if design_tmpdir.join(".pause-requested").is_file() {
             println!("POSTPLAN_RC=11");
             println!("POSTPLAN_STATUS=pause-save");
-            return run_pause_save_terminal(&design_tmpdir, &issue, &repo);
+            return run_pause_save_terminal(&plugin_root, &design_tmpdir, &issue, &repo);
         }
         return 0;
     }
@@ -1473,14 +1487,14 @@ fn step2b_postplan_run(argv: &[String]) -> i32 {
         if design_tmpdir.join(".pause-requested").is_file() {
             println!("POSTPLAN_RC=11");
             println!("POSTPLAN_STATUS=pause-save");
-            return run_pause_save_terminal(&design_tmpdir, &issue, &repo);
+            return run_pause_save_terminal(&plugin_root, &design_tmpdir, &issue, &repo);
         }
         return 0;
     }
     let result = shared_step2b_postplan_body(&parsed.site, &design_tmpdir);
     print_text(&result.stdout_lines);
     if result.postplan_rc == 11 {
-        return run_pause_save_terminal(&design_tmpdir, &issue, &repo);
+        return run_pause_save_terminal(&plugin_root, &design_tmpdir, &issue, &repo);
     }
     i32::from(!matches!(result.postplan_rc, 0 | 10 | 12 | 13))
 }
@@ -1693,11 +1707,16 @@ fn prepare_step2b_drafter_run(argv: &[String]) -> Result<Step2bDrafterRun, i32> 
 
 /// `_handle_step2b_predrafter_pause`: `None` when no pause; otherwise the exit
 /// code after the pause-terminal handoff.
-fn handle_step2b_predrafter_pause(design_tmpdir: &Path, issue: &str, repo: &str) -> Option<i32> {
+fn handle_step2b_predrafter_pause(
+    plugin_root: &Path,
+    design_tmpdir: &Path,
+    issue: &str,
+    repo: &str,
+) -> Option<i32> {
     if !design_tmpdir.join(".pause-requested").is_file() {
         return None;
     }
-    let (code, stdout, stderr) = seam_python(pause_save_arguments(design_tmpdir, issue, repo));
+    let (code, stdout, stderr) = pause_save_captured(plugin_root, design_tmpdir, issue, repo);
     print_text(&stdout);
     if !stderr.is_empty() {
         eprint!("{stderr}");
@@ -2148,6 +2167,7 @@ fn resolve_step2b_postplan_action(
 }
 
 fn handle_step2b_drafter_postplan_pause(
+    plugin_root: &Path,
     design_tmpdir: &Path,
     vendor: &str,
     postplan: &PostplanResult,
@@ -2155,7 +2175,7 @@ fn handle_step2b_drafter_postplan_pause(
     repo: &str,
 ) -> i32 {
     print_text(&postplan.stdout_lines);
-    let (code, stdout, stderr) = seam_python(pause_save_arguments(design_tmpdir, issue, repo));
+    let (code, stdout, stderr) = pause_save_captured(plugin_root, design_tmpdir, issue, repo);
     print_text(&stdout);
     if !stderr.is_empty() {
         eprint!("{stderr}");
@@ -2185,6 +2205,7 @@ fn handle_step2b_drafter_postplan_action(
 }
 
 fn handle_step2b_drafter_postplan_result(
+    plugin_root: &Path,
     design_tmpdir: &Path,
     vendor: &str,
     postplan: &PostplanResult,
@@ -2192,7 +2213,14 @@ fn handle_step2b_drafter_postplan_result(
     repo: &str,
 ) -> i32 {
     if postplan.postplan_rc == 11 {
-        return handle_step2b_drafter_postplan_pause(design_tmpdir, vendor, postplan, issue, repo);
+        return handle_step2b_drafter_postplan_pause(
+            plugin_root,
+            design_tmpdir,
+            vendor,
+            postplan,
+            issue,
+            repo,
+        );
     }
     if matches!(postplan.postplan_rc, 0 | 10 | 12 | 13) {
         return handle_step2b_drafter_postplan_action(design_tmpdir, vendor, postplan);
@@ -2223,7 +2251,14 @@ fn handle_step2b_drafter_success(
         vendor.vendor, result.plan_lines
     );
     let postplan = shared_step2b_postplan_body("step2b", design_tmpdir);
-    handle_step2b_drafter_postplan_result(design_tmpdir, &vendor.vendor, &postplan, issue, repo)
+    handle_step2b_drafter_postplan_result(
+        &run.plugin_root,
+        design_tmpdir,
+        &vendor.vendor,
+        &postplan,
+        issue,
+        repo,
+    )
 }
 
 fn handle_step2b_drafter_dirty_recovery(
@@ -2306,7 +2341,9 @@ fn step2b_drafter_run(argv: &[String]) -> i32 {
     };
     let issue = env_get(&run.env, "ISSUE_NUMBER", "").to_owned();
     let repo = env_get(&run.env, "REPO", "").to_owned();
-    if let Some(code) = handle_step2b_predrafter_pause(&run.design_tmpdir, &issue, &repo) {
+    if let Some(code) =
+        handle_step2b_predrafter_pause(&run.plugin_root, &run.design_tmpdir, &issue, &repo)
+    {
         return code;
     }
     seed_step2b_drafter_fallback_state(&run.design_tmpdir);
@@ -2591,8 +2628,8 @@ fn diagram_required(plan_file: &Path) -> bool {
             .any(|heading| is_architectural_path(&heading.path))
 }
 
-fn call_pause_save(design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
-    seam_python(pause_save_arguments(design_tmpdir, issue, repo)).0
+fn call_pause_save(plugin_root: &Path, design_tmpdir: &Path, issue: &str, repo: &str) -> i32 {
+    pause_save_captured(plugin_root, design_tmpdir, issue, repo).0
 }
 
 fn mark_design_timing(plugin_root: &Path, label: &str) {
@@ -2713,7 +2750,7 @@ fn run_diagram(plugin_root: &Path, design_tmpdir: &Path, issue: &str, repo: &str
         return 1;
     }
     if design_tmpdir.join(".pause-requested").is_file() {
-        return call_pause_save(design_tmpdir, issue, repo);
+        return call_pause_save(plugin_root, design_tmpdir, issue, repo);
     }
     mark_design_timing(plugin_root, "design Step 5b.5 — arch diagram");
     if diagram_required(&design_tmpdir.join("plan.txt")) {
@@ -2797,7 +2834,7 @@ fn step3b_entry_run(argv: &[String]) -> i32 {
         return 1;
     }
     if design_tmpdir.join(".pause-requested").is_file() {
-        return call_pause_save(&design_tmpdir, &issue, &repo);
+        return call_pause_save(&plugin_root, &design_tmpdir, &issue, &repo);
     }
     mark_design_timing(&plugin_root, "design Step 3b — finalize");
     let rc = run_finalize(&plugin_root, &design_tmpdir);
@@ -3175,6 +3212,15 @@ mod tests {
                 args.get(1).map(String::as_str),
             );
             match head {
+                (Some("design"), Some("pause-save")) => ChildOutcome {
+                    code: i32::from(!self.pause_ok),
+                    stdout: if self.pause_ok {
+                        "PAUSE_OK=true\n".to_owned()
+                    } else {
+                        "PAUSE_OK=false\nERROR=pause-failed\n".to_owned()
+                    },
+                    stderr: String::new(),
+                },
                 (Some("plan-review"), Some("json-get-bool")) => ChildOutcome {
                     code: 0,
                     stdout: format!("{}\n", self.partition),
@@ -3283,12 +3329,7 @@ mod tests {
                 tokens.get(1).map(String::as_str),
             ) {
                 (Some("design"), Some("pause-save")) => {
-                    let stdout = if self.pause_ok {
-                        "PAUSE_OK=true\n".to_owned()
-                    } else {
-                        "PAUSE_OK=false\nERROR=pause-failed\n".to_owned()
-                    };
-                    (i32::from(!self.pause_ok), stdout, String::new())
+                    panic!("Rust-owned design pause-save must use the larch seam")
                 }
                 (Some("design"), Some("dialectic-gatec")) => {
                     let body = self.gatec.as_deref().map_or_else(

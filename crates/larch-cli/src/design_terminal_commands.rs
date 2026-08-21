@@ -19,7 +19,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::ExitCode,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use larch_adapters::github::{IssueMutationOwner, LiveMutationRequest, check_live_mutation_auth};
@@ -30,7 +30,7 @@ use larch_core::{
 
 use crate::{
     blocker_commands::resolve_repo_for,
-    design_commands::{PAUSE_LOAD_TIMEOUT, quote_single},
+    design_commands::quote_single,
     design_step0_commands::{
         ChildOutcome, Env, LiveStep0Runner, Step0Runner, env_get, exit_from_i32, load_wrapper_env,
         parse_wrapper_args, phase_driver_read_result_env, require_plugin_root,
@@ -64,6 +64,7 @@ const STEP3_ESCALATION_FAILURE_STATUSES: [&str; 4] = [
 ];
 const TERMINAL_PUBLISH_DIAGNOSTIC_BYTE_CAP: u64 = 4096;
 const TERMINAL_PUBLISH_DIAGNOSTIC_CHAR_CAP: usize = 500;
+const PYTHON_BRIDGE_TIMEOUT: Duration = Duration::from_secs(120);
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -2385,7 +2386,7 @@ fn publish_terminal_final_summary(design_tmpdir: &Path, ctx: &SummaryCtx) -> (i3
     }
     let stdout_log = design_tmpdir.join("design-log-publish.terminal.stdout.log");
     let stderr_log = design_tmpdir.join("design-log-publish.terminal.stderr.log");
-    match run_python_verb(args, PAUSE_LOAD_TIMEOUT) {
+    match run_python_verb(args, PYTHON_BRIDGE_TIMEOUT) {
         Ok(output) => {
             let _ = fs::write(&stdout_log, output.stdout());
             let _ = fs::write(&stderr_log, output.stderr());
@@ -2534,7 +2535,7 @@ fn render_final_summary_post_publish(design_tmpdir: &Path, ctx: &SummaryCtx) -> 
         args.push(ctx.repo.clone().into());
     }
     let render_stdout = design_tmpdir.join("render-final-summary.stdout.log");
-    match run_python_verb(args, PAUSE_LOAD_TIMEOUT) {
+    match run_python_verb(args, PYTHON_BRIDGE_TIMEOUT) {
         Ok(output) => {
             let _ = fs::write(&render_stdout, output.stdout());
             output.status().code().unwrap_or(1)

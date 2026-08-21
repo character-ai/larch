@@ -2387,11 +2387,13 @@ verb = "pause-load"
 python_module = "larch.design.design_pause"
 python_function = "pause_load_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8589
+clean_install_test = "clean-install-design-pause-load"
 
 [[commands]]
 domain = "design"
@@ -2399,11 +2401,13 @@ verb = "pause-save"
 python_module = "larch.design.design_pause"
 python_function = "pause_save_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8589
+clean_install_test = "clean-install-design-pause-save"
 
 [[commands]]
 domain = "design"
@@ -9197,7 +9201,7 @@ rust = ["block-issue *", "dirty-tree *", "execution-issues *", "final-report wri
 path = "python/larch/design/design_core.py"
 kind = "python-runtime"
 python = []
-rust = ["design failure-report", "design log-publish", "design read-result-env", "design stage-terminal-state", "plan-review step3-state", "run-log append-failure", "timing mark"]
+rust = ["design failure-report", "design log-publish", "design pause-save", "design read-result-env", "design stage-terminal-state", "plan-review step3-state", "run-log append-failure", "timing mark"]
 
 [[callers]]
 path = "python/larch/design/design_dialectic.py"
@@ -9212,16 +9216,10 @@ python = ["design file-oos-annotate", "design file-oos-prepare"]
 rust = ["oos file-conflict-deps", "oos issue-cap"]
 
 [[callers]]
-path = "python/larch/design/design_pause.py"
-kind = "python-runtime"
-python = []
-rust = ["design log-publish", "named-block write"]
-
-[[callers]]
 path = "python/larch/design/design_settle.py"
 kind = "python-runtime"
 python = []
-rust = ["design settle-next-action", "design step2b-postplan", "plan-review gate-b-dedup"]
+rust = ["design pause-save", "design settle-next-action", "design step2b-postplan", "plan-review gate-b-dedup"]
 
 [[callers]]
 path = "python/larch/design/design_step5c.py"
@@ -9484,8 +9482,8 @@ rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps 
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design file-oos-prepare", "design pause-load", "design prelude", "design render-final-summary", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step5c", "mermaid sanitize"]
-rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "design driver", "design init-runparams", "design log-publish", "design parse-flags", "design postplan-emit", "design publish", "design read-result-env", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step3b-entry", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
+python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design file-oos-prepare", "design prelude", "design render-final-summary", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step5c", "mermaid sanitize"]
+rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "design driver", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design publish", "design read-result-env", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step3b-entry", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -9586,8 +9584,8 @@ rust = []
 [[callers]]
 path = "skills/design/references/sentinel-host-table.md"
 kind = "skill"
-python = ["design pause-save", "design step5c"]
-rust = ["plan-review step3-state"]
+python = ["design step5c"]
+rust = ["design pause-save", "plan-review step3-state"]
 
 [[callers]]
 path = "skills/design/references/settle-rc-dispatch.md"
@@ -9652,14 +9650,14 @@ rust = ["plan-block strip-body", "plan-review prelaunch-failure", "plan-review s
 [[callers]]
 path = "skills/design/scripts/design-step3-mav.md"
 kind = "skill"
-python = ["design pause-save", "render scope-anchor"]
-rust = []
+python = ["render scope-anchor"]
+rust = ["design pause-save"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-mav.sh"
 kind = "skill"
-python = ["design pause-save", "render scope-anchor"]
-rust = ["kv get", "plan-review persist-retally-env", "run-log append-failure", "session require-plugin-root", "session validate-design-tmpdir", "timing record-round", "voting findings-classification-header"]
+python = ["render scope-anchor"]
+rust = ["design pause-save", "kv get", "plan-review persist-retally-env", "run-log append-failure", "session require-plugin-root", "session validate-design-tmpdir", "timing record-round", "voting findings-classification-header"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-review.md"
@@ -9670,20 +9668,20 @@ rust = ["bgjob adapt"]
 [[callers]]
 path = "skills/design/scripts/design-step3-review.sh"
 kind = "skill"
-python = ["design pause-save", "scope-anchor validate"]
-rust = ["bgjob adapt", "plan-review normalize-status", "plan-review prelaunch-failure", "plan-review run", "session require-plugin-root", "session validate-design-tmpdir"]
+python = ["scope-anchor validate"]
+rust = ["bgjob adapt", "design pause-save", "plan-review normalize-status", "plan-review prelaunch-failure", "plan-review run", "session require-plugin-root", "session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/design/scripts/design-step35.sh"
 kind = "skill"
-python = ["design pause-save"]
-rust = ["session require-plugin-root", "timing mark"]
+python = []
+rust = ["design pause-save", "session require-plugin-root", "timing mark"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3b-tail.sh"
 kind = "skill"
-python = ["design dialectic-gatec", "design pause-save"]
-rust = ["bgjob adapt", "design driver", "plan-review emit-rejected", "plan-review preview", "session validate-design-tmpdir", "timing mark"]
+python = ["design dialectic-gatec"]
+rust = ["bgjob adapt", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview", "session validate-design-tmpdir", "timing mark"]
 
 [[callers]]
 path = "skills/design/scripts/design-step5b-annotate.md"
@@ -10198,8 +10196,8 @@ rust = ["learn-from-bugs check-proposals", "learn-from-bugs filing-deps", "learn
 [[callers]]
 path = "skills/pause/SKILL.md"
 kind = "skill"
-python = ["design pause-save"]
-rust = ["gh resolve-repo", "kv get"]
+python = []
+rust = ["design pause-save", "gh resolve-repo", "kv get"]
 
 [[callers]]
 path = "skills/rejected-analysis/SKILL.md"
