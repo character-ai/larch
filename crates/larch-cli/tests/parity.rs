@@ -1871,6 +1871,12 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "contains-pins",
     ),
     CleanInstallCase::new(
+        "clean-install-checks-fixer-evidence",
+        "checks",
+        "fixer-evidence",
+    ),
+    CleanInstallCase::new("clean-install-checks-lint-fix", "checks", "lint-fix"),
+    CleanInstallCase::new(
         "clean-install-gh-agnix-ensure-label",
         "gh",
         "agnix-ensure-label",

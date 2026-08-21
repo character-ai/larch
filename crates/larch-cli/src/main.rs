@@ -36,6 +36,7 @@ pub(crate) mod bootstrap_commands;
 mod bootstrap_support;
 mod calibration_commands;
 mod checks_identity_commands;
+mod checks_lint_fix_commands;
 mod checks_run_relevant_commands;
 mod checks_rust_clippy_commands;
 mod child_process;
@@ -1076,6 +1077,12 @@ enum ChecksCommand {
     /// Assert that pinned `contains` literals are present in their targets.
     #[command(name = "contains-pins", disable_help_flag = true)]
     ContainsPins(RawCompatibilityArguments),
+    /// Materialize a bounded, redacted checks-failure digest for the ci-fixer.
+    #[command(name = "fixer-evidence", disable_help_flag = true)]
+    FixerEvidence(RawCompatibilityArguments),
+    /// Dispatch the delegated coder waterfall to fix relevant-checks failures.
+    #[command(name = "lint-fix", disable_help_flag = true)]
+    LintFix(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2562,6 +2569,12 @@ fn run(
         ),
         Domain::Checks(ChecksCommand::RunRelevant(arguments)) => Ok(
             checks_run_relevant_commands::checks_run_relevant(&arguments.arguments),
+        ),
+        Domain::Checks(ChecksCommand::FixerEvidence(arguments)) => Ok(
+            checks_lint_fix_commands::checks_fixer_evidence(&arguments.arguments),
+        ),
+        Domain::Checks(ChecksCommand::LintFix(arguments)) => Ok(
+            checks_lint_fix_commands::checks_lint_fix(&arguments.arguments),
         ),
         Domain::Checks(ChecksCommand::ContainsPins(arguments)) => Ok(
             checks_run_relevant_commands::check_contains_pins(&arguments.arguments),

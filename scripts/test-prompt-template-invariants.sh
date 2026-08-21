@@ -204,56 +204,11 @@ assert_contains "coder acceptable-output example" \
 assert_contains "coder PROHIBITION via lib" \
     '## PROHIBITION: Submodules' "$coder_prompt"
 
-# ── python checks lint-fix compose_prompt runtime render smoke ─────────────────────
+# The `checks lint-fix` coder prompt is composed in Rust (#8625); its FIXED:/
+# UNFIXABLE: result-shape, submodule prohibition, PLR0911 guidance, and the
+# Codex-only exec/site markers (plus the shared-prompt exclusions) are pinned by
+# the in-crate tests in crates/larch-core/src/implement/checks_lint_fix.rs.
 
-lint_tmp="$TMP/lint-fix"
-mkdir -p "$lint_tmp/lint-fix-loop"
-lint_prompt="$lint_tmp/lint-fix-loop/prompt.md"
-lint_shared_prompt="$lint_tmp/lint-fix-loop/shared-prompt.md"
-PYTHONPATH="$REPO_ROOT/python" python3 - "$checks_log" "$lint_prompt" "$lint_shared_prompt" <<'PYCHECKS'
-import sys
-from pathlib import Path
-from larch.implement import checks_lint_fix as _clf
-shared = _clf._compose_prompt(  # pyright: ignore[reportPrivateUsage]
-    checks_log=Path(sys.argv[1]),
-    site_label="Step 3",
-    submodule_paths=(),
-    target_cmd_display=None,
-)
-combined = shared + _clf._codex_lint_fix_prompt_appendix("step3")  # pyright: ignore[reportPrivateUsage]
-Path(sys.argv[2]).write_text(combined, encoding="utf-8")
-Path(sys.argv[3]).write_text(shared, encoding="utf-8")
-PYCHECKS
-[[ -s "$lint_prompt" ]] || fail "lint-fix prompt was not rendered"
-[[ -s "$lint_shared_prompt" ]] || fail "shared lint-fix prompt was not rendered"
-assert_contains "lint-fix FIXED: result-shape spec" \
-    'FIXED:' "$lint_prompt"
-assert_contains "lint-fix UNFIXABLE: result-shape spec" \
-    'UNFIXABLE:' "$lint_prompt"
-assert_contains "lint-fix acceptable final-line shapes" \
-    'Acceptable final-line shapes' "$lint_prompt"
-assert_contains "lint-fix PROHIBITION via lib" \
-    '## PROHIBITION: Submodules' "$lint_prompt"
-assert_contains "shared lint-fix PLR0911 guidance" \
-    '## Ruff PLR0911 too many returns' "$lint_shared_prompt"
-assert_contains "lint-fix PLR0911 guidance" \
-    '## Ruff PLR0911 too many returns' "$lint_prompt"
-assert_contains "lint-fix Codex site token" \
-    'machine site `step3`' "$lint_prompt"
-assert_contains "lint-fix Codex orchestrator verification site" \
-    'checks run-relevant --site step3' "$lint_prompt"
-assert_contains "lint-fix Codex parent verification" \
-    'parent orchestrator owns verification after Codex exits' "$lint_prompt"
-assert_contains "lint-fix Codex edit-only language" \
-    'Make repository file edits only.' "$lint_prompt"
-assert_contains "lint-fix Codex exec_command prohibition" \
-    'Do not run `exec_command`, shell, Bash, or `checks run-relevant` inside the Codex sandbox.' "$lint_prompt"
-assert_contains "lint-fix Codex no temporary verification roots" \
-    'Do not create ad-hoc temporary verification roots' "$lint_prompt"
-assert_not_contains "shared lint-fix prompt excludes Codex exec prohibition" \
-    '`exec_command`' "$lint_shared_prompt"
-assert_not_contains "shared lint-fix prompt excludes Codex sandbox wording" \
-    'inside the Codex sandbox' "$lint_shared_prompt"
 assert_contains "implementer base PLR0911 checklist" \
     'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/agents/_implementer-base.md"
 assert_contains "codex implementer PLR0911 checklist" \

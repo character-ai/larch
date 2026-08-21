@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, TextIO
 
-from larch import io as larch_io
 from larch.core import config
 from larch.core import redact
 from larch.core.proc import CommandResult, Runner
@@ -83,7 +82,6 @@ def changed_paths_from_git(*, runner: Runner, cwd: str) -> tuple[str, ...]:
 
 _RCC_MAX_ITER_CAP: Final = 6
 CHECKS_FAILURE_DIGEST_MAX_BYTES: Final = 8192
-CHECKS_FIXER_MAX_ROUNDS: Final = 10
 _CHECKS_FAILURE_DIGEST_ERROR_MAX_BYTES: Final = 512
 _CHECKS_FAILURE_DIGEST_MARKER_RE: Final = re.compile(
     r"ERROR:|Error:|FAILED|Failed|Traceback|AssertionError|DEFECT:"
@@ -926,89 +924,6 @@ def _assemble_checks_failure_digest(
 def _build_checks_failure_digest(*, redacted_log_text: str, site: str) -> str:
     records = _parse_checks_failure_records(redacted_log_text)
     return _assemble_checks_failure_digest(records=records, site=site)
-
-
-def _checks_fixer_evidence_path(*, tmpdir: Path, site: str, round_number: int) -> Path:
-    """Return the deterministic, session-confined evidence path for one fixer round."""
-    return tmpdir / f"checks-errors-{site}-{round_number}.md"
-
-
-@dataclass(frozen=True)
-class _ChecksFixerEvidenceArgs:
-    tmpdir: Path
-    site: str
-    round_number: int
-    source: Path
-
-
-def _validate_checks_fixer_evidence_args(
-    *, tmpdir_raw: str, site_raw: str, round_raw: str, checks_log: str
-) -> tuple[_ChecksFixerEvidenceArgs | None, str | None]:
-    tmpdir = validate_tmpdir(tmpdir_raw)
-    if tmpdir is None:
-        return None, "invalid-tmpdir"
-    site = str(site_raw)
-    if not re.fullmatch(r"[A-Za-z0-9._-]+", site) or site.startswith(".") or ".." in site:
-        return None, "invalid-site"
-    try:
-        round_number = int(round_raw)
-    except ValueError:
-        return None, "invalid-round"
-    if round_number < 1 or round_number > CHECKS_FIXER_MAX_ROUNDS:
-        return None, "invalid-round"
-    source = resolve_checks_log_path(candidate=checks_log, allowed_root=tmpdir)
-    if source is None:
-        return None, "invalid-source"
-    return _ChecksFixerEvidenceArgs(
-        tmpdir=tmpdir,
-        site=site,
-        round_number=round_number,
-        source=source,
-    ), None
-
-
-def checks_fixer_evidence_main(argv: list[str] | None = None) -> int:
-    """Materialize bounded, redacted checks evidence for the ci-fixer subagent."""
-    parser = argparse.ArgumentParser(prog="cli.py checks fixer-evidence")
-    _ = parser.add_argument("--tmpdir", required=True)
-    _ = parser.add_argument("--site", required=True)
-    _ = parser.add_argument("--round", required=True)
-    _ = parser.add_argument("--checks-log", required=True)
-    args = parser.parse_args(argv)
-    evidence, error = _validate_checks_fixer_evidence_args(
-        tmpdir_raw=args.tmpdir,
-        site_raw=args.site,
-        round_raw=args.round,
-        checks_log=args.checks_log,
-    )
-    if evidence is None:
-        print(f"CHECKS_FIXER_EVIDENCE_STATUS={error}")
-        return 2
-    source_text = read_log_file_text(evidence.source)
-    if source_text is None:
-        print("CHECKS_FIXER_EVIDENCE_STATUS=source-unreadable")
-        return 1
-    output = _checks_fixer_evidence_path(
-        tmpdir=evidence.tmpdir,
-        site=evidence.site,
-        round_number=evidence.round_number,
-    )
-    try:
-        larch_io.trusted_atomic_write(
-            path=output,
-            text=_build_checks_failure_digest(
-                redacted_log_text=redact.redact(source_text),
-                site=evidence.site,
-            ),
-            root=evidence.tmpdir,
-            mode=0o600,
-        )
-    except (OSError, ValueError):
-        print("CHECKS_FIXER_EVIDENCE_STATUS=write-failed")
-        return 1
-    print("CHECKS_FIXER_EVIDENCE_STATUS=ok")
-    print(f"CHECKS_FIXER_EVIDENCE_FILE={output}")
-    return 0
 
 
 def _write_failure_digest_from_redacted(

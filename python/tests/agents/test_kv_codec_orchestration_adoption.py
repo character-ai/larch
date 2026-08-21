@@ -11,7 +11,6 @@ import pytest
 
 from larch.agents import _vendor
 from larch.implement import (
-    checks_lint_fix,
     dispatch_commit_route,
     dispatch_manifest,
     dispatch_ship,
@@ -32,12 +31,6 @@ def test_vendor_cap_status_uses_first_whitespace_token() -> None:
         runner=lambda _argv: type("R", (), {"stdout": "STATUS=under_cap TOTAL=1\n"})(),
     )
     assert miss.hit is False
-
-
-def test_parse_launcher_exit_first_digit_or_none() -> None:
-    assert checks_lint_fix._parse_launcher_exit("LAUNCHER_EXIT=0\nLAUNCHER_EXIT=1\n") == 0
-    assert checks_lint_fix._parse_launcher_exit("LAUNCHER_EXIT=nope\nLAUNCHER_EXIT=1\n") is None
-    assert checks_lint_fix._parse_launcher_exit("OTHER=1\n") is None
 
 
 def test_whitespace_kv_first_wins_and_skips_trailing_prose() -> None:

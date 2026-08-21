@@ -14,8 +14,6 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("checks", "fixer-evidence"): ("larch.implement.checks", "checks_fixer_evidence_main", True),
-    ("checks", "lint-fix"): ("larch.implement.checks", "checks_lint_fix_main", True),
     ("checks", "repair-loop"): ("larch.implement.checks", "checks_repair_loop_main", True),
     ("ci", "distill-log"): ("larch.implement.ci", "distill_log_main", False),
     ("complete-umbrella", "ship-leaf"): (
