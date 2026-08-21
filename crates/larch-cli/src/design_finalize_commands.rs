@@ -1520,3 +1520,6 @@ pub fn step6(arguments: &[OsString]) -> ExitCode {
     }
     step6_cleanup_with(arguments, &LiveStep0Runner)
 }
+
+#[cfg(test)]
+mod tests;
