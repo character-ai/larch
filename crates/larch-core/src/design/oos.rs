@@ -489,4 +489,166 @@ mod tests {
         assert_eq!(annotated.accepted.matches("issues/9").count(), 2);
         assert_eq!(annotated.map_lines.len(), 2);
     }
+
+    #[test]
+    fn promotion_filters_ineligible_and_duplicate_pool_entries() {
+        let accepted = "### OOS_4: existing\n- **Description**: same body";
+        let pool = concat!(
+            "### FINDING_1: existing\n- **Description**: same body\nVote tally: Result=accepted Fileable=true\n\n",
+            "### FINDING_2: rejected\n- **Description**: no\nVote tally: Result=rejected Fileable=true\n\n",
+            "### FINDING_3: private\n- **Focus area**: security-hardening\nVote tally: Result=accepted Fileable=true\n\n",
+            "### FINDING_4: not fileable\n- **Description**: no\nVote tally: Result=accepted Fileable=false\n\n",
+            "### FINDING_5: promoted\n- **Concern**: unique\nVote tally: Result=accepted Fileable=true\n",
+        );
+        let promoted = design_oos_promote_pool(accepted, pool);
+        assert!(promoted.contains("### OOS_5: promoted"), "{promoted}");
+        assert_eq!(promoted.matches("same body").count(), 1);
+        assert!(!promoted.contains("rejected"));
+        assert!(!promoted.contains("private"));
+        assert!(!promoted.contains("not fileable"));
+        assert_eq!(design_oos_identity_signature(&promoted).len(), 2);
+        assert_eq!(
+            design_oos_unfiled(
+                "### OOS_1: filed\n- **Filed URL**: https://github.com/o/r/issues/1\n"
+            ),
+            ""
+        );
+    }
+
+    #[test]
+    fn recovery_and_issue_output_cover_legacy_and_partial_shapes() {
+        let accepted = "### OOS_8: one\nbody\n";
+        assert_eq!(
+            design_oos_recover_accepted(accepted, ""),
+            Some(accepted.to_owned())
+        );
+        let recovered = design_oos_recover_accepted(accepted, "https://github.com/o/r/issues/8\n")
+            .expect("one legacy URL is unambiguous");
+        assert!(recovered.contains("Filed URL**: https://github.com/o/r/issues/8"));
+        assert_eq!(
+            design_oos_recover_accepted(
+                &recovered,
+                "OOS_FILE_MAP\t8\thttps://github.com/o/r/issues/8\n",
+            ),
+            Some(recovered.clone())
+        );
+        assert!(
+            design_oos_recover_accepted(
+                accepted,
+                "OOS_FILE_MAP\t99\thttps://github.com/o/r/issues/99\n",
+            )
+            .is_none()
+        );
+
+        let output = parse_design_oos_issue_output(concat!(
+            "ISSUE_URL=\n",
+            "ISSUE_2_DUPLICATE_OF_URL=https://github.com/o/r/issues/2\n",
+            "ISSUE_3_FAILED=true\n",
+            "ISSUES_FAILED=not-a-number\n",
+            "ISSUE_999999999999999999999999_URL=https://github.com/o/r/issues/9\n",
+        ));
+        assert!(output.urls.is_empty());
+        assert_eq!(
+            output.duplicates.get(&2).map(String::as_str),
+            Some("https://github.com/o/r/issues/2")
+        );
+        assert_eq!(output.failed, BTreeSet::from([3]));
+        assert_eq!(output.issues_failed, 0);
+
+        let annotated = design_oos_annotate(
+            &["8".into(), "missing".into(), "failed".into()],
+            accepted,
+            accepted,
+            &DesignOosIssueOutput {
+                urls: BTreeMap::from([
+                    (1, "https://github.com/o/r/issues/8".into()),
+                    (2, "https://github.com/o/r/issues/2".into()),
+                    (3, "https://github.com/o/r/issues/3".into()),
+                ]),
+                failed: BTreeSet::from([3]),
+                ..DesignOosIssueOutput::default()
+            },
+        );
+        assert_eq!(annotated.map_lines.len(), 1);
+        assert!(annotated.accepted.contains("issues/8"));
+    }
+
+    #[test]
+    fn priority_mapping_falls_back_without_issue_stdout() {
+        let two_blocks = concat!(
+            "### OOS_1: docs\n- **Focus area**: documentation\n\n",
+            "### OOS_2: regression\n- **Focus area**: regression\n",
+        );
+        let duplicate_stdout = concat!(
+            "ISSUE_1_URL=https://github.com/o/r/issues/10\n",
+            "ISSUE_2_DUPLICATE_OF_URL=https://github.com/o/r/issues/10\n",
+        );
+        assert_eq!(
+            design_oos_priority_map(
+                "https://github.com/o/r/issues/10\n",
+                two_blocks,
+                None,
+                Some(duplicate_stdout),
+            ),
+            vec![("https://github.com/o/r/issues/10".into(), true)]
+        );
+
+        let mapped = concat!(
+            "OOS_FILE_MAP\t7\thttps://github.com/o/r/issues/7\n",
+            "OOS_FILE_MAP\t8\thttps://github.com/o/r/issues/8\n",
+        );
+        assert_eq!(
+            design_oos_priority_map(
+                mapped,
+                two_blocks,
+                Some(&["7".into(), "8".into()]),
+                Some("unrecognized output\n"),
+            ),
+            vec![
+                ("https://github.com/o/r/issues/7".into(), false),
+                ("https://github.com/o/r/issues/8".into(), true),
+            ]
+        );
+        let positional = concat!(
+            "OOS_FILE_MAP\t1\thttps://github.com/o/r/issues/7\n",
+            "OOS_FILE_MAP\t2\thttps://github.com/o/r/issues/8\n",
+        );
+        assert_eq!(
+            design_oos_priority_map(positional, two_blocks, None, None),
+            vec![
+                ("https://github.com/o/r/issues/7".into(), false),
+                ("https://github.com/o/r/issues/8".into(), true),
+            ]
+        );
+
+        let single = "### OOS_1: correctness\n- **Focus area**: correctness\n";
+        assert_eq!(
+            design_oos_priority_map("https://github.com/o/r/issues/1\n", single, None, None,),
+            vec![("https://github.com/o/r/issues/1".into(), true)]
+        );
+        assert!(design_oos_priority_map("", single, None, None).is_empty());
+        assert!(
+            design_oos_priority_map("https://github.com/o/r/issues/1\n", "", None, None,)
+                .is_empty()
+        );
+        assert!(
+            design_oos_priority_map("https://github.com/o/r/issues/1\n", two_blocks, None, None,)
+                .is_empty()
+        );
+        assert_eq!(
+            design_oos_priority_map(
+                concat!(
+                    "https://github.com/o/r/issues/1\n",
+                    "https://github.com/o/r/issues/2\n",
+                ),
+                two_blocks,
+                None,
+                None,
+            ),
+            vec![
+                ("https://github.com/o/r/issues/1".into(), false),
+                ("https://github.com/o/r/issues/2".into(), true),
+            ]
+        );
+    }
 }

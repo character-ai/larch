@@ -999,6 +999,51 @@ mod tests {
         }
     }
 
+    struct RecordingPriority {
+        ensure_calls: Cell<usize>,
+        apply_calls: Cell<usize>,
+        fail_ensure: bool,
+    }
+
+    impl RecordingPriority {
+        fn successful() -> Self {
+            Self {
+                ensure_calls: Cell::new(0),
+                apply_calls: Cell::new(0),
+                fail_ensure: false,
+            }
+        }
+
+        fn failing_ensure() -> Self {
+            Self {
+                ensure_calls: Cell::new(0),
+                apply_calls: Cell::new(0),
+                fail_ensure: true,
+            }
+        }
+    }
+
+    impl PriorityEffects for RecordingPriority {
+        fn ensure(&self, _repo: &str) -> Result<(), String> {
+            self.ensure_calls.set(self.ensure_calls.get() + 1);
+            if self.fail_ensure {
+                Err("ensure failed".into())
+            } else {
+                Ok(())
+            }
+        }
+
+        fn apply(
+            &self,
+            _repo: &str,
+            _url: &str,
+            _authorization: &LiveMutationRequest<'_>,
+        ) -> Result<(), String> {
+            self.apply_calls.set(self.apply_calls.get() + 1);
+            Ok(())
+        }
+    }
+
     fn args(root: &TempDir, extra: &[&str]) -> Vec<OsString> {
         let mut values = vec!["--design-tmpdir".into(), root.path().as_os_str().to_owned()];
         values.extend(extra.iter().map(OsString::from));
@@ -1015,6 +1060,10 @@ mod tests {
             "ISSUE_URL=https://github.com/acme/repo/issues/1\nISSUES_FAILED=0\n",
         )
         .expect("stdout");
+    }
+
+    fn resolved(root: &TempDir) -> TemporaryRoot {
+        TemporaryRoot::resolve(Some(root.path())).expect("temporary root")
     }
 
     #[test]
@@ -1060,5 +1109,395 @@ mod tests {
         )
         .expect("symlink");
         assert_eq!(prepare(&args(&root, &[])), 2);
+    }
+
+    #[test]
+    fn helpers_validate_arguments_paths_and_session_values() {
+        let parsed = parse_arguments(
+            &[
+                "--design-tmpdir".into(),
+                "/tmp/design".into(),
+                "--issue-number".into(),
+                " 42 ".into(),
+                "--issue-stdout-file".into(),
+                "/tmp/stdout".into(),
+                "--repo".into(),
+                "acme/repo".into(),
+                "--context-file".into(),
+                "/tmp/context".into(),
+                "--run-id".into(),
+                "run".into(),
+                "--trusted-root".into(),
+                "/tmp".into(),
+                "--operator-invoked".into(),
+                "--label-only".into(),
+            ],
+            true,
+        )
+        .expect("valid arguments");
+        assert_eq!(parsed.issue_number, " 42 ");
+        assert!(parsed.operator_invoked);
+        assert!(parsed.label_only);
+        assert_eq!(prepare(&["--unknown".into()]), 2);
+        assert_eq!(
+            annotate(&["--unknown".into()], &RecordingPriority::successful()),
+            2
+        );
+
+        let root = TempDir::new().expect("tmpdir");
+        let design = resolved(&root);
+        assert_eq!(
+            read_lossy(&design, &root.path().join("missing")).unwrap(),
+            None
+        );
+        assert!(read_lossy(&design, root.path()).is_err());
+        assert!(remove(&design, &root.path().join("missing")).is_ok());
+        fs::write(root.path().join("remove-me"), "x").expect("seed removable file");
+        remove(&design, &design.path().join("remove-me")).expect("remove file");
+        assert!(!root.path().join("remove-me").exists());
+
+        assert_eq!(issue_number(" 42 "), "42");
+        assert_eq!(issue_number("not-a-number"), "");
+        assert_eq!(kv_last("A='one'\nA=\"two\"\n", "A"), "two");
+        fs::write(root.path().join("session-env.sh"), "REPO='acme/repo'\n").expect("session");
+        assert_eq!(resolve_repo(&design), "acme/repo");
+        assert_eq!(cache_path(&design, "42", ""), design.path().join("42.md"));
+        assert_eq!(
+            cache_path(&design, "42", "combined.md"),
+            design.path().join("42.combined.md")
+        );
+        clear_cache("");
+        assert!(!restore_retry_sidecars(&design, ""));
+        sync_retry_sidecars(&design, "", true);
+        clear_pending(&design, "").expect("empty issue has no cache state");
+
+        let missing = root.path().join("not-a-directory");
+        assert_eq!(
+            prepare(&["--design-tmpdir".into(), missing.as_os_str().to_owned(),]),
+            2
+        );
+    }
+
+    #[test]
+    fn sentinel_handling_is_conservative_without_cross_session_state() {
+        let filed = "### OOS_1: filed\n- **Filed URL**: https://github.com/o/r/issues/1\n";
+
+        let root = TempDir::new().expect("tmpdir");
+        fs::write(root.path().join(ACCEPTED_FILE), filed).expect("accepted");
+        fs::write(root.path().join(SENTINEL_FILE), "filed\n").expect("sentinel");
+        assert!(sentinel_handled(&resolved(&root), "").expect("sentinel state"));
+
+        let root = TempDir::new().expect("tmpdir");
+        fs::write(root.path().join(ACCEPTED_FILE), filed).expect("accepted");
+        fs::write(
+            root.path().join("oos-issue-sentinel"),
+            "ISSUES_CREATED=1\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=0\n",
+        )
+        .expect("filing sentinel");
+        assert!(sentinel_handled(&resolved(&root), "").expect("filing state"));
+
+        let root = TempDir::new().expect("tmpdir");
+        fs::write(
+            root.path().join(ACCEPTED_FILE),
+            "### OOS_1: pending\nbody\n",
+        )
+        .expect("accepted");
+        fs::write(root.path().join(SENTINEL_FILE), "stale\n").expect("sentinel");
+        assert!(!sentinel_handled(&resolved(&root), "").expect("stale state"));
+        assert!(!root.path().join(SENTINEL_FILE).exists());
+    }
+
+    #[test]
+    fn prepare_handles_local_retry_empty_and_capped_batches() {
+        let retry = TempDir::new().expect("tmpdir");
+        fs::write(retry.path().join(PRIORITY_PENDING), "pending\n").expect("pending");
+        assert_eq!(prepare(&args(&retry, &["--repo", "acme/repo"])), 0);
+
+        let empty = TempDir::new().expect("tmpdir");
+        assert_eq!(prepare(&args(&empty, &["--clear-cross-session-cache"])), 0);
+        assert!(!empty.path().join(COMBINED_FILE).exists());
+
+        let batch = TempDir::new().expect("tmpdir");
+        let accepted = concat!(
+            "### OOS_1: first\n- **Description**: update `src/shared.rs:1-10`.\n\n",
+            "### OOS_2: second\n- **Description**: update `src/shared.rs:5-15`.\n",
+        );
+        assert_eq!(prepare_batch(&resolved(&batch), "acme/repo", accepted), 0);
+        assert_eq!(
+            fs::read_to_string(batch.path().join(ORDER_FILE)).expect("order"),
+            "1\n2\n"
+        );
+        assert!(batch.path().join(COMBINED_FILE).is_file());
+
+        assert_eq!(
+            prepare_batch(
+                &resolved(&batch),
+                "",
+                "### OOS_9: filed\n- **Filed URL**: https://github.com/o/r/issues/9\n",
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn label_application_covers_ambiguous_benign_failure_and_success_paths() {
+        let authorization = authorization_request("", "", "", true);
+
+        let benign = TempDir::new().expect("tmpdir");
+        fs::write(benign.path().join(SENTINEL_FILE), "not-a-url\n").expect("sentinel");
+        fs::write(
+            benign.path().join(COMBINED_FILE),
+            "### OOS_1: docs\n- **Focus area**: documentation\n",
+        )
+        .expect("combined");
+        fs::write(benign.path().join(PRIORITY_PENDING), "pending\n").expect("pending");
+        let benign_root = resolved(&benign);
+        let benign_sentinel = benign_root.path().join(SENTINEL_FILE);
+        let benign_combined = benign_root.path().join(COMBINED_FILE);
+        let benign_inputs = LabelInputs {
+            issue: "",
+            repo: "acme/repo",
+            authorization: &authorization,
+            sentinel: &benign_sentinel,
+            combined: &benign_combined,
+            order: None,
+            stdout: None,
+        };
+        assert_eq!(
+            apply_labels(
+                &benign_root,
+                &benign_inputs,
+                &RecordingPriority::successful()
+            ),
+            0
+        );
+        assert!(!benign.path().join(PRIORITY_PENDING).exists());
+
+        let ambiguous = TempDir::new().expect("tmpdir");
+        fs::write(
+            ambiguous.path().join(SENTINEL_FILE),
+            "https://github.com/o/r/issues/1\n",
+        )
+        .expect("sentinel");
+        fs::write(
+            ambiguous.path().join(COMBINED_FILE),
+            concat!(
+                "### OOS_1: one\n- **Focus area**: correctness\n\n",
+                "### OOS_2: two\n- **Focus area**: correctness\n",
+            ),
+        )
+        .expect("combined");
+        let ambiguous_root = resolved(&ambiguous);
+        let ambiguous_sentinel = ambiguous_root.path().join(SENTINEL_FILE);
+        let ambiguous_combined = ambiguous_root.path().join(COMBINED_FILE);
+        let ambiguous_inputs = LabelInputs {
+            issue: "",
+            repo: "acme/repo",
+            authorization: &authorization,
+            sentinel: &ambiguous_sentinel,
+            combined: &ambiguous_combined,
+            order: None,
+            stdout: None,
+        };
+        assert_eq!(
+            apply_labels(
+                &ambiguous_root,
+                &ambiguous_inputs,
+                &RecordingPriority::successful(),
+            ),
+            1
+        );
+        assert!(ambiguous.path().join(PRIORITY_PENDING).is_file());
+
+        let priority = TempDir::new().expect("tmpdir");
+        seed_priority(&priority);
+        fs::write(
+            priority.path().join(SENTINEL_FILE),
+            "OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/1\n",
+        )
+        .expect("sentinel");
+        let priority_root = resolved(&priority);
+        let priority_sentinel = priority_root.path().join(SENTINEL_FILE);
+        let priority_combined = priority_root.path().join(COMBINED_FILE);
+        let priority_order = priority_root.path().join(ORDER_FILE);
+        let priority_stdout = priority_root.path().join(ISSUE_STDOUT_FILE);
+        let priority_inputs = LabelInputs {
+            issue: "",
+            repo: "acme/repo",
+            authorization: &authorization,
+            sentinel: &priority_sentinel,
+            combined: &priority_combined,
+            order: Some(&priority_order),
+            stdout: Some(&priority_stdout),
+        };
+        let successful = RecordingPriority::successful();
+        assert_eq!(
+            apply_labels(&priority_root, &priority_inputs, &successful),
+            0
+        );
+        assert_eq!(successful.ensure_calls.get(), 1);
+        assert_eq!(successful.apply_calls.get(), 1);
+        assert_eq!(
+            apply_labels(
+                &priority_root,
+                &priority_inputs,
+                &RecordingPriority::failing_ensure(),
+            ),
+            1
+        );
+
+        let invalid = TempDir::new().expect("tmpdir");
+        fs::write(invalid.path().join(SENTINEL_FILE), "sentinel\n").expect("sentinel");
+        fs::create_dir(invalid.path().join(COMBINED_FILE)).expect("combined directory");
+        let invalid_root = resolved(&invalid);
+        let invalid_sentinel = invalid_root.path().join(SENTINEL_FILE);
+        let invalid_combined = invalid_root.path().join(COMBINED_FILE);
+        let invalid_inputs = LabelInputs {
+            issue: "",
+            repo: "acme/repo",
+            authorization: &authorization,
+            sentinel: &invalid_sentinel,
+            combined: &invalid_combined,
+            order: None,
+            stdout: None,
+        };
+        assert_eq!(
+            apply_labels(
+                &invalid_root,
+                &invalid_inputs,
+                &RecordingPriority::successful()
+            ),
+            1
+        );
+        assert!(invalid.path().join(PRIORITY_PENDING).is_file());
+    }
+
+    #[test]
+    fn annotate_handles_label_retry_and_fresh_input_failures() {
+        let missing = TempDir::new().expect("tmpdir");
+        assert_eq!(
+            annotate(
+                &args(&missing, &["--label-only"]),
+                &RecordingPriority::successful(),
+            ),
+            1
+        );
+
+        let empty_stdout_root = TempDir::new().expect("tmpdir");
+        fs::write(
+            empty_stdout_root.path().join(ACCEPTED_FILE),
+            "### OOS_1: one\nbody\n",
+        )
+        .expect("accepted");
+        fs::write(empty_stdout_root.path().join(ORDER_FILE), "1\n").expect("order");
+        fs::write(
+            empty_stdout_root.path().join(COMBINED_FILE),
+            "### OOS_1: one\nbody\n",
+        )
+        .expect("combined");
+        assert_eq!(
+            annotate(
+                &args(&empty_stdout_root, &[]),
+                &RecordingPriority::successful(),
+            ),
+            1
+        );
+
+        let missing_order = TempDir::new().expect("tmpdir");
+        fs::write(
+            missing_order.path().join(ISSUE_STDOUT_FILE),
+            "ISSUES_FAILED=0\n",
+        )
+        .expect("stdout");
+        fs::write(
+            missing_order.path().join(ACCEPTED_FILE),
+            "### OOS_1: one\nbody\n",
+        )
+        .expect("accepted");
+        assert_eq!(
+            annotate(&args(&missing_order, &[]), &RecordingPriority::successful(),),
+            2
+        );
+
+        let missing_accepted = TempDir::new().expect("tmpdir");
+        fs::write(
+            missing_accepted.path().join(ISSUE_STDOUT_FILE),
+            "ISSUES_FAILED=0\n",
+        )
+        .expect("stdout");
+        fs::write(missing_accepted.path().join(ORDER_FILE), "1\n").expect("order");
+        assert_eq!(
+            annotate(
+                &args(&missing_accepted, &[]),
+                &RecordingPriority::successful(),
+            ),
+            2
+        );
+
+        let complete = TempDir::new().expect("tmpdir");
+        seed_priority(&complete);
+        let effects = RecordingPriority::successful();
+        assert_eq!(
+            annotate(
+                &args(&complete, &["--repo", "acme/repo", "--operator-invoked"],),
+                &effects,
+            ),
+            0
+        );
+        assert_eq!(effects.apply_calls.get(), 1);
+        fs::write(
+            complete.path().join("oos-filing-prepare.env"),
+            "NEXT_ACTION=label-only\nREPO=acme/repo\n",
+        )
+        .expect("prepare env");
+        assert_eq!(
+            annotate(
+                &args(&complete, &["--operator-invoked"]),
+                &RecordingPriority::successful(),
+            ),
+            0
+        );
+
+        let no_mapping = TempDir::new().expect("tmpdir");
+        fs::write(
+            no_mapping.path().join(ACCEPTED_FILE),
+            "### OOS_1: docs\n- **Focus area**: documentation\n",
+        )
+        .expect("accepted");
+        fs::write(
+            no_mapping.path().join(COMBINED_FILE),
+            "### OOS_1: docs\n- **Focus area**: documentation\n",
+        )
+        .expect("combined");
+        fs::write(no_mapping.path().join(ORDER_FILE), "1\n").expect("order");
+        fs::write(
+            no_mapping.path().join(ISSUE_STDOUT_FILE),
+            "ISSUES_FAILED=0\n",
+        )
+        .expect("stdout");
+        assert_eq!(
+            annotate(&args(&no_mapping, &[]), &RecordingPriority::successful()),
+            0
+        );
+        assert_eq!(
+            fs::read_to_string(no_mapping.path().join(SENTINEL_FILE)).expect("sentinel"),
+            ""
+        );
+
+        let outside = TempDir::new().expect("outside");
+        fs::write(outside.path().join("stdout"), "ISSUES_FAILED=0\n").expect("outside stdout");
+        assert_eq!(
+            annotate(
+                &args(
+                    &no_mapping,
+                    &[
+                        "--issue-stdout-file",
+                        outside.path().join("stdout").to_str().expect("utf8 path"),
+                    ],
+                ),
+                &RecordingPriority::successful(),
+            ),
+            2
+        );
     }
 }
