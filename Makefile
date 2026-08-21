@@ -393,7 +393,9 @@ test-invoke-plan-validator:
 test-file-design-oos:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-core --lib design::oos
 	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-cli --bin larch design_oos_commands
+	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-cli --bin larch design_settle_commands
 	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-cli --test design_oos_migrated_parity
+	$(HARNESS_MARK) --label $@ -- cargo test --locked -p larch-cli --test design_settle_migrated_parity
 
 # Rust-owned design log-publish (#8592); archive selection filter coverage.
 test-design-log-publish:

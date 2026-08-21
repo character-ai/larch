@@ -39,6 +39,10 @@ def _load(name: str, path: Path):
 
 
 _settle = _load("larch.design._frozen_design_settle", FROZEN / "design_settle.py")
+_oos = _load(
+    "larch.design.design_oos",
+    FROZEN.parent / "design_oos_frozen.py",
+)
 _step5b = _load("larch.design._frozen_design_step5b", FROZEN / "design_step5b.py")
 
 DISPATCH = {

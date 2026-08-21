@@ -7,7 +7,7 @@ use regex::Regex;
 
 use crate::{
     BlockBoundary, OosItemKind, is_high_risk_oos_block, is_security_block_text,
-    issue::combined_oos_blocks, next_oos_number, parse_oos_blocks,
+    issue::combined_oos_blocks, next_oos_number, parse_oos_blocks, universal_newlines,
 };
 
 static FILED_URL_LINE_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -41,6 +41,9 @@ pub struct DesignOosIssueOutput {
     pub duplicates: BTreeMap<usize, String>,
     pub failed: BTreeSet<usize>,
     pub issues_failed: usize,
+    /// Whether stdout named any non-empty URL/duplicate or failed slot, even
+    /// when its index could not be represented canonically.
+    pub has_slot_evidence: bool,
 }
 
 /// The accepted document after annotation and its durable OOS-to-URL rows.
@@ -99,6 +102,7 @@ pub fn design_oos_promote_pool(accepted: &str, pool: &str) -> String {
         .map(|block| block_identity(block))
         .collect::<HashSet<_>>();
     let mut number = next_oos_number(accepted);
+    let mut has_promoted = false;
     for block in aggregate_blocks(pool) {
         if is_security_block_text(&block)
             || !VOTE_ACCEPTED_RE.is_match(&block)
@@ -111,12 +115,16 @@ pub fn design_oos_promote_pool(accepted: &str, pool: &str) -> String {
             continue;
         }
         let replacement = format!("### OOS_{number}:");
-        let promoted = ITEM_HEADING_RE.replacen(&block, 1, replacement.as_str());
+        let renumbered = ITEM_HEADING_RE.replacen(&block, 1, replacement.as_str());
         if !output.is_empty() && !output.ends_with('\n') {
             output.push('\n');
         }
-        output.push_str(promoted.trim_end_matches('\n'));
+        if has_promoted {
+            output.push('\n');
+        }
+        output.push_str(renumbered.trim_end_matches('\n'));
         output.push('\n');
+        has_promoted = true;
         number = number.saturating_add(1);
     }
     output
@@ -191,17 +199,24 @@ pub fn design_oos_recover_accepted(accepted: &str, sentinel: &str) -> Option<Str
 #[must_use]
 pub fn parse_design_oos_issue_output(text: &str) -> DesignOosIssueOutput {
     let mut output = DesignOosIssueOutput::default();
-    for line in text.lines() {
+    for line in text.split('\n') {
         if let Some(value) = line.strip_prefix("ISSUES_FAILED=") {
             output.issues_failed = value.trim().parse().unwrap_or(0);
         }
+    }
+    let normalized = universal_newlines(text);
+    for line in normalized.lines() {
         if let Some(captures) = ISSUE_URL_KV_RE.captures(line) {
-            let index = captures.get(1).map_or("1", |value| value.as_str());
-            let Ok(index) = index.parse::<usize>() else {
-                continue;
-            };
+            let raw_index = captures.get(1).map_or("1", |value| value.as_str());
             let value = captures[3].trim();
             if value.is_empty() {
+                continue;
+            }
+            output.has_slot_evidence = true;
+            let Ok(index) = raw_index.parse::<usize>() else {
+                continue;
+            };
+            if index.to_string() != raw_index {
                 continue;
             }
             if &captures[2] == "URL" {
@@ -209,10 +224,14 @@ pub fn parse_design_oos_issue_output(text: &str) -> DesignOosIssueOutput {
             } else {
                 output.duplicates.insert(index, value.to_owned());
             }
-        } else if let Some(captures) = ISSUE_FAILED_KV_RE.captures(line)
-            && let Ok(index) = captures[1].parse()
-        {
-            output.failed.insert(index);
+        } else if let Some(captures) = ISSUE_FAILED_KV_RE.captures(line) {
+            output.has_slot_evidence = true;
+            let raw_index = &captures[1];
+            if let Ok(index) = raw_index.parse::<usize>()
+                && index.to_string() == raw_index
+            {
+                output.failed.insert(index);
+            }
         }
     }
     output
@@ -281,7 +300,10 @@ fn push_mapping(rows: &mut Vec<(String, bool)>, url: &str, priority: bool) {
 fn sentinel_maps(text: &str) -> Vec<(String, String)> {
     text.lines()
         .filter_map(|line| line.strip_prefix("OOS_FILE_MAP\t"))
-        .filter_map(|rest| rest.split_once('\t'))
+        .filter_map(|rest| {
+            let mut fields = rest.split('\t');
+            Some((fields.next()?, fields.next()?))
+        })
         .map(|(number, url)| (number.trim().to_owned(), url.trim().to_owned()))
         .filter(|(number, url)| !number.is_empty() && !url.is_empty())
         .collect()
@@ -292,8 +314,8 @@ fn sentinel_urls(text: &str) -> Vec<String> {
     for line in text.lines() {
         let url = line
             .strip_prefix("OOS_FILE_MAP\t")
-            .and_then(|rest| rest.split_once('\t'))
-            .map_or_else(|| line.trim(), |(_number, url)| url.trim());
+            .and_then(|rest| rest.split('\t').nth(1))
+            .map_or_else(|| line.trim(), str::trim);
         if ISSUE_URL_RE.is_match(url) && !urls.iter().any(|seen| seen == url) {
             urls.push(url.to_owned());
         }
@@ -362,7 +384,7 @@ pub fn design_oos_priority_map(
                 push_mapping(&mut rows, url, verdict(index));
             }
         }
-        if !rows.is_empty() {
+        if parsed.has_slot_evidence {
             return rows;
         }
     }
@@ -376,10 +398,20 @@ pub fn design_oos_priority_map(
             }
         }
     } else {
+        let mut slots = Vec::<(usize, String)>::new();
         for (number, url) in &maps {
             if let Ok(index) = number.parse() {
-                push_mapping(&mut rows, url, verdict(index));
+                if let Some((_index, existing)) =
+                    slots.iter_mut().find(|(existing, _url)| *existing == index)
+                {
+                    url.clone_into(existing);
+                } else {
+                    slots.push((index, url.clone()));
+                }
             }
+        }
+        for (index, url) in slots {
+            push_mapping(&mut rows, &url, verdict(index));
         }
     }
     if !rows.is_empty() {
@@ -464,6 +496,9 @@ mod tests {
             ]
         );
         assert!(design_oos_has_filed_urls(sentinel));
+        assert!(design_oos_has_filed_urls(
+            "OOS_FILE_MAP\t1\thttps://github.com/o/r/issues/1\textra\n"
+        ));
         assert!(!design_oos_has_filed_urls("OOS_FILE_MAP\t1\tnot-a-url\n"));
     }
 
@@ -473,7 +508,19 @@ mod tests {
             "### FINDING_1: one\n- **Concern**: first\nVote tally: Result=accepted Fileable=true\n\n",
             "### FINDING_2: two\n- **Description**: second\nVote tally: Result=accepted Fileable=true\n",
         );
-        let prepared = design_oos_unfiled(&design_oos_promote_pool("", pool));
+        let promoted = design_oos_promote_pool("", pool);
+        assert_eq!(
+            promoted,
+            concat!(
+                "### OOS_1: one\n",
+                "- **Concern**: first\n",
+                "Vote tally: Result=accepted Fileable=true\n\n",
+                "### OOS_2: two\n",
+                "- **Description**: second\n",
+                "Vote tally: Result=accepted Fileable=true\n",
+            )
+        );
+        let prepared = design_oos_unfiled(&promoted);
         let capped = crate::apply_issue_cap(&prepared, 1)
             .expect("valid OOS batch")
             .expect("two items roll up at cap one");
@@ -542,7 +589,9 @@ mod tests {
 
         let output = parse_design_oos_issue_output(concat!(
             "ISSUE_URL=\n",
+            "ISSUE_02_URL=https://github.com/o/r/issues/20\n",
             "ISSUE_2_DUPLICATE_OF_URL=https://github.com/o/r/issues/2\n",
+            "ISSUE_03_FAILED=true\n",
             "ISSUE_3_FAILED=true\n",
             "ISSUES_FAILED=not-a-number\n",
             "ISSUE_999999999999999999999999_URL=https://github.com/o/r/issues/9\n",
@@ -554,6 +603,18 @@ mod tests {
         );
         assert_eq!(output.failed, BTreeSet::from([3]));
         assert_eq!(output.issues_failed, 0);
+        assert!(output.has_slot_evidence);
+        let bare_cr = parse_design_oos_issue_output(concat!(
+            "ISSUE_1_URL=https://github.com/o/r/issues/1\r",
+            "ISSUE_2_FAILED=true\r",
+            "ISSUES_FAILED=1",
+        ));
+        assert_eq!(
+            bare_cr.urls.get(&1).map(String::as_str),
+            Some("https://github.com/o/r/issues/1")
+        );
+        assert_eq!(bare_cr.failed, BTreeSet::from([2]));
+        assert_eq!(bare_cr.issues_failed, 0);
 
         let annotated = design_oos_annotate(
             &["8".into(), "missing".into(), "failed".into()],
@@ -609,12 +670,46 @@ mod tests {
                 ("https://github.com/o/r/issues/8".into(), true),
             ]
         );
+        assert!(
+            design_oos_priority_map(
+                mapped,
+                two_blocks,
+                Some(&["7".into(), "8".into()]),
+                Some("ISSUE_1_FAILED=true\n"),
+            )
+            .is_empty()
+        );
+        assert!(
+            design_oos_priority_map(
+                mapped,
+                two_blocks,
+                Some(&["7".into(), "8".into()]),
+                Some("ISSUE_02_URL=https://github.com/o/r/issues/8\n"),
+            )
+            .is_empty()
+        );
         let positional = concat!(
             "OOS_FILE_MAP\t1\thttps://github.com/o/r/issues/7\n",
             "OOS_FILE_MAP\t2\thttps://github.com/o/r/issues/8\n",
         );
         assert_eq!(
             design_oos_priority_map(positional, two_blocks, None, None),
+            vec![
+                ("https://github.com/o/r/issues/7".into(), false),
+                ("https://github.com/o/r/issues/8".into(), true),
+            ]
+        );
+        assert_eq!(
+            design_oos_priority_map(
+                concat!(
+                    "OOS_FILE_MAP\t01\thttps://github.com/o/r/issues/70\n",
+                    "OOS_FILE_MAP\t1\thttps://github.com/o/r/issues/7\textra\n",
+                    "OOS_FILE_MAP\t2\thttps://github.com/o/r/issues/8\n",
+                ),
+                two_blocks,
+                None,
+                None,
+            ),
             vec![
                 ("https://github.com/o/r/issues/7".into(), false),
                 ("https://github.com/o/r/issues/8".into(), true),

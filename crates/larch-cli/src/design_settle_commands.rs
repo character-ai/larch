@@ -23,7 +23,7 @@ use crate::{
     design_step0_commands::{
         ChildOutcome, Env, LiveStep0Runner, Step0Runner, WrapperNs, atomic_write_string, env_get,
         load_source_env_allowed, load_wrapper_env, pause_save_arguments, require_plugin_root,
-        utf8_arguments, write_text,
+        resolve_owned_run_id, utf8_arguments, write_text,
     },
     design_step1_commands::{append_failure_args, consumer_repo_root},
     voter_calibration_commands::resolve_like_python,
@@ -811,7 +811,7 @@ fn step5b_issue_args(env: &Env) -> Vec<String> {
     args
 }
 
-fn step5b_mutation_args(env: &Env, design_tmpdir: &Path) -> Vec<String> {
+fn step5b_mutation_args(run_id: &str, design_tmpdir: &Path) -> Vec<String> {
     vec![
         "--context-file".to_owned(),
         design_tmpdir
@@ -819,7 +819,7 @@ fn step5b_mutation_args(env: &Env, design_tmpdir: &Path) -> Vec<String> {
             .to_string_lossy()
             .into_owned(),
         "--run-id".to_owned(),
-        env_get(env, "LARCH_RUN_ID", "").to_owned(),
+        run_id.to_owned(),
         "--trusted-root".to_owned(),
         design_tmpdir.to_string_lossy().into_owned(),
     ]
@@ -840,6 +840,7 @@ fn step5b_annotate_args(
     env: &Env,
     design_tmpdir: &Path,
     oos_issue_stdout: &Path,
+    run_id: &str,
     label_only: bool,
 ) -> Vec<String> {
     let mut args = vec![
@@ -851,7 +852,7 @@ fn step5b_annotate_args(
         oos_issue_stdout.to_string_lossy().into_owned(),
     ];
     args.extend(step5b_issue_args(env));
-    args.extend(step5b_mutation_args(env, design_tmpdir));
+    args.extend(step5b_mutation_args(run_id, design_tmpdir));
     if label_only {
         args.push("--label-only".to_owned());
     }
@@ -1202,10 +1203,11 @@ pub fn step5b_annotate(arguments: &[OsString]) -> ExitCode {
     let prepare_status = last_kv(&prepare_rows, "FILE_DESIGN_OOS_STATUS");
     let prepare_next_action = last_kv(&prepare_rows, "NEXT_ACTION");
     let label_only = prepare_status == "label-only-retry" || prepare_next_action == "label-only";
+    let run_id = resolve_owned_run_id(&design_tmpdir).unwrap_or_default();
     let child = run_larch(
         &runner,
         &plugin_root,
-        step5b_annotate_args(&env, &design_tmpdir, &oos_issue_stdout, label_only),
+        step5b_annotate_args(&env, &design_tmpdir, &oos_issue_stdout, &run_id, label_only),
         &[],
     );
     write_text(&stderr_path, &child.stderr);
@@ -1463,7 +1465,6 @@ mod tests {
         let mut env = Env::new();
         env.insert("ISSUE_NUMBER".to_owned(), "8590".to_owned());
         env.insert("REPO".to_owned(), "character-ai/larch".to_owned());
-        env.insert("LARCH_RUN_ID".to_owned(), "design-run-8590".to_owned());
 
         assert_eq!(
             step5b_prepare_args(&env, &design),
@@ -1479,7 +1480,13 @@ mod tests {
             ]
         );
         assert_eq!(
-            step5b_annotate_args(&env, &design, &design.join("oos-issue.stdout.txt"), true),
+            step5b_annotate_args(
+                &env,
+                &design,
+                &design.join("oos-issue.stdout.txt"),
+                "design-run-8590",
+                true,
+            ),
             [
                 "design",
                 "file-oos-annotate",

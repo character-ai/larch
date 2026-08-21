@@ -13,12 +13,12 @@ use larch_adapters::{
     github::LiveMutationRequest, remove_optional_file,
 };
 use larch_core::{
-    BlockBoundary, FILE_CONFLICT_DEFAULT_CLUSTER_CAP, FILE_CONFLICT_DEFAULT_GLOBAL_CAP,
-    OosItemKind, apply_issue_cap, count_non_security_blocks, design_oos_annotate,
-    design_oos_has_filed_urls, design_oos_has_priority, design_oos_identity_signature,
-    design_oos_priority_map, design_oos_promote_pool, design_oos_recover_accepted,
-    design_oos_unfiled, parse_design_oos_issue_output, parse_issue_input, parse_oos_blocks,
-    plan_file_conflict_deps, render_deps_tsv,
+    BlockBoundary, CrStrip, DuplicatePolicy, FILE_CONFLICT_DEFAULT_CLUSTER_CAP,
+    FILE_CONFLICT_DEFAULT_GLOBAL_CAP, OosItemKind, apply_issue_cap, count_non_security_blocks,
+    design_oos_annotate, design_oos_has_filed_urls, design_oos_has_priority,
+    design_oos_identity_signature, design_oos_priority_map, design_oos_promote_pool,
+    design_oos_recover_accepted, design_oos_unfiled, parse_design_oos_issue_output,
+    parse_issue_input, parse_oos_blocks, plan_file_conflict_deps, render_deps_tsv, select_kv_bytes,
 };
 
 use crate::{
@@ -134,7 +134,7 @@ fn parse_arguments(arguments: &[OsString], annotate: bool) -> Result<Arguments, 
             .value(name)
             .map_or_else(String::new, |item| item.to_string_lossy().into_owned())
     };
-    Ok(Arguments {
+    let parsed = Arguments {
         design_tmpdir: value("--design-tmpdir"),
         issue_number: value("--issue-number"),
         issue_stdout_file: value("--issue-stdout-file"),
@@ -145,7 +145,26 @@ fn parse_arguments(arguments: &[OsString], annotate: bool) -> Result<Arguments, 
         operator_invoked: parsed.flag("--operator-invoked"),
         label_only: parsed.flag("--label-only"),
         clear_cache: parsed.flag("--clear-cross-session-cache"),
-    })
+    };
+    if [
+        &parsed.design_tmpdir,
+        &parsed.issue_number,
+        &parsed.issue_stdout_file,
+        &parsed.repo,
+        &parsed.context_file,
+        &parsed.run_id,
+        &parsed.trusted_root,
+    ]
+    .into_iter()
+    .any(|value| value.contains(['\n', '\r']))
+    {
+        usage_error(
+            annotate,
+            "argument values must not contain a newline or carriage return",
+        );
+        return Err(());
+    }
+    Ok(parsed)
 }
 
 fn usage_error(annotate: bool, detail: &str) {
@@ -170,6 +189,10 @@ fn design_root(parsed: &mut Arguments, annotate: bool) -> Result<TemporaryRoot, 
         eprintln!("{program}: DESIGN_TMPDIR unset");
         return Err(2);
     }
+    if parsed.design_tmpdir.contains(['\n', '\r']) {
+        eprintln!("{program}: DESIGN_TMPDIR contains a newline or carriage return");
+        return Err(2);
+    }
     let path = PathBuf::from(&parsed.design_tmpdir);
     let absolute = if path.is_absolute() {
         path
@@ -180,7 +203,12 @@ fn design_root(parsed: &mut Arguments, annotate: bool) -> Result<TemporaryRoot, 
         eprintln!("{program}: DESIGN_TMPDIR not a directory");
         return Err(2);
     };
-    parsed.design_tmpdir = root.path().to_string_lossy().into_owned();
+    let rendered = root.path().to_string_lossy().into_owned();
+    if rendered.contains(['\n', '\r']) {
+        eprintln!("{program}: resolved DESIGN_TMPDIR contains a line break");
+        return Err(2);
+    }
+    parsed.design_tmpdir = rendered;
     Ok(root)
 }
 
@@ -212,6 +240,30 @@ fn command_read(root: &TemporaryRoot, path: &Path, program: &str) -> Result<Stri
 
 fn write_text(root: &TemporaryRoot, path: &Path, text: &str) -> Result<(), String> {
     atomic_write_utf8_in(root, path, text, true, 0o644).map_err(|error| error.to_string())
+}
+
+fn command_write(root: &TemporaryRoot, path: &Path, text: &str, program: &str) -> Result<(), u8> {
+    write_text(root, path, text).map_err(|error| {
+        eprintln!("{program}: could not write {}: {error}", path.display());
+        2
+    })
+}
+
+fn persist_annotation(
+    root: &TemporaryRoot,
+    accepted_path: &Path,
+    accepted: &str,
+    sentinel_path: &Path,
+    map_lines: &[String],
+) -> Result<String, u8> {
+    command_write(root, accepted_path, accepted, "design file-oos-annotate")?;
+    let sentinel = if map_lines.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", map_lines.join("\n"))
+    };
+    command_write(root, sentinel_path, &sentinel, "design file-oos-annotate")?;
+    Ok(sentinel)
 }
 
 fn remove(root: &TemporaryRoot, path: &Path) -> Result<(), String> {
@@ -263,24 +315,27 @@ fn file_nonempty(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
 }
 
-fn kv_last(text: &str, key: &str) -> String {
-    text.lines()
-        .filter_map(|line| {
-            line.strip_prefix(key)
-                .and_then(|rest| rest.strip_prefix('='))
-        })
-        .next_back()
-        .unwrap_or_default()
-        .trim()
-        .trim_matches(['\'', '"'])
-        .to_owned()
+fn kv_value(text: &str, key: &str, duplicates: DuplicatePolicy) -> String {
+    String::from_utf8_lossy(&select_kv_bytes(
+        text.as_bytes(),
+        key.as_bytes(),
+        b"",
+        duplicates,
+        CrStrip::Both,
+    ))
+    .into_owned()
 }
 
 fn read_key(root: &TemporaryRoot, path: &Path, key: &str) -> String {
     read_lossy(root, path)
         .ok()
         .flatten()
-        .map_or_else(String::new, |text| kv_last(&text, key))
+        .map_or_else(String::new, |text| {
+            kv_value(&text, key, DuplicatePolicy::First)
+                .trim()
+                .trim_matches(['\'', '"'])
+                .to_owned()
+        })
 }
 
 fn append_warning(root: &TemporaryRoot, site: &str, tool: &str, detail: &str) {
@@ -288,14 +343,18 @@ fn append_warning(root: &TemporaryRoot, site: &str, tool: &str, detail: &str) {
         "- **Step {site}: {tool} failed (exit 1)**:\n  ```\n{}\n  ```\n",
         detail.trim_end()
     );
-    let _result = append_execution_issue_filtered(
+    if append_execution_issue_filtered(
         &root.path().join("execution-issues.md"),
         "Warnings",
         &entry,
         None,
         true,
         true,
-    );
+    )
+    .is_err()
+    {
+        eprintln!("design file-oos: execution-issues append failed at {site}");
+    }
 }
 
 fn copy_between(
@@ -379,7 +438,16 @@ fn restore_retry_sidecars(design: &TemporaryRoot, issue: &str) -> bool {
 }
 
 fn sync_retry_sidecars(design: &TemporaryRoot, issue: &str, pending: bool) {
+    if issue.is_empty() {
+        return;
+    }
     let Some(cache) = cache_directory(issue, true) else {
+        append_warning(
+            design,
+            "design file-design-oos label-retry cache",
+            "scripts/larch.sh design file-oos-annotate",
+            "label retry cache unavailable",
+        );
         return;
     };
     let result = (|| {
@@ -424,7 +492,12 @@ fn load_filing_status(design: &TemporaryRoot) -> (usize, usize, usize) {
         .ok()
         .flatten()
         .unwrap_or_default();
-    let number = |key: &str| kv_last(&text, key).parse().unwrap_or(0);
+    let number = |key: &str| {
+        kv_value(&text, key, DuplicatePolicy::Last)
+            .trim()
+            .parse()
+            .unwrap_or(0)
+    };
     (
         number("ISSUES_CREATED"),
         number("ISSUES_FAILED"),
@@ -537,7 +610,15 @@ fn prepare(arguments: &[OsString]) -> u8 {
         return 2;
     };
     let promoted = design_oos_promote_pool(&accepted, &pool);
-    if promoted != accepted && write_text(&design, &accepted_path, &promoted).is_err() {
+    if promoted != accepted
+        && command_write(
+            &design,
+            &accepted_path,
+            &promoted,
+            "design file-oos-prepare",
+        )
+        .is_err()
+    {
         return 2;
     }
     match sentinel_handled(&design, &issue) {
@@ -575,7 +656,11 @@ fn prepare_batch(design: &TemporaryRoot, repo: &str, accepted: &str) -> u8 {
     let deps_path = design.path().join(DEPS_FILE);
     let order_path = design.path().join(ORDER_FILE);
     for path in [&combined_path, &deps_path, &order_path] {
-        if remove(design, path).is_err() {
+        if let Err(error) = remove(design, path) {
+            eprintln!(
+                "design file-oos-prepare: could not remove {}: {error}",
+                path.display()
+            );
             return 2;
         }
     }
@@ -597,7 +682,14 @@ fn prepare_batch(design: &TemporaryRoot, repo: &str, accepted: &str) -> u8 {
         println!("FILE_DESIGN_OOS_STATUS=skip-all-security");
         return 0;
     }
-    if write_text(design, &order_path, &format!("{}\n", headers.join("\n"))).is_err() {
+    if command_write(
+        design,
+        &order_path,
+        &format!("{}\n", headers.join("\n")),
+        "design file-oos-prepare",
+    )
+    .is_err()
+    {
         return 2;
     }
     let cap = match issue_cap_value() {
@@ -617,7 +709,7 @@ fn prepare_batch(design: &TemporaryRoot, repo: &str, accepted: &str) -> u8 {
             return 2;
         }
     };
-    if write_text(design, &combined_path, &capped).is_err() {
+    if command_write(design, &combined_path, &capped, "design file-oos-prepare").is_err() {
         return 2;
     }
     let deps = conflict_caps().and_then(|(cluster, global)| {
@@ -627,9 +719,6 @@ fn prepare_batch(design: &TemporaryRoot, repo: &str, accepted: &str) -> u8 {
     let mut deps_rc = 0;
     let deps_available = match deps {
         Ok(plan) => {
-            for warning in plan.warnings {
-                eprintln!("{warning}");
-            }
             let rendered = render_deps_tsv(&plan.deps);
             if rendered.is_empty() {
                 false
@@ -919,17 +1008,15 @@ fn annotate_fresh(
     };
     let issue_output = parse_design_oos_issue_output(&stdout);
     let annotation = design_oos_annotate(&order, &accepted, &combined, &issue_output);
-    if write_text(design, &accepted_path, &annotation.accepted).is_err() {
+    let Ok(sentinel) = persist_annotation(
+        design,
+        &accepted_path,
+        &annotation.accepted,
+        inputs.sentinel,
+        &annotation.map_lines,
+    ) else {
         return 2;
-    }
-    let sentinel = if annotation.map_lines.is_empty() {
-        String::new()
-    } else {
-        format!("{}\n", annotation.map_lines.join("\n"))
     };
-    if write_text(design, inputs.sentinel, &sentinel).is_err() {
-        return 2;
-    }
     if apply_labels(design, inputs, effects) != 0 {
         println!("FILE_DESIGN_OOS_STATUS=annotate-label-failed");
         return 1;
@@ -951,20 +1038,29 @@ fn annotate_fresh(
         eprintln!("design file-oos-annotate: {error}");
         return 2;
     }
-    if let Some(cache) = cache_directory(inputs.issue, true)
-        && let Err(error) = copy_between(
-            design,
-            inputs.sentinel,
-            &cache,
-            &cache_path(&cache, inputs.issue, ""),
-        )
-    {
-        append_warning(
-            design,
-            "design file-design-oos cache",
-            "scripts/larch.sh design file-oos-annotate",
-            &format!("cross-session cache sync failed: {error}"),
-        );
+    if !inputs.issue.is_empty() {
+        if let Some(cache) = cache_directory(inputs.issue, true) {
+            if let Err(error) = copy_between(
+                design,
+                inputs.sentinel,
+                &cache,
+                &cache_path(&cache, inputs.issue, ""),
+            ) {
+                append_warning(
+                    design,
+                    "design file-design-oos cache",
+                    "scripts/larch.sh design file-oos-annotate",
+                    &format!("cross-session cache sync failed: {error}"),
+                );
+            }
+        } else {
+            append_warning(
+                design,
+                "design file-design-oos cache",
+                "scripts/larch.sh design file-oos-annotate",
+                "cross-session cache unavailable",
+            );
+        }
     }
     println!("FILE_DESIGN_OOS_STATUS=annotate-complete");
     0
@@ -974,7 +1070,7 @@ fn annotate_fresh(
 mod tests {
     use std::{cell::Cell, fs};
 
-    use tempfile::TempDir;
+    use tempfile::{Builder, TempDir};
 
     use super::*;
 
@@ -1079,6 +1175,36 @@ mod tests {
         assert!(root.path().join(PRIORITY_PENDING).is_file());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn priority_mutation_accepts_the_matching_design_session() {
+        let root = Builder::new()
+            .prefix("claude-design-oos-")
+            .tempdir_in("/tmp")
+            .expect("design session");
+        seed_priority(&root);
+        let run_id = "design-run-8590";
+        let context = root.path().join("source-env.sh");
+        fs::write(
+            &context,
+            format!("LARCH_LIVE_MUTATION_OK=true\nLARCH_RUN_ID={run_id}\n"),
+        )
+        .expect("mutation context");
+        let mut arguments = args(&root, &["--repo", "acme/repo"]);
+        arguments.extend([
+            "--context-file".into(),
+            context.as_os_str().to_owned(),
+            "--run-id".into(),
+            run_id.into(),
+            "--trusted-root".into(),
+            root.path().as_os_str().to_owned(),
+        ]);
+        let effects = RecordingPriority::successful();
+        assert_eq!(annotate(&arguments, &effects), 0);
+        assert_eq!(effects.ensure_calls.get(), 1);
+        assert_eq!(effects.apply_calls.get(), 1);
+    }
+
     #[test]
     fn a_priority_failure_keeps_durable_retry_state() {
         let root = TempDir::new().expect("tmpdir");
@@ -1158,9 +1284,29 @@ mod tests {
 
         assert_eq!(issue_number(" 42 "), "42");
         assert_eq!(issue_number("not-a-number"), "");
-        assert_eq!(kv_last("A='one'\nA=\"two\"\n", "A"), "two");
-        fs::write(root.path().join("session-env.sh"), "REPO='acme/repo'\n").expect("session");
+        assert_eq!(
+            kv_value("A='one'\nA=\"two\"\n", "A", DuplicatePolicy::First),
+            "'one'"
+        );
+        assert_eq!(
+            kv_value("A='one'\nA=\"two\"\n", "A", DuplicatePolicy::Last),
+            "\"two\""
+        );
+        fs::write(
+            root.path().join("session-env.sh"),
+            "REPO='acme/repo'\nREPO='ignored/repo'\n",
+        )
+        .expect("session");
         assert_eq!(resolve_repo(&design), "acme/repo");
+        fs::write(
+            root.path().join("oos-issue-sentinel"),
+            "ISSUES_CREATED='9'\nISSUES_CREATED=2\nISSUES_FAILED=0\n",
+        )
+        .expect("filing status");
+        assert_eq!(load_filing_status(&design), (2, 0, 0));
+        assert!(
+            parse_arguments(&["--repo".into(), "acme/repo\nFORGED=true".into()], false).is_err()
+        );
         assert_eq!(cache_path(&design, "42", ""), design.path().join("42.md"));
         assert_eq!(
             cache_path(&design, "42", "combined.md"),

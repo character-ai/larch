@@ -668,7 +668,7 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 ### Design OOS preparation and annotation cutover
 
 - `design file-oos-prepare` and `design file-oos-annotate` flipped owner to `crates/larch-cli/src/design_oos_commands.rs` in one PR (#8590). Pure aggregate-pool promotion, cache identity, `/issue` stdout parsing, accepted-file annotation, and priority-slot mapping live in `larch_core::design`.
-- The surviving Step 5b Python wrapper invokes both commands through `scripts/larch.sh`. The Rust owner applies the issue cap and conflict planner in process. Priority-label provisioning and verified label mutation reuse the typed GitHub service and `IssueMutationOwner` required by the canonical #7672 result.
+- The Rust-owned Step 5b wrapper in `design_settle_commands.rs` invokes both commands through the verified `scripts/larch.sh` seam. The OOS owner applies the issue cap and conflict planner in process. Priority-label provisioning and verified label mutation reuse the typed GitHub service and `IssueMutationOwner` required by the canonical #7672 result.
 - `python/larch/design/design_oos.py`, its CLI registrations, and its direct Python tests are removed. The final Python implementation is frozen only under `fixtures/rust-parity/`; `crates/larch-cli/tests/design_oos_migrated_parity.rs` proves exit, stream, and filesystem parity against reviewed goldens.
 
 ### C1a5 waterfall dispatcher

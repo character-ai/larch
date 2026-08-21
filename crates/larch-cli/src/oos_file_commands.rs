@@ -35,10 +35,10 @@ use larch_core::{
     GitHubService as _, IssueMutationRequest, ManifestDocument, OOS_CORRECTNESS_LABEL,
     OOS_CORRECTNESS_LABEL_COLOR, OOS_CORRECTNESS_LABEL_DESCRIPTION, ParsedItem,
     combined_block_count, dedupe_filed, ensure_ascii_json, is_capped_rollup_body,
-    issue_number_from_url, ndjson_filed_evidence, parse_intra_batch_deps, parse_issue_input,
-    priority_by_combined_item, priority_urls, read_universal_newlines, render_blocks,
-    render_oos_ndjson, render_recovery_evidence, render_sentinel, sanitize_public_text,
-    sentinel_urls, split_persisted_matches, split_to_github_limit, stable_ids_by_combined_item,
+    ndjson_filed_evidence, parse_intra_batch_deps, parse_issue_input, priority_by_combined_item,
+    priority_urls, read_universal_newlines, render_blocks, render_oos_ndjson,
+    render_recovery_evidence, render_sentinel, sanitize_public_text, sentinel_urls,
+    split_persisted_matches, split_to_github_limit, stable_ids_by_combined_item,
     summarize_to_github_limit, topological_create_order, unsigned_integer,
     validate_issue_cap_input, working_batch, wrap_oos_body,
 };
@@ -187,6 +187,23 @@ pub fn ensure_priority_label(repo: &str) -> Result<(), String> {
     }
 }
 
+/// Parse an exact issue URL only when it names the selected repository.
+fn priority_issue_number(repository: &GitHubRepositoryRef, url: &str) -> Option<u64> {
+    let mut segments = url.strip_prefix("https://github.com/")?.split('/');
+    let owner = segments.next()?;
+    let name = segments.next()?;
+    let kind = segments.next()?;
+    let number = segments.next()?;
+    if segments.next().is_some()
+        || !owner.eq_ignore_ascii_case(repository.owner())
+        || !name.eq_ignore_ascii_case(repository.name())
+        || kind != "issues"
+    {
+        return None;
+    }
+    unsigned_integer(number)
+}
+
 /// Add the shared high-risk label and verify the issue mutation by read-back.
 pub fn apply_priority_label(
     repo: &str,
@@ -194,8 +211,8 @@ pub fn apply_priority_label(
     authorization: &LiveMutationRequest<'_>,
 ) -> Result<(), String> {
     let repository = LiveFiling::repository(repo)?;
-    let number = unsigned_integer(&issue_number_from_url(url))
-        .ok_or_else(|| format!("could not parse issue number from {url}"))?;
+    let number = priority_issue_number(&repository, url)
+        .ok_or_else(|| format!("issue URL does not belong to {repo}: {url}"))?;
     match with_github_service(async |service, cancellation| {
         let owner = IssueMutationOwner::new(service);
         let snapshot = match owner.read_snapshot(&repository, number, cancellation).await {
@@ -1560,9 +1577,10 @@ fn backfill_priority_labels(
 mod tests {
     use super::{
         BatchInputs, BatchResult, CreateRequest, CreatedRow, FailureMode, FileRequest,
-        FilingGateway, Payload, Recovered, Session, drive, report_batch_failure, run_issue_batch,
+        FilingGateway, Payload, Recovered, Session, drive, priority_issue_number,
+        report_batch_failure, run_issue_batch,
     };
-    use larch_core::{AcceptedBlock, FiledIssue};
+    use larch_core::{AcceptedBlock, FiledIssue, GitHubRepositoryRef};
     use std::{
         cell::RefCell,
         collections::{BTreeMap, HashSet},
@@ -1580,6 +1598,26 @@ mod tests {
         LabelProvision,
         LabelApply,
         Probe,
+    }
+
+    #[test]
+    fn priority_issue_url_is_bound_to_the_selected_repository() {
+        let repository = GitHubRepositoryRef::new("character-ai", "larch").expect("repository");
+        assert_eq!(
+            priority_issue_number(
+                &repository,
+                "https://github.com/Character-AI/LARCH/issues/8590"
+            ),
+            Some(8590)
+        );
+        for url in [
+            "https://github.com/other/larch/issues/8590",
+            "https://github.com/character-ai/other/issues/8590",
+            "https://github.com/character-ai/larch/pull/8590",
+            "https://github.com/character-ai/larch/issues/8590?wrong=1",
+        ] {
+            assert_eq!(priority_issue_number(&repository, url), None, "{url}");
+        }
     }
 
     /// One scripted gateway, recording what the driver asked it to do.
