@@ -9,8 +9,9 @@
 //! The port follows the byte-frozen parity precedent of the sibling
 //! `design_step1_commands.rs` (#8579) and reuses the Step 0 wrapper library
 //! (`design_step0_commands.rs`) plus the `python_verb` seam for the still-Python
-//! `design render-final-summary` (#8581) and `design log-publish` (#8592)
-//! neighbors. The Rust `stall-recovery` owners are reached in-process the same
+//! `design log-publish` (#8592) neighbor. The Rust-owned `design
+//! render-final-summary` (#8581) is reached through the verified bootstrap. The
+//! Rust `stall-recovery` owners are reached in-process the same
 //! way the frozen Python module reached them: by re-invoking the larch
 //! entrypoint through the [`Step0Runner`] subprocess seam.
 
@@ -2535,7 +2536,10 @@ fn render_final_summary_post_publish(design_tmpdir: &Path, ctx: &SummaryCtx) -> 
         args.push(ctx.repo.clone().into());
     }
     let render_stdout = design_tmpdir.join("render-final-summary.stdout.log");
-    match run_python_verb(args, PYTHON_BRIDGE_TIMEOUT) {
+    // #8581 flipped `design render-final-summary` to a Rust owner, so this
+    // neighbor now reaches it through the verified bootstrap (never the removed
+    // Python registration behind `run_python_verb`).
+    match crate::runtime_entrypoint::run_verified_larch(&args) {
         Ok(output) => {
             let _ = fs::write(&render_stdout, output.stdout());
             output.status().code().unwrap_or(1)

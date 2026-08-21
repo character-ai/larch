@@ -91,9 +91,10 @@ pub use architectural_assessment::{
     validate_materialization, write_deterministic_clean_note,
 };
 pub use architectural_guidelines::{
-    ArchitecturalKind, ArchitecturalKnowledge, ArchitecturalStatus, GUIDELINE_HEADING_RE,
-    GUIDELINES_FILENAME, INVARIANT_HEADING_RE, INVARIANTS_FILENAME, entry_text, knowledge_block,
-    parse_entries, read_architectural_knowledge,
+    ArchitecturalKind, ArchitecturalKnowledge, ArchitecturalStatus, DESIGN_ASSESSMENT,
+    GUIDELINE_HEADING_RE, GUIDELINES_FILENAME, GuidelineException, INVARIANT_HEADING_RE,
+    INVARIANTS_FILENAME, entry_text, guideline_active_exception, knowledge_block, parse_entries,
+    read_architectural_knowledge,
 };
 pub use attestation::{
     ArtifactAttestationRequest, AttestationInputError, AttestationInputErrorKind,

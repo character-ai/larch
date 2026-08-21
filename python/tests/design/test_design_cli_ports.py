@@ -10,8 +10,6 @@ EXPECTED = {
     for verb, module, func in (
         ("step2b5", "larch.design.design_step5c", "step2b5_main"),
         ("compose-plan-md", "larch.design.design_step5c", "compose_plan_md_main"),
-        ("render-gate", "larch.design.design_gate_render", "render_gate_main"),
-        ("render-final-summary", "larch.design.design_summary", "render_final_summary_main"),
         ("file-oos-prepare", "larch.design.design_oos", "file_oos_prepare_main"),
         ("file-oos-annotate", "larch.design.design_oos", "file_oos_annotate_main"),
     )

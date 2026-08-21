@@ -64,6 +64,7 @@ mod design_pause_commands;
 mod design_publish_commands;
 mod design_settle_commands;
 mod design_step0_commands;
+mod design_gate_summary_commands;
 mod design_step1_commands;
 mod design_step2b_commands;
 mod design_terminal_commands;
@@ -1442,6 +1443,12 @@ enum DesignCommand {
     /// Publish one cross-session `/design` pause snapshot (#8589).
     #[command(name = "pause-save", disable_help_flag = true)]
     PauseSave(RawCompatibilityArguments),
+    /// Render the /design Gate A/B/C prompt copy as KEY=value rows (#8581).
+    #[command(name = "render-gate", disable_help_flag = true)]
+    RenderGate(RawCompatibilityArguments),
+    /// Render the /design run's enriched final summary (#8581).
+    #[command(name = "render-final-summary", disable_help_flag = true)]
+    RenderFinalSummary(RawCompatibilityArguments),
 }
 
 impl DesignCommand {
@@ -1498,6 +1505,10 @@ impl DesignCommand {
             Self::Step5bAnnotate(_) => design_settle_commands::step5b_annotate(&arguments),
             Self::PauseLoad(_) => design_pause_commands::pause_load_main(&arguments),
             Self::PauseSave(_) => design_pause_commands::pause_save_main(&arguments),
+            Self::RenderGate(_) => design_gate_summary_commands::render_gate(&arguments),
+            Self::RenderFinalSummary(_) => {
+                design_gate_summary_commands::render_final_summary(&arguments)
+            }
         }
     }
 }

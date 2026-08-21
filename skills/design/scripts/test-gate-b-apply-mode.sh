@@ -309,10 +309,10 @@ mk_design "$D_APPROVE"
 write_run_params "$D_APPROVE/run-params.json" true
 [[ "$(gate_b_mode "$D_APPROVE/run-params.json")" == explicit-prompt ]] || fail '--per-round-approval should restore explicit prompt'
 
-python3 "$CLI" design render-gate --gate B --accepted-count 3 --approve-requested false \
+"$LARCH" design render-gate --gate B --accepted-count 3 --approve-requested false \
   | grep -Fq 'AUTO_APPLY_MESSAGE=ℹ 3.5: Gate B — auto-applying 3 accepted finding(s)' \
   || fail 'render-gate missing default auto-apply breadcrumb'
-grep -Fq 'python/cli.py design render-gate --gate B --accepted-count "$N" --approve-requested false' "$APPROVAL_GATES" \
+grep -Fq 'scripts/larch.sh design render-gate --gate B --accepted-count "$N" --approve-requested false' "$APPROVAL_GATES" \
   || fail 'approval-gates missing default auto-apply renderer delegation'
 grep -Fq 'explicit per-round prompt' "$SKILL_MD" \
   || fail 'SKILL missing --per-round-approval explicit Gate B branch prose'

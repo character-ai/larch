@@ -31,6 +31,34 @@ CLI = Path(__file__).resolve().parents[2] / "cli.py"
 LARCH_ENTRYPOINT = Path(__file__).resolve().parents[3] / "scripts" / "larch.sh"
 
 
+def _as_captured(fake_render):
+    """Adapt a legacy ``fake_render(argv) -> int`` into the Rust-verb seam.
+
+    Step 5c now renders the final summary through
+    ``design_core.run_design_verb_captured(verb="render-final-summary", ...)``
+    (#8581); the captured ``args`` are the same argv the retired
+    ``render_final_summary_main`` received, so existing fakes stay valid.
+    """
+
+    def _captured(*, verb, args, stdout_path, stderr_path, plugin_root=None):
+        import contextlib as _contextlib  # noqa: PLC0415
+        import io as _io  # noqa: PLC0415
+
+        assert verb == "render-final-summary"
+        del plugin_root
+        # The real seam subprocesses the Rust verb and captures its stdout to
+        # `stdout_path`; emulate that so a fake's stdout never leaks into the
+        # caller's captured contract stream.
+        buffer = _io.StringIO()
+        with _contextlib.redirect_stdout(buffer):
+            rc = fake_render(list(args))
+        Path(stdout_path).write_text(buffer.getvalue(), encoding="utf-8")
+        Path(stderr_path).write_text("", encoding="utf-8")
+        return rc
+
+    return _captured
+
+
 
 
 def test_phase_driver_read_result_env_filters_allowlist_and_cr(tmp_path: Path) -> None:
@@ -530,10 +558,9 @@ def test_step5c_core_render_uses_ctx_snapshot_when_ambient_env_overrides_session
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, _, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -578,10 +605,9 @@ def test_step5c_core_render_prefers_run_params_mode_over_source_env(
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, _, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -646,14 +672,13 @@ def test_step5c_core_allows_publish_to_complete_step5b5_result_env(
         print(_step5c_rows(design), end="")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     def fake_render(_argv: list[str]) -> int:
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, _ = design_step5c.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
 
     assert rc == 0
@@ -734,10 +759,9 @@ def test_step5c_core_assembles_publish_argv_and_writes_merge_status(
         (design / "final-summary.md").write_text("summary body\n", encoding="utf-8")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "777", "--skip-validate"],
@@ -801,10 +825,9 @@ def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_
         current_summary.write_text("current rendered summary\n", encoding="utf-8")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -852,10 +875,9 @@ def test_step5c_core_rc3_stdout_fallback_keeps_success_path(
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, _ = design_step5c.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 0
     assert (design / ".completed" / "step-5c").is_file()
@@ -892,10 +914,9 @@ def test_step5c_core_rc4_emits_validator_status_sidecars_and_no_markers(
     def fail_render(_argv: list[str]) -> int:
         raise AssertionError("render should not run for validator defects")
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fail_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fail_render))
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -1229,10 +1250,9 @@ def test_step5c_core_auto_composes_when_composed_plan_missing(
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, _, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "777", "--skip-validate"],
@@ -1262,10 +1282,9 @@ def test_step5c_core_publish_tail_abort_stages_renders_and_writes_terminal(
         (design / "final-summary.md").write_text("abort summary\n", encoding="utf-8")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -1307,12 +1326,11 @@ def test_step5c_core_publish_tail_retries_central_publish_before_fallback(
     def fail_render(**_kwargs: object) -> bool:
         raise AssertionError("local fallback should not run after clean central publish")
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_step5c, "_publish_terminal_final_summary", fake_central)
     monkeypatch.setattr(design_step5c, "_step5c_render_final_summary", fail_render)
-    monkeypatch.setattr(design_summary, "upsert_final_summary_from_disk", lambda **kwargs: upsert_calls.append(dict(kwargs)) or True)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_core, "upsert_final_summary_from_disk", lambda **kwargs: upsert_calls.append(dict(kwargs)) or True)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -1413,11 +1431,10 @@ def test_step5c_core_publish_tail_falls_back_when_central_upsert_fails(
         (design / "final-summary.md").write_text("fallback summary\n", encoding="utf-8")
         return True
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
     monkeypatch.setattr(design_step5c, "_publish_terminal_final_summary", fake_central)
-    monkeypatch.setattr(design_summary, "upsert_final_summary_from_disk", lambda **_kwargs: False)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_core, "upsert_final_summary_from_disk", lambda **_kwargs: False)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(design_step5c, "_step5c_render_final_summary", fake_render)
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
@@ -1466,10 +1483,9 @@ def test_step5c_core_cleanup_eligibility_matrix(
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, _ = design_step5c.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 0
     assert f"CLEANUP_ELIGIBLE={expected_cleanup}" in (design / ".design-step5c-status.env").read_text(encoding="utf-8")
@@ -1499,10 +1515,9 @@ def test_step5c_core_empty_session_id_publish_success_is_cleanup_eligible(
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, _ = design_step5c.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 0
     assert seen[0][seen[0].index("--session-id") : seen[0].index("--session-id") + 2] == ["--session-id", ""]
@@ -1524,10 +1539,9 @@ def test_step5c_core_publish_tail_abort_rc5_stages_and_writes_terminal(
         (design / "final-summary.md").write_text("abort summary\n", encoding="utf-8")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -1564,10 +1578,9 @@ def test_step5c_core_success_without_final_summary_skips_markers(
         stale.unlink()
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -1598,10 +1611,9 @@ def test_step5c_core_success_clears_bound_stale_summary_before_render(
         assert not summary.exists()
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -1631,10 +1643,9 @@ def test_step5c_core_render_failure_skips_stale_summary_markers(
     def fake_render(_argv: list[str]) -> int:
         return 1
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -1663,10 +1674,9 @@ def test_step5c_core_captures_subprocess_stdout_from_publish_tail(
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, contract, _ = _capture_core_contract(
         design_step5c.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -1694,10 +1704,9 @@ def test_step5c_core_restores_env_ipc_keys_after_return(tmp_path: Path, monkeypa
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     design_step5c.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     after = {
         "FINAL_SUMMARY_PATH": os.environ.get("FINAL_SUMMARY_PATH"),
@@ -1745,10 +1754,9 @@ def test_step5c_core_publish_design_tmpdir_matches_ctx_on_symlinked_session_env(
         (real_design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     rc, _ = design_step5c.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 0
     assert seen
@@ -1772,10 +1780,9 @@ def test_step5c_main_machine_rows_visible_under_inherited_quiet(
         (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
         return 0
 
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_step5c, "_step5c_invoke_publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    monkeypatch.setattr(design_core, "run_design_verb_captured", _as_captured(fake_render))
     monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
     monkeypatch.setenv(config.ENV_LARCH_QUIET_ACTIVE, "1")
     monkeypatch.setenv(config.ENV_LARCH_QUIET_PID, "999999")

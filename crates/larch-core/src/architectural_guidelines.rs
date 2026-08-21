@@ -379,9 +379,134 @@ pub fn knowledge_block(
     format!("{ARCHITECTURAL_KNOWLEDGE_PREAMBLE}{}", blocks.join("\n\n"))
 }
 
+// ---------------------------------------------------------------------------
+// Gate C guideline documented-exception recovery (#8581; ported from
+// `python/larch/core/architectural_guidelines.py` lines 1382-1451).
+// ---------------------------------------------------------------------------
+
+/// Persisted Gate C guideline-assessment note basename.
+pub const DESIGN_ASSESSMENT: &str = "architectural-guideline-assessment.md";
+
+static EXCEPTION_LEAD_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*Exception:").expect("exception lead regex should compile"));
+static DESIGN_EXCEPTION_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"^\s*Exception:\s+(?P<rationale>\S[^\n]*?)\s+\(author:\s*main-agent,\s+date:\s*(?P<date>\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))\)\s*$",
+    )
+    .expect("design exception regex should compile")
+});
+
+/// A validated active documented-exception recovered from a deviation note.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuidelineException {
+    pub rationale: String,
+    pub date: String,
+    pub line: String,
+}
+
+/// True when `date_text` parses as a real calendar date (rejects Feb 30, etc.).
+///
+/// The caller's regex already constrains the shape and the month/day ranges;
+/// this rejects the impossible day-of-month combinations the regex still admits.
+fn exception_date_plausible(date_text: &str) -> bool {
+    let mut parts = date_text.split('-');
+    let (Some(year), Some(month), Some(day), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return false;
+    };
+    let (Ok(year), Ok(month), Ok(day)) = (
+        year.parse::<i64>(),
+        month.parse::<u32>(),
+        day.parse::<u32>(),
+    ) else {
+        return false;
+    };
+    if !(1..=12).contains(&month) || day < 1 {
+        return false;
+    }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days_in_month = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return false,
+    };
+    day <= days_in_month
+}
+
+/// Return the note's non-fenced lines that lead with `Exception:`.
+///
+/// Lines inside a balanced code fence carry no authority (G-Md-3).
+fn active_exception_lines(note: &str) -> Vec<String> {
+    let lines: Vec<&str> = note.lines().collect();
+    let fenced = balanced_fence_line_indices(&lines);
+    let mut result: Vec<String> = Vec::new();
+    for (index, &line) in lines.iter().enumerate() {
+        if !fenced.contains(&index) && EXCEPTION_LEAD_RE.is_match(line) {
+            result.push(line.to_owned());
+        }
+    }
+    result
+}
+
+/// Return the sole valid active documented-exception, or `None` (fail closed).
+///
+/// Recognizes exactly one active `Exception:` line outside code fences with a
+/// non-empty rationale, `author: main-agent`, and a real calendar date. Missing,
+/// malformed, empty-rationale, wrong-author, impossible-date, duplicate, and
+/// fenced-only notes return `None`.
+#[must_use]
+pub fn guideline_active_exception(note: &str) -> Option<GuidelineException> {
+    let active = active_exception_lines(note);
+    if active.len() != 1 {
+        return None;
+    }
+    let captures = DESIGN_EXCEPTION_RE.captures(&active[0])?;
+    let rationale = captures.name("rationale")?.as_str().trim().to_owned();
+    let date = captures.name("date")?.as_str().to_owned();
+    if rationale.is_empty() || !exception_date_plausible(&date) {
+        return None;
+    }
+    Some(GuidelineException {
+        rationale,
+        date,
+        line: active[0].trim().to_owned(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn guideline_exception_accepts_single_active_line() {
+        let note = "Deviation summary.\nException: keep the legacy shim (author: main-agent, date: 2026-08-20)\n";
+        let exception = guideline_active_exception(note).expect("active exception");
+        assert_eq!(exception.rationale, "keep the legacy shim");
+        assert_eq!(exception.date, "2026-08-20");
+        assert_eq!(
+            exception.line,
+            "Exception: keep the legacy shim (author: main-agent, date: 2026-08-20)"
+        );
+    }
+
+    #[test]
+    fn guideline_exception_ignores_fenced_and_rejects_duplicates_and_bad_dates() {
+        // Fenced-only exception has no authority.
+        let fenced = "```\nException: fenced (author: main-agent, date: 2026-08-20)\n```\n";
+        assert!(guideline_active_exception(fenced).is_none());
+        // Two active lines fail closed.
+        let dup = "Exception: a (author: main-agent, date: 2026-08-20)\nException: b (author: main-agent, date: 2026-08-21)\n";
+        assert!(guideline_active_exception(dup).is_none());
+        // Impossible calendar date.
+        let bad = "Exception: x (author: main-agent, date: 2026-02-30)\n";
+        assert!(guideline_active_exception(bad).is_none());
+        // Wrong author.
+        let author = "Exception: x (author: someone-else, date: 2026-08-20)\n";
+        assert!(guideline_active_exception(author).is_none());
+    }
 
     #[test]
     fn invariant_entries_keep_their_body_and_stop_at_foreign_headings() {

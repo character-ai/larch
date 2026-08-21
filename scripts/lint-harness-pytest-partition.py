@@ -62,7 +62,6 @@ ENFORCED = (
     "python/tests/release/test_release.py",
     "python/tests/design/test_design_lifecycle.py",
     "python/tests/design/test_decompose.py",
-    "python/tests/design/test_design_summary.py",
 )
 
 # Mirrors CARVE_OUTS in scripts/test-harness-shards-coverage.sh: targets that

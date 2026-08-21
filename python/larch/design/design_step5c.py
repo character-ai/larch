@@ -46,7 +46,7 @@ from larch.design.design_core import (
     run_design_verb_captured,
     step2b5_next_action_for,
 )
-from larch.design.design_summary import resolve_summary_mode
+from larch.design.design_core import resolve_summary_mode
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.design import plan_grammar
 
@@ -222,7 +222,7 @@ def _step5c_render_final_summary(
     plan_write_ok: str = "",
 ) -> bool:
     del plan_write_ok
-    from larch.design.design_summary import (  # noqa: PLC0415
+    from larch.design.design_core import (  # noqa: PLC0415
         FinalSummaryRenderRequest,
         render_final_summary_for_request,
     )
@@ -333,7 +333,7 @@ def _step5c_try_central_failed_publish_tail(
     )
     if publish_rc != 0 or not publish_ok:
         return False
-    from larch.design.design_summary import upsert_final_summary_from_disk  # noqa: PLC0415
+    from larch.design.design_core import upsert_final_summary_from_disk  # noqa: PLC0415
 
     repo_args = ["--repo", ctx.repo] if ctx.repo else []
     return upsert_final_summary_from_disk(

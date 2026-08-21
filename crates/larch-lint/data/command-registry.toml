@@ -2487,11 +2487,13 @@ verb = "render-final-summary"
 python_module = "larch.design.design_summary"
 python_function = "render_final_summary_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8581
+clean_install_test = "clean-install-design-render-final-summary"
 
 [[commands]]
 domain = "design"
@@ -2499,11 +2501,13 @@ verb = "render-gate"
 python_module = "larch.design.design_gate_render"
 python_function = "render_gate_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8581
+clean_install_test = "clean-install-design-render-gate"
 
 [[commands]]
 domain = "design"
@@ -9251,7 +9255,7 @@ rust = ["block-issue *", "ci distill-log", "ci main-health", "dirty-tree *", "ex
 path = "python/larch/design/design_core.py"
 kind = "python-runtime"
 python = []
-rust = ["design failure-report", "design log-publish", "design pause-save", "design read-result-env", "design stage-terminal-state", "plan-review step3-state", "run-log append-failure", "timing mark"]
+rust = ["design failure-report", "design log-publish", "design pause-save", "design read-result-env", "design render-final-summary", "design stage-terminal-state", "plan-review step3-state", "run-log append-failure", "timing mark", "tracking-issue upsert-summary"]
 
 [[callers]]
 path = "python/larch/design/design_dialectic_debate.py"
@@ -9276,12 +9280,6 @@ path = "python/larch/design/design_step6.py"
 kind = "python-runtime"
 python = []
 rust = ["session cleanup-tmpdir"]
-
-[[callers]]
-path = "python/larch/design/design_summary.py"
-kind = "python-runtime"
-python = ["render run-summary"]
-rust = []
 
 [[callers]]
 path = "python/larch/git/pr_body.py"
@@ -9532,26 +9530,26 @@ rust = ["plan-review gate-b-counts", "plan-review gate-b-finding-line"]
 [[callers]]
 path = "skills/design/references/approval-gates-gate-a.md"
 kind = "skill"
-python = ["design render-gate"]
-rust = []
+python = []
+rust = ["design render-gate"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-gate-b.md"
 kind = "skill"
-python = ["design render-gate"]
-rust = ["design postplan-emit", "design step2b-postplan", "design step35-settle", "plan check-size", "plan revise-waterfall", "plan-review gate-b-counts", "plan-review gate-b-finding-line", "plan-review preview"]
+python = []
+rust = ["design postplan-emit", "design render-gate", "design step2b-postplan", "design step35-settle", "plan check-size", "plan revise-waterfall", "plan-review gate-b-counts", "plan-review gate-b-finding-line", "plan-review preview"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-gate-c.md"
 kind = "skill"
-python = ["architectural-guidelines persist-design-assessment", "architectural-guidelines present-note", "architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design dialectic-manual", "design render-gate"]
-rust = ["design read-result-env", "design step35-settle", "plan-review filter-gate-b-skipped", "plan-review preview"]
+python = ["architectural-guidelines persist-design-assessment", "architectural-guidelines present-note", "architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design dialectic-manual"]
+rust = ["design read-result-env", "design render-gate", "design step35-settle", "plan-review filter-gate-b-skipped", "plan-review preview"]
 
 [[callers]]
 path = "skills/design/references/approval-gates.md"
 kind = "skill"
-python = ["design render-gate"]
-rust = ["design step2b-postplan", "design step35-settle", "plan revise-waterfall"]
+python = []
+rust = ["design render-gate", "design step2b-postplan", "design step35-settle", "plan revise-waterfall"]
 
 [[callers]]
 path = "skills/design/references/brainstorm.md"

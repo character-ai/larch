@@ -22,7 +22,7 @@ On `resume@4b`, pause recovery, or entry without fresh Step 4 bgjob result captu
 
 Read `SKIP_APPROVE_REQUESTED_GATEC`, rejected-findings marker/path KVs, `GATEC_PREVIEW_PATH`, and optional `DIALECTIC_GATEC_DIGEST_PATH` via `scripts/larch.sh design read-result-env --input "$DESIGN_TMPDIR/.design-step4-tail-result.env"` or final `DONE` stdout. Print regular under-tmp preview/body files only. Do not parse these values from thin tail-launcher stdout.
 
-**Large-plan summary mode**: `scripts/larch.sh plan-review preview` owns threshold parsing, outline caps, fallback preview, and note text for Step 3 and Gate C. Structured **See full plan** MUST `cat` the full `$DESIGN_TMPDIR/plan.txt` into chat and re-fire Gate C by running `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR" --without-see-full-plan --accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`, even if the preview already printed the full plan. If `Other` asks for the full plan, `cat` the full plan and re-fire Gate C with the same rendered option set unchanged.
+**Large-plan summary mode**: `scripts/larch.sh plan-review preview` owns threshold parsing, outline caps, fallback preview, and note text for Step 3 and Gate C. Structured **See full plan** MUST `cat` the full `$DESIGN_TMPDIR/plan.txt` into chat and re-fire Gate C by running `scripts/larch.sh design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR" --without-see-full-plan --accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`, even if the preview already printed the full plan. If `Other` asks for the full plan, `cat` the full plan and re-fire Gate C with the same rendered option set unchanged.
 
 After the mandatory preview and before either Prompt or `--skip-approve` breadcrumb, bind `REPO_ROOT` from the Step 0 source env in the same Bash fence before any guideline helper call:
 
@@ -134,12 +134,12 @@ Use the helper's stdout as the classification-set input. When the skip marker is
 
 ### Prompt
 
-Run `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR" --accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"` and pass the rendered `HEADER`, `QUESTION`, and option rows directly to `AskUserQuestion`. Add `--panel-failed true` when the latest Step 3 envelope is `panel-failed`; the renderer relabels the approval option. Add `--without-see-full-plan` only after a structured **See full plan** pick.
+Run `scripts/larch.sh design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR" --accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"` and pass the rendered `HEADER`, `QUESTION`, and option rows directly to `AskUserQuestion`. Add `--panel-failed true` when the latest Step 3 envelope is `panel-failed`; the renderer relabels the approval option. Add `--without-see-full-plan` only after a structured **See full plan** pick.
 
 Example baseline (extend, do not replace existing flags):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design render-gate \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" design render-gate \
   --gate C \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"

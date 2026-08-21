@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "GATE_RENDER_STATUS=ok\nGATE=A\nHEADER=Design discussion\nQUESTION=All open design questions appear discussed. Ready to launch the design review, or would you like to discuss more first?\nOPTION_COUNT=3\nOPTION_1_LABEL=See full plan\nOPTION_1_DESCRIPTION=Re-display the current plan, then return to this prompt without advancing.\nOPTION_2_LABEL=Ready for review\nOPTION_2_DESCRIPTION=Launch the design review against the current plan.\nOPTION_3_LABEL=Discuss more\nOPTION_3_DESCRIPTION=Continue the post-plan discussion before review.\n"
+  }
+}
