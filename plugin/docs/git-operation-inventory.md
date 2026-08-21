@@ -105,7 +105,6 @@ python/larch/git/merge.py	later-domain	#7681	fetch,log,show
 python/larch/git/pr.py	later-domain	#7681	branch,checkout,config,push
 python/larch/git/pr_body.py	later-domain	#7681	diff,merge-base,rev-parse
 python/larch/git/rebase.py	later-domain	#7681	checkout
-python/larch/implement/checks_run_relevant.py	later-domain	#7681	diff,ls-files,rev-parse
 python/larch/implement/ci_monitor.py	later-domain	#7681	ls-remote,rev-list,symbolic-ref
 python/larch/implement/dispatch_helpers.py	later-domain	#7681	dynamic
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base

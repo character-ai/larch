@@ -1,4 +1,5 @@
-//! Pure helpers for the `checks fixer-evidence` and `checks lint-fix` verbs (#8625).
+//! Pure helpers for the `checks fixer-evidence`, `checks lint-fix`, and
+//! `checks repair-loop` verbs (#8625, #8627).
 //!
 //! The impure orchestration (vendor dispatch, git snapshots, commits) lives in
 //! the `larch-cli` command module; the path resolution, log reads, site maps,
@@ -31,6 +32,8 @@ pub const NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX: &str = "ship-pr-internal-lint-fi
 pub const PRE_SHIP_ALL_TIERS_NO_DELTA_REASON: &str = "lint-fix-all-tiers-no-useful-delta";
 /// Waterfall role id whose tool order drives the lint-fix tier selection.
 pub const LINT_FIX_ROLE_ID: &str = "implement.lint_fix_coder";
+/// Fixed repair attempts accepted by the retired Python orchestrator.
+pub const REPAIR_LOOP_MAX_ITERATIONS: usize = 3;
 
 const TIER_LEDGER_HEADER: &str =
     "sequence\ttier\toutcome_class\texit_status\telapsed_ms\tuseful_delta\texecution_issue_kind\n";
@@ -106,7 +109,7 @@ pub fn checks_fixer_evidence_path(tmpdir: &Path, site: &str, round_number: u32) 
 /// Outcome of one lint-fix dispatch, mirroring the Python `FixOutcome` dataclass.
 ///
 /// The `larch-cli` orchestration builds this and the verb renders it to the
-/// `KEY=value` grammar the still-Python repair loop parses.
+/// preserved `KEY=value` compatibility grammar.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FixOutcome {
     /// Terminal status: `applied`, `no-changes`, `main-agent-required`, `failed`.
@@ -164,6 +167,181 @@ impl FixOutcome {
             ..Self::default()
         }
     }
+}
+
+/// Mutable result accumulated by the checks repair loop.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RepairLoopResult {
+    /// Terminal loop status.
+    pub status: String,
+    /// Deduplicated repository paths changed across repair attempts.
+    pub delta_paths: Vec<String>,
+    /// Status of the last lint-fix attempt.
+    pub last_fix_status: String,
+    /// True when the escalation ledger block should be emitted.
+    pub ledger_ready: bool,
+    /// Ledger site classification.
+    pub ledger_site: String,
+    /// Ledger trigger classification.
+    pub ledger_trigger: String,
+    /// Ledger step classification.
+    pub ledger_step: String,
+    /// Ledger phase classification.
+    pub ledger_phase: String,
+    /// Ledger dispatcher label.
+    pub ledger_dispatcher: String,
+    /// Ledger exit code.
+    pub ledger_exit_code: Option<i64>,
+    /// Redacted failure-detail log path recorded on the ledger.
+    pub ledger_failure_detail_log: String,
+    /// Last redacted checks log captured after an applied repair.
+    pub final_redacted_checks_log: String,
+    /// Redacted coder attempt-log path.
+    pub coder_log_path: String,
+    /// Redacted coder stderr-tail path.
+    pub stderr_tail_path: String,
+    /// Terminal lint-fix failure reason.
+    pub failure_reason: String,
+    /// Tier-ledger TSV path once initialized.
+    pub tier_ledger_path: String,
+}
+
+impl RepairLoopResult {
+    /// Build the initial exhausted result used before the first attempt.
+    #[must_use]
+    pub fn exhausted() -> Self {
+        Self {
+            status: "exhausted".to_owned(),
+            ..Self::default()
+        }
+    }
+}
+
+/// Fold one lint-fix outcome into the repair-loop state.
+///
+/// Returns `true` only when the caller should run relevant checks and continue
+/// the bounded loop.
+pub fn apply_fix_to_repair_loop(loop_result: &mut RepairLoopResult, fix: &FixOutcome) -> bool {
+    fix.status.clone_into(&mut loop_result.last_fix_status);
+    loop_result.failure_reason = fix.failure_reason.clone().unwrap_or_default();
+    fix.tier_ledger_path
+        .clone_into(&mut loop_result.tier_ledger_path);
+    if fix.ledger_ready {
+        loop_result.ledger_ready = true;
+        fix.ledger_site.clone_into(&mut loop_result.ledger_site);
+        fix.ledger_trigger
+            .clone_into(&mut loop_result.ledger_trigger);
+        fix.ledger_step.clone_into(&mut loop_result.ledger_step);
+        fix.ledger_phase.clone_into(&mut loop_result.ledger_phase);
+        fix.ledger_dispatcher
+            .clone_into(&mut loop_result.ledger_dispatcher);
+        loop_result.ledger_exit_code = fix.ledger_exit_code;
+        fix.ledger_failure_detail_log
+            .clone_into(&mut loop_result.ledger_failure_detail_log);
+    }
+    match fix.status.as_str() {
+        "applied" | "no-changes" => {
+            if fix.status == "applied" {
+                for path in &fix.delta_paths {
+                    if !loop_result.delta_paths.contains(path) {
+                        loop_result.delta_paths.push(path.clone());
+                    }
+                }
+            }
+            true
+        }
+        "main-agent-required" => {
+            "main-agent-required".clone_into(&mut loop_result.status);
+            fix.stderr_tail_path
+                .clone_into(&mut loop_result.stderr_tail_path);
+            fix.coder_log_path
+                .clone_into(&mut loop_result.coder_log_path);
+            false
+        }
+        "failed" => {
+            fix.ledger_failure_detail_log
+                .clone_into(&mut loop_result.final_redacted_checks_log);
+            match fix.failure_reason.as_deref() {
+                Some(
+                    "lint-fix-no-selectable-tier"
+                    | PRE_SHIP_ALL_TIERS_NO_DELTA_REASON
+                    | "lint-fix-budget-exhausted",
+                ) => "exhausted".clone_into(&mut loop_result.status),
+                Some("head-changed-after-dispatch") => {
+                    "head-changed".clone_into(&mut loop_result.status);
+                    fix.stderr_tail_path
+                        .clone_into(&mut loop_result.stderr_tail_path);
+                    fix.coder_log_path
+                        .clone_into(&mut loop_result.coder_log_path);
+                }
+                _ => {
+                    "main-agent-required".clone_into(&mut loop_result.status);
+                    fix.stderr_tail_path
+                        .clone_into(&mut loop_result.stderr_tail_path);
+                    fix.coder_log_path
+                        .clone_into(&mut loop_result.coder_log_path);
+                }
+            }
+            false
+        }
+        _ => {
+            "dispatch-failed".clone_into(&mut loop_result.status);
+            fix.stderr_tail_path
+                .clone_into(&mut loop_result.stderr_tail_path);
+            fix.coder_log_path
+                .clone_into(&mut loop_result.coder_log_path);
+            false
+        }
+    }
+}
+
+/// Select the terminal repair-loop route and materialize escalation fields.
+pub fn repair_loop_action(
+    loop_result: &mut RepairLoopResult,
+    lint_site: &str,
+    checks_log: &str,
+    allowed_tmpdir: &Path,
+) -> &'static str {
+    match loop_result.status.as_str() {
+        "ok" => return "continue",
+        "main-agent-required" => return "main-agent-edit",
+        "head-changed" | "dispatch-failed" if is_pre_ship_site(lint_site) => {
+            return "main-agent-edit";
+        }
+        _ => {}
+    }
+    if is_pre_ship_site(lint_site)
+        && matches!(
+            loop_result.failure_reason.as_str(),
+            "lint-fix-no-selectable-tier" | "lint-fix-budget-exhausted"
+        )
+    {
+        return "stall";
+    }
+    if is_pre_ship_site(lint_site)
+        && matches!(
+            loop_result.status.as_str(),
+            "exhausted" | "no-changes-stale"
+        )
+    {
+        let candidate = if loop_result.status == "no-changes-stale" {
+            checks_log
+        } else {
+            &loop_result.final_redacted_checks_log
+        };
+        if let Some(path) = resolve_checks_log_path(candidate, allowed_tmpdir) {
+            loop_result.ledger_ready = true;
+            loop_result.ledger_site = ledger_site_for_lint_site(lint_site);
+            loop_result.ledger_trigger = ledger_trigger_for_lint_site(lint_site);
+            loop_result.ledger_step = ledger_step_for_site(lint_site);
+            loop_result.ledger_phase = ledger_phase_for_site(lint_site);
+            "lint-fix-loop".clone_into(&mut loop_result.ledger_dispatcher);
+            loop_result.ledger_exit_code = Some(1);
+            loop_result.ledger_failure_detail_log = path.to_string_lossy().into_owned();
+            return "main-agent-edit";
+        }
+    }
+    "stall"
 }
 
 /// Human label for a known lint-fix site, or `None` for an unknown site.
@@ -866,5 +1044,86 @@ mod tests {
         assert!(resolve_checks_log_path("/etc/hostname", &root).is_none());
         assert!(read_log_file_text(&root.join("absent.log")).is_none());
         let _ignored = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn repair_fix_fold_preserves_deltas_and_terminal_evidence() {
+        let mut loop_result = RepairLoopResult::exhausted();
+        let applied = FixOutcome {
+            status: "applied".to_owned(),
+            delta_paths: vec!["a.py".to_owned(), "a.py".to_owned()],
+            tier_ledger_path: "/t/tiers.tsv".to_owned(),
+            ..FixOutcome::default()
+        };
+        assert!(apply_fix_to_repair_loop(&mut loop_result, &applied));
+        assert_eq!(loop_result.delta_paths, ["a.py"]);
+        assert_eq!(loop_result.tier_ledger_path, "/t/tiers.tsv");
+
+        let terminal = FixOutcome {
+            status: "failed".to_owned(),
+            failure_reason: Some(PRE_SHIP_ALL_TIERS_NO_DELTA_REASON.to_owned()),
+            ledger_failure_detail_log: "/t/failure.log".to_owned(),
+            ..FixOutcome::default()
+        };
+        assert!(!apply_fix_to_repair_loop(&mut loop_result, &terminal));
+        assert_eq!(loop_result.status, "exhausted");
+        assert_eq!(
+            loop_result.failure_reason,
+            PRE_SHIP_ALL_TIERS_NO_DELTA_REASON
+        );
+        assert_eq!(loop_result.final_redacted_checks_log, "/t/failure.log");
+    }
+
+    #[test]
+    fn repair_action_routes_pre_ship_exhaustion_by_reason_and_log() {
+        let dir = std::env::temp_dir().join(format!(
+            "larch-repair-action-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let _ignored = std::fs::create_dir_all(&dir);
+        let root = std::fs::canonicalize(&dir).expect("root");
+        let log = root.join("checks.redacted.log");
+        std::fs::write(&log, "failure\n").expect("log");
+
+        let mut budget = RepairLoopResult {
+            status: "exhausted".to_owned(),
+            failure_reason: "lint-fix-budget-exhausted".to_owned(),
+            final_redacted_checks_log: log.to_string_lossy().into_owned(),
+            ..RepairLoopResult::default()
+        };
+        assert_eq!(
+            repair_loop_action(&mut budget, "step6", &log.to_string_lossy(), &root),
+            "stall"
+        );
+        assert!(!budget.ledger_ready);
+
+        let mut no_delta = RepairLoopResult {
+            status: "exhausted".to_owned(),
+            failure_reason: PRE_SHIP_ALL_TIERS_NO_DELTA_REASON.to_owned(),
+            final_redacted_checks_log: log.to_string_lossy().into_owned(),
+            ..RepairLoopResult::default()
+        };
+        assert_eq!(
+            repair_loop_action(&mut no_delta, "step5-mav", &log.to_string_lossy(), &root,),
+            "main-agent-edit"
+        );
+        assert!(no_delta.ledger_ready);
+        assert_eq!(no_delta.ledger_site, "step5-mav");
+        assert_eq!(no_delta.ledger_step, "5");
+        assert_eq!(no_delta.ledger_phase, "review");
+        assert_eq!(no_delta.ledger_failure_detail_log, log.to_string_lossy());
+
+        let mut ship = no_delta.clone();
+        assert_eq!(
+            repair_loop_action(
+                &mut ship,
+                "ship-pr-ci-initial",
+                &log.to_string_lossy(),
+                &root,
+            ),
+            "stall"
+        );
+        let _ignored = std::fs::remove_dir_all(&root);
     }
 }

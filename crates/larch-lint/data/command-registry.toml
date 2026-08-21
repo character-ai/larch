@@ -1317,11 +1317,13 @@ verb = "repair-loop"
 python_module = "larch.implement.checks"
 python_function = "checks_repair_loop_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8627
+clean_install_test = "clean-install-checks-repair-loop"
 
 [[commands]]
 domain = "checks"
@@ -9298,18 +9300,6 @@ python = []
 rust = ["git rebase-skip", "git sync-local-main"]
 
 [[callers]]
-path = "python/larch/implement/checks_lint_fix.py"
-kind = "python-runtime"
-python = []
-rust = ["bgjob start", "checks lint-fix"]
-
-[[callers]]
-path = "python/larch/implement/checks_run_relevant.py"
-kind = "python-runtime"
-python = []
-rust = ["checks rust-clippy", "timing mark", "timing record-vendor-task", "token mark"]
-
-[[callers]]
 path = "python/larch/implement/ci_monitor.py"
 kind = "python-runtime"
 python = []
@@ -9804,8 +9794,8 @@ rust = ["dirty-tree checkpoint"]
 [[callers]]
 path = "skills/implement/references/checks-repair-loop.md"
 kind = "skill"
-python = ["checks repair-loop"]
-rust = ["bgjob wait", "checks fixer-evidence", "checks self-edit-log", "implement checks-commit-route", "implement checks-step5-resume", "stall-recovery record-escalation"]
+python = []
+rust = ["bgjob wait", "checks fixer-evidence", "checks repair-loop", "checks self-edit-log", "implement checks-commit-route", "implement checks-step5-resume", "stall-recovery record-escalation"]
 
 [[callers]]
 path = "skills/implement/references/codex-manifest-schema.md"
@@ -9828,8 +9818,8 @@ rust = ["issue parse-input", "oos disposition-gate", "oos file", "oos file-confl
 [[callers]]
 path = "skills/implement/references/extracted-script-registry.md"
 kind = "skill"
-python = ["checks repair-loop", "implement step-16-17", "implement-finalize teardown", "pr closes-issue", "pr compose-summary", "render run-summary"]
-rust = ["implement checks-step5-resume", "implement step-6-entry"]
+python = ["implement step-16-17", "implement-finalize teardown", "pr closes-issue", "pr compose-summary", "render run-summary"]
+rust = ["checks repair-loop", "implement checks-step5-resume", "implement step-6-entry"]
 
 [[callers]]
 path = "skills/implement/references/oos-pipeline.md"

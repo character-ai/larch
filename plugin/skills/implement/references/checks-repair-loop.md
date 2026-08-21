@@ -19,7 +19,7 @@ Then route to the default stall semantics in section 4: set `STALL_TRACKING=true
 When `REDACTED_LOG_FILE` is present, launch the repair-loop as a bgjob (not a bare foreground command). Foreground `checks repair-loop` can exceed the Bash tool's 600 s ceiling when a lint-fix lane runs up to `FIXER_LANE_TIMEOUT_SEC` (1800 s); the bgjob path keeps the launcher return under that ceiling and preserves the `NEXT_ACTION` envelope in the result env.
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py checks repair-loop --bgjob-launch true --tmpdir "$IMPLEMENT_TMPDIR" --site <lint-site> [--checks-site <capture-site>] --checks-log "$REDACTED_LOG_FILE"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh checks repair-loop --bgjob-launch true --tmpdir "$IMPLEMENT_TMPDIR" --site <lint-site> [--checks-site <capture-site>] --checks-log "$REDACTED_LOG_FILE"
 ```
 
 Launcher stdout is `BGJOB_STATUS=STARTED STEP=implement-<lint-site>-repair PGID=<n>` (site-qualified slug, for example `implement-step3-repair` or `implement-step6-repair`). Then wait:

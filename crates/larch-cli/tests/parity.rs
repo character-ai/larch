@@ -2030,6 +2030,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-checks-lint-fix", "checks", "lint-fix"),
     CleanInstallCase::new(
+        "clean-install-checks-repair-loop",
+        "checks",
+        "repair-loop",
+    ),
+    CleanInstallCase::new(
         "clean-install-gh-agnix-ensure-label",
         "gh",
         "agnix-ensure-label",

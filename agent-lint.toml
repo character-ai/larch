@@ -509,10 +509,10 @@ exclude = [
   # does not follow markdown invocations). The rebase checkpoint command itself
   # moved to the Rust runtime in #7762.
   "skills/implement/references/rebase-checkpoint-routing.md",
-  # python/cli.py checks repair-loop is invoked from SKILL.md failure-path
+  # scripts/larch.sh checks repair-loop is invoked from SKILL.md failure-path
   # prose via reference indirection; G004 does not follow markdown
   # invocations or reference indirection.
-  "python/cli.py checks repair-loop",
+  "scripts/larch.sh checks repair-loop",
   "skills/implement/references/checks-repair-loop.md",
   # SKILL.md fences; sibling contract below.
   # python/cli.py render findings-view — ad-hoc operator CLI to reconstruct

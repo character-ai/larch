@@ -1,4 +1,5 @@
-//! Rust owners for `checks fixer-evidence` and `checks lint-fix` (#8625).
+//! Rust owners for `checks fixer-evidence`, `checks lint-fix`, and
+//! `checks repair-loop` (#8625, #8627).
 //!
 //! `fixer-evidence` materializes one bounded, redacted checks-failure digest for
 //! the ci-fixer subagent. `lint-fix` dispatches the delegated coder waterfall
@@ -11,9 +12,12 @@ use std::{
     collections::BTreeMap,
     ffi::OsString,
     fs,
+    io::{self, Write as _},
     path::{Path, PathBuf},
     process::ExitCode,
-    time::Duration,
+    sync::mpsc::{self, Receiver, RecvTimeoutError, Sender},
+    thread::{self, JoinHandle},
+    time::{Duration, Instant},
 };
 
 use larch_adapters::{
@@ -23,25 +27,28 @@ use larch_adapters::{
 };
 use larch_core::{
     Head, ObjectId, RepositoryRead, StatusOptions, VendorProgram, cursor_child_environment,
+    ensure_under,
     implement::{
-        self, CHECKS_FIXER_MAX_ROUNDS, CLAUDE_CI_FIX_MODEL, FIXER_LANE_TIMEOUT_SEC, FixOutcome,
-        PRE_SHIP_ALL_TIERS_NO_DELTA_REASON, PROMPT_TAIL_BYTES, RepoPathState,
+        self, CHECKS_FIXER_MAX_ROUNDS, CLAUDE_CI_FIX_MODEL, ChecksResult, FIXER_LANE_TIMEOUT_SEC,
+        FixOutcome, LINT_FIX_ROLE_ID, PRE_SHIP_ALL_TIERS_NO_DELTA_REASON, PROMPT_TAIL_BYTES,
+        REPAIR_LOOP_MAX_ITERATIONS, RepairLoopResult, RepoPathState, apply_fix_to_repair_loop,
         build_checks_failure_digest, checks_fixer_evidence_path, classify_attempt_issue,
         coder_forbidden_paths, codex_lint_fix_prompt_appendix, compose_prompt, exhausted_outcome,
         forbidden_paths_match_count, is_known_site, ledger_phase_for_site,
         ledger_site_for_lint_site, ledger_step_for_site, ledger_trigger_for_lint_site,
         lint_fix_fast_fail_reason, path_matches_forbidden, read_log_file_text, read_log_tail,
-        resolve_checks_log_path, sanitize_log_fence, site_label, snapshot_delta_paths,
-        target_cmd_display_valid, tier_ledger_header, tier_ledger_line, valid_fixer_site,
-        validate_session_tmpdir,
+        repair_loop_action, resolve_checks_log_path, sanitize_log_fence, site_label,
+        snapshot_delta_paths, target_cmd_display_valid, tier_ledger_header, tier_ledger_line,
+        valid_fixer_site, validate_session_tmpdir,
     },
-    redact_run_log_payload, role_default,
+    private_atomic_write, redact_run_log_payload, role_default, validate_merge_result_env,
 };
 
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-    argparse_compat::parse_required_with_help,
+    argparse_compat::{choice_error, parse_required_with_help, usage_error},
+    checks_run_relevant_commands::run_relevant_checks,
     external_agent::{
         ExternalAgentLaunch, ExternalAgentRouting, run_external_agent_with_auth_retries,
     },
@@ -51,7 +58,9 @@ use crate::{
         CursorPreflightRequest, cursor_launch_credential, cursor_model_argv, unix_seconds,
     },
     run_log_entry_commands::append_execution_issue,
-    runtime_entrypoint::{run_verified_larch, run_verified_larch_with_timeout},
+    runtime_entrypoint::{
+        plugin_root as resolve_plugin_root, run_verified_larch, run_verified_larch_with_timeout,
+    },
     timing_commands,
 };
 
@@ -217,6 +226,499 @@ pub fn checks_lint_fix(arguments: &[OsString]) -> ExitCode {
     emit_lint_fix(&outcome)
 }
 
+const REPAIR_LOOP_PROG: &str = "cli.py checks repair-loop";
+const REPAIR_LOOP_USAGE: &str = "usage: cli.py checks repair-loop [-h] --tmpdir TMPDIR --site SITE\n                                 [--checks-site CHECKS_SITE] --checks-log\n                                 CHECKS_LOG [--repo-root REPO_ROOT]\n                                 [--bgjob-launch {true,false}]\n                                 [--bgjob-merge-result-env BGJOB_MERGE_RESULT_ENV]";
+const REPAIR_LOOP_HELP: &str = "usage: cli.py checks repair-loop [-h] --tmpdir TMPDIR --site SITE\n                                 [--checks-site CHECKS_SITE] --checks-log\n                                 CHECKS_LOG [--repo-root REPO_ROOT]\n                                 [--bgjob-launch {true,false}]\n                                 [--bgjob-merge-result-env BGJOB_MERGE_RESULT_ENV]\n\noptions:\n  -h, --help            show this help message and exit\n  --tmpdir TMPDIR\n  --site SITE\n  --checks-site CHECKS_SITE\n  --checks-log CHECKS_LOG\n  --repo-root REPO_ROOT\n  --bgjob-launch {true,false}\n  --bgjob-merge-result-env BGJOB_MERGE_RESULT_ENV";
+const REPAIR_LOOP_OPTIONS: [&str; 7] = [
+    "--tmpdir",
+    "--site",
+    "--checks-site",
+    "--checks-log",
+    "--repo-root",
+    "--bgjob-launch",
+    "--bgjob-merge-result-env",
+];
+const REPAIR_LOOP_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
+const REPAIR_LOOP_HEARTBEAT_JOIN_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// `checks repair-loop` compatibility command (Python `checks_repair_loop_main`).
+pub fn checks_repair_loop(arguments: &[OsString]) -> ExitCode {
+    if let Some(error) = choice_error(
+        arguments,
+        &REPAIR_LOOP_OPTIONS,
+        &[("--bgjob-launch", &["true", "false"])],
+    ) {
+        emit_repair_argument_error();
+        return usage_error(REPAIR_LOOP_USAGE, REPAIR_LOOP_PROG, &error, 2);
+    }
+    let parsed = match parse_required_with_help(
+        arguments,
+        REPAIR_LOOP_PROG,
+        REPAIR_LOOP_USAGE,
+        REPAIR_LOOP_HELP,
+        &REPAIR_LOOP_OPTIONS,
+        &[],
+        &["--tmpdir", "--site", "--checks-log"],
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => {
+            if code != ExitCode::SUCCESS {
+                emit_repair_argument_error();
+            }
+            return code;
+        }
+    };
+    let tmpdir_raw = opt_string(parsed.value("--tmpdir"));
+    let tmpdir_source = if tmpdir_raw.is_empty() {
+        std::env::var("IMPLEMENT_TMPDIR").unwrap_or_default()
+    } else {
+        tmpdir_raw
+    };
+    let Some(canonical_tmp) = validate_session_tmpdir(&tmpdir_source) else {
+        println!("NEXT_ACTION=stall");
+        println!("LOOP_STATUS=tmpdir-validation");
+        return ExitCode::from(2);
+    };
+    let lint_site = opt_string(parsed.value("--site"));
+    if !is_known_site(&lint_site) {
+        println!("NEXT_ACTION=stall");
+        println!("LOOP_STATUS=site-validation");
+        return ExitCode::from(2);
+    }
+    let checks_site_arg = opt_string(parsed.value("--checks-site"));
+    let capture_site = if checks_site_arg.is_empty() {
+        lint_site.clone()
+    } else {
+        checks_site_arg.clone()
+    };
+    if !valid_fixer_site(&capture_site) {
+        println!("NEXT_ACTION=stall");
+        println!("LOOP_STATUS=checks-site-validation");
+        return ExitCode::from(2);
+    }
+    let checks_log = opt_string(parsed.value("--checks-log"));
+    let repo_root_arg = opt_string(parsed.value("--repo-root"));
+    let bgjob_launch = opt_string(parsed.value("--bgjob-launch"));
+    if bgjob_launch == "true" {
+        return launch_repair_loop_bgjob(&RepairLoopBgjobLaunch {
+            tmpdir: canonical_tmp,
+            site: lint_site,
+            checks_site: checks_site_arg,
+            checks_log,
+            repo_root: repo_root_arg,
+        });
+    }
+    let repo_root = if repo_root_arg.is_empty() {
+        default_repo_root()
+    } else {
+        repo_root_arg
+    };
+    let merge_result_env = opt_string(parsed.value("--bgjob-merge-result-env"));
+    let mut emitter = match RepairEmitter::new(&canonical_tmp, &merge_result_env) {
+        Ok(emitter) => emitter,
+        Err(error) => {
+            eprintln!("checks repair-loop: {error}");
+            return ExitCode::from(1);
+        }
+    };
+    run_repair_loop_foreground(
+        &canonical_tmp,
+        &lint_site,
+        &capture_site,
+        &checks_log,
+        &repo_root,
+        &mut emitter,
+    )
+}
+
+fn emit_repair_argument_error() {
+    println!("NEXT_ACTION=stall");
+    println!("LOOP_STATUS=argument-error");
+}
+
+struct RepairLoopBgjobLaunch {
+    tmpdir: PathBuf,
+    site: String,
+    checks_site: String,
+    checks_log: String,
+    repo_root: String,
+}
+
+fn launch_repair_loop_bgjob(spec: &RepairLoopBgjobLaunch) -> ExitCode {
+    let step = format!("implement-{}-repair", spec.site);
+    let merge_result_env = spec.tmpdir.join("bgjob").join(format!("{step}.merge.env"));
+    if let Err(error) = initialize_merge_result_env(&spec.tmpdir, &merge_result_env) {
+        eprintln!("checks repair-loop: {error}");
+        return ExitCode::from(1);
+    }
+    let Ok(role) = role_default(LINT_FIX_ROLE_ID) else {
+        eprintln!("checks repair-loop: lint-fix role is unavailable");
+        return ExitCode::from(1);
+    };
+    let tier_count = u64::try_from(role.order.len()).unwrap_or(u64::MAX);
+    let iterations = u64::try_from(REPAIR_LOOP_MAX_ITERATIONS).unwrap_or(u64::MAX);
+    let budget_s = FIXER_LANE_TIMEOUT_SEC
+        .saturating_mul(tier_count)
+        .saturating_mul(iterations)
+        .to_string();
+    let Ok(plugin_root) = resolve_plugin_root() else {
+        eprintln!("checks repair-loop: CLAUDE_PLUGIN_ROOT is unavailable");
+        return ExitCode::from(1);
+    };
+    let entrypoint = plugin_root.join("scripts").join("larch.sh");
+    let mut command: Vec<OsString> = vec![
+        "bgjob".into(),
+        "start".into(),
+        "--step".into(),
+        step.into(),
+        "--tmpdir".into(),
+        spec.tmpdir.as_os_str().to_owned(),
+        "--budget-s".into(),
+        budget_s.into(),
+        "--merge-result-env".into(),
+        merge_result_env.as_os_str().to_owned(),
+        "--terminal-stdout-key".into(),
+        "NEXT_ACTION".into(),
+        "--".into(),
+        entrypoint.into_os_string(),
+        "checks".into(),
+        "repair-loop".into(),
+        "--tmpdir".into(),
+        spec.tmpdir.as_os_str().to_owned(),
+        "--site".into(),
+        spec.site.clone().into(),
+    ];
+    if !spec.checks_site.is_empty() {
+        command.extend(["--checks-site".into(), spec.checks_site.clone().into()]);
+    }
+    command.extend(["--checks-log".into(), spec.checks_log.clone().into()]);
+    if !spec.repo_root.is_empty() {
+        command.extend(["--repo-root".into(), spec.repo_root.clone().into()]);
+    }
+    command.extend([
+        "--bgjob-merge-result-env".into(),
+        merge_result_env.into_os_string(),
+    ]);
+    match run_verified_larch(&command) {
+        Ok(output) => {
+            let _ = io::stdout().write_all(output.stdout());
+            let _ = io::stderr().write_all(output.stderr());
+            exit_code(output.status().code().unwrap_or(1))
+        }
+        Err(error) => {
+            eprintln!("checks repair-loop: {error}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn run_repair_loop_foreground(
+    canonical_tmp: &Path,
+    lint_site: &str,
+    capture_site: &str,
+    checks_log: &str,
+    repo_root: &str,
+    emitter: &mut RepairEmitter,
+) -> ExitCode {
+    println!("PROGRESS=dispatching-lint-fix site={lint_site}");
+    let _ = io::stdout().flush();
+    let mut heartbeat = RepairHeartbeat::start(lint_site, REPAIR_LOOP_HEARTBEAT_INTERVAL);
+    let run_parent = canonical_tmp.join("lint-fix-loop");
+    let allowed_tmpdir = canonical_tmp.to_string_lossy().into_owned();
+    let run_parent_text = run_parent.to_string_lossy().into_owned();
+    let mut fixer = |log_path: &str| {
+        let request = LintFixRequest {
+            site: lint_site.to_owned(),
+            checks_log: log_path.to_owned(),
+            repo_root: repo_root.to_owned(),
+            run_parent: run_parent_text.clone(),
+            allowed_tmpdir: allowed_tmpdir.clone(),
+            claude_present: binary_present("CLAUDE_BINARY_FOUND", canonical_tmp, "claude"),
+            codex_present: binary_present("CODEX_BINARY_FOUND", canonical_tmp, "codex"),
+            cursor_present: binary_present("CURSOR_BINARY_FOUND", canonical_tmp, "cursor"),
+        };
+        run_lint_fix(&request)
+    };
+    let mut checks_runner = || run_relevant_checks(capture_site, &allowed_tmpdir, repo_root);
+    let mut loop_result =
+        run_repair_iterations(checks_log, canonical_tmp, &mut fixer, &mut checks_runner);
+    heartbeat.stop();
+    let _recorded = implement::record_self_edits(
+        canonical_tmp,
+        &format!("lint-fix:{lint_site}"),
+        &loop_result.delta_paths,
+        Path::new(repo_root),
+        None,
+    );
+    let action = repair_loop_action(&mut loop_result, lint_site, checks_log, canonical_tmp);
+    if let Err(error) = emit_repair_loop_outcome(emitter, action, &loop_result) {
+        eprintln!("checks repair-loop: {error}");
+        return ExitCode::from(1);
+    }
+    if matches!(action, "continue" | "main-agent-edit") {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn run_repair_iterations<Fixer, Checks>(
+    initial_checks_log: &str,
+    allowed_tmpdir: &Path,
+    fixer: &mut Fixer,
+    checks_runner: &mut Checks,
+) -> RepairLoopResult
+where
+    Fixer: FnMut(&str) -> FixOutcome,
+    Checks: FnMut() -> ChecksResult,
+{
+    let mut loop_result = RepairLoopResult::exhausted();
+    let Some(initial) = resolve_checks_log_path(initial_checks_log, allowed_tmpdir) else {
+        "dispatch-failed".clone_into(&mut loop_result.status);
+        return loop_result;
+    };
+    let mut redacted_log = initial.to_string_lossy().into_owned();
+    for _ in 0..REPAIR_LOOP_MAX_ITERATIONS {
+        let fix = fixer(&redacted_log);
+        if !apply_fix_to_repair_loop(&mut loop_result, &fix) {
+            return loop_result;
+        }
+        let checks = checks_runner();
+        if checks.ok || checks.skipped {
+            "ok".clone_into(&mut loop_result.status);
+            return loop_result;
+        }
+        loop_result.final_redacted_checks_log.clear();
+        let Some(next_log) = redacted_log_for_dispatch(&checks, allowed_tmpdir) else {
+            missing_redacted_log_status(&checks, allowed_tmpdir)
+                .clone_into(&mut loop_result.status);
+            return loop_result;
+        };
+        next_log.clone_into(&mut loop_result.final_redacted_checks_log);
+        redacted_log = next_log;
+    }
+    loop_result.status = if loop_result.last_fix_status == "no-changes" {
+        "no-changes-stale".to_owned()
+    } else {
+        "exhausted".to_owned()
+    };
+    loop_result
+}
+
+fn redacted_log_for_dispatch(checks: &ChecksResult, allowed_tmpdir: &Path) -> Option<String> {
+    if checks.warn.as_deref() == Some("redaction-failed") {
+        return None;
+    }
+    if let Some(redacted) = &checks.redacted_log_path {
+        return resolve_checks_log_path(redacted, allowed_tmpdir)
+            .map(|path| path.to_string_lossy().into_owned());
+    }
+    let raw = checks.raw_log_path.as_deref()?;
+    let raw = resolve_checks_log_path(raw, allowed_tmpdir)?;
+    if fs::metadata(&raw).ok()?.len() == 0 {
+        return None;
+    }
+    let body = read_log_file_text(&raw)?;
+    let output = fallback_redacted_path(&raw);
+    let output = ensure_under(&output, allowed_tmpdir, "repair-loop redacted log").ok()?;
+    private_atomic_write(&output, &redact_run_log_payload(&body), allowed_tmpdir).ok()?;
+    resolve_checks_log_path(&output.to_string_lossy(), allowed_tmpdir)
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+fn fallback_redacted_path(raw: &Path) -> PathBuf {
+    let name = raw.file_name().map_or_else(
+        || "checks.redacted".to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    let redacted_name = name.strip_suffix(".log").map_or_else(
+        || format!("{name}.redacted"),
+        |stem| format!("{stem}.redacted.log"),
+    );
+    raw.with_file_name(redacted_name)
+}
+
+fn missing_redacted_log_status(checks: &ChecksResult, allowed_tmpdir: &Path) -> &'static str {
+    if checks.warn.as_deref() == Some("redaction-failed") {
+        return "dispatch-failed";
+    }
+    if let Some(redacted) = &checks.redacted_log_path {
+        let _valid = resolve_checks_log_path(redacted, allowed_tmpdir);
+        return "dispatch-failed";
+    }
+    let Some(raw) = checks.raw_log_path.as_deref() else {
+        return "exhausted";
+    };
+    let Some(raw) = resolve_checks_log_path(raw, allowed_tmpdir) else {
+        return "dispatch-failed";
+    };
+    match fs::symlink_metadata(raw) {
+        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+            if metadata.len() == 0 {
+                "exhausted"
+            } else {
+                "dispatch-failed"
+            }
+        }
+        _ => "exhausted",
+    }
+}
+
+struct RepairHeartbeat {
+    stop: Option<Sender<()>>,
+    done: Option<Receiver<()>>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl RepairHeartbeat {
+    fn start(site: &str, interval: Duration) -> Self {
+        let (stop, receiver) = mpsc::channel();
+        let (done_sender, done) = mpsc::channel();
+        let site = site.to_owned();
+        let handle = thread::spawn(move || {
+            let started = Instant::now();
+            while receiver.recv_timeout(interval) == Err(RecvTimeoutError::Timeout) {
+                println!(
+                    "PROGRESS=lint-fix-running site={site} elapsed={}s",
+                    started.elapsed().as_secs()
+                );
+                let _ = io::stdout().flush();
+            }
+            let _ = done_sender.send(());
+        });
+        Self {
+            stop: Some(stop),
+            done: Some(done),
+            handle: Some(handle),
+        }
+    }
+
+    fn stop(&mut self) {
+        if let Some(stop) = self.stop.take() {
+            let _ = stop.send(());
+        }
+        let stopped = self.done.take().is_some_and(|done| {
+            done.recv_timeout(REPAIR_LOOP_HEARTBEAT_JOIN_TIMEOUT)
+                .is_ok()
+        });
+        if let Some(handle) = self.handle.take()
+            && stopped
+        {
+            let _ = handle.join();
+        }
+    }
+}
+
+impl Drop for RepairHeartbeat {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+struct RepairEmitter {
+    tmpdir: PathBuf,
+    merge_result_env: Option<PathBuf>,
+    rows: Vec<(String, String)>,
+}
+
+impl RepairEmitter {
+    fn new(tmpdir: &Path, merge_result_env: &str) -> Result<Self, String> {
+        let merge_result_env = if merge_result_env.is_empty() {
+            None
+        } else {
+            let path = PathBuf::from(merge_result_env);
+            initialize_merge_result_env(tmpdir, &path)?;
+            Some(validate_merge_result_env(&path, tmpdir).map_err(|error| error.to_string())?)
+        };
+        Ok(Self {
+            tmpdir: tmpdir.to_path_buf(),
+            merge_result_env,
+            rows: Vec::new(),
+        })
+    }
+
+    fn emit(&mut self, key: &str, value: &str) -> Result<(), String> {
+        if key.is_empty()
+            || !key.chars().all(|character| {
+                character.is_ascii_uppercase() || character.is_ascii_digit() || character == '_'
+            })
+            || value.contains(['\n', '\r'])
+        {
+            return Err("unsafe result-env row".to_owned());
+        }
+        if let Some(path) = &self.merge_result_env {
+            let mut candidate = self.rows.clone();
+            candidate.push((key.to_owned(), value.to_owned()));
+            let mut text = String::new();
+            for (row_key, row_value) in &candidate {
+                text.push_str(row_key);
+                text.push('=');
+                text.push_str(row_value);
+                text.push('\n');
+            }
+            private_atomic_write(path, &text, &self.tmpdir).map_err(|error| error.to_string())?;
+            self.rows = candidate;
+        }
+        println!("{key}={value}");
+        let _ = io::stdout().flush();
+        Ok(())
+    }
+}
+
+fn initialize_merge_result_env(tmpdir: &Path, path: &Path) -> Result<(), String> {
+    let path = ensure_under(path, tmpdir, "repair-loop merge result env")
+        .map_err(|error| error.to_string())?;
+    let Some(parent) = path.parent() else {
+        return Err("merge result env has no parent".to_owned());
+    };
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let path = validate_merge_result_env(&path, tmpdir).map_err(|error| error.to_string())?;
+    private_atomic_write(&path, "", tmpdir).map_err(|error| error.to_string())
+}
+
+fn emit_repair_loop_outcome(
+    emitter: &mut RepairEmitter,
+    action: &str,
+    loop_result: &RepairLoopResult,
+) -> Result<(), String> {
+    emitter.emit("NEXT_ACTION", action)?;
+    emitter.emit("LOOP_STATUS", &loop_result.status)?;
+    if !loop_result.stderr_tail_path.is_empty() {
+        emitter.emit("STDERR_TAIL_PATH", &loop_result.stderr_tail_path)?;
+    }
+    if !loop_result.coder_log_path.is_empty() {
+        emitter.emit("CODER_LOG_FILE", &loop_result.coder_log_path)?;
+    }
+    if !loop_result.failure_reason.is_empty() {
+        emitter.emit("FAILURE_REASON", &loop_result.failure_reason)?;
+    }
+    if !loop_result.tier_ledger_path.is_empty() {
+        emitter.emit("LINT_FIX_TIER_LEDGER_PATH", &loop_result.tier_ledger_path)?;
+    }
+    if action == "main-agent-edit" && loop_result.ledger_ready {
+        emitter.emit("LINT_FIX_LEDGER_READY", "true")?;
+        emitter.emit("LINT_FIX_LEDGER_SITE", &loop_result.ledger_site)?;
+        emitter.emit("LINT_FIX_LEDGER_TRIGGER", &loop_result.ledger_trigger)?;
+        emitter.emit("LINT_FIX_LEDGER_STEP", &loop_result.ledger_step)?;
+        emitter.emit("LINT_FIX_LEDGER_PHASE", &loop_result.ledger_phase)?;
+        emitter.emit("LINT_FIX_LEDGER_DISPATCHER", &loop_result.ledger_dispatcher)?;
+        if let Some(code) = loop_result.ledger_exit_code {
+            emitter.emit("LINT_FIX_LEDGER_EXIT_CODE", &code.to_string())?;
+        }
+        if !loop_result.ledger_failure_detail_log.is_empty() {
+            emitter.emit(
+                "LINT_FIX_LEDGER_FAILURE_DETAIL_LOG",
+                &loop_result.ledger_failure_detail_log,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn exit_code(code: i32) -> ExitCode {
+    ExitCode::from(u8::try_from(code).unwrap_or(1))
+}
+
 /// Resolve the ambient repository root (Python `default_repo_root`).
 fn default_repo_root() -> String {
     std::env::current_dir().map_or_else(
@@ -254,7 +756,7 @@ fn which_on_path(binary: &str) -> bool {
     })
 }
 
-/// Emit the `KEY=value` grammar the still-Python repair loop parses.
+/// Emit the preserved lint-fix `KEY=value` compatibility grammar.
 fn emit_lint_fix(outcome: &FixOutcome) -> ExitCode {
     println!("LINT_FIX_STATUS={}", outcome.status);
     if let Some(reason) = &outcome.failure_reason {
@@ -1830,6 +2332,119 @@ mod tests {
         assert_eq!(outcome.status, "main-agent-required");
         assert!(outcome.ledger_ready);
         assert_eq!(outcome.ledger_step, "6");
+    }
+
+    fn failed_checks(path: &Path) -> ChecksResult {
+        ChecksResult {
+            ok: false,
+            exit_code: 1,
+            site: "step6".to_owned(),
+            redacted_log_path: Some(path.to_string_lossy().into_owned()),
+            phase: "pre-commit".to_owned(),
+            coverage: "changed-file-only".to_owned(),
+            skipped: false,
+            warn: None,
+            raw_log_path: Some(path.to_string_lossy().into_owned()),
+            failure_reason: Some("checks-failed".to_owned()),
+            digest_file_path: None,
+        }
+    }
+
+    #[test]
+    fn repair_iterations_exhaust_and_keep_the_final_log_and_unique_deltas() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path().canonicalize().expect("root");
+        let initial = root.join("initial.redacted.log");
+        write(&root, "initial.redacted.log", "initial\n");
+        let logs: Vec<PathBuf> = (1..=REPAIR_LOOP_MAX_ITERATIONS)
+            .map(|round| {
+                let path = root.join(format!("round-{round}.redacted.log"));
+                std::fs::write(&path, format!("failure {round}\n")).expect("log");
+                path
+            })
+            .collect();
+        let mut index = 0;
+        let mut fixer = |_log: &str| FixOutcome {
+            status: "applied".to_owned(),
+            delta_paths: vec!["fixed.py".to_owned()],
+            ..FixOutcome::default()
+        };
+        let mut checks = || {
+            let result = failed_checks(&logs[index]);
+            index += 1;
+            result
+        };
+        let result =
+            run_repair_iterations(&initial.to_string_lossy(), &root, &mut fixer, &mut checks);
+        assert_eq!(result.status, "exhausted");
+        assert_eq!(result.delta_paths, ["fixed.py"]);
+        assert_eq!(
+            result.final_redacted_checks_log,
+            logs.last().expect("final").to_string_lossy()
+        );
+        assert_eq!(index, REPAIR_LOOP_MAX_ITERATIONS);
+    }
+
+    #[test]
+    fn repair_iterations_map_no_changes_exhaustion_and_invalid_initial_log() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path().canonicalize().expect("root");
+        let initial = root.join("initial.redacted.log");
+        write(&root, "initial.redacted.log", "initial\n");
+        let failed = root.join("failed.redacted.log");
+        write(&root, "failed.redacted.log", "failed\n");
+        let mut fixer = |_log: &str| FixOutcome::no_changes();
+        let mut checks = || failed_checks(&failed);
+        let result =
+            run_repair_iterations(&initial.to_string_lossy(), &root, &mut fixer, &mut checks);
+        assert_eq!(result.status, "no-changes-stale");
+
+        let mut fixer_calls = 0;
+        let mut never_fix = |_log: &str| {
+            fixer_calls += 1;
+            FixOutcome::no_changes()
+        };
+        let mut never_checks = || panic!("invalid initial log must not run checks");
+        let invalid = run_repair_iterations(
+            &root.join("missing.log").to_string_lossy(),
+            &root,
+            &mut never_fix,
+            &mut never_checks,
+        );
+        assert_eq!(invalid.status, "dispatch-failed");
+        assert_eq!(fixer_calls, 0);
+    }
+
+    #[test]
+    fn repair_iterations_redact_a_valid_raw_log_fallback() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path().canonicalize().expect("root");
+        let initial = root.join("initial.redacted.log");
+        write(&root, "initial.redacted.log", "initial\n");
+        let raw = root.join("round.log");
+        write(&root, "round.log", "failure\n");
+        let mut round = 0;
+        let mut fixer = |_log: &str| {
+            round += 1;
+            if round == 1 {
+                FixOutcome::no_changes()
+            } else {
+                FixOutcome {
+                    status: "main-agent-required".to_owned(),
+                    failure_reason: Some("dispatch-failed".to_owned()),
+                    ..FixOutcome::default()
+                }
+            }
+        };
+        let mut checks = || {
+            let mut result = failed_checks(&raw);
+            result.redacted_log_path = None;
+            result
+        };
+        let result =
+            run_repair_iterations(&initial.to_string_lossy(), &root, &mut fixer, &mut checks);
+        assert_eq!(result.status, "main-agent-required");
+        assert!(root.join("round.redacted.log").is_file());
     }
 
     #[test]

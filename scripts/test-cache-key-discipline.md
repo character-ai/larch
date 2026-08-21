@@ -11,11 +11,11 @@
 - per-session prompt path variables in implementer launcher `PROMPT` blocks
 - per-session diff/scope paths rendered by `python/cli.py render specialist`
 - review prompt construction delegated through the Rust review dispatcher and launcher/render helpers
-- unstable shell-style tokens in Python prompt construction surfaces:
-  - `python/larch/implement/checks_lint_fix.py`
+- unstable shell-style tokens in prompt construction surfaces:
+  - `crates/larch-core/src/implement/checks_lint_fix.rs`
   - `crates/larch-cli/src/review_dispatch_panel_prompt.md`
 
-**Scope**: External-tool prompt construction surfaces only. Runtime timing, logging, temp-file, and process-management shell code is intentionally out of scope unless it is inside a launcher `PROMPT` block, an audited prompt-bearing Markdown file, or one of the explicitly listed Python prompt construction files.
+**Scope**: External-tool prompt construction surfaces only. Runtime timing, logging, temp-file, and process-management shell code is intentionally out of scope unless it is inside a launcher `PROMPT` block, an audited prompt-bearing Markdown file, or one of the explicitly listed prompt construction files.
 
 **Primary callers**: `make test-cache-key-discipline`, plus `make test-harnesses-3`.
 

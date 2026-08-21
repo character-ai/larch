@@ -137,7 +137,7 @@ pub fn checks_run_relevant(arguments: &[OsString]) -> ExitCode {
 }
 
 /// Run relevant checks natively and capture a redacted failure log.
-fn run_relevant_checks(site: &str, tmpdir: &str, repo_root: &str) -> ChecksResult {
+pub fn run_relevant_checks(site: &str, tmpdir: &str, repo_root: &str) -> ChecksResult {
     if !valid_site(site) {
         return ChecksResult::failure(site, 2, "site-validation");
     }

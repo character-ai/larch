@@ -1144,6 +1144,9 @@ enum ChecksCommand {
     /// Dispatch the delegated coder waterfall to fix relevant-checks failures.
     #[command(name = "lint-fix", disable_help_flag = true)]
     LintFix(RawCompatibilityArguments),
+    /// Run the bounded lint-fix and relevant-checks repair orchestrator.
+    #[command(name = "repair-loop", disable_help_flag = true)]
+    RepairLoop(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2718,6 +2721,9 @@ fn run(
         ),
         Domain::Checks(ChecksCommand::LintFix(arguments)) => Ok(
             checks_lint_fix_commands::checks_lint_fix(&arguments.arguments),
+        ),
+        Domain::Checks(ChecksCommand::RepairLoop(arguments)) => Ok(
+            checks_lint_fix_commands::checks_repair_loop(&arguments.arguments),
         ),
         Domain::Checks(ChecksCommand::ContainsPins(arguments)) => Ok(
             checks_run_relevant_commands::check_contains_pins(&arguments.arguments),
