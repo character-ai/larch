@@ -10,9 +10,9 @@ Thin launcher-compat wrapper for the `/design` Step 5b prepare block.
 
 ## Invariants
 
-- The `.sh` file only derives and exports `CLAUDE_PLUGIN_ROOT`, then execs `python/cli.py design step5b-prepare`.
-- `python/cli.py design step5b-prepare` owns the Step 5 prelude and OOS prepare behavior.
-- The Python entrypoint binds `env = _rehydrate_wrapper_env(parsed)` before reading session keys.
+- The `.sh` file only derives and exports `CLAUDE_PLUGIN_ROOT`, then execs `scripts/larch.sh design step5b-prepare`.
+- `scripts/larch.sh design step5b-prepare` owns the Step 5 prelude and OOS prepare behavior.
+- The Rust entrypoint hydrates the wrapper environment before reading session keys.
 - The `DESIGN_TMPDIR` guard rejects only an empty value, matching the retired Bash prelude.
 - The prepare entrypoint creates `$DESIGN_TMPDIR/.completed` before writing `.completed/step-4b`.
 - The prepare entrypoint returns immediately through pause-save when `.pause-requested` exists.

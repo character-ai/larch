@@ -93,6 +93,9 @@ pub enum PlanReviewCommand {
     /// Prepare Step 3.5 state.
     #[command(name = "step35", disable_help_flag = true)]
     Step35(AgentRawArguments),
+    /// Settle the Gate A/B/C or discussion-round2 post-plan state (#8585).
+    #[command(name = "step35-settle", disable_help_flag = true)]
+    Step35Settle(AgentRawArguments),
     /// Normalize the Step 3 result envelope.
     #[command(name = "normalize-status", disable_help_flag = true)]
     NormalizeStatus(AgentRawArguments),
@@ -187,6 +190,9 @@ pub fn run(command: PlanReviewCommand) -> ExitCode {
             loop_implementation::delegate_script("design-step3b-tail.sh", &arguments.arguments)
         }
         PlanReviewCommand::Step35(arguments) => loop_implementation::step35(&arguments.arguments),
+        PlanReviewCommand::Step35Settle(arguments) => {
+            crate::design_settle_commands::step35_settle(&arguments.arguments)
+        }
         PlanReviewCommand::NormalizeStatus(arguments) => {
             loop_implementation::normalize_status(&arguments.arguments)
         }

@@ -10,9 +10,9 @@ Thin launcher-compat wrapper for the `/design` Step 5b annotate block.
 
 ## Invariants
 
-- The `.sh` file only derives and exports `CLAUDE_PLUGIN_ROOT`, then execs `python/cli.py design step5b-annotate`.
-- `python/cli.py design step5b-annotate` owns the OOS annotate behavior.
-- The Python entrypoint binds `env = _rehydrate_wrapper_env(parsed)` before reading session keys.
+- The `.sh` file only derives and exports `CLAUDE_PLUGIN_ROOT`, then execs `scripts/larch.sh design step5b-annotate`.
+- `scripts/larch.sh design step5b-annotate` owns the OOS annotate behavior.
+- The Rust entrypoint hydrates the wrapper environment before reading session keys.
 - The `DESIGN_TMPDIR` guard rejects only an empty value, matching the retired Bash annotate prelude.
 - The annotate entrypoint binds `oos_issue_stdout = design_tmpdir / "oos-issue.stdout.txt"` immediately after the tmpdir guard.
 - The same `oos_issue_stdout` path is used for `--issue-stdout-file` and `ISSUES_FAILED` detection.

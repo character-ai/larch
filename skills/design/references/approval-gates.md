@@ -37,4 +37,4 @@ For ordinary composed-plan validator defects where the file exists and is non-em
 
 Limit `design-step5c.sh --fresh-attempt --skip-validate` to ordinary Step 5c validator defects after operator Override or successful auto-fix validation. Fix-and-retry re-runs `design-step5c.sh --fresh-attempt` without `--skip-validate` so command validation reruns on the operator-edited `composed-plan.md`. Do not imply that `--skip-validate` can repair a missing or empty composed plan.
 
-Compatibility grep note: `python/cli.py design step35-settle` calls `scripts/larch.sh design step2b-postplan --site gate-b` in-process (historical launcher fence: `design-step35-settle.sh`).
+Compatibility grep note: `scripts/larch.sh design step35-settle` calls `scripts/larch.sh design step2b-postplan --site gate-b` in-process (historical launcher fence: `design-step35-settle.sh`).

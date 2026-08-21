@@ -302,7 +302,7 @@ pub fn design_run_launcher_text(pid: &str, plugin_root: &str) -> String {
             "    exit 2\n",
             "    ;;\n",
             "  design-step35-settle.sh)\n",
-            "    exec python3 \"$PLUGIN_ROOT/python/cli.py\" design step35-settle --session-env-path \"$SESSION_ENV_PATH\" --claude-pid \"$CLAUDE_PID\" \"$@\"\n",
+            "    exec \"$PLUGIN_ROOT/scripts/larch.sh\" design step35-settle --session-env-path \"$SESSION_ENV_PATH\" --claude-pid \"$CLAUDE_PID\" \"$@\"\n",
             "    ;;\n",
             "  design-step2b5.sh)\n",
             "    exec python3 \"$PLUGIN_ROOT/python/cli.py\" design step2b5 --session-env-path \"$SESSION_ENV_PATH\" --claude-pid \"$CLAUDE_PID\" \"$@\"\n",

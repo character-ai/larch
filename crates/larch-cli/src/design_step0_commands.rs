@@ -611,6 +611,14 @@ fn load_bash_quoted_env(path: &Path, allowed: &[&str]) -> Env {
 }
 
 pub fn load_source_env(path: &str, claude_pid: &str) -> Env {
+    load_source_env_allowed(path, claude_pid, &SOURCE_ENV_ALLOW)
+}
+
+/// Load trusted session rows for one explicit allowlist.
+///
+/// The Step 5b owner reads `REPO_ROOT`, which is intentionally outside the
+/// older Step 0 source-env surface but inside its frozen wrapper contract.
+pub fn load_source_env_allowed(path: &str, claude_pid: &str, allowed: &[&str]) -> Env {
     if path.is_empty() {
         return BTreeMap::new();
     }
@@ -642,7 +650,7 @@ pub fn load_source_env(path: &str, claude_pid: &str) -> Env {
         normalized.push_str(stripped);
         normalized.push('\n');
     }
-    parse_allowed_last(&normalized, &SOURCE_ENV_ALLOW, false)
+    parse_allowed_last(&normalized, allowed, false)
 }
 
 fn base_env() -> Env {
@@ -851,6 +859,14 @@ pub fn atomic_write_string(path: &Path, contents: &str) -> bool {
             let _ = fs::remove_file(&temporary);
         })
         .is_ok()
+}
+
+/// Write exact text after creating its parent directory, ignoring I/O failure.
+pub fn write_text(path: &Path, text: &str) {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(path, text);
 }
 
 /// If a pause is requested, run pause-save and yield its exit code.

@@ -248,7 +248,6 @@ def test_repointed_design_commands_retain_machine_stdout_and_defining_modules() 
         ("design", "prelude"): ("larch.design.design_core", "prelude_main"),
         ("design", "step3-continuation-entry"): ("larch.design.design_core", "step3_continuation_entry_main"),
         ("design", "step5c"): ("larch.design.design_step5c", "step5c_main"),
-        ("design", "step35-settle"): ("larch.design.design_settle", "step35_settle_main"),
     }
     for key, (module_name, func_name) in design_samples.items():
         registered = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]

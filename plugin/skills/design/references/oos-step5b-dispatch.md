@@ -2,7 +2,7 @@
 
 **Consumer**: Legacy/manual `/design` Step 5b dispatch notes.
 
-**Contract**: historical context for `design-step5b-prepare.sh` action routing. Current prompt-side Step 5b must branch on `NEXT_ACTION=` emitted by `python/cli.py design step5b-prepare`; this file is not a prompt-side fallback table.
+**Contract**: historical context for `design-step5b-prepare.sh` action routing. Current prompt-side Step 5b must branch on `NEXT_ACTION=` emitted by `scripts/larch.sh design step5b-prepare`; this file is not a prompt-side fallback table.
 
 **When to load**: only for legacy/manual repair of old Step 5b transcripts.
 
@@ -10,7 +10,7 @@
 
 ## Current contract
 
-Current `python/cli.py design step5b-prepare` must emit a whole-line `NEXT_ACTION=...` row in `oos-filing-prepare.env`.
+Current `scripts/larch.sh design step5b-prepare` must emit a whole-line `NEXT_ACTION=...` row in `oos-filing-prepare.env`.
 
 Valid actions remain:
 

@@ -62,6 +62,7 @@ mod design_dialectic_commands;
 mod design_log_publish_commands;
 mod design_pause_commands;
 mod design_publish_commands;
+mod design_settle_commands;
 mod design_step0_commands;
 mod design_step1_commands;
 mod design_step2b_commands;
@@ -1399,6 +1400,15 @@ enum DesignCommand {
     /// Clear stale dialectic candidate artifacts (#8584).
     #[command(name = "dialectic-clear-stale", disable_help_flag = true)]
     DialecticClearStale(RawCompatibilityArguments),
+    /// Settle the Gate A/B/C or discussion-round2 post-plan state (#8585).
+    #[command(name = "step35-settle", disable_help_flag = true)]
+    Step35Settle(RawCompatibilityArguments),
+    /// Prepare Step 5b out-of-scope filing (#8585).
+    #[command(name = "step5b-prepare", disable_help_flag = true)]
+    Step5bPrepare(RawCompatibilityArguments),
+    /// Annotate Step 5b out-of-scope filing results (#8585).
+    #[command(name = "step5b-annotate", disable_help_flag = true)]
+    Step5bAnnotate(RawCompatibilityArguments),
     /// Restore a verified cross-session `/design` pause snapshot (#8589).
     #[command(name = "pause-load", disable_help_flag = true)]
     PauseLoad(RawCompatibilityArguments),
@@ -1456,6 +1466,9 @@ impl DesignCommand {
             Self::DialecticClearStale(_) => {
                 design_dialectic_commands::clear_stale_candidates(&arguments)
             }
+            Self::Step35Settle(_) => design_settle_commands::step35_settle(&arguments),
+            Self::Step5bPrepare(_) => design_settle_commands::step5b_prepare(&arguments),
+            Self::Step5bAnnotate(_) => design_settle_commands::step5b_annotate(&arguments),
             Self::PauseLoad(_) => design_pause_commands::pause_load_main(&arguments),
             Self::PauseSave(_) => design_pause_commands::pause_save_main(&arguments),
         }

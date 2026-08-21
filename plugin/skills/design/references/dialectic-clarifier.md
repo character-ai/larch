@@ -37,7 +37,7 @@ Fallback may call `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" design dialectic-wri
 
 Any post-Step-2b `plan.txt` rewrite clears auto candidates and cached auto digest after the mutation chain succeeds. Authoritative choke points:
 
-1. `python/cli.py design step35-settle` after successful post-dedup `gate-b-dedup`, and again after successful `step2b-postplan` when `POSTPLAN_RC=0`.
+1. `scripts/larch.sh design step35-settle` after successful post-dedup `gate-b-dedup`, and again after successful `step2b-postplan` when `POSTPLAN_RC=0`.
 2. The Rust plan-review owner at successful exit of its dedup pipeline when rc is 0, including the unchanged-plan path.
 3. `scripts/larch.sh design step2b-postplan` when `plan.txt` bytes change by entry/exit hash compare.
 

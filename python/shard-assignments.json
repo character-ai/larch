@@ -280,7 +280,6 @@
   "tests/design/test_design_lifecycle.py::test_step_final_summary_cli_subprocess_emits_markers_on_stdout": 4,
   "tests/design/test_design_lifecycle.py::test_step_final_summary_render_exception_skips_result_env_and_marked_emit": 3,
   "tests/design/test_design_lifecycle.py::test_wrapper_loads_design_current_env_symlink": 1,
-  "tests/design/test_design_oos.py::test_step5b_prepare_allows_regular_gatec_assessments": 2,
   "tests/design/test_design_summary.py::test_published_run_logs_path_rejects_mismatched_disabled_manifest": 4,
   "tests/design/test_design_summary.py::test_published_run_logs_path_requires_completed_log_publication": 1,
   "tests/design/test_design_summary.py::test_render_final_summary_write_failure_rebuilds_fallback_with_detail_first": 3,

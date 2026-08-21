@@ -43,7 +43,7 @@ use crate::design_commands::parse_stdout_kv;
 use crate::design_step0_commands::{
     ChildOutcome, Env, LiveStep0Runner, Step0Runner, WrapperNs, atomic_write_string, env_get,
     exit_from_i32, load_wrapper_env, pause_save_arguments, require_plugin_root, utf8_arguments,
-    valid_var_name,
+    valid_var_name, write_text,
 };
 use crate::design_step1_commands::consumer_repo_root;
 use crate::python_verb::run_python_verb;
@@ -1055,14 +1055,6 @@ fn touch(path: &Path) {
         let _ = fs::create_dir_all(parent);
     }
     let _ = fs::OpenOptions::new().create(true).append(true).open(path);
-}
-
-/// `_write_text`: write the exact bytes, creating the parent chain.
-fn write_text(path: &Path, text: &str) {
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let _ = fs::write(path, text);
 }
 
 /// Port of `_read_simple_env`: refuse symlinks, parse `KEY=value`, keep only
