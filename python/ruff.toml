@@ -550,9 +550,6 @@ ignore = [
 "ship_result.py" = [
     "PLR0913",
 ]
-"ship_seed.py" = [
-    "C901",
-]
 "_classify.py" = [
     "C901",
     "PLR0911",

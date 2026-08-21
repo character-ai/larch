@@ -2213,6 +2213,17 @@ fn ensure_directory(path: &Path, label: &str) -> Result<PathBuf, BgjobError> {
 
 fn validate_parent_chain(path: &Path, root: &Path, message: &str) -> Result<(), BgjobError> {
     let root = resolve_candidate(root)?;
+    let lexical_path = absolute_path(path)?;
+    let mut lexical_parent = lexical_path.parent();
+    while let Some(parent) = lexical_parent {
+        if fs::symlink_metadata(parent).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+            return Err(BgjobError::Invalid(message.to_owned()));
+        }
+        if resolve_candidate(parent).is_ok_and(|resolved| resolved == root) {
+            break;
+        }
+        lexical_parent = parent.parent();
+    }
     let resolved_path = resolve_candidate(path)?;
     let mut parent = resolved_path
         .parent()
@@ -3404,7 +3415,7 @@ mod tests {
         fs::create_dir(&write_dir).expect("write directory");
         assert!(private_atomic_write(&write_dir, "STATE=ready\n", sandbox.path()).is_err());
         let parent_link = sandbox.path().join("parent-link");
-        symlink(outside.path(), &parent_link).expect("parent symlink");
+        symlink(sandbox.path(), &parent_link).expect("parent symlink");
         assert!(
             validate_parent_chain(&parent_link.join("wire.env"), sandbox.path(), "unsafe").is_err()
         );

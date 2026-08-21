@@ -158,6 +158,7 @@ mod session_gate_commands;
 mod session_lifecycle_commands;
 mod session_setup_commands;
 mod ship_pre_driver_commands;
+mod ship_commands;
 mod slack_commands;
 mod slot_binding;
 mod stall_recovery_commands;
@@ -416,6 +417,9 @@ enum Domain {
     /// Session state compatibility commands.
     #[command(subcommand)]
     Session(SessionCommand),
+    /// Pull-request shipping state and result commands.
+    #[command(subcommand)]
+    Ship(ShipCommand),
     /// Slack announcement helpers.
     #[command(subcommand)]
     Slack(SlackCommand),
@@ -1103,6 +1107,12 @@ enum ShipCommand {
     /// Route one completed ship-driver result to the next action.
     #[command(name = "route-exit", disable_help_flag = true)]
     RouteExit(RawCompatibilityArguments),
+    /// Create the canonical first durable ship state.
+    #[command(name = "seed-initial-state", disable_help_flag = true)]
+    SeedInitialState(RawCompatibilityArguments),
+    /// Validate or publish the ship result env from JSON on stdin.
+    #[command(name = "write-result-env", disable_help_flag = true)]
+    WriteResultEnv(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2774,6 +2784,12 @@ fn run(
             }
             ShipCommand::RouteExit(arguments) => {
                 ship_pre_driver_commands::route_exit(&arguments.arguments)
+            }
+            ShipCommand::SeedInitialState(arguments) => {
+                ship_commands::seed_initial_state(&arguments.arguments)
+            }
+            ShipCommand::WriteResultEnv(arguments) => {
+                ship_commands::write_result_env(&arguments.arguments)
             }
         }),
         Domain::Blocker(BlockerCommand::AllOpen(arguments)) => {

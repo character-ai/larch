@@ -1,24 +1,26 @@
 //! Rust owners for the four `/implement` Step 8 ship-routing commands.
 //!
 //! The ship engine itself remains Python during the #7681 migration. These
-//! commands own its version fence, durable argv reconstruction, bgjob adapter,
-//! and post-OOS checkpoint bookkeeping. The two remaining Python ship verbs use
-//! the one reviewed migration seam. The phantom probe composes its typed Rust
-//! owner in process; Rust subprocesses enter through the verified bootstrap.
+//! commands own its version fence, durable input reconstruction, initial state,
+//! result-env publication, bgjob adapter, and post-OOS checkpoint bookkeeping.
+//! The remaining Python ship verb uses the one reviewed migration seam. The
+//! phantom probe composes its typed Rust owner in process; Rust subprocesses
+//! enter through the verified bootstrap.
 
 use std::{
     env,
     ffi::{OsStr, OsString},
     fs,
+    io::Write as _,
     path::{Path, PathBuf},
     process::ExitCode,
     time::Duration,
 };
 
 use larch_core::{
-    DuplicatePolicy, HostUtilityProgram, KvDocument, ParseOptions, ProcessOutput,
-    ndjson_filed_evidence, private_atomic_write, read_universal_newlines, report::RunLogCorpus,
-    validate_run_id,
+    DuplicatePolicy, HostUtilityProgram, KvDocument, ParseOptions, ProcessOutput, ShipResult,
+    ShipState, ndjson_filed_evidence, private_atomic_write, read_universal_newlines,
+    report::RunLogCorpus, state_file_has_kv, validate_run_id, validate_ship_result_env,
 };
 
 use crate::{
@@ -107,23 +109,6 @@ const SEED_OPTIONS: [&str; 10] = [
     "--bail-reason",
     "--bail-failure-detail-log",
 ];
-#[rustfmt::skip]
-const SHIP_STATE_ALLOWED_KEYS: &[&str] = &[
-    "PHASE", "BRANCH_NAME", "ISSUE_NUMBER", "RUN_ID",
-    "REPO", "REPO_UNAVAILABLE", "FORKED_TARGET", "IMPLEMENT_TMPDIR",
-    "MANIFEST_PATH", "MERGE", "DRAFT", "PR_CLOSED",
-    "PR_NUMBER", "PR_URL", "PR_TITLE", "MERGE_RESULT",
-    "CI_FIX_REBASE_PENDING", "CI_FIX_REBASE_PENDING_HEAD", "LAST_MONITORED_HEAD",
-    "REBASE_COUNT", "FIX_ATTEMPTS", "ITERATION", "TRANSIENT_RETRIES",
-    "RESUME_PHASE", "CALLER_KIND", "CONFLICT_FILES", "STALL_TRACKING", "STALL_STEP",
-    "EXIT_CODE", "BAIL_REASON", "BAIL_NEEDS_USER_INPUT", "FAILED_RUN_ID", "BAIL_FAILURE_DETAIL_LOG",
-    "EXPECTED_SESSION_ID", "EXPECTED_TMPDIR_BASENAME_PREFIX", "NO_LOGS_COMMIT", "NO_ADMIN_FALLBACK",
-    "DESIGN_ONLY_DONE", "DEFERRED", "DONE_RENAME_APPLIED", "CI_PASSED", "TOOL_LABEL", "OOS_PENDING",
-    "EMERGENCY_REPAIR_BRANCH", "ORIGINAL_BRANCH_FORBIDDEN", "MAIN_REPAIR_RUN_ID", "MAIN_REPAIR_HEAD",
-    "EMERGENCY_REPAIR_PR_NUMBER", "MAIN_HEALTH_REPAIR_COMMITTED", "MAIN_HEALTH_REPAIR_FAILED_RUN_ID",
-    "MAIN_HEALTH_REPAIR_BASE_SHA", "MAIN_HEALTH_REPAIR_HEAD", "MAIN_HEALTH_HEAD_SHA",
-];
-
 /// Refuse a host whose `python3` cannot run the still-Python ship engine.
 pub fn step8_python_guard(arguments: &[OsString]) -> ExitCode {
     if let Err(code) = parse_required_with_help(
@@ -157,7 +142,7 @@ fn run_python_guard() -> u8 {
     4
 }
 
-/// Reconstruct and delegate the canonical create-if-absent ship-state seed.
+/// Reconstruct and invoke the canonical create-if-absent ship-state seed.
 pub fn step8_seed_initial(arguments: &[OsString]) -> ExitCode {
     let (parsed, tmpdir) = match parse_command_with_tmpdir(
         arguments,
@@ -172,7 +157,7 @@ pub fn step8_seed_initial(arguments: &[OsString]) -> ExitCode {
         Err(code) => return code,
     };
     let state_file = tmpdir.join("ship-pr-state.sh");
-    if state_has_shell_kv(&state_file) {
+    if state_file_has_kv(&state_file) {
         eprintln!(
             "step-8-seed-initial: initial ship state is create-if-absent only; refusing to re-seed non-empty ship-pr-state.sh"
         );
@@ -185,10 +170,8 @@ pub fn step8_seed_initial(arguments: &[OsString]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    delegate_python_forward(
-        seed_initial_argv(&tmpdir, state_file, &parsed, &durable),
-        Duration::from_secs(600),
-    )
+    let argv = seed_initial_argv(&tmpdir, state_file, &parsed, &durable);
+    crate::ship_commands::seed_initial_state(&argv[2..])
 }
 
 struct SeedDurable {
@@ -444,12 +427,20 @@ fn step8_ship_child(tmpdir: &Path, merge_result_env: &str) -> ExitCode {
             return ExitCode::from(2);
         }
     }
+    if let Err(error) = crate::ship_commands::validate_tmpdir(tmpdir) {
+        eprintln!("step-8-ship: {error}");
+        return ExitCode::from(1);
+    }
+    if let Err(error) = validate_ship_result_env(Path::new(merge_result_env), tmpdir) {
+        eprintln!("step-8-ship: invalid result env: {error}");
+        return ExitCode::from(1);
+    }
     let guard = run_python_guard();
     if guard != 0 {
         return ExitCode::from(guard);
     }
     emit_phantom_probe();
-    delegate_python_forward(
+    let output = match delegate_python(
         vec![
             "ship".into(),
             "pr".into(),
@@ -481,15 +472,29 @@ fn step8_ship_child(tmpdir: &Path, merge_result_env: &str) -> ExitCode {
             no_admin.into(),
             "--no-logs-commit".into(),
             no_logs.into(),
-            "--result-env-path".into(),
-            merge_result_env.into(),
             "--expected-session-id".into(),
             read_trimmed(&tmpdir.join("session-id")).into(),
             "--expected-tmpdir-basename-prefix".into(),
             expected_tmpdir_basename_prefix().into(),
         ],
         Duration::from_secs(u64::from(SHIP_BUDGET_SECONDS)),
-    )
+    ) {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::from(1);
+        }
+    };
+    let parsed = ShipResult::from_json(&String::from_utf8_lossy(output.stdout()));
+    let published =
+        parsed.and_then(|result| result.write_result_env(Path::new(merge_result_env), tmpdir));
+    if let Err(error) = published {
+        let _ignored = std::io::stderr().write_all(output.stderr());
+        eprintln!("step-8-ship: result-env publish failed: {error}");
+        return ExitCode::from(1);
+    }
+    forward_output(&output);
+    ExitCode::from(u8::try_from(output.status().code().unwrap_or(1)).unwrap_or(1))
 }
 
 fn emit_phantom_probe() {
@@ -739,113 +744,26 @@ pub fn patch_ship_state_keys(
             state_path.display()
         ));
     }
-    let text = fs::read_to_string(state_path).map_err(|_error| {
-        format!(
-            "refusing patch-only ship state write: {}",
-            state_path.display()
-        )
-    })?;
-    let document = KvDocument::parse(&text, ParseOptions::legacy())
+    let mut state = ShipState::read(state_path)
         .map_err(|_error| format!("cannot patch ship state: {}", state_path.display()))?;
-    if let Some(key) = removals
-        .iter()
-        .find(|key| !SHIP_STATE_ALLOWED_KEYS.contains(key))
-    {
-        return Err(format!("invalid ship state patch key: {key}"));
-    }
-    let mut rows: Vec<(String, String)> = Vec::new();
-    for row in document.rows() {
-        let (key, value) = (row.key(), row.value());
-        if !SHIP_STATE_ALLOWED_KEYS.contains(&key) || removals.contains(&key) {
-            continue;
-        }
-        if let Some(existing) = rows.iter_mut().find(|row| row.0 == key) {
-            value.clone_into(&mut existing.1);
-        } else {
-            rows.push((key.to_owned(), value.to_owned()));
-        }
-    }
-    if rows.is_empty() {
+    if state.is_empty() {
         return Err(format!(
             "refusing patch-only ship state write: {}",
             state_path.display()
         ));
     }
+    for key in removals {
+        state.remove(key).map_err(|error| error.to_string())?;
+    }
     for (key, value) in updates {
-        if !SHIP_STATE_ALLOWED_KEYS.contains(key) {
-            return Err(format!("invalid ship state patch key: {key}"));
-        }
-        if let Some(row) = rows.iter_mut().find(|row| row.0 == *key) {
-            value.clone_into(&mut row.1);
-        } else {
-            rows.push(((*key).to_owned(), value.clone()));
-        }
+        state
+            .set(key, value.clone())
+            .map_err(|error| error.to_string())?;
     }
-    validate_ship_rows(&rows)?;
-    let mut body = String::new();
-    for (key, value) in rows {
-        body.push_str(&key);
-        body.push('=');
-        body.push_str(&value);
-        body.push('\n');
-    }
-    private_atomic_write(state_path, &body, parent)
+    let _validated = state.render().map_err(|error| error.to_string())?;
+    state
+        .write(state_path, parent)
         .map_err(|_error| format!("cannot patch ship state: {}", state_path.display()))
-}
-
-fn validate_ship_rows(rows: &[(String, String)]) -> Result<(), String> {
-    for (key, value) in rows {
-        if value.contains(['\n', '\r']) {
-            return Err(format!("invalid newline in ship state value: {key}"));
-        }
-        if key == "BRANCH_NAME"
-            && !value.is_empty()
-            && (value.starts_with('-')
-                || value.ends_with('/')
-                || value.contains("..")
-                || value.contains("//")
-                || value.contains("@{")
-                || !value
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || "._/-".contains(c)))
-        {
-            return Err("invalid ship state BRANCH_NAME".to_owned());
-        }
-        if key == "PR_URL" && !valid_pr_url(value) {
-            return Err("invalid ship state PR_URL".to_owned());
-        }
-        if key == "MERGE_RESULT"
-            && !value.is_empty()
-            && ![
-                "merged",
-                "admin_merged",
-                "queued",
-                "main_advanced",
-                "ci_not_ready",
-                "version_already_published",
-                "policy_denied",
-                "admin_failed",
-                "review_required",
-                "error",
-                "already_merged",
-            ]
-            .contains(&value.as_str())
-        {
-            return Err("invalid ship state MERGE_RESULT".to_owned());
-        }
-    }
-    Ok(())
-}
-
-fn valid_pr_url(value: &str) -> bool {
-    value.is_empty()
-        || (value
-            .strip_prefix("http://")
-            .or_else(|| value.strip_prefix("https://"))
-            .is_some_and(|suffix| !suffix.is_empty())
-            && value.chars().all(|character| {
-                character.is_ascii_alphanumeric() || "._~:/?#[]@!$&'()*+,;=%-".contains(character)
-            }))
 }
 
 fn verified_larch(arguments: &[OsString]) -> Result<ProcessOutput, String> {
@@ -854,32 +772,9 @@ fn verified_larch(arguments: &[OsString]) -> Result<ProcessOutput, String> {
     delegate_verified_larch(&cwd, &root, arguments)
 }
 
-fn delegate_python_forward(arguments: Vec<OsString>, timeout: Duration) -> ExitCode {
-    match delegate_python(arguments, timeout) {
-        Ok(output) => {
-            forward_output(&output);
-            ExitCode::from(u8::try_from(output.status().code().unwrap_or(1)).unwrap_or(1))
-        }
-        Err(error) => {
-            eprintln!("{error}");
-            ExitCode::from(1)
-        }
-    }
-}
-
 pub fn state_has_shell_kv(path: &Path) -> bool {
-    read_kv_document(path).is_some_and(|document| {
-        document.rows().iter().any(|row| {
-            let key = row.key();
-            let mut chars = key.chars();
-            chars
-                .next()
-                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-                && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-        })
-    })
+    state_file_has_kv(path)
 }
-
 fn read_first(path: &Path, key: &str) -> String {
     read_kv_document(path)
         .and_then(|document| document.select(DuplicatePolicy::First).remove(key))

@@ -20,8 +20,8 @@ from larch.implement import ship
 from larch.implement import ship_guidelines
 from larch.implement import ship_merge
 from larch.implement import ship_pr
-from larch.implement import ship_resume
 from larch.implement import ship_result
+from larch.implement import ship_resume
 from larch.issue import migration_governance
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled
 from larch.outcomes import Outcome, StepResult
@@ -1223,165 +1223,6 @@ def test_main_advanced_ci_initial_write_omits_monitor_head_fields(
         and write.get("ci_fix_rebase_pending_head", "") == ""
     )
     assert main_advanced_follow_up["rebase_count"] == "1"
-
-
-def test_seed_initial_state_writes_exact_ordered_key_set(tmp_path: Path) -> None:
-    manifest = tmp_path / "manifest.json"
-    _ = manifest.write_text('{"summary_bullets":["Ship"]}\n', encoding="utf-8")
-    state = tmp_path / "ship-pr-state.sh"
-    rc = ship.seed_initial_state_main([
-        "--tmpdir", str(tmp_path),
-        "--state-file", str(state),
-        "--branch", "feature/ship",
-        "--issue", "42",
-        "--repo", "owner/repo",
-        "--run-id", "run-42",
-        "--manifest-path", str(manifest),
-        "--tool-label", "Codex",
-        "--merge", "true",
-        "--draft", "true",
-        "--forked", "true",
-        "--repo-unavailable", "false",
-        "--deferred", "true",
-        "--no-admin-fallback", "true",
-        "--no-logs-commit", "true",
-        "--expected-session-id", "sid",
-        "--expected-tmpdir-basename-prefix", "claude-implement-larch-",
-    ])
-    assert rc == 0
-    lines = state.read_text(encoding="utf-8").splitlines()
-    assert [line.split("=", 1)[0] for line in lines] == list(ship.INITIAL_SHIP_STATE_KEYS)
-    data = _read_state(state)
-    assert data["PHASE"] == "checks"
-    assert data["BRANCH_NAME"] == "feature/ship"
-    assert data["ISSUE_NUMBER"] == "42"
-    assert data["RUN_ID"] == "run-42"
-    assert data["REPO"] == "owner/repo"
-    assert data["IMPLEMENT_TMPDIR"] == str(tmp_path)
-    assert data["MANIFEST_PATH"] == str(manifest)
-    assert data["TOOL_LABEL"] == "Codex"
-    assert data["MERGE"] == "true"
-    assert data["DRAFT"] == "true"
-    assert data["FORKED_TARGET"] == "true"
-    assert data["DEFERRED"] == "true"
-    assert data["NO_ADMIN_FALLBACK"] == "true"
-    assert data["NO_LOGS_COMMIT"] == "true"
-    assert data["EXPECTED_SESSION_ID"] == "sid"
-    assert data["EXPECTED_TMPDIR_BASENAME_PREFIX"] == "claude-implement-larch-"
-    assert data["PR_CLOSED"] == "false"
-    assert data["STALL_TRACKING"] == "false"
-    assert data["OOS_PENDING"] == "false"
-    assert data["PR_NUMBER"] == ""
-    assert data["BAIL_REASON"] == ""
-    assert data["REBASE_COUNT"] == "0"
-    assert data["FIX_ATTEMPTS"] == "0"
-    assert data["ITERATION"] == "0"
-    assert data["TRANSIENT_RETRIES"] == "0"
-    assert data["CI_FIX_REBASE_PENDING"] == "false"
-
-
-def test_seed_initial_state_stall_profile_preserves_merge_forces_draft_false(tmp_path: Path) -> None:
-    state = tmp_path / "ship-pr-state.sh"
-    rc = ship.seed_initial_state_main([
-        "--tmpdir", str(tmp_path),
-        "--state-file", str(state),
-        "--branch", "feature/ship",
-        "--issue", "42",
-        "--repo", "owner/repo",
-        "--run-id", "run-42",
-        "--merge", "true",
-        "--draft", "true",
-        "--stall-tracking", "true",
-        "--stall-step", "5",
-        "--bail-reason", "lint-fix-failed",
-    ])
-    assert rc == 0
-    data = _read_state(state)
-    assert data["STALL_TRACKING"] == "true"
-    assert data["STALL_STEP"] == "5"
-    assert data["BAIL_REASON"] == "lint-fix-failed"
-    assert data["MERGE"] == "true"
-    assert data["DRAFT"] == "false"
-    assert data["OOS_PENDING"] == "false"
-
-
-def test_seed_initial_state_manifest_guard_and_no_partial_file(tmp_path: Path) -> None:
-    state = tmp_path / "ship-pr-state.sh"
-    missing = tmp_path / "missing.json"
-    rc = ship.seed_initial_state_main([
-        "--tmpdir", str(tmp_path),
-        "--state-file", str(state),
-        "--branch", "feature/ship",
-        "--issue", "42",
-        "--repo", "owner/repo",
-        "--run-id", "run-42",
-        "--manifest-path", str(missing),
-    ])
-    assert rc == 2
-    assert not state.exists()
-    bad_env = tmp_path / "manifest.env"
-    _ = bad_env.write_text("STATUS=complete\n", encoding="utf-8")
-    rc = ship.seed_initial_state_main([
-        "--tmpdir", str(tmp_path),
-        "--state-file", str(state),
-        "--branch", "feature/ship",
-        "--issue", "42",
-        "--repo", "owner/repo",
-        "--run-id", "run-42",
-        "--manifest-path", str(bad_env),
-    ])
-    assert rc == 2
-    assert not state.exists()
-    manifest = tmp_path / "manifest.json"
-    _ = manifest.write_text('{"summary_bullets":["Ship"]}\n', encoding="utf-8")
-    rc = ship.seed_initial_state_main([
-        "--tmpdir", str(tmp_path),
-        "--state-file", str(state),
-        "--branch", "feature/ship",
-        "--issue", "42",
-        "--repo", "owner/repo",
-        "--run-id", "run-42",
-        "--manifest-path", str(manifest),
-    ])
-    assert rc == 0
-
-
-def test_seed_initial_state_create_if_absent_refuses_existing_driver_keys(tmp_path: Path) -> None:
-    state = tmp_path / "ship-pr-state.sh"
-    _ = state.write_text("PHASE=checks\nPR_NUMBER=7\n", encoding="utf-8")
-    before = state.read_text(encoding="utf-8")
-    rc = ship.seed_initial_state_main([
-        "--tmpdir", str(tmp_path),
-        "--state-file", str(state),
-        "--branch", "feature/ship",
-        "--issue", "42",
-        "--repo", "owner/repo",
-        "--run-id", "run-42",
-    ])
-    assert rc == 2
-    assert state.read_text(encoding="utf-8") == before
-
-
-@pytest.mark.parametrize(
-    ("extra_args", "field"),
-    [
-        (["--branch", "", "--issue", "42", "--repo", "owner/repo", "--run-id", "run-42"], "branch"),
-        (["--branch", "feature/ship", "--issue", "", "--repo", "owner/repo", "--run-id", "run-42"], "issue"),
-        (["--branch", "feature/ship", "--issue", "42", "--repo", "", "--run-id", "run-42"], "repo"),
-        (["--branch", "feature/ship", "--issue", "42", "--repo", "owner/repo", "--run-id", ""], "run-id"),
-        (["--branch", "-bad", "--issue", "42", "--repo", "owner/repo", "--run-id", "run-42"], "branch"),
-        (["--branch", "feature/ship", "--issue", "abc", "--repo", "owner/repo", "--run-id", "run-42"], "issue"),
-    ],
-)
-def test_seed_initial_state_rejects_empty_or_invalid_identity_fields(
-    tmp_path: Path,
-    extra_args: list[str],
-    field: str,
-) -> None:
-    state = tmp_path / "ship-pr-state.sh"
-    rc = ship.seed_initial_state_main(["--tmpdir", str(tmp_path), "--state-file", str(state), *extra_args])
-    assert rc == 2, field
-    assert not state.exists()
 
 
 def test_ship_state_merge_preserves_no_admin_fallback(tmp_path: Path) -> None:
@@ -5971,145 +5812,61 @@ def test_emit_result_skips_journal_on_invalid_tmpdir(tmp_path: Path, capsys: pyt
     assert not Path("/not/allowed/larch").exists()
 
 
-def _parse_result_env(path: Path) -> dict[str, str]:
-    data: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        key, sep, value = line.partition("=")
-        if sep:
-            data[key] = value
-    return data
-
-
-def test_emit_result_writes_mixed_case_result_env(
-    tmp_path: Path,
+def test_emit_result_delegates_result_env_before_json(
+    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_write_ship_result_env(**kwargs: object) -> CommandResult:
+        calls.append(kwargs)
+        return ok(("scripts/larch.sh", "ship", "write-result-env"))
+
+    monkeypatch.setattr(ship_result.rust_runtime, "write_ship_result_env", fake_write_ship_result_env)
     sink = tmp_path / "ship.result.env"
-    ctx = _ctx(tmp_path)
     ship.emit_result(
-        ctx=ctx,
+        ctx=_ctx(tmp_path),
         result=ship.ShipResult(
             Outcome.NEEDS_USER_INPUT,
             needs_user_reason="main-ci-fail",
-            failed_run_id="99",
             pr_number=7,
-            pr_url="https://example.test/pr/7",
-            merge_result="merged",
             detail="line one\nline two",
             ledger_ready=True,
-            ledger_site="ship-pr",
-            ledger_trigger="main-ci-fail",
-            ledger_step="8",
-            ledger_phase="ci-merge",
-            ledger_dispatcher="ship-pr",
             ledger_exit_code=3,
-            ledger_failure_detail_log="/tmp/detail.log",
-            main_health_head_sha="abc123",
-            main_health_repair_committed="false",
-            original_branch_forbidden="true",
-            main_repair_run_id="99",
-            main_repair_head="abc123",
         ),
-        ci_errors_file="",
         ci_errors_distill_class="github-log-failure",
-        failed_jobs_count=0,
         result_env_path=sink,
     )
-    env = _parse_result_env(sink)
-    assert env["outcome"] == "NEEDS_USER_INPUT"
-    assert env["ledger_ready"] == "true"
-    assert env["ledger_site"] == "ship-pr"
-    assert env["ledger_exit_code"] == "3"
-    assert env["NEEDS_USER_REASON"] == "main-ci-fail"
-    assert env["FAILED_RUN_ID"] == "99"
-    assert env["PR_NUMBER"] == "7"
-    assert env["PR_URL"] == "https://example.test/pr/7"
-    assert env["MERGE_RESULT"] == "merged"
-    assert env["DETAIL"] == "line one line two"
-    assert env["MAIN_HEALTH_HEAD_SHA"] == "abc123"
-    assert env["ORIGINAL_BRANCH_FORBIDDEN"] == "true"
-    assert env["MAIN_REPAIR_RUN_ID"] == "99"
-    assert env["CI_ERRORS_FILE"] == ""
-    assert env["FAILED_JOBS_COUNT"] == "0"
-    assert env["CI_ERRORS_DISTILL_CLASS"] == "github-log-failure"
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["outcome"] == "NEEDS_USER_INPUT"
-    assert "ci_errors_file" not in payload
-    assert "failed_jobs_count" not in payload
+
+    assert len(calls) == 1
+    assert calls[0]["tmpdir"] == str(tmp_path)
+    assert calls[0]["path"] == sink
+    delegated = json.loads(cast("str", calls[0]["payload"]))
+    assert delegated["outcome"] == "NEEDS_USER_INPUT"
+    assert delegated["detail"] == "line one\nline two"
+    assert delegated["ledger_ready"] is True
+    assert delegated["ci_errors_distill_class"] == "github-log-failure"
+    assert json.loads(capsys.readouterr().out)["outcome"] == "NEEDS_USER_INPUT"
 
 
-def test_emit_result_ci_digest_omits_distill_class(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    sink = tmp_path / "ship.result.env"
-    digest = tmp_path / "ci-errors-1.md"
-    _ = digest.write_text("digest", encoding="utf-8")
-    ship.emit_result(
-        ctx=_ctx(tmp_path),
-        result=ship.ShipResult(Outcome.NEEDS_USER_INPUT, needs_user_reason="first-fixer-non-health"),
-        ci_errors_file=str(digest),
-        ci_errors_distill_class="should-not-appear",
-        failed_jobs_count=4,
-        result_env_path=sink,
-    )
-    env = _parse_result_env(sink)
-    assert env["CI_ERRORS_FILE"] == str(digest)
-    assert env["FAILED_JOBS_COUNT"] == "4"
-    assert "CI_ERRORS_DISTILL_CLASS" not in env
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["ci_errors_file"] == str(digest)
-    assert payload["failed_jobs_count"] == 4
-    # JSON injection stays truthy-sparse and unchanged: a supplied class still lands
-    # in the JSON payload even when result-env pairing omits it.
-    assert payload["ci_errors_distill_class"] == "should-not-appear"
-
-
-def test_emit_result_omitting_flag_creates_no_result_env_artifact(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    ctx = _ctx(tmp_path)
-    before = {p.name for p in tmp_path.iterdir()}
-    ship.emit_result(ctx=ctx, result=ship.ShipResult(Outcome.OK, pr_number=1, pr_url="u"))
-    after = {p.name for p in tmp_path.iterdir()}
-    assert not any(name.endswith(".result.env") for name in after - before)
-    assert json.loads(capsys.readouterr().out)["outcome"] == "OK"
-
-
-def test_emit_result_none_and_bool_scalar_rendering(tmp_path: Path) -> None:
-    sink = tmp_path / "ship.result.env"
-    ship.emit_result(
-        ctx=_ctx(tmp_path),
-        result=ship.ShipResult(Outcome.OK, pr_number=None, ledger_ready=False, ledger_exit_code=None),
-        result_env_path=sink,
-    )
-    env = _parse_result_env(sink)
-    assert env["PR_NUMBER"] == ""
-    assert env["ledger_ready"] == "false"
-    assert env["ledger_exit_code"] == ""
-    assert env["CI_ERRORS_FILE"] == ""
-    assert env["FAILED_JOBS_COUNT"] == "0"
-    assert env["CI_ERRORS_DISTILL_CLASS"] == ""
-
-
-def test_main_result_env_flag_plumbing(
+def test_main_result_env_preflight_failure_skips_driver(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
-    sink = tmp_path / "bgjob" / "ship.result.env"
-    sink.parent.mkdir()
+    driver_called = False
 
-    def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
-        return ship.ShipResult(
-            Outcome.OK,
-            pr_number=12,
-            pr_url="https://example.test/pr/12",
-            ledger_ready=False,
-        )
+    def reject_result_env(**_kwargs: object) -> CommandResult:
+        return rust_runtime.CommandResult(("scripts/larch.sh",), 2, "", "unsafe result env\n", 0.01)
+
+    def fake_run_ship(*_args: object, **_kwargs: object) -> ship.ShipResult:
+        nonlocal driver_called
+        driver_called = True
+        return ship.ShipResult(Outcome.OK)
 
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ship_result.rust_runtime, "write_ship_result_env", reject_result_env)
     monkeypatch.setattr(ship, "run_ship", fake_run_ship)
     monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
     rc = ship.main(
@@ -6119,195 +5876,31 @@ def test_main_result_env_flag_plumbing(
             "--manifest-path",
             str(tmp_path / "manifest.json"),
             "--result-env-path",
-            str(sink),
-        ],
+            str(tmp_path / "ship.result.env"),
+        ]
     )
-    assert rc == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["outcome"] == "OK"
-    env = _parse_result_env(sink)
-    assert env["outcome"] == "OK"
-    assert env["PR_NUMBER"] == "12"
-    assert env["CI_ERRORS_FILE"] == ""
-    assert env["FAILED_JOBS_COUNT"] == "0"
 
-
-@pytest.mark.parametrize(
-    ("path_factory", "tmpdir_override"),
-    [
-        (lambda tmp: str(tmp / "outside" / "ship.result.env"), "/not/allowed/larch"),
-        (lambda _tmp: str(Path("/tmp") / "larch-result-env-escape.env"), None),
-        (lambda _tmp: "relative/ship.result.env", None),
-        (lambda tmp: str(tmp / "nested" / ".." / "ship.result.env"), None),
-        (lambda tmp: str(tmp / "not-a-file"), None),
-    ],
-)
-def test_main_result_env_preflight_rejects_unsafe_paths(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-    path_factory: object,
-    tmpdir_override: str | None,
-) -> None:
-    called: list[bool] = []
-
-    def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
-        called.append(True)
-        return ship.ShipResult(Outcome.OK)
-
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(ship, "run_ship", fake_run_ship)
-    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
-    assert callable(path_factory)
-    raw_path = path_factory(tmp_path)
-    if str(raw_path).endswith("not-a-file"):
-        (tmp_path / "not-a-file").mkdir()
-    tmpdir = tmpdir_override or str(tmp_path)
-    rc = ship.main(
-        [
-            "--tmpdir",
-            tmpdir,
-            "--manifest-path",
-            str(tmp_path / "manifest.json"),
-            "--result-env-path",
-            str(raw_path),
-        ],
-    )
-    assert not called
-    assert rc == config.EXIT_INTERNAL_ERROR
-    captured = capsys.readouterr()
-    assert json.loads(captured.out)["outcome"] == "INTERNAL_ERROR"
-    assert not any(tmp_path.rglob("*.result.env"))
-
-
-def test_main_result_env_preflight_rejects_symlink_destination(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
-    target = tmp_path / "real.env"
-    _ = target.write_text("x=1\n", encoding="utf-8")
-    link = tmp_path / "ship.result.env"
-    link.symlink_to(target)
-    called: list[bool] = []
-
-    def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
-        called.append(True)
-        return ship.ShipResult(Outcome.OK)
-
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(ship, "run_ship", fake_run_ship)
-    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
-    rc = ship.main(
-        [
-            "--tmpdir",
-            str(tmp_path),
-            "--manifest-path",
-            str(tmp_path / "manifest.json"),
-            "--result-env-path",
-            str(link),
-        ],
-    )
-    assert not called
+    assert not driver_called
     assert rc == config.EXIT_INTERNAL_ERROR
     assert json.loads(capsys.readouterr().out)["outcome"] == "INTERNAL_ERROR"
 
 
-def test_main_result_env_preflight_rejects_symlink_parent(
+def test_emit_result_env_write_failure_suppresses_json(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
-    real_dir = tmp_path / "real"
-    real_dir.mkdir()
-    link_dir = tmp_path / "linked"
-    link_dir.symlink_to(real_dir)
-    sink = link_dir / "ship.result.env"
-    called: list[bool] = []
+    def reject_result_env(**_kwargs: object) -> CommandResult:
+        return rust_runtime.CommandResult(("scripts/larch.sh",), 2, "", "write blocked\n", 0.01)
 
-    def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
-        called.append(True)
-        return ship.ShipResult(Outcome.OK)
-
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(ship, "run_ship", fake_run_ship)
-    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
-    rc = ship.main(
-        [
-            "--tmpdir",
-            str(tmp_path),
-            "--manifest-path",
-            str(tmp_path / "manifest.json"),
-            "--result-env-path",
-            str(sink),
-        ],
-    )
-    assert not called
-    assert rc == config.EXIT_INTERNAL_ERROR
-    assert json.loads(capsys.readouterr().out)["outcome"] == "INTERNAL_ERROR"
-
-
-def test_emit_result_trusted_write_failure_skips_json(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    sink = tmp_path / "ship.result.env"
-    missing_parent = tmp_path / "missing-parent" / "ship.result.env"
-
-    def boom(*_a: object, **_k: object) -> None:
-        raise OSError("trusted write blocked")
-
-    monkeypatch.setattr(ship_result.larch_io, "trusted_atomic_write", boom)
-    with pytest.raises(OSError, match="trusted write blocked"):
+    monkeypatch.setattr(ship_result.rust_runtime, "write_ship_result_env", reject_result_env)
+    with pytest.raises(OSError, match="write blocked"):
         ship.emit_result(
             ctx=_ctx(tmp_path),
-            result=ship.ShipResult(Outcome.OK, pr_number=1),
-            result_env_path=sink,
+            result=ship.ShipResult(Outcome.OK),
+            result_env_path=tmp_path / "ship.result.env",
         )
     assert capsys.readouterr().out == ""
-    assert not sink.exists()
-
-    with pytest.raises((OSError, ValueError)):
-        ship.emit_result(
-            ctx=_ctx(tmp_path),
-            result=ship.ShipResult(Outcome.OK, pr_number=1),
-            result_env_path=missing_parent,
-        )
-    assert not (tmp_path / "missing-parent").exists()
-    assert capsys.readouterr().out == ""
-
-
-def test_main_result_env_write_failure_returns_internal_error(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
-    sink = tmp_path / "ship.result.env"
-
-    def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
-        return ship.ShipResult(Outcome.OK, pr_number=1)
-
-    def boom(*_a: object, **_k: object) -> None:
-        raise OSError("trusted write blocked")
-
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(ship, "run_ship", fake_run_ship)
-    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
-    monkeypatch.setattr(ship_result.larch_io, "trusted_atomic_write", boom)
-    rc = ship.main(
-        [
-            "--tmpdir",
-            str(tmp_path),
-            "--manifest-path",
-            str(tmp_path / "manifest.json"),
-            "--result-env-path",
-            str(sink),
-        ],
-    )
-    assert rc == config.EXIT_INTERNAL_ERROR
-    assert capsys.readouterr().out == ""
-    assert not sink.exists()
 
 
 def test_persist_stall_metadata_gap_fill_preserves_custom_key(tmp_path: Path) -> None:

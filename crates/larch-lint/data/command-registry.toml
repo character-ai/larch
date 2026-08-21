@@ -7616,11 +7616,27 @@ verb = "seed-initial-state"
 python_module = "larch.implement.ship"
 python_function = "seed_initial_state_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8621
+clean_install_test = "clean-install-ship-seed-initial-state"
+
+[[commands]]
+domain = "ship"
+verb = "write-result-env"
+python_module = "larch.implement.ship_result"
+python_function = "_retired_write_result_env_owner"
+machine_stdout = false
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
+planning_issue = 7681
+migration_issue = 8621
+clean_install_test = "clean-install-ship-write-result-env"
 
 [[commands]]
 domain = "slack"
@@ -9229,7 +9245,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["block-issue *", "ci distill-log", "ci main-health", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome", "timing *", "token append-record", "token dump", "token lane-report", "token lane-write", "token mark", "token record-vendor", "token record-vendor-sidecar", "tracking-issue *"]
+rust = ["block-issue *", "ci distill-log", "ci main-health", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "ship write-result-env", "stall-recovery normalize-outcome", "timing *", "token append-record", "token dump", "token lane-report", "token lane-write", "token mark", "token record-vendor", "token record-vendor-sidecar", "tracking-issue *"]
 
 [[callers]]
 path = "python/larch/design/design_core.py"
@@ -9894,7 +9910,7 @@ rust = ["checks run-relevant", "ci main-health", "implement run-dispatch"]
 [[callers]]
 path = "skills/implement/references/step5-review-branches.md"
 kind = "skill"
-python = ["ship seed-initial-state"]
+python = []
 rust = ["bgjob wait", "implement clone-tag", "review tally-code-votes", "review-and-fix step5"]
 
 [[callers]]
@@ -10140,7 +10156,7 @@ rust = ["implement step-8-python-guard"]
 [[callers]]
 path = "skills/implement/scripts/step-8-seed-initial.md"
 kind = "skill"
-python = ["ship seed-initial-state"]
+python = []
 rust = ["implement step-8-seed-initial"]
 
 [[callers]]

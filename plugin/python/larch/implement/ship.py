@@ -91,7 +91,6 @@ def _write_final_report_comment(ctx: RunContext) -> None:
 
 # Re-exports from sibling modules — preserves `ship.X` access for callers and tests.
 from larch.implement.ship_state import (
-    INITIAL_SHIP_STATE_KEYS,
     _PYTHON_TRANSIENT_STALL_ATTEMPT,
     _breadcrumb,
     _progress_note,
@@ -160,12 +159,6 @@ from larch.implement.ship_resume import (
     _resume_plan,
     _seed_last_monitored_head,
 )
-from larch.implement.ship_seed import (
-    build_seed_initial_state_parser,
-    seed_initial_state_main,
-)
-
-
 @dataclass(frozen=True)
 class _AssessmentGatePair:
     invariants: InvariantsGateResult

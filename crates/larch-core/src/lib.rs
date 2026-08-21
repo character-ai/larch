@@ -291,12 +291,14 @@ pub use github::{
 pub use github_actions::{RunLogsOutput, run_logs, run_logs_setup_failure, workflow_path};
 pub use github_auth::{GitHubToken, GitHubTokenError, GitHubTokenErrorKind, acquire_github_token};
 pub use implement::{
-    CHECKS_TERMINAL_ACTIONS, DispatchState, RecoveryParse, RecoveryPorcelainInputs,
-    STEP6_CHECKS_STEP, StepChecksSite, checks_step_for_site, clear_external_scout_paths,
-    compute_recovery_paths, load_digest_map, manifest_legacy_fingerprint, parse_porcelain_z,
-    path_under_submodule, public_args_for_site, rel_under_tmp, resolve_step_and_budget,
-    resolve_step_name, resolve_tmpdir_path, sha256_file, tmpdir_rel_in_repo, write_bytes_atomic,
-    write_digest_map,
+    CHECKS_TERMINAL_ACTIONS, DispatchState, INITIAL_SHIP_STATE_KEYS, InitialShipState,
+    RecoveryParse, RecoveryPorcelainInputs, SHIP_STATE_ALLOWED_KEYS, STEP6_CHECKS_STEP,
+    ShipOutcome, ShipResult, ShipResultError, ShipState, ShipStateError, StepChecksSite,
+    checks_step_for_site, clear_external_scout_paths, compute_recovery_paths, load_digest_map,
+    manifest_legacy_fingerprint, parse_porcelain_z, path_under_submodule, public_args_for_site,
+    rel_under_tmp, resolve_step_and_budget, resolve_step_name, resolve_tmpdir_path, sha256_file,
+    state_file_has_kv, tmpdir_rel_in_repo, tmpdir_under_allowed_root, validate_ship_result_env,
+    write_bytes_atomic, write_digest_map, write_initial_state,
 };
 pub use issue::{
     ACCEPTED_OOS_FILENAMES, BlockBoundary, CanonicalHeading, ConflictPlan, DispositionCounters,

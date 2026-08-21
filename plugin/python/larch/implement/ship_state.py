@@ -20,7 +20,6 @@ from larch.state import finalize
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 _BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/\-]+$")
-_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _PR_URL_RE = re.compile(r"^https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+$")
 _ALLOWED_EXTRA_FIELDS = {
     "CONFLICT_FILES",
@@ -116,58 +115,6 @@ _ALLOWED_CALLER_KINDS = {"", config.SHIP_PR_PRE_PUSH_CALLER_KIND}
 _MIN_GH_SKIPPED_MERGE_SIGNALS = 2
 _PYTHON_TRANSIENT_STALL_ATTEMPT = 4
 
-INITIAL_SHIP_STATE_KEYS: tuple[str, ...] = (
-    "PHASE",
-    "BRANCH_NAME",
-    "ISSUE_NUMBER",
-    "RUN_ID",
-    "REPO",
-    "REPO_UNAVAILABLE",
-    "FORKED_TARGET",
-    "MERGE",
-    "DRAFT",
-    "DEFERRED",
-    "PR_CLOSED",
-    "DONE_RENAME_APPLIED",
-    "STALL_TRACKING",
-    "STALL_STEP",
-    "BAIL_NEEDS_USER_INPUT",
-    "BAIL_REASON",
-    "BAIL_FAILURE_DETAIL_LOG",
-    "CI_PASSED",
-    "PR_NUMBER",
-    "PR_URL",
-    "PR_TITLE",
-    "RESUME_PHASE",
-    "CALLER_KIND",
-    "REBASE_COUNT",
-    "FIX_ATTEMPTS",
-    "ITERATION",
-    "TRANSIENT_RETRIES",
-    "FAILED_RUN_ID",
-    "MANIFEST_PATH",
-    "TOOL_LABEL",
-    "DESIGN_ONLY_DONE",
-    "EXPECTED_SESSION_ID",
-    "EXPECTED_TMPDIR_BASENAME_PREFIX",
-    "NO_ADMIN_FALLBACK",
-    "NO_LOGS_COMMIT",
-    "IMPLEMENT_TMPDIR",
-    "CI_FIX_REBASE_PENDING",
-    "OOS_PENDING",
-    "EMERGENCY_REPAIR_BRANCH",
-    "ORIGINAL_BRANCH_FORBIDDEN",
-    "MAIN_REPAIR_RUN_ID",
-    "MAIN_REPAIR_HEAD",
-    "EMERGENCY_REPAIR_PR_NUMBER",
-    "MAIN_HEALTH_REPAIR_COMMITTED",
-    "MAIN_HEALTH_REPAIR_FAILED_RUN_ID",
-    "MAIN_HEALTH_REPAIR_BASE_SHA",
-    "MAIN_HEALTH_REPAIR_HEAD",
-    "MAIN_HEALTH_HEAD_SHA",
-)
-
-
 def _breadcrumb(*, step: str, detail: str = "") -> None:
     suffix = f": {detail}" if detail else ""
     logging_util.BreadcrumbWriter().emit(f"ship.py: {step}{suffix}")
@@ -197,10 +144,6 @@ def _state_bool_text(value: str) -> bool:
 
 def _truthy(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _bool_arg(value: str | None) -> bool:
-    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _valid_repo_slug(value: str) -> bool:
@@ -423,28 +366,6 @@ def _patch_ship_state_keys(*, state_file: Path, patch: dict[str, str]) -> None: 
     for key, value in filtered.items():
         _validate_ship_state_value(key=key, value=str(value))
     _write_patchable_ship_state(path=path, tmp=tmp, fields=filtered)
-
-
-def _state_file_has_kv(path: Path) -> bool:
-    if not path.is_file() or path.stat().st_size == 0:
-        return False
-    try:
-        for line in path.read_text(encoding="utf-8").splitlines():
-            key, sep, _value = line.partition("=")
-            if sep and _KEY_RE.fullmatch(key):
-                return True
-    except (OSError, UnicodeDecodeError):
-        return True
-    return False
-
-
-def _path_under(*, parent: Path, child: Path) -> bool:
-    try:
-        resolved_parent = parent.resolve(strict=False)
-        resolved_child = child.resolve(strict=False)
-    except OSError:
-        return False
-    return resolved_child == resolved_parent or resolved_parent in resolved_child.parents
 
 
 def _state_file_under_tmpdir(ctx: RunContext) -> bool:

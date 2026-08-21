@@ -691,6 +691,16 @@ Conflict fixers receive validated repository-relative paths and may edit only
 the named conflict files. The driver owns staging, rebase continuation, push,
 and merge.
 
+Rust owns the canonical initial ship-state schema and the Step 8 result-env
+schema. `ship seed-initial-state` validates the session root, contained state
+path, identity fields, manifest shape, line-safe values, and create-only gate
+before a private atomic write. Step 8 captures the Python driver's redacted JSON
+result, requires a typed outcome, normalizes scalars, and writes the contained
+result env before it forwards JSON. Direct Python compatibility calls enter the
+same result-env owner through `scripts/larch.sh`; no second writer is selected.
+Symlinked destinations, unsafe parents, relative or escaping result paths, and
+missing outcomes fail closed before publication.
+
 Recovery never applies pre-merge mutations to a merged or closed pull request.
 Manual reconciliation first proves the repository and merged pull request, then
 writes only its closed state allowlist and verifies that stall and bail overlays
@@ -896,16 +906,20 @@ while the sidecar remains.
 
 Review and design tally/aggregation modules retain their distinct source-side
 classification responsibilities. Under receiving umbrella #7681,
-`crates/larch-cli/src/implement_ship_commands.rs` owns Step 8 dispatch,
-checkpoint exit mapping, canonical run-id resolution, manifest stamping, run
-statistics, and the allowlisted atomic `OOS_PENDING=false` transition.
-`crates/larch-cli/src/ship_pre_driver_commands.rs` owns the sibling pre-driver,
-pre-fix-rebase, route-exit, and assessment-handoff commands, including confined
-result/handoff reads and allowlisted ship-state patches. The surviving
+`crates/larch-cli/src/implement_ship_commands.rs` owns Step 8 dispatch, typed
+result-env publication, checkpoint exit mapping, canonical run-id resolution,
+manifest stamping, run statistics, and the allowlisted atomic
+`OOS_PENDING=false` transition. `crates/larch-cli/src/ship_commands.rs` and
+`larch_core::implement::{ship_state, ship_result}` own initial state and result
+wire validation and private publication. The sibling pre-driver,
+pre-fix-rebase, route-exit, and assessment-handoff commands are Rust-owned by
+`crates/larch-cli/src/ship_pre_driver_commands.rs`, including confined
+result/handoff reads and shared-core ship-state patches. The surviving
 `python/larch/issue/file_oos.py` callers use in-process block parsing/counting
 and title normalization under receiving umbrella #7680; the module is not an
 OOS command owner or fallback. Rust tests in `implement_ship_parity.rs`,
-`ship_pre_driver_parity.rs`, `oos_commands.rs`, `oos_file_commands.rs`, `oos_batch.rs`,
+`ship_pre_driver_parity.rs`, `ship_state_parity.rs`, `oos_commands.rs`,
+`oos_file_commands.rs`, `oos_batch.rs`,
 `oos_disposition.rs`, and `oos_record.rs` cover Step 8 wire parity, manifest
 materialization, field variants, private routing, and checkpoint refusal.
 

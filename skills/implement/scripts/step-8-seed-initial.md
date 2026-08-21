@@ -29,16 +29,16 @@ Do not invoke the retired session-env reader. Use the shared Rust legacy-KV and 
 
 ## Create-if-absent gate
 
-If `$IMPLEMENT_TMPDIR/ship-pr-state.sh` exists, is non-empty, and contains a `KEY=value` line, the Rust command exits non-zero before invoking the seeder. Initial seeding must not overwrite driver-progressed state.
+If `$IMPLEMENT_TMPDIR/ship-pr-state.sh` exists, is non-empty, and contains a `KEY=value` line, the Rust command exits non-zero before writing. Initial seeding must not overwrite driver-progressed state.
 
 ## Stall flags
 
-The Step 5 missing-state path may pass `--stall-tracking`, `--stall-step`, `--bail-reason`, `--bail-failure-detail-log`, `--merge false`, and `--draft false`. The retained Python state writer also forces `MERGE=false` and `DRAFT=false` whenever `--stall-step` is non-empty.
+The Step 5 missing-state path may pass `--stall-tracking`, `--stall-step`, `--bail-reason`, `--bail-failure-detail-log`, `--merge false`, and `--draft false`. The Rust state builder forces `DRAFT=false` whenever `--stall-step` is non-empty and preserves the requested `MERGE` value.
 
 ## Delegation
 
-The wrapper enters `scripts/larch.sh implement step-8-seed-initial`. Rust assembles the canonical argv, including `--expected-tmpdir-basename-prefix`, then delegates the still-Python `ship seed-initial-state` command through the central migration seam.
+The wrapper enters `scripts/larch.sh implement step-8-seed-initial`. Rust assembles the canonical request, including `--expected-tmpdir-basename-prefix`, then invokes the Rust `ship seed-initial-state` owner in process.
 
-Do not put multi-line seeder examples, line continuations, inline `if`, or direct `python/cli.py ship seed-initial-state` invocations in `SKILL.md`. Argv assembly lives here.
+Do not put multi-line seeder examples, line continuations, inline `if`, or retired Python seeder invocations in `SKILL.md`. Argv assembly lives here.
 
 `ship-seed-input.env` is written by Step 0 and extended after Step 2 dispatch with manifest/tool context.

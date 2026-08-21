@@ -20,7 +20,7 @@ with (tmp / "python-argv.txt").open("a", encoding="utf-8") as stream:
 if sys.argv[1:3] == ["ship", "seed-initial-state"]:
     print("SEED_RELAY=ok")
 elif sys.argv[1:3] == ["ship", "pr"]:
-    print("SHIP_RELAY=ok")
+    print(json.dumps({"outcome": "OK", "pr_number": 12, "pr_url": "https://example.test/pr/12"}, sort_keys=True))
 else:
     sys.exit(9)
 "#;
@@ -155,7 +155,7 @@ fn python_guard_failure_preserves_json_stall_contract() {
 }
 
 #[test]
-fn seed_initial_resolves_durable_inputs_and_relays_python() {
+fn seed_initial_resolves_durable_inputs_and_writes_in_process() {
     let fixture = fixture(0);
     fs::write(
         fixture.tmpdir.join("bootstrap-routing.env"),
@@ -173,39 +173,14 @@ fn seed_initial_resolves_durable_inputs_and_relays_python() {
         .output()
         .expect("seed");
     assert!(output.status.success(), "{}", stderr(&output));
-    assert_eq!(stdout(&output), "SEED_RELAY=ok\n");
-    let tmpdir = fixture.tmpdir.display().to_string();
-    let state = fixture
-        .tmpdir
-        .join("ship-pr-state.sh")
-        .display()
-        .to_string();
-    #[rustfmt::skip]
-    let expected = strings(&[
-        "ship", "seed-initial-state",
-        "--tmpdir", &tmpdir,
-        "--state-file", &state,
-        "--branch", "feature/ship",
-        "--issue", "8624",
-        "--repo", "owner/repo",
-        "--run-id", "run-8",
-        "--manifest-path", "",
-        "--tool-label", "Codex",
-        "--merge", "true",
-        "--draft", "false",
-        "--forked", "false",
-        "--repo-unavailable", "false",
-        "--deferred", "false",
-        "--no-admin-fallback", "false",
-        "--no-logs-commit", "false",
-        "--expected-session-id", "session-8",
-        "--expected-tmpdir-basename-prefix", "claude-implement-tmp-",
-        "--stall-tracking", "false",
-        "--stall-step", "",
-        "--bail-reason", "",
-        "--bail-failure-detail-log", "",
-    ]);
-    assert_eq!(python_argv(&fixture), vec![expected]);
+    assert_eq!(stdout(&output), "");
+    assert!(!fixture.tmpdir.join("python-argv.txt").exists());
+    let state = fs::read_to_string(fixture.tmpdir.join("ship-pr-state.sh")).expect("state");
+    assert!(state.starts_with("PHASE=checks\nBRANCH_NAME=feature/ship\nISSUE_NUMBER=8624\n"));
+    assert!(state.contains("TOOL_LABEL=Codex\n"));
+    assert!(state.contains("EXPECTED_SESSION_ID=session-8\n"));
+    assert!(state.contains("EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-tmp-\n"));
+    assert!(state.ends_with("MAIN_HEALTH_HEAD_SHA=\n"));
 }
 
 #[test]
@@ -248,7 +223,10 @@ fn ship_child_runs_guard_probe_and_canonical_python_driver() {
         .output()
         .expect("ship child");
     assert!(output.status.success(), "{}", stderr(&output));
-    assert_eq!(stdout(&output), "SHIP_RELAY=ok\n");
+    assert_eq!(
+        stdout(&output),
+        "{\"outcome\": \"OK\", \"pr_number\": 12, \"pr_url\": \"https://example.test/pr/12\"}\n"
+    );
     assert!(stderr(&output).contains("→ phantom-probe: 8-pre-ship"));
     assert!(stderr(&output).contains("PHANTOM_STATUS="));
     assert!(!fixture.tmpdir.join("larch-argv.txt").exists());
@@ -258,7 +236,6 @@ fn ship_child_runs_guard_probe_and_canonical_python_driver() {
         .join("ship-pr-state.sh")
         .display()
         .to_string();
-    let merge = merge.display().to_string();
     #[rustfmt::skip]
     let expected = strings(&[
         "ship", "pr",
@@ -276,11 +253,18 @@ fn ship_child_runs_guard_probe_and_canonical_python_driver() {
         "--repo-unavailable", "false",
         "--no-admin-fallback", "false",
         "--no-logs-commit", "false",
-        "--result-env-path", &merge,
         "--expected-session-id", "",
         "--expected-tmpdir-basename-prefix", "claude-implement-tmp-",
     ]);
     assert_eq!(python_argv(&fixture), vec![expected]);
+    let result_env = fs::read_to_string(&merge).expect("Rust result env");
+    assert!(
+        result_env.starts_with("outcome=OK\nNEEDS_USER_REASON=\nFAILED_RUN_ID=\nPR_NUMBER=12\n")
+    );
+    assert!(result_env.contains("PR_URL=https://example.test/pr/12\n"));
+    assert!(
+        result_env.ends_with("CI_ERRORS_FILE=\nFAILED_JOBS_COUNT=0\nCI_ERRORS_DISTILL_CLASS=\n")
+    );
 }
 
 #[test]

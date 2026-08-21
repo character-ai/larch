@@ -653,7 +653,7 @@ Run `"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh ship 
 "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh ship pre-driver
 ```
 
-**Seeder authority.** The retained `ship seed-initial-state` command owns the canonical initial state write contract. Rust owns durable input resolution and canonical argv assembly behind `step-8-seed-initial.sh`.
+**Seeder authority.** The Rust-owned `ship seed-initial-state` command owns the canonical initial state write contract. Rust also owns durable input resolution and canonical argv assembly behind `step-8-seed-initial.sh`.
 
 Branch on pre-driver `NEXT_ACTION`:
 

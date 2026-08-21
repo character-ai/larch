@@ -216,12 +216,13 @@ pre-driver reaches the guard and seeder only through that verified bootstrap.
 The Python CLI registrations, re-exports, handlers, and exclusive helpers are
 removed atomically, and the command-registry milestones are complete.
 
-The retained `ship seed-initial-state` and `ship pr` engines remain Python and
-are reached only through the central Rust-to-Python migration seam. The Rust
-ship parent composes the shared bgjob adapter with completed-result replacement;
-the child reconstructs canonical argv and passes the adapter merge-result path
-to `ship pr`. The delegated process uses the same six-hour budget as the Step 8
-bgjob, so a valid 30-minute CI wait outlives the default short bridge deadline.
+The retained `ship pr` engine remains Python and is reached only through the
+central Rust-to-Python migration seam. The Rust ship parent composes the shared
+bgjob adapter with completed-result replacement; the child reconstructs
+canonical argv, captures the driver's JSON result, and publishes the typed
+result env through the Rust ship-result module. The delegated process uses the
+same six-hour budget as the Step 8 bgjob, so a valid 30-minute CI wait outlives
+the default short bridge deadline.
 The Rust OOS router composes `oos disposition-checkpoint`, keeps the exact
 `OOS_CHECKPOINT_RC` and `NEXT_ACTION` grammar, writes run statistics, stamps the
 manifest, and atomically clears only `OOS_PENDING` after success.
@@ -230,6 +231,26 @@ manifest, and atomically clears only `OOS_PENDING` after success.
 `ship normalize-assessment-handoff`; `dispatch_ship.py` is removed.
 `dispatch_ship_seed.py` remains for Step 2 seed-context helpers. No Python
 fallback or dual owner remains for the four migrated commands.
+
+### Ship state and result-env cutover
+
+Issue #8621 moved `ship seed-initial-state` to
+`crates/larch-cli/src/ship_commands.rs`. The command validates durable identity
+and manifest inputs, builds the ordered initial state through
+`larch_core::implement::ship_state`, and publishes a contained private file.
+The Step 8 seeder invokes this Rust owner in process, and the Python CLI
+registration plus `python/larch/implement/ship_seed.py` are removed.
+
+`larch_core::implement::ship_result` owns the mixed-case Step 8 result-env
+schema, scalar normalization, CI digest pairing, path validation, and private
+atomic write. The Rust Step 8 child parses the still-Python driver's JSON and
+writes the merge env before forwarding that JSON. Direct compatibility calls
+from the Python driver use `scripts/larch.sh ship write-result-env`, including a
+validate-only preflight, so the result env has one persistence owner. The
+remaining `ship_state.py` and `ship_result.py` code is scoped to the active
+Python driver's transition projection, result model, JSON emission, and
+journaling until the ship-driver leaves cut over; it is not a seed or
+result-env command implementation.
 
 ### Stall-recovery mixed-runtime cutover
 

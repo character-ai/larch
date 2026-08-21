@@ -217,7 +217,7 @@ repos:
         # The gate is Rust-owned, so it enters through scripts/larch.sh. The
         # binary build is delegated to `make` (never an inline cargo build) so
         # this bounded on-commit hook keeps a fast, build-free entry line.
-        entry: bash -c 'set -euo pipefail; root="$(git rev-parse --show-toplevel)"; cd "$root"; if [ -z "${LARCH_BINARY:-}" ]; then make --silent rust-clippy-binary; export LARCH_BINARY="$root/target/debug/larch"; fi; CLAUDE_PLUGIN_ROOT="$root" "$root/scripts/larch.sh" checks rust-clippy --repo-root . "$@"' --
+        entry: bash -c 'set -euo pipefail; root="$(git rev-parse --show-toplevel)"; cd "$root"; if [ -z "${LARCH_BINARY:-}" ]; then make --silent rust-clippy-binary; export LARCH_BINARY="$root/target/debug/larch"; fi; CLAUDE_PLUGIN_ROOT="$root" "$root/scripts/larch.sh" checks rust-clippy --repo-root "$root" "$@"' --
         language: system
         pass_filenames: true
         verbose: true

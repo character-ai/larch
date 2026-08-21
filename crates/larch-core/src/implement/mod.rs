@@ -14,6 +14,8 @@ mod recovery;
 mod relevant_checks;
 mod relevant_checks_digest;
 mod self_edit_log;
+mod ship_result;
+mod ship_state;
 mod step_checks;
 
 pub use active_leg::{
@@ -70,6 +72,11 @@ pub use relevant_checks_digest::build_checks_failure_digest;
 pub use self_edit_log::{
     SELF_EDIT_LOG_NAME, SelfEditRecord, digest_paths, file_sha256, normalize_path, read_self_edits,
     record_self_edits, validate_session_tmpdir,
+};
+pub use ship_result::{ShipOutcome, ShipResult, ShipResultError, validate_ship_result_env};
+pub use ship_state::{
+    INITIAL_SHIP_STATE_KEYS, InitialShipState, SHIP_STATE_ALLOWED_KEYS, ShipState, ShipStateError,
+    state_file_has_kv, tmpdir_under_allowed_root, write_initial_state,
 };
 pub use step_checks::{
     CHECKS_TERMINAL_ACTIONS, STEP6_CHECKS_STEP, StepChecksSite, checks_step_for_site,
