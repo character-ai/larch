@@ -2,8 +2,8 @@
 //!
 //! Turns an already-redacted relevant-checks log into the bounded
 //! `CHECKS_FAILURE_DIGEST v1` string consumed by the ci-fixer subagent. The
-//! Python source of truth lives in `_build_checks_failure_digest` and its
-//! helpers in `python/larch/implement/checks_run_relevant.py`.
+//! Ported from the retired Python `_build_checks_failure_digest` implementation;
+//! this module is now the source of truth.
 
 use std::collections::HashMap;
 use std::sync::LazyLock;

@@ -59,11 +59,10 @@ verbs, and `larch_core::implement::{identity, self_edit_log}` own the pure
 fingerprint, classifier, and attribution-log logic. A new `checks` domain
 carries only `self-edit-log`.
 
-`python/larch/implement/self_edit_log.py` stays. The leaf body listed it as
-superseded, but `checks_run_relevant.py`, `checks_lint_fix.py`, and
-`dispatch_commit_route.py` still call `record_self_edits`, `digest_paths`,
-`file_sha256`, and `read_self_edits` in process, and those modules belong to
-later leaves. Only the CLI verb flipped.
+`python/larch/implement/self_edit_log.py` stayed at the #8614 cutover because
+the relevant-checks, lint-fix, and commit-route Python owners still called its
+helpers in process. Those callers later moved to Rust. Issue #8627 removed the
+module and its Python-only tests when the final repair-loop caller retired.
 
 Three boundaries moved deliberately. The four Rust `delegate_python` identity
 call sites in `implement_dispatch_commands.rs` became in-process core calls,
@@ -113,10 +112,10 @@ registrations.
   coverage, integration-artifact, or promoted bundle executable; `Makefile`
   `rust-check` and the `.pre-commit-config.yaml` `cargo-clippy` hook build a local
   `larch` (via `make rust-clippy-binary`, never an inline `cargo build` in the
-  bounded on-commit entry); and the still-Python `checks run-relevant` fallback
-  execs `scripts/larch.sh checks rust-clippy`. The three shared helpers
-  `is_rust_relevant_path`, `bounded_cargo_env`, and `changed_paths_from_git` that
-  `checks_run_relevant.py` still needs moved into that module.
+  bounded on-commit entry); and the then-Python `checks run-relevant` fallback
+  execs `scripts/larch.sh checks rust-clippy`. Its three shared helpers,
+  `is_rust_relevant_path`, `bounded_cargo_env`, and `changed_paths_from_git`,
+  moved into the relevant-checks module before that owner also moved to Rust.
 
 ### Implement bootstrap and preflight cutover
 
@@ -195,14 +194,29 @@ scanner in `crates/larch-core/src/implement/` and delegating the still-Python
 `pre-commit` through the new `HostUtilityProgram::PreCommit` process owner (see
 the security note in `docs/security/workflow-trust-and-mutations.md`).
 
-The Python `checks_run_relevant_main` entrypoint is deleted, and the
-`check_contains_pins_main` entrypoint is renamed to the internal
-`run_contains_pins_scan`; both the `run_relevant_checks` orchestration and that
-internal scanner stay in `python/larch/implement/checks_run_relevant.py` because
-`checks lint-fix`/`repair-loop` (#8625, #8627) still call them in process. Those
-siblings retire the residual Python. The command-registry milestones are
-complete, and the two CLI registrations plus the `checks.py` re-exports are
-removed atomically.
+The Python CLI entrypoints were deleted at that cutover, while the in-process
+`run_relevant_checks` orchestration and contains-pin scanner stayed temporarily
+for the lint-fix and repair-loop callers. Issue #8625 moved lint-fix and fixer
+evidence to Rust. Issue #8627 then removed the residual relevant-checks module,
+the `checks.py` re-exports, and their Python tests as part of the final atomic
+cutover.
+
+### Checks repair-loop cutover
+
+Issue #8627 moved `checks repair-loop` to Rust. The command enters through
+`scripts/larch.sh`; `crates/larch-cli/src/checks_lint_fix_commands.rs` owns the
+argument parser, optional bgjob launch, bounded repair orchestration, heartbeat,
+result-env handoff, and self-edit attribution. It reuses the Rust lint-fix and
+relevant-checks owners in process. Pure repair-state folding and terminal
+routing live in `crates/larch-core/src/implement/checks_lint_fix.rs`.
+
+The cutover preserves the three-attempt ceiling, lint-site and capture-site
+pairing, redacted-log progression, tier-ledger handoff, exact terminal
+`KEY=value` rows, and exit codes. The remaining
+`python/larch/implement/checks_lint_fix.py` module, the residual Python checks
+modules, their CLI registration, and their Python-only tests are deleted. The
+registry marks implementation parity, consumer cutover, and Python removal as
+complete, backed by clean-install and black-box Rust coverage.
 
 ### Implement Step 8 ship-dispatch cutover
 

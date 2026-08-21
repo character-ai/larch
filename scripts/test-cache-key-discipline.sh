@@ -175,11 +175,11 @@ check_agent_prompt_literals() {
   done
 }
 
-check_python_prompt_surfaces() {
+check_prompt_surfaces() {
   local file
 
   for file in \
-    "python/larch/implement/checks_lint_fix.py" \
+    "crates/larch-core/src/implement/checks_lint_fix.rs" \
     "crates/larch-cli/src/review_dispatch_panel_prompt.md"
   do
     if [[ ! -f "$REPO_ROOT/$file" ]]; then
@@ -193,7 +193,7 @@ check_python_prompt_surfaces() {
 check_render_specialist_prompt_paths
 check_skill_prompt_literals
 check_agent_prompt_literals
-check_python_prompt_surfaces
+check_prompt_surfaces
 
 if (( FAIL > 0 )); then
   printf '\n%s cache-key discipline violation(s) found.\n' "$FAIL" >&2

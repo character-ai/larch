@@ -1,5 +1,6 @@
-//! Black-box parity coverage for the Rust `checks fixer-evidence` and
-//! `checks lint-fix` commands (#8625). Each case drives the real binary and
+//! Black-box parity coverage for the Rust `checks fixer-evidence`,
+//! `checks lint-fix`, and `checks repair-loop` commands (#8625, #8627).
+//! Each case drives the real binary and
 //! pins the `KEY=value` stdout grammar, the argparse help/usage text, and the
 //! exit codes the retired Python entrypoints produced. The dispatch-loop cases
 //! drive a fixture `CLAUDE_PLUGIN_ROOT` whose `scripts/larch.sh` stubs the
@@ -14,6 +15,8 @@ use tempfile::TempDir;
 const LINT_FIX_HELP: &str = "usage: cli.py checks lint-fix [-h] --tmpdir TMPDIR --site SITE --checks-log\n                              CHECKS_LOG [--repo-root REPO_ROOT]\n                              [--run-parent RUN_PARENT]\n\noptions:\n  -h, --help            show this help message and exit\n  --tmpdir TMPDIR\n  --site SITE\n  --checks-log CHECKS_LOG\n  --repo-root REPO_ROOT\n  --run-parent RUN_PARENT\n";
 
 const FIXER_EVIDENCE_HELP: &str = "usage: cli.py checks fixer-evidence [-h] --tmpdir TMPDIR --site SITE --round\n                                    ROUND --checks-log CHECKS_LOG\n\noptions:\n  -h, --help            show this help message and exit\n  --tmpdir TMPDIR\n  --site SITE\n  --round ROUND\n  --checks-log CHECKS_LOG\n";
+
+const REPAIR_LOOP_HELP: &str = "usage: cli.py checks repair-loop [-h] --tmpdir TMPDIR --site SITE\n                                 [--checks-site CHECKS_SITE] --checks-log\n                                 CHECKS_LOG [--repo-root REPO_ROOT]\n                                 [--bgjob-launch {true,false}]\n                                 [--bgjob-merge-result-env BGJOB_MERGE_RESULT_ENV]\n\noptions:\n  -h, --help            show this help message and exit\n  --tmpdir TMPDIR\n  --site SITE\n  --checks-site CHECKS_SITE\n  --checks-log CHECKS_LOG\n  --repo-root REPO_ROOT\n  --bgjob-launch {true,false}\n  --bgjob-merge-result-env BGJOB_MERGE_RESULT_ENV\n";
 
 fn larch() -> AssertCommand {
     AssertCommand::cargo_bin("larch").expect("larch binary")
@@ -177,6 +180,141 @@ fn lint_fix_structural_ruff_requires_the_main_agent() {
         stdout.contains("LINT_FIX_LEDGER_STEP=5"),
         "unexpected ledger step: {stdout}"
     );
+}
+
+// ---- checks repair-loop ----
+
+#[test]
+fn repair_loop_help_matches_argparse() {
+    larch()
+        .args(["checks", "repair-loop", "--help"])
+        .assert()
+        .success()
+        .stdout(REPAIR_LOOP_HELP);
+}
+
+#[test]
+fn repair_loop_missing_required_is_a_usage_error_with_stall_envelope() {
+    larch()
+        .args(["checks", "repair-loop"])
+        .assert()
+        .code(2)
+        .stdout("NEXT_ACTION=stall\nLOOP_STATUS=argument-error\n")
+        .stderr(predicates::str::contains(
+            "cli.py checks repair-loop: error: the following arguments are required: --tmpdir, --site, --checks-log",
+        ));
+}
+
+#[test]
+fn repair_loop_rejects_an_unvalidated_tmpdir() {
+    larch()
+        .args([
+            "checks",
+            "repair-loop",
+            "--tmpdir",
+            "/larch-clean-install-missing",
+            "--site",
+            "step6",
+            "--checks-log",
+            "/larch-clean-install-missing/checks.log",
+        ])
+        .assert()
+        .code(2)
+        .stdout("NEXT_ACTION=stall\nLOOP_STATUS=tmpdir-validation\n");
+}
+
+#[test]
+fn repair_loop_empty_tmpdir_uses_the_session_environment() {
+    let (cache, tmp) = session_tmpdir();
+    larch()
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("IMPLEMENT_TMPDIR", &tmp)
+        .args([
+            "checks",
+            "repair-loop",
+            "--tmpdir",
+            "",
+            "--site",
+            "step6",
+            "--checks-site",
+            "../bad",
+            "--checks-log",
+            &tmp.join("checks.log").to_string_lossy(),
+        ])
+        .assert()
+        .code(2)
+        .stdout("NEXT_ACTION=stall\nLOOP_STATUS=checks-site-validation\n");
+}
+
+#[test]
+fn repair_loop_pre_ship_exhaustion_preserves_terminal_evidence() {
+    let (cache, tmp) = session_tmpdir();
+    let checks_log = tmp.join("checks.log");
+    fs::write(&checks_log, "scripts/foo.sh:1:1 MD038 failure\n").expect("checks log");
+    let assert = larch()
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("CLAUDE_BINARY_FOUND", "false")
+        .env("CODEX_BINARY_FOUND", "false")
+        .env("CURSOR_BINARY_FOUND", "false")
+        .args([
+            "checks",
+            "repair-loop",
+            "--tmpdir",
+            &tmp.to_string_lossy(),
+            "--site",
+            "step6",
+            "--checks-log",
+            &checks_log.to_string_lossy(),
+        ])
+        .assert()
+        .code(1);
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    assert!(
+        stdout.starts_with("PROGRESS=dispatching-lint-fix site=step6\n"),
+        "unexpected stdout: {stdout}"
+    );
+    for expected in [
+        "NEXT_ACTION=stall",
+        "LOOP_STATUS=exhausted",
+        "FAILURE_REASON=lint-fix-no-selectable-tier",
+        "LINT_FIX_TIER_LEDGER_PATH=",
+    ] {
+        assert!(stdout.contains(expected), "missing {expected:?}: {stdout}");
+    }
+}
+
+#[test]
+fn repair_loop_structural_failure_flushes_the_merge_envelope() {
+    let (cache, tmp) = session_tmpdir();
+    let checks_log = tmp.join("checks.log");
+    let merge_env = tmp.join("bgjob").join("implement-step5-repair.merge.env");
+    fs::write(
+        &checks_log,
+        "python/larch/cli.py:12:3: PLR0911 too many returns\n",
+    )
+    .expect("checks log");
+    larch()
+        .env("XDG_CACHE_HOME", cache.path())
+        .args([
+            "checks",
+            "repair-loop",
+            "--tmpdir",
+            &tmp.to_string_lossy(),
+            "--site",
+            "step5",
+            "--checks-log",
+            &checks_log.to_string_lossy(),
+            "--bgjob-merge-result-env",
+            &merge_env.to_string_lossy(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("NEXT_ACTION=main-agent-edit\n"));
+    let rows = fs::read_to_string(&merge_env).expect("merge envelope");
+    assert!(rows.starts_with("NEXT_ACTION=main-agent-edit\nLOOP_STATUS=main-agent-required\n"));
+    assert!(rows.contains("FAILURE_REASON=structural-ruff-failure\n"));
+    assert!(rows.contains("LINT_FIX_LEDGER_READY=true\n"));
+    assert!(!rows.contains("BGJOB_RC="));
 }
 
 // ---- checks fixer-evidence ----
@@ -414,6 +552,134 @@ esac
     .expect("fixture bootstrap");
     fs::set_permissions(&bootstrap, fs::Permissions::from_mode(0o755)).expect("bootstrap mode");
     plugin
+}
+
+fn repair_loop_bgjob_plugin(root: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt as _;
+    let plugin = root.join("repair-loop-bgjob-plugin");
+    let scripts = plugin.join("scripts");
+    fs::create_dir_all(&scripts).expect("fixture scripts");
+    let bootstrap = scripts.join("larch.sh");
+    fs::write(
+        &bootstrap,
+        r#"#!/bin/sh
+set -eu
+capture=$(dirname "$0")/../bgjob-argv
+printf '%s\n' "$@" > "$capture"
+printf 'BGJOB_STATUS=STARTED STEP=implement-step3-repair PGID=123\n'
+"#,
+    )
+    .expect("fixture bootstrap");
+    fs::set_permissions(&bootstrap, fs::Permissions::from_mode(0o755)).expect("bootstrap mode");
+    plugin
+}
+
+#[test]
+fn repair_loop_bgjob_launch_uses_the_verified_entrypoint_and_site_slug() {
+    let (cache, tmp) = session_tmpdir();
+    let fixture_plugin = repair_loop_bgjob_plugin(cache.path());
+    let checks_log = tmp.join("checks.log");
+    fs::write(&checks_log, "failure\n").expect("checks log");
+    larch()
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("CLAUDE_PLUGIN_ROOT", &fixture_plugin)
+        .args([
+            "checks",
+            "repair-loop",
+            "--tmpdir",
+            &tmp.to_string_lossy(),
+            "--site",
+            "step3",
+            "--checks-log",
+            &checks_log.to_string_lossy(),
+            "--repo-root",
+            &cache.path().to_string_lossy(),
+            "--bgjob-launch",
+            "true",
+        ])
+        .assert()
+        .success()
+        .stdout("BGJOB_STATUS=STARTED STEP=implement-step3-repair PGID=123\n");
+
+    let capture =
+        fs::read_to_string(fixture_plugin.join("bgjob-argv")).expect("captured bgjob argv");
+    let argv: Vec<&str> = capture.lines().collect();
+    assert_eq!(
+        &argv[..4],
+        ["bgjob", "start", "--step", "implement-step3-repair"]
+    );
+    assert_eq!(
+        argv.windows(2).find(|pair| pair[0] == "--budget-s"),
+        Some(&["--budget-s", "16200"][..])
+    );
+    assert_eq!(
+        argv.windows(2)
+            .find(|pair| pair[0] == "--terminal-stdout-key"),
+        Some(&["--terminal-stdout-key", "NEXT_ACTION"][..])
+    );
+    let separator = argv
+        .iter()
+        .position(|part| *part == "--")
+        .expect("separator");
+    assert_eq!(
+        argv[separator + 2..separator + 4],
+        ["checks", "repair-loop"]
+    );
+    assert!(argv.contains(&"--bgjob-merge-result-env"));
+    assert!(!argv.contains(&"--bgjob-launch"));
+    assert!(
+        argv[separator + 1].ends_with("/scripts/larch.sh"),
+        "nested command bypassed bootstrap: {argv:?}"
+    );
+    let merge_env = tmp.join("bgjob").join("implement-step3-repair.merge.env");
+    assert_eq!(fs::read_to_string(merge_env).expect("merge env"), "");
+}
+
+#[test]
+fn repair_loop_applies_a_stub_delta_and_rechecks_the_capture_site() {
+    let (cache, tmp) = session_tmpdir();
+    let repo = init_git_repo();
+    let fixture_plugin = lint_fix_plugin(cache.path());
+    let checks_log = tmp.join("checks.log");
+    fs::write(&checks_log, "a.txt:1: MD038 inner-whitespace failure\n").expect("log");
+    let assert = larch()
+        .current_dir(repo.path())
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("CLAUDE_PLUGIN_ROOT", &fixture_plugin)
+        .env("CLAUDE_PROJECT_DIR", repo.path())
+        .env("CLAUDE_BINARY_FOUND", "true")
+        .env("CODEX_BINARY_FOUND", "false")
+        .env("CURSOR_BINARY_FOUND", "false")
+        .args([
+            "checks",
+            "repair-loop",
+            "--tmpdir",
+            &tmp.to_string_lossy(),
+            "--site",
+            "step5-mav",
+            "--checks-site",
+            "step5-review-fixes",
+            "--checks-log",
+            &checks_log.to_string_lossy(),
+            "--repo-root",
+            &repo.path().to_string_lossy(),
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    assert!(stdout.starts_with(
+        "PROGRESS=dispatching-lint-fix site=step5-mav\nNEXT_ACTION=continue\nLOOP_STATUS=ok\n"
+    ));
+    assert!(stdout.contains("LINT_FIX_TIER_LEDGER_PATH="));
+    let self_edits = fs::read_to_string(tmp.join("self-edit-log.tsv")).expect("self-edit log");
+    assert!(self_edits.contains("\tlint-fix:step5-mav\ta.txt\t"));
+    let relevant_logs = fs::read_dir(tmp.join("relevant-checks")).expect("relevant checks logs");
+    assert!(relevant_logs.filter_map(Result::ok).any(|entry| {
+        entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("step5-review-fixes-")
+    }));
 }
 
 #[test]

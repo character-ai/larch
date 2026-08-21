@@ -47,5 +47,5 @@ Structured invocation pins for script factoring that is reached through active d
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr compose-summary --plan-goals-file "$IMPLEMENT_TMPDIR/plan-goals.md"
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render run-summary --skill implement --outcome "$IMPLEMENT_OUTCOME" ...
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement-finalize teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" checks repair-loop --bgjob-launch true --tmpdir "$IMPLEMENT_TMPDIR" --site <site> --checks-log "$REDACTED_LOG_FILE"
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" checks repair-loop --bgjob-launch true --tmpdir "$IMPLEMENT_TMPDIR" --site <site> --checks-log "$REDACTED_LOG_FILE"
 ```

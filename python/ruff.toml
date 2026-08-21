@@ -255,14 +255,6 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
-"checks.py" = []
-"checks_run_relevant.py" = [
-    "C901",
-    "PLR0911",
-]
-"checks_lint_fix.py" = [
-    "C901",
-]
 "ci.py" = [
     "C901",
     "PLR0912",
