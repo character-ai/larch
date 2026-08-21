@@ -43,10 +43,10 @@ if errors:
     sys.exit(1)
 PY
 
-# Invariant B: the Python commit-route adapter rehydrates telemetry, the Rust
-# Step 5 review owner marks the review-handoff timing, and the Step 18 wrapper
-# owns closing telemetry.
-command grep -Fq '_rehydrate_larch_triplet(implement_tmpdir)' python/larch/implement/dispatch_commit_route.py || fail 'commit-route Python adapter does not rehydrate telemetry keys'
+# Invariant B: the Rust commit-route owner rehydrates the telemetry session
+# triplet (#8611), the Rust Step 5 review owner marks the review-handoff timing,
+# and the Step 18 wrapper owns closing telemetry.
+command grep -Fq 'LARCH_TOKEN_SESSION_ID' crates/larch-cli/src/implement_commit_route_commands.rs || fail 'Rust commit owner does not rehydrate telemetry session keys'
 command grep -Fq 'fn record_step5_handoff_timing' crates/larch-cli/src/implement_review_commands.rs || fail 'Rust Step 5 review owner does not mark review-handoff timing'
 command grep -Fq 'OsString::from("Step 5: review handoff")' crates/larch-cli/src/implement_review_commands.rs || fail 'Rust Step 5 review owner does not mark implement timing'
 command grep -Fq 'LARCH_TIMING_LEDGER' python/larch/implement/dispatch_helpers.py || fail 'dispatch_helpers does not resolve LARCH_TIMING_LEDGER'
@@ -132,4 +132,4 @@ if errors:
     sys.exit(1)
 PY
 
-echo "PASS: test-implement-timing-rehydration.sh (Python adapter rehydrates Step 5; closing marks line $done_mark_line < terminal snapshot line $snapshot_call_line; teardown is Step 19-owned)"
+echo "PASS: test-implement-timing-rehydration.sh (Rust commit owner rehydrates telemetry; closing marks line $done_mark_line < terminal snapshot line $snapshot_call_line; teardown is Step 19-owned)"
