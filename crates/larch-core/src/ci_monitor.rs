@@ -230,25 +230,13 @@ impl StatusFailureState {
 mod tests {
     use super::*;
 
-    fn status(kind: CiStatusKind, behind: usize, conflicted: bool) -> CiStatus {
-        CiStatus {
-            kind,
-            behind_count: behind,
-            failed_run_id: None,
-            conflicted,
-            checks_empty: false,
-            checks_observed: true,
-        }
-    }
+    #[rustfmt::skip]
+    fn status(kind: CiStatusKind, behind: usize, conflicted: bool) -> CiStatus { CiStatus { kind, behind_count: behind, failed_run_id: None, conflicted, checks_empty: false, checks_observed: true } }
 
     #[test]
     #[rustfmt::skip]
     fn decision_matrix_preserves_pending_and_conflicted_transitions() {
-        let counters = CiCounters {
-            iteration: 0,
-            rebase_count: 0,
-            fix_attempts: 0,
-        };
+        let counters = CiCounters { iteration: 0, rebase_count: 0, fix_attempts: 0 };
         for (kind, conflicted, expected) in [
             (CiStatusKind::Pending, false, "wait"),
             (CiStatusKind::Pass, true, "rebase"),
@@ -262,41 +250,22 @@ mod tests {
     #[test]
     #[rustfmt::skip]
     fn limits_apply_after_an_immediately_mergeable_status() {
-        let counters = CiCounters {
-            iteration: CI_MAX_ITERATIONS,
-            rebase_count: CI_MAX_REBASES,
-            fix_attempts: CI_MAX_FIX_ATTEMPTS,
-        };
+        let counters = CiCounters { iteration: CI_MAX_ITERATIONS, rebase_count: CI_MAX_REBASES, fix_attempts: CI_MAX_FIX_ATTEMPTS };
         assert_eq!(decide(&status(CiStatusKind::Pass, 0, false), counters).action, "merge");
         assert_eq!(decide(&status(CiStatusKind::Pending, 0, false), counters).bail_reason, Some("ci-timeout"));
     }
 
     #[test]
+    #[rustfmt::skip]
     fn failed_check_yields_the_first_actions_run_id() {
-        let checks = [CheckRun {
-            name: "test".to_owned(),
-            status: "completed".to_owned(),
-            conclusion: Some("failure".to_owned()),
-            details_url: Some("https://github.com/o/r/actions/runs/123/job/4".to_owned()),
-            bucket: CheckBucket::Fail,
-        }];
-        let observed = classify_checks(&checks, 0);
-        assert_eq!(observed.kind, CiStatusKind::Fail);
-        assert_eq!(observed.failed_run_id.as_deref(), Some("123"));
+        let checks=[CheckRun { name: "test".to_owned(), status: "completed".to_owned(), conclusion: Some("failure".to_owned()), details_url: Some("https://github.com/o/r/actions/runs/123/job/4".to_owned()), bucket: CheckBucket::Fail }];
+        let observed=classify_checks(&checks,0); assert_eq!(observed.kind,CiStatusKind::Fail); assert_eq!(observed.failed_run_id.as_deref(),Some("123"));
     }
 
     #[test]
+    #[rustfmt::skip]
     fn third_consecutive_status_error_bails() {
-        let mut failures = StatusFailureState::default();
-        for _ in 0..2 {
-            assert_eq!(
-                failures.observe(CiStatus::error()).unwrap().kind,
-                CiStatusKind::Pending
-            );
-        }
-        assert_eq!(
-            failures.observe(CiStatus::error()).unwrap_err().bail_reason,
-            Some("ci-status-stale")
-        );
+        let mut failures=StatusFailureState::default(); for _ in 0..2 { assert_eq!(failures.observe(CiStatus::error()).unwrap().kind,CiStatusKind::Pending); }
+        assert_eq!(failures.observe(CiStatus::error()).unwrap_err().bail_reason,Some("ci-status-stale"));
     }
 }

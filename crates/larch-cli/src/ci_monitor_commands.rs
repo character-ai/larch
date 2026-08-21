@@ -9,8 +9,9 @@ use larch_adapters::{
     runtime::{Cancellation, LarchRuntime, ShutdownSignal, wait_for_shutdown_signal},
 };
 use larch_core::{
-    CI_POLL_INTERVAL_SECONDS, CiCounters, CiDecision, CiStatus, CiStatusKind,
-    GitHubActionsErrorKind, GitHubActionsService, GitHubRepositoryRef, ProcessErrorKind,
+    CI_POLL_INTERVAL_SECONDS, CheckRun, CiCounters, CiDecision, CiStatus, CiStatusKind,
+    ExternalProcessRunner, GitHubActionsError, GitHubActionsErrorKind, GitHubActionsService,
+    GitHubRepositoryRef, ProcessCancellation, ProcessErrorKind, PullRequestCiState,
     PullRequestMergeState, RepositoryRead, Revision, StatusFailureState, ci_decide,
     ci_merge_state_conflicted, classify_checks, private_atomic_write,
 };
@@ -76,6 +77,43 @@ struct WaitArguments {
     timeout: u64,
     startup_deadline: u64,
     output_file: Option<PathBuf>,
+}
+
+trait CiStatusService: Sync {
+    async fn read_pull_state(
+        &self,
+        repository: &GitHubRepositoryRef,
+        number: u64,
+        cancellation: &dyn ProcessCancellation,
+    ) -> Result<PullRequestCiState, GitHubActionsError>;
+    async fn read_checks(
+        &self,
+        repository: &GitHubRepositoryRef,
+        git_reference: &str,
+        cancellation: &dyn ProcessCancellation,
+    ) -> Result<Vec<CheckRun>, GitHubActionsError>;
+}
+
+impl CiStatusService for OctocrabGitHubService {
+    async fn read_pull_state(
+        &self,
+        repository: &GitHubRepositoryRef,
+        number: u64,
+        cancellation: &dyn ProcessCancellation,
+    ) -> Result<PullRequestCiState, GitHubActionsError> {
+        self.pull_request_ci_state(repository, number, cancellation)
+            .await
+    }
+
+    async fn read_checks(
+        &self,
+        repository: &GitHubRepositoryRef,
+        git_reference: &str,
+        cancellation: &dyn ProcessCancellation,
+    ) -> Result<Vec<CheckRun>, GitHubActionsError> {
+        self.check_runs(repository, git_reference, cancellation)
+            .await
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -503,16 +541,16 @@ fn live_wait(arguments: &WaitArguments) -> Result<WaitCompletion, String> {
     })
 }
 
-async fn gather_status(
-    service: &dyn GitHubActionsService,
-    runner: &TokioProcessRunner,
-    cancellation: &Cancellation,
+async fn gather_status<R: ExternalProcessRunner, S: CiStatusService + ?Sized>(
+    service: &S,
+    runner: &R,
+    cancellation: &dyn ProcessCancellation,
     cwd: &Path,
     arguments: &StatusArguments,
 ) -> Result<CiStatus, String> {
     let number = u64::try_from(arguments.pr).map_err(|_| "pull request number is invalid")?;
     let pull = service
-        .pull_request_ci_state(&arguments.repository, number, cancellation)
+        .read_pull_state(&arguments.repository, number, cancellation)
         .await;
     if pull
         .as_ref()
@@ -597,13 +635,13 @@ async fn gather_status(
 }
 
 async fn check_runs(
-    service: &dyn GitHubActionsService,
+    service: &(impl CiStatusService + ?Sized),
     arguments: &StatusArguments,
     head_reference: &str,
-    cancellation: &Cancellation,
-) -> Result<Vec<larch_core::CheckRun>, String> {
+    cancellation: &dyn ProcessCancellation,
+) -> Result<Vec<CheckRun>, String> {
     service
-        .check_runs(&arguments.repository, head_reference, cancellation)
+        .read_checks(&arguments.repository, head_reference, cancellation)
         .await
         .map_err(|error| {
             if error.kind() == GitHubActionsErrorKind::DeadlineExceeded {
@@ -642,10 +680,10 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
             .any(|window| window == needle)
 }
 
-async fn poll_ci(
-    service: &dyn GitHubActionsService,
-    runner: &TokioProcessRunner,
-    cancellation: &Cancellation,
+async fn poll_ci<R: ExternalProcessRunner, S: CiStatusService + ?Sized>(
+    service: &S,
+    runner: &R,
+    cancellation: &dyn ProcessCancellation,
     cwd: &Path,
     arguments: &WaitArguments,
 ) -> Result<WaitResult, String> {
@@ -829,41 +867,141 @@ fn appended(path: &Path, suffix: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use larch_core::{CheckBucket, GitHubActionsError, ProcessError};
+    use larch_test_support::{
+        FakeProcessRunner, GitFixture, GitRepository, NeverCancelled, ProcessOutputBuilder,
+    };
+    use std::{collections::VecDeque, sync::Mutex};
 
-    fn raw(values: &[&str]) -> Arguments {
-        Arguments {
-            arguments: values.iter().map(OsString::from).collect(),
+    #[rustfmt::skip]
+    struct FakeCiService {
+        pulls: Mutex<VecDeque<Result<PullRequestCiState, GitHubActionsError>>>,
+        checks: Mutex<VecDeque<Result<Vec<CheckRun>, GitHubActionsError>>>,
+    }
+
+    #[rustfmt::skip]
+    impl FakeCiService {
+        fn new(pulls: impl IntoIterator<Item = Result<PullRequestCiState, GitHubActionsError>>, checks: impl IntoIterator<Item = Result<Vec<CheckRun>, GitHubActionsError>>) -> Self {
+            Self { pulls: Mutex::new(pulls.into_iter().collect()), checks: Mutex::new(checks.into_iter().collect()) }
         }
+    }
+
+    #[rustfmt::skip]
+    impl CiStatusService for FakeCiService {
+        async fn read_pull_state(&self, _repository: &GitHubRepositoryRef, _number: u64, _cancellation: &dyn ProcessCancellation) -> Result<PullRequestCiState, GitHubActionsError> {
+            self.pulls.lock().unwrap().pop_front().unwrap()
+        }
+        async fn read_checks(&self, _repository: &GitHubRepositoryRef, _git_reference: &str, _cancellation: &dyn ProcessCancellation) -> Result<Vec<CheckRun>, GitHubActionsError> {
+            self.checks.lock().unwrap().pop_front().unwrap()
+        }
+    }
+
+    #[rustfmt::skip]
+    fn raw(values: &[&str]) -> Arguments { Arguments { arguments: values.iter().map(OsString::from).collect() } }
+
+    #[rustfmt::skip]
+    fn query() -> StatusArguments {
+        StatusArguments { pr: 7, repository: GitHubRepositoryRef::new("o", "r").unwrap(), base_remote: "origin".to_owned(), base_ref: "main".to_owned(), empty_checks_grace: 0 }
+    }
+
+    #[rustfmt::skip]
+    fn pull(merged: bool, merge_state: PullRequestMergeState) -> PullRequestCiState { PullRequestCiState { merged, merge_state } }
+
+    #[rustfmt::skip]
+    fn pass_check() -> CheckRun {
+        CheckRun { name: "ci".to_owned(), status: "completed".to_owned(), conclusion: Some("success".to_owned()), details_url: None, bucket: CheckBucket::Pass }
+    }
+
+    #[rustfmt::skip]
+    fn pending_check() -> CheckRun { CheckRun { status: "in_progress".to_owned(), bucket: CheckBucket::Pending, ..pass_check() } }
+
+    #[rustfmt::skip]
+    fn wait_query(timeout: u64, startup_deadline: u64, empty_checks_grace: u64) -> WaitArguments {
+        let mut status=query(); status.empty_checks_grace=empty_checks_grace;
+        WaitArguments { status, counters: CiCounters { iteration: 0, rebase_count: 0, fix_attempts: 0 }, timeout, startup_deadline, output_file: None }
+    }
+
+    #[rustfmt::skip]
+    async fn run_poll(pulls: impl IntoIterator<Item = Result<PullRequestCiState, GitHubActionsError>>, checks: impl IntoIterator<Item = Result<Vec<CheckRun>, GitHubActionsError>>, processes: impl IntoIterator<Item = Result<larch_core::ProcessOutput, ProcessError>>, arguments: &WaitArguments) -> WaitResult {
+        let service=FakeCiService::new(pulls,checks); let runner=FakeProcessRunner::new(processes); let root=tempfile::tempdir().unwrap();
+        poll_ci(&service,&runner,&NeverCancelled,root.path(),arguments).await.unwrap()
+    }
+
+    #[rustfmt::skip]
+    fn gather_once(pull: Result<PullRequestCiState, GitHubActionsError>, checks: impl IntoIterator<Item = Result<Vec<CheckRun>, GitHubActionsError>>, processes: impl IntoIterator<Item = Result<larch_core::ProcessOutput, ProcessError>>) -> Result<CiStatus, String> {
+        let service=FakeCiService::new([pull],checks); let runner=FakeProcessRunner::new(processes); let root=tempfile::tempdir().unwrap();
+        LarchRuntime::new().unwrap().block_on(gather_status(&service,&runner,&NeverCancelled,root.path(),&query()))
     }
 
     #[test]
     #[rustfmt::skip]
     fn wait_parser_preserves_defaults_and_additive_startup_deadline() {
-        let parsed = parse(&raw(&["--pr", "7", "--repo", "o/r"]).arguments, WAIT_OPTIONS, WAIT_USAGE, "wait").unwrap();
-        let query = wait_arguments(&parsed).unwrap();
-        assert_eq!(query.status.empty_checks_grace, 120);
-        assert_eq!(query.timeout, 1800);
-        assert_eq!(query.startup_deadline, 0);
+        let parsed=parse(&raw(&["--pr","7","--repo","o/r"]).arguments,WAIT_OPTIONS,WAIT_USAGE,"wait").unwrap(); let query=wait_arguments(&parsed).unwrap();
+        assert_eq!((query.status.empty_checks_grace,query.timeout,query.startup_deadline),(120,1800,0));
     }
 
     #[test]
     #[rustfmt::skip]
     fn output_file_contract_keeps_order_and_done_marker() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("wait.env");
-        let result = WaitResult {
-            status: CiStatus::pending(),
-            decision: CiDecision::bail("poll-budget-exhausted"),
-            elapsed: 12,
-        };
-        publish_wait_files(&path, &wait_output(&result, 3), 0).unwrap();
-        assert_eq!(fs::read_to_string(path).unwrap(), "ACTION=bail\nCI_STATUS=pending\nBEHIND_COUNT=0\nCONFLICTED=false\nFAILED_RUN_ID=\nBAIL_REASON=poll-budget-exhausted\nITERATION=3\nELAPSED=12\n");
-        assert_eq!(fs::read_to_string(root.path().join("wait.env.done")).unwrap(), "0\n");
+        let root=tempfile::tempdir().unwrap(); let path=root.path().join("wait.env"); let result=WaitResult { status: CiStatus::pending(), decision: CiDecision::bail("poll-budget-exhausted"), elapsed: 12 };
+        publish_wait_files(&path,&wait_output(&result,3),0).unwrap();
+        assert_eq!(fs::read_to_string(path).unwrap(),"ACTION=bail\nCI_STATUS=pending\nBEHIND_COUNT=0\nCONFLICTED=false\nFAILED_RUN_ID=\nBAIL_REASON=poll-budget-exhausted\nITERATION=3\nELAPSED=12\n"); assert_eq!(fs::read_to_string(root.path().join("wait.env.done")).unwrap(),"0\n");
     }
 
     #[test]
-    fn squash_race_search_is_byte_preserving() {
-        assert!(contains_bytes(b"Port the monitor (#8619)", b"(#8619)"));
-        assert!(!contains_bytes(b"Port the monitor (#8620)", b"(#8619)"));
+    #[rustfmt::skip]
+    fn squash_race_search_is_byte_preserving() { assert!(contains_bytes(b"Port the monitor (#8619)",b"(#8619)")); assert!(!contains_bytes(b"Port the monitor (#8620)",b"(#8619)")); }
+
+    #[test]
+    #[rustfmt::skip]
+    fn status_gathering_preserves_failure_and_fallback_boundaries() {
+        assert_eq!(gather_once(Ok(pull(true,PullRequestMergeState::Unknown)),[],[]).unwrap().kind,CiStatusKind::Merged);
+        assert!(gather_once(Err(GitHubActionsError::new(GitHubActionsErrorKind::DeadlineExceeded,"late")),[],[]).is_err());
+        let failed_fetch=gather_once(Err(GitHubActionsError::new(GitHubActionsErrorKind::Transport,"offline")),[],[Ok(ProcessOutputBuilder::failure(1).build())]).unwrap();
+        assert_eq!(failed_fetch.kind,CiStatusKind::Pending); assert!(failed_fetch.conflicted);
+        assert!(gather_once(Ok(pull(false,PullRequestMergeState::Clean)),[],[Err(ProcessError::new(ProcessErrorKind::TimedOut,"late",None))]).is_err());
+        let passing=gather_once(Ok(pull(false,PullRequestMergeState::Dirty)),[Ok(vec![pass_check()])],[Ok(ProcessOutputBuilder::success().build())]).unwrap();
+        assert_eq!(passing.kind,CiStatusKind::Pass); assert!(passing.conflicted&&passing.checks_observed);
+        assert!(gather_once(Ok(pull(false,PullRequestMergeState::Clean)),[Err(GitHubActionsError::new(GitHubActionsErrorKind::DeadlineExceeded,"late"))],[Ok(ProcessOutputBuilder::success().build())]).is_err());
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn immediate_passing_poll_reaches_the_terminal_merge_decision() {
+        let result=LarchRuntime::new().unwrap().block_on(run_poll([Ok(pull(false,PullRequestMergeState::Clean))],[Ok(vec![pass_check()])],[Ok(ProcessOutputBuilder::success().build())],&wait_query(1,0,0)));
+        assert_eq!(result.decision.action,"merge");
+    }
+
+    #[tokio::test(start_paused = true)]
+    #[rustfmt::skip]
+    async fn paused_poll_covers_budgets_failures_and_empty_check_deadlines() {
+        let clean=||Ok(pull(false,PullRequestMergeState::Clean)); let fetch=||Ok(ProcessOutputBuilder::success().build());
+        let budget=run_poll([clean(),clean()],[Ok(vec![pending_check()]),Ok(vec![pending_check()])],[fetch(),fetch()],&wait_query(11,0,0)).await;
+        assert_eq!(budget.decision.bail_reason,Some("poll-budget-exhausted"));
+        let deadline=||Err(GitHubActionsError::new(GitHubActionsErrorKind::DeadlineExceeded,"late"));
+        let stale=run_poll([deadline(),deadline(),deadline()],[],[],&wait_query(30,0,0)).await;
+        assert_eq!(stale.decision.bail_reason,Some("ci-status-stale"));
+        let no_checks=run_poll([clean()],[Ok(vec![]),Ok(vec![])],[fetch()],&wait_query(10,0,1)).await;
+        assert_eq!(no_checks.decision.bail_reason,Some("no-ci-checks-observed"));
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn parser_and_output_helpers_cover_rejection_and_cleanup_edges() {
+        assert!(valid_git_label("origin/release-1")&&!valid_git_label("")&&!valid_git_label("origin main"));
+        assert!(parse_repository("owner/repo").is_ok()&&parse_repository("owner").is_err()&&parse_repository("owner/repo/extra").is_err());
+        for values in [&["--pr","7","--repo","o/r","--empty-checks-grace","-1"][..],&["--pr","7","--repo","o/r","--base-ref","bad ref"][..]] { let parsed=parse(&raw(values).arguments,STATUS_OPTIONS,STATUS_USAGE,"status").unwrap(); assert!(status_arguments(&parsed,STATUS_USAGE,"status").is_err()); }
+        assert_eq!((signal_exit_code(ShutdownSignal::Hangup),signal_exit_code(ShutdownSignal::Interrupt),signal_exit_code(ShutdownSignal::Terminate)),(129,130,143));
+        let root=tempfile::tempdir().unwrap(); let path=root.path().join("wait.env");
+        for candidate in [&path,&appended(&path,".done"),&appended(&path,".tmp")] { fs::write(candidate,"stale").unwrap(); }
+        clean_wait_files(&path).unwrap(); assert!(!path.exists()&&!appended(&path,".done").exists()); assert_eq!(unexpected_wait_result(4).elapsed,4);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn behind_state_detects_the_squash_merge_subject() {
+        let repository=GitRepository::builder(GitFixture::Refs).build().unwrap(); repository.write("next.txt",b"next\n").unwrap();
+        for args in [&["add","next.txt"][..],&["commit","--quiet","-m","Port monitor (#7)"][..],&["update-ref","refs/remotes/origin/main","HEAD"][..],&["reset","--hard","HEAD^"][..]] { assert!(repository.git(args).unwrap().success()); }
+        assert_eq!(behind_state(repository.root(),&query()).unwrap(),(1,true));
     }
 }
