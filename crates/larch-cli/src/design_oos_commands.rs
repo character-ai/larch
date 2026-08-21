@@ -1386,7 +1386,7 @@ mod tests {
     }
 
     #[test]
-    fn label_application_covers_ambiguous_benign_failure_and_success_paths() {
+    fn label_application_clears_benign_and_rejects_ambiguous_inputs() {
         let authorization = authorization_request("", "", "", true);
 
         let benign = TempDir::new().expect("tmpdir");
@@ -1454,7 +1454,11 @@ mod tests {
             1
         );
         assert!(ambiguous.path().join(PRIORITY_PENDING).is_file());
+    }
 
+    #[test]
+    fn label_application_covers_success_failure_and_invalid_inputs() {
+        let authorization = authorization_request("", "", "", true);
         let priority = TempDir::new().expect("tmpdir");
         seed_priority(&priority);
         fs::write(
@@ -1519,7 +1523,7 @@ mod tests {
     }
 
     #[test]
-    fn annotate_handles_label_retry_and_fresh_input_failures() {
+    fn annotate_rejects_missing_and_incomplete_inputs() {
         let missing = TempDir::new().expect("tmpdir");
         assert_eq!(
             annotate(
@@ -1579,7 +1583,10 @@ mod tests {
             ),
             2
         );
+    }
 
+    #[test]
+    fn annotate_handles_complete_retry_and_fresh_inputs() {
         let complete = TempDir::new().expect("tmpdir");
         seed_priority(&complete);
         let effects = RecordingPriority::successful();
