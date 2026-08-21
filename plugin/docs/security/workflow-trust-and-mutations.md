@@ -69,6 +69,24 @@ must configure Claude Code as described in
 An `allowed-tools` declaration describes an agent surface. It does not confine
 filesystem access by itself.
 
+#### Co-installed PreToolUse gates
+
+Co-installed plugin PreToolUse hooks are independent mechanical permission
+gates. When a hook returns `permissionDecision: deny`, the command never reaches
+larch. Cursor smart-mode approval does not override that result.
+`/complete-umbrella` stops on the first identical workflow-driver denial. It
+never retries or rewrites the command to evade the guard. If the hook also
+denies a required diagnostic or pointer-cleanup command, the workflow attempts
+that command only once, preserves recoverable state, reports the missing
+postcondition, and does not claim terminal success.
+
+`smarts` versions before v2.0.3 misclassify Cursor `Shell` commands as opaque
+input and can match the short PagerDuty marker `pd` inside `--tmpdir`. Version
+v2.0.3 routes `Shell` through bounded command classification and bounds short
+opaque markers. Cursor operators who co-install these guards must use v2.0.3 or
+newer. Treat the same denial under a current release as a new upstream guard
+regression, not as larch mutation authority.
+
 Review launchers use the narrowest available CLI posture. Codex review runs use
 `--sandbox read-only`. Cursor review runs use `--mode ask`. Their launchers also
 compare the working tree with a pre-launch baseline and discard results after a
