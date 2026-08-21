@@ -157,8 +157,8 @@ mod session_env_commands;
 mod session_gate_commands;
 mod session_lifecycle_commands;
 mod session_setup_commands;
-mod ship_pre_driver_commands;
 mod ship_commands;
+mod ship_pre_driver_commands;
 mod slack_commands;
 mod slot_binding;
 mod stall_recovery_commands;
@@ -310,7 +310,7 @@ enum Domain {
     /// `/implement` bootstrap, preflight, scout, recovery, and step checks.
     #[command(subcommand)]
     Implement(ImplementCommand),
-    /// Ship pre-driver routing and rebase repair commands.
+    /// Ship pre-driver routing, state, result, and rebase-repair commands.
     #[command(subcommand)]
     Ship(ShipCommand),
     /// GitHub issue reads and issue-body wire helpers.
@@ -417,9 +417,6 @@ enum Domain {
     /// Session state compatibility commands.
     #[command(subcommand)]
     Session(SessionCommand),
-    /// Pull-request shipping state and result commands.
-    #[command(subcommand)]
-    Ship(ShipCommand),
     /// Slack announcement helpers.
     #[command(subcommand)]
     Slack(SlackCommand),
