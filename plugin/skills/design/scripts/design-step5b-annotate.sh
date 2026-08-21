@@ -7,4 +7,4 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
 fi
 export CLAUDE_PLUGIN_ROOT
 
-exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design step5b-annotate "$@"
+exec "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" design step5b-annotate "$@"

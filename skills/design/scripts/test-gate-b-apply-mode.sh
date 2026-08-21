@@ -9,7 +9,7 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 CLI="$ROOT/python/cli.py"
 LARCH="$ROOT/scripts/larch.sh"
 POSTPLAN_CLI=("$LARCH" design postplan-emit)
-SETTLE=(python3 "$CLI" design step35-settle)
+SETTLE=("$LARCH" design step35-settle)
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 APPROVAL_GATES="$ROOT/skills/design/references/approval-gates-gate-b.md"
 
@@ -34,7 +34,6 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
 python3 -m py_compile "$ROOT/python/larch/design/design_gate_render.py" || fail 'design_gate_render.py py_compile failed'
-python3 -m py_compile "$ROOT/python/larch/design/design_settle.py" || fail 'design_settle.py py_compile failed'
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/tgbam.XXXXXX")
 TMP=$(cd "$TMP" && pwd -P)
@@ -172,10 +171,34 @@ if [[ "\${1:-}" == design && "\${2:-}" == settle-next-action ]]; then
   fi
   exit 2
 fi
+if [[ "\${1:-}" == design && "\${2:-}" == step35-settle ]]; then
+  shift 2
+  design="\${DESIGN_TMPDIR:-}" round=""
+  while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+      --design-tmpdir) design="\$2"; shift 2 ;;
+      --round-num) round="\$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  [[ -n "\$design" && -n "\$round" ]] || exit 2
+  before=\$(wc -l <"\$design/plan.txt")
+  awk '!seen[\$0]++' "\$design/plan.txt" >"\$design/plan.txt.tmp"
+  after=\$(wc -l <"\$design/plan.txt.tmp")
+  mv "\$design/plan.txt.tmp" "\$design/plan.txt"
+  printf 'dedup-sweep: removed %s duplicate line(s) from plan.txt\n' "\$((before - after))"
+  printf '%s\n' 'GATE_B_DEDUP_STATUS=ok'
+  printf 'ready\n' >"\$design/.gate-b-postapply-ready-\$round"
+  printf 'awaiting-post-apply\n' >"\$design/.step3-round-\$round.phase"
+  mkdir -p "\$design/.completed"
+  : >"\$design/.completed/step-2b.5"
+  printf '%s\n' 'POSTPLAN_RC=0' 'POSTPLAN_STATUS=ok'
+  printf 'awaiting-continuation\n' >"\$design/.step3-round-\$round.phase"
+  printf '%s\n' 'SETTLE_NEXT_ACTION=gate-b-continue'
+  exit 0
+fi
 # The Step 2b post-plan verbs moved to Rust (#8583). This lane has no compiled
-# artifact, so the fixture reproduces their two observable side effects: the
-# plan-size decision and result-env write for postplan-emit, and the anchored
-# POSTPLAN_RC row plus completion marker for step2b-postplan.
+# artifact, so the fixture reproduces their observable post-plan state.
 larch_plan_size_decision() {
   local design="\$1"
   local plan_lines diff_lines size_trigger=false drift_trigger=false

@@ -8,10 +8,7 @@ from larch import cli
 EXPECTED = {
     ("design", verb): (module, func, True)
     for verb, module, func in (
-        ("step35-settle", "larch.design.design_settle", "step35_settle_main"),
         ("step2b5", "larch.design.design_step5c", "step2b5_main"),
-        ("step5b-prepare", "larch.design.design_step5b", "step5b_prepare_main"),
-        ("step5b-annotate", "larch.design.design_step5b", "step5b_annotate_main"),
         ("compose-plan-md", "larch.design.design_step5c", "compose_plan_md_main"),
         ("render-gate", "larch.design.design_gate_render", "render_gate_main"),
         ("render-final-summary", "larch.design.design_summary", "render_final_summary_main"),
@@ -54,6 +51,13 @@ def test_design_port_registry_entries_are_machine_stdout() -> None:
         assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
     assert ("plan", "validator-autofix") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     assert ("plan-review", "step3b-entry") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    for key in (
+        ("design", "step35-settle"),
+        ("plan-review", "step35-settle"),
+        ("design", "step5b-prepare"),
+        ("design", "step5b-annotate"),
+    ):
+        assert key not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     for key, target in AGENT_EXPECTED.items():
         module_name, func_name, _machine_stdout = cli._REGISTRY[key]  # pyright: ignore[reportPrivateUsage]
         assert (module_name, func_name) == target

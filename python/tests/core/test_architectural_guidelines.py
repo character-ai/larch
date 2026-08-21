@@ -682,7 +682,7 @@ def test_gate_c_fix_ladder_prompt_contracts() -> None:
         "spawn exactly one `larch:claude-implementer` subagent with `MODE=plan-revise`"
     ) in approval
     # Gate C settle + fresh-assessor re-entry.
-    assert "invoke `python/cli.py design step35-settle --site gate-c`" in approval
+    assert "invoke `scripts/larch.sh design step35-settle --site gate-c`" in approval
     assert "re-enter `resume@4b` only on the clean `gate-c-return` action" in approval
     assert "the reviser never judges its own revision" in approval
     # Invariant cancellation and guideline documented exception.

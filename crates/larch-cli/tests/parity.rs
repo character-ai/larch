@@ -92,10 +92,12 @@ impl CleanInstallCase {
             // The two Step 2b wrapper verbs ignore the unbound `--help` token and
             // then refuse on the missing `DESIGN_TMPDIR`, exiting 1.
             | "clean-install-design-step2b-drafter"
+            | "clean-install-design-step2b-postplan"
             // `ci rerun-failed` prints its help and then exits with its own
             // usage code, exactly as the retired `argparse` owner did.
             | "clean-install-ci-rerun-failed"
-            | "clean-install-design-step2b-postplan" => 1,
+            | "clean-install-design-step5b-prepare"
+            | "clean-install-design-step5b-annotate" => 1,
             // `design parse-flags` owns the frozen Step 0-pre grammar: the
             // clean-install `--help` token is an unrecognized public flag and
             // refuses with the Python validation exit code, matching the
@@ -212,11 +214,9 @@ impl CleanInstallCase {
             // `--help` action — and emits the seven-key bail envelope with the
             // argparse usage exit code instead of printing help.
             | "clean-install-implement-step-7a"
-            // The eight `design step0-*` owner verbs share the frozen wrapper-arg
-            // parser: the clean-install `--help` token is an unknown wrapper
-            // argument, so each refuses with the Python `exit 2` before any
-            // plugin-root guard or child dispatch. `settle-next-action` instead
-            // owns a real `-h`/`--help` usage action and exits 0 (default arm).
+            // The eight `design step0-*` verbs and both Step 3.5 settlement
+            // selectors reject the clean-install `--help` token with exit 2;
+            // `settle-next-action` instead owns a real help action and exits 0.
             // Both decompose owner verbs parse with `add_help=False`, so the
             // clean-install `--help` token reads as an unknown flag and each
             // refuses with the argparse usage exit after proving dispatch.
@@ -231,6 +231,8 @@ impl CleanInstallCase {
             | "clean-install-design-step0-abort-cleanup"
             | "clean-install-design-step0-ap-continue"
             | "clean-install-design-step0c"
+            | "clean-install-design-step35-settle"
+            | "clean-install-plan-review-step35-settle"
             // The three scout verbs declared `add_help=False`, so the
             // clean-install `--help` token reaches each parser's own
             // required-argument refusal and exits 2.
@@ -922,9 +924,29 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-design-step0c", "design", "step0c"),
     CleanInstallCase::new(
+        "clean-install-design-step35-settle",
+        "design",
+        "step35-settle",
+    ),
+    CleanInstallCase::new(
+        "clean-install-design-step5b-annotate",
+        "design",
+        "step5b-annotate",
+    ),
+    CleanInstallCase::new(
+        "clean-install-design-step5b-prepare",
+        "design",
+        "step5b-prepare",
+    ),
+    CleanInstallCase::new(
         "clean-install-design-settle-next-action",
         "design",
         "settle-next-action",
+    ),
+    CleanInstallCase::new(
+        "clean-install-plan-review-step35-settle",
+        "plan-review",
+        "step35-settle",
     ),
     CleanInstallCase::new(
         "clean-install-design-read-result-env",

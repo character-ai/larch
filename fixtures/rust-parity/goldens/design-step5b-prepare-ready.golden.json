@@ -1,0 +1,36 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/.completed/step-4b": {
+      "text": ""
+    },
+    "design/.keep": {
+      "text": ""
+    },
+    "design/oos-accepted-design.md": {
+      "text": "### OOS_1: one\n- **Severity**: major\n- **Concern**: one.\nVote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=true\n"
+    },
+    "design/oos-combined.md": {
+      "text": "### OOS_1: one\n- **Severity**: major\n- **Concern**: one.\nVote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=true\n"
+    },
+    "design/oos-design-filing-order.txt": {
+      "text": "1\n"
+    },
+    "design/oos-filing-prepare.env": {
+      "text": "FILE_DESIGN_OOS_DEPS_AVAILABLE=false\nFILE_DESIGN_OOS_STATUS=ready\nFILE_DESIGN_OOS_COMBINED=<SANDBOX>/design/oos-combined.md\nFILE_DESIGN_OOS_DEPS_TSV=<SANDBOX>/design/oos-intra-batch-deps.tsv\nFILE_DESIGN_OOS_ORDER=<SANDBOX>/design/oos-design-filing-order.txt\nSTEP5B_STATUS=ready\nOOS_PREP_RC=0\nOOS_ISSUE_STDOUT_PATH=<SANDBOX>/design/oos-issue.stdout.txt\nNEXT_ACTION=file-issues\nSTEP5B_NEEDS_ANNOTATE=true\n"
+    },
+    "design/oos-filing-prepare.stderr.log": {
+      "text": "file-design-oos: larch oos file-conflict-deps exit 0: graceful-degrade (no caller TSV)\n"
+    },
+    "design/timing-ledger.tsv": {
+      "text": "v1\tmark\t1787000000\tdesign\tdesign Step 5 — finalize\t-\t-\t-\t-\t-\t-\t-\t-\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "FILE_DESIGN_OOS_DEPS_AVAILABLE=false\nFILE_DESIGN_OOS_STATUS=ready\nFILE_DESIGN_OOS_COMBINED=<SANDBOX>/design/oos-combined.md\nFILE_DESIGN_OOS_DEPS_TSV=<SANDBOX>/design/oos-intra-batch-deps.tsv\nFILE_DESIGN_OOS_ORDER=<SANDBOX>/design/oos-design-filing-order.txt\nSTEP5B_STATUS=ready\nOOS_PREP_RC=0\nOOS_ISSUE_STDOUT_PATH=<SANDBOX>/design/oos-issue.stdout.txt\nNEXT_ACTION=file-issues\nSTEP5B_NEEDS_ANNOTATE=true\nFILE_DESIGN_OOS_COMBINED=<SANDBOX>/design/oos-combined.md\nFILE_DESIGN_OOS_DEPS_TSV=<SANDBOX>/design/oos-intra-batch-deps.tsv\nFILE_DESIGN_OOS_DEPS_AVAILABLE=false\n"
+  }
+}
