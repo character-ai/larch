@@ -1474,3 +1474,414 @@ fn append_execution_issue_row(issue_log: &Path, tier: &str, issue_kind: &str, de
     ));
     let _ignored = append_execution_issue(issue_log, "Tool Failures", entry.trim());
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+    use tempfile::TempDir;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .output()
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn write(dir: &Path, rel: &str, body: &str) {
+        let path = dir.join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("mkdir");
+        }
+        std::fs::write(path, body).expect("write");
+    }
+
+    fn init_repo() -> TempDir {
+        let dir = TempDir::new().expect("tempdir");
+        git(dir.path(), &["init", "-b", "main"]);
+        write(dir.path(), "a.txt", "one\n");
+        git(dir.path(), &["add", "."]);
+        git(dir.path(), &["commit", "-m", "base"]);
+        dir
+    }
+
+    fn commit_all(dir: &Path, message: &str) -> HeadRef {
+        git(dir, &["add", "-A"]);
+        git(dir, &["commit", "-m", message]);
+        head_ref(dir).expect("head")
+    }
+
+    #[test]
+    fn head_ref_and_branch_resolve() {
+        let repo = init_repo();
+        let root = repo.path();
+        let head = head_ref(root).expect("head");
+        assert_eq!(head.hex.len(), 40);
+        assert_eq!(current_branch(root), "main");
+        // An unborn HEAD resolves to None.
+        let empty = TempDir::new().expect("tempdir");
+        git(empty.path(), &["init", "-b", "main"]);
+        assert!(head_ref(empty.path()).is_none());
+    }
+
+    #[test]
+    fn snapshot_delta_and_file_digest() {
+        let repo = init_repo();
+        let root = repo.path();
+        let baseline = capture_snapshot(root).expect("baseline");
+        write(root, "a.txt", "one\ntwo\n");
+        let current = capture_snapshot(root).expect("current");
+        let delta = snapshot_delta_paths(&baseline, &current);
+        assert!(delta.contains(&"a.txt".to_owned()), "delta: {delta:?}");
+        assert_ne!(file_digest(&root.join("a.txt")), "missing");
+        assert_eq!(file_digest(&root.join("absent.txt")), "missing");
+    }
+
+    #[test]
+    fn head_change_invalid_covers_every_branch() {
+        let repo = init_repo();
+        let root = repo.path();
+        let base = head_ref(root).expect("base");
+        // Same head is always valid.
+        assert!(!head_change_invalid(root, &base, &base, "main", true));
+        // One clean non-merge commit ahead is valid.
+        write(root, "b.txt", "b\n");
+        let ahead = commit_all(root, "ahead");
+        assert!(!head_change_invalid(root, &base, &ahead, "main", true));
+        // A dirty baseline is rejected.
+        assert!(head_change_invalid(root, &base, &ahead, "main", false));
+        // A branch switch is rejected.
+        git(root, &["checkout", "-b", "feat"]);
+        write(root, "c.txt", "c\n");
+        let feat = commit_all(root, "feat");
+        assert!(head_change_invalid(root, &base, &feat, "main", true));
+        // A merge commit is rejected even on the same branch.
+        git(root, &["checkout", "main"]);
+        let pre_merge = head_ref(root).expect("pre-merge");
+        git(root, &["merge", "--no-ff", "feat", "-m", "merge"]);
+        let merged = head_ref(root).expect("merged");
+        assert!(head_change_invalid(root, &pre_merge, &merged, "main", true));
+        // A non-ancestor sibling on the same branch is rejected.
+        git(root, &["reset", "--hard", &base.hex]);
+        write(root, "d.txt", "d\n");
+        let sibling = commit_all(root, "sibling");
+        assert!(head_change_invalid(root, &ahead, &sibling, "main", true));
+    }
+
+    #[test]
+    fn committed_delta_reset_and_restore() {
+        let repo = init_repo();
+        let root = repo.path();
+        let base = head_ref(root).expect("base");
+        write(root, "b.txt", "b\n");
+        let head = commit_all(root, "add b");
+        let delta = committed_delta_paths(root, &base.hex, &head.hex);
+        assert_eq!(delta, vec!["b.txt".to_owned()]);
+        // reset_hard returns HEAD to the baseline commit.
+        assert!(reset_hard(root, &base.hex));
+        assert_eq!(head_ref(root).expect("post-reset").hex, base.hex);
+        // restore_path reverts an unstaged edit to a tracked file.
+        write(root, "a.txt", "dirty\n");
+        assert!(restore_path(root, "a.txt"));
+        assert_eq!(
+            std::fs::read_to_string(root.join("a.txt")).unwrap(),
+            "one\n"
+        );
+    }
+
+    #[test]
+    fn forbidden_revert_removes_untracked_and_restores_tracked() {
+        let repo = init_repo();
+        let root = repo.path();
+        write(root, "vendor/sub/keep.txt", "keep\n");
+        commit_all(root, "add submodule-like path");
+        write(root, "vendor/sub/keep.txt", "tampered\n");
+        write(root, "vendor/sub/new.txt", "untracked\n");
+        let forbidden = vec!["vendor/sub".to_owned()];
+        let (tracked, untracked) = tracked_and_untracked(root);
+        assert!(tracked.contains(&"vendor/sub/keep.txt".to_owned()));
+        assert!(untracked.contains(&"vendor/sub/new.txt".to_owned()));
+        let reverted = post_dispatch_forbidden_revert(root, &forbidden);
+        assert_eq!(reverted, 2);
+        assert!(!root.join("vendor/sub/new.txt").exists());
+        assert_eq!(
+            std::fs::read_to_string(root.join("vendor/sub/keep.txt")).unwrap(),
+            "keep\n"
+        );
+    }
+
+    #[test]
+    fn submodule_paths_reads_gitmodules() {
+        let repo = init_repo();
+        let root = repo.path();
+        write(
+            root,
+            ".gitmodules",
+            "[submodule \"sub\"]\n\tpath = vendor/sub\n\turl = https://example.invalid\n",
+        );
+        assert_eq!(submodule_paths(root), vec!["vendor/sub".to_owned()]);
+        // No .gitmodules yields no paths.
+        let empty = init_repo();
+        assert!(submodule_paths(empty.path()).is_empty());
+    }
+
+    fn applied_outcome() -> FixOutcome {
+        FixOutcome {
+            status: "applied".to_owned(),
+            delta_paths: vec!["src/a.rs".to_owned(), "src/b.rs".to_owned()],
+            commit_sha: Some("deadbeef".to_owned()),
+            head_changed: true,
+            coder_tool: Some("codex".to_owned()),
+            coder_log_path: "/t/coder.log".to_owned(),
+            tier_ledger_path: "/t/led.tsv".to_owned(),
+            ..FixOutcome::no_changes()
+        }
+    }
+
+    #[test]
+    fn emit_lint_fix_renders_each_status() {
+        // Applied with a non-empty delta, no-changes, failed, and the ledger block.
+        let _applied = emit_lint_fix(&applied_outcome());
+        let _no_changes = emit_lint_fix(&FixOutcome::no_changes());
+        let failed = FixOutcome {
+            stderr_tail_path: "/t/tail".to_owned(),
+            coder_log_path: "/t/log".to_owned(),
+            tier_ledger_path: "/t/led".to_owned(),
+            ..FixOutcome::failed("git-commit-failed")
+        };
+        let _failed = emit_lint_fix(&failed);
+        let ledger = FixOutcome {
+            status: "main-agent-required".to_owned(),
+            ledger_ready: true,
+            ledger_site: "step5".to_owned(),
+            ledger_trigger: "main-agent-required".to_owned(),
+            ledger_step: "5".to_owned(),
+            ledger_phase: "review".to_owned(),
+            ledger_dispatcher: "lint-fix-loop".to_owned(),
+            ledger_exit_code: Some(1),
+            ledger_failure_detail_log: "/t/detail".to_owned(),
+            ..FixOutcome::no_changes()
+        };
+        let _ledger = emit_lint_fix(&ledger);
+    }
+
+    #[test]
+    fn presence_probe_reads_env_session_and_path() {
+        let dir = TempDir::new().expect("tempdir");
+        write(
+            dir.path(),
+            "session-env.sh",
+            "LARCH_CLF_FAKE_FOUND=true\r\n",
+        );
+        assert!(binary_present(
+            "LARCH_CLF_FAKE_FOUND",
+            dir.path(),
+            "nonexistent-binary"
+        ));
+        write(dir.path(), "session-env.sh", "LARCH_CLF_FAKE_FOUND=false\n");
+        assert!(!binary_present(
+            "LARCH_CLF_FAKE_FOUND",
+            dir.path(),
+            "nonexistent-binary-xyz"
+        ));
+        assert!(which_on_path("sh"));
+        assert!(!which_on_path("larch-definitely-not-on-path-xyz"));
+    }
+
+    #[test]
+    fn resolvers_and_tier_selection() {
+        assert!(!default_repo_root().is_empty());
+        let request = LintFixRequest {
+            site: "step5".to_owned(),
+            checks_log: String::new(),
+            repo_root: ".".to_owned(),
+            run_parent: String::new(),
+            allowed_tmpdir: String::new(),
+            claude_present: false,
+            codex_present: true,
+            cursor_present: false,
+        };
+        let order = ["claude", "codex", "cursor"];
+        assert_eq!(
+            next_untried_tier(&order, &[], &request).as_deref(),
+            Some("codex")
+        );
+        assert_eq!(
+            next_untried_tier(&order, &["codex".to_owned()], &request),
+            None
+        );
+        let dir = TempDir::new().expect("tempdir");
+        let resolved = resolve_lenient(&dir.path().to_string_lossy()).expect("resolved");
+        assert!(resolved.is_absolute());
+        let missing = dir.path().join("missing-leaf");
+        assert!(resolve_lenient(&missing.to_string_lossy()).is_some());
+    }
+
+    #[test]
+    fn tier_ledger_and_attempt_dir_roundtrip() {
+        let dir = TempDir::new().expect("tempdir");
+        let ledger = initialize_tier_ledger(dir.path()).expect("ledger");
+        assert!(ledger.is_file());
+        // A second init leaves the existing header intact.
+        assert!(initialize_tier_ledger(dir.path()).is_some());
+        append_tier_ledger(
+            &ledger,
+            "1\tcodex\tno-useful-delta\t1\t5\tfalse\tlauncher-failure\n",
+        )
+        .expect("append");
+        let body = std::fs::read_to_string(&ledger).expect("read");
+        assert!(body.contains("execution_issue_kind"));
+        assert!(body.contains("launcher-failure"));
+        let attempt = make_attempt_dir(dir.path(), 1, "codex").expect("attempt");
+        assert!(attempt.is_dir());
+        assert_eq!(command_argv(&["a", "b"]).len(), 2);
+    }
+
+    #[test]
+    fn attempt_evidence_helpers_publish_redacted_sidecars() {
+        let dir = TempDir::new().expect("tempdir");
+        // Production attempt dirs are canonical (mkdtemp under the canonical tmp);
+        // canonicalize here so the confined-write target matches its root.
+        let run_dir = &dir.path().canonicalize().expect("canonical run dir");
+        let run_dir = run_dir.as_path();
+        // No sidecar yet.
+        assert_eq!(stderr_tail_text(run_dir, "codex.log"), "");
+        assert_eq!(coder_stderr_tail(run_dir, "codex.log"), "");
+        write(run_dir, "codex.log.stderr-tail", "boom failure\n");
+        assert!(stderr_tail_text(run_dir, "codex.log").contains("boom"));
+        let redacted = coder_stderr_tail(run_dir, "codex.log");
+        assert!(redacted.ends_with("codex.log.stderr-tail.redacted"));
+        assert!(Path::new(&redacted).is_file());
+        write(run_dir, "codex.log", "attempt transcript output\n");
+        let attempt = redacted_attempt_log(run_dir, "codex.log");
+        assert!(attempt.ends_with("codex.log.redacted"));
+        // Execution-issue detail collapses whitespace and falls back cleanly.
+        assert_eq!(execution_issue_detail(""), "attempt log unavailable");
+        let detail = execution_issue_detail(&run_dir.join("codex.log").to_string_lossy());
+        assert_eq!(detail, "attempt transcript output");
+        append_execution_issue_row(
+            &run_dir.join("issues.md"),
+            "codex",
+            "launcher-failure",
+            &detail,
+        );
+        append_execution_issue_row(&run_dir.join("issues.md"), "codex", "", "skipped");
+    }
+
+    fn request(tmp: &Path, checks_log: &str, site: &str) -> LintFixRequest {
+        LintFixRequest {
+            site: site.to_owned(),
+            checks_log: checks_log.to_owned(),
+            repo_root: tmp.to_string_lossy().into_owned(),
+            run_parent: tmp.join("lint-fix-loop").to_string_lossy().into_owned(),
+            allowed_tmpdir: tmp.to_string_lossy().into_owned(),
+            claude_present: false,
+            codex_present: false,
+            cursor_present: false,
+        }
+    }
+
+    #[test]
+    fn run_lint_fix_impl_rejects_unknown_site() {
+        let outcome = run_lint_fix_impl(&request(Path::new("/tmp"), "/tmp/x", "not-a-site"));
+        assert_eq!(outcome.status, "failed");
+        assert_eq!(outcome.failure_reason.as_deref(), Some("unknown-site"));
+    }
+
+    #[test]
+    fn run_lint_fix_impl_rejects_an_unconfined_checks_log() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path().canonicalize().expect("canonical");
+        let outcome = run_lint_fix_impl(&request(&root, "/etc/hostname", "step5"));
+        assert_eq!(
+            outcome.failure_reason.as_deref(),
+            Some("checks-log-invalid")
+        );
+    }
+
+    #[test]
+    fn run_lint_fix_impl_empty_log_is_no_changes() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path().canonicalize().expect("canonical");
+        let log = root.join("checks.log");
+        std::fs::write(&log, "").expect("empty log");
+        let outcome = run_lint_fix_impl(&request(&root, &log.to_string_lossy(), "step5"));
+        assert_eq!(outcome.status, "no-changes");
+    }
+
+    #[test]
+    fn run_lint_fix_impl_structural_ruff_is_ledger_ready() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path().canonicalize().expect("canonical");
+        let log = root.join("checks.log");
+        std::fs::write(&log, "a.py:1:1: C901 too complex\n").expect("log");
+        let outcome = run_lint_fix_impl(&request(&root, &log.to_string_lossy(), "step6"));
+        assert_eq!(outcome.status, "main-agent-required");
+        assert!(outcome.ledger_ready);
+        assert_eq!(outcome.ledger_step, "6");
+    }
+
+    #[test]
+    fn git_helpers_fail_closed_on_bad_input() {
+        let repo = init_repo();
+        let root = repo.path();
+        // A non-existent ref yields an empty committed delta rather than an error.
+        assert!(committed_delta_paths(root, "not-a-ref", "also-not-a-ref").is_empty());
+        // reset_hard / restore_path return false on an unresolvable target.
+        assert!(!reset_hard(
+            root,
+            "0000000000000000000000000000000000000000"
+        ));
+        assert!(!restore_path(root, "missing/path.txt"));
+        // A non-repository root fails closed everywhere.
+        let empty = TempDir::new().expect("tempdir");
+        assert!(capture_snapshot(empty.path()).is_none());
+        assert_eq!(current_branch(empty.path()), "");
+        assert_eq!(
+            committed_delta_paths(empty.path(), "a", "b"),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn committed_delta_reports_a_rename() {
+        let repo = init_repo();
+        let root = repo.path();
+        let base = head_ref(root).expect("base");
+        git(root, &["mv", "a.txt", "renamed.txt"]);
+        let head = commit_all(root, "rename");
+        // The rename shows both the old and new path in the name-only delta.
+        let delta = committed_delta_paths(root, &base.hex, &head.hex);
+        assert!(
+            delta.iter().any(|path| path == "renamed.txt"),
+            "delta: {delta:?}"
+        );
+    }
+
+    #[test]
+    fn run_lint_fix_exhausts_without_a_selectable_tier() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path().canonicalize().expect("canonical");
+        let log = root.join("checks.log");
+        std::fs::write(&log, "scripts/x.sh:1: MD038 failure\n").expect("log");
+        // The wrapper records the lane timing on a non-Claude outcome.
+        let outcome = run_lint_fix(&request(&root, &log.to_string_lossy(), "step5"));
+        assert_eq!(outcome.status, "failed");
+        assert_eq!(
+            outcome.failure_reason.as_deref(),
+            Some("lint-fix-no-selectable-tier")
+        );
+        assert!(!outcome.tier_ledger_path.is_empty());
+    }
+}

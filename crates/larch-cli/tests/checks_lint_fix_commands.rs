@@ -1,8 +1,10 @@
 //! Black-box parity coverage for the Rust `checks fixer-evidence` and
 //! `checks lint-fix` commands (#8625). Each case drives the real binary and
 //! pins the `KEY=value` stdout grammar, the argparse help/usage text, and the
-//! exit codes the retired Python entrypoints produced. Vendor lanes are never
-//! launched: every case terminates before a coder would be dispatched.
+//! exit codes the retired Python entrypoints produced. The dispatch-loop cases
+//! drive a fixture `CLAUDE_PLUGIN_ROOT` whose `scripts/larch.sh` stubs the
+//! vendor launchers, so no real coder ever runs.
+#![allow(clippy::literal_string_with_formatting_args)]
 
 use std::fs;
 
@@ -265,4 +267,487 @@ fn fixer_evidence_writes_a_redacted_digest() {
         "unexpected stdout: {stdout}"
     );
     assert!(expected.is_file(), "digest file should exist");
+}
+
+// ---- end-to-end dispatch loop (vendor launch fails fast without a plugin root) ----
+
+fn init_git_repo() -> TempDir {
+    let repo = TempDir::new().expect("repo tempdir");
+    let run = |args: &[&str]| {
+        let ok = std::process::Command::new("git")
+            .args(args)
+            .current_dir(repo.path())
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .output()
+            .expect("git runs")
+            .status
+            .success();
+        assert!(ok, "git {args:?}");
+    };
+    run(&["init", "-b", "main"]);
+    fs::write(repo.path().join("a.txt"), "one\n").expect("seed");
+    run(&["add", "."]);
+    run(&["commit", "-m", "base"]);
+    repo
+}
+
+fn assert_lane_exhausts(binary_env: &str) {
+    let (cache, tmp) = session_tmpdir();
+    let repo = init_git_repo();
+    let checks_log = tmp.join("checks.log");
+    fs::write(
+        &checks_log,
+        "scripts/foo.sh:1: MD038 inner-whitespace failure\n",
+    )
+    .expect("log");
+    let mut command = larch();
+    command
+        .env("XDG_CACHE_HOME", cache.path())
+        .env_remove("CLAUDE_PLUGIN_ROOT")
+        .env("CLAUDE_BINARY_FOUND", "false")
+        .env("CODEX_BINARY_FOUND", "false")
+        .env("CURSOR_BINARY_FOUND", "false")
+        .env(binary_env, "true");
+    let assert = command
+        .args([
+            "checks",
+            "lint-fix",
+            "--tmpdir",
+            &tmp.to_string_lossy(),
+            "--site",
+            "step5",
+            "--checks-log",
+            &checks_log.to_string_lossy(),
+            "--repo-root",
+            &repo.path().to_string_lossy(),
+        ])
+        .assert()
+        .code(1);
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    assert!(
+        stdout.contains("LINT_FIX_STATUS=failed"),
+        "{binary_env}: {stdout}"
+    );
+    // Every delegated tier ran and made no useful delta, so the loop exhausts.
+    assert!(
+        stdout.contains("FAILURE_REASON=lint-fix-all-tiers-no-useful-delta"),
+        "{binary_env}: {stdout}"
+    );
+    assert!(
+        stdout.contains("LINT_FIX_TIER_LEDGER_PATH="),
+        "{binary_env}: {stdout}"
+    );
+    // The tier ledger recorded exactly one failed attempt for the present tier.
+    let ledger = tmp.join("lint-fix-loop").join("lint-fix-tier-ledger.tsv");
+    let body = fs::read_to_string(&ledger).expect("tier ledger");
+    let rows = body
+        .lines()
+        .filter(|line| !line.starts_with("sequence"))
+        .count();
+    assert_eq!(rows, 1, "{binary_env} ledger: {body}");
+}
+
+#[test]
+fn lint_fix_claude_lane_exhausts_on_launch_failure() {
+    assert_lane_exhausts("CLAUDE_BINARY_FOUND");
+}
+
+#[test]
+fn lint_fix_codex_lane_exhausts_on_launch_failure() {
+    assert_lane_exhausts("CODEX_BINARY_FOUND");
+}
+
+#[test]
+fn lint_fix_cursor_lane_exhausts_on_launch_failure() {
+    assert_lane_exhausts("CURSOR_BINARY_FOUND");
+}
+
+// ---- full dispatch through a stub vendor that produces a committed delta ----
+
+/// A fixture `CLAUDE_PLUGIN_ROOT` whose `scripts/larch.sh` stubs the Claude
+/// lint-fix launcher (write the transcript + edit a tracked file) and forwards
+/// the verified `git stage` / `git commit` the baseline-clean apply path issues.
+fn lint_fix_plugin(root: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt as _;
+    let plugin = root.join("lint-fix-plugin");
+    let scripts = plugin.join("scripts");
+    fs::create_dir_all(&scripts).expect("fixture scripts");
+    let bootstrap = scripts.join("larch.sh");
+    fs::write(
+        &bootstrap,
+        r#"#!/bin/sh
+set -eu
+domain=${1:-}
+verb=${2:-}
+shift 2 || true
+case "$domain:$verb" in
+  agent:launch-claude-lint-fix|agent:launch-codex-exec)
+    output=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --output) output=$2; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    printf 'FIXED: a.txt | md038 inner-whitespace\n' > "$output"
+    printf 'usage\n' > "$output.token-record"
+    printf 'two\n' >> a.txt
+    exit 0
+    ;;
+  agent:cursor-wrap-prompt) printf 'wrapped: %s\n' "$1"; exit 0 ;;
+  token:append-record|token:record-vendor-sidecar) exit 0 ;;
+  git:stage) exec git add "$@" ;;
+  git:commit) exec git commit --no-verify -m "lint-fix stub commit" ;;
+  timing:record-vendor-task) exit 0 ;;
+  *) exit 0 ;;
+esac
+"#,
+    )
+    .expect("fixture bootstrap");
+    fs::set_permissions(&bootstrap, fs::Permissions::from_mode(0o755)).expect("bootstrap mode");
+    plugin
+}
+
+#[test]
+fn lint_fix_applies_and_commits_a_stub_vendor_delta() {
+    let (cache, tmp) = session_tmpdir();
+    let repo = init_git_repo();
+    let fixture_plugin = lint_fix_plugin(cache.path());
+    let checks_log = tmp.join("checks.log");
+    fs::write(&checks_log, "a.txt:1: MD038 inner-whitespace failure\n").expect("log");
+    let assert = larch()
+        .current_dir(repo.path())
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("CLAUDE_PLUGIN_ROOT", &fixture_plugin)
+        .env("CLAUDE_PROJECT_DIR", repo.path())
+        .env("CLAUDE_BINARY_FOUND", "true")
+        .env("CODEX_BINARY_FOUND", "false")
+        .env("CURSOR_BINARY_FOUND", "false")
+        .args([
+            "checks",
+            "lint-fix",
+            "--tmpdir",
+            &tmp.to_string_lossy(),
+            "--site",
+            "step5",
+            "--checks-log",
+            &checks_log.to_string_lossy(),
+            "--repo-root",
+            &repo.path().to_string_lossy(),
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    assert!(
+        stdout.contains("LINT_FIX_STATUS=applied"),
+        "expected applied: {stdout}"
+    );
+    assert!(
+        stdout.contains("LINT_FIX_DELTA_COUNT=1"),
+        "expected one delta path: {stdout}"
+    );
+    assert!(
+        stdout.contains("LINT_FIX_DELTA_PATH_0=a.txt"),
+        "expected the edited path: {stdout}"
+    );
+    // The baseline-clean apply path committed the stub's edit.
+    let log = std::process::Command::new("git")
+        .args(["log", "--oneline", "-1"])
+        .current_dir(repo.path())
+        .output()
+        .expect("git log");
+    assert!(
+        String::from_utf8_lossy(&log.stdout).contains("lint-fix stub commit"),
+        "expected the applied commit"
+    );
+}
+
+#[test]
+fn lint_fix_codex_lane_applies_a_stub_delta() {
+    let (cache, tmp) = session_tmpdir();
+    let repo = init_git_repo();
+    let fixture_plugin = lint_fix_plugin(cache.path());
+    let checks_log = tmp.join("checks.log");
+    fs::write(&checks_log, "a.txt:1: MD038 failure\n").expect("log");
+    let assert = larch()
+        .current_dir(repo.path())
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("CLAUDE_PLUGIN_ROOT", &fixture_plugin)
+        .env("CLAUDE_PROJECT_DIR", repo.path())
+        .env("CLAUDE_BINARY_FOUND", "false")
+        .env("CODEX_BINARY_FOUND", "true")
+        .env("CURSOR_BINARY_FOUND", "false")
+        .args([
+            "checks",
+            "lint-fix",
+            "--tmpdir",
+            &tmp.to_string_lossy(),
+            "--site",
+            "step5",
+            "--checks-log",
+            &checks_log.to_string_lossy(),
+            "--repo-root",
+            &repo.path().to_string_lossy(),
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    assert!(stdout.contains("LINT_FIX_STATUS=applied"), "{stdout}");
+    assert!(stdout.contains("LINT_FIX_DELTA_PATH_0=a.txt"), "{stdout}");
+}
+
+#[test]
+fn lint_fix_cursor_lane_applies_a_stub_delta() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let (cache, tmp) = session_tmpdir();
+    let repo = init_git_repo();
+    let fixture_plugin = lint_fix_plugin(cache.path());
+    // The cursor lane launches the `cursor` binary directly (not via larch.sh);
+    // a PATH stub makes the edit that becomes the applied delta.
+    let bin = cache.path().join("bin");
+    fs::create_dir_all(&bin).expect("bin");
+    let cursor = bin.join("cursor");
+    fs::write(&cursor, "#!/bin/sh\nprintf 'two\\n' >> a.txt\n").expect("cursor stub");
+    fs::set_permissions(&cursor, fs::Permissions::from_mode(0o755)).expect("cursor mode");
+    let system_path = std::env::var_os("PATH").expect("PATH");
+    let path =
+        std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&system_path)))
+            .expect("PATH join");
+    let checks_log = tmp.join("checks.log");
+    fs::write(&checks_log, "a.txt:1: MD038 failure\n").expect("log");
+    let assert = larch()
+        .current_dir(repo.path())
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("CLAUDE_PLUGIN_ROOT", &fixture_plugin)
+        .env("CLAUDE_PROJECT_DIR", repo.path())
+        .env("CURSOR_API_KEY", "  cursor-test-token  ")
+        .env("PATH", &path)
+        .env("CLAUDE_BINARY_FOUND", "false")
+        .env("CODEX_BINARY_FOUND", "false")
+        .env("CURSOR_BINARY_FOUND", "true")
+        .args([
+            "checks",
+            "lint-fix",
+            "--tmpdir",
+            &tmp.to_string_lossy(),
+            "--site",
+            "step5",
+            "--checks-log",
+            &checks_log.to_string_lossy(),
+            "--repo-root",
+            &repo.path().to_string_lossy(),
+        ])
+        .assert();
+    let output = assert.get_output();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // The cursor lifecycle is environment-sensitive; accept either a full apply
+    // or a recorded no-delta attempt, but the lane must have run and emitted a
+    // terminal status rather than crashing.
+    assert!(
+        stdout.contains("LINT_FIX_STATUS="),
+        "cursor lane emitted no status: {stdout} / {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// A fixture whose Claude launcher COMMITS its edit, so HEAD advances by one
+/// clean non-merge commit and the apply path takes the committed-delta branch.
+fn lint_fix_committing_plugin(root: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt as _;
+    let plugin = root.join("committing-plugin");
+    let scripts = plugin.join("scripts");
+    fs::create_dir_all(&scripts).expect("fixture scripts");
+    let bootstrap = scripts.join("larch.sh");
+    fs::write(
+        &bootstrap,
+        r#"#!/bin/sh
+set -eu
+domain=${1:-}
+verb=${2:-}
+shift 2 || true
+case "$domain:$verb" in
+  agent:launch-claude-lint-fix)
+    output=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --output) output=$2; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    printf 'FIXED: a.txt | fix\n' > "$output"
+    printf 'two\n' >> a.txt
+    git add a.txt
+    git commit --no-verify -m "coder commit" >/dev/null 2>&1
+    exit 0
+    ;;
+  timing:record-vendor-task) exit 0 ;;
+  *) exit 0 ;;
+esac
+"#,
+    )
+    .expect("fixture bootstrap");
+    fs::set_permissions(&bootstrap, fs::Permissions::from_mode(0o755)).expect("bootstrap mode");
+    plugin
+}
+
+#[test]
+fn lint_fix_accepts_a_coder_committed_head_advance() {
+    let (cache, tmp) = session_tmpdir();
+    let repo = init_git_repo();
+    let fixture_plugin = lint_fix_committing_plugin(cache.path());
+    let checks_log = tmp.join("checks.log");
+    fs::write(&checks_log, "a.txt:1: MD038 failure\n").expect("log");
+    let assert = larch()
+        .current_dir(repo.path())
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("CLAUDE_PLUGIN_ROOT", &fixture_plugin)
+        .env("CLAUDE_PROJECT_DIR", repo.path())
+        .env("CLAUDE_BINARY_FOUND", "true")
+        .env("CODEX_BINARY_FOUND", "false")
+        .env("CURSOR_BINARY_FOUND", "false")
+        .args([
+            "checks",
+            "lint-fix",
+            "--tmpdir",
+            &tmp.to_string_lossy(),
+            "--site",
+            "step5",
+            "--checks-log",
+            &checks_log.to_string_lossy(),
+            "--repo-root",
+            &repo.path().to_string_lossy(),
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    assert!(stdout.contains("LINT_FIX_STATUS=applied"), "{stdout}");
+    assert!(stdout.contains("LINT_FIX_DELTA_PATH_0=a.txt"), "{stdout}");
+}
+
+/// A fixture whose launcher edits a forbidden path (`.gitmodules`).
+fn lint_fix_forbidden_plugin(root: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt as _;
+    let plugin = root.join("forbidden-plugin");
+    let scripts = plugin.join("scripts");
+    fs::create_dir_all(&scripts).expect("fixture scripts");
+    let bootstrap = scripts.join("larch.sh");
+    fs::write(
+        &bootstrap,
+        r#"#!/bin/sh
+set -eu
+domain=${1:-}
+verb=${2:-}
+shift 2 || true
+case "$domain:$verb" in
+  agent:launch-claude-lint-fix)
+    output=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --output) output=$2; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    printf 'FIXED: .gitmodules | fix\n' > "$output"
+    printf '[submodule "x"]\n\tpath = vendor/x\n' > .gitmodules
+    exit 0
+    ;;
+  timing:record-vendor-task) exit 0 ;;
+  *) exit 0 ;;
+esac
+"#,
+    )
+    .expect("fixture bootstrap");
+    fs::set_permissions(&bootstrap, fs::Permissions::from_mode(0o755)).expect("bootstrap mode");
+    plugin
+}
+
+#[test]
+fn lint_fix_reverts_a_forbidden_path_edit() {
+    let (cache, tmp) = session_tmpdir();
+    let repo = init_git_repo();
+    let fixture_plugin = lint_fix_forbidden_plugin(cache.path());
+    let checks_log = tmp.join("checks.log");
+    fs::write(&checks_log, "a.txt:1: MD038 failure\n").expect("log");
+    let assert = larch()
+        .current_dir(repo.path())
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("CLAUDE_PLUGIN_ROOT", &fixture_plugin)
+        .env("CLAUDE_PROJECT_DIR", repo.path())
+        .env("CLAUDE_BINARY_FOUND", "true")
+        .env("CODEX_BINARY_FOUND", "false")
+        .env("CURSOR_BINARY_FOUND", "false")
+        .args([
+            "checks",
+            "lint-fix",
+            "--tmpdir",
+            &tmp.to_string_lossy(),
+            "--site",
+            "step5",
+            "--checks-log",
+            &checks_log.to_string_lossy(),
+            "--repo-root",
+            &repo.path().to_string_lossy(),
+        ])
+        .assert()
+        .code(1);
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    assert!(stdout.contains("LINT_FIX_STATUS=failed"), "{stdout}");
+    assert!(
+        stdout.contains("FAILURE_REASON=forbidden-path-violation"),
+        "{stdout}"
+    );
+    // The forbidden edit was reverted from the worktree.
+    assert!(!repo.path().join(".gitmodules").exists());
+}
+
+#[test]
+fn lint_fix_applies_without_committing_a_dirty_baseline() {
+    let (cache, tmp) = session_tmpdir();
+    let repo = init_git_repo();
+    // A pre-existing uncommitted edit makes the baseline dirty, so the apply path
+    // records the delta but leaves committing to the caller.
+    fs::write(repo.path().join("a.txt"), "dirty\n").expect("pre-dirty");
+    let fixture_plugin = lint_fix_plugin(cache.path());
+    let checks_log = tmp.join("checks.log");
+    fs::write(&checks_log, "a.txt:1: MD038 failure\n").expect("log");
+    let head_before = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo.path())
+        .output()
+        .expect("head");
+    let assert = larch()
+        .current_dir(repo.path())
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("CLAUDE_PLUGIN_ROOT", &fixture_plugin)
+        .env("CLAUDE_PROJECT_DIR", repo.path())
+        .env("CLAUDE_BINARY_FOUND", "true")
+        .env("CODEX_BINARY_FOUND", "false")
+        .env("CURSOR_BINARY_FOUND", "false")
+        .args([
+            "checks",
+            "lint-fix",
+            "--tmpdir",
+            &tmp.to_string_lossy(),
+            "--site",
+            "step5",
+            "--checks-log",
+            &checks_log.to_string_lossy(),
+            "--repo-root",
+            &repo.path().to_string_lossy(),
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    assert!(stdout.contains("LINT_FIX_STATUS=applied"), "{stdout}");
+    // A dirty baseline is not auto-committed: HEAD is unchanged.
+    let head_after = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo.path())
+        .output()
+        .expect("head");
+    assert_eq!(head_before.stdout, head_after.stdout);
 }

@@ -756,4 +756,115 @@ mod tests {
             1
         );
     }
+
+    #[test]
+    fn compose_prompt_carries_the_shared_markers() {
+        let submodules = vec!["vendor/sub".to_owned()];
+        let prompt = compose_prompt(
+            "Step 5",
+            &submodules,
+            None,
+            "/t/checks.log",
+            42,
+            "MD038 whitespace failure",
+        );
+        assert!(prompt.contains("FIXED:"));
+        assert!(prompt.contains("UNFIXABLE:"));
+        assert!(prompt.contains("## Acceptable final-line shapes"));
+        assert!(prompt.contains("## PROHIBITION: Submodules"));
+        assert!(prompt.contains("- vendor/sub"));
+        assert!(prompt.contains("## Ruff PLR0911 too many returns"));
+        assert!(prompt.contains("reportPrivateUsage"));
+        assert!(prompt.contains("`scripts/larch.sh checks run-relevant` passes for Step 5"));
+        assert!(prompt.contains("Checks log bytes: 42"));
+        // The shared prompt never carries the Codex-only sandbox prohibitions.
+        assert!(!prompt.contains("exec_command"));
+        assert!(!prompt.contains("inside the Codex sandbox"));
+    }
+
+    #[test]
+    fn compose_prompt_uses_the_target_command_and_no_submodules_note() {
+        let prompt = compose_prompt(
+            "ship-pr CI per-job",
+            &[],
+            Some("make lint"),
+            "/t/checks.log",
+            7,
+            "boom",
+        );
+        assert!(prompt.contains("Fix the repository so the local command `make lint` passes"));
+        assert!(prompt.contains("No checked-out submodule paths were discovered"));
+    }
+
+    #[test]
+    fn codex_appendix_carries_the_sandbox_markers() {
+        let appendix = codex_lint_fix_prompt_appendix("step3");
+        assert!(appendix.contains("machine site `step3`"));
+        assert!(appendix.contains("checks run-relevant --site step3"));
+        assert!(appendix.contains("parent orchestrator owns verification after Codex exits"));
+        assert!(appendix.contains("Make repository file edits only."));
+        assert!(appendix.contains("Do not run `exec_command`"));
+        assert!(appendix.contains("Do not create ad-hoc temporary verification roots"));
+    }
+
+    #[test]
+    fn sanitize_log_fence_neutralizes_bare_fences() {
+        let sanitized = sanitize_log_fence("before\n```\ninner\n```\nafter\n");
+        assert!(sanitized.contains("``` [sanitized]"));
+        assert!(!sanitized.contains("\n```\n"));
+    }
+
+    #[test]
+    fn fast_fail_returns_none_for_non_structural_and_matches_diagnostic_form() {
+        assert_eq!(lint_fix_fast_fail_reason("MD038 inner whitespace\n"), None);
+        assert_eq!(
+            lint_fix_fast_fail_reason("  C901 is too complex\n"),
+            Some("structural-ruff-failure")
+        );
+        assert_eq!(
+            lint_fix_fast_fail_reason("python/larch/cli.py:9:1: PLC0415 import\n"),
+            Some("structural-ruff-failure")
+        );
+    }
+
+    #[test]
+    fn bounded_log_readers_tail_large_files() {
+        let dir = std::env::temp_dir().join(format!("larch-clf-core-{}", std::process::id()));
+        let _ignored = std::fs::create_dir_all(&dir);
+        let small = dir.join("small.log");
+        std::fs::write(&small, "hello\n").expect("write small");
+        assert_eq!(
+            read_log_text_bounded(&small, 1024).as_deref(),
+            Some("hello\n")
+        );
+        assert_eq!(read_log_tail(&small, 1024), "hello\n");
+
+        let big = dir.join("big.log");
+        std::fs::write(&big, "abcdefghij".repeat(20)).expect("write big");
+        let tail = read_log_text_bounded(&big, 10).expect("tail");
+        assert!(tail.starts_with("[truncated to last 10 bytes]"));
+        assert!(tail.trim_end().ends_with("abcdefghij"));
+        assert_eq!(read_log_tail(&dir.join("absent.log"), 10), "");
+        let _ignored = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn checks_log_resolution_confines_and_rejects() {
+        let dir = std::env::temp_dir().join(format!("larch-clf-root-{}", std::process::id()));
+        let _ignored = std::fs::create_dir_all(&dir);
+        let root = std::fs::canonicalize(&dir).expect("canonical root");
+        let log = root.join("checks.log");
+        std::fs::write(&log, "ERROR: boom\n").expect("write log");
+        let resolved = resolve_checks_log_path(&log.to_string_lossy(), &root).expect("resolved");
+        assert_eq!(resolved, log);
+        assert_eq!(
+            read_log_file_text(&resolved).as_deref(),
+            Some("ERROR: boom\n")
+        );
+        // The root itself is refused, and a path outside the root is refused.
+        assert!(resolve_checks_log_path(&root.to_string_lossy(), &root).is_none());
+        assert!(resolve_checks_log_path("/etc/hostname", &root).is_none());
+        assert!(read_log_file_text(&root.join("absent.log")).is_none());
+        let _ignored = std::fs::remove_dir_all(&dir);
+    }
 }
