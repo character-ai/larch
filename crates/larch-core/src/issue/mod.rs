@@ -86,6 +86,7 @@ pub use oos_disposition::{
     count_non_security_oos_blocks, count_rejected_oos_markers_from_ndjson, issue_url_pattern,
     read_universal_newlines,
 };
+pub use oos_filing::combined_oos_blocks;
 pub use oos_filing::{
     AcceptedBlock, AcceptedSource, FiledIssue, LEGACY_PRIMARY_OOS_SOURCE, bare_oos_item_suffix,
     combined_block_count, dedupe_filed, is_capped_rollup_body, issue_covers_stable_id,

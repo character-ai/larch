@@ -665,6 +665,12 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 - The orchestrator reuses the #8587 `SiblingRunner`/`CapturedRun`/`LiveRunner` seam. Rust-owned siblings (`plan check-size`, `plan validate`, `named-block write`, `difficulty sync-labels`/`write-record`, `run-log write`/`append-failure`, `tracking-issue rename`) go through `delegate_verified_larch`; still-Python siblings (`mermaid sanitize`, `diagrams upsert`, `design compose-plan-md`, `design log-publish`, `design pause-save`, `design stage-terminal-state`) go through `run_python_verb`. The published plan receipt is persisted in-process through `IssueMutationOwner` with the named-block lease and the protected-issue body fallback, never `gh api` (#7672).
 - `python/larch/design/design_publish.py` and `python/tests/design/test_design_publish.py` are removed. `design_step5c._step5c_invoke_publish_core` now spawns `scripts/larch.sh design publish` and forwards its streams. Helpers that outlived the verb moved to their remaining consumers: transcript capture to `design_transcript_capture.py`, the assessment completeness checks to `design_log_publish_flow.py`, and `review_provenance` to `design_core.py`. The plan-markdown recomposition that publish performed inline is now the registered `design compose-plan-md` verb in `design_step5c.py`, which the Rust orchestrator bridges.
 
+### Design OOS preparation and annotation cutover
+
+- `design file-oos-prepare` and `design file-oos-annotate` flipped owner to `crates/larch-cli/src/design_oos_commands.rs` in one PR (#8590). Pure aggregate-pool promotion, cache identity, `/issue` stdout parsing, accepted-file annotation, and priority-slot mapping live in `larch_core::design`.
+- The surviving Step 5b Python wrapper invokes both commands through `scripts/larch.sh`. The Rust owner applies the issue cap and conflict planner in process. Priority-label provisioning and verified label mutation reuse the typed GitHub service and `IssueMutationOwner` required by the canonical #7672 result.
+- `python/larch/design/design_oos.py`, its CLI registrations, and its direct Python tests are removed. The final Python implementation is frozen only under `fixtures/rust-parity/`; `crates/larch-cli/tests/design_oos_migrated_parity.rs` proves exit, stream, and filesystem parity against reviewed goldens.
+
 ### C1a5 waterfall dispatcher
 
 - Ported the waterfall dispatcher to `agent dispatch-waterfall` and cut live callers over to the CLI verb.

@@ -1,0 +1,33 @@
+{
+  "exit_code": 0,
+  "files": {
+    ".home/.cache/larch/design-oos-filed/42.accepted-design.md": {
+      "text": "### OOS_7: recovered\n- **Focus area**: architecture\n"
+    },
+    ".home/.cache/larch/design-oos-filed/42.md": {
+      "text": "OOS_FILE_MAP\t7\thttps://github.com/acme/repo/issues/7\n"
+    },
+    "design/.keep": {
+      "text": ""
+    },
+    "design/execution-issues.md": {
+      "text": "### Warnings\n\n- **Step design file-design-oos cross-session: scripts/larch.sh design file-oos-prepare failed (exit 1)**:\n  ```\nrecover_oos_accepted_from_sentinel_urls failed\n  ```\n"
+    },
+    "design/oos-accepted-design.md": {
+      "text": "### OOS_7: recovered\n- **Focus area**: architecture\n- **Filed URL**: https://github.com/acme/repo/issues/7\n### OOS_9: follow-up\n- **Description**: preserve this.\n"
+    },
+    "design/oos-combined.md": {
+      "text": "### OOS_9: follow-up\n- **Description**: preserve this.\n"
+    },
+    "design/oos-design-filing-order.txt": {
+      "text": "9\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "file-design-oos: larch oos file-conflict-deps exit 0: graceful-degrade (no caller TSV)\n"
+  },
+  "stdout": {
+    "text": "FILE_DESIGN_OOS_DEPS_AVAILABLE=false\nFILE_DESIGN_OOS_STATUS=ready\nFILE_DESIGN_OOS_COMBINED=<SANDBOX>/design/oos-combined.md\nFILE_DESIGN_OOS_DEPS_TSV=<SANDBOX>/design/oos-intra-batch-deps.tsv\nFILE_DESIGN_OOS_ORDER=<SANDBOX>/design/oos-design-filing-order.txt\n"
+  }
+}

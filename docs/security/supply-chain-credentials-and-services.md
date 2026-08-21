@@ -639,6 +639,14 @@ They return success only when the requested postcondition is present. Creates,
 which lack a collision-free request identity, return a typed ambiguous-outcome
 error instead of risking a duplicate issue, comment, or label.
 
+`design file-oos-annotate` follows this boundary for its `oos-correctness`
+label. It lists or creates the label through the typed service and applies the
+issue label through `IssueMutationOwner` with verified read-back. The command
+does not invoke `gh label`, `gh issue`, `gh api`, or accept a caller-selected
+service URL. Its only credential source is the fixed GitHub credential lookup
+owned by this boundary. Automatic Step 5b calls also pass the session-backed
+live-mutation context; direct recovery requires explicit operator mode.
+
 ## Typed Service Boundaries
 
 The [GitHub service inventory](../github-service-inventory.md) is the canonical

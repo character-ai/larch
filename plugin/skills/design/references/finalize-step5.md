@@ -18,11 +18,11 @@ Step 5 order: prepare emits `NEXT_ACTION`; `SKILL.md` branches; Step 5b.5 writes
 
 **Session-backed authorization.** Step 5b `/larch:issue` OOS filing is session-backed. When constructing nested `issue create-one` args for session-backed filing, pass `--context-file "$DESIGN_TMPDIR/source-env.sh" --run-id "$LARCH_RUN_ID" --trusted-root "$DESIGN_TMPDIR"`. The `source-env.sh` contains `LARCH_LIVE_MUTATION_OK=true` and `LARCH_RUN_ID` set by the real `/design` Step 0 driver. Manual OOS recovery via direct `issue create-one` must pass `--operator-invoked` instead of a context file. Dry-run paths are authorization-free and require neither flag.
 
-Stages conflicts; prompt calls `/larch:issue`. Helpers: `${CLAUDE_PLUGIN_ROOT}/python/cli.py design file-oos-prepare|file-oos-annotate` (sibling `file-design-oos.md`). Harness: Makefile `test-file-design-oos` (`test-file-design-oos.md`).
+Stages conflicts; prompt calls `/larch:issue`. Helpers: `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh design file-oos-prepare|file-oos-annotate` (sibling `file-design-oos.md`). Harness: Makefile `test-file-design-oos` (`test-file-design-oos.md`).
 
 Cross-session idempotency: after successful `annotate` with `ISSUES_FAILED=0`, the helper best-effort atomically caches `$DESIGN_TMPDIR/oos-issues-created.md` at `~/.cache/larch/design-oos-filed/<ISSUE_NUMBER>.md`. Later `/design` restores those URLs only when the in-session sentinel is missing or empty and the cache is non-empty; a non-empty in-session sentinel wins. `--clear-cross-session-cache` deletes the issue cache and priority-label sidecars. `ISSUE_NUMBER` comes from the environment, or `--issue-number` for tests.
 
-Priority labels: after `/larch:issue` succeeds, `python/cli.py design file-oos-annotate` writes `oos-issues-created.md`, ensures `oos-correctness`, and applies it only to filed OOS with `focus-area: correctness` or `focus-area: regression`. Label `gh` calls use `--repo <REPO>` from prepare or session state and fail closed when `REPO` is missing.
+Priority labels: after `/larch:issue` succeeds, `scripts/larch.sh design file-oos-annotate` writes `oos-issues-created.md`, ensures `oos-correctness`, and applies it only to filed OOS with `focus-area: correctness` or `focus-area: regression`. The wrapper passes the same session-backed context, run ID, and trusted root described above; direct operator recovery must pass `--operator-invoked`. The typed GitHub service and issue-mutation owner use `--repo <REPO>` from prepare or session state and fail closed when authorization or `REPO` is missing.
 
 When a priority label is outstanding, annotate writes `.oos-priority-label-pending` and durable cache sidecars before the first `gh label create` or `gh issue edit`. Sidecars hold sentinel URLs, post-cap combined text, and filing order. Later `NEXT_ACTION=label-only` labels from them without calling `/larch:issue`; `oos-accepted-design.md` and `oos-issue.stdout.txt` are not required.
 
@@ -35,7 +35,7 @@ When prepare output has `STEP5B_STATUS=prepare-failed-continue`, preserve the wa
 Do not call `/larch:issue`.
 
 - Re-emit `OOS_SKIP_BREADCRUMB` when non-empty.
-- For `FILE_DESIGN_OOS_STATUS=skip-already-filed-sentinel`, or prepare stdout / `oos-filing-prepare.env` still carrying `WARN=` for that status, parse `WARN=`. If non-empty, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` via `run-log append-failure` with site `design Step 5b`, tool `python/cli.py design file-oos-prepare`, category `Warnings`, exit code 0.
+- For `FILE_DESIGN_OOS_STATUS=skip-already-filed-sentinel`, or prepare stdout / `oos-filing-prepare.env` still carrying `WARN=` for that status, parse `WARN=`. If non-empty, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` via `run-log append-failure` with site `design Step 5b`, tool `scripts/larch.sh design file-oos-prepare`, category `Warnings`, exit code 0.
 - Check `STEP5B_NEEDS_ANNOTATE=true` after warning handling. If annotate is needed, call `design-step5b-annotate.sh` only when `$DESIGN_TMPDIR/oos-issue.stdout.txt` exists and is non-empty. Treat annotate as best-effort on this skip path: append non-zero annotate exits as `Tool Failures`, then continue to Step 5b.5.
 - When annotate is not needed, continue to Step 5b.5 without the file-issues annotate sequence. Prepare already wrote `.completed/step-5b` for `skip-already-filed-sentinel` without annotate.
 - Do not route `skip-already-filed-sentinel` through the annotate-before-issue manual recovery path.

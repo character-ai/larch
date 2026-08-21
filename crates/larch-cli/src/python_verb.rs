@@ -60,29 +60,7 @@ pub fn run_python_verb(
 ) -> Result<ProcessOutput, String> {
     let root =
         plugin_root_directory().ok_or_else(|| "cannot resolve the plugin root".to_owned())?;
-    run_python_verb_from_root(&root, arguments, timeout, false)
-}
-
-/// Run one still-Python verb against an already-verified plugin root.
-///
-/// Wrapper-compatible Rust owners use this when `--plugin-root` or a hydrated
-/// session supplies the root only after process startup. The delegated Python
-/// dispatcher and its nested `scripts/larch.sh` calls receive that same root.
-pub fn run_python_verb_at_root(
-    root: &Path,
-    arguments: impl IntoIterator<Item = OsString>,
-    timeout: Duration,
-) -> Result<ProcessOutput, String> {
-    run_python_verb_from_root(root, arguments, timeout, true)
-}
-
-fn run_python_verb_from_root(
-    root: &Path,
-    arguments: impl IntoIterator<Item = OsString>,
-    timeout: Duration,
-    enforce_root: bool,
-) -> Result<ProcessOutput, String> {
-    let program = PythonVerbProgram::new(root).map_err(|error| error.to_string())?;
+    let program = PythonVerbProgram::new(&root).map_err(|error| error.to_string())?;
     let mut request = bounded_request(
         ExternalProgram::PythonVerb(program),
         arguments,
@@ -90,9 +68,6 @@ fn run_python_verb_from_root(
         VERB_SHUTDOWN_GRACE,
         VERB_OUTPUT_LIMIT,
     )?;
-    if enforce_root {
-        request = request.with_environment(ChildEnvironment::ClaudePluginRoot, root.as_os_str());
-    }
     // Legacy report verbs may invoke the operator-authenticated `gh` CLI.
     // Preserve only its non-secret configuration selectors; credential
     // environment variables remain excluded by the shared process policy.
@@ -123,9 +98,6 @@ fn run_python_verb_from_root(
     }
     for (key, value) in session_environment() {
         request = request.with_environment(key, value);
-    }
-    if enforce_root {
-        request = request.with_environment(ChildEnvironment::ClaudePluginRoot, root.as_os_str());
     }
     run_bounded(request)
 }
