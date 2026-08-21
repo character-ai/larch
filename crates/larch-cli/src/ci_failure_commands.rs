@@ -198,20 +198,15 @@ pub fn failed_jobs(arguments: &Arguments) -> ExitCode {
     let Ok(repository) = repository(&parsed) else {
         return ExitCode::from(1);
     };
+    // Match the retired owner: classify already-failed jobs even while the run
+    // is still in progress. Exit 3 only when GitHub itself reports in-progress
+    // logs (handled below as a Response/Transport diagnostic).
     let jobs = match github(async |service, cancellation| {
-        let run = service
-            .workflow_run(&repository, run_id, cancellation)
-            .await?;
-        if run.status != "completed" {
-            return Ok(None);
-        }
         service
             .workflow_jobs(&repository, run_id, cancellation)
             .await
-            .map(Some)
     }) {
-        Ok(Some(jobs)) => jobs,
-        Ok(None) => return ExitCode::from(3),
+        Ok(jobs) => jobs,
         Err((_failure, detail)) => {
             eprintln!("ERROR: {detail}");
             return ExitCode::from(1);
@@ -355,11 +350,22 @@ pub fn main_health(arguments: &Arguments) -> ExitCode {
         }
         bounds.push(value.cast_unsigned());
     }
-    let Ok(repository) = repository_ref(text(&parsed, "--upstream-repo", "").trim())
-        .or_else(|()| repository_ref(text(&parsed, "--repo", "").trim()))
-    else {
-        emit_main_health(&MainHealthStatus::error("--repo must be owner/name"));
-        return ExitCode::SUCCESS;
+    let upstream = text(&parsed, "--upstream-repo", "");
+    let upstream = upstream.trim();
+    let repository = if upstream.is_empty() {
+        let Ok(repository) = repository_ref(text(&parsed, "--repo", "").trim()) else {
+            emit_main_health(&MainHealthStatus::error("--repo must be owner/name"));
+            return ExitCode::SUCCESS;
+        };
+        repository
+    } else {
+        let Ok(repository) = repository_ref(upstream) else {
+            emit_main_health(&MainHealthStatus::error(
+                "--upstream-repo must be owner/name",
+            ));
+            return ExitCode::SUCCESS;
+        };
+        repository
     };
     let query = MainHealthQuery {
         repository,
@@ -643,9 +649,13 @@ async fn read_main_health(
     cancellation: &dyn ProcessCancellation,
     query: &MainHealthQuery,
 ) -> MainHealthStatus {
+    // Prefer the server-side workflow filter so the limit applies to the
+    // named workflow alone. The REST path wants a filename (`ci.yaml`); the
+    // retired CLI accepted the display name `CI`, so map that default.
+    let api_workflow = workflow_api_selector(&query.workflow);
     let filters = WorkflowRunFilters {
         branch: Some(query.base_branch.clone()),
-        workflow: None,
+        workflow: Some(api_workflow.clone()),
         event: Some("push".to_owned()),
         status: None,
         commit: (!query.head_sha.is_empty()).then(|| query.head_sha.clone()),
@@ -656,6 +666,17 @@ async fn read_main_health(
         .await
     {
         Ok(runs) => runs,
+        Err(error) if missing_named_workflow(&error, &query.workflow, &api_workflow) => {
+            return MainHealthStatus {
+                status: "skip".to_owned(),
+                failed_run_id: String::new(),
+                head_sha: String::new(),
+                detail: bounded_detail(&format!(
+                    "configured main-health workflow {} not present in repo",
+                    query.workflow
+                )),
+            };
+        }
         Err(error) => return MainHealthStatus::error(&error.to_string()),
     };
     let runs: Vec<WorkflowRun> = runs
@@ -667,18 +688,42 @@ async fn read_main_health(
         return verdict.status;
     }
     for candidate in &verdict.flap_candidates {
-        let named_failure = service
+        let jobs = match service
             .workflow_jobs(&query.repository, candidate.database_id, cancellation)
             .await
-            .is_ok_and(|jobs| {
-                jobs.iter()
-                    .any(|job| job.is_failed() && !job.name.trim().is_empty())
-            });
+        {
+            Ok(jobs) => jobs,
+            Err(error) => {
+                return MainHealthStatus::error(&format!(
+                    "same-sha flap check could not read jobs for run {}: {error}",
+                    candidate.database_id
+                ));
+            }
+        };
+        let named_failure = jobs
+            .iter()
+            .any(|job| job.is_failed() && !job.name.trim().is_empty());
         if named_failure {
             return main_health_flap_status(candidate, &verdict.status.head_sha);
         }
     }
     verdict.status
+}
+
+/// Map a retired CLI workflow selector onto the Actions REST identifier.
+fn workflow_api_selector(workflow: &str) -> String {
+    if workflow == MAIN_HEALTH_DEFAULT_WORKFLOW {
+        "ci.yaml".to_owned()
+    } else {
+        workflow.to_owned()
+    }
+}
+
+fn missing_named_workflow(error: &GitHubActionsError, workflow: &str, api_workflow: &str) -> bool {
+    if workflow != MAIN_HEALTH_DEFAULT_WORKFLOW || api_workflow.is_empty() {
+        return false;
+    }
+    error.kind() == GitHubActionsErrorKind::Response && error.to_string().contains("HTTP 404")
 }
 
 fn emit_main_health(status: &MainHealthStatus) {

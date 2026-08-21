@@ -154,7 +154,9 @@ pub fn sanitize_job_list(text: &str) -> String {
 /// any leading `N_` ordinal removed, which is the shape the distill parser
 /// consumed from the retired `gh run view --log-failed` reader.
 ///
-/// Returns `None` when the archive is invalid or exceeds a bound.
+/// Returns `None` only when the archive cannot be opened. A byte or entry cap
+/// stops further appending and returns the partial rendering so distill can
+/// still emit a bounded digest.
 #[must_use]
 pub fn render_failed_job_log(
     archive: &WorkflowLogArchive,
@@ -163,12 +165,18 @@ pub fn render_failed_job_log(
     let mut zip = bounded_workflow_log_archive(archive).ok()?;
     let mut output = String::new();
     for index in 0..zip.len() {
-        let mut entry = zip.by_index(index).ok()?;
+        let Ok(mut entry) = zip.by_index(index) else {
+            return if output.is_empty() {
+                None
+            } else {
+                Some(output)
+            };
+        };
         if entry.is_dir() {
             continue;
         }
         if entry.size() > WorkflowLogArchive::MAX_BYTES as u64 {
-            return None;
+            break;
         }
         let Some((job, step)) = archive_entry_labels(entry.name()) else {
             continue;
@@ -177,12 +185,16 @@ pub fn render_failed_job_log(
             continue;
         }
         let mut body = Vec::new();
-        let _read = entry.read_to_end(&mut body).ok()?;
+        if entry.read_to_end(&mut body).is_err() {
+            break;
+        }
         for line in String::from_utf8_lossy(&body).lines() {
             if output.len() + job.len() + step.len() + line.len() > WorkflowLogArchive::MAX_BYTES {
-                return None;
+                return Some(output);
             }
-            writeln!(output, "{job}\t{step}\t{line}").ok()?;
+            if writeln!(output, "{job}\t{step}\t{line}").is_err() {
+                return Some(output);
+            }
         }
     }
     Some(output)
