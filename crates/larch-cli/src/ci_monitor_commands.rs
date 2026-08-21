@@ -792,10 +792,10 @@ fn clean_wait_files(path: &Path) -> Result<(), String> {
         appended(path, ".done"),
         appended(path, ".tmp"),
     ] {
-        match fs::remove_file(&candidate) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error.to_string()),
+        if let Err(error) = fs::remove_file(&candidate)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(error.to_string());
         }
     }
     Ok(())
