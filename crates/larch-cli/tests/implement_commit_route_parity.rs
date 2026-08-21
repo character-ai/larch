@@ -336,6 +336,32 @@ fn commit_route_stall_emits_next_action_stall() {
 }
 
 #[test]
+fn commit_route_reports_seed_failed_when_the_ship_state_is_symlinked() {
+    let stub = dispatch_stub(&[
+        (
+            "review-and-fix commit-fixes",
+            "    printf 'COMMIT_OUTCOME=fail\\n'\n    exit 1",
+        ),
+        ("run-log append-failure", "    exit 0"),
+    ]);
+    let fixture = fixture(&stub);
+    // A symlinked ship state is refused, so the durable stall seed cannot be
+    // written and the leg reports `seed-failed`.
+    let target = fixture.tmpdir.join("real-ship-state.sh");
+    fs::write(&target, "PHASE=ship\n").expect("target state");
+    std::os::unix::fs::symlink(&target, fixture.tmpdir.join("ship-pr-state.sh"))
+        .expect("symlink state");
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "commit-route",
+        &["--site", "step7", "--emit-next-action", "false"],
+        true,
+    );
+    assert_eq!(code, 1);
+    assert_eq!(kv(&stdout, "COMMIT_ROUTE_OUTCOME"), "seed-failed");
+}
+
+#[test]
 fn commit_route_seeds_a_stall_on_commit_failure() {
     let stub = dispatch_stub(&[
         (
@@ -396,6 +422,30 @@ fn checks_commit_route_short_circuits_on_failed_checks() {
     assert_eq!(code, 0);
     assert_eq!(kv(&stdout, "NEXT_ACTION"), "checks-failed");
     assert!(stdout.contains("STATUS=fail"));
+}
+
+#[test]
+fn checks_commit_route_fails_closed_on_an_unresolvable_repo_root() {
+    let fixture = fixture(NOOP_STUB);
+    // Corrupt the persisted session repo root so resolution fails closed before
+    // any checks or commit leg runs.
+    fs::write(
+        fixture.tmpdir.join("session-env.sh"),
+        "REPO_ROOT=/nonexistent/larch-repo\n",
+    )
+    .expect("session env");
+    fs::write(
+        fixture.tmpdir.join("repo-root.txt"),
+        "/nonexistent/larch-repo\n",
+    )
+    .expect("repo-root.txt");
+    let (code, _stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step7", "--commit-site", "step7"],
+        true,
+    );
+    assert_eq!(code, 2, "an unresolvable repo root must fail closed");
 }
 
 #[test]
