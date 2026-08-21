@@ -10,7 +10,9 @@ use larch_core::{ChildEnvironment, ProcessOutput};
 
 use crate::{
     python_verb::run_python_verb,
-    runtime_entrypoint::{plugin_root, run_verified_larch_with_environment},
+    runtime_entrypoint::{
+        plugin_root, run_verified_larch_with_environment, run_verified_larch_with_options,
+    },
 };
 
 #[cfg(test)]
@@ -69,6 +71,19 @@ pub fn delegate_larch_with_environment(
         return hook(arguments, environment);
     }
     run_verified_larch_with_environment(arguments, environment)
+}
+
+/// Run one already-owned larch command with scoped environment and deadline.
+pub fn delegate_larch_with_options(
+    arguments: &[OsString],
+    environment: &[(ChildEnvironment, OsString)],
+    timeout: Duration,
+) -> Result<ProcessOutput, String> {
+    #[cfg(test)]
+    if let Some(hook) = TEST_LARCH.with(|slot| slot.borrow().clone()) {
+        return hook(arguments, environment);
+    }
+    run_verified_larch_with_options(arguments, environment, timeout)
 }
 
 /// Resolve the active plugin root that owns the still-Python siblings.

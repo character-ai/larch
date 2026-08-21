@@ -21,7 +21,7 @@ use crate::{
     argparse_compat::{missing, parse_python_int, parse_with_flags},
     github_repository_resolution::repository_ref,
     github_service::with_github_service,
-    runtime_entrypoint::run_verified_larch_with_environment,
+    implement_child_seam::delegate_larch_with_environment,
     ship_commands::validate_tmpdir,
 };
 
@@ -49,6 +49,7 @@ const CLEAR_FIELDS: &[(&str, &str)] = &[
     ("FAILED_RUN_ID", ""), ("EXIT_CODE", "0"), ("IMPLEMENT_BAIL_REASON", ""),
 ];
 
+#[derive(Debug)]
 struct Request {
     tmpdir: PathBuf,
     number: u64,
@@ -322,7 +323,7 @@ fn update_manifest(tmpdir: &Path, run_id: &str, number: u64) -> Result<(), Strin
         run_id,
         &fields,
     );
-    let output = run_verified_larch_with_environment(
+    let output = delegate_larch_with_environment(
         &arguments,
         &[(
             ChildEnvironment::ImplementTmpdir,
@@ -428,7 +429,43 @@ fn failed(error: &str) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        github_service::with_test_github_service,
+        implement_child_seam::{clear_hooks, install_larch},
+    };
+    use larch_adapters::github::OctocrabGitHubService;
+    use larch_core::{ProcessOutput, ProcessStatus};
+    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
+    use serde_json::json;
+    use std::sync::Arc;
     use tempfile::TempDir;
+
+    fn output(code: i32, stdout: &str) -> ProcessOutput {
+        ProcessOutput::new(
+            ProcessStatus::new(code == 0, Some(code)),
+            stdout.as_bytes().to_vec(),
+            Vec::new(),
+            false,
+            false,
+        )
+    }
+
+    fn service(
+        responses: impl IntoIterator<Item = String>,
+    ) -> (
+        Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync>,
+        IssueServiceStub,
+    ) {
+        let exchanges = responses
+            .into_iter()
+            .map(|body| IssueServiceExchange::any_json(200, body.into_bytes()).expect("response"))
+            .collect::<Vec<_>>();
+        let server = IssueServiceStub::start(exchanges).expect("stub");
+        let base = server.base_url().to_owned();
+        let factory: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+            Arc::new(move || OctocrabGitHubService::with_test_base(&base));
+        (factory, server)
+    }
 
     #[rustfmt::skip]
     fn seed_recovery_layers(root: &Path) {
@@ -485,5 +522,89 @@ mod tests {
             assert_eq!(layer.get("KEEP").map(String::as_str), Some("value"));
             assert!(!has_overlay(&layer));
         }
+    }
+
+    #[test]
+    fn parser_and_confined_layers_reject_ambiguous_inputs() {
+        assert!(parse(&[]).is_err());
+        assert!(parse(&["--help".into()]).is_err());
+        assert_eq!(
+            parse(&[
+                "--implement-tmpdir".into(),
+                "/tmp/claude-implement-test".into(),
+                "--pr".into(),
+                "0".into(),
+            ])
+            .expect_err("zero PR"),
+            "invalid-pr"
+        );
+        let parsed = parse(&[
+            "--implement-tmpdir".into(),
+            "/tmp/claude-implement-test".into(),
+            "--pr".into(),
+            "12".into(),
+            "--repo".into(),
+            "owner/repo".into(),
+        ])
+        .expect("request");
+        assert_eq!(parsed.number, 12);
+        assert_eq!(parsed.repo.as_deref(), Some("owner/repo"));
+
+        let root = TempDir::new().expect("tmpdir");
+        assert!(
+            read_layer(root.path(), "optional.env", false)
+                .expect("optional")
+                .is_empty()
+        );
+        fs::write(root.path().join("bad.env"), "KEY=value\r\n").expect("bad layer");
+        assert_eq!(
+            read_layer(root.path(), "bad.env", true),
+            Err("bad.env-invalid".to_owned())
+        );
+        let manifest = manifest_path(root.path(), "run-a");
+        fs::create_dir_all(manifest.parent().expect("parent")).expect("manifest tree");
+        fs::write(&manifest, "{\"run_id\":\"run-b\"}\n").expect("manifest");
+        assert_eq!(
+            validate_manifest_identity(root.path(), "run-a"),
+            Err("manifest-run-mismatch".to_owned())
+        );
+        assert!(valid_key("VALID_1") && !valid_key("1INVALID"));
+        assert!(truthy("on") && !truthy("off"));
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn full_reconciliation_proves_two_typed_merge_reads_and_manifest_postcondition() {
+        let root = TempDir::new().expect("tmpdir");
+        seed_recovery_layers(root.path());
+        let manifest = manifest_path(root.path(), "run-a");
+        fs::create_dir_all(manifest.parent().expect("parent")).expect("manifest tree");
+        fs::write(&manifest, "{\"run_id\":\"run-a\"}\n").expect("manifest");
+        let typed = json!({
+            "number": 12, "state": "closed", "title": "Ship", "body": "Body",
+            "head": { "ref": "feature", "label": "owner:feature" }, "base": { "ref": "main" },
+            "draft": false, "merged": true,
+            "merge_commit_sha": "1111111111111111111111111111111111111111",
+        }).to_string();
+        let audit = json!({
+            "number": 12, "title": "Ship", "body": "Body", "base": { "ref": "main" },
+            "merged_at": "2026-08-21T00:00:00Z",
+        }).to_string();
+        let (factory, server) = service([typed, audit]);
+        let written_manifest = manifest.clone();
+        install_larch(move |arguments, _environment| {
+            assert!(arguments.iter().any(|value| value == "manifest"));
+            fs::write(&written_manifest, "{\"run_id\":\"run-a\",\"status\":\"done\",\"pr_number\":12}\n")
+                .expect("manifest update");
+            Ok(output(0, ""))
+        });
+        let request = Request { tmpdir: root.path().to_path_buf(), number: 12, repo: None };
+        with_test_github_service(factory, || reconcile(&request)).expect("reconciled");
+        verify(
+            root.path(), "run-a", "owner/repo",
+            &MergedPullRequest { number: 12, url: "https://github.com/owner/repo/pull/12".to_owned() },
+        ).expect("postcondition");
+        server.join().expect("stub completed");
+        clear_hooks();
     }
 }

@@ -36,9 +36,10 @@ use crate::{
     git_command_runtime::GitCommandRuntime,
     github_repository_resolution::{remote_slug, repository_ref},
     github_service::with_github_service,
+    implement_child_seam::{
+        delegate_larch_with_environment, delegate_larch_with_options, delegate_python,
+    },
     implement_scope_disposition_commands::{ship_pr_disposition, validate_ship_disposition},
-    python_verb::run_python_verb,
-    runtime_entrypoint::{run_verified_larch_with_environment, run_verified_larch_with_options},
     ship_commands::validate_tmpdir,
 };
 
@@ -135,6 +136,7 @@ struct AssessmentNotes {
     guidelines: String,
 }
 
+#[derive(Debug)]
 enum DriverFailure {
     Result(Box<ShipResult>),
     Conflict { detail: String, files: String },
@@ -536,9 +538,21 @@ fn run_merge_loop(
                         })));
                     }
                     MergeDisposition::Stalled(detail, result) => {
-                        patch_state(context, &[("MERGE_RESULT", result)])
+                        let durable_result = match result.as_str() {
+                            "version_already_published"
+                            | "policy_denied"
+                            | "admin_failed"
+                            | "error" => result.clone(),
+                            _ => "error".to_owned(),
+                        };
+                        patch_state(context, &[("MERGE_RESULT", durable_result)])
                             .map_err(|error| DriverFailure::Result(internal(error)))?;
-                        return Err(DriverFailure::Result(stalled(detail)));
+                        return Err(DriverFailure::Result(Box::new(ShipResult {
+                            outcome: ShipOutcome::Stalled,
+                            merge_result: result,
+                            detail,
+                            ..ShipResult::default()
+                        })));
                     }
                 }
             }
@@ -607,7 +621,7 @@ fn submit_merge(context: &ShipPrContext, number: u64) -> Result<MergeDisposition
     if context.no_admin_fallback {
         arguments.push("--no-admin-fallback".into());
     }
-    let output = run_python_verb(arguments, Duration::from_secs(600))
+    let output = delegate_python(arguments, Duration::from_secs(600))
         .map_err(|error| DriverFailure::Result(internal(error)))?;
     let fields = output_fields(output.stdout())?;
     classify_merge(&fields).map_err(|error| DriverFailure::Result(internal(error)))
@@ -646,8 +660,8 @@ fn finish_queued_merge(
     number: u64,
     url: String,
 ) -> Result<ShipResult, DriverFailure> {
-    let output = run_python_verb(
-        [
+    let output = delegate_python(
+        vec![
             "merge".into(),
             "wait".into(),
             "--pr".into(),
@@ -767,7 +781,7 @@ fn wait_for_ci(
         "--iteration".into(), iteration.to_string().into(), "--rebase-count".into(), rebase_count.to_string().into(),
         "--fix-attempts".into(), fix_attempts.to_string().into(), "--timeout".into(), CI_WAIT_SECONDS.to_string().into(),
     ];
-    let output = run_verified_larch_with_options(
+    let output = delegate_larch_with_options(
         &arguments,
         &[early_tmpdir_environment(context)],
         Duration::from_secs(CI_WAIT_SECONDS + 180),
@@ -824,7 +838,7 @@ fn ci_failure(
     };
     if !failed_run_id.is_empty() && failed_run_id.bytes().all(|byte| byte.is_ascii_digit()) {
         let output_path = context.tmpdir.join(format!("ci-errors-{failed_run_id}.md"));
-        let output = run_verified_larch_with_environment(
+        let output = delegate_larch_with_environment(
             &[
                 "ci".into(),
                 "distill-log".into(),
@@ -900,8 +914,8 @@ fn finalize_postmerge(
     let bail_file = context.tmpdir.join("final-bail-reason.txt");
     private_atomic_write(&bail_file, "", &context.tmpdir)
         .map_err(|error| DriverFailure::Result(internal(error.to_string())))?;
-    let output = run_python_verb(
-        [
+    let output = delegate_python(
+        vec![
             "implement-finalize".into(),
             "postmerge".into(),
             "--state-file".into(),
@@ -958,7 +972,7 @@ fn main_health_gate(
     if postmerge && context.resume.transient_retries > 0 {
         arguments.push("--skip-flap-check".into());
     }
-    let output = run_verified_larch_with_options(
+    let output = delegate_larch_with_options(
         &arguments,
         &[early_tmpdir_environment(context)],
         Duration::from_secs(1_000),
@@ -1120,7 +1134,7 @@ fn rerun_postmerge_failure(
         "--repo".into(), context.repo.clone().into(),
     ];
     let Ok(output) =
-        run_verified_larch_with_environment(&arguments, &[early_tmpdir_environment(context)])
+        delegate_larch_with_environment(&arguments, &[early_tmpdir_environment(context)])
     else {
         return Ok(None);
     };
@@ -1195,7 +1209,7 @@ fn governance_gate(context: &ShipPrContext, repo_root: &Path) -> Result<(), Driv
         .resolve_revision(&Revision::new(base_label.as_bytes()))
         .map_err(|_| DriverFailure::Result(stalled("migration governance base is unavailable")))?
         .to_hex();
-    let output = run_python_verb(
+    let output = delegate_python(
         crate::implement_preflight_commands::governance_gate_argv(
             &context.issue.to_string(),
             &context.repo,
@@ -1423,7 +1437,7 @@ fn refresh_run_log(context: &ShipPrContext, postmerge: bool) {
         ]);
     }
     let _ignored =
-        run_verified_larch_with_environment(&arguments, &[early_tmpdir_environment(context)]);
+        delegate_larch_with_environment(&arguments, &[early_tmpdir_environment(context)]);
 }
 
 fn early_tmpdir_environment(context: &ShipPrContext) -> (ChildEnvironment, OsString) {
@@ -2029,7 +2043,85 @@ fn slug(detail: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{BTreeMap, MergeDisposition, classify_merge, preserves_resume_phase};
+    use super::*;
+    use crate::{
+        github_service::with_test_github_service,
+        implement_child_seam::{clear_hooks, install_larch, install_python},
+    };
+    use larch_adapters::github::OctocrabGitHubService;
+    use larch_core::{ProcessOutput, ProcessStatus};
+    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
+    use serde_json::json;
+    use std::sync::Arc;
+    use tempfile::TempDir;
+
+    fn output(code: i32, stdout: &str) -> ProcessOutput {
+        ProcessOutput::new(
+            ProcessStatus::new(code == 0, Some(code)),
+            stdout.as_bytes().to_vec(),
+            Vec::new(),
+            false,
+            false,
+        )
+    }
+
+    #[rustfmt::skip]
+    fn fixture() -> (TempDir, ShipPrContext) {
+        let root = TempDir::new().expect("fixture");
+        let tmpdir = root.path().join("claude-implement-ship-unit");
+        fs::create_dir(&tmpdir).expect("tmpdir");
+        let state_file = tmpdir.join("ship-pr-state.sh");
+        fs::write(&state_file, concat!(
+            "BRANCH_NAME=feature/ship\nISSUE_NUMBER=12\nREPO=owner/repo\nRUN_ID=run-a\n",
+            "MERGE=true\nDRAFT=false\nFORKED_TARGET=false\nREPO_UNAVAILABLE=false\n",
+            "ITERATION=0\nREBASE_COUNT=0\nFIX_ATTEMPTS=0\nTRANSIENT_RETRIES=0\n",
+        )).expect("state");
+        let context = ShipPrContext {
+            branch: "feature/ship".to_owned(), issue: 12, repo: "owner/repo".to_owned(),
+            run_id: "run-a".to_owned(), tmpdir, state_file, manifest: None, merge: true,
+            draft: false, forked: false, repo_unavailable: false, no_admin_fallback: false,
+            no_logs_commit: false, pr_title: String::new(), summary: String::new(),
+            mermaid: String::new(), test_plan: DEFAULT_TEST_PLAN.to_owned(), result_env: None,
+            resume: ResumeState::default(),
+        };
+        (root, context)
+    }
+
+    fn pull_request(number: u64, state: &str, merged: bool, body: &str) -> String {
+        json!({
+            "number": number, "state": state, "title": "Ship", "body": body,
+            "head": { "ref": "feature/ship", "label": "owner:feature/ship" },
+            "base": { "ref": "main" }, "draft": false, "merged": merged,
+            "merge_commit_sha": merged.then(|| "1111111111111111111111111111111111111111"),
+        })
+        .to_string()
+    }
+
+    fn service(
+        responses: impl IntoIterator<Item = (u16, String)>,
+    ) -> (
+        Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync>,
+        IssueServiceStub,
+    ) {
+        let exchanges = responses
+            .into_iter()
+            .map(|(status, body)| {
+                IssueServiceExchange::any_json(status, body.into_bytes()).expect("response")
+            })
+            .collect::<Vec<_>>();
+        let server = IssueServiceStub::start(exchanges).expect("stub");
+        let base = server.base_url().to_owned();
+        let factory: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+            Arc::new(move || OctocrabGitHubService::with_test_base(&base));
+        (factory, server)
+    }
+
+    fn result(error: DriverFailure) -> Box<ShipResult> {
+        match error {
+            DriverFailure::Result(result) => result,
+            DriverFailure::Conflict { .. } => panic!("unexpected conflict"),
+        }
+    }
 
     #[test]
     fn merge_results_preserve_retry_handoff_and_failure_classes() {
@@ -2058,6 +2150,23 @@ mod tests {
                 "version_already_published".to_owned()
             ))
         );
+        assert_eq!(
+            classify_merge(&fields("ci_not_ready", "")),
+            Ok(MergeDisposition::Retry)
+        );
+        assert_eq!(
+            classify_merge(&fields("review_required", "")),
+            Ok(MergeDisposition::NeedsReview(
+                "PR requires approving review".to_owned()
+            ))
+        );
+        assert_eq!(
+            classify_merge(&fields("other", "")),
+            Ok(MergeDisposition::Stalled(
+                "merge did not complete: other".to_owned(),
+                "other".to_owned()
+            ))
+        );
         assert!(classify_merge(&BTreeMap::new()).is_err());
     }
 
@@ -2071,5 +2180,301 @@ mod tests {
         ));
         assert!(!preserves_resume_phase("merge", "error"));
         assert!(!preserves_resume_phase("ci-initial", ""));
+    }
+
+    #[test]
+    fn durable_context_and_wire_helpers_fail_closed() {
+        let (_root, context) = fixture();
+        let arguments = normalize_optional_bool(&[
+            "--tmpdir".into(),
+            context.tmpdir.as_os_str().into(),
+            "--state-file".into(),
+            context.state_file.as_os_str().into(),
+            "--no-logs-commit".into(),
+        ]);
+        let parsed = parse_required_with_help(&arguments, PROGRAM, USAGE, HELP, OPTIONS, &[], &[])
+            .expect("arguments");
+        let loaded = ShipPrContext::load(&parsed).expect("durable context");
+        assert_eq!(loaded.branch, "feature/ship");
+        assert!(loaded.merge && loaded.no_logs_commit);
+
+        patch_state(
+            &context,
+            &[
+                ("PR_NUMBER", "12".to_owned()),
+                ("PR_URL", "https://github.com/owner/repo/pull/12".to_owned()),
+                ("MERGE_RESULT", "queued".to_owned()),
+                ("CONFLICT_FILES", String::new()),
+            ],
+        )
+        .expect("patch");
+        assert_eq!(state_counter(&context, "PR_NUMBER", 0), 12);
+        let mut hydrated = ShipResult::default();
+        hydrate_result_identity(&context, &mut hydrated);
+        assert_eq!(hydrated.pr_number, Some(12));
+        assert_eq!(hydrated.merge_result, "queued");
+        patch_needs_user(&context, "review-required", "line\nbreak", "merge").expect("needs user");
+        assert_eq!(
+            state_value(&context, "BAIL_FAILURE_DETAIL_LOG"),
+            "line break"
+        );
+        patch_done(&context).expect("done");
+        assert_eq!(state_value(&context, "PHASE"), "done");
+        assert_eq!(state_value(&context, "BAIL_REASON"), "");
+
+        let fields = output_fields(b"A=first\nA=last\n").expect("wire");
+        assert_eq!(required_field(&fields, "A").expect("field"), "last");
+        assert!(required_field(&fields, "MISSING").is_err());
+        assert_eq!(result_number(7).expect("number"), Some(7));
+        assert!(result_number(u64::MAX).is_err());
+        assert!(truthy(" YES ") && !truthy("no"));
+        assert!(valid_oid(&"a".repeat(40)) && !valid_oid(&"A".repeat(40)));
+        assert_eq!(slug("***"), "stalled");
+        assert_eq!(safe_detail("a\rb\nc"), "a b c");
+        assert_eq!(github_head(&context).as_deref(), Some("feature/ship"));
+        assert_eq!(summary(&context), "- Implement requested changes.\n");
+
+        let mut escalated = escalation_handoff(ShipResult::default(), "trigger", "phase");
+        assert!(escalated.ledger_ready);
+        assert_eq!(escalated.ledger_trigger, "trigger");
+        escalated.pr_number = None;
+        assert_eq!(effective_merge_result(&context), "merged");
+    }
+
+    #[test]
+    fn typed_pull_request_boundaries_validate_identity_and_body() {
+        let (_root, context) = fixture();
+        let open = pull_request(12, "open", false, "Body");
+        let (factory, server) = service([
+            (200, format!("[{open}]")),
+            (200, pull_request(12, "open", false, "Body")),
+        ]);
+        let ensured =
+            with_test_github_service(factory, || ensure_pull_request(&context, "Title", "Body"))
+                .unwrap_or_else(|error| {
+                    panic!("ensure failed: {error:?}; requests={:?}", server.requests())
+                });
+        assert_eq!(ensured, (12, false));
+        server.join().expect("stub completed");
+
+        let (factory, server) = service([(200, pull_request(13, "open", false, ""))]);
+        let mismatch = with_test_github_service(factory, || read_pull_request(&context, 12))
+            .expect_err("identity mismatch");
+        assert_eq!(result(mismatch).outcome, ShipOutcome::Stalled);
+        server.join().expect("stub completed");
+    }
+
+    #[test]
+    fn resumed_pull_requests_classify_terminal_identity_before_mutation() {
+        let (_root, mut context) = fixture();
+        context.merge = false;
+        context.resume.phase = "done".to_owned();
+        context.resume.pr_number = Some(12);
+        let (factory, server) = service([(200, pull_request(12, "closed", true, ""))]);
+        let complete =
+            with_test_github_service(factory, || run_resume(&context, &context.tmpdir, 12))
+                .expect("already complete");
+        assert_eq!(complete.detail, "already-complete");
+        server.join().expect("stub completed");
+
+        let (factory, server) = service([(200, pull_request(12, "closed", false, ""))]);
+        let closed =
+            with_test_github_service(factory, || run_resume(&context, &context.tmpdir, 12))
+                .expect_err("closed without merge");
+        assert_eq!(result(closed).outcome, ShipOutcome::Stalled);
+        server.join().expect("stub completed");
+
+        let wrong_head = pull_request(12, "open", false, "").replace("feature/ship", "other");
+        let (factory, server) = service([(200, wrong_head)]);
+        let mismatch =
+            with_test_github_service(factory, || run_resume(&context, &context.tmpdir, 12))
+                .expect_err("wrong head");
+        assert_eq!(result(mismatch).needs_user_reason, "checkout-mismatch");
+        server.join().expect("stub completed");
+    }
+
+    #[test]
+    fn ci_failure_and_main_health_publish_typed_handoffs() {
+        let (_root, context) = fixture();
+        install_larch(|arguments, _environment| {
+            let command = arguments
+                .iter()
+                .map(|value| value.to_string_lossy())
+                .collect::<Vec<_>>();
+            if command.get(1).is_some_and(|value| value == "wait") {
+                Ok(output(
+                    0,
+                    concat!(
+                        "ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nCONFLICTED=false\n",
+                        "FAILED_RUN_ID=123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n",
+                    ),
+                ))
+            } else {
+                Ok(output(0, "FAILED_JOBS_COUNT=2\nSTATUS=ok\n"))
+            }
+        });
+        let fields = wait_for_ci(&context, 12, 0, 0, 0).expect("CI verdict");
+        assert_eq!(
+            fields.get("ACTION").map(String::as_str),
+            Some("evaluate_failure")
+        );
+        let failure = ci_failure(&context, 12, "url".to_owned(), "123").expect("handoff");
+        assert_eq!(failure.failed_jobs_count, 2);
+        assert!(failure.ledger_ready);
+
+        fs::write(context.tmpdir.join("preflight-tmpdir.env"), "READY=true\n").expect("preflight");
+        fs::write(
+            context.tmpdir.join("main-health.env"),
+            "MAIN_HEALTH_REPAIR_COMMITTED=false\n",
+        )
+        .expect("health state");
+        install_larch(|arguments, _environment| {
+            let command = arguments
+                .iter()
+                .map(|value| value.to_string_lossy())
+                .collect::<Vec<_>>();
+            if command.get(1).is_some_and(|value| value == "main-health") {
+                Ok(output(
+                    1,
+                    concat!(
+                        "MAIN_CI_STATUS=fail\nMAIN_FAILED_RUN_ID=456\n",
+                        "MAIN_HEALTH_HEAD_SHA=1111111111111111111111111111111111111111\n",
+                        "MAIN_HEALTH_DETAIL=main failed\n",
+                    ),
+                ))
+            } else {
+                Ok(output(0, "RERUN_SUBMITTED=true\nALREADY_RUNNING=false\n"))
+            }
+        });
+        let premerge = main_health_gate(
+            &context,
+            Some("1111111111111111111111111111111111111111"),
+            false,
+        )
+        .expect("classified")
+        .expect("failure result");
+        assert_eq!(premerge.needs_user_reason, "main-ci-fail");
+        let postmerge = main_health_gate(
+            &context,
+            Some("1111111111111111111111111111111111111111"),
+            true,
+        )
+        .expect("classified")
+        .expect("transient result");
+        assert_eq!(postmerge.outcome, ShipOutcome::Transient);
+        clear_hooks();
+    }
+
+    #[test]
+    fn merge_loop_completes_direct_and_queued_merges() {
+        for disposition in ["merged", "queued"] {
+            let (_root, context) = fixture();
+            install_larch(|arguments, _environment| {
+                let command = arguments
+                    .iter()
+                    .map(|value| value.to_string_lossy())
+                    .collect::<Vec<_>>();
+                if command.get(1).is_some_and(|value| value == "wait") {
+                    Ok(output(
+                        0,
+                        concat!(
+                            "ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nCONFLICTED=false\n",
+                            "FAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n",
+                        ),
+                    ))
+                } else {
+                    Ok(output(0, ""))
+                }
+            });
+            let selected = disposition.to_owned();
+            install_python(move |arguments| {
+                let command = arguments
+                    .iter()
+                    .map(|value| value.to_string_lossy())
+                    .collect::<Vec<_>>();
+                match command.first().map(|value| value.as_ref()) {
+                    Some("merge") if command.get(1).is_some_and(|value| value == "pr") => {
+                        Ok(output(0, &format!("MERGE_RESULT={selected}\n")))
+                    }
+                    Some("merge") => Ok(output(0, "MERGE_RESULT=merged\n")),
+                    Some("implement-finalize") => Ok(output(0, "OUTCOME=OK\nSTATUS=complete\n")),
+                    other => panic!("unexpected child: {other:?}"),
+                }
+            });
+            let (factory, server) = service([(200, pull_request(12, "closed", true, ""))]);
+            let completed = with_test_github_service(factory, || {
+                run_merge_loop(
+                    &context,
+                    &context.tmpdir,
+                    12,
+                    "https://github.com/owner/repo/pull/12".to_owned(),
+                )
+            })
+            .expect("merge completion");
+            assert_eq!(completed.pr_number, Some(12));
+            assert_eq!(completed.merge_result, "merged");
+            assert_eq!(state_value(&context, "PHASE"), "done");
+            server.join().expect("stub completed");
+            clear_hooks();
+        }
+    }
+
+    #[test]
+    fn merge_loop_classifies_bails_retries_and_unknown_actions() {
+        for (action, bail_reason, merge_result, expected) in [
+            ("evaluate_failure", "", "", ShipOutcome::NeedsUserInput),
+            (
+                "bail",
+                "fix-attempts-exhausted",
+                "",
+                ShipOutcome::NeedsUserInput,
+            ),
+            ("unknown", "", "", ShipOutcome::InternalError),
+            ("merge", "", "review_required", ShipOutcome::NeedsUserInput),
+            ("merge", "", "other", ShipOutcome::Stalled),
+            ("merge", "", "ci_not_ready", ShipOutcome::Stalled),
+        ] {
+            let (_root, context) = fixture();
+            let selected_action = action.to_owned();
+            let selected_bail = bail_reason.to_owned();
+            install_larch(move |_arguments, _environment| {
+                Ok(output(
+                    0,
+                    &format!(
+                        "ACTION={selected_action}\nCI_STATUS=fail\nBEHIND_COUNT=0\nCONFLICTED=false\nFAILED_RUN_ID=not-numeric\nBAIL_REASON={selected_bail}\nITERATION=0\nELAPSED=1\n"
+                    ),
+                ))
+            });
+            let selected_merge = merge_result.to_owned();
+            install_python(move |_arguments| {
+                Ok(output(0, &format!("MERGE_RESULT={selected_merge}\n")))
+            });
+            let classified = run_merge_loop(
+                &context,
+                &context.tmpdir,
+                12,
+                "https://github.com/owner/repo/pull/12".to_owned(),
+            );
+            let outcome = match classified {
+                Ok(result) => result.outcome,
+                Err(error) => result(error).outcome,
+            };
+            assert_eq!(outcome, expected, "{action}/{merge_result}");
+            if merge_result == "other" {
+                assert_eq!(state_value(&context, "MERGE_RESULT"), "error");
+            }
+            clear_hooks();
+        }
+
+        let (_root, context) = fixture();
+        patch_state(&context, &[("ITERATION", "51".to_owned())]).expect("iteration");
+        let capped = run_merge_loop(
+            &context,
+            &context.tmpdir,
+            12,
+            "https://github.com/owner/repo/pull/12".to_owned(),
+        )
+        .expect_err("iteration cap");
+        assert_eq!(result(capped).outcome, ShipOutcome::Stalled);
     }
 }
