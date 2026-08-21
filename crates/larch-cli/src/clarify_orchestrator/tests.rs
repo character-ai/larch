@@ -77,6 +77,7 @@ mod clarify_orchestrator_tests {
         python_calls: RefCell<Vec<Vec<String>>>,
         larch_stdout: RefCell<Vec<String>>,
         python_stdout: RefCell<Vec<String>>,
+        larch_failures: RefCell<BTreeMap<String, i32>>,
     }
 
     impl FakeRunner {
@@ -86,6 +87,7 @@ mod clarify_orchestrator_tests {
                 python_calls: RefCell::new(Vec::new()),
                 larch_stdout: RefCell::new(Vec::new()),
                 python_stdout: RefCell::new(Vec::new()),
+                larch_failures: RefCell::new(BTreeMap::new()),
             }
         }
 
@@ -97,6 +99,12 @@ mod clarify_orchestrator_tests {
         #[allow(dead_code)]
         fn queue_python(self, stdout: &[&str]) -> Self {
             *self.python_stdout.borrow_mut() = stdout.iter().map(|s| (*s).to_owned()).collect();
+            self
+        }
+
+        /// Answer the `"<verb> <subverb>"` call with a non-zero exit code.
+        fn failing(self, verb: &str, rc: i32) -> Self {
+            let _prior = self.larch_failures.borrow_mut().insert(verb.to_owned(), rc);
             self
         }
 
@@ -115,16 +123,32 @@ mod clarify_orchestrator_tests {
                 .iter()
                 .map(|a| a.to_string_lossy().into_owned())
                 .collect();
+            let verb = call
+                .iter()
+                .take(2)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" ");
             self.larch_calls.borrow_mut().push(call);
             let stdout = if self.larch_stdout.borrow().is_empty() {
                 String::new()
             } else {
                 self.larch_stdout.borrow_mut().remove(0)
             };
+            let rc = self
+                .larch_failures
+                .borrow()
+                .get(&verb)
+                .copied()
+                .unwrap_or_default();
             CapturedRun {
-                rc: 0,
+                rc,
                 stdout,
-                stderr: String::new(),
+                stderr: if rc == 0 {
+                    String::new()
+                } else {
+                    format!("{verb} failed\n")
+                },
             }
         }
 
@@ -472,6 +496,333 @@ mod clarify_orchestrator_tests {
         .unwrap();
         let (none, invalid) = resolve_publish_difficulty_rating(dir.path(), "## Plan\n");
         assert!(none.is_none() && invalid);
+    }
+
+    #[test]
+    fn a_failed_plan_block_write_stops_before_the_response_comment() {
+        let dir = TempDir::new().unwrap();
+        seed_publish(dir.path());
+        let effects = FakeEffects::default();
+        let runner = FakeRunner::new().failing("named-block write", 1);
+        let mut env = env_with_repo(dir.path());
+        let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
+        let result =
+            fs::read_to_string(dir.path().join(".design-clarify-publish-result.env")).unwrap();
+        assert!(result.contains("CLARIFY_PUBLISH_STATUS=plan-write-failed\n"));
+        assert!(result.contains("SUMMARY_OUTCOME=failed-plan-write\n"));
+        assert!(result.contains("PLAN_WRITE_OK=false\n"));
+        assert!(dir.path().join("clarify-plan-write.failure.log").is_file());
+        let verbs = runner.larch_verbs();
+        assert!(!verbs.contains(&("difficulty".to_owned(), "sync-labels".to_owned())));
+    }
+
+    #[test]
+    fn an_unreadable_request_state_sidecar_refuses_the_publish_phase() {
+        let dir = TempDir::new().unwrap();
+        seed_publish(dir.path());
+        // A symlinked sidecar is refused at the trust boundary rather than
+        // followed, so the publish phase has no request state to act on.
+        fs::remove_file(dir.path().join(".design-clarify-request.env")).unwrap();
+        std::os::unix::fs::symlink(
+            dir.path().join("elsewhere.env"),
+            dir.path().join(".design-clarify-request.env"),
+        )
+        .unwrap();
+        let effects = FakeEffects::default();
+        let runner = FakeRunner::new();
+        let mut env = env_with_repo(dir.path());
+        let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
+        let result =
+            fs::read_to_string(dir.path().join(".design-clarify-publish-result.env")).unwrap();
+        assert!(result.contains("CLARIFY_PUBLISH_STATUS=missing-request-state\n"));
+        assert!(runner.larch_calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_request_state_for_another_issue_refuses_the_publish_phase() {
+        let dir = TempDir::new().unwrap();
+        seed_publish(dir.path());
+        fs::write(
+            dir.path().join(".design-clarify-request.env"),
+            "REQUEST_ID=2\nISSUE_NUMBER=9\nREPO=owner/repo\n",
+        )
+        .unwrap();
+        let effects = FakeEffects::default();
+        let runner = FakeRunner::new();
+        let mut env = env_with_repo(dir.path());
+        let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
+        let result =
+            fs::read_to_string(dir.path().join(".design-clarify-publish-result.env")).unwrap();
+        assert!(result.contains("CLARIFY_PUBLISH_STATUS=issue-mismatch\n"));
+    }
+
+    #[test]
+    fn an_invalid_difficulty_sidecar_refuses_before_the_plan_write() {
+        let dir = TempDir::new().unwrap();
+        seed_publish(dir.path());
+        fs::write(
+            dir.path().join("design-difficulty-rating.raw.json"),
+            "{ not json",
+        )
+        .unwrap();
+        let effects = FakeEffects::default();
+        let runner = FakeRunner::new();
+        let mut env = env_with_repo(dir.path());
+        let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
+        let result =
+            fs::read_to_string(dir.path().join(".design-clarify-publish-result.env")).unwrap();
+        assert!(result.contains("CLARIFY_PUBLISH_STATUS=difficulty-sidecar-invalid\n"));
+        assert!(result.contains("SUMMARY_OUTCOME=failed-plan-write\n"));
+        assert!(runner.larch_calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_plan_without_difficulty_metadata_refuses_before_the_plan_write() {
+        let dir = TempDir::new().unwrap();
+        seed_publish(dir.path());
+        fs::write(dir.path().join("clarify-plan.md"), "## Plan\n\nDo it.\n").unwrap();
+        let effects = FakeEffects::default();
+        let runner = FakeRunner::new();
+        let mut env = env_with_repo(dir.path());
+        let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
+        let result =
+            fs::read_to_string(dir.path().join(".design-clarify-publish-result.env")).unwrap();
+        assert!(result.contains("CLARIFY_PUBLISH_STATUS=missing-difficulty\n"));
+        assert!(runner.larch_calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_failed_label_removal_reports_its_own_publish_status() {
+        let dir = TempDir::new().unwrap();
+        seed_publish(dir.path());
+        let effects = FakeEffects {
+            label_fails: true,
+            ..FakeEffects::default()
+        };
+        // named-block, sync-labels, run-log write, log-publish, upsert-summary
+        let runner = FakeRunner::new().queue_larch(&["", "", "", "PUBLISH_OK=true\n", ""]);
+        let mut env = env_with_repo(dir.path());
+        let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
+        let result =
+            fs::read_to_string(dir.path().join(".design-clarify-publish-result.env")).unwrap();
+        assert!(result.contains("CLARIFY_PUBLISH_STATUS=label-remove-failed\n"));
+        assert!(result.contains("PLAN_WRITE_OK=true\n"));
+        let verbs = runner.larch_verbs();
+        assert!(!verbs.contains(&("tracking-issue".to_owned(), "rename".to_owned())));
+    }
+
+    #[test]
+    fn a_failed_rename_records_a_warning_and_reports_renamed_false() {
+        let dir = TempDir::new().unwrap();
+        seed_publish(dir.path());
+        let effects = FakeEffects::default();
+        let runner = FakeRunner::new()
+            .queue_larch(&["", "", "", "PUBLISH_OK=true\n", "", ""])
+            .failing("tracking-issue rename", 3);
+        let mut env = env_with_repo(dir.path());
+        let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
+        let result =
+            fs::read_to_string(dir.path().join(".design-clarify-publish-result.env")).unwrap();
+        assert!(result.contains("RENAMED=false\n"), "got: {result}");
+        assert!(dir.path().join("clarify-rename.stderr").is_file());
+        let verbs = runner.larch_verbs();
+        assert!(verbs.contains(&("run-log".to_owned(), "append-failure".to_owned())));
+    }
+
+    #[test]
+    fn a_failed_log_publish_records_a_warning_and_reports_publish_false() {
+        let dir = TempDir::new().unwrap();
+        seed_publish(dir.path());
+        let effects = FakeEffects::default();
+        let runner = FakeRunner::new().failing("design log-publish", 2);
+        let mut env = env_with_repo(dir.path());
+        let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
+        let result =
+            fs::read_to_string(dir.path().join(".design-clarify-publish-result.env")).unwrap();
+        assert!(result.contains("PUBLISH_OK=false\n"), "got: {result}");
+        assert!(result.contains("CLARIFY_PUBLISH_STATUS=log-publish-failed\n"));
+        assert!(dir.path().join("design-log-publish.failure.log").is_file());
+        let verbs = runner.larch_verbs();
+        assert!(verbs.contains(&("run-log".to_owned(), "append-failure".to_owned())));
+        // A failed log publish must not go on to rename the tracking issue.
+        assert!(!verbs.contains(&("tracking-issue".to_owned(), "rename".to_owned())));
+    }
+
+    #[test]
+    fn a_failed_summary_upsert_is_reported_separately_from_the_log_publish() {
+        let dir = TempDir::new().unwrap();
+        seed_publish(dir.path());
+        let effects = FakeEffects::default();
+        let runner = FakeRunner::new()
+            .queue_larch(&["", "", "", "PUBLISH_OK=true\n"])
+            .failing("tracking-issue upsert-summary", 1);
+        let mut env = env_with_repo(dir.path());
+        let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
+        let result =
+            fs::read_to_string(dir.path().join(".design-clarify-publish-result.env")).unwrap();
+        assert!(result.contains("PUBLISH_OK=false\n"), "got: {result}");
+        assert!(result.contains("CLARIFY_PUBLISH_STATUS=summary-upsert-failed\n"));
+        assert!(
+            dir.path()
+                .join("summary-upsert.cancelled-clarify.failure.log")
+                .is_file()
+        );
+    }
+
+    #[test]
+    fn a_final_summary_upsert_needs_a_readable_summary_and_a_run_identity() {
+        let dir = TempDir::new().unwrap();
+        let runner = FakeRunner::new();
+        // No final-summary.md on disk at all.
+        assert!(!upsert_final_summary_from_disk(
+            &runner,
+            dir.path(),
+            "7",
+            "RUN1",
+            &[]
+        ));
+        fs::write(dir.path().join("final-summary.md"), "rendered\n").unwrap();
+        // A present summary still needs a real issue and run identity.
+        assert!(!upsert_final_summary_from_disk(
+            &runner,
+            dir.path(),
+            "0",
+            "RUN1",
+            &[]
+        ));
+        assert!(!upsert_final_summary_from_disk(
+            &runner,
+            dir.path(),
+            "7",
+            "",
+            &[]
+        ));
+        assert!(upsert_final_summary_from_disk(
+            &runner,
+            dir.path(),
+            "7",
+            "RUN1",
+            &[]
+        ));
+    }
+
+    #[test]
+    fn an_unwritable_request_body_target_is_a_fetch_failure() {
+        let dir = TempDir::new().unwrap();
+        // A directory where the request body belongs makes the fetch write fail.
+        fs::create_dir(dir.path().join("clarify-request.md")).unwrap();
+        let effects = FakeEffects {
+            comments: vec![(44, "<!-- larch:clarify-request id=4 -->\nq\n".to_owned())],
+            ..FakeEffects::default()
+        };
+        let runner = FakeRunner::new();
+        let mut env = env_with_repo(dir.path());
+        let _ = design_clarify_run(&effects, &runner, &args("fetch"), &mut env, dir.path());
+        let result =
+            fs::read_to_string(dir.path().join(".design-clarify-fetch-result.env")).unwrap();
+        assert!(result.contains("CLARIFY_FETCH_STATUS=fetch-failed\n"), "got: {result}");
+    }
+
+    #[test]
+    fn a_pause_request_hands_the_phase_off_to_pause_save() {
+        let dir = TempDir::new().unwrap();
+        seed_publish(dir.path());
+        fs::write(dir.path().join(".pause-requested"), "").unwrap();
+        let effects = FakeEffects::default();
+        let runner = FakeRunner::new();
+        let mut env = env_with_repo(dir.path());
+        let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
+        let python = runner.python_calls.borrow();
+        let pause = python.first().expect("pause-save runs");
+        assert_eq!(pause[0], "design");
+        assert_eq!(pause[1], "pause-save");
+        assert!(pause.contains(&"--repo".to_owned()));
+        assert!(pause.contains(&"owner/repo".to_owned()));
+        // The pause hand-off replaces the publish phase entirely.
+        assert!(runner.larch_calls.borrow().is_empty());
+        assert!(
+            !dir.path()
+                .join(".design-clarify-publish-result.env")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn an_unreadable_route_state_fails_the_fetch_phase_at_its_own_site() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("target.env"), "REPO=owner/repo\n").unwrap();
+        std::os::unix::fs::symlink(
+            dir.path().join("target.env"),
+            dir.path().join(".design-step0-route-state.env"),
+        )
+        .unwrap();
+        let effects = FakeEffects::default();
+        let runner = FakeRunner::new();
+        let mut env: Env = BTreeMap::new();
+        let _ = env.insert("DESIGN_TMPDIR".to_owned(), dir.path().display().to_string());
+        let _ = design_clarify_run(&effects, &runner, &args("fetch"), &mut env, dir.path());
+        let result =
+            fs::read_to_string(dir.path().join(".design-clarify-fetch-result.env")).unwrap();
+        assert!(result.contains("CLARIFY_FETCH_STATUS=route-state-read-failed\n"));
+        assert!(dir.path().join("clarify-route-state.failure.log").is_file());
+    }
+
+    #[test]
+    fn an_invalid_repository_slug_is_a_usage_refusal_in_either_phase() {
+        let dir = TempDir::new().unwrap();
+        let effects = FakeEffects::default();
+        let runner = FakeRunner::new();
+        for phase in ["fetch", "publish"] {
+            let mut env = env_with_repo(dir.path());
+            let _ = env.insert("REPO".to_owned(), "not a slug".to_owned());
+            let _ = design_clarify_run(&effects, &runner, &args(phase), &mut env, dir.path());
+        }
+        // A usage refusal writes no phase result env and runs no sibling verb.
+        assert!(runner.larch_calls.borrow().is_empty());
+        assert!(!dir.path().join(".design-clarify-fetch-result.env").exists());
+        assert!(
+            !dir.path()
+                .join(".design-clarify-publish-result.env")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn a_dispatch_failure_becomes_a_captured_run_carrying_its_detail() {
+        let dispatched = CapturedRun::from_output(Ok(ProcessOutput::new(
+            larch_core::ProcessStatus::new(false, Some(7)),
+            b"OUT=1\n".to_vec(),
+            b"warned\n".to_vec(),
+            false,
+            false,
+        )));
+        assert_eq!(dispatched.rc, 7);
+        assert_eq!(dispatched.stdout, "OUT=1\n");
+        assert_eq!(dispatched.stderr, "warned\n");
+        // A dispatch that never produced a child keeps its detail on stderr so
+        // the failure sidecars the caller writes are diagnosable.
+        let failed = CapturedRun::from_output(Err("verified bootstrap missing".to_owned()));
+        assert_eq!(failed.rc, 1);
+        assert!(failed.stdout.is_empty());
+        assert_eq!(failed.stderr, "verified bootstrap missing");
+    }
+
+    #[test]
+    fn a_result_env_write_reports_a_failed_rename_rather_than_claiming_success() {
+        let dir = TempDir::new().unwrap();
+        // A directory at the destination cannot be replaced by the temp file.
+        let occupied = dir.path().join("occupied.env");
+        fs::create_dir(&occupied).unwrap();
+        let error = write_result_env(&occupied, &[("REQUEST_ID", "1")], &CLARIFY_RESULT_ENV_ALLOW)
+            .expect_err("a directory cannot be replaced by the result env");
+        assert!(!error.is_empty());
+        // The abandoned temp file is cleaned up rather than left behind.
+        let leftovers: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "temp file left behind");
     }
 
     #[test]

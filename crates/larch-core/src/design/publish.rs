@@ -604,6 +604,137 @@ mod tests {
     }
 
     #[test]
+    fn the_round_count_fallback_ignores_symlinks_and_non_numeric_text() {
+        let root = TempDir::new().expect("tmpdir");
+        let sidecar = root.path().join(".step3-review-result.env");
+        fs::write(&sidecar, "STEP3_REVIEW_LOOP_STATUS=complete\n").expect("write");
+        let counter = root.path().join("review-round-count.txt");
+
+        fs::write(&counter, "many\n").expect("write");
+        assert_eq!(review_provenance(root.path()).rounds_completed, 0);
+
+        fs::remove_file(&counter).expect("remove");
+        assert_eq!(review_provenance(root.path()).rounds_completed, 0);
+
+        let target = root.path().join("rounds.txt");
+        fs::write(&target, "5\n").expect("write");
+        std::os::unix::fs::symlink(&target, &counter).expect("symlink");
+        assert_eq!(
+            review_provenance(root.path()).rounds_completed,
+            0,
+            "a symlinked counter is not read"
+        );
+    }
+
+    #[test]
+    fn the_status_ladder_maps_every_loop_status_the_python_reader_had() {
+        let root = TempDir::new().expect("tmpdir");
+        let sidecar = root.path().join(".step3-review-result.env");
+        for (loop_status, expected) in [
+            ("complete", "complete"),
+            ("cap-hit", "cap-hit"),
+            ("panel-failed", "panel-failed"),
+            ("panel-init-failed", "panel-init-failed"),
+            ("tally-error", "tally-error"),
+            ("degraded-empty-collector", "degraded-empty-collector"),
+            ("main-agent-vote-required", "main-agent-vote-required"),
+            ("postplan-failed", "postplan-failed"),
+        ] {
+            fs::write(
+                &sidecar,
+                format!("LOOP_STATUS={loop_status}\nROUNDS_COMPLETED=1\n"),
+            )
+            .expect("write");
+            assert_eq!(review_provenance(root.path()).status, expected);
+        }
+
+        // An unrecognized loop status falls through to the tally status.
+        fs::write(
+            &sidecar,
+            "LOOP_STATUS=in-progress\nTALLY_PLAN_REVIEW_STATUS=approved\nROUNDS_COMPLETED=x\n",
+        )
+        .expect("write");
+        let fallthrough = review_provenance(root.path());
+        assert_eq!(fallthrough.status, "approved");
+        assert_eq!(
+            fallthrough.rounds_completed, 0,
+            "a non-numeric round count reads as zero"
+        );
+        assert!(fallthrough.present);
+    }
+
+    #[test]
+    fn a_plan_without_a_trailing_newline_still_splices_its_provenance() {
+        let text = plan_with_trailers().trim_end().to_owned();
+        let spliced = splice_plan_provenance(&text, "complete", 3);
+        assert!(spliced.ends_with("diff_lines: 42\n"));
+        assert!(spliced.contains("rounds_completed: 3"));
+    }
+
+    #[test]
+    fn an_invalid_knowledge_file_leaves_the_assessment_unrequired() {
+        let root = TempDir::new().expect("tmpdir");
+        let repo = root.path().join("repo");
+        let tmpdir = root.path().join("design");
+        fs::create_dir_all(&repo).expect("repo");
+        fs::create_dir_all(&tmpdir).expect("tmpdir");
+        let target = root.path().join("elsewhere.md");
+        fs::write(&target, "## I-Core-1: Keep one owner\n\nBody.\n").expect("write");
+        std::os::unix::fs::symlink(&target, repo.join("ARCHITECTURAL_INVARIANTS.md"))
+            .expect("symlink");
+
+        let invalid = check_invariant_assessment_completeness(&tmpdir, &repo, "approved");
+        assert!(!invalid.required);
+        assert_eq!(invalid.knowledge_status, "invalid");
+        assert_eq!(invalid.reason, "invariants-invalid");
+    }
+
+    #[test]
+    fn a_required_artifact_that_is_not_a_regular_file_names_its_defect() {
+        let root = TempDir::new().expect("tmpdir");
+        let repo = root.path().join("repo");
+        let tmpdir = root.path().join("design");
+        fs::create_dir_all(&repo).expect("repo");
+        fs::create_dir_all(&tmpdir).expect("tmpdir");
+        fs::write(
+            repo.join("ARCHITECTURAL_INVARIANTS.md"),
+            "## I-Core-1: Keep one owner\n\nBody line.\n",
+        )
+        .expect("write");
+        let artifact = AssessmentKind::Invariants.design_assessment_filename();
+
+        let note = root.path().join("note.md");
+        fs::write(&note, "note\n").expect("write");
+        std::os::unix::fs::symlink(&note, tmpdir.join(artifact)).expect("symlink");
+        let symlinked = check_invariant_assessment_completeness(&tmpdir, &repo, "approved");
+        assert!(symlinked.required && !symlinked.present);
+        assert_eq!(symlinked.reason, "artifact-symlink");
+
+        fs::remove_file(tmpdir.join(artifact)).expect("remove");
+        fs::create_dir(tmpdir.join(artifact)).expect("directory");
+        let directory = check_invariant_assessment_completeness(&tmpdir, &repo, "approved");
+        assert!(directory.required && !directory.present);
+        assert_eq!(directory.reason, "artifact-not-regular");
+    }
+
+    #[test]
+    fn guideline_completeness_reports_absent_knowledge_and_unapproved_outcomes() {
+        let root = TempDir::new().expect("tmpdir");
+        let repo = root.path().join("repo");
+        let tmpdir = root.path().join("design");
+        fs::create_dir_all(&repo).expect("repo");
+        fs::create_dir_all(&tmpdir).expect("tmpdir");
+
+        let absent = check_guideline_assessment_completeness(&tmpdir, &repo, "approved");
+        assert!(!absent.required);
+        assert_eq!(absent.reason, "guidelines-absent");
+
+        let unapproved = check_guideline_assessment_completeness(&tmpdir, &repo, "cancelled");
+        assert!(!unapproved.required);
+        assert_eq!(unapproved.reason, "outcome-not-approved");
+    }
+
+    #[test]
     fn guideline_completeness_only_needs_present_knowledge() {
         let root = TempDir::new().expect("tmpdir");
         let repo = root.path().join("repo");
@@ -683,6 +814,25 @@ mod tests {
             "G-Py-4.\nException: reason here (author: reviewer, date: 2026-07-13)\n"
         ));
         assert!(!guideline_exception_valid("G-Py-4.\n"));
+        // Every month length arm, including the century leap rules.
+        for (date, plausible) in [
+            ("2026-04-30", true),
+            ("2026-04-31", false),
+            ("2026-01-31", true),
+            ("2026-02-28", true),
+            ("2000-02-29", true),
+            ("1900-02-29", false),
+            ("2026-13-01", false),
+            ("2026-11-31", false),
+        ] {
+            assert_eq!(
+                guideline_exception_valid(&format!(
+                    "G-Py-4.\nException: reason here (author: main-agent, date: {date})\n"
+                )),
+                plausible,
+                "{date}"
+            );
+        }
     }
 
     #[test]
