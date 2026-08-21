@@ -51,9 +51,11 @@ pub fn public_args_for_site(
     args
 }
 
-/// Argv for the `checks run-relevant` leg shared by the review and
-/// checks-commit-route owners (#8611 dedup). Returns `OsString` rows so a
-/// non-UTF-8 tmpdir or repo-root path survives the delegation verbatim.
+/// Argv for the shared `checks run-relevant` leg (#8611 dedup).
+///
+/// The review, checks-commit-route, and dispatch owners all compose this
+/// builder. It returns `OsString` rows so a non-UTF-8 tmpdir or repo-root
+/// path survives the delegation verbatim.
 #[must_use]
 pub fn checks_run_relevant_args(site: &str, tmpdir: &Path, repo_root: &Path) -> Vec<OsString> {
     vec![

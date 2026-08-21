@@ -208,7 +208,7 @@ fn head_sha(repo_root: &Path) -> String {
 }
 
 /// Discover the git top-level of the current working directory.
-pub(crate) fn repo_root_toplevel() -> Option<PathBuf> {
+pub fn repo_root_toplevel() -> Option<PathBuf> {
     use std::os::unix::ffi::OsStringExt as _;
     let cwd = env::current_dir().ok()?;
     let work_dir = GixRepository::discover(&cwd).ok()?.location().work_dir?;

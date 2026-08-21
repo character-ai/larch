@@ -34,7 +34,7 @@ use crate::{
 
 /// Resolve `--implement-tmpdir` with the shared `IMPLEMENT_TMPDIR` env fallback,
 /// dropping empty candidates from either source (#8611 dedup).
-pub(crate) fn resolve_implement_tmpdir(explicit: Option<&std::ffi::OsStr>) -> Option<String> {
+pub fn resolve_implement_tmpdir(explicit: Option<&std::ffi::OsStr>) -> Option<String> {
     explicit
         .map(|value| value.to_string_lossy().into_owned())
         .filter(|value| !value.is_empty())

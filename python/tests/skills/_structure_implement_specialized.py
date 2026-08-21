@@ -298,7 +298,7 @@ def run(repo_root: Path) -> list[str]:
 
         # Rust owns the commit-routing verbs (#8611); their Bash siblings remain thin delegates.
         require("crates/larch-core/src/implement/step_checks.rs", "checks_step_for_site", "checks site mapping present")
-        require("crates/larch-cli/src/implement_commit_route_commands_checks.rs", "--repo-root", "checks-commit-route forwards --repo-root to checks run-relevant")
+        require("crates/larch-core/src/implement/step_checks.rs", "--repo-root", "checks-commit-route forwards --repo-root to checks run-relevant")
         require("crates/larch-cli/src/implement_commit_route_commands_checks.rs", "session_validated_repo_root", "checks-commit-route validates persisted REPO_ROOT")
         require("crates/larch-cli/src/checks_identity_commands.rs", "CHECKS_TERMINAL_ACTIONS", "checks identity owner uses shared terminal-action set")
 
