@@ -2092,7 +2092,7 @@ mod tests {
             "number": number, "state": state, "title": "Ship", "body": body,
             "head": { "ref": "feature/ship", "label": "owner:feature/ship" },
             "base": { "ref": "main" }, "draft": false, "merged": merged,
-            "merge_commit_sha": merged.then(|| "1111111111111111111111111111111111111111"),
+            "merge_commit_sha": merged.then_some("1111111111111111111111111111111111111111"),
         })
         .to_string()
     }
@@ -2392,7 +2392,7 @@ mod tests {
                     .iter()
                     .map(|value| value.to_string_lossy())
                     .collect::<Vec<_>>();
-                match command.first().map(|value| value.as_ref()) {
+                match command.first().map(AsRef::as_ref) {
                     Some("merge") if command.get(1).is_some_and(|value| value == "pr") => {
                         Ok(output(0, &format!("MERGE_RESULT={selected}\n")))
                     }

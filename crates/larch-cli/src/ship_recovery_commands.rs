@@ -591,7 +591,7 @@ mod tests {
             "merged_at": "2026-08-21T00:00:00Z",
         }).to_string();
         let (factory, server) = service([typed, audit]);
-        let written_manifest = manifest.clone();
+        let written_manifest = manifest;
         install_larch(move |arguments, _environment| {
             assert!(arguments.iter().any(|value| value == "manifest"));
             fs::write(&written_manifest, "{\"run_id\":\"run-a\",\"status\":\"done\",\"pr_number\":12}\n")
