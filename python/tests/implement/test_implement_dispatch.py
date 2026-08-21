@@ -10,8 +10,6 @@ from typing import Any, cast
 
 import pytest
 
-from larch import io as larch_io
-
 from larch.agents import agents
 from larch.agents import _run_external
 from larch.implement import implement_dispatch

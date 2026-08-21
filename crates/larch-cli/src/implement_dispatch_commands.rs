@@ -510,7 +510,8 @@ fn run_step_checks_worker(
             args.push(OsString::from("--rebase-checkpoint-4r"));
         }
         args.extend([OsString::from("--forked-target"), OsString::from(forked)]);
-        let root = resolve_plugin_root().map_err(|error| format!("checks-commit-route: {error}"))?;
+        let root =
+            resolve_plugin_root().map_err(|error| format!("checks-commit-route: {error}"))?;
         delegate_verified_larch(repo_root, &root, &args)?
     };
     let text = String::from_utf8_lossy(output.stdout()).into_owned();
@@ -1421,7 +1422,8 @@ mod tests {
         fs::create_dir_all(tmp.join("bgjob")).expect("bgjob");
         let merge = tmp.join("bgjob").join("child.merge.env");
         let launch = live(repository.root());
-        install_python(|args| {
+        crate::implement_child_seam::declare_plugin_root(repository.root());
+        install_larch(|_cwd, _root, args| {
             if args_contain(args, "checks-commit-route") {
                 assert!(args_contain(args, "--rebase-checkpoint-4r"));
                 Ok(output(0, "NEXT_ACTION=continue\n"))

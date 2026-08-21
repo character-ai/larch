@@ -9,6 +9,7 @@
 
 use std::{
     collections::BTreeMap,
+    fmt::Write,
     path::{Path, PathBuf},
 };
 
@@ -139,7 +140,7 @@ pub fn commit_route_site(name: &str) -> Option<CommitRouteSite> {
 
 /// The three `commit-route` site names, sorted for the choice validator.
 #[must_use]
-pub fn commit_route_site_names() -> [&'static str; 3] {
+pub const fn commit_route_site_names() -> [&'static str; 3] {
     ["step5-resume-handoff", "step5-self-review", "step7"]
 }
 
@@ -177,10 +178,15 @@ pub fn parse_whitespace_kv_line(line: &str) -> BTreeMap<String, String> {
         let Some((key, value)) = token.split_once('=') else {
             continue;
         };
-        if key.is_empty() || !key.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_') {
+        if key.is_empty()
+            || !key
+                .bytes()
+                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+        {
             continue;
         }
-        map.entry(key.to_owned()).or_insert_with(|| value.to_owned());
+        map.entry(key.to_owned())
+            .or_insert_with(|| value.to_owned());
     }
     map
 }
@@ -188,7 +194,7 @@ pub fn parse_whitespace_kv_line(line: &str) -> BTreeMap<String, String> {
 /// Build the single relay line a checks capture projects to its consumer.
 #[must_use]
 pub fn checks_relay_line(captured: &BTreeMap<String, String>) -> String {
-    let get = |key: &str| captured.get(key).map(String::as_str).unwrap_or("");
+    let get = |key: &str| captured.get(key).map_or("", String::as_str);
     if get("RELEVANT_CHECKS_SKIPPED") == "true" {
         return format!("RELEVANT_CHECKS_SKIPPED=true SITE={}", get("SITE"));
     }
@@ -200,7 +206,7 @@ pub fn checks_relay_line(captured: &BTreeMap<String, String>) -> String {
             get("PHASE"),
         );
         if !get("WARN").is_empty() {
-            line.push_str(&format!(" WARN={}", get("WARN")));
+            let _ = write!(line, " WARN={}", get("WARN"));
         }
         return line;
     }
@@ -305,7 +311,10 @@ pub fn ship_state_has_kv(text: &str) -> bool {
             return false;
         };
         !key.is_empty()
-            && key.bytes().next().is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
+            && key
+                .bytes()
+                .next()
+                .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
             && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
     })
 }
@@ -316,6 +325,7 @@ pub fn ship_state_has_kv(text: &str) -> bool {
 /// Returns [`ShipStatePatch::Absent`] when no file exists (seed a fresh state),
 /// [`ShipStatePatch::Refused`] for a symlinked or malformed-but-nonempty state,
 /// and [`ShipStatePatch::Patched`] after a successful atomic rewrite.
+#[must_use]
 pub fn patch_ship_state_stall(
     state_file: &Path,
     stall_step: &str,
@@ -400,19 +410,16 @@ pub struct Step4CommitSeed {
 /// A file exists, is not a symlink, and has non-zero size.
 #[must_use]
 pub fn path_readable_nonempty(path: &Path) -> bool {
-    match std::fs::symlink_metadata(path) {
-        Ok(metadata) => metadata.is_file() && metadata.len() > 0,
-        Err(_) => false,
-    }
+    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
 }
 
 /// Read a redacted, trimmed commit message from a file (empty on failure).
 #[must_use]
 pub fn read_redacted_message(path: &Path) -> String {
-    match std::fs::read_to_string(path) {
-        Ok(text) => redact_secrets_only(&text).trim().to_owned(),
-        Err(_) => String::new(),
-    }
+    std::fs::read_to_string(path).map_or_else(
+        |_| String::new(),
+        |text| redact_secrets_only(&text).trim().to_owned(),
+    )
 }
 
 /// Split a NUL-delimited pathspec file into its non-empty entries.
@@ -449,8 +456,7 @@ pub fn step3_self_edit_additions(
     repo_root: &Path,
     dirty_paths: &[String],
 ) -> Vec<String> {
-    let dirty: std::collections::BTreeSet<&str> =
-        dirty_paths.iter().map(String::as_str).collect();
+    let dirty: std::collections::BTreeSet<&str> = dirty_paths.iter().map(String::as_str).collect();
     let mut additions = Vec::new();
     for record in read_self_edits(implement_tmpdir) {
         if record.source != "lint-fix:step3" && record.source != "pre-commit-autofix" {
@@ -481,19 +487,30 @@ mod tests {
         assert_eq!(step7.stall_step, "7");
         assert_eq!(step7.bail_reason, "review-fix-commit-failed");
         assert!(!step7.porcelain_probe);
-        assert!(commit_route_site("step5-resume-handoff").expect("resume").porcelain_probe);
-        assert_eq!(STEP4_COMMIT_SITE.bail_reason, "implementation-commit-failed");
+        assert!(
+            commit_route_site("step5-resume-handoff")
+                .expect("resume")
+                .porcelain_probe
+        );
+        assert_eq!(
+            STEP4_COMMIT_SITE.bail_reason,
+            "implementation-commit-failed"
+        );
     }
 
     #[test]
     fn line_anchored_only_matches_full_prefix_lines() {
         let stdout = "COMMIT_OUTCOME=ok\nX COMMIT_OUTCOME=no\nCOMMIT_OUTCOME=noop\n";
-        assert_eq!(parse_line_anchored(stdout, "COMMIT_OUTCOME"), ["ok", "noop"]);
+        assert_eq!(
+            parse_line_anchored(stdout, "COMMIT_OUTCOME"),
+            ["ok", "noop"]
+        );
     }
 
     #[test]
     fn whitespace_kv_first_value_wins_and_skips_bad_keys() {
-        let map = parse_whitespace_kv_line("RELEVANT_CHECKS_OK=true SITE=step5 site=lower SITE=dup");
+        let map =
+            parse_whitespace_kv_line("RELEVANT_CHECKS_OK=true SITE=step5 site=lower SITE=dup");
         assert_eq!(map.get("RELEVANT_CHECKS_OK").unwrap(), "true");
         assert_eq!(map.get("SITE").unwrap(), "step5");
         assert!(!map.contains_key("site"));
@@ -504,7 +521,10 @@ mod tests {
         let mut skip = BTreeMap::new();
         skip.insert("RELEVANT_CHECKS_SKIPPED".to_owned(), "true".to_owned());
         skip.insert("SITE".to_owned(), "step3".to_owned());
-        assert_eq!(checks_relay_line(&skip), "RELEVANT_CHECKS_SKIPPED=true SITE=step3");
+        assert_eq!(
+            checks_relay_line(&skip),
+            "RELEVANT_CHECKS_SKIPPED=true SITE=step3"
+        );
 
         let mut ok = BTreeMap::new();
         ok.insert("RELEVANT_CHECKS_OK".to_owned(), "true".to_owned());
@@ -521,18 +541,27 @@ mod tests {
         let mut fail = BTreeMap::new();
         fail.insert("STATUS".to_owned(), "fail".to_owned());
         fail.insert("EXIT_CODE".to_owned(), "2".to_owned());
-        assert_eq!(checks_relay_line(&fail), "STATUS=fail FAILURE_REASON=checks-failed EXIT_CODE=2");
+        assert_eq!(
+            checks_relay_line(&fail),
+            "STATUS=fail FAILURE_REASON=checks-failed EXIT_CODE=2"
+        );
         assert!(!checks_pass(&fail));
     }
 
     #[test]
     fn failure_log_name_slug_and_truncation() {
-        assert_eq!(commit_route_failure_log_name("step7"), "commit-route-step7.failure.log");
+        assert_eq!(
+            commit_route_failure_log_name("step7"),
+            "commit-route-step7.failure.log"
+        );
         assert_eq!(
             commit_route_failure_log_name("step5/self review"),
             "commit-route-step5-self-review.failure.log"
         );
-        assert_eq!(commit_route_failure_log_name("///"), "commit-route-unknown.failure.log");
+        assert_eq!(
+            commit_route_failure_log_name("///"),
+            "commit-route-unknown.failure.log"
+        );
         let failure = CommitRouteFailure {
             site_name: "step7".to_owned(),
             site: commit_route_site("step7").unwrap(),
@@ -549,21 +578,39 @@ mod tests {
     #[test]
     fn fold_commit_error_prefers_stderr_and_caps() {
         assert_eq!(fold_commit_error("a\nb", "ignored"), "a b");
-        assert_eq!(fold_commit_error("", "only stdout\nhere"), "only stdout here");
-        assert_eq!(fold_commit_error(&"z".repeat(600), "").len(), COMMIT_ERROR_MAX);
+        assert_eq!(
+            fold_commit_error("", "only stdout\nhere"),
+            "only stdout here"
+        );
+        assert_eq!(
+            fold_commit_error(&"z".repeat(600), "").len(),
+            COMMIT_ERROR_MAX
+        );
     }
 
     #[test]
     fn ship_state_patch_variants() {
         let dir = tempfile::tempdir().expect("tmp");
         let state = dir.path().join("ship-pr-state.sh");
-        assert_eq!(patch_ship_state_stall(&state, "5", "boom"), ShipStatePatch::Absent);
+        assert_eq!(
+            patch_ship_state_stall(&state, "5", "boom"),
+            ShipStatePatch::Absent
+        );
         std::fs::write(&state, "   \n").expect("write empty");
-        assert_eq!(patch_ship_state_stall(&state, "5", "boom"), ShipStatePatch::Absent);
+        assert_eq!(
+            patch_ship_state_stall(&state, "5", "boom"),
+            ShipStatePatch::Absent
+        );
         std::fs::write(&state, "no kv here\n").expect("write junk");
-        assert_eq!(patch_ship_state_stall(&state, "5", "boom"), ShipStatePatch::Refused);
+        assert_eq!(
+            patch_ship_state_stall(&state, "5", "boom"),
+            ShipStatePatch::Refused
+        );
         std::fs::write(&state, "PHASE=ship\nUNKNOWN_KEY=drop\nSTALL_STEP=1\n").expect("write kv");
-        assert_eq!(patch_ship_state_stall(&state, "5", "resume-handoff-commit-failed"), ShipStatePatch::Patched);
+        assert_eq!(
+            patch_ship_state_stall(&state, "5", "resume-handoff-commit-failed"),
+            ShipStatePatch::Patched
+        );
         let patched = std::fs::read_to_string(&state).expect("read");
         assert!(patched.contains("PHASE=ship\n"));
         assert!(!patched.contains("UNKNOWN_KEY"));

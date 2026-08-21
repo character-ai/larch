@@ -12,6 +12,7 @@
 #![cfg(unix)]
 
 use std::{
+    fmt::Write as _,
     fs,
     os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
@@ -64,7 +65,11 @@ fn fixture(stub_body: &str) -> Fixture {
         format!("REPO_ROOT={}\n", repo.display()),
     )
     .expect("session env");
-    fs::write(tmpdir.join("repo-root.txt"), format!("{}\n", repo.display())).expect("repo-root.txt");
+    fs::write(
+        tmpdir.join("repo-root.txt"),
+        format!("{}\n", repo.display()),
+    )
+    .expect("repo-root.txt");
 
     let script = plugin_root.join("scripts/larch.sh");
     fs::write(&script, stub_body).expect("stub larch.sh");
@@ -80,7 +85,12 @@ fn fixture(stub_body: &str) -> Fixture {
     }
 }
 
-fn run(fixture: &Fixture, verb: &str, arguments: &[&str], set_tmpdir: bool) -> (i32, String, String) {
+fn run(
+    fixture: &Fixture,
+    verb: &str,
+    arguments: &[&str],
+    set_tmpdir: bool,
+) -> (i32, String, String) {
     let mut command = AssertCommand::cargo_bin("larch").expect("larch binary");
     command
         .args(["implement", verb])
@@ -113,10 +123,11 @@ fn kv(stdout: &str, key: &str) -> String {
 const NOOP_STUB: &str = "#!/usr/bin/env bash\nexit 0\n";
 
 /// A stub whose branches are keyed on the first two positional arguments.
+#[allow(clippy::literal_string_with_formatting_args)]
 fn dispatch_stub(cases: &[(&str, &str)]) -> String {
     let mut body = String::from("#!/usr/bin/env bash\nset -u\ncase \"${1:-} ${2:-}\" in\n");
     for (needle, action) in cases {
-        body.push_str(&format!("  \"{needle}\")\n{action}\n    ;;\n"));
+        let _ = write!(body, "  \"{needle}\")\n{action}\n    ;;\n");
     }
     body.push_str("  *)\n    exit 0\n    ;;\nesac\n");
     body
@@ -169,10 +180,19 @@ fn commit_success_envelope_reports_head_sha() {
         ("git commit", "    exit 0"),
     ]);
     let fixture = fixture(&stub);
-    let (code, stdout, _stderr) = run(&fixture, "commit", &["-m", "impl commit", "README.md"], true);
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "commit",
+        &["-m", "impl commit", "README.md"],
+        true,
+    );
     assert_eq!(code, 0);
     assert_eq!(kv(&stdout, "COMMITTED"), "true");
-    assert_eq!(kv(&stdout, "SHA").len(), 40, "SHA should be a full hex commit id");
+    assert_eq!(
+        kv(&stdout, "SHA").len(),
+        40,
+        "SHA should be a full hex commit id"
+    );
 }
 
 #[test]
@@ -180,10 +200,18 @@ fn commit_failure_envelope_folds_error() {
     let stub = dispatch_stub(&[
         ("token mark", "    exit 0"),
         ("timing mark", "    exit 0"),
-        ("git commit", "    printf 'boom line one\\nboom line two' >&2\n    exit 1"),
+        (
+            "git commit",
+            "    printf 'boom line one\\nboom line two' >&2\n    exit 1",
+        ),
     ]);
     let fixture = fixture(&stub);
-    let (code, stdout, _stderr) = run(&fixture, "commit", &["-m", "impl commit", "README.md"], true);
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "commit",
+        &["-m", "impl commit", "README.md"],
+        true,
+    );
     assert_eq!(code, 1);
     assert_eq!(kv(&stdout, "COMMITTED"), "false");
     assert_eq!(kv(&stdout, "SHA"), "");
@@ -262,7 +290,10 @@ fn commit_route_seeds_a_stall_on_commit_failure() {
     assert_eq!(code, 0);
     assert_eq!(kv(&stdout, "COMMIT_ROUTE_OUTCOME"), "seeded-stall");
     assert!(
-        fixture.tmpdir.join("commit-route-step7.failure.log").is_file(),
+        fixture
+            .tmpdir
+            .join("commit-route-step7.failure.log")
+            .is_file(),
         "a stall must persist a failure log"
     );
 }
@@ -274,7 +305,12 @@ fn commit_route_seeds_a_stall_on_commit_failure() {
 #[test]
 fn checks_commit_route_requires_both_sites() {
     let fixture = fixture(NOOP_STUB);
-    let (code, _stdout, stderr) = run(&fixture, "checks-commit-route", &["--checks-site", "step7"], true);
+    let (code, _stdout, stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step7"],
+        true,
+    );
     assert_eq!(code, 2);
     assert!(stderr.contains("--commit-site"));
 }

@@ -191,20 +191,24 @@ fn step4_dispatcher_committed_seed(tmpdir: &Path, repo_root: &Path) -> Option<St
     if !status_ok {
         return None;
     }
-    match pathspec {
-        None => Some(Step4CommitSeed {
-            message: String::new(),
-            pathspec: None,
-            noop_reason: "dispatcher-committed".to_owned(),
-            refresh_step3_self_edits: false,
-        }),
-        Some(pathspec) => Some(Step4CommitSeed {
-            message: "Apply post-dispatch checks fixes".to_owned(),
-            pathspec: Some(pathspec),
-            noop_reason: String::new(),
-            refresh_step3_self_edits: false,
-        }),
-    }
+    pathspec.map_or_else(
+        || {
+            Some(Step4CommitSeed {
+                message: String::new(),
+                pathspec: None,
+                noop_reason: "dispatcher-committed".to_owned(),
+                refresh_step3_self_edits: false,
+            })
+        },
+        |pathspec| {
+            Some(Step4CommitSeed {
+                message: "Apply post-dispatch checks fixes".to_owned(),
+                pathspec: Some(pathspec),
+                noop_reason: String::new(),
+                refresh_step3_self_edits: false,
+            })
+        },
+    )
 }
 
 fn resolve_step4_commit_seed(
@@ -489,10 +493,9 @@ struct ChecksArgs {
 }
 
 fn parse_deadline(value: Option<&OsStr>, default: u64) -> Result<u64, ()> {
-    match value {
-        None => Ok(default),
-        Some(raw) => raw.to_string_lossy().parse::<u64>().map_err(|_| ()),
-    }
+    value.map_or(Ok(default), |raw| {
+        raw.to_string_lossy().parse::<u64>().map_err(|_| ())
+    })
 }
 
 /// `implement checks-commit-route` compatibility command.
@@ -521,17 +524,25 @@ pub fn checks_commit_route(arguments: &[OsString]) -> ExitCode {
     ) {
         return usage_error(CHECKS_USAGE, CHECKS_PROG, &error, 2);
     }
-    let checks_deadline_ms = match parse_deadline(parsed.value("--checks-deadline-ms"), CHECKS_DEADLINE_MS) {
-        Ok(value) => value,
-        Err(()) => {
-            return usage_error(CHECKS_USAGE, CHECKS_PROG, "argument --checks-deadline-ms: invalid int value", 2);
-        }
+    let Ok(checks_deadline_ms) =
+        parse_deadline(parsed.value("--checks-deadline-ms"), CHECKS_DEADLINE_MS)
+    else {
+        return usage_error(
+            CHECKS_USAGE,
+            CHECKS_PROG,
+            "argument --checks-deadline-ms: invalid int value",
+            2,
+        );
     };
-    let commit_deadline_ms = match parse_deadline(parsed.value("--commit-deadline-ms"), COMMIT_ROUTE_DEADLINE_MS) {
-        Ok(value) => value,
-        Err(()) => {
-            return usage_error(CHECKS_USAGE, CHECKS_PROG, "argument --commit-deadline-ms: invalid int value", 2);
-        }
+    let Ok(commit_deadline_ms) =
+        parse_deadline(parsed.value("--commit-deadline-ms"), COMMIT_ROUTE_DEADLINE_MS)
+    else {
+        return usage_error(
+            CHECKS_USAGE,
+            CHECKS_PROG,
+            "argument --commit-deadline-ms: invalid int value",
+            2,
+        );
     };
     let args = ChecksArgs {
         checks_site: parsed
@@ -547,10 +558,10 @@ pub fn checks_commit_route(arguments: &[OsString]) -> ExitCode {
         emit_step7_breadcrumb: parsed.flag("--emit-step7-breadcrumb"),
         rebase_checkpoint_4r: parsed.flag("--rebase-checkpoint-4r"),
         rebase_checkpoint_7r: parsed.flag("--rebase-checkpoint-7r"),
-        forked_target: parsed
-            .value("--forked-target")
-            .map(|value| value.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "false".to_owned()),
+        forked_target: parsed.value("--forked-target").map_or_else(
+            || "false".to_owned(),
+            |value| value.to_string_lossy().into_owned(),
+        ),
     };
 
     let tmpdir = match env::var("IMPLEMENT_TMPDIR") {

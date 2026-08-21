@@ -31,8 +31,8 @@ use larch_core::{
         ShipStatePatch, Step4CommitSeed, checks_pass, checks_relay_line,
         commit_route_failure_log_path, commit_route_failure_log_text, commit_route_site,
         commit_route_site_names, fold_commit_error, nul_pathspec_bytes, parse_line_anchored,
-        parse_whitespace_kv_line, patch_ship_state_stall, path_readable_nonempty, read_nul_pathspec,
-        read_redacted_message, step3_self_edit_additions,
+        parse_whitespace_kv_line, patch_ship_state_stall, path_readable_nonempty,
+        read_nul_pathspec, read_redacted_message, step3_self_edit_additions,
     },
     write_bytes_atomic,
 };
@@ -54,8 +54,7 @@ use crate::{
 // usage/help strings
 // ---------------------------------------------------------------------------
 
-const COMMIT_HELP: &str =
-    "usage: cli.py implement commit [-h]\n\noptions:\n  -h, --help  show this help message and exit\n";
+const COMMIT_HELP: &str = "usage: cli.py implement commit [-h]\n\noptions:\n  -h, --help  show this help message and exit\n";
 
 const ROUTE_PROG: &str = "cli.py implement commit-route";
 const ROUTE_USAGE: &str = "usage: cli.py implement commit-route [-h] --site\n                                     {step5-resume-handoff,step5-self-review,step7}\n                                     [--implement-tmpdir IMPLEMENT_TMPDIR]\n                                     [--emit-next-action {true,false}]\n";
@@ -87,7 +86,10 @@ const LARCH_GIT_DOMAIN: &str = "git";
 /// One typed `larch git commit` invocation the wrapper composes.
 enum GitCommitRequest<'a> {
     /// `git commit -m <message> <files...>`.
-    Named { message: &'a str, files: &'a [String] },
+    Named {
+        message: &'a str,
+        files: &'a [String],
+    },
     /// `git commit -m <message> --only --pathspec-from-file <path> [--pathspec-file-nul]`.
     Pathspec {
         message: &'a str,
@@ -217,14 +219,10 @@ fn repo_root_toplevel() -> Option<PathBuf> {
 /// True when none of `subset` (or the whole tree when `None`) is dirty.
 fn subset_clean(repo_root: &Path, subset: Option<&[String]>) -> Option<bool> {
     let dirty = working_tree_paths(repo_root)?;
-    match subset {
-        None => Some(dirty.is_empty()),
-        Some(subset) => {
-            let wanted: std::collections::BTreeSet<&str> =
-                subset.iter().map(String::as_str).collect();
-            Some(!dirty.iter().any(|path| wanted.contains(path.as_str())))
-        }
-    }
+    subset.map_or(Some(dirty.is_empty()), |subset| {
+        let wanted: std::collections::BTreeSet<&str> = subset.iter().map(String::as_str).collect();
+        Some(!dirty.iter().any(|path| wanted.contains(path.as_str())))
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -269,8 +267,7 @@ fn scan_commit_argv(argv: &[OsString]) -> Option<ExitCode> {
         if arg == "--message" || arg == "-m" || arg == "--pathspec-from-file" {
             let next_is_value = argv
                 .get(index + 1)
-                .map(|value| !value.to_string_lossy().starts_with('-'))
-                .unwrap_or(false);
+                .is_some_and(|value| !value.to_string_lossy().starts_with('-'));
             if !next_is_value {
                 return Some(commit_usage_fail(&format!("{arg} requires a value")));
             }
@@ -335,7 +332,10 @@ fn commit_session_env(tmpdir: Option<&Path>) -> Vec<(ChildEnvironment, OsString)
     };
     let env_file = tmpdir.join("session-env.sh");
     for (key, child) in [
-        ("LARCH_TOKEN_SESSION_ID", ChildEnvironment::LarchTokenSessionId),
+        (
+            "LARCH_TOKEN_SESSION_ID",
+            ChildEnvironment::LarchTokenSessionId,
+        ),
         (
             "LARCH_CLAUDE_SOURCE_FILE",
             ChildEnvironment::LarchClaudeSourceFile,
@@ -470,15 +470,12 @@ fn relay_scope_coverage(tmpdir: &Path) -> i32 {
     if !tmpdir.join("plan.txt").is_file() || !tmpdir.join("step2-baseline.txt").is_file() {
         return 0;
     }
-    let repo_root = match std::fs::read_to_string(tmpdir.join("repo-root.txt")) {
-        Ok(text) => {
-            let raw = PathBuf::from(text.trim());
-            std::fs::canonicalize(&raw).unwrap_or(raw)
-        }
-        Err(_) => {
-            eprintln!("scope-disposition: persisted repository root is unavailable");
-            return 2;
-        }
+    let repo_root = if let Ok(text) = std::fs::read_to_string(tmpdir.join("repo-root.txt")) {
+        let raw = PathBuf::from(text.trim());
+        std::fs::canonicalize(&raw).unwrap_or(raw)
+    } else {
+        eprintln!("scope-disposition: persisted repository root is unavailable");
+        return 2;
     };
     if !repo_root.is_dir() {
         eprintln!("scope-disposition: persisted repository root is not a directory");
@@ -496,7 +493,7 @@ fn relay_scope_coverage(tmpdir: &Path) -> i32 {
     for (key, value) in plan_coverage_contract_rows(&coverage) {
         emit_kv(key, &value);
     }
-    if let Ok(true) = invalidate_if_stale(tmpdir, &repo_root, manifest.as_deref()) {
+    if invalidate_if_stale(tmpdir, &repo_root, manifest.as_deref()) == Ok(true) {
         emit_kv("PLAN_COVERAGE_DISPOSITION_INVALIDATED", "true");
     }
     0
@@ -513,6 +510,7 @@ fn write_failure_log(tmpdir: &Path, failure: &CommitRouteFailure) -> PathBuf {
 }
 
 /// Append the redacted commit-route failure to the run log.
+#[allow(clippy::too_many_arguments)]
 fn log_failure(
     plugin_root: &Path,
     cwd: &Path,
@@ -524,7 +522,10 @@ fn log_failure(
     output_file: &Path,
 ) {
     // #7074: append-failure renders "Step <site>: …"; strip the leading "step".
-    let display_site = site_name.strip_prefix("step").filter(|rest| !rest.is_empty()).unwrap_or(site_name);
+    let display_site = site_name
+        .strip_prefix("step")
+        .filter(|rest| !rest.is_empty())
+        .unwrap_or(site_name);
     let log = tmpdir.join("execution-issues.md");
     let args = vec![
         OsString::from("run-log"),
@@ -567,7 +568,10 @@ fn seed_durable_stall(
     match patch_ship_state_stall(&state_file, stall_step, bail_reason) {
         ShipStatePatch::Patched => true,
         ShipStatePatch::Refused => {
-            eprintln!("commit-route: refusing malformed or symlinked ship state: {}", state_file.display());
+            eprintln!(
+                "commit-route: refusing malformed or symlinked ship state: {}",
+                state_file.display()
+            );
             false
         }
         ShipStatePatch::Absent => {
@@ -668,7 +672,11 @@ fn commit_route_stall(
 
 fn commit_route_porcelain_gate(repo_root: &Path) -> (bool, &'static str, String) {
     match subset_clean(repo_root, None) {
-        None => (false, "git status probe failed", "git status probe failed".to_owned()),
+        None => (
+            false,
+            "git status probe failed",
+            "git status probe failed".to_owned(),
+        ),
         Some(true) => (true, "", String::new()),
         Some(false) => {
             let listing = working_tree_paths(repo_root)
@@ -796,7 +804,12 @@ pub fn commit_route(arguments: &[OsString]) -> ExitCode {
         .map(|value| value.to_string_lossy().into_owned())
         .unwrap_or_default();
     let Some(site) = commit_route_site(&site_name) else {
-        return usage_error(ROUTE_USAGE, ROUTE_PROG, "argument --site: invalid choice", 2);
+        return usage_error(
+            ROUTE_USAGE,
+            ROUTE_PROG,
+            "argument --site: invalid choice",
+            2,
+        );
     };
     let raw_tmpdir = parsed
         .value("--implement-tmpdir")
@@ -810,13 +823,15 @@ pub fn commit_route(arguments: &[OsString]) -> ExitCode {
     }
     let tmpdir = PathBuf::from(&raw_tmpdir);
     if !tmpdir.is_dir() {
-        eprintln!("commit-route: implement tmpdir not found: {}", tmpdir.display());
+        eprintln!(
+            "commit-route: implement tmpdir not found: {}",
+            tmpdir.display()
+        );
         return ExitCode::from(2);
     }
     let emit_next_action = parsed
         .value("--emit-next-action")
-        .map(|value| value.to_string_lossy() == "true")
-        .unwrap_or(true);
+        .is_none_or(|value| value.to_string_lossy() == "true");
     let plugin_root = match resolve_plugin_root_or_tmpdir(&tmpdir) {
         Ok(root) => root,
         Err(error) => {
