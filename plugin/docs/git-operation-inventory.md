@@ -38,7 +38,8 @@ crates/larch-cli/src/checks_identity_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/checks_lint_fix_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/checks_run_relevant_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/checks_rust_clippy_commands.rs	gix-read	#7671	typed-read
-crates/larch-cli/src/ci_monitor_commands.rs	git-cli	#7671	typed-cli,typed-read
+crates/larch-cli/src/ci_failure_commands.rs	git-cli	#7671	typed-cli
+crates/larch-cli/src/ci_monitor_commands.rs	git-cli	#7671	typed-cli
 crates/larch-cli/src/ci_selection.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/complete_umbrella_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/design_log_publish_commands.rs	gix-read	#7671	typed-read

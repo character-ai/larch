@@ -15,7 +15,6 @@ import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("checks", "repair-loop"): ("larch.implement.checks", "checks_repair_loop_main", True),
-    ("ci", "distill-log"): ("larch.implement.ci", "distill_log_main", False),
     ("complete-umbrella", "ship-leaf"): (
         "larch.implement.complete_umbrella_ship",
         "main",
@@ -198,10 +197,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("pr", "closes-issue"): ("larch.git.pr", "closes_issue_main", False),
     ("merge", "pr"): ("larch.git.merge", "pr_main", False),
     ("merge", "wait"): ("larch.git.merge", "wait_main", False),
-    ("ci", "main-health"): ("larch.implement.ci", "main_health_main", False),
-    ("ci", "failed-jobs"): ("larch.implement.ci", "failed_jobs_main", False),
-    ("ci", "behind-count"): ("larch.implement.ci", "behind_count_main", False),
-    ("ci", "rerun-failed"): ("larch.implement.ci", "rerun_failed_main", False),
 }
 
 # Compatibility view: keys whose registry row has machine_stdout=True.

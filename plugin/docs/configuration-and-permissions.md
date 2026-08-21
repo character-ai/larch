@@ -188,7 +188,7 @@ When no queue is enabled, `/implement` retains the direct-merge behavior: it tri
 2. Default-branch push CI health must be pass, or the branch must carry a recorded repair marker for the same default-branch failed run and base SHA
 3. The branch must be conflict-free (`mergeStateStatus` must not be `DIRTY`; `UNKNOWN`/empty are treated as conflicted conservatively in the CI loop)
 
-These checks are verified immediately before any merge attempt — the script does not rely on cached PR state. Green PR checks alone are insufficient when default-branch push CI is red and unrepaired. See `python/cli.py merge pr` and `python/cli.py ci main-health` for the implementation.
+These checks are verified immediately before any merge attempt — the script does not rely on cached PR state. Green PR checks alone are insufficient when default-branch push CI is red and unrepaired. See `python/cli.py merge pr` and `scripts/larch.sh ci main-health` for the implementation.
 
 **Audit trail when `--admin` fires.** When the `--admin` attempt succeeds, `/implement` Step 12b posts a best-effort comment on the merged PR explaining that branch protection was overridden after CI passed and merge state was re-verified. The comment is informational; if posting it fails (e.g., token cannot comment), the failure is logged to `Tool Failures` and the merge stays merged. The existing stderr `**⚠ Merged with --admin (review overridden).**` warning in the run output is also retained.
 

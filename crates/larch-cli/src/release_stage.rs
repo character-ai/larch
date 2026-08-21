@@ -756,6 +756,7 @@ mod tests {
             conclusion: None,
             head_sha: sha.to_owned(),
             event: "push".to_owned(),
+            workflow_name: "CI".to_owned(),
             attempt: 1,
         }
     }

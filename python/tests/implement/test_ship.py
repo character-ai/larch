@@ -5117,17 +5117,13 @@ def test_ship_postmerge_push_watch_routes_failure_to_emergency_repair(
     monkeypatch.setattr(ship, "run_postmerge_phase", fail_if_postmerge_runs)
     monkeypatch.setattr(ship.ci_monitor, "rerun_failed", fail_if_rerun_runs)
     monkeypatch.setattr(
-        ship.main_health,
-        "wait_main_health",
-        lambda *_a, **_k: ship.main_health.MainHealthWaitResult(
-            health=ship.main_health.MainHealthStatus(
-                status="fail",
-                failed_run_id="44",
-                head_sha="abc123",
-                detail="merged push failed",
-            ),
-            elapsed_seconds=1,
-            attempts=1,
+        ship.rust_runtime,
+        "ci_main_health",
+        lambda *_a, **_k: ship.rust_runtime.MainHealthOutput(
+            status="fail",
+            failed_run_id="44",
+            head_sha="abc123",
+            detail="merged push failed",
         ),
     )
 
@@ -5176,21 +5172,17 @@ def test_ship_postmerge_push_watch_reruns_first_failure_once(
     def pr_view_field_read(*_args: object, **_kwargs: object) -> CommandResult:
         return ok(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), '{"mergeCommit":{"oid":"merge-sha"}}')
 
-    def wait_main_health(
+    def ci_main_health(
         _runner: RecordingRunner,
-        query: ship.main_health.MainHealthWaitQuery,
+        query: ship.rust_runtime.MainHealthQuery,
         **_kwargs: object,
-    ) -> ship.main_health.MainHealthWaitResult:
-        observed_skip_flap.append(query.health.skip_flap_check)
-        return ship.main_health.MainHealthWaitResult(
-            health=ship.main_health.MainHealthStatus(
-                status="fail",
-                failed_run_id="44",
-                head_sha="merge-sha",
-                detail="merged push failed",
-            ),
-            elapsed_seconds=1,
-            attempts=1,
+    ) -> ship.rust_runtime.MainHealthOutput:
+        observed_skip_flap.append(query.skip_flap_check)
+        return ship.rust_runtime.MainHealthOutput(
+            status="fail",
+            failed_run_id="44",
+            head_sha="merge-sha",
+            detail="merged push failed",
         )
 
     def rerun_failed(
@@ -5205,7 +5197,7 @@ def test_ship_postmerge_push_watch_reruns_first_failure_once(
         return ship.ci_monitor.RerunResult(submitted=True, already_running=False, error=None)
 
     monkeypatch.setattr(ship.gh, "pr_view_field_read", pr_view_field_read)
-    monkeypatch.setattr(ship.main_health, "wait_main_health", wait_main_health)
+    monkeypatch.setattr(ship.rust_runtime, "ci_main_health", ci_main_health)
     monkeypatch.setattr(ship.ci_monitor, "rerun_failed", rerun_failed)
     monkeypatch.setattr(
         ship,
@@ -5257,17 +5249,13 @@ def test_ship_postmerge_push_watch_rerun_failure_enters_emergency_repair(
         lambda *_a, **_k: ok(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), '{"mergeCommit":{"oid":"merge-sha"}}'),
     )
     monkeypatch.setattr(
-        ship.main_health,
-        "wait_main_health",
-        lambda *_a, **_k: ship.main_health.MainHealthWaitResult(
-            health=ship.main_health.MainHealthStatus(
-                status="fail",
-                failed_run_id="44",
-                head_sha="merge-sha",
-                detail="merged push failed",
-            ),
-            elapsed_seconds=1,
-            attempts=1,
+        ship.rust_runtime,
+        "ci_main_health",
+        lambda *_a, **_k: ship.rust_runtime.MainHealthOutput(
+            status="fail",
+            failed_run_id="44",
+            head_sha="merge-sha",
+            detail="merged push failed",
         ),
     )
     monkeypatch.setattr(
@@ -5319,21 +5307,17 @@ def test_ship_postmerge_push_watch_passes_before_finalize(
         calls.append("mergeCommit")
         return ok(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), '{"mergeCommit":{"oid":"merge-sha"}}')
 
-    def wait_main_health(
+    def ci_main_health(
         _runner: RecordingRunner,
-        query: ship.main_health.MainHealthWaitQuery,
+        query: ship.rust_runtime.MainHealthQuery,
         **_kwargs: object,
-    ) -> ship.main_health.MainHealthWaitResult:
+    ) -> ship.rust_runtime.MainHealthOutput:
         calls.append("watch")
-        observed_skip_flap.append(query.health.skip_flap_check)
-        return ship.main_health.MainHealthWaitResult(
-            health=ship.main_health.MainHealthStatus(
-                status="pass",
-                head_sha="merge-sha",
-                detail="merged push passed",
-            ),
-            elapsed_seconds=1,
-            attempts=1,
+        observed_skip_flap.append(query.skip_flap_check)
+        return ship.rust_runtime.MainHealthOutput(
+            status="pass",
+            head_sha="merge-sha",
+            detail="merged push passed",
         )
 
     def run_postmerge_phase(*_args: object, **_kwargs: object) -> ship.ShipResult:
@@ -5341,7 +5325,7 @@ def test_ship_postmerge_push_watch_passes_before_finalize(
         return ship.ShipResult(Outcome.OK, detail="done")
 
     monkeypatch.setattr(ship.gh, "pr_view_field_read", pr_view_field_read)
-    monkeypatch.setattr(ship.main_health, "wait_main_health", wait_main_health)
+    monkeypatch.setattr(ship.rust_runtime, "ci_main_health", ci_main_health)
     monkeypatch.setattr(ship, "run_postmerge_phase", run_postmerge_phase)
 
     result = ship._ship_postmerge_phase(  # pyright: ignore[reportPrivateUsage]
@@ -5379,23 +5363,16 @@ def test_ship_postmerge_push_watch_skip_continues_to_finalize(
         calls.append("mergeCommit")
         return ok(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), '{"mergeCommit":{"oid":"merge-sha"}}')
 
-    def wait_main_health(*_args: object, **_kwargs: object) -> ship.main_health.MainHealthWaitResult:
+    def ci_main_health(*_args: object, **_kwargs: object) -> ship.rust_runtime.MainHealthOutput:
         calls.append("watch")
-        return ship.main_health.MainHealthWaitResult(
-            health=ship.main_health.MainHealthStatus(
-                status="skip",
-                detail="workflow absent",
-            ),
-            elapsed_seconds=1,
-            attempts=1,
-        )
+        return ship.rust_runtime.MainHealthOutput(status="skip", detail="workflow absent")
 
     def run_postmerge_phase(*_args: object, **_kwargs: object) -> ship.ShipResult:
         calls.append("postmerge")
         return ship.ShipResult(Outcome.OK, detail="done")
 
     monkeypatch.setattr(ship.gh, "pr_view_field_read", pr_view_field_read)
-    monkeypatch.setattr(ship.main_health, "wait_main_health", wait_main_health)
+    monkeypatch.setattr(ship.rust_runtime, "ci_main_health", ci_main_health)
     monkeypatch.setattr(ship, "run_postmerge_phase", run_postmerge_phase)
 
     result = ship._ship_postmerge_phase(  # pyright: ignore[reportPrivateUsage]
@@ -5441,16 +5418,12 @@ def test_ship_postmerge_push_watch_falls_back_to_origin_main_when_merge_commit_m
         calls.append("mergeCommit")
         return ok(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), '{"mergeCommit":null}')
 
-    def wait_main_health(*_args: object, **_kwargs: object) -> ship.main_health.MainHealthWaitResult:
+    def ci_main_health(*_args: object, **_kwargs: object) -> ship.rust_runtime.MainHealthOutput:
         calls.append("watch")
-        return ship.main_health.MainHealthWaitResult(
-            health=ship.main_health.MainHealthStatus(
-                status="pass",
-                head_sha="origin-sha",
-                detail="merged push passed",
-            ),
-            elapsed_seconds=1,
-            attempts=1,
+        return ship.rust_runtime.MainHealthOutput(
+            status="pass",
+            head_sha="origin-sha",
+            detail="merged push passed",
         )
 
     def run_postmerge_phase(*_args: object, **_kwargs: object) -> ship.ShipResult:
@@ -5460,7 +5433,7 @@ def test_ship_postmerge_push_watch_falls_back_to_origin_main_when_merge_commit_m
     monkeypatch.setattr(ship.git, "fetch", fetch)
     monkeypatch.setattr(ship.git, "try_rev_parse", try_rev_parse)
     monkeypatch.setattr(ship.gh, "pr_view_field_read", pr_view_field_read)
-    monkeypatch.setattr(ship.main_health, "wait_main_health", wait_main_health)
+    monkeypatch.setattr(ship.rust_runtime, "ci_main_health", ci_main_health)
     monkeypatch.setattr(ship, "run_postmerge_phase", run_postmerge_phase)
 
     result = ship._ship_postmerge_phase(  # pyright: ignore[reportPrivateUsage]
@@ -5488,22 +5461,27 @@ def test_emergency_repair_resume_green_without_repair_branch_finalizes_postmerge
         "MAIN_REPAIR_HEAD=merge-sha\nEMERGENCY_REPAIR_BRANCH=\n",
         encoding="utf-8",
     )
-    observed_queries: list[ship.main_health.MainHealthQuery] = []
+    observed_queries: list[ship.rust_runtime.MainHealthQuery] = []
     postmerge_calls: list[str] = []
 
-    def read_main_health(
+    def ci_main_health(
         _runner: RecordingRunner,
-        query: ship.main_health.MainHealthQuery,
-    ) -> ship.main_health.MainHealthStatus:
+        query: ship.rust_runtime.MainHealthQuery,
+        **_kwargs: object,
+    ) -> ship.rust_runtime.MainHealthOutput:
         observed_queries.append(query)
-        return ship.main_health.MainHealthStatus(status="pass", head_sha=query.head_sha or "", detail="green")
+        return ship.rust_runtime.MainHealthOutput(
+            status="pass",
+            head_sha=query.head_sha,
+            detail="green",
+        )
 
     def run_postmerge_phase(*_args: object, **_kwargs: object) -> ship.ShipResult:
         postmerge_calls.append("postmerge")
         return ship.ShipResult(Outcome.OK, detail="postmerge")
 
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
-    monkeypatch.setattr(ship.main_health, "read_main_health", read_main_health)
+    monkeypatch.setattr(ship.rust_runtime, "ci_main_health", ci_main_health)
     monkeypatch.setattr(ship, "run_postmerge_phase", run_postmerge_phase)
 
     result = ship.run_ship(
@@ -5535,9 +5513,9 @@ def test_emergency_repair_resume_non_green_keeps_user_handoff(
 
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(
-        ship.main_health,
-        "read_main_health",
-        lambda *_a, **_k: ship.main_health.MainHealthStatus(
+        ship.rust_runtime,
+        "ci_main_health",
+        lambda *_a, **_k: ship.rust_runtime.MainHealthOutput(
             status="pending",
             head_sha="merge-sha",
             detail="still running",
@@ -5574,8 +5552,8 @@ def test_emergency_repair_resume_missing_head_keeps_user_handoff(
 
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(
-        ship.main_health,
-        "read_main_health",
+        ship.rust_runtime,
+        "ci_main_health",
         lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("main health forbidden")),
     )
     monkeypatch.setattr(
@@ -5609,8 +5587,8 @@ def test_emergency_repair_resume_with_repair_branch_keeps_user_handoff(
 
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "repair/feat")
     monkeypatch.setattr(
-        ship.main_health,
-        "read_main_health",
+        ship.rust_runtime,
+        "ci_main_health",
         lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("main health forbidden")),
     )
     monkeypatch.setattr(
@@ -5654,17 +5632,18 @@ def test_premerge_main_health_gate_uses_commit_scoped_head_sha(
         ref = str(args[1]) if len(args) > 1 else str(kwargs.get("ref", ""))
         return "base-sha" if ref == "origin/main" else ""
 
-    def read_main_health(*_args: object, **kwargs: object) -> ship.main_health.MainHealthStatus:
-        query = kwargs.get("query")
-        if query is None:
-            query = _args[1]
-        query = cast("ship.main_health.MainHealthQuery", query)
-        observed["head_sha"] = query.head_sha or ""
-        return ship.main_health.MainHealthStatus(status="pass", head_sha=query.head_sha or "", detail="ok")
+    def ci_main_health(
+        _runner: RecordingRunner,
+        query: ship.rust_runtime.MainHealthQuery,
+        **_kwargs: object,
+    ) -> ship.rust_runtime.MainHealthOutput:
+        head_sha = query.head_sha
+        observed["head_sha"] = head_sha
+        return ship.rust_runtime.MainHealthOutput(status="pass", head_sha=head_sha, detail="ok")
 
     monkeypatch.setattr(ship.git, "fetch", fetch)
     monkeypatch.setattr(ship.git, "try_rev_parse", try_rev_parse)
-    monkeypatch.setattr(ship.main_health, "read_main_health", read_main_health)
+    monkeypatch.setattr(ship.rust_runtime, "ci_main_health", ci_main_health)
 
     result = ship._premerge_main_health_gate(  # pyright: ignore[reportPrivateUsage]
         runner=RecordingRunner(),
@@ -5701,12 +5680,12 @@ def test_premerge_main_health_gate_skip_continues(
         ref = str(args[1]) if len(args) > 1 else str(kwargs.get("ref", ""))
         return "base-sha" if ref == "origin/main" else ""
 
-    def read_main_health(*_args: object, **_kwargs: object) -> ship.main_health.MainHealthStatus:
-        return ship.main_health.MainHealthStatus(status="skip", detail="workflow absent")
+    def ci_main_health(*_args: object, **_kwargs: object) -> ship.rust_runtime.MainHealthOutput:
+        return ship.rust_runtime.MainHealthOutput(status="skip", detail="workflow absent")
 
     monkeypatch.setattr(ship.git, "fetch", fetch)
     monkeypatch.setattr(ship.git, "try_rev_parse", try_rev_parse)
-    monkeypatch.setattr(ship.main_health, "read_main_health", read_main_health)
+    monkeypatch.setattr(ship.rust_runtime, "ci_main_health", ci_main_health)
 
     result = ship._premerge_main_health_gate(  # pyright: ignore[reportPrivateUsage]
         runner=RecordingRunner(),
@@ -9013,9 +8992,9 @@ def test_distill_ci_errors_main_scope_returns_file_and_count(
     # path and the failing-job count are both returned for the handoff.
     result = _ci_fix_result(config.NEEDS_USER_MAIN_CI_FAIL, "123456")
     monkeypatch.setattr(
-        ship.ci, "distill_log",
-        lambda **kwargs: ship.ci.DistillOutcome(
-            exit_code=0, status="ok", output=str(kwargs["output"]),
+        ship.rust_runtime, "ci_distill_log",
+        lambda _runner, request: ship.rust_runtime.DistillLogOutput(
+            exit_code=0, status="ok", output=str(request.output),
             failed_jobs_count=4, bail_class="",
         ),
     )
@@ -9032,9 +9011,9 @@ def test_distill_ci_errors_propagates_class_and_count_on_failure(
     # and the failing-job count.
     result = _ci_fix_result(config.NEEDS_USER_FLAKY_DEFECT_UNFIXED, "123456")
     monkeypatch.setattr(
-        ship.ci, "distill_log",
-        lambda **kwargs: ship.ci.DistillOutcome(
-            exit_code=1, status="error", output=str(kwargs["output"]),
+        ship.rust_runtime, "ci_distill_log",
+        lambda _runner, request: ship.rust_runtime.DistillLogOutput(
+            exit_code=1, status="error", output=str(request.output),
             failed_jobs_count=2, bail_class=config.CI_FIXER_STATUS_HEALTH_BAIL,
         ),
     )
@@ -9051,10 +9030,10 @@ def test_distill_ci_errors_exception_never_blocks_bail(
     # zero count so it can never block the ci-fix bail.
     result = _ci_fix_result(config.NEEDS_USER_MAIN_CI_FAIL, "123456")
 
-    def _boom(**_kwargs: object) -> ship.ci.DistillOutcome:
-        raise RuntimeError("gh unavailable")
+    def _boom(*_args: object, **_kwargs: object) -> ship.rust_runtime.DistillLogOutput:
+        raise RuntimeError("GitHub unavailable")
 
-    monkeypatch.setattr(ship.ci, "distill_log", _boom)
+    monkeypatch.setattr(ship.rust_runtime, "ci_distill_log", _boom)
     assert ship._distill_ci_errors_for_result(ctx=_ctx(tmp_path), result=result) == ("", "distill-exception", 0)
 
 

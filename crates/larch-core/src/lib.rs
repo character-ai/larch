@@ -7,6 +7,7 @@ mod attestation;
 mod audit_umbrella;
 mod bgjob;
 mod bgjob_daemon;
+mod ci_failure;
 mod ci_monitor;
 mod ci_timing;
 mod complete_umbrella;
@@ -174,6 +175,14 @@ pub use connectivity::{
     WaitOnlineError, WaitOnlinePolicy, WaitOnlinePolicyError, WaitOnlineResult, wait_online,
 };
 
+pub use ci_failure::{
+    CI_FIXER_STATUS_HEALTH_BAIL, JobClass, MAIN_HEALTH_DEFAULT_WORKFLOW,
+    MAIN_HEALTH_DETAIL_MAX_CHARS, MAIN_HEALTH_RUN_LIST_LIMIT,
+    MAIN_HEALTH_WAIT_POLL_INTERVAL_SECONDS, MAIN_HEALTH_WAIT_TIMEOUT_SECONDS, MainHealthStatus,
+    MainHealthVerdict, MainHealthWaitStep, bounded_detail, classify_failed_jobs,
+    classify_main_health, distill_digest, main_health_flap_status, main_health_wait_step,
+    render_failed_job_log, sanitize_job_list,
+};
 pub use ci_monitor::{
     CI_MAX_FIX_ATTEMPTS, CI_MAX_ITERATIONS, CI_MAX_REBASES, CI_POLL_INTERVAL_SECONDS,
     CI_STATUS_FAILURE_LIMIT, CheckObservation, CiCounters, CiDecision, CiStatus, CiStatusKind,

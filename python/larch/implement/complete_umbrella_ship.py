@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import Final
 
 from larch import io as larch_io
-from larch.core import config, logging_util, proc, redact, retry, repo_roots
+from larch.core import config, logging_util, proc, redact, retry, repo_roots, rust_runtime
 from larch.core.proc import CommandResult, Runner
 from larch.errors import ShipError
 from larch.git import gh, git, pr_body, push
-from larch.implement import ci, ci_monitor
+from larch.implement import ci_monitor
 from larch.issue import issue_mutation, tracking_issue
 from larch.state.session_env import is_allowed_session_tmpdir
 
@@ -984,12 +984,14 @@ def _distill_ci_failure(
         raise ShipError("failed CI did not expose a numeric Actions run id")
     output = request.handoff_root / f"ci-errors-{run_id}.md"
     for attempt in range(config.COMPLETE_UMBRELLA_CI_LOG_READY_ATTEMPTS):
-        outcome = ci.distill_log_to_root(
-            runner=runner,
-            run_id=run_id,
-            repo=request.repository,
-            output=output,
-            trusted_root=request.handoff_root,
+        outcome = rust_runtime.ci_distill_log(
+            runner,
+            rust_runtime.DistillLogRequest(
+                run_id=run_id,
+                repo=request.repository,
+                output=output,
+                trusted_root=request.handoff_root,
+            ),
         )
         if outcome.status == "ok":
             return output

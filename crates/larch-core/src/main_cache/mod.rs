@@ -135,6 +135,7 @@ mod tests {
             conclusion: conclusion.map(str::to_owned),
             head_sha: sha.to_owned(),
             event: event.to_owned(),
+            workflow_name: "CI".to_owned(),
             attempt: 1,
         }
     }

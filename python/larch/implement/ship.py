@@ -47,7 +47,7 @@ import re
 import traceback
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
@@ -55,8 +55,6 @@ from larch import io as larch_io
 from larch.core import architectural_guidelines
 from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS
 from larch.implement import ci_monitor
-from larch.implement import ci
-from larch.implement import main_health
 from larch.implement import scope_disposition
 from larch.core import config
 from larch.implement.dispatch_helpers import _invoke_larch
@@ -70,6 +68,7 @@ from larch.git import merge
 from larch.git import pr
 from larch.git import pr_body
 from larch.core import proc
+from larch.core import rust_runtime
 from larch.core import rust_runtime as run_log_flush
 from larch.git import push
 from larch.core import redact
@@ -917,23 +916,17 @@ def _postmerge_main_health_gate(
             merge_result=working.merge_result,
             detail=detail,
         )
-    waited = main_health.wait_main_health(
+    health = rust_runtime.ci_main_health(
         runner,
-        main_health.MainHealthWaitQuery(
-            health=main_health.MainHealthQuery(
-                repo=working.repo,
-                base_branch="main",
-                workflow=config.MAIN_HEALTH_DEFAULT_WORKFLOW,
-                limit=config.MAIN_HEALTH_RUN_LIST_LIMIT,
-                cwd=cwd,
-                head_sha=merged_head,
-                skip_flap_check=counters.transient_retries > 0,
-            ),
-            timeout=config.MAIN_HEALTH_WAIT_TIMEOUT_SEC,
-            interval=config.MAIN_HEALTH_WAIT_POLL_INTERVAL_SEC,
+        rust_runtime.MainHealthQuery(
+            repo=working.repo,
+            base_ref="main",
+            head_sha=merged_head,
+            skip_flap_check=counters.transient_retries > 0,
+            wait=True,
         ),
+        cwd=cwd,
     )
-    health = waited.health
     if health.status in {"pass", "skip"}:
         return None
     if health.status == "fail":
@@ -1048,7 +1041,7 @@ def _read_main_health_sidecar(ctx: RunContext) -> dict[str, str]:
 def _main_health_repair_covers_active_failure(
     *,
     ctx: RunContext,
-    health: main_health.MainHealthStatus,
+    health: rust_runtime.MainHealthOutput,
 ) -> bool:
     sidecar = _read_main_health_sidecar(ctx)
     return (
@@ -1099,34 +1092,14 @@ def _premerge_main_health_gate(
             pr_url=working.pr_url,
             detail=detail,
         )
-    health = main_health.read_main_health(
-        runner,
-        main_health.MainHealthQuery(
-            repo=working.repo,
-            base_branch=base_ref,
-            workflow=config.MAIN_HEALTH_DEFAULT_WORKFLOW,
-            limit=config.MAIN_HEALTH_RUN_LIST_LIMIT,
-            cwd=repo_root,
-            head_sha=base_head,
-        ),
+    query = rust_runtime.MainHealthQuery(
+        repo=working.repo, base_ref=base_ref, head_sha=base_head
     )
+    health = rust_runtime.ci_main_health(runner, query, cwd=repo_root)
     if health.status in {"pending", "error"}:
-        waited = main_health.wait_main_health(
-            runner,
-            main_health.MainHealthWaitQuery(
-                health=main_health.MainHealthQuery(
-                    repo=working.repo,
-                    base_branch=base_ref,
-                    workflow=config.MAIN_HEALTH_DEFAULT_WORKFLOW,
-                    limit=config.MAIN_HEALTH_RUN_LIST_LIMIT,
-                    cwd=repo_root,
-                    head_sha=base_head,
-                ),
-                timeout=config.MAIN_HEALTH_WAIT_TIMEOUT_SEC,
-                interval=config.MAIN_HEALTH_WAIT_POLL_INTERVAL_SEC,
-            ),
+        health = rust_runtime.ci_main_health(
+            runner, replace(query, wait=True), cwd=repo_root
         )
-        health = waited.health
     if health.status == "pass":
         return None
     if health.status == "skip":
@@ -1448,17 +1421,15 @@ def _emergency_repair_transient_recovery_result(
     ).strip()
     if repair_branch or not repair_head:
         return None
-    health = main_health.read_main_health(
+    health = rust_runtime.ci_main_health(
         runner,
-        main_health.MainHealthQuery(
+        rust_runtime.MainHealthQuery(
             repo=working.repo,
-            base_branch="main",
-            workflow=config.MAIN_HEALTH_DEFAULT_WORKFLOW,
-            limit=config.MAIN_HEALTH_RUN_LIST_LIMIT,
-            cwd=repo_root,
+            base_ref="main",
             head_sha=repair_head,
             skip_flap_check=True,
         ),
+        cwd=repo_root,
     )
     if health.status != "pass":
         return None
@@ -2372,7 +2343,9 @@ def _distill_ci_errors_for_result(*, ctx: RunContext, result: ShipResult) -> tup
         return "", "", 0
     output = Path(ctx.tmpdir) / f"ci-errors-{run_id}.md"
     try:
-        outcome = ci.distill_log(run_id=run_id, repo=ctx.repo, output=output)
+        outcome = rust_runtime.ci_distill_log(
+            proc, rust_runtime.DistillLogRequest(run_id=run_id, repo=ctx.repo, output=output)
+        )
     except Exception as exc:  # pylint: disable=broad-exception-caught  # distill must never block the ci-fix bail
         logging_util.BreadcrumbWriter().emit(f"ship.py: ci distill-log failed: {exc}")
         return "", "distill-exception", 0

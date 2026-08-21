@@ -48,6 +48,53 @@ class PushOutput:
 
 
 @dataclass(frozen=True)
+class MainHealthQuery:
+    """One ``ci main-health`` probe scope."""
+
+    repo: str
+    base_ref: str
+    head_sha: str = ""
+    skip_flap_check: bool = False
+    wait: bool = False
+
+
+@dataclass(frozen=True)
+class MainHealthOutput:
+    """Validated result from the Rust-owned ``ci main-health`` command."""
+
+    status: str
+    failed_run_id: str = ""
+    head_sha: str = ""
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class DistillLogRequest:
+    """One ``ci distill-log`` digest request.
+
+    ``trusted_root`` names the session root the digest must resolve under for
+    callers that own an artifact directory outside the ambient
+    ``IMPLEMENT_TMPDIR`` session.
+    """
+
+    run_id: str
+    repo: str
+    output: Path
+    trusted_root: Path | None = None
+
+
+@dataclass(frozen=True)
+class DistillLogOutput:
+    """Validated result from the Rust-owned ``ci distill-log`` command."""
+
+    exit_code: int
+    status: str
+    output: str
+    failed_jobs_count: int
+    bail_class: str
+
+
+@dataclass(frozen=True)
 class IssueStateOutput:
     """Validated result from the Rust-owned ``issue state`` command.
 
@@ -556,6 +603,85 @@ def push_branch(runner: Runner, *, cwd: str | None = None) -> PushOutput:
     if not branch:
         return PushOutput(status="failed")
     return PushOutput(status="pushed", branch=branch)
+
+
+def ci_main_health(
+    runner: Runner,
+    query: MainHealthQuery,
+    *,
+    cwd: str | None = None,
+) -> MainHealthOutput:
+    """Invoke the Rust owner and degrade every unusable read to ``error``."""
+    argv: list[str] = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "ci",
+        "main-health",
+        "--repo",
+        query.repo,
+        "--base-ref",
+        query.base_ref,
+    ]
+    if query.head_sha:
+        argv.extend(["--commit", query.head_sha])
+    if query.skip_flap_check:
+        argv.append("--skip-flap-check")
+    if query.wait:
+        argv.append("--wait")
+    result = runner.run(argv, cwd=cwd)
+    values = larch_io.parse_kv(result.stdout, skip_empty_key=True)
+    status = values.get("MAIN_CI_STATUS", "")
+    if result.returncode != 0 or not status:
+        return MainHealthOutput(status="error", detail="main-health probe emitted no verdict")
+    return MainHealthOutput(
+        status=status,
+        failed_run_id=values.get("MAIN_FAILED_RUN_ID", ""),
+        head_sha=values.get("MAIN_HEALTH_HEAD_SHA", ""),
+        detail=values.get("MAIN_HEALTH_DETAIL", ""),
+    )
+
+
+def ci_distill_log(
+    runner: Runner,
+    request: DistillLogRequest,
+    *,
+    cwd: str | None = None,
+) -> DistillLogOutput:
+    """Invoke the Rust owner, declaring the root the digest must resolve under."""
+    output = request.output
+    argv = [
+        str(larch_entrypoint(Path(__file__).resolve().parents[3])),
+        "ci",
+        "distill-log",
+        "--run-id",
+        request.run_id,
+        "--repo",
+        request.repo,
+        "--output",
+        str(output),
+    ]
+    env: dict[str, str] | None = None
+    if request.trusted_root is not None:
+        env = dict(os.environ)
+        env[config.ENV_IMPLEMENT_TMPDIR] = str(request.trusted_root)
+    result = runner.run(argv, cwd=cwd, env=env)
+    values = larch_io.parse_kv(result.stdout, skip_empty_key=True)
+    status = values.get("STATUS", "")
+    if not status:
+        return DistillLogOutput(
+            exit_code=result.returncode or config.EXIT_INTERNAL_ERROR,
+            status="error",
+            output=str(output),
+            failed_jobs_count=0,
+            bail_class="github-log-failure",
+        )
+    count = values.get("FAILED_JOBS_COUNT", "0")
+    return DistillLogOutput(
+        exit_code=result.returncode,
+        status=status,
+        output=values.get("OUTPUT", str(output)),
+        failed_jobs_count=int(count) if count.isdigit() else 0,
+        bail_class=values.get("BAIL_CLASS", ""),
+    )
 
 
 def issue_state(

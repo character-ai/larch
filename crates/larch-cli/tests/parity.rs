@@ -92,6 +92,9 @@ impl CleanInstallCase {
             // The two Step 2b wrapper verbs ignore the unbound `--help` token and
             // then refuse on the missing `DESIGN_TMPDIR`, exiting 1.
             | "clean-install-design-step2b-drafter"
+            // `ci rerun-failed` prints its help and then exits with its own
+            // usage code, exactly as the retired `argparse` owner did.
+            | "clean-install-ci-rerun-failed"
             | "clean-install-design-step2b-postplan" => 1,
             // `design parse-flags` owns the frozen Step 0-pre grammar: the
             // clean-install `--help` token is an unrecognized public flag and
@@ -112,6 +115,11 @@ impl CleanInstallCase {
             // cannot use, and each write verb reports for its missing required
             // option.
             "clean-install-block-issue-add-blocked-by"
+            // The four remaining CI failure verbs print their help and then
+            // exit with the retired `argparse` usage code.
+            | "clean-install-ci-behind-count"
+            | "clean-install-ci-failed-jobs"
+            | "clean-install-ci-main-health"
             | "clean-install-block-issue-remove-blocked-by"
             | "clean-install-issue-insert-signal-marker"
             | "clean-install-issue-title-archival-jq"
@@ -1629,6 +1637,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-ci-timing-pytest", "ci-timing", "pytest"),
     CleanInstallCase::new("clean-install-ci-gitleaks-base", "ci", "gitleaks-base"),
+    CleanInstallCase::new("clean-install-ci-behind-count", "ci", "behind-count"),
+    CleanInstallCase::new("clean-install-ci-distill-log", "ci", "distill-log"),
+    CleanInstallCase::new("clean-install-ci-failed-jobs", "ci", "failed-jobs"),
+    CleanInstallCase::new("clean-install-ci-main-health", "ci", "main-health"),
+    CleanInstallCase::new("clean-install-ci-rerun-failed", "ci", "rerun-failed"),
     CleanInstallCase::new("clean-install-ci-decide", "ci", "decide"),
     CleanInstallCase::new("clean-install-ci-status", "ci", "status"),
     CleanInstallCase::new("clean-install-ci-wait", "ci", "wait"),

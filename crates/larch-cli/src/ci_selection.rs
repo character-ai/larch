@@ -115,6 +115,21 @@ pub enum CiCommand {
     /// Poll pull-request CI until the next workflow action is known.
     #[command(disable_help_flag = true)]
     Wait(crate::ci_monitor_commands::Arguments),
+    /// Classify one failed run's jobs into locally fixable repair inputs.
+    #[command(name = "failed-jobs", disable_help_flag = true)]
+    FailedJobs(crate::ci_failure_commands::Arguments),
+    /// Write a bounded, redacted digest of one failed run's logs.
+    #[command(name = "distill-log", disable_help_flag = true)]
+    DistillLog(crate::ci_failure_commands::Arguments),
+    /// Ask GitHub to rerun only the failed jobs of one workflow run.
+    #[command(name = "rerun-failed", disable_help_flag = true)]
+    RerunFailed(crate::ci_failure_commands::Arguments),
+    /// Count how many base-branch commits the checkout is behind.
+    #[command(name = "behind-count", disable_help_flag = true)]
+    BehindCount(crate::ci_failure_commands::Arguments),
+    /// Report the default branch's push CI health.
+    #[command(name = "main-health", disable_help_flag = true)]
+    MainHealth(crate::ci_failure_commands::Arguments),
     /// Propose a fail-closed Rust CI selection for a pull-request candidate.
     RustSelect(CiRustSelectArguments),
     /// Render the selector result as a bounded GitHub step summary.
@@ -274,6 +289,11 @@ pub fn run(command: CiCommand) -> ExitCode {
         CiCommand::Decide(arguments) => crate::ci_monitor_commands::decide(&arguments),
         CiCommand::Status(arguments) => crate::ci_monitor_commands::status(&arguments),
         CiCommand::Wait(arguments) => crate::ci_monitor_commands::wait(&arguments),
+        CiCommand::FailedJobs(arguments) => crate::ci_failure_commands::failed_jobs(&arguments),
+        CiCommand::DistillLog(arguments) => crate::ci_failure_commands::distill_log(&arguments),
+        CiCommand::RerunFailed(arguments) => crate::ci_failure_commands::rerun_failed(&arguments),
+        CiCommand::BehindCount(arguments) => crate::ci_failure_commands::behind_count(&arguments),
+        CiCommand::MainHealth(arguments) => crate::ci_failure_commands::main_health(&arguments),
         CiCommand::RustSelect(arguments) => {
             let selection = select(
                 &arguments.event_name,

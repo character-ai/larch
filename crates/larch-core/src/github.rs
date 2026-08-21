@@ -622,6 +622,9 @@ pub struct WorkflowRun {
     pub conclusion: Option<String>,
     pub head_sha: String,
     pub event: String,
+    /// The run's workflow display name, which callers filter on because the
+    /// REST workflow selector accepts only a file name or numeric identifier.
+    pub workflow_name: String,
     pub attempt: u32,
 }
 

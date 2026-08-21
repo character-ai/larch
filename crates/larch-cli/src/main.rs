@@ -40,6 +40,7 @@ mod checks_lint_fix_commands;
 mod checks_run_relevant_commands;
 mod checks_rust_clippy_commands;
 mod child_process;
+mod ci_failure_commands;
 mod ci_launcher_commands;
 mod ci_monitor_commands;
 mod ci_policy_candidate_commands;

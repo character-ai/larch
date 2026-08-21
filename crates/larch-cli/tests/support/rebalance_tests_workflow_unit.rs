@@ -1206,6 +1206,7 @@ fn workflow_run_helpers_require_a_single_completed_success() {
         conclusion: Some("success".to_owned()),
         head_sha: head_sha.clone(),
         event: WORKFLOW_EVENT.to_owned(),
+        workflow_name: "CI".to_owned(),
         attempt: 1,
     };
     let filters = verification_run_filters("ci.yaml", "rebalance-fixture", &head_sha);
@@ -1384,6 +1385,7 @@ fn verification_run_selection_requires_one_matching_dispatch() {
         conclusion: Some("success".to_owned()),
         head_sha: head_sha.to_owned(),
         event: event.to_owned(),
+        workflow_name: "CI".to_owned(),
         attempt: 1,
     };
     let expected = "a";

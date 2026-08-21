@@ -1371,11 +1371,13 @@ verb = "behind-count"
 python_module = "larch.implement.ci"
 python_function = "behind_count_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8620
+clean_install_test = "clean-install-ci-behind-count"
 
 [[commands]]
 domain = "ci"
@@ -1397,11 +1399,13 @@ verb = "distill-log"
 python_module = "larch.implement.ci"
 python_function = "distill_log_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8620
+clean_install_test = "clean-install-ci-distill-log"
 
 [[commands]]
 domain = "ci"
@@ -1409,11 +1413,13 @@ verb = "failed-jobs"
 python_module = "larch.implement.ci"
 python_function = "failed_jobs_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8620
+clean_install_test = "clean-install-ci-failed-jobs"
 
 [[commands]]
 domain = "ci"
@@ -1435,11 +1441,13 @@ verb = "main-health"
 python_module = "larch.implement.ci"
 python_function = "main_health_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8620
+clean_install_test = "clean-install-ci-main-health"
 
 [[commands]]
 domain = "ci"
@@ -1475,11 +1483,13 @@ verb = "rerun-failed"
 python_module = "larch.implement.ci"
 python_function = "rerun_failed_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8620
+clean_install_test = "clean-install-ci-rerun-failed"
 
 [[commands]]
 domain = "ci"
@@ -9160,8 +9170,8 @@ rust = ["checks run-relevant"]
 [[callers]]
 path = "agents/ci-fixer.md"
 kind = "agent"
-python = ["ci distill-log"]
-rust = ["git checkout-ours", "git conflict-files", "git rebase-abort", "git rebase-skip", "git show-stage", "git stage", "push branch", "push rebase"]
+python = []
+rust = ["ci distill-log", "git checkout-ours", "git conflict-files", "git rebase-abort", "git rebase-skip", "git show-stage", "git stage", "push branch", "push rebase"]
 
 [[callers]]
 path = "agents/claude-implementer.md"
@@ -9203,7 +9213,7 @@ rust = []
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["block-issue *", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome", "timing *", "token append-record", "token dump", "token lane-report", "token lane-write", "token mark", "token record-vendor", "token record-vendor-sidecar", "tracking-issue *"]
+rust = ["block-issue *", "ci distill-log", "ci main-health", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "stall-recovery normalize-outcome", "timing *", "token append-record", "token dump", "token lane-report", "token lane-write", "token mark", "token record-vendor", "token record-vendor-sidecar", "tracking-issue *"]
 
 [[callers]]
 path = "python/larch/design/design_core.py"
@@ -9748,8 +9758,8 @@ rust = ["fluff-analysis analyze"]
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["ci distill-log", "ci main-health", "diagram code-flow", "diagrams upsert", "implement commit", "implement step-16-17", "implement step-17", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "tracking post-issue"]
-rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci status", "ci wait", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
+python = ["diagram code-flow", "diagrams upsert", "implement commit", "implement step-16-17", "implement step-17", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "ship normalize-assessment-handoff", "ship pr", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "tracking post-issue"]
+rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -9874,8 +9884,8 @@ rust = ["agent launch-codex-implement", "bgjob wait", "dirty-tree scope-check", 
 [[callers]]
 path = "skills/implement/references/step2-main-health-fix.md"
 kind = "skill"
-python = ["ci main-health"]
-rust = ["checks run-relevant", "implement run-dispatch"]
+python = []
+rust = ["checks run-relevant", "ci main-health", "implement run-dispatch"]
 
 [[callers]]
 path = "skills/implement/references/step5-review-branches.md"
