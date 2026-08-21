@@ -100,6 +100,8 @@ For each missing identity, persist `in-flight` before calling `/issue`:
 
 Invoke `/issue` via the Skill tool once for all missing leaves, with `--input-file`, `--title-prefix "[LEAF OF $UMBRELLA]"`, `--sentinel-file "$UMBRELLA_TMPDIR/issue.sentinel"`, and an umbrella exclusion. For a standard or adopted source, pass `--intra-batch-deps-file "$UMBRELLA_TMPDIR/drafted-deps.tsv"` when that file is non-empty, and pass `--no-dep-llm`; the persisted edges are authoritative while normal duplicate detection remains enabled. For a still-managed prepared-partition source, use `$UMBRELLA_TMPDIR/issue-input.txt`, pass `--intra-batch-deps-file "$UMBRELLA_TMPDIR/prepared-deps.tsv"` when the copied file is non-empty, and pass `--no-dep-llm`; the exact persisted parent-approved edges are authoritative while normal duplicate detection remains enabled. Use the copied or drafted TSV as the only filing-time edge source. A compatible managed resume has no missing leaves and skips this child call. In dependency-only mode pass the internal dependency-only flag and require a complete validated analysis result before creation or sentinel completion.
 
+The shared `/issue` create owner assigns every new issue to the GitHub user authenticated in `gh`, including a verbal-input source and every new leaf. Keep assignment owned by `/issue`; do not add a second path in `/umbrella`.
+
 > **Continue after child returns.** Parse the child machine output and execute this skill's next step; do not stop on the child summary. → shared/subskill-invocation.md#anti-halt
 
 Mechanically require `ISSUES_FAILED=0`, all expected per-item records, and `VERIFIED=true` from:
