@@ -42,7 +42,7 @@ use crate::design_commands::parse_stdout_kv;
 use crate::design_step0_commands::{
     ChildOutcome, Env, LiveStep0Runner, Step0Runner, WrapperNs, atomic_write_string, env_get,
     exit_from_i32, load_wrapper_env, pause_save_bridge, pause_save_captured, require_plugin_root,
-    utf8_arguments,
+    utf8_arguments, valid_var_name,
 };
 use crate::design_step1_commands::consumer_repo_root;
 use crate::python_verb::run_python_verb;
@@ -150,17 +150,6 @@ const POSTPLAN_FLUSH_ORDER: &[&str] = &[
     "STEP2B5_NEXT_ACTION",
     "STEP2B5_EXIT_RC",
 ];
-
-/// `larch_io._valid_var_name`.
-fn valid_var_name(value: &str) -> bool {
-    let mut chars = value.chars();
-    match chars.next() {
-        None => false,
-        Some(first) if first.is_ascii_digit() => false,
-        Some(first) if !(first.is_alphanumeric() || first == '_') => false,
-        Some(_) => chars.all(|ch| ch.is_alphanumeric() || ch == '_'),
-    }
-}
 
 /// Port of `_write_result_env` + `phase_driver_write_result_env`: refuse a
 /// symlink, allowlist keys, reject CR/LF values, then atomically write the rows.

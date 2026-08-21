@@ -885,6 +885,18 @@ pub fn exit_from_i32(code: i32) -> ExitCode {
     ExitCode::from(u8::try_from(code).unwrap_or(1))
 }
 
+/// Port of `larch_io._valid_var_name`: a non-empty name whose first character is
+/// a non-digit `[A-Za-z0-9_]` and whose remainder stays within that set.
+pub fn valid_var_name(value: &str) -> bool {
+    let mut chars = value.chars();
+    match chars.next() {
+        None => false,
+        Some(first) if first.is_ascii_digit() => false,
+        Some(first) if !(first.is_alphanumeric() || first == '_') => false,
+        Some(_) => chars.all(|ch| ch.is_alphanumeric() || ch == '_'),
+    }
+}
+
 /// Port of `phase_driver_read_result_env`: CR-free, allowlisted, order-preserving.
 pub fn phase_driver_read_result_env(
     path: &Path,

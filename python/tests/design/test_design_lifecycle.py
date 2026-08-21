@@ -24,8 +24,7 @@ from larch.design import (
 from larch.design import design_pause
 from larch.core import architectural_guidelines
 from larch.core import logging_util
-from larch.core.proc import CommandResult
-from tests.support.design_wire import dialectic_candidate_json, plan_body, run_params_json
+from tests.support.design_wire import plan_body
 from larch.state import session_env
 from larch.design.design_core import phase_driver_read_result_env
 
