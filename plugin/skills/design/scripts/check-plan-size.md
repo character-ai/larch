@@ -99,4 +99,4 @@ Merged mode treats rc 2/3 nonfatally in the driver; the Rust plan-review owner u
 
 ## Edit in sync
 
-Update config, `plan_quality.py`, publish/compose consumers, trailer scanners, tests, `docs/issue-anchored-plan.md`, this file, `flags.md`, and `SKILL.md` Step 2b / 2b.5 when changing thresholds or optional-trailer contracts.
+Update config, `crates/larch-cli/src/plan_quality_commands.rs`, publish/compose consumers, trailer scanners, tests, `docs/issue-anchored-plan.md`, this file, `flags.md`, and `SKILL.md` Step 2b / 2b.5 when changing thresholds or optional-trailer contracts.

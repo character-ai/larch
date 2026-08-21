@@ -6,9 +6,10 @@ black-box parity tested after production Python registration removal, mirroring
 snapshots of the retired ``python/larch/design/design_gate_render.py`` and
 ``python/larch/design/design_summary.py``.
 
-The frozen ``design_summary`` copy imports the surviving ``larch.design.design_core``
-/ ``larch.report`` / ``larch.core`` package modules directly, so no ``sys.modules``
-cross-import shim is needed. One documented harness adjustment remains:
+The frozen ``design_summary`` copy imports common package modules directly. The
+retired ``larch.design.design_core`` dependency is preloaded from the existing
+finalization fixture under its original module name. One documented harness
+adjustment remains:
 
 1. Subprocesses that ran through ``repo_roots.larch_entrypoint`` (``timing report``,
    ``run-log`` writes, the ``design failure-report`` gate, and the
@@ -26,6 +27,7 @@ import sys
 from pathlib import Path
 
 FROZEN = Path(__file__).resolve().parent / "design_gate_summary_frozen"
+CORE_FROZEN = Path(__file__).resolve().parent / "design_finalize_frozen" / "design_core.py"
 
 from larch.core import repo_roots as _repo_roots  # noqa: E402
 
@@ -53,6 +55,7 @@ def _load(name: str, path: Path):
     return module
 
 
+_core = _load("larch.design.design_core", CORE_FROZEN)
 _gate = _load("larch.design._frozen_design_gate_render", FROZEN / "design_gate_render.py")
 _summary = _load("larch.design._frozen_design_summary", FROZEN / "design_summary.py")
 

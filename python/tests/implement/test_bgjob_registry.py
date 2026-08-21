@@ -18,6 +18,28 @@ def _identity() -> process_identity.RecordedProcessIdentity:
     )
 
 
+def test_write_merge_result_env_confines_and_validates_rows(tmp_path: Path) -> None:
+    output = tmp_path / "bgjob" / "merge.env"
+    registry.write_merge_result_env(
+        path=output,
+        tmpdir=tmp_path,
+        rows=[("STATUS", "done"), ("ROUND", 3)],
+    )
+    assert output.read_text(encoding="utf-8") == "STATUS=done\nROUND=3\n"
+    with pytest.raises(ValueError, match="value contains newline"):
+        registry.write_merge_result_env(
+            path=output,
+            tmpdir=tmp_path,
+            rows=[("STATUS", "bad\nvalue")],
+        )
+    with pytest.raises(OSError, match="escapes DESIGN_TMPDIR"):
+        registry.write_merge_result_env(
+            path=tmp_path.parent / "outside.env",
+            tmpdir=tmp_path,
+            rows=[("STATUS", "bad")],
+        )
+
+
 def test_registry_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
     identity = _identity()

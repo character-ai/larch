@@ -2249,11 +2249,13 @@ verb = "dialectic-gatec"
 python_module = "larch.design.design_dialectic_debate"
 python_function = "gatec_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8593
+clean_install_test = "clean-install-design-dialectic-gatec"
 
 [[commands]]
 domain = "design"
@@ -2261,11 +2263,13 @@ verb = "dialectic-manual"
 python_module = "larch.design.design_dialectic_debate"
 python_function = "manual_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8593
+clean_install_test = "clean-install-design-dialectic-manual"
 
 [[commands]]
 domain = "design"
@@ -2455,11 +2459,13 @@ verb = "prelude"
 python_module = "larch.design.design_core"
 python_function = "prelude_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8593
+clean_install_test = "clean-install-design-prelude"
 
 [[commands]]
 domain = "design"
@@ -2772,11 +2778,13 @@ verb = "step3-continuation-entry"
 python_module = "larch.design.design_core"
 python_function = "step3_continuation_entry_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8593
+clean_install_test = "clean-install-design-step3-continuation-entry"
 
 [[commands]]
 domain = "design"
@@ -9280,18 +9288,6 @@ python = []
 rust = ["block-issue *", "ci distill-log", "ci main-health", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "ship write-result-env", "stall-recovery normalize-outcome", "timing *", "token append-record", "token dump", "token lane-report", "token lane-write", "token mark", "token record-vendor", "token record-vendor-sidecar", "tracking-issue *"]
 
 [[callers]]
-path = "python/larch/design/design_core.py"
-kind = "python-runtime"
-python = []
-rust = ["design failure-report", "design pause-save", "design read-result-env", "design render-final-summary", "design stage-terminal-state", "plan-review step3-state", "run-log append-failure", "timing mark"]
-
-[[callers]]
-path = "python/larch/design/design_dialectic_debate.py"
-kind = "python-runtime"
-python = []
-rust = ["agent launch-claude-subprocess", "design dialectic-clear-stale"]
-
-[[callers]]
 path = "python/larch/git/pr_body.py"
 kind = "python-runtime"
 python = []
@@ -9498,8 +9494,8 @@ rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps 
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design prelude", "design step3-continuation-entry", "mermaid sanitize"]
-rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
+python = ["architectural-guidelines read", "architectural-invariants read", "mermaid sanitize"]
+rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -9522,8 +9518,8 @@ rust = ["design postplan-emit", "design render-gate", "design step2b-postplan", 
 [[callers]]
 path = "skills/design/references/approval-gates-gate-c.md"
 kind = "skill"
-python = ["architectural-guidelines persist-design-assessment", "architectural-guidelines present-note", "architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design dialectic-manual"]
-rust = ["design read-result-env", "design render-gate", "design step35-settle", "plan-review filter-gate-b-skipped", "plan-review preview"]
+python = ["architectural-guidelines persist-design-assessment", "architectural-guidelines present-note", "architectural-invariants persist-design-assessment", "architectural-invariants present-note"]
+rust = ["design dialectic-manual", "design read-result-env", "design render-gate", "design step35-settle", "plan-review filter-gate-b-skipped", "plan-review preview"]
 
 [[callers]]
 path = "skills/design/references/approval-gates.md"
@@ -9553,7 +9549,7 @@ rust = ["design render-final-summary"]
 path = "skills/design/references/dialectic-clarifier.md"
 kind = "skill"
 python = []
-rust = ["agent launch-claude-subprocess", "design dialectic-write-candidates", "design step2b-postplan", "design step35-settle"]
+rust = ["agent launch-claude-subprocess", "design dialectic-gatec", "design dialectic-write-candidates", "design step2b-postplan", "design step35-settle"]
 
 [[callers]]
 path = "skills/design/references/discussion-rounds.md"
@@ -9696,8 +9692,8 @@ rust = ["design pause-save", "session require-plugin-root", "timing mark"]
 [[callers]]
 path = "skills/design/scripts/design-step3b-tail.sh"
 kind = "skill"
-python = ["design dialectic-gatec"]
-rust = ["bgjob adapt", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview", "session validate-design-tmpdir", "timing mark"]
+python = []
+rust = ["bgjob adapt", "design dialectic-gatec", "design driver", "design pause-save", "plan-review emit-rejected", "plan-review preview", "session validate-design-tmpdir", "timing mark"]
 
 [[callers]]
 path = "skills/design/scripts/design-step5b-annotate.md"

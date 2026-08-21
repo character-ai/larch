@@ -26,7 +26,6 @@ scripts/test-block-submodule-edit.sh
 scripts/test-cache-key-discipline.sh
 scripts/test-cache-root-validation.sh
 scripts/test-check-stale-plugin.sh
-scripts/test-compose-plan-goals-test.sh
 scripts/test-deny-edit-write.sh
 scripts/test-design-multi-round-integration.sh
 scripts/test-effort-prose.sh

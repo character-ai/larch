@@ -6,10 +6,10 @@ black-box parity tested after production Python registration removal, mirroring
 byte-identical copies of the retired
 ``python/larch/design/{design_step1,design_step_log}.py``.
 
-Unlike the Step 0 reference, these frozen copies import the surviving
-``larch.design.design_core``/``larch.core.repo_roots``/``larch.io`` package
-modules directly, so no ``sys.modules`` cross-import shim is needed. One
-documented harness adjustment remains:
+Unlike the Step 0 reference, these frozen copies import common package modules
+directly. The retired ``larch.design.design_core`` dependency is preloaded from
+the existing finalization fixture under its original module name. One documented
+harness adjustment remains:
 
 1. Subprocesses that ran through ``repo_roots.larch_entrypoint`` (plan-review
    emit/tally/finalize, plan validate, agent collect-results, dirty-tree
@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 
 FROZEN = Path(__file__).resolve().parent / "design_step1_frozen"
+CORE_FROZEN = Path(__file__).resolve().parent / "design_finalize_frozen" / "design_core.py"
 
 from larch.core import repo_roots as _repo_roots  # noqa: E402
 
@@ -59,6 +60,7 @@ def _load(name: str, path: Path):
     return module
 
 
+_core = _load("larch.design.design_core", CORE_FROZEN)
 _step1 = _load("larch.design._frozen_design_step1", FROZEN / "design_step1.py")
 _step_log = _load("larch.design._frozen_design_step_log", FROZEN / "design_step_log.py")
 

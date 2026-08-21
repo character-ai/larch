@@ -93,6 +93,7 @@ impl CleanInstallCase {
             // then refuse on the missing `DESIGN_TMPDIR`, exiting 1.
             | "clean-install-design-step2b-drafter"
             | "clean-install-design-step2b-postplan"
+            | "clean-install-design-step3-continuation-entry"
             | "clean-install-design-step5c"
             // `ci rerun-failed` prints its help and then exits with its own
             // usage code, exactly as the retired `argparse` owner did.
@@ -910,10 +911,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "init-runparams",
     ),
     CleanInstallCase::new("clean-install-design-driver", "design", "driver"),
+    CleanInstallCase::new("clean-install-design-prelude", "design", "prelude"),
     CleanInstallCase::new(
         "clean-install-design-dialectic-clear-stale",
         "design",
         "dialectic-clear-stale",
+    ),
+    CleanInstallCase::new(
+        "clean-install-design-dialectic-gatec",
+        "design",
+        "dialectic-gatec",
+    ),
+    CleanInstallCase::new(
+        "clean-install-design-dialectic-manual",
+        "design",
+        "dialectic-manual",
     ),
     CleanInstallCase::new(
         "clean-install-design-dialectic-promote-candidates",
@@ -955,6 +967,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "step0-ap-continue",
     ),
     CleanInstallCase::new("clean-install-design-step0c", "design", "step0c"),
+    CleanInstallCase::new(
+        "clean-install-design-step3-continuation-entry",
+        "design",
+        "step3-continuation-entry",
+    ),
     CleanInstallCase::new(
         "clean-install-design-step35-settle",
         "design",

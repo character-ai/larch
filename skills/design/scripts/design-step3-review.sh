@@ -271,7 +271,7 @@ import sys
 from pathlib import Path
 
 from larch import io as larch_io
-from larch.design.design_core import design_write_merge_env
+from larch.bgjob.registry import write_merge_result_env
 
 source, destination, root = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
 current = source.lstat()
@@ -280,7 +280,7 @@ if not stat.S_ISREG(current.st_mode):
 values = larch_io.read_kvs(source, reject_cr=True, reject_symlink=True)
 if not values.get("NEXT_ACTION") or not (values.get("STEP3_REVIEW_LOOP_STATUS") or values.get("LOOP_STATUS")):
     raise SystemExit(1)
-design_write_merge_env(path=destination, design_tmpdir=root, rows=values.items())
+write_merge_result_env(path=destination, tmpdir=root, rows=values.items())
 PY
 }
 
@@ -290,12 +290,12 @@ step3_review_write_pause_result() {
 import sys
 from pathlib import Path
 
-from larch.design.design_core import design_write_merge_env
+from larch.bgjob.registry import write_merge_result_env
 
 path, root = Path(sys.argv[1]), Path(sys.argv[2])
-design_write_merge_env(
+write_merge_result_env(
     path=path,
-    design_tmpdir=root,
+    tmpdir=root,
     rows=[
         ("NEXT_ACTION", "pause-save"),
         ("STEP3_REVIEW_LOOP_STATUS", "pause-save"),

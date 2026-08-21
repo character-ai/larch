@@ -30,9 +30,10 @@ pub use decompose::{
 };
 pub use dialectic::{
     DialecticCandidate, DialecticCandidateSet, DialecticShapeError, MAX_DIALECTIC_DECISIONS,
-    dialectic_option_in_plan, dialectic_plan_fingerprint, infer_dialectic_plan_choice,
-    normalize_dialectic_candidates, parse_dialectic_candidates, reconcile_dialectic_candidates,
-    render_dialectic_candidates_compact, render_dialectic_candidates_pretty,
+    dialectic_option_in_plan, dialectic_plan_fingerprint, dialectic_slugify,
+    infer_dialectic_plan_choice, normalize_dialectic_candidates, parse_dialectic_candidates,
+    reconcile_dialectic_candidates, render_dialectic_candidates_compact,
+    render_dialectic_candidates_pretty,
 };
 pub use log_publish::{
     GUIDELINE_ASSESSMENT_ARTIFACT, INVARIANT_ASSESSMENT_ARTIFACT, assessment_present,

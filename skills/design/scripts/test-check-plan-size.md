@@ -1,6 +1,6 @@
 # skills/design/scripts/test-check-plan-size.md
 
-Offline regression harness for `scripts/larch.sh plan check-size` (implementation: [`python/plan_quality.py`](../../../python/plan_quality.py)). Invoked via `make test-check-plan-size` (`pytest -k check_plan_size` in [`python/test_plan_quality.py`](../../../python/test_plan_quality.py)). Captures the `emit_kv` contract stream with `LARCH_QUIET_DISABLE=1` (same pattern as [`test-emit-plan.sh`](test-emit-plan.sh)).
+Offline regression contract for `scripts/larch.sh plan check-size` (implementation: [`plan_quality_commands.rs`](../../../crates/larch-cli/src/plan_quality_commands.rs)). `make test-check-plan-size` runs the Rust migrated-parity suite against the frozen Python reference. The cases below describe the preserved command contract.
 
 ## Cases exercised
 

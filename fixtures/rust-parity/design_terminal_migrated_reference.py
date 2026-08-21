@@ -5,10 +5,10 @@ black-box parity tested after production Python registration removal, mirroring
 ``design_step1_migrated_reference.py``. The frozen module is a byte-identical
 copy of the retired ``python/larch/design/design_terminal.py``.
 
-The frozen copy imports the surviving ``larch.design.design_core`` /
-``larch.core.repo_roots`` / ``larch.io`` package modules directly, so no
-``sys.modules`` cross-import shim is needed. One documented harness adjustment
-remains:
+The frozen copy imports common package modules directly. The retired
+``larch.design.design_core`` dependency is preloaded from the existing
+finalization fixture under its original module name. One documented harness
+adjustment remains:
 
 1. Subprocesses that ran through ``repo_roots.larch_entrypoint`` (the
    ``stall-recovery`` children, ``run-log`` writes, and the still-Python
@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 
 FROZEN = Path(__file__).resolve().parent / "design_terminal_frozen"
+CORE_FROZEN = Path(__file__).resolve().parent / "design_finalize_frozen" / "design_core.py"
 
 from larch.core import repo_roots as _repo_roots  # noqa: E402
 
@@ -54,6 +55,7 @@ def _load(name: str, path: Path):
     return module
 
 
+_core = _load("larch.design.design_core", CORE_FROZEN)
 _terminal = _load("larch.design._frozen_design_terminal", FROZEN / "design_terminal.py")
 
 DISPATCH = {

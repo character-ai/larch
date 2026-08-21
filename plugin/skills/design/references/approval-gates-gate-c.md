@@ -152,7 +152,7 @@ Example baseline (extend, do not replace existing flags):
 
 **Gate C `Other` dispatch table**:
 
-1. `debate ...` or `debate-this ...` wins over every other interpretation. Write the verbatim Other text to `$DESIGN_TMPDIR/dialectic-manual-request.txt` via the Write tool, invoke `python/cli.py design dialectic-manual --design-tmpdir "$DESIGN_TMPDIR" --request-file "$DESIGN_TMPDIR/dialectic-manual-request.txt"`, print digest or shape-error help, then re-fire the same Gate C prompt. Do not pass operator text through `--request`.
+1. `debate ...` or `debate-this ...` wins over every other interpretation. Write the verbatim Other text to `$DESIGN_TMPDIR/dialectic-manual-request.txt` via the Write tool, invoke `scripts/larch.sh design dialectic-manual --design-tmpdir "$DESIGN_TMPDIR" --request-file "$DESIGN_TMPDIR/dialectic-manual-request.txt"`, print digest or shape-error help, then re-fire the same Gate C prompt. Do not pass operator text through `--request`.
 2. Full-plan phrases such as `full plan` or `show plan` use `scripts/larch.sh plan-review preview --variant full` and re-fire Gate C with the same rendered option set and `--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`.
 3. Unknown text prints short help listing both shapes, then re-fires Gate C with `--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`.
 

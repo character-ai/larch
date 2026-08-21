@@ -11,10 +11,8 @@
 //! `Env`/`env_get`/`utf8_arguments`/`entrypoint`/`exit_from_i32`, the
 //! `Step0Runner` child seam, and `phase_driver_read_result_env` — plus the
 //! larch-core plan-grammar, difficulty, architectural-knowledge, review-wire,
-//! and untrusted-block owners, rather than duplicating them. The still-Python
-//! `design dialectic-gatec` sibling is reached through the shared
-//! `run_python_verb` bridge, and Rust-owned sibling verbs (dialectic candidate
-//! commands, `design pause-save`,
+//! and untrusted-block owners, rather than duplicating them. Rust-owned sibling
+//! verbs (`design dialectic-gatec`, dialectic candidate commands, `design pause-save`,
 //! `plan-review emit/finalize/check-size/preview/drift-baseline`,
 //! `plan validate`, `agent launch-*-drafter`, `run-log`, `token`, `timing`) are
 //! reached through the verified `scripts/larch.sh` entrypoint.
@@ -25,7 +23,6 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::{Command, ExitCode},
-    time::Duration,
 };
 
 use larch_adapters::{read_optional_utf8_lossy, validate_design_tmpdir};
@@ -42,11 +39,10 @@ use crate::decompose_commands::which_binary;
 use crate::design_commands::parse_stdout_kv;
 use crate::design_step0_commands::{
     ChildOutcome, Env, LiveStep0Runner, Step0Runner, WrapperNs, atomic_write_string, env_get,
-    exit_from_i32, load_source_env_allowed, load_wrapper_env, pause_save_arguments,
-    require_plugin_root, utf8_arguments, valid_var_name, write_text,
+    exit_from_i32, load_source_env_allowed, load_wrapper_env, next_unknown_wrapper_arg,
+    pause_save_arguments, require_plugin_root, utf8_arguments, valid_var_name, write_text,
 };
 use crate::design_step1_commands::consumer_repo_root;
-use crate::python_verb::run_python_verb;
 
 // ===========================================================================
 // Test seam
@@ -60,7 +56,6 @@ use crate::python_verb::run_python_verb;
 trait Step2bSeam {
     fn larch(&self, args: &[String], env: &[(String, String)]) -> ChildOutcome;
     fn larch_inherit(&self, args: &[String]) -> i32;
-    fn python(&self, args: &[OsString]) -> (i32, String, String);
     fn porcelain(&self) -> Option<String>;
     fn vendor(&self) -> VendorResult;
 }
@@ -215,18 +210,6 @@ fn run_larch(plugin_root: &Path, args: &[&str], env: &[(&str, &str)]) -> ChildOu
         return seam.larch(&owned, &owned_env);
     }
     LiveStep0Runner.run(plugin_root, &owned, &owned_env, false)
-}
-
-/// Run a still-Python verb, honoring the installed test seam when present.
-fn seam_python(args: Vec<OsString>) -> (i32, String, String) {
-    #[cfg(test)]
-    if let Some(seam) = current_seam() {
-        return seam.python(&args);
-    }
-    run_python_verb(args, Duration::from_secs(600))
-        .map_or((1, String::new(), String::new()), |output| {
-            output.decoded_streams()
-        })
 }
 
 /// Run the Rust-owned pause publisher through the same larch child seam as the
@@ -1067,15 +1050,7 @@ pub fn parse_common_wrapper_args(argv: &[String]) -> Result<WrapperArgs2b, Strin
             }
             _ => {}
         }
-        if token.starts_with("--")
-            && argv
-                .get(index + 1)
-                .is_some_and(|value| !value.starts_with("--"))
-        {
-            index += 2;
-        } else {
-            index += 1;
-        }
+        index = next_unknown_wrapper_arg(argv, index);
     }
     Ok(out)
 }
@@ -1092,13 +1067,7 @@ pub fn rehydrate_env(parsed: &WrapperArgs2b) -> Env {
         } else {
             parsed.plugin_root.clone()
         },
-        outcome: String::new(),
-        issue_number: String::new(),
-        exit_code: String::new(),
-        failure_detail_log: String::new(),
-        reason: String::new(),
-        tool: String::new(),
-        public_argv: Vec::new(),
+        ..WrapperNs::default()
     };
     let mut env = load_wrapper_env(&ns);
     let _ = env.insert(
@@ -2776,16 +2745,26 @@ fn run_finalize(plugin_root: &Path, design_tmpdir: &Path) -> i32 {
     outcome.code
 }
 
-/// `_run_step4_mode_probe`: run the still-Python Gate C probe, persist its
+/// `_run_step4_mode_probe`: run the Rust-owned Gate C probe, persist its
 /// streams, and publish the `STEP4_MODE` handoff.
 fn run_step4_mode_probe(design_tmpdir: &Path) -> i32 {
-    let (code, stdout, stderr) = seam_python(vec![
-        "design".into(),
-        "dialectic-gatec".into(),
-        "--design-tmpdir".into(),
-        design_tmpdir.as_os_str().to_owned(),
-        "--probe-only".into(),
-    ]);
+    let plugin_root = plugin_root_from_env();
+    let design_tmpdir_arg = design_tmpdir.to_string_lossy();
+    let ChildOutcome {
+        code,
+        stdout,
+        stderr,
+    } = run_larch(
+        &plugin_root,
+        &[
+            "design",
+            "dialectic-gatec",
+            "--design-tmpdir",
+            &design_tmpdir_arg,
+            "--probe-only",
+        ],
+        &[],
+    );
     if write_capture(&design_tmpdir.join("dialectic-gatec-probe.stdout"), &stdout).is_err()
         || write_capture(&design_tmpdir.join("dialectic-gatec-probe.stderr"), &stderr).is_err()
     {
@@ -3309,6 +3288,14 @@ mod tests {
                     },
                     stderr: String::new(),
                 },
+                (Some("design"), Some("dialectic-gatec")) => ChildOutcome {
+                    code: 0,
+                    stdout: self.gatec.as_deref().map_or_else(
+                        || "DIALECTIC_GATEC_DEBATE_REQUIRED=maybe\n".to_owned(),
+                        |value| format!("DIALECTIC_GATEC_DEBATE_REQUIRED={value}\n"),
+                    ),
+                    stderr: String::new(),
+                },
                 (Some("plan-review"), Some("json-get-bool")) => ChildOutcome {
                     code: 0,
                     stdout: format!("{}\n", self.partition),
@@ -3405,29 +3392,6 @@ mod tests {
                 let _ = fs::write(self.design.join(".pause-requested"), "");
             }
             self.drafter_rc
-        }
-
-        fn python(&self, args: &[OsString]) -> (i32, String, String) {
-            let tokens: Vec<String> = args
-                .iter()
-                .map(|value| value.to_string_lossy().into_owned())
-                .collect();
-            match (
-                tokens.first().map(String::as_str),
-                tokens.get(1).map(String::as_str),
-            ) {
-                (Some("design"), Some("pause-save")) => {
-                    panic!("Rust-owned design pause-save must use the larch seam")
-                }
-                (Some("design"), Some("dialectic-gatec")) => {
-                    let body = self.gatec.as_deref().map_or_else(
-                        || "DIALECTIC_GATEC_DEBATE_REQUIRED=maybe\n".to_owned(),
-                        |value| format!("DIALECTIC_GATEC_DEBATE_REQUIRED={value}\n"),
-                    );
-                    (0, body, String::new())
-                }
-                _ => (0, String::new(), String::new()),
-            }
         }
 
         fn porcelain(&self) -> Option<String> {

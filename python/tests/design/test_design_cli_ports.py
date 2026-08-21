@@ -50,6 +50,10 @@ def test_design_port_registry_entries_are_machine_stdout() -> None:
         ("design", "step6"),
         ("design", "step6-prelude"),
         ("design", "step6-cleanup"),
+        ("design", "prelude"),
+        ("design", "step3-continuation-entry"),
+        ("design", "dialectic-gatec"),
+        ("design", "dialectic-manual"),
     ):
         assert key not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     for key, target in AGENT_EXPECTED.items():

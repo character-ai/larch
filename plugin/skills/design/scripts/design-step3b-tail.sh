@@ -79,7 +79,7 @@ publish_step4_result() {
     "$DESIGN_TMPDIR/dialectic-clarifier-digest.md" <<'PY'
 from pathlib import Path
 import sys
-from larch.design.design_core import design_write_merge_env
+from larch.bgjob.registry import write_merge_result_env
 
 merge_env, design_tmpdir = Path(sys.argv[1]), Path(sys.argv[2])
 status, skip_gatec = sys.argv[3], sys.argv[4]
@@ -94,7 +94,7 @@ rows = [
 ]
 if digest_path.is_file() and not digest_path.is_symlink():
     rows.append(("DIALECTIC_GATEC_DIGEST_PATH", str(digest_path)))
-design_write_merge_env(path=merge_env, design_tmpdir=design_tmpdir, rows=rows)
+write_merge_result_env(path=merge_env, tmpdir=design_tmpdir, rows=rows)
 PY
 }
 
@@ -175,7 +175,7 @@ elif ( command grep -Eq '"skip_approve_requested"[[:space:]]*:[[:space:]]*true([
   _skip_approve_requested_gatec=true
 fi
 
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-gatec --design-tmpdir "$DESIGN_TMPDIR"
+"$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" design dialectic-gatec --design-tmpdir "$DESIGN_TMPDIR"
 mkdir -p "$DESIGN_TMPDIR/.completed"
 : > "$DESIGN_TMPDIR/.completed/dialectic-gatec-terminal"
 

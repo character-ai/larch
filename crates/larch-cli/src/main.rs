@@ -1358,6 +1358,9 @@ impl ClarifyCommand {
 
 #[derive(Subcommand)]
 enum DesignCommand {
+    /// Run the pause-only prelude for generated design fences (#8593).
+    #[command(disable_help_flag = true)]
+    Prelude(RawCompatibilityArguments),
     /// Drive the Step 0b clarification fetch or publish phase.
     #[command(disable_help_flag = true)]
     Clarify(RawCompatibilityArguments),
@@ -1469,6 +1472,12 @@ enum DesignCommand {
     /// Clear stale dialectic candidate artifacts (#8584).
     #[command(name = "dialectic-clear-stale", disable_help_flag = true)]
     DialecticClearStale(RawCompatibilityArguments),
+    /// Run the bounded Gate C dialectic clarifier (#8593).
+    #[command(name = "dialectic-gatec", disable_help_flag = true)]
+    DialecticGatec(RawCompatibilityArguments),
+    /// Run one operator-requested Gate C dialectic debate (#8593).
+    #[command(name = "dialectic-manual", disable_help_flag = true)]
+    DialecticManual(RawCompatibilityArguments),
     /// Settle the Gate A/B/C or discussion-round2 post-plan state (#8585).
     #[command(name = "step35-settle", disable_help_flag = true)]
     Step35Settle(RawCompatibilityArguments),
@@ -1496,6 +1505,9 @@ enum DesignCommand {
     /// Render the /design run's enriched final summary (#8581).
     #[command(name = "render-final-summary", disable_help_flag = true)]
     RenderFinalSummary(RawCompatibilityArguments),
+    /// Enter an automatic Step 3 continuation round (#8593).
+    #[command(name = "step3-continuation-entry", disable_help_flag = true)]
+    Step3ContinuationEntry(RawCompatibilityArguments),
 }
 
 impl DesignCommand {
@@ -1504,6 +1516,7 @@ impl DesignCommand {
         // grammar treats `--` as a meaningful token, and clap would eat it.
         let arguments = std::env::args_os().skip(3).collect::<Vec<_>>();
         match self {
+            Self::Prelude(_) => design_step0_commands::prelude(&arguments),
             Self::Clarify(_) => clarify_orchestrator::design_clarify_main(&arguments),
             Self::ParseFlags(_) => design_commands::parse_flags(&arguments),
             Self::Route(_) => design_commands::route(&arguments),
@@ -1553,6 +1566,8 @@ impl DesignCommand {
             Self::DialecticClearStale(_) => {
                 design_dialectic_commands::clear_stale_candidates(&arguments)
             }
+            Self::DialecticGatec(_) => design_dialectic_commands::gatec(&arguments),
+            Self::DialecticManual(_) => design_dialectic_commands::manual(&arguments),
             Self::Step35Settle(_) => design_settle_commands::step35_settle(&arguments),
             Self::Step5bPrepare(_) => design_settle_commands::step5b_prepare(&arguments),
             Self::Step5bAnnotate(_) => design_settle_commands::step5b_annotate(&arguments),
@@ -1563,6 +1578,9 @@ impl DesignCommand {
             Self::RenderGate(_) => design_gate_summary_commands::render_gate(&arguments),
             Self::RenderFinalSummary(_) => {
                 design_gate_summary_commands::render_final_summary(&arguments)
+            }
+            Self::Step3ContinuationEntry(_) => {
+                design_step0_commands::step3_continuation_entry(&arguments)
             }
         }
     }
