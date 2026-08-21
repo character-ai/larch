@@ -1,0 +1,36 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    },
+    "design/.missing-guideline-assessment-warning": {
+      "text": ""
+    },
+    "design/.missing-invariant-assessment-warning": {
+      "text": ""
+    },
+    "design/architectural-guideline-assessment.md": {
+      "text": "Deviation summary line.\nException: keep the legacy shim for one release (author: main-agent, date: 2026-08-20)\n"
+    },
+    "design/design-failure-report.stderr.log": {
+      "text": ""
+    },
+    "design/design-failure-report.stdout.log": {
+      "text": "DESIGN_FAILURE_REPORT_DECISION=skip\nDESIGN_FAILURE_REPORT_REASON=no-escalation-evidence\n"
+    },
+    "design/final-summary.md": {
+      "text": "**Gate C guideline exception recorded:** keep the legacy shim for one release (author: main-agent, date: 2026-08-20)\n\n**⚠ Missing architectural-invariant-assessment.md; Gate C assessment did not persist.**\n**⚠ Missing architectural-guideline-assessment.md; Gate C assessment did not persist.**\n\n## /design run unknown: approved\n\n- **Outcome**: ✅ DONE\n- **Duration**: N/A\n- **Cost**: N/A\n- **Issue**: N/A\n- **Plan review**: N/A\n- **Dynamic archetypes**: static-only, drafter absent\n- **OOS filed**: 0\n- **Exec issues**: 0\n- **Warnings**: 0\n- **Run log**: N/A\n- **Main agent model**: unknown\n- **Effort**: high\n- **Larch version**: 57.0.7\n\n<!-- larch:run-summary v=1 -->\n"
+    },
+    "design/manifest.json": {
+      "text": "{\"main_model\": \"claude-opus-4-8\", \"larch_version\": \"57.0.7\", \"effort\": \"high\"}\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "## /design run unknown: approved\n\n- **Outcome**: ✅ DONE\n- **Duration**: N/A\n- **Cost**: N/A\n- **Issue**: N/A\n- **Plan review**: N/A\n- **Dynamic archetypes**: static-only, drafter absent\n- **OOS filed**: 0\n- **Exec issues**: 0\n- **Warnings**: 0\n- **Run log**: N/A\n- **Main agent model**: unknown\n- **Effort**: high\n- **Larch version**: 57.0.7\n\n<!-- larch:run-summary v=1 -->\n"
+  }
+}

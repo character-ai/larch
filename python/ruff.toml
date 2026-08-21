@@ -347,12 +347,6 @@ ignore = [
     "PLR0912",
     "PLR0915",
 ]
-"design_summary.py" = [
-    "C901",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "execution_issues.py" = [
     "C901",
     "PLR0911",

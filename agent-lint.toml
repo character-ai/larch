@@ -1228,9 +1228,12 @@ closure-max-content-tokens = 26303
 # Issue #8589 retargets pause-save/load citations and replaces the retired
 # Python-test pointer, reducing the post-#8583 conditional closure by four
 # estimated tokens and three content tokens.
+# Issue #8581 retargets the design render-gate approval-gates citations to
+# scripts/larch.sh (slightly longer than python/cli.py), adding one estimated and
+# two content conditional tokens.
 conditional-max-lines = 779
-conditional-max-tokens = 19703
-conditional-max-content-tokens = 19632
+conditional-max-tokens = 19704
+conditional-max-content-tokens = 19634
 
 [[lint.prompt-source-budgets]]
 name = "implement"

@@ -144,6 +144,11 @@ impl CleanInstallCase {
             | "clean-install-design-stage-terminal-state"
             | "clean-install-design-failure-report"
             | "clean-install-design-step-final-summary"
+            // `render-final-summary` ignores the unbound `--help` token in its
+            // manual parser and then refuses on the unset `DESIGN_TMPDIR`,
+            // exiting 2 like the frozen Python owner. (`render-gate` owns a real
+            // `-h`/`--help` action and exits 0 by default.)
+            | "clean-install-design-render-final-summary"
             // Neither final-report verb declares a `--help` action either, so
             // the clean-install token reads as an unrecognized argument and each
             // refuses for its missing `--implement-tmpdir`.
@@ -783,6 +788,12 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-clarify-label", "clarify", "label"),
     CleanInstallCase::new("clean-install-design-clarify", "design", "clarify"),
     CleanInstallCase::new("clean-install-design-publish", "design", "publish"),
+    CleanInstallCase::new(
+        "clean-install-design-render-final-summary",
+        "design",
+        "render-final-summary",
+    ),
+    CleanInstallCase::new("clean-install-design-render-gate", "design", "render-gate"),
     CleanInstallCase::new("clean-install-design-step2b-drafter", "design", "step2b-drafter"),
     CleanInstallCase::new("clean-install-design-step2b-postplan", "design", "step2b-postplan"),
     CleanInstallCase::new("clean-install-design-postplan-emit", "design", "postplan-emit"),

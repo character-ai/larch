@@ -6,7 +6,6 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
-CLI="$ROOT/python/cli.py"
 LARCH="$ROOT/scripts/larch.sh"
 POSTPLAN_CLI=("$LARCH" design postplan-emit)
 SETTLE=("$LARCH" design step35-settle)
@@ -32,8 +31,6 @@ JSON
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
-
-python3 -m py_compile "$ROOT/python/larch/design/design_gate_render.py" || fail 'design_gate_render.py py_compile failed'
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/tgbam.XXXXXX")
 TMP=$(cd "$TMP" && pwd -P)
@@ -248,6 +245,25 @@ if [[ "\${1:-}" == design && "\${2:-}" == step2b-postplan ]]; then
   printf 'POSTPLAN_RC=%s\nPOSTPLAN_STATUS=%s\n' "\$POSTPLAN_RC" "\$status"
   exit 0
 fi
+# render-gate moved to the Rust owner (#8581). This lane has no compiled
+# artifact, so reproduce the one Gate B auto-apply breadcrumb the caller asserts.
+if [[ "\${1:-}" == design && "\${2:-}" == render-gate ]]; then
+  shift 2
+  gate="" accepted=0 approve=false
+  while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+      --gate) gate="\$2"; shift 2 ;;
+      --accepted-count) accepted="\$2"; shift 2 ;;
+      --approve-requested) approve="\$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  printf 'GATE_RENDER_STATUS=ok\nGATE=%s\n' "\$gate"
+  if [[ "\$gate" == B && "\$approve" == false ]]; then
+    printf 'AUTO_APPLY_MESSAGE=ℹ 3.5: Gate B — auto-applying %s accepted finding(s)\n' "\$accepted"
+  fi
+  exit 0
+fi
 exit 2
 EOF
   chmod +x "$LARCH_BINARY"
@@ -309,10 +325,10 @@ mk_design "$D_APPROVE"
 write_run_params "$D_APPROVE/run-params.json" true
 [[ "$(gate_b_mode "$D_APPROVE/run-params.json")" == explicit-prompt ]] || fail '--per-round-approval should restore explicit prompt'
 
-python3 "$CLI" design render-gate --gate B --accepted-count 3 --approve-requested false \
+"$LARCH" design render-gate --gate B --accepted-count 3 --approve-requested false \
   | grep -Fq 'AUTO_APPLY_MESSAGE=ℹ 3.5: Gate B — auto-applying 3 accepted finding(s)' \
   || fail 'render-gate missing default auto-apply breadcrumb'
-grep -Fq 'python/cli.py design render-gate --gate B --accepted-count "$N" --approve-requested false' "$APPROVAL_GATES" \
+grep -Fq 'scripts/larch.sh design render-gate --gate B --accepted-count "$N" --approve-requested false' "$APPROVAL_GATES" \
   || fail 'approval-gates missing default auto-apply renderer delegation'
 grep -Fq 'explicit per-round prompt' "$SKILL_MD" \
   || fail 'SKILL missing --per-round-approval explicit Gate B branch prose'

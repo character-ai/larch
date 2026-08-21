@@ -4,10 +4,9 @@
 //! then finishes through the shared Rust lifecycle owner. Preserves the
 //! KEY=value stdout grammar and the `.design-log-publish-metadata.env` sidecar.
 //!
-//! Still-Python siblings (`design render-final-summary`) route through
-//! [`crate::python_verb::run_python_verb`]. Rust siblings
-//! (`run-log lifecycle-*`, `run-log manifest`, `run-log capture-transcript`,
-//! `token claude-source`, `session write-design-env`) go through
+//! Rust siblings (`design render-final-summary` (#8581), `run-log lifecycle-*`,
+//! `run-log manifest`, `run-log capture-transcript`, `token claude-source`,
+//! `session write-design-env`) go through
 //! [`crate::runtime_entrypoint::run_verified_larch`].
 
 use std::{
@@ -29,12 +28,11 @@ use larch_core::{
 };
 
 use crate::{
-    python_verb::{plugin_root_directory, run_python_verb},
+    python_verb::plugin_root_directory,
     run_log_entry_commands::append_execution_issue,
     runtime_entrypoint::{run_verified_larch, run_verified_larch_with_timeout},
 };
 
-const RENDER_TIMEOUT: Duration = Duration::from_secs(180);
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(300);
 const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(600);
 
@@ -632,7 +630,9 @@ fn render_final_summary_before_copy(request: &LogPublishRequest, outcome: &str) 
     // Delete stale summary before render (matches Python render_final_summary_for_request).
     let summary = request.design_tmpdir.join("final-summary.md");
     let _ = fs::remove_file(&summary);
-    match run_python_verb(args, RENDER_TIMEOUT) {
+    // #8581 flipped `design render-final-summary` to a Rust owner, so this
+    // pre-copy render reaches it through the verified bootstrap.
+    match crate::runtime_entrypoint::run_verified_larch(&args) {
         Ok(output) => {
             let (code, stdout, _) = output_streams(&output);
             let _ = fs::write(&stdout_log, stdout);
@@ -641,7 +641,7 @@ fn render_final_summary_before_copy(request: &LogPublishRequest, outcome: &str) 
         Err(error) => {
             let _ = fs::write(
                 &stdout_log,
-                format!("render_final_summary_main failed: {error}\n"),
+                format!("render-final-summary failed: {error}\n"),
             );
             false
         }

@@ -9,7 +9,7 @@ use larch_adapters::runtime::LarchRuntime;
 use larch_adapters::s3_storage::{R2Endpoint, S3Storage};
 use larch_core::{
     ConfigKey, ConfigScope, KvDocument, MalformedLinePolicy, ManifestUpdate, ObjectStore,
-    ObjectStoreError, ParseOptions, RepositoryRead, RunLogLayout, RunLogSlug,
+    ObjectStoreError, ParseOptions, RepositoryRead, RunLogLayout, RunLogSlug, RunLogStorageMode,
     StorageConfigurationError, StoragePreflightError, ToolRepositoryStorage, TranscriptError,
     format_preflight_stdout, render_session_transcript as render_transcript,
     repository_leaf_from_remote, require_enabled_storage, resolve_run_log_storage,
@@ -499,6 +499,85 @@ pub fn resolve_repository_environment_path(
     let (repo_root, origin) = discover_repo_identity(&start)?;
     let environ: HashMap<String, String> = env::vars().collect();
     Ok((repo_root, origin, environ))
+}
+
+/// Storage-resolution reasons a disabled-publication manifest may carry.
+pub const DISABLED_STORAGE_REASONS: [&str; 3] = [
+    "config-file-missing",
+    "larch-table-missing",
+    "storage-base-uri-omitted",
+];
+
+/// Render the provider-neutral run identity a public summary carries for
+/// `skill` (`"implement"` or `"design"`).
+///
+/// A lifecycle manifest that pins this run to disabled storage answers first,
+/// because a run whose archive was never published must say so even when the
+/// clone's configuration has since changed. Otherwise the clone's own storage
+/// resolution names the provider, and any resolution failure reads as
+/// `unknown` rather than blocking the refresh.
+pub fn run_log_reference(
+    skill: &str,
+    repo_root: Option<&Path>,
+    run_id: &str,
+    manifest: &Path,
+) -> String {
+    let disabled = format!(
+        "no archive published because run-log storage was disabled, skill `{skill}`, run ID `{run_id}`"
+    );
+    if pins_disabled_publication(skill, manifest, run_id) {
+        return disabled;
+    }
+    let mut provider = "unknown".to_owned();
+    if let Some(repo_root) = repo_root
+        && let Ok((repo_root, origin, environ)) =
+            resolve_repository_environment_path(Some(repo_root))
+        && let Ok(resolution) = resolve_run_log_storage(&repo_root, &environ, &origin)
+    {
+        if resolution.mode() == RunLogStorageMode::Disabled {
+            return disabled;
+        }
+        if let Ok(storage) = require_enabled_storage(&resolution) {
+            storage.scheme().clone_into(&mut provider);
+        }
+    }
+    format!("provider `{provider}`, skill `{skill}`, run ID `{run_id}`")
+}
+
+/// Whether one lifecycle manifest pins this `skill` run to disabled publication.
+pub fn pins_disabled_publication(skill: &str, manifest: &Path, run_id: &str) -> bool {
+    if manifest.is_symlink() || !manifest.is_file() {
+        return false;
+    }
+    let Ok(serde_json::Value::Object(document)) = serde_json::from_str::<serde_json::Value>(
+        &crate::execution_issue_commands::read_lossy(manifest),
+    ) else {
+        return false;
+    };
+    let string = |key: &str| document.get(key).and_then(serde_json::Value::as_str);
+    if document
+        .get("lifecycle_schema_version")
+        .and_then(serde_json::Value::as_u64)
+        != Some(larch_core::LIFECYCLE_SCHEMA_VERSION)
+        || string("publication_mode") != Some("disabled")
+        || !string("storage_resolution_reason")
+            .is_some_and(|reason| DISABLED_STORAGE_REASONS.contains(&reason))
+        || string("skill") != Some(skill)
+        || string("run_id") != Some(run_id)
+    {
+        return false;
+    }
+    if !string("local_namespace_id").is_some_and(|value| {
+        value.len() == 64
+            && value
+                .chars()
+                .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
+    }) {
+        return false;
+    }
+    ["storage_base_uri", "tool_repo_uri", "storage_origin_id"]
+        .iter()
+        .all(|field| document.get(*field).is_none_or(serde_json::Value::is_null))
 }
 
 pub fn preflight_enabled_storage(
@@ -1035,5 +1114,107 @@ mod tests {
             ParseOutcome::Ok(value) => assert_eq!(value, "/tmp/repo"),
             ParseOutcome::Help | ParseOutcome::Error(_) => panic!("expected ok"),
         }
+    }
+}
+
+#[cfg(test)]
+mod reference_tests {
+    use super::{pins_disabled_publication, run_log_reference};
+    use std::fs;
+    use std::path::Path;
+
+    fn disabled_manifest_json(skill: &str, run_id: &str) -> String {
+        let namespace = "a".repeat(64);
+        format!(
+            r#"{{
+                "lifecycle_schema_version": 3,
+                "publication_mode": "disabled",
+                "storage_resolution_reason": "config-file-missing",
+                "skill": "{skill}",
+                "run_id": "{run_id}",
+                "local_namespace_id": "{namespace}",
+                "storage_base_uri": null,
+                "tool_repo_uri": null,
+                "storage_origin_id": null
+            }}"#
+        )
+    }
+
+    #[test]
+    fn pins_disabled_publication_accepts_a_well_formed_disabled_manifest() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let manifest = dir.path().join("manifest.json");
+        fs::write(&manifest, disabled_manifest_json("design", "run-1")).expect("write");
+        assert!(pins_disabled_publication("design", &manifest, "run-1"));
+    }
+
+    #[test]
+    fn pins_disabled_publication_rejects_mismatches_and_missing_files() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let manifest = dir.path().join("manifest.json");
+        // Missing file.
+        assert!(!pins_disabled_publication("design", &manifest, "run-1"));
+        // Wrong run id.
+        fs::write(&manifest, disabled_manifest_json("design", "other")).expect("write");
+        assert!(!pins_disabled_publication("design", &manifest, "run-1"));
+        // Wrong skill.
+        assert!(!pins_disabled_publication("implement", &manifest, "other"));
+        // Bad schema version.
+        fs::write(
+            &manifest,
+            disabled_manifest_json("design", "run-1").replace(
+                "\"lifecycle_schema_version\": 3",
+                "\"lifecycle_schema_version\": 1",
+            ),
+        )
+        .expect("write");
+        assert!(!pins_disabled_publication("design", &manifest, "run-1"));
+        // Non-null storage field.
+        fs::write(
+            &manifest,
+            disabled_manifest_json("design", "run-1").replace(
+                "\"storage_base_uri\": null",
+                "\"storage_base_uri\": \"gs://x\"",
+            ),
+        )
+        .expect("write");
+        assert!(!pins_disabled_publication("design", &manifest, "run-1"));
+        // Bad namespace id (not 64 hex chars).
+        fs::write(
+            &manifest,
+            disabled_manifest_json("design", "run-1").replace(&"a".repeat(64), "deadbeef"),
+        )
+        .expect("write");
+        assert!(!pins_disabled_publication("design", &manifest, "run-1"));
+        // Not JSON at all.
+        fs::write(&manifest, "not json").expect("write");
+        assert!(!pins_disabled_publication("design", &manifest, "run-1"));
+    }
+
+    #[test]
+    fn run_log_reference_reports_disabled_and_unknown_providers() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let manifest = dir.path().join("manifest.json");
+        // No manifest and no repo root: provider resolves to unknown.
+        let unknown = run_log_reference("design", None, "run-1", &manifest);
+        assert_eq!(
+            unknown,
+            "provider `unknown`, skill `design`, run ID `run-1`"
+        );
+        // A manifest pinning disabled publication answers first.
+        fs::write(&manifest, disabled_manifest_json("design", "run-1")).expect("write");
+        let disabled = run_log_reference("design", None, "run-1", &manifest);
+        assert_eq!(
+            disabled,
+            "no archive published because run-log storage was disabled, skill `design`, run ID `run-1`"
+        );
+        // Repo root that is not a resolvable larch repository stays unknown.
+        let stray: &Path = dir.path();
+        let missing = dir.path().join("absent.json");
+        let still_unknown = run_log_reference("implement", Some(stray), "run-9", &missing);
+        assert_eq!(
+            still_unknown,
+            "provider `unknown`, skill `implement`, run ID `run-9`"
+        );
     }
 }

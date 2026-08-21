@@ -432,6 +432,37 @@ pub struct BuildRecord<'a> {
     pub escalated_round: Option<bool>,
 }
 
+/// Compose the difficulty record a `/design` run persists for `rating`.
+///
+/// Both `/design` render owners build the identical `rater="design"` record;
+/// this shared constructor keeps that literal in one place.
+///
+/// # Errors
+/// Propagates `build_record`; the always-present `design_rating` makes the
+/// missing-source path unreachable here.
+pub fn build_design_record(rating: &DifficultyRating) -> Result<Map<String, Value>, String> {
+    build_record(BuildRecord {
+        rater: "design",
+        rater_tool: "claude",
+        rater_model: "unknown",
+        design_rating: Some(rating),
+        implement_rating: None,
+        fallback_rating: None,
+        changed_paths: &[],
+        floors: &[],
+        panel_skipped: "",
+        audit_upgrade: "",
+        escalations: &[],
+        override_source: "",
+        override_tier: "",
+        panel_tier: "",
+        round_cap: None,
+        codex_model_role: "",
+        audit_evaluated: None,
+        escalated_round: None,
+    })
+}
+
 /// Compose one record object.
 ///
 /// # Errors

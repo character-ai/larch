@@ -1053,7 +1053,7 @@ fn finish(options: &WriteOptions, body: &str, outcome: ReportOutcome) -> ReportO
 ///
 /// Every failure degrades to no assessments, which renders the same section
 /// without the per-item sentences, matching the Python owner's fail-soft path.
-fn assess_issue_details(
+pub fn assess_issue_details(
     tmpdir: &Path,
     category: &str,
     details: &[report::IssueDetail],

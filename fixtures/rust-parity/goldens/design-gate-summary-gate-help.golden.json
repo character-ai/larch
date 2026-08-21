@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: cli.py [-h] --gate {A,B,C} [--without-see-full-plan] [--accepted-count ACCEPTED_COUNT] [--approve-requested {false,true}] [--design-tmpdir DESIGN_TMPDIR] [--panel-failed {false,true}] [--accepted-audit-escalation {false,true}]\n\nRender /design Gate A/B/C prompt copy as KEY=value rows\n\noptions:\n  -h, --help            show this help message and exit\n  --gate {A,B,C}\n  --without-see-full-plan\n  --accepted-count ACCEPTED_COUNT\n  --approve-requested {false,true}\n  --design-tmpdir DESIGN_TMPDIR\n  --panel-failed {false,true}\n  --accepted-audit-escalation {false,true}\n"
+  }
+}

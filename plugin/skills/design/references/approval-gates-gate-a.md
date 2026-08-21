@@ -14,9 +14,9 @@
 
 **Behavior**: when post-plan scope or requirements questions appear discussed, prompt via `AskUserQuestion`.
 
-**Shape 2: re-entry from Gate B(c) or Gate C(b) (post-plan)**: run `python/cli.py design render-gate --gate A`. Pass the rendered `HEADER`, `QUESTION`, and option rows directly to `AskUserQuestion`.
+**Shape 2: re-entry from Gate B(c) or Gate C(b) (post-plan)**: run `scripts/larch.sh design render-gate --gate A`. Pass the rendered `HEADER`, `QUESTION`, and option rows directly to `AskUserQuestion`.
 
-- **See full plan**: if `$DESIGN_TMPDIR/plan.txt` is missing or empty, print `**⚠ plan.txt missing or empty; nothing to show.**` and re-prompt with `--without-see-full-plan` anyway. Otherwise re-display the current plan under `## Latest Design Plan` (verbatim, no diff vs. prior version), then run `python/cli.py design render-gate --gate A --without-see-full-plan` and re-fire with those rows. This option never mutates state or advances control.
+- **See full plan**: if `$DESIGN_TMPDIR/plan.txt` is missing or empty, print `**⚠ plan.txt missing or empty; nothing to show.**` and re-prompt with `--without-see-full-plan` anyway. Otherwise re-display the current plan under `## Latest Design Plan` (verbatim, no diff vs. prior version), then run `scripts/larch.sh design render-gate --gate A --without-see-full-plan` and re-fire with those rows. This option never mutates state or advances control.
 - **Ready for review**: **MANDATORY: READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review-runtime.md` completely before invoking `design-step3-entry.sh --reentry`. Route to the single Step 3 entry fence and proceed directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt`. Do not add a separate Gate A wrapper. Step 3 consumes the marker to restore the direct-review bypass package and clear stale review/final-approval sentinels before pause-check.
 - **Discuss more**: remain in Gate A; conduct another discussion sub-round, then re-render Gate A.
 

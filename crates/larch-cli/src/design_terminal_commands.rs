@@ -9,8 +9,9 @@
 //! The port follows the byte-frozen parity precedent of the sibling
 //! `design_step1_commands.rs` (#8579) and reuses the Step 0 wrapper library
 //! (`design_step0_commands.rs`) plus the `python_verb` seam for the still-Python
-//! `design render-final-summary` (#8581) and `design log-publish` (#8592)
-//! neighbors. The Rust `stall-recovery` owners are reached in-process the same
+//! `design log-publish` (#8592) neighbor. The Rust-owned `design
+//! render-final-summary` (#8581) is reached through the verified bootstrap. The
+//! Rust `stall-recovery` owners are reached in-process the same
 //! way the frozen Python module reached them: by re-invoking the larch
 //! entrypoint through the [`Step0Runner`] subprocess seam.
 
@@ -2301,22 +2302,28 @@ fn emit_and_complete_final_summary(design_tmpdir: &Path, final_summary_path: &st
     0
 }
 
+/// The report-gate sidecar files that exist and are non-empty, in emit order.
+///
+/// Shared by the two design final-summary emitters; each caller reads and
+/// formats the returned files with its own encoding and write/print policy.
+pub fn report_gate_sidecar_files(design_tmpdir: &Path) -> Vec<PathBuf> {
+    [
+        design_tmpdir.join("design-failure-chat-print.md"),
+        design_tmpdir.join("design-failure-operator-action-chat.md"),
+    ]
+    .into_iter()
+    .filter(|sidecar| sidecar.is_file() && sidecar.metadata().map(|m| m.len() > 0).unwrap_or(false))
+    .collect()
+}
+
 /// Port of `_emit_report_gate_sidecars_from_disk`.
 fn emit_report_gate_sidecars_from_disk(design_tmpdir: &Path) {
     let handoff = design_tmpdir.join("design-report-gate-sidecars.md");
-    let sidecars = [
-        design_tmpdir.join("design-failure-chat-print.md"),
-        design_tmpdir.join("design-failure-operator-action-chat.md"),
-    ];
-    let mut chunks: Vec<String> = Vec::new();
-    for sidecar in &sidecars {
-        if sidecar.is_file()
-            && sidecar.metadata().map(|m| m.len() > 0).unwrap_or(false)
-            && let Ok(bytes) = fs::read(sidecar)
-        {
-            chunks.push(String::from_utf8_lossy(&bytes).into_owned());
-        }
-    }
+    let chunks: Vec<String> = report_gate_sidecar_files(design_tmpdir)
+        .iter()
+        .filter_map(|sidecar| fs::read(sidecar).ok())
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .collect();
     let text = if chunks.is_empty() {
         String::new()
     } else {
@@ -2535,7 +2542,10 @@ fn render_final_summary_post_publish(design_tmpdir: &Path, ctx: &SummaryCtx) -> 
         args.push(ctx.repo.clone().into());
     }
     let render_stdout = design_tmpdir.join("render-final-summary.stdout.log");
-    match run_python_verb(args, PYTHON_BRIDGE_TIMEOUT) {
+    // #8581 flipped `design render-final-summary` to a Rust owner, so this
+    // neighbor now reaches it through the verified bootstrap (never the removed
+    // Python registration behind `run_python_verb`).
+    match crate::runtime_entrypoint::run_verified_larch(&args) {
         Ok(output) => {
             let _ = fs::write(&render_stdout, output.stdout());
             output.status().code().unwrap_or(1)

@@ -10,11 +10,11 @@
 
 ## Review-round cap
 
-Gate C option shaping comes from `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR"`. Consume `REVIEW_ROUND_CAP`, option rows, and optional `REVIEW_ROUND_COUNT_WARN`. Do not restate renderer cap math. Step 3 is the counter authority and enforces the fixed cap of 2 on every entry, including Gate C re-runs and Gate A **Ready for review** re-entry. Gate A **Discuss more** loops remain uncapped. Escalation changes panel tier and model role only; it does not add review rounds.
+Gate C option shaping comes from `scripts/larch.sh design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR"`. Consume `REVIEW_ROUND_CAP`, option rows, and optional `REVIEW_ROUND_COUNT_WARN`. Do not restate renderer cap math. Step 3 is the counter authority and enforces the fixed cap of 2 on every entry, including Gate C re-runs and Gate A **Ready for review** re-entry. Gate A **Discuss more** loops remain uncapped. Escalation changes panel tier and model role only; it does not add review rounds.
 
 ## Renderer parsing contract
 
-Run renderer commands as `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design render-gate ...`. Require `GATE_RENDER_STATUS=ok` and every `HEADER`, `QUESTION`, and `OPTION_*` field needed by `AskUserQuestion`; stop for repair on any miss. Do not reconstruct fallback prompt copy in prose. After Gate C `render-gate`, append the bounded Warning to `$DESIGN_TMPDIR/execution-issues.md` when `REVIEW_ROUND_COUNT_WARN=non-numeric` is present.
+Run renderer commands as `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" design render-gate ...`. Require `GATE_RENDER_STATUS=ok` and every `HEADER`, `QUESTION`, and `OPTION_*` field needed by `AskUserQuestion`; stop for repair on any miss. Do not reconstruct fallback prompt copy in prose. After Gate C `render-gate`, append the bounded Warning to `$DESIGN_TMPDIR/execution-issues.md` when `REVIEW_ROUND_COUNT_WARN=non-numeric` is present.
 
 ---
 

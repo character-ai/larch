@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "design render-final-summary: outcome not in enumeration: bogus-outcome\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

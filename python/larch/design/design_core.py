@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import fcntl
 import io
+import json
 import os
 import re
 import shutil
@@ -20,7 +21,7 @@ from larch import io as larch_io
 from larch.core import config, logging_util, proc, rust_runtime
 from larch.core import redact
 from larch.core.ctx import Ctx
-from larch.core.repo_roots import larch_entrypoint
+from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.state import session_env
 from larch.state.session_env import validate_design_tmpdir
 
@@ -356,6 +357,8 @@ def _design_verb_command(plugin_root: Path | None, verb: str, args: Sequence[str
         return [entrypoint, "design", "stage-terminal-state", *args]
     if verb == "failure-report":
         return [entrypoint, "design", "failure-report", *args]
+    if verb == "render-final-summary":
+        return [entrypoint, "design", "render-final-summary", *args]
     raise ValueError(f"unsupported Rust-owned design verb: {verb!r}")
 
 
@@ -1513,6 +1516,153 @@ def _publish_terminal_final_summary(
     publish_ok = _parse_contract_value(completed.stdout, "PUBLISH_OK")
     recovery_branch = _parse_contract_value(completed.stdout, "RECOVERY_BRANCH")
     return rc, rc == 0 and publish_ok == "true" and not recovery_branch
+
+def _read_source_env_value(*, path: Path, key: str) -> str:
+    """Read one ``KEY=value`` (or ``export KEY=value``) from a source-env file."""
+    if not path.is_file() or path.is_symlink():
+        return ""
+    export_prefix = f"export {key}="
+    prefix = f"{key}="
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith(export_prefix):
+            value = line[len(export_prefix):]
+        elif line.startswith(prefix):
+            value = line[len(prefix):]
+        else:
+            continue
+        return value.strip().strip('"').strip("'")
+    return ""
+
+
+def resolve_summary_mode(design_tmpdir: Path) -> str:
+    """Resolve the /design run mode for the final summary (relocated from #8581)."""
+    run_params = design_tmpdir / "run-params.json"
+    if run_params.is_file() and not run_params.is_symlink():
+        with contextlib.suppress(OSError, json.JSONDecodeError):
+            parsed = json.loads(run_params.read_text(encoding="utf-8"))
+            if isinstance(parsed, dict):
+                for key in ("mode", "MODE"):
+                    value = parsed.get(key)
+                    if isinstance(value, str) and value:
+                        return value
+    return _read_source_env_value(path=design_tmpdir / "source-env.sh", key="MODE") or "N/A"
+
+
+@dataclass(frozen=True)
+class FinalSummaryRenderRequest:
+    """Inputs for a non-gating final-summary render wrapper (relocated from #8581)."""
+
+    design_tmpdir: Path
+    outcome: str
+    mode: str
+    issue_number: str
+    session_id: str
+    repo: str
+    upsert_summary_comment: bool
+    stdout_log_path: Path
+    final_summary_path: Path | None = None
+
+
+def render_final_summary_for_request(request: FinalSummaryRenderRequest) -> bool:
+    """Render an enriched final summary through the Rust verb, returning success.
+
+    Relocated from the retired ``design_summary`` (#8581) and rewritten to invoke
+    the Rust ``design render-final-summary`` owner via the ``larch_entrypoint``
+    seam instead of the removed in-process command main.
+    """
+    out_file = request.design_tmpdir / "final-summary.md"
+    cleanup_paths = {out_file}
+    if request.final_summary_path is not None:
+        with contextlib.suppress(OSError):
+            summary_resolved = request.final_summary_path.resolve()
+            tmpdir_resolved = request.design_tmpdir.resolve()
+            if summary_resolved.is_relative_to(tmpdir_resolved):
+                cleanup_paths.add(summary_resolved)
+    for cleanup_path in cleanup_paths:
+        with contextlib.suppress(OSError):
+            cleanup_path.unlink()
+    args = [
+        "--outcome",
+        request.outcome,
+        "--mode",
+        request.mode or "N/A",
+        "--design-tmpdir",
+        str(request.design_tmpdir),
+        "--issue-number",
+        request.issue_number,
+    ]
+    if request.session_id:
+        args.extend(["--session-id", request.session_id])
+    args.append("--post-publish-only")
+    if request.repo:
+        args.extend(["--repo", request.repo])
+    if not request.upsert_summary_comment:
+        args.append("--skip-summary-upsert")
+    stderr_path = request.stdout_log_path.parent / f"{request.stdout_log_path.name}.stderr"
+    render_rc = 1
+    try:
+        request.stdout_log_path.parent.mkdir(parents=True, exist_ok=True)
+        render_rc = run_design_verb_captured(
+            verb="render-final-summary",
+            args=args,
+            stdout_path=request.stdout_log_path,
+            stderr_path=stderr_path,
+        )
+    except OSError as exc:
+        message = f"render-final-summary failed: {exc}"
+        print(f"design final-summary render: {message}", file=sys.stderr)
+        with contextlib.suppress(OSError):
+            _append_execution_issue(
+                design_tmpdir=request.design_tmpdir,
+                message=f"- **design-summary**: {message}",
+            )
+        render_rc = 1
+    if render_rc != 0:
+        for cleanup_path in cleanup_paths:
+            with contextlib.suppress(OSError):
+                cleanup_path.unlink()
+    return render_rc == 0
+
+
+def upsert_final_summary_from_disk(
+    *,
+    design_tmpdir: Path,
+    issue: str,
+    session_id: str,
+    repo_args: Sequence[str] | None = None,
+    final_summary_path: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> bool:
+    """Upsert a rendered final summary into the tracking issue (relocated from #8581)."""
+    del env
+    summary_path = final_summary_path or (design_tmpdir / "final-summary.md")
+    if summary_path.is_symlink() or not summary_path.is_file() or summary_path.stat().st_size == 0:
+        return False
+    if not issue or issue == "0" or not session_id:
+        return False
+    marker = f"<!-- larch:final-summary v1 runid={session_id} -->"
+    root = _design_verb_plugin_root(None)
+    ups_args: list[str] = [
+        str(larch_entrypoint(root)),
+        "tracking-issue",
+        "upsert-summary",
+        "--issue",
+        issue,
+        "--marker",
+        marker,
+        "--content-file",
+        str(summary_path),
+    ]
+    if repo_args:
+        ups_args.extend(repo_args)
+    try:
+        result = subprocess.run(  # lint-subprocess-via-runner: ok invokes the Rust-owned tracking-issue upsert-summary entrypoint for its exit code
+            ups_args, capture_output=True, text=True, check=False, env=larch_entrypoint_env(root)
+        )
+    except OSError:
+        return False
+    return result.returncode == 0
+
 
 def _read_review_round_count(design_tmpdir: Path) -> int:
     """Return the launched-round count from review-round-count.txt (0 if absent/invalid).
