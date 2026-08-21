@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from larch.design import design_dialectic, design_settle
+from larch.design import design_settle
 from larch.design.design_settle import (
     ChildCapture,
     SettleRequest,
@@ -285,16 +285,25 @@ def test_settle_dialectic_warning_fail_open(tmp_path: Path, capsys: pytest.Captu
     assert "dialectic-clear-stale failed after postplan" in err
 
 
-def test_default_dialectic_clear_shape_error_is_fail_open(
+def test_default_dialectic_clear_nonzero_is_fail_open(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:
     design = make_design_tmpdir(tmp_path)
 
-    def boom(_design: object, *, reason: str) -> int:
-        _ = reason
-        raise design_dialectic.DialecticShapeError("simulated shape error")
+    def fail_clear(
+        args: list[str], **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        assert args[1:] == [
+            "design",
+            "dialectic-clear-stale",
+            "--design-tmpdir",
+            str(design),
+            "--reason",
+            "plan-rewrite",
+        ]
+        return subprocess.CompletedProcess(args, 2, "", "simulated shape error")
 
-    monkeypatch.setattr(design_dialectic, "clear_stale", boom)
+    monkeypatch.setattr(design_settle.subprocess, "run", fail_clear)
     runners = default_settle_runners()
     # Keep postplan/dedup offline so this only exercises dialectic fail-open.
     runners = SettleRunners(

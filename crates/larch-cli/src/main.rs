@@ -57,6 +57,7 @@ mod debate_publication_commands;
 mod decompose_commands;
 mod deps_audit_commands;
 mod design_commands;
+mod design_dialectic_commands;
 mod design_log_publish_commands;
 mod design_pause_commands;
 mod design_publish_commands;
@@ -1385,6 +1386,18 @@ enum DesignCommand {
     /// Run the Step 3b finalize or Step 5b.5 diagram entry (#8583).
     #[command(name = "step3b-entry", disable_help_flag = true)]
     Step3bEntry(RawCompatibilityArguments),
+    /// Write drafter-declared dialectic candidates (#8584).
+    #[command(name = "dialectic-write-candidates", disable_help_flag = true)]
+    DialecticWriteCandidates(RawCompatibilityArguments),
+    /// Promote the pending dialectic sidecar against the final plan (#8584).
+    #[command(name = "dialectic-promote-candidates", disable_help_flag = true)]
+    DialecticPromoteCandidates(RawCompatibilityArguments),
+    /// Validate and normalize dialectic candidate JSON (#8584).
+    #[command(name = "dialectic-validate-candidates", disable_help_flag = true)]
+    DialecticValidateCandidates(RawCompatibilityArguments),
+    /// Clear stale dialectic candidate artifacts (#8584).
+    #[command(name = "dialectic-clear-stale", disable_help_flag = true)]
+    DialecticClearStale(RawCompatibilityArguments),
     /// Restore a verified cross-session `/design` pause snapshot (#8589).
     #[command(name = "pause-load", disable_help_flag = true)]
     PauseLoad(RawCompatibilityArguments),
@@ -1430,6 +1443,18 @@ impl DesignCommand {
             Self::Step2bPostplan(_) => design_step2b_commands::step2b_postplan(&arguments),
             Self::PostplanEmit(_) => design_step2b_commands::postplan_emit(&arguments),
             Self::Step3bEntry(_) => design_step2b_commands::step3b_entry(&arguments),
+            Self::DialecticWriteCandidates(_) => {
+                design_dialectic_commands::write_candidates(&arguments)
+            }
+            Self::DialecticPromoteCandidates(_) => {
+                design_dialectic_commands::promote_candidates(&arguments)
+            }
+            Self::DialecticValidateCandidates(_) => {
+                design_dialectic_commands::validate_candidates(&arguments)
+            }
+            Self::DialecticClearStale(_) => {
+                design_dialectic_commands::clear_stale_candidates(&arguments)
+            }
             Self::PauseLoad(_) => design_pause_commands::pause_load_main(&arguments),
             Self::PauseSave(_) => design_pause_commands::pause_save_main(&arguments),
         }

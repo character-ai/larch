@@ -2221,16 +2221,18 @@ verb = "dialectic-clear-stale"
 python_module = "larch.design.design_dialectic"
 python_function = "clear_stale_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8584
+clean_install_test = "clean-install-design-dialectic-clear-stale"
 
 [[commands]]
 domain = "design"
 verb = "dialectic-gatec"
-python_module = "larch.design.design_dialectic"
+python_module = "larch.design.design_dialectic_debate"
 python_function = "gatec_main"
 machine_stdout = false
 owner = "python"
@@ -2242,7 +2244,7 @@ planning_issue = 7680
 [[commands]]
 domain = "design"
 verb = "dialectic-manual"
-python_module = "larch.design.design_dialectic"
+python_module = "larch.design.design_dialectic_debate"
 python_function = "manual_main"
 machine_stdout = false
 owner = "python"
@@ -2257,11 +2259,13 @@ verb = "dialectic-promote-candidates"
 python_module = "larch.design.design_dialectic"
 python_function = "promote_candidates_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8584
+clean_install_test = "clean-install-design-dialectic-promote-candidates"
 
 [[commands]]
 domain = "design"
@@ -2269,11 +2273,13 @@ verb = "dialectic-validate-candidates"
 python_module = "larch.design.design_dialectic"
 python_function = "validate_candidates_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8584
+clean_install_test = "clean-install-design-dialectic-validate-candidates"
 
 [[commands]]
 domain = "design"
@@ -2281,11 +2287,13 @@ verb = "dialectic-write-candidates"
 python_module = "larch.design.design_dialectic"
 python_function = "write_candidates_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8584
+clean_install_test = "clean-install-design-dialectic-write-candidates"
 
 [[commands]]
 domain = "design"
@@ -9204,10 +9212,10 @@ python = []
 rust = ["design failure-report", "design log-publish", "design pause-save", "design read-result-env", "design stage-terminal-state", "plan-review step3-state", "run-log append-failure", "timing mark"]
 
 [[callers]]
-path = "python/larch/design/design_dialectic.py"
+path = "python/larch/design/design_dialectic_debate.py"
 kind = "python-runtime"
 python = []
-rust = ["agent launch-claude-subprocess"]
+rust = ["agent launch-claude-subprocess", "design dialectic-clear-stale"]
 
 [[callers]]
 path = "python/larch/design/design_oos.py"
@@ -9219,7 +9227,7 @@ rust = ["oos file-conflict-deps", "oos issue-cap"]
 path = "python/larch/design/design_settle.py"
 kind = "python-runtime"
 python = []
-rust = ["design pause-save", "design settle-next-action", "design step2b-postplan", "plan-review gate-b-dedup"]
+rust = ["design dialectic-clear-stale", "design pause-save", "design settle-next-action", "design step2b-postplan", "plan-review gate-b-dedup"]
 
 [[callers]]
 path = "python/larch/design/design_step5c.py"
@@ -9482,8 +9490,8 @@ rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps 
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design dialectic-write-candidates", "design file-oos-prepare", "design prelude", "design render-final-summary", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step5c", "mermaid sanitize"]
-rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "design driver", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design publish", "design read-result-env", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step3b-entry", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
+python = ["architectural-guidelines read", "architectural-invariants read", "design dialectic-gatec", "design file-oos-prepare", "design prelude", "design render-final-summary", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step5c", "mermaid sanitize"]
+rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "design dialectic-write-candidates", "design driver", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design publish", "design read-result-env", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step3b-entry", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -9536,8 +9544,8 @@ rust = []
 [[callers]]
 path = "skills/design/references/dialectic-clarifier.md"
 kind = "skill"
-python = ["design dialectic-write-candidates", "design step35-settle"]
-rust = ["agent launch-claude-subprocess", "design step2b-postplan"]
+python = ["design step35-settle"]
+rust = ["agent launch-claude-subprocess", "design dialectic-write-candidates", "design step2b-postplan"]
 
 [[callers]]
 path = "skills/design/references/discussion-rounds.md"

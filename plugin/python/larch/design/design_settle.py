@@ -15,7 +15,6 @@ from typing import Final, Literal
 from larch import io as larch_io
 from larch.core import config
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
-from larch.design import design_dialectic
 from larch.design.design_core import (
     WrapperArgs,
     _design_require_plugin_root,  # type: ignore[reportPrivateUsage]  # settle reuses design_core wrapper internals
@@ -169,12 +168,22 @@ def _default_postplan(request: SettleRequest, postplan_site: str) -> ChildCaptur
 
 
 def _default_dialectic_clear(design_tmpdir: Path) -> int:
-    # Match design dialectic-clear-stale CLI: shape errors are fail-open warnings
-    # at settle, not hard aborts (Gate C fingerprint binding still gates debate).
-    try:
-        return int(design_dialectic.clear_stale(design_tmpdir, reason="plan-rewrite"))
-    except design_dialectic.DialecticShapeError:
-        return 2
+    result = subprocess.run(
+        [
+            str(larch_entrypoint()),
+            "design",
+            "dialectic-clear-stale",
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--reason",
+            "plan-rewrite",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=larch_entrypoint_env(),
+    )
+    return result.returncode
 
 
 def _default_pause_save(request: SettleRequest) -> ChildCapture:

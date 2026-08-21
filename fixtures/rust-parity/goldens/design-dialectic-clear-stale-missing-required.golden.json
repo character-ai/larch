@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: cli.py design dialectic-clear-stale [-h] --design-tmpdir DESIGN_TMPDIR --reason REASON\ncli.py design dialectic-clear-stale: error: the following arguments are required: --design-tmpdir, --reason\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

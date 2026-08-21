@@ -1,0 +1,18 @@
+{
+  "exit_code": 2,
+  "files": {
+    "candidate.json": {
+      "text": "{\"decisions\":[{\"drafter_pick\":\"option_a\",\"id\":\"storage-choice\",\"option_a\":\"Use SQLite\",\"option_b\":\"Use JSON files\",\"title\":\"Storage choice\",\"tradeoff\":\"Query power versus operational simplicity\",\"why_this_matters\":\"It changes runtime dependencies\"}]}"
+    },
+    "design/plan.txt": {
+      "text": "## Plan\n\nUse JSON files.\n\ndiff_lines: 1\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "DIALECTIC_CANDIDATES_WRITTEN=false\nDIALECTIC_CANDIDATES_FAIL_REASON=drafter_pick-option_a-no-longer-matches-final-plan-option_b\n"
+  }
+}

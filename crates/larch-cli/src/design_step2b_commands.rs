@@ -11,9 +11,10 @@
 //! `Env`/`env_get`/`utf8_arguments`/`entrypoint`/`exit_from_i32`, the
 //! `Step0Runner` child seam, and `phase_driver_read_result_env` — plus the
 //! larch-core plan-grammar, difficulty, architectural-knowledge, review-wire,
-//! and untrusted-block owners, rather than duplicating them. Still-Python
-//! `design dialectic-*` sibling verbs are reached through the shared
-//! `run_python_verb` bridge, and Rust-owned sibling verbs (`design pause-save`,
+//! and untrusted-block owners, rather than duplicating them. The still-Python
+//! `design dialectic-gatec` sibling is reached through the shared
+//! `run_python_verb` bridge, and Rust-owned sibling verbs (dialectic candidate
+//! commands, `design pause-save`,
 //! `plan-review emit/finalize/check-size/preview/drift-baseline`,
 //! `plan validate`, `agent launch-*-drafter`, `run-log`, `token`, `timing`) are
 //! reached through the verified `scripts/larch.sh` entrypoint.
@@ -792,16 +793,20 @@ fn source_env_issue_number(text: &str) -> String {
 /// `_clear_stale_or_warn`: clear stale dialectic artifacts after a plan rewrite,
 /// surfacing a loud warning on failure (Gate C fingerprint binding still gates).
 fn clear_stale_or_warn(plugin_root: &Path, design_tmpdir: &Path) {
-    let arguments: Vec<OsString> = vec![
-        "design".into(),
-        "dialectic-clear-stale".into(),
-        "--design-tmpdir".into(),
-        design_tmpdir.as_os_str().to_owned(),
-        "--reason".into(),
-        "plan-rewrite".into(),
-    ];
-    let _ = plugin_root;
-    let ok = seam_python(arguments).0 == 0;
+    let ok = run_larch(
+        plugin_root,
+        &[
+            "design",
+            "dialectic-clear-stale",
+            "--design-tmpdir",
+            &design_tmpdir.to_string_lossy(),
+            "--reason",
+            "plan-rewrite",
+        ],
+        &[],
+    )
+    .code
+        == 0;
     if !ok {
         eprintln!(
             "**⚠ design-postplan: dialectic-clear-stale failed after plan rewrite; stale clarifier artifacts may linger (Gate C fingerprint binding still gates debate).**"
@@ -2100,20 +2105,24 @@ fn print_step2b_plan_review_preview(design_tmpdir: &Path, plugin_root: &Path) {
 
 /// `_promote_dialectic_candidates`: promote drafter-declared candidates after a
 /// clean postplan, warning loudly on failure.
-fn promote_dialectic_candidates(design_tmpdir: &Path) -> String {
+fn promote_dialectic_candidates(plugin_root: &Path, design_tmpdir: &Path) -> String {
     let raw_pending = design_tmpdir.join(".dialectic-raw-pending.json");
     if !raw_pending.is_file() {
         return String::new();
     }
-    let (_, stdout, stderr) = seam_python(vec![
-        "design".into(),
-        "dialectic-promote-candidates".into(),
-        "--design-tmpdir".into(),
-        design_tmpdir.as_os_str().to_owned(),
-        "--raw-dialectic-file".into(),
-        raw_pending.as_os_str().to_owned(),
-    ]);
-    let rows = format!("{stdout}{stderr}");
+    let output = run_larch(
+        plugin_root,
+        &[
+            "design",
+            "dialectic-promote-candidates",
+            "--design-tmpdir",
+            &design_tmpdir.to_string_lossy(),
+            "--raw-dialectic-file",
+            &raw_pending.to_string_lossy(),
+        ],
+        &[],
+    );
+    let rows = format!("{}{}", output.stdout, output.stderr);
     if rows.contains("DIALECTIC_CANDIDATES_WRITTEN=false") {
         eprintln!(
             "**⚠ 2b: dialectic candidate promotion failed after postplan; Gate C may not debate drafter-declared forks.**"
@@ -2145,13 +2154,14 @@ fn write_drafter_next_action_sidecar(design_tmpdir: &Path, action: &str, stdout_
 }
 
 fn resolve_step2b_postplan_action(
+    plugin_root: &Path,
     postplan: &PostplanResult,
     design_tmpdir: &Path,
 ) -> (String, String) {
     let mut action = String::from("step3");
     let mut dialectic_rows = String::new();
     match postplan.postplan_rc {
-        0 => dialectic_rows = promote_dialectic_candidates(design_tmpdir),
+        0 => dialectic_rows = promote_dialectic_candidates(plugin_root, design_tmpdir),
         10 => {
             action = String::from(if drafter_inline_retry_scheduled(postplan, design_tmpdir) {
                 "inline-retry"
@@ -2189,11 +2199,13 @@ fn handle_step2b_drafter_postplan_pause(
 }
 
 fn handle_step2b_drafter_postplan_action(
+    plugin_root: &Path,
     design_tmpdir: &Path,
     vendor: &str,
     postplan: &PostplanResult,
 ) -> i32 {
-    let (action, dialectic_rows) = resolve_step2b_postplan_action(postplan, design_tmpdir);
+    let (action, dialectic_rows) =
+        resolve_step2b_postplan_action(plugin_root, postplan, design_tmpdir);
     write_drafter_next_action_sidecar(design_tmpdir, &action, &postplan.stdout_lines);
     println!("DRAFTER_VENDOR={vendor}");
     print_text(&postplan.stdout_lines);
@@ -2223,7 +2235,7 @@ fn handle_step2b_drafter_postplan_result(
         );
     }
     if matches!(postplan.postplan_rc, 0 | 10 | 12 | 13) {
-        return handle_step2b_drafter_postplan_action(design_tmpdir, vendor, postplan);
+        return handle_step2b_drafter_postplan_action(plugin_root, design_tmpdir, vendor, postplan);
     }
     print_text(&postplan.stdout_lines);
     if matches!(postplan.postplan_rc, 1 | 2) {

@@ -45,7 +45,8 @@ use crate::external_agent::{
     cursor_preflight_verdict, hold_vendor_startup_lock, run_bare_vendor,
     run_external_agent_with_auth_retries,
 };
-use crate::python_verb::{plugin_root_directory, run_python_verb};
+use crate::python_verb::plugin_root_directory;
+use crate::runtime_entrypoint::run_verified_larch_with_timeout;
 use crate::scout_commands::filter_manifest_paths;
 
 /// Vendor label used by every launcher in this module that drives Codex.
@@ -378,7 +379,7 @@ fn filter_drafter_scout(
     (false, "filter_failed")
 }
 
-/// Validate a raw dialectic block through the still-Python candidate owner.
+/// Validate a raw dialectic block through the Rust-owned candidate command.
 ///
 /// Returns the normalized compact payload, or an empty payload plus the wire
 /// fail reason when the block is not a usable candidate set.
@@ -393,8 +394,8 @@ fn validate_dialectic(session: &DrafterSession, raw: &str) -> (String, &'static 
     if fs::write(confined.path(), raw).is_err() {
         return (String::new(), "invalid_dialectic_json");
     }
-    let verb = run_python_verb(
-        [
+    let verb = run_verified_larch_with_timeout(
+        &[
             OsString::from("design"),
             OsString::from("dialectic-validate-candidates"),
             OsString::from("--content-file"),
