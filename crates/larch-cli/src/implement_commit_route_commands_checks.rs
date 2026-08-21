@@ -121,7 +121,7 @@ fn run_step4_recovery_recompute(
         Ok(output) if output.status().code() == Some(0) => 0,
         Ok(output) => {
             let _ = std::io::stderr().write_all(output.stdout());
-            let _ = std::io::stderr().write_all(output.stderr());
+            forward_stderr(&output);
             emit_kv("BAIL_REASON", "recovery-out-of-scope");
             output.status().code().filter(|code| *code != 0).unwrap_or(1)
         }
