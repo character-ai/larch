@@ -206,7 +206,7 @@ impl KvRow {
 }
 
 /// An ordered, duplicate-preserving `KEY=value` document.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct KvDocument {
     rows: Vec<KvRow>,
 }

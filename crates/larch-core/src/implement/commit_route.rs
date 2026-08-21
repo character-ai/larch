@@ -14,7 +14,7 @@ use std::{
 };
 
 use crate::{
-    env_file::{DuplicatePolicy, KvDocument, ParseOptions},
+    env_file::{KvDocument, ParseOptions},
     implement::self_edit_log::{file_sha256, read_self_edits},
     redaction::redact_secrets_only,
 };
@@ -117,19 +117,20 @@ pub fn parse_line_anchored(stdout: &str, key: &str) -> Vec<String> {
 /// Parse one whitespace-delimited `KEY=value` checks line (first value wins).
 #[must_use]
 pub fn parse_whitespace_kv_line(line: &str) -> BTreeMap<String, String> {
-    let joined = line.split_whitespace().collect::<Vec<_>>().join("\n");
-    let Ok(document) = KvDocument::parse(&joined, ParseOptions::legacy()) else {
-        return BTreeMap::new();
-    };
     let mut map = BTreeMap::new();
-    for (key, value) in document.select(DuplicatePolicy::First) {
-        if !key.is_empty()
-            && key
+    for token in line.split_whitespace() {
+        let Some((key, value)) = token.split_once('=') else {
+            continue;
+        };
+        if key.is_empty()
+            || !key
                 .bytes()
                 .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
         {
-            map.insert(key, value);
+            continue;
         }
+        map.entry(key.to_owned())
+            .or_insert_with(|| value.to_owned());
     }
     map
 }
@@ -249,16 +250,15 @@ pub enum ShipStatePatch {
 /// True when any physical line looks like `IDENT=` — the has-KV probe.
 #[must_use]
 pub fn ship_state_has_kv(text: &str) -> bool {
-    let Ok(document) = KvDocument::parse(text, ParseOptions::legacy()) else {
-        return false;
-    };
-    document.select_all().keys().any(|key| {
-        !key.is_empty()
-            && key
-                .bytes()
-                .next()
-                .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
-            && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    KvDocument::parse(text, ParseOptions::legacy()).is_ok_and(|document| {
+        document.select_all().keys().any(|key| {
+            !key.is_empty()
+                && key
+                    .bytes()
+                    .next()
+                    .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
+                && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        })
     })
 }
 
@@ -293,9 +293,7 @@ pub fn patch_ship_state_stall(
             ShipStatePatch::Refused
         };
     }
-    let Ok(document) = KvDocument::parse(&text, ParseOptions::legacy()) else {
-        return ShipStatePatch::Refused;
-    };
+    let document = KvDocument::parse(&text, ParseOptions::legacy()).unwrap_or_default();
     // Last value wins across allowed keys, preserving first-seen order.
     let mut order: Vec<String> = Vec::new();
     let mut fields: BTreeMap<String, String> = BTreeMap::new();

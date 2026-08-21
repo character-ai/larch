@@ -1025,9 +1025,9 @@ mod tests {
         DeclaredTmpdir, HELP_FLAGS, SCOUT_OPTIONS, TEST_TMPDIR, adopt_boolean, adopt_seed,
         archetype_count, claude_pid, clone_tag, derive_clone_tag_full, first_nonempty,
         forward_verified_larch, kv_value, normalize_coder_scout, normalize_scout_manifest, on_path,
-        option_or_env, pwd_basename, read_kv_or, resolve_non_interactive, resolve_tmpdir_path,
-        sentinel_identity, session_child_environment, step0_bootstrap, step0_degraded_gate,
-        write_atomic, write_streams,
+        option_or_env, pwd_basename, read_kv_or, resolve_implement_tmpdir, resolve_non_interactive,
+        resolve_tmpdir_path, sentinel_identity, session_child_environment, step0_bootstrap,
+        step0_degraded_gate, write_atomic, write_streams,
     };
     use crate::{argparse_compat::parse_with_flags, implement_child_seam::install_larch};
     use larch_core::{ChildEnvironment, ProcessOutput, ProcessStatus};
@@ -1048,6 +1048,25 @@ mod tests {
 
     fn arguments(values: &[&str]) -> Vec<OsString> {
         values.iter().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn resolve_implement_tmpdir_prefers_explicit_then_env() {
+        // A non-empty explicit value wins and short-circuits the env fallback.
+        assert_eq!(
+            resolve_implement_tmpdir(Some(std::ffi::OsStr::new("/x/tmp"))),
+            Some("/x/tmp".to_owned())
+        );
+        // Empty and missing explicit values both defer to the env fallback,
+        // dropping an empty candidate from either source.
+        let expected = std::env::var("IMPLEMENT_TMPDIR")
+            .ok()
+            .filter(|value| !value.is_empty());
+        assert_eq!(
+            resolve_implement_tmpdir(Some(std::ffi::OsStr::new(""))),
+            expected
+        );
+        assert_eq!(resolve_implement_tmpdir(None), expected);
     }
 
     /// One raw manifest carrying a single archetype the filter accepts.

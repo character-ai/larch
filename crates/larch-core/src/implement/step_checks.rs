@@ -111,6 +111,24 @@ mod tests {
     }
 
     #[test]
+    fn checks_run_relevant_args_carry_site_tmpdir_and_repo_root() {
+        let args = checks_run_relevant_args("step6", Path::new("/tmp/impl"), Path::new("/repo"));
+        assert_eq!(
+            args,
+            vec![
+                OsString::from("checks"),
+                OsString::from("run-relevant"),
+                OsString::from("--site"),
+                OsString::from("step6"),
+                OsString::from("--tmpdir"),
+                OsString::from("/tmp/impl"),
+                OsString::from("--repo-root"),
+                OsString::from("/repo"),
+            ]
+        );
+    }
+
+    #[test]
     fn public_args_include_optional_flags() {
         assert_eq!(
             public_args_for_site("step3", "commit-a", "true", true),
