@@ -34,7 +34,6 @@ pub const COMMIT_ROUTE_SUCCESS_OUTCOMES: [&str; 2] = ["ok", "noop"];
 pub const STEP5_RESUME_COMMIT_RELAY_KEYS: [&str; 5] =
     ["COMMITTED", "ERROR", "SHA", "COMMIT_OUTCOME", "NEXT_ACTION"];
 
-
 /// One commit-route stall site: where a failed commit stalls and how it logs.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CommitRouteSite {
