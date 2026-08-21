@@ -175,15 +175,15 @@ Harness: `python/test_implement_dispatch.py`.
 
 ## Step 4 commit wrapper
 
-Thin Step 4 wrapper around `scripts/larch.sh git commit`. The Python caller emits `scripts/larch.sh token mark` and `scripts/larch.sh timing` marks for "Step 4 — commit implementation" before invoking Rust. It inherits `LARCH_TIMING_LEDGER` and `LARCH_TOKEN_SESSION_ID` from the caller environment and forces `LARCH_TIMING_SKILL=implement` for the timing mark.
+Thin Step 4 wrapper around `scripts/larch.sh git commit`. The Rust owner emits `scripts/larch.sh token mark` and `scripts/larch.sh timing` marks for "Step 4 — commit implementation" before running the commit. It inherits `LARCH_TIMING_LEDGER` and `LARCH_TOKEN_SESSION_ID` from the caller environment and forces `LARCH_TIMING_SKILL=implement` for the timing mark.
 
-After Step 0 bootstrap, invoke through the session launcher so plugin-root rehydration matches `skills/implement/SKILL.md` Step 4. Bare `python3 …/python/cli.py` is only for pre-bootstrap call sites.
+After Step 0 bootstrap, invoke through the session launcher so plugin-root rehydration matches `skills/implement/SKILL.md` Step 4.
 
 Usage:
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement commit --message "Implement feature" [files...]
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement commit --message "Recover implementation" --pathspec-from-file paths.nul --pathspec-file-nul
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh implement commit --message "Implement feature" [files...]
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh implement commit --message "Recover implementation" --pathspec-from-file paths.nul --pathspec-file-nul
 ```
 
 When `--pathspec-from-file` is present, positional file args are ignored and the wrapper passes `--only --pathspec-from-file <PATH>` through to `scripts/larch.sh git commit`. Add `--pathspec-file-nul` for NUL-delimited path lists. This mode is used by malformed-manifest recovery so pre-existing staged content is not swept into the synthesized implementation commit.

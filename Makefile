@@ -664,7 +664,7 @@ test-post-tracking-issue:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k post_tracking
 
 test-commit-implementation:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_implement_dispatch.py -q -k commit_main
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test implement_commit_route_parity commit_
 
 test-review-and-fix-commit-fixes:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_and_fix_commands self_review_snapshot_commits_only_its_delta

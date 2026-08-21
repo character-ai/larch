@@ -1034,6 +1034,17 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "remove-blocked-by",
     ),
     CleanInstallCase::new("clean-install-implement-clone-tag", "implement", "clone-tag"),
+    CleanInstallCase::new("clean-install-implement-commit", "implement", "commit"),
+    CleanInstallCase::new(
+        "clean-install-implement-commit-route",
+        "implement",
+        "commit-route",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-checks-commit-route",
+        "implement",
+        "checks-commit-route",
+    ),
     CleanInstallCase::new(
         "clean-install-implement-kill-active-leg",
         "implement",

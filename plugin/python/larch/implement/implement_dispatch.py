@@ -118,45 +118,10 @@ from larch.implement.dispatch_ship_seed import (
     _write_ship_seed_lines,
 )
 
-# --- checks relay, commit route, steps 4-6 ---
-from larch.implement.dispatch_commit_route import (
-    CommitRouteFailure,
-    CommitRouteSite,
-    _COMMIT_ROUTE_SITES,
-    _STEP4_COMMIT_SITE,
-    _checks_pass,
-    _checks_relay_line,
-    _commit_route_failure_log_path,
-    _commit_route_log_failure,
-    _commit_route_porcelain_gate,
-    _commit_route_run,
-    _commit_route_stall,
-    _parse_line_anchored_commit_kv,
-    _parse_whitespace_kv_line,
-    _path_readable_nonempty,
-    _pathspec_clean_relative_to_head,
-    _read_redacted_message,
-    _relay_checks_stdout,
-    _relay_commit_kvs,
-    _run_4r_rebase_checkpoint,
-    _run_7r_rebase_checkpoint,
-    _run_commit_route_leg,
-    _run_relevant_checks_for_site,
-    _run_step4_commit_leg,
-    _run_step4_recovery_recompute,
-    _seed_durable_stall_state,
-    _step4_commit_failure,
-    _write_commit_route_failure_log,
-    checks_commit_route_main,
-    commit_route_main,
-)
-
-# --- recovery paths and implement commit ---
+# --- recovery paths ---
 from larch.implement.dispatch_recovery import (
     RecoveryPorcelainInputs,
-    _commit_usage_fail,
     compute_recovery_paths,
-    commit_main,
 )
 
 # --- manifest, DispatchState, normalize-coder-scout ---

@@ -1,5 +1,7 @@
 //! Site → bgjob step/budget mapping and pure argv builders for run-step-checks.
 
+use std::{ffi::OsString, path::Path};
+
 pub const STEP6_CHECKS_STEP: &str = "implement-step6-checks";
 pub const CHECKS_TERMINAL_ACTIONS: &[&str] = &["continue", "stall", "checks-failed", "skip-to-7a"];
 
@@ -49,6 +51,25 @@ pub fn public_args_for_site(
     args
 }
 
+/// Argv for the shared `checks run-relevant` leg (#8611 dedup).
+///
+/// The review, checks-commit-route, and dispatch owners all compose this
+/// builder. It returns `OsString` rows so a non-UTF-8 tmpdir or repo-root
+/// path survives the delegation verbatim.
+#[must_use]
+pub fn checks_run_relevant_args(site: &str, tmpdir: &Path, repo_root: &Path) -> Vec<OsString> {
+    vec![
+        OsString::from("checks"),
+        OsString::from("run-relevant"),
+        OsString::from("--site"),
+        OsString::from(site),
+        OsString::from("--tmpdir"),
+        tmpdir.as_os_str().to_owned(),
+        OsString::from("--repo-root"),
+        repo_root.as_os_str().to_owned(),
+    ]
+}
+
 #[must_use]
 pub fn resolve_step_name(site: &str) -> String {
     let mapped = checks_step_for_site(site);
@@ -86,6 +107,24 @@ mod tests {
         assert_eq!(
             resolve_step_and_budget("custom"),
             ("implement-checks-custom".into(), 10_800)
+        );
+    }
+
+    #[test]
+    fn checks_run_relevant_args_carry_site_tmpdir_and_repo_root() {
+        let args = checks_run_relevant_args("step6", Path::new("/tmp/impl"), Path::new("/repo"));
+        assert_eq!(
+            args,
+            vec![
+                OsString::from("checks"),
+                OsString::from("run-relevant"),
+                OsString::from("--site"),
+                OsString::from("step6"),
+                OsString::from("--tmpdir"),
+                OsString::from("/tmp/impl"),
+                OsString::from("--repo-root"),
+                OsString::from("/repo"),
+            ]
         );
     }
 

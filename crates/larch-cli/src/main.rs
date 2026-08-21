@@ -89,6 +89,7 @@ mod html;
 pub(crate) mod implement_bootstrap_continuation;
 mod implement_child_seam;
 mod implement_commands;
+mod implement_commit_route_commands;
 mod implement_dispatch_commands;
 mod implement_launcher_commands;
 mod implement_leg_commands;
@@ -1018,6 +1019,15 @@ enum ImplementCommand {
     /// Compute, classify, or validate the checks bgjob input identity.
     #[command(name = "checks-result-identity", disable_help_flag = true)]
     ChecksResultIdentity(RawCompatibilityArguments),
+    /// Run the per-site relevant checks, commit, and rebase-checkpoint composite.
+    #[command(name = "checks-commit-route", disable_help_flag = true)]
+    ChecksCommitRoute(RawCompatibilityArguments),
+    /// Create the Step 4 implementation commit and emit its result envelope.
+    #[command(name = "commit", disable_help_flag = true)]
+    Commit(RawCompatibilityArguments),
+    /// Route a review-fix commit at Steps 5/7, seeding a stall on failure.
+    #[command(name = "commit-route", disable_help_flag = true)]
+    CommitRoute(RawCompatibilityArguments),
     /// Run the Step 5 checks front-half then forward the resume leg.
     #[command(name = "checks-step5-resume", disable_help_flag = true)]
     ChecksStep5Resume(RawCompatibilityArguments),
@@ -2715,6 +2725,15 @@ fn run(
         Domain::Implement(command) => Ok(match command {
             ImplementCommand::ChecksResultIdentity(arguments) => {
                 checks_identity_commands::checks_result_identity(&arguments.arguments)
+            }
+            ImplementCommand::ChecksCommitRoute(arguments) => {
+                implement_commit_route_commands::checks_commit_route(&arguments.arguments)
+            }
+            ImplementCommand::Commit(arguments) => {
+                implement_commit_route_commands::commit(&arguments.arguments)
+            }
+            ImplementCommand::CommitRoute(arguments) => {
+                implement_commit_route_commands::commit_route(&arguments.arguments)
             }
             ImplementCommand::ChecksStep5Resume(arguments) => {
                 implement_review_commands::checks_step5_resume(&arguments.arguments)

@@ -296,10 +296,10 @@ def run(repo_root: Path) -> list[str]:
             if not md.is_file(): checks.append(f"missing {md}")
             if sh.is_file() and not os.access(sh, os.X_OK): checks.append(f"{sh} is not executable")
 
-        # Python owns the converted adapters; their Bash siblings remain thin delegates.
-        require("python/larch/implement/dispatch_commit_route.py", "_checks_step_for_site", "checks site mapping present")
-        require("python/larch/implement/dispatch_commit_route.py", "--repo-root", "commit-route forwards --repo-root to checks run-relevant")
-        require("python/larch/implement/dispatch_commit_route.py", "_session_validated_repo_root", "commit-route validates persisted REPO_ROOT")
+        # Rust owns the commit-routing verbs (#8611); their Bash siblings remain thin delegates.
+        require("crates/larch-core/src/implement/step_checks.rs", "checks_step_for_site", "checks site mapping present")
+        require("crates/larch-core/src/implement/step_checks.rs", "--repo-root", "checks-commit-route forwards --repo-root to checks run-relevant")
+        require("crates/larch-cli/src/implement_commit_route_commands_checks.rs", "session_validated_repo_root", "checks-commit-route validates persisted REPO_ROOT")
         require("crates/larch-cli/src/checks_identity_commands.rs", "CHECKS_TERMINAL_ACTIONS", "checks identity owner uses shared terminal-action set")
 
         step5_text = Path("skills/implement/scripts/step-5-review.sh").read_text()
@@ -316,7 +316,7 @@ def run(repo_root: Path) -> list[str]:
         require("crates/larch-cli/src/review_and_fix_commands.rs", "--stage-all", "commit-fixes --stage-all")
         forbid(skill, "review-and-fix commit-fixes <specific-files>", "Step 7 must stage all review fixes")
         forbid("crates/larch-cli/src/review_and_fix_commands.rs", '"git", "add", "-A"', "commit-fixes must not stage unrelated paths")
-        forbid("crates/larch-cli/src/review_and_fix_commands.rs", '"git", "add", "--pathspec-from-file"', "staging owned by commit_main only")
+        forbid("crates/larch-cli/src/review_and_fix_commands.rs", '"git", "add", "--pathspec-from-file"', "staging owned by the implement commit wrapper only")
         require("crates/larch-cli/src/review_and_fix_commands.rs", '"git", "commit", "--only", "--pathspec-from-file"', "commit-fixes pathspec-only commit")
         require("python/larch/implement/dispatch_helpers.py", "LARCH_TIMING_LEDGER", "commit-implementation telemetry self-rehydration")
         terminal_owner = "crates/larch-cli/src/implement_terminal_commands.rs"
@@ -719,8 +719,8 @@ def run(repo_root: Path) -> list[str]:
             require("crates/larch-cli/src/implement_commands.rs", needle, f"step-0-degraded-gate composed {needle}")
         require("skills/implement/scripts/step-0-degraded-gate.sh", 'implement step-0-degraded-gate "$@"', "step-0 degraded-gate thin wrapper delegates")
         forbid("skills/implement/scripts/step-0-degraded-gate.sh", "degraded-tools-gate", "step-0 degraded-gate wrapper must not retain gate body")
-        require("python/larch/implement/dispatch_commit_route.py", "_parse_line_anchored_commit_kv", "step-5-resume parses commit KVs line-anchored")
-        require("python/larch/implement/dispatch_commit_route.py", "_relay_commit_kvs", "step-5-resume relays the commit envelope")
+        require("crates/larch-core/src/implement/commit_route.rs", "parse_line_anchored", "step-5-resume parses commit KVs line-anchored")
+        require("crates/larch-cli/src/implement_commit_route_commands.rs", "relay_commit_kvs", "step-5-resume relays the commit envelope")
         forbid("skills/implement/scripts/step-5-resume.sh", "commit-route --site", "step-5-resume wrapper must not retain commit routing")
         forbid("skills/implement/scripts/step-5-resume.sh", "review-and-fix step5", "step-5-resume wrapper must not retain review-loop logic")
         require(skill, "Parse `FILES_CHANGED`, `UNTRACKED_BASELINE`, `GIT_PROBE_FAILED`, and exactly one line-anchored composite `NEXT_ACTION=` record from the final `DONE` stdout and/or bgjob result env.", "SKILL line-anchored composite NEXT_ACTION parse")
@@ -741,14 +741,14 @@ def run(repo_root: Path) -> list[str]:
         require("skills/implement/scripts/step-5-review.md", "valid stall envelope", "step-5-review.md canonical stall env carve-out")
         require("skills/implement/references/self-review.md", "set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18", "self-review invalid envelope fail-closed")
         require(skill, "set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when durable seed is absent, and skip to Step 18", "SKILL Step 7 invalid envelope fail-closed")
-        require("python/larch/implement/dispatch_commit_route.py", "COMMIT_ROUTE_OUTCOME", "composite commit route child outcome")
-        require("python/larch/implement/dispatch_commit_route.py", '"--emit-next-action",\n            "false"', "composite commit route child pin")
+        require("crates/larch-cli/src/implement_commit_route_commands.rs", "COMMIT_ROUTE_OUTCOME", "composite commit route child outcome")
+        require("crates/larch-cli/src/implement_commit_route_commands_checks.rs", "--emit-next-action", "composite commit route child pin")
         require("python/larch/implement/dispatch_leg_runner.py", "start_new_session=True", "composite leg process group session")
         require("python/larch/core/process_identity.py", "validate_process_identity", "identity validation helper")
         require("python/larch/implement/dispatch_leg_runner.py", "_ACTIVE_LEG_JSON_FILE", "active leg JSON sidecar")
         require("crates/larch-core/src/implement/active_leg.rs", "terminate_active_leg_group", "active leg identity-validated kill")
         require("python/larch/implement/dispatch_leg_runner.py", "ACTIVE_LEG_KILL_LOG_FILE", "active leg kill logging")
-        require("python/larch/implement/dispatch_commit_route.py", 'NEXT_ACTION", value="checks-failed"', "composite checks-failed routing")
+        require("crates/larch-cli/src/implement_commit_route_commands_checks.rs", "checks-failed", "composite checks-failed routing")
         require(step8_owner, '"--state-file"', "step-8 state file forwarding in Rust")
         exit_matrix = Path("skills/implement/references/ship-pr-exit-matrix.md")
         if exit_matrix.is_file():
@@ -982,7 +982,8 @@ def run(repo_root: Path) -> list[str]:
             "Step 8+ matrix read before pre-driver fence",
             1600,
         )
-        require("python/larch/cli.py", '"commit_route_main", True),', "commit-route machine stdout")
+        forbid("python/larch/cli.py", "commit_route_main", "commit-route Python registration removed")
+        require("crates/larch-cli/src/main.rs", 'name = "commit-route"', "commit-route Rust registration")
         forbid("python/larch/cli.py", "step8_oos_checkpoint_main", "step-8-oos-checkpoint Python registration removed")
         require("crates/larch-cli/src/main.rs", 'name = "step-8-oos-checkpoint"', "step-8-oos-checkpoint Rust registration")
         require(skill, "**`stall`** (post-driver only)", "SKILL post-driver stall paragraph")
@@ -1301,4 +1302,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 396
+LEGACY_ASSERTION_LABEL_COUNT = 397

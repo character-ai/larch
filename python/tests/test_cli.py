@@ -262,7 +262,6 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
     cases = [
         (["checks", "repair-loop", "--help"], "larch.implement.checks", "checks_repair_loop_main"),
         (["ship", "reconcile-manual-merge"], "larch.implement.ship_recovery", "reconcile_manual_merge_main"),
-        (["implement", "commit-route"], "larch.implement.implement_dispatch", "commit_route_main"),
     ]
     for argv, module_name, func_name in cases:
         monkeypatch.delenv("LARCH_QUIET_DISABLE", raising=False)

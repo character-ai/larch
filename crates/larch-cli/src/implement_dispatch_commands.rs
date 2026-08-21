@@ -17,8 +17,9 @@ use larch_core::{
     ProcessStatus, RecoveryPorcelainInputs, StatusOptions, bgjob_dir, child_liveness,
     compute_recovery_paths, daemon_liveness, ensure_under,
     implement::{
-        ChecksIdentityError, ChecksInputIdentity, classify_completed_result, classify_live_seed,
-        identities_match, parse_porcelain_z, session_repo_root, sha256_file,
+        ChecksIdentityError, ChecksInputIdentity, checks_run_relevant_args,
+        classify_completed_result, classify_live_seed, identities_match, parse_porcelain_z,
+        session_repo_root, sha256_file,
     },
     log_paths, owner_pid_candidate, private_atomic_write, read_for, resolve_run_id,
     resolve_step_and_budget, resolve_tmpdir_path, result_env_path, validate_merge_result_env,
@@ -484,17 +485,11 @@ fn run_step_checks_worker(
     repo_root: &Path,
 ) -> Result<(i32, String), String> {
     let output = if commit_site.is_empty() {
-        delegate_python([
-            OsString::from("checks"),
-            OsString::from("run-relevant"),
-            OsString::from("--site"),
-            OsString::from(site),
-            OsString::from("--tmpdir"),
-            tmpdir.as_os_str().to_owned(),
-            OsString::from("--repo-root"),
-            repo_root.as_os_str().to_owned(),
-        ])?
+        delegate_python(checks_run_relevant_args(site, tmpdir, repo_root))?
     } else {
+        // #8611: `checks-commit-route` is now Rust-owned. Route it through the
+        // verified bootstrap as a captured child so this worker keeps appending
+        // the checks identity rows to the same stdout it always relayed.
         let mut args = vec![
             OsString::from("implement"),
             OsString::from("checks-commit-route"),
@@ -507,7 +502,9 @@ fn run_step_checks_worker(
             args.push(OsString::from("--rebase-checkpoint-4r"));
         }
         args.extend([OsString::from("--forked-target"), OsString::from(forked)]);
-        delegate_python(args)?
+        let root =
+            resolve_plugin_root().map_err(|error| format!("checks-commit-route: {error}"))?;
+        delegate_verified_larch(repo_root, &root, &args)?
     };
     let text = String::from_utf8_lossy(output.stdout()).into_owned();
     if !output.stderr().is_empty() {
@@ -983,13 +980,26 @@ pub fn run_verified_larch_env_in(
     args: &[OsString],
     extra: &[(ChildEnvironment, OsString)],
 ) -> Result<ProcessOutput, String> {
+    run_verified_larch_env_in_timeout(cwd, root, args, extra, ADAPT_TIMEOUT)
+}
+
+/// Run a verified larch verb like [`run_verified_larch_env_in`] under a caller
+/// deadline. The commit-route legs bound `checks run-relevant`, `commit-route`,
+/// and the Step 4 `commit` child with site-specific deadlines above 600s.
+pub fn run_verified_larch_env_in_timeout(
+    cwd: &Path,
+    root: &Path,
+    args: &[OsString],
+    extra: &[(ChildEnvironment, OsString)],
+    timeout: Duration,
+) -> Result<ProcessOutput, String> {
     let program = LarchProgram::bootstrap(root)
         .map_err(|error| format!("could not select verified larch entrypoint: {error}"))?;
     let mut request = bounded_request_in(
         ExternalProgram::Larch(program),
         args.iter().cloned(),
         cwd,
-        ADAPT_TIMEOUT,
+        timeout,
         ADAPT_GRACE,
         ADAPT_OUTPUT_LIMIT,
     )?;
@@ -1404,7 +1414,8 @@ mod tests {
         fs::create_dir_all(tmp.join("bgjob")).expect("bgjob");
         let merge = tmp.join("bgjob").join("child.merge.env");
         let launch = live(repository.root());
-        install_python(|args| {
+        crate::implement_child_seam::declare_plugin_root(repository.root());
+        install_larch(|_cwd, _root, args| {
             if args_contain(args, "checks-commit-route") {
                 assert!(args_contain(args, "--rebase-checkpoint-4r"));
                 Ok(output(0, "NEXT_ACTION=continue\n"))
