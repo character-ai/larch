@@ -218,6 +218,33 @@ fn commit_failure_envelope_folds_error() {
     assert_eq!(kv(&stdout, "ERROR"), "boom line one boom line two");
 }
 
+#[test]
+fn commit_success_from_a_nul_pathspec_file() {
+    let stub = dispatch_stub(&[
+        ("token mark", "    exit 0"),
+        ("timing mark", "    exit 0"),
+        ("git commit", "    exit 0"),
+    ]);
+    let fixture = fixture(&stub);
+    let pathspec = fixture.tmpdir.join("commit-paths.nul");
+    fs::write(&pathspec, "README.md\0").expect("pathspec");
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "commit",
+        &[
+            "--message",
+            "impl commit",
+            "--pathspec-from-file",
+            pathspec.to_str().expect("utf8"),
+            "--pathspec-file-nul",
+        ],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "COMMITTED"), "true");
+    assert_eq!(kv(&stdout, "SHA").len(), 40);
+}
+
 // ---------------------------------------------------------------------------
 // implement commit-route
 // ---------------------------------------------------------------------------
@@ -268,6 +295,44 @@ fn commit_route_continue_emits_next_action_by_default() {
     assert_eq!(code, 0);
     assert_eq!(kv(&stdout, "NEXT_ACTION"), "continue");
     assert!(!stdout.contains("COMMIT_ROUTE_OUTCOME="));
+}
+
+#[test]
+fn commit_route_continue_emits_next_action_continue() {
+    let stub = dispatch_stub(&[(
+        "review-and-fix commit-fixes",
+        "    printf 'COMMIT_OUTCOME=ok\\nCOMMITTED=true\\n'\n    exit 0",
+    )]);
+    let fixture = fixture(&stub);
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "commit-route",
+        &["--site", "step7", "--emit-next-action", "true"],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "NEXT_ACTION"), "continue");
+}
+
+#[test]
+fn commit_route_stall_emits_next_action_stall() {
+    let stub = dispatch_stub(&[
+        (
+            "review-and-fix commit-fixes",
+            "    printf 'COMMIT_OUTCOME=fail\\n'\n    exit 1",
+        ),
+        ("run-log append-failure", "    exit 0"),
+        ("implement step-8-seed-initial", "    exit 0"),
+    ]);
+    let fixture = fixture(&stub);
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "commit-route",
+        &["--site", "step7", "--emit-next-action", "true"],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "NEXT_ACTION"), "stall");
 }
 
 #[test]
@@ -331,4 +396,291 @@ fn checks_commit_route_short_circuits_on_failed_checks() {
     assert_eq!(code, 0);
     assert_eq!(kv(&stdout, "NEXT_ACTION"), "checks-failed");
     assert!(stdout.contains("STATUS=fail"));
+}
+
+#[test]
+fn checks_commit_route_step7_success_commits_and_checkpoints() {
+    let stub = dispatch_stub(&[
+        (
+            "checks run-relevant",
+            "    printf 'RELEVANT_CHECKS_OK=true SITE=step7 COVERAGE=full PHASE=p1\\n'\n    exit 0",
+        ),
+        (
+            "implement commit-route",
+            "    printf 'COMMIT_ROUTE_OUTCOME=continue\\nCOMMITTED=true\\nSHA=abc123\\n'\n    exit 0",
+        ),
+        (
+            "push checkpoint-probe",
+            "    printf 'CHECKPOINT=ok\\n'\n    exit 0",
+        ),
+    ]);
+    let fixture = fixture(&stub);
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &[
+            "--checks-site",
+            "step7",
+            "--commit-site",
+            "step7",
+            "--rebase-checkpoint-7r",
+        ],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert!(stdout.contains("RELEVANT_CHECKS_OK=true SITE=step7"));
+    assert_eq!(kv(&stdout, "COMMIT_ROUTE_OUTCOME"), "continue");
+    assert_eq!(kv(&stdout, "COMMITTED"), "true");
+    assert_eq!(kv(&stdout, "NEXT_ACTION"), "continue");
+}
+
+#[test]
+fn checks_commit_route_step7_success_without_checkpoint_emits_breadcrumb() {
+    let stub = dispatch_stub(&[
+        (
+            "checks run-relevant",
+            "    printf 'RELEVANT_CHECKS_SKIPPED=true SITE=step7\\n'\n    exit 0",
+        ),
+        (
+            "implement commit-route",
+            "    printf 'COMMIT_ROUTE_OUTCOME=continue\\nCOMMITTED=true\\n'\n    exit 0",
+        ),
+    ]);
+    let fixture = fixture(&stub);
+    let (code, stdout, stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &[
+            "--checks-site",
+            "step7",
+            "--commit-site",
+            "step7",
+            "--emit-step7-breadcrumb",
+        ],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert!(stdout.contains("RELEVANT_CHECKS_SKIPPED=true SITE=step7"));
+    assert_eq!(kv(&stdout, "NEXT_ACTION"), "continue");
+    assert!(stderr.contains("commit (review)"));
+}
+
+#[test]
+fn checks_commit_route_relays_a_commit_leg_stall_as_next_action_stall() {
+    let stub = dispatch_stub(&[
+        (
+            "checks run-relevant",
+            "    printf 'RELEVANT_CHECKS_OK=true SITE=step7 COVERAGE=full PHASE=p1\\n'\n    exit 0",
+        ),
+        (
+            "implement commit-route",
+            "    printf 'COMMIT_ROUTE_OUTCOME=seeded-stall\\n'\n    exit 0",
+        ),
+    ]);
+    let fixture = fixture(&stub);
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step7", "--commit-site", "step7"],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "COMMIT_ROUTE_OUTCOME"), "seeded-stall");
+    assert_eq!(kv(&stdout, "NEXT_ACTION"), "stall");
+}
+
+#[test]
+fn checks_commit_route_rejects_an_invalid_commit_leg_outcome() {
+    let stub = dispatch_stub(&[
+        (
+            "checks run-relevant",
+            "    printf 'RELEVANT_CHECKS_OK=true SITE=step7 COVERAGE=full PHASE=p1\\n'\n    exit 0",
+        ),
+        (
+            "implement commit-route",
+            "    printf 'COMMIT_ROUTE_OUTCOME=bogus\\n'\n    exit 0",
+        ),
+    ]);
+    let fixture = fixture(&stub);
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step7", "--commit-site", "step7"],
+        true,
+    );
+    assert_eq!(code, 1);
+    assert!(!stdout.contains("NEXT_ACTION=continue"));
+}
+
+#[test]
+fn checks_commit_route_step4_dispatcher_committed_is_a_noop_continue() {
+    let stub = dispatch_stub(&[
+        (
+            "checks run-relevant",
+            "    printf 'RELEVANT_CHECKS_SKIPPED=true SITE=step3\\n'\n    exit 0",
+        ),
+        ("push checkpoint-probe", "    exit 0"),
+    ]);
+    let fixture = fixture(&stub);
+    // A dispatcher-committed seed with a readable manifest and a clean tree
+    // resolves to a no-op commit that still continues.
+    fs::write(
+        fixture.tmpdir.join("ship-seed-input.env"),
+        format!(
+            "DISPATCHER_COMMITTED=true\nMANIFEST_PATH={}\n",
+            fixture.tmpdir.join("session-env.sh").display()
+        ),
+    )
+    .expect("seed input");
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &[
+            "--checks-site",
+            "step3",
+            "--commit-site",
+            "step4",
+            "--rebase-checkpoint-4r",
+        ],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "NEXT_ACTION"), "continue");
+    assert!(stdout.contains("COMMIT_ROUTE_OUTCOME=noop"));
+}
+
+// ---------------------------------------------------------------------------
+// commit-route success sites
+// ---------------------------------------------------------------------------
+
+#[test]
+fn commit_route_step5_resume_handoff_passes_the_porcelain_gate() {
+    let stub = dispatch_stub(&[(
+        "review-and-fix commit-fixes",
+        "    printf 'COMMIT_OUTCOME=ok\\nCOMMITTED=true\\nSHA=feedface\\n'\n    exit 0",
+    )]);
+    let fixture = fixture(&stub);
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "commit-route",
+        &[
+            "--site",
+            "step5-resume-handoff",
+            "--emit-next-action",
+            "false",
+        ],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "COMMIT_ROUTE_OUTCOME"), "continue");
+    assert_eq!(kv(&stdout, "COMMITTED"), "true");
+}
+
+#[test]
+fn commit_route_step5_self_review_continues_on_noop() {
+    let stub = dispatch_stub(&[(
+        "review-and-fix commit-fixes",
+        "    printf 'COMMIT_OUTCOME=noop\\n'\n    exit 0",
+    )]);
+    let fixture = fixture(&stub);
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "commit-route",
+        &["--site", "step5-self-review", "--emit-next-action", "false"],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "COMMIT_ROUTE_OUTCOME"), "continue");
+}
+
+#[test]
+fn commit_route_step5_resume_handoff_seeds_a_stall_on_failure() {
+    let stub = dispatch_stub(&[
+        (
+            "review-and-fix commit-fixes",
+            "    printf 'COMMIT_OUTCOME=fail\\n'\n    exit 1",
+        ),
+        ("run-log append-failure", "    exit 0"),
+        ("implement step-8-seed-initial", "    exit 0"),
+    ]);
+    let fixture = fixture(&stub);
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "commit-route",
+        &["--site", "step5-resume-handoff"],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "NEXT_ACTION"), "stall");
+    assert!(
+        fixture
+            .tmpdir
+            .join("commit-route-step5-resume-handoff.failure.log")
+            .is_file()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// checks-commit-route step4 commit leg
+// ---------------------------------------------------------------------------
+
+#[test]
+fn checks_commit_route_step4_without_a_seed_reports_seed_failed() {
+    let stub = dispatch_stub(&[(
+        "checks run-relevant",
+        "    printf 'RELEVANT_CHECKS_OK=true SITE=step3 COVERAGE=full PHASE=p1\\n'\n    exit 0",
+    )]);
+    let fixture = fixture(&stub);
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &["--checks-site", "step3", "--commit-site", "step4"],
+        true,
+    );
+    assert_eq!(code, 1);
+    assert!(stdout.contains("COMMIT_ROUTE_OUTCOME=seed-failed"));
+}
+
+#[test]
+fn checks_commit_route_step4_commits_a_seeded_pathspec() {
+    let stub = dispatch_stub(&[
+        (
+            "checks run-relevant",
+            "    printf 'RELEVANT_CHECKS_OK=true SITE=step3 COVERAGE=full PHASE=p1\\n'\n    exit 0",
+        ),
+        (
+            "implement commit",
+            "    printf 'COMMITTED=true\\nSHA=cafebabecafebabecafebabecafebabecafebabe\\n'\n    exit 0",
+        ),
+        ("push checkpoint-probe", "    exit 0"),
+    ]);
+    let fixture = fixture(&stub);
+    // An implementation seed (message + NUL pathspec) whose path is dirty vs
+    // HEAD, so the step4 commit leg composes `implement commit`, not a no-op.
+    fs::write(
+        fixture.tmpdir.join("implementation-commit-message.txt"),
+        "implementation commit\n",
+    )
+    .expect("implementation message");
+    fs::write(
+        fixture.tmpdir.join("implementation-commit-paths.nul"),
+        "README.md\0",
+    )
+    .expect("implementation pathspec");
+    fs::write(fixture.repo.join("README.md"), "dirty\n").expect("dirty readme");
+    let (code, stdout, _stderr) = run(
+        &fixture,
+        "checks-commit-route",
+        &[
+            "--checks-site",
+            "step3",
+            "--commit-site",
+            "step4",
+            "--rebase-checkpoint-4r",
+        ],
+        true,
+    );
+    assert_eq!(code, 0);
+    assert_eq!(kv(&stdout, "COMMIT_ROUTE_OUTCOME"), "continue");
+    assert_eq!(kv(&stdout, "NEXT_ACTION"), "continue");
 }
