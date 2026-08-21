@@ -31,18 +31,18 @@ use crate::clarify_orchestrator::write_result_env;
 use crate::design_log_publish_commands::resolve_summary_mode;
 use crate::design_step0_commands::{
     Env, LiveStep0Runner, Step0Runner, env_get, exit_from_i32, reap_pid_residuals,
-    require_plugin_root, resolve_owned_run_id, resolve_persisted_repo_root, utf8_arguments as utf8,
-    validate_claude_pid,
+    require_plugin_root, resolve_owned_run_id, resolve_persisted_repo_root,
+    run_progress_deactivate, run_session_cleanup, utf8_arguments as utf8, validate_claude_pid,
 };
 use crate::design_step2b_commands::{
     WrapperArgs2b as WrapperArgs, parse_common_wrapper_args as parse_wrapper, print_text,
     rehydrate_env as wrapper_env, resolve_design_tmpdir, touch, validate_design_tmpdir_result,
 };
-use crate::design_terminal_commands::emit_report_gate_sidecars_from_disk;
+use crate::design_terminal_commands::{STAGE_EXTRA_FLAGS, emit_report_gate_sidecars_from_disk};
 
 const STEP5C_STEP: &str = "design-step5c";
 const TAIL_BYTE_CAP: usize = 16_384;
-const INFO_ICON: &str = "ℹ";
+const INFO_ICON: &str = "\u{2139}";
 
 const STEP5C_STATUS_ALLOW: &[&str] = &[
     "ARCHITECTURE_SOURCE",
@@ -678,19 +678,7 @@ fn stage_failed_publish_tail(
         "--failure-detail-log".to_owned(),
         detail.display().to_string(),
     ];
-    for (flag, key) in [
-        ("--publish-attempt-id", "PUBLISH_ATTEMPT_ID"),
-        ("--publish-rc-source", "PUBLISH_RC_SOURCE"),
-        ("--latest-phase", "LATEST_PHASE"),
-        ("--plan-write-ok", "PLAN_WRITE_OK"),
-        ("--publish-ok", "PUBLISH_OK"),
-        ("--renamed", "RENAMED"),
-        ("--log-publish-attempted", "LOG_PUBLISH_ATTEMPTED"),
-        ("--log-publish-completed", "LOG_PUBLISH_COMPLETED"),
-        ("--designed-admission-ready", "DESIGNED_ADMISSION_READY"),
-        ("--pr-url", "PR_URL"),
-        ("--recovery-branch", "RECOVERY_BRANCH"),
-    ] {
+    for (flag, key) in STAGE_EXTRA_FLAGS {
         if !get(result, key).is_empty() {
             args.extend([flag.to_owned(), get(result, key).to_owned()]);
         }
@@ -1486,32 +1474,10 @@ fn step6_cleanup_with(arguments: &[OsString], runner: &dyn Step0Runner) -> ExitC
             .unwrap_or_else(|| PathBuf::from("."));
         let host = SystemProcessIdentityHost::new();
         if !has_live_entry(&host, &repo_root, &run_id) {
-            let _ = runner.run(
-                &plugin_root,
-                &[
-                    "progress".to_owned(),
-                    "deactivate".to_owned(),
-                    "--repo-root".to_owned(),
-                    repo_root.display().to_string(),
-                    "--run-id".to_owned(),
-                    run_id,
-                ],
-                &[],
-                false,
-            );
+            run_progress_deactivate(runner, &plugin_root, &repo_root, &run_id);
         }
     }
-    let cleanup = runner.run(
-        &plugin_root,
-        &[
-            "session".to_owned(),
-            "cleanup-tmpdir".to_owned(),
-            "--dir".to_owned(),
-            design_tmpdir.display().to_string(),
-        ],
-        &[],
-        false,
-    );
+    let cleanup = run_session_cleanup(runner, &plugin_root, &design_tmpdir);
     print_text(&cleanup.stdout);
     eprint!("{}", cleanup.stderr);
     if cleanup.code != 0 {
