@@ -1,3 +1,4 @@
+#[cfg(test)]
 #[rustfmt::skip]
 mod compact {
 use super::super::{body_update, checks, closes_issue, create, create_branch, create_pull_request,
@@ -19,11 +20,11 @@ fn lifecycle_commands_cover_git_and_github_success_paths() {
 
 fn spawn_child() {
     let repository = TempDir::new().expect("repository fixture"); let remote = TempDir::new().expect("remote fixture");
-    command("git", &["init", "-q", "-b", "main"], repository.path());
+    git(repository.path(), &["init", "-q", "-b", "main"]);
     git(repository.path(), &["config", "user.name", "Ada Lovelace"]); git(repository.path(), &["config", "user.email", "ada@example.test"]);
     fs::write(repository.path().join("base.txt"), "base\n").expect("base file"); git(repository.path(), &["add", "."]); git(repository.path(), &["commit", "-q", "-m", "base"]);
-    command("git", &["init", "-q", "--bare"], remote.path()); git(repository.path(), &["remote", "add", "origin", text(remote.path())]); git(repository.path(), &["push", "-q", "origin", "main"]);
-    let status = Command::new(env::current_exe().expect("test executable"))
+    git(remote.path(), &["init", "-q", "--bare"]); git(repository.path(), &["remote", "add", "origin", text(remote.path())]); git(repository.path(), &["push", "-q", "origin", "main"]);
+    let status = Command::new(env::current_exe().expect("test executable")) // lint-subprocess-via-runner: ok test-only child isolates cwd and environment; the shared runner is product-only
         .args(["--exact", "pr_commands::coverage_tests::compact::lifecycle_commands_cover_git_and_github_success_paths", "--nocapture"])
         .current_dir(repository.path()).env(CHILD, "1").env("LARCH_PR_TEST_REMOTE", remote.path())
         .env_remove("IMPLEMENT_TMPDIR").env_remove("SHIP_PR_STATE_FILE").status().expect("isolated test child");
@@ -34,7 +35,7 @@ fn spawn_child() {
 fn run_scenarios() {
     assert_eq!(create_branch(&args(&["--branch", BRANCH])), ExitCode::SUCCESS); assert_eq!(create_branch(&args(&["--check"])), ExitCode::SUCCESS);
     assert!(push_network::push_for_pr(BRANCH, false)); assert_eq!(create_branch(&args(&["--branch", BRANCH])), ExitCode::from(1)); assert_eq!(create_branch(&args(&["--branch", "wrong/issue-8790"])), ExitCode::from(2)); assert_eq!(create_branch(&args(&["--branch", "ada-lovelace/fetch-fail", "--base-remote", "missing"])), ExitCode::from(2));
-    let competing = TempDir::new().expect("competing clone"); command("git", &["clone", "-q", &env::var("LARCH_PR_TEST_REMOTE").expect("remote"), "."], competing.path());
+    let competing = TempDir::new().expect("competing clone"); git(competing.path(), &["clone", "-q", &env::var("LARCH_PR_TEST_REMOTE").expect("remote"), "."]);
     git(competing.path(), &["config", "user.name", "Remote User"]); git(competing.path(), &["config", "user.email", "remote@example.test"]); git(competing.path(), &["checkout", "-q", BRANCH]);
     git(competing.path(), &["commit", "--allow-empty", "-q", "-m", "remote"]); git(competing.path(), &["push", "-q", "origin", BRANCH]);
     assert!(!push_network::push_for_pr(BRANCH, false)); assert!(push_network::push_for_pr(BRANCH, true)); assert!(!push_network::push_for_pr("other/branch", false));
@@ -92,7 +93,9 @@ fn pull_json(number: u64, body: &str) -> String { json!({"number":number,"state"
 fn repository_json() -> String { json!({"id":1,"name":"repo","full_name":"owner/repo","private":false,"html_url":"https://github.com/owner/repo","url":"https://example.invalid/repos/owner/repo","default_branch":"main"}).to_string() }
 fn args(values: &[&str]) -> Vec<OsString> { values.iter().map(OsString::from).collect() }
 fn text(path: &Path) -> &str { path.to_str().expect("UTF-8 fixture path") }
-fn git(root: &Path, values: &[&str]) { command("git", values, root); }
-fn scope_child(root: &Path, tmpdir: &Path, allowed: bool) { let mut child = Command::new(env::current_exe().expect("test executable")); child.args(["--exact", "pr_commands::coverage_tests::compact::lifecycle_commands_cover_git_and_github_success_paths", "--nocapture"]).current_dir(root).env(CHILD, "1").env("LARCH_PR_SCOPE_ONLY", "1").env("IMPLEMENT_TMPDIR", tmpdir); if allowed { child.env("LARCH_PR_SCOPE_ALLOWED", "1"); } let status = child.status().expect("scope test child"); assert!(status.success(), "isolated scope child failed: {status}"); }
-fn command(program: &str, values: &[&str], root: &Path) { let output = Command::new(program).args(values).current_dir(root).output().expect("fixture command"); assert!(output.status.success(), "{program} {values:?}: {}", String::from_utf8_lossy(&output.stderr)); }
+fn git(root: &Path, values: &[&str]) { command(values, root); }
+fn scope_child(root: &Path, tmpdir: &Path, allowed: bool) { let mut child = Command::new(env::current_exe().expect("test executable")); // lint-subprocess-via-runner: ok test-only child isolates cwd and environment; the shared runner is product-only
+    child.args(["--exact", "pr_commands::coverage_tests::compact::lifecycle_commands_cover_git_and_github_success_paths", "--nocapture"]).current_dir(root).env(CHILD, "1").env("LARCH_PR_SCOPE_ONLY", "1").env("IMPLEMENT_TMPDIR", tmpdir); if allowed { child.env("LARCH_PR_SCOPE_ALLOWED", "1"); } let status = child.status().expect("scope test child"); assert!(status.success(), "isolated scope child failed: {status}"); }
+fn command(values: &[&str], root: &Path) { let output = Command::new("git") // lint-subprocess-via-runner: ok test-only helper builds a throwaway Git repository; the shared runner is product-only
+    .args(values).current_dir(root).output().expect("fixture command"); assert!(output.status.success(), "git {values:?}: {}", String::from_utf8_lossy(&output.stderr)); }
 }
