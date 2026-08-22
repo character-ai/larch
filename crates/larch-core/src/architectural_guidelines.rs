@@ -155,8 +155,21 @@ pub fn read_architectural_knowledge(
 ) -> ArchitecturalKnowledge {
     let filename = kind.filename();
     let path = repo_root.join(filename);
-    let Ok(metadata) = std::fs::symlink_metadata(&path) else {
-        return ArchitecturalKnowledge::absent();
+    let metadata = match std::fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            return ArchitecturalKnowledge::absent();
+        }
+        Err(error) => {
+            return ArchitecturalKnowledge::invalid(format!(
+                "{filename} is invalid: unreadable file ({error})"
+            ));
+        }
     };
     if metadata.is_symlink() {
         return ArchitecturalKnowledge::invalid(format!(
@@ -489,6 +502,34 @@ pub fn guideline_active_exception(note: &str) -> Option<GuidelineException> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn metadata_lookup_errors_do_not_disable_architectural_knowledge() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let root = tempfile::tempdir().expect("root");
+        let path = root.path().join(GUIDELINES_FILENAME);
+        std::fs::write(
+            &path,
+            "### G-Test-1: Keep failures visible\n- Why: fail closed\n",
+        )
+        .expect("guidelines");
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o000))
+            .expect("deny metadata lookup");
+        let lookup = std::fs::symlink_metadata(&path);
+        let knowledge = read_architectural_knowledge(root.path(), ArchitecturalKind::Guidelines);
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700))
+            .expect("restore root permissions");
+
+        if lookup.is_err_and(|error| error.kind() != std::io::ErrorKind::NotFound) {
+            assert_eq!(knowledge.status, ArchitecturalStatus::Invalid);
+            assert!(knowledge.warning.contains("unreadable file"));
+        } else {
+            // Privileged test runners can traverse a mode-000 directory.
+            assert_eq!(knowledge.status, ArchitecturalStatus::Present);
+        }
+    }
 
     #[test]
     fn guideline_exception_accepts_single_active_line() {

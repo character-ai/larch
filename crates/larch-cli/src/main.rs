@@ -26,6 +26,7 @@ mod analyze_bugs_commands;
 mod analyze_bugs_sweep;
 mod analyze_issues_commands;
 mod architectural_assessment_commands;
+mod architectural_preparation_commands;
 mod argparse_compat;
 mod audit_runs_commands;
 mod audit_umbrella_commands;
@@ -266,6 +267,12 @@ enum Domain {
     /// Step 8 architectural assessment materialize/submit/report helpers.
     #[command(subcommand, name = "architectural-assessment")]
     ArchitecturalAssessment(ArchitecturalAssessmentCommand),
+    /// Prepare repository architectural guidelines for design and implementation gates.
+    #[command(subcommand, name = "architectural-guidelines")]
+    ArchitecturalGuidelines(ArchitecturalPreparationCommand),
+    /// Prepare repository architectural invariants for design and implementation gates.
+    #[command(subcommand, name = "architectural-invariants")]
+    ArchitecturalInvariants(ArchitecturalPreparationCommand),
     /// Serially complete and audit every direct leaf of one umbrella issue.
     #[command(subcommand)]
     CompleteUmbrella(CompleteUmbrellaCommand),
@@ -1879,6 +1886,19 @@ enum ArchitecturalAssessmentCommand {
 }
 
 #[derive(Subcommand)]
+enum ArchitecturalPreparationCommand {
+    /// Materialize the implementation diff used by architectural assessment.
+    #[command(name = "materialize-diff", disable_help_flag = true)]
+    MaterializeDiff(RawCompatibilityArguments),
+    /// Read architectural knowledge and materialize its implementation diff.
+    #[command(disable_help_flag = true)]
+    Prepare(RawCompatibilityArguments),
+    /// Prepare frozen compose-time assessment evidence.
+    #[command(name = "prepare-compose", disable_help_flag = true)]
+    PrepareCompose(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
 enum OosCommand {
     /// Materialize external implementer observations into accepted-OOS blocks.
     #[command(name = "materialize-manifest", disable_help_flag = true)]
@@ -2591,6 +2611,46 @@ fn run(
             }
             ArchitecturalAssessmentCommand::SanitizeDetail(arguments) => {
                 architectural_assessment_commands::sanitize_detail_command(&arguments.arguments)
+            }
+        }),
+        Domain::ArchitecturalGuidelines(command) => Ok(match command {
+            ArchitecturalPreparationCommand::MaterializeDiff(arguments) => {
+                architectural_preparation_commands::materialize_diff_command(
+                    larch_core::AssessmentKind::Guidelines,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::Prepare(arguments) => {
+                architectural_preparation_commands::prepare_command(
+                    larch_core::AssessmentKind::Guidelines,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::PrepareCompose(arguments) => {
+                architectural_preparation_commands::prepare_compose_command(
+                    larch_core::AssessmentKind::Guidelines,
+                    &arguments.arguments,
+                )
+            }
+        }),
+        Domain::ArchitecturalInvariants(command) => Ok(match command {
+            ArchitecturalPreparationCommand::MaterializeDiff(arguments) => {
+                architectural_preparation_commands::materialize_diff_command(
+                    larch_core::AssessmentKind::Invariants,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::Prepare(arguments) => {
+                architectural_preparation_commands::prepare_command(
+                    larch_core::AssessmentKind::Invariants,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::PrepareCompose(arguments) => {
+                architectural_preparation_commands::prepare_compose_command(
+                    larch_core::AssessmentKind::Invariants,
+                    &arguments.arguments,
+                )
             }
         }),
         Domain::AuditUmbrella(command) => Ok(audit_umbrella_commands::run(command)),

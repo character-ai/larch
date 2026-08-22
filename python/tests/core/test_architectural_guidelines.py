@@ -38,6 +38,46 @@ def _repo(tmp_path: Path) -> Path:
     return repo
 
 
+def _seed_compose_materialization(
+    repo: Path,
+    implement_tmpdir: Path,
+    kind: AssessmentKind,
+    *,
+    head_sha: str,
+) -> None:
+    """Seed the remaining Python assessment-write owner with Rust-era wire state."""
+    diff_text = ag.materialize_implementation_diff(
+        repo,
+        base_remote="origin",
+        base_ref="main",
+    )
+    fingerprint = ag.diff_fingerprint(diff_text)
+    implement_tmpdir.mkdir(parents=True, exist_ok=True)
+    diff_path = implement_tmpdir / kind.materialized_diff
+    diff_path.write_text(diff_text, encoding="utf-8")
+    (implement_tmpdir / kind.materialize_env).write_text(
+        "\n".join(
+            [
+                "STATUS=present",
+                f"HEAD_SHA={head_sha}",
+                f"ASSESSED_HEAD_SHA={head_sha}",
+                "BASE_REF=origin/main",
+                "NOTE_STATE=authored",
+                f"DIFF_FINGERPRINT={fingerprint}",
+                f"AUTHORED_DIFF_FINGERPRINT={fingerprint}",
+                f"COVERED_DIFF_FINGERPRINT={fingerprint}",
+                f"DIFF_SNAPSHOT={diff_path}",
+                f"{kind.status_env_key}=present",
+                f"{kind.path_env_key}={repo / kind.filename}",
+                "ASSESSMENT_KIND=",
+                "WRITTEN_AT=2026-08-21T00:00:00Z",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 def _replace_staged_sidecar_value(tmpdir: Path, *, key: str, value: str) -> None:
     sidecar = tmpdir / ag.STAGED_ASSESSMENT_ENV
     lines = [f"{key}={value}" if line.startswith(f"{key}=") else line for line in sidecar.read_text(encoding="utf-8").splitlines()]
@@ -1863,65 +1903,6 @@ def test_note_fingerprint_stale_ignores_stale_snapshot_when_base_moves(
     assert ag.note_fingerprint_stale(tmpdir, base_ref="origin/main", repo_root=repo)
 
 
-def test_prepare_compose_assessment_rematerializes_when_durable_note_fingerprint_stale(
-    tmp_path: Path,
-) -> None:
-    repo = _repo(tmp_path / "git")
-    (repo / ag.GUIDELINES_FILENAME).write_text(
-        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
-        encoding="utf-8",
-    )
-    (repo / "README.md").write_text("base\nfirst change\n", encoding="utf-8")
-    _git(repo, "add", "README.md")
-    _git(repo, "commit", "-m", "change-a")
-    head_sha = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "HEAD"],
-        text=True,
-        capture_output=True,
-        check=False,
-    ).stdout.strip()
-    diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
-    tmpdir = tmp_path / "implement"
-    ag.write_implement_note(
-        implement_tmpdir=tmpdir,
-        note_text="fresh note\n",
-        head_sha=head_sha,
-        metadata={
-            "ASSESSED_HEAD_SHA": head_sha,
-            "DIFF_FINGERPRINT": ag.diff_fingerprint(diff_text),
-            "BASE_REF": "origin/main",
-        },
-        base_ref="origin/main",
-    )
-    tree_sha = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "HEAD^{tree}"],
-        text=True,
-        capture_output=True,
-        check=False,
-    ).stdout.strip()
-    moved_main = subprocess.run(
-        ["git", "-C", str(repo), "commit-tree", tree_sha, "-p", head_sha, "-m", "move main"],
-        text=True,
-        capture_output=True,
-        check=False,
-    ).stdout.strip()
-    assert moved_main
-    _git(repo, "update-ref", "refs/remotes/origin/main", moved_main)
-    _git(repo, "update-ref", "refs/remotes/upstream/main", moved_main)
-
-    result = ag.prepare_compose_assessment(
-        implement_tmpdir=tmpdir,
-        repo_root=repo,
-        expected_head_sha=head_sha,
-    )
-
-    assert result.status == "assessment-required"
-    assert result.head_sha == head_sha
-    assert result.base_ref == "origin/main"
-    assert result.diff_fingerprint == ag.diff_fingerprint("")
-    assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == ""
-
-
 def test_write_compose_assessment_persists_durable_note(tmp_path: Path) -> None:
     repo = _repo(tmp_path / "git")
     (repo / ag.GUIDELINES_FILENAME).write_text(
@@ -1939,7 +1920,7 @@ def test_write_compose_assessment_persists_durable_note(tmp_path: Path) -> None:
     ).stdout.strip()
     tmpdir = tmp_path / "implement"
 
-    assert ag.prepare_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=head_sha).status == "assessment-required"
+    _seed_compose_materialization(repo, tmpdir, GUIDELINES, head_sha=head_sha)
     ag.write_compose_assessment(implement_tmpdir=tmpdir, assessment_text="Compose assessment", repo_root=repo, outcome="clean")
 
     assert (tmpdir / ag.DURABLE_NOTE).read_text(encoding="utf-8") == "Compose assessment\n"
@@ -1963,7 +1944,7 @@ def test_write_compose_assessment_rejects_head_drift(tmp_path: Path) -> None:
     ).stdout.strip()
     tmpdir = tmp_path / "implement"
 
-    assert ag.prepare_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=head_sha).status == "assessment-required"
+    _seed_compose_materialization(repo, tmpdir, GUIDELINES, head_sha=head_sha)
     (repo / "README.md").write_text("base\ncompose\nfollow-up\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "drift")
@@ -2003,157 +1984,6 @@ def test_write_compose_assessment_main_reads_absolute_assessment_file_verbatim(
 
     assert captured["assessment_text"] == "Assessment from direct caller\n"
     assert captured["kind"] is kind
-
-
-def test_prepare_absent_emits_status_without_diff(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    repo = _repo(tmp_path)
-    assert ag.prepare_main(["--repo-root", str(repo)]) == 0
-    out = capsys.readouterr().out
-    assert "ARCHITECTURAL_GUIDELINES_STATUS=absent" in out
-    assert "ARCHITECTURAL_GUIDELINES_DIFF_STATUS" not in out
-
-
-def test_prepare_invalid_emits_warning_without_diff(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    repo = _repo(tmp_path)
-    outside = tmp_path / "outside.md"
-    outside.write_text("### G-python-1: nope\n", encoding="utf-8")
-    (repo / ag.GUIDELINES_FILENAME).symlink_to(outside)
-    assert ag.prepare_main(["--repo-root", str(repo)]) == 0
-    out = capsys.readouterr().out
-    assert "ARCHITECTURAL_GUIDELINES_STATUS=invalid" in out
-    assert "ARCHITECTURAL_GUIDELINES_WARNING=" in out
-    assert "symlinks are not read" in out
-    assert "ARCHITECTURAL_GUIDELINES_DIFF_STATUS" not in out
-
-
-def test_prepare_present_emits_guidelines_and_diff(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    repo = _repo(tmp_path)
-    (repo / ag.GUIDELINES_FILENAME).write_text(
-        "### G-python-1: Escape <xml>\n- Why: token sk-" + "A" * 24 + "\n- Deviate when: never\n",
-        encoding="utf-8",
-    )
-    (repo / "README.md").write_text("base\nchange\n", encoding="utf-8")
-    _git(repo, "add", "README.md")
-    _git(repo, "commit", "-m", "change")
-    assert ag.prepare_main(["--repo-root", str(repo)]) == 0
-    out = capsys.readouterr().out
-    assert "ARCHITECTURAL_GUIDELINES_STATUS=present" in out
-    assert f"ARCHITECTURAL_GUIDELINES_PATH={repo / ag.GUIDELINES_FILENAME}" in out
-    assert '<architectural_guidelines encoding="literal-redacted">' in out
-    assert "&lt;xml&gt;" in out
-    assert "&lt;REDACTED-TOKEN&gt;" in out
-    assert "ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok" in out
-    assert "ARCHITECTURAL_GUIDELINES_BASE_REF=origin/main" in out
-    assert "ARCHITECTURAL_GUIDELINES_DIFF_FINGERPRINT=" in out
-    assert '<architectural_guidelines_diff encoding="literal-redacted">' in out
-    assert "+change" in out
-
-
-def test_prepare_present_writes_diff_snapshot_and_metadata(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    repo = _repo(tmp_path)
-    tmpdir = tmp_path / "implement"
-    (repo / ag.GUIDELINES_FILENAME).write_text(
-        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
-        encoding="utf-8",
-    )
-    (repo / "README.md").write_text("base\nchange\n", encoding="utf-8")
-    _git(repo, "add", "README.md")
-    _git(repo, "commit", "-m", "change")
-    assert ag.prepare_main(["--repo-root", str(repo), "--implement-tmpdir", str(tmpdir)]) == 0
-    out = capsys.readouterr().out
-    assert "ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok" in out
-    diff_text = (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8")
-    assert "+change" in diff_text
-    meta = (tmpdir / ag.MATERIALIZE_ENV).read_text(encoding="utf-8")
-    assert "BASE_REF=origin/main" in meta
-    assert f"DIFF_FINGERPRINT={ag.diff_fingerprint(diff_text)}" in meta
-
-
-def test_prepare_present_diff_failure_returns_one(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    repo = _repo(tmp_path)
-    (repo / ag.GUIDELINES_FILENAME).write_text(
-        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
-        encoding="utf-8",
-    )
-
-    def fail_materialize(*_args: object, **_kwargs: object) -> str:
-        raise RuntimeError("missing remote ref")
-
-    monkeypatch.setattr(ag, "materialize_implementation_diff", fail_materialize)
-    assert ag.prepare_main(["--repo-root", str(repo)]) == 1
-    out = capsys.readouterr().out
-    assert "ARCHITECTURAL_GUIDELINES_STATUS=present" in out
-    assert "ARCHITECTURAL_GUIDELINES_DIFF_STATUS=failed" in out
-    assert "ARCHITECTURAL_GUIDELINES_WARNING=missing remote ref" in out
-
-
-def test_prepare_invalidates_stale_artifacts_before_reading(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    repo = _repo(tmp_path)
-    tmpdir = tmp_path / "implement"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint("diff"),
-        base_ref="origin/main",
-        diff_text="diff",
-    )
-    ag.write_implement_note(
-        implement_tmpdir=tmpdir,
-        note_text="note\n",
-        head_sha="head-b",
-        metadata={"ASSESSED_HEAD_SHA": "head-a", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
-        base_ref="origin/main",
-    )
-    (tmpdir / ag.MATERIALIZED_DIFF).write_text("snapshot\n", encoding="utf-8")
-    (tmpdir / ag.MATERIALIZE_ENV).write_text("STATUS=present\n", encoding="utf-8")
-    assert ag.prepare_main(["--repo-root", str(repo), "--implement-tmpdir", str(tmpdir)]) == 0
-    assert capsys.readouterr().out == "ARCHITECTURAL_GUIDELINES_STATUS=absent\n"
-    assert not (tmpdir / ag.STAGED_ASSESSMENT).exists()
-    assert not (tmpdir / ag.STAGED_ASSESSMENT_ENV).exists()
-    assert (tmpdir / ag.MATERIALIZED_DIFF).exists()
-    assert (tmpdir / ag.MATERIALIZE_ENV).exists()
-    assert not (tmpdir / ag.DURABLE_NOTE).exists()
-    assert not (tmpdir / ag.DURABLE_NOTE_ENV).exists()
-
-
-def test_prepare_invalidation_failure_returns_two_without_read_status(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    repo = _repo(tmp_path)
-    tmpdir = tmp_path / "implement"
-
-    def fail_invalidate(_implement_tmpdir: Path) -> None:
-        raise OSError("artifact survived")
-
-    monkeypatch.setattr(ag, "invalidate_implement_note", fail_invalidate)
-    assert ag.prepare_main(["--repo-root", str(repo), "--implement-tmpdir", str(tmpdir)]) == 2
-    out = capsys.readouterr().out
-    assert "ARCHITECTURAL_GUIDELINES_INVALIDATE_STATUS=failed" in out
-    assert "ARCHITECTURAL_GUIDELINES_WARNING=artifact survived" in out
-    assert "ARCHITECTURAL_GUIDELINES_STATUS" not in out
 
 
 def test_cli_present_uses_untrusted_content_block(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -2291,12 +2121,11 @@ def test_symlinked_guidelines_file_invalid(tmp_path: Path) -> None:
     assert "symlinks" in result.warning
 
 
-def test_materialize_diff_uses_upstream_for_forked_target(tmp_path: Path) -> None:
+def test_materialize_diff_accepts_upstream_base(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     (repo / "README.md").write_text("base\nchange\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "change")
-    assert ag.resolve_diff_base(forked_target=True) == ("upstream", "main")
     diff_text = ag.materialize_implementation_diff(repo, base_remote="upstream", base_ref="main")
     assert "+change" in diff_text
 
@@ -2636,11 +2465,7 @@ def test_invariant_compose_assessment_persists_durable_note(tmp_path: Path) -> N
     ).stdout.strip()
     tmpdir = tmp_path / "implement"
 
-    result = ag.prepare_invariant_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=head_sha)
-    assert result.status == "assessment-required"
-    assert result.diff_path == tmpdir / ag.INVARIANT_MATERIALIZED_DIFF
-    assert result.guidelines_status == "present"
-    assert result.guidelines_path == str(repo / ag.INVARIANTS_FILENAME)
+    _seed_compose_materialization(repo, tmpdir, INVARIANTS, head_sha=head_sha)
     assert (tmpdir / ag.INVARIANT_MATERIALIZE_ENV).is_file()
 
     ag.write_invariant_compose_assessment(
@@ -2925,8 +2750,6 @@ def test_coverage_advancement_docs_only_note_remains_consumable(tmp_path: Path) 
         ag.diff_fingerprint(ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main"))
         == metadata["COVERED_DIFF_FINGERPRINT"]
     )
-    prepared = ag.prepare_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=h2)
-    assert prepared.status == "current"
 
 
 def test_invariant_coverage_advancement_logs_only_reuses_compose_assessment(tmp_path: Path) -> None:
@@ -2949,10 +2772,7 @@ def test_invariant_coverage_advancement_logs_only_reuses_compose_assessment(tmp_
     (repo / "larch-logs" / "run.log").write_text("log\n", encoding="utf-8")
     _git(repo, "add", "larch-logs/run.log")
     _git(repo, "commit", "-m", "logs only")
-    h2 = _git_head(repo)
 
-    prepared = ag.prepare_invariant_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=h2)
-    assert prepared.status == "current"
 
 
 def _symlinked_tmpdir_pair(tmp_path: Path) -> tuple[Path, Path]:
@@ -3037,10 +2857,6 @@ def test_coverage_advancement_logs_only_survives_mixed_tmpdir_path_forms(tmp_pat
     assert ag.note_consumable(
         implement_tmpdir=resolved, head_sha=h2, base_ref="origin/main", repo_root=repo
     )
-    prepared = ag.prepare_compose_assessment(
-        implement_tmpdir=resolved, repo_root=repo, expected_head_sha=h2
-    )
-    assert prepared.status == "current"
 
 
 def test_coverage_advancement_rejects_snapshot_not_matching_stored_head(tmp_path: Path) -> None:

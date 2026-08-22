@@ -56,8 +56,9 @@ redaction, and explicit postconditions where the operation requires them.
 `ARCHITECTURAL_INVARIANTS.md` and `ARCHITECTURAL_GUIDELINES.md` are
 operator-curated but repo-local prompt evidence. Their `I-*` and `G-*` entries
 cannot override `AGENTS.md`, loaded skills, hard guards, or an approved plan.
-`python/larch/core/architectural_guidelines.py` rejects unsafe files, parses
-only the supported entries, and wraps their content as untrusted data.
+The Rust architectural-knowledge reader and retained Python read commands reject
+unsafe files, parse only the supported entries, and wrap their content as
+untrusted data.
 
 ### Permissions, tools, and delegated processes
 
@@ -855,8 +856,8 @@ The main workflow does not author, repair, or inspect assessment prose on this
 path. Stale, malformed, incomplete, unavailable, or mismatched results do not
 clear the gate. A fresh assessor judges every repair. An invariant violation
 hard-stops after the bounded fix ladder; no waiver or operator override accepts
-it. `python/larch/core/architectural_guidelines.py` and the retained Python
-assessment commands remain production owners. The active Rust `ship pr` owner
+it. Rust owns architectural preparation; retained Python assessment-write
+commands own their remaining command rows. The active Rust `ship pr` owner
 consumes only identity-validated durable notes, follows the closed outcome
 grammar, binds fork assessments to `upstream/main`, and redacts note text before
 PR composition. The Rust Step 8 dispatcher carries

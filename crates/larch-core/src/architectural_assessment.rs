@@ -23,12 +23,12 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-    AssessmentKind, DuplicateInputPolicy, DuplicatePolicy, KvDocument, MalformedLinePolicy,
-    ParseOptions, bgjob_daemon::redact_outbound, compose_execution_issue,
-    execution_issue_body_keys, execution_issue_chunks, execution_issue_sections,
-    existing_execution_issue_keys, implement::write_bytes_atomic,
-    logging_util::sanitize_diagnostic_line, redact_batch_payload, redaction::redact,
-    validate_ship_outcome_record,
+    ArchitecturalKind, ArchitecturalStatus, AssessmentKind, DuplicateInputPolicy, DuplicatePolicy,
+    KvDocument, MalformedLinePolicy, ParseOptions, bgjob_daemon::redact_outbound,
+    compose_execution_issue, execution_issue_body_keys, execution_issue_chunks,
+    execution_issue_sections, existing_execution_issue_keys, implement::write_bytes_atomic,
+    logging_util::sanitize_diagnostic_line, read_architectural_knowledge, redact_batch_payload,
+    redaction::redact, validate_ship_outcome_record,
 };
 
 /// Kind order preserved by [`normalize_kinds`].
@@ -109,6 +109,42 @@ pub struct MaterializedEvidence {
     pub knowledge_sha256: String,
     /// Heading identifiers present in the knowledge file.
     pub identifiers: BTreeSet<String>,
+}
+
+/// Frozen implementation diff used by the legacy preparation commands.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PreparationDiff {
+    /// HEAD resolved before diff materialization.
+    pub head_sha: String,
+    /// Covered base ref (`origin/main` or `upstream/main`).
+    pub base_ref: String,
+    /// Merge-base..HEAD diff text.
+    pub text: String,
+    /// SHA-256 of `text`.
+    pub fingerprint: String,
+}
+
+/// Result of one compose-time architectural preparation.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ComposePreparation {
+    /// Lifecycle status (`current`, `assessment-required`, `present-empty`, and so on).
+    pub status: String,
+    /// HEAD observed before materialization.
+    pub head_sha: String,
+    /// Covered base ref when a diff was materialized.
+    pub base_ref: String,
+    /// SHA-256 of the frozen diff.
+    pub diff_fingerprint: String,
+    /// Frozen diff path when a snapshot was written.
+    pub diff_path: Option<PathBuf>,
+    /// Architectural knowledge status.
+    pub knowledge_status: String,
+    /// Architectural knowledge path when present.
+    pub knowledge_path: String,
+    /// Deterministic assessment outcome for present-empty invariants.
+    pub assessment_kind: String,
+    /// Flattened diagnostic for invalid or failed preparation.
+    pub warning: String,
 }
 
 /// Validated result for one kind after submit.
@@ -234,6 +270,56 @@ fn parse_kind(raw: &str) -> Result<AssessmentKind, String> {
 #[must_use]
 pub fn diff_fingerprint(diff_text: &str) -> String {
     hex_sha256(diff_text.as_bytes())
+}
+
+/// Materialize the frozen merge-base..HEAD diff used by preparation commands.
+///
+/// # Errors
+/// Returns when HEAD, the configured base, or the exact diff cannot be resolved.
+pub fn materialize_preparation_diff(
+    repo_root: &Path,
+    git: &dyn AssessmentGit,
+) -> Result<PreparationDiff, String> {
+    let head_sha = git.git_read(repo_root, &["rev-parse", "--verify", "HEAD^{commit}"])?;
+    let (base_remote, base_name) = git.compose_base();
+    let base_ref = format!("{base_remote}/{base_name}");
+    let text = git.implementation_diff_for_head(repo_root, &head_sha, base_remote, base_name)?;
+    let fingerprint = diff_fingerprint(&text);
+    Ok(PreparationDiff {
+        head_sha,
+        base_ref,
+        text,
+        fingerprint,
+    })
+}
+
+/// Persist a preparation diff and its two-field legacy metadata sidecar.
+///
+/// Metadata is written before the optional diff path, matching the retired
+/// Python command's observable partial-write ordering.
+///
+/// # Errors
+/// Returns when either atomic write fails.
+pub fn persist_preparation_diff(
+    kind: AssessmentKind,
+    prepared: &PreparationDiff,
+    output: Option<&Path>,
+    implement_tmpdir: Option<&Path>,
+) -> Result<(), String> {
+    let default_output = implement_tmpdir.map(|root| root.join(kind.materialized_diff_filename()));
+    let output = output.map(Path::to_path_buf).or(default_output);
+    if let Some(root) = implement_tmpdir {
+        let metadata = format!(
+            "BASE_REF={}\nDIFF_FINGERPRINT={}\n",
+            env_escape(&prepared.base_ref),
+            env_escape(&prepared.fingerprint)
+        );
+        write_text_atomic(&root.join(kind.materialize_env_filename()), &metadata)?;
+    }
+    if let Some(path) = output {
+        write_text_atomic(&path, &prepared.text)?;
+    }
+    Ok(())
 }
 
 fn hex_sha256(bytes: &[u8]) -> String {
@@ -785,16 +871,14 @@ fn materialize_current(
     head_sha: &str,
     git: &dyn AssessmentGit,
 ) -> Result<Option<MaterializedEvidence>, PrepareErr> {
-    let result = prepare_compose_assessment(kind, implement_tmpdir, repo_root, head_sha, git)
-        .map_err(|error| match error.as_str() {
-            msg if msg.contains("HEAD changed") => PrepareErr::HeadDrift,
-            other => PrepareErr::Other(other.to_owned()),
-        })?;
+    let result = prepare_compose(kind, implement_tmpdir, Some(repo_root), head_sha, git)
+        .map_err(PrepareErr::Other)?;
     match result.status.as_str() {
         "current" => Ok(None),
         "assessment-required" => validate_materialization(kind, repo_root, implement_tmpdir, git)
             .map(Some)
             .map_err(PrepareErr::Other),
+        "failed" if result.warning.contains("HEAD changed") => Err(PrepareErr::HeadDrift),
         _ => Err(PrepareErr::Other(if result.warning.is_empty() {
             format!("{} materialization was not produced", kind.key())
         } else {
@@ -803,153 +887,214 @@ fn materialize_current(
     }
 }
 
-struct ComposeResult {
-    status: String,
-    warning: String,
+const fn architectural_kind(kind: AssessmentKind) -> ArchitecturalKind {
+    match kind {
+        AssessmentKind::Guidelines => ArchitecturalKind::Guidelines,
+        AssessmentKind::Invariants => ArchitecturalKind::Invariants,
+    }
 }
 
-fn prepare_compose_assessment(
+const fn architectural_status(status: ArchitecturalStatus) -> &'static str {
+    match status {
+        ArchitecturalStatus::Present => "present",
+        ArchitecturalStatus::Absent => "absent",
+        ArchitecturalStatus::Invalid => "invalid",
+    }
+}
+
+fn compose_precheck(
     kind: AssessmentKind,
     implement_tmpdir: &Path,
-    repo_root: &Path,
+    repo_root: Option<&Path>,
     expected_head_sha: &str,
+    current_head: &str,
     git: &dyn AssessmentGit,
-) -> Result<ComposeResult, String> {
-    fs::create_dir_all(implement_tmpdir).map_err(|error| error.to_string())?;
-    clear_staged_and_dropped(implement_tmpdir, kind);
-    let current_head = git.git_read(repo_root, &["rev-parse", "--verify", "HEAD^{commit}"])?;
-    if !expected_head_sha.is_empty() && expected_head_sha != current_head {
-        return Err(format!(
-            "HEAD changed before architectural-{} compose materialization",
-            kind.key()
-        ));
+) -> Option<ComposePreparation> {
+    if !expected_head_sha.is_empty()
+        && !current_head.is_empty()
+        && expected_head_sha != current_head
+    {
+        return Some(ComposePreparation {
+            status: "failed".to_owned(),
+            head_sha: current_head.to_owned(),
+            warning: format!(
+                "HEAD changed before architectural-{} compose materialization",
+                kind.key()
+            ),
+            ..ComposePreparation::default()
+        });
     }
     let metadata = read_env_lenient(&durable_note_env_path(implement_tmpdir, kind));
     let stored_base = metadata.get("BASE_REF").cloned().unwrap_or_default();
     let (base_remote, base_name) = git.compose_base();
-    let base_ref = format!("{base_remote}/{base_name}");
-    if !current_head.is_empty()
-        && stored_base == base_ref
+    let expected_base = format!("{base_remote}/{base_name}");
+    let consumable = stored_base == expected_base
+        && !current_head.is_empty()
         && note_consumable(
             implement_tmpdir,
-            &current_head,
+            current_head,
             kind,
-            &base_ref,
-            Some(repo_root),
-            Some(git as &dyn AssessmentGit),
-        )
-        && !base_ref.is_empty()
-        && !note_fingerprint_stale(implement_tmpdir, &base_ref, kind, repo_root, git)
-    {
-        return Ok(ComposeResult {
-            status: "current".to_owned(),
-            warning: String::new(),
+            &expected_base,
+            repo_root,
+            repo_root.map(|_| git),
+        );
+    let current = consumable
+        && repo_root.is_none_or(|root| {
+            !note_fingerprint_stale(implement_tmpdir, &expected_base, kind, root, git)
         });
-    }
-    let knowledge_path = repo_root.join(kind.knowledge_filename());
-    let (status, content, warning) = read_knowledge(kind, repo_root, &knowledge_path)?;
-    if status == "absent" || status == "invalid" {
-        return Ok(ComposeResult {
-            status: status.to_owned(),
-            warning,
-        });
-    }
-    if kind == AssessmentKind::Invariants && content.trim().is_empty() {
-        return Ok(ComposeResult {
-            status: "present-empty".to_owned(),
-            warning: String::new(),
-        });
-    }
-    let diff_text =
-        git.implementation_diff_for_head(repo_root, &current_head, base_remote, base_name)?;
-    if git.git_read(repo_root, &["rev-parse", "--verify", "HEAD^{commit}"])? != current_head {
-        return Err(format!(
-            "HEAD changed before architectural-{} compose materialization",
-            kind.key()
-        ));
-    }
-    let fingerprint = diff_fingerprint(&diff_text);
-    let diff_path = implement_tmpdir.join(kind.materialized_diff_filename());
-    write_text_atomic(&diff_path, &diff_text)?;
-    write_compose_materialization_metadata(
-        implement_tmpdir,
-        kind,
-        &current_head,
-        &base_ref,
-        &fingerprint,
-        &diff_path,
-        status,
-        &knowledge_path,
-    )?;
-    Ok(ComposeResult {
-        status: "assessment-required".to_owned(),
-        warning: String::new(),
+    current.then(|| ComposePreparation {
+        status: "current".to_owned(),
+        head_sha: current_head.to_owned(),
+        ..ComposePreparation::default()
     })
 }
 
-fn read_knowledge(
+fn materialize_compose_evidence(
     kind: AssessmentKind,
+    implement_tmpdir: &Path,
     repo_root: &Path,
-    path: &Path,
-) -> Result<(&'static str, String, String), String> {
-    match path.symlink_metadata() {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(("absent", String::new(), String::new()));
+    current_head: &str,
+    knowledge_path: &Path,
+    git: &dyn AssessmentGit,
+) -> ComposePreparation {
+    let prepared = match materialize_preparation_diff(repo_root, git) {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            return ComposePreparation {
+                status: "failed".to_owned(),
+                head_sha: current_head.to_owned(),
+                knowledge_status: "present".to_owned(),
+                warning: env_escape(&error),
+                ..ComposePreparation::default()
+            };
         }
-        Err(error) => return Err(error.to_string()),
-        Ok(meta) if meta.file_type().is_symlink() => {
-            return Ok((
-                "invalid",
-                String::new(),
-                format!(
-                    "{} is invalid: symlinks are not read",
-                    kind.knowledge_filename()
-                ),
-            ));
-        }
-        Ok(meta) if meta.is_dir() => {
-            return Ok((
-                "invalid",
-                String::new(),
-                format!(
-                    "{} is invalid: expected a regular file, found a directory",
-                    kind.knowledge_filename()
-                ),
-            ));
-        }
-        Ok(meta) if !meta.is_file() => {
-            return Ok((
-                "invalid",
-                String::new(),
-                format!(
-                    "{} is invalid: expected a regular file",
-                    kind.knowledge_filename()
-                ),
-            ));
-        }
-        Ok(_) => {}
-    }
-    if !under(path, repo_root) {
-        return Ok((
-            "invalid",
-            String::new(),
-            format!(
-                "{} is invalid: path escapes repo root",
-                kind.knowledge_filename()
+    };
+    let head_still_current = prepared.head_sha == current_head
+        && git
+            .git_read(repo_root, &["rev-parse", "--verify", "HEAD^{commit}"])
+            .ok()
+            .as_deref()
+            == Some(current_head);
+    if !head_still_current {
+        return ComposePreparation {
+            status: "failed".to_owned(),
+            head_sha: current_head.to_owned(),
+            base_ref: prepared.base_ref,
+            knowledge_status: "present".to_owned(),
+            warning: format!(
+                "HEAD changed before architectural-{} compose materialization",
+                kind.key()
             ),
-        ));
+            ..ComposePreparation::default()
+        };
     }
-    match fs::read_to_string(path) {
-        Ok(text) => Ok(("present", text, String::new())),
-        Err(error) => Ok((
-            "invalid",
-            String::new(),
-            format!(
-                "{} is invalid: unreadable file ({error})",
-                kind.knowledge_filename()
-            ),
-        )),
+    let diff_path = implement_tmpdir.join(kind.materialized_diff_filename());
+    let write_result = write_text_atomic(&diff_path, &prepared.text).and_then(|()| {
+        write_compose_materialization_metadata(
+            implement_tmpdir,
+            kind,
+            current_head,
+            &prepared.base_ref,
+            &prepared.fingerprint,
+            &diff_path,
+            "present",
+            knowledge_path,
+        )
+    });
+    if let Err(error) = write_result {
+        return ComposePreparation {
+            status: "failed".to_owned(),
+            head_sha: current_head.to_owned(),
+            base_ref: prepared.base_ref,
+            knowledge_status: "present".to_owned(),
+            warning: env_escape(&error),
+            ..ComposePreparation::default()
+        };
     }
+    ComposePreparation {
+        status: "assessment-required".to_owned(),
+        head_sha: current_head.to_owned(),
+        base_ref: prepared.base_ref,
+        diff_fingerprint: prepared.fingerprint,
+        diff_path: Some(diff_path),
+        knowledge_status: "present".to_owned(),
+        knowledge_path: knowledge_path.display().to_string(),
+        ..ComposePreparation::default()
+    }
+}
+
+/// Prepare one compose-time architectural assessment using frozen evidence.
+///
+/// `repo_root=None` preserves the legacy absent-repository contract. Staged and
+/// dropped artifacts are cleared before any repository read, while a current
+/// durable note remains eligible for reuse.
+///
+/// # Errors
+/// Returns only when the preparation directory cannot be created. Operational
+/// Git and artifact-write failures are returned as a `failed` wire result.
+pub fn prepare_compose(
+    kind: AssessmentKind,
+    implement_tmpdir: &Path,
+    repo_root: Option<&Path>,
+    expected_head_sha: &str,
+    git: &dyn AssessmentGit,
+) -> Result<ComposePreparation, String> {
+    fs::create_dir_all(implement_tmpdir).map_err(|error| error.to_string())?;
+    clear_staged_and_dropped(implement_tmpdir, kind);
+    let current_head = repo_root
+        .and_then(|root| {
+            git.git_read(root, &["rev-parse", "--verify", "HEAD^{commit}"])
+                .ok()
+        })
+        .unwrap_or_default();
+    if let Some(result) = compose_precheck(
+        kind,
+        implement_tmpdir,
+        repo_root,
+        expected_head_sha,
+        &current_head,
+        git,
+    ) {
+        return Ok(result);
+    }
+    let Some(repo_root) = repo_root else {
+        return Ok(ComposePreparation {
+            status: "absent".to_owned(),
+            head_sha: current_head,
+            knowledge_status: "absent".to_owned(),
+            ..ComposePreparation::default()
+        });
+    };
+    let knowledge = read_architectural_knowledge(repo_root, architectural_kind(kind));
+    let status = architectural_status(knowledge.status);
+    if knowledge.status != ArchitecturalStatus::Present {
+        return Ok(ComposePreparation {
+            status: status.to_owned(),
+            head_sha: current_head,
+            knowledge_status: status.to_owned(),
+            warning: knowledge.warning,
+            ..ComposePreparation::default()
+        });
+    }
+    let knowledge_path = repo_root.join(kind.knowledge_filename());
+    if kind == AssessmentKind::Invariants && knowledge.content.trim().is_empty() {
+        return Ok(ComposePreparation {
+            status: "present-empty".to_owned(),
+            head_sha: current_head,
+            knowledge_status: status.to_owned(),
+            knowledge_path: knowledge_path.display().to_string(),
+            assessment_kind: ASSESSMENT_OUTCOME_CLEAN.to_owned(),
+            ..ComposePreparation::default()
+        });
+    }
+    Ok(materialize_compose_evidence(
+        kind,
+        implement_tmpdir,
+        repo_root,
+        &current_head,
+        &knowledge_path,
+        git,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2067,7 +2212,16 @@ fn format_deviation_warning_entry(note: &str) -> Result<String, String> {
     Ok(lines.join("\n"))
 }
 
-fn invalidate_implement_note(implement_tmpdir: &Path, kind: AssessmentKind) -> Result<(), String> {
+/// Remove stale authored-note artifacts before a fresh preparation read.
+///
+/// Materialized diff and metadata artifacts are deliberately retained.
+///
+/// # Errors
+/// Returns when any targeted artifact survives removal.
+pub fn invalidate_implement_note(
+    implement_tmpdir: &Path,
+    kind: AssessmentKind,
+) -> Result<(), String> {
     let mut names = vec![
         kind.staged_assessment_filename(),
         kind.staged_assessment_env_filename(),
@@ -2084,11 +2238,14 @@ fn invalidate_implement_note(implement_tmpdir: &Path, kind: AssessmentKind) -> R
         let path = implement_tmpdir.join(name);
         let _ = remove_artifact(&path);
     }
-    let surviving: Vec<_> = names
-        .iter()
-        .filter(|name| implement_tmpdir.join(name).symlink_metadata().is_ok())
-        .copied()
-        .collect();
+    let mut surviving = Vec::new();
+    for name in &names {
+        match implement_tmpdir.join(name).symlink_metadata() {
+            Ok(_) => surviving.push(*name),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.to_string()),
+        }
+    }
     if surviving.is_empty() {
         Ok(())
     } else {
@@ -3106,6 +3263,32 @@ mod tests {
         let git = FakeGit::new(HEAD_A, DOCS_DIFF).with_base_remote("upstream");
         let (statuses, pending) =
             materialize(&["guidelines"], &repo, &tmpdir, &git).expect("fork materialization");
+        assert!(pending.is_empty());
+        assert_eq!(statuses["guidelines"], "deterministic-clean");
+        let metadata =
+            read_env_lenient(&durable_note_env_path(&tmpdir, AssessmentKind::Guidelines));
+        assert_eq!(metadata["BASE_REF"], "upstream/main");
+    }
+
+    #[test]
+    fn materialize_does_not_reuse_a_note_for_a_different_base() {
+        let (_root, repo, tmpdir) = setup_repo_tmpdir();
+        write_guidelines_knowledge(&repo);
+        write_durable_bundle(
+            &tmpdir,
+            AssessmentKind::Guidelines,
+            HEAD_A,
+            "origin/main",
+            DOCS_DIFF,
+            NOTE_STATE_DETERMINISTIC_CLEAN,
+            ASSESSMENT_OUTCOME_CLEAN,
+            &format!("{}\n", AssessmentKind::Guidelines.clean_presentation_note()),
+        );
+        let git = FakeGit::new(HEAD_A, DOCS_DIFF).with_base_remote("upstream");
+
+        let (statuses, pending) =
+            materialize(&["guidelines"], &repo, &tmpdir, &git).expect("rematerialize");
+
         assert!(pending.is_empty());
         assert_eq!(statuses["guidelines"], "deterministic-clean");
         let metadata =

@@ -630,6 +630,36 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "submit",
     ),
     CleanInstallCase::new(
+        "clean-install-architectural-guidelines-materialize-diff",
+        "architectural-guidelines",
+        "materialize-diff",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-guidelines-prepare",
+        "architectural-guidelines",
+        "prepare",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-guidelines-prepare-compose",
+        "architectural-guidelines",
+        "prepare-compose",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-invariants-materialize-diff",
+        "architectural-invariants",
+        "materialize-diff",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-invariants-prepare",
+        "architectural-invariants",
+        "prepare",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-invariants-prepare-compose",
+        "architectural-invariants",
+        "prepare-compose",
+    ),
+    CleanInstallCase::new(
         "clean-install-analyze-bugs-ledger",
         "analyze-bugs",
         "ledger",
