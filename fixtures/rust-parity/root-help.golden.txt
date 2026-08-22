@@ -36,6 +36,7 @@ Commands:
   example                   Non-production commands that exercise dispatcher wiring
   fluff-analysis            The `/fluff-analysis` review-fluff report
   git                       Local Git repository commands
+  merge                     Pull-request merge and merge-queue commands
   hook                      Advisory Claude Code hook commands
   implement                 `/implement` bootstrap, preflight, scout, recovery, and step checks
   ship                      Ship pre-driver routing, state, result, and rebase-repair commands
