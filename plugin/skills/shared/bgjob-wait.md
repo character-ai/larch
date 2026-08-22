@@ -83,7 +83,7 @@ Do not apply the generic `BGJOB_RC=0` success gate to `ship route-exit`. Step 8 
 
 ## Long leaf wait carve-out
 
-`/complete-umbrella` Step 2 is the only shipped caller that raises `--max-wait-s` above the default 270-second chunk. It uses `--max-wait-s 7200` with Bash `run_in_background: true` so a typical hour-scale leaf finishes in one or two wait calls without exceeding the Bash foreground timeout ceiling. The wait still refreshes the wait lease on every poll. Other skills keep the 270-second chunk and foreground timeout `330000` contract above.
+`/complete-umbrella` Step 1 is the only shipped caller that raises `--max-wait-s` above the default 270-second chunk. It uses `--max-wait-s 7200` with Bash `run_in_background: true` so a typical hour-scale leaf finishes in one or two wait calls without exceeding the Bash foreground timeout ceiling. This supersedes #8650's earlier `--max-wait-s 540` and tool timeout `600000` proposal, and reduces wait turns further. The wait still refreshes the wait lease on every poll. Other skills keep the 270-second chunk and foreground timeout `330000` contract above.
 
 ## Parallel external lanes
 
