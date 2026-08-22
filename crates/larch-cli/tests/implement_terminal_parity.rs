@@ -17,6 +17,7 @@ use std::{
     process::{Command, Output},
 };
 
+use larch_core::{KvDocument, ParseOptions};
 use tempfile::TempDir;
 
 const STUB_CLI: &str = r##"#!/usr/bin/env python3
@@ -614,9 +615,11 @@ fn composite_refuses_terminal_shipping_without_a_pr_number() {
     assert!(state.contains("STEP18_GATE_REFUSAL=step18-terminal-shipping-without-pr\n"));
     assert_eq!(kv("EXIT_CODE", &state), "1");
     assert_eq!(kv("PHASE", &state), "stalled");
-    let keys = state
-        .lines()
-        .filter_map(|line| line.split_once('=').map(|(key, _)| key))
+    let document = KvDocument::parse(&state, ParseOptions::environment()).expect("finalize state");
+    let keys = document
+        .rows()
+        .iter()
+        .map(larch_core::KvRow::key)
         .collect::<Vec<_>>();
     assert!(keys.is_sorted(), "state keys are not sorted: {state}");
     let issues = fs::read_to_string(fixture.tmpdir.join("execution-issues.md")).expect("issues");

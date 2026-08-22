@@ -25,13 +25,14 @@ use larch_adapters::{
     remove_session_tmpdir, resolve_allow_missing, writer_target_allowed,
 };
 use larch_core::{
-    GitHubIssueState, RepositoryRead as _, Revision, StatusOptions, allowed_session_roots,
-    has_live_entry, kill_session_background_processes, private_atomic_write,
+    DuplicateInputPolicy, DuplicatePolicy, GitHubIssueState, KeyPolicy, KvDocument, KvRow,
+    ParseOptions, ProcessOutput, RepositoryRead as _, Revision, StatusOptions,
+    allowed_session_roots, has_live_entry, kill_session_background_processes, private_atomic_write,
     validate_progress_run_id,
 };
 
 use crate::{
-    argparse_compat::{missing, parse_with_flags},
+    argparse_compat::{missing, parse_required_with_help, parse_with_flags},
     git_command_runtime::GitCommandRuntime,
     git_commands::{is_transient_net, sleep_before_retry},
     implement_scope_disposition_commands::{
@@ -324,25 +325,19 @@ pub fn execute(phase: FinalizePhase, arguments: &[OsString]) -> CapturedFinalize
 
 /// Remove one validated implementation session directory.
 pub fn cleanup(arguments: &[OsString]) -> ExitCode {
-    let parsed = parse_with_flags(arguments, &["--implement-tmpdir"], &["-h", "--help"], 0);
-    if parsed.flag("-h") || parsed.flag("--help") {
-        println!("{CLEANUP_HELP}");
-        return ExitCode::SUCCESS;
-    }
-    if let Some(error) = parsed
-        .value_error()
-        .map(ToOwned::to_owned)
-        .or_else(|| parsed.error())
-    {
-        return emit_argparse_error(CLEANUP_USAGE, CLEANUP_PROGRAM, &error);
-    }
-    let Some(raw) = parsed.value("--implement-tmpdir") else {
-        return emit_argparse_error(
-            CLEANUP_USAGE,
-            CLEANUP_PROGRAM,
-            &missing(&[("--implement-tmpdir", false)]),
-        );
+    let parsed = match parse_required_with_help(
+        arguments,
+        CLEANUP_PROGRAM,
+        CLEANUP_USAGE,
+        CLEANUP_HELP,
+        &["--implement-tmpdir"],
+        &[],
+        &["--implement-tmpdir"],
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
     };
+    let raw = parsed.value("--implement-tmpdir").unwrap_or_default();
     let tmpdir = PathBuf::from(raw);
     let state = load_state_lenient(&tmpdir.join("finalize-state.sh"));
     let context = cleanup_context(&state, &tmpdir);
@@ -426,11 +421,6 @@ fn argparse_capture(phase: FinalizePhase, error: &str) -> CapturedFinalize {
 
 fn validation_error(message: &str) -> CapturedFinalize {
     CapturedFinalize::error(2, format!("implement-finalize: {message}\n"))
-}
-
-fn emit_argparse_error(usage: &str, program: &str, error: &str) -> ExitCode {
-    eprintln!("{usage}\n{program}: error: {error}");
-    ExitCode::from(2)
 }
 
 fn emit_capture(capture: &CapturedFinalize) -> ExitCode {
@@ -527,19 +517,21 @@ fn load_state_checked(path: &Path) -> Result<BTreeMap<String, String>, String> {
     }
     let bytes = fs::read(path).map_err(|_| "--state-file must exist and be readable".to_owned())?;
     let text = String::from_utf8_lossy(&bytes);
+    let document = KvDocument::parse(
+        &text,
+        ParseOptions {
+            duplicates: DuplicateInputPolicy::Allow,
+            ..ParseOptions::environment()
+        },
+    )
+    .map_err(|error| format!("malformed state-file line {}", error.line()))?;
     let mut data = BTreeMap::new();
-    for (index, raw) in text.lines().enumerate() {
-        if raw.is_empty() || raw.starts_with('#') {
-            continue;
-        }
-        let Some((key, value)) = raw.split_once('=') else {
-            return Err(format!("malformed state-file line {}", index + 1));
-        };
-        if !environment_key(key) {
-            return Err(format!("malformed state-file line {}", index + 1));
-        }
-        if data.insert(key.to_owned(), value.to_owned()).is_some() {
-            return Err(format!("duplicate state-file key: {key}"));
+    for row in document.rows() {
+        if data
+            .insert(row.key().to_owned(), row.value().to_owned())
+            .is_some()
+        {
+            return Err(format!("duplicate state-file key: {}", row.key()));
         }
     }
     Ok(data)
@@ -549,13 +541,17 @@ fn load_state_lenient(path: &Path) -> BTreeMap<String, String> {
     let Ok(bytes) = fs::read(path) else {
         return BTreeMap::new();
     };
-    String::from_utf8_lossy(&bytes)
-        .lines()
-        .filter(|line| !line.starts_with('#'))
-        .filter_map(|line| line.split_once('='))
-        .filter(|(key, _)| environment_key(key))
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
-        .collect()
+    let Ok(document) = KvDocument::parse(&String::from_utf8_lossy(&bytes), ParseOptions::legacy())
+    else {
+        return BTreeMap::new();
+    };
+    let rows = document
+        .rows()
+        .iter()
+        .filter(|row| KvRow::new(row.key(), "", KeyPolicy::Environment).is_ok())
+        .cloned()
+        .collect();
+    KvDocument::from_rows(rows).select(DuplicatePolicy::Last)
 }
 
 fn require_keys(data: &BTreeMap<String, String>, keys: &[&str]) -> Result<(), String> {
@@ -1058,26 +1054,24 @@ impl GitOutcome {
 }
 
 fn git_outcome(result: Result<GitCliResult, GitCliError>) -> GitOutcome {
-    let output = match result {
-        Ok(value) => return output_outcome(true, &value),
-        Err(GitCliError::Failed(value)) => return output_outcome(false, &value),
-        Err(GitCliError::Process(error)) => error.output().map(|output| GitOutcome {
-            ok: false,
-            code: output.status().code().unwrap_or(1),
-            stdout: String::from_utf8_lossy(output.stdout()).into_owned(),
-            stderr: String::from_utf8_lossy(output.stderr()).into_owned(),
-        }),
-        Err(error) => return GitOutcome::error(error.to_string()),
-    };
-    output.unwrap_or_else(|| GitOutcome::error("Git process failed"))
+    match result {
+        Ok(value) => output_outcome(true, value.output()),
+        Err(GitCliError::Failed(value)) => output_outcome(false, value.output()),
+        Err(GitCliError::Process(error)) => error.output().map_or_else(
+            || GitOutcome::error("Git process failed"),
+            |output| output_outcome(false, output),
+        ),
+        Err(error) => GitOutcome::error(error.to_string()),
+    }
 }
 
-fn output_outcome(ok: bool, result: &GitCliResult) -> GitOutcome {
+fn output_outcome(ok: bool, output: &ProcessOutput) -> GitOutcome {
+    let (code, stdout, stderr) = output.decoded_streams();
     GitOutcome {
         ok,
-        code: result.output().status().code().unwrap_or(1),
-        stdout: String::from_utf8_lossy(result.output().stdout()).into_owned(),
-        stderr: String::from_utf8_lossy(result.output().stderr()).into_owned(),
+        code,
+        stdout,
+        stderr,
     }
 }
 
@@ -1330,14 +1324,6 @@ fn semver_triplet(value: &str) -> bool {
         && parts
             .iter()
             .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
-}
-
-fn environment_key(value: &str) -> bool {
-    let mut bytes = value.bytes();
-    bytes
-        .next()
-        .is_some_and(|byte| byte == b'_' || byte.is_ascii_uppercase())
-        && bytes.all(|byte| byte == b'_' || byte.is_ascii_uppercase() || byte.is_ascii_digit())
 }
 
 fn bool_value(value: &str) -> bool {

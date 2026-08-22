@@ -38,7 +38,7 @@ use crate::{
     github_service::with_github_service,
     implement_child_seam::{
         delegate_larch_with_environment, delegate_larch_with_options, delegate_merge_wait,
-        delegate_python, verify_merge_wait,
+        verify_merge_wait,
     },
     implement_scope_disposition_commands::{ship_pr_disposition, validate_ship_disposition},
     ship_commands::validate_tmpdir,
