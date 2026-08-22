@@ -115,36 +115,26 @@ def _require_wire_value(value: str, *, key: str, stage: str) -> str:
 
 
 def _parse_envelope(*, stage: str, stdout: str, stderr: str) -> CommandEnvelope:
-    for raw_line in stdout.split("\n"):
-        if not raw_line:
-            continue
-        if "=" not in raw_line:
-            raise BootstrapError(
-                stage,
-                "malformed non-KV stdout",
-                diagnostics=stderr,
-            )
-        key, value = raw_line.split("=", 1)
-        if _KEY_RE.fullmatch(key) is None:
-            raise BootstrapError(
-                stage,
-                "malformed machine key",
-                diagnostics=stderr,
-            )
-        try:
-            _ = _require_wire_value(value, key=key, stage=stage)
-        except BootstrapError as exc:
-            raise BootstrapError(
-                stage,
-                exc.detail,
-                diagnostics=stderr,
-            ) from exc
+    if _WIRE_BREAK_RE.search(stdout.replace("\n", "")) is not None:
+        raise BootstrapError(
+            stage,
+            "invalid line break in machine stdout",
+            diagnostics=stderr,
+        )
     parsed: dict[str, list[str]] = larch_io.parse_kv(
         stdout,
         duplicate_policy="all",
         key_pattern=_KEY_RE,
         cr_strip="none",
     )
+    source_row_count: int = sum(bool(line) for line in stdout.split("\n"))
+    parsed_row_count: int = sum(len(values) for values in parsed.values())
+    if parsed_row_count != source_row_count:
+        raise BootstrapError(
+            stage,
+            "malformed non-KV stdout",
+            diagnostics=stderr,
+        )
     duplicates: list[str] = sorted(key for key, values in parsed.items() if len(values) != 1)
     if duplicates:
         raise BootstrapError(

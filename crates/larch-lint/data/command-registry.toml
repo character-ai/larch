@@ -9467,7 +9467,7 @@ rust = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues cl
 path = "skills/complete-umbrella/SKILL.md"
 kind = "skill"
 python = ["complete-umbrella bootstrap"]
-rust = ["bgjob start", "bgjob wait", "complete-umbrella file-gap", "session cleanup-tmpdir"]
+rust = ["bgjob start", "bgjob wait", "session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/complete-umbrella/references/adversarial-review.md"
