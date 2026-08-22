@@ -22,28 +22,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         "invariants_present_note_main",
         True,
     ),
-    ("architectural-guidelines", "materialize-diff"): (
-        "larch.core.architectural_guidelines",
-        "materialize_diff_main",
-        True,
-    ),
-    ("architectural-invariants", "materialize-diff"): (
-        "larch.core.architectural_guidelines",
-        "invariants_materialize_diff_main",
-        True,
-    ),
-    ("architectural-guidelines", "prepare"): ("larch.core.architectural_guidelines", "prepare_main", True),
-    ("architectural-invariants", "prepare"): ("larch.core.architectural_guidelines", "invariants_prepare_main", True),
-    ("architectural-guidelines", "prepare-compose"): (
-        "larch.core.architectural_guidelines",
-        "prepare_compose_main",
-        True,
-    ),
-    ("architectural-invariants", "prepare-compose"): (
-        "larch.core.architectural_guidelines",
-        "invariants_prepare_compose_main",
-        True,
-    ),
     ("architectural-guidelines", "write-compose-assessment"): (
         "larch.core.architectural_guidelines",
         "write_compose_assessment_main",

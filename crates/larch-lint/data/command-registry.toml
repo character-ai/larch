@@ -699,11 +699,13 @@ verb = "materialize-diff"
 python_module = "larch.core.architectural_guidelines"
 python_function = "materialize_diff_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8794
+clean_install_test = "clean-install-architectural-guidelines-materialize-diff"
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -735,11 +737,13 @@ verb = "prepare"
 python_module = "larch.core.architectural_guidelines"
 python_function = "prepare_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8794
+clean_install_test = "clean-install-architectural-guidelines-prepare"
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -747,11 +751,13 @@ verb = "prepare-compose"
 python_module = "larch.core.architectural_guidelines"
 python_function = "prepare_compose_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8794
+clean_install_test = "clean-install-architectural-guidelines-prepare-compose"
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -831,11 +837,13 @@ verb = "materialize-diff"
 python_module = "larch.core.architectural_guidelines"
 python_function = "invariants_materialize_diff_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8794
+clean_install_test = "clean-install-architectural-invariants-materialize-diff"
 
 [[commands]]
 domain = "architectural-invariants"
@@ -867,11 +875,13 @@ verb = "prepare"
 python_module = "larch.core.architectural_guidelines"
 python_function = "invariants_prepare_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8794
+clean_install_test = "clean-install-architectural-invariants-prepare"
 
 [[commands]]
 domain = "architectural-invariants"
@@ -879,11 +889,13 @@ verb = "prepare-compose"
 python_module = "larch.core.architectural_guidelines"
 python_function = "invariants_prepare_compose_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8794
+clean_install_test = "clean-install-architectural-invariants-prepare-compose"
 
 [[commands]]
 domain = "architectural-invariants"

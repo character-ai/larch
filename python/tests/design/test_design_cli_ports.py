@@ -10,9 +10,6 @@ ARCHITECTURAL_GUIDELINES_EXPECTED = {
     ("architectural-invariants", "read"): ("larch.core.architectural_guidelines", "invariants_read_main"),
     ("architectural-guidelines", "read"): ("larch.core.architectural_guidelines", "read_main"),
     ("architectural-guidelines", "present-note"): ("larch.core.architectural_guidelines", "present_note_main"),
-    ("architectural-guidelines", "materialize-diff"): ("larch.core.architectural_guidelines", "materialize_diff_main"),
-    ("architectural-guidelines", "prepare"): ("larch.core.architectural_guidelines", "prepare_main"),
-    ("architectural-guidelines", "prepare-compose"): ("larch.core.architectural_guidelines", "prepare_compose_main"),
     ("architectural-guidelines", "write-compose-assessment"): ("larch.core.architectural_guidelines", "write_compose_assessment_main"),
     ("architectural-guidelines", "append-deviation-note"): ("larch.core.architectural_guidelines", "append_deviation_note_main"),
     ("architectural-guidelines", "write-staged-assessment"): ("larch.core.architectural_guidelines", "write_staged_assessment_main"),
@@ -22,9 +19,6 @@ ARCHITECTURAL_GUIDELINES_EXPECTED = {
 }
 ARCHITECTURAL_INVARIANTS_EXPECTED = {
     ("architectural-invariants", "present-note"): ("larch.core.architectural_guidelines", "invariants_present_note_main"),
-    ("architectural-invariants", "materialize-diff"): ("larch.core.architectural_guidelines", "invariants_materialize_diff_main"),
-    ("architectural-invariants", "prepare"): ("larch.core.architectural_guidelines", "invariants_prepare_main"),
-    ("architectural-invariants", "prepare-compose"): ("larch.core.architectural_guidelines", "invariants_prepare_compose_main"),
     ("architectural-invariants", "write-compose-assessment"): ("larch.core.architectural_guidelines", "invariants_write_compose_assessment_main"),
     ("architectural-invariants", "append-deviation-note"): ("larch.core.architectural_guidelines", "invariants_append_deviation_note_main"),
     ("architectural-invariants", "write-staged-assessment"): ("larch.core.architectural_guidelines", "invariants_write_staged_assessment_main"),
@@ -64,6 +58,12 @@ def test_design_port_registry_entries_are_machine_stdout() -> None:
         ("architectural-assessment", "submit"),
         ("architectural-assessment", "sanitize-detail"),
         ("architectural-assessment", "final-report-sections"),
+        ("architectural-guidelines", "materialize-diff"),
+        ("architectural-guidelines", "prepare"),
+        ("architectural-guidelines", "prepare-compose"),
+        ("architectural-invariants", "materialize-diff"),
+        ("architectural-invariants", "prepare"),
+        ("architectural-invariants", "prepare-compose"),
     ):
         assert key not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     for key, target in ARCHITECTURAL_GUIDELINES_EXPECTED.items():

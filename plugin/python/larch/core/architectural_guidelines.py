@@ -89,31 +89,6 @@ class ArchitecturalGuidelinesResult:
             raise ValueError(msg)
 
 
-@dataclass(frozen=True)
-class ComposeMaterializationResult:
-    """Result of the Step 8 compose-time guideline materialization gate."""
-
-    status: str
-    head_sha: str = ""
-    base_ref: str = ""
-    diff_fingerprint: str = ""
-    diff_path: Path | None = None
-    guidelines_status: str = ""
-    guidelines_path: str = ""
-    assessment_kind: str = ""
-    warning: str = ""
-
-
-@dataclass(frozen=True)
-class ComposeAssessmentSnapshot:
-    """Frozen Step 8 compose-time diff evidence shared across assessment kinds."""
-
-    head_sha: str
-    base_ref: str
-    diff_text: str
-    diff_fingerprint: str
-
-
 def _validate_ship_outcome_record(  # noqa: C901, PLR0911, PLR0912 - validator preserves distinct schema diagnostics
     data: object, *, kind: AssessmentKind
 ) -> str | None:
@@ -261,11 +236,6 @@ def architectural_knowledge_required(repo_root: str | Path | None = None) -> boo
     return read_invariants(repo_root=repo_root).status == "present" or read_guidelines(repo_root=repo_root).status == "present"
 
 
-def resolve_diff_base(*, forked_target: bool) -> tuple[str, str]:
-    """Return the remote and ref used for implementation diff materialization."""
-    return ("upstream", "main") if forked_target else ("origin", "main")
-
-
 def _materialize_implementation_diff_for_head(
     repo_root: Path,
     *,
@@ -311,38 +281,6 @@ def materialize_implementation_diff(repo_root: Path, *, base_remote: str, base_r
         head_sha=head_sha,
         base_remote=base_remote,
         base_ref=base_ref,
-    )
-
-
-def materialize_compose_assessment_snapshot(
-    *,
-    repo_root: str | Path | None,
-    forked_target: bool,
-    expected_head_sha: str,
-) -> ComposeAssessmentSnapshot:
-    """Materialize one frozen diff snapshot for compose-time assessments."""
-    root = _resolve_repo_root(repo_root)
-    if root is None:
-        raise RuntimeError("could not resolve repo root")
-    head_errors: list[str] = []
-    head_sha = _current_head(root, verify_commit=True, error_out=head_errors)
-    if not head_sha:
-        msg = head_errors[0] if head_errors else "could not resolve HEAD"
-        raise RuntimeError(msg)
-    if expected_head_sha and expected_head_sha != head_sha:
-        raise RuntimeError("HEAD changed before architectural compose materialization")
-    base_remote, base_ref = resolve_diff_base(forked_target=forked_target)
-    diff_text = _materialize_implementation_diff_for_head(
-        root,
-        head_sha=head_sha,
-        base_remote=base_remote,
-        base_ref=base_ref,
-    )
-    return ComposeAssessmentSnapshot(
-        head_sha=head_sha,
-        base_ref=f"{base_remote}/{base_ref}",
-        diff_text=diff_text,
-        diff_fingerprint=diff_fingerprint(diff_text),
     )
 
 
@@ -1287,37 +1225,6 @@ clear_guideline_ship_outcome = partial(_clear_ship_outcome, kind=GUIDELINES)
 clear_invariant_ship_outcome = partial(_clear_ship_outcome, kind=INVARIANTS)
 
 
-def _write_compose_materialization_metadata(
-    *,
-    implement_tmpdir: Path,
-    materialized: ComposeMaterializationResult,
-    kind: AssessmentKind = GUIDELINES,
-) -> None:
-    written_at = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    diff_path = materialized.diff_path or _artifact_path(implement_tmpdir, kind, "materialized_diff")
-    _write_text_atomic(
-        path=_artifact_path(implement_tmpdir, kind, "materialize_env"),
-        text="\n".join(
-            [
-                "STATUS=present",
-                f"HEAD_SHA={_env_escape(materialized.head_sha)}",
-                f"ASSESSED_HEAD_SHA={_env_escape(materialized.head_sha)}",
-                f"BASE_REF={_env_escape(materialized.base_ref)}",
-                f"NOTE_STATE={config.NOTE_STATE_AUTHORED}",
-                f"DIFF_FINGERPRINT={_env_escape(materialized.diff_fingerprint)}",
-                f"AUTHORED_DIFF_FINGERPRINT={_env_escape(materialized.diff_fingerprint)}",
-                f"COVERED_DIFF_FINGERPRINT={_env_escape(materialized.diff_fingerprint)}",
-                f"DIFF_SNAPSHOT={_env_escape(str(diff_path))}",
-                f"{kind.status_env_key}={_env_escape(materialized.guidelines_status)}",
-                f"{kind.path_env_key}={_env_escape(materialized.guidelines_path)}",
-                f"ASSESSMENT_KIND={_env_escape(materialized.assessment_kind)}",
-                f"WRITTEN_AT={written_at}",
-                "",
-            ]
-        ),
-    )
-
-
 class AssessmentReauthorRequired(ValueError):
     """The authored assessment must be revised before it can be persisted."""
 
@@ -1451,153 +1358,6 @@ def guideline_exception_valid(note: str) -> bool:
     return guideline_active_exception(note) is not None
 
 
-def _compose_precheck_result(
-    *,
-    implement_tmpdir: Path,
-    root: Path | None,
-    current_head: str,
-    expected_head_sha: str,
-    kind: AssessmentKind,
-) -> tuple[ArchitecturalGuidelinesResult | None, ComposeMaterializationResult | None]:
-    if expected_head_sha and current_head and expected_head_sha != current_head:
-        return None, ComposeMaterializationResult(
-            status="failed",
-            head_sha=current_head,
-            warning=f"HEAD changed before architectural-{kind.key} compose materialization",
-        )
-    metadata = _read_env(_artifact_path(implement_tmpdir, kind, "durable_note_env"))
-    if current_head and _note_consumable(
-        implement_tmpdir=implement_tmpdir,
-        head_sha=current_head,
-        repo_root=root,
-        base_ref=metadata.get("BASE_REF", ""),
-        kind=kind,
-    ):
-        current_result: ComposeMaterializationResult | None = None
-        if root is None:
-            current_result = ComposeMaterializationResult(status="current", head_sha=current_head)
-        else:
-            stored_base_ref = metadata.get("BASE_REF", "")
-            if stored_base_ref and not _note_fingerprint_stale(
-                implement_tmpdir=implement_tmpdir,
-                base_ref=stored_base_ref,
-                repo_root=root,
-                kind=kind,
-            ):
-                current_result = ComposeMaterializationResult(status="current", head_sha=current_head)
-        if current_result is not None:
-            return None, current_result
-    result = _read_assessment_kind(kind=kind, repo_root=root)
-    if result.status in {"absent", "invalid"}:
-        return None, ComposeMaterializationResult(
-            status=result.status,
-            head_sha=current_head,
-            guidelines_status=result.status,
-            warning=result.warning if result.status == "invalid" else "",
-        )
-    if kind.ship_present_empty and not result.content.strip():
-        return None, ComposeMaterializationResult(
-            status="present-empty",
-            head_sha=current_head,
-            guidelines_status=result.status,
-            guidelines_path=str(result.path or ""),
-            assessment_kind=config.ASSESSMENT_OUTCOME_CLEAN,
-        )
-    if root is None:
-        return None, ComposeMaterializationResult(
-            status="failed",
-            head_sha=current_head,
-            guidelines_status=result.status,
-            warning="could not resolve repo root",
-        )
-    return result, None
-
-
-def _prepare_compose_assessment(  # noqa: PLR0913 - compose snapshot seam preserves the public lifecycle contract
-    *,
-    implement_tmpdir: Path,
-    kind: AssessmentKind,
-    repo_root: str | Path | None = None,
-    forked_target: bool = False,
-    expected_head_sha: str = "",
-    compose_snapshot_factory: Callable[[], ComposeAssessmentSnapshot] | None = None,
-) -> ComposeMaterializationResult:
-    implement_tmpdir.mkdir(parents=True, exist_ok=True)
-    _clear_staged_and_dropped_artifacts(implement_tmpdir, kind=kind)
-    root = _resolve_repo_root(repo_root)
-    current_head = _current_head(root, verify_commit=True) if root is not None else ""
-    result, precheck = _compose_precheck_result(
-        implement_tmpdir=implement_tmpdir,
-        root=root,
-        current_head=current_head,
-        expected_head_sha=expected_head_sha,
-        kind=kind,
-    )
-    if precheck is not None:
-        return precheck
-    if result is None:
-        return ComposeMaterializationResult(
-            status="failed", head_sha=current_head, warning=f"{kind.key} precheck failed"
-        )
-    try:
-        materialized_snapshot = (
-            compose_snapshot_factory()
-            if compose_snapshot_factory is not None
-            else materialize_compose_assessment_snapshot(
-                repo_root=root,
-                forked_target=forked_target,
-                expected_head_sha=current_head,
-            )
-        )
-    except (OSError, RuntimeError) as exc:
-        return ComposeMaterializationResult(
-            status="failed",
-            head_sha=current_head,
-            guidelines_status=result.status,
-            warning=str(exc).replace("\n", " "),
-        )
-    if materialized_snapshot.head_sha != current_head:
-        return ComposeMaterializationResult(
-            status="failed",
-            head_sha=current_head,
-            base_ref=materialized_snapshot.base_ref,
-            guidelines_status=result.status,
-            warning=f"HEAD changed before architectural-{kind.key} compose materialization",
-        )
-    materialized = ComposeMaterializationResult(
-        status="assessment-required",
-        head_sha=materialized_snapshot.head_sha,
-        base_ref=materialized_snapshot.base_ref,
-        diff_fingerprint=materialized_snapshot.diff_fingerprint,
-        diff_path=_artifact_path(implement_tmpdir, kind, "materialized_diff"),
-        guidelines_status=result.status,
-        guidelines_path=str(result.path or ""),
-    )
-    try:
-        _write_text_atomic(
-            path=_artifact_path(implement_tmpdir, kind, "materialized_diff"),
-            text=materialized_snapshot.diff_text,
-        )
-        _write_compose_materialization_metadata(
-            implement_tmpdir=implement_tmpdir,
-            materialized=materialized,
-            kind=kind,
-        )
-    except OSError as exc:
-        return ComposeMaterializationResult(
-            status="failed",
-            head_sha=current_head,
-            base_ref=materialized.base_ref,
-            guidelines_status=result.status,
-            warning=str(exc).replace("\n", " "),
-        )
-    return materialized
-
-
-prepare_compose_assessment = partial(_prepare_compose_assessment, kind=GUIDELINES)
-prepare_invariant_compose_assessment = partial(_prepare_compose_assessment, kind=INVARIANTS)
-
-
 def _write_compose_assessment(
     *,
     implement_tmpdir: Path,
@@ -1724,10 +1484,6 @@ def _append_deviation_note_main(argv: list[str], *, kind: AssessmentKind) -> int
         return 1
     print(f"{kind.env_prefix}_APPEND_STATUS={status}")
     return 1 if status == _APPEND_DEVIATION_FAILED else 0
-
-
-def _bool_arg(value: str) -> bool:
-    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _current_head(repo_root: Path | None = None, *, verify_commit: bool = False, error_out: list[str] | None = None) -> str:
@@ -1992,176 +1748,6 @@ def _present_note_main(argv: list[str], *, kind: AssessmentKind) -> int:
     return 0
 
 
-def _emit_materialized_diff(
-    repo_root: Path,
-    *,
-    forked_target: bool,
-    output: str = "",
-    implement_tmpdir: str = "",
-    kind: AssessmentKind = GUIDELINES,
-) -> int:
-    from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok content blocks must match issue-wire format.
-    base_remote, base_ref = resolve_diff_base(forked_target=forked_target)
-    base_label = f"{base_remote}/{base_ref}"
-    try:
-        diff_text = materialize_implementation_diff(repo_root, base_remote=base_remote, base_ref=base_ref)
-    except RuntimeError as exc:
-        print(f"{kind.env_prefix}_DIFF_STATUS=failed")
-        print(f"{kind.env_prefix}_WARNING={str(exc).replace(chr(10), ' ')}")
-        return 1
-    fingerprint = diff_fingerprint(diff_text)
-    output_path: Path | None = Path(output) if output else None
-    try:
-        if implement_tmpdir:
-            tmpdir = Path(implement_tmpdir)
-            output_path = output_path or _artifact_path(tmpdir, kind, "materialized_diff")
-            meta_path = _artifact_path(tmpdir, kind, "materialize_env")
-            _write_text_atomic(
-                path=meta_path,
-                text="\n".join(
-                    [
-                        f"BASE_REF={_env_escape(base_label)}",
-                        f"DIFF_FINGERPRINT={_env_escape(fingerprint)}",
-                        "",
-                    ]
-                ),
-            )
-        if output_path is not None:
-            _write_text_atomic(path=output_path, text=diff_text)
-    except OSError as exc:
-        print(f"{kind.env_prefix}_DIFF_STATUS=failed")
-        print(f"{kind.env_prefix}_WARNING={str(exc).replace(chr(10), ' ')}")
-        return 1
-    print(f"{kind.env_prefix}_DIFF_STATUS=ok")
-    print(f"{kind.env_prefix}_BASE_REF={base_label}")
-    print(f"{kind.env_prefix}_DIFF_FINGERPRINT={fingerprint}")
-    sys.stdout.write(
-        issue_wire.emit_untrusted_content_block(
-            tag=f"architectural_{kind.key}_diff", text=diff_text
-        )
-    )
-    return 0
-
-
-def _materialize_diff_main(argv: list[str], *, kind: AssessmentKind) -> int:
-    parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} materialize-diff")
-    parser.add_argument("--repo-root")
-    parser.add_argument("--forked-target", default="false")
-    parser.add_argument("--output")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
-    args = parser.parse_args(argv)
-    repo_root = _resolve_repo_root(args.repo_root)
-    if repo_root is None:
-        print(f"{kind.env_prefix}_DIFF_STATUS=absent")
-        return 0
-    return _emit_materialized_diff(
-        repo_root,
-        forked_target=_bool_arg(args.forked_target),
-        output=args.output or "",
-        implement_tmpdir=args.implement_tmpdir,
-        kind=kind,
-    )
-
-
-def _prepare_main(argv: list[str], *, kind: AssessmentKind) -> int:
-    parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} prepare")
-    parser.add_argument("--repo-root")
-    parser.add_argument("--forked-target", default="false")
-    parser.add_argument("--output")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
-    args = parser.parse_args(argv)
-    if args.implement_tmpdir:
-        try:
-            invalidator = (
-                invalidate_invariant_implement_note if kind.is_invariant else invalidate_implement_note
-            )
-            invalidator(Path(args.implement_tmpdir))
-        except OSError as exc:
-            print(f"{kind.env_prefix}_INVALIDATE_STATUS=failed")
-            print(f"{kind.env_prefix}_WARNING={exc}")
-            return 2
-    result = _read_assessment_kind(kind=kind, repo_root=args.repo_root)
-    print(f"{kind.env_prefix}_STATUS={result.status}")
-    if result.status == "absent":
-        return 0
-    if result.status == "invalid":
-        print(f"{kind.env_prefix}_WARNING={result.warning}")
-        return 0
-    assert result.repo_root is not None
-    _emit_present_assessment(result, kind=kind)
-    if kind.design_requires_nonempty and not result.content.strip():
-        return 0
-    return _emit_materialized_diff(
-        result.repo_root,
-        forked_target=_bool_arg(args.forked_target),
-        output=args.output or "",
-        implement_tmpdir=args.implement_tmpdir,
-        kind=kind,
-    )
-
-
-def _emit_compose_prepare_result(
-    *, result: ComposeMaterializationResult, implement_tmpdir: Path,
-    repo_root: str | Path | None, kind: AssessmentKind = GUIDELINES
-) -> None:
-    from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok content blocks must match issue-wire format.
-    print(f"{kind.env_prefix}_COMPOSE_STATUS={result.status}")
-    for key, value in (
-        (f"{kind.env_prefix}_HEAD_SHA", result.head_sha),
-        (f"{kind.env_prefix}_BASE_REF", result.base_ref),
-        (f"{kind.env_prefix}_DIFF_FINGERPRINT", result.diff_fingerprint),
-        (f"{kind.env_prefix}_DIFF_PATH", str(result.diff_path) if result.diff_path is not None else ""),
-        (f"{kind.env_prefix}_WARNING", result.warning),
-    ):
-        if value:
-            print(f"{key}={value}")
-    assessment = _read_assessment_kind(kind=kind, repo_root=repo_root)
-    print(f"{kind.env_prefix}_STATUS={assessment.status}")
-    if assessment.status != "present":
-        return
-    _emit_present_assessment(assessment, kind=kind)
-    diff_path = result.diff_path or _artifact_path(implement_tmpdir, kind, "materialized_diff")
-    if not diff_path.is_file() or diff_path.is_symlink():
-        return
-    try:
-        diff_text = diff_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return
-    if diff_text:
-        sys.stdout.write(
-            issue_wire.emit_untrusted_content_block(
-                tag=f"architectural_{kind.key}_diff", text=diff_text
-            )
-        )
-
-
-def _prepare_compose_main(argv: list[str], *, kind: AssessmentKind) -> int:
-    parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} prepare-compose")
-    parser.add_argument("--repo-root")
-    parser.add_argument("--forked-target", default="false")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
-    parser.add_argument("--expected-head-sha", default="")
-    args = parser.parse_args(argv)
-    if not args.implement_tmpdir:
-        print(f"{kind.env_prefix}_COMPOSE_STATUS=failed")
-        print(f"{kind.env_prefix}_WARNING=missing implement tmpdir")
-        return 2
-    result = _prepare_compose_assessment(
-        implement_tmpdir=Path(args.implement_tmpdir),
-        repo_root=args.repo_root,
-        forked_target=_bool_arg(args.forked_target),
-        expected_head_sha=args.expected_head_sha,
-        kind=kind,
-    )
-    _emit_compose_prepare_result(
-        result=result,
-        implement_tmpdir=Path(args.implement_tmpdir),
-        repo_root=args.repo_root,
-        kind=kind,
-    )
-    return 1 if result.status == "failed" else 0
-
-
 def _write_compose_assessment_main(argv: list[str], *, kind: AssessmentKind) -> int:
     parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} write-compose-assessment")
     parser.add_argument("--outcome", default="")
@@ -2307,9 +1893,6 @@ for _guideline_cli, _invariant_cli, _handler in (
     ("persist_design_assessment_main", "invariants_persist_design_assessment_main", _persist_design_assessment_main),
     ("read_main", "invariants_read_main", _read_main),
     ("present_note_main", "invariants_present_note_main", _present_note_main),
-    ("materialize_diff_main", "invariants_materialize_diff_main", _materialize_diff_main),
-    ("prepare_main", "invariants_prepare_main", _prepare_main),
-    ("prepare_compose_main", "invariants_prepare_compose_main", _prepare_compose_main),
     ("write_compose_assessment_main", "invariants_write_compose_assessment_main", _write_compose_assessment_main),
     ("write_staged_assessment_main", "invariants_write_staged_assessment_main", _write_staged_assessment_main),
     ("pin_note_from_staged_main", "invariants_pin_note_from_staged_main", _pin_note_from_staged_main),
