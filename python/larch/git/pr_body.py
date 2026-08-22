@@ -318,8 +318,8 @@ def redact_pr_body(body: str) -> str:
 
     Single source of truth for outbound PR-body redaction, shared by
     ``compose_pr_body`` (the live ship path) and ``pr.create_pr_parity``
-    (``cli.py pr create``). It pipes the body through ``redact tmpdir-paths``
-    then ``redact secrets`` and fails closed. Raises :class:`ShipError` when
+    (``cli.py pr create``). It applies the retained in-process tmpdir-path and
+    secret redactors in that order and fails closed. Raises :class:`ShipError` when
     redaction truncates the body.
     """
     return _fail_closed_body(redact.redact(body))

@@ -1,5 +1,6 @@
 //! Deterministic redaction for text crossing an observability or error boundary.
 
+use crate::review::{BoundaryMode, ItemKind, parse_blocks};
 use regex::Regex;
 use std::{collections::BTreeMap, fmt, sync::LazyLock};
 
@@ -157,6 +158,55 @@ static OPERATOR_PATH_PATTERNS: LazyLock<Vec<PathPattern>> = LazyLock::new(|| {
 pub struct RedactionResult {
     text: String,
     findings: BTreeMap<&'static str, usize>,
+}
+
+/// One PEM-aware streaming redaction pass and its carry state.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StreamingRedactionResult {
+    text: String,
+    in_pem: bool,
+}
+
+impl StreamingRedactionResult {
+    /// Borrow the redacted chunk.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Return whether the next chunk starts inside a private-key block.
+    #[must_use]
+    pub const fn in_pem(&self) -> bool {
+        self.in_pem
+    }
+}
+
+/// Finding text with submodule-owned findings removed plus an audit projection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SubmoduleScrubResult {
+    text: String,
+    audit: String,
+    count: usize,
+}
+
+impl SubmoduleScrubResult {
+    /// Borrow the retained finding text.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Borrow the removed finding headings, one per line.
+    #[must_use]
+    pub fn audit(&self) -> &str {
+        &self.audit
+    }
+
+    /// Return the number of removed findings.
+    #[must_use]
+    pub const fn count(&self) -> usize {
+        self.count
+    }
 }
 
 impl RedactionResult {
@@ -317,6 +367,74 @@ pub fn redact_secrets_only(text: &str) -> String {
     scrubbed
 }
 
+/// Redact one stream chunk while carrying PEM state across invocations.
+#[must_use]
+pub fn redact_secrets_streaming(text: &str, mut in_pem: bool) -> StreamingRedactionResult {
+    let mut output = String::new();
+    for line in text.split_inclusive('\n') {
+        let logical = line.strip_suffix('\n').unwrap_or(line);
+        if in_pem {
+            if PEM_END.is_match(logical) {
+                in_pem = false;
+            }
+            continue;
+        }
+        if PEM_BEGIN.is_match(logical) {
+            output.push_str(REDACTED_PRIVATE_KEY);
+            if line.ends_with('\n') {
+                output.push('\n');
+            }
+            in_pem = true;
+        } else {
+            output.push_str(&redact_base_line(line));
+        }
+    }
+    StreamingRedactionResult {
+        text: output,
+        in_pem,
+    }
+}
+
+/// Remove finding blocks that mention a discovered submodule as a complete path token.
+#[must_use]
+pub fn scrub_submodule_findings(text: &str, submodules: &[String]) -> SubmoduleScrubResult {
+    let mut ordered = submodules
+        .iter()
+        .filter(|path| !path.is_empty())
+        .cloned()
+        .collect::<Vec<_>>();
+    ordered.sort_by_key(|path| std::cmp::Reverse(path.len()));
+    let mut output = String::new();
+    let mut audit = String::new();
+    let mut previous_end = 0;
+    let mut count = 0;
+    for parsed in parse_blocks(text, BoundaryMode::ItemHeading) {
+        let start = byte_offset(text, parsed.start);
+        let end = byte_offset(text, parsed.end);
+        output.push_str(&text[previous_end..start]);
+        previous_end = end;
+        if parsed.kind != ItemKind::Finding
+            || !ordered
+                .iter()
+                .any(|path| contains_complete_path_token(&parsed.block, path))
+        {
+            output.push_str(&parsed.block);
+            continue;
+        }
+        count += 1;
+        if let Some(heading) = parsed.block.lines().next() {
+            audit.push_str(heading);
+            audit.push('\n');
+        }
+    }
+    output.push_str(&text[previous_end..]);
+    SubmoduleScrubResult {
+        text: output,
+        audit,
+        count,
+    }
+}
+
 /// Redact session temporary directories and operator repository roots.
 #[must_use]
 pub fn redact_sensitive_paths(text: &str) -> String {
@@ -373,6 +491,38 @@ fn count_secret_families(text: &str) -> BTreeMap<&'static str, usize> {
         }
     }
     findings
+}
+
+fn redact_base_line(line: &str) -> String {
+    let mut scrubbed = String::from(line);
+    for family in SECRET_FAMILIES
+        .iter()
+        .filter(|family| family.name != "pem-private-key")
+    {
+        scrubbed = family
+            .pattern
+            .replace_all(&scrubbed, REDACTED_TOKEN)
+            .into_owned();
+    }
+    scrubbed
+}
+
+fn byte_offset(text: &str, character_offset: usize) -> usize {
+    text.char_indices()
+        .nth(character_offset)
+        .map_or(text.len(), |(offset, _character)| offset)
+}
+
+fn contains_complete_path_token(text: &str, path: &str) -> bool {
+    text.match_indices(path).any(|(start, matched)| {
+        let before = text[..start].chars().next_back();
+        let after = text[start + matched.len()..].chars().next();
+        !before.is_some_and(is_path_token_character) && !after.is_some_and(is_path_token_character)
+    })
+}
+
+const fn is_path_token_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '_' | '.' | '-')
 }
 
 fn redact_pem_blocks(text: &str) -> String {
@@ -510,5 +660,38 @@ mod tests {
         let mut redactor = RuntimeRedactor::default();
         assert!(!redactor.register_exact_secret(String::new()));
         assert_eq!(redactor.redact("ordinary text").text(), "ordinary text");
+    }
+
+    #[test]
+    fn streaming_redaction_carries_pem_state_without_a_tail_marker() {
+        let first_input = ["before\n-----BEGIN ", "PRIVATE KEY-----\nsecret\n"].concat();
+        let first = redact_secrets_streaming(&first_input, false);
+        assert_eq!(first.text(), "before\n<REDACTED-PRIVATE-KEY>\n");
+        assert!(first.in_pem());
+
+        let second = redact_secrets_streaming(
+            "more secret\n-----END PRIVATE KEY-----\nafter sk-abcdefghijklmnopqrstuvwxyz\n",
+            first.in_pem(),
+        );
+        assert_eq!(second.text(), "after <REDACTED-TOKEN>\n");
+        assert!(!second.in_pem());
+    }
+
+    #[test]
+    fn submodule_scrub_removes_only_matching_findings() {
+        let text = concat!(
+            "preamble\n",
+            "### FINDING_1: dependency issue\n- **Location**: vendor/lib:12\nbody\n",
+            "### OOS_1: vendor observation\nmentions vendor/lib\n",
+            "### FINDING_2: sibling\n- File: vendor/library/file.rs\n",
+        );
+        let result = scrub_submodule_findings(text, &[String::new(), String::from("vendor/lib")]);
+
+        assert_eq!(result.count(), 1);
+        assert_eq!(result.audit(), "### FINDING_1: dependency issue\n");
+        assert!(result.text().contains("preamble"));
+        assert!(result.text().contains("### OOS_1"));
+        assert!(result.text().contains("### FINDING_2"));
+        assert!(!result.text().contains("### FINDING_1"));
     }
 }

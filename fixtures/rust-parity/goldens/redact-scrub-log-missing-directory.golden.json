@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "python3 python/cli.py redact scrub-log-secrets: directory not found: <SANDBOX>/missing\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

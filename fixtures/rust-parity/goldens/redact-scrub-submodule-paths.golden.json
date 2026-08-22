@@ -1,0 +1,24 @@
+{
+  "exit_code": 0,
+  "files": {
+    ".bin/git": {
+      "text": "#!/bin/sh\nprintf '%s\\n' 'vendor/live'\n"
+    },
+    ".gitmodules": {
+      "text": "[submodule \"lib\"]\n\tpath = vendor/libfoo\n"
+    },
+    "findings.md": {
+      "text": "préamble 😀\n### FINDING_1: keep\n- **Location**: src/main.rs:2\nbody\n### FINDING_2: drop\n- **Location**: vendor/libfoo:12\nbody\n### OOS_3: retain\nmentions vendor/live/file.rs\n"
+    }
+  },
+  "side_effects": {
+    "audit/removed.txt": "### FINDING_2: drop\n",
+    "out/findings.md": "préamble 😀\n### FINDING_1: keep\n- **Location**: src/main.rs:2\nbody\n### OOS_3: retain\nmentions vendor/live/file.rs\n"
+  },
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "SCRUB_COUNT=1\nSCRUB_OK=true\n"
+  }
+}

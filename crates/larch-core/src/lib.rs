@@ -509,8 +509,10 @@ pub use rebalance_tests::{
     REBALANCE_TESTS_SCHEMA_VERSION, RebalanceJsonResult, plan_json, verify_json,
 };
 pub use redaction::{
-    RedactionResult, RuntimeRedactor, SafeText, contains_recognized_session_tmpdir_pointer, redact,
-    redact_run_log_payload, redact_secrets, redact_secrets_only, redact_sensitive_paths,
+    RedactionResult, RuntimeRedactor, SafeText, StreamingRedactionResult, SubmoduleScrubResult,
+    contains_recognized_session_tmpdir_pointer, redact, redact_run_log_payload, redact_secrets,
+    redact_secrets_only, redact_secrets_streaming, redact_sensitive_paths,
+    scrub_submodule_findings,
 };
 pub use repo_size::{
     RepoSizeCategory, RepoSizeReport, count_newlines, is_rust_line_count_path, line_count_category,

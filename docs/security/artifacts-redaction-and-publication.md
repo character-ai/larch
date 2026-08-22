@@ -44,10 +44,26 @@ This writer does not redact scoreboard content or authorize public publication.
 
 ### Redaction invariants
 
-Python egress paths use `python/larch/core/redact.py` through
-`python/cli.py redact secrets`, `redact tmpdir-paths`, and
-`redact scrub-log-secrets`. Rust egress paths use `larch_core::SafeText` for
-human output, machine output, breadcrumbs, and journal fields. `SafeText`
+The four public redaction commands are Rust-owned and enter through
+`scripts/larch.sh redact`: `secrets`, `tmpdir-paths`, `scrub-log-secrets`, and
+`scrub-submodule-paths`. Their command boundary lives in
+`crates/larch-cli/src/redact_commands.rs`; pure redaction and finding filtering
+live in `crates/larch-core/src/redaction.rs`. The submodule command uses only the
+closed typed `GitCli::submodule(SubmoduleRequest::Foreach)` adapter, rejects a
+symlinked `.gitmodules`, and ignores entries that are not safe non-empty Git
+paths. `review-and-fix` reuses the same pure finding filter. Python compatibility
+callers may still use `python/larch/core/redact.py` in process, but that module
+has no command registration or production command fallback.
+
+Redaction state, scrubbed finding output, and audit-log writes reject symlinked
+or multiply linked targets and publish by confined atomic replacement. New
+state and finding artifacts use private mode `0600`; in-place log scrubbing
+preserves the existing ordinary permission mode. Missing streaming state starts
+clean; unsafe, unreadable, or malformed existing state fails closed before any
+redacted output is emitted. Directory scrubbing skips symlinks,
+non-regular files, unreadable files, and non-UTF-8 files, then rescans every
+changed payload before publication. Rust egress paths use `larch_core::SafeText`
+for human output, machine output, breadcrumbs, and journal fields. `SafeText`
 redacts known path, token, and PEM families, then withholds a value when a
 recognized secret survives its rescan. Contract writers also reject line
 breaks before writing line-oriented records.
@@ -128,9 +144,10 @@ trusted-main run.
 
 The `.gitleaks.toml` path allowlist still creates pattern-scan blind spots. It
 covers the config itself, named residual-script and skill fixtures, the broad
-`python/tests/` tree, named legacy Python fixtures, and session-local Python
-virtual-environment and cache directories that legitimately contain synthetic
-token shapes. It does not allowlist the current
+`python/tests/` tree, named legacy Python fixtures, one Rust parity golden that
+preserves a synthetic PEM marker to verify fail-closed log rescanning, and
+session-local Python virtual-environment and cache directories that legitimately
+contain synthetic token shapes. It does not allowlist the current
 `python/larch/core/redact.py` implementation. Keep test values obviously fake.
 The independent verified scan remains necessary, but it does not fill every
 allowlist or pattern gap.
@@ -662,7 +679,8 @@ egress contract.
 
 | Concern | Current owners |
 |---------|----------------|
-| Python redaction | `python/larch/core/redact.py` |
+| Redaction commands | `crates/larch-cli/src/redact_commands.rs` and `crates/larch-core/src/redaction.rs`; typed Git and confined atomic filesystem effects come from `larch-adapters` |
+| Python in-process compatibility redaction | `python/larch/core/redact.py`; no command registration or fallback |
 | Checksum-pinned scanner | Local Rust command: `crates/larch-cli/src/gitleaks.rs` and `crates/larch-adapters/src/github/release.rs`; CI verifier: `.github/workflows/ci.yaml` |
 | Rust human, machine, breadcrumb, and journal redaction | `crates/larch-core/src/redaction.rs`, `crates/larch-core/src/telemetry.rs`, and `larch_core::SafeText` consumers |
 | Clone-local statusline progress state | Rust owns pointer activation, compare-and-clear, breadcrumb append, and stale cleanup in `crates/larch-adapters/src/progress_state.rs` and `crates/larch-cli/src/progress_commands.rs`; Python retains only persisted run-identity parsing in `python/larch/report/progress_file.py`. |
@@ -674,13 +692,14 @@ egress contract.
 | Run-log archive, sync, and object publication | Rust owns archive creation, materialization, standalone sync, shared lifecycle publication, cache promotion, and `run-log storage-preflight` through `crates/larch-adapters/src/run_lifecycle.rs`, `google_storage.rs`, and `s3_storage.rs`. The same provider-neutral object-store port validates pagination, names, sizes, archive materialization, and repair rollback. The legacy Python object-store adapter remains for compatibility/test callers only and is not a production command owner. |
 | Agent diagnostic bounds and carriers | `python/larch/agents/agents.py` and `_failure_diag.py` |
 | Bgjob DEAD diagnostics | `crates/larch-core/src/bgjob_daemon.rs` owns the status and bounded-tail codec; `crates/larch-cli/src/bgjob_commands.rs` owns supervised capture and rendering |
-| Residual Bash egress call sites | Thin scripts call the Python redaction owner or the Rust run-log owner before forwarding untrusted content; plain shell error helpers are not independent redactors |
+| Residual Bash egress call sites | Thin scripts call the Rust redaction or run-log owner through `scripts/larch.sh` before forwarding untrusted content; plain shell error helpers are not independent redactors |
 | Tier B public-file validation | `crates/larch-core/src/stall_recovery.rs`, `crates/larch-adapters/src/stall_recovery.rs`, and `crates/larch-cli/src/stall_recovery_commands.rs` |
 | Stall classification, normalization, attempts, and escalation ledgers | `crates/larch-core/src/stall_recovery.rs`, `crates/larch-adapters/src/stall_recovery.rs`, and `crates/larch-cli/src/stall_recovery_commands.rs` |
 | Tracking, plan, diagram, and public-report publication | Rust `tracking-issue upsert-summary` (#8346) owns marker-keyed comment mutation through the shared issue-mutation owner. Rust `tracking post-issue` (#8789) composes its confined private metadata file and calls that owner in process, while `larch_core::redact_pr_body` is the reusable fail-closed PR-body redaction owner and Rust `final-report write` (#8090) owns `/implement` final-summary publication. On the supported Unix runtime, marker-comment and post-admission issue-body materialization write only below a canonical non-symlink process temporary root or larch session-cache root and use no-follow reads plus private atomic writes. Python `pr create` and `pr body-update` retain their redaction bridge until #8790; `render run-summary` remains a #7680 `/design` payload renderer, and `diagram code-flow` retains its #7681 owner. Former in-process Python tracking callers and external command consumers use the verified `scripts/larch.sh` entrypoint and contain no GitHub fallback; `final-report write` calls the same Rust owner in process to preserve its output envelope. |
 | Runtime projection | `crates/larch-cli/src/release_plugin_runtime.rs` |
 
-Verification includes focused redaction and run-log tests, Rust Gitleaks command
-tests, Markdown and reference checks, the runtime-projection drift check, the
+Verification includes frozen Python-to-Rust process parity for all four
+redaction commands, focused in-process redaction and run-log tests, clean-install
+dispatch, Rust Gitleaks command tests, Markdown and reference checks, the runtime-projection drift check, the
 local pattern scan when installed, and the required CI scanner jobs. Scanner
 success does not supersede the confidentiality classes in this document.
