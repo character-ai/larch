@@ -537,7 +537,7 @@ test-implement-fence-shape:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-fence-shape.sh
 
 test-architectural-guidelines-step:
-	$(HARNESS_MARK) --label $@ -- bash skills/implement/scripts/test-architectural-guidelines-step.sh
+	$(HARNESS_MARK) --label $@ -- env LARCH_BINARY="$(CURDIR)/target/debug/larch" bash skills/implement/scripts/test-architectural-guidelines-step.sh
 
 test-implement-timing-rehydration:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-timing-rehydration.sh

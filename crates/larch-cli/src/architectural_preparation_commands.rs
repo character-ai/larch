@@ -319,14 +319,18 @@ fn read_regular_no_follow(path: &Path) -> Result<String, String> {
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err("assessment file must be a regular non-symlink file".to_owned());
     }
-    let mut options = fs::OpenOptions::new();
-    options.read(true);
     #[cfg(unix)]
-    {
+    let mut file = {
         use std::os::unix::fs::OpenOptionsExt as _;
-        options.custom_flags(nix::libc::O_NOFOLLOW);
+
+        fs::File::options()
+            .read(true)
+            .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK)
+            .open(path)
     }
-    let mut file = options.open(path).map_err(|error| error.to_string())?;
+    .map_err(|error| error.to_string())?;
+    #[cfg(not(unix))]
+    let mut file = fs::File::open(path).map_err(|error| error.to_string())?;
     if !file
         .metadata()
         .is_ok_and(|opened_metadata| opened_metadata.is_file())
