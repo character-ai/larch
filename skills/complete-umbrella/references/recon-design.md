@@ -14,7 +14,9 @@ The recon/design phase owns leaf actionability. The prepare driver only starts
 the mutation state after this phase has produced its handoffs. It does not
 validate a durable plan. Then:
 
-1. Read `AGENTS.md`, `ARCHITECTURAL_INVARIANTS.md`, and `ARCHITECTURAL_GUIDELINES.md` when present. Follow their repository rules.
+1. Read `ARCHITECTURAL_INVARIANTS.md` and `ARCHITECTURAL_GUIDELINES.md` when present.
+   `AGENTS.md` is already loaded through the `CLAUDE.md` import chain. Do not
+   read it again. Follow all repository rules.
 2. Fetch the full leaf and umbrella issue bodies into `leaf-issue.md` and `umbrella-issue.md` below `$SESSION_TMPDIR`. Redirect the `gh issue view` output to those files. Do not return issue text in tool output.
 3. Read both issue files in full. Route to `needs-design` only when the existing
    plan block is malformed as described in Step 5, or when the leaf body is
