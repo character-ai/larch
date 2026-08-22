@@ -1601,8 +1601,6 @@ mod tests {
             .expect("issue fixture");
         value["id"] = json!(420);
         value["number"] = json!(42);
-        value["url"] = json!("https://api.github.com/repos/owner/repo/issues/42");
-        value["html_url"] = json!("https://github.com/owner/repo/issues/42");
         value["title"] = json!(title);
         value["body"] = json!("Body");
         value["state"] = json!(state);
