@@ -57,6 +57,7 @@ const BLOCKED_ENVIRONMENT_KEYS: &[&str] = &[
     "HTTPS_PROXY",
     "HTTP_PROXY",
     "LARCH_GH_TOKEN",
+    "LARCH_SLACK_WEBHOOK_URL",
     "NO_PROXY",
 ];
 
@@ -109,6 +110,8 @@ impl Program {
 pub struct SeedFile {
     relative_path: PathBuf,
     contents: Vec<u8>,
+    executable: bool,
+    expand_root: bool,
 }
 
 impl SeedFile {
@@ -116,6 +119,29 @@ impl SeedFile {
         Self {
             relative_path: PathBuf::from(relative_path),
             contents: contents.as_bytes().to_vec(),
+            executable: false,
+            expand_root: false,
+        }
+    }
+
+    #[cfg(unix)]
+    #[allow(dead_code)]
+    pub fn executable_text(relative_path: &str, contents: &str) -> Self {
+        Self {
+            relative_path: PathBuf::from(relative_path),
+            contents: contents.as_bytes().to_vec(),
+            executable: true,
+            expand_root: false,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn expanded_text(relative_path: &str, contents: &str) -> Self {
+        Self {
+            relative_path: PathBuf::from(relative_path),
+            contents: contents.as_bytes().to_vec(),
+            executable: false,
+            expand_root: true,
         }
     }
 }
@@ -194,8 +220,25 @@ impl Sandbox {
                 fs::create_dir_all(parent)
                     .map_err(|error| format!("create seed parent {}: {error}", parent.display()))?;
             }
-            fs::write(&path, &seed.contents)
+            let contents = if seed.expand_root {
+                let text = std::str::from_utf8(&seed.contents)
+                    .map_err(|error| format!("expand seed {} as UTF-8: {error}", path.display()))?;
+                expand_sandbox(text, sandbox.root()).into_bytes()
+            } else {
+                seed.contents.clone()
+            };
+            fs::write(&path, contents)
                 .map_err(|error| format!("write seed {}: {error}", path.display()))?;
+            #[cfg(unix)]
+            if seed.executable {
+                use std::os::unix::fs::PermissionsExt as _;
+                let mut permissions = fs::metadata(&path)
+                    .map_err(|error| format!("inspect seed {}: {error}", path.display()))?
+                    .permissions();
+                permissions.set_mode(0o755);
+                fs::set_permissions(&path, permissions)
+                    .map_err(|error| format!("make seed executable {}: {error}", path.display()))?;
+            }
         }
         Ok(sandbox)
     }

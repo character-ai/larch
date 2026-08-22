@@ -675,9 +675,6 @@ exclude = [
   # target only (no SKILL.md invocation). Same Makefile-only shape as the
   # other test-* harnesses above.
   "python/test_finalize.py",
-  # python/test_closeout.py is the regression harness for python/closeout.py
-  # Step 16/17 helpers, wired into Makefile test-step-16-17 target only.
-  "python/test_closeout.py",
   # python/test_preflight.py is the regression harness for python/cli.py
   # implement preflight, wired into Makefile test-preflight target only.
   "python/test_preflight.py",

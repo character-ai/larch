@@ -489,6 +489,10 @@ pub enum ChildEnvironment {
     LarchClaudePid,
     /// Consumer repository the invoking Claude session opened.
     ClaudeProjectDir,
+    /// Claude Code effort metadata forwarded to a report-rendering child.
+    ClaudeCodeEffortLevel,
+    /// Legacy Claude effort metadata forwarded to a report-rendering child.
+    ClaudeEffort,
     /// Explicit repository root used by nested session setup.
     RepoRoot,
     /// Run identity a composing command learned from its session artifacts.
@@ -561,6 +565,10 @@ pub enum ChildEnvironment {
     DesignTmpdir,
     ImplementTmpdir,
     LarchRenderCacheDir,
+    /// Optional model used for final-report execution-issue assessments.
+    LarchExecIssueAssessmentModel,
+    /// Optional Slack webhook forwarded only to the announcement child.
+    LarchSlackWebhookUrl,
     LarchTokenLedger,
     LarchTokenSessionId,
     LarchTimingLedger,
@@ -630,6 +638,8 @@ impl ChildEnvironment {
             Self::LarchBinary => env::LARCH_BINARY,
             Self::LarchClaudePid => crate::ENV_LARCH_CLAUDE_PID,
             Self::ClaudeProjectDir => "CLAUDE_PROJECT_DIR",
+            Self::ClaudeCodeEffortLevel => "CLAUDE_CODE_EFFORT_LEVEL",
+            Self::ClaudeEffort => "CLAUDE_EFFORT",
             Self::RepoRoot => env::REPO_ROOT,
             Self::RunId => "RUN_ID",
             Self::ClaudeSubprocessHookExempt => env::LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT,
@@ -667,6 +677,8 @@ impl ChildEnvironment {
             Self::DesignTmpdir | Self::DesignTmpDir => env::DESIGN_TMPDIR,
             Self::ImplementTmpdir | Self::ImplementTmpDir => env::IMPLEMENT_TMPDIR,
             Self::LarchRenderCacheDir => env::LARCH_RENDER_CACHE_DIR,
+            Self::LarchExecIssueAssessmentModel => "LARCH_EXEC_ISSUE_ASSESSMENT_MODEL",
+            Self::LarchSlackWebhookUrl => crate::LARCH_SLACK_WEBHOOK_URL,
             Self::LarchTokenLedger => env::LARCH_TOKEN_LEDGER,
             Self::LarchTokenSessionId => env::LARCH_TOKEN_SESSION_ID,
             Self::LarchTimingLedger => env::LARCH_TIMING_LEDGER,

@@ -263,7 +263,7 @@ def run(repo_root: Path) -> list[str]:
             require(skill, launcher + script, f"SKILL launcher wrapper {script}")
 
         require("skills/implement/references/self-review.md", launcher + "skills/implement/scripts/run-step-checks.sh --site step5-self-review --commit-site step5-self-review", "self-review relocated bgjob composite launcher")
-        require(skill, 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17 --implement-tmpdir "$IMPLEMENT_TMPDIR"', "SKILL direct Step 16-17 Python CLI call")
+        require(skill, 'scripts/larch.sh implement step-16-17 --implement-tmpdir "$IMPLEMENT_TMPDIR"', "SKILL verified Step 16-17 Rust CLI call")
 
         for needle in [
             "BASE_ARGS=()",
@@ -542,11 +542,11 @@ def run(repo_root: Path) -> list[str]:
             checks.append("SKILL.md bash fence must not reference LARCH_FINAL_SUMMARY_BEGIN or LARCH_FINAL_SUMMARY_END")
 
         # Step 17/18 marker handoff contract must exist without re-spelling the shared algorithm.
-        require("python/larch/state/closeout.py", "---LARCH-SUMMARY-FINAL-BEGIN---", "step-16-17 begin marker literal")
-        require("python/larch/state/closeout.py", "---LARCH-SUMMARY-FINAL-END---", "step-16-17 end marker literal")
+        require("crates/larch-cli/src/implement_closeout_commands.rs", "---LARCH-SUMMARY-FINAL-BEGIN---", "step-16-17 begin marker literal")
+        require("crates/larch-cli/src/implement_closeout_commands.rs", "---LARCH-SUMMARY-FINAL-END---", "step-16-17 end marker literal")
         require(skill, "skills/shared/final-summary-emit.md", "SKILL shared final-summary emit pointer")
         require(skill, "markers `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---`", "SKILL implement marker pair binding")
-        require(skill, "captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout", "SKILL Step 17 captured foreground stdout source")
+        require(skill, "captured foreground `scripts/larch.sh implement step-16-17` Bash wrapper stdout", "SKILL Step 17 captured foreground stdout source")
         require(
             skill,
             "captured foreground `scripts/larch.sh implement step-18-gate-logs-flush` Bash wrapper stdout",
@@ -613,7 +613,7 @@ def run(repo_root: Path) -> list[str]:
             "SKILL #3425 closing marks preserved",
         )
         forbid(skill, 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`', "SKILL Step 18 Read fallback removed")
-        require("python/larch/state/closeout.py", ".step17-printed", "step-16-17 owns .step17-printed")
+        require("crates/larch-cli/src/implement_closeout_commands.rs", ".step17-printed", "step-16-17 owns .step17-printed")
         require(skill, "When the shared profile caches a non-empty marker body, retain it as the Step 17 cache for deferred terminal emit.", "SKILL Step 17 caches marker body for deferred emit")
         require(
             skill, "`STEP17_EMITTED_PRESENT` is informational only.", "SKILL Step 18 .step17-emitted wrapper ownership"
@@ -623,7 +623,7 @@ def run(repo_root: Path) -> list[str]:
             "Do not set it merely because a stale `$IMPLEMENT_TMPDIR/.step17-emitted` exists without a current Step 17 cache.",
             "SKILL Step 18 stale sentinel rejection",
         )
-        require("python/larch/state/closeout.py", "step17_rc == 0 and _summary_nonempty(tmpdir)", "step-16-17 marker gate uses Step 17 rc and non-empty summary")
+        require("crates/larch-cli/src/implement_closeout_commands.rs", "step17_rc == 0 && summary_nonempty(&context.tmpdir)", "step-16-17 marker gate uses Step 17 rc and non-empty summary")
         require(skill, "Marker emission is gated on captured Step 17 render success and a non-empty `summary-final.md`, not `summary-final.md` presence alone.", "SKILL stale-summary marker gate")
         require(skill, "Use `true` only when a non-empty Step 17 marker body was cached for deferred terminal emit; otherwise use `false`.", "SKILL Step 18 step17 emitted binding uses cache only")
         require(

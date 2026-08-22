@@ -32,6 +32,7 @@ const RETIRED_MODULES: &[&str] = &[
     "python/larch/state/_detail_log.py",
     "python/larch/state/_classify.py",
     "python/larch/state/_normalize.py",
+    "python/larch/state/closeout.py",
     "python/larch/core/cleanup_skill.py",
     "python/larch/core/kv_cli.py",
 ];
@@ -41,7 +42,6 @@ const RETAINED_MODULES: &[&str] = &[
     "python/larch/state/__init__.py",
     "python/larch/state/_tokens.py",
     "python/larch/state/_validate.py",
-    "python/larch/state/closeout.py",
     "python/larch/state/finalize.py",
     "python/larch/state/session_env.py",
     "python/larch/bgjob/__init__.py",

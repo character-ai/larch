@@ -149,10 +149,8 @@ def validate_new(start, end, body):
         return
     if stripped.endswith('\\'):
         errors.append(f'fence {start}-{end}: new-shape fence must not use a line continuation')
-    if stripped == 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17 --implement-tmpdir "$IMPLEMENT_TMPDIR"':
-        return
     if not stripped.startswith(LAUNCHER_PREFIX):
-        errors.append(f'fence {start}-{end}: new-shape command must start with {LAUNCHER_PREFIX!r} or be the direct Step 16-17 Python CLI call: {stripped}')
+        errors.append(f'fence {start}-{end}: new-shape command must start with {LAUNCHER_PREFIX!r}: {stripped}')
         return
     try:
         tokens = shlex.split(stripped)

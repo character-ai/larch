@@ -38,14 +38,15 @@ design_skill="$REPO/skills/design/SKILL.md"
 finalize_step5_failures="$REPO/skills/design/references/finalize-step5-failures.md"
 shared_final_summary="$REPO/skills/shared/final-summary-emit.md"
 
-# Step 17 marker handoff lives in python/larch/state/closeout.py.
-grep -Fq 'step_17(["--implement-tmpdir", str(tmpdir), "--no-print-stdout"])' "$REPO/python/larch/state/closeout.py" || fail 'Step 16-17 wrapper must call Step 17 no-print path and capture rc'
-grep -Fq 'step17_rc == 0 and _summary_nonempty(tmpdir)' "$REPO/python/larch/state/closeout.py" || fail 'Step 16-17 wrapper must gate markers on Step 17 success and non-empty summary'
-grep -Fq -- '---LARCH-SUMMARY-FINAL-BEGIN---' "$REPO/python/larch/state/closeout.py" || fail 'Step 16-17 wrapper must emit begin marker'
-grep -Fq -- '---LARCH-SUMMARY-FINAL-END---' "$REPO/python/larch/state/closeout.py" || fail 'Step 16-17 wrapper must emit end marker'
-grep -Fq '"final-report", "write", "--implement-tmpdir"' "$REPO/python/larch/state/closeout.py" || fail 'Step 17 path must call final-report write'
-grep -Fq '"--print-stdout"' "$REPO/python/larch/state/closeout.py" || fail 'Step 17 default mode may retain --print-stdout'
-grep -Fq 'category="Tool Failures"' "$REPO/python/larch/state/closeout.py" || fail 'Step 17 failure path must retain Tool Failures append'
+# Step 17 marker handoff lives in the Rust closeout owner.
+closeout="$REPO/crates/larch-cli/src/implement_closeout_commands.rs"
+grep -Fq 'let step17_rc = match execute_step17(&context, true)' "$closeout" || fail 'Step 16-17 wrapper must call Step 17 no-print path and capture rc'
+grep -Fq 'step17_rc == 0 && summary_nonempty(&context.tmpdir)' "$closeout" || fail 'Step 16-17 wrapper must gate markers on Step 17 success and non-empty summary'
+grep -Fq -- '---LARCH-SUMMARY-FINAL-BEGIN---' "$closeout" || fail 'Step 16-17 wrapper must emit begin marker'
+grep -Fq -- '---LARCH-SUMMARY-FINAL-END---' "$closeout" || fail 'Step 16-17 wrapper must emit end marker'
+grep -Fq 'fn final_report(' "$closeout" || fail 'Step 17 path must call final-report write'
+grep -Fq 'arguments.push("--print-stdout".into())' "$closeout" || fail 'Step 17 default mode may retain --print-stdout'
+grep -Fq '"Tool Failures"' "$closeout" || fail 'Step 17 failure path must retain Tool Failures append'
 # shellcheck disable=SC2016
 step18_launcher='"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-18.sh --phase logs-flush --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"'
 # shellcheck disable=SC2016
@@ -59,7 +60,7 @@ grep -Fq 'skills/shared/final-summary-emit.md' "$REPO/skills/implement/SKILL.md"
 # shellcheck disable=SC2016
 grep -Fq 'markers `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---`' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind implement marker pair'
 # shellcheck disable=SC2016
-grep -Fq 'captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind Step 17 captured foreground stdout source'
+grep -Fq 'captured foreground `scripts/larch.sh implement step-16-17` Bash wrapper stdout' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind Step 17 captured foreground stdout source'
 # shellcheck disable=SC2016
 grep -Fq 'captured foreground `scripts/larch.sh implement step-18-gate-logs-flush` Bash wrapper stdout' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind Step 18 composite stdout source'
 # shellcheck disable=SC2016
