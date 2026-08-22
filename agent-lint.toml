@@ -887,6 +887,7 @@ reason = "These orchestrators exceed the generic 500-line limit; progressive-dis
 [[lint.overrides]]
 files = [
   "skills/cleanup/SKILL.md",
+  "skills/complete-umbrella/SKILL.md",
   "skills/debate/SKILL.md",
   "skills/difficulty-calibration/SKILL.md",
   "skills/fluff-analysis/SKILL.md",
