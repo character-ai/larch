@@ -2033,7 +2033,7 @@ mod tests {
     use super::*;
     use crate::{
         github_service::with_test_github_service,
-        implement_child_seam::{clear_hooks, install_larch, install_python},
+        implement_child_seam::{clear_hooks, install_larch},
     };
     use larch_adapters::github::OctocrabGitHubService;
     use larch_core::{ProcessOutput, ProcessStatus};
@@ -2060,6 +2060,9 @@ mod tests {
         let state_file = tmpdir.join("ship-pr-state.sh");
         fs::write(&state_file, concat!(
             "BRANCH_NAME=feature/ship\nISSUE_NUMBER=12\nREPO=owner/repo\nRUN_ID=run-a\n",
+            "PR_NUMBER=\nPR_TITLE=Ship\nPR_URL=\nDEFERRED=false\nPR_CLOSED=false\n",
+            "DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\nSTALL_TRACKING=false\n",
+            "DONE_RENAME_APPLIED=false\n",
             "MERGE=true\nDRAFT=false\nFORKED_TARGET=false\nREPO_UNAVAILABLE=false\n",
             "ITERATION=0\nREBASE_COUNT=0\nFIX_ATTEMPTS=0\nTRANSIENT_RETRIES=0\n",
         )).expect("state");
@@ -2356,6 +2359,9 @@ mod tests {
     fn merge_loop_completes_direct_and_queued_merges() {
         for disposition in ["merged", "queued"] {
             let (_root, context) = fixture();
+            // This unit owns merge classification, not local checkout and branch deletion.
+            // Exercise the in-process finalizer through its side-effect-free draft path.
+            patch_state(&context, &[("DRAFT", "true".to_owned())]).expect("draft state");
             let selected = disposition.to_owned();
             install_larch(move |arguments, _environment| {
                 let command = arguments
@@ -2380,16 +2386,6 @@ mod tests {
                     ["merge", "wait"] => Ok(output(0, "MERGE_RESULT=merged\n")),
                     ["run-log", "refresh"] => Ok(output(0, "")),
                     other => panic!("unexpected larch child: {other:?}"),
-                }
-            });
-            install_python(move |arguments| {
-                let command = arguments
-                    .iter()
-                    .map(|value| value.to_string_lossy())
-                    .collect::<Vec<_>>();
-                match command.first().map(AsRef::as_ref) {
-                    Some("implement-finalize") => Ok(output(0, "OUTCOME=OK\nSTATUS=complete\n")),
-                    other => panic!("unexpected child: {other:?}"),
                 }
             });
             let (factory, server) = service([(200, pull_request(12, "closed", true, ""))]);
