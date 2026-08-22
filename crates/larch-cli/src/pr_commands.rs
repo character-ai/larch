@@ -1,7 +1,10 @@
 //! Rust owner for `pr compose-summary` (#8789).
 
-use crate::{argparse_compat::parse_required_with_help, git_command_runtime::GitCommandRuntime};
-use larch_adapters::{ExactDiffRequest, GitRef, GixRepository, path_under, resolve_allow_missing};
+use crate::{
+    argparse_compat::parse_required_with_help,
+    git_command_runtime::{GitCommandRuntime, exact_name_only_request},
+};
+use larch_adapters::{GitRef, GixRepository, path_under, resolve_allow_missing};
 use larch_core::{RepositoryRead, Revision, compose_pr_summary};
 use std::{env, ffi::OsString, fs, path::Path, process::ExitCode};
 
@@ -81,20 +84,7 @@ fn changed_paths(root: &Path) -> Vec<String> {
         return Vec::new();
     };
     let result = runtime.runtime.block_on(runtime.git_cli().exact_diff(
-        ExactDiffRequest {
-            cached: false,
-            binary: false,
-            no_ext_diff: false,
-            numstat_z_rename_50: false,
-            unified_context: None,
-            name_only: true,
-            name_status: false,
-            quiet: false,
-            exit_code: false,
-            base: Some(base),
-            head: Some(head),
-            paths: Vec::new(),
-        },
+        exact_name_only_request(Some(base), Some(head)),
         &runtime.cancellation,
     ));
     match result {
@@ -122,7 +112,8 @@ fn merge_base_and_head(root: &Path) -> Option<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::compose_summary_at;
-    use std::{fs, path::Path, process::Command};
+    use larch_test_support::{GitFixture, GitRepository};
+    use std::fs;
     use tempfile::TempDir;
 
     #[test]
@@ -164,19 +155,15 @@ mod tests {
 
     #[test]
     fn reads_the_merge_base_diff_through_typed_git() {
-        let fixture = TempDir::new().expect("fixture");
-        git(fixture.path(), &["init", "-q", "-b", "main"]);
-        git(fixture.path(), &["config", "user.name", "Larch Test"]);
+        let fixture = GitRepository::builder(GitFixture::Unborn)
+            .build()
+            .expect("fixture");
+        fs::write(fixture.root().join("plan.md"), "## Goal\nShip Rust.\n").expect("plan write");
+        fs::write(fixture.root().join("base.txt"), "base\n").expect("base write");
+        git(&fixture, &["add", "."]);
+        git(&fixture, &["commit", "-q", "-m", "base"]);
         git(
-            fixture.path(),
-            &["config", "user.email", "larch@example.invalid"],
-        );
-        fs::write(fixture.path().join("plan.md"), "## Goal\nShip Rust.\n").expect("plan write");
-        fs::write(fixture.path().join("base.txt"), "base\n").expect("base write");
-        git(fixture.path(), &["add", "."]);
-        git(fixture.path(), &["commit", "-q", "-m", "base"]);
-        git(
-            fixture.path(),
+            &fixture,
             &["update-ref", "refs/remotes/origin/main", "HEAD"],
         );
         for (path, contents) in [
@@ -184,15 +171,15 @@ mod tests {
             ("docs/contract.md", "contract\n"),
             ("scripts/test-owner.sh", "#!/bin/sh\n"),
         ] {
-            let target = fixture.path().join(path);
+            let target = fixture.root().join(path);
             fs::create_dir_all(target.parent().expect("changed parent")).expect("parent create");
             fs::write(target, contents).expect("changed file write");
         }
-        git(fixture.path(), &["add", "."]);
-        git(fixture.path(), &["commit", "-q", "-m", "change"]);
+        git(&fixture, &["add", "."]);
+        git(&fixture, &["commit", "-q", "-m", "change"]);
 
         assert_eq!(
-            compose_summary_at(fixture.path(), "plan.md"),
+            compose_summary_at(fixture.root(), "plan.md"),
             Ok(concat!(
                 "- Ship Rust.\n",
                 "- Added or updated 1 test file(s).\n",
@@ -202,14 +189,10 @@ mod tests {
         );
     }
 
-    fn git(root: &Path, arguments: &[&str]) {
-        let output = Command::new("git")
-            .args(arguments)
-            .current_dir(root)
-            .output()
-            .expect("git fixture command");
+    fn git(repository: &GitRepository, arguments: &[&str]) {
+        let output = repository.git(arguments).expect("git fixture command");
         assert!(
-            output.status.success(),
+            output.success(),
             "git {arguments:?}: {}",
             String::from_utf8_lossy(&output.stderr)
         );

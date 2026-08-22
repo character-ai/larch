@@ -8,7 +8,7 @@
 use crate::{
     agent_commands,
     bootstrap_commands::{BootstrapOptions, BootstrapState, ROUTING_KEYS, write_base_session_env},
-    bootstrap_support::{remove_session_file, valid_run_id, write_session_text},
+    bootstrap_support::{first_kv_value, remove_session_file, valid_run_id, write_session_text},
     dirty_tree_commands, github_repository_resolution,
     launcher_support::{
         confine_regular_read_checked, read_confined_bytes_checked as read_confined_bytes,
@@ -2150,21 +2150,7 @@ fn read_session_value(tmpdir: &str, file: &str, key: &str) -> String {
 }
 
 fn read_session_value_from_path(path: &Path, key: &str) -> String {
-    KvDocument::parse(
-        &read_regular_lossy(path),
-        ParseOptions {
-            cr_strip: CrStrip::Suffix,
-            ..ParseOptions::legacy()
-        },
-    )
-    .ok()
-    .and_then(|document| {
-        document
-            .rows()
-            .iter()
-            .find_map(|row| (row.key() == key).then(|| row.value().to_owned()))
-    })
-    .unwrap_or_default()
+    first_kv_value(&read_regular_lossy(path), key, CrStrip::Suffix)
 }
 
 fn parse_kv(text: &str) -> BTreeMap<String, String> {

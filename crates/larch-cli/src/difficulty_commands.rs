@@ -9,7 +9,7 @@ use std::{
     process::ExitCode,
 };
 
-use larch_adapters::{ExactDiffRequest, GitRef, github::IssueMutationOwner};
+use larch_adapters::{GitRef, github::IssueMutationOwner};
 use larch_core::{
     AUDIT_DENOMINATOR, BuildRecord, DifficultyFloor, DifficultyRating, FLOOR_MANIFEST_RELPATH,
     GitHubLabelCreate, GitHubService as _, IssueMutationRequest, MergeExplicit, RUBRIC,
@@ -26,7 +26,7 @@ use crate::{
         ParsedCommandLine, choice_error, finish_parse, parse_with_flags, python_io_error,
         usage_error, write_stdout,
     },
-    git_command_runtime::GitCommandRuntime,
+    git_command_runtime::{GitCommandRuntime, exact_name_only_request},
     github_repository_resolution::{ambient_repo, repository_ref},
     github_service::{ServiceFailure, with_github_service},
     issue_mutation_support::authorization_request,
@@ -850,20 +850,7 @@ fn git_changed_paths(repo_root: &Path) -> Result<Vec<String>, String> {
     let result = runtime
         .runtime
         .block_on(runtime.git_cli().exact_diff(
-            ExactDiffRequest {
-                cached: false,
-                binary: false,
-                no_ext_diff: false,
-                numstat_z_rename_50: false,
-                unified_context: None,
-                name_only: true,
-                name_status: false,
-                quiet: false,
-                exit_code: false,
-                base: None,
-                head: Some(head),
-                paths: Vec::new(),
-            },
+            exact_name_only_request(None, Some(head)),
             &runtime.cancellation,
         ))
         .map_err(|_| "difficulty refresh could not read changed paths".to_owned())?;

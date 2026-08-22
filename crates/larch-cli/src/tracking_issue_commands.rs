@@ -25,7 +25,7 @@
 
 use crate::{
     argparse_compat::{ParsedCommandLine, parse, parse_required_with_help, read_stdin},
-    bootstrap_support::{valid_run_id, write_session_text},
+    bootstrap_support::{first_kv_value, valid_run_id, write_session_text},
     github_repository_resolution::{ambient_repo, repository_ref, validate_repo_slug},
     github_service::{ServiceFailure, with_github_service},
     issue_mutation_support::{authorization_request, create_with_rollback},
@@ -41,11 +41,11 @@ use larch_adapters::{
 use larch_core::{
     CrStrip, GitHubService, IMPLEMENTING_PREFIX, ImplementationLease, IssueCreateRequest,
     IssueMutationField, IssueMutationLease, IssueMutationRequest, IssueMutationSnapshot,
-    KvDocument, LIFECYCLE_PREFIXES, PLAN_MARKER, ParseOptions, TrackingMetadata,
-    cleanup_cache_sessions_root, compose_tracking_metadata, detect_lifecycle_prefix, emit_kv,
-    implementation_lease_is_expired, insert_signal_marker, parse_implementation_lease,
-    parse_named_block, parse_receipt, receipt_marker_present, redact_run_log_payload,
-    strip_lifecycle_prefix, upsert_implementation_lease,
+    LIFECYCLE_PREFIXES, PLAN_MARKER, TrackingMetadata, cleanup_cache_sessions_root,
+    compose_tracking_metadata, detect_lifecycle_prefix, emit_kv, implementation_lease_is_expired,
+    insert_signal_marker, parse_implementation_lease, parse_named_block, parse_receipt,
+    receipt_marker_present, redact_run_log_payload, strip_lifecycle_prefix,
+    upsert_implementation_lease,
 };
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -1654,21 +1654,7 @@ fn tracking_file(root: &TemporaryRoot, name: &str) -> String {
 }
 
 fn first_kv(document: &str, key: &str) -> String {
-    KvDocument::parse(
-        document,
-        ParseOptions {
-            cr_strip: CrStrip::Both,
-            ..ParseOptions::legacy()
-        },
-    )
-    .ok()
-    .and_then(|document| {
-        document
-            .rows()
-            .iter()
-            .find_map(|row| (row.key() == key).then(|| row.value().to_owned()))
-    })
-    .unwrap_or_default()
+    first_kv_value(document, key, CrStrip::Both)
 }
 
 fn post_issue_failure(exit_code: u8, error: &str) -> PostIssueResult {
