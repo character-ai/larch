@@ -20,7 +20,7 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="design.decompose.umbrella_handoff"></a>`design.decompose.umbrella_handoff` | /umbrella | exact approved batch + dependencies + in-place original conversion | `skills/design/references/decompose-panel.md` |
 | <a id="implement.partition.umbrella_handoff"></a>`implement.partition.umbrella_handoff` | /umbrella | multi-issue target replacement owner | `skills/implement/SKILL.md` |
 | <a id="umbrella.leaf_filing"></a>`umbrella.leaf_filing` | /issue | deduplication + prepared dependency wiring + identity-bound verified sentinel | `skills/umbrella/SKILL.md` |
-| <a id="complete_umbrella.audit_gap_filing"></a>`complete_umbrella.audit_gap_filing` | /issue | exact no-dedup leaf filing + caller-bound graph attachment | `skills/complete-umbrella/SKILL.md` |
+| <a id="complete_umbrella.audit_gap_filing"></a>`complete_umbrella.audit_gap_filing` | complete-umbrella file-gap | exact Rust-owned leaf filing + caller-bound graph attachment | `skills/complete-umbrella/SKILL.md` |
 | <a id="complete_umbrella.leaf_execution"></a>`complete_umbrella.leaf_execution` | bgjob | serial thin Claude orchestrator with larch skills disabled | `skills/complete-umbrella/SKILL.md` |
 | <a id="complete_umbrella.leaf_phases"></a>`complete_umbrella.leaf_phases` | fresh phase contexts | recon/design + implement + adversarial review + ship | `skills/complete-umbrella/SKILL.md` |
 | <a id="complete_umbrella.leaf_ship"></a>`complete_umbrella.leaf_ship` | Deterministic leaf ship driver | one umbrella leaf | `crates/larch-cli/src/complete_umbrella_ship_commands.rs` |

@@ -56,6 +56,29 @@ fn issue_json(
     issue.to_string()
 }
 
+fn assigned_issue_json(
+    number: u64,
+    id: u64,
+    title: &str,
+    body: &str,
+    state: &str,
+    updated_at: &str,
+) -> String {
+    let mut issue: Value =
+        serde_json::from_str(&issue_json(number, id, title, body, state, updated_at))
+            .expect("valid issue fixture");
+    let assignee = issue["user"].clone();
+    issue["assignee"] = assignee.clone();
+    issue["assignees"] = json!([assignee]);
+    issue.to_string()
+}
+
+fn authenticated_user_json() -> String {
+    serde_json::from_str::<Value>(&issue_json(1, 1, "", "", "open", BEFORE))
+        .expect("valid issue fixture")["user"]
+        .to_string()
+}
+
 fn refs(values: &[(u64, u64, &str)]) -> String {
     Value::Array(
         values
@@ -112,11 +135,10 @@ fn open_graph(parent: &str, leaf: &str) -> Vec<IssueServiceExchange> {
     ]
 }
 
-fn attachment_exchanges(
+fn first_attachment_exchanges(
     parent: &str,
     leaf: &str,
     leaf_ref: &str,
-    parent_ref: &str,
 ) -> Vec<IssueServiceExchange> {
     vec![
         response(200, parent),
@@ -138,6 +160,17 @@ fn attachment_exchanges(
         response(200, "[]"),
         response(200, "[]"),
         response(200, leaf_ref),
+    ]
+}
+
+fn attachment_exchanges(
+    parent: &str,
+    leaf: &str,
+    leaf_ref: &str,
+    parent_ref: &str,
+) -> Vec<IssueServiceExchange> {
+    let mut exchanges = first_attachment_exchanges(parent, leaf, leaf_ref);
+    exchanges.extend([
         response(200, parent),
         response(200, "[]"),
         response(200, leaf),
@@ -153,7 +186,8 @@ fn attachment_exchanges(
         response(200, "[]"),
         response(200, "[]"),
         response(200, leaf_ref),
-    ]
+    ]);
+    exchanges
 }
 
 #[test]
@@ -241,6 +275,12 @@ fn command_dispatch_rejects_invalid_inputs_before_remote_work() {
                 ..leaf()
             },
             operator_invoked: false,
+        }),
+        CompleteUmbrellaCommand::FileGap(FileGapArguments {
+            repository: String::from("o/r"),
+            umbrella: 0,
+            operator_invoked: false,
+            files: files(),
         }),
         CompleteUmbrellaCommand::ValidateGap(ValidateGapArguments {
             umbrella: 0,
@@ -2160,6 +2200,38 @@ fn expected_paths_and_leaf_files_fail_closed() {
     assert!(read_expected_audit_leaf(UMBRELLA, &arguments).is_err());
     fs::write(&body_file, "Wrong umbrella opening\n").expect("body fixture");
     assert!(read_expected_audit_leaf(UMBRELLA, &arguments).is_err());
+
+    let exact_body = format!(
+        "{}\n\nClose the audited gap.\n",
+        umbrella_leaf_opening(UMBRELLA)
+    );
+    fs::write(&body_file, &exact_body).expect("valid body fixture");
+    let expected = read_expected_audit_leaf(UMBRELLA, &arguments).expect("valid gap files");
+    assert_eq!(expected.remote_title, "[LEAF OF 40] Close the gap");
+    assert_eq!(expected.body, exact_body);
+
+    fs::write(&arguments.title_file, "x".repeat(81)).expect("oversized title fixture");
+    assert!(read_expected_audit_leaf(UMBRELLA, &arguments).is_err());
+    fs::write(&arguments.title_file, "Close the gap\n").expect("restore title fixture");
+    fs::write(
+        &body_file,
+        format!(
+            "{}\n\nThe gap exposes an API key.\n",
+            umbrella_leaf_opening(UMBRELLA)
+        ),
+    )
+    .expect("security-sensitive body fixture");
+    let Err(error) = read_expected_audit_leaf(UMBRELLA, &arguments) else {
+        panic!("security-sensitive gap must remain private");
+    };
+    assert_eq!(error, "security-sensitive audit gaps must remain private");
+
+    let token = format!("{}{}", "ghp_", "a".repeat(36));
+    let expected = ExpectedAuditLeaf {
+        remote_title: String::from("[LEAF OF 40] Close the gap"),
+        body: format!("{}\n\n{token}\n", umbrella_leaf_opening(UMBRELLA)),
+    };
+    assert!(gap_create_request(&repository(), &expected).is_err());
 }
 
 #[tokio::test]
@@ -2505,6 +2577,205 @@ async fn attachment_is_idempotent_and_replays_both_native_edges_with_exact_read_
         requests
             .iter()
             .any(|request| request.path.ends_with("/dependencies/blocked_by"))
+    );
+}
+
+#[tokio::test]
+async fn file_gap_creates_assigns_and_attaches_one_exact_leaf() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let opening = umbrella_leaf_opening(UMBRELLA);
+    let body = format!("{opening}\n\nClose the audited gap.");
+    let leaf = assigned_issue_json(
+        GAP,
+        420,
+        "[LEAF OF 40] Close the gap",
+        &body,
+        "open",
+        BEFORE,
+    );
+    let leaf_ref = refs(&[(GAP, 420, "open")]);
+    let mut exchanges = vec![
+        response(200, &parent),
+        response(200, "[]"),
+        response(200, authenticated_user_json()),
+        response(201, &leaf),
+        response(200, &leaf),
+    ];
+    exchanges.extend(first_attachment_exchanges(&parent, &leaf, &leaf_ref));
+    let (service, server) = service(exchanges);
+    let expected = ExpectedAuditLeaf {
+        remote_title: String::from("[LEAF OF 40] Close the gap"),
+        body: body.clone(),
+    };
+
+    let created = file_gap_remote(
+        &service,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &expected,
+        &NetSignal::new(),
+    )
+    .await
+    .expect("file and attach gap");
+
+    assert_eq!(created, GAP);
+    let requests = server.finish().expect("stub completed");
+    let create = requests
+        .iter()
+        .find(|request| request.method == "POST" && request.path == "/repos/o/r/issues")
+        .expect("issue create request");
+    let payload: Value =
+        serde_json::from_slice(&create.body.bytes).expect("issue create request JSON");
+    assert_eq!(payload["title"], "[LEAF OF 40] Close the gap");
+    assert_eq!(payload["body"], body);
+    assert_eq!(payload["assignees"], json!(["octocat"]));
+    assert!(
+        requests
+            .iter()
+            .any(|request| request.path.ends_with("/sub_issues"))
+    );
+    assert!(
+        requests
+            .iter()
+            .any(|request| request.path.ends_with("/dependencies/blocked_by"))
+    );
+}
+
+#[test]
+fn file_gap_never_replays_creation_after_an_attachment_disconnect() {
+    let root = tempfile::tempdir().expect("gap file root");
+    let title_file = root.path().join("gap-title.txt");
+    let body_file = root.path().join("gap-body.md");
+    let body = format!(
+        "{}\n\nClose the audited gap.",
+        umbrella_leaf_opening(UMBRELLA)
+    );
+    fs::write(&title_file, "Close the gap\n").expect("title fixture");
+    fs::write(&body_file, &body).expect("body fixture");
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let leaf = assigned_issue_json(
+        GAP,
+        420,
+        "[LEAF OF 40] Close the gap",
+        &body,
+        "open",
+        BEFORE,
+    );
+    let server = IssueServiceStub::start([
+        response(200, &parent),
+        response(200, "[]"),
+        response(200, authenticated_user_json()),
+        response(201, &leaf),
+        response(200, &leaf),
+        IssueServiceExchange::disconnect("GET", "/repos/o/r/issues/40"),
+        response(503, r#"{"message":"offline"}"#),
+        response(503, r#"{"message":"offline"}"#),
+    ])
+    .expect("issue service");
+    let base = server.base_url().to_owned();
+    let github: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
+        Arc::new(move || OctocrabGitHubService::with_test_base(&base));
+    let arguments = FileGapArguments {
+        repository: String::from("o/r"),
+        umbrella: UMBRELLA,
+        operator_invoked: true,
+        files: GapFileArguments {
+            root: root.path().to_path_buf(),
+            title_file,
+            body_file,
+        },
+    };
+
+    let error = with_test_github_service(github, || file_gap(&arguments))
+        .expect_err("attachment disconnect must fail without replaying create");
+
+    assert!(error.contains("created audit gap issue #42, but attachment failed"));
+    let requests = server.finish().expect("stub completed");
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.method == "POST" && request.path == "/repos/o/r/issues")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn attachment_refuses_a_leaf_that_already_has_another_parent() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let body = format!(
+        "{}\n\nClose the audited gap.",
+        umbrella_leaf_opening(UMBRELLA)
+    );
+    let leaf = issue_json(
+        GAP,
+        420,
+        "[LEAF OF 40] Close the gap",
+        &body,
+        "open",
+        BEFORE,
+    );
+    let foreign_parent = json!({ "number": 99, "id": 990, "state": "open" }).to_string();
+    let (service, server) = service(vec![
+        response(200, &parent),
+        response(200, "[]"),
+        response(200, &leaf),
+        response(200, "[]"),
+        response(200, foreign_parent),
+    ]);
+    let arguments = LeafArguments {
+        repository: String::from("o/r"),
+        umbrella: UMBRELLA,
+        leaf: GAP,
+    };
+    let expected = ExpectedAuditLeaf {
+        remote_title: String::from("[LEAF OF 40] Close the gap"),
+        body,
+    };
+
+    let error = validate_attachment(
+        &service,
+        &Cancellation::new(),
+        &repository(),
+        &arguments,
+        &expected,
+        &NetSignal::new(),
+    )
+    .await
+    .expect_err("another parent must refuse attachment");
+
+    assert_eq!(
+        error,
+        "audit-created child already belongs to another parent"
+    );
+    assert!(
+        server
+            .finish()
+            .expect("stub completed")
+            .iter()
+            .all(|request| request.method != "POST")
     );
 }
 

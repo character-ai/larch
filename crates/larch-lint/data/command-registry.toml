@@ -9449,7 +9449,7 @@ rust = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues cl
 path = "skills/complete-umbrella/SKILL.md"
 kind = "skill"
 python = []
-rust = ["agent read-claude-model", "bgjob start", "bgjob wait", "gh resolve-repo", "kv get", "session cleanup-tmpdir", "session setup", "verify skill-called"]
+rust = ["agent read-claude-model", "bgjob start", "bgjob wait", "gh resolve-repo", "kv get", "session cleanup-tmpdir", "session setup"]
 
 [[callers]]
 path = "skills/complete-umbrella/references/adversarial-review.md"

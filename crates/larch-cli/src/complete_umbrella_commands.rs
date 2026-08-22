@@ -4,6 +4,7 @@ use crate::{
     git_command_runtime::GitCommandRuntime,
     github_repository_resolution::repository_ref,
     github_service::{ServiceFailure, with_github_service},
+    issue_mutation_support::create_with_rollback,
     net_commands::{validate_wait_online_ceiling, wait_online_for},
     session_artifact_support::{
         canonical_directory, confine_session_path, read_expected_file, temporary_root,
@@ -31,18 +32,19 @@ use larch_core::{
     CompleteUmbrellaNext, ConnectivityWait, DEFAULT_NET_WAIT_CEILING, DONE_PREFIX, DuplicatePolicy,
     EnvFile, ExternalProcessRunner, ExternalProgram, GitHubCloseReason, GitHubIssue,
     GitHubIssueState, GitHubRepositoryRef, GitHubService, Head, IMPLEMENTING_PREFIX,
-    IssueMutationError, IssueMutationField, IssueMutationRequest, KvDocument, OfflineRetryMetrics,
-    ParseOptions, ProcessErrorKind, ProcessRequest, RepositoryRead, StatusOptions, Unreachable,
-    VendorLaunchRequest, VendorProgram, WaitOnlineResult, build_claude_argv, checked_dir,
-    child_liveness, complete_umbrella_child_prompt, complete_umbrella_done_title,
-    complete_umbrella_leaf_non_candidate, complete_umbrella_relaunch_title,
-    complete_umbrella_start_title, daemon_liveness, emit_kv, git_output_is_unreachable,
-    has_umbrella_proposal, is_controlling_umbrella_title, is_transient_claude_api_error,
-    is_valid_claude_pid, iter_entries, parse_claude_envelope, private_atomic_write,
-    read_confined_regular_tail, redact, redact_issue_mutation_request, refresh_wait_lease_for_pid,
-    result_env_path, retry_while_unreachable, select_complete_umbrella_leaf, session_pointer_root,
-    single_line, umbrella_leaf_opening, umbrella_leaf_prefix, validate_complete_umbrella_leaf,
-    validate_complete_umbrella_parent,
+    IssueCreateRequest, IssueMutationError, IssueMutationField, IssueMutationRequest, KvDocument,
+    OfflineRetryMetrics, ParseOptions, ProcessErrorKind, ProcessRequest, RepositoryRead,
+    StatusOptions, Unreachable, VendorLaunchRequest, VendorProgram, WaitOnlineResult,
+    build_claude_argv, checked_dir, child_liveness, complete_umbrella_child_prompt,
+    complete_umbrella_done_title, complete_umbrella_leaf_non_candidate,
+    complete_umbrella_relaunch_title, complete_umbrella_start_title, daemon_liveness, emit_kv,
+    git_output_is_unreachable, has_umbrella_proposal, is_controlling_umbrella_title,
+    is_transient_claude_api_error, is_valid_claude_pid, iter_entries, parse_claude_envelope,
+    private_atomic_write, read_confined_regular_tail, redact, redact_issue_create_request,
+    redact_issue_mutation_request, refresh_wait_lease_for_pid, result_env_path,
+    retry_while_unreachable, select_complete_umbrella_leaf, session_pointer_root, single_line,
+    triage_text_is_security_sensitive, umbrella_leaf_opening, umbrella_leaf_prefix,
+    validate_complete_umbrella_leaf, validate_complete_umbrella_parent,
 };
 use serde::Serialize;
 use std::{
@@ -824,6 +826,9 @@ pub enum CompleteUmbrellaCommand {
     /// Strip a stale `[IMPLEMENTING]` leaf prefix so selection can relaunch it.
     #[command(name = "reset-leaf")]
     ResetLeaf(ResetLeafArguments),
+    /// Validate, create, attach, and verify one audit-created leaf.
+    #[command(name = "file-gap")]
+    FileGap(FileGapArguments),
     /// Validate caller-owned audit-gap files before public issue creation.
     #[command(name = "validate-gap")]
     ValidateGap(ValidateGapArguments),
@@ -947,6 +952,18 @@ pub struct RecoverOrphanedChildArguments {
 pub struct AttachLeafArguments {
     #[command(flatten)]
     leaf: LeafArguments,
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    operator_invoked: bool,
+    #[command(flatten)]
+    files: GapFileArguments,
+}
+
+#[derive(Args)]
+pub struct FileGapArguments {
+    #[arg(long)]
+    repository: String,
+    #[arg(long)]
+    umbrella: u64,
     #[arg(long, action = clap::ArgAction::SetTrue)]
     operator_invoked: bool,
     #[command(flatten)]
@@ -1345,6 +1362,7 @@ pub fn run(command: CompleteUmbrellaCommand) -> ExitCode {
             recover_orphaned_child(&arguments)
         }
         CompleteUmbrellaCommand::ResetLeaf(arguments) => reset_leaf(&arguments),
+        CompleteUmbrellaCommand::FileGap(arguments) => file_gap(&arguments),
         CompleteUmbrellaCommand::ValidateGap(arguments) => validate_gap(&arguments),
         CompleteUmbrellaCommand::AttachLeaf(arguments) => attach_leaf(&arguments),
         CompleteUmbrellaCommand::Finish(arguments) => finish(&arguments),
@@ -3110,6 +3128,42 @@ fn attach_leaf(arguments: &AttachLeafArguments) -> Result<(), String> {
     Ok(())
 }
 
+fn file_gap(arguments: &FileGapArguments) -> Result<(), String> {
+    require_operator(arguments.operator_invoked)?;
+    require_issue(arguments.umbrella, "--umbrella")?;
+    let repository = parse_repository(&arguments.repository)?;
+    let repository_name = format!("{}/{}", repository.owner(), repository.name());
+    let tmpdir = canonical_directory(&arguments.files.root, "--expected-root")?;
+    let expected = read_expected_audit_leaf(arguments.umbrella, &arguments.files)?;
+    // Issue creation is not idempotent. Do not put this composite behind the
+    // offline retry wrapper: a network failure during attachment must not
+    // replay the create.
+    let issue = with_github_service(async |service, cancellation| {
+        let net = NetSignal::new();
+        file_gap_remote(
+            service,
+            cancellation,
+            &repository,
+            arguments.umbrella,
+            &expected,
+            &net,
+        )
+        .await
+    })
+    .map_err(ServiceFailure::into_detail)?;
+    let store = RunPointerStore::live()?;
+    checkpoint_reselection(&store, &repository_name, arguments.umbrella, &tmpdir).map_err(
+        |error| {
+            format!(
+                "audit gap issue #{issue} was attached, but the reselection checkpoint failed: {error}"
+            )
+        },
+    )?;
+    emit_kv("ISSUE_NUMBER", &issue.to_string());
+    emit_kv("LEAF_ATTACHED", "true");
+    Ok(())
+}
+
 fn checkpoint_reselection(
     store: &RunPointerStore,
     repository: &str,
@@ -3174,10 +3228,76 @@ fn read_expected_audit_leaf(
     if expected_body.lines().next() != Some(umbrella_leaf_opening(umbrella).as_str()) {
         return Err("expected leaf body lacks the exact umbrella opening".to_owned());
     }
+    if triage_text_is_security_sensitive(&format!("{expected_title}\n{expected_body}")) {
+        return Err("security-sensitive audit gaps must remain private".to_owned());
+    }
     Ok(ExpectedAuditLeaf {
         remote_title: format!("{}{expected_title}", umbrella_leaf_prefix(umbrella)),
         body: expected_body,
     })
+}
+
+async fn file_gap_remote(
+    service: &larch_adapters::github::OctocrabGitHubService,
+    cancellation: &Cancellation,
+    repository: &GitHubRepositoryRef,
+    umbrella: u64,
+    expected: &ExpectedAuditLeaf,
+    net: &NetSignal,
+) -> Result<u64, String> {
+    validate_active_gap_parent(service, cancellation, repository, umbrella, net).await?;
+    let request = gap_create_request(repository, expected)?;
+    let created = create_with_rollback(service, cancellation, &operator_authorization(), &request)
+        .await
+        .map_err(|(failure, rollback)| match rollback {
+            None => format!(
+                "audit gap issue creation failed: {}",
+                failure.error.reason()
+            ),
+            Some((issue, Ok(()))) => format!(
+                "audit gap issue creation failed: {}; orphan issue #{issue} was closed",
+                failure.error.reason()
+            ),
+            Some((issue, Err(_))) => format!(
+                "audit gap issue creation failed: {}; orphan issue #{issue} could not be closed",
+                failure.error.reason()
+            ),
+        })?;
+    let arguments = LeafArguments {
+        repository: format!("{}/{}", repository.owner(), repository.name()),
+        umbrella,
+        leaf: created.number,
+    };
+    if let Err(error) =
+        attach_leaf_remote(service, cancellation, repository, &arguments, expected, net).await
+    {
+        let reason = single_line(redact(&error).text());
+        return Err(format!(
+            "created audit gap issue #{}, but attachment failed: {reason}",
+            created.number
+        ));
+    }
+    Ok(created.number)
+}
+
+fn gap_create_request(
+    repository: &GitHubRepositoryRef,
+    expected: &ExpectedAuditLeaf,
+) -> Result<IssueCreateRequest, String> {
+    let request = IssueCreateRequest {
+        repository: repository.clone(),
+        title: expected.remote_title.clone(),
+        body: expected.body.clone(),
+        assign_authenticated_user: true,
+        labels: Vec::new(),
+    };
+    let redacted = redact_issue_create_request(&request).map_err(|error| error.to_string())?;
+    if redacted.title != request.title || redacted.body != request.body {
+        return Err(
+            "audit gap title or body requires redaction; refusing public issue creation".to_owned(),
+        );
+    }
+    Ok(request)
 }
 
 async fn attach_leaf_remote(
@@ -3202,15 +3322,7 @@ async fn validate_attachment(
     expected: &ExpectedAuditLeaf,
     net: &NetSignal,
 ) -> Result<GitHubIssue, String> {
-    let parent = service
-        .issue(repository, arguments.umbrella, cancellation)
-        .await
-        .map_err(|error| net.record(&error))?;
-    validate_complete_umbrella_parent(&parent, true)?;
-    require_top_level_umbrella(service, cancellation, repository, arguments.umbrella, net).await?;
-    if !parent.title.starts_with(IMPLEMENTING_PREFIX) {
-        return Err("parent is not active".to_owned());
-    }
+    validate_active_gap_parent(service, cancellation, repository, arguments.umbrella, net).await?;
     let leaf = service
         .issue(repository, arguments.leaf, cancellation)
         .await
@@ -3252,6 +3364,25 @@ async fn validate_attachment(
         return Err("audit-created child already belongs to another parent".to_owned());
     }
     Ok(leaf)
+}
+
+async fn validate_active_gap_parent(
+    service: &larch_adapters::github::OctocrabGitHubService,
+    cancellation: &Cancellation,
+    repository: &GitHubRepositoryRef,
+    umbrella: u64,
+    net: &NetSignal,
+) -> Result<(), String> {
+    let parent = service
+        .issue(repository, umbrella, cancellation)
+        .await
+        .map_err(|error| net.record(&error))?;
+    validate_complete_umbrella_parent(&parent, true)?;
+    require_top_level_umbrella(service, cancellation, repository, umbrella, net).await?;
+    if !parent.title.starts_with(IMPLEMENTING_PREFIX) {
+        return Err("parent is not active".to_owned());
+    }
+    Ok(())
 }
 
 async fn apply_attachment(

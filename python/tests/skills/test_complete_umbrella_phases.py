@@ -236,6 +236,25 @@ def test_top_level_rehydrates_the_durable_run_pointer_before_start() -> None:
     assert "POINTER_CLEARED=true" in skill
 
 
+def test_audit_gap_uses_one_file_and_attach_driver_call() -> None:
+    skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    step5 = skill.split("## Step 5: File and attach one audit gap", 1)[1].split(
+        "## Step 6: Finish and close", 1
+    )[0]
+
+    assert step5.count("complete-umbrella file-gap") == 1
+    assert "complete-umbrella validate-gap" not in step5
+    assert "complete-umbrella attach-leaf" not in step5
+    assert "larch:issue" not in step5
+    assert "Skill tool" not in step5
+    assert "gap-issue.sentinel" not in step5
+    assert "ISSUE_NUMBER" in step5
+    assert "LEAF_ATTACHED=true" in step5
+    assert "security-sensitive" in step5
+
+
 def test_top_level_bounds_host_agnostic_production_guard_false_denies() -> None:
     skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
         encoding="utf-8"
