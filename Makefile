@@ -846,7 +846,7 @@ test-compose-collector-failure-log:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test agent_commands compose_collector_failure_log_redacts_and_writes_sections
 
 test-compute-pr-line-counts:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/report/test_tokens.py -q -k compute_pr_line_counts
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch token_commands::tests::pr_line_fetch_aggregates_the_typed_service_response
 
 test-compose-review-findings:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_compose_contract

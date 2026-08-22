@@ -8,7 +8,6 @@ import subprocess
 import sys
 from dataclasses import FrozenInstanceError
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -230,24 +229,6 @@ def test_replace_block_ignores_prose_marker_mentions(tmp_path: Path) -> None:
     assert "Mention <!-- token-report-begin --> in prose" in text
     assert "BLOCK" in text
     assert "old" not in text
-
-
-def test_check_step_token_budget_resets_at_mark(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    ledger = tmp_path / "token-ledger.jsonl"
-    rows = [
-        {"type": "vendor", "vendor": "codex", "total": 100, "ts": "1"},
-        {"type": "mark", "step": "Step 1", "ts": "2"},
-        {"type": "vendor", "vendor": "cursor", "total": 50, "ts": "3"},
-    ]
-    _ = ledger.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
-    monkeypatch.setenv("LARCH_TOKEN_LEDGER", str(ledger))
-    under = tokens.check_step_token_budget(cap=100, step="Step 1")
-    over = tokens.check_step_token_budget(cap=40, step="Step 1")
-    assert under.status == "under_cap"
-    assert over.status == "cap_hit"
-    assert over.total == 50
-    with pytest.raises(FrozenInstanceError):
-        over.total = 0  # type: ignore[misc]
 
 
 def _token_report_fixtures(tmp_path: Path) -> tuple[Path, Path]:
@@ -648,31 +629,6 @@ def test_token_append_record_from_sidecar(tmp_path: Path) -> None:
     row = json.loads((tmp_path / "token-report.ndjson").read_text(encoding="utf-8").strip())
     assert row["tool"] == "codex"
     assert row["total"] == 10
-
-
-def test_compute_pr_line_counts_buckets(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(cmd: list[str], **_: object) -> SimpleNamespace:
-        assert "pulls/42/files" in " ".join(cmd)
-        return SimpleNamespace(
-            returncode=0,
-            stdout="scripts/foo.sh\t10\t2\nlarch-logs/implement/run-x/summary.md\t5\t1\nassets/binary.png\t0\t0\n",
-            stderr="",
-        )
-
-    monkeypatch.setattr(tokens.proc, "run", fake_run)
-    result = tokens.compute_pr_line_counts(pr_number=42, repo="owner/repo")
-    assert result.status == "ok"
-    assert result.code_added == 10
-    assert result.code_deleted == 2
-    assert result.logs_added == 5
-    assert result.logs_deleted == 1
-    assert result.kv_items() == (
-        ("LINES_STATUS", "ok"),
-        ("CODE_ADDED", "10"),
-        ("CODE_DELETED", "2"),
-        ("LOGS_ADDED", "5"),
-        ("LOGS_DELETED", "1"),
-    )
 
 
 def test_token_mark_returns_typed_recorded_and_skipped_results(tmp_path: Path) -> None:

@@ -15,7 +15,9 @@ use super::{
 use chrono::{DateTime, Utc};
 use http::header::LINK;
 use http_body_util::{BodyExt, Limited};
-use larch_core::{GitHubResponseLimits, ProcessCancellation, SafeText};
+use larch_core::{
+    GitHubResponseLimits, ProcessCancellation, SafeText, report::PullRequestFileLines,
+};
 use regex::Regex;
 use serde_json::{Map, Value, json};
 use std::{
@@ -944,6 +946,48 @@ impl OctocrabGitHubService {
             .await?;
         parse_release_pull_request(&value, self.policy.limits())
             .map(|pull_request| self.redact_release_pull_request(pull_request))
+    }
+
+    /// List every file in one pull request through bounded typed pagination.
+    ///
+    /// # Errors
+    /// Returns a typed input, transport, cancellation, limit, or response-contract failure.
+    pub async fn pull_request_files(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<PullRequestFileLines>, GitHubOperationError> {
+        validate_repo(owner, repo)?;
+        validate_issue_number(number, "pull request number")?;
+        let route = format!("/repos/{owner}/{repo}/pulls/{number}/files");
+        let limits = self.policy.limits();
+        let mut output = Vec::new();
+        for page in 1..=limits.pages() {
+            let page_text = page.to_string();
+            let parameters = [("per_page", "100"), ("page", page_text.as_str())];
+            let value = self
+                .fetch_json(
+                    cancellation,
+                    self.client.get(route.as_str(), Some(&parameters)),
+                )
+                .await?;
+            let page_items = parse_pull_request_file_lines(&value, limits)?;
+            let count = page_items.len();
+            if output.len().saturating_add(count) > limits.items() {
+                return Err(GitHubOperationError::Malformed(
+                    "pull request file list exceeds item bound",
+                ));
+            }
+            output.extend(page_items);
+            if count < RELEASE_PAGE_SIZE {
+                return Ok(output);
+            }
+        }
+        Err(GitHubOperationError::Malformed(
+            "pull request file pagination exceeds page bound",
+        ))
     }
 
     /// List pull requests associated with one commit through bounded pagination.
@@ -2883,6 +2927,31 @@ fn parse_release_pull_request(
     })
 }
 
+fn parse_pull_request_file_lines(
+    value: &Value,
+    limits: GitHubResponseLimits,
+) -> Result<Vec<PullRequestFileLines>, GitHubOperationError> {
+    let array = value
+        .as_array()
+        .ok_or(GitHubOperationError::Malformed("pull request file list"))?;
+    if array.len() > RELEASE_PAGE_SIZE {
+        return Err(GitHubOperationError::Malformed(
+            "pull request file page exceeds item bound",
+        ));
+    }
+    array
+        .iter()
+        .map(|value| {
+            let object = as_object(value)?;
+            Ok(PullRequestFileLines {
+                path: required_str(object, "filename", limits, "pull request filename")?,
+                additions: required_u64(object, "additions", "pull request additions")?,
+                deletions: required_u64(object, "deletions", "pull request deletions")?,
+            })
+        })
+        .collect()
+}
+
 fn parse_release_candidate_pull_request(
     value: &Value,
 ) -> Result<ReleaseCandidatePullRequest, GitHubOperationError> {
@@ -4209,6 +4278,66 @@ mod service_tests {
             .await
             .expect("valid list");
         assert_eq!(list.len(), 2);
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn pull_request_files_follow_bounded_typed_pagination() {
+        let first_page = Value::Array(
+            (0..100)
+                .map(|index| {
+                    json!({
+                        "filename": format!("src/file-{index}.rs"),
+                        "additions": 2,
+                        "deletions": 1,
+                    })
+                })
+                .collect(),
+        );
+        let second_page = json!([{
+            "filename": "larch-logs/implement/run-x/summary.md",
+            "additions": 5,
+            "deletions": 3,
+        }]);
+        let (service, server) = stub_service(vec![
+            (200, first_page.to_string()),
+            (200, second_page.to_string()),
+        ]);
+        let files = service
+            .pull_request_files(&Cancellation::new(), "o", "r", 42)
+            .await
+            .expect("typed file pages");
+        assert_eq!(files.len(), 101);
+        assert_eq!(files[100].path, "larch-logs/implement/run-x/summary.md");
+        assert_eq!(files[100].additions, 5);
+        let requests = server.requests().expect("request log");
+        assert_eq!(requests.len(), 2);
+        for (request, page) in requests.iter().zip(["1", "2"]) {
+            let (path, query) = request.path.split_once('?').expect("file list query");
+            assert_eq!(path, "/repos/o/r/pulls/42/files");
+            for parameter in ["per_page=100", &format!("page={page}")] {
+                assert!(
+                    query.split('&').any(|entry| entry == parameter),
+                    "file list must constrain {parameter}: {query}"
+                );
+            }
+        }
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn pull_request_files_reject_malformed_file_rows() {
+        let (service, server) = stub_service(vec![(
+            200,
+            json!([{"filename": "src/lib.rs", "additions": "2", "deletions": 1}]).to_string(),
+        )]);
+        assert_eq!(
+            service
+                .pull_request_files(&Cancellation::new(), "o", "r", 42)
+                .await
+                .expect_err("string additions fail closed"),
+            GitHubOperationError::Malformed("pull request additions")
+        );
         server.join().expect("stub completed");
     }
 

@@ -8212,11 +8212,13 @@ verb = "check-budget"
 python_module = "larch.report.tokens"
 python_function = "token_check_budget_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8797
+clean_install_test = "clean-install-token-check-budget"
 
 [[commands]]
 domain = "token"
@@ -8238,11 +8240,13 @@ verb = "compute-pr-line-counts"
 python_module = "larch.report.tokens"
 python_function = "compute_pr_line_counts_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8797
+clean_install_test = "clean-install-token-compute-pr-line-counts"
 
 [[commands]]
 domain = "token"
@@ -8250,11 +8254,13 @@ verb = "compute-pr-lines"
 python_module = "larch.report.tokens"
 python_function = "compute_pr_lines_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8797
+clean_install_test = "clean-install-token-compute-pr-lines"
 
 [[commands]]
 domain = "token"
@@ -9934,8 +9940,8 @@ rust = ["implement step-18-gate-logs-flush"]
 [[callers]]
 path = "skills/implement/references/step2-dispatch.md"
 kind = "skill"
-python = ["redact secrets", "token check-budget"]
-rust = ["agent launch-codex-implement", "bgjob wait", "dirty-tree scope-check", "git commit", "implement commit", "implement normalize-coder-scout", "implement recovery-paths", "implement run-dispatch", "implement step2-dispatch", "plan scope-paths", "run-log checkpoint", "token mark"]
+python = ["redact secrets"]
+rust = ["agent launch-codex-implement", "bgjob wait", "dirty-tree scope-check", "git commit", "implement commit", "implement normalize-coder-scout", "implement recovery-paths", "implement run-dispatch", "implement step2-dispatch", "plan scope-paths", "run-log checkpoint", "token check-budget", "token mark"]
 
 [[callers]]
 path = "skills/implement/references/step2-main-health-fix.md"

@@ -526,18 +526,16 @@ fn a_failing_codex_launch_records_the_step_two_failure() {
 fn a_hit_token_budget_cap_skips_the_coder_and_publishes_the_cap_artifacts() {
     let fixture = ImplementFixture::create();
     vendor_fixture(&fixture.path, "codex", CODEX_FIXTURE);
-    // A plugin root whose dispatcher reports a cap hit stands in for the still
-    // Python-owned `token check-budget` verb.
-    let plugin = fixture.path.join("plugin");
-    write(
-        &plugin.join("python/cli.py"),
-        "import sys\nprint('STATUS=cap_hit TOTAL=1234')\n",
-    );
     let implement = fixture.path.join("implement");
     fs::create_dir_all(&implement).expect("implement tmpdir");
+    let ledger = implement.join("token.jsonl");
+    write(
+        &ledger,
+        "{\"type\":\"vendor\",\"vendor\":\"codex\",\"total\":1234}\n",
+    );
     let mut command = fixture.command("launch-codex-implement");
-    command.env("CLAUDE_PLUGIN_ROOT", &plugin);
     command.env("IMPLEMENT_TMPDIR", &implement);
+    command.env("LARCH_TOKEN_LEDGER", &ledger);
     command.env("LARCH_TOKEN_BUDGET_CAP_IMPLEMENT", "10");
     let assert = command.assert().success();
     let stdout = String::from_utf8_lossy(&assert.get_output().stdout).into_owned();

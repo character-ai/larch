@@ -1,8 +1,9 @@
 //! Field derivation for the terminal `/implement` final report.
 //!
 //! Port of the derivation half of Python `larch.report.final_report`. Every
-//! helper reads only files and returns values; process launches, GitHub calls,
-//! and the still-Python helper verbs stay with the command layer.
+//! helper reads only files or values and returns derived values; process
+//! launches, GitHub calls, and still-Python helper verbs stay with the command
+//! layer.
 
 use std::{fmt::Write as _, fs, path::Path};
 
@@ -36,6 +37,47 @@ pub const LINE_COUNT_STATE_KEYS: [&str; 6] = [
     "LOGS_ADDED",
     "LOGS_DELETED",
 ];
+
+/// One typed file row from GitHub's pull-request files endpoint.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PullRequestFileLines {
+    /// Repository-relative filename.
+    pub path: String,
+    /// Added lines reported by GitHub.
+    pub additions: u64,
+    /// Deleted lines reported by GitHub.
+    pub deletions: u64,
+}
+
+/// Pull-request line totals split between runtime code and committed run logs.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct PullRequestLineCounts {
+    /// Added lines outside `larch-logs/`.
+    pub code_added: u64,
+    /// Deleted lines outside `larch-logs/`.
+    pub code_deleted: u64,
+    /// Added lines under `larch-logs/`.
+    pub logs_added: u64,
+    /// Deleted lines under `larch-logs/`.
+    pub logs_deleted: u64,
+}
+
+/// Aggregate typed pull-request file rows into the compatibility buckets.
+#[must_use]
+pub fn pull_request_line_counts(files: &[PullRequestFileLines]) -> PullRequestLineCounts {
+    let mut counts = PullRequestLineCounts::default();
+    for file in files {
+        let (added, deleted) = if file.path.starts_with("larch-logs/") {
+            (&mut counts.logs_added, &mut counts.logs_deleted)
+        } else {
+            (&mut counts.code_added, &mut counts.code_deleted)
+        };
+        *added = added.saturating_add(file.additions);
+        *deleted = deleted.saturating_add(file.deletions);
+    }
+    counts
+}
+
 /// Outcomes `--normalized-outcome` accepts.
 pub const NORMALIZED_OUTCOMES: [&str; 10] = [
     "bailed",
@@ -1053,6 +1095,31 @@ escalated r2 MODERATE->HARD panel, panel skipped: trivial"
             merged,
             "PR_NUMBER=7\nLINES_PR_NUMBER=7\nLINES_STATUS=ok\nCODE_ADDED=9\n"
         );
+    }
+
+    #[test]
+    fn pull_request_lines_split_code_from_committed_run_logs() {
+        let counts = pull_request_line_counts(&[
+            PullRequestFileLines {
+                path: "scripts/foo.sh".to_owned(),
+                additions: 10,
+                deletions: 2,
+            },
+            PullRequestFileLines {
+                path: "larch-logs/implement/run-x/summary.md".to_owned(),
+                additions: 5,
+                deletions: 1,
+            },
+            PullRequestFileLines {
+                path: "assets/binary.png".to_owned(),
+                additions: 0,
+                deletions: 0,
+            },
+        ]);
+        assert_eq!(counts.code_added, 10);
+        assert_eq!(counts.code_deleted, 2);
+        assert_eq!(counts.logs_added, 5);
+        assert_eq!(counts.logs_deleted, 1);
     }
 
     #[test]

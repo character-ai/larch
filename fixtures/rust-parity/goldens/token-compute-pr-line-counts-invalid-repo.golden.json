@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "session/token.jsonl": {
+      "text": "{\"type\":\"vendor\",\"total\":100}\n{\"type\":\"mark\",\"step\":\"Step 2\"}\n{\"type\":\"vendor\",\"total\":50}\nmalformed\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "LINES_STATUS=skipped\nREASON=invalid-repo\n"
+  }
+}

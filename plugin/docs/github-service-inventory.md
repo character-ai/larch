@@ -182,6 +182,12 @@ the typed pull-request, Actions, direct-merge, and fixed merge-queue operations.
 Every ship and release consumer now reaches that owner through verified larch
 dispatch, and the Python registrations and module were removed atomically.
 
+Issue #8797 moved `token check-budget`, `token compute-pr-line-counts`, and its
+`token compute-pr-lines` alias to Rust. Line counting uses the typed, bounded
+pull-request files operation and aggregates only filenames, additions, and
+deletions. The final-report and launcher consumers call the Rust owners in
+process; external callers continue through `scripts/larch.sh`.
+
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
 ```text
@@ -216,6 +222,7 @@ pull-request-implement-retired	crates/larch-adapters/src/github/operations.rs	re
 pull-request-implement-terminal	crates/larch-adapters/src/github/operations.rs	rust	#7995	complete	complete	complete	implement step-18-gate-logs-flush,implement step-19
 pull-request-ci-monitor	crates/larch-adapters/src/github_actions.rs	rust	#7681	complete	complete	complete	ci behind-count,ci decide,ci distill-log,ci failed-jobs,ci main-health,ci rerun-failed,ci status,ci wait
 pull-request-design-migrated	crates/larch-adapters/src/github/operations.rs	rust	#7680	complete	complete	complete	design dialectic-clear-stale,design dialectic-gatec,design dialectic-manual,design dialectic-promote-candidates,design dialectic-validate-candidates,design dialectic-write-candidates,design driver,design failure-report,design file-oos-annotate,design file-oos-prepare,design pause-load,design pause-save,design prelude,design publish,design read-result-env,design render-final-summary,design render-gate,design stage-terminal-state,design step-final-summary,design step1d5,design step1d7,design step1e-reentry,design step2b5,design step35-settle,design step3-continuation-entry,design step5b-annotate,design step5b-prepare,design step5c,design step6,design step6-cleanup,design step6-prelude
+pull-request-line-counts	crates/larch-adapters/src/github/operations.rs	rust	#7681,#8797	complete	complete	complete	token compute-pr-line-counts,token compute-pr-lines
 pull-request-merge	crates/larch-adapters/src/github/operations.rs	rust	#7681,#8788	complete	complete	complete	merge pr,merge wait
 pull-request-ship-pr	crates/larch-adapters/src/github/operations.rs	rust	#7681,#8282,#8626,#8628,#8629	complete	complete	complete	complete-umbrella ship-leaf,ship pr,ship reconcile-manual-merge
 pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7681	pending	pending	pending	pr body-update,pr checks,pr closes-issue,pr create,pr create-branch

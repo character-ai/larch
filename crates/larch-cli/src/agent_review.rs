@@ -1,8 +1,9 @@
 //! Rust owner for the legacy `agent launch-review` command.
 //!
 //! Vendor process setup remains in `external_agent`, credentials stay in the
-//! vendor adapters, and cross-owner timing/token writes use the bounded Python
-//! verb bridge. This module owns only the review command composition.
+//! vendor adapters, and remaining cross-owner timing/token writes use the
+//! bounded Python verb bridge. The read-only token budget check runs in
+//! process. This module owns only the review command composition.
 
 use crate::{
     agent_commands::{AgentRawArguments, generated_paths},
@@ -718,37 +719,21 @@ fn read_safe_diagnostic(path: &Path) -> Option<String> {
 }
 
 fn check_token_budget_cap(session: &ReviewSession, cap: u64, step: &str) -> Option<String> {
-    let Some(output) = run_python(
-        session,
-        [
-            OsString::from("token"),
-            OsString::from("check-budget"),
-            OsString::from("--cap"),
-            OsString::from(cap.to_string()),
-            OsString::from("--step"),
-            OsString::from(step),
-        ],
-    ) else {
-        eprintln!("agent launch-review: token budget check could not run");
-        return None;
-    };
-    let stdout = String::from_utf8_lossy(output.stdout()).into_owned();
-    if !output.status().success() {
-        let stderr = String::from_utf8_lossy(output.stderr()).trim().to_owned();
-        eprintln!(
-            "agent launch-review: token budget check failed{}",
-            if stderr.is_empty() {
-                String::new()
-            } else {
-                format!(": {stderr}")
-            }
-        );
-        return None;
-    }
-    stdout
-        .split_ascii_whitespace()
-        .any(|field| field == "STATUS=cap_hit")
-        .then_some(stdout)
+    let overrides: Vec<(&str, String)> = session
+        .child_environment
+        .iter()
+        .map(|(key, value)| (key.name(), value.to_string_lossy().into_owned()))
+        .collect();
+    let check = crate::token_commands::budget_check_with_env(cap, step, &overrides);
+    (check.status() == "cap_hit").then(|| {
+        format!(
+            "STATUS={} TOTAL={} CAP={} STEP={}\n",
+            check.status(),
+            check.total,
+            check.cap,
+            check.step
+        )
+    })
 }
 
 fn write_cap_hit(artifacts: &ReviewArtifacts, cap: u64, stdout: &str) {
@@ -2681,6 +2666,32 @@ mod tests {
             ReviewParse::Error(error) => error,
             ReviewParse::Help | ReviewParse::Parsed(_) => panic!("expected parser error"),
         }
+    }
+
+    #[test]
+    fn token_budget_check_uses_the_review_sessions_explicit_ledger() {
+        let fixture = TempDir::new().expect("fixture");
+        let ledger = fixture.path().join("token.jsonl");
+        fs::write(
+            &ledger,
+            "{\"type\":\"vendor\",\"vendor\":\"codex\",\"total\":12}\n",
+        )
+        .expect("ledger");
+        let session = ReviewSession {
+            child_environment: vec![
+                (
+                    ChildEnvironment::ImplementTmpDir,
+                    fixture.path().as_os_str().to_owned(),
+                ),
+                (ChildEnvironment::LarchTokenLedger, ledger.into_os_string()),
+            ],
+            ..ReviewSession::default()
+        };
+        assert_eq!(
+            check_token_budget_cap(&session, 10, "codex-review"),
+            Some("STATUS=cap_hit TOTAL=12 CAP=10 STEP=codex-review\n".to_owned())
+        );
+        assert_eq!(check_token_budget_cap(&session, 20, "codex-review"), None);
     }
 
     fn artifacts(fixture: &TempDir) -> ReviewArtifacts {

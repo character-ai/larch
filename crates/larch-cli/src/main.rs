@@ -765,6 +765,15 @@ enum TokenCommand {
     /// Record one step mark in the resolved token ledger.
     #[command(disable_help_flag = true)]
     Mark(RawCompatibilityArguments),
+    /// Check current vendor-token usage against a positive cap.
+    #[command(name = "check-budget", disable_help_flag = true)]
+    CheckBudget(RawCompatibilityArguments),
+    /// Compute PR line totals split between code and committed run logs.
+    #[command(name = "compute-pr-line-counts", disable_help_flag = true)]
+    ComputePrLineCounts(RawCompatibilityArguments),
+    /// Compatibility alias for `compute-pr-line-counts`.
+    #[command(name = "compute-pr-lines", disable_help_flag = true)]
+    ComputePrLines(RawCompatibilityArguments),
     /// Resolve and print the active Claude transcript source.
     #[command(name = "claude-source", disable_help_flag = true)]
     ClaudeSource(RawCompatibilityArguments),
@@ -3525,6 +3534,15 @@ fn run(
         }),
         Domain::Token(command) => Ok(match command {
             TokenCommand::Mark(arguments) => token_commands::mark(&arguments.arguments),
+            TokenCommand::CheckBudget(arguments) => {
+                token_commands::check_budget(&arguments.arguments)
+            }
+            TokenCommand::ComputePrLineCounts(arguments) => {
+                token_commands::compute_pr_line_counts(&arguments.arguments)
+            }
+            TokenCommand::ComputePrLines(arguments) => {
+                token_commands::compute_pr_lines(&arguments.arguments)
+            }
             TokenCommand::ClaudeSource(arguments) => {
                 token_commands::claude_source(&arguments.arguments)
             }

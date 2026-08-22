@@ -173,6 +173,39 @@ fn mark_writes_one_jsonl_line() {
 }
 
 #[test]
+fn check_budget_preserves_the_line_oriented_wire() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.ledger(),
+        concat!(
+            "{\"type\":\"vendor\",\"total\":100}\n",
+            "{\"type\":\"mark\"}\n",
+            "{\"type\":\"vendor\",\"total\":50}\n",
+        ),
+    )
+    .expect("budget ledger");
+    let under = fixture.run(&["check-budget", "--cap", "100", "--step", "Step 2"]);
+    assert!(under.status.success(), "{}", stderr(&under));
+    assert_eq!(
+        stdout(&under),
+        "STATUS=under_cap TOTAL=50 CAP=100 STEP=Step 2\n"
+    );
+    let hit = fixture.run(&["check-budget", "--cap", "40", "--step", "Step 2"]);
+    assert!(hit.status.success(), "{}", stderr(&hit));
+    assert_eq!(stdout(&hit), "STATUS=cap_hit TOTAL=50 CAP=40 STEP=Step 2\n");
+}
+
+#[test]
+fn compute_pr_line_count_aliases_share_the_skipped_wire() {
+    let fixture = Fixture::new();
+    for verb in ["compute-pr-line-counts", "compute-pr-lines"] {
+        let output = fixture.run(&[verb]);
+        assert!(output.status.success(), "{}", stderr(&output));
+        assert_eq!(stdout(&output), "LINES_STATUS=skipped\nREASON=no-pr\n");
+    }
+}
+
+#[test]
 fn record_vendor_rejects_reserved_claude() {
     let fixture = Fixture::new();
     let output = fixture.run(&[

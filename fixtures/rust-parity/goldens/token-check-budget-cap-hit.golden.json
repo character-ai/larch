@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "session/token.jsonl": {
+      "text": "{\"type\":\"vendor\",\"total\":100}\n{\"type\":\"mark\",\"step\":\"Step 2\"}\n{\"type\":\"vendor\",\"total\":50}\nmalformed\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "STATUS=cap_hit TOTAL=50 CAP=40 STEP=Step 2\n"
+  }
+}

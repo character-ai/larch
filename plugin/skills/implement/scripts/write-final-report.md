@@ -83,7 +83,7 @@ Still refreshes `summary-final.md` for the upsert but **does not** overwrite `la
 ## PR line counts
 
 After `REPO` and `PR_NUMBER` resolve, when `REPO_UNAVAILABLE=true` the writer
-skips `tokens.compute_pr_line_counts` entirely and treats line data as
+skips the typed pull-request file helper entirely and treats line data as
 unavailable. Otherwise it first reuses cached `LINES_*` values from
 `ship-pr-state.sh` when they match the current `PR_NUMBER` and
 `LINES_STATUS=ok`. On cache miss it calls the helper in process, merges the

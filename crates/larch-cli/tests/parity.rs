@@ -480,6 +480,7 @@ fn timing_arguments(id: &str) -> &'static [&'static str] {
 #[rustfmt::skip]
 fn token_arguments(id: &str) -> &'static [&'static str] {
     match id {
+        "clean-install-token-check-budget" => &["--cap", "1"],
         "clean-install-token-mark" => &["clean-install"],
         "clean-install-token-record-vendor" => &[
             "codex", "input=1", "output=0", "cache_read=0", "cache_create=0", "total=1", "raw=clean-install",
@@ -1945,7 +1946,18 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "telemetry-mark",
     ),
     CleanInstallCase::new("clean-install-token-append-record", "token", "append-record"),
+    CleanInstallCase::new("clean-install-token-check-budget", "token", "check-budget"),
     CleanInstallCase::new("clean-install-token-claude-source", "token", "claude-source"),
+    CleanInstallCase::new(
+        "clean-install-token-compute-pr-line-counts",
+        "token",
+        "compute-pr-line-counts",
+    ),
+    CleanInstallCase::new(
+        "clean-install-token-compute-pr-lines",
+        "token",
+        "compute-pr-lines",
+    ),
     CleanInstallCase::new("clean-install-token-cost", "token", "cost"),
     CleanInstallCase::new("clean-install-token-dump", "token", "dump"),
     CleanInstallCase::new("clean-install-token-lane-report", "token", "lane-report"),
