@@ -91,7 +91,7 @@ Resolve `REPO_ROOT` from `"${CLAUDE_PROJECT_DIR:-$(pwd -P)}"` with `pwd -P`, the
 
 ## Step 1: Create the immutable audit snapshot
 
-Run the typed snapshot owner once:
+Run the typed snapshot owner once for the current baseline. Step 4 may return here with a newer baseline before any public batch mutation:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-umbrella snapshot \
@@ -157,7 +157,7 @@ Write `$AUDIT_TMPDIR/proposal-input.json` as strict JSON:
 }
 ```
 
-Every residual gap appears in exactly one leaf `gap_ids` array. Each leaf title is exactly `[LEAF OF <AUDIT_UMBRELLA>] <specific imperative title>`. Its first body line is exactly `This is a leaf of umbrella #<AUDIT_UMBRELLA>. Read the umbrella in full before acting.` It then contains `## Program context`, `## Problem`, `## Scope`, and `## Acceptance`. Tie evidence to `AUDIT_DEFAULT_SHA`, current paths or symbols, and testable acceptance criteria. Do not include a `larch:plan` block.
+Every residual gap appears in exactly one leaf `gap_ids` array. Each `gap_ids` value is the matching ledger entry `id`, never its `source_id`. Each leaf title is exactly `[LEAF OF <AUDIT_UMBRELLA>] <specific imperative title>`. Its first body line is exactly `This is a leaf of umbrella #<AUDIT_UMBRELLA>. Read the umbrella in full before acting.` It then contains `## Program context`, `## Problem`, `## Scope`, and `## Acceptance`. The `## Scope` section contains at least one numbered item that starts with `1.` followed by a space after optional indentation; bullets alone are invalid. Tie evidence to `AUDIT_DEFAULT_SHA`, current paths or symbols, and testable acceptance criteria. Do not include a `larch:plan` block.
 
 For a dependency whose endpoint is a new leaf, set `kind` to `new` and use the exact SHA-256 identity of `title + "\\n" + body`. Write its exact title and body bytes to scratch files, then obtain the identity through:
 
@@ -178,6 +178,7 @@ Persist the full proposal before its first public mutation:
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-umbrella persist-proposal \
   --repository "$REPO" \
+  --repo-root "$REPO_ROOT" \
   --root "$AUDIT_TMPDIR" \
   --snapshot "$AUDIT_TMPDIR/snapshot.json" \
   --ledger "$AUDIT_TMPDIR/ledger.json" \
@@ -188,7 +189,11 @@ Persist the full proposal before its first public mutation:
 
 Use a Bash tool timeout of 600000 for this command: it reads the live proposal issues and the open issue history, which can take minutes in a large repository. persist-proposal performs no GitHub mutation, so a timeout-killed run leaves the graph untouched and is safe to re-run. It streams a start-of-phase line to stderr before each remote phase, so a killed run is diagnosable from the last line reached.
 
-Require `AUDIT_PROPOSAL_PERSISTED=true` and retain `AUDIT_REUSED_LEAF_COUNT` for the final report. Then apply it once with explicit invocation authority. Use a Bash tool timeout of 600000 for apply as well, since it re-reads live issue state before mutating:
+A rejected draft first prints one `proposal-violation` line with the failed `constraint` and, when applicable, its one-based `leaf`, bounded `title`, `section`, offending `gap_id`, or dependency index. Correct the named rule and rerun persist.
+
+Read `proposal.env` before requiring persistence. If it contains `AUDIT_REBASELINE_REQUIRED=true`, require `AUDIT_REBASELINE_STAGE=persist-proposal`, distinct non-empty `AUDIT_REBASELINE_FROM_SHA` and `AUDIT_REBASELINE_TO_SHA`, and no `AUDIT_PROPOSAL_PERSISTED=true`. Remove the detached worktree through the typed `remove-worktree` command below, require `AUDIT_WORKTREE_REMOVED=true`, then return to Step 1. Repeat the complete inline judgment, ledger validation, gap partition, and persist against the new snapshot. Do not reuse the old ledger or draft, and never rewrite SHA bindings by hand. This is an automatic freshness retry, not an operator stop.
+
+Otherwise require `AUDIT_PROPOSAL_PERSISTED=true` and retain `AUDIT_REUSED_LEAF_COUNT` for the final report. Then apply it once with explicit invocation authority. Use a Bash tool timeout of 600000 for apply as well, since it re-reads live issue state before mutating:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-umbrella apply \
@@ -202,7 +207,9 @@ Require `AUDIT_PROPOSAL_PERSISTED=true` and retain `AUDIT_REUSED_LEAF_COUNT` for
   >"$AUDIT_TMPDIR/apply.env"
 ```
 
-Require `AUDIT_APPLIED=true`. The typed owner rechecks freshness, reconciles only exact in-flight leaves, creates only exact new leaves, repairs the declared graph, and reads back the final graph. A non-zero result preserves the proposal and scratch directory for resume. Do not attempt a substitute mutation.
+Read `apply.env` before requiring completion. If it contains `AUDIT_REBASELINE_REQUIRED=true`, require `AUDIT_REBASELINE_STAGE=apply`, distinct non-empty `AUDIT_REBASELINE_FROM_SHA` and `AUDIT_REBASELINE_TO_SHA`, and no `AUDIT_APPLIED=true`. Use the same typed worktree removal and complete Step 1 restart described above. A proposal whose public transaction already started resumes its exact persisted identities instead of changing baseline mid-transaction.
+
+Otherwise require `AUDIT_APPLIED=true`. The typed owner rechecks freshness, reconciles only exact in-flight leaves, creates only exact new leaves, repairs the declared graph, and reads back the final graph. A non-zero result preserves the proposal and scratch directory for resume. Do not attempt a substitute mutation.
 
 On success, remove only the detached audit worktree through the typed owner:
 
