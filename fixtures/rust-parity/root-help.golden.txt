@@ -77,6 +77,7 @@ Commands:
   research                  The `/research` preparation commands: banner, planner, findings, citations
   eval                      The `/research` evaluation commands: output validation and the eval harness
   rebalance-tests           CI test-rebalance planning, verification, and checked orchestration
+  redact                    Secret, path, log, and submodule-finding redaction commands
   session                   Session state compatibility commands
   slack                     Slack announcement helpers
   stall-recovery            Stall-recovery state and validation commands

@@ -79,7 +79,7 @@ These rules are non-negotiable. Violation MUST cause `status=bailed`.
 When ready to declare `status=complete`:
 
 1. Leave edits in the working tree. Staged or unstaged is fine.
-2. Set `manifest.commit_message` for `git commit -F`: subject first, optional body after a blank line. No diff or subject cross-check occurs; `python/cli.py redact secrets` runs before commit. Avoid raw secrets.
+2. Set `manifest.commit_message` for `git commit -F`: subject first, optional body after a blank line. No diff or subject cross-check occurs. `scripts/larch.sh redact secrets` redacts it before commit. Avoid raw secrets.
 3. Set `manifest.files_touched` to actual edited files.
 4. Write the manifest atomically and exit. The dispatcher runs `git add -A && git commit -F <commit-message-file>`.
 
@@ -235,7 +235,7 @@ Before writing `<MANIFEST_PATH>`, verify:
 - [ ] Manifest `jq -e` self-validation against `<MANIFEST_PATH>.tmp` exited 0.
 - [ ] For `needs_qa`, qa-pending `jq -e` self-validation against `<QA_PENDING_PATH>.tmp` exited 0.
 
-Then atomic-write `<MANIFEST_PATH>` and exit 0. The dispatcher validates schema, paths, branch, and submodules; runs `git add -A && git commit -F <commit-message-file>` on `complete` with `commit_message` piped through `python/cli.py redact secrets`; and emits the final KV envelope. No diff or subject cross-check occurs.
+Then atomic-write `<MANIFEST_PATH>` and exit 0. The dispatcher validates schema, paths, branch, and submodules; redacts the commit message; runs `git add -A && git commit -F <commit-message-file>` on `complete`; and emits the final KV envelope. No diff or subject cross-check occurs.
 
 ## What you do NOT do
 

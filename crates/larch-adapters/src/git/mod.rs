@@ -659,10 +659,11 @@ mod tests {
         );
         check(
             &SubmoduleRequest::Foreach {
+                quiet: true,
                 recursive: false,
                 command: vec![GitToken::new("true").unwrap()],
             },
-            &["submodule", "foreach", "true"],
+            &["submodule", "foreach", "--quiet", "true"],
         );
     }
 
@@ -1177,6 +1178,7 @@ mod tests {
         );
         assert_argv(
             &SubmoduleRequest::Foreach {
+                quiet: false,
                 recursive: true,
                 command: vec![GitToken::new("true").unwrap()],
             },
@@ -1184,6 +1186,7 @@ mod tests {
         );
         assert!(
             SubmoduleRequest::Foreach {
+                quiet: false,
                 recursive: false,
                 command: Vec::new(),
             }
@@ -1818,6 +1821,7 @@ mod tests {
             |repository, runner, runtime| {
                 runtime.block_on(GitCli::new(runner, policy(repository.root())).submodule(
                     SubmoduleRequest::Foreach {
+                        quiet: false,
                         recursive: false,
                         command: vec![GitToken::new("false").unwrap()],
                     },

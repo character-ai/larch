@@ -1037,6 +1037,7 @@ pub enum SubmoduleRequest {
         recursive: bool,
     },
     Foreach {
+        quiet: bool,
         recursive: bool,
         command: Vec<GitToken>,
     },
@@ -1054,7 +1055,11 @@ impl SubmoduleRequest {
                 }
                 a
             }
-            Self::Foreach { recursive, command } => {
+            Self::Foreach {
+                quiet,
+                recursive,
+                command,
+            } => {
                 if command.is_empty() {
                     return Err(err(
                         GitCliInputErrorKind::Empty,
@@ -1062,6 +1067,9 @@ impl SubmoduleRequest {
                     ));
                 }
                 let mut a = vec!["foreach".into()];
+                if *quiet {
+                    a.push("--quiet".into());
+                }
                 if *recursive {
                     a.push("--recursive".into());
                 }

@@ -48,7 +48,7 @@ status_fail_open() { emit_kv FILE_FAILURE_REPORT_STATUS lookup-failed-open; emit
 redact_stderr_file() {
     local file=$1
     [ -s "$file" ] || return 0
-    python3 "$PLUGIN_ROOT/python/cli.py" redact secrets <"$file" >&2 || echo "file-failure-report-cross-repo.sh: stderr redaction failed" >&2
+    "$PLUGIN_ROOT/scripts/larch.sh" redact secrets <"$file" >&2 || echo "file-failure-report-cross-repo.sh: stderr redaction failed" >&2
 }
 
 valid_repo() {

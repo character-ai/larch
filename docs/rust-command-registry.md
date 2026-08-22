@@ -127,7 +127,7 @@ umbrella that owns their remaining consumers:
 | Surface | Rows | Owning issue | Basis |
 | --- | ---: | --- | --- |
 | `execution-issues append`, `flush`, `flush-safety-net`, `refresh` | 4 | #7682 | Migrated by #8176 and completed by corrective leaf #8347, which removed the retained Python mutation and caller paths. |
-| `redact secrets`, `tmpdir-paths`, `scrub-log-secrets`, `scrub-submodule-paths` | 4 | #7681 | Live callers are the `/implement` prompts, the implementer agent base, `review-and-fix`, and the cross-repo failure-report script. |
+| `redact secrets`, `tmpdir-paths`, `scrub-log-secrets`, `scrub-submodule-paths` | 4 | #7681 | Migrated by #8796. Live callers now enter through `scripts/larch.sh`; Python retains only its in-process compatibility library. |
 | `render reviewer`, `lane-status`, and `findings-view` | 3 | #7684 | Research and analytical presentation consumers. |
 | `render plan-review` | 1 | #7680 | The remaining consumer is the design workflow. |
 | `render specialist` | 1 | #7681 | The remaining consumer is implementation code review. |

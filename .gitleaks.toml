@@ -27,6 +27,8 @@ paths = [
     '''^scripts/test-larch-log-write-round\.sh$''',
     '''^python/tests/issue/test_tracking_issue\.py$''',
     '''^python/tests/core/test_redact\.py$''',
+    # Synthetic parity golden proving that log scrubbing rejects a surviving PEM marker.
+    '''^fixtures/rust-parity/goldens/redact-scrub-log-surviving-pem-marker\.golden\.json$''',
     '''^python/test_checks\.py$''',
     '''^python/test_run_logs\.py$''',
     '''^python/\.venv/''',

@@ -5996,11 +5996,13 @@ verb = "scrub-log-secrets"
 python_module = "larch.core.redact"
 python_function = "main_scrub_log_secrets"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8796
+clean_install_test = "clean-install-redact-scrub-log-secrets"
 
 [[commands]]
 domain = "redact"
@@ -6008,11 +6010,13 @@ verb = "scrub-submodule-paths"
 python_module = "larch.core.redact"
 python_function = "main_scrub_submodule_paths"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8796
+clean_install_test = "clean-install-redact-scrub-submodule-paths"
 
 [[commands]]
 domain = "redact"
@@ -6020,11 +6024,13 @@ verb = "secrets"
 python_module = "larch.core.redact"
 python_function = "main_secrets"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8796
+clean_install_test = "clean-install-redact-secrets"
 
 [[commands]]
 domain = "redact"
@@ -6032,11 +6038,13 @@ verb = "tmpdir-paths"
 python_module = "larch.core.redact"
 python_function = "main_tmpdir_paths"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8796
+clean_install_test = "clean-install-redact-tmpdir-paths"
 
 [[commands]]
 domain = "rejected-analysis"
@@ -9314,8 +9322,8 @@ rust = ["checks rust-clippy", "eval research"]
 [[callers]]
 path = "agents/_implementer-base.md"
 kind = "agent"
-python = ["redact secrets"]
-rust = ["checks run-relevant"]
+python = []
+rust = ["checks run-relevant", "redact secrets"]
 
 [[callers]]
 path = "agents/ci-fixer.md"
@@ -9358,12 +9366,6 @@ path = "python/larch/complete_umbrella.py"
 kind = "python-runtime"
 python = []
 rust = ["agent read-claude-model", "gh resolve-repo", "run-log lifecycle-start", "session setup"]
-
-[[callers]]
-path = "python/larch/core/redact.py"
-kind = "python-runtime"
-python = ["redact scrub-log-secrets", "redact secrets"]
-rust = []
 
 [[callers]]
 path = "python/larch/core/rust_runtime.py"
@@ -9446,8 +9448,8 @@ rust = ["agent check-reviewers", "agent collect-results", "agent model-args", "a
 [[callers]]
 path = "scripts/file-failure-report-cross-repo.sh"
 kind = "script"
-python = ["redact secrets"]
-rust = ["session check-live-mutation-auth", "stall-recovery validate-tier-b-public-file"]
+python = []
+rust = ["redact secrets", "session check-live-mutation-auth", "stall-recovery validate-tier-b-public-file"]
 
 [[callers]]
 path = "scripts/hook-anti-read-poll.sh"
@@ -9830,14 +9832,14 @@ rust = ["admission fork-env", "admission gate", "architectural-assessment materi
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
 kind = "skill"
-python = ["redact secrets"]
-rust = ["agent launch-codex-implement", "checks run-relevant"]
+python = []
+rust = ["agent launch-codex-implement", "checks run-relevant", "redact secrets"]
 
 [[callers]]
 path = "skills/implement/prompts/cursor-implementer.md"
 kind = "skill"
-python = ["redact secrets"]
-rust = ["agent launch-cursor-implement", "checks run-relevant"]
+python = []
+rust = ["agent launch-cursor-implement", "checks run-relevant", "redact secrets"]
 
 [[callers]]
 path = "skills/implement/references/architectural-guidelines-present.md"
@@ -9866,8 +9868,8 @@ rust = ["bgjob wait", "checks fixer-evidence", "checks repair-loop", "checks sel
 [[callers]]
 path = "skills/implement/references/codex-manifest-schema.md"
 kind = "skill"
-python = ["redact secrets"]
-rust = ["difficulty render-rubric", "implement step2-dispatch"]
+python = []
+rust = ["difficulty render-rubric", "implement step2-dispatch", "redact secrets"]
 
 [[callers]]
 path = "skills/implement/references/conflict-resolution.md"
@@ -9902,8 +9904,8 @@ rust = ["git phantom-probe", "push checkpoint-probe"]
 [[callers]]
 path = "skills/implement/references/preflight-plan-audit.md"
 kind = "skill"
-python = ["redact secrets"]
-rust = ["clarify comment-post", "clarify label", "clarify state", "implement preflight"]
+python = []
+rust = ["clarify comment-post", "clarify label", "clarify state", "implement preflight", "redact secrets"]
 
 [[callers]]
 path = "skills/implement/references/rebase-checkpoint-routing.md"
@@ -9944,8 +9946,8 @@ rust = ["implement step-18-gate-logs-flush"]
 [[callers]]
 path = "skills/implement/references/step2-dispatch.md"
 kind = "skill"
-python = ["redact secrets"]
-rust = ["agent launch-codex-implement", "bgjob wait", "dirty-tree scope-check", "git commit", "implement commit", "implement normalize-coder-scout", "implement recovery-paths", "implement run-dispatch", "implement step2-dispatch", "plan scope-paths", "run-log checkpoint", "token check-budget", "token mark"]
+python = []
+rust = ["agent launch-codex-implement", "bgjob wait", "dirty-tree scope-check", "git commit", "implement commit", "implement normalize-coder-scout", "implement recovery-paths", "implement run-dispatch", "implement step2-dispatch", "plan scope-paths", "redact secrets", "run-log checkpoint", "token check-budget", "token mark"]
 
 [[callers]]
 path = "skills/implement/references/step2-main-health-fix.md"
@@ -10263,7 +10265,7 @@ rust = ["final-report write"]
 path = "skills/issue/SKILL.md"
 kind = "skill"
 python = []
-rust = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-failed", "issue create-one", "issue fetch-issue-details", "issue list-issues", "issue parse-input", "issue write-sentinel", "oos file-conflict-deps", "session setup", "verify skill-called"]
+rust = ["issue add-blocked-by", "issue allocate-candidates", "issue cleanup-failed", "issue create-one", "issue fetch-issue-details", "issue list-issues", "issue parse-input", "issue write-sentinel", "oos file-conflict-deps", "redact secrets", "session setup", "verify skill-called"]
 
 [[callers]]
 path = "skills/learn-from-bugs/SKILL.md"
@@ -10334,8 +10336,8 @@ rust = ["agent collect-results", "agent cursor-auth-preflight", "agent cursor-wr
 [[callers]]
 path = "skills/review-and-fix/SKILL.md"
 kind = "skill"
-python = ["redact scrub-submodule-paths"]
-rust = ["checks run-relevant", "review compose-findings", "review core", "review-and-fix apply-findings", "review-and-fix step5", "timing record-round"]
+python = []
+rust = ["checks run-relevant", "redact scrub-submodule-paths", "review compose-findings", "review core", "review-and-fix apply-findings", "review-and-fix step5", "timing record-round"]
 
 [[callers]]
 path = "skills/review/SKILL.md"

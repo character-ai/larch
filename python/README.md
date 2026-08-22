@@ -10,7 +10,7 @@ Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. Th
 - `larch/errors.py`, `larch/outcomes.py`, `larch/core/run_context.py` — typed errors and run context
 - `larch/io.py` — shared text, `KEY=value`, and atomic-write helpers for larch wire files
 - `larch/core/logging_util.py` — breadcrumbs + JSONL journal for surviving Python commands
-- `larch/core/redact.py`, `larch/core/retry.py` — secret redaction and transient retry helpers
+- `larch/core/redact.py`, `larch/core/retry.py`: in-process secret redaction and transient retry helpers. The four public `redact` commands are Rust-owned through `scripts/larch.sh`; this module is not their fallback.
 - The Rust `larch lint gitleaks` command owns checksum-pinned scanner bootstrap for local pre-commit. CI uses its separately verified workflow installer so the dedicated scanner gate does not build `larch-cli`.
 - `rendering.py` — prompt renderers, Mermaid sanitizer, diagrams upserter, and generated-artifact generators now exposed through `python/cli.py` (`render`, `mermaid`, `diagrams`, and `generate` domains).
 - `voting.py` — voting, tally, parse-rate, ballot parsing, scoreboard, and focus-area enum CLI surfaces.

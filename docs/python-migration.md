@@ -44,6 +44,26 @@ selector, runtime fallback, or staged consumer split. The storage contract in
 `docs/run-log-archive.md` survives the owner change; the Python implementation
 does not.
 
+### Redaction command cutover
+
+Issue #8796 moved `redact secrets`, `redact tmpdir-paths`,
+`redact scrub-log-secrets`, and `redact scrub-submodule-paths` to Rust. Every
+external caller now enters through `scripts/larch.sh redact ...`; the four
+Python registrations and command functions are removed. The Python
+`larch.core.redact` module remains an in-process compatibility library for
+surviving Python consumers and is not a fallback command owner.
+
+`crates/larch-core/src/redaction.rs` owns pure token, PEM, path, streaming-state,
+and submodule-finding transforms, including the filter reused by
+`review-and-fix`. `crates/larch-cli/src/redact_commands.rs` owns the legacy
+argument, stream, exit-code, and file contracts. It uses the closed typed Git
+submodule operation, safe non-empty Git-path validation, and confined atomic
+writes. New state and finding artifacts are private, while existing scrubbed log
+files retain their ordinary permission mode.
+The black-box suite in `crates/larch-cli/tests/redact_parity.rs` compares all
+four commands with the frozen Python boundary, and the clean-install matrix
+proves every selector reaches the verified Rust executable.
+
 ### Implement Step 18 and Step 19 terminal cutover
 
 Issue #8614 moved five commands to Rust: `implement step-18`,

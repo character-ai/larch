@@ -153,11 +153,10 @@ When `BLOCKED_BY_ISSUE` is non-empty, probe the target issue before Tier-1 reaso
 ```bash
 PROBE_OUT=$(mktemp)
 PROBE_ERR=$(mktemp)
-REDACT_HELPER="${CLAUDE_PLUGIN_ROOT}/python/cli.py"
 trap 'rm -f "$PROBE_OUT" "$PROBE_ERR"' EXIT
 
 if ! gh api "/repos/$REPO/issues/$BLOCKED_BY_ISSUE" >"$PROBE_OUT" 2>"$PROBE_ERR"; then
-  ERR=$(cat "$PROBE_ERR" | "$REDACT_HELPER" redact secrets 2>/dev/null || cat "$PROBE_ERR")
+  ERR=$(cat "$PROBE_ERR" | "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" redact secrets 2>/dev/null || cat "$PROBE_ERR")
   if echo "$ERR" | grep -qiE 'HTTP 404|status 404|404 Not Found|Not Found'; then
     echo "**ERROR: --blocked-by-issue $BLOCKED_BY_ISSUE not found in $REPO (404).**" >&2
   else

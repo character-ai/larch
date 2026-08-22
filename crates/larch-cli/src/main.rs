@@ -129,6 +129,7 @@ mod push_rebase;
 mod python_verb;
 mod rebalance_tests;
 mod rebalance_tests_workflow;
+mod redact_commands;
 mod rejected_analysis_commands;
 mod release_assets;
 mod release_common;
@@ -445,6 +446,9 @@ enum Domain {
     /// CI test-rebalance planning, verification, and checked orchestration.
     #[command(subcommand, name = "rebalance-tests")]
     RebalanceTests(RebalanceTestsCommand),
+    /// Secret, path, log, and submodule-finding redaction commands.
+    #[command(subcommand)]
+    Redact(RedactCommand),
     /// Session state compatibility commands.
     #[command(subcommand)]
     Session(SessionCommand),
@@ -2093,6 +2097,22 @@ struct RawCompatibilityArguments {
 }
 
 #[derive(Subcommand)]
+enum RedactCommand {
+    /// Scrub known secret families from stdin.
+    #[command(disable_help_flag = true)]
+    Secrets(RawCompatibilityArguments),
+    /// Scrub session and operator paths from stdin.
+    #[command(name = "tmpdir-paths", disable_help_flag = true)]
+    TmpdirPaths(RawCompatibilityArguments),
+    /// Scrub known secret families from every UTF-8 file below a directory.
+    #[command(name = "scrub-log-secrets", disable_help_flag = true)]
+    ScrubLogSecrets(RawCompatibilityArguments),
+    /// Remove findings that belong to Git submodules.
+    #[command(name = "scrub-submodule-paths", disable_help_flag = true)]
+    ScrubSubmodulePaths(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
 enum GitSubcommand {
     /// Stage paths and amend them into the current commit.
     AmendAdd(MutationPathsArguments),
@@ -2649,6 +2669,18 @@ fn run(
             Ok(voter_calibration_commands::analyze(&arguments.arguments))
         }
         Domain::PlanReview(command) => Ok(plan_review_commands::run(command)),
+        Domain::Redact(command) => Ok(match command {
+            RedactCommand::Secrets(arguments) => redact_commands::secrets(&arguments.arguments),
+            RedactCommand::TmpdirPaths(arguments) => {
+                redact_commands::tmpdir_paths(&arguments.arguments)
+            }
+            RedactCommand::ScrubLogSecrets(arguments) => {
+                redact_commands::scrub_log_secrets(&arguments.arguments)
+            }
+            RedactCommand::ScrubSubmodulePaths(arguments) => {
+                redact_commands::scrub_submodule_paths(&arguments.arguments)
+            }
+        }),
         Domain::Alias(command) => Ok(developer_tooling_commands::run_alias(command)),
         Domain::Bootstrap(BootstrapCommand::Invoke(arguments)) => {
             Ok(bootstrap_commands::invoke(&arguments.arguments))

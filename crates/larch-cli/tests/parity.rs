@@ -142,6 +142,12 @@ impl CleanInstallCase {
             | "clean-install-triage-apply"
             | "clean-install-triage-inspect"
             | "clean-install-triage-probe"
+            // All four redaction verbs retain raw compatibility parsing. The
+            // clean-install `--help` token is therefore their usage refusal.
+            | "clean-install-redact-scrub-log-secrets"
+            | "clean-install-redact-scrub-submodule-paths"
+            | "clean-install-redact-secrets"
+            | "clean-install-redact-tmpdir-paths"
             | "clean-install-untrusted-redact-stream"
             | "clean-install-untrusted-xml-escape-attr"
             // The `design stage-terminal-state`/`failure-report` wrappers
@@ -1900,6 +1906,22 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "verify-main-cache-candidate",
     ),
     CleanInstallCase::new("clean-install-rebalance-tests-run", "rebalance-tests", "run"),
+    CleanInstallCase::new(
+        "clean-install-redact-scrub-log-secrets",
+        "redact",
+        "scrub-log-secrets",
+    ),
+    CleanInstallCase::new(
+        "clean-install-redact-scrub-submodule-paths",
+        "redact",
+        "scrub-submodule-paths",
+    ),
+    CleanInstallCase::new("clean-install-redact-secrets", "redact", "secrets"),
+    CleanInstallCase::new(
+        "clean-install-redact-tmpdir-paths",
+        "redact",
+        "tmpdir-paths",
+    ),
     CleanInstallCase::new(
         "clean-install-report-tokens-analyze",
         "report-tokens",
