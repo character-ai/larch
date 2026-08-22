@@ -52,6 +52,31 @@ extend them when the guard-read artifact set grows.
 - Why: Evidence of violation: /design review re-entry rejoined a pre-edit bgjob result env after `plan.txt` changed (#6633); the /implement guideline note was repeatedly consumed after HEAD drift invalidated the diff it assessed (#5337, #5675, #5969, #6059, #6106).
 - Why: Mechanical backing: input fingerprints in persisted result envs plus consumer-side validation, mirroring `DIFF_FINGERPRINT` and `HEAD_SHA` checks in `python/larch/core/architectural_guidelines.py` (`note_consumable`, `_staged_fingerprint_valid`); extend the same pattern to bgjob result envs consumed on re-entry.
 
+### I-Mut-1: A refusal gate runs before the durable mutation it can strand
+
+A run performs a durable remote mutation (a lifecycle title prefix, a lease, a
+started run-lifecycle record) only after every gate that can still refuse the
+run has passed. When a refusal gate must run after the mutation, the mutation
+ships with a rollback that every refusal path executes. A refused run never
+leaves an `[IMPLEMENTING]` title, a dangling lease, or an unterminated
+lifecycle record behind. Evidence of violation: a start verb that mutates the
+umbrella title before runnability selection can still hard-fail, with no
+revert verb (#8663); a run lifecycle started before title eligibility, with
+cancel routes that terminate through no lifecycle verb or the wrong one
+(#8471, #8472).
+
+### I-Leaf-1: A leaf-scoped failure never aborts independent sibling leaves
+
+A multi-leaf orchestration classifies every child failure as leaf-fatal or
+run-fatal before acting on it. A leaf-fatal failure (a transient API death, a
+malformed phase result, an interrupted ship, one unimplementable leaf) records
+the leaf outcome and continues with leaves that do not depend on the failed
+leaf. Only a classified run-fatal condition (selection deadlock, exhausted
+candidates, corrupted parent state) stops the run, and the stop names that
+classification. Evidence of violation: a whole-umbrella abort triggered by one
+leaf's failure while unblocked independent leaves remained
+(#8684, #8686, #8746, #8757, #8698, #8540).
+
 ## Runtime entrypoints
 
 ### I-Runtime-1: Every production Rust command enters through the verified bootstrap script
