@@ -17,13 +17,16 @@ use std::{
     process::ExitCode,
 };
 
-use larch_adapters::{assert_no_symlink_path_or_ancestors, write_confined_file};
+use larch_adapters::{
+    assert_no_symlink_path_or_ancestors, remove_optional_file, write_confined_file,
+};
 use larch_core::{
     ChildEnvironment, LARCH_SLACK_WEBHOOK_URL, ProcessOutput, implement::first_kv_value,
 };
 
 use crate::{
     argparse_compat::{ParsedCommandLine, parse_required_with_help},
+    design_step1_commands::append_failure_args,
     implement_child_seam::resolve_plugin_root,
     implement_dispatch_commands::run_verified_larch_env_in,
 };
@@ -222,9 +225,8 @@ fn child_code(output: &ProcessOutput) -> i32 {
 }
 
 fn combined_output(output: &ProcessOutput) -> String {
-    let mut text = String::from_utf8_lossy(output.stdout()).into_owned();
-    text.push_str(&String::from_utf8_lossy(output.stderr()));
-    text
+    let bytes = [output.stdout(), output.stderr()].concat();
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 fn write_text(path: &Path, text: &str) -> Result<(), String> {
@@ -281,23 +283,20 @@ fn append_failure(
     if !regular_file(output_file) {
         let _ignored = write_text(output_file, "");
     }
-    let arguments = vec![
-        "run-log".into(),
-        "append-failure".into(),
-        "--log".into(),
-        context.tmpdir.join("execution-issues.md").into_os_string(),
-        "--site".into(),
-        site.into(),
-        "--tool".into(),
-        tool.into(),
-        "--exit-code".into(),
-        exit_code.to_string().into(),
-        "--category".into(),
-        category.into(),
-        "--output-file".into(),
-        output_file.as_os_str().to_owned(),
-        "--redact".into(),
-    ];
+    let arguments = append_failure_args(
+        context
+            .tmpdir
+            .join("execution-issues.md")
+            .display()
+            .to_string(),
+        site,
+        tool,
+        &exit_code.to_string(),
+        category,
+        output_file,
+    )
+    .into_iter()
+    .map(OsString::from);
     let _ignored = context.run(arguments);
 }
 
@@ -394,15 +393,16 @@ fn execute_slack(context: &CloseoutContext) -> Result<(), String> {
 }
 
 fn remove_backup(path: &Path) -> Result<(), String> {
-    match fs::symlink_metadata(path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error.to_string()),
-        Ok(metadata) if metadata.file_type().is_file() => {
-            assert_no_symlink_path_or_ancestors(path)?;
-            fs::remove_file(path).map_err(|error| error.to_string())
-        }
-        Ok(_metadata) => Err(format!("refusing non-regular backup: {}", path.display())),
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    if !metadata.file_type().is_file() {
+        return Err(format!("refusing non-regular backup: {}", path.display()));
     }
+    assert_no_symlink_path_or_ancestors(path)?;
+    remove_optional_file(path).map_err(|error| error.to_string())
 }
 
 fn backup_summary(summary: &Path, backup: &Path) -> Result<bool, String> {
