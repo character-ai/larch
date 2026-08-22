@@ -877,10 +877,14 @@ closed route requests without interpreting assessment prose.
 
 ### Destructive and background workflows
 
-`/set-up-forked-open-source-repo` verifies the fork parent, prints exact branch
-identities, requires explicit confirmation, and reprobes immediately before its
-destructive mirror push. A confirmed sync can delete or overwrite fork refs.
-URL overrides remain operator-supplied trust inputs.
+`/set-up-forked-open-source-repo` verifies the immediate fork parent through the
+typed GitHub service, reads repository state through `RepositoryRead`, and uses
+only closed `GitCli` mutations. It prints exact branch identities, requires
+explicit confirmation, and reprobes immediately before its scoped destructive
+mirror push. A confirmed sync can delete or overwrite fork branches and tags.
+Remote renames record typed inverse operations, changed config values are
+snapshotted, and both are reverified after rollback. URL overrides remain
+operator-supplied test-seam trust inputs.
 
 Rust-owned `/cleanup` and SessionStart cleanup use fixed roots, name
 allowlists, age gates, bounded nested-activity checks, and symlink rejection.

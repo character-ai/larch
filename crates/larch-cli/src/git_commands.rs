@@ -44,6 +44,30 @@ pub fn sleep_before_retry(failed_attempt: u32) -> bool {
     true
 }
 
+/// Retry one typed Git operation on the shared transient-network schedule.
+pub fn transient_git<T>(
+    mut operation: impl FnMut() -> Result<T, GitCliError>,
+) -> Result<T, GitCliError> {
+    for attempt in 1..=TRANSIENT_ATTEMPTS {
+        match operation() {
+            Err(error) if transient_git_error(&error) && sleep_before_retry(attempt) => {}
+            result => return result,
+        }
+    }
+    unreachable!("the shared retry schedule stops its final attempt")
+}
+
+fn transient_git_error(error: &GitCliError) -> bool {
+    match error {
+        GitCliError::Failed(result) => is_transient_net(&format!(
+            "{}{}",
+            result.safe_stdout().as_str(),
+            result.safe_stderr().as_str()
+        )),
+        other => is_transient_net(&other.to_string()),
+    }
+}
+
 #[derive(Debug)]
 pub enum GitCommand {
     AmendAdd {
@@ -1131,7 +1155,7 @@ fn probe_remote_branch(branch: &str, remote: &str) -> RemoteProbe {
     let runner = TokioProcessRunner::new(Arc::new(NoopProcessObserver));
     let git = GitCli::new(&runner, policy);
     let request = LsRemoteRequest {
-        remote: remote_name,
+        remote: larch_adapters::GitLsRemoteTarget::Configured(remote_name),
         patterns: vec![branch_ref],
         heads: true,
         exit_code: true,

@@ -2160,6 +2160,7 @@ fn fetch_default_sha(repo_root: &Path, default_branch: &str) -> Result<String, S
                         refspec: Some(refspec),
                         quiet: true,
                         no_tags: true,
+                        mode: larch_adapters::FetchMode::Standard,
                     },
                     &runtime.cancellation,
                 )

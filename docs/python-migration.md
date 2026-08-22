@@ -698,6 +698,21 @@ Most release helpers remain behind `python/cli.py`. Every audit-runs verb is Rus
 - The checkpoint probe behavior lives in `python/cli.py push checkpoint-probe`, including fork defaulting, `ROUTE=` routing, and larch-log conflict recovery.
 - Retired helper and harness paths are recorded in `python/migrated-scripts.tsv` with `#4642`; treat those rows as history, not active runtime surfaces.
 
+### Forked-repository setup cutover
+
+- `forked-repo setup` moved atomically to
+  `crates/larch-cli/src/forked_repo_commands.rs` in #8798. The skill enters
+  through `scripts/larch.sh`; the Python registration, implementation, and
+  tests are removed.
+- Local reads use the `RepositoryRead` port. Fetches, remote/config rewrites,
+  scoped mirror operations, fast-forward merge, and optional submodule setup
+  use closed typed `GitCli` requests under #7671. Fork existence and immediate
+  parent verification use the `github.com`-pinned typed GitHub service under
+  #7672.
+- Black-box tests retain help, refusal, exit, and stream contracts. Core and
+  adapter tests pin URL normalization, remote classification, inverse
+  remote/config rollback primitives, and every new fixed Git argument vector.
+
 ## Decision log — F3e tracking issue lifecycle
 
 - Tracking issue read/write/summary verbs live behind `scripts/larch.sh tracking-issue ...` in Rust (#8346). Typed wrappers in `python/larch/core/rust_runtime.py` replace the former in-process Python workflow entry points, including local sentinel reads, and external command consumers keep entering through the same script. `final-report write` calls the same Rust tracking owner in process so its own output contract remains isolated. `python/larch/issue/tracking_issue.py` keeps only pure PR-footer helpers.

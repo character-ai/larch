@@ -526,7 +526,6 @@ exclude = [
   # scripts/test-legacy-title-prefix-literals-scope.sh — allow-listed git-grep
   # audit for legacy bracket literals (Makefile test-legacy-title-prefix-literals-scope).
   "scripts/test-legacy-title-prefix-literals-scope.sh",
-  "python/forked_repo.py",
   # skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh is
   # callouts in skills/implement/SKILL.md (issue #1381). Referenced only from
   # Makefile (test-implement-relevant-checks-anti-halt target) and the sibling

@@ -303,6 +303,7 @@ impl ProductionWorkflow {
                     refspec: Some(refspec),
                     quiet: true,
                     no_tags: true,
+                    mode: larch_adapters::FetchMode::Standard,
                 },
                 &self.cancellation,
             ))
@@ -564,10 +565,11 @@ impl ProductionWorkflow {
         self.runtime
             .block_on(git.push(
                 PushRequest {
-                    remote,
-                    refspec,
+                    remote: larch_adapters::GitPushTarget::Configured(remote),
+                    refspecs: vec![refspec],
                     force_with_lease: Some(ForceWithLease::ExpectingAbsent { reference }),
                     set_upstream: true,
+                    prune: false,
                 },
                 &self.cancellation,
             ))

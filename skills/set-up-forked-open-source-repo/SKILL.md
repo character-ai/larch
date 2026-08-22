@@ -27,14 +27,8 @@ layouts, and non-parseable or mixed-host remotes.
 ## Prerequisites
 
 - `git` (any reasonably recent version).
-- `gh` authenticated against the repository host (`github.com` by default;
-  GitHub Enterprise hosts are selected from the stored `origin` URL).
-- `jq` on `PATH` — used to parse `gh repo view --json` output. The coordinator
-  fails fast in `phase_preflight` with an actionable message when `jq` is
-  absent.
-- `flock` is preferred when available, but the coordinator uses an atomic
-  `mkdir` lock as the portable cross-platform guard when `flock` is absent
-  (including default macOS installs).
+- `gh` authenticated against `github.com`. GitHub Enterprise hosts are not
+  accepted by this command.
 
 ## Trust caveat: `url.*.insteadOf`
 
@@ -44,7 +38,7 @@ NOT scan or override Git's built-in `url.<other>.insteadOf` rewrites in
 user/global `gitconfig`. A `url.https://my-evil.example/.insteadOf
 https://github.com/` rule would silently redirect every `git ls-remote`,
 `git clone`, `git fetch`, and `git push` issued by the coordinator,
-bypassing the `gh repo view` parent guard. Same-user trust model — review
+bypassing the typed GitHub-service parent guard. Same-user trust model — review
 your `git config --global --get-regexp '^url\..*\.insteadOf$'` before
 running the skill on a profile inherited from a less-trusted source. See
 `${CLAUDE_PLUGIN_ROOT}/docs/security/workflow-trust-and-mutations.md` for the residual-risk
@@ -58,10 +52,11 @@ NOT see transport-time `insteadOf` rewrites.
 Strip `--run-id <ID>` from `$ARGUMENTS` before invoking the coordinator (the script does not accept this flag). Then invoke the coordinator:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" forked-repo setup $ARGUMENTS
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" forked-repo setup $ARGUMENTS
 ```
 
-The coordinator contract lives in `python/forked_repo.py`.
+The coordinator contract lives in
+`crates/larch-cli/src/forked_repo_commands.rs`.
 
 ## Arguments
 
@@ -88,7 +83,7 @@ The coordinator contract lives in `python/forked_repo.py`.
   declared upstream could receive a destructive sync from the wrong project.
 - **NEVER** fall back to `master` or `HEAD`. This workflow is scoped to
   `refs/heads/main`; silent substitution hides mismatched repository policy.
-- **NEVER** conflate `gh repo view` failures. Only explicit not-found means
+- **NEVER** conflate typed GitHub repository-read failures. Only explicit not-found means
   "fork missing"; auth, rate-limit, network, SSO, and API errors are real
   failures.
 - **NEVER** fail open on rollback. If remote rewrite rollback itself fails, the

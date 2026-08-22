@@ -25,7 +25,7 @@ use std::{
 
 use clap::Args;
 use larch_adapters::{
-    BranchMutationRequest, CheckoutRequest, ExactDiffRequest, FetchRequest, ForceWithLease, GitCliError, GitRef, GitRefspec, GitRemote, GixRepository, LsRemoteRequest,
+    BranchMutationRequest, CheckoutRequest, ExactDiffRequest, FetchRequest, ForceWithLease, GitRef, GitRefspec, GitRemote, GixRepository, LsRemoteRequest,
     PushRequest, RebaseRequest,
     github::{IssueMutationOwner, MergeStateStatus, PullRequest, PullRequestSpec, PullRequestState, ReleaseCandidatePullRequestState},
 };
@@ -38,7 +38,7 @@ use regex::Regex;
 use crate::{
     argparse_compat::{ParsedCommandLine, choice_error, parse_python_int, parse_required_with_help, python_repr, usage_error},
     complete_umbrella_commands::{exact_title_request, operator_authorization},
-    git_commands::{TRANSIENT_ATTEMPTS, is_transient_net, sleep_before_retry},
+    git_commands::transient_git,
     git_command_runtime::GitCommandRuntime,
     github_repository_resolution::repository_ref,
     github_service::{ServiceFailure, with_github_service},
@@ -792,10 +792,12 @@ fn push_branch(request: &Request, force: bool) -> Result<(String, String), Strin
     };
     let runtime = git_runtime(request)?;
     let push = PushRequest {
-        remote,
-        refspec: GitRefspec::new(format!("HEAD:{destination}")).map_err(|error| error.to_string())?,
+        remote: larch_adapters::GitPushTarget::Configured(remote),
+        refspecs: vec![GitRefspec::new(format!("HEAD:{destination}"))
+            .map_err(|error| error.to_string())?],
         force_with_lease,
         set_upstream: true,
+        prune: false,
     };
     transient_git(|| runtime.runtime.block_on(runtime.git_cli().push(push.clone(), &runtime.cancellation)))
         .map_err(|_| "feature branch push failed".to_owned())?;
@@ -809,6 +811,7 @@ fn fetch_main(request: &Request) -> Result<(), String> {
         refspec: Some(GitRefspec::new("main").map_err(|error| error.to_string())?),
         quiet: false,
         no_tags: false,
+        mode: larch_adapters::FetchMode::Standard,
     };
     transient_git(|| runtime.runtime.block_on(runtime.git_cli().fetch(fetch.clone(), &runtime.cancellation)))
         .map(|_| ())
@@ -1231,10 +1234,16 @@ fn sync_main_and_delete(request: &Request, branch: &str) -> Result<(), String> {
     if remote_oid(request, branch)?.is_some() {
         let runtime = git_runtime(request)?;
         let delete = PushRequest {
-            remote: GitRemote::new("origin").map_err(|error| error.to_string())?,
-            refspec: GitRefspec::deletion(&GitRef::new(format!("refs/heads/{branch}")).map_err(|error| error.to_string())?),
+            remote: larch_adapters::GitPushTarget::Configured(
+                GitRemote::new("origin").map_err(|error| error.to_string())?,
+            ),
+            refspecs: vec![GitRefspec::deletion(
+                &GitRef::new(format!("refs/heads/{branch}"))
+                    .map_err(|error| error.to_string())?,
+            )],
             force_with_lease: None,
             set_upstream: false,
+            prune: false,
         };
         transient_git(|| runtime.runtime.block_on(runtime.git_cli().push(delete.clone(), &runtime.cancellation)))
             .map_err(|_| "could not delete the remote implementation branch".to_owned())?;
@@ -1278,23 +1287,6 @@ fn repository(request: &Request) -> Result<GixRepository, String> {
 
 fn git_runtime(request: &Request) -> Result<GitCommandRuntime, String> {
     GitCommandRuntime::for_repository(&request.repo_root)
-}
-
-fn transient_git<T>(mut operation: impl FnMut() -> Result<T, GitCliError>) -> Result<T, GitCliError> {
-    for attempt in 1..=TRANSIENT_ATTEMPTS {
-        match operation() {
-            Err(error) if transient_git_error(&error) && sleep_before_retry(attempt) => {}
-            result => return result,
-        }
-    }
-    unreachable!("the shared retry schedule stops its final attempt")
-}
-
-fn transient_git_error(error: &GitCliError) -> bool {
-    match error {
-        GitCliError::Failed(result) => is_transient_net(&format!("{}{}", result.safe_stdout().as_str(), result.safe_stderr().as_str())),
-        other => is_transient_net(&other.to_string()),
-    }
 }
 
 fn ensure_clean(request: &Request) -> Result<(), String> {
@@ -1364,7 +1356,9 @@ fn remote_oid(request: &Request, branch: &str) -> Result<Option<String>, String>
     let reference = format!("refs/heads/{branch}");
     let runtime = git_runtime(request)?;
     let probe = LsRemoteRequest {
-        remote: GitRemote::new("origin").map_err(|error| error.to_string())?,
+        remote: larch_adapters::GitLsRemoteTarget::Configured(
+            GitRemote::new("origin").map_err(|error| error.to_string())?,
+        ),
         patterns: vec![GitRef::new(&reference).map_err(|error| error.to_string())?],
         heads: true,
         exit_code: false,

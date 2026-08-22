@@ -204,10 +204,11 @@ fn push_request(
         None => None,
     };
     Ok(PushRequest {
-        remote,
-        refspec,
+        remote: larch_adapters::GitPushTarget::Configured(remote),
+        refspecs: vec![refspec],
         force_with_lease,
         set_upstream,
+        prune: false,
     })
 }
 
@@ -266,6 +267,7 @@ fn fetch_branch(branch: &str) -> Result<(), PushFailure> {
                 refspec: Some(refspec),
                 quiet: true,
                 no_tags: false,
+                mode: larch_adapters::FetchMode::Standard,
             },
             &cancellation,
         ))
@@ -324,7 +326,7 @@ fn remote_matches_head(branch: &str) -> bool {
     let cancellation = Cancellation::new();
     let result = runtime.block_on(GitCli::new(&runner, policy).ls_remote(
         LsRemoteRequest {
-            remote,
+            remote: larch_adapters::GitLsRemoteTarget::Configured(remote),
             patterns: vec![pattern],
             heads: true,
             exit_code: true,

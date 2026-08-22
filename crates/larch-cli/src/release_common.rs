@@ -155,7 +155,7 @@ impl ProductionReleaseServices {
             .runtime
             .block_on(self.git_cli().ls_remote(
                 LsRemoteRequest {
-                    remote: origin()?,
+                    remote: larch_adapters::GitLsRemoteTarget::Configured(origin()?),
                     patterns,
                     heads: false,
                     exit_code: false,
@@ -176,10 +176,11 @@ impl ProductionReleaseServices {
     /// Returns a message when the refspec is unsafe or the push fails.
     pub fn push_origin_ref(&self, refspec: &str) -> Result<(), String> {
         let request = PushRequest {
-            remote: origin()?,
-            refspec: GitRefspec::new(refspec).map_err(|error| error.to_string())?,
+            remote: larch_adapters::GitPushTarget::Configured(origin()?),
+            refspecs: vec![GitRefspec::new(refspec).map_err(|error| error.to_string())?],
             force_with_lease: None,
             set_upstream: false,
+            prune: false,
         };
         self.runtime
             .block_on(self.git_cli().push(request, &self.cancellation))
@@ -227,6 +228,7 @@ pub fn main_fetch_request() -> Result<FetchRequest, String> {
         ),
         quiet: true,
         no_tags: false,
+        mode: larch_adapters::FetchMode::Standard,
     })
 }
 

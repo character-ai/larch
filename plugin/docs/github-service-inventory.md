@@ -171,6 +171,11 @@ commands reach no GitHub service. Issue #8628 moved `ship pr` and
 `ship reconcile-manual-merge` to the typed pull-request service. The broad
 Python row now lists only its surviving design and `pr` commands.
 
+Issue #8798 moved `forked-repo setup` to Rust. Its fork existence and immediate
+parent check use the typed repository-metadata read, whose bounded repository
+DTO now retains the validated parent slug. Git transport remains separately
+owned by the closed Git adapter.
+
 Issue #8629 moved `complete-umbrella ship-leaf` to Rust. Pull-request reads and
 creation joined the typed ship service, while exact leaf-title transitions and
 their freshness/read-back checks use the shared issue-mutation owner. The
@@ -227,7 +232,7 @@ pull-request-merge	crates/larch-adapters/src/github/operations.rs	rust	#7681,#87
 pull-request-ship-pr	crates/larch-adapters/src/github/operations.rs	rust	#7681,#8282,#8626,#8628,#8629	complete	complete	complete	complete-umbrella ship-leaf,ship pr,ship reconcile-manual-merge
 pull-requests	crates/larch-adapters/src/github/operations.rs	rust	#7681,#8790	complete	complete	complete	pr body-update,pr checks,pr closes-issue,pr create,pr create-branch
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
-repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676,#7681	complete	complete	complete	gh remote-repo,gh resolve-repo,ship pre-fix-rebase
+repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676,#7681,#8798	complete	complete	complete	forked-repo setup,gh remote-repo,gh resolve-repo,ship pre-fix-rebase
 tracking-issue-comment-reads	crates/larch-adapters/src/github_rest.rs	rust	#7681,#7682,#8789	complete	complete	complete	tracking post-issue,tracking-issue append-comment,tracking-issue read,tracking-issue upsert-summary
 tracking-issue-comment-mutations	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7681,#7682,#8789	complete	complete	complete	tracking post-issue,tracking-issue append-comment,tracking-issue upsert-summary
 tracking-issue-lifecycle	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7680,#7682	complete	complete	complete	design init-runparams,tracking-issue create-issue,tracking-issue mark-false-positive,tracking-issue rename

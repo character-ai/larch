@@ -2605,6 +2605,7 @@ fn synchronize_main(repo_root: &Path, net: &NetSignal) -> Result<(), String> {
             refspec: Some(refspec),
             quiet: true,
             no_tags: true,
+            mode: larch_adapters::FetchMode::Standard,
         },
         &runtime.cancellation,
     )) {

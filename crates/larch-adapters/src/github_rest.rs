@@ -913,6 +913,23 @@ fn repository_from_model(
     policy: GitHubTransportPolicy,
 ) -> Result<GitHubRepository, GitHubOperationError> {
     validate_json(&value, policy)?;
+    let parent = value
+        .parent
+        .as_deref()
+        .map(|parent| {
+            let full_name = parent
+                .full_name
+                .as_deref()
+                .ok_or_else(|| malformed("GitHub fork parent omitted full_name"))?;
+            validate_string(full_name, policy)?;
+            let (owner, name) = full_name
+                .split_once('/')
+                .filter(|(_owner, name)| !name.contains('/'))
+                .ok_or_else(|| malformed("GitHub fork parent full_name is malformed"))?;
+            GitHubRepositoryRef::new(owner, name)
+                .map_err(|_| malformed("GitHub fork parent full_name is malformed"))
+        })
+        .transpose()?;
     let name_with_owner = value
         .full_name
         .ok_or_else(|| malformed("GitHub repository response omitted full_name"))?;
@@ -932,6 +949,7 @@ fn repository_from_model(
         url,
         default_branch,
         private: value.private.unwrap_or(false),
+        parent,
     })
 }
 
@@ -1307,7 +1325,7 @@ mod tests {
         scripts[name].as_array().expect("named script").iter().map(|row| {
             let status = u16::try_from(row[0].as_u64().expect("status")).expect("u16 status");
             let body = match row[1].as_str().expect("response fixture") {
-                "repository" => json!({"id": 1, "name": "r", "full_name": "o/r", "private": true, "html_url": "https://github.com/o/r", "url": "https://api.github.com/repos/o/r", "default_branch": "main"}),
+                "repository" => json!({"id": 1, "name": "r", "full_name": "o/r", "private": true, "html_url": "https://github.com/o/r", "url": "https://api.github.com/repos/o/r", "default_branch": "main", "parent": {"id": 2, "name": "upstream", "full_name": "source/upstream", "url": "https://api.github.com/repos/source/upstream"}}),
                 "issue" => issue.clone(),
                 "issues" => json!([issue.clone()]),
                 "search" => json!({"total_count": 1, "incomplete_results": false, "items": [issue.clone()]}),
@@ -1484,7 +1502,12 @@ mod tests {
             color: String::from("d73a4a"),
             description: String::from("Defect"),
         };
-        succeeds!(service.repository(&repo, &cancellation));
+        let repository = service
+            .repository(&repo, &cancellation)
+            .await
+            .expect("repository");
+        let parent = repository.parent.expect("fork parent");
+        assert_eq!((parent.owner(), parent.name()), ("source", "upstream"));
         succeeds!(service.issue(&repo, 2, &cancellation));
         succeeds!(service.list_issues(&list, &cancellation));
         succeeds!(service.search_issues(&search, &cancellation));

@@ -1084,6 +1084,7 @@ fn resolve_main_health_commit(
                     ),
                     quiet: true,
                     no_tags: false,
+                    mode: larch_adapters::FetchMode::Standard,
                 },
                 &runtime.cancellation,
             ),
@@ -1659,6 +1660,7 @@ fn prepare_branch(context: &ShipPrContext, repo_root: &Path) -> Result<(), Drive
                 refspec: Some(main),
                 quiet: false,
                 no_tags: false,
+                mode: larch_adapters::FetchMode::Standard,
             },
             &runtime.cancellation,
         ))
@@ -1824,7 +1826,7 @@ fn push_branch(context: &ShipPrContext, repo_root: &Path) -> Result<(), DriverFa
         .runtime
         .block_on(runtime.git_cli().ls_remote(
             LsRemoteRequest {
-                remote: remote.clone(),
+                remote: larch_adapters::GitLsRemoteTarget::Configured(remote.clone()),
                 patterns: vec![reference.clone()],
                 heads: true,
                 exit_code: false,
@@ -1857,10 +1859,11 @@ fn push_branch(context: &ShipPrContext, repo_root: &Path) -> Result<(), DriverFa
         .runtime
         .block_on(runtime.git_cli().push(
             PushRequest {
-                remote,
-                refspec,
+                remote: larch_adapters::GitPushTarget::Configured(remote),
+                refspecs: vec![refspec],
                 force_with_lease,
                 set_upstream: true,
+                prune: false,
             },
             &runtime.cancellation,
         ))

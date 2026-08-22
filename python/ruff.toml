@@ -295,11 +295,6 @@ ignore = [
     "PLR0912",
     "PLR0913",
 ]
-"forked_repo.py" = [
-    "C901",
-    "PLR0912",
-    "PLR0915",
-]
 "gh.py" = [
     "C901",
     "PLR0911",

@@ -11,8 +11,8 @@ use crate::{
 };
 use larch_adapters::github::{IssueMutationOwner, LiveMutationRequest};
 use larch_adapters::{
-    CheckoutRequest, FetchRequest, GitRef, GitRefspec, GitRemote, GixRepository, path_under,
-    resolve_allow_missing,
+    CheckoutRequest, FetchMode, FetchRequest, GitRef, GitRefspec, GitRemote, GixRepository,
+    path_under, resolve_allow_missing,
 };
 use larch_core::{
     CheckBucket, ConfigKey, ConfigScope, GitHubActionsService, GitHubService, RepositoryRead,
@@ -372,6 +372,7 @@ fn fetch_base(root: &Path, remote: &str, base_ref: &str) -> bool {
                 refspec: Some(refspec.clone()),
                 quiet: true,
                 no_tags: false,
+                mode: FetchMode::Standard,
             },
             &runtime.cancellation,
         ));

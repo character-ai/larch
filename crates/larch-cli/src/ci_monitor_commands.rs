@@ -574,6 +574,7 @@ async fn gather_status<R: ExternalProcessRunner, S: CiStatusService + ?Sized>(
                 ),
                 quiet: true,
                 no_tags: false,
+                mode: larch_adapters::FetchMode::Standard,
             },
             cancellation,
         )

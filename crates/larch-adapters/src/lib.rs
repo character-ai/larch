@@ -56,13 +56,14 @@ pub use filesystem::{
 pub(crate) use filesystem::{PrivateFileLock, lock_private_file};
 pub use git::{
     AddRequest, ApplyRequest, BranchMutationRequest, CheckoutRequest, CleanRequest, CloneRequest,
-    CommitMessage, CommitRequest, ConfigMutationRequest, ExactDiffRequest, FetchRequest,
+    CommitMessage, CommitRequest, ConfigMutationRequest, ExactDiffRequest, FetchMode, FetchRequest,
     ForceWithLease, GitCli, GitCliError, GitCliInputError, GitCliInputErrorKind, GitCliPolicy,
-    GitCliResult, GitConfigKey, GitFilePath, GitPath, GitRef, GitRefspec, GitRemote, GitToken,
-    GitUrl, GixRepository, InitRequest, InterpretTrailersRequest, LsRemoteRequest, MergeRequest,
-    PullRequest, PushRequest, RebaseRequest, RemoteMutationRequest, ResetMode, ResetRequest,
-    RestoreRequest, RmRequest, SparseCheckoutRequest, StashRequest, SubmoduleRequest,
-    TagMutationRequest, VersionRequest, WorktreeRequest, classify_process_error, unified_blob_diff,
+    GitCliResult, GitConfigKey, GitFilePath, GitLsRemoteTarget, GitPath, GitPushTarget, GitRef,
+    GitRefspec, GitRemote, GitToken, GitUrl, GixRepository, InitRequest, InterpretTrailersRequest,
+    LsRemoteRequest, MergeRequest, PullRequest, PushRequest, RebaseRequest, RemoteMutationRequest,
+    ResetMode, ResetRequest, RestoreRequest, RmRequest, SparseCheckoutRequest, StashRequest,
+    SubmoduleRequest, TagMutationRequest, VersionRequest, WorktreeRequest, classify_process_error,
+    unified_blob_diff,
 };
 pub use process::{
     NoopProcessObserver, OpenFileHolderStatus, ProcessFileRouting, ProcessOutputRouting,

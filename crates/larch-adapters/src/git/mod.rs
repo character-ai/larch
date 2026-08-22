@@ -24,11 +24,11 @@ use larch_core::{
 
 pub use ops::{
     AddRequest, ApplyRequest, BranchMutationRequest, CheckoutRequest, CleanRequest, CloneRequest,
-    CommitMessage, CommitRequest, ConfigMutationRequest, ExactDiffRequest, FetchRequest,
-    ForceWithLease, InitRequest, InterpretTrailersRequest, LsRemoteRequest, MergeRequest,
-    PullRequest, PushRequest, RebaseRequest, RemoteMutationRequest, ResetMode, ResetRequest,
-    RestoreRequest, RmRequest, SparseCheckoutRequest, StashRequest, SubmoduleRequest,
-    TagMutationRequest, VersionRequest, WorktreeRequest,
+    CommitMessage, CommitRequest, ConfigMutationRequest, ExactDiffRequest, FetchMode, FetchRequest,
+    ForceWithLease, GitLsRemoteTarget, GitPushTarget, InitRequest, InterpretTrailersRequest,
+    LsRemoteRequest, MergeRequest, PullRequest, PushRequest, RebaseRequest, RemoteMutationRequest,
+    ResetMode, ResetRequest, RestoreRequest, RmRequest, SparseCheckoutRequest, StashRequest,
+    SubmoduleRequest, TagMutationRequest, VersionRequest, WorktreeRequest,
 };
 pub use repository::{GixRepository, unified_blob_diff};
 pub use validate::{
@@ -574,8 +574,17 @@ mod tests {
             &CloneRequest {
                 url: GitUrl::new("https://example.invalid/repo.git").unwrap(),
                 directory: Some(GitPath::new("clone").unwrap()),
+                mirror: false,
             },
             &["clone", "https://example.invalid/repo.git", "clone"],
+        );
+        check(
+            &CloneRequest {
+                url: GitUrl::new("https://x/y").unwrap(),
+                directory: Some(GitPath::new("m").unwrap()),
+                mirror: true,
+            },
+            &["clone", "--mirror", "https://x/y", "m"],
         );
         check(
             &SparseCheckoutRequest::Set {
@@ -590,6 +599,12 @@ mod tests {
                 no_edit: true,
             },
             &["merge", "--no-edit", "topic"],
+        );
+        check(
+            &MergeRequest::FastForward {
+                target: GitRef::new("origin/main").unwrap(),
+            },
+            &["merge", "--ff-only", "origin/main"],
         );
         check(
             &PullRequest {
@@ -611,21 +626,52 @@ mod tests {
                 refspec: Some(GitRefspec::new("main").unwrap()),
                 quiet: true,
                 no_tags: true,
+                mode: FetchMode::Standard,
             },
             &["fetch", "--no-tags", "--quiet", "origin", "main"],
         );
         check(
-            &PushRequest {
+            &FetchRequest {
                 remote: GitRemote::new("origin").unwrap(),
-                refspec: GitRefspec::new("HEAD:main").unwrap(),
+                refspec: None,
+                quiet: false,
+                no_tags: false,
+                mode: FetchMode::PruneTags,
+            },
+            &["fetch", "origin", "--prune", "--tags"],
+        );
+        check(
+            &PushRequest {
+                remote: GitPushTarget::Configured(GitRemote::new("origin").unwrap()),
+                refspecs: vec![GitRefspec::new("HEAD:main").unwrap()],
                 force_with_lease: Some(ForceWithLease::Enabled),
                 set_upstream: false,
+                prune: false,
             },
             &["push", "--force-with-lease", "origin", "HEAD:main"],
         );
         check(
+            &PushRequest {
+                remote: GitPushTarget::Url(GitUrl::new("git@x:o/r").unwrap()),
+                refspecs: vec![
+                    GitRefspec::new("+refs/heads/*:refs/heads/*").unwrap(),
+                    GitRefspec::new("+refs/tags/*:refs/tags/*").unwrap(),
+                ],
+                force_with_lease: None,
+                set_upstream: false,
+                prune: true,
+            },
+            &[
+                "push",
+                "--prune",
+                "git@x:o/r",
+                "+refs/heads/*:refs/heads/*",
+                "+refs/tags/*:refs/tags/*",
+            ],
+        );
+        check(
             &LsRemoteRequest {
-                remote: GitRemote::new("origin").unwrap(),
+                remote: GitLsRemoteTarget::Configured(GitRemote::new("origin").unwrap()),
                 patterns: vec![GitRef::new("HEAD").unwrap()],
                 heads: false,
                 exit_code: false,
@@ -634,12 +680,21 @@ mod tests {
         );
         check(
             &LsRemoteRequest {
-                remote: GitRemote::new("origin").unwrap(),
+                remote: GitLsRemoteTarget::Configured(GitRemote::new("origin").unwrap()),
                 patterns: vec![GitRef::new("feat").unwrap()],
                 heads: true,
                 exit_code: true,
             },
             &["ls-remote", "--exit-code", "--heads", "origin", "feat"],
+        );
+        check(
+            &LsRemoteRequest {
+                remote: GitLsRemoteTarget::Url(GitUrl::new("https://x/o/r").unwrap()),
+                patterns: vec![GitRef::new("refs/heads/main").unwrap()],
+                heads: false,
+                exit_code: false,
+            },
+            &["ls-remote", "https://x/o/r", "refs/heads/main"],
         );
         check(
             &TagMutationRequest::Create {
@@ -760,7 +815,7 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn uncovered_validator_error_branches() {
+    fn uncovered_value_validator_error_branches() {
         use std::os::unix::ffi::OsStringExt;
 
         assert_eq!(
@@ -800,6 +855,35 @@ mod tests {
         assert!(GitConfigKey::new("solo").is_err());
         assert!(GitUrl::new("").is_err());
         assert!(GitToken::new(OsString::from_vec(b"a\0b".to_vec())).is_err());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn uncovered_request_validator_error_branches() {
+        use std::os::unix::ffi::OsStringExt;
+
+        assert!(
+            FetchRequest {
+                remote: GitRemote::new("origin").unwrap(),
+                refspec: None,
+                quiet: false,
+                no_tags: true,
+                mode: FetchMode::PruneTags,
+            }
+            .arguments()
+            .is_err()
+        );
+        assert!(
+            PushRequest {
+                remote: GitPushTarget::Configured(GitRemote::new("origin").unwrap()),
+                refspecs: Vec::new(),
+                force_with_lease: None,
+                set_upstream: false,
+                prune: false,
+            }
+            .arguments()
+            .is_err()
+        );
         assert!(
             ConfigMutationRequest::Set {
                 key: GitConfigKey::new("user.name").unwrap(),
@@ -843,6 +927,12 @@ mod tests {
                 key: GitConfigKey::new("user.email").unwrap(),
             },
             &["config", "--local", "--unset", "user.email"],
+        );
+        assert_argv(
+            &ConfigMutationRequest::UnsetAll {
+                key: GitConfigKey::new("remote.origin.pushurl").unwrap(),
+            },
+            &["config", "--local", "--unset-all", "remote.origin.pushurl"],
         );
         assert_argv(
             &ConfigMutationRequest::Add {
@@ -1199,13 +1289,14 @@ mod tests {
     fn push_argv_includes_explicit_destination_lease_and_upstream() {
         assert_argv(
             &PushRequest {
-                remote: GitRemote::new("origin").unwrap(),
-                refspec: GitRefspec::new("HEAD:main").unwrap(),
+                remote: GitPushTarget::Configured(GitRemote::new("origin").unwrap()),
+                refspecs: vec![GitRefspec::new("HEAD:main").unwrap()],
                 force_with_lease: Some(ForceWithLease::Expecting {
                     reference: GitRef::new("refs/heads/main").unwrap(),
                     oid: GitRef::new("abc").unwrap(),
                 }),
                 set_upstream: true,
+                prune: false,
             },
             &[
                 "push",
@@ -1217,12 +1308,13 @@ mod tests {
         );
         assert_argv(
             &PushRequest {
-                remote: GitRemote::new("origin").unwrap(),
-                refspec: GitRefspec::new("HEAD:main").unwrap(),
+                remote: GitPushTarget::Configured(GitRemote::new("origin").unwrap()),
+                refspecs: vec![GitRefspec::new("HEAD:main").unwrap()],
                 force_with_lease: Some(ForceWithLease::ExpectingAbsent {
                     reference: GitRef::new("refs/heads/main").unwrap(),
                 }),
                 set_upstream: false,
+                prune: false,
             },
             &[
                 "push",
@@ -1233,10 +1325,13 @@ mod tests {
         );
         assert_argv(
             &PushRequest {
-                remote: GitRemote::new("origin").unwrap(),
-                refspec: GitRefspec::deletion(&GitRef::new("refs/heads/topic").unwrap()),
+                remote: GitPushTarget::Configured(GitRemote::new("origin").unwrap()),
+                refspecs: vec![GitRefspec::deletion(
+                    &GitRef::new("refs/heads/topic").unwrap(),
+                )],
                 force_with_lease: None,
                 set_upstream: false,
+                prune: false,
             },
             &["push", "origin", ":refs/heads/topic"],
         );
@@ -1725,7 +1820,7 @@ mod tests {
             |repository, runner, runtime| {
                 runtime.block_on(GitCli::new(runner, policy(repository.root())).ls_remote(
                     LsRemoteRequest {
-                        remote: GitRemote::new("origin").unwrap(),
+                        remote: GitLsRemoteTarget::Configured(GitRemote::new("origin").unwrap()),
                         patterns: vec![GitRef::new("HEAD").unwrap()],
                         heads: false,
                         exit_code: false,
@@ -1748,6 +1843,7 @@ mod tests {
                         refspec: None,
                         quiet: false,
                         no_tags: false,
+                        mode: FetchMode::Standard,
                     },
                     &NeverCancelled,
                 ))
