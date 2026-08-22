@@ -212,10 +212,10 @@ impl CleanInstallCase {
             | "clean-install-plan-review-drift-baseline"
             | "clean-install-plan-review-step3-mav"
             | "clean-install-plan-review-step3b-tail"
-            // `render reviewer` also parses with `add_help=False`; the
-            // clean-install `--help` token surfaces as the argparse usage exit
-            // the Python owner echoed after its prefix.
+            // Both prompt renderers preserve the legacy `add_help=False`
+            // contract, so the clean-install `--help` token is a usage error.
             | "clean-install-render-reviewer"
+            | "clean-install-render-specialist"
             // Neither debate verb declares a `--help` action: the Rust owner
             // treats the clean-install `--help` token as an unknown flag and
             // emits its validation envelope with the argparse usage exit code.
@@ -2097,6 +2097,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-render-lane-status", "render", "lane-status"),
     CleanInstallCase::new("clean-install-render-reviewer", "render", "reviewer"),
+    CleanInstallCase::new("clean-install-render-specialist", "render", "specialist"),
     CleanInstallCase::new(
         "clean-install-dirty-tree-baseline",
         "dirty-tree",

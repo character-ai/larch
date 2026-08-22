@@ -629,14 +629,6 @@ exclude = [
   "scripts/test-orchestrator-scope-sync.sh",
   "scripts/test-quick-mode-docs-sync.sh",
   "scripts/test-python/cli.py render reviewer",
-  # scripts/test-python/cli.py render specialist is the regression harness for
-  # python/cli.py render specialist (the specialist reviewer prompt
-  # renderer for /review's 5-specialist panel). The renderer itself
-  # IS structurally referenced from skills/review/SKILL.md Step 2 launch
-  # procedure; the test harness is referenced only from Makefile
-  # (test-render-specialist-prompt target) and
-  # (sibling contract), matching the same Makefile-only pattern.
-  "scripts/test-python/cli.py render specialist",
   # test harness ships with no runtime consumers yet. Phase 3 is the
   # first consumer via skills/implement/SKILL.md (not in this phase).
   # Agent-lint does not follow sibling `source` directives or Makefile targets.

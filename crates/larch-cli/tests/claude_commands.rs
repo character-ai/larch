@@ -419,18 +419,21 @@ fn review_renders_agent_file_before_entering_the_confined_launcher() {
         fixture.path(),
         "#!/bin/sh\ncat > review.prompt\nprintf '%s' '{\"result\":\"reviewed\"}'\n",
     );
-    write(
-        &fixture.path().join("python/cli.py"),
-        "from pathlib import Path\nimport sys\nargs = sys.argv[1:]\nif args[:2] == ['render', 'specialist']:\n    Path(__file__).with_name('render.argv').write_text('\\n'.join(args), encoding='utf-8')\n    Path(args[args.index('--payload-bytes-output') + 1]).write_text('7\\n', encoding='utf-8')\n    print('rendered specialist prompt')\n",
-    );
     let agent_file = fixture.path().join("agents/reviewer.md");
     let session = fixture.path().join("session");
     let output = session.join("round-1/review.out");
     let session_env = session.join("session.env");
     let session_alias = fixture.path().join("session-alias");
     let session_env_alias = session_alias.join("session.env");
-    write(&agent_file, "# Reviewer\n");
+    write(&agent_file, "---\nname: reviewer\n---\n# Reviewer\n");
     write(&session_env, "SESSION=fixture\n");
+    write(
+        &session.join("findings-ledger.tsv"),
+        concat!(
+            "round\tfinding_id\ttitle\tfile_line\toutcome\tvote_tally\treason\n",
+            "1\tFINDING_1\tPrior finding\tsrc/lib.rs:1\trejected\tNO\tPrior reason\n",
+        ),
+    );
     fs::create_dir_all(output.parent().expect("output parent")).expect("output parent");
     std::os::unix::fs::symlink(&session, &session_alias).expect("session symlink");
 
@@ -444,6 +447,8 @@ fn review_renders_agent_file_before_entering_the_confined_launcher() {
             "description",
             "--description-text",
             "Review the changes.",
+            "--scope-files",
+            "crates/**",
             "--session-env-path",
         ])
         .arg(&session_env_alias)
@@ -456,24 +461,20 @@ fn review_renders_agent_file_before_entering_the_confined_launcher() {
         .success();
 
     let prompt = fs::read_to_string(fixture.path().join("review.prompt")).expect("review prompt");
-    assert!(prompt.contains("rendered specialist prompt"));
+    assert!(prompt.contains("# Reviewer"));
+    assert!(prompt.contains("Review existing code for: 'Review the changes.'"));
+    assert!(prompt.contains("Prior finding"));
     assert_eq!(
         fs::read_to_string(&output).expect("review output"),
         "reviewed"
     );
-    let render_args =
-        fs::read_to_string(fixture.path().join("python/render.argv")).expect("render arguments");
-    let canonical_session = fs::canonicalize(&session).expect("canonical session");
-    assert!(
-        render_args.contains(&format!(
-            "--findings-ledger-file\n{}",
-            canonical_session.join("findings-ledger.tsv").display()
-        )),
-        "render arguments:\n{render_args}"
-    );
     let telemetry = fs::read_to_string(session.join("round-1/panel-prompt-sizes.tsv"))
         .expect("panel prompt telemetry");
-    assert!(telemetry.contains("\tagents/reviewer.md\t11\t3\n"));
+    let agent_bytes = fs::metadata(&agent_file).expect("agent metadata").len();
+    let agent_tokens = agent_bytes.div_ceil(4);
+    assert!(telemetry.contains(&format!(
+        "\tagents/reviewer.md\t{agent_bytes}\t{agent_tokens}\n"
+    )));
 }
 
 #[cfg(unix)]

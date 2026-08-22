@@ -288,10 +288,10 @@ assert_contains "Code Reviewer [BUG] class-or-instance wording" \
 assert_contains "Code Reviewer agent [BUG] class-or-instance wording" \
     'classify whether the change addresses the class or only an instance; name sibling sites checked, or state that a grep for the defect pattern found none' "$REPO_ROOT/agents/code-reviewer.md"
 
-# ── python/cli.py render specialist runtime render smoke ─────────────────────────
+# ── scripts/larch.sh render specialist runtime render smoke ──────────────────────
 
 specialist_out="$TMP/render-specialist-prompt.txt"
-python3 "$REPO_ROOT/python/cli.py" render specialist \
+"$REPO_ROOT/scripts/larch.sh" render specialist \
     --agent-file "$REPO_ROOT/agents/reviewer-structure.md" \
     --mode diff \
     --diff-mode generic \
@@ -307,7 +307,7 @@ assert_contains "specialist bullet punctuation" \
     "- **<focus-area>** \`<path>:<line-range>\` — <one-paragraph issue text>." "$specialist_out"
 
 correctness_specialist_out="$TMP/render-specialist-correctness-prompt.txt"
-python3 "$REPO_ROOT/python/cli.py" render specialist \
+"$REPO_ROOT/scripts/larch.sh" render specialist \
     --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" \
     --mode diff \
     --diff-mode generic \

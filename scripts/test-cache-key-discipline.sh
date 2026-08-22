@@ -35,7 +35,7 @@ has_nearby_annotation() {
     return 1
   fi
 
-  sed -n "${start},${end}p" "$REPO_ROOT/$file" | grep -qF '# intentionally non-stable:'
+  sed -n "${start},${end}p" "$REPO_ROOT/$file" | grep -qF 'intentionally non-stable:'
 }
 
 line_contains_unstable_pattern() {
@@ -60,7 +60,7 @@ check_unstable_patterns_in_range() {
   while IFS=: read -r line_no text; do
     [[ -n "$line_no" ]] || continue
     if line_contains_unstable_pattern "$text" && ! has_nearby_annotation "$file" "$line_no"; then
-      report_violation "$file" "$line_no" "non-stable prompt content lacks '# intentionally non-stable:' within 3 preceding lines" "$text"
+      report_violation "$file" "$line_no" "non-stable prompt content lacks 'intentionally non-stable:' within 3 preceding lines" "$text"
     fi
   done < <(awk -v start="$start" -v end="$end" 'NR >= start && NR <= end { printf "%d:%s\n", NR, $0 }' "$REPO_ROOT/$file")
 }
@@ -73,7 +73,7 @@ check_unstable_patterns_in_file() {
   while IFS=: read -r line_no text; do
     [[ -n "$line_no" ]] || continue
     if line_contains_unstable_pattern "$text" && ! has_nearby_annotation "$file" "$line_no"; then
-      report_violation "$file" "$line_no" "non-stable prompt content lacks '# intentionally non-stable:' within 3 preceding lines" "$text"
+      report_violation "$file" "$line_no" "non-stable prompt content lacks 'intentionally non-stable:' within 3 preceding lines" "$text"
     fi
   done < <(awk '{ printf "%d:%s\n", NR, $0 }' "$REPO_ROOT/$file")
 }
@@ -94,7 +94,7 @@ check_annotated_literal_lines() {
 }
 
 check_render_specialist_prompt_paths() {
-  local file="python/larch/rendering/rendering.py"
+  local file="crates/larch-cli/src/rendering_commands.rs"
 
   [[ -f "$REPO_ROOT/$file" ]] || {
     report_violation "$file" 1 "renderer source file missing" "$file"
@@ -106,14 +106,14 @@ check_render_specialist_prompt_paths() {
     if ! has_nearby_annotation "$file" "$line_no"; then
       report_violation "$file" "$line_no" "per-session diff path in rendered external prompt lacks annotation" "$text"
     fi
-  done < <(grep -nF -- "args.diff_file" "$REPO_ROOT/$file" || true)
+  done < <(grep -nF -- "Review all code changes" "$REPO_ROOT/$file" || true)
 
   while IFS=: read -r line_no text; do
     [[ "$text" == *'canonical file list'* ]] || continue
     if ! has_nearby_annotation "$file" "$line_no"; then
       report_violation "$file" "$line_no" "per-session scope-file path in rendered external prompt lacks annotation" "$text"
     fi
-  done < <(grep -nF -- "args.scope_files" "$REPO_ROOT/$file" || true)
+  done < <(grep -nF -- "canonical file list" "$REPO_ROOT/$file" || true)
 }
 
 prompt_block_bounds() {
@@ -197,7 +197,7 @@ check_prompt_surfaces
 
 if (( FAIL > 0 )); then
   printf '\n%s cache-key discipline violation(s) found.\n' "$FAIL" >&2
-  printf 'Add a nearby "# intentionally non-stable:" comment only when the dynamic content targets an external tool prompt and cannot be stabilized.\n' >&2
+  printf 'Add a nearby "intentionally non-stable:" comment only when the dynamic content targets an external tool prompt and cannot be stabilized.\n' >&2
   exit 1
 fi
 

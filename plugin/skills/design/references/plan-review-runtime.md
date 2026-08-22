@@ -105,7 +105,7 @@ Use the Code Reviewer archetype from `${CLAUDE_PLUGIN_ROOT}/skills/shared/review
   ```
 - **`{OUTPUT_INSTRUCTION}`** = `"What the concern is"` + `"Suggested revision to the plan"`
 
-Plan-review **reviewer** panels dispatch with `--no-fallback`; missing vendors drop rows instead of cross-vendor or Claude reviewer backfill (see `docs/review-agents.md`). `scripts/larch.sh plan-review voter-dispatch` owns all plan-review voter launches, including the one-Claude floor when both external vendors are absent; do not use a separate Agent-tool vote. Plan-review reviewers do not receive a competition notice; that surface is code-review-only via `python/cli.py render specialist --competition-notice`.
+Plan-review **reviewer** panels dispatch with `--no-fallback`; missing vendors drop rows instead of cross-vendor or Claude reviewer backfill (see `docs/review-agents.md`). `scripts/larch.sh plan-review voter-dispatch` owns all plan-review voter launches, including the one-Claude floor when both external vendors are absent; do not use a separate Agent-tool vote. Plan-review reviewers do not receive a competition notice; that surface is code-review-only via `scripts/larch.sh render specialist --competition-notice`.
 
 ---
 

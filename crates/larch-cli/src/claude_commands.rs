@@ -6,7 +6,7 @@ use crate::external_agent::{
     spawn_error_exit_code,
 };
 use crate::html::{QuoteEscaping, escape_html};
-use crate::python_verb::{plugin_root_directory, run_python_verb};
+use crate::rendering_commands::specialist_result;
 use crate::timing_commands::record_vendor_timing;
 use larch_adapters::{
     NoopProcessObserver, PathIntent, ProcessFileRouting, ProcessStdinRouting, SecureTempFile,
@@ -402,13 +402,6 @@ fn render_specialist(
     args: &ReviewArgs,
     prepared: &PreparedOutput,
 ) -> Result<(String, u64), String> {
-    if plugin_root_directory().is_none() {
-        return Err("render specialist requires a valid CLAUDE_PLUGIN_ROOT".to_owned());
-    }
-    let payload = SecureTempFile::create(&prepared.root, ".larch-render-payload-")
-        .map_err(|error| error.to_string())?;
-    let payload_path = payload.path().to_path_buf();
-    payload.close().map_err(|error| error.to_string())?;
     let mode = if args.mode.is_empty() {
         "diff"
     } else {
@@ -420,8 +413,6 @@ fn render_specialist(
         args.session_env_path.clone()
     };
     let mut command = vec![
-        OsString::from("render"),
-        OsString::from("specialist"),
         OsString::from("--agent-file"),
         OsString::from(&args.agent_file),
         OsString::from("--mode"),
@@ -444,27 +435,10 @@ fn render_specialist(
     command.extend([
         OsString::from("--findings-ledger-file"),
         findings_ledger_path(prepared.paths.output(), &session_env).into_os_string(),
-        OsString::from("--payload-bytes-output"),
-        payload_path.clone().into_os_string(),
     ]);
-    let result = run_python_verb(command, Duration::from_secs(120));
-    let payload_bytes = fs::read_to_string(&payload_path)
-        .ok()
-        .and_then(|value| parse_uint(value.trim()))
-        .unwrap_or(0);
-    remove_external_agent_stale(&prepared.root, &payload_path)?;
-    let output = result?;
-    let stdout = String::from_utf8_lossy(output.stdout()).into_owned();
-    let stderr = String::from_utf8_lossy(output.stderr()).into_owned();
-    if output.status().success() {
-        Ok((stdout, payload_bytes))
-    } else if !stderr.is_empty() {
-        Err(stderr)
-    } else if !stdout.is_empty() {
-        Err(stdout)
-    } else {
-        Err("render specialist failed".to_owned())
-    }
+    specialist_result(&command)
+        .map(|output| (output.prompt, output.payload_bytes))
+        .map_err(|error| error.diagnostic())
 }
 
 fn findings_ledger_path(output: &Path, session_env: &str) -> PathBuf {

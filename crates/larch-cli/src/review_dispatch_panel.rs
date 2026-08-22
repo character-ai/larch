@@ -19,6 +19,7 @@ use crate::{
         write_json_lines_confined as write_manifest,
     },
     python_verb::{plugin_root_directory, run_python_verb},
+    rendering_commands::specialist_result,
     runtime_entrypoint::{run_verified_larch, run_verified_larch_with_timeout},
     scout_commands::filter_manifest_paths,
     waterfall_commands::{append_review_routing_arguments, dispatch_for_review, parse_dispatch_kv},
@@ -660,8 +661,6 @@ fn synthesize_dynamic_rows(
         let body = dynamic_agent_body(archetype);
         write_required(&agent, &body)?;
         let mut render = vec![
-            "render".to_owned(),
-            "specialist".to_owned(),
             "--agent-file".to_owned(),
             agent.display().to_string(),
             "--mode".to_owned(),
@@ -706,17 +705,16 @@ fn synthesize_dynamic_rows(
                 render.extend([flag.to_owned(), path.clone()]);
             }
         }
-        let rendered = run_python(render);
+        let render_arguments = render.into_iter().map(OsString::from).collect::<Vec<_>>();
+        let rendered = specialist_result(&render_arguments);
         let (payload_bytes, prompt_text) = match rendered {
-            Ok(output) if output.status().success() && !output.stdout().is_empty() => (
+            Ok(output) if !output.prompt.is_empty() => (
                 read_payload_bytes(&payload_sidecar)
                     .saturating_add(archetype.rationale.len())
                     .saturating_add(archetype.prompt_body.len()),
-                process_stdout(&output),
+                output.prompt,
             ),
-            Ok(output) if output.status().success() => {
-                (read_payload_bytes(&payload_sidecar), body.clone())
-            }
+            Ok(_output) => (read_payload_bytes(&payload_sidecar), body.clone()),
             _ => (0, body.clone()),
         };
         write_required(&prompt, &prompt_text)?;
