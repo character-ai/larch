@@ -1640,6 +1640,8 @@ mod tests {
         let remote = fixture.workspace_root().join("remote.git");
         assert!(fixture.git(["init", "--quiet", "--bare", remote.to_str().expect("remote")]).expect("init remote").success());
         assert!(fixture.git(["remote", "add", "origin", remote.to_str().expect("remote")]).expect("add remote").success());
+        assert!(fixture.git(["config", "user.name", "Larch Fixture"]).expect("configure user name").success());
+        assert!(fixture.git(["config", "user.email", "fixture@example.invalid"]).expect("configure user email").success());
         assert!(fixture.git(["push", "--quiet", "-u", "origin", "main"]).expect("push main").success());
         assert!(fixture.git(["checkout", "--quiet", "-b", &expected_branch(42)]).expect("leaf branch").success());
         fixture.write("leaf.txt", b"leaf\n").expect("leaf file");
