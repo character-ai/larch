@@ -260,6 +260,24 @@ def test_audit_gap_uses_one_file_and_attach_driver_call() -> None:
     assert "security-sensitive" in step5
 
 
+def test_audit_distinguishes_full_first_pass_from_bounded_repeat_scope() -> None:
+    skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    step4 = skill.split("## Step 4: Audit the complete umbrella inline", 1)[1].split(
+        "## Step 5: File and attach one audit gap", 1
+    )[0]
+
+    assert "**First audit — full breadth.**" in step4
+    assert "**Repeat audit — bounded to the gap round.**" in step4
+    assert (
+        "Verify only (a) each gap leaf landed since the prior audit against its own "
+        "acceptance criteria on current `main`"
+    ) in step4
+    assert "(b) the integration surfaces the prior audit flagged." in step4
+    assert "Do not delegate the audit." in step4
+
+
 def test_top_level_bounds_host_agnostic_production_guard_false_denies() -> None:
     skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
         encoding="utf-8"
