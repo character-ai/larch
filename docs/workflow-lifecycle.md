@@ -188,7 +188,14 @@ without changing GitHub or repository state. The Rust adapter gathers its
 snapshot through typed GitHub, Git, filesystem, and in-process lint owners;
 callers enter through the verified bootstrap.
 
-`/complete-umbrella` launches one durable `run-leaves` bgjob for the current
+`/complete-umbrella` enters Step 0 through one Python-owned bootstrap call. The
+bootstrap composes the Rust lifecycle, repository, resume, session setup,
+parent start, Write-hook sentinel, and model owners through `scripts/larch.sh`,
+then emits one validated KV block while retaining private diagnostic copies in
+the session tmpdir. Each failure names its stage and stops before a dependent
+stage can run.
+
+`/complete-umbrella` then launches one durable `run-leaves` bgjob for the current
 leaf set. Its Rust owner refreshes the graph once per normal iteration, verifies
 the prior child and selects the next leaf from that same snapshot, synchronizes
 clean `main`, and stops on the first bounded failure envelope. A transient

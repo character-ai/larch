@@ -100,6 +100,11 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         "invariants_persist_design_assessment_main",
         True,
     ),
+    ("complete-umbrella", "bootstrap"): (
+        "larch.complete_umbrella",
+        "bootstrap_main",
+        True,
+    ),
     ("plan-review", "write-loop-identity"): ("larch.core.process_identity", "write_loop_identity_main", False),
     ("plan-review", "await-loop-identity"): ("larch.core.process_identity", "await_loop_identity_main", False),
     ("plan-review", "teardown-loop-identity"): ("larch.core.process_identity", "teardown_loop_identity_main", False),

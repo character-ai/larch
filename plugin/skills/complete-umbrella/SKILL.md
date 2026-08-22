@@ -54,93 +54,25 @@ When `REPO`, `UMBRELLA`, and `COMPLETE_UMBRELLA_TMPDIR` are bound, use this poin
 
 ## Step 0: Start lifecycle and parent title
 
-Parse `$ARGUMENTS` as exactly one positive integer, accepting an optional leading `#`. Start the shared lifecycle immediately and bind every required output, including `RUN_ID`, `CONTEXT_FILE`, and `LIFECYCLE_STARTED`.
-
-Resolve the canonical repository root and repository slug through the released shim:
+Parse `$ARGUMENTS` as exactly one positive integer, accepting an optional leading `#`. Consume and validate an optional leading `--lifecycle-parent-context <absolute-context-path>` pair before public parsing, as required by the shared lifecycle contract. Bind the issue as `UMBRELLA`, then run exactly one Bash call for the complete Step 0 bootstrap:
 
 ```bash
-if [[ -z "${CLAUDE_PROJECT_DIR:-}" ]]; then
-  echo "**⚠ /complete-umbrella: CLAUDE_PROJECT_DIR is required. Aborting.**"
-  exit 1
-fi
-REPO_ROOT=$(cd "$CLAUDE_PROJECT_DIR" && pwd -P)
-REPO=$(cd "$REPO_ROOT" && "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" gh resolve-repo)
-# lint-consecutive-bash: ok repository identity must validate before the separate parent title mutation
+LARCH_CLAUDE_PID="${LARCH_CLAUDE_PID:-${CLAUDE_PID:-$PPID}}" \
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" complete-umbrella bootstrap \
+    --issue "$UMBRELLA" \
+    --lifecycle-parent-context "${LIFECYCLE_PARENT_CONTEXT:-}" \
+    --operator-invoked
 ```
 
-Require `REPO` to use exact `OWNER/REPO` syntax. Resolve the durable session owner once, then ask the Rust owner to resume before creating a new tmpdir or calling `start`:
+Do not redirect bootstrap stdout. The Python owner invokes every Rust-owned stage through `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh`, writes the exact consolidated stdout block to `complete-umbrella-bootstrap.env` inside the session tmpdir, and keeps `model.env` as the diagnostic copy of a newly resolved model. Those files are diagnostic or resume state, never a second prompt-side parse surface.
 
-```bash
-COMPLETE_UMBRELLA_OWNER_PID="${LARCH_CLAUDE_PID:-${CLAUDE_PID:-$PPID}}"
-cd "$REPO_ROOT"
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" complete-umbrella resume \
-  --repository "$REPO" \
-  --issue "$UMBRELLA" \
-  --claude-pid "$COMPLETE_UMBRELLA_OWNER_PID" \
-  --operator-invoked
-```
+On exit `0`, require `BOOTSTRAP_OK=true` and every shared lifecycle key, including non-empty `RUN_ID` and `CONTEXT_FILE`, `LIFECYCLE_STARTED=true`, `PREFLIGHT_OK=true`, and one valid enabled or disabled storage pair from the shared lifecycle contract. Require exact `REPO` syntax, `UMBRELLA_STARTED=true`, matching absolute `SESSION_TMPDIR` and `COMPLETE_UMBRELLA_TMPDIR`, a positive `COMPLETE_UMBRELLA_OWNER_PID`, and an absolute `COMPLETE_UMBRELLA_WRITE_SENTINEL`. Retain `COMPLETE_UMBRELLA_POINTER`.
 
-Parse `RESUME_FOUND`. On `true`, require the exact repository-bound pointer fields: an existing absolute `COMPLETE_UMBRELLA_TMPDIR`, `BGJOB_STEP=complete-umbrella-leaves`, a valid `CURRENT_STEP`, numeric `CURRENT_LEAF` and `TRANSIENT_ATTEMPT_COUNT`, and `RESUME_ACTION=wait|reselect|needs-design|failed`. Retain `COMPLETE_UMBRELLA_POINTER`. The helper rekeys the pointer to this session. It refreshes the wait lease before returning `wait`. It resets a stale active leaf through the typed mutation owner before returning `reselect`. Missing tmpdirs, malformed state, repository mismatch, and multiple candidates fail closed.
+The bootstrap calls `resume` before session setup or `start`. On `RESUME_FOUND=true`, require `BGJOB_STEP=complete-umbrella-leaves`, a valid `CURRENT_STEP`, numeric `CURRENT_LEAF` and `TRANSIENT_ATTEMPT_COUNT`, and `RESUME_ACTION=wait|reselect|needs-design|failed`. The Rust resume owner still rekeys the pointer, refreshes a live wait lease, and resets only a stale active leaf before reselection. On `RESUME_FOUND=false`, require `RESUME_ACTION=reselect`; the bootstrap has created the session, published the pointer, validated the runnable graph, and completed the parent title mutation through the existing Rust `start` owner.
 
-On `RESUME_FOUND=false`, create `COMPLETE_UMBRELLA_TMPDIR` with:
+For `RESUME_ACTION=wait|reselect`, require one non-empty, whitespace-free `CLAUDE_MODEL` other than `unknown`. Existing persisted model state outranks the current harness default. For `needs-design|failed`, require an empty `CLAUDE_MODEL` plus valid `NEXT_ACTION`, `FAILED_STEP`, `FAILED_LEAF`, and `FAILURE_REASON`, then follow the non-orphan failure rule in Step 1 without entering a bgjob wait.
 
-```bash
-SETUP_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" session setup \
-  --prefix claude-complete-umbrella \
-  --skip-preflight \
-  --skip-branch-check \
-  --skip-repo-check)
-# lint-consecutive-bash: ok session setup output must validate before the separate hook activation
-```
-
-Parse and require its `SESSION_TMPDIR` as `COMPLETE_UMBRELLA_TMPDIR`.
-
-Immediately start the new run after setup:
-
-```bash
-cd "$REPO_ROOT"
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" complete-umbrella start \
-  --repository "$REPO" \
-  --issue "$UMBRELLA" \
-  --tmpdir "$COMPLETE_UMBRELLA_TMPDIR" \
-  --claude-pid "$COMPLETE_UMBRELLA_OWNER_PID" \
-  --operator-invoked
-```
-
-Require `UMBRELLA_STARTED=true`, the exact umbrella number and tmpdir, and an absolute `COMPLETE_UMBRELLA_POINTER`. Treat a new run as `RESUME_ACTION=reselect`. `start` writes the pointer before its remote mutation, reads the leaf graph, and refuses an unrunnable umbrella before the title mutation. An open non-leaf parent blocker or a fully deadlocked leaf graph fails closed with the plain `[UMBRELLA]` title intact. A crash between pointer publication and title mutation is resumable because `resume` reruns the same idempotent start owner.
-
-For either path, activate the Write hook before the first `Write` call:
-
-```bash
-if [[ -z "${XDG_CACHE_HOME:-}" && -z "${HOME:-}" ]]; then
-  echo "**⚠ /complete-umbrella: failed to activate Write hook. Aborting.**"
-  exit 1
-fi
-COMPLETE_UMBRELLA_DENY_ACTIVE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/larch/deny-edit-write-active"
-COMPLETE_UMBRELLA_WRITE_SENTINEL="$COMPLETE_UMBRELLA_DENY_ACTIVE_DIR/complete-umbrella-$PPID"
-if ! mkdir -p "$COMPLETE_UMBRELLA_DENY_ACTIVE_DIR" || ! : > "$COMPLETE_UMBRELLA_WRITE_SENTINEL"; then
-  echo "**⚠ /complete-umbrella: failed to activate Write hook. Aborting.**"
-  exit 1
-fi
-printf 'COMPLETE_UMBRELLA_WRITE_SENTINEL=%s\n' "$COMPLETE_UMBRELLA_WRITE_SENTINEL"
-```
-
-Parse and retain the absolute sentinel path. Route either non-zero result through the failure rule; do not clean the diagnostic tmpdir. Write scratch artifacts only below `COMPLETE_UMBRELLA_TMPDIR`.
-
-If `RESUME_ACTION=needs-design` or `failed`, do not resolve a model or enter a bgjob wait. Validate the emitted `NEXT_ACTION`, `FAILED_STEP`, `FAILED_LEAF`, and `FAILURE_REASON`, then follow the non-orphan failure rule in Step 1.
-
-For `wait` or `reselect`, resolve the current harness model only when the recovered tmpdir does not already contain the pinned model:
-
-```bash
-if [[ ! -f "$COMPLETE_UMBRELLA_TMPDIR/model.env" ]]; then
-  "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent read-claude-model \
-    >"$COMPLETE_UMBRELLA_TMPDIR/model.env"
-fi
-CLAUDE_MODEL=$("${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" kv get \
-  --file "$COMPLETE_UMBRELLA_TMPDIR/model.env" --key CLAUDE_MODEL)
-```
-
-Require one non-empty, whitespace-free model token other than `unknown`. Existing persisted state outranks the current harness default. The same pinned value is used for every leaf in this run.
+On non-zero exit, require `BOOTSTRAP_OK=false`, a non-empty `BOOTSTRAP_STAGE`, and a bounded single-line `BOOTSTRAP_ERROR`. If the partial envelope says `LIFECYCLE_STARTED=true`, route through the Failure rule using every available returned identity. The bootstrap returns every identity it validated and leaves any already-created pointer or session state in place for resume. If lifecycle start itself failed, report the named stage and stop without claiming lifecycle terminalization. Write scratch artifacts only below `COMPLETE_UMBRELLA_TMPDIR`.
 
 ## Step 1: Run and verify every current leaf
 

@@ -49,6 +49,10 @@ Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. Th
   `run-log refresh`, `tracking-issue`, `execution-issues`, `final-report write`,
   `progress`, and ship result-env commands. It keeps established Python result
   and error contracts without staging an artifact.
+- `larch/complete_umbrella.py` owns the one-call `/complete-umbrella` Step 0
+  composition. It validates and combines Rust lifecycle, repository, resume,
+  session, parent-start, Write-hook, and model envelopes while keeping every
+  Rust command behind `scripts/larch.sh`.
 - `larch/report/object_store.py` remains a compatibility/test provider adapter;
   it has no production run-log command caller.
 - `tests/`: unit tests mirror package layout under `python/tests/`.
