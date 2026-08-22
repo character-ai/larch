@@ -1626,34 +1626,6 @@ def issue_comments_list_read(
     )
 
 
-def issue_blocked_by_read(
-    runner: Runner,
-    issue: str,
-    *,
-    repo: str,
-    cwd: str | None = None,
-) -> CommandResult:
-    return _retry_read(
-        runner,
-        ["api", f"repos/{repo}/issues/{issue}/dependencies/blocked_by", "--paginate"],
-        cwd=cwd,
-    )
-
-
-def issue_blocking_read(
-    runner: Runner,
-    issue: str,
-    *,
-    repo: str,
-    cwd: str | None = None,
-) -> CommandResult:
-    return _retry_read(
-        runner,
-        ["api", f"repos/{repo}/issues/{issue}/dependencies/blocking", "--paginate"],
-        cwd=cwd,
-    )
-
-
 def issue_list_read(
     runner: Runner,
     *,

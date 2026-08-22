@@ -10,7 +10,7 @@
 //! Policy stays with its existing owners. `agent launch-*-implement` owns the
 //! launcher, `implement scope-disposition` owns plan coverage, `oos
 //! materialize-manifest` owns OOS materialization, `difficulty write-record`
-//! owns the difficulty ledger, and the still-Python `issue governance-gate`
+//! owns the difficulty ledger, and the Rust `issue governance-gate`
 //! owns migration governance. This module sequences them and owns only the
 //! manifest schema routing that the Step 2 contract itself defines.
 
@@ -49,8 +49,8 @@ use crate::{
     implement_child_seam::resolve_plugin_root,
     implement_commands::{kv_value, read_kv_first, write_atomic},
     implement_dispatch_commands::{
-        capture_postlaunch_porcelain, capture_prelaunch_porcelain, delegate_python,
-        delegate_verified_larch, rehydrate_session, run_verified_larch_env_in,
+        capture_postlaunch_porcelain, capture_prelaunch_porcelain, delegate_verified_larch,
+        rehydrate_session, run_verified_larch_env_in,
     },
     implement_launcher_commands::{CODEX_IMPLEMENT_MODEL, cursor_implement_model},
     implement_preflight_commands::governance_gate_argv,

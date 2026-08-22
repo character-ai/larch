@@ -125,7 +125,7 @@ Preflight after an independent bounded semantic-materiality check. Malformed
 receipts, stale plan bodies, snapshots, and unavailable base-scope evidence
 remain fail-closed.
 
-`python/cli.py plan-receipt refresh` accepts only the exact Preflight plan,
+`scripts/larch.sh plan-receipt refresh` accepts only the exact Preflight plan,
 prior receipt base, and current target SHA. It rejects a moving base or any
 changed plan, receipt, blocker, or owner input before mutation. A successful
 read-back replaces Preflight's issue snapshot and produces one bounded,
@@ -175,11 +175,12 @@ blocker parity, receipt freshness, owner admission, and gate formatting. Its
 callers supply immutable issue, dependency, pull-request, and tree snapshots;
 the core has no Git, GitHub, network, filesystem, process, or mutation owner.
 
-The Rust `issue migration-audit` adapter owns its atomic command cutover and
-evidence collection. It does not claim ownership of `issue governance-gate`,
-whose retained Python governance-gate boundary belongs to #7681. Command
-adapters validate data at transport boundaries before passing immutable
-snapshots to the core.
+The Rust `issue migration-audit` adapter owns aggregate evidence collection.
+The Rust `issue governance-gate` and `plan-receipt refresh` adapter owns the
+issue #8799 workflow cutover, bounded live evidence reads, and the refresh
+mutation.
+Command adapters validate data at transport boundaries before passing
+immutable snapshots to the core.
 
 `larch-core::migration_audit` is the report-only companion core. It accepts
 already-collected issue, dependency, plan, lease, registry, and repository-rule

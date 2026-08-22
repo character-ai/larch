@@ -249,6 +249,17 @@ pub fn ambient_repo_resolution() -> RepoResolution {
     resolve_repo_detailed(repository.as_ref(), query_github_repository)
 }
 
+/// Resolve `OWNER/REPO` for an explicitly selected repository.
+///
+/// This preserves the service-first precedence of [`ambient_repo`] while
+/// keeping repository discovery bound to the caller's trusted root.
+#[must_use]
+pub fn repository_repo(repository: &GixRepository) -> Option<String> {
+    resolve_repo_detailed(Some(repository), query_github_repository)
+        .repo()
+        .map(str::to_owned)
+}
+
 /// Resolve one configured remote of the current checkout to its `OWNER/REPO`.
 ///
 /// Returns `None` when the checkout has no such remote or its URL does not name

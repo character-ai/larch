@@ -201,6 +201,19 @@ tail
     assert stripped.endswith("tail\n")
 
 
+def test_strip_plan_receipt_lines_preserves_fenced_examples() -> None:
+    receipt = (
+        "<!-- larch:plan-receipt v1 "
+        f"plan_sha256={'a' * 64} base_sha={'b' * 40} "
+        f"blockers_sha256={'c' * 64} owners_sha256={'d' * 64} -->"
+    )
+    body = f"```text\n{receipt}\n```\n{receipt}\ntail\n"
+
+    assert issue_blocks.strip_plan_receipt_lines(body=body) == (
+        f"```text\n{receipt}\n```\ntail\n"
+    )
+
+
 def test_replace_named_block_preserves_markers_and_unrelated_body() -> None:
     body = """intro
 <!-- larch:design-pause:start -->

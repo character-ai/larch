@@ -23,6 +23,7 @@ pub const REASON_CLOSED_RETAINED: &str = "closed-blocker-edge-retained";
 pub const REASON_BLOCKER_READ_UNAVAILABLE: &str = "blocker-read-unavailable";
 pub const REASON_STALE_PLAN_BODY: &str = "stale-plan-body";
 pub const REASON_STALE_PLAN_BASE_SCOPE: &str = "stale-plan-base-scope";
+pub const REASON_PLAN_BASE_SCOPE_UNAVAILABLE: &str = "plan-base-scope-unavailable";
 pub const REASON_STALE_BLOCKER_SNAPSHOT: &str = "stale-blocker-snapshot";
 pub const REASON_STALE_OWNER_SNAPSHOT: &str = "stale-owner-snapshot";
 pub const REASON_MISSING_OWNER_BLOCK: &str = "missing-owner-block";

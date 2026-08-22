@@ -34,7 +34,6 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::ExitCode,
-    time::Duration,
 };
 
 const CONTRACT_FAILURE: u8 = 2;
@@ -1261,12 +1260,10 @@ fn governance_gate(
     repo_root: &Path,
     head_sha: &str,
 ) -> bool {
-    let Ok(output) = crate::python_verb::run_python_verb(
-        crate::implement_preflight_commands::governance_gate_argv(
-            issue, repository, body_file, repo_root, head_sha,
-        ),
-        Duration::from_secs(120),
-    ) else {
+    let arguments = crate::implement_preflight_commands::governance_gate_argv(
+        issue, repository, body_file, repo_root, head_sha,
+    );
+    let Ok(output) = run_verified_larch(&arguments) else {
         return false;
     };
     output.status().success()

@@ -74,6 +74,7 @@ crates/larch-cli/src/implement_step2_post_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/launcher_support.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/learn_from_bugs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/migration_audit_commands.rs	git-cli	#7671	typed-cli,typed-read
+crates/larch-cli/src/migration_governance_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/main.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/pr_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/push_network.rs	git-cli	#7671	typed-cli,typed-read

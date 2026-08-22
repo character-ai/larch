@@ -9,6 +9,11 @@ from dataclasses import dataclass
 from larch.design import plan_grammar
 
 
+_PLAN_RECEIPT_RE = re.compile(
+    r"^[ \t]*<!--[ \t]+larch:plan-receipt[ \t]+v1[ \t]+plan_sha256=([0-9a-f]{64})[ \t]+base_sha=([0-9a-f]{40})[ \t]+blockers_sha256=([0-9a-f]{64})[ \t]+owners_sha256=([0-9a-f]{64})[ \t]+-->[ \t]*$"
+)
+
+
 def named_block_marker_re(*, marker: str, kind: str) -> re.Pattern[str]:
     r"""Compile a case-sensitive, line-anchored named-block marker pattern."""
     return re.compile(
@@ -100,3 +105,16 @@ def replace_named_block(*, body: str, marker: str, inner: str) -> tuple[str, str
         suffix = "\r\n" if marker_line.endswith("\r\n") else "\n"
         inner_lines[-1] += suffix
     return "".join([*lines[: span.start + 1], *inner_lines, *lines[span.end :]]), ""
+
+
+def strip_plan_receipt_lines(*, body: str) -> str:
+    """Remove every unfenced plan-receipt line for named-block comparison."""
+    lines = body.splitlines(keepends=True)
+    fenced = plan_grammar.balanced_fence_line_indices(
+        [line.rstrip("\r\n") for line in lines]
+    )
+    return "".join(
+        line
+        for index, line in enumerate(lines)
+        if index in fenced or _PLAN_RECEIPT_RE.match(line.rstrip("\r\n")) is None
+    )

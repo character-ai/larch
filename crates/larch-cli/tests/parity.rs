@@ -1403,6 +1403,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "issue",
         "migration-audit",
     ),
+    CleanInstallCase::new(
+        "clean-install-issue-governance-gate",
+        "issue",
+        "governance-gate",
+    ),
+    CleanInstallCase::new(
+        "clean-install-plan-receipt-refresh",
+        "plan-receipt",
+        "refresh",
+    ),
     CleanInstallCase::new("clean-install-issue-parse-input", "issue", "parse-input"),
     CleanInstallCase::new("clean-install-issue-state", "issue", "state"),
     CleanInstallCase::new(
@@ -10112,6 +10122,12 @@ if [ -n "$bootstrap_session" ]; then
         else
           printf '%s\n' 'STATE=OPEN' 'IS_PR=false'
         fi
+        exit 0
+      fi
+      ;;
+    issue:governance-gate)
+      if [ "$bootstrap_tracking" = true ]; then
+        printf '%s\n' 'GOVERNANCE_OK=true'
         exit 0
       fi
       ;;

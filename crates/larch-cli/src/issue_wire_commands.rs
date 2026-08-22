@@ -759,17 +759,34 @@ fn named_block_mutation(
     snapshot: &IssueMutationSnapshot,
     body: String,
 ) -> IssueMutationRequest {
+    named_block_mutation_request(
+        &request.repository,
+        request.issue,
+        snapshot,
+        &request.marker,
+        body,
+    )
+}
+
+/// Build the shared protected named-block mutation and ambient lease.
+pub fn named_block_mutation_request(
+    repository: &GitHubRepositoryRef,
+    issue: u64,
+    snapshot: &IssueMutationSnapshot,
+    marker: &str,
+    body: String,
+) -> IssueMutationRequest {
     IssueMutationRequest {
-        repository: request.repository.clone(),
-        issue: request.issue,
+        repository: repository.clone(),
+        issue,
         expected_updated_at: snapshot.updated_at.clone(),
         expected_state: snapshot.state,
         fields: BTreeSet::from([IssueMutationField::NamedBlock]),
         title: None,
         body: Some(body),
         labels: None,
-        marker: Some(request.marker.clone()),
-        lease: named_block_lease(&request.marker),
+        marker: Some(marker.to_owned()),
+        lease: named_block_lease(marker),
     }
 }
 

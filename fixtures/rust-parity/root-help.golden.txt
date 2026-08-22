@@ -42,6 +42,7 @@ Commands:
   ship                      Ship pre-driver routing, state, result, and rebase-repair commands
   issue                     GitHub issue reads and issue-body wire helpers
   plan-block                The `larch:plan` issue-body block carrying the `/design` handoff
+  plan-receipt              Refresh the durable plan-receipt identity
   status                    Inspect the installed larch and external tool health
   named-block               One named `larch:<marker>` issue-body block
   plan                      Implementation-plan readers

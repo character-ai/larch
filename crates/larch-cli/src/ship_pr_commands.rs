@@ -1194,17 +1194,15 @@ fn governance_gate(context: &ShipPrContext, repo_root: &Path) -> Result<(), Driv
         .resolve_revision(&Revision::new(base_label.as_bytes()))
         .map_err(|_| DriverFailure::Result(stalled("migration governance base is unavailable")))?
         .to_hex();
-    let output = delegate_python(
-        crate::implement_preflight_commands::governance_gate_argv(
-            &context.issue.to_string(),
-            &context.repo,
-            &body_file,
-            repo_root,
-            &base_sha,
-        ),
-        Duration::from_secs(180),
-    )
-    .map_err(|error| DriverFailure::Result(stalled(error)))?;
+    let arguments = crate::implement_preflight_commands::governance_gate_argv(
+        &context.issue.to_string(),
+        &context.repo,
+        &body_file,
+        repo_root,
+        &base_sha,
+    );
+    let output = delegate_larch_with_options(&arguments, &[], Duration::from_secs(180))
+        .map_err(|error| DriverFailure::Result(stalled(error)))?;
     let fields = output_fields(output.stdout())?;
     if output.status().success() && fields.get("GOVERNANCE_OK").map(String::as_str) == Some("true")
     {
