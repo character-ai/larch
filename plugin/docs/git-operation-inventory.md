@@ -8,6 +8,12 @@ Git arguments. `later-domain` rows remain Python-owned until the named Rust
 migration issue atomically switches their command consumers and removes the
 Python implementation.
 
+Issue #8629 reuses the closed `ExactDiffRequest` and `PushRequest` families for
+the standalone leaf driver's fixed `--numstat -z -M50%` measurement and remote
+branch cleanup. `GitRefspec::deletion` constructs only the validated
+empty-source deletion form; these typed options admit no arbitrary arguments
+and add no Git request family.
+
 The rule `git-ownership` compares this block with live production Rust, Python,
 skill, agent, hook, script, Makefile, and workflow surfaces. It also rejects
 direct installed-Git construction through aliases, qualified constructors, or
@@ -42,6 +48,7 @@ crates/larch-cli/src/ci_failure_commands.rs	git-cli	#7671	typed-cli
 crates/larch-cli/src/ci_monitor_commands.rs	git-cli	#7671	typed-cli
 crates/larch-cli/src/ci_selection.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/complete_umbrella_commands.rs	git-cli	#7671	typed-cli,typed-read
+crates/larch-cli/src/complete_umbrella_ship_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/design_log_publish_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/design_publish_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/design_pause_commands.rs	gix-read	#7671	typed-read

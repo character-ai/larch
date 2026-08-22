@@ -389,6 +389,7 @@ mod tests {
                 cached: true,
                 binary: false,
                 no_ext_diff: false,
+                numstat_z_rename_50: false,
                 unified_context: None,
                 name_only: true,
                 name_status: false,
@@ -413,6 +414,7 @@ mod tests {
                 cached: true,
                 binary: true,
                 no_ext_diff: true,
+                numstat_z_rename_50: false,
                 unified_context: None,
                 name_only: false,
                 name_status: false,
@@ -702,6 +704,7 @@ mod tests {
                 cached: false,
                 binary: false,
                 no_ext_diff: false,
+                numstat_z_rename_50: false,
                 unified_context: None,
                 name_only: true,
                 name_status: true,
@@ -822,6 +825,7 @@ mod tests {
                 cached: false,
                 binary: false,
                 no_ext_diff: false,
+                numstat_z_rename_50: false,
                 unified_context: None,
                 name_only: false,
                 name_status: true,
@@ -1223,6 +1227,15 @@ mod tests {
                 "origin",
                 "HEAD:main",
             ],
+        );
+        assert_argv(
+            &PushRequest {
+                remote: GitRemote::new("origin").unwrap(),
+                refspec: GitRefspec::deletion(&GitRef::new("refs/heads/topic").unwrap()),
+                force_with_lease: None,
+                set_upstream: false,
+            },
+            &["push", "origin", ":refs/heads/topic"],
         );
     }
 

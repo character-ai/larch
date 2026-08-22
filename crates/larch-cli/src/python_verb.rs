@@ -17,7 +17,7 @@ use larch_core::{
     ChildEnvironment, ExternalProgram, ProcessOutput, PythonVerbProgram, is_valid_plugin_root_value,
 };
 
-use crate::child_process::{bounded_request, run_bounded};
+use crate::child_process::{bounded_request, bounded_request_in, run_bounded};
 
 /// Bounded capture for a delegated verb's standard streams.
 const VERB_OUTPUT_LIMIT: usize = 256 * 1024;
@@ -58,16 +58,48 @@ pub fn run_python_verb(
     arguments: impl IntoIterator<Item = OsString>,
     timeout: Duration,
 ) -> Result<ProcessOutput, String> {
+    run_python_verb_at(arguments, None, timeout)
+}
+
+/// Run one still-Python sibling from a caller-validated repository directory.
+///
+/// # Errors
+/// Returns the same resolution, request, and process errors as
+/// [`run_python_verb`].
+pub fn run_python_verb_in(
+    arguments: impl IntoIterator<Item = OsString>,
+    working_directory: &Path,
+    timeout: Duration,
+) -> Result<ProcessOutput, String> {
+    run_python_verb_at(arguments, Some(working_directory), timeout)
+}
+
+fn run_python_verb_at(
+    arguments: impl IntoIterator<Item = OsString>,
+    working_directory: Option<&Path>,
+    timeout: Duration,
+) -> Result<ProcessOutput, String> {
     let root =
         plugin_root_directory().ok_or_else(|| "cannot resolve the plugin root".to_owned())?;
     let program = PythonVerbProgram::new(&root).map_err(|error| error.to_string())?;
-    let mut request = bounded_request(
-        ExternalProgram::PythonVerb(program),
-        arguments,
-        timeout,
-        VERB_SHUTDOWN_GRACE,
-        VERB_OUTPUT_LIMIT,
-    )?;
+    let arguments = arguments.into_iter().collect::<Vec<_>>();
+    let mut request = match working_directory {
+        Some(directory) => bounded_request_in(
+            ExternalProgram::PythonVerb(program),
+            arguments,
+            directory,
+            timeout,
+            VERB_SHUTDOWN_GRACE,
+            VERB_OUTPUT_LIMIT,
+        ),
+        None => bounded_request(
+            ExternalProgram::PythonVerb(program),
+            arguments,
+            timeout,
+            VERB_SHUTDOWN_GRACE,
+            VERB_OUTPUT_LIMIT,
+        ),
+    }?;
     // Legacy report verbs may invoke the operator-authenticated `gh` CLI.
     // Preserve only its non-secret configuration selectors; credential
     // environment variables remain excluded by the shared process policy.

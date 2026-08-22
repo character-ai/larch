@@ -68,7 +68,7 @@ published by a prior full `/design` run.
 8. Run the standalone driver in prepare mode:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" complete-umbrella ship-leaf \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" complete-umbrella ship-leaf \
   --mode prepare \
   --repository "<REPOSITORY>" \
   --repo-root "$PWD" \

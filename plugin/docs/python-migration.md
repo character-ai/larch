@@ -245,6 +245,24 @@ manifest, and atomically clears only `OOS_PENDING` after success.
 `dispatch_ship_seed.py` remains for Step 2 seed-context helpers. No Python
 fallback or dual owner remains for the four migrated commands.
 
+### Complete-umbrella leaf shipping cutover
+
+Issue #8629 moved `complete-umbrella ship-leaf` to
+`crates/larch-cli/src/complete_umbrella_ship_commands.rs`. The Rust owner keeps
+the standalone private state file, exact machine-readable envelope, bounded
+repair and reconcile counters, five-minute CI interval, merge-queue and admin
+paths, 24-hour queue window, transient Git retry schedule, and verified
+post-merge cleanup. Repository reads use gix; fixed-shape Git operations and
+hardened GitHub adapters own external effects. Nested CI and merge commands run
+from the validated repository root. The driver continues to compose the
+separately owned `merge pr` and `merge wait` Python commands through the
+reviewed process seam and does not fabricate an `IMPLEMENT_TMPDIR` session.
+
+All production callers now enter through `scripts/larch.sh`. The Python CLI
+registration, implementation module, exclusive tests, and shard assignments
+were removed in the same cutover. Clean-install and black-box Rust tests cover
+the production executable boundary, so no fallback or dual owner remains.
+
 ### Ship PR lifecycle cutover
 
 Issue #8626 added the fresh-path parity implementation. Issue #8628 completed

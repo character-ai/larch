@@ -135,6 +135,7 @@ fn binary_diff(root: &Path, cached: bool) -> Result<Vec<u8>, ChecksIdentityError
                 cached,
                 binary: true,
                 no_ext_diff: true,
+                numstat_z_rename_50: false,
                 unified_context: None,
                 name_only: false,
                 name_status: false,

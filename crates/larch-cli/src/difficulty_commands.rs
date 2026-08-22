@@ -854,6 +854,7 @@ fn git_changed_paths(repo_root: &Path) -> Result<Vec<String>, String> {
                 cached: false,
                 binary: false,
                 no_ext_diff: false,
+                numstat_z_rename_50: false,
                 unified_context: None,
                 name_only: true,
                 name_status: false,

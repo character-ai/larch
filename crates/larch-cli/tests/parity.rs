@@ -862,6 +862,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "combine-issues",
         "prose-audit",
     ),
+    CleanInstallCase::new(
+        "clean-install-complete-umbrella-ship-leaf",
+        "complete-umbrella",
+        "ship-leaf",
+    ),
     CleanInstallCase::new("clean-install-debate-abort", "debate", "abort"),
     CleanInstallCase::new("clean-install-debate-adjudicate", "debate", "adjudicate"),
     CleanInstallCase::new(

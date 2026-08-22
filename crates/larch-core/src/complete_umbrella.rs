@@ -146,6 +146,127 @@ pub fn umbrella_leaf_prefix(umbrella: u64) -> String {
     format!("[LEAF OF {umbrella}] ")
 }
 
+/// Return the exact active title for an idle, designed, or active managed leaf.
+///
+/// # Errors
+/// Rejects every title outside the named umbrella's managed leaf lifecycle.
+pub fn complete_umbrella_active_leaf_title(
+    title: &str,
+    umbrella: u64,
+) -> Result<String, &'static str> {
+    let leaf = umbrella_leaf_prefix(umbrella);
+    let active = format!("{IMPLEMENTING_PREFIX}{leaf}");
+    let designed = format!("{DESIGNED_PREFIX}{leaf}");
+    if has_title_payload(title, &active) {
+        return Ok(title.to_owned());
+    }
+    if has_title_payload(title, &leaf) {
+        return Ok(format!("{IMPLEMENTING_PREFIX}{title}"));
+    }
+    title
+        .strip_prefix(&designed)
+        .filter(|payload| !payload.trim().is_empty())
+        .map(|payload| format!("{active}{payload}"))
+        .ok_or("leaf title does not have the exact managed leaf prefix")
+}
+
+/// Return the exact completed title for an active or completed managed leaf.
+///
+/// # Errors
+/// Rejects every title outside the named umbrella's terminal transition.
+pub fn complete_umbrella_done_leaf_title(
+    title: &str,
+    umbrella: u64,
+) -> Result<String, &'static str> {
+    let leaf = umbrella_leaf_prefix(umbrella);
+    let active = format!("{IMPLEMENTING_PREFIX}{leaf}");
+    let done = format!("{DONE_PREFIX}{leaf}");
+    if has_title_payload(title, &done) {
+        return Ok(title.to_owned());
+    }
+    title
+        .strip_prefix(&active)
+        .filter(|payload| !payload.trim().is_empty())
+        .map(|payload| format!("{done}{payload}"))
+        .ok_or("leaf title is not in the active managed lifecycle")
+}
+
+/// One decoded `git diff --numstat -z -M50%` row.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompleteUmbrellaNumstatRow {
+    pub added: Option<u64>,
+    pub deleted: Option<u64>,
+    pub old_path: Option<String>,
+    pub new_path: String,
+}
+
+/// Parse the fixed NUL-delimited numstat grammar, including rename rows.
+///
+/// # Errors
+/// Rejects unterminated, non-UTF-8, malformed, or non-numeric output.
+pub fn parse_complete_umbrella_numstat(
+    output: &[u8],
+) -> Result<Vec<CompleteUmbrellaNumstatRow>, &'static str> {
+    if output.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !output.ends_with(&[0]) {
+        return Err("Rust line budget numstat output is not NUL terminated");
+    }
+    let mut fields = output[..output.len() - 1].split(|byte| *byte == 0);
+    let mut rows = Vec::new();
+    while let Some(header) = fields.next() {
+        let mut parts = header.splitn(3, |byte| *byte == b'\t');
+        let (Some(added), Some(deleted), Some(path)) = (parts.next(), parts.next(), parts.next())
+        else {
+            return Err("Rust line budget numstat output is malformed");
+        };
+        let added = parse_numstat_count(added)?;
+        let deleted = parse_numstat_count(deleted)?;
+        let (old_path, new_path) = if path.is_empty() {
+            let old = fields
+                .next()
+                .ok_or("Rust line budget rename numstat output is truncated")?;
+            let new = fields
+                .next()
+                .ok_or("Rust line budget rename numstat output is truncated")?;
+            (Some(parse_numstat_path(old)?), parse_numstat_path(new)?)
+        } else {
+            (None, parse_numstat_path(path)?)
+        };
+        rows.push(CompleteUmbrellaNumstatRow {
+            added,
+            deleted,
+            old_path,
+            new_path,
+        });
+    }
+    Ok(rows)
+}
+
+fn parse_numstat_count(value: &[u8]) -> Result<Option<u64>, &'static str> {
+    if value == b"-" {
+        return Ok(None);
+    }
+    if value.is_empty() || !value.iter().all(u8::is_ascii_digit) {
+        return Err("Rust line budget numstat output has an invalid count");
+    }
+    std::str::from_utf8(value)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .map(Some)
+        .ok_or("Rust line budget numstat output has an invalid count")
+}
+
+fn parse_numstat_path(value: &[u8]) -> Result<String, &'static str> {
+    if value.is_empty() {
+        return Err("Rust line budget rename numstat output is malformed");
+    }
+    std::str::from_utf8(value)
+        .map(str::to_owned)
+        .map_err(|_| "Rust line budget path is not UTF-8")
+}
+
 /// Return the idle `[LEAF OF N]` title for an active or already-idle managed leaf.
 ///
 /// # Errors
@@ -489,6 +610,56 @@ mod tests {
             assert!(complete_umbrella_start_title(title).is_err());
         }
         assert!(complete_umbrella_done_title("[UMBRELLA] Not active").is_err());
+    }
+
+    #[test]
+    fn leaf_ship_titles_change_only_the_managed_prefix() {
+        let idle = "[LEAF OF 5] Task";
+        let designed = "[DESIGNED] [LEAF OF 5] Task";
+        let active = "[IMPLEMENTING] [LEAF OF 5] Task";
+        let done = "[DONE] [LEAF OF 5] Task";
+        assert_eq!(
+            complete_umbrella_active_leaf_title(idle, 5),
+            Ok(active.to_owned())
+        );
+        assert_eq!(
+            complete_umbrella_active_leaf_title(designed, 5),
+            Ok(active.to_owned())
+        );
+        assert_eq!(
+            complete_umbrella_active_leaf_title(active, 5),
+            Ok(active.to_owned())
+        );
+        assert_eq!(
+            complete_umbrella_done_leaf_title(active, 5),
+            Ok(done.to_owned())
+        );
+        assert_eq!(
+            complete_umbrella_done_leaf_title(done, 5),
+            Ok(done.to_owned())
+        );
+        for invalid in ["ordinary", "[LEAF OF 6] Task", "[DONE] [LEAF OF 5] "] {
+            assert!(complete_umbrella_active_leaf_title(invalid, 5).is_err());
+        }
+    }
+
+    #[test]
+    fn numstat_parser_preserves_fixed_rename_rows() {
+        let rows = parse_complete_umbrella_numstat(
+            b"4\t1\tsrc/lib.rs\0"
+                .iter()
+                .chain(b"2\t0\t\0old.rs\0new.rs\0")
+                .copied()
+                .collect::<Vec<_>>()
+                .as_slice(),
+        )
+        .expect("numstat");
+        assert_eq!(rows[0].added, Some(4));
+        assert_eq!(rows[0].new_path, "src/lib.rs");
+        assert_eq!(rows[1].old_path.as_deref(), Some("old.rs"));
+        assert_eq!(rows[1].new_path, "new.rs");
+        assert!(parse_complete_umbrella_numstat(b"1\t0\tsrc/lib.rs").is_err());
+        assert!(parse_complete_umbrella_numstat(b"x\t0\tsrc/lib.rs\0").is_err());
     }
 
     #[test]

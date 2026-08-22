@@ -83,6 +83,8 @@ pub struct ExactDiffRequest {
     pub binary: bool,
     /// Emit `--no-ext-diff` so a configured external differ cannot alter bytes.
     pub no_ext_diff: bool,
+    /// Emit the fixed `--numstat -z -M50%` machine-readable format.
+    pub numstat_z_rename_50: bool,
     /// Fixed unified-context width for callers that need patch text.
     pub unified_context: Option<u16>,
     pub name_only: bool,
@@ -110,6 +112,9 @@ impl ExactDiffRequest {
         }
         if self.no_ext_diff {
             a.push("--no-ext-diff".into());
+        }
+        if self.numstat_z_rename_50 {
+            a.extend(["--numstat".into(), "-z".into(), "-M50%".into()]);
         }
         if let Some(context) = self.unified_context {
             a.push(format!("-U{context}").into());
@@ -1067,3 +1072,32 @@ impl SubmoduleRequest {
     }
 }
 git_op!(SubmoduleRequest, SubmoduleUpdate);
+
+#[cfg(test)]
+mod tests {
+    use super::{ExactDiffRequest, GitOperation as _};
+    use crate::git::GitRef;
+
+    #[test]
+    fn numstat_diff_pins_nul_and_rename_semantics() {
+        let request = ExactDiffRequest {
+            cached: false,
+            binary: false,
+            no_ext_diff: true,
+            numstat_z_rename_50: true,
+            unified_context: None,
+            name_only: false,
+            name_status: false,
+            quiet: false,
+            exit_code: false,
+            base: Some(GitRef::new("base").expect("base")),
+            head: Some(GitRef::new("head").expect("head")),
+            paths: Vec::new(),
+        };
+        assert_eq!(
+            request.arguments().expect("argv"),
+            ["--no-ext-diff", "--numstat", "-z", "-M50%", "base", "head"]
+                .map(std::ffi::OsString::from)
+        );
+    }
+}

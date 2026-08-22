@@ -13,7 +13,7 @@ Read `$SESSION_TMPDIR/review-summary.md`. Require its final HEAD to match the cl
 Run the standalone driver in ship mode:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" complete-umbrella ship-leaf \
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" complete-umbrella ship-leaf \
   --mode ship \
   --repository "<REPOSITORY>" \
   --repo-root "$PWD" \

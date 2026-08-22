@@ -13,6 +13,91 @@ fn larch() -> Command {
     Command::cargo_bin("larch").expect("larch binary should build")
 }
 
+#[test]
+fn ship_leaf_is_exposed_at_the_rust_executable_boundary() {
+    larch()
+        .args(["complete-umbrella", "ship-leaf", "--help"])
+        .assert()
+        .success()
+        .stdout(concat!(
+            "usage: cli.py complete-umbrella ship-leaf [-h] --mode\n",
+            "                                          {prepare,ship,verify,line-budget}\n",
+            "                                          --repository REPOSITORY --repo-root\n",
+            "                                          REPO_ROOT --handoff-root\n",
+            "                                          HANDOFF_ROOT --umbrella UMBRELLA\n",
+            "                                          --leaf LEAF\n\n",
+            "options:\n",
+            "  -h, --help            show this help message and exit\n",
+            "  --mode {prepare,ship,verify,line-budget}\n",
+            "  --repository REPOSITORY\n",
+            "  --repo-root REPO_ROOT\n",
+            "  --handoff-root HANDOFF_ROOT\n",
+            "  --umbrella UMBRELLA\n",
+            "  --leaf LEAF\n",
+        ));
+}
+
+#[test]
+fn ship_leaf_preserves_the_error_envelope_and_exit_code() {
+    larch()
+        .args([
+            "complete-umbrella",
+            "ship-leaf",
+            "--mode",
+            "prepare",
+            "--repository",
+            "invalid",
+            "--repo-root",
+            ".",
+            "--handoff-root",
+            ".",
+            "--umbrella",
+            "40",
+            "--leaf",
+            "42",
+        ])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(concat!(
+            "SHIP_STATUS=error\n",
+            "PR_NUMBER=\n",
+            "PR_URL=\n",
+            "CI_ERRORS_FILE=\n",
+            "CONFLICT_FILES=\n",
+            "DETAIL=repository must use OWNER/REPO syntax\n",
+        ));
+}
+
+#[test]
+fn ship_leaf_preserves_domain_validation_after_signed_integer_parsing() {
+    larch()
+        .args([
+            "complete-umbrella",
+            "ship-leaf",
+            "--mode",
+            "prepare",
+            "--repository",
+            "owner/repo",
+            "--repo-root",
+            ".",
+            "--handoff-root",
+            ".",
+            "--umbrella",
+            "-40",
+            "--leaf",
+            "42",
+        ])
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(
+            predicate::str::contains("SHIP_STATUS=error\n").and(predicate::str::contains(
+                "DETAIL=umbrella and leaf must be positive integers\n",
+            )),
+        );
+}
+
 fn write(path: &Path, contents: &str) {
     fs::write(path, contents).expect("write fixture");
 }

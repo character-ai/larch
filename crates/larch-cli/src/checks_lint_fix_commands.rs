@@ -1471,6 +1471,7 @@ fn committed_delta_paths(root: &Path, base_hex: &str, head_hex: &str) -> Vec<Str
         cached: false,
         binary: false,
         no_ext_diff: true,
+        numstat_z_rename_50: false,
         unified_context: None,
         name_only: true,
         name_status: false,

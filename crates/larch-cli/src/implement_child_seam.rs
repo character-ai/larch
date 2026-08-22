@@ -4,14 +4,19 @@
 //! thread-local answer per composed child so a unit test never starts a
 //! process and never depends on an installed plugin root.
 
-use std::{ffi::OsString, path::PathBuf, time::Duration};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
-use larch_core::{ChildEnvironment, ProcessOutput};
+use larch_core::{ChildEnvironment, DuplicatePolicy, KvDocument, ParseOptions, ProcessOutput};
 
 use crate::{
-    python_verb::run_python_verb,
+    python_verb::{run_python_verb, run_python_verb_in},
     runtime_entrypoint::{
         plugin_root, run_verified_larch_with_environment, run_verified_larch_with_options,
+        run_verified_larch_with_options_in,
     },
 };
 
@@ -61,6 +66,60 @@ pub fn delegate_python(
     run_python_verb(arguments, timeout)
 }
 
+/// Run one still-Python sibling from a caller-validated repository directory.
+pub fn delegate_python_in(
+    arguments: Vec<OsString>,
+    working_directory: &Path,
+    timeout: Duration,
+) -> Result<ProcessOutput, String> {
+    #[cfg(test)]
+    if let Some(hook) = TEST_PYTHON.with(|slot| slot.borrow().clone()) {
+        return hook(&arguments);
+    }
+    run_python_verb_in(arguments, working_directory, timeout)
+}
+
+/// Wait for one queued pull request through the separately owned merge driver.
+pub fn delegate_merge_wait(
+    number: u64,
+    repository: &str,
+    timeout: Duration,
+) -> Result<ProcessOutput, String> {
+    delegate_python(
+        vec![
+            "merge".into(),
+            "wait".into(),
+            "--pr".into(),
+            number.to_string().into(),
+            "--repo".into(),
+            repository.into(),
+        ],
+        timeout,
+    )
+}
+
+/// Validate the separately owned merge wait command's terminal envelope.
+pub fn verify_merge_wait(output: &ProcessOutput) -> Result<(), String> {
+    if output.stdout_truncated() {
+        return Err("merge queue wait output was truncated".to_owned());
+    }
+    let fields = KvDocument::parse(
+        &String::from_utf8_lossy(output.stdout()),
+        ParseOptions::legacy(),
+    )
+    .map(|document| document.select(DuplicatePolicy::Last))
+    .map_err(|error| error.to_string())?;
+    if output.status().success() && fields.get("MERGE_RESULT").map(String::as_str) == Some("merged")
+    {
+        return Ok(());
+    }
+    Err(fields
+        .get("ERROR")
+        .filter(|detail| !detail.is_empty())
+        .cloned()
+        .unwrap_or_else(|| "merge queue wait did not confirm the merge".to_owned()))
+}
+
 /// Run one already-owned larch command with explicit child-environment rows.
 pub fn delegate_larch_with_environment(
     arguments: &[OsString],
@@ -84,6 +143,20 @@ pub fn delegate_larch_with_options(
         return hook(arguments, environment);
     }
     run_verified_larch_with_options(arguments, environment, timeout)
+}
+
+/// Run one already-owned larch command from a validated repository directory.
+pub fn delegate_larch_with_options_in(
+    arguments: &[OsString],
+    environment: &[(ChildEnvironment, OsString)],
+    working_directory: &Path,
+    timeout: Duration,
+) -> Result<ProcessOutput, String> {
+    #[cfg(test)]
+    if let Some(hook) = TEST_LARCH.with(|slot| slot.borrow().clone()) {
+        return hook(arguments, environment);
+    }
+    run_verified_larch_with_options_in(arguments, environment, working_directory, timeout)
 }
 
 /// Resolve the active plugin root that owns the still-Python siblings.

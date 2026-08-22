@@ -37,7 +37,8 @@ use crate::{
     github_repository_resolution::{remote_slug, repository_ref},
     github_service::with_github_service,
     implement_child_seam::{
-        delegate_larch_with_environment, delegate_larch_with_options, delegate_python,
+        delegate_larch_with_environment, delegate_larch_with_options, delegate_merge_wait,
+        delegate_python, verify_merge_wait,
     },
     implement_scope_disposition_commands::{ship_pr_disposition, validate_ship_disposition},
     ship_commands::validate_tmpdir,
@@ -660,29 +661,13 @@ fn finish_queued_merge(
     number: u64,
     url: String,
 ) -> Result<ShipResult, DriverFailure> {
-    let output = delegate_python(
-        vec![
-            "merge".into(),
-            "wait".into(),
-            "--pr".into(),
-            number.to_string().into(),
-            "--repo".into(),
-            context.repo.clone().into(),
-        ],
+    let output = delegate_merge_wait(
+        number,
+        &context.repo,
         Duration::from_secs(MERGE_WAIT_SECONDS),
     )
     .map_err(|error| DriverFailure::Result(stalled(error)))?;
-    let fields = output_fields(output.stdout())?;
-    if !output.status().success()
-        || fields.get("MERGE_RESULT").map(String::as_str) != Some("merged")
-    {
-        let detail = safe_detail(fields.get("ERROR").map(String::as_str).unwrap_or_default());
-        return Err(DriverFailure::Result(stalled(if detail.is_empty() {
-            "merge queue wait did not confirm the merge".to_owned()
-        } else {
-            detail
-        })));
-    }
+    verify_merge_wait(&output).map_err(|error| DriverFailure::Result(stalled(error)))?;
     let pull_request = read_pull_request(context, number)?;
     if !pull_request.merged() {
         return Err(DriverFailure::Result(stalled(
@@ -1242,12 +1227,7 @@ fn pull_request_content(
         .map_err(|error| DriverFailure::Result(stalled(error.to_string())))?;
     let head = head_identity(&repository, &context.branch)
         .map_err(|error| DriverFailure::Result(stalled(error)))?;
-    let subject = repository
-        .walk_commits(&head, 1)
-        .ok()
-        .and_then(|commits| commits.first().map(|commit| commit.subject.clone()))
-        .map(|subject| String::from_utf8_lossy(&subject).trim().to_owned())
-        .unwrap_or_default();
+    let subject = head_subject(&repository, &head);
     let title = ship_pr_title(context.issue, &context.pr_title, &subject);
     let body = compose_ship_pr_body(&ShipPrBody {
         summary: &summary(context),
@@ -1654,6 +1634,15 @@ fn head_identity(repository: &GixRepository, branch: &str) -> Result<larch_core:
             Err("detached HEAD or no current branch".to_owned())
         }
     }
+}
+
+pub fn head_subject(repository: &GixRepository, head: &larch_core::ObjectId) -> String {
+    repository
+        .walk_commits(head, 1)
+        .ok()
+        .and_then(|commits| commits.first().map(|commit| commit.subject.clone()))
+        .map(|subject| String::from_utf8_lossy(&subject).trim().to_owned())
+        .unwrap_or_default()
 }
 
 fn prepare_branch(context: &ShipPrContext, repo_root: &Path) -> Result<(), DriverFailure> {
