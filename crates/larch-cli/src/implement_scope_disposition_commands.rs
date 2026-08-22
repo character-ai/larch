@@ -147,6 +147,12 @@ pub enum PrMutationScopeGate {
     NeedsUser,
 }
 
+/// Closing-footer policy consumed by terminal teardown.
+pub struct TeardownDisposition {
+    pub partial: bool,
+    pub recovered_stale_live: bool,
+}
+
 #[derive(Clone, Debug)]
 struct BaselineResolution {
     sha: String,
@@ -263,6 +269,40 @@ pub fn validate_pr_mutation_scope(repo_root: &Path) -> Result<PrMutationScopeGat
     } else {
         PrMutationScopeGate::NeedsUser
     })
+}
+
+/// Resolve terminal close-vs-part-of policy, with the one post-merge recovery.
+pub fn teardown_disposition(
+    tmpdir: &Path,
+    repo_root: &Path,
+    manifest: Option<&Path>,
+    allow_persisted_recovery: bool,
+) -> Result<TeardownDisposition, String> {
+    match ship_pr_disposition(tmpdir, repo_root, manifest) {
+        Ok(disposition) => Ok(TeardownDisposition {
+            partial: disposition.partial,
+            recovered_stale_live: false,
+        }),
+        Err(error) if error == STALE_LIVE && allow_persisted_recovery => {
+            let coverage = load_coverage(tmpdir)?.ok_or_else(|| STALE_LIVE.to_owned())?;
+            let record = load_disposition(tmpdir, Some(&coverage))?;
+            Ok(TeardownDisposition {
+                partial: record.is_some_and(|value| value.disposition == "proceed-partial"),
+                recovered_stale_live: true,
+            })
+        }
+        Err(error) => Err(error),
+    }
+}
+
+/// Return whether teardown has a complete, trusted persisted coverage set.
+pub fn has_persisted_coverage(tmpdir: &Path) -> Result<bool, String> {
+    load_coverage(tmpdir).map(|coverage| coverage.is_some())
+}
+
+/// Resolve the repository root persisted by the session owner.
+pub fn persisted_repo_root(tmpdir: &Path) -> Option<PathBuf> {
+    resolve_persisted_repo_root(tmpdir)
 }
 
 /// The plan-coverage contract rows, in the order every consumer emits them.

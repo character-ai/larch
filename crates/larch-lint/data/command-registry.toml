@@ -3917,11 +3917,13 @@ verb = "cleanup"
 python_module = "larch.state.finalize"
 python_function = "cleanup_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8793
+clean_install_test = "clean-install-implement-cleanup"
 
 [[commands]]
 domain = "implement"
@@ -4348,11 +4350,13 @@ verb = "postbump"
 python_module = "larch.state.finalize"
 python_function = "implement_finalize_postbump_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8793
+clean_install_test = "clean-install-implement-finalize-postbump"
 
 [[commands]]
 domain = "implement-finalize"
@@ -4360,11 +4364,13 @@ verb = "postmerge"
 python_module = "larch.state.finalize"
 python_function = "implement_finalize_postmerge_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8793
+clean_install_test = "clean-install-implement-finalize-postmerge"
 
 [[commands]]
 domain = "implement-finalize"
@@ -4372,11 +4378,13 @@ verb = "teardown"
 python_module = "larch.state.finalize"
 python_function = "implement_finalize_teardown_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8793
+clean_install_test = "clean-install-implement-finalize-teardown"
 
 [[commands]]
 domain = "issue"
@@ -9828,8 +9836,8 @@ rust = ["fluff-analysis analyze"]
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["diagram code-flow", "diagrams upsert", "implement-finalize teardown", "render run-summary"]
-rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "merge pr", "oos file", "plan-block read", "plan-receipt refresh", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
+python = ["diagram code-flow", "diagrams upsert", "render run-summary"]
+rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos file", "plan-block read", "plan-receipt refresh", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -9888,8 +9896,8 @@ rust = ["issue parse-input", "oos disposition-gate", "oos file", "oos file-confl
 [[callers]]
 path = "skills/implement/references/extracted-script-registry.md"
 kind = "skill"
-python = ["implement-finalize teardown", "render run-summary"]
-rust = ["checks repair-loop", "implement checks-step5-resume", "implement step-16-17", "implement step-6-entry", "pr closes-issue", "pr compose-summary"]
+python = ["render run-summary"]
+rust = ["checks repair-loop", "implement checks-step5-resume", "implement step-16-17", "implement step-6-entry", "implement-finalize teardown", "pr closes-issue", "pr compose-summary"]
 
 [[callers]]
 path = "skills/implement/references/oos-pipeline.md"
@@ -9984,7 +9992,7 @@ rust = ["session cleanup-tmpdir"]
 [[callers]]
 path = "skills/implement/scripts/flush-execution-issues.md"
 kind = "skill"
-python = ["implement-finalize *"]
+python = []
 rust = ["execution-issues flush"]
 
 [[callers]]

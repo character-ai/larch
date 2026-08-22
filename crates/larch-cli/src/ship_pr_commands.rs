@@ -899,10 +899,9 @@ fn finalize_postmerge(
     let bail_file = context.tmpdir.join("final-bail-reason.txt");
     private_atomic_write(&bail_file, "", &context.tmpdir)
         .map_err(|error| DriverFailure::Result(internal(error.to_string())))?;
-    let output = delegate_python(
-        vec![
-            "implement-finalize".into(),
-            "postmerge".into(),
+    let output = crate::implement_finalize_commands::execute(
+        crate::implement_finalize_commands::FinalizePhase::Postmerge,
+        &[
             "--state-file".into(),
             context.state_file.as_os_str().into(),
             "--implement-tmpdir".into(),
@@ -910,11 +909,9 @@ fn finalize_postmerge(
             "--final-bail-reason-file".into(),
             bail_file.as_os_str().into(),
         ],
-        Duration::from_secs(900),
-    )
-    .map_err(|error| DriverFailure::Result(stalled(error)))?;
-    let fields = output_fields(output.stdout())?;
-    if !output.status().success() || fields.get("OUTCOME").map(String::as_str) != Some("OK") {
+    );
+    let fields = output_fields(output.stdout.as_bytes())?;
+    if output.code != 0 || fields.get("OUTCOME").map(String::as_str) != Some("OK") {
         let detail = fields
             .get("FINALIZE_WARNINGS")
             .filter(|value| !value.is_empty())

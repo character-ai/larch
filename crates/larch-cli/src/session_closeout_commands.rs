@@ -282,7 +282,19 @@ fn branch_state(cwd: &Path, branch: &str) -> BranchState {
 }
 
 fn emit_pull_failure(cwd: &Path) {
-    let ahead = GixRepository::discover(cwd)
+    let ahead = ahead_of_origin(cwd);
+    if ahead > 0 {
+        eprintln!(
+            "❌ Failed to pull origin main; local main is ahead of origin/main by {ahead} commit(s). Push or reconcile local main before retrying."
+        );
+    } else {
+        eprintln!("❌ Failed to pull origin main");
+    }
+}
+
+/// Count commits by which local `HEAD` is ahead of `origin/main`.
+pub fn ahead_of_origin(cwd: &Path) -> u64 {
+    GixRepository::discover(cwd)
         .ok()
         .and_then(|repository| {
             let origin_main = repository
@@ -291,12 +303,5 @@ fn emit_pull_failure(cwd: &Path) {
             let head = repository.resolve_revision(&Revision::new("HEAD")).ok()?;
             repository.commit_count_range(&origin_main, &head).ok()
         })
-        .unwrap_or(0);
-    if ahead > 0 {
-        eprintln!(
-            "❌ Failed to pull origin main; local main is ahead of origin/main by {ahead} commit(s). Push or reconcile local main before retrying."
-        );
-    } else {
-        eprintln!("❌ Failed to pull origin main");
-    }
+        .unwrap_or(0)
 }

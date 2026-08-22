@@ -617,8 +617,9 @@ mod tests {
         check(
             &StashRequest::Push {
                 message: Some("wip".into()),
+                include_untracked: true,
             },
-            &["stash", "push", "-m", "wip"],
+            &["stash", "push", "-u", "-m", "wip"],
         );
         check(
             &FetchRequest {
@@ -1249,6 +1250,7 @@ mod tests {
         assert_argv(&RebaseRequest::Continue, &["rebase", "--continue"]);
         assert_argv(&RebaseRequest::Skip, &["rebase", "--skip"]);
         assert_argv(&MergeRequest::Abort, &["merge", "--abort"]);
+        assert_argv(&StashRequest::List, &["stash", "list", "--format=%gD %gs"]);
         assert_argv(&StashRequest::Pop, &["stash", "pop"]);
         assert_argv(&StashRequest::Drop, &["stash", "drop"]);
         assert_argv(
@@ -1744,6 +1746,7 @@ mod tests {
                 runtime.block_on(GitCli::new(runner, policy(repository.root())).stash(
                     StashRequest::Push {
                         message: Some("fixture stash".into()),
+                        include_untracked: false,
                     },
                     &NeverCancelled,
                 ))

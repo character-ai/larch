@@ -410,6 +410,16 @@ fn read_issue(repo: &str, issue: &str) -> Result<GitHubIssue, String> {
     .map_err(ServiceFailure::into_detail)
 }
 
+/// Read one issue for an in-process workflow consumer.
+///
+/// The optional repository follows the command owner's ambient-resolution
+/// rules, while the request remains on the typed GitHub service.
+pub fn read_issue_live(repository: Option<&str>, issue: &str) -> Result<GitHubIssue, String> {
+    let repo =
+        resolve_repo_for(repository).ok_or_else(|| read_failure("could not resolve repo"))?;
+    read_issue(&repo, issue)
+}
+
 /// Render the operator-facing reason for one refused read.
 ///
 /// The typed error's own text is the transport crate's terse label — a `404`

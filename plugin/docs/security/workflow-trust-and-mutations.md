@@ -727,9 +727,10 @@ current scope and coverage artifacts. CI fixes receive a bounded redacted
 digest, not raw failed logs. Conflict fixers receive validated
 repository-relative paths and may edit only the named conflict files. The Rust
 owner controls staging, rebase continuation, and lease-protected push. Rust
-owns `merge pr` and `merge wait` through the verified process boundary;
-`implement-finalize postmerge` remains Python. Every create, merge, and queue
-mutation is followed by a typed GitHub read-back.
+owns `merge pr` and `merge wait` through the verified process boundary.
+`implement-finalize postmerge` runs in process, while terminal teardown applies
+its issue-title rename through the typed tracking-issue owner. Every create,
+merge, queue, and title mutation is followed by a typed GitHub read-back.
 
 Rust owns the canonical initial ship-state schema and the Step 8 result-env
 schema. `ship seed-initial-state` validates the session root, contained state

@@ -37,12 +37,11 @@ const RETIRED_MODULES: &[&str] = &[
     "python/larch/core/kv_cli.py",
 ];
 
-/// The exact Python helpers whose last consumers are owned by #7681.
+/// The exact Python helpers whose remaining consumers are owned by #7681.
 const RETAINED_MODULES: &[&str] = &[
     "python/larch/state/__init__.py",
     "python/larch/state/_tokens.py",
     "python/larch/state/_validate.py",
-    "python/larch/state/finalize.py",
     "python/larch/state/session_env.py",
     "python/larch/bgjob/__init__.py",
     "python/larch/bgjob/model.py",

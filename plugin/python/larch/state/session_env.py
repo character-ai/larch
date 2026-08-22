@@ -17,8 +17,8 @@ implementations alike. Nothing here writes a session-env file any more:
 the Rust-owned bootstrap reaches session setup through the verified bootstrap
 script, and the argument renderers below keep one owner for each writer flag
 spelling.
-``read_finalize_state`` and ``write_finalize_state_merged`` stay because
-``implement-finalize teardown`` still reads and merges that file in process.
+The finalize-state read and write helpers stay for the remaining Python ship
+state owner; the Rust finalizer consumes the same wire directly.
 """
 # pyright: reportUnusedCallResult=false, reportUnknownVariableType=false
 
@@ -37,6 +37,7 @@ from collections.abc import Callable, Mapping
 from larch.core import config
 from larch import io as larch_io
 from larch.core import proc
+from larch.core.run_context import RunContext
 from larch.errors import ShipError
 from larch.core.repo_roots import larch_entrypoint
 
@@ -45,24 +46,24 @@ _KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 TMP_FALLBACK = "/tmp"  # noqa: S108 - parity fallback for larch session roots.
 TMP_ROOT = Path(TMP_FALLBACK)
 
-WRITE_DESIGN_ENV_KEYS = frozenset({
-    "DESIGN_TMPDIR",
-    "SESSION_TMPDIR",
-    "SESSION_ID",
-    "REPO",
-    "REPO_ROOT",
-    "ISSUE_NUMBER",
-    "CODEX_BINARY_FOUND",
-    "CURSOR_BINARY_FOUND",
-    "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT",
-    "CLAUDE_PLUGIN_ROOT",
-    "LARCH_CLAUDE_SOURCE_FILE",
-    "LARCH_RUN_ID",
-    "LARCH_LIVE_MUTATION_OK",
-})
-# Core finalize state-file keys shared with finalize._COMMON_REQUIRED_KEYS.
-# Single source of truth so the two lists cannot drift (and to avoid
-# duplicate-code, pylint R0801).
+WRITE_DESIGN_ENV_KEYS = frozenset(
+    {
+        "DESIGN_TMPDIR",
+        "SESSION_TMPDIR",
+        "SESSION_ID",
+        "REPO",
+        "REPO_ROOT",
+        "ISSUE_NUMBER",
+        "CODEX_BINARY_FOUND",
+        "CURSOR_BINARY_FOUND",
+        "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT",
+        "CLAUDE_PLUGIN_ROOT",
+        "LARCH_CLAUDE_SOURCE_FILE",
+        "LARCH_RUN_ID",
+        "LARCH_LIVE_MUTATION_OK",
+    }
+)
+# Canonical core keys emitted for the Rust finalizer's validated wire.
 FINALIZE_STATE_CORE_KEYS = (
     "BRANCH_NAME",
     "PR_NUMBER",
@@ -137,7 +138,8 @@ WRAPPER_VALUE_FLAGS: dict[str, str] = {
 
 
 def parse_allowlisted_env_line(
-    *, raw: str,
+    *,
+    raw: str,
     allowlist: frozenset[str] | set[str],
     name_validator: Callable[[str], bool] | None = None,
     reject_newline_rhs: bool = False,
@@ -201,7 +203,10 @@ def require_plugin_root() -> int:
         print("/design wrapper: CLAUDE_PLUGIN_ROOT is empty; abort", file=sys.stderr)
         return 1
     if value == literal:
-        print(f"/design wrapper: CLAUDE_PLUGIN_ROOT is the unexpanded template literal {literal}; abort", file=sys.stderr)
+        print(
+            f"/design wrapper: CLAUDE_PLUGIN_ROOT is the unexpanded template literal {literal}; abort",
+            file=sys.stderr,
+        )
         return 1
     return 0
 
@@ -238,6 +243,14 @@ def cleanup_cache_sessions_root(*, env: Mapping[str, str] | None = None) -> Path
     return Path(base) / "larch" / "sessions"
 
 
+def finalize_cache_sessions_root(*, env: Mapping[str, str] | None = None) -> Path:
+    """Return the absolute cache root retained by finalize path validation."""
+    environ = os.environ if env is None else env
+    xdg = environ.get("XDG_CACHE_HOME", "")
+    base = Path(xdg) if xdg and Path(xdg).is_absolute() else Path.home() / ".cache"
+    return base / "larch" / "sessions"
+
+
 def check_live_mutation_auth(
     *,
     context_file: Path | None,
@@ -263,7 +276,9 @@ def check_live_mutation_auth(
         ctx = Path(context_file)
         if not ctx.exists() or not ctx.is_file() or ctx.is_symlink():
             return False, config.LIVE_MUTATION_REFUSAL_REASON
-        if trusted_root is None or not _is_canonical_mutation_session_root(trusted_root):
+        if trusted_root is None or not _is_canonical_mutation_session_root(
+            trusted_root
+        ):
             return False, config.LIVE_MUTATION_REFUSAL_REASON
         if ctx.parent.resolve() != trusted_root.resolve():
             return False, config.LIVE_MUTATION_REFUSAL_REASON
@@ -274,7 +289,7 @@ def check_live_mutation_auth(
             if not line or "=" not in line:
                 continue
             if line.startswith("export "):
-                line = line[len("export "):].lstrip()
+                line = line[len("export ") :].lstrip()
             k, _, v = line.partition("=")
             k = k.strip()
             v = v.strip().strip("'\"")
@@ -299,7 +314,9 @@ def _is_canonical_mutation_session_root(path: Path) -> bool:
         resolved = path.resolve(strict=True)
     except OSError:
         return False
-    if not resolved.is_dir() or not re.fullmatch(r"claude-(?:design|implement)-[A-Za-z0-9._-]+", resolved.name):
+    if not resolved.is_dir() or not re.fullmatch(
+        r"claude-(?:design|implement)-[A-Za-z0-9._-]+", resolved.name
+    ):
         return False
     roots = (
         cleanup_cache_sessions_root(),
@@ -337,13 +354,25 @@ def is_allowed_session_tmpdir(path: str | Path) -> bool:
     candidate = Path(path)
     if not str(candidate):
         return False
-    roots = (TMP_ROOT, Path("/private/tmp"), Path("/var/folders"), Path("/private/var/folders"), cleanup_cache_sessions_root())
+    roots = (
+        TMP_ROOT,
+        Path("/private/tmp"),
+        Path("/var/folders"),
+        Path("/private/var/folders"),
+        cleanup_cache_sessions_root(),
+    )
     return any(_strictly_under(path=candidate, root=root) for root in roots)
 
 
 def _writer_target_allowed(path: str | Path) -> bool:
     candidate = Path(path)
-    roots = (TMP_ROOT, Path("/private/tmp"), Path("/var/folders"), Path("/private/var/folders"), cleanup_cache_sessions_root())
+    roots = (
+        TMP_ROOT,
+        Path("/private/tmp"),
+        Path("/var/folders"),
+        Path("/private/var/folders"),
+        cleanup_cache_sessions_root(),
+    )
     return any(_under(path=candidate, root=root) for root in roots)
 
 
@@ -352,15 +381,37 @@ def _safe_output_parent(path: Path) -> bool:
     return parent.exists() and parent.is_dir() and not parent.is_symlink()
 
 
-def _atomic_write(*, path: Path, text: str, create_parent: bool = False, mode: int = 0o600) -> None:
-    larch_io.atomic_write(path=path, text=text, create_parent=create_parent, mode=mode, temp_name=path.with_suffix(path.suffix + ".tmp"), nofollow=True, exclusive=True)
+def _atomic_write(
+    *, path: Path, text: str, create_parent: bool = False, mode: int = 0o600
+) -> None:
+    larch_io.atomic_write(
+        path=path,
+        text=text,
+        create_parent=create_parent,
+        mode=mode,
+        temp_name=path.with_suffix(path.suffix + ".tmp"),
+        nofollow=True,
+        exclusive=True,
+    )
 
 
-def run_log_write_argv(*, log_root: Path, run_id: str, batch: str, input_file: Path) -> list[str]:
+def run_log_write_argv(
+    *, log_root: Path, run_id: str, batch: str, input_file: Path
+) -> list[str]:
     """Build the shared run-log write argv tail for implement artifacts."""
     return [
-        "run-log", "write", "--log-root", str(log_root), "--skill", "implement",
-        "--run-id", run_id, "--batch", batch, "--input-file", str(input_file),
+        "run-log",
+        "write",
+        "--log-root",
+        str(log_root),
+        "--skill",
+        "implement",
+        "--run-id",
+        run_id,
+        "--batch",
+        batch,
+        "--input-file",
+        str(input_file),
     ]
 
 
@@ -391,6 +442,10 @@ def read_finalize_state(path: str | Path) -> dict[str, str]:
     return data
 
 
+def _bool_text(value: object) -> str:
+    return "true" if value else "false"
+
+
 def write_finalize_state_merged(*, path: str | Path, data: dict[str, str]) -> None:
     for key, value in data.items():
         if not _KEY_RE.match(key):
@@ -399,7 +454,50 @@ def write_finalize_state_merged(*, path: str | Path, data: dict[str, str]) -> No
         if "\n" in str(value) or "\r" in str(value):
             msg = f"finalize-state value for {key} contains a newline"
             raise ShipError(msg)
-    _atomic_write(path=Path(path), text="".join(f"{key}={data[key]}\n" for key in sorted(data)), create_parent=True)
+    _atomic_write(
+        path=Path(path),
+        text="".join(f"{key}={data[key]}\n" for key in sorted(data)),
+        create_parent=True,
+    )
+
+
+def write_finalize_state(*, ctx: RunContext, path: str | Path) -> None:
+    """Write the finalize handoff consumed by the Rust terminal owner."""
+    data = {
+        "BRANCH_NAME": ctx.branch_name or ctx.branch,
+        "PR_NUMBER": "" if ctx.pr_number is None else str(ctx.pr_number),
+        "PR_TITLE": ctx.pr_title,
+        "PR_URL": ctx.pr_url,
+        "ISSUE_NUMBER": ctx.issue_number or ctx.issue,
+        "REPO": ctx.repo,
+        "DRAFT": _bool_text(ctx.draft),
+        "MERGE": _bool_text(ctx.merge),
+        "DEFERRED": _bool_text(ctx.deferred),
+        "REPO_UNAVAILABLE": _bool_text(ctx.repo_unavailable),
+        "PR_CLOSED": _bool_text(ctx.pr_closed),
+        "DESIGN_ONLY_DONE": _bool_text(ctx.design_only_done),
+        "BAIL_NEEDS_USER_INPUT": _bool_text(ctx.bail_needs_user_input),
+        "STALL_TRACKING": _bool_text(ctx.stall_tracking),
+        "STALL_STEP": ctx.stall_step,
+        "DONE_RENAME_APPLIED": _bool_text(ctx.done_rename_applied),
+        "RUN_ID": ctx.run_id,
+        "EXPECTED_SESSION_ID": ctx.expected_session_id,
+        "EXPECTED_TMPDIR_BASENAME_PREFIX": ctx.expected_tmpdir_basename_prefix,
+        "NO_LOGS_COMMIT": _bool_text(ctx.no_logs_commit),
+        "FORKED_TARGET": _bool_text(ctx.forked_target or ctx.forked),
+        "MERGE_RESULT": ctx.merge_result,
+    }
+    for key, value in data.items():
+        if "\n" in str(value) or "\r" in str(value):
+            msg = f"finalize-state value for {key} contains a newline"
+            raise ShipError(msg)
+    target = Path(path)
+    try:
+        larch_io.secure_atomic_write(
+            target, "".join(f"{key}={value}\n" for key, value in data.items())
+        )
+    except OSError as exc:
+        raise ShipError(f"cannot write finalize state: {target}") from exc
 
 
 @dataclass(frozen=True)
@@ -459,21 +557,34 @@ def _write_env_flags(params: WriteEnvParams) -> list[str]:
 def write_env_argv(params: WriteEnvParams) -> list[str]:
     """Render the ``session write-env`` flags for the Rust owner."""
     if params.plugin_root_only:
-        return ["--plugin-root-only", "--output", params.output, "--value", params.value]
+        return [
+            "--plugin-root-only",
+            "--output",
+            params.output,
+            "--value",
+            params.value,
+        ]
     return [
-        "--output", params.output,
-        "--repo-unavailable", params.repo_unavailable or "false",
-        "--forked-target", params.forked_target,
+        "--output",
+        params.output,
+        "--repo-unavailable",
+        params.repo_unavailable or "false",
+        "--forked-target",
+        params.forked_target,
         *_write_env_flags(params),
     ]
 
 
 def run_write_env(params: WriteEnvParams) -> proc.CommandResult:
     """Write one session-env file through the Rust owner's verified entrypoint."""
-    return proc.run([
-        str(larch_entrypoint(_scripts_dir().parent)), "session", "write-env",
-        *write_env_argv(params),
-    ])
+    return proc.run(
+        [
+            str(larch_entrypoint(_scripts_dir().parent)),
+            "session",
+            "write-env",
+            *write_env_argv(params),
+        ]
+    )
 
 
 def _split_ancestor_tail(candidate: str) -> tuple[str, str]:
@@ -526,18 +637,29 @@ def validate_design_tmpdir(candidate: str) -> tuple[bool, str]:
                 return False, "design-tmpdir: leaf symlink must resolve to a directory"
     allow = [
         _canonical_prefix(cleanup_cache_sessions_root()),
-        _canonical_prefix(Path(os.environ["TMPDIR"])) if os.environ.get("TMPDIR") else "",
+        _canonical_prefix(Path(os.environ["TMPDIR"]))
+        if os.environ.get("TMPDIR")
+        else "",
         _canonical_prefix(TMP_ROOT),
     ]
     resolved_cmp = f"{str(resolved).rstrip('/')}/"
     if not any(prefix and resolved_cmp.startswith(prefix) for prefix in allow):
-        return False, f"design-tmpdir: path not under allowlist after resolution: {resolved}"
+        return (
+            False,
+            f"design-tmpdir: path not under allowlist after resolution: {resolved}",
+        )
     return True, ""
 
 
 def _design_symlink_path(pid: str) -> Path:
     home = Path.home()
-    return home / ".cache" / "larch" / "sessions" / (f"current-design-env-{pid}.sh" if pid else "current-design-env.sh")
+    return (
+        home
+        / ".cache"
+        / "larch"
+        / "sessions"
+        / (f"current-design-env-{pid}.sh" if pid else "current-design-env.sh")
+    )
 
 
 def _design_run_path(pid: str) -> Path:
@@ -563,7 +685,9 @@ def reap_pid_residuals(claude_pid: str) -> None:
 
 def _validate_claude_pid(pid: str) -> None:
     if not re.match(r"^[1-9][0-9]{0,6}$", pid):
-        raise ValueError("Invalid --claude-pid: must be a positive integer of at most 7 decimal digits")
+        raise ValueError(
+            "Invalid --claude-pid: must be a positive integer of at most 7 decimal digits"
+        )
 
 
 validate_claude_pid = _validate_claude_pid
@@ -588,7 +712,9 @@ def _validate_design_current_env_link(*, symlink_path: Path, pid: str) -> None:
         ancestor = ancestor.parent
 
 
-def resolve_trusted_design_session_env_source(*, path: Path, claude_pid: str) -> Path | None:
+def resolve_trusted_design_session_env_source(
+    *, path: Path, claude_pid: str
+) -> Path | None:
     if not claude_pid or not path.is_symlink():
         return None
     try:

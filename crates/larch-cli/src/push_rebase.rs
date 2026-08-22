@@ -964,7 +964,8 @@ fn conflict_upstream_deleted(path: &str) -> bool {
         .is_some_and(|entry| !entry.stages.iter().any(|stage| stage.stage == 2))
 }
 
-fn rebase_in_progress() -> bool {
+/// Return whether the current repository has an active merge-style rebase.
+pub fn rebase_in_progress() -> bool {
     let Some(repository) = open_repository() else {
         return false;
     };

@@ -1,0 +1,30 @@
+{
+  "exit_code": 0,
+  "files": {
+    ".bin/git": {
+      "text": "#!/bin/sh\nexec /usr/bin/env PATH=/usr/bin:/bin git \"$@\"\n"
+    },
+    "git-result.txt": {
+      "text": "CURRENT_BRANCH=feature\nLOCAL_BRANCHES=feature,main\nHEAD_SUBJECT=Feature work\nREMOTE_FEATURE=matches-head\nWORKTREE_DIRTY=false\nSTASH_COUNT=0\nSTALL_SENTINEL=absent\n"
+    },
+    "repo/base.txt": {
+      "text": "base\n"
+    },
+    "repo/feature.txt": {
+      "text": "feature\n"
+    },
+    "session/bail": {
+      "text": ""
+    },
+    "session/finalize-state.sh": {
+      "text": "BRANCH_NAME=feature\nISSUE_NUMBER=\nPR_TITLE=Title\nREPO=\nREPO_UNAVAILABLE=false\nFORKED_TARGET=false\nBUMP_TYPE=NONE\nNEW_VERSION=\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "STATUS=ok\nOUTCOME=OK\nFINALIZE_WARNINGS=\nLOG_WRITE_STATUS=skipped\nREBASE_STATUS=already-fresh\nCONFLICT_FILES=\nFORCE_PUSH_STATUS=pushed\nLOCAL_CLEANUP_STATUS=\nVERIFY_MAIN_STATUS=\nRENAME_BRANCH=\nRENAME_STATUS=\nISSUE_URL=\nSTASH_REF=\nSENTINEL_WRITTEN=false\nFINALIZE_SUBCOMMAND=postbump\n"
+  }
+}

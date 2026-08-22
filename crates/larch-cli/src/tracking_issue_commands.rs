@@ -1156,6 +1156,30 @@ pub fn rename_designing_live(issue: &str, repository: Option<&str>) -> Result<bo
     .map_err(|refusal| refusal.envelope().0)
 }
 
+/// Apply one terminal tracking-title state for an in-process finalize caller.
+pub fn rename_finalize_live(
+    issue: &str,
+    state: &str,
+    repository: Option<&str>,
+    run_id: &str,
+) -> Result<bool, String> {
+    rename_with(
+        &LiveEffects,
+        issue,
+        state,
+        repository,
+        run_id,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .map(|(renamed, _title)| renamed)
+    .map_err(|refusal| refusal.envelope().0)
+}
+
 /// Decide the new title, then apply it as a plain or lease-bound write.
 #[allow(clippy::too_many_arguments)] // Mirrors the public rename option surface at the effects seam.
 fn rename_with(

@@ -1,0 +1,39 @@
+{
+  "exit_code": 0,
+  "files": {
+    ".bin/git": {
+      "text": "#!/bin/sh\nexec /usr/bin/env PATH=/usr/bin:/bin git \"$@\"\n"
+    },
+    "git-result.txt": {
+      "text": "CURRENT_BRANCH=feature\nLOCAL_BRANCHES=feature,main\nHEAD_SUBJECT=Feature work\nREMOTE_FEATURE=absent\nWORKTREE_DIRTY=false\nSTASH_COUNT=1\nSTALL_SENTINEL=present\n"
+    },
+    "repo/base.txt": {
+      "text": "base\n"
+    },
+    "repo/feature.txt": {
+      "text": "feature\n"
+    },
+    "session/.run-cleaned-up": {
+      "text": ""
+    },
+    "session/bail": {
+      "text": ""
+    },
+    "session/finalize-state.sh": {
+      "text": "BRANCH_NAME=feature\nPR_NUMBER=\nPR_TITLE=Implement feature\nPR_URL=\nISSUE_NUMBER=\nREPO=\nDRAFT=false\nMERGE=false\nDEFERRED=false\nREPO_UNAVAILABLE=true\nPR_CLOSED=false\nDESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\nSTALL_TRACKING=true\nDONE_RENAME_APPLIED=false\n"
+    },
+    "session/plan-coverage.json": {
+      "text": "not json\n"
+    },
+    "session/source-env.sh": {
+      "text": "REPO_ROOT=<SANDBOX>/repo\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "STATUS=stalled-preserved\nOUTCOME=OK\nFINALIZE_WARNINGS=\nLOG_WRITE_STATUS=\nREBASE_STATUS=\nCONFLICT_FILES=\nFORCE_PUSH_STATUS=\nLOCAL_CLEANUP_STATUS=\nVERIFY_MAIN_STATUS=\nRENAME_BRANCH=A\nRENAME_STATUS=skipped\nISSUE_URL=\nSTASH_REF=refs/stash@{0}\nSENTINEL_WRITTEN=true\nFINALIZE_SUBCOMMAND=teardown\n"
+  }
+}

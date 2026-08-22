@@ -95,8 +95,9 @@ than a fallback. And the Step 18 `token report` mark now runs through
 it to `python/cli.py`, where the verb has not been registered since #8507, so it
 could only ever fail silently.
 
-`implement-finalize teardown` stays Python-owned and is reached through the one
-`python_verb` seam. The fingerprint keeps schema token `v1` and its byte-for-byte
+At this cutover, `implement-finalize teardown` stayed Python-owned behind the
+one `python_verb` seam. Issue #8793 later removed that seam in the finalization
+cutover below. The fingerprint keeps schema token `v1` and its byte-for-byte
 input order, so a result env persisted before the flip still classifies as
 `matching`; `ExactDiffRequest` gained closed `binary` and `no_ext_diff` fields
 rather than argv forwarding, and untracked enumeration moved to
@@ -113,8 +114,8 @@ Issue #8791 moved `implement step-16`, `implement step-16-16a`,
 `implement step-16-17`, and `implement step-17` to Rust. All callers enter
 through `scripts/larch.sh`. The cutover removes the four Python registrations,
 `python/larch/state/closeout.py`, and its Python tests. The command-registry
-milestones are complete. The remaining `implement cleanup` command stays
-Python-owned under #8793.
+milestones are complete. Issue #8793 later moved the remaining `implement
+cleanup` command in the finalization cutover below.
 
 `crates/larch-cli/src/implement_closeout_commands.rs` owns the four command
 boundaries. It composes the existing Rust timing, rejected-findings, Slack,
@@ -129,6 +130,22 @@ isolated roots against a frozen Python reference. Reviewed goldens pin stdout,
 stderr, exit status, child argv, failure records, summaries, backups, and
 sentinels. The clean-install matrix covers every migrated selector without the
 retired Python owner.
+
+### Implement finalization cutover
+
+Issue #8793 moved `implement cleanup`, `implement-finalize postbump`,
+`implement-finalize postmerge`, and `implement-finalize teardown` to
+`crates/larch-cli/src/implement_finalize_commands.rs`. The owner uses gix for
+repository reads, the closed typed Git CLI for writes, typed GitHub services,
+and the shared session-background-process cleanup introduced by issue #8792.
+
+The ship postmerge path and Step 19 teardown call the Rust owner in process.
+Public callers enter through `scripts/larch.sh`. The four Python registrations,
+the production finalization module, and its exclusive tests were removed in the
+same cutover. The black-box parity suite compares Rust with a frozen Python
+reference, and the clean-install matrix reaches all four selectors without a
+Python source tree. The retained Python finalize-state serializers are wire
+producers only; the Rust finalizer validates and consumes their output.
 
 ### Rust clippy gate and rust-policy candidate cutover
 
@@ -297,8 +314,8 @@ Issue #8628 moved `ship pr` into the Rust child in process. The Rust ship parent
 still composes the shared bgjob adapter with completed-result replacement; the
 child reconstructs canonical argv, invokes the Rust lifecycle owner, and
 publishes the typed result env through the Rust ship-result module. The Python
-3.11 probe remains because the separately owned `implement-finalize` command is
-a retained Python dependency.
+3.11 probe remains for the retained migration-governance helper that the Rust
+ship lifecycle invokes through the reviewed Python compatibility seam.
 The Rust OOS router composes `oos disposition-checkpoint`, keeps the exact
 `OOS_CHECKPOINT_RC` and `NEXT_ACTION` grammar, writes run statistics, stamps the
 manifest, and atomically clears only `OOS_PENDING` after success.
@@ -345,9 +362,9 @@ the resulting state. The command registry and production callers now select
 Rust. `ship.py`, `ship_pr.py`, `ship_guidelines.py`, `ship_merge.py`,
 `ship_resume.py`, and `ship_recovery.py` were removed with their Python CLI
 registrations and exclusive tests. Issue #8788 subsequently moved `merge pr`
-and `merge wait` to `crates/larch-cli/src/merge_commands.rs`; only
-`implement-finalize postmerge` remains behind the reviewed Rust-to-Python
-process boundary.
+and `merge wait` to `crates/larch-cli/src/merge_commands.rs`. Issue #8793 later
+moved `implement-finalize postmerge` in process and removed that finalization
+boundary.
 
 ### Pull-request merge cutover
 

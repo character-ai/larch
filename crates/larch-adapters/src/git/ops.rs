@@ -878,15 +878,25 @@ git_op!(PullRequest, Pull);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum StashRequest {
-    Push { message: Option<OsString> },
+    Push {
+        message: Option<OsString>,
+        include_untracked: bool,
+    },
+    List,
     Pop,
     Drop,
 }
 impl StashRequest {
     fn argv(&self) -> Result<Vec<OsString>, GitCliInputError> {
         Ok(match self {
-            Self::Push { message } => {
+            Self::Push {
+                message,
+                include_untracked,
+            } => {
                 let mut a = vec!["push".into()];
+                if *include_untracked {
+                    a.push("-u".into());
+                }
                 if let Some(message) = message {
                     reject_value(message)?;
                     a.push("-m".into());
@@ -894,6 +904,7 @@ impl StashRequest {
                 }
                 a
             }
+            Self::List => vec!["list".into(), "--format=%gD %gs".into()],
             Self::Pop => vec!["pop".into()],
             Self::Drop => vec!["drop".into()],
         })

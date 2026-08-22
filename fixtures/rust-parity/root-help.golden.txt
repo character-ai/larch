@@ -40,6 +40,7 @@ Commands:
   merge                     Pull-request merge and merge-queue commands
   hook                      Advisory Claude Code hook commands
   implement                 `/implement` bootstrap, preflight, scout, recovery, and step checks
+  implement-finalize        Post-ship rebase, push, local cleanup, and terminal teardown
   ship                      Ship pre-driver routing, state, result, and rebase-repair commands
   issue                     GitHub issue reads and issue-body wire helpers
   plan-block                The `larch:plan` issue-body block carrying the `/design` handoff

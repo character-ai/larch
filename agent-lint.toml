@@ -424,7 +424,6 @@ exclude = [
   # not invokable directly). It provides is_transient_net_signature() to
   # shell callsites via source directives only, which agent-lint does not follow.
   # Python retry callers use python/retry.py instead.
-  # python3 python/cli.py implement-finalize and skills/implement/scripts/flush-execution-issues.sh.
   # scripts/external-tool-registry.sh is a sourced-only shell library (no
   # shebang, not invokable directly). It is referenced from shell consumers via
   # source directives only, which agent-lint does not follow.
@@ -596,7 +595,7 @@ exclude = [
   # scripts/test-implement-cleanup-roundtrip.sh is the round-trip integration
   # test for the EXPECTED_TMPDIR_BASENAME_PREFIX state-file convention used by
   # skills/implement/SKILL.md Steps 13.5 and 14 and validated by
-  # python3 python/cli.py implement-finalize::verify_cleanup_target (closes #1572).
+  # Rust implement_finalize_commands::cleanup_target_ok (closes #1572).
   # Referenced only from Makefile (test-implement-cleanup-roundtrip target)
   # and scripts/test-implement-cleanup-roundtrip.md (sibling contract),
   # matching the same Makefile-only pattern as other test-implement-* harnesses.
@@ -633,11 +632,6 @@ exclude = [
   # Phase 2 wires /implement tracking adoption as its first consumer.
   # (itself excluded above), so the reachability graph treats it as dead too.
   # Phase 3 (skills/implement/SKILL.md wiring) removes both exclusions.
-  # python/test_finalize.py is the regression harness for
-  # python3 python/cli.py implement-finalize, wired into Makefile test-implement-finalize
-  # target only (no SKILL.md invocation). Same Makefile-only shape as the
-  # other test-* harnesses above.
-  "python/test_finalize.py",
   # python/test_preflight.py is the regression harness for python/cli.py
   # implement preflight, wired into Makefile test-preflight target only.
   "python/test_preflight.py",

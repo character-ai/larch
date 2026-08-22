@@ -102,7 +102,7 @@ snapshot_call_line=$(awk '/complete_terminal_run_log\(root, tmpdir/ {print NR; e
 finalize_invocations=$(command grep -Fc '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-18.sh' "$skill_file" || true)
 [ "$finalize_invocations" -eq 1 ] || fail "expected one step-18.sh invocation in SKILL.md, found $finalize_invocations"
 command grep -Fq '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh implement step-18-gate-logs-flush' "$skill_file" || fail 'SKILL.md lacks composite Step 18 launcher'
-command grep -Fq '"implement-finalize"' "$terminal" || fail 'implement_terminal_commands.rs lacks exact teardown argv'
+command grep -Fq 'FinalizePhase::Teardown' "$terminal" || fail 'implement_terminal_commands.rs lacks in-process teardown dispatch'
 command grep -Fq '"final-report",' "$terminal" || fail 'implement_terminal_commands.rs lacks live step18b argv'
 command grep -Fq 'fn print_summary_markers' "$terminal" || fail 'implement_terminal_commands.rs lacks marker helper'
 command grep -Fq 'implement step-18 "$@"' skills/implement/scripts/step-18.sh || fail 'step-18.sh must remain a thin larch delegate'
