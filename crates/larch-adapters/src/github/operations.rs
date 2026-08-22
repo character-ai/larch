@@ -1328,11 +1328,9 @@ impl OctocrabGitHubService {
         parse_review_state(&value)
     }
 
-    /// Read one pull request's merge-queue eligibility and current queue state.
-    ///
+    /// Read one pull request's typed merge-queue state.
     /// # Errors
-    /// Returns a typed error on cancellation, deadline, authorization, transport
-    /// failure, GraphQL errors, or a response outside the fixed contract.
+    /// Returns a typed error for invalid inputs or failed or cancelled GitHub reads.
     pub async fn pull_request_queue_state(
         &self,
         cancellation: &dyn ProcessCancellation,
@@ -1352,14 +1350,9 @@ impl OctocrabGitHubService {
         parse_queue_state(&value, self.policy.limits())
     }
 
-    /// Add one pull request to the merge queue, then prove the outcome by read-back.
-    ///
-    /// The mutation is never resubmitted. An uncertain response is reconciled
-    /// through bounded reads of the same queue fields before failing closed.
-    ///
+    /// Enqueue once and prove the outcome through bounded exact-head read-back.
     /// # Errors
-    /// Returns a typed error when authorization, transport, response parsing,
-    /// or exact read-back fails.
+    /// Returns a typed error if authorization, validation, mutation, or read-back fails.
     pub async fn enqueue_pull_request(
         &self,
         cancellation: &dyn ProcessCancellation,
@@ -3090,27 +3083,25 @@ fn parse_queue_state(
         "CLOSED" => PullRequestQueueLifecycle::Closed,
         _ => unreachable!("pull request state was validated above"),
     };
+    let node_id = required_str(pull_request, "id", limits, "graphql pull request node id")?;
+    let head_oid = required_str(
+        pull_request,
+        "headRefOid",
+        limits,
+        "graphql pull request head oid",
+    )?;
+    let required_bool = |field, context| {
+        pull_request
+            .get(field)
+            .and_then(Value::as_bool)
+            .ok_or(GitHubOperationError::Malformed(context))
+    };
     Ok(PullRequestQueueState {
-        node_id: required_str(pull_request, "id", limits, "graphql pull request node id")?,
-        head_oid: required_str(
-            pull_request,
-            "headRefOid",
-            limits,
-            "graphql pull request head oid",
-        )?,
+        node_id,
+        head_oid,
         lifecycle,
-        enabled: pull_request
-            .get("isMergeQueueEnabled")
-            .and_then(Value::as_bool)
-            .ok_or(GitHubOperationError::Malformed(
-                "graphql merge queue enabled",
-            ))?,
-        queued: pull_request
-            .get("isInMergeQueue")
-            .and_then(Value::as_bool)
-            .ok_or(GitHubOperationError::Malformed(
-                "graphql pull request queue state",
-            ))?,
+        enabled: required_bool("isMergeQueueEnabled", "graphql merge queue enabled")?,
+        queued: required_bool("isInMergeQueue", "graphql pull request queue state")?,
     })
 }
 
@@ -3940,9 +3931,9 @@ mod service_tests {
         AuditRunsService, DependencyEdge, DependencyMutation, DependencyMutationReceipt,
         DependencyRef, GitHubOperationError, LiveMutationRequest, MERGE_QUEUE_READBACK_ATTEMPTS,
         MergeStateStatus, Mergeable, OctocrabGitHubService, PullRequestEdit, PullRequestMerge,
-        PullRequestMergeMethod, PullRequestMergeResult, PullRequestQueueLifecycle,
-        PullRequestQueueResult, PullRequestSpec, PullRequestState, ReleasePlanningService,
-        ReviewDecision, SubIssueEdge, SubIssueMutation, SubIssueMutationReceipt,
+        PullRequestMergeMethod, PullRequestMergeResult, PullRequestQueueResult as QR,
+        PullRequestSpec, PullRequestState, ReleasePlanningService, ReviewDecision, SubIssueEdge,
+        SubIssueMutation, SubIssueMutationReceipt,
     };
     use crate::runtime::Cancellation;
     use larch_test_support::{HttpResponseBuilder, IssueServiceExchange, IssueServiceStub};
@@ -4058,6 +4049,14 @@ mod service_tests {
             }}}
         })
         .to_string()
+    }
+    async fn enqueue(
+        service: &OctocrabGitHubService,
+        authorization: &LiveMutationRequest<'_>,
+    ) -> Result<QR, GitHubOperationError> {
+        service
+            .enqueue_pull_request(&Cancellation::new(), authorization, "o", "r", 7, HEAD)
+            .await
     }
 
     fn merge_request() -> PullRequestMerge<'static> {
@@ -4685,26 +4684,22 @@ mod service_tests {
 
     #[tokio::test]
     async fn merge_queue_mutation_is_idempotent_and_reconciles_uncertainty() {
-        let cancellation = Cancellation::new();
         let authorized = operator_request();
         let open = merge_queue_state_json("OPEN", false, true, false);
         let queued = merge_queue_state_json("OPEN", false, true, true);
-        let accepted = json!({
-            "data": { "enqueuePullRequest": { "mergeQueueEntry": { "id": "MQE_node" } } }
-        })
+        let accepted = json!({ "data": { "enqueuePullRequest": {
+            "mergeQueueEntry": { "id": "MQE_node" }
+        }}})
         .to_string();
         let (service, server) = stub_service(vec![
             (200, open.clone()),
             (200, accepted),
             (200, queued.clone()),
         ]);
-        assert_eq!(
-            service
-                .enqueue_pull_request(&cancellation, &authorized, "o", "r", 7, HEAD)
-                .await
-                .expect("accepted queue mutation"),
-            PullRequestQueueResult::Queued
-        );
+        let result = enqueue(&service, &authorized)
+            .await
+            .expect("accepted queue mutation");
+        assert_eq!(result, QR::Queued);
         let requests = server.requests().expect("request log");
         assert_eq!(requests.len(), 3);
         let body: Value = serde_json::from_slice(&requests[1].body.bytes).expect("mutation body");
@@ -4716,13 +4711,10 @@ mod service_tests {
 
         let stale = merge_queue_state_json("OPEN", false, true, false).replace(HEAD, OTHER_HEAD);
         let (service, server) = stub_service(vec![(200, stale)]);
-        assert_eq!(
-            service
-                .enqueue_pull_request(&cancellation, &authorized, "o", "r", 7, HEAD)
-                .await
-                .expect("changed head is a typed refusal"),
-            PullRequestQueueResult::HeadChanged
-        );
+        let result = enqueue(&service, &authorized)
+            .await
+            .expect("changed head refusal");
+        assert_eq!(result, QR::HeadChanged);
         assert_eq!(server.requests().expect("request log").len(), 1);
         server.join().expect("stub completed");
 
@@ -4734,13 +4726,10 @@ mod service_tests {
             ),
             (200, queued),
         ]);
-        assert_eq!(
-            service
-                .enqueue_pull_request(&cancellation, &authorized, "o", "r", 7, HEAD)
-                .await
-                .expect("read-back proves an uncertain mutation"),
-            PullRequestQueueResult::Queued
-        );
+        let result = enqueue(&service, &authorized)
+            .await
+            .expect("uncertain read-back");
+        assert_eq!(result, QR::Queued);
         assert_eq!(server.requests().expect("request log").len(), 3);
         server.join().expect("stub completed");
     }
@@ -4754,13 +4743,10 @@ mod service_tests {
         ];
         responses.extend((0..MERGE_QUEUE_READBACK_ATTEMPTS).map(|_| (200, open.clone())));
         let (service, server) = stub_service(responses);
-        assert_eq!(
-            service
-                .enqueue_pull_request(&Cancellation::new(), &operator_request(), "o", "r", 7, HEAD)
-                .await
-                .expect_err("unconfirmed queue mutation fails closed"),
-            GitHubOperationError::AmbiguousMutation
-        );
+        let error = enqueue(&service, &operator_request())
+            .await
+            .expect_err("unconfirmed mutation");
+        assert_eq!(error, GitHubOperationError::AmbiguousMutation);
         assert_eq!(
             server.requests().expect("request log").len(),
             MERGE_QUEUE_READBACK_ATTEMPTS + 2
@@ -4768,28 +4754,31 @@ mod service_tests {
         server.join().expect("stub completed");
 
         let (service, server) = stub_service(vec![]);
+        let error = enqueue(&service, &denied_request())
+            .await
+            .expect_err("gate refusal");
         assert_eq!(
-            service
-                .enqueue_pull_request(&Cancellation::new(), &denied_request(), "o", "r", 7, HEAD)
-                .await
-                .expect_err("gate refuses before reads"),
+            error,
             GitHubOperationError::MutationRefused("unauthorized-mutation")
         );
         server.join().expect("stub completed");
     }
 
     #[tokio::test]
-    async fn merge_queue_state_parses_terminal_lifecycle() {
-        let (service, server) = stub_service(vec![(
-            200,
-            merge_queue_state_json("CLOSED", true, true, false),
-        )]);
-        let state = service
-            .pull_request_queue_state(&Cancellation::new(), "o", "r", 7)
-            .await
-            .expect("queue state");
-        assert_eq!(state.lifecycle, PullRequestQueueLifecycle::Merged);
-        server.join().expect("stub completed");
+    async fn merge_queue_pre_read_is_idempotent_for_queued_and_merged() {
+        for (state, merged, queued, expected) in [
+            ("OPEN", false, true, QR::Queued),
+            ("CLOSED", true, false, QR::Merged),
+        ] {
+            let body = merge_queue_state_json(state, merged, true, queued);
+            let (service, server) = stub_service(vec![(200, body)]);
+            let result = enqueue(&service, &operator_request())
+                .await
+                .expect("terminal queue state");
+            assert_eq!(result, expected);
+            assert_eq!(server.requests().expect("request log").len(), 1);
+            server.join().expect("stub completed");
+        }
     }
 
     #[tokio::test]

@@ -1,18 +1,3 @@
-use std::{ffi::OsString, process::ExitCode, thread, time::Duration};
-
-use larch_adapters::{
-    GixRepository,
-    github::{
-        LiveMutationRequest, MergeStateStatus, PullRequestMerge, PullRequestMergeMethod,
-        PullRequestMergeResult, PullRequestQueueResult, ReleaseCandidatePullRequestState,
-        ReviewDecision,
-    },
-};
-use larch_core::{
-    CheckBucket, GitHubActionsService, GitHubRepositoryRef, RepositoryRead, Revision,
-    RuntimeRedactor,
-};
-
 use crate::{
     argparse_compat::{
         choice_error, option_text, parse_python_int, parse_required_with_help, python_repr,
@@ -20,11 +5,19 @@ use crate::{
     },
     release_common::{ProductionReleaseServices, plugin_version_at, repo_slug, semver},
 };
-
+use larch_adapters::github::{
+    LiveMutationRequest, MergeStateStatus, PullRequestMerge, PullRequestMergeMethod,
+    PullRequestMergeResult, PullRequestQueueResult, ReleaseCandidatePullRequestState, RepoSlug,
+    ReviewDecision,
+};
+use larch_core::{
+    CheckBucket, GitHubActionsService, GitHubRepositoryRef, RepositoryRead, Revision,
+    RuntimeRedactor,
+};
+use std::{ffi::OsString, process::ExitCode, thread, time::Duration};
 const PR_PROGRAM: &str = "cli.py merge pr";
 const PR_USAGE: &str = "usage: cli.py merge pr [-h] --pr PR --repo REPO [--no-admin-fallback]\n                       [--method {squash,merge}]";
 const PR_HELP: &str = "usage: cli.py merge pr [-h] --pr PR --repo REPO [--no-admin-fallback]\n                       [--method {squash,merge}]\n\noptions:\n  -h, --help            show this help message and exit\n  --pr PR\n  --repo REPO\n  --no-admin-fallback\n  --method {squash,merge}";
-const WAIT_PROGRAM: &str = "cli.py merge wait";
 const WAIT_USAGE: &str = "usage: cli.py merge wait [-h] --pr PR --repo REPO";
 const WAIT_HELP: &str = "usage: cli.py merge wait [-h] --pr PR --repo REPO\n\noptions:\n  -h, --help   show this help message and exit\n  --pr PR\n  --repo REPO";
 const VERSION_WALK_LIMIT: usize = 10_000;
@@ -43,11 +36,8 @@ impl Outcome {
             error: diagnostic(&error),
         }
     }
-    const fn success(result: &'static str) -> Self {
-        Self {
-            result,
-            error: String::new(),
-        }
+    fn success(result: &'static str) -> Self {
+        Self::new(result, "")
     }
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -72,16 +62,13 @@ trait MergeServices {
     fn queue_enabled(&mut self, repository: &str, number: u64) -> Result<bool, String>;
     fn enqueue(
         &mut self,
-        repository: &str,
-        number: u64,
+        request: &MergeRequest,
         head: &str,
     ) -> Result<PullRequestQueueResult, String>;
     fn direct_merge(
         &mut self,
-        repository: &str,
-        number: u64,
+        request: &MergeRequest,
         head: &str,
-        method: PullRequestMergeMethod,
         bypass: bool,
     ) -> Result<PullRequestMergeResult, String>;
     fn local_head(&mut self) -> Result<String, String>;
@@ -92,25 +79,14 @@ trait MergeServices {
 }
 impl MergeServices for ProductionReleaseServices {
     fn candidate(&mut self, repository: &str, number: u64) -> Result<Candidate, String> {
-        let slug =
-            repo_slug(repository).ok_or_else(|| "invalid GitHub repository slug".to_owned())?;
-        let pull = self
-            .runtime
-            .block_on(self.github.release_candidate_pull_request(
-                &self.cancellation,
-                slug.owner(),
-                slug.repo(),
-                number,
-            ))
-            .map_err(|error| error.to_string())?;
+        let pull = self.pull_request(&merge_repo(repository)?, number)?;
         Ok(Candidate {
             state: pull.state,
             head_oid: pull.head_oid,
         })
     }
     fn review(&mut self, repository: &str, number: u64) -> Result<ReviewState, String> {
-        let slug =
-            repo_slug(repository).ok_or_else(|| "invalid GitHub repository slug".to_owned())?;
+        let slug = merge_repo(repository)?;
         let state = self
             .runtime
             .block_on(self.github.pull_request_review_state(
@@ -126,8 +102,7 @@ impl MergeServices for ProductionReleaseServices {
         })
     }
     fn checks_pass(&mut self, repository: &str, head: &str) -> Result<bool, String> {
-        let slug =
-            repo_slug(repository).ok_or_else(|| "invalid GitHub repository slug".to_owned())?;
+        let slug = merge_repo(repository)?;
         let reference = GitHubRepositoryRef::new(slug.owner(), slug.repo())
             .map_err(|error| error.to_string())?;
         let checks = self
@@ -140,8 +115,7 @@ impl MergeServices for ProductionReleaseServices {
                 .all(|check| !matches!(check.bucket, CheckBucket::Fail | CheckBucket::Pending)))
     }
     fn queue_enabled(&mut self, repository: &str, number: u64) -> Result<bool, String> {
-        let slug =
-            repo_slug(repository).ok_or_else(|| "invalid GitHub repository slug".to_owned())?;
+        let slug = merge_repo(repository)?;
         self.runtime
             .block_on(self.github.pull_request_queue_state(
                 &self.cancellation,
@@ -154,33 +128,28 @@ impl MergeServices for ProductionReleaseServices {
     }
     fn enqueue(
         &mut self,
-        repository: &str,
-        number: u64,
+        request: &MergeRequest,
         head: &str,
     ) -> Result<PullRequestQueueResult, String> {
-        let slug =
-            repo_slug(repository).ok_or_else(|| "invalid GitHub repository slug".to_owned())?;
+        let slug = merge_repo(&request.repository)?;
         self.runtime
             .block_on(self.github.enqueue_pull_request(
                 &self.cancellation,
                 &mutation_authorization(),
                 slug.owner(),
                 slug.repo(),
-                number,
+                request.number,
                 head,
             ))
             .map_err(|error| error.to_string())
     }
     fn direct_merge(
         &mut self,
-        repository: &str,
-        number: u64,
+        request: &MergeRequest,
         head: &str,
-        method: PullRequestMergeMethod,
         bypass: bool,
     ) -> Result<PullRequestMergeResult, String> {
-        let slug =
-            repo_slug(repository).ok_or_else(|| "invalid GitHub repository slug".to_owned())?;
+        let slug = merge_repo(&request.repository)?;
         self.runtime
             .block_on(self.github.merge_pull_request(
                 &self.cancellation,
@@ -188,9 +157,9 @@ impl MergeServices for ProductionReleaseServices {
                 &PullRequestMerge {
                     owner: slug.owner(),
                     repo: slug.repo(),
-                    number,
+                    number: request.number,
                     expected_head_oid: head,
-                    method,
+                    method: request.method,
                     bypass_branch_protection: bypass,
                     commit_title: None,
                     commit_message: None,
@@ -199,7 +168,10 @@ impl MergeServices for ProductionReleaseServices {
             .map_err(|error| error.to_string())
     }
     fn local_head(&mut self) -> Result<String, String> {
-        resolve(&self.repository, "HEAD")
+        self.repository
+            .resolve_revision(&Revision::new(b"HEAD"))
+            .map(|oid| oid.to_hex())
+            .map_err(|error| error.to_string())
     }
     fn fetch_main(&mut self) -> Result<(), String> {
         self.fetch_origin_main()
@@ -273,7 +245,6 @@ pub fn wait(arguments: &[OsString]) -> ExitCode {
         }
     }
 }
-#[derive(Clone, Debug)]
 struct MergeRequest {
     number: u64,
     repository: String,
@@ -328,7 +299,7 @@ fn parse_pr(arguments: &[OsString]) -> Option<MergeRequest> {
 fn parse_wait(arguments: &[OsString]) -> Option<(u64, String)> {
     let parsed = parse_required_with_help(
         arguments,
-        WAIT_PROGRAM,
+        "cli.py merge wait",
         WAIT_USAGE,
         WAIT_HELP,
         &["--pr", "--repo"],
@@ -344,7 +315,7 @@ fn parse_wait(arguments: &[OsString]) -> Option<(u64, String)> {
         None => {
             let _ = usage_error(
                 WAIT_USAGE,
-                WAIT_PROGRAM,
+                "cli.py merge wait",
                 &format!("argument --pr: invalid int value: {}", python_repr(&raw)),
                 1,
             );
@@ -532,7 +503,7 @@ fn attempt_merge<S: MergeServices>(
     merge_with_admin_fallback(services, request, head)
 }
 fn enqueue<S: MergeServices>(services: &mut S, request: &MergeRequest, head: &str) -> Outcome {
-    match services.enqueue(&request.repository, request.number, head) {
+    match services.enqueue(request, head) {
         Ok(PullRequestQueueResult::Merged) => Outcome::success("merged"),
         Ok(PullRequestQueueResult::Queued) => Outcome::success("queued"),
         Ok(PullRequestQueueResult::HeadChanged) => Outcome::new(
@@ -553,35 +524,38 @@ fn enqueue<S: MergeServices>(services: &mut S, request: &MergeRequest, head: &st
         ),
     }
 }
+fn terminal_merge_result(
+    result: &PullRequestMergeResult,
+    success: &'static str,
+) -> Option<Outcome> {
+    match result {
+        PullRequestMergeResult::Merged { .. } => Some(Outcome::success(success)),
+        PullRequestMergeResult::AlreadyMerged => Some(Outcome::success("merged")),
+        PullRequestMergeResult::HeadChanged | PullRequestMergeResult::MergeConflict => {
+            Some(Outcome::new(
+                "main_advanced",
+                "pull request head changed or conflicts with main",
+            ))
+        }
+        _ => None,
+    }
+}
 fn merge_without_admin<S: MergeServices>(
     services: &mut S,
     request: &MergeRequest,
     head: &str,
 ) -> Outcome {
-    match services.direct_merge(
-        &request.repository,
-        request.number,
-        head,
-        request.method,
-        false,
-    ) {
-        Ok(PullRequestMergeResult::Merged { .. } | PullRequestMergeResult::AlreadyMerged) => {
-            Outcome::success("merged")
-        }
-        Ok(PullRequestMergeResult::HeadChanged | PullRequestMergeResult::MergeConflict) => {
-            Outcome::new(
-                "main_advanced",
-                "pull request head changed or conflicts with main",
+    match services.direct_merge(request, head, false) {
+        Ok(result) => terminal_merge_result(&result, "merged").unwrap_or_else(|| {
+            review_classification(
+                services,
+                request,
+                Outcome::new(
+                    "policy_denied",
+                    format!("branch protection denied merge; --no-admin-fallback set: {result:?}"),
+                ),
             )
-        }
-        Ok(result) => review_classification(
-            services,
-            request,
-            Outcome::new(
-                "policy_denied",
-                format!("branch protection denied merge; --no-admin-fallback set: {result:?}"),
-            ),
-        ),
+        }),
         Err(error) => review_classification(
             services,
             request,
@@ -597,71 +571,45 @@ fn merge_with_admin_fallback<S: MergeServices>(
     request: &MergeRequest,
     head: &str,
 ) -> Outcome {
-    let admin = services.direct_merge(
-        &request.repository,
-        request.number,
-        head,
-        request.method,
-        true,
-    );
-    match admin {
-        Ok(PullRequestMergeResult::Merged { .. } | PullRequestMergeResult::AlreadyMerged) => {
-            Outcome::success("admin_merged")
+    let admin_result = match services.direct_merge(request, head, true) {
+        Ok(result) => match terminal_merge_result(&result, "admin_merged") {
+            Some(outcome) => return outcome,
+            None => result,
+        },
+        Err(error) => {
+            return review_classification(
+                services,
+                request,
+                Outcome::new(
+                    "admin_failed",
+                    format!("Admin merge outcome was uncertain: {error}"),
+                ),
+            );
         }
-        Ok(PullRequestMergeResult::HeadChanged | PullRequestMergeResult::MergeConflict) => {
-            Outcome::new(
-                "main_advanced",
-                "pull request head changed or conflicts with main",
+    };
+    match services.direct_merge(request, head, false) {
+        Ok(result) => terminal_merge_result(&result, "merged").unwrap_or_else(|| {
+            review_classification(
+                services,
+                request,
+                Outcome::new(
+                    "admin_failed",
+                    format!(
+                        "Admin merge failed: {admin_result:?}; fallback merge failed: {result:?}"
+                    ),
+                ),
             )
-        }
+        }),
         Err(error) => review_classification(
             services,
             request,
             Outcome::new(
                 "admin_failed",
-                format!("Admin merge outcome was uncertain: {error}"),
+                format!(
+                    "Admin merge failed: {admin_result:?}; fallback merge outcome was uncertain: {error}"
+                ),
             ),
         ),
-        Ok(admin_result) => {
-            let plain = services.direct_merge(
-                &request.repository,
-                request.number,
-                head,
-                request.method,
-                false,
-            );
-            match plain {
-                Ok(
-                    PullRequestMergeResult::Merged { .. } | PullRequestMergeResult::AlreadyMerged,
-                ) => Outcome::success("merged"),
-                Ok(PullRequestMergeResult::HeadChanged | PullRequestMergeResult::MergeConflict) => {
-                    Outcome::new(
-                        "main_advanced",
-                        "pull request head changed or conflicts with main",
-                    )
-                }
-                Ok(result) => review_classification(
-                    services,
-                    request,
-                    Outcome::new(
-                        "admin_failed",
-                        format!(
-                            "Admin merge failed: {admin_result:?}; fallback merge failed: {result:?}"
-                        ),
-                    ),
-                ),
-                Err(error) => review_classification(
-                    services,
-                    request,
-                    Outcome::new(
-                        "admin_failed",
-                        format!(
-                            "Admin merge failed: {admin_result:?}; fallback merge outcome was uncertain: {error}"
-                        ),
-                    ),
-                ),
-            }
-        }
     }
 }
 fn review_classification<S: MergeServices>(
@@ -721,13 +669,9 @@ fn bump_version(subject: &str) -> Option<&str> {
         .find_map(|prefix| subject.strip_prefix(prefix))
         .filter(|version| semver(version).is_some())
 }
-fn resolve(repository: &GixRepository, revision: &str) -> Result<String, String> {
-    repository
-        .resolve_revision(&Revision::new(revision.as_bytes()))
-        .map(|oid| oid.to_hex())
-        .map_err(|error| error.to_string())
+fn merge_repo(repository: &str) -> Result<RepoSlug, String> {
+    repo_slug(repository).ok_or_else(|| "invalid GitHub repository slug".to_owned())
 }
-
 const fn mutation_authorization() -> LiveMutationRequest<'static> {
     LiveMutationRequest {
         context_file: None,
@@ -737,7 +681,6 @@ const fn mutation_authorization() -> LiveMutationRequest<'static> {
         test_deny: false,
     }
 }
-
 const fn merge_state_name(state: MergeStateStatus) -> &'static str {
     match state {
         MergeStateStatus::Behind => "BEHIND",
@@ -765,94 +708,79 @@ fn emit(outcome: &Outcome) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use MergeStateStatus as MS;
+    use PullRequestMergeResult as MR;
+    use PullRequestQueueResult as QR;
+    use ReleaseCandidatePullRequestState as PS;
     use std::collections::VecDeque;
-
+    #[derive(Default)]
     struct Fake {
         candidates: VecDeque<Result<Candidate, String>>,
         reviews: VecDeque<Result<ReviewState, String>>,
-        checks: bool,
-        queue: bool,
-        enqueued: Result<PullRequestQueueResult, String>,
+        checks: Option<Result<bool, String>>,
+        queue: Option<Result<bool, String>>,
+        enqueued: Option<Result<PullRequestQueueResult, String>>,
         merges: VecDeque<Result<PullRequestMergeResult, String>>,
-        head: String,
-        bump: Option<VersionBump>,
-        versions: VecDeque<String>,
+        head: Option<Result<String, String>>,
+        fetches: VecDeque<Result<(), String>>,
+        bump: Option<Result<Option<VersionBump>, String>>,
+        versions: VecDeque<Result<String, String>>,
         merge_calls: usize,
     }
-
-    impl Default for Fake {
-        fn default() -> Self {
-            Self {
-                candidates: VecDeque::from([Ok(candidate(ReleaseCandidatePullRequestState::Open))]),
-                reviews: VecDeque::from([Ok(review(MergeStateStatus::Clean))]),
-                checks: true,
-                queue: false,
-                enqueued: Ok(PullRequestQueueResult::Queued),
-                merges: VecDeque::from([Ok(PullRequestMergeResult::Merged {
-                    merge_commit_oid: "2".repeat(40),
-                })]),
-                head: "1".repeat(40),
-                bump: None,
-                versions: VecDeque::new(),
-                merge_calls: 0,
-            }
-        }
-    }
-
     impl MergeServices for Fake {
         fn candidate(&mut self, _: &str, _: u64) -> Result<Candidate, String> {
             self.candidates
                 .pop_front()
-                .unwrap_or_else(|| Ok(candidate(ReleaseCandidatePullRequestState::Open)))
+                .unwrap_or_else(|| Ok(candidate(PS::Open)))
         }
         fn review(&mut self, _: &str, _: u64) -> Result<ReviewState, String> {
             self.reviews
                 .pop_front()
-                .unwrap_or_else(|| Ok(review(MergeStateStatus::Clean)))
+                .unwrap_or_else(|| Ok(review(MS::Clean)))
         }
         fn checks_pass(&mut self, _: &str, _: &str) -> Result<bool, String> {
-            Ok(self.checks)
+            self.checks.clone().unwrap_or(Ok(true))
         }
         fn queue_enabled(&mut self, _: &str, _: u64) -> Result<bool, String> {
-            Ok(self.queue)
+            self.queue.clone().unwrap_or(Ok(false))
         }
-        fn enqueue(&mut self, _: &str, _: u64, _: &str) -> Result<PullRequestQueueResult, String> {
-            self.enqueued.clone()
+        fn enqueue(&mut self, _: &MergeRequest, _: &str) -> Result<QR, String> {
+            self.enqueued.clone().unwrap_or(Ok(QR::Queued))
         }
-        fn direct_merge(
-            &mut self,
-            _: &str,
-            _: u64,
-            _: &str,
-            _: PullRequestMergeMethod,
-            _: bool,
-        ) -> Result<PullRequestMergeResult, String> {
+        fn direct_merge(&mut self, _: &MergeRequest, _: &str, _: bool) -> Result<MR, String> {
             self.merge_calls += 1;
             self.merges
                 .pop_front()
-                .unwrap_or(Ok(PullRequestMergeResult::MergeUnavailable))
+                .unwrap_or_else(|| Ok(merged_result()))
         }
         fn local_head(&mut self) -> Result<String, String> {
-            Ok(self.head.clone())
+            self.head.clone().unwrap_or_else(|| Ok("1".repeat(40)))
         }
         fn fetch_main(&mut self) -> Result<(), String> {
-            Ok(())
+            self.fetches.pop_front().unwrap_or(Ok(()))
         }
         fn version_bump(&mut self) -> Result<Option<VersionBump>, String> {
-            Ok(self.bump.clone())
+            self.bump.clone().unwrap_or(Ok(None))
         }
         fn plugin_version(&mut self, _: &str) -> Result<String, String> {
-            Ok(self.versions.pop_front().unwrap_or_default())
+            self.versions.pop_front().unwrap_or(Ok(String::new()))
         }
         fn sleep(&mut self, _: Duration) {}
     }
-    fn candidate(state: ReleaseCandidatePullRequestState) -> Candidate {
+    macro_rules! fake {
+        ($($field:ident: $value:expr),* $(,)?) => {{
+            let mut fake = Fake::default();
+            $(fake.$field = $value;)*
+            fake
+        }};
+    }
+    fn candidate(state: PS) -> Candidate {
         Candidate {
             state,
             head_oid: "1".repeat(40),
         }
     }
-    fn review(merge_state: MergeStateStatus) -> ReviewState {
+    fn review(merge_state: MS) -> ReviewState {
         ReviewState {
             merge_state,
             decision: None,
@@ -866,107 +794,198 @@ mod tests {
             method: PullRequestMergeMethod::Squash,
         }
     }
-
-    #[test]
-    fn terminal_and_precondition_outcomes_are_stable() {
-        let mut merged = Fake {
-            candidates: VecDeque::from([Ok(candidate(ReleaseCandidatePullRequestState::Merged))]),
-            ..Fake::default()
-        };
-        assert_eq!(merge(&mut merged, &request()), Outcome::success("merged"));
-        let mut ci = Fake {
-            checks: false,
-            ..Fake::default()
-        };
-        assert_eq!(merge(&mut ci, &request()).result, "ci_not_ready");
-        let mut mismatch = Fake {
-            head: "9".repeat(40),
-            ..Fake::default()
-        };
-        assert!(
-            merge(&mut mismatch, &request())
-                .error
-                .contains("does not match PR head")
-        );
+    fn required_review() -> ReviewState {
+        ReviewState {
+            merge_state: MS::Clean,
+            decision: Some(ReviewDecision::ReviewRequired),
+        }
     }
-
-    #[test]
-    fn queue_and_admin_fallback_preserve_result_literals() {
-        let mut queued = Fake {
-            queue: true,
-            ..Fake::default()
-        };
-        assert_eq!(merge(&mut queued, &request()), Outcome::success("queued"));
-        let mut changed = Fake {
-            queue: true,
-            enqueued: Ok(PullRequestQueueResult::HeadChanged),
-            ..Fake::default()
-        };
-        assert_eq!(merge(&mut changed, &request()).result, "main_advanced");
-        let mut fallback = Fake {
-            merges: VecDeque::from([
-                Ok(PullRequestMergeResult::BranchProtection),
-                Ok(PullRequestMergeResult::Merged {
-                    merge_commit_oid: "2".repeat(40),
-                }),
-            ]),
-            ..Fake::default()
-        };
-        assert_eq!(merge(&mut fallback, &request()), Outcome::success("merged"));
-        assert_eq!(fallback.merge_calls, 2);
+    fn merged_result() -> MR {
+        MR::Merged {
+            merge_commit_oid: "2".repeat(40),
+        }
     }
-
-    #[test]
-    fn uncertain_admin_outcome_never_submits_a_second_mutation() {
-        let mut fake = Fake {
-            merges: VecDeque::from([Err("uncertain".to_owned())]),
-            ..Fake::default()
-        };
-        assert_eq!(merge(&mut fake, &request()).result, "admin_failed");
-        assert_eq!(fake.merge_calls, 1);
+    fn racing(versions: &[&str]) -> Fake {
+        fake!(
+            bump: Some(Ok(Some(VersionBump { parent: "3".repeat(40), version: "1.2.3".to_owned() }))),
+            versions: versions.iter().map(|value| Ok((*value).to_owned())).collect()
+        )
     }
-
-    #[test]
-    fn version_race_detects_a_published_same_version() {
-        let mut fake = Fake {
-            bump: Some(VersionBump {
-                parent: "3".repeat(40),
-                version: "1.2.3".to_owned(),
-            }),
-            versions: VecDeque::from(["1.2.3".to_owned()]),
-            ..Fake::default()
-        };
+    fn merged(mut fake: Fake) -> &'static str {
+        merge(&mut fake, &request()).result
+    }
+    fn assert_queue(enqueued: Result<QR, String>, expected: &str) {
+        let mut fake = fake!(queue: Some(Ok(true)), enqueued: Some(enqueued));
         assert_eq!(
-            merge(&mut fake, &request()).result,
-            "version_already_published"
+            attempt_merge(&mut fake, &request(), "head").result,
+            expected
         );
     }
-
-    #[test]
-    fn wait_requires_an_observed_merge_and_rejects_closed() {
-        let mut merged = Fake {
-            candidates: VecDeque::from([
-                Ok(candidate(ReleaseCandidatePullRequestState::Open)),
-                Ok(candidate(ReleaseCandidatePullRequestState::Merged)),
-            ]),
-            ..Fake::default()
-        };
-        assert_eq!(wait_for_merge(&mut merged, 7, "o/r"), Ok(()));
-        let mut closed = Fake {
-            candidates: VecDeque::from([Ok(candidate(ReleaseCandidatePullRequestState::Closed))]),
-            ..Fake::default()
-        };
-        assert!(
-            wait_for_merge(&mut closed, 7, "o/r")
-                .unwrap_err()
-                .contains("CLOSED")
+    fn assert_plain(result: Result<MR, String>, expected: &str) {
+        let mut fake = fake!(merges: VecDeque::from([result]));
+        let mut request = request();
+        request.no_admin_fallback = true;
+        assert_eq!(
+            merge_without_admin(&mut fake, &request, "head").result,
+            expected
         );
     }
-
+    fn assert_admin<const N: usize>(
+        results: [Result<MR, String>; N],
+        expected: &str,
+        calls: usize,
+    ) {
+        let mut fake = fake!(merges: results.into_iter().collect());
+        assert_eq!(
+            merge_with_admin_fallback(&mut fake, &request(), "head").result,
+            expected
+        );
+        assert_eq!(fake.merge_calls, calls);
+    }
     #[test]
-    fn bump_subjects_are_exact() {
+    fn preconditions_and_reads_are_classified() {
+        assert_eq!(merged(Fake::default()), "admin_merged");
+        let mut invalid = request();
+        invalid.number = 0;
+        assert_eq!(merge(&mut Fake::default(), &invalid).result, "error");
+        invalid.number = 7;
+        invalid.repository = "invalid".to_owned();
+        assert_eq!(merge(&mut Fake::default(), &invalid).result, "error");
+        assert_eq!(
+            merged(fake!(candidates: VecDeque::from([Ok(candidate(PS::Merged))]))),
+            "merged"
+        );
+        for value in [Ok(candidate(PS::Closed)), Err("read".to_owned())] {
+            assert_eq!(merged(fake!(candidates: VecDeque::from([value]))), "error");
+        }
+        assert_eq!(merged(fake!(checks: Some(Ok(false)))), "ci_not_ready");
+        assert_eq!(
+            merged(fake!(checks: Some(Err("read".to_owned())))),
+            "ci_not_ready"
+        );
+        assert_eq!(
+            merged(fake!(reviews: VecDeque::from([Ok(review(MS::Dirty))]))),
+            "main_advanced"
+        );
+        assert_eq!(merged(fake!(head: Some(Ok("9".repeat(40))))), "error");
+        assert_eq!(
+            merged(fake!(head: Some(Err("missing".to_owned())))),
+            "error"
+        );
+        let mut recovered = fake!(reviews: VecDeque::from([
+            Ok(review(MS::Unknown)), Ok(review(MS::Clean)),
+        ]));
+        assert_eq!(
+            stable_review(&mut recovered, "o/r", 7),
+            Ok(review(MS::Clean))
+        );
+        for reviews in [
+            (0..5).map(|_| Err("read".to_owned())).collect(),
+            (0..5).map(|_| Ok(review(MS::Unknown))).collect(),
+        ] {
+            assert!(stable_review(&mut fake!(reviews: reviews), "o/r", 7).is_err());
+        }
+    }
+    #[test]
+    fn queue_outcomes_and_policy_reads_are_classified() {
+        assert_queue(Ok(QR::Merged), "merged");
+        assert_queue(Ok(QR::Queued), "queued");
+        assert_queue(Ok(QR::HeadChanged), "main_advanced");
+        assert_queue(Ok(QR::Closed), "error");
+        assert_queue(Err("denied".to_owned()), "policy_denied");
+        let mut unreadable = fake!(queue: Some(Err("read".to_owned())));
+        assert_eq!(
+            attempt_merge(&mut unreadable, &request(), "head").result,
+            "error"
+        );
+        let mut required = fake!(
+            queue: Some(Ok(true)), enqueued: Some(Err("denied".to_owned())),
+            reviews: VecDeque::from([Ok(required_review())])
+        );
+        assert_eq!(
+            attempt_merge(&mut required, &request(), "head").result,
+            "review_required"
+        );
+    }
+    #[test]
+    fn direct_merge_paths_do_not_repeat_uncertain_mutations() {
+        assert_plain(Ok(MR::HeadChanged), "main_advanced");
+        assert_plain(Ok(MR::BranchProtection), "policy_denied");
+        assert_plain(Err("uncertain".to_owned()), "policy_denied");
+        assert_admin([Ok(MR::AlreadyMerged)], "merged", 1);
+        assert_admin([Err("uncertain".to_owned())], "admin_failed", 1);
+        assert_admin([Ok(MR::BranchProtection), Ok(merged_result())], "merged", 2);
+        assert_admin(
+            [Ok(MR::BranchProtection), Ok(MR::MergeUnavailable)],
+            "admin_failed",
+            2,
+        );
+        assert_admin(
+            [Ok(MR::BranchProtection), Err("uncertain".to_owned())],
+            "admin_failed",
+            2,
+        );
+        let mut no_admin = request();
+        no_admin.no_admin_fallback = true;
+        let mut required = fake!(
+            merges: VecDeque::from([Ok(MR::BranchProtection)]),
+            reviews: VecDeque::from([Ok(required_review())])
+        );
+        assert_eq!(
+            merge_without_admin(&mut required, &no_admin, "head").result,
+            "review_required"
+        );
+    }
+    #[test]
+    fn version_race_covers_every_release_window() {
+        let mut failed_fetch = fake!(fetches: VecDeque::from([Err("fetch".to_owned())]));
+        assert_eq!(version_race(&mut failed_fetch).unwrap().result, "error");
+        let mut failed_walk = fake!(bump: Some(Err("walk".to_owned())));
+        assert_eq!(version_race(&mut failed_walk).unwrap().result, "error");
+        assert_eq!(version_race(&mut Fake::default()), None);
+        for (versions, expected) in [
+            (&["invalid"][..], "error"),
+            (&["1.2.3"][..], "version_already_published"),
+            (&["1.0.0", "invalid"][..], "error"),
+            (&["1.1.0", "1.0.0"][..], "error"),
+            (
+                &["1.0.0", "1.0.0", "1.2.3"][..],
+                "version_already_published",
+            ),
+            (&["1.0.0", "1.0.0", "1.1.0"][..], "error"),
+        ] {
+            assert_eq!(
+                version_race(&mut racing(versions)).unwrap().result,
+                expected
+            );
+        }
+        let mut second_fetch = racing(&["1.0.0", "1.0.0"]);
+        second_fetch.fetches = VecDeque::from([Ok(()), Err("fetch".to_owned())]);
+        assert_eq!(version_race(&mut second_fetch).unwrap().result, "error");
+        assert_eq!(
+            version_race(&mut racing(&["1.0.0", "1.0.0", "invalid"])),
+            None
+        );
+    }
+    #[test]
+    fn wait_validates_and_requires_an_observed_merge() {
+        assert!(wait_for_merge(&mut Fake::default(), 7, "invalid").is_err());
+        assert!(wait_for_merge(&mut Fake::default(), 0, "o/r").is_err());
+        let sequence = [PS::Open, PS::Merged].map(candidate).map(Ok).into();
+        assert_eq!(
+            wait_for_merge(&mut fake!(candidates: sequence), 7, "o/r"),
+            Ok(())
+        );
+        let closed = VecDeque::from([Ok(candidate(PS::Closed))]);
+        assert!(wait_for_merge(&mut fake!(candidates: closed), 7, "o/r").is_err());
+        assert!(wait_for_merge(&mut Fake::default(), 7, "o/r").is_err());
+    }
+    #[test]
+    fn small_helpers_are_exact() {
         assert_eq!(bump_version("Release v1.2.3"), Some("1.2.3"));
         assert_eq!(bump_version("Bump version to 2.0.0"), Some("2.0.0"));
         assert_eq!(bump_version("Release v1.2.3 extra"), None);
+        assert!(merge_repo("o/r").is_ok());
+        assert!(mutation_authorization().operator_mode);
     }
 }
