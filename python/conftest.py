@@ -122,8 +122,6 @@ def _no_real_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
       captures the function object at definition time, so patching the module
       attribute retry.default_sleeper alone is ineffective; the global patch
       is what actually suppresses sleep in with_transient_retry).
-    - merge.py falls back to time.sleep when no sleeper is injected.
-
     The logging_util.py fd-4 guard (gating os.write(4,...) on
     _self_initialized_quiet) ensures this global patch is safe under
     pytest-xdist: the test that previously triggered an fd-4 write to

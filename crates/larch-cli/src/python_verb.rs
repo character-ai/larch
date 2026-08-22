@@ -61,19 +61,6 @@ pub fn run_python_verb(
     run_python_verb_at(arguments, None, timeout)
 }
 
-/// Run one still-Python sibling from a caller-validated repository directory.
-///
-/// # Errors
-/// Returns the same resolution, request, and process errors as
-/// [`run_python_verb`].
-pub fn run_python_verb_in(
-    arguments: impl IntoIterator<Item = OsString>,
-    working_directory: &Path,
-    timeout: Duration,
-) -> Result<ProcessOutput, String> {
-    run_python_verb_at(arguments, Some(working_directory), timeout)
-}
-
 fn run_python_verb_at(
     arguments: impl IntoIterator<Item = OsString>,
     working_directory: Option<&Path>,

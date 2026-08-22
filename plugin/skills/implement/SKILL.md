@@ -40,7 +40,7 @@ Two invariants enforced across multiple steps. Anchor cross-step questions here;
 
 Each rule states WHY; per-site reminders reference by anchor name.
 
-1. **NEVER simply "log and return" on push failure in the Step 12 merge loop inside the active Step 8+ driver.** **Why**: `scripts/larch.sh ci wait` and `python/cli.py merge pr` operate on remote PR state only; a log-and-return would let the merge loop proceed to `ACTION=merge` on a remote branch that never received the fix push. **How to apply**: Step 10 CI-fix paths may degrade gracefully; Step 12 family MUST bail to 12d.
+1. **NEVER simply "log and return" on push failure in the Step 12 merge loop inside the active Step 8+ driver.** **Why**: `scripts/larch.sh ci wait` and `scripts/larch.sh merge pr` operate on remote PR state only; a log-and-return would let the merge loop proceed to `ACTION=merge` on a remote branch that never received the fix push. **How to apply**: Step 10 CI-fix paths may degrade gracefully; Step 12 family MUST bail to 12d.
 
 2. **(removed in Phase 1 #3364 — bump verification on the ship path; see `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` retirement stub.)**
 

@@ -1082,7 +1082,7 @@ CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
     "python-tests",
 })
 
-# Phase 5 — PR / merge / logging (live/default Python driver)
+# Phase 5 — shared PR, merge-result, and logging compatibility literals
 TRACKING_ISSUE_STATES: Final[tuple[str, ...]] = (
     "designing",
     "designed",
@@ -1147,12 +1147,6 @@ RECONCILE_STATUS_FAILED: Final = "failed"
 
 CLOSE_POSTCONDITION_UNVERIFIED: Final = "close-postcondition-unverified"
 LABEL_POSTCONDITION_UNVERIFIED: Final = "label-postcondition-unverified"
-
-FLUSH_COMMIT_SUBJECT_PREFIX: Final = "chore(larch-logs): flush "
-FLUSH_RECOVERY_MAX_COMMITS: Final = 5
-MERGE_PR_INITIAL_UNKNOWN_RETRIES: Final = 4
-MERGE_PR_POST_PUSH_UNKNOWN_RETRIES: Final = 3
-MERGE_DIAGNOSTIC_MAX_LEN: Final = 500
 
 MANIFEST_STATUS_PARTIAL: Final = "partial"
 MANIFEST_STATUS_DONE: Final = "done"

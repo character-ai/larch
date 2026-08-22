@@ -847,6 +847,15 @@ remains a status failure. The commands are read-only and have no `gh api` or
 Python fallback. `ci wait --output-file` publishes its bounded `KEY=value`
 result and completion marker through the shared private atomic wire writer.
 
+The Rust-owned `merge pr` and `merge wait` commands use the same credential and
+typed service boundary. Fixed GraphQL documents expose review state and merge
+queue eligibility, and the queue write exposes only `enqueuePullRequest` for a
+validated pull-request node and expected head object ID. Direct merges carry
+the same expected-head precondition.
+Every uncertain write receives bounded read-back without mutation resubmission;
+an unproved outcome is reported as ambiguous. Diagnostics remain redacted and
+bounded before they enter the `KEY=value` result envelope.
+
 Workflow log archives have a 64 MiB and 60 second limit. The adapter follows at
 most three redirects and rejects loops, URL credentials, fragments, plaintext,
 unexpected content types, and oversize or incomplete streams. Redirect hosts

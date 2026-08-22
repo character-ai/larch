@@ -103,7 +103,9 @@ impl CleanInstallCase {
             // Manual-merge recovery catches argparse's help SystemExit and
             // publishes its frozen failed reconciliation envelope with exit 1.
             | "clean-install-ship-reconcile-manual-merge"
-            | "clean-install-ship-seed-initial-state" => 1,
+            | "clean-install-ship-seed-initial-state"
+            | "clean-install-merge-pr"
+            | "clean-install-merge-wait" => 1,
             // `design parse-flags` owns the frozen Step 0-pre grammar: the
             // clean-install `--help` token is an unrecognized public flag and
             // refuses with the Python validation exit code, matching the
@@ -1786,6 +1788,8 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "reconcile-manual-merge",
     ),
     CleanInstallCase::new("clean-install-ship-route-exit", "ship", "route-exit"),
+    CleanInstallCase::new("clean-install-merge-pr", "merge", "pr"),
+    CleanInstallCase::new("clean-install-merge-wait", "merge", "wait"),
     CleanInstallCase::new("clean-install-ci-timing-harness", "ci-timing", "harness"),
     CleanInstallCase::new("clean-install-ci-timing-jobs", "ci-timing", "jobs"),
     CleanInstallCase::new(

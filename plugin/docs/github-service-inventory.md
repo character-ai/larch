@@ -175,7 +175,12 @@ Issue #8629 moved `complete-umbrella ship-leaf` to Rust. Pull-request reads and
 creation joined the typed ship service, while exact leaf-title transitions and
 their freshness/read-back checks use the shared issue-mutation owner. The
 Rust owner has no direct raw `gh` boundary; it composes the separately owned
-Python merge commands through the reviewed process seam until their cutover.
+merge commands through the reviewed process seam.
+
+Issue #8788 moved `merge pr` and `merge wait` to Rust. The command owner uses
+the typed pull-request, Actions, direct-merge, and fixed merge-queue operations.
+Every ship and release consumer now reaches that owner through verified larch
+dispatch, and the Python registrations and module were removed atomically.
 
 <!-- markdownlint-disable MD010 -->
 <!-- github-service-ownership:start -->
@@ -211,6 +216,7 @@ pull-request-implement-retired	crates/larch-adapters/src/github/operations.rs	re
 pull-request-implement-terminal	crates/larch-adapters/src/github/operations.rs	rust	#7995	complete	complete	complete	implement step-18-gate-logs-flush,implement step-19
 pull-request-ci-monitor	crates/larch-adapters/src/github_actions.rs	rust	#7681	complete	complete	complete	ci behind-count,ci decide,ci distill-log,ci failed-jobs,ci main-health,ci rerun-failed,ci status,ci wait
 pull-request-design-migrated	crates/larch-adapters/src/github/operations.rs	rust	#7680	complete	complete	complete	design dialectic-clear-stale,design dialectic-gatec,design dialectic-manual,design dialectic-promote-candidates,design dialectic-validate-candidates,design dialectic-write-candidates,design driver,design failure-report,design file-oos-annotate,design file-oos-prepare,design pause-load,design pause-save,design prelude,design publish,design read-result-env,design render-final-summary,design render-gate,design stage-terminal-state,design step-final-summary,design step1d5,design step1d7,design step1e-reentry,design step2b5,design step35-settle,design step3-continuation-entry,design step5b-annotate,design step5b-prepare,design step5c,design step6,design step6-cleanup,design step6-prelude
+pull-request-merge	crates/larch-adapters/src/github/operations.rs	rust	#7681,#8788	complete	complete	complete	merge pr,merge wait
 pull-request-ship-pr	crates/larch-adapters/src/github/operations.rs	rust	#7681,#8282,#8626,#8628,#8629	complete	complete	complete	complete-umbrella ship-leaf,ship pr,ship reconcile-manual-merge
 pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7681	pending	pending	pending	pr body-update,pr checks,pr closes-issue,pr create,pr create-branch
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *

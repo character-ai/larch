@@ -695,12 +695,6 @@ exclude = [
   # not executable, defines render_lane() and sanitize_reason() consumed by
   # python/cli.py render lane-status via `source`).
   "python/rendering.py",
-  # issue #3039: Makefile-only harness wired via
-  # python/cli.py merge pr's admin-first / plain-fallback ordering, safety gates,
-  # same-version bump race gate, and --no-admin-fallback opt-out. It stubs `gh`
-  # and `git` via PATH and asserts merge outcomes plus the same-version cases
-  # (version_already_published, no-op fallthrough, stale/unsafe input failures).
-  # the other test-* harnesses above.
   # dev-only release apply script's pre-commit same-version probe and
   # contract), matching the same Makefile-only harness pattern as
   # /research; closes #518). The token-tally helper is invoked from
@@ -865,7 +859,6 @@ exclude = [
   # The Rust ship lifecycle composes these retained Python helpers; agent-lint
   # does not follow that reviewed process boundary for G004 reachability.
   "python/cli.py pr body-update",
-  "python/cli.py merge pr",
   "python/cli.py pr create",
 
 ]

@@ -113,6 +113,7 @@ mod issue_wire_commands;
 mod kill_background;
 mod launcher_support;
 mod learn_from_bugs_commands;
+mod merge_commands;
 mod migration_audit_commands;
 mod net_commands;
 mod oos_commands;
@@ -321,6 +322,9 @@ enum Domain {
     /// Local Git repository commands.
     #[command(subcommand)]
     Git(GitSubcommand),
+    /// Pull-request merge and merge-queue commands.
+    #[command(subcommand)]
+    Merge(MergeCommand),
     /// Advisory Claude Code hook commands.
     #[command(subcommand)]
     Hook(HookCommand),
@@ -1160,6 +1164,16 @@ enum ShipCommand {
     /// Validate or publish the ship result env from JSON on stdin.
     #[command(name = "write-result-env", disable_help_flag = true)]
     WriteResultEnv(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum MergeCommand {
+    /// Classify and submit one pull-request merge.
+    #[command(disable_help_flag = true)]
+    Pr(RawCompatibilityArguments),
+    /// Wait for one accepted merge-queue entry to merge.
+    #[command(disable_help_flag = true)]
+    Wait(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -3007,6 +3021,10 @@ fn run(
             issue_dependency_commands::block_issue_remove(&arguments.arguments),
         ),
         Domain::Git(command) => run_git(command).map_err(command_failure),
+        Domain::Merge(MergeCommand::Pr(arguments)) => Ok(merge_commands::pr(&arguments.arguments)),
+        Domain::Merge(MergeCommand::Wait(arguments)) => {
+            Ok(merge_commands::wait(&arguments.arguments))
+        }
         Domain::Hook(HookCommand::AntiReadPoll(arguments)) => {
             Ok(hook_commands::anti_read_poll(&arguments.arguments))
         }

@@ -718,10 +718,10 @@ bounded, redacted result envelopes. Pull-request creation and updates require
 current scope and coverage artifacts. CI fixes receive a bounded redacted
 digest, not raw failed logs. Conflict fixers receive validated
 repository-relative paths and may edit only the named conflict files. The Rust
-owner controls staging, rebase continuation, and lease-protected push. The
-separately owned `merge pr`, `merge wait`, and `implement-finalize postmerge`
-commands remain Python behind the reviewed process boundary; every create,
-merge, and queue mutation is followed by a typed GitHub read-back.
+owner controls staging, rebase continuation, and lease-protected push. Rust
+owns `merge pr` and `merge wait` through the verified process boundary;
+`implement-finalize postmerge` remains Python. Every create, merge, and queue
+mutation is followed by a typed GitHub read-back.
 
 Rust owns the canonical initial ship-state schema and the Step 8 result-env
 schema. `ship seed-initial-state` validates the session root, contained state
@@ -891,16 +891,18 @@ state can be deleted permanently when it passes those gates.
 SessionStart maintenance hooks are fail-soft and non-blocking. They must not
 turn local paths, logs, or subprocess diagnostics into advisory instructions.
 Automated merge remains gated on validated pull-request state and green
-required checks. Immediately before mutation, the Python pull-request owner
-reads the active default-branch rules. An enabled merge queue receives a plain
-queue submission without an admin bypass or branch-deletion request. Durable
-state records queue acceptance only after bounded GraphQL read-back observes a
-queue entry, auto-merge request, or completed merge. It distinguishes that
-acceptance from completion, and post-merge work waits for an observed `MERGED`
-state. A policy-read failure stops before mutation. Direct admin merge remains
-the no-queue fallback. The development-only release command follows the normal
-queue path, then resolves and tags GitHub's recorded post-merge commit. It does
-not request an admin merge, a queue bypass, or a repository or ruleset change.
+required checks. Immediately before mutation, the Rust pull-request owner uses
+a fixed GraphQL read to determine whether the PR's base requires a merge queue.
+An enabled queue receives the fixed `enqueuePullRequest` mutation with the
+verified head object ID and without an admin bypass or branch-deletion request.
+Durable state records queue acceptance only after bounded GraphQL read-back
+observes the same head in a queue entry or completed merge.
+It distinguishes that acceptance from completion, and post-merge work waits
+for an observed `MERGED` state. A policy-read failure stops before mutation.
+Direct admin merge remains the no-queue fallback. The development-only release
+command follows the normal queue path, then resolves and tags GitHub's recorded
+post-merge commit. It does not request an admin merge, a queue bypass, or a
+repository or ruleset change.
 
 The active Rust `ship pr` path reads repository state through `gix`,
 executes fetch, rebase, and push only through the closed Git CLI adapter, and
