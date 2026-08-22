@@ -202,6 +202,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: an identity that mixes in run-local state changes every run, so the same finding never matches across runs or clones and dedup and idempotency break. larch's `finding_hash` uses normalized file plus concern only, and public dedup signatures exclude run ids, paths, and raw state.
 - Deviate when: a within-run-only key that never needs to match across runs (say so).
 
+### G-Det-2: Pin every environment-resolved input in a golden or parity fixture
+- Why: goldens that embed live-resolved values break when the environment moves, not when the code regresses: a terminal-snapshot golden embedded the live plugin version and failed on every release bump (#8428); a parity case compared against live `python3` argparse help and broke on the Python 3.13 metavar format, at release time only, on macOS only (#8636); a session-env golden encoded the Linux temp root and stayed permanently red on macOS, where `/tmp` and `/var` are symlinks (#8202).
+- Guidance: when a fixture's expected bytes depend on a value resolved from the environment (a plugin or interpreter version, a platform temp root, live help output), inject a fixed value through a test override such as `LARCH_TEST_PLUGIN_VERSION`, or normalize the variable region before comparing. Run any platform-conditional fixture in the CI lane for every platform it ships on, not only in a release-tag job.
+- Deviate when: the fixture exists to detect environment drift; then document which environment fact it pins and which lane runs it.
+
 ## Orchestration and panels
 
 ### G-Orch-1: Keep parallel reviewer and voter agents isolated with no shared state; deduplicate and synthesize in the orchestrator, not by letting agents see each other
@@ -329,6 +334,16 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: after extracting an identifier by regex, reading a pinned external id, or sampling a cheap progress proxy, confirm it against the surface that owns the truth (the PR association API, the vendor model list, the working tree) before branching on it; when confirmation fails, take the exact no-match fallback path, never a bespoke error path.
 - Deviate when: the source text is machine-generated under a locked grammar whose writer and reader a test pins to one constant.
 
+### G-Ext-6: Treat an external service's enums and error prose as open sets
+- Why: `gh` returned `stateReason=DUPLICATE`, a value a two-arm match raised on, and the raise permanently aborted every later /learn-from-bugs run for the repository (#8036); a four-alternative regex over GitHub 422 prose matched neither message GitHub actually returns for a duplicate relation, so both dependency writers burned full retry ladders on an already-true end state (#8194); a typed pagination error was collapsed into a misleading network-or-auth diagnostic (#8363).
+- Guidance: when branching on an external service's enum value or error text, handle the unknown value explicitly with a conservative fallback scoped to the one record (skip, defer, or mark inconclusive) and keep processing the batch. Prove an idempotent end state by re-reading the owning surface, never by matching error prose. Preserve the typed error kind through every wrapping layer.
+- Deviate when: an unknown value makes every later action unsafe; then fail closed for the batch and name the unrecognized value in the error.
+
+### G-Ext-7: An enumeration that hits its bound returns the bounded result
+- Why: the typed issue lister failed outright at its 20-page transport bound instead of returning the 2,000 issues it already held, which silently disabled /issue dedup and dependency analysis (#8363); an uncapped consumer grep splatted thousands of paths into one argv and crashed on ARG_MAX (#7417); an adoption check full-read every blocker body to check metadata it already had, so one 75KB body made an umbrella unadoptable (#8571).
+- Guidance: give every remote or repo-wide enumeration an explicit cap. When the cap is hit, return the bounded prefix with an explicit truncation marker and let the caller decide; do not convert the bound into a failure. Fetch only the fields the decision consumes instead of full records.
+- Deviate when: correctness requires provable completeness, as in an exhaustive safety sweep; then fail with a diagnostic that names the bound, never a misclassified error.
+
 ## Documentation and Markdown
 
 ### G-Md-1: Keep drift-prone facts out of prose; derive counts from a single source, refer to code by symbol not line number, and use repo-relative or `${CLAUDE_PLUGIN_ROOT}` paths
@@ -377,6 +392,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: automated PRs whose only merge path is the producing session accumulate unmerged when that session dies or the in-run merge fails, and each unmerged PR is a silent data-loss or drift window (#5213, #5306, #7454, #7510).
 - Guidance: when a flow creates PRs mechanically (state markers or release chores), land a session-independent reconciler in the same change: a sweep or scheduled job that finds the flow's PRs by its exact branch or title convention and merges or escalates them. Share the convention constant between the producer and the backstop selector. Treat the in-run merge as an optimization, never as the only merge path.
 - Deviate when: the PR intentionally awaits human review or is operator-authored; then the documented manual handoff is the backstop, and the producing flow must say so explicitly in its terminal output.
+
+### G-Gate-3: Gate on the property, not a proxy for it
+- Why: refusal gates keyed on correlated proxies rejected legitimate states: a closed leaf's title spelling hard-stopped a whole umbrella although the closed state already proved resolution (#8641); "has a native parent" was read as "is a nested umbrella", refusing every chief-umbrella child (#8559); a missing proposal token was read as corruption, refusing externally created umbrellas (#8423); a keyword regex read the word "secret" as security sensitivity and made whole umbrellas unauditable (#8785); a lifecycle title filter blocked the documented receipt-refresh remediation (#8470).
+- Guidance: key each refusal gate on the state field that defines the protected condition (issue state, sub-issue list, plan-block presence), not on a spelling, keyword, or graph-shape proxy. When only a proxy is available, pair the gate with a documented adoption or override path, and scope the refusal to the entity that fails rather than its whole parent run.
+- Deviate when: the proxy is the contract, a machine-parsed grammar whose writer and reader a test pins to one constant.
 
 ## Prevention discipline
 
