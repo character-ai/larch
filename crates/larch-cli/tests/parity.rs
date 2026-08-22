@@ -1403,6 +1403,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "issue",
         "migration-audit",
     ),
+    CleanInstallCase::new(
+        "clean-install-issue-governance-gate",
+        "issue",
+        "governance-gate",
+    ),
+    CleanInstallCase::new(
+        "clean-install-plan-receipt-refresh",
+        "plan-receipt",
+        "refresh",
+    ),
     CleanInstallCase::new("clean-install-issue-parse-input", "issue", "parse-input"),
     CleanInstallCase::new("clean-install-issue-state", "issue", "state"),
     CleanInstallCase::new(

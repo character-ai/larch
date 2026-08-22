@@ -254,36 +254,18 @@ const DESIGN_LIBRARY: &str =
     "issue wire or payload library retained for the design workflow umbrella";
 const IMPLEMENT_LIBRARY: &str =
     "pure pull-request footer library retained for the implementation workflow umbrella";
-const GOVERNANCE_GATE_LIBRARY: &str =
-    "migration governance gate support retained for the implementation workflow umbrella";
-
 /// The package initializer is structural. Every other issue module at any
 /// depth must name both its receiving umbrella and its behaviorally distinct
 /// reason for remaining in Python.
-const RETAINED_MODULES: [RetainedModule; 13] = [
+const RETAINED_MODULES: [RetainedModule; 10] = [
     RetainedModule::new("python/larch/issue/file_oos.py", 7680, DESIGN_LIBRARY),
-    RetainedModule::new(
-        "python/larch/issue/issue_block.py",
-        7681,
-        GOVERNANCE_GATE_LIBRARY,
-    ),
     RetainedModule::new("python/larch/issue/issue_blocks.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/issue_create.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/issue_mutation.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/issue_wire.py", 7680, DESIGN_LIBRARY),
-    RetainedModule::new(
-        "python/larch/issue/migration_governance.py",
-        7681,
-        GOVERNANCE_GATE_LIBRARY,
-    ),
     RetainedModule::new("python/larch/issue/oos.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/oos_disposition.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/oos_priority.py", 7680, DESIGN_LIBRARY),
-    RetainedModule::new(
-        "python/larch/issue/open_rows.py",
-        7681,
-        GOVERNANCE_GATE_LIBRARY,
-    ),
     RetainedModule::new("python/larch/issue/title_match.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/tracking_issue.py", 7681, IMPLEMENT_LIBRARY),
 ];
@@ -735,19 +717,13 @@ mod tests {
     }
 
     #[test]
-    fn assigns_the_retained_migration_governance_gate_to_7681() {
+    fn migration_governance_support_is_no_longer_retained() {
         assert_eq!(
             retained_module_owner("python/larch/issue/migration_governance.py"),
-            Some(7681)
+            None
         );
-        assert_eq!(
-            retained_module_owner("python/larch/issue/issue_block.py"),
-            Some(7681)
-        );
-        assert_eq!(
-            retained_module_owner("python/larch/issue/open_rows.py"),
-            Some(7681)
-        );
+        assert_eq!(retained_module_owner("python/larch/issue/issue_block.py"), None);
+        assert_eq!(retained_module_owner("python/larch/issue/open_rows.py"), None);
         assert!(retained_module_paths_for_issue(7684).is_empty());
         assert!(retained_module_paths_for_issue(7685).is_empty());
     }

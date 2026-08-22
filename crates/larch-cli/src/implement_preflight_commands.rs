@@ -2,7 +2,7 @@
 //!
 //! Preflight only sequences commands that already own their policy. `admission
 //! gate` decides admission, `plan-block read` and the shared plan grammar decide
-//! the executable-plan contract, the still-Python `issue governance-gate`
+//! the executable-plan contract, the Rust `issue governance-gate`
 //! decides migration governance, and `ci main-health` decides main's CI health.
 //! This module adds no policy of its own; it publishes one self-validated
 //! machine envelope for the skill to parse.
@@ -19,7 +19,6 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::ExitCode,
-    time::Duration,
 };
 
 use larch_adapters::GixRepository;
@@ -35,9 +34,7 @@ use crate::{
     blocker_commands::resolve_repo_for,
     github_service::{ServiceFailure, with_github_service},
     implement_bootstrap_continuation::resolve_revision_sha,
-    implement_child_seam::{
-        child_streams, delegate_larch_with_environment, delegate_python, resolve_plugin_root,
-    },
+    implement_child_seam::{child_streams, delegate_larch_with_environment, resolve_plugin_root},
     implement_commands::{kv_value, read_kv_first, write_atomic},
     python_verb::publish_session_environment,
 };
@@ -86,8 +83,6 @@ const MAIN_HEALTH_KEYS: [&str; 4] = [
 const MAIN_HEALTH_STATUS_ORDER: [&str; 5] = ["pass", "fail", "pending", "error", "skip"];
 /// Ceiling `ci main-health` applies to its single-line detail.
 const MAIN_HEALTH_DETAIL_MAX_CHARS: usize = 240;
-/// Deadline for each still-Python sibling Preflight composes.
-const PYTHON_SIBLING_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[cfg(test)]
 std::thread_local! {
@@ -493,10 +488,10 @@ struct ReceiptScope {
     target_base_sha: String,
 }
 
-/// Consume the still-Python migration-governance verdict for this issue.
+/// Consume the Rust migration-governance verdict for this issue.
 ///
 /// `issue governance-gate --preflight-envelope` keeps blocker, receipt, and
-/// active-owner policy with its single Python owner; this reads that envelope
+/// active-owner policy with its single Rust owner; this reads that envelope
 /// and prints the operator prose it implies.
 fn governance(request: &Request, body: &str, repo_root: &Path) -> Result<ReceiptScope, ExitCode> {
     let Some(gate_repo) = resolve_repo_for(Some(&request.repo)) else {
@@ -523,7 +518,7 @@ fn governance(request: &Request, body: &str, repo_root: &Path) -> Result<Receipt
         &base_target_sha,
     );
     argv.push(OsString::from("--preflight-envelope"));
-    let Ok(output) = delegate_python(argv, PYTHON_SIBLING_TIMEOUT) else {
+    let Ok(output) = delegate_larch_with_environment(&argv, &[]) else {
         return Err(refuse_governance_read("cannot start issue governance-gate"));
     };
     let envelope = String::from_utf8_lossy(output.stdout()).into_owned();
@@ -864,7 +859,7 @@ fn bypass_count(tmpdir: &Path) -> usize {
         .unwrap_or(0)
 }
 
-/// Assemble the still-Python `issue governance-gate` command line.
+/// Assemble the Rust `issue governance-gate` command line.
 ///
 /// Preflight and the Step 0 bootstrap continuation both consult the same gate,
 /// so its argv has one owner and only the trailing envelope flag differs.
@@ -922,7 +917,7 @@ mod tests {
     };
     use crate::{
         github_service::with_test_github_service,
-        implement_child_seam::{declare_plugin_root, install_larch, install_python},
+        implement_child_seam::{declare_plugin_root, install_larch},
     };
     use larch_adapters::github::OctocrabGitHubService;
     use larch_core::{ProcessOutput, ProcessStatus, TrailerKey};
@@ -1418,7 +1413,9 @@ mod tests {
     fn an_unreadable_base_scope_refuses_migration_governance() {
         clear_hooks();
         let root = TempDir::new().expect("temp");
-        install_python(|_arguments| panic!("an unreadable base scope must not reach the gate"));
+        install_larch(|_arguments, _environment| {
+            panic!("an unreadable base scope must not reach the gate")
+        });
 
         assert_eq!(
             governance(&request(root.path(), false), "body", root.path()).refusal(),
@@ -1432,7 +1429,7 @@ mod tests {
         clear_hooks();
         let root = TempDir::new().expect("temp");
         let repository = upstream_repository();
-        install_python(|arguments| {
+        install_larch(|arguments, _environment| {
             assert!(arguments.contains(&OsString::from("--preflight-envelope")));
             Ok(output(
                 0,
@@ -1455,7 +1452,9 @@ mod tests {
         clear_hooks();
         let root = TempDir::new().expect("temp");
         let repository = upstream_repository();
-        install_python(|_arguments| Ok(output(0, "SEMANTIC_REASONS=plan-paths-moved\n", "")));
+        install_larch(|_arguments, _environment| {
+            Ok(output(0, "SEMANTIC_REASONS=plan-paths-moved\n", ""))
+        });
         let body = format!("Preamble.\n{}\n", receipt_line());
 
         let scope = governance(&request(root.path(), false), &body, repository.root())
@@ -1488,7 +1487,7 @@ mod tests {
             let root = TempDir::new().expect("temp");
             let repository = upstream_repository();
             let envelope = format!("REFUSAL_TEXT=**❌ blocked.**\nBLOCKING_REASONS={reasons}\n");
-            install_python(move |_arguments| Ok(output(1, &envelope, "")));
+            install_larch(move |_arguments, _environment| Ok(output(1, &envelope, "")));
 
             assert_eq!(
                 governance(&request(root.path(), false), "body", repository.root()).refusal(),
@@ -1507,7 +1506,7 @@ mod tests {
             let repository = upstream_repository();
             let (stdout, code) = envelope;
             let body = stdout.to_owned();
-            install_python(move |_arguments| Ok(output(code, &body, "")));
+            install_larch(move |_arguments, _environment| Ok(output(code, &body, "")));
 
             assert_eq!(
                 governance(&request(root.path(), false), "body", repository.root()).refusal(),
@@ -1520,7 +1519,9 @@ mod tests {
         clear_hooks();
         let root = TempDir::new().expect("temp");
         let repository = upstream_repository();
-        install_python(|_arguments| Err("cannot start issue governance-gate".to_owned()));
+        install_larch(|_arguments, _environment| {
+            Err("cannot start issue governance-gate".to_owned())
+        });
         assert_eq!(
             governance(&request(root.path(), false), "body", repository.root()).refusal(),
             ExitCode::from(2)
@@ -1841,7 +1842,6 @@ mod tests {
         install_larch(|_arguments, _environment| {
             Ok(output(0, "ADMISSION_RESULT=pass\nRESUME=false\n", ""))
         });
-        install_python(|_arguments| panic!("a plan defect must refuse before governance"));
         let (github, server) = service([IssueServiceExchange::json(
             "GET",
             "/repos/owner/repo/issues/12",
@@ -1869,10 +1869,13 @@ mod tests {
         let tmpdir = root.path().join("preflight");
         declare_plugin_root(&workspace_root());
         declare_repo_root(repository.root());
-        install_larch(|_arguments, _environment| {
-            Ok(output(0, "ADMISSION_RESULT=pass\nRESUME=false\n", ""))
+        install_larch(|arguments, _environment| {
+            if arguments.starts_with(&["issue".into(), "governance-gate".into()]) {
+                Ok(output(0, "SEMANTIC_REASONS=\nREPORT_ONLY_COUNT=0\n", ""))
+            } else {
+                Ok(output(0, "ADMISSION_RESULT=pass\nRESUME=false\n", ""))
+            }
         });
-        install_python(|_arguments| Ok(output(0, "SEMANTIC_REASONS=\nREPORT_ONLY_COUNT=0\n", "")));
         let plan = VALID_PLAN.replace("Cargo.toml", "tracked.txt");
         let (github, server) = service([
             IssueServiceExchange::json(

@@ -115,6 +115,7 @@ mod launcher_support;
 mod learn_from_bugs_commands;
 mod merge_commands;
 mod migration_audit_commands;
+mod migration_governance_commands;
 mod net_commands;
 mod oos_commands;
 mod oos_file_commands;
@@ -340,6 +341,9 @@ enum Domain {
     /// The `larch:plan` issue-body block carrying the `/design` handoff.
     #[command(subcommand, name = "plan-block")]
     PlanBlock(PlanBlockCommand),
+    /// Refresh the durable plan-receipt identity.
+    #[command(subcommand, name = "plan-receipt")]
+    PlanReceipt(PlanReceiptCommand),
     /// Inspect the installed larch and external tool health.
     #[command(subcommand)]
     Status(StatusCommand),
@@ -1278,6 +1282,9 @@ enum IssueCommand {
     /// Read one immutable migration-governance audit snapshot.
     #[command(name = "migration-audit", disable_help_flag = true)]
     MigrationAudit(RawCompatibilityArguments),
+    /// Evaluate blocker, receipt, and owner admission policy.
+    #[command(name = "governance-gate", disable_help_flag = true)]
+    GovernanceGate(RawCompatibilityArguments),
     /// Insert one bracketed signal marker into an issue title.
     #[command(name = "insert-signal-marker", disable_help_flag = true)]
     InsertSignalMarker(RawCompatibilityArguments),
@@ -1312,6 +1319,13 @@ enum PlanBlockCommand {
     /// Write, replace, or delete one issue's `larch:plan` block.
     #[command(disable_help_flag = true)]
     Write(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum PlanReceiptCommand {
+    /// Refresh one preflight-bound receipt after semantic scope review.
+    #[command(disable_help_flag = true)]
+    Refresh(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -3136,6 +3150,9 @@ fn run(
             IssueCommand::MigrationAudit(arguments) => {
                 migration_audit_commands::run(&arguments.arguments)
             }
+            IssueCommand::GovernanceGate(arguments) => {
+                migration_governance_commands::governance_gate(&arguments.arguments)
+            }
             IssueCommand::InsertSignalMarker(arguments) => {
                 issue_wire_commands::insert_signal_marker_command(&arguments.arguments)
             }
@@ -3167,6 +3184,9 @@ fn run(
                 issue_wire_commands::plan_block_write(&arguments.arguments)
             }
         }),
+        Domain::PlanReceipt(PlanReceiptCommand::Refresh(arguments)) => Ok(
+            migration_governance_commands::plan_receipt_refresh(&arguments.arguments),
+        ),
         Domain::NamedBlock(NamedBlockCommand::Write(arguments)) => {
             Ok(issue_wire_commands::named_block_write(&arguments.arguments))
         }

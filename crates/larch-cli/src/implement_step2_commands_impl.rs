@@ -1195,7 +1195,7 @@ fn append_warning(state: &DispatchState, entry: &str) {
     let _forwarded = state_larch(state, &argv);
 }
 
-/// Consume the still-Python migration-governance verdict for this run's issue.
+/// Consume the Rust migration-governance verdict for this run's issue.
 fn migration_governance_gate(state: &DispatchState) -> Option<String> {
     let session_env = state.tmpdir.join("session-env.sh");
     let parent_issue = state.tmpdir.join("parent-issue.md");
@@ -1250,7 +1250,7 @@ fn migration_governance_gate(state: &DispatchState) -> Option<String> {
         &state.repo_root,
         &base_target_sha,
     );
-    let Ok(output) = delegate_python(argv) else {
+    let Ok(output) = state_larch(state, &argv) else {
         eprintln!(
             "implement step2-dispatch: migration governance read failed: cannot start issue governance-gate"
         );

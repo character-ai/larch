@@ -47,16 +47,6 @@ def test_no_args_exits_0() -> None:
     assert rc == 0
 
 
-def test_dispatch_plan_receipt_refresh_calls_governance_owner() -> None:
-    mock_main = MagicMock(return_value=0)
-    module = MagicMock(plan_receipt_refresh_main=mock_main)
-    with patch.dict("sys.modules", {"larch.issue.migration_governance": module}):
-        rc = cli.main(["plan-receipt", "refresh", "--issue", "7"])
-    mock_main.assert_called_once_with(["--issue", "7"])
-    assert rc == 0
-    assert ("plan-receipt", "refresh") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
-
-
 @pytest.mark.parametrize(
     "argv",
     [

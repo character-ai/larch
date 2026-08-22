@@ -40,16 +40,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("plan-review", "write-loop-identity"): ("larch.core.process_identity", "write_loop_identity_main", False),
     ("plan-review", "await-loop-identity"): ("larch.core.process_identity", "await_loop_identity_main", False),
     ("plan-review", "teardown-loop-identity"): ("larch.core.process_identity", "teardown_loop_identity_main", False),
-    ("issue", "governance-gate"): (
-        "larch.issue.migration_governance",
-        "governance_gate_main",
-        True,
-    ),
-    ("plan-receipt", "refresh"): (
-        "larch.issue.migration_governance",
-        "plan_receipt_refresh_main",
-        True,
-    ),
     ("forked-repo", "setup"): ("larch.core.forked_repo", "setup_main", False),
     ("render", "specialist"): ("larch.rendering.rendering", "render_specialist_main", False),
     ("render", "voter"): ("larch.rendering.rendering", "render_voter_main", False),

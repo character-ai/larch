@@ -560,7 +560,10 @@ fn mutation_denied() -> bool {
 /// Both the native `blocked_by` edges and the body's documented blocker refs
 /// contribute a `(number, state, updated_at)` row, matching the retired Python
 /// snapshot loader; an unreadable edge fails the receipt closed.
-async fn receipt_blocker_rows(
+///
+/// # Errors
+/// Returns `blocker-read-unavailable` when any dependency snapshot is unreadable.
+pub async fn receipt_blocker_rows(
     service: &OctocrabGitHubService,
     owner: &IssueMutationOwner<'_>,
     repository: &GitHubRepositoryRef,

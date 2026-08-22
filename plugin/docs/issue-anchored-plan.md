@@ -407,7 +407,7 @@ ambiguous receipt remains `stale-plan-body` and blocks.
 At `/implement` Preflight only, a sole `stale-plan-base-scope` finding routes
 to the bounded semantic-materiality probe. If the cited paths and symbols
 still resolve and no staleness is found, Preflight refreshes the receipt against
-the current base target through `python/cli.py plan-receipt refresh`; the
+the current base target through `scripts/larch.sh plan-receipt refresh`; the
 mutation is read-verified. The refresh binds the exact preflight plan hash,
 prior receipt, and preflight target SHA before mutation, then replaces the
 preflight issue snapshot with its exact read-back for Step 0's CAS. It also
@@ -420,8 +420,9 @@ approve its own refresh.
 The same verifier runs at `/implement` Preflight (before lifecycle adoption),
 Step 2 dispatch (before coder launch), after ship rebase, and before PR
 creation. Outside Preflight, `stale-plan-base-scope` remains a hard gate; a
-later base advance must not bypass semantic materiality. Owner module:
-`python/larch/issue/migration_governance.py`.
+later base advance must not bypass semantic materiality. The effect adapter is
+`crates/larch-cli/src/migration_governance_commands.rs`; effect-free policy is
+`larch_core::migration_governance`.
 
 Force mode is intentionally narrow: `/implement --force` skips the
 Preflight plan-adequacy audit entirely (no `AUDIT=refuse` result exists on that
