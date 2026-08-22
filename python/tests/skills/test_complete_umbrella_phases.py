@@ -31,6 +31,21 @@ def test_every_primary_phase_loads_the_shared_context_economy_contract() -> None
     assert "tail -20" in common
 
 
+def test_recon_does_not_repeat_the_imported_agents_rules_read() -> None:
+    recon = _read("recon-design.md")
+    normalized = " ".join(recon.split())
+    assert recon.count("`AGENTS.md`") == 1
+    assert "Read `AGENTS.md`" not in recon
+    assert (
+        "Read `ARCHITECTURAL_INVARIANTS.md` and "
+        "`ARCHITECTURAL_GUIDELINES.md` when present."
+    ) in recon
+    assert (
+        "`AGENTS.md` is already loaded through the `CLAUDE.md` import chain." in recon
+    )
+    assert "Do not read it again." in normalized
+
+
 def test_implement_and_review_inputs_are_phase_scoped() -> None:
     implementation = _read("implement.md")
     assert (
