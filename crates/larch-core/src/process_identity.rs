@@ -4,7 +4,7 @@
 //! still matches the recorded start time, pgid, and command signature. PID
 //! reuse must never cause a signal (#6213).
 
-use crate::redact;
+use crate::{python_float, redact};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{
@@ -1290,6 +1290,17 @@ fn parse_pid_argument(raw: &str) -> Option<i32> {
     raw.parse().ok()
 }
 
+fn parse_loop_timeout(raw: &str) -> Option<Duration> {
+    let seconds = python_float(raw)?;
+    if seconds.is_nan() || seconds <= 0.0 {
+        return None;
+    }
+    if seconds.is_infinite() {
+        return Some(Duration::MAX);
+    }
+    Some(Duration::try_from_secs_f64(seconds).unwrap_or(Duration::MAX))
+}
+
 /// Capture and persist the design Step 3 loop identity.
 #[must_use]
 pub fn write_loop_identity(
@@ -1418,6 +1429,75 @@ pub fn write_step5_loop_identity(
         &identity,
         None,
     );
+    0
+}
+
+/// Await the implement Step 5 loop identity.
+#[must_use]
+pub fn await_step5_loop_identity(
+    host: &dyn ProcessIdentityHost,
+    implement_tmpdir: &str,
+    pid_raw: &str,
+    timeout_s: &str,
+    reattach: bool,
+) -> i32 {
+    let Some(tmpdir) = validated_tmpdir(implement_tmpdir) else {
+        return 1;
+    };
+    let Some(timeout) = parse_loop_timeout(timeout_s) else {
+        return 1;
+    };
+    let Some(pid) = parse_pid_argument(pid_raw) else {
+        return 1;
+    };
+    let sidecar = tmpdir.join(IMPLEMENT_STEP5_LOOP_IDENTITY_FILE);
+    let Some(recorded) = read_identity_record(host, &sidecar) else {
+        return 1;
+    };
+    if recorded.pid != pid {
+        return 1;
+    }
+    let detached_marker = tmpdir.join(IMPLEMENT_STEP5_WRAPPER_DETACHED_FILE);
+    if !reattach && !host.is_regular_file(&detached_marker) {
+        return 1;
+    }
+    let Some(identity_mtime_ns) = host.file_mtime_ns(&sidecar).filter(|value| *value > 0) else {
+        return 1;
+    };
+    await_loop_poll(host, &recorded, &tmpdir, identity_mtime_ns, timeout, false)
+}
+
+/// Tear down the implement Step 5 loop identity after validated termination.
+#[must_use]
+pub fn teardown_step5_loop_identity(
+    host: &dyn ProcessIdentityHost,
+    implement_tmpdir: &str,
+    pid_raw: &str,
+) -> i32 {
+    let Some(tmpdir) = validated_tmpdir(implement_tmpdir) else {
+        return 0;
+    };
+    let Some(pid) = parse_pid_argument(pid_raw) else {
+        return 0;
+    };
+    let sidecar = tmpdir.join(IMPLEMENT_STEP5_LOOP_IDENTITY_FILE);
+    let Some(recorded) = read_identity_record(host, &sidecar) else {
+        return 0;
+    };
+    if recorded.pid != pid {
+        return 0;
+    }
+    let termination = terminate_validated_process_group_and_confirm(
+        host,
+        &recorded,
+        ProcessIdentityValidationPolicy::ExactCommand,
+        Some(&tmpdir.join(IMPLEMENT_STEP5_KILL_LOG_FILE)),
+        "implement-step5-review",
+        "step5-trap-cleanup",
+    );
+    if termination.terminated {
+        host.remove_file(&sidecar);
+    }
     0
 }
 
@@ -2096,6 +2176,110 @@ mod tests {
     }
 
     #[test]
+    fn step5_loop_identity_write_and_await_cover_the_detached_wrapper_contract() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(123, 123);
+        host.ps.borrow_mut().insert(
+            123,
+            vec![ps_stdout(
+                "/usr/local/bin/larch review-and-fix step5 --mode loop",
+            )],
+        );
+        let tmp = PathBuf::from("/tmp/implement-step5-await");
+        assert_eq!(
+            write_step5_loop_identity(&host, tmp.to_str().unwrap(), "123", "review-and-fix step5",),
+            0
+        );
+        assert_eq!(
+            await_step5_loop_identity(&host, tmp.to_str().unwrap(), "123", "10", false),
+            1,
+            "a detached launch must publish its marker before awaiting"
+        );
+        host.files.borrow_mut().insert(
+            tmp.join(IMPLEMENT_STEP5_WRAPPER_DETACHED_FILE),
+            "PID=123\n".to_owned(),
+        );
+
+        assert_eq!(
+            await_step5_loop_identity(&host, tmp.to_str().unwrap(), "123", "1_0", false),
+            0
+        );
+    }
+
+    #[test]
+    fn step5_teardown_reuses_the_validated_kill_log_owner() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(123, 123);
+        let matching = ps_stdout("/usr/local/bin/larch review-and-fix step5 --mode loop");
+        host.ps.borrow_mut().insert(
+            123,
+            vec![
+                matching.clone(), // write_step5_loop_identity
+                matching.clone(), // teardown initial validation
+                matching.clone(), // pre-log validation
+                matching,         // immediate pre-signal revalidation
+                IdentityProbeOutput::Missing,
+            ],
+        );
+        let tmp = PathBuf::from("/tmp/implement-step5-teardown");
+        assert_eq!(
+            write_step5_loop_identity(&host, tmp.to_str().unwrap(), "123", "review-and-fix step5",),
+            0
+        );
+
+        assert_eq!(
+            teardown_step5_loop_identity(&host, tmp.to_str().unwrap(), "123"),
+            0
+        );
+        assert!(!host.is_regular_file(&tmp.join(IMPLEMENT_STEP5_LOOP_IDENTITY_FILE)));
+        assert_eq!(
+            host.signals.borrow().as_slice(),
+            &[(123, TerminateSignal::Term, true)]
+        );
+        let log = host
+            .files
+            .borrow()
+            .get(&tmp.join(IMPLEMENT_STEP5_KILL_LOG_FILE))
+            .cloned()
+            .unwrap_or_default();
+        assert!(log.contains("\"caller\":\"implement-step5-review\""));
+        assert!(log.contains("\"reason\":\"step5-trap-cleanup\""));
+        assert!(log.contains("\"signal\":\"SIGTERM\""));
+    }
+
+    #[test]
+    fn step5_teardown_retains_its_sidecar_until_the_group_is_absent() {
+        let mut host = FakeHost::default();
+        host.pgid.insert(123, 123);
+        let matching = ps_stdout("/usr/local/bin/larch review-and-fix step5 --mode loop");
+        host.ps.borrow_mut().insert(
+            123,
+            vec![
+                matching.clone(), // write_step5_loop_identity
+                matching.clone(), // teardown initial validation
+                matching.clone(), // pre-log validation
+                matching,         // immediate pre-signal revalidation
+                IdentityProbeOutput::Missing,
+            ],
+        );
+        host.groups.insert(123, vec![999]);
+        let tmp = PathBuf::from("/tmp/implement-step5-retain");
+        assert_eq!(
+            write_step5_loop_identity(&host, tmp.to_str().unwrap(), "123", "review-and-fix step5",),
+            0
+        );
+
+        assert_eq!(
+            teardown_step5_loop_identity(&host, tmp.to_str().unwrap(), "123"),
+            0
+        );
+        assert!(
+            host.is_regular_file(&tmp.join(IMPLEMENT_STEP5_LOOP_IDENTITY_FILE)),
+            "an unproven group must retain the Step 5 sidecar for safe recovery"
+        );
+    }
+
+    #[test]
     fn teardown_loop_identity_retains_its_sidecar_until_the_group_is_absent() {
         let mut host = FakeHost::default();
         host.pgid.insert(123, 123);
@@ -2433,5 +2617,16 @@ mod tests {
         assert_eq!(teardown_loop_identity(&host, "/tmp/x", "nope"), 0);
         assert_eq!(write_step5_loop_identity(&host, "", "1", "x"), 0);
         assert_eq!(write_step5_loop_identity(&host, "/tmp/x", "nope", "x"), 0);
+        assert_eq!(await_step5_loop_identity(&host, "", "1", "1", false), 1);
+        assert_eq!(
+            await_step5_loop_identity(&host, "/tmp/x", "nope", "1", false),
+            1
+        );
+        assert_eq!(
+            await_step5_loop_identity(&host, "/tmp/x", "1", "nan", false),
+            1
+        );
+        assert_eq!(teardown_step5_loop_identity(&host, "", "1"), 0);
+        assert_eq!(teardown_step5_loop_identity(&host, "/tmp/x", "nope"), 0);
     }
 }

@@ -158,6 +158,7 @@ mod review_compose_commands;
 mod review_core_commands;
 mod review_dispatch_panel;
 mod review_findings_commands;
+mod review_loop_identity_commands;
 mod review_tally_commands;
 mod session_closeout_commands;
 mod session_env_commands;

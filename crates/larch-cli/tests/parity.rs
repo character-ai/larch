@@ -1605,6 +1605,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "apply-findings",
     ),
     CleanInstallCase::new(
+        "clean-install-review-and-fix-await-loop-identity",
+        "review-and-fix",
+        "await-loop-identity",
+    ),
+    CleanInstallCase::new(
         "clean-install-review-and-fix-check-changes",
         "review-and-fix",
         "check-changes",
@@ -1623,6 +1628,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-review-and-fix-step5",
         "review-and-fix",
         "step5",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-and-fix-teardown-loop-identity",
+        "review-and-fix",
+        "teardown-loop-identity",
+    ),
+    CleanInstallCase::new(
+        "clean-install-review-and-fix-write-loop-identity",
+        "review-and-fix",
+        "write-loop-identity",
     ),
     CleanInstallCase::new(
         "clean-install-review-and-fix-write-pre-self-review-snapshot",

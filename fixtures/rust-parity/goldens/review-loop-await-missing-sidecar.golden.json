@@ -1,0 +1,15 @@
+{
+  "exit_code": 1,
+  "files": {
+    "implement/.keep": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

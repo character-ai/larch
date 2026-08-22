@@ -6669,11 +6669,13 @@ verb = "await-loop-identity"
 python_module = "larch.core.process_identity"
 python_function = "await_step5_loop_identity_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8792
+clean_install_test = "clean-install-review-and-fix-await-loop-identity"
 
 [[commands]]
 domain = "review-and-fix"
@@ -6737,11 +6739,13 @@ verb = "teardown-loop-identity"
 python_module = "larch.core.process_identity"
 python_function = "teardown_step5_loop_identity_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8792
+clean_install_test = "clean-install-review-and-fix-teardown-loop-identity"
 
 [[commands]]
 domain = "review-and-fix"
@@ -6749,11 +6753,13 @@ verb = "write-loop-identity"
 python_module = "larch.core.process_identity"
 python_function = "write_step5_loop_identity_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8792
+clean_install_test = "clean-install-review-and-fix-write-loop-identity"
 
 [[commands]]
 domain = "review-and-fix"

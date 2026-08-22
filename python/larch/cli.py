@@ -105,13 +105,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("scope-anchor", "validate"): ("larch.rendering.rendering", "scope_anchor_validate_main", False),
     ("scope-anchor", "retally-handoff"): ("larch.rendering.rendering", "scope_anchor_retally_handoff_main", False),
     ("scope-anchor", "design-handoff"): ("larch.rendering.rendering", "scope_anchor_design_handoff_main", False),
-    ("review-and-fix", "write-loop-identity"): ("larch.core.process_identity", "write_step5_loop_identity_main", False),
-    ("review-and-fix", "await-loop-identity"): ("larch.core.process_identity", "await_step5_loop_identity_main", False),
-    ("review-and-fix", "teardown-loop-identity"): (
-        "larch.core.process_identity",
-        "teardown_step5_loop_identity_main",
-        False,
-    ),
     ("mermaid", "sanitize"): ("larch.rendering.rendering", "mermaid_sanitize_main", False),
     ("diagrams", "upsert"): ("larch.rendering.rendering", "diagrams_upsert_main", False),
     ("token", "check-budget"): ("larch.report.tokens", "token_check_budget_main", False),

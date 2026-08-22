@@ -146,6 +146,12 @@ work:
   Repository-only lint bootstrap calls stay confined to `larch-lint`, are
   reachable only through the `lint` domain, and require reason-bearing lint
   suppressions.
+- Within Rust, process identity and validated termination have one domain owner in
+  `larch-core::process_identity` and one production host in
+  `larch-adapters::process_identity`. CLI modules may only parse and compose
+  that boundary. The review-and-fix loop-identity commands use this owner
+  directly; those migrated commands retain neither a Python fallback nor a
+  duplicate Rust kill-log writer.
 - GitHub code uses a larch-owned core service port. A single core resolver
   acquires the active GitHub CLI credential through the fixed
   `gh auth token --hostname github.com` process operation. The clean child
