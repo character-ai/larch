@@ -967,13 +967,39 @@ fn one_line(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        check_output_state, compose_summary_at, extract_closes_issue, format_duration,
-        github_pr_url_number, qualify_github_head, user_prefix, valid_pr_branch_selector,
+        check_output_state, checks, compose_summary_at, create_pull_request, extract_closes_issue,
+        format_duration, github_pr_url_number, qualify_github_head, update_pull_request_body,
+        user_prefix, valid_pr_branch_selector,
     };
+    use crate::github_service::with_test_github_service;
+    use larch_adapters::github::OctocrabGitHubService;
     use larch_core::CheckBucket;
-    use larch_test_support::{GitFixture, GitRepository};
-    use std::fs;
+    use larch_test_support::{GitFixture, GitRepository, IssueServiceExchange, IssueServiceStub};
+    use serde_json::{Value, json};
+    use std::{ffi::OsString, fs, process::ExitCode, sync::Arc};
     use tempfile::TempDir;
+
+    type ServiceFactory = Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync>;
+
+    fn service(
+        exchanges: impl IntoIterator<Item = IssueServiceExchange>,
+    ) -> (ServiceFactory, IssueServiceStub) {
+        let server = IssueServiceStub::start(exchanges).expect("start loopback service");
+        let base = server.base_url().to_owned();
+        let factory = Arc::new(move || OctocrabGitHubService::with_test_base(&base));
+        (factory, server)
+    }
+
+    fn response(status: u16, body: impl Into<Vec<u8>>) -> IssueServiceExchange {
+        IssueServiceExchange::any_json(status, body).expect("valid JSON response")
+    }
+
+    fn pull_request_json(number: u64, body: &str) -> String {
+        let body = serde_json::to_string(body).expect("body JSON");
+        format!(
+            r#"{{"number":{number},"state":"open","title":"Requested title","body":{body},"head":{{"ref":"feature/8790","label":"owner:feature/8790","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},"base":{{"ref":"main"}},"draft":false,"merged":false,"merge_commit_sha":null}}"#
+        )
+    }
 
     #[test]
     fn composes_without_git_metadata() {
@@ -1087,6 +1113,78 @@ mod tests {
         assert_eq!(
             qualify_github_head("upstream/repo", Some("fork/repo"), "fork:feature"),
             "fork:feature"
+        );
+    }
+
+    #[test]
+    fn pull_creation_assigns_the_authenticated_user_and_proves_read_back() {
+        let pull = pull_request_json(12, "Body");
+        let mut issue: Value = serde_json::from_str(include_str!(
+            "../../larch-adapters/fixtures/github_issue.json"
+        ))
+        .expect("valid issue fixture");
+        issue["number"] = json!(12);
+        let user = issue["user"].clone();
+        issue["assignee"] = user.clone();
+        issue["assignees"] = json!([user]);
+        let assigned = issue.to_string();
+        let (github, server) = service([
+            response(200, "[]"),
+            response(201, pull),
+            response(200, issue["user"].to_string()),
+            response(200, assigned.clone()),
+            response(200, assigned),
+            response(200, pull_request_json(12, "Updated body\n")),
+        ]);
+
+        let (created, was_created) = with_test_github_service(Arc::clone(&github), || {
+            create_pull_request(
+                "owner/repo",
+                "feature/8790",
+                "Requested title",
+                "Body",
+                "main",
+                false,
+            )
+        })
+        .expect("created and assigned pull request");
+
+        assert!(was_created);
+        assert_eq!(created.number(), 12);
+        with_test_github_service(github, || {
+            update_pull_request_body("owner/repo", 12, "Updated body")
+        })
+        .expect("newline-equivalent body read-back");
+        let requests = server.finish().expect("completed loopback service");
+        assert_eq!(requests.len(), 6);
+        assert_eq!(requests[2].path, "/user");
+    }
+
+    #[test]
+    fn checks_classify_success_pending_and_failure() {
+        let run = |commit_state: &str, run_status: &str, conclusion: Option<&str>| {
+            let statuses = format!(
+                r#"{{"state":"{commit_state}","total_count":1,"statuses":[{{"context":"status","state":"{commit_state}","target_url":null,"description":null}}]}}"#
+            );
+            let conclusion = serde_json::to_string(&conclusion).expect("conclusion JSON");
+            let runs = format!(
+                r#"{{"check_runs":[{{"name":"build","status":"{run_status}","conclusion":{conclusion},"details_url":null,"started_at":null,"completed_at":null}}]}}"#
+            );
+            let (github, server) = service([response(200, statuses), response(200, runs)]);
+            let arguments = ["--pr", "7", "--repo", "owner/repo"].map(OsString::from);
+            let code = with_test_github_service(github, || checks(&arguments));
+            server.finish().expect("completed loopback service");
+            code
+        };
+
+        assert_eq!(
+            run("success", "completed", Some("success")),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(run("pending", "in_progress", None), ExitCode::from(8));
+        assert_eq!(
+            run("failure", "completed", Some("failure")),
+            ExitCode::from(1)
         );
     }
 
