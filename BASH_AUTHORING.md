@@ -100,7 +100,7 @@ Run `make agent-lint` after shell-script edits. Suppress fixture tokens only on 
 
 ## 4. GitHub CLI Body-Like Payloads
 
-Use file-backed payloads for GitHub CLI body text: `--body-file` for issue, PR, and comment bodies, and `--notes-file` for release notes. Avoid inline `--body` and `--notes`, even for short dynamic text. For PR creation in this repository, prefer `python3 python/cli.py pr create --body-file <path>` so the wrapper owns push, redaction, and diagnostics.
+Use file-backed payloads for GitHub body text: `--body-file` for issue, PR, and comment bodies, and `--notes-file` for release notes. Avoid inline `--body` and `--notes`, even for short dynamic text. For PR creation in this repository, use `scripts/larch.sh pr create --body-file <path>` so the Rust owner handles push, redaction, and diagnostics.
 
 When body content crosses a public boundary and the caller has not already scrubbed it, redact secrets and local tmpdir paths before writing the body file.
 

@@ -10,8 +10,8 @@ use std::{
 };
 
 use larch_adapters::{
-    FetchRequest, ForceWithLease, GitCli, GitCliError, GitCliPolicy, GitRef, GitRefspec, GitRemote,
-    GixRepository, LsRemoteRequest, PushRequest, TokioProcessRunner,
+    BranchMutationRequest, FetchRequest, ForceWithLease, GitCli, GitCliError, GitCliPolicy, GitRef,
+    GitRefspec, GitRemote, GixRepository, LsRemoteRequest, PushRequest, TokioProcessRunner,
     runtime::{Cancellation, LarchRuntime},
 };
 use larch_core::{Head, RefName, RepositoryRead, SafeText, emit_kv};
@@ -136,6 +136,37 @@ pub fn force(expected_remote_oid: Option<&str>) -> ExitCode {
     }
 }
 
+/// Push the current branch for `pr create`, optionally applying the legacy
+/// force-with-lease recovery used when an open PR already exists.
+pub fn push_for_pr(branch: &str, recover_existing: bool) -> bool {
+    if current_branch().as_deref() != Some(branch) || !clean_tree() {
+        return false;
+    }
+    let Ok(request) = push_request(branch, None, true) else {
+        return false;
+    };
+    if run_push(request).is_ok() {
+        return true;
+    }
+    if !recover_existing {
+        return false;
+    }
+    let _ignored = fetch_branch(branch);
+    let _ignored = set_upstream(branch);
+    let Ok(force_request) = push_request(branch, None, false) else {
+        return false;
+    };
+    if run_push(force_request.clone()).is_ok() {
+        return true;
+    }
+    let _ignored = fetch_branch(branch);
+    if remote_matches_head(branch) {
+        return true;
+    }
+    thread::sleep(Duration::from_secs(5));
+    run_push(force_request).is_ok()
+}
+
 fn force_success(status: &str) -> ExitCode {
     emit_kv("PUSHED", "true");
     emit_kv("STATUS", status);
@@ -236,6 +267,34 @@ fn fetch_branch(branch: &str) -> Result<(), PushFailure> {
                 quiet: true,
                 no_tags: false,
             },
+            &cancellation,
+        ))
+        .map(|_| ())
+        .map_err(|error| git_failure(&error))
+}
+
+fn set_upstream(branch: &str) -> Result<(), PushFailure> {
+    let name = GitRef::new(branch).map_err(|error| input_failure_result(&error))?;
+    let upstream =
+        GitRef::new(format!("{REMOTE}/{branch}")).map_err(|error| input_failure_result(&error))?;
+    let cwd = env::current_dir().map_err(|error| PushFailure {
+        code: 1,
+        diagnostic: SafeText::from_untrusted(error.to_string())
+            .as_str()
+            .to_owned(),
+    })?;
+    let policy = GitCliPolicy::new(cwd).map_err(|error| git_failure(&error))?;
+    let runtime = LarchRuntime::new().map_err(|error| PushFailure {
+        code: 1,
+        diagnostic: SafeText::from_untrusted(error.to_string())
+            .as_str()
+            .to_owned(),
+    })?;
+    let runner = TokioProcessRunner::default();
+    let cancellation = Cancellation::new();
+    runtime
+        .block_on(GitCli::new(&runner, policy).branch_mutation(
+            BranchMutationRequest::SetUpstream { name, upstream },
             &cancellation,
         ))
         .map(|_| ())

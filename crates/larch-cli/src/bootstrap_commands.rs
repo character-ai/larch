@@ -13,11 +13,10 @@ use crate::{
     runtime_entrypoint::{plugin_root, run_verified_larch},
     session_env_commands,
 };
-use larch_adapters::{GixRepository, TemporaryRoot, atomic_write_utf8_in};
+use larch_adapters::{TemporaryRoot, atomic_write_utf8_in};
 use larch_core::{
-    ConfigKey, ConfigScope, CrStrip, DuplicatePolicy, GateDecision, HostUtilityProgram, KvDocument,
-    ParseOptions, RepositoryRead, entry_gate, shell_quote, validate_progress_run_id,
-    validate_repo_root_value,
+    CrStrip, DuplicatePolicy, GateDecision, HostUtilityProgram, KvDocument, ParseOptions,
+    entry_gate, shell_quote, validate_progress_run_id, validate_repo_root_value,
 };
 use std::{
     collections::BTreeMap,
@@ -457,7 +456,7 @@ impl InfrastructureFailure {
 
 fn run_infrastructure(options: &BootstrapOptions) -> Result<BootstrapState, InfrastructureFailure> {
     let _ignored = progress_commands::clear(&[]);
-    let branch = branch_state();
+    let branch = crate::pr_commands::branch_state();
     let GateDecision {
         entry_gate,
         skip_branch_check,
@@ -537,81 +536,6 @@ fn run_infrastructure(options: &BootstrapOptions) -> Result<BootstrapState, Infr
         state.implement_tmpdir, state.session_id
     );
     Ok(state)
-}
-
-#[derive(Debug)]
-struct BranchState {
-    current_branch: String,
-    is_main: String,
-    is_user_branch: String,
-    user_prefix: String,
-}
-
-fn branch_state() -> BranchState {
-    let current_branch = crate::push_network::current_branch().unwrap_or_default();
-    let user_name = configured_git_user_name();
-    let user_prefix = user_prefix(&user_name);
-    let is_main = if current_branch.is_empty() || current_branch == "main" {
-        "true"
-    } else {
-        "false"
-    };
-    let is_user_branch =
-        if !current_branch.is_empty() && current_branch.starts_with(&format!("{user_prefix}/")) {
-            "true"
-        } else {
-            "false"
-        };
-    BranchState {
-        current_branch,
-        is_main: is_main.to_owned(),
-        is_user_branch: is_user_branch.to_owned(),
-        user_prefix,
-    }
-}
-
-fn configured_git_user_name() -> String {
-    let Ok(cwd) = env::current_dir() else {
-        return String::new();
-    };
-    let Ok(repository) = GixRepository::discover(&cwd) else {
-        return String::new();
-    };
-    let Ok(key) = ConfigKey::new("user.name") else {
-        return String::new();
-    };
-    let Ok(values) = repository.config_values(&key) else {
-        return String::new();
-    };
-    values
-        .iter()
-        .rev()
-        .find(|value| {
-            matches!(
-                value.scope,
-                ConfigScope::Repository
-                    | ConfigScope::Worktree
-                    | ConfigScope::Environment
-                    | ConfigScope::CommandLine
-                    | ConfigScope::Api
-            )
-        })
-        .or_else(|| values.last())
-        .map(|value| String::from_utf8_lossy(&value.value).trim().to_owned())
-        .unwrap_or_default()
-}
-
-fn user_prefix(user_name: &str) -> String {
-    let normalized: String = user_name
-        .to_ascii_lowercase()
-        .replace(' ', "-")
-        .chars()
-        .filter(|character| {
-            character.is_ascii_lowercase() || character.is_ascii_digit() || *character == '-'
-        })
-        .take(20)
-        .collect();
-    normalized.trim_end_matches('-').to_owned().if_empty("dev")
 }
 
 trait EmptyFallback {

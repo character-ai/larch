@@ -5,24 +5,13 @@
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
-
 from larch.core import config
 from larch.git import pr_body
-from larch.errors import ShipError
-from larch.core.proc import CommandResult
-
-
-class _NoopRunner:
-    def run(self, *args: object, **kwargs: object) -> CommandResult:  # pylint: disable=unused-argument
-        return CommandResult((), 0, "", "", 0.0)
 
 
 def test_sanitize_rejects_pipe_in_node() -> None:
@@ -43,119 +32,6 @@ def test_sanitize_fenced_mermaid_auto_extracts() -> None:
     fenced = "```mermaid\nflowchart LR\n  A --> B\n```\n"
     result = pr_body.sanitize_fragment(fenced)
     assert result.status == "ok"
-
-
-def test_compose_pr_body_rejects_bad_mermaid() -> None:
-    with pytest.raises(ShipError, match="mermaid fragment rejected"):
-        _ = pr_body.compose_pr_body(
-            summary="- x",
-            mermaid="flowchart LR\n  A[bad|pipe] --> B\n",
-        )
-
-
-def test_compose_pr_body_rejects_bad_mermaid_in_summary() -> None:
-    bad_summary = "- x\n\n```mermaid\nflowchart LR\n  A[bad|pipe] --> B\n```\n"
-    with pytest.raises(ShipError, match="mermaid in PR body rejected"):
-        _ = pr_body.compose_pr_body(summary=bad_summary)
-
-
-def test_compose_pr_body_appends_closes() -> None:
-    body = pr_body.compose_pr_body(summary="- x", issue_number=42)
-    assert body.count("Closes #42") == 1
-
-
-def test_compose_pr_body_routes_closes_through_helper(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[tuple[str, int]] = []
-
-    def fake_link(body: str, issue_number: int) -> str:
-        calls.append((body, issue_number))
-        return body.rstrip() + "\n\nCloses #42\n"
-
-    monkeypatch.setattr(pr_body.tracking_issue, "link_pr_closes", fake_link)
-    body = pr_body.compose_pr_body(summary="- x", issue_number=42)
-    assert calls
-    assert calls[0][1] == 42
-    assert body.rstrip().endswith("Closes #42")
-
-
-def test_compose_pr_body_appends_closes_when_mermaid_mentions_closes() -> None:
-    body = pr_body.compose_pr_body(
-        summary="- x",
-        mermaid="flowchart LR\n  A[Closes #42] --> B\n",
-        issue_number=42,
-    )
-    assert body.count("Closes #42") == 2
-    assert body.rstrip().endswith("Closes #42")
-
-
-def test_compose_pr_body_does_not_inject_oos_issue_urls() -> None:
-    body = pr_body.compose_pr_body(summary="- Implement the requested change.")
-    assert re.search(r"https://github\.com/[^/\s]+/[^/\s]+/issues/\d+", body) is None
-
-
-def test_compose_pr_body_fail_closed_on_truncation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fake_redact(_text: str) -> str:
-        return "body [content truncated — safety]"
-
-    monkeypatch.setattr(pr_body.redact, "redact", fake_redact)
-    with pytest.raises(ShipError, match="redaction failed"):
-        _ = pr_body.compose_pr_body(summary="- x")
-
-
-def test_redact_pr_body_delegates_to_redact() -> None:
-    raw = "See /tmp/claude-implement-abc123/plan.txt now"
-    out = pr_body.redact_pr_body(raw)
-    assert "claude-implement-abc123" not in out
-    assert out == pr_body.redact.redact(raw)
-
-
-def test_redact_pr_body_fail_closed_on_truncation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fake_redact(_text: str) -> str:
-        return "x [content truncated — safety]"
-
-    monkeypatch.setattr(pr_body.redact, "redact", fake_redact)
-    with pytest.raises(ShipError, match="redaction failed"):
-        _ = pr_body.redact_pr_body("x")
-
-
-def test_update_pr_body_rejects_unsafe_mermaid() -> None:
-    bad = "```mermaid\nflowchart LR\n  A[x|y] --> B\n```\n"
-    with pytest.raises(ShipError, match="mermaid in PR body rejected"):
-        pr_body.update_pr_body(runner=_NoopRunner(), number=3, body=bad, repo="o/r")
-
-
-def test_update_pr_body_invokes_gh() -> None:
-    def new_calls() -> list[list[str]]:
-        return []
-
-    @dataclass
-    class Runner:
-        calls: list[list[str]] = field(default_factory=new_calls)
-
-        def run(
-            self,
-            argv: Sequence[str],
-            *,
-            timeout: float | None = None,  # pylint: disable=unused-argument
-            cwd: str | None = None,  # pylint: disable=unused-argument
-            env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
-            check: bool = False,  # pylint: disable=unused-argument
-            stdout: int | None = None,  # pylint: disable=unused-argument
-            stderr: int | None = None,  # pylint: disable=unused-argument
-        ) -> CommandResult:
-            self.calls.append(list(argv))
-            return CommandResult(tuple(argv), 0, "", "", 0.0)
-
-    runner = Runner()
-    pr_body.update_pr_body(runner=runner, number=3, body="body", repo="o/r")  # type: ignore[arg-type]
-    assert runner.calls
-    assert runner.calls[0][1] == "pr"
 
 
 def test_render_run_summary_includes_cost_line() -> None:
@@ -837,36 +713,6 @@ def test_generate_code_flow_diagram_reads_stderr_sidecar(
     # Sidecar content must appear in the reason; completed.stderr was empty so
     # without Fix 1 the tail would be "no-output" instead.
     assert "claude.ai login" in result.reason
-
-
-def test_compose_pr_body_no_guideline_note_matches_existing_output() -> None:
-    base = pr_body.compose_pr_body(summary="- x")
-    with_empty = pr_body.compose_pr_body(summary="- x", architectural_guidelines_note="")
-    assert with_empty == base
-
-
-def test_compose_pr_body_includes_guideline_note_before_mermaid() -> None:
-    body = pr_body.compose_pr_body(
-        summary="- x",
-        mermaid="flowchart LR\n  A --> B\n",
-        architectural_guidelines_note="Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.",
-    )
-    assert "## Architectural guidelines" in body
-    assert body.index("## Architectural guidelines") < body.index("## Code Flow Diagram")
-
-
-def test_compose_pr_body_includes_guideline_deviation_note() -> None:
-    note = "- G-Example-1: intentionally deviates because the target API requires it."
-    body = pr_body.compose_pr_body(summary="- x", architectural_guidelines_note=note)
-    assert "## Architectural guidelines" in body
-    assert note in body
-
-
-def test_compose_pr_body_redacts_guideline_note() -> None:
-    token = "sk-" + "A" * 24
-    body = pr_body.compose_pr_body(summary="- x", architectural_guidelines_note=f"token {token}")
-    assert token not in body
-    assert "<REDACTED-TOKEN>" in body
 
 
 def test_render_run_summary_identity_lines_from_manifest(tmp_path: Path) -> None:

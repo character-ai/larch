@@ -54,6 +54,85 @@ def compose_summary(arguments: list[str]) -> int:
     return 0
 
 
+def create_branch(arguments: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py pr create-branch")
+    parser.add_argument("--branch", default="")
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--base-remote", default="origin")
+    parser.add_argument("--base-ref", default="main")
+    try:
+        args = parser.parse_args(arguments)
+    except SystemExit:
+        return 2
+    if not args.branch:
+        print("create-branch.sh: --branch is required", file=sys.stderr)
+        return 2
+    raise RuntimeError("the frozen fixture must not create a branch")
+
+
+def create_pr(arguments: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py pr create")
+    parser.add_argument("--repo", default=None)
+    parser.add_argument("--branch", default=None)
+    parser.add_argument("--title", required=True)
+    parser.add_argument("--body-file", required=True)
+    parser.add_argument("--base", default=None)
+    parser.add_argument("--draft", action="store_true")
+    try:
+        parser.parse_args(arguments)
+    except SystemExit:
+        return 1
+    raise RuntimeError("the frozen fixture must not create a pull request")
+
+
+def body_update(arguments: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py pr body-update")
+    parser.add_argument("--pr", required=True)
+    parser.add_argument("--repo", default=None)
+    parser.add_argument("--body-file", required=True)
+    try:
+        args = parser.parse_args(arguments)
+    except SystemExit:
+        return 2
+    if not Path(args.body_file).is_file():
+        print("UPDATED=false")
+        print(f"ERROR=body file not found: {args.body_file}")
+        return 2
+    raise RuntimeError("the frozen fixture must not update a pull request")
+
+
+def checks(arguments: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py pr checks")
+    parser.add_argument("--pr", required=True, type=int)
+    parser.add_argument("--repo", required=True)
+    try:
+        parser.parse_args(arguments)
+    except SystemExit:
+        return 1
+    raise RuntimeError("the frozen fixture must not read live checks")
+
+
+def closes_issue(arguments: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py pr closes-issue")
+    parser.add_argument("--body-file", default=None)
+    parser.add_argument("--repo", default=None)
+    try:
+        args = parser.parse_args(arguments)
+    except SystemExit:
+        return 1
+    if args.body_file:
+        try:
+            body = Path(args.body_file).read_text(encoding="utf-8")
+        except OSError:
+            print()
+            return 0
+        match = re.search(r"Closes #([0-9]+)", body)
+        print(match.group(1) if match else "")
+        return 0
+    print()
+    return 0
+
+
 def post_issue(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py tracking post-issue")
     parser.add_argument("--implement-tmpdir", required=True)
@@ -101,6 +180,16 @@ def main() -> int:
     command, arguments = sys.argv[1], sys.argv[2:]
     if command == "pr-compose-summary":
         return compose_summary(arguments)
+    if command == "pr-create-branch":
+        return create_branch(arguments)
+    if command == "pr-create":
+        return create_pr(arguments)
+    if command == "pr-body-update":
+        return body_update(arguments)
+    if command == "pr-checks":
+        return checks(arguments)
+    if command == "pr-closes-issue":
+        return closes_issue(arguments)
     if command == "tracking-post-issue":
         return post_issue(arguments)
     print(f"unknown fixture command: {command}", file=sys.stderr)

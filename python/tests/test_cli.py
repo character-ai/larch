@@ -164,17 +164,12 @@ def test_lazy_import_top_level_only_argparse_importlib_sys() -> None:
         assert imp in dispatcher_allowed, f"Unexpected top-level import in larch/cli.py: {imp!r}"
 
 
-def test_affected_registry_targets_resolve_to_domain_modules() -> None:
+def test_retired_git_registry_targets_are_absent() -> None:
     affected = {"larch.git.git", "larch.git.push", "larch.git.pr", "larch.git.gh"}
     retired = {"git_cli", "push_cli", "pr_cli", "merge_cli", "gh_cli", "ci_cli", "git", "push", "pr", "merge", "gh"}
-    checked = 0
-    for module_name, func_name, _machine_stdout in cli._REGISTRY.values():  # pyright: ignore[reportPrivateUsage]
+    for module_name, _func_name, _machine_stdout in cli._REGISTRY.values():  # pyright: ignore[reportPrivateUsage]
         assert module_name not in retired
-        if module_name in affected:
-            module = importlib.import_module(module_name)
-            assert getattr(module, func_name) is not None
-            checked += 1
-    assert checked == 5
+        assert module_name not in affected
 
 
 def test_all_registry_targets_resolve_to_callable_mains() -> None:

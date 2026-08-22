@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: cli.py pr create [-h] [--repo REPO] [--branch BRANCH] --title TITLE --body-file BODY_FILE [--base BASE] [--draft]\ncli.py pr create: error: the following arguments are required: --title, --body-file\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

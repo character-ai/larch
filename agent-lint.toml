@@ -320,10 +320,6 @@ exclude = [
   # skill prose, matching the same Makefile-only pattern as the other
   # run-log test-* harnesses above.
   "python/test_redact.py",
-  # Python bootstrap invokes these Step 0 shell helpers through subprocess;
-  # agent-lint does not follow Python-to-Bash edges.
-  "python/cli.py pr create-branch",
-  "python/pr.py",
   # Makefile-only harness for metadata summary publication. Runtime reachability
   # is through Step 0 helpers, not direct SKILL.md invocation.
   "python/test_pr_body.py",
@@ -823,11 +819,6 @@ exclude = [
   # scripts/test-prompt-template-invariants.md, not from runtime skill prose.
   "scripts/test-prompt-template-invariants.sh",
   "scripts/test-prompt-template-invariants.md",
-  # The Rust ship lifecycle composes these retained Python helpers; agent-lint
-  # does not follow that reviewed process boundary for G004 reachability.
-  "python/cli.py pr body-update",
-  "python/cli.py pr create",
-
 ]
 
 [[lint.overrides]]

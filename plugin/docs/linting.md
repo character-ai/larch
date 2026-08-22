@@ -468,7 +468,7 @@ Some regression tests intentionally short-circuit on the enforced CI runners and
 
 ### macOS bash 3.2 regression coverage
 
-The PR creation surface now lives in `python/cli.py pr create`. Before cutting a release whose changes touch PR creation, run the focused Python PR tests on a macOS workstation in addition to CI so file-backed body handling, `--repo` threading, and fork-mode behavior are verified on the release host.
+The PR creation surface now lives in `scripts/larch.sh pr create`. Before cutting a release whose changes touch PR creation, run the focused Rust PR and black-box parity tests on a macOS workstation in addition to CI so file-backed body handling, `--repo` threading, and fork-mode behavior are verified on the release host.
 
 ## Makefile Targets
 

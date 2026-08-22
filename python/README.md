@@ -113,7 +113,7 @@ The Phase 4 plan file list names `python/checks.py`, `python/test_checks.py`, an
 
 Runtime logic is Python-first where its command owner remains Python. Residual Bash is the explicit manifest inventory consumed by `scripts/larch.sh residual-bash paths`.
 
-`python3 python/cli.py pr closes-issue` is the PR-body `Closes #N` recovery surface. Terminal shared Bash libraries and verified orphan includes are retired through `python/migrated-scripts.tsv`.
+`scripts/larch.sh pr closes-issue` is the Rust-owned PR-body `Closes #N` recovery surface. Terminal shared Bash libraries and verified orphan includes are retired through `python/migrated-scripts.tsv`.
 
 ## Bgjob runtime package
 

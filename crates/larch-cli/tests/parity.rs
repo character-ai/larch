@@ -105,7 +105,10 @@ impl CleanInstallCase {
             | "clean-install-ship-reconcile-manual-merge"
             | "clean-install-ship-seed-initial-state"
             | "clean-install-merge-pr"
-            | "clean-install-merge-wait" => 1,
+            | "clean-install-merge-wait"
+            | "clean-install-pr-create"
+            | "clean-install-pr-checks"
+            | "clean-install-pr-closes-issue" => 1,
             // `design parse-flags` owns the frozen Step 0-pre grammar: the
             // clean-install `--help` token is an unrecognized public flag and
             // refuses with the Python validation exit code, matching the
@@ -262,6 +265,8 @@ impl CleanInstallCase {
             | "clean-install-scout-dynamic-archetypes"
             | "clean-install-scout-filter-manifest"
             | "clean-install-scout-plan-archetypes"
+            | "clean-install-pr-create-branch"
+            | "clean-install-pr-body-update"
             // `step3b-entry` requires `--mode finalize|diagram`; the clean-install
             // `--help` token carries no mode, so the entry refuses with exit 2.
             // (`postplan-emit` owns a real `--help` action and exits 0 by default;
@@ -1276,6 +1281,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-plan-validate", "plan", "validate"),
     CleanInstallCase::new("clean-install-plan-validate-commands", "plan", "validate-commands"),
     CleanInstallCase::new("clean-install-pr-compose-summary", "pr", "compose-summary"),
+    CleanInstallCase::new("clean-install-pr-create-branch", "pr", "create-branch"),
+    CleanInstallCase::new("clean-install-pr-create", "pr", "create"),
+    CleanInstallCase::new("clean-install-pr-body-update", "pr", "body-update"),
+    CleanInstallCase::new("clean-install-pr-checks", "pr", "checks"),
+    CleanInstallCase::new("clean-install-pr-closes-issue", "pr", "closes-issue"),
     CleanInstallCase::new("clean-install-plan-validator-autofix", "plan", "validator-autofix"),
     CleanInstallCase::new(
         "clean-install-plan-review-panel-dispatch",
@@ -2808,6 +2818,80 @@ fn pr_summary_parity_cases(python: &Path, reference: &Path, rust: &Path) -> [Par
     ]
 }
 
+fn pr_lifecycle_parity_cases(python: &Path, reference: &Path, rust: &Path) -> [ParityCase; 5] {
+    [
+        ParityCase {
+            name: "pr-create-branch-missing-branch",
+            python: Program::new(python).args([path_text(reference), "pr-create-branch"]),
+            rust: Program::new(rust).args(["pr", "create-branch"]),
+            seed_files: Vec::new(),
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+        ParityCase {
+            name: "pr-create-missing-required",
+            python: Program::new(python).args([path_text(reference), "pr-create"]),
+            rust: Program::new(rust).args(["pr", "create"]),
+            seed_files: Vec::new(),
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+        ParityCase {
+            name: "pr-body-update-missing-file",
+            python: Program::new(python).args([
+                path_text(reference),
+                "pr-body-update",
+                "--pr",
+                "42",
+                "--body-file",
+                "missing.md",
+            ]),
+            rust: Program::new(rust).args([
+                "pr",
+                "body-update",
+                "--pr",
+                "42",
+                "--body-file",
+                "missing.md",
+            ]),
+            seed_files: Vec::new(),
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+        ParityCase {
+            name: "pr-checks-invalid-number",
+            python: Program::new(python).args([
+                path_text(reference),
+                "pr-checks",
+                "--pr",
+                "nope",
+                "--repo",
+                "owner/repo",
+            ]),
+            rust: Program::new(rust).args(["pr", "checks", "--pr", "nope", "--repo", "owner/repo"]),
+            seed_files: Vec::new(),
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+        ParityCase {
+            name: "pr-closes-issue-body-file",
+            python: Program::new(python).args([
+                path_text(reference),
+                "pr-closes-issue",
+                "--body-file",
+                "body.md",
+            ]),
+            rust: Program::new(rust).args(["pr", "closes-issue", "--body-file", "body.md"]),
+            seed_files: vec![SeedFile::text(
+                "body.md",
+                "Part of #1\n\nCloses #8790\nCloses #9999\n",
+            )],
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+    ]
+}
+
 fn tracking_post_parity_cases(python: &Path, reference: &Path, rust: &Path) -> [ParityCase; 3] {
     [
         ParityCase {
@@ -2884,6 +2968,7 @@ fn pr_summary_and_tracking_post_have_frozen_black_box_parity() {
 
     let cases = pr_summary_parity_cases(&python, &reference, &rust)
         .into_iter()
+        .chain(pr_lifecycle_parity_cases(&python, &reference, &rust))
         .chain(tracking_post_parity_cases(&python, &reference, &rust));
     for case in cases {
         let golden = goldens.join(format!("{}.golden.json", case.name));

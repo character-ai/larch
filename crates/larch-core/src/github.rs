@@ -541,6 +541,8 @@ pub struct GitHubIssueEdit {
     pub title: Option<String>,
     pub body: Option<String>,
     pub labels: Option<Vec<String>>,
+    /// Replace the issue or pull request assignee set when present.
+    pub assignees: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -691,6 +693,10 @@ pub struct CheckRun {
     pub status: String,
     pub conclusion: Option<String>,
     pub details_url: Option<String>,
+    /// Human-facing status-context detail, when supplied by GitHub.
+    pub description: Option<String>,
+    /// Completed wall-clock duration, when GitHub supplied both timestamps.
+    pub wall_clock_seconds: Option<u64>,
     pub bucket: CheckBucket,
 }
 

@@ -244,7 +244,7 @@ The pre-ship checks-repair fallback uses the same subagent in `MODE=checks`. `ch
 
 ## Pre-push Clean-Tree Invariant
 
-Before guarded push wrappers invoked by `/implement` — initial PR creation (`python/cli.py pr create`) and force-push during rebase recovery (`python/cli.py push force`) — the script asserts that `git status --porcelain` is empty. If uncommitted working-tree changes are present, the push aborts with exit 1 and a message listing the dirty paths, so the orchestrator routes to the bail path (Step 12d / Step 18). This prevents silent data loss when inline fixes (e.g., OOS-fold edits) land in the working tree between commit boundaries and would otherwise be excluded from the merged PR.
+Before guarded push wrappers invoked by `/implement`, initial PR creation (`scripts/larch.sh pr create`) and force-push during rebase recovery (`python/cli.py push force`) assert that the typed repository status is clean. If uncommitted working-tree changes are present, the push aborts with exit 1, so the orchestrator routes to the bail path (Step 12d / Step 18). This prevents silent data loss when inline fixes, such as OOS-fold edits, land in the working tree between commit boundaries and would otherwise be excluded from the merged PR.
 
 ## Resolution Protocols
 

@@ -10,7 +10,6 @@ Mutating helpers return the last ``CommandResult`` without retry.
 
 from __future__ import annotations
 
-import importlib
 import json
 import math
 import re
@@ -18,14 +17,14 @@ import tempfile
 import time
 from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import contextmanager
-from typing import Final, Protocol, cast
+from typing import Final, cast
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
 from larch.core import config
 from larch.core import redact
-from larch.errors import NeedsUserInput, ShipError, TransientNetworkError
+from larch.errors import ShipError, TransientNetworkError
 from larch.core.proc import CommandResult, Runner
 from larch.core.retry import (
     RetryResult,
@@ -114,29 +113,6 @@ class PrCheck:
     bucket: str
 
 
-@dataclass(frozen=True)
-class BodyUpdateResult:
-    updated: bool
-    error: str
-    exit_code: int
-
-
-class _ScopeDispositionModule(Protocol):
-    def require_pr_mutation_scope_disposition(
-        self,
-        *,
-        tmpdir: Path | None,
-        repo_root: Path,
-        manifest_path: Path | None = None,
-        runner: Runner,
-    ) -> None: ...
-
-
-def _scope_disposition_module() -> _ScopeDispositionModule:
-    module = importlib.import_module("larch.implement.scope_disposition")
-    return cast("_ScopeDispositionModule", module)
-
-
 def _gh(
     runner: Runner,
     argv: Sequence[str],
@@ -196,17 +172,6 @@ def _ensure_success(result: CommandResult) -> CommandResult:
         msg = f"gh command failed ({result.returncode}): {' '.join(result.argv)}"
         raise ShipError(msg)
     return result
-
-
-def _require_scope_disposition_for_pr_mutation(
-    *, runner: Runner, cwd: str | None
-) -> None:
-    repo_root = Path(cwd or ".").resolve()
-    _scope_disposition_module().require_pr_mutation_scope_disposition(
-        tmpdir=None,
-        repo_root=repo_root,
-        runner=runner,
-    )
 
 
 def _raise_read_failure(result: CommandResult) -> None:
@@ -1256,31 +1221,6 @@ def pr_checks_all_pass(
     return _pr_checks_text_all_pass(text_result.stdout)
 
 
-def pr_edit_body(
-    runner: Runner,
-    number: int,
-    body: str,
-    *,
-    repo: str,
-    cwd: str | None = None,
-) -> CommandResult:
-    _require_scope_disposition_for_pr_mutation(runner=runner, cwd=cwd)
-    with _body_file_args(body) as (body_flag, body_path):
-        return _gh(
-            runner,
-            [
-                "pr",
-                "edit",
-                str(number),
-                "--repo",
-                repo,
-                body_flag,
-                body_path,
-            ],
-            cwd=cwd,
-        )
-
-
 def _workflow_run_from_json(data: Mapping[str, object], *, context: str) -> WorkflowRun:
     _require_json_keys(data, ("databaseId", "status"), context=context)
     return WorkflowRun(
@@ -2294,67 +2234,3 @@ def resolve_repo_detailed(runner: Runner, *, cwd: str | None = None) -> RepoReso
 
 def resolve_repo(runner: Runner, *, cwd: str | None = None) -> str | None:
     return resolve_repo_detailed(runner, cwd=cwd).repo
-
-
-def pr_edit_body_file(
-    runner: Runner,
-    pr_number: str,
-    body_file: str,
-    *,
-    repo: str | None = None,
-    cwd: str | None = None,
-) -> BodyUpdateResult:
-    if not Path(body_file).is_file():
-        return BodyUpdateResult(
-            updated=False, error=f"body file not found: {body_file}", exit_code=2
-        )
-
-    try:
-        _require_scope_disposition_for_pr_mutation(runner=runner, cwd=cwd)
-    except NeedsUserInput:
-        return BodyUpdateResult(
-            updated=False,
-            error="scope-disposition required",
-            exit_code=config.EXIT_NEEDS_USER_INPUT,
-        )
-
-    argv = ["gh", "pr", "edit", pr_number]
-    if repo:
-        argv.extend(["--repo", repo])
-    argv.extend(["--body-file", body_file])
-
-    def attempt() -> tuple[CommandResult, int, str]:
-        result = runner.run(argv, cwd=cwd)
-        return result, result.returncode, result.stdout + result.stderr
-
-    retried: RetryResult[CommandResult] = with_transient_retry(attempt)
-    result = retried.value
-    if result.returncode == 0:
-        return BodyUpdateResult(updated=True, error="", exit_code=0)
-    output = redact.redact(result.stdout + result.stderr).replace("\n", " ").strip()
-    return BodyUpdateResult(
-        updated=False,
-        error=f"gh pr edit failed (exit {result.returncode}): {output}",
-        exit_code=2,
-    )
-
-
-def extract_closes_issue(body: str) -> str:
-    match = re.search(r"Closes #([0-9]+)", body)
-    return match.group(1) if match else ""
-
-
-def extract_closes_issue_from_current_pr(
-    runner: Runner,
-    *,
-    repo: str,
-    cwd: str | None = None,
-) -> str:
-    result = _retry_read(
-        runner,
-        ["pr", "view", "--repo", repo, "--json", "body", "--jq", ".body"],
-        cwd=cwd,
-    )
-    if result.returncode != 0:
-        return ""
-    return extract_closes_issue(result.stdout)

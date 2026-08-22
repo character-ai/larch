@@ -1407,3 +1407,6 @@ python/tests/review/test_plan_review_round.py	#8452
 python/tests/review/test_review_types.py	#8452
 python/tests/review/test_tally_engine.py	#8452
 python/tests/review/test_voting.py	#8452
+python/larch/git/pr.py	#8790
+python/larch/git/push.py	#8790
+python/tests/git/test_pr.py	#8790

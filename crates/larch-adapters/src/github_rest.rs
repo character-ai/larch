@@ -237,7 +237,11 @@ impl GitHubService for OctocrabGitHubService {
             self.guarded(cancellation, async {
                 validate_repo(&request.repo)?;
                 validate_number(request.number)?;
-                if request.title.is_none() && request.body.is_none() && request.labels.is_none() {
+                if request.title.is_none()
+                    && request.body.is_none()
+                    && request.labels.is_none()
+                    && request.assignees.is_none()
+                {
                     return Err(operation_error(
                         GitHubOperationErrorKind::InvalidInput,
                         "GitHub issue edit must change at least one field",
@@ -260,6 +264,12 @@ impl GitHubService for OctocrabGitHubService {
                         validate_string(label, self.policy)?;
                     }
                     update = update.labels(labels);
+                }
+                if let Some(assignees) = &request.assignees {
+                    for assignee in assignees {
+                        validate_string(assignee, self.policy)?;
+                    }
+                    update = update.assignees(assignees);
                 }
                 match update.send().await {
                     Ok(value) => issue_from_model(value, self.policy),
@@ -1057,6 +1067,10 @@ fn issue_matches_edit(issue: &GitHubIssue, request: &GitHubIssueEdit) -> bool {
                     .iter()
                     .all(|value| issue.labels.iter().any(|label| label.name == *value))
         })
+        && request.assignees.as_ref().is_none_or(|values| {
+            values.len() == issue.assignees.len()
+                && values.iter().all(|value| issue.assignees.contains(value))
+        })
 }
 
 fn transient_octocrab_error(error: &octocrab::Error) -> bool {
@@ -1389,15 +1403,22 @@ mod tests {
             nested = Value::Array(vec![nested]);
         }
         assert_eq!(error_kind(validate_json(&nested, policy)), LimitExceeded);
-        let issue = issue_from_model(issue_model(), policy).expect("fixture converts");
+        let mut issue = issue_from_model(issue_model(), policy).expect("fixture converts");
+        issue.assignees = vec!["fixture".to_owned()];
         let edit = GitHubIssueEdit {
             repo: GitHubRepositoryRef::new("o", "r").expect("valid repo"),
             number: 2,
             title: Some(issue.title.clone()),
             body: None,
             labels: None,
+            assignees: Some(vec!["fixture".to_owned()]),
         };
         assert!(issue_matches_edit(&issue, &edit));
+        let different_assignee = GitHubIssueEdit {
+            assignees: Some(vec!["other".to_owned()]),
+            ..edit
+        };
+        assert!(!issue_matches_edit(&issue, &different_assignee));
         assert_eq!(issue.number, 2);
         assert_eq!(issue.author, "octocat");
         assert_eq!(issue.labels[0].name, "bug");
@@ -1455,6 +1476,7 @@ mod tests {
             title: Some(String::from("Parity title")),
             body: None,
             labels: None,
+            assignees: None,
         };
         let label = GitHubLabelCreate {
             repo: repo.clone(),
@@ -1493,6 +1515,7 @@ mod tests {
             title: Some(String::from("Parity title")),
             body: None,
             labels: None,
+            assignees: None,
         };
         succeeds!(service.edit_issue(&edit, &cancellation));
         let create = GitHubIssueCreate {
@@ -1529,6 +1552,7 @@ mod tests {
             title: None,
             body: None,
             labels: None,
+            assignees: None,
         };
         fails!(
             service.edit_issue(&empty_edit, &cancellation),

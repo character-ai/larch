@@ -108,6 +108,31 @@ struct ChecksResponse {
 struct CombinedStatusDto {
     state: String,
     total_count: u64,
+    #[serde(default)]
+    statuses: Vec<CommitStatusDto>,
+}
+
+#[derive(Deserialize)]
+struct CommitStatusDto {
+    context: String,
+    state: String,
+    target_url: Option<String>,
+    description: Option<String>,
+}
+
+impl CommitStatusDto {
+    fn into_core(self) -> CheckRun {
+        let bucket = commit_status_bucket(&self.state);
+        CheckRun {
+            name: self.context,
+            status: self.state.clone(),
+            conclusion: Some(self.state),
+            details_url: self.target_url,
+            description: self.description,
+            wall_clock_seconds: None,
+            bucket,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -116,16 +141,25 @@ struct CheckDto {
     status: String,
     conclusion: Option<String>,
     details_url: Option<String>,
+    started_at: Option<DateTime<Utc>>,
+    completed_at: Option<DateTime<Utc>>,
 }
 
 impl CheckDto {
     fn into_core(self) -> CheckRun {
         let bucket = check_bucket(&self.status, self.conclusion.as_deref());
+        let wall_clock_seconds = self
+            .started_at
+            .zip(self.completed_at)
+            .and_then(|(started, completed)| (completed - started).to_std().ok())
+            .map(|duration| duration.as_secs());
         CheckRun {
             name: self.name,
             status: self.status,
             conclusion: self.conclusion,
             details_url: self.details_url,
+            description: None,
+            wall_clock_seconds,
             bucket,
         }
     }
@@ -138,7 +172,7 @@ fn check_bucket(status: &str, conclusion: Option<&str>) -> CheckBucket {
     match conclusion {
         Some("success") => CheckBucket::Pass,
         Some("cancelled") => CheckBucket::Cancel,
-        Some("failure" | "timed_out" | "action_required" | "startup_failure") => CheckBucket::Fail,
+        Some("failure" | "timed_out" | "action_required") => CheckBucket::Fail,
         Some("skipped" | "neutral") => CheckBucket::Skipping,
         _ => CheckBucket::Pending,
     }
@@ -459,24 +493,43 @@ impl OctocrabGitHubService {
         validate_selector(git_reference, "Git reference")?;
         let mut checks = Vec::new();
         let status_route = format!(
-            "{}/commits/{}/status",
+            "{}/commits/{}/status?per_page={PAGE_SIZE}",
             repository_route(repository),
             encode_path_segment(git_reference)
         );
         let status: CombinedStatusDto = self.read_json(&status_route).await?;
         validate_string(self, &status.state, "combined commit status")?;
-        let status_check = (status.total_count > 0).then(|| CheckRun {
-            name: "commit-status-rollup".to_owned(),
-            status: status.state.clone(),
-            conclusion: Some(status.state.clone()),
-            details_url: None,
-            bucket: commit_status_bucket(&status.state),
-        });
-        let check_limit = self
-            .transport_policy()
-            .limits()
-            .items()
-            .saturating_sub(usize::from(status_check.is_some()));
+        let status_count = usize::try_from(status.total_count).map_err(|_| {
+            self.error(
+                GitHubActionsErrorKind::Response,
+                "GitHub commit status count exceeds the platform limit",
+            )
+        })?;
+        if status_count != status.statuses.len() {
+            return Err(self.error(
+                GitHubActionsErrorKind::Response,
+                "GitHub commit status response was truncated",
+            ));
+        }
+        for status in status.statuses {
+            validate_string(self, &status.context, "commit status context")?;
+            validate_string(self, &status.state, "commit status state")?;
+            validate_optional_string(
+                self,
+                status.target_url.as_deref(),
+                "commit status target URL",
+            )?;
+            validate_optional_string(
+                self,
+                status.description.as_deref(),
+                "commit status description",
+            )?;
+            checks.push(status.into_core());
+        }
+        let check_limit = self.transport_policy().limits().items();
+        if checks.len() >= check_limit {
+            return Ok(checks);
+        }
         for page in 1..=self.transport_policy().limits().pages() {
             let route = format!(
                 "{}/commits/{}/check-runs?filter=latest&per_page={PAGE_SIZE}&page={page}",
@@ -500,11 +553,11 @@ impl OctocrabGitHubService {
                 )?;
                 checks.push(check.into_core());
                 if checks.len() == check_limit {
-                    return Ok(with_combined_status(checks, status_check));
+                    return Ok(checks);
                 }
             }
             if count < PAGE_SIZE {
-                return Ok(with_combined_status(checks, status_check));
+                return Ok(checks);
             }
         }
         Err(self.error(
@@ -693,11 +746,6 @@ impl OctocrabGitHubService {
         let safe = self.redact_diagnostic(detail);
         GitHubActionsError::new(kind, safe.as_str())
     }
-}
-
-fn with_combined_status(mut checks: Vec<CheckRun>, status: Option<CheckRun>) -> Vec<CheckRun> {
-    checks.extend(status);
-    checks
 }
 
 fn actions_operation_error(error: &GitHubOperationError) -> GitHubActionsError {
@@ -1160,12 +1208,12 @@ mod tests {
             response(
                 200,
                 json,
-                r#"{"state":"failure","total_count":1,"statuses":[]}"#,
+                r#"{"state":"failure","total_count":1,"statuses":[{"context":"legacy","state":"failure","target_url":"https://example.test/status","description":"legacy detail"}]}"#,
             ),
             response(
                 200,
                 json,
-                r#"{"check_runs":[{"name":"check","status":"completed","conclusion":"success"}]}"#,
+                r#"{"check_runs":[{"name":"check","status":"completed","conclusion":"success","started_at":"2026-01-01T00:00:00Z","completed_at":"2026-01-01T00:00:02Z"}]}"#,
             ),
             response(200, json, RUN),
             response(201, json, ""),
@@ -1187,8 +1235,11 @@ mod tests {
             assert_eq!(s.workflow_jobs(&r, 1, &c).await.expect("jobs").len(), 1);
             let checks = s.check_runs(&r, "abc", &c).await.expect("checks");
             assert_eq!(checks.len(), 2);
-            assert_eq!(checks[0].name, "check");
-            assert_eq!(checks[1].bucket, CheckBucket::Fail);
+            assert_eq!(checks[0].name, "legacy");
+            assert_eq!(checks[0].bucket, CheckBucket::Fail);
+            assert_eq!(checks[0].description.as_deref(), Some("legacy detail"));
+            assert_eq!(checks[1].name, "check");
+            assert_eq!(checks[1].wall_clock_seconds, Some(2));
             assert_eq!(
                 s.rerun_workflow(&r, 1, false, &c).await.expect("rerun"),
                 GitHubMutationOutcome::Accepted
@@ -1310,6 +1361,20 @@ mod tests {
                     .kind(),
                 GitHubActionsErrorKind::Response
             );
+
+            let truncated_statuses = queued_service(vec![response(
+                200,
+                "application/json",
+                r#"{"state":"pending","total_count":2,"statuses":[{"context":"one","state":"pending","target_url":null,"description":null}]}"#,
+            )]);
+            assert_eq!(
+                truncated_statuses
+                    .check_runs(&repository, "abc", &cancellation)
+                    .await
+                    .expect_err("truncated commit statuses")
+                    .kind(),
+                GitHubActionsErrorKind::Response
+            );
         });
     }
 
@@ -1364,6 +1429,10 @@ mod tests {
         );
         assert_eq!(
             check_bucket("completed", Some("stale")),
+            CheckBucket::Pending
+        );
+        assert_eq!(
+            check_bucket("completed", Some("startup_failure")),
             CheckBucket::Pending
         );
     }

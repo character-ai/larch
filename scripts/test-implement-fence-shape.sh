@@ -62,7 +62,7 @@ def old_logical_commands(body):
     return commands
 
 def old_target_kind(cmd):
-    if 'python/cli.py' in cmd and 'pr closes-issue' in cmd:
+    if 'scripts/larch.sh' in cmd and 'pr closes-issue' in cmd:
         return 'structured-invocation'
     if 'larch.sh' in cmd and 'implement preflight' in cmd:
         return 'preflight-helper'

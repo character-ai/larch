@@ -10,11 +10,10 @@ import pytest
 
 from larch.core import config
 from larch.git import gh
-from larch.errors import NeedsUserInput, ShipError, TransientNetworkError
+from larch.errors import ShipError, TransientNetworkError
 from larch.core.proc import CommandResult
 
 from test_support import RecordingRunner as _RecordingRunner
-from test_support import force_scope_disposition_refusal
 
 
 @dataclass
@@ -128,14 +127,12 @@ def test_read_helpers_that_bypass_retry_are_bounded() -> None:
         responses=[
             CommandResult(("gh", "pr", "view", "1"), 0, '{"body":"body"}', "", 0.01),
             CommandResult(("gh", "run", "view", "7"), 0, "log", "", 0.01),
-            CommandResult(("gh", "pr", "view"), 0, "Closes #1", "", 0.01),
         ],
     )
 
     assert gh.pr_view_body(runner, 1, repo="o/r") == "body"
     assert gh.run_log_read(runner, 7, repo="o/r").returncode == 0
-    assert gh.extract_closes_issue_from_current_pr(runner, repo="o/r") == "1"
-    assert runner.timeouts == [config.CI_STATUS_QUERY_TIMEOUT_SEC] * 3
+    assert runner.timeouts == [config.CI_STATUS_QUERY_TIMEOUT_SEC] * 2
 
 
 def test_pr_create_deduplicates_existing() -> None:
@@ -1306,56 +1303,6 @@ def test_pr_merge_state_read() -> None:
     assert state.head_ref_oid == "abc"
 
 
-def test_pr_edit_body_uses_body_file() -> None:
-    runner = RecordingRunner(
-        responses=[CommandResult(("gh", "pr", "edit", "4"), 0, "", "", 0.01)],
-    )
-    result = gh.pr_edit_body(runner, 4, "hello", repo="o/r")
-    assert result.returncode == 0
-    assert "--body-file" in runner.calls[0]
-
-
-def test_pr_edit_body_file_retries_and_threads_repo(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(config, "TRANSIENT_RETRY_BACKOFF_SEC", (0, 0))
-    body_file = tmp_path / "body.md"
-    _ = body_file.write_text("hello", encoding="utf-8")
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(
-                ("gh", "pr", "edit", "4"), 1, "", "fatal: Could not resolve host", 0.01
-            ),
-            CommandResult(("gh", "pr", "edit", "4"), 0, "", "", 0.01),
-        ],
-    )
-    result = gh.pr_edit_body_file(runner, "4", str(body_file), repo="o/r")
-    assert result.updated
-    assert len(runner.calls) == 2
-    assert runner.calls[0] == [  # lint-gh-argv-literal: ok fixture assertion
-        "gh",
-        "pr",
-        "edit",
-        "4",
-        "--repo",
-        "o/r",
-        "--body-file",
-        str(body_file),
-    ]
-
-
-def test_pr_edit_body_file_omits_repo_when_absent(tmp_path: Path) -> None:
-    body_file = tmp_path / "body.md"
-    _ = body_file.write_text("hello", encoding="utf-8")
-    runner = RecordingRunner(
-        responses=[CommandResult(("gh", "pr", "edit", "4"), 0, "", "", 0.01)]
-    )
-    result = gh.pr_edit_body_file(runner, "4", str(body_file), repo=None)
-    assert result.updated
-    assert runner.calls[0] == ["gh", "pr", "edit", "4", "--body-file", str(body_file)]  # lint-gh-argv-literal: ok fixture assertion
-
-
 def test_body_file_args_fail_closed_on_truncation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1365,7 +1312,7 @@ def test_body_file_args_fail_closed_on_truncation(
     monkeypatch.setattr(gh.redact, "redact", fake_redact)
     runner = RecordingRunner()
     with pytest.raises(ShipError, match="redaction failed"):
-        _ = gh.pr_edit_body(runner, 1, "secret", repo="o/r")
+        _ = gh.issue_create(runner, repo="o/r", title="t", body="secret")
 
 
 @pytest.mark.parametrize(
@@ -1618,56 +1565,6 @@ def test_issue_create_adds_repo_and_surfaces_failure() -> None:
     assert result.returncode == 1
     assert "--repo" in runner.calls[0]
     assert "o/r" in runner.calls[0]
-
-
-def test_pr_edit_body_file_scope_refusal_no_edit(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    force_scope_disposition_refusal(monkeypatch)
-    body = tmp_path / "body.md"
-    _ = body.write_text("body", encoding="utf-8")
-    runner = RecordingRunner(strict=True)
-    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
-
-    result = gh.pr_edit_body_file(runner, "7", str(body), repo="o/r")
-
-    assert result.exit_code == config.EXIT_NEEDS_USER_INPUT
-    assert result.updated is False
-    assert result.error == "scope-disposition required"
-    assert [call for call in runner.calls if call[:3] == ["gh", "pr", "edit"]] == []  # lint-gh-argv-literal: ok fixture assertion
-
-
-def test_pr_edit_body_scope_refusal_raises_no_edit(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    force_scope_disposition_refusal(monkeypatch)
-    runner = RecordingRunner(strict=True)
-    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
-
-    with pytest.raises(NeedsUserInput):
-        _ = gh.pr_edit_body(runner, 7, "body", repo="o/r")
-
-    assert [call for call in runner.calls if call[:3] == ["gh", "pr", "edit"]] == []  # lint-gh-argv-literal: ok fixture assertion
-
-
-def test_pr_edit_body_file_manifest_only_todos_block(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _ = (tmp_path / "manifest.json").write_text(
-        '{"todos_left":["finish"]}\n', encoding="utf-8"
-    )
-    body = tmp_path / "body.md"
-    _ = body.write_text("body", encoding="utf-8")
-    runner = RecordingRunner(strict=True)
-    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
-
-    result = gh.pr_edit_body_file(runner, "7", str(body), repo="o/r")
-
-    assert result.exit_code == config.EXIT_NEEDS_USER_INPUT
-    assert [call for call in runner.calls if call[:3] == ["gh", "pr", "edit"]] == []  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_resolve_repo_detailed_valid_primary() -> None:
