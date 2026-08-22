@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "implement/.keep": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: cli.py review-and-fix write-loop-identity [-h] --implement-tmpdir IMPLEMENT_TMPDIR --pid PID [--expected-signature EXPECTED_SIGNATURE]\n\noptions:\n  -h, --help            show this help message and exit\n  --implement-tmpdir IMPLEMENT_TMPDIR\n  --pid PID\n  --expected-signature EXPECTED_SIGNATURE\n"
+  }
+}

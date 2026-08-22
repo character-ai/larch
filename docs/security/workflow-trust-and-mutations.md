@@ -374,6 +374,14 @@ runtime owns process-identity capture, validated process-group termination, and
 `crates/larch-cli/src/kill_background.rs`). Rust-owned stall-state clearing
 consumes the Rust bgjob registry and process-identity validation directly.
 Rust-owned stall classification also consumes the Rust bgjob registry directly.
+The Rust `review-and-fix write-loop-identity`, `await-loop-identity`, and
+`teardown-loop-identity` commands compose this same owner through
+`crates/larch-cli/src/review_loop_identity_commands.rs`. Teardown records
+signal intent, revalidates the PID, PGID, start time, command, and kernel birth
+identity immediately before group signaling, and retains the identity sidecar
+until the process-group absence probe succeeds. The still-Python plan-review
+verbs and finalization consumers do not create an alternate Rust kill-log
+implementation; they remain explicit migration leaves.
 Before a stall clear removes or rewrites anything, it preflights every fixed
 state layer and derived classification or issue artifact below the validated
 temporary root, and it completes the required abandoned-bgjob recovery proof.
