@@ -1727,6 +1727,21 @@ enum TrackingCommand {
 
 #[derive(Subcommand)]
 enum PrCommand {
+    /// Create a prefixed branch or report current branch facts.
+    #[command(name = "create-branch", disable_help_flag = true)]
+    CreateBranch(RawCompatibilityArguments),
+    /// Create or adopt a pull request for the current branch.
+    #[command(disable_help_flag = true)]
+    Create(RawCompatibilityArguments),
+    /// Replace one pull request body.
+    #[command(name = "body-update", disable_help_flag = true)]
+    BodyUpdate(RawCompatibilityArguments),
+    /// Render pull request check state.
+    #[command(disable_help_flag = true)]
+    Checks(RawCompatibilityArguments),
+    /// Extract the first closing issue footer.
+    #[command(name = "closes-issue", disable_help_flag = true)]
+    ClosesIssue(RawCompatibilityArguments),
     /// Compose the implementation goal and changed-scope PR bullets.
     #[command(name = "compose-summary", disable_help_flag = true)]
     ComposeSummary(RawCompatibilityArguments),
@@ -3292,9 +3307,16 @@ fn run(
                 design_step1_commands::step1_log(&arguments.arguments)
             }
         }),
-        Domain::Pr(PrCommand::ComposeSummary(arguments)) => {
-            Ok(pr_commands::compose_summary(&arguments.arguments))
-        }
+        Domain::Pr(command) => Ok(match command {
+            PrCommand::CreateBranch(arguments) => pr_commands::create_branch(&arguments.arguments),
+            PrCommand::Create(arguments) => pr_commands::create(&arguments.arguments),
+            PrCommand::BodyUpdate(arguments) => pr_commands::body_update(&arguments.arguments),
+            PrCommand::Checks(arguments) => pr_commands::checks(&arguments.arguments),
+            PrCommand::ClosesIssue(arguments) => pr_commands::closes_issue(&arguments.arguments),
+            PrCommand::ComposeSummary(arguments) => {
+                pr_commands::compose_summary(&arguments.arguments)
+            }
+        }),
         Domain::TrackingIssue(command) => Ok(match command {
             TrackingIssueCommand::Read(arguments) => {
                 tracking_issue_commands::read(&arguments.arguments)

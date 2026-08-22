@@ -258,7 +258,7 @@ mod tests {
     #[test]
     #[rustfmt::skip]
     fn failed_check_yields_the_first_actions_run_id() {
-        let checks=[CheckRun { name: "test".to_owned(), status: "completed".to_owned(), conclusion: Some("failure".to_owned()), details_url: Some("https://github.com/o/r/actions/runs/123/job/4".to_owned()), bucket: CheckBucket::Fail }];
+        let checks=[CheckRun { name: "test".to_owned(), status: "completed".to_owned(), conclusion: Some("failure".to_owned()), details_url: Some("https://github.com/o/r/actions/runs/123/job/4".to_owned()), description: None, wall_clock_seconds: None, bucket: CheckBucket::Fail }];
         let observed=classify_checks(&checks,0); assert_eq!(observed.kind,CiStatusKind::Fail); assert_eq!(observed.failed_run_id.as_deref(),Some("123"));
     }
 

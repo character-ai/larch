@@ -29,7 +29,7 @@ Prompt-side orchestration steps delegate to these script contracts:
 - `step-18.md` (`skills/implement/scripts/step-18.sh`)
 - `crates/larch-cli/src/review_and_fix_commands.rs` (Rust Step 5 / apply-findings / check-changes / commit-fixes / write-rejected driver)
 
-**PR-body recovery helper:** use `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr closes-issue` for `Closes #N` extraction.
+**PR-body recovery helper:** use `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" pr closes-issue` for `Closes #N` extraction.
 
 **Structured invocation pin**: when a workflow needs the PR-body `Closes #N` extractor, call it with no argv:
 
@@ -38,7 +38,7 @@ Prompt-side orchestration steps delegate to these script contracts:
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -x "$IMPLEMENT_TMPDIR/larch-run.sh" ] && CLAUDE_PLUGIN_ROOT=$("$IMPLEMENT_TMPDIR/larch-run.sh" --print-plugin-root 2>/dev/null || true)
 export CLAUDE_PLUGIN_ROOT
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr closes-issue
+"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" pr closes-issue
 ```
 
 Structured invocation pins for script factoring that is reached through active drivers or wrappers:

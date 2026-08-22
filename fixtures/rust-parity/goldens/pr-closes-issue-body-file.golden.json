@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "body.md": {
+      "text": "Part of #1\n\nCloses #8790\nCloses #9999\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "8790\n"
+  }
+}

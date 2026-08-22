@@ -140,6 +140,13 @@ pub struct ShipPrDisposition {
     pub partial: bool,
 }
 
+/// Result of the ambient scope-disposition gate used by standalone PR mutations.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PrMutationScopeGate {
+    Allowed,
+    NeedsUser,
+}
+
 #[derive(Clone, Debug)]
 struct BaselineResolution {
     sha: String,
@@ -223,6 +230,38 @@ pub fn ship_pr_disposition(
     Ok(ShipPrDisposition {
         deferred_inventory,
         partial: record.is_some_and(|record| record.disposition == "proceed-partial"),
+    })
+}
+
+/// Validate an ambient `/implement` context before a standalone PR mutation.
+///
+/// With no `IMPLEMENT_TMPDIR`, or with a session that has not materialized any
+/// scope artifacts, this is a no-op. A declared context is validated before
+/// the canonical ship gate reads it, matching the retired Python consumer.
+pub fn validate_pr_mutation_scope(repo_root: &Path) -> Result<PrMutationScopeGate, String> {
+    let Some(raw_tmpdir) = env::var_os("IMPLEMENT_TMPDIR").filter(|value| !value.is_empty()) else {
+        return Ok(PrMutationScopeGate::Allowed);
+    };
+    let tmpdir = PathBuf::from(raw_tmpdir);
+    larch_adapters::assert_no_symlink_path_or_ancestors(&tmpdir)
+        .map_err(|error| format!("declared implement tmpdir is invalid: {error}"))?;
+    let metadata = fs::symlink_metadata(&tmpdir)
+        .map_err(|error| format!("declared implement tmpdir is invalid: {error}"))?;
+    if !metadata.is_dir() {
+        return Err(format!(
+            "declared implement tmpdir is invalid: trusted artifact root is not a directory: {}",
+            tmpdir.display()
+        ));
+    }
+    let manifest = resolve_implement_manifest(&tmpdir, None)?;
+    if !is_pr_mutation_gate_relevant(&tmpdir, manifest.as_deref()) {
+        return Ok(PrMutationScopeGate::Allowed);
+    }
+    let validation = validate_for_ship(&tmpdir, repo_root, manifest.as_deref())?;
+    Ok(if validation.ok {
+        PrMutationScopeGate::Allowed
+    } else {
+        PrMutationScopeGate::NeedsUser
     })
 }
 

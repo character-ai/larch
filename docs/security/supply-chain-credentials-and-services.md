@@ -565,6 +565,13 @@ Rust GitHub service access. GitHub API operations use the authenticated adapter
 directly; `gh api` is never a service fallback, and `gcloud` is never a runtime
 service fallback.
 
+The Rust-owned PR lifecycle commands (#8790) use this boundary for PR lookup,
+creation, authenticated-user assignment, body replacement, and check reads.
+PR bodies are redacted before mutation, create conflicts reconcile by head
+branch instead of retrying blindly, and body updates accept success only when
+the typed mutation response carries the requested body. Branch creation and
+push remain approved typed Git CLI operations; no PR command invokes `gh pr`.
+
 Trusted GitHub Actions workflows that need the typed Rust service use the local
 `github-auth-config` composite action. It accepts `github.token` only to create
 a `0700` temporary `GH_CONFIG_DIR` through `gh auth login` over standard input,

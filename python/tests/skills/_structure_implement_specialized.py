@@ -786,7 +786,7 @@ def run(repo_root: Path) -> list[str]:
                 "## Terminal manifest contract",
                 "Terminal runs must leave explicit `steps_ran` values through `scripts/larch.sh final-report write`.",
                 "skills/implement/scripts/write-final-report.md",
-                "python/cli.py pr checks",
+                "scripts/larch.sh pr checks",
             ]:
                 if needle not in exit_text:
                     checks.append(f"ship-pr-exit-matrix.md missing {needle!r}")
@@ -847,7 +847,7 @@ def run(repo_root: Path) -> list[str]:
             if "ship-pr-ci-fix.md" in ci_fix_slice:
                 checks.append("matrix ci-fix branch retains retired ship-pr-ci-fix.md reference")
             operator_slice = branch_slice(exit_text, "operator-bail")
-            require_text(operator_slice, "python/cli.py pr checks", "matrix operator-bail pr checks fallback")
+            require_text(operator_slice, "scripts/larch.sh pr checks", "matrix operator-bail pr checks fallback")
             require_text(operator_slice, "failed_run_id", "matrix operator-bail empty failed run id wording")
             if "## Post-driver branch table" in exit_text:
                 checks.append("ship-pr-exit-matrix.md must not add a parallel post-driver branch table")

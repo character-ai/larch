@@ -40,7 +40,6 @@ crates/larch-cli/src/analyze_bugs_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/analyze_bugs_sweep.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/architectural_assessment_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/architectural_preparation_commands.rs	gix-read	#7671	typed-read
-crates/larch-cli/src/bootstrap_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/checks_identity_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/checks_lint_fix_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/checks_run_relevant_commands.rs	gix-read	#7671	typed-read
@@ -114,7 +113,6 @@ python/larch/core/forked_repo.py	later-domain	#7682	config,ls-remote,merge-base,
 python/larch/core/redact.py	later-domain	#7686	submodule
 python/larch/git/gh.py	later-domain	#7676	remote
 python/larch/git/git.py	later-domain	#7681	add,branch,checkout,commit,diff,diff-tree,fetch,log,ls-files,ls-remote,ls-tree,merge-base,push,rebase,reset,restore,rev-list,rev-parse,rm,show,show-ref,status,symbolic-ref
-python/larch/git/pr.py	later-domain	#7681	branch,checkout,config,push
 python/larch/git/pr_body.py	later-domain	#7681	diff,merge-base,rev-parse
 python/larch/git/rebase.py	later-domain	#7681	checkout
 python/larch/rendering/rendering.py	later-domain	#7683	merge-base

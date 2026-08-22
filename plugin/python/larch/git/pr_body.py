@@ -22,14 +22,9 @@ from larch.core import config
 from larch.core import logging_util
 from larch.core.repo_roots import larch_entrypoint
 from larch.report import design_diagram_log
-from larch.git import gh
 from larch.core import redact
 from larch.report import report_tokens_cost
 from larch.report import tokens
-from larch.issue import tracking_issue
-from larch.implement import scope_disposition
-from larch.errors import ShipError
-from larch.core.proc import Runner
 
 
 @dataclass(frozen=True)
@@ -305,117 +300,6 @@ def sanitize_fragment(text: str, *, from_md: bool = False) -> MermaidResult:
         return MermaidResult(status="rejected", reason_tokens=unique, fence_count=len(fences))
     return MermaidResult(status="ok", reason_tokens=(), fence_count=len(fences))
 
-
-def _fail_closed_body(redacted: str) -> str:
-    if "[content truncated" in redacted:
-        msg = "redaction failed for PR body"
-        raise ShipError(msg)
-    return redacted
-
-
-def redact_pr_body(body: str) -> str:
-    """Redact a PR body fail-closed: tmpdir paths then secrets.
-
-    Single source of truth for outbound PR-body redaction, shared by
-    ``compose_pr_body`` (the live ship path) and ``pr.create_pr_parity``
-    (``cli.py pr create``). It applies the retained in-process tmpdir-path and
-    secret redactors in that order and fails closed. Raises :class:`ShipError` when
-    redaction truncates the body.
-    """
-    return _fail_closed_body(redact.redact(body))
-
-
-def architectural_guidelines_section(body: str) -> str:
-    """Return normalized architectural-guidelines section body, or empty when absent."""
-    heading = "## Architectural guidelines"
-    idx = body.find(heading)
-    if idx < 0:
-        return ""
-    rest = body[idx + len(heading) :].lstrip("\n")
-    next_heading = rest.find("\n## ")
-    section = rest[:next_heading] if next_heading >= 0 else rest
-    return section.strip()
-
-
-def architectural_invariants_section(body: str) -> str:
-    """Return normalized architectural-invariants section body, or empty when absent."""
-    heading = "## Architectural invariants"
-    idx = body.find(heading)
-    if idx < 0:
-        return ""
-    rest = body[idx + len(heading) :].lstrip("\n")
-    next_heading = rest.find("\n## ")
-    section = rest[:next_heading] if next_heading >= 0 else rest
-    return section.strip()
-
-
-def compose_pr_body(
-    *,
-    summary: str,
-    mermaid: str = "",
-    test_plan: str = "- [ ] `make py-lint`\n- [ ] `make py-test`\n",
-    issue_number: int | None = None,
-    architectural_invariants_note: str = "",
-    architectural_guidelines_note: str = "",
-    implement_tmpdir: Path | None = None,
-    repo_root: Path | None = None,
-    manifest_path: Path | None = None,
-) -> str:
-    if mermaid.strip():
-        mermaid_result = sanitize_fragment(mermaid)
-        if mermaid_result.status != "ok":
-            msg = f"mermaid fragment rejected: {','.join(mermaid_result.reason_tokens)}"
-            raise ShipError(msg)
-    parts = [summary.rstrip(), ""]
-    if architectural_invariants_note.strip():
-        parts.extend(["## Architectural invariants", "", architectural_invariants_note.strip(), ""])
-    if architectural_guidelines_note.strip():
-        parts.extend(["## Architectural guidelines", "", architectural_guidelines_note.strip(), ""])
-    if mermaid.strip():
-        parts.extend(["## Code Flow Diagram", "", "```mermaid", mermaid.strip(), "```", ""])
-    inventory = scope_disposition.disposition_deferred_inventory(
-        implement_tmpdir, repo_root=repo_root, manifest_path=manifest_path
-    )
-    if inventory.strip():
-        parts.extend([inventory.rstrip(), ""])
-    parts.extend(["## Test plan", "", test_plan.rstrip(), ""])
-    body = "\n".join(parts) + "\n"
-    if issue_number is not None:
-        body = tracking_issue.link_pr_for_disposition(
-            body=body,
-            issue_number=issue_number,
-            partial=scope_disposition.disposition_link_kind(
-                implement_tmpdir, repo_root=repo_root, manifest_path=manifest_path
-            ) == "part-of",
-        )
-    mermaid_body = sanitize_fragment(body, from_md=True)
-    if mermaid_body.status != "ok":
-        msg = f"mermaid in PR body rejected: {','.join(mermaid_body.reason_tokens)}"
-        raise ShipError(msg)
-    redacted = redact_pr_body(body)
-    return redacted.rstrip("\n") + "\n"
-
-
-def update_pr_body(
-    *,
-    runner: Runner,
-    number: int,
-    body: str,
-    repo: str,
-    cwd: str | None = None,
-) -> None:
-    mermaid_result = sanitize_fragment(body, from_md=True)
-    if mermaid_result.status != "ok":
-        msg = f"mermaid in PR body rejected: {','.join(mermaid_result.reason_tokens)}"
-        raise ShipError(msg)
-    redacted = redact.redact(body)
-    if "[content truncated" in redacted:
-        msg = "redaction failed for PR body"
-        raise ShipError(msg)
-    result = gh.pr_edit_body(runner, number, redacted, repo=repo, cwd=cwd)
-    if result.returncode != 0:
-        msg = f"gh pr edit failed ({result.returncode})"
-        raise ShipError(msg)
 
 # ---------------------------------------------------------------------------
 # C4c report helper ports

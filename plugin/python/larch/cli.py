@@ -59,11 +59,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("render", "run-summary"): ("larch.git.pr_body", "render_run_summary_main", True),
     ("oos", "serialize"): ("larch.issue.oos", "oos_serialize_main", False),
     ("oos", "normalize-header"): ("larch.issue.oos", "oos_normalize_header_main", False),
-    ("pr", "create-branch"): ("larch.git.pr", "create_branch_main", False),
-    ("pr", "create"): ("larch.git.pr", "create_main", False),
-    ("pr", "body-update"): ("larch.git.pr", "body_update_main", False),
-    ("pr", "checks"): ("larch.git.pr", "checks_main", False),
-    ("pr", "closes-issue"): ("larch.git.pr", "closes_issue_main", False),
 }
 
 # Compatibility view: keys whose registry row has machine_stdout=True.

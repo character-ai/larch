@@ -450,6 +450,7 @@ impl<'service> IssueMutationOwner<'service> {
                 title,
                 body: body.map(str::to_owned),
                 labels: None,
+                assignees: None,
             };
             self.service
                 .edit_issue(&edit, cancellation)

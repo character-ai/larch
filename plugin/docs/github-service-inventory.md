@@ -225,7 +225,7 @@ pull-request-design-migrated	crates/larch-adapters/src/github/operations.rs	rust
 pull-request-line-counts	crates/larch-adapters/src/github/operations.rs	rust	#7681,#8797	complete	complete	complete	token compute-pr-line-counts,token compute-pr-lines
 pull-request-merge	crates/larch-adapters/src/github/operations.rs	rust	#7681,#8788	complete	complete	complete	merge pr,merge wait
 pull-request-ship-pr	crates/larch-adapters/src/github/operations.rs	rust	#7681,#8282,#8626,#8628,#8629	complete	complete	complete	complete-umbrella ship-leaf,ship pr,ship reconcile-manual-merge
-pull-requests	crates/larch-adapters/src/github/operations.rs	python	#7681	pending	pending	pending	pr body-update,pr checks,pr closes-issue,pr create,pr create-branch
+pull-requests	crates/larch-adapters/src/github/operations.rs	rust	#7681,#8790	complete	complete	complete	pr body-update,pr checks,pr closes-issue,pr create,pr create-branch
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
 repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676,#7681	complete	complete	complete	gh remote-repo,gh resolve-repo,ship pre-fix-rebase
 tracking-issue-comment-reads	crates/larch-adapters/src/github_rest.rs	rust	#7681,#7682,#8789	complete	complete	complete	tracking post-issue,tracking-issue append-comment,tracking-issue read,tracking-issue upsert-summary

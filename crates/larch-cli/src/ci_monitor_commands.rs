@@ -884,7 +884,7 @@ mod tests {
 
     #[rustfmt::skip]
     fn pass_check() -> CheckRun {
-        CheckRun { name: "ci".to_owned(), status: "completed".to_owned(), conclusion: Some("success".to_owned()), details_url: None, bucket: CheckBucket::Pass }
+        CheckRun { name: "ci".to_owned(), status: "completed".to_owned(), conclusion: Some("success".to_owned()), details_url: None, description: None, wall_clock_seconds: None, bucket: CheckBucket::Pass }
     }
 
     #[rustfmt::skip]

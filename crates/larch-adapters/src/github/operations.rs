@@ -1172,6 +1172,37 @@ impl OctocrabGitHubService {
         repo: &str,
         head_branch: &str,
     ) -> Result<Vec<PullRequest>, GitHubOperationError> {
+        self.list_head_pull_requests(cancellation, owner, repo, head_branch, "open")
+            .await
+    }
+
+    /// List pull requests in any state for one head branch on the approved origin.
+    ///
+    /// Results are newest-first so current-branch recovery selects the same PR
+    /// after merge or closure that it selected while the PR was open.
+    ///
+    /// # Errors
+    /// Returns a typed error on cancellation, deadline, authorization, transport
+    /// failure, or a response that does not match the pull-request contract.
+    pub async fn list_pull_requests_for_head(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+        head_branch: &str,
+    ) -> Result<Vec<PullRequest>, GitHubOperationError> {
+        self.list_head_pull_requests(cancellation, owner, repo, head_branch, "all")
+            .await
+    }
+
+    async fn list_head_pull_requests(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        owner: &str,
+        repo: &str,
+        head_branch: &str,
+        state: &str,
+    ) -> Result<Vec<PullRequest>, GitHubOperationError> {
         validate_repo(owner, repo)?;
         let route = format!("/repos/{owner}/{repo}/pulls");
         let head = if head_branch.contains(':') {
@@ -1179,7 +1210,13 @@ impl OctocrabGitHubService {
         } else {
             format!("{owner}:{head_branch}")
         };
-        let parameters = [("state", "open"), ("head", head.as_str())];
+        let parameters = [
+            ("state", state),
+            ("head", head.as_str()),
+            ("sort", "created"),
+            ("direction", "desc"),
+            ("per_page", "100"),
+        ];
         let value = self
             .fetch_json(
                 cancellation,
@@ -4338,6 +4375,20 @@ mod service_tests {
                 .expect_err("string additions fail closed"),
             GitHubOperationError::Malformed("pull request additions")
         );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn current_head_lookup_retains_closed_pull_requests() {
+        let closed = pull_request_json_with_body(9, "closed", "topic", "Closes #42");
+        let (service, server) = stub_service(vec![(200, format!("[{closed}]"))]);
+        let list = service
+            .list_pull_requests_for_head(&Cancellation::new(), "o", "r", "topic")
+            .await
+            .expect("closed pull request remains discoverable");
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].state(), PullRequestState::Closed);
+        assert_eq!(list[0].body(), "Closes #42");
         server.join().expect("stub completed");
     }
 

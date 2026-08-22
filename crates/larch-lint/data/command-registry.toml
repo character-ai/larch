@@ -5698,11 +5698,13 @@ verb = "body-update"
 python_module = "larch.git.pr"
 python_function = "body_update_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8790
+clean_install_test = "clean-install-pr-body-update"
 
 [[commands]]
 domain = "pr"
@@ -5710,11 +5712,13 @@ verb = "checks"
 python_module = "larch.git.pr"
 python_function = "checks_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8790
+clean_install_test = "clean-install-pr-checks"
 
 [[commands]]
 domain = "pr"
@@ -5722,11 +5726,13 @@ verb = "closes-issue"
 python_module = "larch.git.pr"
 python_function = "closes_issue_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8790
+clean_install_test = "clean-install-pr-closes-issue"
 
 [[commands]]
 domain = "pr"
@@ -5748,11 +5754,13 @@ verb = "create"
 python_module = "larch.git.pr"
 python_function = "create_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8790
+clean_install_test = "clean-install-pr-create"
 
 [[commands]]
 domain = "pr"
@@ -5760,11 +5768,13 @@ verb = "create-branch"
 python_module = "larch.git.pr"
 python_function = "create_branch_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8790
+clean_install_test = "clean-install-pr-create-branch"
 
 [[commands]]
 domain = "progress"
@@ -9874,8 +9884,8 @@ rust = ["issue parse-input", "oos disposition-gate", "oos file", "oos file-confl
 [[callers]]
 path = "skills/implement/references/extracted-script-registry.md"
 kind = "skill"
-python = ["implement-finalize teardown", "pr closes-issue", "render run-summary"]
-rust = ["checks repair-loop", "implement checks-step5-resume", "implement step-16-17", "implement step-6-entry", "pr compose-summary"]
+python = ["implement-finalize teardown", "render run-summary"]
+rust = ["checks repair-loop", "implement checks-step5-resume", "implement step-16-17", "implement step-6-entry", "pr closes-issue", "pr compose-summary"]
 
 [[callers]]
 path = "skills/implement/references/oos-pipeline.md"
@@ -9910,8 +9920,8 @@ rust = ["bgjob wait", "review-and-fix write-self-review-tally", "timing telemetr
 [[callers]]
 path = "skills/implement/references/ship-pr-exit-matrix.md"
 kind = "skill"
-python = ["pr checks"]
-rust = ["execution-issues flush", "final-report write", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit"]
+python = []
+rust = ["execution-issues flush", "final-report write", "pr checks", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit"]
 
 [[callers]]
 path = "skills/implement/references/ship-pr-oos-checkpoint-router.md"
