@@ -31,11 +31,11 @@ use larch_adapters::{
 use larch_core::{
     AUDIT_PROPOSAL_VERSION, AuditDependency, AuditDependencyNode, AuditGraphState, AuditIssue,
     AuditIssueFingerprint, AuditLeafState, AuditLedger, AuditLedgerViolation, AuditProposal,
-    AuditProposalDraft, AuditSnapshot, AuditSource, DONE_PREFIX, GitHubIssue, GitHubIssueState,
-    GitHubRepositoryRef, GitHubService, GitHubTransportPolicy, IMPLEMENTING_PREFIX,
-    IssueCreateRequest, MAX_AUDIT_LEAVES, MAX_AUDIT_SOURCES, RepositoryRead, Revision,
-    audit_issue_fingerprint, audit_leaf_prefix, audit_proposal_existing_numbers,
-    audit_snapshot_sha256, build_audit_proposal, diagnose_audit_ledger, emit_kv,
+    AuditProposalDraft, AuditProposalViolation, AuditSnapshot, AuditSource, DONE_PREFIX,
+    GitHubIssue, GitHubIssueState, GitHubRepositoryRef, GitHubService, GitHubTransportPolicy,
+    IMPLEMENTING_PREFIX, IssueCreateRequest, MAX_AUDIT_LEAVES, MAX_AUDIT_SOURCES, RepositoryRead,
+    Revision, audit_issue_fingerprint, audit_leaf_prefix, audit_proposal_existing_numbers,
+    audit_snapshot_sha256, diagnose_audit_ledger, diagnose_audit_proposal, emit_kv,
     has_umbrella_proposal, is_controlling_umbrella_title, mark_audit_graph_in_flight,
     mark_audit_leaf_in_flight, mark_audit_proposal_complete, parse_audit_ledger,
     parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved, render_audit_proposal,
@@ -45,6 +45,7 @@ use larch_core::{
 use regex::Regex;
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fmt::Write as _,
     fs,
     path::{Path, PathBuf},
     process::ExitCode,
@@ -127,6 +128,8 @@ pub struct ValidateLedgerArguments {
 pub struct PersistProposalArguments {
     #[arg(long)]
     repository: String,
+    #[arg(long)]
+    repo_root: PathBuf,
     #[arg(long)]
     root: PathBuf,
     #[arg(long)]
@@ -336,10 +339,102 @@ fn sanitize_entry_id(id: &str) -> String {
         .collect()
 }
 
+fn proposal_violation_diagnostic(violation: &AuditProposalViolation) -> String {
+    let mut detail = format!("proposal-violation constraint={}", violation.constraint());
+    if let AuditProposalViolation::Ledger { violation } = violation {
+        let _ = write!(detail, " ledger_constraint={}", violation.constraint());
+        if let Some(entry) = violation.entry_id() {
+            let _ = write!(detail, " entry={}", sanitize_entry_id(entry));
+        }
+        if let AuditLedgerViolation::Coverage { uncovered, unknown } = violation {
+            let _ = write!(detail, " uncovered={uncovered} unknown={unknown}");
+        }
+    }
+    if let Some(leaf) = violation.leaf_index() {
+        let _ = write!(detail, " leaf={leaf}");
+    }
+    if let Some(title) = violation.leaf_title() {
+        let _ = write!(detail, " title={}", diagnostic_json(title, 160));
+    }
+    if let Some(section) = violation.section() {
+        let _ = write!(detail, " section={}", diagnostic_json(section, 64));
+    }
+    if let Some(gap_id) = violation.gap_id() {
+        let _ = write!(detail, " gap_id={}", diagnostic_json(gap_id, 128));
+    }
+    if let Some((dependency, removal)) = violation.dependency() {
+        let kind = if removal { "removal" } else { "addition" };
+        let _ = write!(detail, " dependency={dependency} kind={kind}");
+    }
+    detail
+}
+
+fn diagnostic_json(value: &str, limit: usize) -> String {
+    let bounded = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii() && (character == ' ' || character.is_ascii_graphic()) {
+                character
+            } else {
+                '?'
+            }
+        })
+        .take(limit)
+        .collect::<String>();
+    serde_json::to_string(&bounded).unwrap_or_else(|_error| "\"<invalid>\"".to_owned())
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AuditBaselineAction {
+    Current,
+    Rebaseline,
+    ResumeTransaction,
+}
+
+fn audit_baseline_action(
+    snapshot: &AuditSnapshot,
+    proposal: &AuditProposal,
+    current_sha: &str,
+) -> Result<AuditBaselineAction, String> {
+    if proposal.audited_sha != snapshot.audited_sha {
+        return Err("proposal audited SHA does not match the audit snapshot".to_owned());
+    }
+    if current_sha == snapshot.audited_sha {
+        return Ok(AuditBaselineAction::Current);
+    }
+    let mutation_started = proposal.complete
+        || proposal.graph_state != AuditGraphState::Pending
+        || proposal
+            .leaves
+            .iter()
+            .any(|leaf| leaf.state != AuditLeafState::Pending);
+    if mutation_started {
+        Ok(AuditBaselineAction::ResumeTransaction)
+    } else {
+        Ok(AuditBaselineAction::Rebaseline)
+    }
+}
+
+fn emit_audit_rebaseline(stage: &str, previous_sha: &str, current_sha: &str) {
+    emit_kv("AUDIT_REBASELINE_REQUIRED", "true");
+    emit_kv("AUDIT_REBASELINE_STAGE", stage);
+    emit_kv("AUDIT_REBASELINE_FROM_SHA", previous_sha);
+    emit_kv("AUDIT_REBASELINE_TO_SHA", current_sha);
+}
+
 fn persist_proposal(arguments: &PersistProposalArguments) -> Result<(), String> {
     let repository = parse_repository(&arguments.repository)?;
+    let repo_root = canonical_directory(&arguments.repo_root, "--repo-root")?;
     let root = temporary_root(&arguments.root, "--root")?;
     let snapshot = read_snapshot(&arguments.snapshot, &arguments.root, &root)?;
+    if snapshot.repository != arguments.repository {
+        return Err("audit snapshot does not match --repository".to_owned());
+    }
+    let current_sha = fetch_default_sha(&repo_root, &snapshot.default_branch)?;
+    if current_sha != snapshot.audited_sha {
+        emit_audit_rebaseline("persist-proposal", &snapshot.audited_sha, &current_sha);
+        return Ok(());
+    }
     let ledger = read_ledger(&arguments.ledger, &arguments.root, &root)?;
     let draft_text = read_expected_file(
         &arguments.proposal_input,
@@ -349,13 +444,21 @@ fn persist_proposal(arguments: &PersistProposalArguments) -> Result<(), String> 
         FILE_LIMIT,
     )?;
     let draft = parse_proposal_draft(&draft_text)?;
-    let mut proposal = build_audit_proposal(&snapshot, &ledger, &draft)
-        .map_err(|error| error.reason().to_owned())?;
+    let mut proposal = match diagnose_audit_proposal(&snapshot, &ledger, &draft) {
+        Ok(proposal) => proposal,
+        Err(violation) => {
+            eprintln!(
+                "audit-umbrella: {}",
+                proposal_violation_diagnostic(&violation)
+            );
+            return Err(violation.refusal().reason().to_owned());
+        }
+    };
     if proposal.repository != arguments.repository {
         return Err("proposal repository does not match --repository".to_owned());
     }
 
-    let (mut current, open_history) = with_github_service_policy(
+    let (current, open_history) = with_github_service_policy(
         GitHubTransportPolicy::migration_audit(),
         async |service, cancellation| {
             eprintln!("audit-umbrella: persist-proposal verifying snapshot");
@@ -370,17 +473,7 @@ fn persist_proposal(arguments: &PersistProposalArguments) -> Result<(), String> 
     )
     .map_err(ServiceFailure::into_detail)?;
     verify_snapshot_sources_fresh(&snapshot, &current)?;
-    let reused = reconcile_open_duplicate_leaves(&mut proposal, &open_history)?;
-    if reused != 0 {
-        current = with_github_service_policy(
-            GitHubTransportPolicy::migration_audit(),
-            async |service, cancellation| {
-                read_live_proposal_issues(service, cancellation, &repository, &proposal).await
-            },
-        )
-        .map_err(ServiceFailure::into_detail)?;
-        verify_snapshot_sources_fresh(&snapshot, &current)?;
-    }
+    let reused = count_open_duplicate_leaves(&proposal, &open_history)?;
     replace_audit_issue_fingerprints(&mut proposal, fingerprints(&current))
         .map_err(|error| error.reason().to_owned())?;
     validate_audit_proposal_binding(&proposal, &snapshot, &ledger)
@@ -417,8 +510,10 @@ fn apply(arguments: &ApplyArguments) -> Result<(), String> {
         return Err("audit artifacts do not match --repository".to_owned());
     }
     let current_sha = fetch_default_sha(&repo_root, &snapshot.default_branch)?;
-    if current_sha != snapshot.audited_sha || proposal.audited_sha != current_sha {
-        return Err("default branch changed after the audit snapshot".to_owned());
+    if audit_baseline_action(&snapshot, &proposal, &current_sha)? == AuditBaselineAction::Rebaseline
+    {
+        emit_audit_rebaseline("apply", &snapshot.audited_sha, &current_sha);
+        return Ok(());
     }
 
     with_github_service_policy(
@@ -1243,36 +1338,25 @@ async fn list_all_issues(
         .map_err(|error| format!("cannot reconcile open issue history: {error}"))
 }
 
-/// Bind pending leaves to one exact, already-open issue before any creation.
+/// Count exact open matches without advancing durable transaction state.
 ///
 /// Exact title and body equality includes the required fixed opening, so this
-/// never turns a similar issue into a heuristic reuse. More than one matching
-/// public issue is ambiguous and must stop the batch before mutation.
-fn reconcile_open_duplicate_leaves(
-    proposal: &mut AuditProposal,
+/// never turns a similar issue into a heuristic reuse. Apply binds the identity
+/// only after its default-branch freshness check. More than one matching issue
+/// is ambiguous and must stop the batch before mutation.
+fn count_open_duplicate_leaves(
+    proposal: &AuditProposal,
     issues: &[GitHubIssue],
 ) -> Result<usize, String> {
     let mut reused = 0;
-    for leaf in proposal.leaves.clone() {
+    for leaf in &proposal.leaves {
         if leaf.state != AuditLeafState::Pending {
             continue;
         }
         let matching = exact_open_leaf_matches(&leaf.title, &leaf.body, issues);
         match matching.as_slice() {
             [] => {}
-            [existing] => {
-                mark_audit_leaf_in_flight(proposal, &leaf.identity)
-                    .map_err(|error| error.reason().to_owned())?;
-                record_audit_leaf_resolved(
-                    proposal,
-                    &leaf.identity,
-                    existing.number,
-                    existing.id,
-                    &existing.url,
-                )
-                .map_err(|error| error.reason().to_owned())?;
-                reused += 1;
-            }
+            [_existing] => reused += 1,
             _ => {
                 return Err("exact audit-leaf reuse is ambiguous".to_owned());
             }
@@ -2155,17 +2239,18 @@ fn run_worktree_request(repo_root: &Path, request: WorktreeRequest) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::{
-        ApplyArguments, ApplyContext, AuditUmbrellaCommand, LeafIdentityArguments, ParseArguments,
-        PersistProposalArguments, RemoveWorktreeArguments, SnapshotArguments, SnapshotSelection,
-        ValidateLedgerArguments, apply_dependencies, apply_remote, audit_issue, build_snapshot,
-        collect_snapshot_remote, dependency_mutation_error, exact_open_leaf_matches,
+        ApplyArguments, ApplyContext, AuditBaselineAction, AuditUmbrellaCommand,
+        LeafIdentityArguments, ParseArguments, PersistProposalArguments, RemoveWorktreeArguments,
+        SnapshotArguments, SnapshotSelection, ValidateLedgerArguments, apply_dependencies,
+        apply_remote, audit_baseline_action, audit_issue, build_snapshot, collect_snapshot_remote,
+        count_open_duplicate_leaves, dependency_mutation_error, exact_open_leaf_matches,
         explicit_leaf_references, fingerprints, has_exact_leaf_title,
         historical_direct_leaf_numbers, is_controlling_umbrella, is_legacy_managed_umbrella,
         is_native_owned_umbrella_blocker, issue_references, native_leaf_numbers,
         number_graph_has_cycle, operator_authorization, parse_proposal_draft, parse_repository,
         parse_umbrella_argument, paths_overlap, persist_refreshed_proposal, prepare_remote_apply,
-        proposal_node_map, reconcile_audit_leaves, reconcile_leaf_relationships,
-        reconcile_open_duplicate_leaves, require_issue, require_operator, resolve_node, run,
+        proposal_node_map, proposal_violation_diagnostic, reconcile_audit_leaves,
+        reconcile_leaf_relationships, require_issue, require_operator, resolve_node, run,
         temporary_root, validate_audit_parent, verify_expected_fingerprints, verify_final_graph,
         verify_snapshot_source_content, verify_snapshot_sources_fresh,
     };
@@ -2176,8 +2261,8 @@ mod tests {
     use larch_core::{
         AUDIT_LEDGER_VERSION, AUDIT_PROPOSAL_VERSION, AuditDependency, AuditDependencyNode,
         AuditGraphState, AuditIssue, AuditLeaf, AuditLeafDraft, AuditLeafState, AuditLedger,
-        AuditLedgerEntry, AuditProposal, AuditProposalDraft, AuditSnapshot, GitHubIssue,
-        GitHubIssueState, GitHubLabel, GitHubRepositoryRef, RequirementStatus,
+        AuditLedgerEntry, AuditProposal, AuditProposalDraft, AuditProposalViolation, AuditSnapshot,
+        GitHubIssue, GitHubIssueState, GitHubLabel, GitHubRepositoryRef, RequirementStatus,
         audit_issue_fingerprint, audit_leaf_identity, audit_snapshot_sha256, audit_source_items,
         build_audit_proposal, mark_audit_graph_in_flight, mark_audit_leaf_in_flight,
         mark_audit_proposal_complete, record_audit_leaf_resolved, umbrella_leaf_opening,
@@ -2573,22 +2658,26 @@ mod tests {
     }
 
     #[test]
-    fn one_exact_open_leaf_is_reused_without_creating_a_second_issue() {
+    fn persist_counts_exact_open_leaf_without_advancing_transaction_state() {
         let title = "[LEAF OF 10] Repair the audit gap";
         let body = format!(
             "This is a leaf of umbrella #10. Read the umbrella in full before acting.\n\n## Program context\n\nEvidence at {}.\n\n## Problem\n\nThe boundary is uncovered.\n\n## Scope\n\n1. Repair the boundary.\n\n## Acceptance\n\n- The boundary is covered.\n",
             "a".repeat(40)
         );
-        let mut proposal = pending_proposal(title, &body);
+        let proposal = pending_proposal(title, &body);
         let existing = issue(11, title, &body, GitHubIssueState::Open);
 
         assert_eq!(
-            reconcile_open_duplicate_leaves(&mut proposal, &[existing]).expect("reuse"),
+            count_open_duplicate_leaves(&proposal, &[existing]).expect("exact reuse candidate"),
             1
         );
-        assert_eq!(proposal.leaves[0].state, AuditLeafState::Resolved);
-        assert_eq!(proposal.leaves[0].number, 11);
-        assert_eq!(proposal.leaves[0].issue_id, 111);
+        assert_eq!(proposal.leaves[0].state, AuditLeafState::Pending);
+        assert_eq!(proposal.leaves[0].number, 0);
+        assert_eq!(proposal.leaves[0].issue_id, 0);
+        assert_eq!(
+            audit_baseline_action(&audit_snapshot(), &proposal, &"b".repeat(40)),
+            Ok(AuditBaselineAction::Rebaseline)
+        );
     }
 
     #[test]
@@ -2736,6 +2825,7 @@ mod tests {
             run(AuditUmbrellaCommand::PersistProposal(
                 PersistProposalArguments {
                     repository: "not/a/valid/repository".to_owned(),
+                    repo_root: PathBuf::from("missing"),
                     root: PathBuf::from("relative"),
                     snapshot: PathBuf::from("snapshot.json"),
                     ledger: PathBuf::from("ledger.json"),
@@ -2920,6 +3010,43 @@ mod tests {
         assert_eq!(parse_proposal_draft(&text), Ok(draft));
         assert!(parse_proposal_draft(r#"{"version":1,"version":1}"#).is_err());
         assert!(parse_proposal_draft("not json").is_err());
+    }
+
+    #[test]
+    fn proposal_diagnostic_names_leaf_title_and_gap_id_on_one_line() {
+        let violation = AuditProposalViolation::UnknownGapId {
+            leaf: 2,
+            title: "[LEAF OF 10] Repair the audit gap".to_owned(),
+            gap_id: "leaf:11:body:5".to_owned(),
+        };
+        assert_eq!(
+            proposal_violation_diagnostic(&violation),
+            "proposal-violation constraint=unknown-gap-id leaf=2 title=\"[LEAF OF 10] Repair the audit gap\" gap_id=\"leaf:11:body:5\""
+        );
+    }
+
+    #[test]
+    fn default_branch_drift_reaudits_only_before_a_public_transaction_starts() {
+        let snapshot = audit_snapshot();
+        let ledger = gap_ledger(&snapshot);
+        let mut proposal = gap_proposal(&snapshot, &ledger);
+        let advanced = "b".repeat(40);
+
+        assert_eq!(
+            audit_baseline_action(&snapshot, &proposal, &snapshot.audited_sha),
+            Ok(AuditBaselineAction::Current)
+        );
+        assert_eq!(
+            audit_baseline_action(&snapshot, &proposal, &advanced),
+            Ok(AuditBaselineAction::Rebaseline)
+        );
+
+        let identity = proposal.leaves[0].identity.clone();
+        mark_audit_leaf_in_flight(&mut proposal, &identity).expect("in-flight transaction");
+        assert_eq!(
+            audit_baseline_action(&snapshot, &proposal, &advanced),
+            Ok(AuditBaselineAction::ResumeTransaction)
+        );
     }
 
     #[tokio::test]
