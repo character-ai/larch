@@ -142,7 +142,13 @@ def main() -> int:
         return normalize(args[2:])
     if head == ["session", "restore-finalize-state"]:
         log("restore-finalize-state " + " ".join(args[2:]))
-        return int(config("RESTORE_RC", "0"))
+        rc = int(config("RESTORE_RC", "0"))
+        if rc == 0:
+            restored = TMP / "restore-finalize-state.fixture"
+            (TMP / "finalize-state.sh").write_text(
+                restored.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+        return rc
     if head == ["session", "clear-implement-pointer"]:
         log("clear-implement-pointer " + " ".join(args[2:]))
         return 0
@@ -162,6 +168,10 @@ struct Fixture {
     cache: PathBuf,
     tmpdir: PathBuf,
     repo: PathBuf,
+}
+
+const fn valid_finalize_state() -> &'static str {
+    "BRANCH_NAME=feature\nPR_NUMBER=\nPR_TITLE=\nPR_URL=\nISSUE_NUMBER=\nREPO=\nDRAFT=false\nMERGE=false\nDEFERRED=false\nREPO_UNAVAILABLE=true\nPR_CLOSED=false\nDESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\nSTALL_TRACKING=false\nDONE_RENAME_APPLIED=false\nSTALL_STEP=\n"
 }
 
 fn write_executable(path: &Path, body: &str) {
@@ -206,11 +216,12 @@ fn fixture() -> Fixture {
         "STALL_TRACKING=false\nBAIL_NEEDS_USER_INPUT=false\nSTALL_STEP=\n",
     )
     .expect("ship state");
+    fs::write(tmpdir.join("finalize-state.sh"), valid_finalize_state()).expect("finalize state");
     fs::write(
-        tmpdir.join("finalize-state.sh"),
-        "STALL_TRACKING=false\nSTALL_STEP=\n",
+        tmpdir.join("restore-finalize-state.fixture"),
+        valid_finalize_state(),
     )
-    .expect("finalize state");
+    .expect("restore fixture");
     Fixture {
         _temp: temp,
         plugin,
@@ -601,10 +612,13 @@ fn composite_refuses_terminal_shipping_without_a_pr_number() {
         "{state}"
     );
     assert!(state.contains("STEP18_GATE_REFUSAL=step18-terminal-shipping-without-pr\n"));
-    assert!(
-        state.contains("EXIT_CODE=1\nPHASE=stalled\n"),
-        "sorted keys: {state}"
-    );
+    assert_eq!(kv("EXIT_CODE", &state), "1");
+    assert_eq!(kv("PHASE", &state), "stalled");
+    let keys = state
+        .lines()
+        .filter_map(|line| line.split_once('=').map(|(key, _)| key))
+        .collect::<Vec<_>>();
+    assert!(keys.is_sorted(), "state keys are not sorted: {state}");
     let issues = fs::read_to_string(fixture.tmpdir.join("execution-issues.md")).expect("issues");
     assert!(issues.contains("Step 18 terminal gate"));
     assert!(!fixture.log().contains("prepare-terminal-snapshot"));
@@ -649,7 +663,7 @@ fn step19_refuses_without_a_terminalization_record() {
 }
 
 #[test]
-fn step19_relays_the_teardown_tail_and_exit_code() {
+fn step19_relays_the_in_process_teardown_tail_and_exit_code() {
     let fixture = fixture();
     terminalize(&fixture);
     let output = fixture.run(&[
@@ -660,21 +674,19 @@ fn step19_relays_the_teardown_tail_and_exit_code() {
     ]);
     assert_eq!(code(&output), 0, "{}", stderr(&output));
     let text = stdout(&output);
-    for row in [
-        "ISSUE_URL=https://example.test/issues/1",
-        "RENAME_BRANCH=skipped",
-        "RENAME_STATUS=ok",
-        "STASH_REF=refs/stash/test",
-        "SENTINEL_WRITTEN=true",
-        "FINALIZE_SUBCOMMAND=teardown",
-        "FINALIZE_WARNINGS=none",
-    ] {
-        assert!(text.contains(row), "{row} missing from {text}");
-    }
+    assert_eq!(kv("STATUS", &text), "cleanup-skipped");
+    assert_eq!(kv("OUTCOME", &text), "OK");
+    assert_eq!(kv("RENAME_BRANCH", &text), "C");
+    assert_eq!(kv("RENAME_STATUS", &text), "skipped");
+    assert_eq!(kv("STASH_REF", &text), "");
+    assert_eq!(kv("SENTINEL_WRITTEN", &text), "false");
+    assert_eq!(kv("FINALIZE_SUBCOMMAND", &text), "teardown");
+    assert_eq!(kv("FINALIZE_WARNINGS", &text), "");
     let log = fixture.log();
     assert!(log.contains("clear-implement-pointer --claude-pid"));
     assert!(
-        log.contains("teardown sentinel=missing argv=implement-finalize teardown --state-file")
+        !log.contains("implement-finalize teardown"),
+        "Step 19 must not re-enter the executable: {log}"
     );
     assert!(
         !log.contains("restore-finalize-state"),
@@ -721,8 +733,13 @@ fn step19_restores_for_each_documented_trigger() {
             "{name}: {log}"
         );
         assert!(
-            line_of("restore-finalize-state", &log) < line_of("teardown sentinel=", &log),
-            "{name}: restore must precede teardown"
+            line_of("restore-finalize-state", &log) < line_of("clear-implement-pointer", &log),
+            "{name}: restore must precede pointer cleanup"
+        );
+        assert_eq!(kv("FINALIZE_SUBCOMMAND", &stdout(&output)), "teardown");
+        assert!(
+            !log.contains("implement-finalize teardown"),
+            "{name}: {log}"
         );
     }
 }
@@ -739,9 +756,11 @@ fn step19_tears_down_even_after_a_failed_restore() {
     let output = fixture.run(&["implement", "step-19"]);
     assert_eq!(code(&output), 0, "{}", stderr(&output));
     assert!(stderr(&output).contains("restore-finalize-state failed"));
+    assert_eq!(kv("FINALIZE_SUBCOMMAND", &stdout(&output)), "teardown");
     let log = fixture.log();
     assert!(log.contains("restore-finalize-state --implement-tmpdir"));
-    assert!(log.contains("teardown sentinel="));
+    assert!(log.contains("clear-implement-pointer --claude-pid"));
+    assert!(!log.contains("implement-finalize teardown"));
 }
 
 // ---------------------------------------------------------------------------
