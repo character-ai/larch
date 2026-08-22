@@ -127,8 +127,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("pr", "body-update"): ("larch.git.pr", "body_update_main", False),
     ("pr", "checks"): ("larch.git.pr", "checks_main", False),
     ("pr", "closes-issue"): ("larch.git.pr", "closes_issue_main", False),
-    ("merge", "pr"): ("larch.git.merge", "pr_main", False),
-    ("merge", "wait"): ("larch.git.merge", "wait_main", False),
 }
 
 # Compatibility view: keys whose registry row has machine_stdout=True.

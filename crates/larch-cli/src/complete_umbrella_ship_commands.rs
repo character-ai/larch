@@ -42,7 +42,7 @@ use crate::{
     git_command_runtime::GitCommandRuntime,
     github_repository_resolution::repository_ref,
     github_service::{ServiceFailure, with_github_service},
-    implement_child_seam::{delegate_larch_with_options_in, delegate_merge_wait, delegate_python_in, verify_merge_wait},
+    implement_child_seam::{delegate_larch_with_options_in, delegate_merge_wait, verify_merge_wait},
     session_artifact_support::{canonical_directory, read_expected_file, temporary_root, write_private_file},
     ship_pr_commands::head_subject,
 };
@@ -1030,8 +1030,8 @@ fn submit_merge(request: &Request, state: &ShipState) -> Result<MergeResult, Str
             budget.added_lines.unwrap_or_default()
         );
     }
-    let output = delegate_python_in(
-        vec![
+    let output = delegate_larch_with_options_in(
+        &[
             "merge".into(),
             "pr".into(),
             "--pr".into(),
@@ -1039,6 +1039,7 @@ fn submit_merge(request: &Request, state: &ShipState) -> Result<MergeResult, Str
             "--repo".into(),
             request.slug.clone().into(),
         ],
+        &[],
         &request.repo_root,
         CHILD_TIMEOUT,
     )?;
@@ -1512,7 +1513,7 @@ mod tests {
     use super::*;
     use crate::{
         github_service::with_test_github_service,
-        implement_child_seam::{clear_hooks, install_larch, install_python},
+        implement_child_seam::{clear_hooks, install_larch},
     };
     use larch_adapters::github::OctocrabGitHubService;
     use larch_core::{ProcessOutput, ProcessStatus};
@@ -1965,7 +1966,6 @@ mod tests {
         server.join().expect("stub completed");
 
         let merge_state = identity_state(&request, "monitoring");
-        install_larch(|_arguments, _environment| Ok(output(0, "CI_STATUS=pass\n")));
         for (wire, expected) in [
             ("MERGE_RESULT=queued\n", "queued"),
             ("MERGE_RESULT=main_advanced\n", "reconcile"),
@@ -1979,7 +1979,13 @@ mod tests {
                 companion_issue("ordinary umbrella"),
             ]);
             let selected = wire.to_owned();
-            install_python(move |_arguments| Ok(output(0, &selected)));
+            install_larch(move |arguments, _environment| {
+                match arguments.iter().filter_map(|value| value.to_str()).take(2).collect::<Vec<_>>().as_slice() {
+                    ["ci", "status"] => Ok(output(0, "CI_STATUS=pass\n")),
+                    ["merge", "pr"] => Ok(output(0, &selected)),
+                    other => panic!("unexpected larch child: {other:?}"),
+                }
+            });
             let result = with_test_github_service(factory, || submit_merge(&request, &merge_state));
             match expected {
                 "queued" => assert!(matches!(result, Ok(MergeResult::Queued))),
@@ -2202,14 +2208,11 @@ mod tests {
             done,
         ]);
         install_larch(|arguments, _environment| {
-            assert_eq!(arguments.first().and_then(|value| value.to_str()), Some("ci"));
-            assert_eq!(arguments.get(1).and_then(|value| value.to_str()), Some("status"));
-            Ok(output(0, "CI_STATUS=pass\nFAILED_RUN_ID=\n"))
-        });
-        install_python(|arguments| {
-            assert_eq!(arguments.first().and_then(|value| value.to_str()), Some("merge"));
-            assert_eq!(arguments.get(1).and_then(|value| value.to_str()), Some("pr"));
-            Ok(output(0, "MERGE_RESULT=merged\n"))
+            match arguments.iter().filter_map(|value| value.to_str()).take(2).collect::<Vec<_>>().as_slice() {
+                ["ci", "status"] => Ok(output(0, "CI_STATUS=pass\nFAILED_RUN_ID=\n")),
+                ["merge", "pr"] => Ok(output(0, "MERGE_RESULT=merged\n")),
+                other => panic!("unexpected larch child: {other:?}"),
+            }
         });
 
         let outcome = with_test_github_service(factory, || ship(&request)).expect("ship completes");

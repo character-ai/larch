@@ -184,7 +184,7 @@ not rebase the release branch for tip movement alone.
 
 ```bash
 CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" ci wait --pr "$PR_NUMBER" --repo "$REPO"
-python3 "$PWD/python/cli.py" merge pr \
+CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" merge pr \
   --pr "$PR_NUMBER" \
   --repo "$REPO" \
   --no-admin-fallback
@@ -203,7 +203,7 @@ CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh"
   --tmpdir "$NOTES_DIR" \
   --budget-s 90000 \
   -- \
-  python3 "$PWD/python/cli.py" merge wait --pr "$PR_NUMBER" --repo "$REPO"
+  "$PWD/scripts/larch.sh" merge wait --pr "$PR_NUMBER" --repo "$REPO"
 ```
 
 Continue only when the bgjob launch prints `BGJOB_STATUS=STARTED STEP=release-merge-queue`.
@@ -543,7 +543,7 @@ Runtime helpers:
 Repo-root helpers referenced from steps above:
 
 - `git fetch origin main` — Step 1 advisory fetch only; do not fast-forward local `main`. Prepare pins `RELEASE_SHA` from the fetched tip.
-- `scripts/larch.sh gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `scripts/larch.sh ci wait`, `python/cli.py merge {pr,wait}`, and `scripts/larch.sh bgjob {start,wait}`
+- `scripts/larch.sh gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `scripts/larch.sh ci wait`, `scripts/larch.sh merge {pr,wait}`, and `scripts/larch.sh bgjob {start,wait}`
 - `scripts/larch.sh session local-cleanup` (Rust `session local-cleanup` contract) — post-merge local teardown
 
 Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):

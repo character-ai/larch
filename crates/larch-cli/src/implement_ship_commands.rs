@@ -2,9 +2,9 @@
 //!
 //! These commands own the retained Python dependency fence, durable input
 //! reconstruction, initial state, bgjob adapter, and post-OOS checkpoint
-//! bookkeeping. The Rust ship driver is composed in process; its separately
-//! owned Python merge and finalize dependencies use the reviewed migration
-//! seam. Rust subprocesses enter through the verified bootstrap.
+//! bookkeeping. Rust owns ship and merge; the separately owned Python finalizer
+//! uses the reviewed migration seam. Rust subprocesses enter through the verified
+//! bootstrap.
 
 use std::{
     env,

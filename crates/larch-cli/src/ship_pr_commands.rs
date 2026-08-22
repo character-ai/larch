@@ -622,7 +622,7 @@ fn submit_merge(context: &ShipPrContext, number: u64) -> Result<MergeDisposition
     if context.no_admin_fallback {
         arguments.push("--no-admin-fallback".into());
     }
-    let output = delegate_python(arguments, Duration::from_secs(600))
+    let output = delegate_larch_with_options(&arguments, &[], Duration::from_secs(600))
         .map_err(|error| DriverFailure::Result(internal(error)))?;
     let fields = output_fields(output.stdout())?;
     classify_merge(&fields).map_err(|error| DriverFailure::Result(internal(error)))
@@ -2358,34 +2358,38 @@ mod tests {
     fn merge_loop_completes_direct_and_queued_merges() {
         for disposition in ["merged", "queued"] {
             let (_root, context) = fixture();
-            install_larch(|arguments, _environment| {
+            let selected = disposition.to_owned();
+            install_larch(move |arguments, _environment| {
                 let command = arguments
                     .iter()
                     .map(|value| value.to_string_lossy())
                     .collect::<Vec<_>>();
-                if command.get(1).is_some_and(|value| value == "wait") {
-                    Ok(output(
+                match command
+                    .iter()
+                    .map(AsRef::as_ref)
+                    .take(2)
+                    .collect::<Vec<_>>()
+                    .as_slice()
+                {
+                    ["ci", "wait"] => Ok(output(
                         0,
                         concat!(
                             "ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nCONFLICTED=false\n",
                             "FAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n",
                         ),
-                    ))
-                } else {
-                    Ok(output(0, ""))
+                    )),
+                    ["merge", "pr"] => Ok(output(0, &format!("MERGE_RESULT={selected}\n"))),
+                    ["merge", "wait"] => Ok(output(0, "MERGE_RESULT=merged\n")),
+                    ["run-log", "refresh"] => Ok(output(0, "")),
+                    other => panic!("unexpected larch child: {other:?}"),
                 }
             });
-            let selected = disposition.to_owned();
             install_python(move |arguments| {
                 let command = arguments
                     .iter()
                     .map(|value| value.to_string_lossy())
                     .collect::<Vec<_>>();
                 match command.first().map(AsRef::as_ref) {
-                    Some("merge") if command.get(1).is_some_and(|value| value == "pr") => {
-                        Ok(output(0, &format!("MERGE_RESULT={selected}\n")))
-                    }
-                    Some("merge") => Ok(output(0, "MERGE_RESULT=merged\n")),
                     Some("implement-finalize") => Ok(output(0, "OUTCOME=OK\nSTATUS=complete\n")),
                     other => panic!("unexpected child: {other:?}"),
                 }
@@ -2426,17 +2430,24 @@ mod tests {
             let (_root, context) = fixture();
             let selected_action = action.to_owned();
             let selected_bail = bail_reason.to_owned();
-            install_larch(move |_arguments, _environment| {
-                Ok(output(
-                    0,
-                    &format!(
-                        "ACTION={selected_action}\nCI_STATUS=fail\nBEHIND_COUNT=0\nCONFLICTED=false\nFAILED_RUN_ID=not-numeric\nBAIL_REASON={selected_bail}\nITERATION=0\nELAPSED=1\n"
-                    ),
-                ))
-            });
             let selected_merge = merge_result.to_owned();
-            install_python(move |_arguments| {
-                Ok(output(0, &format!("MERGE_RESULT={selected_merge}\n")))
+            install_larch(move |arguments, _environment| {
+                match arguments
+                    .iter()
+                    .filter_map(|value| value.to_str())
+                    .take(2)
+                    .collect::<Vec<_>>()
+                    .as_slice()
+                {
+                    ["ci", "wait"] => Ok(output(
+                        0,
+                        &format!(
+                            "ACTION={selected_action}\nCI_STATUS=fail\nBEHIND_COUNT=0\nCONFLICTED=false\nFAILED_RUN_ID=not-numeric\nBAIL_REASON={selected_bail}\nITERATION=0\nELAPSED=1\n"
+                        ),
+                    )),
+                    ["merge", "pr"] => Ok(output(0, &format!("MERGE_RESULT={selected_merge}\n"))),
+                    other => panic!("unexpected larch child: {other:?}"),
+                }
             });
             let classified = run_merge_loop(
                 &context,

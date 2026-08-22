@@ -277,8 +277,8 @@ Issue #8628 moved `ship pr` into the Rust child in process. The Rust ship parent
 still composes the shared bgjob adapter with completed-result replacement; the
 child reconstructs canonical argv, invokes the Rust lifecycle owner, and
 publishes the typed result env through the Rust ship-result module. The Python
-3.11 probe remains because the separately owned `merge` and
-`implement-finalize` commands are retained Python dependencies.
+3.11 probe remains because the separately owned `implement-finalize` command is
+a retained Python dependency.
 The Rust OOS router composes `oos disposition-checkpoint`, keeps the exact
 `OOS_CHECKPOINT_RC` and `NEXT_ACTION` grammar, writes run statistics, stamps the
 manifest, and atomically clears only `OOS_PENDING` after success.
@@ -297,9 +297,9 @@ repair and reconcile counters, five-minute CI interval, merge-queue and admin
 paths, 24-hour queue window, transient Git retry schedule, and verified
 post-merge cleanup. Repository reads use gix; fixed-shape Git operations and
 hardened GitHub adapters own external effects. Nested CI and merge commands run
-from the validated repository root. The driver continues to compose the
-separately owned `merge pr` and `merge wait` Python commands through the
-reviewed process seam and does not fabricate an `IMPLEMENT_TMPDIR` session.
+from the validated repository root. Since issue #8788, the driver composes the
+Rust-owned `merge pr` and `merge wait` commands through the verified larch
+process seam and does not fabricate an `IMPLEMENT_TMPDIR` session.
 
 All production callers now enter through `scripts/larch.sh`. The Python CLI
 registration, implementation module, exclusive tests, and shard assignments
@@ -323,9 +323,22 @@ overlays, publishes the post-merge sentinel and manifest fields, and verifies
 the resulting state. The command registry and production callers now select
 Rust. `ship.py`, `ship_pr.py`, `ship_guidelines.py`, `ship_merge.py`,
 `ship_resume.py`, and `ship_recovery.py` were removed with their Python CLI
-registrations and exclusive tests. The separately owned `merge pr`,
-`merge wait`, and `implement-finalize postmerge` commands remain behind the
-reviewed Rust-to-Python process boundary.
+registrations and exclusive tests. Issue #8788 subsequently moved `merge pr`
+and `merge wait` to `crates/larch-cli/src/merge_commands.rs`; only
+`implement-finalize postmerge` remains behind the reviewed Rust-to-Python
+process boundary.
+
+### Pull-request merge cutover
+
+Issue #8788 moved `merge pr` and `merge wait` to Rust in one atomic cutover.
+The command owner composes gix repository reads, the closed typed Git CLI for
+`origin/main` fetches, the typed Actions check-run service, and fixed GitHub
+pull-request and merge-queue operations. Queue writes and uncertain direct
+merge responses are reconciled without resubmitting a mutation. All ship and
+release callers enter through `scripts/larch.sh`; the Python registrations,
+implementation module, and exclusive tests were removed in the same change.
+Black-box command tests, adapter failure injection, and clean-install dispatch
+cover the shipped executable boundary.
 
 ### Ship state and result-env cutover
 
@@ -647,7 +660,9 @@ Most release helpers remain behind `python/cli.py`. Every audit-runs verb is Rus
 
 ## Decision log — G13 ci/pr/merge/push/gh hard cutover
 
-- Live ci/pr/merge/push/gh consumers now call `python3 python/cli.py <domain> <verb>` directly.
+- The G13 cutover first consolidated live ci/pr/merge/push/gh consumers behind
+  `python3 python/cli.py <domain> <verb>`; completed Rust migration rows,
+  including `merge {pr,wait}`, now enter through `scripts/larch.sh`.
 - The checkpoint probe behavior lives in `python/cli.py push checkpoint-probe`, including fork defaulting, `ROUTE=` routing, and larch-log conflict recovery.
 - Retired helper and harness paths are recorded in `python/migrated-scripts.tsv` with `#4642`; treat those rows as history, not active runtime surfaces.
 

@@ -13,7 +13,7 @@ use std::{
 use larch_core::{ChildEnvironment, DuplicatePolicy, KvDocument, ParseOptions, ProcessOutput};
 
 use crate::{
-    python_verb::{run_python_verb, run_python_verb_in},
+    python_verb::run_python_verb,
     runtime_entrypoint::{
         plugin_root, run_verified_larch_with_environment, run_verified_larch_with_options,
         run_verified_larch_with_options_in,
@@ -66,27 +66,14 @@ pub fn delegate_python(
     run_python_verb(arguments, timeout)
 }
 
-/// Run one still-Python sibling from a caller-validated repository directory.
-pub fn delegate_python_in(
-    arguments: Vec<OsString>,
-    working_directory: &Path,
-    timeout: Duration,
-) -> Result<ProcessOutput, String> {
-    #[cfg(test)]
-    if let Some(hook) = TEST_PYTHON.with(|slot| slot.borrow().clone()) {
-        return hook(&arguments);
-    }
-    run_python_verb_in(arguments, working_directory, timeout)
-}
-
-/// Wait for one queued pull request through the separately owned merge driver.
+/// Wait for one queued pull request through the Rust-owned merge driver.
 pub fn delegate_merge_wait(
     number: u64,
     repository: &str,
     timeout: Duration,
 ) -> Result<ProcessOutput, String> {
-    delegate_python(
-        vec![
+    delegate_larch_with_options(
+        &[
             "merge".into(),
             "wait".into(),
             "--pr".into(),
@@ -94,11 +81,12 @@ pub fn delegate_merge_wait(
             "--repo".into(),
             repository.into(),
         ],
+        &[],
         timeout,
     )
 }
 
-/// Validate the separately owned merge wait command's terminal envelope.
+/// Validate the Rust-owned merge wait command's terminal envelope.
 pub fn verify_merge_wait(output: &ProcessOutput) -> Result<(), String> {
     if output.stdout_truncated() {
         return Err("merge queue wait output was truncated".to_owned());

@@ -58,8 +58,8 @@ def test_release_skill_step5_candidate_fence_has_timeout_override() -> None:
 
 def test_release_skill_stages_only_after_the_normal_queue_merge() -> None:
     skill = (ROOT / ".claude/skills/release/SKILL.md").read_text(encoding="utf-8")
-    queue_submit = skill.index('python3 "$PWD/python/cli.py" merge pr')
-    queue_wait = skill.index('python3 "$PWD/python/cli.py" merge wait')
+    queue_submit = skill.index('"$PWD/scripts/larch.sh" merge pr')
+    queue_wait = skill.index('"$PWD/scripts/larch.sh" merge wait')
     stage = skill.index('"$PWD/scripts/larch.sh" release stage')
     reconcile = skill.index('"$PWD/scripts/larch.sh" release reconcile-notes')
     validate = skill.index('"$PWD/scripts/larch.sh" release validate-draft')

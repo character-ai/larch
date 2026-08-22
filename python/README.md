@@ -1,6 +1,6 @@
 # larch Python runtime
 
-Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. The shared leaf layer lives in the `larch/` package: `larch.io`, `larch.errors`, `larch.outcomes`, and the `larch.core` home for the most-depended-on leaf utilities (`proc`, `config`, `logging_util`, `redact`, `retry`, `run_context`). `/implement` Step 8+ and `/report-tokens` are Rust-owned through `scripts/larch.sh`. Python 3.11 remains required for the separately owned merge and finalization commands that the Rust ship lifecycle composes. Linters and pytest are dev/CI-only and are never imported by runtime code.
+Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. The shared leaf layer lives in the `larch/` package: `larch.io`, `larch.errors`, `larch.outcomes`, and the `larch.core` home for the most-depended-on leaf utilities (`proc`, `config`, `logging_util`, `redact`, `retry`, `run_context`). `/implement` Step 8+, pull-request merge processing, and `/report-tokens` are Rust-owned through `scripts/larch.sh`. Python 3.11 remains required for surviving finalization commands. Linters and pytest are dev/CI-only and are never imported by runtime code.
 
 ## Layout
 
@@ -20,19 +20,19 @@ Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. Th
 - Checks selection, fixer evidence, lint-fix dispatch, and the bounded repair
   loop are Rust-owned. Their Python runtime modules retired at the #8627 atomic
   cutover; production callers enter through `scripts/larch.sh checks ...`.
-- `ci_monitor.py` — retained for surviving Python merge and CI callers. The Rust-owned `/implement` Step 8 and `/complete-umbrella` leaf ship paths use the Rust `ci` commands directly.
+- `ci_monitor.py` — retained for surviving Python CI callers. The Rust-owned `/implement` Step 8 and `/complete-umbrella` leaf ship paths use the Rust `ci` commands directly.
 - **Phase 5 compatibility layer**: `run_logs.py` is a typed Rust-command facade,
   `run_log_batch.py` is a parity mirror for bounded compatibility callers and the historical reader,
   and `run_log_manifest.py` is read-only. `tracking_issue.py` contains only pure
   PR-footer helpers; its lifecycle, sentinel, and GitHub behavior is Rust-owned behind
   typed `rust_runtime.py` calls through `scripts/larch.sh`. `tokens.py`,
-  `pr_body.py`, `push.py`, `pr.py`, and `merge.py` are retained PR/merge/logging components with session-local
+  `pr_body.py`, `push.py`, and `pr.py` are retained PR/logging components with session-local
   implement staging through the Rust-owned run-log refresh, complete terminal snapshot and archive publication from
   Step 18, and log-free cleanup from Step 19. After #8789, Rust owns
   `pr compose-summary`, `tracking post-issue`, and the reusable PR-body redaction
   helper. `pr_body.py` retains the Python PR-body/redaction bridge through the
-  remaining `pr` command cutover, plus `render run-summary` and `diagram code-flow`. `merge.py`
-  classifies the eight `python/cli.py merge pr` `MERGE_RESULT` literals; driver-only `already_merged` is
+  remaining `pr` command cutover, plus `render run-summary` and `diagram code-flow`.
+  Rust `merge pr` classifies the established `MERGE_RESULT` literals; driver-only `already_merged` is
   documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `refresh_logs_checkpoint` skip parity.
   Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own
   `append-tool-failure.sh` calls on the live path.
