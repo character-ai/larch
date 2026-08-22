@@ -1344,3 +1344,89 @@ fn nonempty_ref(value: &str) -> Option<&str> {
 fn safe_line(value: &str) -> String {
     value.replace(['\n', '\r'], " ")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    const COMMON_STATE: &str = "BRANCH_NAME=feature\nPR_NUMBER=\nPR_TITLE=Title\nPR_URL=\nISSUE_NUMBER=\nREPO=\nDRAFT=false\nMERGE=false\nDEFERRED=false\nREPO_UNAVAILABLE=true\nPR_CLOSED=false\nDESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\nSTALL_TRACKING=false\nDONE_RENAME_APPLIED=false\n";
+
+    #[test]
+    fn checkpoint_and_state_paths_fail_closed() {
+        let root = TempDir::new().expect("tempdir");
+        let unsafe_arguments = FinalizeArguments {
+            state_file: PathBuf::from("/"),
+            implement_tmpdir: Some(PathBuf::from("/")),
+            bail_file: None,
+        };
+        assert!(
+            validate_state(FinalizePhase::Postbump, &BTreeMap::new(), &unsafe_arguments)
+                .expect_err("root state path")
+                .starts_with("--state-file")
+        );
+
+        let checkpoint = root.path().join(".postbump-phase");
+        assert_eq!(checkpoint_status(root.path()), "ok");
+        fs::write(&checkpoint, "x".repeat(65)).expect("oversized checkpoint");
+        assert_eq!(checkpoint_status(root.path()), "corrupt");
+        fs::write(&checkpoint, "UPPERCASE").expect("invalid checkpoint");
+        assert_eq!(checkpoint_status(root.path()), "corrupt");
+        fs::remove_file(&checkpoint).expect("remove checkpoint");
+        fs::create_dir(&checkpoint).expect("directory checkpoint");
+        assert_eq!(checkpoint_status(root.path()), "corrupt");
+        fs::remove_dir(&checkpoint).expect("remove directory checkpoint");
+        fs::write(&checkpoint, "phase-2\r\n").expect("valid checkpoint");
+        assert_eq!(checkpoint_status(root.path()), "ok");
+        assert!(!checkpoint.exists());
+    }
+
+    #[test]
+    fn teardown_confinement_and_error_envelope_are_deterministic() {
+        let root = TempDir::new().expect("tempdir");
+        let context = Context {
+            tmpdir: root.path().to_path_buf(),
+            expected_tmpdir_prefix: "does-not-match-".to_owned(),
+            repo_unavailable: true,
+            pr_number: Some(1),
+            ..Context::default()
+        };
+        let result = teardown(&context, &mut String::new()).expect("local teardown");
+        assert_eq!(result.status, "cleanup-skipped");
+        assert_eq!(result.rename_branch, "B");
+        assert!(root.path().join(".run-cleaned-up").is_file());
+
+        let state = root.path().join("finalize-state.sh");
+        fs::write(&state, COMMON_STATE).expect("finalize state");
+        fs::write(root.path().join("plan-coverage.json"), "{}\n").expect("partial coverage");
+        let capture = execute(
+            FinalizePhase::Teardown,
+            &[
+                OsString::from("--state-file"),
+                state.into_os_string(),
+                OsString::from("--implement-tmpdir"),
+                root.path().as_os_str().to_owned(),
+            ],
+        );
+        assert_eq!(capture.code, 1);
+        assert!(capture.stdout.is_empty());
+        assert!(capture.stderr.contains("coverage artifact set is partial"));
+    }
+
+    #[test]
+    fn result_helpers_preserve_boundary_values() {
+        assert_eq!(rebase_failure(&[]).detail, "rebase failed");
+        assert_eq!(
+            postbump_remote_failure("rebased", "remote").force_push_status,
+            "failed"
+        );
+        assert_eq!(strip_pr_suffix("Title(#12)"), "Title(#12)");
+        assert_eq!(strip_pr_suffix("Title (#x)"), "Title (#x)");
+        assert_eq!(nonempty_ref("value"), Some("value"));
+        assert_eq!(nonempty_ref(""), None);
+        let input = GitRemote::new("").expect_err("empty remote rejected");
+        let outcome = git_outcome(Err(GitCliError::Input(input)));
+        assert!(!outcome.ok);
+        assert_eq!(outcome.code, 1);
+    }
+}

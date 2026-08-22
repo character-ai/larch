@@ -35,6 +35,8 @@ def setup(scenario: str) -> None:
     git("init", "--quiet", "--bare", str(ROOT / "remote.git"))
     git("remote", "add", "origin", str(ROOT / "remote.git"))
     git("push", "--quiet", "origin", "main")
+    if scenario == "postbump-main":
+        return
     git("checkout", "--quiet", "-b", "feature")
     if scenario == "postbump-present":
         git("push", "--quiet", "origin", "feature")

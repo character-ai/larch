@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "session/finalize-state.sh": {
+      "text": "BRANCH_NAME=feature\nISSUE_NUMBER=\nPR_TITLE=Title\nREPO=\nREPO_UNAVAILABLE=false\nFORKED_TARGET=false\nBUMP_TYPE=PATCH\nNEW_VERSION=\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "implement-finalize: state-file key NEW_VERSION must be non-empty when BUMP_TYPE is not NONE\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "exit_code": 2,
+  "files": {
+    "session/bail": {
+      "text": ""
+    },
+    "session/finalize-state.sh": {
+      "text": "BRANCH_NAME=feature\nPR_NUMBER=\nPR_TITLE=Implement feature\nPR_URL=\nISSUE_NUMBER=\nREPO=\nDRAFT=false\nMERGE=false\nDEFERRED=false\nREPO_UNAVAILABLE=true\nPR_CLOSED=false\nDESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\nSTALL_TRACKING=false\nDONE_RENAME_APPLIED=false\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: cli.py implement-finalize postmerge [-h] --state-file STATE_FILE [--implement-tmpdir IMPLEMENT_TMPDIR] --final-bail-reason-file FINAL_BAIL_REASON_FILE\ncli.py implement-finalize postmerge: error: unrecognized arguments: --unknown\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

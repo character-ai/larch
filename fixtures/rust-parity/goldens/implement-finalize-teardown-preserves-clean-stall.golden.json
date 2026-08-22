@@ -5,7 +5,7 @@
       "text": "#!/bin/sh\nexec /usr/bin/env PATH=/usr/bin:/bin git \"$@\"\n"
     },
     "git-result.txt": {
-      "text": "CURRENT_BRANCH=feature\nLOCAL_BRANCHES=feature,main\nHEAD_SUBJECT=Feature work\nREMOTE_FEATURE=absent\nWORKTREE_DIRTY=false\nSTASH_COUNT=1\nSTALL_SENTINEL=present\n"
+      "text": "CURRENT_BRANCH=feature\nLOCAL_BRANCHES=feature,main\nHEAD_SUBJECT=Feature work\nREMOTE_FEATURE=absent\nWORKTREE_DIRTY=false\nSTASH_COUNT=0\nSTALL_SENTINEL=present\n"
     },
     "repo/base.txt": {
       "text": "base\n"
@@ -34,6 +34,6 @@
     "text": ""
   },
   "stdout": {
-    "text": "STATUS=stalled-preserved\nOUTCOME=OK\nFINALIZE_WARNINGS=\nLOG_WRITE_STATUS=\nREBASE_STATUS=\nCONFLICT_FILES=\nFORCE_PUSH_STATUS=\nLOCAL_CLEANUP_STATUS=\nVERIFY_MAIN_STATUS=\nRENAME_BRANCH=A\nRENAME_STATUS=skipped\nISSUE_URL=\nSTASH_REF=refs/stash@{0}\nSENTINEL_WRITTEN=true\nFINALIZE_SUBCOMMAND=teardown\n"
+    "text": "STATUS=stalled-preserved\nOUTCOME=OK\nFINALIZE_WARNINGS=\nLOG_WRITE_STATUS=\nREBASE_STATUS=\nCONFLICT_FILES=\nFORCE_PUSH_STATUS=\nLOCAL_CLEANUP_STATUS=\nVERIFY_MAIN_STATUS=\nRENAME_BRANCH=A\nRENAME_STATUS=skipped\nISSUE_URL=\nSTASH_REF=\nSENTINEL_WRITTEN=true\nFINALIZE_SUBCOMMAND=teardown\n"
   }
 }

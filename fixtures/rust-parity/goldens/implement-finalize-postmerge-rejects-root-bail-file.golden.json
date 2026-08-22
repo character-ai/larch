@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "session/finalize-state.sh": {
+      "text": "BRANCH_NAME=feature\nPR_NUMBER=\nPR_TITLE=Implement feature\nPR_URL=\nISSUE_NUMBER=\nREPO=\nDRAFT=false\nMERGE=false\nDEFERRED=false\nREPO_UNAVAILABLE=true\nPR_CLOSED=false\nDESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\nSTALL_TRACKING=false\nDONE_RENAME_APPLIED=false\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "implement-finalize: --final-bail-reason-file must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -106,12 +106,15 @@ fn git_case(name: &'static str, verb: &str, state: &str, scenario: &str) -> Pari
         SeedFile::text("session/finalize-state.sh", state),
         SeedFile::text("session/bail", ""),
     ];
-    if scenario == "teardown-stall" {
+    if scenario.starts_with("teardown-stall") {
         seeds.push(SeedFile::expanded_text(
             "session/source-env.sh",
             "REPO_ROOT={sandbox}/repo\n",
         ));
         seeds.push(SeedFile::text("session/plan-coverage.json", "not json\n"));
+    }
+    if scenario == "postbump-checkpoint-corrupt" {
+        seeds.push(SeedFile::text("session/.postbump-phase", "UPPERCASE\n"));
     }
     case_with_setup(
         name,
@@ -168,6 +171,8 @@ fn cleanup_cases() -> Vec<ParityCase> {
     vec![
         case("implement-finalize-cleanup-help", "cleanup", &["--help"], vec![]),
         case("implement-finalize-cleanup-rejects-root", "cleanup", &["--implement-tmpdir", "/"], vec![]),
+        case("implement-finalize-cleanup-rejects-parent-component", "cleanup", &["--implement-tmpdir", "{sandbox}/session/../session"], vec![SeedFile::text("session/finalize-state.sh", "EXPECTED_SESSION_ID=\nEXPECTED_TMPDIR_BASENAME_PREFIX=session\n")]),
+        cleanup_state_case("implement-finalize-cleanup-rejects-malformed-state", "BROKEN\n", None),
         cleanup_state_case("implement-finalize-cleanup-removes-owned-session", "EXPECTED_SESSION_ID=owned\nEXPECTED_TMPDIR_BASENAME_PREFIX=other-prefix-\n", Some("owned\n")),
         cleanup_state_case("implement-finalize-cleanup-rejects-session-mismatch", "EXPECTED_SESSION_ID=owned\nEXPECTED_TMPDIR_BASENAME_PREFIX=other-prefix-\n", Some("wrong\n")),
         cleanup_state_case("implement-finalize-cleanup-rejects-missing-session", "EXPECTED_SESSION_ID=owned\nEXPECTED_TMPDIR_BASENAME_PREFIX=other-prefix-\n", None),
@@ -177,11 +182,15 @@ fn cleanup_cases() -> Vec<ParityCase> {
 }
 
 #[rustfmt::skip]
-fn finalize_cases() -> Vec<ParityCase> {
+fn finalize_state_cases() -> Vec<ParityCase> {
     vec![
         case("implement-finalize-postbump-help", "postbump", &["--help"], vec![]),
         case("implement-finalize-postmerge-help", "postmerge", &["--help"], vec![]),
         case("implement-finalize-teardown-help", "teardown", &["--help"], vec![]),
+        case("implement-finalize-postbump-rejects-missing-arguments", "postbump", &[], vec![]),
+        case("implement-finalize-postmerge-rejects-missing-arguments", "postmerge", &[], vec![]),
+        case("implement-finalize-teardown-rejects-missing-arguments", "teardown", &[], vec![]),
+        case("implement-finalize-postmerge-rejects-unknown-option", "postmerge", &["--state-file", STATE, "--final-bail-reason-file", BAIL, "--unknown"], vec![SeedFile::text("session/finalize-state.sh", COMMON), SeedFile::text("session/bail", "")]),
         case(
             "implement-finalize-postmerge-missing-state",
             "postmerge",
@@ -195,9 +204,12 @@ fn finalize_cases() -> Vec<ParityCase> {
             vec![],
         ),
         state_case("implement-finalize-postmerge-rejects-malformed-bool", "postmerge", &COMMON.replace("MERGE=false", "MERGE=yes"), vec![]),
+        state_case("implement-finalize-postmerge-rejects-malformed-state", "postmerge", "BROKEN\n", vec![]),
+        state_case("implement-finalize-postmerge-rejects-missing-key", "postmerge", "DRAFT=false\n", vec![]),
         case("implement-finalize-teardown-rejects-root-state", "teardown", &["--state-file", "/", "--implement-tmpdir", TMPDIR], vec![]),
         case("implement-finalize-teardown-rejects-root-tmpdir", "teardown", &["--state-file", STATE, "--implement-tmpdir", "/"], vec![SeedFile::text("session/finalize-state.sh", COMMON)]),
         case("implement-finalize-teardown-rejects-state-outside-tmpdir", "teardown", &["--state-file", "{sandbox}/outside-state.sh", "--implement-tmpdir", TMPDIR], vec![SeedFile::text("outside-state.sh", COMMON)]),
+        case("implement-finalize-postmerge-rejects-root-bail-file", "postmerge", &["--state-file", STATE, "--final-bail-reason-file", "/"], vec![SeedFile::text("session/finalize-state.sh", COMMON)]),
         state_case(
             "implement-finalize-postmerge-skips-draft",
             "postmerge",
@@ -205,6 +217,8 @@ fn finalize_cases() -> Vec<ParityCase> {
             vec![],
         ),
         state_case("implement-finalize-postmerge-skips-merge-false", "postmerge", COMMON, vec![]),
+        state_case("implement-finalize-postmerge-rejects-main-branch", "postmerge", &COMMON.replace("MERGE=false", "MERGE=true").replace("BRANCH_NAME=feature", "BRANCH_NAME=main"), vec![]),
+        state_case("implement-finalize-postmerge-reports-non-repository", "postmerge", &COMMON.replace("MERGE=false", "MERGE=true"), vec![]),
         state_case(
             "implement-finalize-postmerge-skips-state-bail",
             "postmerge",
@@ -217,6 +231,12 @@ fn finalize_cases() -> Vec<ParityCase> {
             "BRANCH_NAME=feature\nISSUE_NUMBER=\nPR_TITLE=Title\nREPO=\nREPO_UNAVAILABLE=true\nFORKED_TARGET=false\nBUMP_TYPE=PATCH\nNEW_VERSION=v1.2.3\n",
             vec![],
         ),
+        state_case("implement-finalize-postbump-rejects-bump-type", "postbump", &POSTBUMP_STATE.replace("BUMP_TYPE=NONE", "BUMP_TYPE=BREAKING"), vec![]),
+        state_case("implement-finalize-postbump-rejects-empty-branch", "postbump", &POSTBUMP_STATE.replace("BRANCH_NAME=feature", "BRANCH_NAME="), vec![]),
+        state_case("implement-finalize-postbump-rejects-missing-version", "postbump", &POSTBUMP_STATE.replace("BUMP_TYPE=NONE", "BUMP_TYPE=PATCH"), vec![]),
+        state_case("implement-finalize-postbump-reports-non-repository", "postbump", POSTBUMP_STATE, vec![]),
+        state_case("implement-finalize-teardown-deactivates-run", "teardown", &format!("{COMMON}RUN_ID=run-8793\n"), vec![]),
+        state_case("implement-finalize-teardown-preserves-stall-without-repository", "teardown", &COMMON.replace("STALL_TRACKING=false", "STALL_TRACKING=true"), vec![]),
         state_case("implement-finalize-teardown-skips-unowned-cleanup", "teardown", COMMON, vec![]),
         state_case(
             "implement-finalize-teardown-cleans-owned-session",
@@ -224,7 +244,17 @@ fn finalize_cases() -> Vec<ParityCase> {
             &format!("{COMMON}EXPECTED_SESSION_ID=owned\nEXPECTED_TMPDIR_BASENAME_PREFIX=other-\n"),
             vec![SeedFile::text("session/session-id", "owned\n")],
         ),
+    ]
+}
+
+#[rustfmt::skip]
+fn finalize_git_cases() -> Vec<ParityCase> {
+    vec![
         git_case("implement-finalize-postbump-remote-absent", "postbump", POSTBUMP_STATE, "postbump-absent"),
+        git_case("implement-finalize-postbump-repo-unavailable", "postbump", &POSTBUMP_STATE.replace("REPO_UNAVAILABLE=false", "REPO_UNAVAILABLE=true"), "postbump-absent"),
+        git_case("implement-finalize-postbump-rejects-branch-mismatch", "postbump", &POSTBUMP_STATE.replace("BRANCH_NAME=feature", "BRANCH_NAME=other"), "postbump-absent"),
+        git_case("implement-finalize-postbump-rejects-corrupt-checkpoint", "postbump", POSTBUMP_STATE, "postbump-checkpoint-corrupt"),
+        git_case("implement-finalize-postbump-rejects-protected-branch", "postbump", &POSTBUMP_STATE.replace("BRANCH_NAME=feature", "BRANCH_NAME=main"), "postbump-main"),
         git_case("implement-finalize-postbump-force-pushes", "postbump", POSTBUMP_STATE, "postbump-present"),
         git_case("implement-finalize-postbump-reports-conflicts", "postbump", POSTBUMP_STATE, "postbump-conflict"),
         git_case(
@@ -243,6 +273,10 @@ fn finalize_cases() -> Vec<ParityCase> {
                 .replace("MERGE=false", "MERGE=true"),
             "postmerge",
         ),
+        git_case("implement-finalize-postmerge-handles-missing-local-branch", "postmerge", &COMMON.replace("BRANCH_NAME=feature", "BRANCH_NAME=missing").replace("PR_NUMBER=", "PR_NUMBER=7").replace("MERGE=false", "MERGE=true"), "postmerge"),
+        git_case("implement-finalize-postmerge-rejects-invalid-local-branch", "postmerge", &COMMON.replace("BRANCH_NAME=feature", "BRANCH_NAME=bad ref").replace("PR_NUMBER=", "PR_NUMBER=7").replace("MERGE=false", "MERGE=true"), "postmerge"),
+        git_case("implement-finalize-postmerge-reports-empty-title", "postmerge", &COMMON.replace("PR_TITLE=Implement feature", "PR_TITLE=").replace("PR_NUMBER=", "PR_NUMBER=7").replace("MERGE=false", "MERGE=true"), "postmerge"),
+        git_case("implement-finalize-postmerge-preserves-invalid-title-suffix", "postmerge", &COMMON.replace("PR_TITLE=Implement feature", "PR_TITLE=Implement feature (#x)").replace("PR_NUMBER=", "PR_NUMBER=7").replace("MERGE=false", "MERGE=true"), "postmerge"),
         with_env(
             git_case(
                 "implement-finalize-postmerge-uses-ambient-branch-fallback",
@@ -259,9 +293,10 @@ fn finalize_cases() -> Vec<ParityCase> {
         git_case(
             "implement-finalize-teardown-preserves-stall",
             "teardown",
-            &COMMON.replace("STALL_TRACKING=false", "STALL_TRACKING=true"),
+            &format!("{}ISSUE=8793\nSTALL_STEP=step-8\n", COMMON.replace("REPO=", "REPO=character-ai/larch").replace("STALL_TRACKING=false", "STALL_TRACKING=true")),
             "teardown-stall",
         ),
+        git_case("implement-finalize-teardown-preserves-clean-stall", "teardown", &format!("{}ISSUE=8793\nSTALL_STEP=step-8\n", COMMON.replace("REPO=", "REPO=character-ai/larch").replace("STALL_TRACKING=false", "STALL_TRACKING=true")), "teardown-stall-clean"),
     ]
 }
 
@@ -280,5 +315,6 @@ fn cleanup_matches_the_frozen_python_owner() {
 
 #[test]
 fn finalize_matches_the_frozen_python_owner() {
-    assert_cases(finalize_cases());
+    assert_cases(finalize_state_cases());
+    assert_cases(finalize_git_cases());
 }
