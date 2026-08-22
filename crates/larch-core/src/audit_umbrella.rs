@@ -2042,6 +2042,200 @@ mod tests {
     }
 
     #[test]
+    fn proposal_violation_constraint_names_and_metadata_are_stable() {
+        let title = || "[LEAF OF 40] Repair the gap".to_owned();
+        let violations = vec![
+            (AuditProposalViolation::Snapshot, "snapshot"),
+            (
+                AuditProposalViolation::Ledger {
+                    violation: AuditLedgerViolation::Version,
+                },
+                "ledger",
+            ),
+            (AuditProposalViolation::BlockedLedger, "blocked-ledger"),
+            (AuditProposalViolation::Version, "version"),
+            (
+                AuditProposalViolation::UnexpectedLeaves,
+                "unexpected-leaves",
+            ),
+            (
+                AuditProposalViolation::MissingLeaves {
+                    gap_id: "R-1".to_owned(),
+                },
+                "missing-leaves",
+            ),
+            (AuditProposalViolation::TooManyLeaves, "too-many-leaves"),
+            (AuditProposalViolation::LeafCapacity, "leaf-capacity"),
+            (
+                AuditProposalViolation::LeafTitlePrefix {
+                    leaf: 1,
+                    title: title(),
+                },
+                "leaf-title-prefix",
+            ),
+            (
+                AuditProposalViolation::LeafTitleShape {
+                    leaf: 1,
+                    title: title(),
+                },
+                "leaf-title-shape",
+            ),
+            (
+                AuditProposalViolation::LeafBodyShape {
+                    leaf: 1,
+                    title: title(),
+                },
+                "leaf-body-shape",
+            ),
+            (
+                AuditProposalViolation::LeafOpening {
+                    leaf: 1,
+                    title: title(),
+                },
+                "leaf-opening",
+            ),
+            (
+                AuditProposalViolation::LeafPlanMarker {
+                    leaf: 1,
+                    title: title(),
+                },
+                "leaf-plan-marker",
+            ),
+            (
+                AuditProposalViolation::LeafSection {
+                    leaf: 1,
+                    title: title(),
+                    section: "## Scope",
+                },
+                "leaf-section",
+            ),
+            (
+                AuditProposalViolation::LeafNumberedScope {
+                    leaf: 1,
+                    title: title(),
+                },
+                "leaf-numbered-scope",
+            ),
+            (
+                AuditProposalViolation::LeafGapIdsEmpty {
+                    leaf: 1,
+                    title: title(),
+                },
+                "leaf-gap-ids-empty",
+            ),
+            (
+                AuditProposalViolation::LeafGapIdsTooMany {
+                    leaf: 1,
+                    title: title(),
+                },
+                "leaf-gap-ids-too-many",
+            ),
+            (
+                AuditProposalViolation::LeafGapIdMalformed {
+                    leaf: 1,
+                    title: title(),
+                    gap_id: "bad:id".to_owned(),
+                },
+                "leaf-gap-id-malformed",
+            ),
+            (
+                AuditProposalViolation::LeafGapIdsOrder {
+                    leaf: 1,
+                    title: title(),
+                },
+                "leaf-gap-ids-order",
+            ),
+            (
+                AuditProposalViolation::LeafAuditedSha {
+                    leaf: 1,
+                    title: title(),
+                },
+                "leaf-audited-sha",
+            ),
+            (
+                AuditProposalViolation::DuplicateLeaf {
+                    leaf: 1,
+                    title: title(),
+                },
+                "duplicate-leaf",
+            ),
+            (
+                AuditProposalViolation::UnknownGapId {
+                    leaf: 1,
+                    title: title(),
+                    gap_id: "R-2".to_owned(),
+                },
+                "unknown-gap-id",
+            ),
+            (
+                AuditProposalViolation::DuplicateGapId {
+                    leaf: 1,
+                    title: title(),
+                    gap_id: "R-1".to_owned(),
+                },
+                "duplicate-gap-id",
+            ),
+            (
+                AuditProposalViolation::UncoveredGapId {
+                    gap_id: "R-3".to_owned(),
+                },
+                "uncovered-gap-id",
+            ),
+            (
+                AuditProposalViolation::DependencyNode {
+                    dependency: 1,
+                    removal: false,
+                },
+                "dependency-node",
+            ),
+            (
+                AuditProposalViolation::DependencySelf {
+                    dependency: 1,
+                    removal: false,
+                },
+                "dependency-self",
+            ),
+            (
+                AuditProposalViolation::DependencyDuplicate {
+                    dependency: 1,
+                    removal: true,
+                },
+                "dependency-duplicate",
+            ),
+            (
+                AuditProposalViolation::DependencyConflict { dependency: 1 },
+                "dependency-conflict",
+            ),
+            (AuditProposalViolation::DependencyCycle, "dependency-cycle"),
+            (AuditProposalViolation::ProposalShape, "proposal-shape"),
+        ];
+
+        for (violation, expected_constraint) in &violations {
+            assert_eq!(violation.constraint(), *expected_constraint);
+            let _ = violation.leaf_index();
+            let _ = violation.leaf_title();
+            let _ = violation.gap_id();
+            let _ = violation.section();
+            let _ = violation.dependency();
+            let expected_refusal = match violation {
+                AuditProposalViolation::Snapshot => INVALID_AUDIT_SNAPSHOT,
+                AuditProposalViolation::Ledger { .. } => INVALID_AUDIT_LEDGER,
+                _ => INVALID_AUDIT_PROPOSAL,
+            };
+            assert_eq!(violation.refusal(), expected_refusal);
+        }
+
+        let section = &violations[13].0;
+        assert_eq!(section.leaf_index(), Some(1));
+        assert_eq!(section.leaf_title(), Some(title().as_str()));
+        assert_eq!(section.section(), Some("## Scope"));
+        assert_eq!(violations[5].0.gap_id(), Some("R-1"));
+        assert_eq!(violations[24].0.dependency(), Some((1, false)));
+        assert_eq!(violations[26].0.dependency(), Some((1, true)));
+        assert_eq!(violations[27].0.dependency(), Some((1, true)));
+    }
+
+    #[test]
     fn a_valid_batch_binds_every_gap_once_and_rejects_cycles() {
         let snapshot = snapshot();
         let ledger = ledger(&snapshot);
@@ -2495,6 +2689,261 @@ mod tests {
         assert_eq!(unknown.leaf_index(), Some(1));
         assert_eq!(unknown.gap_id(), Some(ledger.entries[0].source_id.as_str()));
         assert_eq!(unknown.refusal(), INVALID_AUDIT_PROPOSAL);
+    }
+
+    #[test]
+    fn proposal_diagnostics_cover_batch_and_gap_ownership_rules() {
+        let snapshot = snapshot();
+        let ledger = ledger(&snapshot);
+        let valid = gap_draft(&snapshot, &ledger);
+
+        let mut invalid_snapshot = snapshot.clone();
+        invalid_snapshot.version = 0;
+        assert_eq!(
+            diagnose_audit_proposal(&invalid_snapshot, &ledger, &valid)
+                .expect_err("invalid snapshot")
+                .constraint(),
+            "snapshot"
+        );
+
+        let mut invalid_ledger = ledger.clone();
+        invalid_ledger.version = 0;
+        assert_eq!(
+            diagnose_audit_proposal(&snapshot, &invalid_ledger, &valid)
+                .expect_err("invalid ledger")
+                .constraint(),
+            "ledger"
+        );
+
+        let mut blocked = ledger.clone();
+        blocked.entries[0].status = RequirementStatus::Blocked;
+        blocked.entries[0].code_evidence.clear();
+        blocked.entries[0].test_evidence.clear();
+        blocked.entries[0].reason = "Source evidence is unavailable.".to_owned();
+        assert_eq!(
+            diagnose_audit_proposal(&snapshot, &blocked, &valid)
+                .expect_err("blocked ledger")
+                .constraint(),
+            "blocked-ledger"
+        );
+
+        let mut wrong_version = valid.clone();
+        wrong_version.version = 0;
+        assert_eq!(
+            diagnose_audit_proposal(&snapshot, &ledger, &wrong_version)
+                .expect_err("wrong proposal version")
+                .constraint(),
+            "version"
+        );
+
+        let mut no_gaps = ledger.clone();
+        for entry in &mut no_gaps.entries {
+            entry.status = RequirementStatus::Satisfied;
+            entry.reason.clear();
+        }
+        assert_eq!(
+            diagnose_audit_proposal(&snapshot, &no_gaps, &valid)
+                .expect_err("leaves without gaps")
+                .constraint(),
+            "unexpected-leaves"
+        );
+
+        let mut no_leaves = valid.clone();
+        no_leaves.leaves.clear();
+        assert_eq!(
+            diagnose_audit_proposal(&snapshot, &ledger, &no_leaves)
+                .expect_err("gaps without leaves")
+                .constraint(),
+            "missing-leaves"
+        );
+
+        let mut too_many = valid.clone();
+        too_many.leaves = vec![valid.leaves[0].clone(); MAX_AUDIT_LEAVES + 1];
+        assert_eq!(
+            diagnose_audit_proposal(&snapshot, &ledger, &too_many)
+                .expect_err("too many leaves")
+                .constraint(),
+            "too-many-leaves"
+        );
+
+        let mut at_capacity = valid.clone();
+        at_capacity.leaves = vec![valid.leaves[0].clone(); MAX_AUDIT_LEAVES];
+        assert_eq!(
+            diagnose_audit_proposal(&snapshot, &ledger, &at_capacity)
+                .expect_err("historical plus proposed leaf capacity")
+                .constraint(),
+            "leaf-capacity"
+        );
+
+        let mut stale_body = valid.clone();
+        stale_body.leaves[0].body = stale_body.leaves[0]
+            .body
+            .replace(&snapshot.audited_sha, &"b".repeat(40));
+        assert_eq!(
+            diagnose_audit_proposal(&snapshot, &ledger, &stale_body)
+                .expect_err("missing audited SHA")
+                .constraint(),
+            "leaf-audited-sha"
+        );
+
+        let mut duplicate_leaf = valid.clone();
+        duplicate_leaf.leaves.push(valid.leaves[0].clone());
+        assert_eq!(
+            diagnose_audit_proposal(&snapshot, &ledger, &duplicate_leaf)
+                .expect_err("duplicate leaf identity")
+                .constraint(),
+            "duplicate-leaf"
+        );
+
+        let mut unknown_gap = valid.clone();
+        unknown_gap.leaves[0].gap_ids = vec!["R-999".to_owned()];
+        assert_eq!(
+            diagnose_audit_proposal(&snapshot, &ledger, &unknown_gap)
+                .expect_err("unknown gap id")
+                .constraint(),
+            "unknown-gap-id"
+        );
+
+        let mut duplicate_gap = valid.clone();
+        let mut second_leaf = valid.leaves[0].clone();
+        second_leaf.title.push_str(" again");
+        second_leaf.gap_ids = vec![valid.leaves[0].gap_ids[0].clone()];
+        duplicate_gap.leaves[0].gap_ids = vec![valid.leaves[0].gap_ids[0].clone()];
+        duplicate_gap.leaves.push(second_leaf);
+        assert_eq!(
+            diagnose_audit_proposal(&snapshot, &ledger, &duplicate_gap)
+                .expect_err("duplicate gap ownership")
+                .constraint(),
+            "duplicate-gap-id"
+        );
+
+        let mut uncovered_gap = valid;
+        let _ = uncovered_gap.leaves[0].gap_ids.pop();
+        assert_eq!(
+            diagnose_audit_proposal(&snapshot, &ledger, &uncovered_gap)
+                .expect_err("uncovered gap")
+                .constraint(),
+            "uncovered-gap-id"
+        );
+    }
+
+    #[test]
+    fn proposal_diagnostics_cover_leaf_shape_and_dependency_rules() {
+        let snapshot = snapshot();
+        let ledger = ledger(&snapshot);
+        let valid = gap_draft(&snapshot, &ledger);
+        let valid_leaf = &valid.leaves[0];
+
+        let mut title_shape = valid_leaf.clone();
+        title_shape.title = audit_leaf_prefix(snapshot.umbrella.number);
+        assert_eq!(
+            diagnose_leaf_draft(&title_shape, snapshot.umbrella.number, 2)
+                .expect_err("empty leaf title")
+                .constraint(),
+            "leaf-title-shape"
+        );
+
+        let mut body_shape = valid_leaf.clone();
+        body_shape.body.clear();
+        assert_eq!(
+            diagnose_leaf_draft(&body_shape, snapshot.umbrella.number, 2)
+                .expect_err("empty leaf body")
+                .constraint(),
+            "leaf-body-shape"
+        );
+
+        let mut missing_section = valid_leaf.clone();
+        missing_section.body = missing_section.body.replace("## Acceptance", "## Outcome");
+        assert_eq!(
+            diagnose_leaf_draft(&missing_section, snapshot.umbrella.number, 2)
+                .expect_err("missing required section")
+                .constraint(),
+            "leaf-section"
+        );
+
+        let mut empty_gaps = valid_leaf.clone();
+        empty_gaps.gap_ids.clear();
+        assert_eq!(
+            diagnose_leaf_draft(&empty_gaps, snapshot.umbrella.number, 2)
+                .expect_err("empty gap list")
+                .constraint(),
+            "leaf-gap-ids-empty"
+        );
+
+        let mut too_many_gaps = valid_leaf.clone();
+        too_many_gaps.gap_ids = vec!["R-1".to_owned(); MAX_AUDIT_REQUIREMENTS + 1];
+        assert_eq!(
+            diagnose_leaf_draft(&too_many_gaps, snapshot.umbrella.number, 2)
+                .expect_err("too many gap ids")
+                .constraint(),
+            "leaf-gap-ids-too-many"
+        );
+
+        let existing = |number| AuditDependencyNode::Existing { number };
+        let valid_edge = AuditDependency {
+            dependent: existing(41),
+            prerequisite: existing(42),
+        };
+        let expected_numbers = BTreeSet::from([40, 41, 42]);
+        let known_new = BTreeSet::new();
+
+        let self_edge = AuditDependency {
+            dependent: existing(41),
+            prerequisite: existing(41),
+        };
+        assert_eq!(
+            diagnose_draft_dependencies(&[self_edge], &[], &expected_numbers, &known_new)
+                .expect_err("self dependency")
+                .constraint(),
+            "dependency-self"
+        );
+        assert_eq!(
+            diagnose_draft_dependencies(
+                &[valid_edge.clone(), valid_edge.clone()],
+                &[],
+                &expected_numbers,
+                &known_new,
+            )
+            .expect_err("duplicate dependency")
+            .constraint(),
+            "dependency-duplicate"
+        );
+        assert_eq!(
+            diagnose_draft_dependencies(
+                std::slice::from_ref(&valid_edge),
+                std::slice::from_ref(&valid_edge),
+                &expected_numbers,
+                &known_new,
+            )
+            .expect_err("conflicting removal")
+            .constraint(),
+            "dependency-conflict"
+        );
+        assert_eq!(
+            diagnose_draft_dependencies(
+                &[],
+                &[AuditDependency {
+                    dependent: existing(42),
+                    prerequisite: existing(42),
+                }],
+                &expected_numbers,
+                &known_new,
+            )
+            .expect_err("self removal")
+            .constraint(),
+            "dependency-self"
+        );
+        assert_eq!(
+            diagnose_draft_dependencies(
+                &[],
+                &[valid_edge.clone(), valid_edge],
+                &expected_numbers,
+                &known_new,
+            )
+            .expect_err("duplicate removal")
+            .constraint(),
+            "dependency-duplicate"
+        );
     }
 
     #[test]

@@ -2261,11 +2261,12 @@ mod tests {
     use larch_core::{
         AUDIT_LEDGER_VERSION, AUDIT_PROPOSAL_VERSION, AuditDependency, AuditDependencyNode,
         AuditGraphState, AuditIssue, AuditLeaf, AuditLeafDraft, AuditLeafState, AuditLedger,
-        AuditLedgerEntry, AuditProposal, AuditProposalDraft, AuditProposalViolation, AuditSnapshot,
-        GitHubIssue, GitHubIssueState, GitHubLabel, GitHubRepositoryRef, RequirementStatus,
-        audit_issue_fingerprint, audit_leaf_identity, audit_snapshot_sha256, audit_source_items,
-        build_audit_proposal, mark_audit_graph_in_flight, mark_audit_leaf_in_flight,
-        mark_audit_proposal_complete, record_audit_leaf_resolved, umbrella_leaf_opening,
+        AuditLedgerEntry, AuditLedgerViolation, AuditProposal, AuditProposalDraft,
+        AuditProposalViolation, AuditSnapshot, GitHubIssue, GitHubIssueState, GitHubLabel,
+        GitHubRepositoryRef, RequirementStatus, audit_issue_fingerprint, audit_leaf_identity,
+        audit_snapshot_sha256, audit_source_items, build_audit_proposal,
+        mark_audit_graph_in_flight, mark_audit_leaf_in_flight, mark_audit_proposal_complete,
+        record_audit_leaf_resolved, umbrella_leaf_opening,
     };
     use larch_test_support::{
         GitFixture, GitFixtureError, GitRepository, HttpResponseBuilder, IssueServiceExchange,
@@ -3022,6 +3023,42 @@ mod tests {
         assert_eq!(
             proposal_violation_diagnostic(&violation),
             "proposal-violation constraint=unknown-gap-id leaf=2 title=\"[LEAF OF 10] Repair the audit gap\" gap_id=\"leaf:11:body:5\""
+        );
+    }
+
+    #[test]
+    fn proposal_diagnostic_formats_nested_ledger_section_and_dependency_context() {
+        assert_eq!(
+            proposal_violation_diagnostic(&AuditProposalViolation::Ledger {
+                violation: AuditLedgerViolation::MalformedEntryId {
+                    id: "bad id\n".to_owned(),
+                },
+            }),
+            "proposal-violation constraint=ledger ledger_constraint=malformed-entry-id entry=badid"
+        );
+        assert_eq!(
+            proposal_violation_diagnostic(&AuditProposalViolation::Ledger {
+                violation: AuditLedgerViolation::Coverage {
+                    uncovered: 2,
+                    unknown: 1,
+                },
+            }),
+            "proposal-violation constraint=ledger ledger_constraint=coverage uncovered=2 unknown=1"
+        );
+        assert_eq!(
+            proposal_violation_diagnostic(&AuditProposalViolation::LeafSection {
+                leaf: 3,
+                title: "unsafe\né".to_owned(),
+                section: "## Scope",
+            }),
+            "proposal-violation constraint=leaf-section leaf=3 title=\"unsafe??\" section=\"## Scope\""
+        );
+        assert_eq!(
+            proposal_violation_diagnostic(&AuditProposalViolation::DependencySelf {
+                dependency: 4,
+                removal: true,
+            }),
+            "proposal-violation constraint=dependency-self dependency=4 kind=removal"
         );
     }
 
