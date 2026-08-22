@@ -5,10 +5,7 @@
 //! a later mutation prove it is acting on the exact repository snapshot,
 //! requirement ledger, and corrective batch the audit produced.
 
-use crate::{
-    OrderedJson, bounded_ascii_identifier,
-    issue::{triage_text_is_security_sensitive, umbrella_leaf_opening_text},
-};
+use crate::{OrderedJson, bounded_ascii_identifier, issue::umbrella_leaf_opening_text};
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -55,10 +52,6 @@ pub const INVALID_AUDIT_PROPOSAL: AuditUmbrellaRefusal =
     AuditUmbrellaRefusal("invalid-audit-proposal");
 /// A persisted proposal no longer binds the snapshot or ledger supplied to it.
 pub const STALE_AUDIT_PROPOSAL: AuditUmbrellaRefusal = AuditUmbrellaRefusal("stale-audit-proposal");
-/// Audit content looks security-sensitive and must not reach a public mutation.
-pub const SECURITY_SENSITIVE_AUDIT: AuditUmbrellaRefusal =
-    AuditUmbrellaRefusal("security-sensitive-audit");
-
 /// The bounded immutable fields one GitHub issue contributes to an audit.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -176,8 +169,6 @@ pub enum AuditLedgerViolation {
     TestEvidence { id: String },
     /// One entry `reason` was too long or contained a carriage return.
     ReasonShape { id: String },
-    /// One entry's text tripped the security triage scan.
-    SecuritySensitive { id: String },
     /// A `satisfied` entry lacked required evidence or carried a reason.
     SatisfiedEvidence { id: String },
     /// A `gap` entry carried no code or test evidence.
@@ -206,7 +197,6 @@ impl AuditLedgerViolation {
             Self::CodeEvidence { .. } => "code-evidence",
             Self::TestEvidence { .. } => "test-evidence",
             Self::ReasonShape { .. } => "reason-shape",
-            Self::SecuritySensitive { .. } => "security-sensitive",
             Self::SatisfiedEvidence { .. } => "satisfied-evidence",
             Self::GapEvidence { .. } => "gap-evidence",
             Self::NotApplicableShape { .. } => "not-applicable-shape",
@@ -225,7 +215,6 @@ impl AuditLedgerViolation {
             | Self::CodeEvidence { id }
             | Self::TestEvidence { id }
             | Self::ReasonShape { id }
-            | Self::SecuritySensitive { id }
             | Self::SatisfiedEvidence { id }
             | Self::GapEvidence { id }
             | Self::NotApplicableShape { id }
@@ -244,7 +233,6 @@ impl AuditLedgerViolation {
     pub const fn refusal(&self) -> AuditUmbrellaRefusal {
         match self {
             Self::Snapshot => INVALID_AUDIT_SNAPSHOT,
-            Self::SecuritySensitive { .. } => SECURITY_SENSITIVE_AUDIT,
             _ => INVALID_AUDIT_LEDGER,
         }
     }
@@ -454,8 +442,8 @@ pub fn parse_audit_ledger(text: &str) -> Result<AuditLedger, AuditUmbrellaRefusa
 ///
 /// # Errors
 ///
-/// Returns [`INVALID_AUDIT_SNAPSHOT`], [`INVALID_AUDIT_LEDGER`], or
-/// [`SECURITY_SENSITIVE_AUDIT`] when the immutable source or ledger is unsafe.
+/// Returns [`INVALID_AUDIT_SNAPSHOT`] or [`INVALID_AUDIT_LEDGER`] when the
+/// immutable source or ledger is invalid.
 pub fn validate_audit_ledger(
     snapshot: &AuditSnapshot,
     ledger: &AuditLedger,
@@ -525,7 +513,7 @@ pub fn diagnose_audit_ledger(
     Ok(summary)
 }
 
-/// Check one entry's identifier, single-line, evidence, and triage shape.
+/// Check one entry's identifier, single-line, and evidence shape.
 fn check_entry_shape<'entry>(
     entry: &'entry AuditLedgerEntry,
     entry_ids: &mut BTreeSet<&'entry str>,
@@ -557,17 +545,6 @@ fn check_entry_shape<'entry>(
     }
     if entry.reason.len() > 8 * 1024 || entry.reason.contains('\r') {
         return Err(AuditLedgerViolation::ReasonShape {
-            id: entry.id.clone(),
-        });
-    }
-    if triage_text_is_security_sensitive(&format!(
-        "{}\n{}\n{}\n{}",
-        entry.requirement,
-        entry.code_evidence.join("\n"),
-        entry.test_evidence.join("\n"),
-        entry.reason
-    )) {
-        return Err(AuditLedgerViolation::SecuritySensitive {
             id: entry.id.clone(),
         });
     }
@@ -1029,8 +1006,6 @@ fn validate_issue(issue: &AuditIssue) -> Result<(), AuditUmbrellaRefusal> {
 
 fn validate_leaf_draft(leaf: &AuditLeafDraft, umbrella: u64) -> Result<(), AuditUmbrellaRefusal> {
     let prefix = audit_leaf_prefix(umbrella);
-    let security_sensitive =
-        triage_text_is_security_sensitive(&format!("{}\n{}", leaf.title, leaf.body));
     if !leaf.title.starts_with(&prefix)
         || leaf.title.len() > MAX_AUDIT_LEAF_TITLE_BYTES
         || !valid_single_line(&leaf.title, MAX_AUDIT_LEAF_TITLE_BYTES)
@@ -1055,13 +1030,8 @@ fn validate_leaf_draft(leaf: &AuditLeafDraft, umbrella: u64) -> Result<(), Audit
             .iter()
             .any(|id| !bounded_ascii_identifier(id, true))
         || normalized_strings(&leaf.gap_ids) != leaf.gap_ids
-        || security_sensitive
     {
-        return Err(if security_sensitive {
-            SECURITY_SENSITIVE_AUDIT
-        } else {
-            INVALID_AUDIT_PROPOSAL
-        });
+        return Err(INVALID_AUDIT_PROPOSAL);
     }
     Ok(())
 }
@@ -1621,18 +1591,11 @@ mod tests {
     }
 
     #[test]
-    fn diagnose_reports_security_sensitive_and_maps_to_security_refusal() {
+    fn diagnose_accepts_security_keywords_as_ordinary_audit_text() {
         let snapshot = snapshot();
         let mut ledger = ledger(&snapshot);
-        ledger.entries[0].requirement = "Rotate the stored credential".to_owned();
-        let violation = diagnose_audit_ledger(&snapshot, &ledger).expect_err("violation");
-        assert_eq!(
-            violation,
-            AuditLedgerViolation::SecuritySensitive {
-                id: "R-1".to_owned(),
-            }
-        );
-        assert_eq!(violation.refusal(), SECURITY_SENSITIVE_AUDIT);
+        ledger.entries[0].requirement = "Preserve the secret-scrub guarantees".to_owned();
+        diagnose_audit_ledger(&snapshot, &ledger).expect("security terms are ordinary text");
     }
 
     #[test]
@@ -1651,13 +1614,6 @@ mod tests {
             }
             .constraint(),
             "duplicate-entry-id"
-        );
-        assert_eq!(
-            AuditLedgerViolation::SecuritySensitive {
-                id: "R-1".to_owned()
-            }
-            .constraint(),
-            "security-sensitive"
         );
         assert_eq!(AuditLedgerViolation::Snapshot.constraint(), "snapshot");
         assert_eq!(
@@ -1967,12 +1923,11 @@ mod tests {
             Err(INVALID_AUDIT_LEDGER)
         );
 
-        let mut sensitive = classified;
-        sensitive.entries[0].requirement = "An RCE is present in the parser".to_owned();
-        assert_eq!(
-            validate_audit_ledger(&snapshot, &sensitive),
-            Err(SECURITY_SENSITIVE_AUDIT)
-        );
+        let mut security_terms = classified;
+        security_terms.entries[0].requirement =
+            "Document the credential redaction behavior".to_owned();
+        validate_audit_ledger(&snapshot, &security_terms)
+            .expect("security terms do not invalidate the ledger");
     }
 
     #[test]
@@ -2094,14 +2049,16 @@ mod tests {
             Err(INVALID_AUDIT_PROPOSAL)
         );
 
-        let mut sensitive = valid;
-        sensitive
+        let mut security_terms = valid;
+        security_terms.title = format!(
+            "{}Preserve secret-scrub guarantees",
+            audit_leaf_prefix(snapshot.umbrella.number)
+        );
+        security_terms
             .body
             .push_str("\nRCE details must remain private.\n");
-        assert_eq!(
-            validate_leaf_draft(&sensitive, snapshot.umbrella.number),
-            Err(SECURITY_SENSITIVE_AUDIT)
-        );
+        validate_leaf_draft(&security_terms, snapshot.umbrella.number)
+            .expect("security terms do not invalidate a leaf proposal");
     }
 
     #[test]

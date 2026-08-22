@@ -23,8 +23,8 @@ use larch_adapters::{
     FetchRequest, GitRef, GitRefspec, GitRemote, GixRepository, PathIntent, TemporaryRoot,
     WorktreeRequest,
     github::{
-        DependencyEdge, GitHubOperationError, LiveMutationRequest, OctocrabGitHubService,
-        SubIssueEdge, check_live_mutation_auth,
+        DependencyEdge, DependencySecurityCheck, GitHubOperationError, LiveMutationRequest,
+        OctocrabGitHubService, SubIssueEdge, check_live_mutation_auth,
     },
     runtime::Cancellation,
 };
@@ -39,8 +39,8 @@ use larch_core::{
     has_umbrella_proposal, is_controlling_umbrella_title, mark_audit_graph_in_flight,
     mark_audit_leaf_in_flight, mark_audit_proposal_complete, parse_audit_ledger,
     parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved, render_audit_proposal,
-    render_audit_snapshot, replace_audit_issue_fingerprints, triage_label_is_security,
-    triage_text_is_security_sensitive, umbrella_leaf_opening, validate_audit_proposal_binding,
+    render_audit_snapshot, replace_audit_issue_fingerprints, umbrella_leaf_opening,
+    validate_audit_proposal_binding,
 };
 use regex::Regex;
 use std::{
@@ -831,14 +831,6 @@ fn validate_audit_parent(parent: &GitHubIssue) -> Result<(), String> {
     {
         return Err("umbrella target is not a managed umbrella".to_owned());
     }
-    if triage_text_is_security_sensitive(&format!("{}\n{}", parent.title, parent.body))
-        || parent
-            .labels
-            .iter()
-            .any(|label| triage_label_is_security(&label.name))
-    {
-        return Err("security-sensitive umbrella audits must remain private".to_owned());
-    }
     Ok(())
 }
 
@@ -1436,6 +1428,7 @@ async fn attach_issue(
                 client_issue: umbrella,
                 blocker_id: leaf_id,
                 expected_updated_at: None,
+                security_check: DependencySecurityCheck::SkipKeywordTriage,
             },
         )
         .await
@@ -1571,6 +1564,7 @@ async fn mutate_dependency(
         client_issue: dependent.0,
         blocker_id: prerequisite.1,
         expected_updated_at,
+        security_check: DependencySecurityCheck::SkipKeywordTriage,
     };
     let result = if mutation.add {
         service
@@ -2800,13 +2794,19 @@ mod tests {
         let mut pull_request = managed.clone();
         pull_request.is_pull_request = true;
         assert!(validate_audit_parent(&pull_request).is_err());
-        let sensitive = issue(
+        let mut security_terms = issue(
             10,
             "[UMBRELLA] Vulnerability audit",
-            "<!-- larch:umbrella-proposal v1 -->",
+            "<!-- larch:umbrella-proposal v1 -->\n\nPreserve secret-scrub guarantees.",
             GitHubIssueState::Open,
         );
-        assert!(validate_audit_parent(&sensitive).is_err());
+        security_terms.labels.push(GitHubLabel {
+            id: 1,
+            name: "security".to_owned(),
+            color: "000000".to_owned(),
+            description: "Security-related work".to_owned(),
+        });
+        assert!(validate_audit_parent(&security_terms).is_ok());
 
         assert!(parse_repository("owner/repository").is_ok());
         assert!(parse_repository("owner/repository/extra").is_err());
@@ -3412,9 +3412,7 @@ mod tests {
             response(200, &leaf),
             response(200, &leaf),
             response(200, "[]"),
-            response(200, "[]"),
             response(200, &leaf),
-            response(200, "[]"),
             response(201, "{}"),
             response(200, &dependency_blocker),
             response(200, &updated_leaf),
@@ -3470,7 +3468,7 @@ mod tests {
         .await
         .expect("new leaf graph read-back");
         let requests = server.finish().expect("stub completed");
-        assert_eq!(requests.len(), 42);
+        assert_eq!(requests.len(), 40);
         let dependency_writes = requests
             .iter()
             .filter(|request| request.method == "POST")
@@ -3689,6 +3687,79 @@ mod tests {
             "dependency mutation refused: protected dependency target"
         );
         assert_eq!(server.finish().expect("stub completed").len(), 2);
+    }
+
+    #[tokio::test]
+    async fn leaf_dependency_mutations_skip_security_keyword_triage() {
+        let snapshot = audit_snapshot();
+        let ledger = gap_ledger(&snapshot);
+        let mut proposal = gap_proposal(&snapshot, &ledger);
+        let identity = proposal.leaves[0].identity.clone();
+        proposal.leaves[0].state = AuditLeafState::Resolved;
+        proposal.leaves[0].number = 13;
+        proposal.leaves[0].issue_id = 113;
+        proposal.leaves[0].url = "https://github.com/o/r/issues/13".to_owned();
+        proposal.dependencies = vec![AuditDependency {
+            dependent: AuditDependencyNode::Existing { number: 11 },
+            prerequisite: AuditDependencyNode::New { identity },
+        }];
+        let security_leaf = issue_json(
+            11,
+            111,
+            "[LEAF OF 10] Preserve secret-scrub guarantees",
+            &format!(
+                "{}\n\nDocument credential redaction.\n",
+                umbrella_leaf_opening(10)
+            ),
+            "open",
+        );
+        let updated_security_leaf = issue_json_at(
+            11,
+            111,
+            "[LEAF OF 10] Preserve secret-scrub guarantees",
+            &format!(
+                "{}\n\nDocument credential redaction.\n",
+                umbrella_leaf_opening(10)
+            ),
+            "open",
+            "2026-08-11T00:01:00Z",
+        );
+        let dependency_blocker = refs(&[(13, 113, "open")]);
+        let (service, server) = service(vec![
+            response(200, &security_leaf),
+            response(200, &security_leaf),
+            response(200, "[]"),
+            response(200, &security_leaf),
+            response(201, "{}"),
+            response(200, &dependency_blocker),
+            response(200, &updated_security_leaf),
+        ]);
+        let cancellation = Cancellation::new();
+        let repository = repository();
+        let authorization = operator_authorization();
+
+        apply_dependencies(
+            &service,
+            &cancellation,
+            &repository,
+            &proposal,
+            &authorization,
+        )
+        .await
+        .expect("audit dependency wiring ignores security keywords");
+        let requests = server.finish().expect("stub completed");
+        assert_eq!(requests.len(), 7);
+        assert!(
+            requests
+                .iter()
+                .all(|request| !request.path.contains("/comments"))
+        );
+        assert!(requests.iter().any(|request| {
+            request.method == "POST"
+                && request
+                    .path
+                    .ends_with("/repos/o/r/issues/11/dependencies/blocked_by")
+        }));
     }
 
     #[test]

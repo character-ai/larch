@@ -15,7 +15,9 @@ use std::{
     process::ExitCode,
 };
 
-use larch_adapters::github::{DependencyEdge, DependencyRef, IssueMutationOwner};
+use larch_adapters::github::{
+    DependencyEdge, DependencyRef, DependencySecurityCheck, IssueMutationOwner,
+};
 use larch_core::{
     GitHubCloseReason, GitHubIssue, GitHubIssueBodyMode, GitHubIssueList, GitHubIssueListMode,
     GitHubIssueState, GitHubRepositoryRef, GitHubService as _, IssueCreateRequest,
@@ -1770,6 +1772,7 @@ fn apply(arguments: &[OsString]) -> ExitCode {
                     client_issue: created.number,
                     blocker_id: *blocker_id,
                     expected_updated_at: None,
+                    security_check: DependencySecurityCheck::Enforce,
                 };
                 match service
                     .add_blocked_by(cancellation, &authorization, edge)

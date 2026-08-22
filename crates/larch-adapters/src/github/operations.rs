@@ -595,6 +595,15 @@ pub enum DependencyMutation {
     AlreadyInDesiredState,
 }
 
+/// Whether a freshness-checked dependency mutation applies keyword security triage.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DependencySecurityCheck {
+    /// Preserve the shared fail-closed triage policy for public mutation callers.
+    Enforce,
+    /// Skip keyword triage for `/audit-umbrella`, whose evidence may discuss security work.
+    SkipKeywordTriage,
+}
+
 /// Outcome of an idempotent sub-issue add or remove.
 pub type SubIssueMutation = DependencyMutation;
 
@@ -675,6 +684,8 @@ pub struct DependencyEdge<'a> {
     pub blocker_id: u64,
     /// Exact target timestamp required for a triage-controlled mutation.
     pub expected_updated_at: Option<&'a str>,
+    /// Whether the target and its comments require keyword security triage.
+    pub security_check: DependencySecurityCheck,
 }
 
 /// One native parent-to-sub-issue edge to add or remove.
@@ -2035,9 +2046,11 @@ impl OctocrabGitHubService {
         if target_has_protected_lifecycle_state(&target) {
             return Err(GitHubOperationError::ProtectedDependencyTarget);
         }
-        let comments = self.dependency_comments(cancellation, edge).await?;
-        if target_has_security_content(&target, &comments) {
-            return Err(GitHubOperationError::SecuritySensitiveDependencyTarget);
+        if edge.security_check == DependencySecurityCheck::Enforce {
+            let comments = self.dependency_comments(cancellation, edge).await?;
+            if target_has_security_content(&target, &comments) {
+                return Err(GitHubOperationError::SecuritySensitiveDependencyTarget);
+            }
         }
         Ok(Some(target))
     }
@@ -3929,11 +3942,11 @@ mod tests {
 mod service_tests {
     use super::{
         AuditRunsService, DependencyEdge, DependencyMutation, DependencyMutationReceipt,
-        DependencyRef, GitHubOperationError, LiveMutationRequest, MERGE_QUEUE_READBACK_ATTEMPTS,
-        MergeStateStatus, Mergeable, OctocrabGitHubService, PullRequestEdit, PullRequestMerge,
-        PullRequestMergeMethod, PullRequestMergeResult, PullRequestQueueResult as QR,
-        PullRequestSpec, PullRequestState, ReleasePlanningService, ReviewDecision, SubIssueEdge,
-        SubIssueMutation, SubIssueMutationReceipt,
+        DependencyRef, DependencySecurityCheck, GitHubOperationError, LiveMutationRequest,
+        MERGE_QUEUE_READBACK_ATTEMPTS, MergeStateStatus, Mergeable, OctocrabGitHubService,
+        PullRequestEdit, PullRequestMerge, PullRequestMergeMethod, PullRequestMergeResult,
+        PullRequestQueueResult as QR, PullRequestSpec, PullRequestState, ReleasePlanningService,
+        ReviewDecision, SubIssueEdge, SubIssueMutation, SubIssueMutationReceipt,
     };
     use crate::runtime::Cancellation;
     use larch_test_support::{HttpResponseBuilder, IssueServiceExchange, IssueServiceStub};
@@ -5220,6 +5233,7 @@ mod service_tests {
             client_issue: 5,
             blocker_id: 222,
             expected_updated_at: None,
+            security_check: DependencySecurityCheck::Enforce,
         };
 
         let (present, server) = stub_service(vec![(
@@ -5279,6 +5293,7 @@ mod service_tests {
             client_issue: 5,
             blocker_id: 222,
             expected_updated_at: Some("2026-07-12T10:00:00Z"),
+            security_check: DependencySecurityCheck::Enforce,
         };
         let receipt = service
             .add_blocked_by(&Cancellation::new(), &operator_request(), edge)
@@ -5317,6 +5332,7 @@ mod service_tests {
             client_issue: 5,
             blocker_id: 222,
             expected_updated_at: Some("2026-07-12T10:00:00Z"),
+            security_check: DependencySecurityCheck::Enforce,
         };
         assert_eq!(
             service
@@ -5324,6 +5340,53 @@ mod service_tests {
                 .await
                 .expect_err("security-sensitive comment prevents write"),
             GitHubOperationError::SecuritySensitiveDependencyTarget
+        );
+        server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn dependency_keyword_triage_can_be_skipped_without_skipping_freshness() {
+        let target = |updated_at: &str| {
+            json!({
+                "updated_at": updated_at,
+                "state": "open",
+                "title": "Preserve secret-scrub guarantees",
+                "body": "Document credential redaction.",
+                "labels": [{"name": "security"}],
+            })
+            .to_string()
+        };
+        let (service, server) = stub_service(vec![
+            (200, target("2026-07-12T10:00:00Z")),
+            (200, String::from("[]")),
+            (200, target("2026-07-12T10:00:00Z")),
+            (201, String::from("{}")),
+            (200, json!([{ "number": 12, "id": 222 }]).to_string()),
+            (200, target("2026-07-12T10:00:01Z")),
+        ]);
+        let edge = DependencyEdge {
+            owner: "o",
+            repo: "r",
+            client_issue: 5,
+            blocker_id: 222,
+            expected_updated_at: Some("2026-07-12T10:00:00Z"),
+            security_check: DependencySecurityCheck::SkipKeywordTriage,
+        };
+        let receipt = service
+            .add_blocked_by(&Cancellation::new(), &operator_request(), edge)
+            .await
+            .expect("keyword triage is skipped for the admitted audit path");
+        assert_eq!(receipt.outcome(), DependencyMutation::Applied);
+        assert_eq!(receipt.updated_at(), Some("2026-07-12T10:00:01Z"));
+        server.join().expect("stub completed");
+
+        let (stale, server) = stub_service(vec![(200, target("2026-07-12T10:00:01Z"))]);
+        assert_eq!(
+            stale
+                .add_blocked_by(&Cancellation::new(), &operator_request(), edge)
+                .await
+                .expect_err("skipping keyword triage does not skip freshness"),
+            GitHubOperationError::StaleDependencyTarget
         );
         server.join().expect("stub completed");
     }
@@ -5341,6 +5404,7 @@ mod service_tests {
             client_issue: 5,
             blocker_id: 222,
             expected_updated_at: Some("2026-07-12T10:00:00Z"),
+            security_check: DependencySecurityCheck::Enforce,
         };
 
         let (malformed, server) =
@@ -5401,6 +5465,7 @@ mod service_tests {
             client_issue: 5,
             blocker_id: 222,
             expected_updated_at: Some("2026-07-12T10:00:00Z"),
+            security_check: DependencySecurityCheck::Enforce,
         };
         assert_eq!(
             service
@@ -5426,6 +5491,7 @@ mod service_tests {
             client_issue: 5,
             blocker_id: 222,
             expected_updated_at: Some("2026-07-12T10:00:00Z"),
+            security_check: DependencySecurityCheck::Enforce,
         };
         assert_eq!(
             service
@@ -5461,6 +5527,7 @@ mod service_tests {
             client_issue: 5,
             blocker_id: 222,
             expected_updated_at: None,
+            security_check: DependencySecurityCheck::Enforce,
         };
         let (service, server) = stub_service(vec![(200, String::from("[]"))]);
         let authorized = operator_request();
