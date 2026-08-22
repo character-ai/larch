@@ -634,6 +634,16 @@ refuse the read. Audit corpus synchronization keeps its root private to the
 local workflow; public report output remains limited to the artifact-reference
 rules in the publication reference.
 
+`token compute-pr-line-counts` and `token compute-pr-lines` read the fixed
+pull-request files REST route through this boundary, never through `gh api`.
+The adapter validates a positive pull-request number and repository segments,
+admits at most 100 typed rows per page, applies the general page, item, string,
+body, and nesting bounds, and accepts only a bounded filename plus unsigned
+addition and deletion counts. The command aggregates those values into code
+and `larch-logs/` buckets. Any setup, transport, bound, or response-contract
+failure degrades to the established `LINES_STATUS=unavailable` envelope without
+printing untrusted response data.
+
 Idempotent reads have bounded retry and honor a structured `retry_after` value
 when GitHub supplies one. Mutations are serialized by their caller and are not
 blindly retried. Issue edits and closes, comment edits and deletes, and label

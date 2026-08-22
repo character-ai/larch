@@ -5,10 +5,9 @@
 //! knowledge sections, `summary-final.md`, the committed run-log copy, the
 //! manifest reconcile, and the tracking-issue upsert.
 //!
-//! Two inputs still have Python owners this leaf does not move: PR line
-//! counts and the plan-coverage line. Those remain behind the single
-//! [`crate::python_verb`] seam. Architectural assessment sections are rendered
-//! in-process via [`crate::architectural_assessment_commands`].
+//! PR line counts and architectural assessment sections are rendered in
+//! process. Remaining compatibility delegation stays behind the
+//! [`crate::python_verb`] seam.
 
 use std::{
     collections::BTreeMap,
@@ -627,13 +626,7 @@ fn enrich_by_model(data: &mut Map<String, Value>, run_dir: &Path) {
 }
 
 /// Resolve the four PR line counts, refreshing the ship-state cache on success.
-fn pr_line_counts(
-    implement_tmpdir: &Path,
-    repo: &str,
-    repo_unavailable: bool,
-    pr_number: &str,
-    ship: &Path,
-) -> [String; 4] {
+fn pr_line_counts(repo: &str, repo_unavailable: bool, pr_number: &str, ship: &Path) -> [String; 4] {
     let empty = [const { String::new() }; 4];
     if repo_unavailable || pr_number.is_empty() || pr_number == "0" {
         return empty;
@@ -650,27 +643,18 @@ fn pr_line_counts(
             return cached;
         }
     }
-    let mut arguments: Vec<OsString> = vec![
-        "token".into(),
-        "compute-pr-line-counts".into(),
-        "--pr-number".into(),
-        pr_number.into(),
-    ];
-    if !repo.is_empty() {
-        arguments.push("--repo".into());
-        arguments.push(repo.into());
-    }
-    let Ok((0, stdout)) = delegate(implement_tmpdir, arguments) else {
+    let Ok(pr_number_value) = pr_number.parse::<u64>() else {
         return empty;
     };
-    if kv_value(&stdout, "LINES_STATUS") != "ok" {
+    let Some(result) = crate::token_commands::fetch_pr_line_counts(pr_number_value, repo) else {
         return empty;
-    }
-    let counts = ["CODE_ADDED", "CODE_DELETED", "LOGS_ADDED", "LOGS_DELETED"]
-        .map(|key| kv_value(&stdout, key));
-    if counts.iter().any(String::is_empty) {
-        return empty;
-    }
+    };
+    let counts = [
+        result.code_added.to_string(),
+        result.code_deleted.to_string(),
+        result.logs_added.to_string(),
+        result.logs_deleted.to_string(),
+    ];
     cache_line_counts(ship, pr_number, &counts);
     counts
 }
@@ -871,7 +855,7 @@ fn write_final_report(options: &WriteOptions) -> ReportOutcome {
         String::new()
     };
 
-    let counts = pr_line_counts(tmpdir, &repo, repo_unavailable, &pr_number, &ship);
+    let counts = pr_line_counts(&repo, repo_unavailable, &pr_number, &ship);
     let plan_review_line = {
         let cached = report::read_state_kv(&ship, "PLAN_REVIEW_LINE");
         if cached.is_empty() {

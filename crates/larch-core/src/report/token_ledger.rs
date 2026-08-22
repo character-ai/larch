@@ -14,6 +14,84 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+/// Current vendor-token usage since the most recent ledger mark.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TokenBudgetCheck {
+    /// Combined vendor tokens since the most recent mark.
+    pub total: i128,
+    /// Configured positive budget cap.
+    pub cap: u64,
+    /// Caller-supplied step label preserved for the compatibility wire.
+    pub step: String,
+}
+
+impl TokenBudgetCheck {
+    /// Machine status emitted by `token check-budget`.
+    #[must_use]
+    pub const fn status(&self) -> &'static str {
+        if self.total >= self.cap as i128 {
+            "cap_hit"
+        } else {
+            "under_cap"
+        }
+    }
+}
+
+/// Tally vendor tokens after the most recent mark in ledger order.
+///
+/// The field coercion preserves Python's `int()` behavior for booleans,
+/// integral strings, and numeric values representable as `i128`. Unsupported
+/// or out-of-range values count as zero, and arithmetic saturates instead of
+/// wrapping on hostile ledger input.
+#[must_use]
+pub fn token_budget_check(
+    rows: &[serde_json::Map<String, Value>],
+    cap: u64,
+    step: &str,
+) -> TokenBudgetCheck {
+    let mut total = 0_i128;
+    for row in rows {
+        match row.get("type").and_then(Value::as_str) {
+            Some("mark") => total = 0,
+            Some("vendor") => total = total.saturating_add(python_int(row.get("total"))),
+            _other => {}
+        }
+    }
+    TokenBudgetCheck {
+        total,
+        cap,
+        step: step.to_owned(),
+    }
+}
+
+fn python_int(value: Option<&Value>) -> i128 {
+    match value {
+        Some(Value::Bool(value)) => i128::from(*value),
+        Some(Value::Number(value)) => value
+            .as_i64()
+            .map(i128::from)
+            .or_else(|| value.as_u64().map(i128::from))
+            .or_else(|| value.to_string().parse::<i128>().ok())
+            .or_else(|| value.as_f64().and_then(truncate_float))
+            .unwrap_or(0),
+        Some(Value::String(value)) => value.trim().parse::<i128>().unwrap_or(0),
+        None | Some(Value::Null | Value::Array(_) | Value::Object(_)) => 0,
+    }
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "the finite range check proves the truncated value fits i128"
+)]
+fn truncate_float(value: f64) -> Option<i128> {
+    const I128_MIN_AS_F64: f64 = -170_141_183_460_469_231_731_687_303_715_884_105_728.0;
+    const I128_MAX_EXCLUSIVE_AS_F64: f64 = 170_141_183_460_469_231_731_687_303_715_884_105_728.0;
+    let truncated = value.trunc();
+    (I128_MIN_AS_F64..I128_MAX_EXCLUSIVE_AS_F64)
+        .contains(&truncated)
+        .then_some(truncated as i128)
+}
+
 /// One parsed vendor-usage sidecar payload ready for ledger or NDJSON append.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TokenSidecarPayload {
@@ -412,8 +490,9 @@ fn tokens_to_cost(tokens: u64, rate: f64) -> String {
 mod tests {
     use super::{
         active_ledger_vendor, mark_line, parse_token_record_sidecar, safe_lane_slug,
-        sidecar_ndjson_line, vendor_line,
+        sidecar_ndjson_line, token_budget_check, vendor_line,
     };
+    use serde_json::json;
     use std::collections::BTreeMap;
 
     #[test]
@@ -472,5 +551,34 @@ mod tests {
     fn lane_slug_matches_python() {
         assert_eq!(safe_lane_slug("edge-cases"), "edge-cases");
         assert_eq!(safe_lane_slug("Code Review"), "code-review");
+    }
+
+    #[test]
+    fn budget_tally_resets_at_marks_and_matches_python_integer_coercion() {
+        let rows = [
+            json!({"type": "vendor", "total": 100}),
+            json!({"type": "mark"}),
+            json!({"type": "vendor", "total": " 40 "}),
+            json!({"type": "vendor", "total": true}),
+            json!({"type": "vendor", "total": "not-a-number"}),
+        ]
+        .map(|value| value.as_object().expect("object").clone());
+        let under = token_budget_check(&rows, 50, "Step 2");
+        let hit = token_budget_check(&rows, 40, "Step 2");
+        assert_eq!(under.total, 41);
+        assert_eq!(under.status(), "under_cap");
+        assert_eq!(hit.status(), "cap_hit");
+        assert_eq!(hit.step, "Step 2");
+    }
+
+    #[test]
+    fn budget_tally_preserves_large_json_integers_without_float_rounding() {
+        let value: serde_json::Value =
+            serde_json::from_str(r#"{"type":"vendor","total":100000000000000000001}"#)
+                .expect("large integer row");
+        let rows = [value.as_object().expect("object").clone()];
+        let check = token_budget_check(&rows, u64::MAX, "large");
+        assert_eq!(check.total, 100_000_000_000_000_000_001_i128);
+        assert_eq!(check.status(), "cap_hit");
     }
 }

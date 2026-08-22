@@ -238,20 +238,15 @@ fn retries_keep_independent_budgets_and_auth_precedence() {
 
 #[test]
 fn cap_and_timing_argv_preserve_exact_legacy_keys() {
-    let checked = check_token_budget_cap(
-        "/python",
-        "/plugin/python/cli.py",
-        "10",
-        "codex-review",
-        |argv| {
+    let checked =
+        check_token_budget_cap("/plugin/scripts/larch.sh", "10", "codex-review", |argv| {
             assert_eq!(
                 argv.join(" "),
-                "/python /plugin/python/cli.py token check-budget --cap 10 --step codex-review"
+                "/plugin/scripts/larch.sh token check-budget --cap 10 --step codex-review"
             );
             Ok::<_, ()>(result(0, "STATUS=cap_hit TOTAL=99\n", ""))
-        },
-    )
-    .expect("cap check");
+        })
+        .expect("cap check");
     assert!(checked.hit);
     assert_eq!(checked.payload, "STATUS=cap_hit\n");
 

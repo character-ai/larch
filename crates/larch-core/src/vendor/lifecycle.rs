@@ -481,17 +481,11 @@ pub fn outcome_exit_code(outcome: &VendorLaunchOutcome, refused: i32) -> i32 {
         .map_or(refused, |result| result.exit_code)
 }
 
-/// Build the exact `cli.py token check-budget` argv.
+/// Build the exact verified-entrypoint `token check-budget` argv.
 #[must_use]
-pub fn build_check_budget_argv(
-    python_executable: &str,
-    cli_path: &str,
-    cap: &str,
-    step: &str,
-) -> Vec<String> {
+pub fn build_check_budget_argv(larch_entrypoint: &str, cap: &str, step: &str) -> Vec<String> {
     [
-        python_executable,
-        cli_path,
+        larch_entrypoint,
         "token",
         "check-budget",
         "--cap",
@@ -511,8 +505,7 @@ pub fn build_check_budget_argv(
 /// # Errors
 /// Returns the injected runner error.
 pub fn check_token_budget_cap<E>(
-    python_executable: &str,
-    cli_path: &str,
+    larch_entrypoint: &str,
     cap: &str,
     step: &str,
     runner: impl FnOnce(&[String]) -> Result<VendorProcessResult, E>,
@@ -520,7 +513,7 @@ pub fn check_token_budget_cap<E>(
     if !is_positive_decimal(cap) {
         return Ok(VendorCapCheckResult::default());
     }
-    let argv = build_check_budget_argv(python_executable, cli_path, cap, step);
+    let argv = build_check_budget_argv(larch_entrypoint, cap, step);
     let result = runner(&argv)?;
     let hit = result
         .stdout

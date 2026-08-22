@@ -41,10 +41,11 @@ pub use exec_issue_detail::{
 pub use final_report::{
     DIFFICULTY_RECORD_BASENAME, LINE_COUNT_STATE_KEYS, MANIFEST_STATUS_DONE,
     MANIFEST_STATUS_IN_PROGRESS, MERGE_COMPLETED_OUTCOMES, NORMALIZED_OUTCOMES,
-    architectural_section, count_code_review_findings, derive_oos_fields, derive_review_line,
-    difficulty_line, difficulty_summary_line, dynamic_archetypes_line, final_report_duration,
-    join_prefixed_summary, json_object, latest_token_ledger, manifest_only_recovered_outcome,
-    merged_line_count_state, needs_user_execution_entry, outcome_with_manifest_only_backstop,
+    PullRequestFileLines, PullRequestLineCounts, architectural_section, count_code_review_findings,
+    derive_oos_fields, derive_review_line, difficulty_line, difficulty_summary_line,
+    dynamic_archetypes_line, final_report_duration, join_prefixed_summary, json_object,
+    latest_token_ledger, manifest_only_recovered_outcome, merged_line_count_state,
+    needs_user_execution_entry, outcome_with_manifest_only_backstop, pull_request_line_counts,
     read_state_kv, reconciled_stalled_summary, stalled_summary_manifest_reconciliation_needed,
     state_file_has_rows, summary_heading_is_stalled, token_argv_from_report,
 };
@@ -79,10 +80,11 @@ pub use token_cost::{
     render_cost_line,
 };
 pub use token_ledger::{
-    TokenSidecarPayload, active_ledger_vendor, contains_dotdot, default_ledger_basename,
-    lane_sidecar_body, lane_sidecar_name, mark_line, parse_token_record_sidecar,
-    render_lane_report, resolve_under_roots, safe_lane_slug, sha256_hex, sidecar_ndjson_line,
-    validate_lane_phase, validate_total_tokens, vendor_line,
+    TokenBudgetCheck, TokenSidecarPayload, active_ledger_vendor, contains_dotdot,
+    default_ledger_basename, lane_sidecar_body, lane_sidecar_name, mark_line,
+    parse_token_record_sidecar, render_lane_report, resolve_under_roots, safe_lane_slug,
+    sha256_hex, sidecar_ndjson_line, token_budget_check, validate_lane_phase,
+    validate_total_tokens, vendor_line,
 };
 pub use token_measurements::{
     checks_digest_savings, markdown_cost, ngram_duplication, panel_cost, realized_cost,

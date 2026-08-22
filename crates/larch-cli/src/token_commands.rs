@@ -1,8 +1,9 @@
 //! `token` recording and staging verbs.
 //!
-//! Owns ledger mutation, sidecar staging, report rendering, pricing CLI
-//! compatibility, and research-lane telemetry for the commands migrated by
-//! #8506 and #8507. Analytical measurement verbs are composed in
+//! Owns ledger mutation, budget checks, typed pull-request line totals,
+//! sidecar staging, report rendering, pricing CLI compatibility, and
+//! research-lane telemetry for the commands migrated by #8506, #8507, and
+//! #8797. Analytical measurement verbs are composed in
 //! `token_measurement_commands`; remaining analytical verb cutovers stay with
 //! their own leaves.
 
@@ -21,14 +22,15 @@ use larch_adapters::{
     assert_no_symlink_path_or_ancestors, atomic_write_utf8, read_kv_raw, write_confined_file,
 };
 use larch_core::report::{
-    BLENDED_FALLBACK_WARNING, BlockMarkers, TokenCounts, TokenObservations, TokenVendor,
-    active_ledger_vendor, contains_dotdot, default_ledger_basename, display_rates, full_report,
-    lane_sidecar_body, lane_sidecar_name, mark_line, parse_token_record_sidecar, price_counts,
+    BLENDED_FALLBACK_WARNING, BlockMarkers, PullRequestLineCounts, TokenBudgetCheck, TokenCounts,
+    TokenObservations, TokenVendor, active_ledger_vendor, contains_dotdot, default_ledger_basename,
+    display_rates, full_report, lane_sidecar_body, lane_sidecar_name, mark_line,
+    parse_token_record_sidecar, price_counts, pull_request_line_counts, read_ledger,
     read_report_inputs, render_cost_kv, render_cost_line, render_lane_report,
     render_token_report_buckets, render_token_report_json, render_token_report_markdown,
     render_token_report_summary_line, render_token_report_terse, replace_markdown_block,
-    resolve_under_roots, sha256_hex, sidecar_ndjson_line, transcript_sources, validate_lane_phase,
-    validate_total_tokens, vendor_line,
+    resolve_under_roots, sha256_hex, sidecar_ndjson_line, token_budget_check, transcript_sources,
+    validate_lane_phase, validate_total_tokens, vendor_line,
 };
 use larch_core::{
     ParseOptions, RepositoryRead, bounded_ascii_identifier, parse_single_kv_row, python_str,
@@ -42,6 +44,8 @@ use std::os::unix::fs::OpenOptionsExt as _;
 
 use crate::{
     argparse_compat::write_stdout,
+    github_repository_resolution::remote_slug,
+    github_service::with_github_service,
     ledger_append::{append_locked_line, restore_owner_only_permissions},
 };
 
@@ -72,6 +76,142 @@ pub fn mark_with_env(arguments: &[OsString], overrides: &[(&str, String)]) -> Ex
     } else {
         ExitCode::from(1)
     }
+}
+
+/// Report current vendor-token usage since the latest ledger mark.
+pub fn check_budget(arguments: &[OsString]) -> ExitCode {
+    let values: Vec<String> = arguments
+        .iter()
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect();
+    let mut cap = None;
+    let mut step = "unknown".to_owned();
+    let mut index = 0;
+    while index < values.len() {
+        match values[index].as_str() {
+            "--cap" if index + 1 < values.len() => {
+                cap = values[index + 1].parse::<u64>().ok();
+                index += 2;
+            }
+            "--step" if index + 1 < values.len() => {
+                step.clone_from(&values[index + 1]);
+                index += 2;
+            }
+            flag => {
+                eprintln!("token check-budget: unknown flag: {flag}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+    let Some(cap) = cap.filter(|value| *value > 0) else {
+        eprintln!("token check-budget: --cap must be >= 1");
+        return ExitCode::FAILURE;
+    };
+    let check = budget_check(cap, &step);
+    write_stdout(&format!(
+        "STATUS={} TOTAL={} CAP={} STEP={}\n",
+        check.status(),
+        check.total,
+        check.cap,
+        check.step
+    ))
+}
+
+/// Read the current token ledger and calculate one in-process budget check.
+#[must_use]
+pub fn budget_check(cap: u64, step: &str) -> TokenBudgetCheck {
+    budget_check_with_env(cap, step, &[])
+}
+
+/// Calculate one budget check with the same explicit environment a retired
+/// child invocation would have received.
+#[must_use]
+pub fn budget_check_with_env(
+    cap: u64,
+    step: &str,
+    overrides: &[(&str, String)],
+) -> TokenBudgetCheck {
+    let rows = resolve_token_ledger_path(None, overrides)
+        .ok()
+        .flatten()
+        .map_or_else(Vec::new, |path| read_ledger(&path));
+    token_budget_check(&rows, cap, step)
+}
+
+/// Compute typed PR line counts and emit the legacy line-oriented wire.
+pub fn compute_pr_line_counts(arguments: &[OsString]) -> ExitCode {
+    let values: Vec<String> = arguments
+        .iter()
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect();
+    let options = flag_map(&values);
+    let pr_raw = options.get("--pr-number").map_or("", String::as_str);
+    let Some(pr_number) = positive_ascii_u64(pr_raw) else {
+        return write_stdout("LINES_STATUS=skipped\nREASON=no-pr\n");
+    };
+    let explicit_repo = options.get("--repo").filter(|value| !value.is_empty());
+    if explicit_repo.is_some_and(|repo| !is_compat_repo_slug(repo)) {
+        return write_stdout("LINES_STATUS=skipped\nREASON=invalid-repo\n");
+    }
+    let repository = explicit_repo.cloned().or_else(|| remote_slug("origin"));
+    let Some(repository) = repository else {
+        return write_stdout("LINES_STATUS=unavailable\nREASON=gh-failed\n");
+    };
+    let Some(counts) = fetch_pr_line_counts(pr_number, &repository) else {
+        return write_stdout("LINES_STATUS=unavailable\nREASON=gh-failed\n");
+    };
+    write_stdout(&format!(
+        "LINES_STATUS=ok\nCODE_ADDED={}\nCODE_DELETED={}\nLOGS_ADDED={}\nLOGS_DELETED={}\n",
+        counts.code_added, counts.code_deleted, counts.logs_added, counts.logs_deleted
+    ))
+}
+
+/// Compatibility alias for `compute-pr-line-counts`.
+pub fn compute_pr_lines(arguments: &[OsString]) -> ExitCode {
+    compute_pr_line_counts(arguments)
+}
+
+/// Fetch and aggregate one pull request's typed file rows.
+#[must_use]
+pub fn fetch_pr_line_counts(pr_number: u64, repository: &str) -> Option<PullRequestLineCounts> {
+    let resolved;
+    let repository = if repository.is_empty() {
+        resolved = remote_slug("origin")?;
+        resolved.as_str()
+    } else {
+        repository
+    };
+    let (owner, repo) = split_compat_repo_slug(repository)?;
+    with_github_service(async |service, cancellation| {
+        service
+            .pull_request_files(cancellation, owner, repo, pr_number)
+            .await
+            .map(|files| pull_request_line_counts(&files))
+            .map_err(|error| error.to_string())
+    })
+    .ok()
+}
+
+fn positive_ascii_u64(raw: &str) -> Option<u64> {
+    (!raw.is_empty() && raw.bytes().all(|byte| byte.is_ascii_digit()))
+        .then(|| raw.parse::<u64>().ok())
+        .flatten()
+        .filter(|value| *value > 0)
+}
+
+fn is_compat_repo_slug(raw: &str) -> bool {
+    split_compat_repo_slug(raw).is_some()
+}
+
+fn split_compat_repo_slug(raw: &str) -> Option<(&str, &str)> {
+    let (owner, repo) = raw.split_once('/')?;
+    let valid = |segment: &str| {
+        !segment.is_empty()
+            && segment
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"_.-".contains(&byte))
+    };
+    (valid(owner) && valid(repo) && !repo.contains('/')).then_some((owner, repo))
 }
 
 /// Record one vendor usage row in the resolved token ledger.
@@ -1465,4 +1605,42 @@ fn flag_map(values: &[String]) -> BTreeMap<String, String> {
         }
     }
     options
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fetch_pr_line_counts;
+    use crate::github_service::with_test_github_service;
+    use larch_adapters::github::OctocrabGitHubService;
+    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
+    use serde_json::json;
+    use std::sync::Arc;
+
+    #[test]
+    fn pr_line_fetch_aggregates_the_typed_service_response() {
+        let response = json!([
+            {"filename": "src/lib.rs", "additions": 10, "deletions": 2},
+            {
+                "filename": "larch-logs/implement/run-x/summary.md",
+                "additions": 5,
+                "deletions": 1,
+            },
+        ]);
+        let server =
+            IssueServiceStub::start([
+                IssueServiceExchange::any_json(200, response.to_string()).expect("response")
+            ])
+            .expect("stub service");
+        let base = server.base_url().to_owned();
+        let service = Arc::new(move || OctocrabGitHubService::with_test_base(&base));
+        let counts = with_test_github_service(service, || fetch_pr_line_counts(42, "o/r"))
+            .expect("line counts");
+        assert_eq!(counts.code_added, 10);
+        assert_eq!(counts.code_deleted, 2);
+        assert_eq!(counts.logs_added, 5);
+        assert_eq!(counts.logs_deleted, 1);
+        let requests = server.finish().expect("stub requests");
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].path.starts_with("/repos/o/r/pulls/42/files?"));
+    }
 }

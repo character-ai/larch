@@ -15,7 +15,7 @@ Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. Th
 - `rendering.py` — prompt renderers, Mermaid sanitizer, diagrams upserter, and generated-artifact generators now exposed through `python/cli.py` (`render`, `mermaid`, `diagrams`, and `generate` domains).
 - `voting.py` — voting, tally, parse-rate, ballot parsing, scoreboard, and focus-area enum CLI surfaces.
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
-- `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py` — bounded helpers for remaining Python token analytics and the `render run-summary` compatibility payload. Token measurements are Rust-owned after #8508, and Rust owns `token report`, `token cost`, and `token render-cost-line` after #8507; these helpers do not own `/report-tokens` or `final-report`, whose Python entrypoints retired in #8088 and #8090.
+- `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py` — bounded helpers for remaining Python token analytics and the `render run-summary` compatibility payload. Token measurements are Rust-owned after #8508; Rust owns `token report`, `token cost`, and `token render-cost-line` after #8507 and the token-budget and PR line-count commands after #8797. These helpers do not own those commands, `/report-tokens`, or `final-report`, whose Python entrypoints retired in #8088 and #8090.
 - `larch/git/rebase.py` — compatibility rebase decisions used by surviving Python workflows; the Step 8 ship lifecycle does not call it.
 - Checks selection, fixer evidence, lint-fix dispatch, and the bounded repair
   loop are Rust-owned. Their Python runtime modules retired at the #8627 atomic
@@ -28,7 +28,10 @@ Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. Th
   typed `rust_runtime.py` calls through `scripts/larch.sh`. `tokens.py`,
   `pr_body.py`, `push.py`, and `pr.py` are retained PR/logging components with session-local
   implement staging through the Rust-owned run-log refresh, complete terminal snapshot and archive publication from
-  Step 18, and log-free cleanup from Step 19. After #8789, Rust owns
+  Step 18, and log-free cleanup from Step 19. After #8797, `tokens.py` retains
+  only Python token-analysis and compatibility helpers; the budget and PR
+  line-count commands have no Python registration or fallback. After #8789,
+  Rust owns
   `pr compose-summary`, `tracking post-issue`, and the reusable PR-body redaction
   helper. `pr_body.py` retains the Python PR-body/redaction bridge through the
   remaining `pr` command cutover, plus `render run-summary` and `diagram code-flow`.

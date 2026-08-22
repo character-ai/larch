@@ -17,7 +17,6 @@ use std::{
     ffi::{OsStr, OsString},
     path::{Path, PathBuf},
     process::ExitCode,
-    time::Duration,
 };
 
 use larch_adapters::{
@@ -705,30 +704,21 @@ fn implement_token_budget_hit(args: &ImplementArguments, coder: Coder) -> bool {
     if !is_positive_int(&cap) {
         return false;
     }
-    let Ok(output) = crate::python_verb::run_python_verb(
-        [
-            OsString::from("token"),
-            OsString::from("check-budget"),
-            OsString::from("--cap"),
-            OsString::from(cap.clone()),
-            OsString::from("--step"),
-            OsString::from(args.timing_kind(coder)),
-        ],
-        Duration::from_secs(120),
-    ) else {
+    let Some(cap_value) = crate::claude_commands::parse_uint(&cap) else {
         return false;
     };
-    let stdout = String::from_utf8_lossy(output.stdout()).into_owned();
-    if !stdout
-        .split_ascii_whitespace()
-        .any(|field| field == "STATUS=cap_hit")
-    {
+    let check = crate::token_commands::budget_check(cap_value, &args.timing_kind(coder));
+    if check.status() != "cap_hit" {
         return false;
     }
-    let total = stdout
-        .split_ascii_whitespace()
-        .find_map(|field| field.strip_prefix("TOTAL="))
-        .unwrap_or_default();
+    let stdout = format!(
+        "STATUS={} TOTAL={} CAP={} STEP={}\n",
+        check.status(),
+        check.total,
+        check.cap,
+        check.step
+    );
+    let total = check.total;
     eprintln!(
         "⚠ agent {}: step token budget cap of {cap} tokens exceeded ({total} combined vendor tokens); external implementer fan-out skipped",
         coder.verb()

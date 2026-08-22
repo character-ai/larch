@@ -810,6 +810,13 @@ The C3c slice moves /design decomposition helpers to `python/decompose.py`, dyna
 - Structure and pytest harnesses now target the Python authorities while the launcher remains the compatibility fence for prompt-side calls.
 - Superseded by the Rust migration: `#8583` ported `step2b-drafter`, `step2b-postplan`, `postplan-emit`, and `step3b-entry` to `crates/larch-cli/src/design_step2b_commands.rs`, retiring `design_step2b.py`, `design_postplan.py`, and `design_step3b.py`; consumers now dispatch through `scripts/larch.sh design ...`.
 
+### Token budget and PR line-count cutover
+
+- #8797 moves `token check-budget`, `token compute-pr-line-counts`, and the `token compute-pr-lines` alias to `crates/larch-cli/src/token_commands.rs`. The budget tally reuses the Rust token-ledger owner; PR line counts use the bounded typed GitHub pull-request files operation and the final-report derivation owner.
+- The implement and review launchers plus final-report composition call these Rust owners in process. Skill-facing calls use `scripts/larch.sh token ...`; no production caller selects or falls back to the removed Python implementation.
+- Golden black-box cases preserve stdout, stderr, exit status, and filesystem parity before removal. The command registry records implementation parity, consumer cutover, Python removal, and unique clean-install coverage as complete.
+- `python/larch/report/tokens.py` remains the owner of surviving Python token analysis and rendering helpers. Only the three flipped command implementations, their registrations, and superseded direct tests are removed.
+
 ## E3 terminal Bash sweep
 
 E3 retires terminal shared Bash libraries after a strict runtime-consumer pass. A shell or include file outside the residual inventory must be ported to `python/cli.py`, deleted when it has no live runtime consumer, or recorded as a blocker before merge.

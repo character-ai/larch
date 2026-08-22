@@ -15,7 +15,7 @@ import pytest
 
 from larch.agents import _vendor
 from larch.agents._run_external import _codex_auth_args, _trust_config_arg
-from larch.agents._types import _PY_CLI, VendorSessionHandle
+from larch.agents._types import _PLUGIN_ROOT, VendorSessionHandle
 from larch.agents._vendor import (
     CAP_HIT_PAYLOAD,
     CLAUDE_DESCRIPTOR,
@@ -609,9 +609,8 @@ class TestTokenCapCheck:
         expected = tuple(build_check_budget_argv(cap="10", step="codex-review"))
         assert result.argv == expected
         assert seen == [expected]
-        assert expected[:4] == (sys_executable := __import__("sys").executable, str(_PY_CLI), "token", "check-budget")
-        assert expected[4:] == ("--cap", "10", "--step", "codex-review")
-        assert sys_executable  # pin presence
+        assert expected[:3] == (str(_PLUGIN_ROOT / "scripts" / "larch.sh"), "token", "check-budget")
+        assert expected[3:] == ("--cap", "10", "--step", "codex-review")
 
     def test_under_cap_is_not_a_hit(self) -> None:
         result = check_token_budget_cap(
@@ -895,7 +894,7 @@ class TestRunVendorLaunchOrdering:
             "usage",
             "promote",
         ]
-        assert budget_calls[0][4:] == ("--cap", "10", "--step", "codex-review")
+        assert budget_calls[0][3:] == ("--cap", "10", "--step", "codex-review")
 
     def test_nonzero_exit_still_mirrors_quota_and_promotes(self) -> None:
         events: list[str] = []

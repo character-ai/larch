@@ -1,4 +1,4 @@
-# ruff: noqa: PLC0415, N801, S108, FURB162, PLR1714, PLR2004, E702
+# ruff: noqa: PLC0415, N801, S108, FURB162, PLR1714
 # pylint: disable=all
 """Token scraping, ledgers, reports, and cost helpers."""
 
@@ -15,14 +15,12 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, UTC
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 from collections.abc import Mapping, Sequence
 
 from larch import io as larch_io
 from larch.core import config
-from larch.core import proc
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
-from larch.git import gh
 from larch.report import markdown_block
 
 _TOKEN_FIELDS = ("input", "output", "cache_read", "cache_create", "total")
@@ -83,16 +81,6 @@ class TokenMarkResult:
 
 
 @dataclass(frozen=True)
-class BudgetCheckResult:
-    """Current token usage since the last mark and its configured cap."""
-
-    status: Literal["cap_hit", "under_cap"]
-    total: int
-    cap: int
-    step: str
-
-
-@dataclass(frozen=True)
 class ClaudeSourceResult:
     """Validated Claude transcript source, or its unavailable reason."""
 
@@ -104,31 +92,6 @@ class ClaudeSourceResult:
     @property
     def available(self) -> bool:
         return self.transcript_path is not None
-
-
-@dataclass(frozen=True)
-class PrLineCountResult:
-    """PR file-line totals, split between code and committed run logs."""
-
-    status: Literal["ok", "skipped", "unavailable"]
-    code_added: int | None = None
-    code_deleted: int | None = None
-    logs_added: int | None = None
-    logs_deleted: int | None = None
-    reason: str = ""
-
-    def kv_items(self) -> tuple[tuple[str, str], ...]:
-        items: list[tuple[str, str]] = [("LINES_STATUS", self.status)]
-        if self.status == "ok":
-            items.extend((
-                ("CODE_ADDED", str(self.code_added)),
-                ("CODE_DELETED", str(self.code_deleted)),
-                ("LOGS_ADDED", str(self.logs_added)),
-                ("LOGS_DELETED", str(self.logs_deleted)),
-            ))
-        else:
-            items.append(("REASON", self.reason))
-        return tuple(items)
 
 
 PANEL_PROMPT_SIZE_BASENAME = "panel-prompt-sizes.tsv"
@@ -1420,20 +1383,6 @@ def token_report(
     return rendered
 
 
-def check_step_token_budget(*, cap: int, step: str = "unknown", env: Mapping[str, str] | None = None) -> BudgetCheckResult:
-    total = 0
-    try:
-        ledger = resolve_token_ledger_path(env=env)
-        for row in _parse_ledger(ledger):
-            if row.get("type") == "mark":
-                total = 0
-            elif row.get("type") == "vendor":
-                total += _int_field(data=row, key="total")
-    except (OSError, ValueError):
-        total = 0
-    return BudgetCheckResult(status="cap_hit" if total >= cap else "under_cap", total=total, cap=cap, step=step)
-
-
 def _cached_claude_source_replay(
     *,
     claude_source_file: Path | None,
@@ -1775,45 +1724,6 @@ def validate_research_dir(path: Path) -> None:
         raise ValueError(msg)
 
 
-def compute_pr_line_counts(*, pr_number: int, repo: str | None = None) -> PrLineCountResult:
-    if pr_number < 1:
-        return PrLineCountResult(status="skipped", reason="no-pr")
-    if repo is not None and not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
-        return PrLineCountResult(status="skipped", reason="invalid-repo")
-    endpoint = f"repos/{repo}/pulls/{pr_number}/files" if repo else f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/files"
-    try:
-        result = gh.command(
-            proc, ["api", "--paginate", endpoint, "--jq", ".[] | [.filename, .additions, .deletions] | @tsv"]
-        )
-        if result.returncode != 0:
-            raise subprocess.CalledProcessError(
-                result.returncode, result.argv, output=result.stdout, stderr=result.stderr
-            )
-        out = result.stdout
-    except (OSError, subprocess.CalledProcessError):
-        return PrLineCountResult(status="unavailable", reason="gh-failed")
-    code_added = code_deleted = logs_added = logs_deleted = 0
-    for line in out.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3:
-            continue
-        added = int(parts[1] or 0)
-        deleted = int(parts[2] or 0)
-        if parts[0].startswith("larch-logs/"):
-            logs_added += added
-            logs_deleted += deleted
-        else:
-            code_added += added
-            code_deleted += deleted
-    return PrLineCountResult(
-        status="ok",
-        code_added=code_added,
-        code_deleted=code_deleted,
-        logs_added=logs_added,
-        logs_deleted=logs_deleted,
-    )
-
-
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
@@ -1858,27 +1768,6 @@ def token_mark(
     return TokenMarkResult(ledger_path=path, marked=marked)
 
 
-def token_check_budget_main(argv: list[str] | None = None) -> int:
-    args = list(argv if argv is not None else sys.argv[1:])
-    cap: int | None = None
-    step = "unknown"
-    idx = 0
-    while idx < len(args):
-        if args[idx] == "--cap":
-            cap = int(args[idx + 1]); idx += 2
-        elif args[idx] == "--step":
-            step = args[idx + 1]; idx += 2
-        else:
-            print(f"token check-budget: unknown flag: {args[idx]}", file=sys.stderr)
-            return 1
-    if cap is None or cap < 1:
-        print("token check-budget: --cap must be >= 1", file=sys.stderr)
-        return 1
-    result = check_step_token_budget(cap=cap, step=step)
-    print(f"STATUS={result.status} TOTAL={result.total} CAP={result.cap} STEP={result.step}")
-    return 0
-
-
 def token_cost_from_args(argv: list[str], *, env: Mapping[str, str] | None = None) -> str:
     from larch.report.report_tokens_cost import token_cost_from_args as main
     return main(argv, env=env)
@@ -1897,36 +1786,4 @@ def _cost_breakdown_type() -> type[Any]:
 CostBreakdown = _cost_breakdown_type()
 
 
-def compute_pr_lines_main(argv: list[str] | None = None) -> int:
-    return compute_pr_line_counts_main(argv)
-
-
-def compute_pr_line_counts_main(argv: list[str] | None = None) -> int:
-    opts = _flag_map(list(argv if argv is not None else sys.argv[1:]))
-    pr_raw = opts.get("--pr-number", "")
-    if not _UINT_RE.fullmatch(pr_raw or "") or int(pr_raw) == 0:
-        print("LINES_STATUS=skipped\nREASON=no-pr")
-        return 0
-    result = compute_pr_line_counts(pr_number=int(pr_raw), repo=opts.get("--repo") or None)
-    for key, value in result.kv_items():
-        print(f"{key}={value}")
-    return 0
-
-
-
-
-def _flag_map(args: list[str]) -> dict[str, str]:
-    opts: dict[str, str] = {}
-    idx = 0
-    while idx < len(args):
-        if not args[idx].startswith("--"):
-            idx += 1
-            continue
-        if idx + 1 >= len(args) or args[idx + 1].startswith("--"):
-            opts[args[idx]] = ""
-            idx += 1
-        else:
-            opts[args[idx]] = args[idx + 1]
-            idx += 2
-    return opts
 # pyright: reportUnusedCallResult=false, reportUnusedFunction=false, reportUnknownVariableType=false

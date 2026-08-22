@@ -12,7 +12,6 @@ import contextlib
 import json
 import os
 import shutil
-import sys
 import tempfile
 from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -27,8 +26,8 @@ from larch.agents._run_external import (
     _trust_config_arg,  # pyright: ignore[reportPrivateUsage]  # lower-level allowlist argv helper
 )
 from larch.agents._types import (
+    _PLUGIN_ROOT,  # pyright: ignore[reportPrivateUsage]  # lower-level allowlist root
     VendorSessionHandle,
-    _PY_CLI,  # pyright: ignore[reportPrivateUsage]  # lower-level allowlist cli path
     _is_positive_int,  # pyright: ignore[reportPrivateUsage]  # lower-level allowlist cap gate
 )
 
@@ -505,10 +504,9 @@ class VendorRetryPolicy:
 
 
 def build_check_budget_argv(*, cap: str, step: str) -> list[str]:
-    """Exact ``cli.py token check-budget`` argv for a positive cap."""
+    """Exact verified-entrypoint ``token check-budget`` argv for a positive cap."""
     return [
-        sys.executable,
-        str(_PY_CLI),
+        str(_PLUGIN_ROOT / "scripts" / "larch.sh"),
         "token",
         "check-budget",
         "--cap",
