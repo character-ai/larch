@@ -120,6 +120,7 @@ mod oos_file_commands;
 mod plan_quality_commands;
 mod plan_quality_revise_commands;
 mod plan_review_commands;
+mod pr_commands;
 mod progress_commands;
 mod push_network;
 mod push_rebase;
@@ -344,12 +345,18 @@ enum Domain {
     /// Implementation-plan readers.
     #[command(subcommand)]
     Plan(PlanCommand),
+    /// Pull-request summary composition.
+    #[command(subcommand)]
+    Pr(PrCommand),
     /// Dynamic reviewer archetype scouting and manifest filtering.
     #[command(subcommand)]
     Scout(ScoutCommand),
     /// The tracking issue's lifecycle: reads, comments, titles, and summaries.
     #[command(subcommand, name = "tracking-issue")]
     TrackingIssue(TrackingIssueCommand),
+    /// Implementation tracking-comment composition and publication.
+    #[command(subcommand)]
+    Tracking(TrackingCommand),
     /// Pre-`/design` issue verification: evidence, probes, and the one write.
     #[command(subcommand)]
     Triage(TriageCommand),
@@ -1668,6 +1675,20 @@ enum TrackingIssueCommand {
     /// Keep exactly one marker-keyed summary comment on the issue.
     #[command(name = "upsert-summary", disable_help_flag = true)]
     UpsertSummary(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum TrackingCommand {
+    /// Compose and publish one implementation metadata comment.
+    #[command(name = "post-issue", disable_help_flag = true)]
+    PostIssue(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum PrCommand {
+    /// Compose the implementation goal and changed-scope PR bullets.
+    #[command(name = "compose-summary", disable_help_flag = true)]
+    ComposeSummary(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -3117,6 +3138,9 @@ fn run(
                 design_step1_commands::step1_log(&arguments.arguments)
             }
         }),
+        Domain::Pr(PrCommand::ComposeSummary(arguments)) => {
+            Ok(pr_commands::compose_summary(&arguments.arguments))
+        }
         Domain::TrackingIssue(command) => Ok(match command {
             TrackingIssueCommand::Read(arguments) => {
                 tracking_issue_commands::read(&arguments.arguments)
@@ -3137,6 +3161,9 @@ fn run(
                 tracking_issue_commands::upsert_summary(&arguments.arguments)
             }
         }),
+        Domain::Tracking(TrackingCommand::PostIssue(arguments)) => {
+            Ok(tracking_issue_commands::post_issue(&arguments.arguments))
+        }
         Domain::Triage(command) => Ok(match command {
             TriageCommand::Inspect(arguments) => triage_commands::inspect(&arguments.arguments),
             TriageCommand::Probe(arguments) => triage_commands::probe(&arguments.arguments),

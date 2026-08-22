@@ -8,15 +8,14 @@
 use crate::{
     agent_commands,
     bootstrap_commands::{BootstrapOptions, BootstrapState, ROUTING_KEYS, write_base_session_env},
-    bootstrap_support::{remove_session_file, valid_run_id, write_session_text},
-    dirty_tree_commands,
-    final_report_commands::run_log_reference,
-    github_repository_resolution,
+    bootstrap_support::{first_kv_value, remove_session_file, valid_run_id, write_session_text},
+    dirty_tree_commands, github_repository_resolution,
     launcher_support::{
         confine_regular_read_checked, read_confined_bytes_checked as read_confined_bytes,
     },
     push_network,
     runtime_entrypoint::run_verified_larch,
+    tracking_issue_commands::post_issue_in_process,
 };
 use larch_adapters::{
     CheckoutRequest, FetchRequest, GitCli, GitCliPolicy, GitRef, GitRefspec, GitRemote,
@@ -505,75 +504,14 @@ fn post_tracking_summary(
     options: &BootstrapOptions,
     write_sentinel: bool,
 ) -> Result<bool, ContinuationFailure> {
-    let tmpdir = Path::new(&state.implement_tmpdir);
-    let session = tmpdir.join("session-env.sh");
-    let run_log = run_log_reference(&session, &state.run_id, tmpdir);
-    let agent = fallback_if_empty(read_session_value_from_path(&session, "AGENT"), "claude");
-    let coder = fallback_if_empty(read_session_value_from_path(&session, "CODER"), "claude");
-    let mut lines = vec![
-        format!("Run ID: `{}`", state.run_id),
-        format!("Run log: {run_log}"),
-        format!("Tracking issue: #{}", state.issue_number_resolved),
-        format!("Agent: `{agent}`"),
-        format!("Coder: `{coder}`"),
-    ];
-    if options.force_requested == "true" {
-        lines.push("Force: true".to_owned());
-    }
-    lines.push(format!("Larch version: `{}`", installed_plugin_version()));
-    let content = lines.join("\n") + "\n";
-    let content_path = tmpdir.join("summary-metadata.md");
-    write_session_file(&state.implement_tmpdir, "summary-metadata.md", &content)
-        .map_err(|error| ContinuationFailure::new("internal-error", error))?;
-    let mut arguments = vec![
-        OsString::from("tracking-issue"),
-        OsString::from("upsert-summary"),
-        OsString::from("--issue"),
-        OsString::from(&state.issue_number_resolved),
-        OsString::from("--marker"),
-        OsString::from(format!("<!-- larch:metadata v1 runid={} -->", state.run_id)),
-        OsString::from("--content-file"),
-        content_path.into_os_string(),
-    ];
-    if !state.repo.is_empty() {
-        arguments.extend([OsString::from("--repo"), OsString::from(&state.repo)]);
-    }
-    let Ok(posted) = run_verified_larch(&arguments) else {
-        return Ok(false);
-    };
-    if !posted.status().success() {
-        return Ok(false);
-    }
-    if write_sentinel {
-        write_session_file(
-            &state.implement_tmpdir,
-            "parent-issue.md",
-            &format!(
-                "ISSUE_NUMBER={}\nRUN_ID={}\nADOPTED=true\n",
-                state.issue_number_resolved, state.run_id
-            ),
-        )
-        .map_err(|error| ContinuationFailure::new("internal-error", error))?;
-    }
-    Ok(true)
-}
-
-fn installed_plugin_version() -> String {
-    let Ok(root) = crate::runtime_entrypoint::plugin_root() else {
-        return "unknown".to_owned();
-    };
-    let Ok(contents) = fs::read_to_string(root.join(".claude-plugin/plugin.json")) else {
-        return "unknown".to_owned();
-    };
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&contents) else {
-        return "unknown".to_owned();
-    };
-    value
-        .get("version")
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("unknown")
-        .to_owned()
+    post_issue_in_process(
+        &state.implement_tmpdir,
+        &state.issue_number_resolved,
+        &state.run_id,
+        &options.force_requested,
+        write_sentinel,
+    )
+    .map_err(|error| ContinuationFailure::new("internal-error", error))
 }
 
 fn dirty_or_unknown() -> Result<bool, ContinuationFailure> {
@@ -2207,34 +2145,12 @@ fn valid_difficulty(value: &str) -> bool {
     matches!(value, "TRIVIAL" | "MODERATE" | "HARD")
 }
 
-fn fallback_if_empty(value: String, fallback: &str) -> String {
-    if value.is_empty() {
-        fallback.to_owned()
-    } else {
-        value
-    }
-}
-
 fn read_session_value(tmpdir: &str, file: &str, key: &str) -> String {
     read_session_value_from_path(&Path::new(tmpdir).join(file), key)
 }
 
 fn read_session_value_from_path(path: &Path, key: &str) -> String {
-    KvDocument::parse(
-        &read_regular_lossy(path),
-        ParseOptions {
-            cr_strip: CrStrip::Suffix,
-            ..ParseOptions::legacy()
-        },
-    )
-    .ok()
-    .and_then(|document| {
-        document
-            .rows()
-            .iter()
-            .find_map(|row| (row.key() == key).then(|| row.value().to_owned()))
-    })
-    .unwrap_or_default()
+    first_kv_value(&read_regular_lossy(path), key, CrStrip::Suffix)
 }
 
 fn parse_kv(text: &str) -> BTreeMap<String, String> {

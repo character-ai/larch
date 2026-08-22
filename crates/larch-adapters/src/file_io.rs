@@ -96,13 +96,28 @@ pub fn open_confined_read(path: &ConfinedPath) -> Result<File, FileIoError> {
 /// Returns [`FileIoError`] for unsafe paths, I/O failures, or invalid UTF-8.
 pub fn read_utf8(path: &ConfinedPath) -> Result<String, FileIoError> {
     let raw_path = path.path();
+    let bytes = read_confined_bytes(path)?;
+    String::from_utf8(bytes).map_err(|error| {
+        FileIoError::new(FileIoErrorKind::InvalidUtf8, raw_path, error.to_string())
+    })
+}
+
+/// Read a regular confined file with UTF-8 replacement semantics.
+///
+/// # Errors
+///
+/// Returns [`FileIoError`] for unsafe paths or I/O failures.
+pub fn read_utf8_lossy(path: &ConfinedPath) -> Result<String, FileIoError> {
+    read_confined_bytes(path).map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+}
+
+fn read_confined_bytes(path: &ConfinedPath) -> Result<Vec<u8>, FileIoError> {
+    let raw_path = path.path();
     let mut file = open_confined_read(path)?;
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)
         .map_err(|error| io_error(raw_path, &error))?;
-    String::from_utf8(bytes).map_err(|error| {
-        FileIoError::new(FileIoErrorKind::InvalidUtf8, raw_path, error.to_string())
-    })
+    Ok(bytes)
 }
 
 /// Read an arbitrary legacy CLI input file with UTF-8 replacement semantics.
@@ -500,7 +515,7 @@ mod tests {
     use super::{
         FileIoErrorKind, atomic_write_utf8, atomic_write_utf8_in, atomic_write_with,
         durability_error, guarded_update_env, open_confined_read, read_first_raw_key, read_kv_raw,
-        read_session_kv_text, read_utf8, rename_same_directory,
+        read_session_kv_text, read_utf8, read_utf8_lossy, rename_same_directory,
     };
     use crate::{PathIntent, PathSafetyErrorKind, TemporaryRoot};
     use std::{
@@ -576,6 +591,10 @@ mod tests {
                 .expect_err("invalid UTF-8 should fail")
                 .kind(),
             FileIoErrorKind::InvalidUtf8
+        );
+        assert_eq!(
+            read_utf8_lossy(&invalid_read).expect("lossy read should replace invalid UTF-8"),
+            "�"
         );
         let invalid_write = root
             .confine("invalid.txt", PathIntent::Write)

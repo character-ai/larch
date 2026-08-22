@@ -25,12 +25,6 @@ class _NoopRunner:
         return CommandResult((), 0, "", "", 0.0)
 
 
-def test_py_cli_resolves_to_repo_python_cli() -> None:
-    expected = Path(__file__).resolve().parents[2] / "cli.py"
-    assert expected == pr_body._PY_CLI
-    assert pr_body._PY_CLI.is_file()
-
-
 def test_sanitize_rejects_pipe_in_node() -> None:
     fragment = "flowchart LR\n  A[foo|bar] --> B\n"
     result = pr_body.sanitize_fragment(fragment)
@@ -43,35 +37,6 @@ def test_sanitize_rejects_unclosed_frontmatter() -> None:
     result = pr_body.sanitize_fragment(fragment)
     assert result.status == "rejected"
     assert config.MERMAID_REASON_UNCLOSED_FRONTMATTER in result.reason_tokens
-
-
-def test_compose_summary_rejects_absolute_path_without_cwd() -> None:
-    with pytest.raises(ShipError, match="escapes repo root"):
-        _ = pr_body.compose_summary_bullets(
-            _NoopRunner(),  # type: ignore[arg-type]
-            plan_goals_file="/etc/passwd",
-            cwd=None,
-        )
-
-
-def test_compose_summary_rejects_relative_path_without_cwd() -> None:
-    with pytest.raises(ShipError, match="escapes repo root"):
-        _ = pr_body.compose_summary_bullets(
-            _NoopRunner(),  # type: ignore[arg-type]
-            plan_goals_file="docs/plan.md",
-            cwd=None,
-        )
-
-
-def test_compose_summary_from_plan(tmp_path: Path) -> None:
-    goals = tmp_path / "goals.md"
-    _ = goals.write_text("## Goal\n\nShip Phase 5 modules.\n", encoding="utf-8")
-    summary = pr_body.compose_summary_bullets(
-        _NoopRunner(),  # type: ignore[arg-type]
-        plan_goals_file=str(goals),
-        cwd=str(tmp_path),
-    )
-    assert "Ship Phase 5" in summary
 
 
 def test_sanitize_fenced_mermaid_auto_extracts() -> None:
@@ -582,65 +547,6 @@ def test_render_run_summary_main_cost_unavailable(capsys: pytest.CaptureFixture[
     captured = capsys.readouterr()
     assert "STATUS=ok" in captured.err
     assert "run-2" in captured.out
-
-
-def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=42\nRUN_ID=run-z\n", encoding="utf-8")
-    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nAGENT=claude\nCODER=claude\n", encoding="utf-8")
-    _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
-    calls: list[dict[str, object]] = []
-
-    def fake_upsert(*_args: object, **kwargs: object) -> pr_body.rust_runtime.TrackingIssueCommentOutput:
-        calls.append(kwargs)
-        return pr_body.rust_runtime.TrackingIssueCommentOutput(
-            failed=False,
-            comment_id="1",
-            comment_url="https://github.com/o/r/issues/42#issuecomment-1",
-            updated=False,
-        )
-
-    monkeypatch.setattr(pr_body.rust_runtime, "tracking_issue_upsert_summary", fake_upsert)
-    result = pr_body.post_tracking_issue(tmp_path)
-    assert result.exit_code == 0
-    assert result.posted is True
-    assert "issues/42" in result.comment_url
-    assert (tmp_path / "summary-metadata.md").is_file()
-    assert result.error == ""
-    assert calls[0]["issue"] == "42"
-    assert calls[0]["repo"] == "o/r"
-    assert calls[0]["run_id"] == "run-z"
-
-
-def test_post_tracking_issue_uses_unknown_version_when_plugin_metadata_is_unavailable(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=42\nRUN_ID=run-z\n", encoding="utf-8")
-    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nAGENT=claude\nCODER=claude\n", encoding="utf-8")
-    _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
-
-    def fake_upsert(
-        _runner: object,
-        *,
-        issue: str,
-        marker: str,
-        content_file: str,
-        repo: str,
-        run_id: str,
-    ) -> pr_body.rust_runtime.TrackingIssueCommentOutput:
-        _ = (issue, marker, content_file, repo, run_id)
-        return pr_body.rust_runtime.TrackingIssueCommentOutput(
-            failed=False, comment_id="1", comment_url="", updated=False
-        )
-
-    monkeypatch.setattr(pr_body.rust_runtime, "tracking_issue_upsert_summary", fake_upsert)
-    monkeypatch.setattr(pr_body.config, "PLUGIN_JSON_PATH", "missing-plugin.json")
-    result = pr_body.post_tracking_issue(tmp_path)
-
-    assert result.exit_code == 0
-    assert result.posted is True
-    assert result.error == ""
-    assert "Larch version: `unknown`" in (tmp_path / "summary-metadata.md").read_text(encoding="utf-8")
 
 
 def test_diagram_failure_capture_redacts_prefixed_mermaid_on_stderr_line() -> None:

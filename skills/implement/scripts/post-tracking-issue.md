@@ -1,6 +1,7 @@
 # post-tracking-issue.sh
 
-Publishes the Step 0 `larch:metadata` tracking-issue summary.
+Delegates to the Rust-owned `tracking post-issue` command, which publishes the
+Step 0 `larch:metadata` tracking-issue summary.
 
 Usage:
 
@@ -41,7 +42,8 @@ Output:
 - `COMMENT_URL=<url-or-empty>`
 - `ERROR=<message>` on failure
 
-The script writes `summary-metadata.md` under `IMPLEMENT_TMPDIR` and calls
-`"$PLUGIN_ROOT/scripts/larch.sh" tracking-issue upsert-summary` with the
-`<!-- larch:metadata v1 runid=<R> -->` marker. Failures emit `FAILED=true` and
-`ERROR=<message>` on stderr.
+The Rust command writes `summary-metadata.md` under `IMPLEMENT_TMPDIR` with a
+private atomic write and calls the in-process `tracking-issue upsert-summary`
+owner with the `<!-- larch:metadata v1 runid=<R> -->` marker. Its stdout is
+`POSTED=true|false`, `COMMENT_URL=<url-or-empty>`, and an optional
+`ERROR=<message>`.

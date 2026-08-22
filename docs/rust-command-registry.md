@@ -195,7 +195,7 @@ the next cutover and does not create a second implementation.
 | #7678 | No `python/larch/issue/` command survives here. Vendor launch and lane-rendering surfaces remain in the vendor-orchestration umbrella. |
 | #7679 | No pending issue command remains after the #8452 review-boundary audit. |
 | #7680 | `oos serialize` and `oos normalize-header` stay in the design workflow. `render run-summary` and the retained issue wire, OOS, title, and mutation payload libraries serve that workflow. The `clarify` verbs and `design clarify` are Rust-owned as of #8587, and `design publish` as of #8591. |
-| #7681 | `tracking post-issue` remains an implementation workflow surface. The former `larch.issue.execution_issues` hand-off ended in #8347. |
+| #7681 | `pr compose-summary` and `tracking post-issue` are Rust-owned after #8789. The former `larch.issue.execution_issues` hand-off ended in #8347. |
 | #7683 | `analyze-issues render-chart` is Rust-owned but remains planned by its reporting leaf #8092; report, diagram, and chart rendering do not return to #7682. |
 | #7684 | Rejected-finding and merged-change analysis commands, the remaining `measure-*` token analytics, and their analytical issue helpers remain research-owned. |
 | #7685 | `issue migration-audit` is Rust-owned by #8392. The retained Python governance-gate boundary and its `issue_block` and `open_rows` support remain owned by #7681; #7685 retains no Python issue-module ownership. |

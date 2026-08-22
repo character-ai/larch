@@ -28,7 +28,10 @@ Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. Th
   typed `rust_runtime.py` calls through `scripts/larch.sh`. `tokens.py`,
   `pr_body.py`, `push.py`, `pr.py`, and `merge.py` are retained PR/merge/logging components with session-local
   implement staging through the Rust-owned run-log refresh, complete terminal snapshot and archive publication from
-  Step 18, and log-free cleanup from Step 19. `merge.py`
+  Step 18, and log-free cleanup from Step 19. After #8789, Rust owns
+  `pr compose-summary`, `tracking post-issue`, and the reusable PR-body redaction
+  helper. `pr_body.py` retains the Python PR-body/redaction bridge through the
+  remaining `pr` command cutover, plus `render run-summary` and `diagram code-flow`. `merge.py`
   classifies the eight `python/cli.py merge pr` `MERGE_RESULT` literals; driver-only `already_merged` is
   documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `refresh_logs_checkpoint` skip parity.
   Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own

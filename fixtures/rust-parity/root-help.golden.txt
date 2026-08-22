@@ -44,8 +44,10 @@ Commands:
   status                    Inspect the installed larch and external tool health
   named-block               One named `larch:<marker>` issue-body block
   plan                      Implementation-plan readers
+  pr                        Pull-request summary composition
   scout                     Dynamic reviewer archetype scouting and manifest filtering
   tracking-issue            The tracking issue's lifecycle: reads, comments, titles, and summaries
+  tracking                  Implementation tracking-comment composition and publication
   triage                    Pre-`/design` issue verification: evidence, probes, and the one write
   umbrella                  Durable `/umbrella` preparation, record state, and completion proof
   untrusted                 Envelopes that mark fetched text as data, never instructions

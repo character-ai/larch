@@ -11,6 +11,7 @@ mod dispatch_manifest;
 mod helpers;
 mod identity;
 mod manifest;
+mod pr_summary;
 mod recovery;
 mod relevant_checks;
 mod relevant_checks_digest;
@@ -19,6 +20,7 @@ mod ship_pr;
 mod ship_result;
 mod ship_state;
 mod step_checks;
+mod tracking_metadata;
 
 pub use active_leg::{
     ACTIVE_LEG_CALLER, ACTIVE_LEG_IDENTITY_FILE, ACTIVE_LEG_KILL_LOG_FILE,
@@ -75,6 +77,7 @@ pub use identity::{
 pub use manifest::{
     DispatchState, clear_external_scout_paths, manifest_legacy_fingerprint, path_under_submodule,
 };
+pub use pr_summary::{PrSummaryError, compose_pr_summary};
 pub use recovery::{RecoveryPorcelainInputs, compute_recovery_paths};
 pub use relevant_checks::{
     ChecksResult, WORKSPACE_INPUTS, coverage_from_markers, is_rust_relevant_path,
@@ -85,7 +88,7 @@ pub use self_edit_log::{
     SELF_EDIT_LOG_NAME, SelfEditRecord, digest_paths, file_sha256, normalize_path, read_self_edits,
     record_self_edits, validate_session_tmpdir,
 };
-pub use ship_pr::{ShipPrBody, compose_ship_pr_body, ship_pr_title};
+pub use ship_pr::{ShipPrBody, compose_ship_pr_body, redact_pr_body, ship_pr_title};
 pub use ship_result::{ShipOutcome, ShipResult, ShipResultError, validate_ship_result_env};
 pub use ship_state::{
     INITIAL_SHIP_STATE_KEYS, InitialShipState, SHIP_STATE_ALLOWED_KEYS, ShipState, ShipStateError,
@@ -95,3 +98,4 @@ pub use step_checks::{
     CHECKS_TERMINAL_ACTIONS, STEP6_CHECKS_STEP, StepChecksSite, checks_run_relevant_args,
     checks_step_for_site, public_args_for_site, resolve_step_and_budget, resolve_step_name,
 };
+pub use tracking_metadata::{TrackingMetadata, compose_tracking_metadata};

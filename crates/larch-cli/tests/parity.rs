@@ -1216,6 +1216,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-plan-set-oversize-override", "plan", "set-oversize-override"),
     CleanInstallCase::new("clean-install-plan-validate", "plan", "validate"),
     CleanInstallCase::new("clean-install-plan-validate-commands", "plan", "validate-commands"),
+    CleanInstallCase::new("clean-install-pr-compose-summary", "pr", "compose-summary"),
     CleanInstallCase::new("clean-install-plan-validator-autofix", "plan", "validator-autofix"),
     CleanInstallCase::new(
         "clean-install-plan-review-panel-dispatch",
@@ -1265,6 +1266,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "strip-body",
     ),
     CleanInstallCase::new("clean-install-plan-block-write", "plan-block", "write"),
+    CleanInstallCase::new("clean-install-tracking-post-issue", "tracking", "post-issue"),
     CleanInstallCase::new(
         "clean-install-tracking-issue-append-comment",
         "tracking-issue",
@@ -2641,6 +2643,151 @@ fn representative_python_and_rust_commands_have_reviewed_parity() {
 
     for case in cases {
         let golden = golden_directory.join(format!("{}.golden.json", case.name));
+        assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
+    }
+}
+
+fn pr_summary_parity_cases(python: &Path, reference: &Path, rust: &Path) -> [ParityCase; 3] {
+    [
+        ParityCase {
+            name: "pr-compose-summary-success",
+            python: Program::new(python).args([
+                path_text(reference),
+                "pr-compose-summary",
+                "--plan-goals-file",
+                "plan.md",
+            ]),
+            rust: Program::new(rust).args([
+                "pr",
+                "compose-summary",
+                "--plan-goals-file",
+                "plan.md",
+            ]),
+            seed_files: vec![SeedFile::text(
+                "plan.md",
+                "# Plan\n## Goal\nPreserve every wire.\n",
+            )],
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+        ParityCase {
+            name: "pr-compose-summary-missing-file",
+            python: Program::new(python).args([
+                path_text(reference),
+                "pr-compose-summary",
+                "--plan-goals-file",
+                "missing.md",
+            ]),
+            rust: Program::new(rust).args([
+                "pr",
+                "compose-summary",
+                "--plan-goals-file",
+                "missing.md",
+            ]),
+            seed_files: Vec::new(),
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+        ParityCase {
+            name: "pr-compose-summary-goal-missing",
+            python: Program::new(python).args([
+                path_text(reference),
+                "pr-compose-summary",
+                "--plan-goals-file",
+                "plan.md",
+            ]),
+            rust: Program::new(rust).args([
+                "pr",
+                "compose-summary",
+                "--plan-goals-file",
+                "plan.md",
+            ]),
+            seed_files: vec![SeedFile::text("plan.md", "# Plan\n## Scope\nNo goal.\n")],
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+    ]
+}
+
+fn tracking_post_parity_cases(python: &Path, reference: &Path, rust: &Path) -> [ParityCase; 3] {
+    [
+        ParityCase {
+            name: "tracking-post-issue-invalid-adopted",
+            python: Program::new(python).args([
+                path_text(reference),
+                "tracking-post-issue",
+                "--implement-tmpdir",
+                "{sandbox}",
+                "--adopted",
+                "yes",
+            ]),
+            rust: Program::new(rust).args([
+                "tracking",
+                "post-issue",
+                "--implement-tmpdir",
+                "{sandbox}",
+                "--adopted",
+                "yes",
+            ]),
+            seed_files: Vec::new(),
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+        ParityCase {
+            name: "tracking-post-issue-missing-issue",
+            python: Program::new(python).args([
+                path_text(reference),
+                "tracking-post-issue",
+                "--implement-tmpdir",
+                "{sandbox}",
+            ]),
+            rust: Program::new(rust).args([
+                "tracking",
+                "post-issue",
+                "--implement-tmpdir",
+                "{sandbox}",
+            ]),
+            seed_files: Vec::new(),
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+        ParityCase {
+            name: "tracking-post-issue-invalid-run",
+            python: Program::new(python).args([
+                path_text(reference),
+                "tracking-post-issue",
+                "--implement-tmpdir",
+                "{sandbox}",
+            ]),
+            rust: Program::new(rust).args([
+                "tracking",
+                "post-issue",
+                "--implement-tmpdir",
+                "{sandbox}",
+            ]),
+            seed_files: vec![SeedFile::text(
+                "parent-issue.md",
+                "ISSUE_NUMBER=42\nRUN_ID=bad run\n",
+            )],
+            side_effect_records: Vec::new(),
+            normalization: Vec::new(),
+        },
+    ]
+}
+
+#[test]
+fn pr_summary_and_tracking_post_have_frozen_black_box_parity() {
+    let fixtures = fixture_directory();
+    let python = resolved_python_executable();
+    let reference = fixtures.join("pr_tracking_reference.py");
+    let rust = PathBuf::from(env!("CARGO_BIN_EXE_larch"));
+    let goldens = fixtures.join("goldens");
+
+    let cases = pr_summary_parity_cases(&python, &reference, &rust)
+        .into_iter()
+        .chain(tracking_post_parity_cases(&python, &reference, &rust));
+    for case in cases {
+        let golden = goldens.join(format!("{}.golden.json", case.name));
         assert_case(&case, &golden).unwrap_or_else(|error| panic!("{error}"));
     }
 }
@@ -9217,11 +9364,12 @@ fn bootstrap_invoke_clean_install_runs_native_plan_coder_and_tail() {
 }
 
 /// Exercise the non-forked Step 0 transaction through a local repository and
-/// verified-entrypoint fixture. This covers the adoption, lease, branch, and
-/// post-admission paths without contacting GitHub.
+/// verified-entrypoint fixture. The in-process typed GitHub owner is
+/// deliberately unavailable here, so publication defers and the adoption
+/// sentinel must remain absent.
 #[cfg(unix)]
 #[test]
-fn bootstrap_invoke_tracking_path_adopts_issue_and_activates_lease() {
+fn bootstrap_invoke_tracking_path_defers_unpublished_sentinel_and_activates_lease() {
     let tracking = tracking_bootstrap_fixture();
     let output =
         invoke_tracking_bootstrap(&tracking, "tracking-run-8358", "true", "true", None, false);
@@ -9238,6 +9386,7 @@ fn bootstrap_invoke_tracking_path_adopts_issue_and_activates_lease() {
         "BRANCH_ACTION=created",
         "coder=claude",
         "ROUTE=continue",
+        "DEFERRED=true",
         "BOOTSTRAP_NEXT=step2",
     ] {
         assert!(stdout.contains(expected), "stdout: {stdout}");
@@ -9248,10 +9397,9 @@ fn bootstrap_invoke_tracking_path_adopts_issue_and_activates_lease() {
         branch.starts_with("test-user/issue-8358-title-8358"),
         "{branch}"
     );
-    assert_eq!(
-        fs::read_to_string(tracking.session.join("parent-issue.md"))
-            .expect("read tracking sentinel"),
-        "ISSUE_NUMBER=8358\nRUN_ID=tracking-run-8358\nADOPTED=true\n"
+    assert!(
+        !tracking.session.join("parent-issue.md").exists(),
+        "deferred publication must not create the adoption sentinel"
     );
 }
 
@@ -10259,6 +10407,27 @@ fn find_executable(name: &str) -> PathBuf {
         })
         .find(|candidate| candidate.is_file())
         .unwrap_or_else(|| panic!("required executable not found on PATH: {name}"))
+}
+
+fn resolved_python_executable() -> PathBuf {
+    let launcher = find_executable("python3");
+    let output = Command::new(&launcher)
+        .args(["-c", "import sys; print(sys.executable)"])
+        .output()
+        .unwrap_or_else(|error| {
+            panic!(
+                "resolve Python interpreter through {}: {error}",
+                launcher.display()
+            )
+        });
+    assert!(
+        output.status.success(),
+        "resolve Python interpreter through {}: {}",
+        launcher.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let path = String::from_utf8(output.stdout).expect("Python executable path should be UTF-8");
+    PathBuf::from(path.trim())
 }
 
 fn path_text(path: &Path) -> &str {

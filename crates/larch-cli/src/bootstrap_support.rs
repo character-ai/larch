@@ -1,6 +1,7 @@
 //! Shared, confined filesystem and identifier helpers for bootstrap Step 0.
 
 use larch_adapters::{PathIntent, TemporaryRoot, atomic_write_utf8_in, remove_optional_file};
+use larch_core::{CrStrip, DuplicatePolicy, KvDocument, ParseOptions};
 use std::{fs, path::Path};
 
 pub fn valid_run_id(value: &str) -> bool {
@@ -8,6 +9,26 @@ pub fn valid_run_id(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
+/// Read the first value for one key with the caller's legacy CR framing rule.
+pub fn first_kv_value(text: &str, key: &str, cr_strip: CrStrip) -> String {
+    KvDocument::parse(
+        text,
+        ParseOptions {
+            cr_strip,
+            ..ParseOptions::legacy()
+        },
+    )
+    .map_or_else(
+        |_| String::new(),
+        |document| {
+            document
+                .select(DuplicatePolicy::First)
+                .remove(key)
+                .unwrap_or_default()
+        },
+    )
 }
 
 pub fn write_session_text(tmpdir: &str, name: &str, text: &str, mode: u32) -> Result<(), String> {
