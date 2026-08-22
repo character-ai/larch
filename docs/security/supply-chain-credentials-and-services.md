@@ -566,7 +566,8 @@ directly; `gh api` is never a service fallback, and `gcloud` is never a runtime
 service fallback.
 
 The Rust-owned PR lifecycle commands (#8790) use this boundary for PR lookup,
-creation, authenticated-user assignment, body replacement, and check reads.
+creation, body replacement, and check reads; authenticated-user assignment
+passes through the shared `IssueMutationOwner` and a fresh read-back.
 PR bodies are redacted before mutation, create conflicts reconcile by head
 branch instead of retrying blindly, and body updates accept success only when
 the typed mutation response carries the requested body. Branch creation and

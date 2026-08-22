@@ -19,7 +19,7 @@ use super::{
     LiveMutationDecision, LiveMutationRequest, OctocrabGitHubService, check_live_mutation_auth,
 };
 
-/// Authenticated owner for every Rust title, body, and label issue mutation.
+/// Authenticated owner for every Rust title, body, label, and assignee issue mutation.
 pub struct IssueMutationOwner<'service> {
     service: &'service OctocrabGitHubService,
 }
@@ -89,6 +89,60 @@ impl<'service> IssueMutationOwner<'service> {
             .await
             .map_err(|error| mutation_error_for("read-failed", &error))?;
         snapshot_from_issue(repository, issue, response)
+    }
+
+    /// Replace one issue or pull request's assignees with the authenticated user.
+    ///
+    /// Authorization is checked before the authenticated-user read. The shared
+    /// mutation lock covers the write and a fresh issue read-back proves the
+    /// exact assignee set before success is returned.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable mutation reason when authorization, identity, the user
+    /// read, the write, or the read-back postcondition cannot be proven.
+    pub async fn assign_authenticated_user(
+        &self,
+        cancellation: &dyn ProcessCancellation,
+        authorization: &LiveMutationRequest<'_>,
+        repository: &GitHubRepositoryRef,
+        issue: u64,
+    ) -> Result<(), IssueMutationError> {
+        authorize(authorization)?;
+        if issue == 0 {
+            return Err(IssueMutationError::new("invalid-identity"));
+        }
+        let login = self
+            .service
+            .authenticated_user(cancellation)
+            .await
+            .map_err(|_| IssueMutationError::new("assignee-read-failed"))?
+            .login;
+        let assignees = vec![login];
+        let _mutation = self.service.mutation_lock.lock().await;
+        self.service
+            .edit_issue(
+                &GitHubIssueEdit {
+                    repo: repository.clone(),
+                    number: issue,
+                    title: None,
+                    body: None,
+                    labels: None,
+                    assignees: Some(assignees.clone()),
+                },
+                cancellation,
+            )
+            .await
+            .map_err(|_| IssueMutationError::new("write-failed"))?;
+        let read_back = self
+            .service
+            .issue(repository, issue, cancellation)
+            .await
+            .map_err(|_| IssueMutationError::new("invalid-read-back"))?;
+        if read_back.number != issue || read_back.assignees != assignees {
+            return Err(IssueMutationError::new("invalid-read-back"));
+        }
+        Ok(())
     }
 
     /// Create one issue, redacting every outbound string before the request
@@ -876,6 +930,40 @@ mod tests {
 
         assert_eq!(reason(error), "unauthorized-mutation");
         assert!(server.finish().expect("stub finished").is_empty());
+    }
+
+    #[tokio::test]
+    async fn authenticated_assignment_uses_the_owner_and_fresh_read_back() {
+        let assigned = assigned_issue_json("T", "B", &[]);
+        let (github, server) = service(vec![
+            authenticated_user_response(),
+            IssueServiceExchange::json(
+                "PATCH",
+                "/repos/owner/repo/issues/7",
+                200,
+                assigned.clone(),
+            )
+            .expect("assignment response"),
+            IssueServiceExchange::json("GET", "/repos/owner/repo/issues/7", 200, assigned)
+                .expect("assignment read-back"),
+        ]);
+
+        IssueMutationOwner::new(&github)
+            .assign_authenticated_user(
+                &Cancellation::new(),
+                &operator_authorization(),
+                &repository(),
+                7,
+            )
+            .await
+            .expect("assignment succeeds");
+        let requests = server.finish().expect("stub finished");
+        let body: Value = serde_json::from_slice(&requests[1].body.bytes).expect("assignment JSON");
+
+        assert_eq!(requests[0].path, "/user");
+        assert_eq!(requests[1].method, "PATCH");
+        assert_eq!(requests[2].method, "GET");
+        assert_eq!(body["assignees"], json!(["octocat"]));
     }
 
     #[tokio::test]

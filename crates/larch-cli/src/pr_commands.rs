@@ -9,14 +9,15 @@ use crate::{
     github_service::{ServiceFailure, with_github_service},
     implement_scope_disposition_commands::{PrMutationScopeGate, validate_pr_mutation_scope},
 };
+use larch_adapters::github::{IssueMutationOwner, LiveMutationRequest};
 use larch_adapters::{
     CheckoutRequest, FetchRequest, GitRef, GitRefspec, GitRemote, GixRepository, path_under,
     resolve_allow_missing,
 };
 use larch_core::{
-    CheckBucket, ConfigKey, ConfigScope, GitHubActionsService, GitHubIssueEdit, GitHubService,
-    RepositoryRead, Revision, SafeText, StatusOptions, compose_pr_summary, emit_kv,
-    redact_issue_text_outbound, redact_pr_body,
+    CheckBucket, ConfigKey, ConfigScope, GitHubActionsService, GitHubService, RepositoryRead,
+    Revision, SafeText, StatusOptions, compose_pr_summary, emit_kv, redact_issue_text_outbound,
+    redact_pr_body,
 };
 use regex::Regex;
 use std::{
@@ -573,28 +574,21 @@ fn create_pull_request(
             .await
             .map_err(|error| error.to_string())?;
         if created.created() {
-            let login = service
-                .authenticated_user(cancellation)
-                .await
-                .map_err(|error| error.to_string())?
-                .login;
-            let assigned = service
-                .edit_issue(
-                    &GitHubIssueEdit {
-                        repo: reference.clone(),
-                        number: created.pull_request().number(),
-                        title: None,
-                        body: None,
-                        labels: None,
-                        assignees: Some(vec![login.clone()]),
-                    },
+            IssueMutationOwner::new(service)
+                .assign_authenticated_user(
                     cancellation,
+                    &LiveMutationRequest {
+                        context_file: None,
+                        operator_mode: true,
+                        run_id: "",
+                        trusted_root: None,
+                        test_deny: false,
+                    },
+                    &reference,
+                    created.pull_request().number(),
                 )
                 .await
                 .map_err(|error| error.to_string())?;
-            if assigned.assignees != [login] {
-                return Err("pull request assignee read-back did not match".to_owned());
-            }
         }
         Ok((created.pull_request().clone(), created.created()))
     })

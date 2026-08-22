@@ -1416,7 +1416,7 @@ mod tests {
         assert!(issue_matches_edit(&issue, &edit));
         let different_assignee = GitHubIssueEdit {
             assignees: Some(vec!["other".to_owned()]),
-            ..edit.clone()
+            ..edit
         };
         assert!(!issue_matches_edit(&issue, &different_assignee));
         assert_eq!(issue.number, 2);
