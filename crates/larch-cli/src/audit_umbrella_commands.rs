@@ -39,8 +39,8 @@ use larch_core::{
     has_umbrella_proposal, is_controlling_umbrella_title, mark_audit_graph_in_flight,
     mark_audit_leaf_in_flight, mark_audit_proposal_complete, parse_audit_ledger,
     parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved, render_audit_proposal,
-    render_audit_snapshot, replace_audit_issue_fingerprints, umbrella_leaf_opening,
-    validate_audit_proposal_binding,
+    render_audit_snapshot, replace_audit_issue_fingerprints, reset_audit_leaf_pending,
+    umbrella_leaf_opening, validate_audit_proposal_binding,
 };
 use regex::Regex;
 use std::{
@@ -1236,7 +1236,7 @@ async fn reconcile_pending_leaf(
         context.root,
         proposal,
     )?;
-    let created = create_with_rollback(
+    let created = match create_with_rollback(
         context.service,
         context.cancellation,
         context.authorization,
@@ -1244,14 +1244,38 @@ async fn reconcile_pending_leaf(
             repository: context.repository.clone(),
             title: leaf.title.clone(),
             body: leaf.body.clone(),
-            assign_authenticated_user: false,
+            assign_authenticated_user: true,
             labels: Vec::new(),
         },
     )
     .await
-    .map_err(|_failure| {
-        "audit leaf creation was not proven; the durable proposal remains in-flight".to_owned()
-    })?;
+    {
+        Ok(created) => created,
+        Err((failure, rollback))
+            if failure.error.reason() == "assignee-read-failed"
+                && failure.orphan.is_none()
+                && rollback.is_none() =>
+        {
+            reset_audit_leaf_pending(proposal, &leaf.identity)
+                .map_err(|error| error.reason().to_owned())?;
+            write_proposal(
+                context.proposal_path,
+                context.supplied_root,
+                context.root,
+                proposal,
+            )?;
+            return Err(
+                "audit leaf assignee could not be resolved; the durable proposal was reset to pending"
+                    .to_owned(),
+            );
+        }
+        Err((_failure, _rollback)) => {
+            return Err(
+                "audit leaf creation was not proven; the durable proposal remains in-flight"
+                    .to_owned(),
+            );
+        }
+    };
     persist_leaf_resolution(
         context,
         proposal,
@@ -2447,6 +2471,23 @@ mod tests {
         issue.to_string()
     }
 
+    fn authenticated_user_json() -> String {
+        serde_json::from_str::<Value>(include_str!(
+            "../../larch-adapters/fixtures/github_issue.json"
+        ))
+        .expect("valid issue fixture")["user"]
+            .to_string()
+    }
+
+    fn assigned_issue_json(number: u64, id: u64, title: &str, body: &str) -> String {
+        let mut issue: Value = serde_json::from_str(&issue_json(number, id, title, body, "open"))
+            .expect("valid issue fixture");
+        let assignee = issue["user"].clone();
+        issue["assignee"] = assignee.clone();
+        issue["assignees"] = json!([assignee]);
+        issue.to_string()
+    }
+
     fn repository_json(default_branch: &str) -> String {
         json!({
             "id": 1,
@@ -3311,18 +3352,14 @@ mod tests {
         let snapshot = audit_snapshot();
         let ledger = gap_ledger(&snapshot);
         let mut proposal = gap_proposal(&snapshot, &ledger);
-        let created = issue_json(
-            13,
-            113,
-            &proposal.leaves[0].title,
-            &proposal.leaves[0].body,
-            "open",
-        );
+        let created =
+            assigned_issue_json(13, 113, &proposal.leaves[0].title, &proposal.leaves[0].body);
         let parent = remote_parent();
         let leaf = remote_leaf();
         let control = remote_control();
         let (service, server) = service(vec![
             response(200, "[]"),
+            response(200, authenticated_user_json()),
             response(201, &created),
             response(200, &created),
             response(200, &parent),
@@ -3354,13 +3391,74 @@ mod tests {
         assert_eq!(proposal.leaves[0].state, AuditLeafState::Resolved);
         assert_eq!(proposal.leaves[0].number, 13);
         let requests = server.finish().expect("stub completed");
-        assert_eq!(requests.len(), 7);
-        assert!(requests.iter().any(|request| {
-            request.method == "POST"
-                && request.path.ends_with("/repos/o/r/issues")
-                && String::from_utf8_lossy(&request.body.bytes)
-                    .contains("[LEAF OF 10] Repair the audit gap")
-        }));
+        assert_eq!(requests.len(), 8);
+        assert_eq!(
+            (requests[1].method.as_str(), requests[1].path.as_str()),
+            ("GET", "/user")
+        );
+        assert_eq!(
+            (requests[2].method.as_str(), requests[2].path.as_str()),
+            ("POST", "/repos/o/r/issues")
+        );
+        assert_eq!(
+            (requests[3].method.as_str(), requests[3].path.as_str()),
+            ("GET", "/repos/o/r/issues/13")
+        );
+        let create_body: Value =
+            serde_json::from_slice(&requests[2].body.bytes).expect("create request JSON");
+        assert_eq!(create_body["assignees"], json!(["octocat"]));
+        assert!(
+            create_body["title"]
+                .as_str()
+                .expect("create title")
+                .contains("[LEAF OF 10] Repair the audit gap")
+        );
+    }
+
+    #[tokio::test]
+    async fn remote_leaf_reconciliation_resets_pending_when_assignee_lookup_fails() {
+        let snapshot = audit_snapshot();
+        let ledger = gap_ledger(&snapshot);
+        let mut proposal = gap_proposal(&snapshot, &ledger);
+        let (service, server) = service(vec![
+            response(200, "[]"),
+            response(403, json!({ "message": "forbidden" }).to_string()),
+        ]);
+        let temporary = tempfile::tempdir().expect("temporary root");
+        let root = temporary_root(temporary.path(), "--root").expect("trusted root");
+        let proposal_path = temporary.path().join("proposal.json");
+        let cancellation = Cancellation::new();
+        let repository = repository();
+        let authorization = operator_authorization();
+        let context = ApplyContext {
+            service: &service,
+            cancellation: &cancellation,
+            repository: &repository,
+            snapshot: &snapshot,
+            ledger: &ledger,
+            proposal_path: &proposal_path,
+            supplied_root: temporary.path(),
+            root: &root,
+            authorization: &authorization,
+        };
+
+        let failure = reconcile_audit_leaves(&context, &mut proposal)
+            .await
+            .expect_err("assignee lookup must stop before create");
+        assert!(failure.contains("durable proposal was reset to pending"));
+        assert_eq!(proposal.leaves[0].state, AuditLeafState::Pending);
+        let persisted: AuditProposal = serde_json::from_str(
+            &std::fs::read_to_string(&proposal_path).expect("persisted proposal"),
+        )
+        .expect("valid persisted proposal");
+        assert_eq!(persisted.leaves[0].state, AuditLeafState::Pending);
+        let requests = server.finish().expect("stub completed");
+        assert_eq!(requests.len(), 2);
+        assert_eq!(
+            (requests[1].method.as_str(), requests[1].path.as_str()),
+            ("GET", "/user")
+        );
+        assert!(requests.iter().all(|request| request.method != "POST"));
     }
 
     #[tokio::test]

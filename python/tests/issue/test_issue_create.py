@@ -203,7 +203,7 @@ def test_skill_assigns_every_created_issue_to_the_authenticated_user() -> None:
     assert text.count("--assign-authenticated-user") == 1
     assert "requests authenticated-user assignment on every create" in text
     assert "verifies it on the issue read-back" in text
-    assert "`/umbrella` and `/file-bug` inherit this behavior" in text
+    assert "`/umbrella`, `/file-bug`, and `/learn-from-bugs` inherit this behavior" in text
 
 
 def test_skill_pins_intra_batch_dependency_contract() -> None:

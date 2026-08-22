@@ -338,6 +338,8 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(H.2) invariant amendments must require target, current span, replacement, old-text removal criteria")
     if "File issues only through `/issue` (never `gh issue create` directly)" not in text:
         failures.append("(I.1) must file through /issue, never gh issue create")
+    if "Every created issue inherits `/issue`'s authenticated-user assignment and read-back check" not in text:
+        failures.append("(I.1a) created issues must inherit /issue authenticated-user assignment")
     if "using `/issue`'s supported generic batch format" not in text:
         failures.append("(I.2) filing must use /issue generic batch format")
     if "Try bare `issue` with" not in text:

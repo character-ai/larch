@@ -1123,6 +1123,32 @@ pub fn mark_audit_leaf_in_flight(
     validate_audit_proposal(proposal, None)
 }
 
+/// Return one in-flight leaf to pending after proving its create never began.
+///
+/// # Errors
+///
+/// Returns [`INVALID_AUDIT_PROPOSAL`] unless the named leaf is in flight in a
+/// valid incomplete proposal and has no remote identity.
+pub fn reset_audit_leaf_pending(
+    proposal: &mut AuditProposal,
+    identity: &str,
+) -> Result<(), AuditUmbrellaRefusal> {
+    let leaf = proposal
+        .leaves
+        .iter_mut()
+        .find(|leaf| leaf.identity == identity)
+        .ok_or(INVALID_AUDIT_PROPOSAL)?;
+    if leaf.state != AuditLeafState::InFlight
+        || leaf.number != 0
+        || leaf.issue_id != 0
+        || !leaf.url.is_empty()
+    {
+        return Err(INVALID_AUDIT_PROPOSAL);
+    }
+    leaf.state = AuditLeafState::Pending;
+    validate_audit_proposal(proposal, None)
+}
+
 /// Bind one in-flight leaf to the exact issue creation read-back.
 ///
 /// # Errors
@@ -3018,6 +3044,13 @@ mod tests {
             record_audit_leaf_resolved(&mut proposal, &identity, 0, 143, "url"),
             Err(INVALID_AUDIT_PROPOSAL)
         );
+        reset_audit_leaf_pending(&mut proposal, &identity).expect("known unstarted create");
+        assert_eq!(proposal.leaves[0].state, AuditLeafState::Pending);
+        assert_eq!(
+            reset_audit_leaf_pending(&mut proposal, &identity),
+            Err(INVALID_AUDIT_PROPOSAL)
+        );
+        mark_audit_leaf_in_flight(&mut proposal, &identity).expect("retried in flight");
         record_audit_leaf_resolved(
             &mut proposal,
             &identity,
