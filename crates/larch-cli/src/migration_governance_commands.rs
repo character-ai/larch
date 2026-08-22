@@ -965,8 +965,8 @@ mod tests {
     use super::{governance_gate, plan_receipt_refresh};
     use crate::github_service::with_test_github_service;
     use larch_core::{
-        BlockerSnapshotRow, PLAN_MARKER, PlanReceipt, hash_blocker_rows, hash_owner_rows,
-        hash_plan_block, parse_named_block, parse_owner_block, upsert_receipt,
+        BlockerSnapshotRow, DESIGNED_PREFIX, PLAN_MARKER, PlanReceipt, hash_blocker_rows,
+        hash_owner_rows, hash_plan_block, parse_named_block, parse_owner_block, upsert_receipt,
     };
     use larch_test_support::{GitFixture, GitRepository, IssueServiceExchange, IssueServiceStub};
     use serde_json::json;
@@ -1097,6 +1097,7 @@ mod tests {
         let old_body = upsert_receipt(&seed, &prior).expect("old receipt");
         let next = receipt(&old_body, &base_sha);
         let new_body = upsert_receipt(&old_body, &next).expect("new receipt");
+        let title = format!("{DESIGNED_PREFIX}refresh");
         let preflight = TempDir::new().expect("preflight root");
         fs::write(preflight.path().join("plan-from-issue.txt"), plan).expect("write plan");
         fs::write(
@@ -1108,14 +1109,14 @@ mod tests {
                     "labels": [],
                     "number": "7",
                     "state": "OPEN",
-                    "title": "[DESIGNED] refresh",
+                    "title": title,
                     "updatedAt": "2026-08-20T00:00:00Z"
                 })
             ),
         )
         .expect("write issue snapshot");
-        let old_issue = issue_response(7, "[DESIGNED] refresh", &old_body, "2026-08-20T00:00:00Z");
-        let new_issue = issue_response(7, "[DESIGNED] refresh", &new_body, "2026-08-20T00:00:01Z");
+        let old_issue = issue_response(7, &title, &old_body, "2026-08-20T00:00:00Z");
+        let new_issue = issue_response(7, &title, &new_body, "2026-08-20T00:00:01Z");
         let (github, server) = loopback_service([
             IssueServiceExchange::json(
                 "GET",
