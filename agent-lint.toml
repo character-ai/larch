@@ -324,9 +324,6 @@ exclude = [
   # agent-lint does not follow Python-to-Bash edges.
   "python/cli.py pr create-branch",
   "python/pr.py",
-  # The failed-jobs classifier is invoked by ship-pr and Makefile-only tests;
-  # agent-lint does not follow those Python library edges.
-  "python/ci_monitor.py",
   # Makefile-only harness for metadata summary publication. Runtime reachability
   # is through Step 0 helpers, not direct SKILL.md invocation.
   "python/test_pr_body.py",
@@ -336,17 +333,6 @@ exclude = [
   # harness is covered by the test-degraded-tools-gate target.
   "python/test_agents.py",
   "python/test_agents.py",
-  # python/test_implement_dispatch.py is the offline regression
-  # harness for scripts/larch.sh implement step2-dispatch (the /implement
-  # Step 2 dispatcher). Referenced only from Makefile (test-step2-dispatch,
-  # test-run-step2-dispatch, test-commit-implementation, test-codex-implementer,
-  # test-cursor-implementer targets), docs/linting.md (operator-facing harness
-  # table), and skills/implement/references/step2-dispatch.md. agent-lint's
-  # S030/orphaned-skill-files rule wants test-* under skills/<name>/scripts/ to
-  # be referenced from the parent SKILL.md, but Larch's convention places test
-  # harnesses outside the skill prose surface (they are operator-invocable via
-  # `make`, not via the skill's procedural body).
-  "python/test_implement_dispatch.py",
   # Stop-hook helpers are runtime-registered in hooks/hooks.json, not invoked
   # from skills/implement/SKILL.md.
   "skills/implement/scripts/hook-stop-fail-close.sh",
@@ -522,16 +508,6 @@ exclude = [
   # (test-commit-release notes target) and its sibling docs own the contract.
   "scripts/commit-release notes.md",
   "scripts/test-commit-release notes.md",
-  # (acceptance criterion #6, issue #2852).
-  # scripts/larch.sh ci wait's output-file completion behavior under SIGTERM and
-  # the backward-compat default-mode (stdout) contract. Closes #842 (leaked
-  # polling-loop on signal-kill). Two sub-tests exercise file-mode and
-  # default-mode invariants. Referenced only from Makefile
-  # (sibling contract). python/ci_monitor.py is the sibling contract for
-  # scripts/larch.sh ci wait, referenced from skills/implement/SKILL.md (Steps 10
-  # and 12a) and skills/implement/references/conflict-resolution.md
-  # via prose pointers — agent-lint reachability follows the harness pattern.
-  "python/ci_monitor.py",
   # scripts/test-harness-shards-coverage.sh is the partition-invariant
   # regression harness for the Makefile `test-harnesses-N` shard lists. It is
   # referenced only from Makefile (test-harness-shards-coverage target) and
@@ -836,7 +812,6 @@ exclude = [
   # script factoring work. They are
   # referenced from Makefile targets in test-harnesses-2 and from sibling
   # contracts, not from runtime skill prose.
-  "python/test_implement_dispatch.py",
   "python/test_pr_body.py",
   "skills/implement/scripts/test-refresh-execution-issues.sh",
   "skills/implement/scripts/test-refresh-execution-issues.md",

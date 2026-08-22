@@ -9386,18 +9386,6 @@ python = []
 rust = ["git rebase-skip", "git sync-local-main"]
 
 [[callers]]
-path = "python/larch/implement/ci_monitor.py"
-kind = "python-runtime"
-python = []
-rust = ["ci wait", "git commit", "git rebase-abort", "git stage", "push rebase"]
-
-[[callers]]
-path = "python/larch/implement/dispatch_helpers.py"
-kind = "python-runtime"
-python = []
-rust = ["timing mark"]
-
-[[callers]]
 path = "python/larch/rendering/rendering.py"
 kind = "python-runtime"
 python = []

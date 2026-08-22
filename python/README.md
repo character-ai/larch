@@ -20,7 +20,6 @@ Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. Th
 - Checks selection, fixer evidence, lint-fix dispatch, and the bounded repair
   loop are Rust-owned. Their Python runtime modules retired at the #8627 atomic
   cutover; production callers enter through `scripts/larch.sh checks ...`.
-- `ci_monitor.py` — retained for surviving Python CI callers. The Rust-owned `/implement` Step 8 and `/complete-umbrella` leaf ship paths use the Rust `ci` commands directly.
 - **Phase 5 compatibility layer**: `run_logs.py` is a typed Rust-command facade,
   `run_log_batch.py` is a parity mirror for bounded compatibility callers and the historical reader,
   and `run_log_manifest.py` is read-only. `tracking_issue.py` contains only pure
@@ -62,7 +61,7 @@ Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. Th
 - `larch/report/object_store.py` remains a compatibility/test provider adapter;
   it has no production run-log command caller.
 - `tests/`: unit tests mirror package layout under `python/tests/`.
-- `test_support.py`: shared list-queue `RecordingRunner` used by tests such as `test_run_logs.py` and `test_ci_monitor.py`.
+- `test_support.py`: shared list-queue `RecordingRunner` used by tests such as `test_run_logs.py`.
 
 ## Dependencies
 
@@ -109,10 +108,6 @@ Plan acceptance lists four non-`python/` files (Makefile, CI workflow, docs, har
 ## Phase 4 scope note (branch hygiene)
 
 The Phase 4 plan file list names `python/checks.py`, `python/test_checks.py`, and this README. The same branch may also carry ancillary harness or plugin surface updates (for example `make test-plan-review-loop`, `.claude-plugin/plugin.json`) that are not Phase-4 module ports; review those diffs separately from the `python/` parity work.
-
-## Phase 6 scope note (`CI_FIX_REBASE_PENDING`)
-
-`ci_monitor.py` deliberately omits the retired shell driver's `CI_FIX_REBASE_PENDING` pending-retry fast path: a verified-but-unpushed CI fix that fails `git push` terminates as `Outcome.STALLED` by design (stateless monitor, rebase limited to merge-conflict-only, shell driver retired). See issue #3405.
 
 ## Migration status
 

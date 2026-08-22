@@ -49,7 +49,7 @@ PY
 command grep -Fq 'LARCH_TOKEN_SESSION_ID' crates/larch-cli/src/implement_commit_route_commands.rs || fail 'Rust commit owner does not rehydrate telemetry session keys'
 command grep -Fq 'fn record_step5_handoff_timing' crates/larch-cli/src/implement_review_commands.rs || fail 'Rust Step 5 review owner does not mark review-handoff timing'
 command grep -Fq 'OsString::from("Step 5: review handoff")' crates/larch-cli/src/implement_review_commands.rs || fail 'Rust Step 5 review owner does not mark implement timing'
-command grep -Fq 'LARCH_TIMING_LEDGER' python/larch/implement/dispatch_helpers.py || fail 'dispatch_helpers does not resolve LARCH_TIMING_LEDGER'
+command grep -Fq 'LARCH_TIMING_LEDGER' crates/larch-cli/src/implement_commit_route_commands.rs || fail 'Rust commit owner does not resolve LARCH_TIMING_LEDGER'
 command grep -Fq 'rehydrate_session(&tmpdir)' crates/larch-cli/src/implement_terminal_commands.rs || fail 'step-18 Rust owner does not rehydrate telemetry keys'
 command grep -Fq 'ChildEnvironment::LarchTimingSkill' crates/larch-cli/src/implement_terminal_commands.rs || fail 'step-18 Rust owner does not mark implement timing'
 command grep -Fq 'implement step-18 "$@"' skills/implement/scripts/step-18.sh || fail 'step-18.sh does not delegate to the Rust step-18'

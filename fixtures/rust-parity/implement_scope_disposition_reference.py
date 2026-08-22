@@ -28,7 +28,6 @@ from larch.core import config, logging_util, proc
 from larch.core.proc import CommandResult, Runner
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env
 from larch.errors import NeedsUserInput, ShipError
-from larch.implement.dispatch_helpers import porcelain_status_paths_z
 from larch.state.session_env import run_log_write_argv
 
 CoverageBand = Literal["advisory", "middle", "high"]
@@ -83,6 +82,27 @@ _FOCUSED_TESTS_PASSED_TOKENS: Final[tuple[tuple[str, ...], ...]] = (
     ("focused", "tests", "passed"),
     ("focused", "test", "passed"),
 )
+
+
+def porcelain_status_paths_z(stdout: str) -> tuple[str, ...]:
+    """Return unique paths from a NUL-delimited porcelain status stream."""
+    items = stdout.split("\0")
+    paths: set[str] = set()
+    index = 0
+    while index < len(items):
+        record = items[index]
+        index += 1
+        if not record:
+            continue
+        status, path = record[:2], record[3:]
+        if path:
+            paths.add(path)
+        if ("R" in status or "C" in status) and index < len(items):
+            old_path = items[index]
+            index += 1
+            if old_path:
+                paths.add(old_path)
+    return tuple(sorted(paths))
 
 
 @dataclass(frozen=True)

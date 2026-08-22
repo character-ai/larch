@@ -1,8 +1,8 @@
 """Offline harness parity for implement shell helper scripts.
 
 Adapter/bgjob behavior for Step 5/6/checks lives in the Rust adapter tests and
-python/tests/implement/test_implement_dispatch.py, test_run_step_checks.py, and
-test_step_6_entry.py — this module ports only the Bash harness assertions.
+the surviving focused Python tests. This module ports only the Bash harness
+assertions.
 """
 
 from __future__ import annotations

@@ -172,11 +172,12 @@ milestones are complete. `crates/larch-cli/src/implement_commands.rs` owns the
 four bootstrap-side verbs and `crates/larch-cli/src/implement_preflight_commands.rs`
 owns preflight.
 
-`dispatch_helpers.py` and `dispatch_manifest.py` stay for their surviving
-Python consumers, and Step 2 still calls the in-process
-`normalize_coder_scout()` library function. Preflight reads issues through the
-Octocrab `GitHubService` per the #7672 spike instead of shelling out to
-`gh issue view`, and resolves the repository root through `gix` per #7671.
+`dispatch_helpers.py` and `dispatch_manifest.py` survived the initial cutover
+for Python consumers. Later atomic Step 2 cutovers removed those consumers, and
+issue #8801 removed both libraries after a fresh reachability audit. Preflight
+reads issues through the Octocrab `GitHubService` per the #7672 spike instead
+of shelling out to `gh issue view`, and resolves the repository root through
+`gix` per #7671.
 `issue governance-gate` moved to Rust in #8799, including its additive
 `--preflight-envelope` contract. `scout filter-manifest` moved in #8582.
 
@@ -304,8 +305,9 @@ manifest, and atomically clears only `OOS_PENDING` after success.
 `crates/larch-cli/src/ship_pre_driver_commands.rs` owns `ship pre-driver`,
 `ship pre-fix-rebase`, `ship route-exit`, and
 `ship normalize-assessment-handoff`; `dispatch_ship.py` is removed.
-`dispatch_ship_seed.py` remains for Step 2 seed-context helpers. No Python
-fallback or dual owner remains for the four migrated commands.
+`dispatch_ship_seed.py` remained temporarily for Step 2 seed-context helpers;
+issue #8801 removed it after the Rust Step 2 owner no longer imported it. No
+Python fallback or dual owner remains for the four migrated commands.
 
 ### Complete-umbrella leaf shipping cutover
 
@@ -371,9 +373,20 @@ registration plus `python/larch/implement/ship_seed.py` are removed.
 `larch_core::implement::ship_result` owns the mixed-case Step 8 result-env
 schema, scalar normalization, CI digest pairing, path validation, and private
 atomic write. The Rust lifecycle owner emits the JSON and writes the merge env
-before forwarding that contract. `ship_state.py` and `ship_result.py` remain
-only as compatibility libraries for surviving Python callers; neither is a
-production ship command owner.
+before forwarding that contract. `ship_state.py` and `ship_result.py` remained
+temporarily as compatibility libraries; #8801 removed them after their final
+Python callers retired.
+
+### Dead post-cutover implement cleanup
+
+Issue #8801 removed the dead `ci_monitor.py`, `implement_dispatch.py`,
+`dispatch_helpers.py`, `dispatch_manifest.py`, `dispatch_leg_runner.py`,
+`dispatch_recovery.py`, `dispatch_ship_seed.py`, `ship_state.py`, and
+`ship_result.py` modules with their exclusive tests and configuration entries.
+The command registry already marked the corresponding Rust cutovers and
+removals complete, and a fresh production import scan found no live consumer.
+`scope_disposition.py` remains because PR-body, PR, and finalization paths still
+import it.
 
 ### Stall-recovery mixed-runtime cutover
 

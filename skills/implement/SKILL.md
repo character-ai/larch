@@ -314,7 +314,7 @@ This matrix is authoritative for Step 2. After parsing dispatcher stdout in 2.1 
 
 <!-- step:2 dispatch — coder selection -->
 
-Regression coverage for this dispatcher surface lives in `python/tests/implement/test_implement_dispatch.py`. The launcher and dispatcher contract is `skills/implement/references/step2-dispatch.md`.
+Regression coverage for this dispatcher surface lives in `crates/larch-cli/tests/implement_step2_dispatch_parity.rs` and the inline Rust command tests. The launcher and dispatcher contract is `skills/implement/references/step2-dispatch.md`.
 
 **2.1 — First dispatch invocation**:
 
@@ -328,7 +328,7 @@ Regression coverage for this dispatcher surface lives in `python/tests/implement
 "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh bgjob wait --step implement-step2-dispatch --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
 ```
 
-The child `scripts/larch.sh implement run-dispatch` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"` and no workflow flag; it does **not** assemble paths from `PLAN_FILE` keys in `session-env.sh`. It reads `CURSOR_BINARY_FOUND` / `CODEX_BINARY_FOUND` from `$IMPLEMENT_TMPDIR/session-env.sh` or fresh executable checks, uses `$IMPLEMENT_TMPDIR/feature-description.txt`, and if the Step 0 selected binary is missing, relays `STATUS=claude_fallback` with edit authority instead of hard-failing. Before relaying stdout, it resolves repo root and captures `step2-prelaunch-porcelain.nul` plus prelaunch digests for Step 2.4. Its full envelope is atomically published into the bgjob result env. Parse `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`, additive plan-coverage KVs, and optional recovery triplet `RECOVERY_FROM`, `RECOVERY_PRIOR_TOOL`, `RECOVERY_PATHS_FILE` only from that result env. Coverage applies only to firm `### NEW:` / `### UPDATED:` / `### REWRITTEN:` headings from `$IMPLEMENT_TMPDIR/plan.txt`, not `### MAY_UPDATE:`. Malformed coverage on a complete path fails closed in Python. Then run 2.1.5 before branching on `STATUS`. Derive:
+The child `scripts/larch.sh implement run-dispatch` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"` and no workflow flag; it does **not** assemble paths from `PLAN_FILE` keys in `session-env.sh`. It reads `CURSOR_BINARY_FOUND` / `CODEX_BINARY_FOUND` from `$IMPLEMENT_TMPDIR/session-env.sh` or fresh executable checks, uses `$IMPLEMENT_TMPDIR/feature-description.txt`, and if the Step 0 selected binary is missing, relays `STATUS=claude_fallback` with edit authority instead of hard-failing. Before relaying stdout, it resolves repo root and captures `step2-prelaunch-porcelain.nul` plus prelaunch digests for Step 2.4. Its full envelope is atomically published into the bgjob result env. Parse `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`, additive plan-coverage KVs, and optional recovery triplet `RECOVERY_FROM`, `RECOVERY_PRIOR_TOOL`, `RECOVERY_PATHS_FILE` only from that result env. Coverage applies only to firm `### NEW:` / `### UPDATED:` / `### REWRITTEN:` headings from `$IMPLEMENT_TMPDIR/plan.txt`, not `### MAY_UPDATE:`. Malformed coverage on a complete path fails closed in the Rust dispatcher. Then run 2.1.5 before branching on `STATUS`. Derive:
 
 Set `TOOL_LABEL` to `Codex` for `TOOL=codex`, `Cursor` for `TOOL=cursor`, and `external implementer` for any other tool token.
 
@@ -337,7 +337,7 @@ Set `TOOL_LABEL` to `Codex` for `TOOL=codex`, `Cursor` for `TOOL=cursor`, and `e
 After parsing 2.1's KV envelope and BEFORE the 2.2 `STATUS` switch, validate:
 
 1. `STATUS` is exactly one of `complete`, `needs_qa`, `bailed`, `claude_fallback`.
-2. `ORCHESTRATOR_EDIT_AUTHORITY` is exactly one of `allowed` or `forbidden`, and appears **exactly once** on stdout. Zero or duplicate `ORCHESTRATOR_EDIT_AUTHORITY=` lines are illegal and trigger `orchestrator-envelope-invalid` (mirrors the `grep -c '^ORCHESTRATOR_EDIT_AUTHORITY=' == 1` invariant pinned by `python/tests/implement/test_implement_dispatch.py` Test 11a/11b).
+2. `ORCHESTRATOR_EDIT_AUTHORITY` is exactly one of `allowed` or `forbidden`, and appears **exactly once** on stdout. Zero or duplicate `ORCHESTRATOR_EDIT_AUTHORITY=` lines are illegal and trigger `orchestrator-envelope-invalid`. The Rust integration suite pins the dispatcher-side value.
 3. The pair is **legal**: `ORCHESTRATOR_EDIT_AUTHORITY=allowed` iff `STATUS=claude_fallback`. Any other combination is illegal.
 4. Recovery triplet integrity: if any of `RECOVERY_FROM`, `RECOVERY_PRIOR_TOOL`, or `RECOVERY_PATHS_FILE` is present, all three must be present; `RECOVERY_FROM` must equal `manifest-schema-invalid`; `RECOVERY_PRIOR_TOOL` must be `codex` or `cursor`; `RECOVERY_PATHS_FILE` must point to a readable non-empty file; and `STATUS` must be `claude_fallback`.
 5. Status-keyed manifest readability (mirrors the dispatcher contract in `skills/implement/references/step2-dispatch.md` stdout grammar):

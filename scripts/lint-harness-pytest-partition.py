@@ -14,7 +14,7 @@ and the #4459 follow-up batch that closed coverage gaps / overlaps in seven
 more already-sliced files (test_execution_issues/
 test_finalize/
 test_plan_review), plus the #4459 Bucket-1 full-file duplicate group
-(test_run_logs/test_implement_dispatch/test_redact/test_release/test_decompose),
+(test_run_logs/test_redact/test_release/test_decompose),
 against regression. It does **not** yet enforce the
 invariant on the heavier `-k`-sliced files whose re-partition moves many
 tests between shards and needs wall-time re-measurement
@@ -55,7 +55,6 @@ ENFORCED = (
     # #4459 Bucket 1: files that previously paid full-file pytest runtime
     # under several target names, now sliced into strict per-target partitions.
     "python/tests/report/test_run_logs.py",
-    "python/tests/implement/test_implement_dispatch.py",
     "python/tests/core/test_redact.py",
     "python/tests/release/test_release.py",
     "python/tests/design/test_decompose.py",
