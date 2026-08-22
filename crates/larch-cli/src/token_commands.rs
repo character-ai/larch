@@ -80,10 +80,7 @@ pub fn mark_with_env(arguments: &[OsString], overrides: &[(&str, String)]) -> Ex
 
 /// Report current vendor-token usage since the latest ledger mark.
 pub fn check_budget(arguments: &[OsString]) -> ExitCode {
-    let values: Vec<String> = arguments
-        .iter()
-        .map(|value| value.to_string_lossy().into_owned())
-        .collect();
+    let values = lossy_arguments(arguments);
     let mut cap = None;
     let mut step = "unknown".to_owned();
     let mut index = 0;
@@ -140,10 +137,7 @@ pub fn budget_check_with_env(
 
 /// Compute typed PR line counts and emit the legacy line-oriented wire.
 pub fn compute_pr_line_counts(arguments: &[OsString]) -> ExitCode {
-    let values: Vec<String> = arguments
-        .iter()
-        .map(|value| value.to_string_lossy().into_owned())
-        .collect();
+    let values = lossy_arguments(arguments);
     let options = flag_map(&values);
     let pr_raw = options.get("--pr-number").map_or("", String::as_str);
     let Some(pr_number) = positive_ascii_u64(pr_raw) else {
@@ -1605,6 +1599,13 @@ fn flag_map(values: &[String]) -> BTreeMap<String, String> {
         }
     }
     options
+}
+
+fn lossy_arguments(arguments: &[OsString]) -> Vec<String> {
+    arguments
+        .iter()
+        .map(|value| value.to_string_lossy().into_owned())
+        .collect()
 }
 
 #[cfg(test)]
