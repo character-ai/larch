@@ -127,14 +127,46 @@ static DONE_PREFIX: LazyLock<Regex> =
 static NEWLINES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{2,}").expect("newline regex"));
 static BARE_REGRESSION: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\bregression\b").expect("regression regex compiles"));
+static REGRESSION_PROSE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(?:migrated without|python\s+\d+\.\d+\s+changed)\b")
+        .expect("regression prose regex compiles")
+});
+static NEGATED_REGRESSION: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\bnot\s+(?:a\s+)?(?:#\d+\s+)?(?:[a-z][a-z0-9/-]*\s+){0,3}regression\b")
+        .expect("negated regression regex compiles")
+});
+static SPEC_GAP_PROSE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?ix)\b(?:
+            design\s+gap,\s+not\s+(?:a\s+)?(?:\x23[0-9]+\s+)?(?:[a-z][a-z0-9/-]*\s+){0,3}regression
+            | not\s+a\s+larch\s+defect
+            | not\s+a\s+bug\s+inside
+            | contract\s+underspecification
+            | (?:skill\s+)?contract\s+gaps?
+            | guidance\s+gaps?
+            | observability\s+gaps?
+            | (?:child\s+)?prompt\s+gaps?
+            | gap\s+in\s+the\s+leaf\s+thin-orchestrator\s+contract
+            | under[- ]specified
+            | intentional(?:ly)?\s+fail[- ]closed
+            | missing\s+rollback\s+path
+            | no\s+bounded\s+retry
+            | no\s+fail[- ]closed\s+instruction
+            | the\s+design\s+assumes
+        )\b",
+    )
+    .expect("spec-gap prose regex compiles")
+});
 static ORIGIN_REFS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     [
         r"(?i)introduced\s+by\s+PR\s*#(\d+)",
         r"(?i)introduced\s+by\s+#(\d+)",
+        r"(?i)introduced\s+together\s+by[^\n#]*#(\d+)",
         r"(?i)introduced\s+in\s+#(\d+)",
         r"(?i)incomplete\s+fix\s+of\s+#(\d+)",
         r"(?i)persists\s+after\s+#(\d+)",
         r"(?i)residual\s+of\s+#(\d+)",
+        r"(?i)\bpredates[^\n#]*#(\d+)",
     ]
     .into_iter()
     .map(|pattern| Regex::new(pattern).expect("origin reference regex compiles"))
@@ -336,6 +368,7 @@ pub fn prepare(arguments: &[OsString]) -> ExitCode {
     println!("INVARIANTS_INDEXED={}", coverage.invariants.len());
     println!("PYTHON_LINTS_INDEXED={}", coverage.python_lints.len());
     println!("SCRIPT_LINTS_INDEXED={}", coverage.script_lints.len());
+    println!("RUST_LINTS_INDEXED={}", coverage.rust_lints.len());
     ExitCode::SUCCESS
 }
 
@@ -1634,9 +1667,16 @@ fn classify_origin(title: &str, prefix: &str, classification: Option<&BugClass>)
             unknown_reason: None,
         };
     }
+    if sources.iter().any(|source| SPEC_GAP_PROSE.is_match(source)) {
+        return Origin {
+            kind: "spec-gap",
+            reference: None,
+            unknown_reason: None,
+        };
+    }
     if sources
         .iter()
-        .any(|source| BARE_REGRESSION.is_match(source))
+        .any(|source| REGRESSION_PROSE.is_match(source))
     {
         return Origin {
             kind: "regression",
@@ -1644,15 +1684,21 @@ fn classify_origin(title: &str, prefix: &str, classification: Option<&BugClass>)
             unknown_reason: None,
         };
     }
-    let has = |phrases: &[&str]| {
-        sources.iter().any(|source| {
-            let lower = source.to_lowercase();
-            phrases.iter().any(|phrase| lower.contains(phrase))
-        })
-    };
-    if has(&["never designed", "was never told", "no handling for"])
-        || classification
-            .is_some_and(|class| matches!(class.kind.as_str(), "CONFIGURATION_GAP" | "DESIGN_GAP"))
+    if sources
+        .iter()
+        .any(|source| has_unnegated_regression(source))
+    {
+        return Origin {
+            kind: "regression",
+            reference: None,
+            unknown_reason: None,
+        };
+    }
+    if has_origin_phrase(
+        &sources,
+        &["never designed", "was never told", "no handling for"],
+    ) || classification
+        .is_some_and(|class| matches!(class.kind.as_str(), "CONFIGURATION_GAP" | "DESIGN_GAP"))
     {
         return Origin {
             kind: "spec-gap",
@@ -1660,8 +1706,14 @@ fn classify_origin(title: &str, prefix: &str, classification: Option<&BugClass>)
             unknown_reason: None,
         };
     }
-    if has(&["first time this path ran", "newly added"])
-        || classification.is_some_and(|class| class.kind == "IMPLEMENTATION_BUG")
+    if has_origin_phrase(
+        &sources,
+        &[
+            "first time this path ran",
+            "first live run of",
+            "newly added",
+        ],
+    ) || classification.is_some_and(|class| class.kind == "IMPLEMENTATION_BUG")
     {
         return Origin {
             kind: "new-code",
@@ -1681,6 +1733,21 @@ fn classify_origin(title: &str, prefix: &str, classification: Option<&BugClass>)
             "no-classification-signal"
         }),
     }
+}
+
+fn has_origin_phrase(sources: &[String], phrases: &[&str]) -> bool {
+    sources.iter().any(|source| {
+        let lower = source.to_lowercase();
+        phrases.iter().any(|phrase| lower.contains(phrase))
+    })
+}
+
+fn has_unnegated_regression(source: &str) -> bool {
+    BARE_REGRESSION.find_iter(source).any(|candidate| {
+        !NEGATED_REGRESSION
+            .find_iter(source)
+            .any(|negated| negated.start() <= candidate.start() && candidate.end() <= negated.end())
+    })
 }
 
 fn first_origin_reference(sources: &[String]) -> Option<u64> {
@@ -1826,6 +1893,7 @@ struct CoverageIndex {
     invariants: Vec<(String, String)>,
     python_lints: Vec<String>,
     script_lints: Vec<String>,
+    rust_lints: Vec<(String, String)>,
     #[serde(skip)]
     guidelines_status: &'static str,
 }
@@ -1846,8 +1914,9 @@ fn coverage_index(root: &Path) -> CoverageIndex {
             &root.join("ARCHITECTURAL_INVARIANTS.md"),
             &INVARIANT_HEADING_RE,
         ),
-        python_lints: scan_lints(&root.join("python/larch/lint"), "lint_", ".py"),
-        script_lints: scan_lints(&root.join("scripts"), "lint-", ""),
+        python_lints: scan_lints(&root.join("python/larch/lint"), "lint_", &[Some("py")]),
+        script_lints: scan_script_lints(&root.join("scripts")),
+        rust_lints: scan_rust_lints(&root.join("crates/larch-lint/src/rules")),
         guidelines_status,
     }
 }
@@ -1910,23 +1979,88 @@ fn scan_marked(path: &Path, pattern: &Regex) -> Vec<(String, String)> {
         .collect()
 }
 
-fn scan_lints(directory: &Path, prefix: &str, suffix: &str) -> Vec<String> {
+fn scan_lints(directory: &Path, prefix: &str, extensions: &[Option<&str>]) -> Vec<String> {
     let Ok(entries) = fs::read_dir(directory) else {
         return Vec::new();
     };
     let mut names = entries
         .filter_map(Result::ok)
         .filter_map(|entry| {
+            if !entry.file_type().ok()?.is_file() {
+                return None;
+            }
             let path = entry.path();
             let name = path.file_name()?.to_str()?;
-            if !name.starts_with(prefix) || (!suffix.is_empty() && !name.ends_with(suffix)) {
+            if !name.starts_with(prefix)
+                || !extensions.contains(&path.extension().and_then(|value| value.to_str()))
+            {
                 return None;
             }
             path.file_stem()?.to_str().map(str::to_owned)
         })
         .collect::<Vec<_>>();
     names.sort();
+    names.dedup();
     names
+}
+
+fn scan_script_lints(directory: &Path) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return Vec::new();
+    };
+    let mut names = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            if !entry.file_type().ok()?.is_file() {
+                return None;
+            }
+            let path = entry.path();
+            let name = path.file_name()?.to_str()?;
+            if !name.starts_with("lint-") || !fs::read(&path).ok()?.starts_with(b"#!") {
+                return None;
+            }
+            path.file_stem()?.to_str().map(str::to_owned)
+        })
+        .collect::<Vec<_>>();
+    names.sort();
+    names.dedup();
+    names
+}
+
+fn scan_rust_lints(directory: &Path) -> Vec<(String, String)> {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return Vec::new();
+    };
+    let mut lints = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            if !entry.file_type().ok()?.is_file() {
+                return None;
+            }
+            let path = entry.path();
+            if path.extension().and_then(|value| value.to_str()) != Some("rs") {
+                return None;
+            }
+            let name = path.file_stem()?.to_str()?.to_owned();
+            let text = String::from_utf8_lossy(&fs::read(path).ok()?).into_owned();
+            if !text
+                .lines()
+                .any(|line| line.trim_start().starts_with("crate::register_rule!("))
+            {
+                return None;
+            }
+            let description = text
+                .lines()
+                .find_map(|line| line.strip_prefix("//!"))
+                .map(str::trim)
+                .unwrap_or_default()
+                .to_owned();
+            Some((name, description))
+        })
+        .collect::<Vec<_>>();
+    lints.sort();
+    lints.dedup_by(|left, right| left.0 == right.0);
+    lints
 }
 
 fn render_origin_headline(digests: &[Digest]) -> String {
