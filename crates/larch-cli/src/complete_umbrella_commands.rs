@@ -19,8 +19,8 @@ use larch_adapters::{
     bgjob_recovery::{BgjobRecoveryOutcome, read_completed_result, recover_abandoned_entry},
     create_directories,
     github::{
-        DependencyEdge, IssueMutationOwner, LiveMutationRequest, SubIssueEdge,
-        check_live_mutation_auth,
+        DependencyEdge, DependencySecurityCheck, IssueMutationOwner, LiveMutationRequest,
+        SubIssueEdge, check_live_mutation_auth,
     },
     lock_session_activity,
     runtime::{Cancellation, LarchRuntime},
@@ -3425,6 +3425,7 @@ async fn apply_attachment(
                 client_issue: arguments.umbrella,
                 blocker_id: leaf.id,
                 expected_updated_at: None,
+                security_check: DependencySecurityCheck::Enforce,
             },
         )
         .await

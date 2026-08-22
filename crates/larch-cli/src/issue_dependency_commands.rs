@@ -28,7 +28,10 @@ use crate::{
 };
 use chrono::DateTime;
 use larch_adapters::{
-    github::{DependencyEdge, GitHubOperationError, OctocrabGitHubService, SubIssueEdge},
+    github::{
+        DependencyEdge, DependencySecurityCheck, GitHubOperationError, OctocrabGitHubService,
+        SubIssueEdge,
+    },
     runtime::Cancellation,
 };
 use larch_core::{GitHubRepositoryRef, GitHubService, emit_kv, positive_integer};
@@ -460,6 +463,7 @@ fn apply_blocked_by_edge(edge: &LiveEdge) -> Result<(), EdgeFailure> {
             client_issue: edge.subject,
             blocker_id,
             expected_updated_at: None,
+            security_check: DependencySecurityCheck::Enforce,
         };
         with_retries(|| service.add_blocked_by(cancellation, &authorization, dependency))
             .await
@@ -799,6 +803,7 @@ fn mutate_block_issue(
             client_issue: arguments.issue,
             blocker_id: blocker.id,
             expected_updated_at: expected.as_deref(),
+            security_check: DependencySecurityCheck::Enforce,
         };
         let receipt = if remove {
             service

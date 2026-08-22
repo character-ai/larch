@@ -19,8 +19,8 @@ use std::{
 
 use larch_adapters::{
     github::{
-        DependencyEdge as GhDependencyEdge, GitHubOperationError, IssueMutationOwner,
-        LiveMutationRequest, check_live_mutation_auth,
+        DependencyEdge as GhDependencyEdge, DependencySecurityCheck, GitHubOperationError,
+        IssueMutationOwner, LiveMutationRequest, check_live_mutation_auth,
     },
     validate_design_tmpdir,
 };
@@ -454,6 +454,7 @@ impl DependencyGraph for GithubGraph {
                 client_issue: blocked,
                 blocker_id,
                 expected_updated_at: None,
+                security_check: DependencySecurityCheck::Enforce,
             };
             let receipt = if remove {
                 service

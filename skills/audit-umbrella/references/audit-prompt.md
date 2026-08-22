@@ -19,5 +19,5 @@ If residual gaps exist, produce the smallest exhaustive batch of independently i
 
 For each proposed leaf, provide current implementation evidence, bounded scope, testable acceptance criteria, and its exact prerequisites. Then define the complete acyclic dependency graph. The umbrella must be blocked by every leaf; apply's native-graph phase owns those umbrella<-leaf edges, so declare only genuine leaf-to-leaf (or other non-umbrella) prerequisites. Every old and new leaf must be a direct native sub-issue. Every real prerequisite must use native GitHub blocked-by in the direction dependent <- prerequisite. Add no convenience-only serialization, and keep every genuine root unblocked.
 
-Do not publish a security-sensitive finding or secret. Do not implement fixes or close the umbrella. Report completeness only when every ledger row is resolved and the final GitHub graph has been read back and verified.
+If your judgment identifies an actual vulnerability or live secret, keep it private and follow SECURITY.md. Security-related words alone do not stop the audit. Do not implement fixes or close the umbrella. Report completeness only when every ledger row is resolved and the final GitHub graph has been read back and verified.
 ```
