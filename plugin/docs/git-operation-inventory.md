@@ -128,7 +128,6 @@ skills/implement/references/codex-manifest-schema.md	later-domain	#7681	commit
 skills/implement/references/step2-dispatch.md	later-domain	#7681	commit
 skills/implement/scripts/generate-code-flow-diagram.sh	later-domain	#7681	diff,merge-base,rev-parse
 skills/implement/scripts/oos-disposition-gate.md	later-domain	#7681	merge-base
-skills/implement/scripts/step-architectural-guidelines-write-staged.sh	later-domain	#7681	rev-parse
 ```
 <!-- git-ownership-matrix:end -->
 <!-- markdownlint-enable MD010 -->

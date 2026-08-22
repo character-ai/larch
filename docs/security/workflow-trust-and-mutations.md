@@ -864,8 +864,9 @@ The main workflow does not author, repair, or inspect assessment prose on this
 path. Stale, malformed, incomplete, unavailable, or mismatched results do not
 clear the gate. A fresh assessor judges every repair. An invariant violation
 hard-stops after the bounded fix ladder; no waiver or operator override accepts
-it. Rust owns architectural preparation; retained Python assessment-write
-commands own their remaining command rows. The active Rust `ship pr` owner
+it. Rust owns architectural preparation and implement assessment writes.
+Retained Python rows are limited to design-time knowledge reads, note
+presentation, and design-assessment persistence. The active Rust `ship pr` owner
 consumes only identity-validated durable notes, follows the closed outcome
 grammar, binds fork assessments to `upstream/main`, and redacts note text before
 PR composition. The Rust Step 8 dispatcher carries

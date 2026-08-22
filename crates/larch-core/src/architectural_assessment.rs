@@ -1629,17 +1629,21 @@ fn live_diff(
     resolved_base: &str,
     git: &dyn AssessmentGit,
 ) -> Option<(String, String)> {
+    live_diff_result(repo_root, resolved_base, git).ok()
+}
+
+fn live_diff_result(
+    repo_root: &Path,
+    resolved_base: &str,
+    git: &dyn AssessmentGit,
+) -> Result<(String, String), String> {
     let (remote, ref_name) = resolved_base
         .split_once('/')
         .unwrap_or(("origin", resolved_base));
-    let head = git
-        .git_read(repo_root, &["rev-parse", "--verify", "HEAD^{commit}"])
-        .ok()?;
-    let diff = git
-        .implementation_diff_for_head(repo_root, &head, remote, ref_name)
-        .ok()?;
+    let head = git.git_read(repo_root, &["rev-parse", "--verify", "HEAD^{commit}"])?;
+    let diff = git.implementation_diff_for_head(repo_root, &head, remote, ref_name)?;
     let fingerprint = diff_fingerprint(&diff);
-    Some((diff, fingerprint))
+    Ok((diff, fingerprint))
 }
 
 fn live_fingerprint(
@@ -1814,8 +1818,8 @@ fn persist_result(
         git,
     )
     .map_err(|error| match error {
-        ComposeWriteError::Reauthor(reason) => SubmitError::Reauthor(ReauthorRequired(reason)),
-        ComposeWriteError::Other(message) => SubmitError::Value(message),
+        AssessmentWriteError::Reauthor(reason) => SubmitError::Reauthor(ReauthorRequired(reason)),
+        AssessmentWriteError::Other(message) => SubmitError::Value(message),
     })?;
     write_outcome(
         result.kind,
@@ -1842,45 +1846,55 @@ fn persist_result(
     Ok(())
 }
 
-enum ComposeWriteError {
+/// Failure while persisting an authored or staged architectural assessment.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AssessmentWriteError {
+    /// The authored note and explicit outcome require a fresh assessment.
     Reauthor(String),
+    /// An input, identity, or artifact write failed.
     Other(String),
 }
 
-fn write_compose_assessment(
+/// Persist one compose-time assessment against frozen preparation metadata.
+///
+/// # Errors
+/// Returns [`AssessmentWriteError::Reauthor`] when the explicit outcome and
+/// note disagree, or [`AssessmentWriteError::Other`] when identity validation
+/// or artifact persistence fails.
+pub fn write_compose_assessment(
     implement_tmpdir: &Path,
     assessment_text: &str,
     outcome: &str,
     kind: AssessmentKind,
     repo_root: &Path,
     git: &dyn AssessmentGit,
-) -> Result<(), ComposeWriteError> {
+) -> Result<(), AssessmentWriteError> {
     let mut normalized = assessment_text.trim_end_matches('\n').to_owned();
     normalized.push('\n');
     if normalized.trim().is_empty() {
-        return Err(ComposeWriteError::Other(
+        return Err(AssessmentWriteError::Other(
             "assessment-file: content must not be empty".to_owned(),
         ));
     }
     let validated = validate_authored_outcome(&normalized, outcome, kind)
-        .map_err(|error| ComposeWriteError::Reauthor(error.0))?;
+        .map_err(|error| AssessmentWriteError::Reauthor(error.0))?;
     let metadata = read_env_lenient(&implement_tmpdir.join(kind.materialize_env_filename()));
     let materialized_head = metadata.get("HEAD_SHA").cloned().unwrap_or_default();
     if materialized_head.is_empty() {
-        return Err(ComposeWriteError::Other(
+        return Err(AssessmentWriteError::Other(
             "compose materialization metadata is missing HEAD_SHA".to_owned(),
         ));
     }
     let current_head = git
         .git_read(repo_root, &["rev-parse", "--verify", "HEAD^{commit}"])
-        .map_err(ComposeWriteError::Other)?;
+        .map_err(AssessmentWriteError::Other)?;
     if current_head != materialized_head {
-        return Err(ComposeWriteError::Other(
+        return Err(AssessmentWriteError::Other(
             "HEAD changed after compose materialization; rerun Step 8".to_owned(),
         ));
     }
     if metadata.get("STATUS").map(String::as_str) != Some("present") {
-        return Err(ComposeWriteError::Other(
+        return Err(AssessmentWriteError::Other(
             "compose materialization metadata is not present".to_owned(),
         ));
     }
@@ -1894,7 +1908,142 @@ fn write_compose_assessment(
         metadata.get("BASE_REF").map_or("", String::as_str),
         kind,
     )
-    .map_err(ComposeWriteError::Other)
+    .map_err(AssessmentWriteError::Other)
+}
+
+/// Persist one staged assessment and its frozen diff identity.
+///
+/// # Errors
+/// Returns [`AssessmentWriteError::Reauthor`] when the explicit outcome and
+/// note disagree, or [`AssessmentWriteError::Other`] when artifact persistence
+/// fails.
+#[allow(clippy::too_many_arguments)] // One staged sidecar carries this complete identity.
+pub fn write_staged_assessment(
+    implement_tmpdir: &Path,
+    assessment_text: &str,
+    assessed_head_sha: &str,
+    diff_fingerprint_value: &str,
+    base_ref: &str,
+    outcome: &str,
+    kind: AssessmentKind,
+    diff_text: &str,
+) -> Result<(), AssessmentWriteError> {
+    let validated = validate_authored_outcome(assessment_text, outcome, kind)
+        .map_err(|error| AssessmentWriteError::Reauthor(error.0))?;
+    fs::create_dir_all(implement_tmpdir)
+        .map_err(|error| AssessmentWriteError::Other(error.to_string()))?;
+    let diff_path = implement_tmpdir.join(kind.materialized_diff_filename());
+    write_text_atomic(
+        &implement_tmpdir.join(kind.staged_assessment_filename()),
+        assessment_text,
+    )
+    .map_err(AssessmentWriteError::Other)?;
+    write_text_atomic(&diff_path, diff_text).map_err(AssessmentWriteError::Other)?;
+    let written_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let mut lines = vec![
+        "STATUS=present".to_owned(),
+        format!("ASSESSED_HEAD_SHA={}", env_escape(assessed_head_sha)),
+        format!("DIFF_FINGERPRINT={}", env_escape(diff_fingerprint_value)),
+        format!("BASE_REF={}", env_escape(base_ref)),
+        format!(
+            "DIFF_SNAPSHOT={}",
+            env_escape(&diff_path.display().to_string())
+        ),
+    ];
+    if kind.is_invariant() {
+        lines.push(format!("{}=present", kind.status_env_key()));
+    }
+    lines.extend([
+        format!("ASSESSMENT_KIND={}", env_escape(&validated)),
+        format!("WRITTEN_AT={written_at}"),
+        String::new(),
+    ]);
+    write_text_atomic(
+        &implement_tmpdir.join(kind.staged_assessment_env_filename()),
+        &lines.join("\n"),
+    )
+    .map_err(AssessmentWriteError::Other)
+}
+
+/// Result of attempting to promote a staged assessment to its durable note.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct StagedPinResult {
+    /// Whether the staged note was promoted.
+    pub pinned: bool,
+    /// Live-diff diagnostic when snapshot validation supplied the fallback.
+    pub warning: String,
+}
+
+/// Promote a staged assessment when its stored fingerprint is still valid.
+#[must_use]
+pub fn pin_note_from_staged(
+    implement_tmpdir: &Path,
+    head_sha: &str,
+    base_ref: &str,
+    kind: AssessmentKind,
+    repo_root: Option<&Path>,
+    git: Option<&dyn AssessmentGit>,
+) -> StagedPinResult {
+    let staged = implement_tmpdir.join(kind.staged_assessment_filename());
+    let sidecar = implement_tmpdir.join(kind.staged_assessment_env_filename());
+    if !regular_file(&staged) || !regular_file(&sidecar) {
+        return StagedPinResult::default();
+    }
+    let metadata = read_env_lenient(&sidecar);
+    if metadata.get("STATUS").map(String::as_str) != Some("present") {
+        return StagedPinResult::default();
+    }
+    let stored_fingerprint = metadata.get("DIFF_FINGERPRINT").map_or("", String::as_str);
+    if stored_fingerprint.is_empty() {
+        return StagedPinResult::default();
+    }
+    let resolved_base = if base_ref.trim().is_empty() {
+        metadata.get("BASE_REF").map_or("", String::as_str).trim()
+    } else {
+        base_ref.trim()
+    };
+    let mut warning = String::new();
+    let mut live_checked = false;
+    let mut fingerprint_valid = false;
+    if let (Some(root), Some(git)) = (repo_root, git)
+        && !resolved_base.is_empty()
+    {
+        match live_diff_result(root, resolved_base, git) {
+            Ok((_diff, fingerprint)) => {
+                live_checked = true;
+                fingerprint_valid = fingerprint == stored_fingerprint;
+            }
+            Err(error) => warning = error,
+        }
+    }
+    if !live_checked {
+        fingerprint_valid = snapshot_matches(
+            &implement_tmpdir.join(kind.materialized_diff_filename()),
+            stored_fingerprint,
+        );
+    }
+    if !fingerprint_valid {
+        return StagedPinResult {
+            pinned: false,
+            warning,
+        };
+    }
+    let Ok(note_text) = fs::read_to_string(staged) else {
+        return StagedPinResult {
+            pinned: false,
+            warning,
+        };
+    };
+    let pinned = write_implement_note(
+        implement_tmpdir,
+        &note_text,
+        head_sha,
+        &metadata,
+        base_ref,
+        kind,
+    )
+    .is_ok();
+    StagedPinResult { pinned, warning }
 }
 
 fn write_implement_note(

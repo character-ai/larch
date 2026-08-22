@@ -1945,6 +1945,21 @@ enum ArchitecturalPreparationCommand {
     /// Prepare frozen compose-time assessment evidence.
     #[command(name = "prepare-compose", disable_help_flag = true)]
     PrepareCompose(RawCompatibilityArguments),
+    /// Persist one compose-time assessment against frozen evidence.
+    #[command(name = "write-compose-assessment", disable_help_flag = true)]
+    WriteComposeAssessment(RawCompatibilityArguments),
+    /// Persist one staged assessment and its diff identity.
+    #[command(name = "write-staged-assessment", disable_help_flag = true)]
+    WriteStagedAssessment(RawCompatibilityArguments),
+    /// Append one deviation to the execution warnings ledger.
+    #[command(name = "append-deviation-note", disable_help_flag = true)]
+    AppendDeviationNote(RawCompatibilityArguments),
+    /// Promote a still-current staged assessment to its durable note.
+    #[command(name = "pin-note-from-staged", disable_help_flag = true)]
+    PinNoteFromStaged(RawCompatibilityArguments),
+    /// Remove stale assessment-note artifacts.
+    #[command(disable_help_flag = true)]
+    Invalidate(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -2681,6 +2696,36 @@ fn run(
                     &arguments.arguments,
                 )
             }
+            ArchitecturalPreparationCommand::WriteComposeAssessment(arguments) => {
+                architectural_preparation_commands::write_compose_assessment_command(
+                    larch_core::AssessmentKind::Guidelines,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::WriteStagedAssessment(arguments) => {
+                architectural_preparation_commands::write_staged_assessment_command(
+                    larch_core::AssessmentKind::Guidelines,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::AppendDeviationNote(arguments) => {
+                architectural_preparation_commands::append_deviation_note_command(
+                    larch_core::AssessmentKind::Guidelines,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::PinNoteFromStaged(arguments) => {
+                architectural_preparation_commands::pin_note_from_staged_command(
+                    larch_core::AssessmentKind::Guidelines,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::Invalidate(arguments) => {
+                architectural_preparation_commands::invalidate_command(
+                    larch_core::AssessmentKind::Guidelines,
+                    &arguments.arguments,
+                )
+            }
         }),
         Domain::ArchitecturalInvariants(command) => Ok(match command {
             ArchitecturalPreparationCommand::MaterializeDiff(arguments) => {
@@ -2697,6 +2742,36 @@ fn run(
             }
             ArchitecturalPreparationCommand::PrepareCompose(arguments) => {
                 architectural_preparation_commands::prepare_compose_command(
+                    larch_core::AssessmentKind::Invariants,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::WriteComposeAssessment(arguments) => {
+                architectural_preparation_commands::write_compose_assessment_command(
+                    larch_core::AssessmentKind::Invariants,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::WriteStagedAssessment(arguments) => {
+                architectural_preparation_commands::write_staged_assessment_command(
+                    larch_core::AssessmentKind::Invariants,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::AppendDeviationNote(arguments) => {
+                architectural_preparation_commands::append_deviation_note_command(
+                    larch_core::AssessmentKind::Invariants,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::PinNoteFromStaged(arguments) => {
+                architectural_preparation_commands::pin_note_from_staged_command(
+                    larch_core::AssessmentKind::Invariants,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::Invalidate(arguments) => {
+                architectural_preparation_commands::invalidate_command(
                     larch_core::AssessmentKind::Invariants,
                     &arguments.arguments,
                 )

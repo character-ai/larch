@@ -647,6 +647,31 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "prepare-compose",
     ),
     CleanInstallCase::new(
+        "clean-install-architectural-guidelines-append-deviation-note",
+        "architectural-guidelines",
+        "append-deviation-note",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-guidelines-invalidate",
+        "architectural-guidelines",
+        "invalidate",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-guidelines-pin-note-from-staged",
+        "architectural-guidelines",
+        "pin-note-from-staged",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-guidelines-write-compose-assessment",
+        "architectural-guidelines",
+        "write-compose-assessment",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-guidelines-write-staged-assessment",
+        "architectural-guidelines",
+        "write-staged-assessment",
+    ),
+    CleanInstallCase::new(
         "clean-install-architectural-invariants-materialize-diff",
         "architectural-invariants",
         "materialize-diff",
@@ -660,6 +685,31 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-architectural-invariants-prepare-compose",
         "architectural-invariants",
         "prepare-compose",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-invariants-append-deviation-note",
+        "architectural-invariants",
+        "append-deviation-note",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-invariants-invalidate",
+        "architectural-invariants",
+        "invalidate",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-invariants-pin-note-from-staged",
+        "architectural-invariants",
+        "pin-note-from-staged",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-invariants-write-compose-assessment",
+        "architectural-invariants",
+        "write-compose-assessment",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-invariants-write-staged-assessment",
+        "architectural-invariants",
+        "write-staged-assessment",
     ),
     CleanInstallCase::new(
         "clean-install-analyze-bugs-ledger",

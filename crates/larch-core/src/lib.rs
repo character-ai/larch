@@ -81,16 +81,17 @@ pub use admission::{
 pub use architectural_assessment::{
     ASSESSMENT_OUTCOME_CLEAN, ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH,
     ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME, ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA,
-    ASSESSMENT_RESULT_REAUTHOR_REQUIRED, AssessmentGit, AssessmentResult, ComposePreparation,
-    DeviationLogPending, EXIT_HEAD_DRIFT, HeadDrift, KIND_ORDER, MAX_ASSESSMENT_CHARS,
-    MAX_SANITIZE_DETAIL_BYTES, MaterializedEvidence, NOTE_STATE_AUTHORED,
+    ASSESSMENT_RESULT_REAUTHOR_REQUIRED, AssessmentGit, AssessmentResult, AssessmentWriteError,
+    ComposePreparation, DeviationLogPending, EXIT_HEAD_DRIFT, HeadDrift, KIND_ORDER,
+    MAX_ASSESSMENT_CHARS, MAX_SANITIZE_DETAIL_BYTES, MaterializedEvidence, NOTE_STATE_AUTHORED,
     NOTE_STATE_DETERMINISTIC_CLEAN, NOTE_STATE_UNAVAILABLE, PreparationDiff,
-    REASON_DETERMINISTIC_CLEAN, REASON_UNAVAILABLE, ReauthorRequired, SubmitError,
+    REASON_DETERMINISTIC_CLEAN, REASON_UNAVAILABLE, ReauthorRequired, StagedPinResult, SubmitError,
     append_deviation_note, authored_outcome_valid, classify_note_for_kind, current_ship_assessment,
     deterministic_out_of_scope, diff_fingerprint, durable_note_path, final_report_sections,
     invalidate_implement_note, materialize, materialize_preparation_diff, normalize_kinds,
-    note_consumable, persist_preparation_diff, prepare_compose, read_regular, sanitize_detail,
-    submit, validate_materialization, write_deterministic_clean_note,
+    note_consumable, persist_preparation_diff, pin_note_from_staged, prepare_compose, read_regular,
+    sanitize_detail, submit, validate_materialization, write_compose_assessment,
+    write_deterministic_clean_note, write_staged_assessment,
 };
 pub use architectural_guidelines::{
     ArchitecturalKind, ArchitecturalKnowledge, ArchitecturalStatus, DESIGN_ASSESSMENT,

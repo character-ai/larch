@@ -1,9 +1,10 @@
-//! Rust owner for architectural guideline and invariant preparation (#8794).
+//! Rust owner for architectural guideline and invariant runtime commands
+//! (#8794, #8795).
 //!
-//! The two domains share three argparse-compatible verbs: `materialize-diff`,
-//! `prepare`, and `prepare-compose`. Core owns knowledge parsing, durable-state
-//! invalidation, diff persistence, and compose materialization. This command
-//! layer owns legacy argv and `KEY=value` stdout compatibility.
+//! The two domains share argparse-compatible preparation and assessment-write
+//! verbs. Core owns knowledge parsing, durable-state invalidation, diff and
+//! note persistence, and compose materialization. This command layer owns
+//! legacy argv and `KEY=value` stdout compatibility.
 
 #![allow(clippy::too_many_lines)]
 
@@ -12,26 +13,32 @@ use std::{
     ffi::{OsStr, OsString},
     fmt::Write as _,
     fs,
+    io::Read as _,
     path::{Path, PathBuf},
     process::ExitCode,
 };
 
 use larch_adapters::GixRepository;
 use larch_core::{
-    ArchitecturalKind, ArchitecturalKnowledge, ArchitecturalStatus, AssessmentKind,
-    ComposePreparation, RepositoryRead, invalidate_implement_note, materialize_preparation_diff,
-    persist_preparation_diff, prepare_compose, read_architectural_knowledge,
-    untrusted_content_block,
+    ArchitecturalKind, ArchitecturalKnowledge, ArchitecturalStatus, AssessmentGit, AssessmentKind,
+    AssessmentWriteError, ComposePreparation, RepositoryRead, append_deviation_note,
+    diff_fingerprint, invalidate_implement_note, materialize_preparation_diff,
+    persist_preparation_diff, pin_note_from_staged, prepare_compose, read_architectural_knowledge,
+    untrusted_content_block, write_compose_assessment, write_staged_assessment,
 };
 
 use crate::{
     architectural_assessment_commands::LiveAssessmentGit,
-    argparse_compat::{ParsedCommandLine, finish_parse, parse_with_flags, write_stdout},
+    argparse_compat::{
+        ParsedCommandLine, finish_parse, parse_with_flags, usage_error, write_stdout,
+    },
 };
 
 const EXIT_OK: u8 = 0;
 const EXIT_FAILED: u8 = 1;
 const EXIT_USAGE: u8 = 2;
+const EXIT_REAUTHOR_REQUIRED: u8 = 7;
+const REAUTHOR_REQUIRED_STATUS: &str = "re-author-required";
 
 const fn domain(kind: AssessmentKind) -> &'static str {
     match kind {
@@ -143,6 +150,223 @@ fn bool_arg(value: &str) -> bool {
     matches!(
         value.trim().to_ascii_lowercase().as_str(),
         "1" | "true" | "yes" | "on"
+    )
+}
+
+fn assessment_usage(kind: AssessmentKind, verb: &str) -> String {
+    let command = program(kind, verb);
+    let indent = " ".repeat(format!("usage: {command} ").len());
+    match verb {
+        "write-compose-assessment" => format!(
+            "usage: {command} [-h]\n\
+             {indent}[--outcome OUTCOME]\n\
+             {indent}[--implement-tmpdir IMPLEMENT_TMPDIR]\n\
+             {indent}[--repo-root REPO_ROOT]\n\
+             {indent}(--assessment-file ASSESSMENT_FILE | --assessment-text ASSESSMENT_TEXT)"
+        ),
+        "write-staged-assessment" => format!(
+            "usage: {command} [-h]\n\
+             {indent}[--outcome OUTCOME]\n\
+             {indent}[--implement-tmpdir IMPLEMENT_TMPDIR]\n\
+             {indent}(--assessment-file ASSESSMENT_FILE | --assessment-text ASSESSMENT_TEXT)\n\
+             {indent}[--assessed-head-sha ASSESSED_HEAD_SHA]\n\
+             {indent}[--diff-fingerprint DIFF_FINGERPRINT]\n\
+             {indent}[--base-ref BASE_REF]\n\
+             {indent}[--diff-file DIFF_FILE]"
+        ),
+        "append-deviation-note" => format!(
+            "usage: {command} [-h]\n\
+             {indent}[--implement-tmpdir IMPLEMENT_TMPDIR]\n\
+             {indent}--note-file NOTE_FILE"
+        ),
+        "pin-note-from-staged" => format!(
+            "usage: {command} [-h]\n\
+             {indent}[--implement-tmpdir IMPLEMENT_TMPDIR]\n\
+             {indent}[--head-sha HEAD_SHA]\n\
+             {indent}[--base-ref BASE_REF]\n\
+             {indent}[--repo-root REPO_ROOT]"
+        ),
+        "invalidate" => format!(
+            "usage: {command} [-h]\n\
+             {indent}[--implement-tmpdir IMPLEMENT_TMPDIR]"
+        ),
+        _ => unreachable!("known architectural assessment verb"),
+    }
+}
+
+fn assessment_help(kind: AssessmentKind, verb: &str) -> String {
+    let usage = assessment_usage(kind, verb);
+    let options = match verb {
+        "write-compose-assessment" => {
+            "  --outcome OUTCOME\n  --implement-tmpdir IMPLEMENT_TMPDIR\n  --repo-root REPO_ROOT\n  --assessment-file ASSESSMENT_FILE\n  --assessment-text ASSESSMENT_TEXT\n"
+        }
+        "write-staged-assessment" => {
+            "  --outcome OUTCOME\n  --implement-tmpdir IMPLEMENT_TMPDIR\n  --assessment-file ASSESSMENT_FILE\n  --assessment-text ASSESSMENT_TEXT\n  --assessed-head-sha ASSESSED_HEAD_SHA\n  --diff-fingerprint DIFF_FINGERPRINT\n  --base-ref BASE_REF\n  --diff-file DIFF_FILE\n"
+        }
+        "append-deviation-note" => {
+            "  --implement-tmpdir IMPLEMENT_TMPDIR\n  --note-file NOTE_FILE\n"
+        }
+        "pin-note-from-staged" => {
+            "  --implement-tmpdir IMPLEMENT_TMPDIR\n  --head-sha HEAD_SHA\n  --base-ref BASE_REF\n  --repo-root REPO_ROOT\n"
+        }
+        "invalidate" => "  --implement-tmpdir IMPLEMENT_TMPDIR\n",
+        _ => unreachable!("known architectural assessment verb"),
+    };
+    format!(
+        "{usage}\n\noptions:\n  -h, --help            show this help message and exit\n{options}"
+    )
+}
+
+fn assessment_options(verb: &str) -> &'static [&'static str] {
+    match verb {
+        "write-compose-assessment" => &[
+            "--outcome",
+            "--implement-tmpdir",
+            "--repo-root",
+            "--assessment-file",
+            "--assessment-text",
+        ],
+        "write-staged-assessment" => &[
+            "--outcome",
+            "--implement-tmpdir",
+            "--assessment-file",
+            "--assessment-text",
+            "--assessed-head-sha",
+            "--diff-fingerprint",
+            "--base-ref",
+            "--diff-file",
+        ],
+        "append-deviation-note" => &["--implement-tmpdir", "--note-file"],
+        "pin-note-from-staged" => &[
+            "--implement-tmpdir",
+            "--head-sha",
+            "--base-ref",
+            "--repo-root",
+        ],
+        "invalidate" => &["--implement-tmpdir"],
+        _ => unreachable!("known architectural assessment verb"),
+    }
+}
+
+fn parse_assessment(
+    arguments: &[OsString],
+    kind: AssessmentKind,
+    verb: &str,
+) -> Result<ParsedCommandLine, ExitCode> {
+    let usage = assessment_usage(kind, verb);
+    let program = program(kind, verb);
+    let parsed = parse_with_flags(arguments, assessment_options(verb), &["-h", "--help"], 0);
+    if parsed.flag("-h") || parsed.flag("--help") {
+        return Err(write_stdout(&assessment_help(kind, verb)));
+    }
+    if let Some(error) = parsed.value_error() {
+        return Err(usage_error(&usage, &program, error, EXIT_USAGE));
+    }
+    if matches!(verb, "write-compose-assessment" | "write-staged-assessment") {
+        let file = parsed.value("--assessment-file").is_some();
+        let text = parsed.value("--assessment-text").is_some();
+        if file && text {
+            let first = parsed
+                .entries()
+                .iter()
+                .find(|(name, _)| matches!(*name, "--assessment-file" | "--assessment-text"))
+                .map_or("--assessment-file", |(name, _)| *name);
+            let second = if first == "--assessment-file" {
+                "--assessment-text"
+            } else {
+                "--assessment-file"
+            };
+            return Err(usage_error(
+                &usage,
+                &program,
+                &format!("argument {second}: not allowed with argument {first}"),
+                EXIT_USAGE,
+            ));
+        }
+        if !file && !text {
+            return Err(usage_error(
+                &usage,
+                &program,
+                "one of the arguments --assessment-file --assessment-text is required",
+                EXIT_USAGE,
+            ));
+        }
+    }
+    let required = if verb == "append-deviation-note" {
+        &["--note-file"][..]
+    } else {
+        &[]
+    };
+    finish_parse(parsed, &usage, &program, required)
+}
+
+fn current_head() -> String {
+    let Some(root) = env::current_dir()
+        .ok()
+        .and_then(|cwd| discovered_root(&cwd))
+    else {
+        return String::new();
+    };
+    LiveAssessmentGit::default()
+        .git_read(&root, &["rev-parse", "HEAD"])
+        .unwrap_or_default()
+}
+
+fn read_regular_no_follow(path: &Path) -> Result<String, String> {
+    let metadata = path
+        .symlink_metadata()
+        .map_err(|_| "assessment file must be a regular non-symlink file".to_owned())?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("assessment file must be a regular non-symlink file".to_owned());
+    }
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.custom_flags(nix::libc::O_NOFOLLOW);
+    }
+    let mut file = options.open(path).map_err(|error| error.to_string())?;
+    if !file
+        .metadata()
+        .is_ok_and(|opened_metadata| opened_metadata.is_file())
+    {
+        return Err("assessment file must be a regular file".to_owned());
+    }
+    let mut text = String::new();
+    file.read_to_string(&mut text)
+        .map_err(|error| error.to_string())?;
+    Ok(text)
+}
+
+fn emit_action_status(
+    kind: AssessmentKind,
+    action: &str,
+    status: &str,
+    warning: &str,
+    code: u8,
+) -> ExitCode {
+    let prefix = env_prefix(kind);
+    let mut output = format!("{prefix}_{action}_STATUS={status}\n");
+    if !warning.is_empty() {
+        writeln!(output, "{prefix}_WARNING={}", flattened(warning))
+            .expect("writing to a String cannot fail");
+    }
+    let write = write_stdout(&output);
+    if write == ExitCode::SUCCESS {
+        ExitCode::from(code)
+    } else {
+        write
+    }
+}
+
+fn missing_tmpdir(kind: AssessmentKind, action: &str) -> ExitCode {
+    emit_action_status(
+        kind,
+        action,
+        "failed",
+        "missing implement tmpdir",
+        EXIT_USAGE,
     )
 }
 
@@ -427,4 +651,255 @@ pub fn prepare_compose_command(kind: AssessmentKind, arguments: &[OsString]) -> 
     } else {
         EXIT_OK
     })
+}
+
+/// Run `architectural-{guidelines,invariants} write-compose-assessment`.
+pub fn write_compose_assessment_command(kind: AssessmentKind, arguments: &[OsString]) -> ExitCode {
+    let verb = "write-compose-assessment";
+    let parsed = match parse_assessment(arguments, kind, verb) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let tmpdir = option_or_environment(&parsed, "--implement-tmpdir", "IMPLEMENT_TMPDIR");
+    if tmpdir.is_empty() {
+        return missing_tmpdir(kind, "WRITE");
+    }
+    let tmpdir = PathBuf::from(tmpdir);
+    let assessment_file = option_text(&parsed, "--assessment-file");
+    let assessment_text = if assessment_file.is_empty() {
+        option_text(&parsed, "--assessment-text")
+    } else {
+        let path = PathBuf::from(assessment_file);
+        let path = if path.is_absolute() {
+            path
+        } else {
+            tmpdir.join(path)
+        };
+        match read_regular_no_follow(&path) {
+            Ok(text) => text,
+            Err(error) => {
+                return emit_action_status(kind, "WRITE", "failed", &error, EXIT_FAILED);
+            }
+        }
+    };
+    let repo_root = resolve_repo_root(parsed.value("--repo-root"))
+        .or_else(|| env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("."));
+    let git = LiveAssessmentGit::default();
+    match write_compose_assessment(
+        &tmpdir,
+        &assessment_text,
+        &option_text(&parsed, "--outcome"),
+        kind,
+        &repo_root,
+        &git,
+    ) {
+        Ok(()) => emit_action_status(kind, "WRITE", "ok", "", EXIT_OK),
+        Err(AssessmentWriteError::Reauthor(reason)) => emit_action_status(
+            kind,
+            "WRITE",
+            REAUTHOR_REQUIRED_STATUS,
+            &reason,
+            EXIT_REAUTHOR_REQUIRED,
+        ),
+        Err(AssessmentWriteError::Other(error)) => {
+            emit_action_status(kind, "WRITE", "failed", &error, EXIT_FAILED)
+        }
+    }
+}
+
+/// Run `architectural-{guidelines,invariants} write-staged-assessment`.
+pub fn write_staged_assessment_command(kind: AssessmentKind, arguments: &[OsString]) -> ExitCode {
+    let verb = "write-staged-assessment";
+    let parsed = match parse_assessment(arguments, kind, verb) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let tmpdir = option_or_environment(&parsed, "--implement-tmpdir", "IMPLEMENT_TMPDIR");
+    if tmpdir.is_empty() {
+        return missing_tmpdir(kind, "WRITE");
+    }
+    let assessment_file = option_text(&parsed, "--assessment-file");
+    let assessment_text = if assessment_file.is_empty() {
+        option_text(&parsed, "--assessment-text")
+    } else {
+        match fs::read_to_string(&assessment_file) {
+            Ok(text) => text,
+            Err(error) => {
+                return emit_action_status(
+                    kind,
+                    "WRITE",
+                    "failed",
+                    &error.to_string(),
+                    EXIT_FAILED,
+                );
+            }
+        }
+    };
+    let diff_file = option_text(&parsed, "--diff-file");
+    let diff_text = if diff_file.is_empty() {
+        String::new()
+    } else {
+        let path = Path::new(&diff_file);
+        let valid = path
+            .symlink_metadata()
+            .is_ok_and(|metadata| metadata.is_file() && !metadata.file_type().is_symlink());
+        if !valid {
+            return emit_action_status(kind, "WRITE", "failed", "missing diff file", EXIT_FAILED);
+        }
+        match fs::read(path) {
+            Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+            Err(error) => {
+                return emit_action_status(
+                    kind,
+                    "WRITE",
+                    "failed",
+                    &format!("unreadable diff file ({error})"),
+                    EXIT_FAILED,
+                );
+            }
+        }
+    };
+    let fingerprint = {
+        let supplied = option_text(&parsed, "--diff-fingerprint");
+        if supplied.is_empty() {
+            diff_fingerprint(&diff_text)
+        } else {
+            supplied
+        }
+    };
+    let head = {
+        let supplied = option_text(&parsed, "--assessed-head-sha");
+        if supplied.is_empty() {
+            current_head()
+        } else {
+            supplied
+        }
+    };
+    match write_staged_assessment(
+        Path::new(&tmpdir),
+        &assessment_text,
+        &head,
+        &fingerprint,
+        &option_text(&parsed, "--base-ref"),
+        &option_text(&parsed, "--outcome"),
+        kind,
+        &diff_text,
+    ) {
+        Ok(()) => emit_action_status(kind, "WRITE", "ok", "", EXIT_OK),
+        Err(AssessmentWriteError::Reauthor(reason)) => emit_action_status(
+            kind,
+            "WRITE",
+            REAUTHOR_REQUIRED_STATUS,
+            &reason,
+            EXIT_REAUTHOR_REQUIRED,
+        ),
+        Err(AssessmentWriteError::Other(error)) => {
+            emit_action_status(kind, "WRITE", "failed", &error, EXIT_FAILED)
+        }
+    }
+}
+
+/// Run `architectural-{guidelines,invariants} append-deviation-note`.
+pub fn append_deviation_note_command(kind: AssessmentKind, arguments: &[OsString]) -> ExitCode {
+    let verb = "append-deviation-note";
+    let parsed = match parse_assessment(arguments, kind, verb) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let tmpdir = option_or_environment(&parsed, "--implement-tmpdir", "IMPLEMENT_TMPDIR");
+    if tmpdir.is_empty() {
+        return missing_tmpdir(kind, "APPEND");
+    }
+    let note_file = PathBuf::from(option_text(&parsed, "--note-file"));
+    let note = match read_regular_no_follow(&note_file) {
+        Ok(note) => note,
+        Err(error) => {
+            return emit_action_status(kind, "APPEND", "failed", &error, EXIT_FAILED);
+        }
+    };
+    if note.lines().all(|line| line.trim().is_empty()) {
+        return emit_action_status(
+            kind,
+            "APPEND",
+            "failed",
+            "note-file: content must not be empty",
+            EXIT_FAILED,
+        );
+    }
+    let status = append_deviation_note(Path::new(&tmpdir), &note);
+    emit_action_status(
+        kind,
+        "APPEND",
+        status,
+        "",
+        if status == "failed" {
+            EXIT_FAILED
+        } else {
+            EXIT_OK
+        },
+    )
+}
+
+/// Run `architectural-{guidelines,invariants} pin-note-from-staged`.
+pub fn pin_note_from_staged_command(kind: AssessmentKind, arguments: &[OsString]) -> ExitCode {
+    let verb = "pin-note-from-staged";
+    let parsed = match parse_assessment(arguments, kind, verb) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let tmpdir = option_or_environment(&parsed, "--implement-tmpdir", "IMPLEMENT_TMPDIR");
+    if tmpdir.is_empty() {
+        return missing_tmpdir(kind, "PIN");
+    }
+    let head = {
+        let supplied = option_text(&parsed, "--head-sha");
+        if supplied.is_empty() {
+            current_head()
+        } else {
+            supplied
+        }
+    };
+    let repo_root = parsed
+        .value("--repo-root")
+        .and_then(|root| resolve_repo_root(Some(root)));
+    let git = LiveAssessmentGit::default();
+    let result = pin_note_from_staged(
+        Path::new(&tmpdir),
+        &head,
+        &option_text(&parsed, "--base-ref"),
+        kind,
+        repo_root.as_deref(),
+        repo_root.as_ref().map(|_| &git as &dyn AssessmentGit),
+    );
+    if !result.warning.is_empty() {
+        eprintln!(
+            "ARCHITECTURAL_GUIDELINES_WARNING={}",
+            flattened(&result.warning)
+        );
+    }
+    emit_action_status(
+        kind,
+        "PIN",
+        if result.pinned { "ok" } else { "skipped" },
+        "",
+        EXIT_OK,
+    )
+}
+
+/// Run `architectural-{guidelines,invariants} invalidate`.
+pub fn invalidate_command(kind: AssessmentKind, arguments: &[OsString]) -> ExitCode {
+    let verb = "invalidate";
+    let parsed = match parse_assessment(arguments, kind, verb) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let tmpdir = option_or_environment(&parsed, "--implement-tmpdir", "IMPLEMENT_TMPDIR");
+    if tmpdir.is_empty() {
+        return missing_tmpdir(kind, "INVALIDATE");
+    }
+    match invalidate_implement_note(Path::new(&tmpdir), kind) {
+        Ok(()) => emit_action_status(kind, "INVALIDATE", "ok", "", EXIT_OK),
+        Err(error) => emit_action_status(kind, "INVALIDATE", "failed", &error, EXIT_USAGE),
+    }
 }

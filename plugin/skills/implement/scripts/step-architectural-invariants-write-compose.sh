@@ -9,7 +9,7 @@ IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:?IMPLEMENT_TMPDIR required}"
 ASSESSMENT_ARG="${1:?assessment file path required}"
 OUTCOME="${2:-}"
 
-exec python3 "$PLUGIN_ROOT/python/cli.py" architectural-invariants write-compose-assessment \
+exec env CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" architectural-invariants write-compose-assessment \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --assessment-file "$ASSESSMENT_ARG" \
   --outcome "$OUTCOME"

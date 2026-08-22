@@ -4,7 +4,7 @@ Thin `/implement` architectural-guidelines helper.
 
 ## Contract
 
-Delegates to `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" architectural-guidelines write-compose-assessment` for the Step 8 compose-time guideline note contract.
+Delegates through `scripts/larch.sh architectural-guidelines write-compose-assessment` for the Step 8 compose-time guideline note contract.
 
 The helper reads the prompt-authored assessment file, validates that the current `HEAD` still matches the compose-time materialization metadata, writes `architectural-guideline-note.md` plus metadata, and clears retired staged or dropped-note artifacts.
 
