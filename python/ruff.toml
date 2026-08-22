@@ -260,13 +260,6 @@ ignore = [
     "PLR0912",
     "PLR0915",
 ]
-"ci_monitor.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "larch/cli.py" = [
     "C901",
     "PLR0911",
@@ -318,12 +311,6 @@ ignore = [
     "PLR0911",
     "PLR0912",
     "PLR0913",
-]
-"dispatch_helpers.py" = [
-    "PLR0913",
-]
-"implement_dispatch.py" = [
-    "F401",
 ]
 "issue_create.py" = [
     "C901",
@@ -418,15 +405,6 @@ ignore = [
     "PLR0911",
     "PLR0912",
     "PLR0915",
-]
-"ship_state.py" = [
-    "C901",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"ship_result.py" = [
-    "PLR0913",
 ]
 "_classify.py" = [
     "C901",

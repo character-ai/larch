@@ -553,11 +553,13 @@ test-implement-anti-halt:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-implement-anti-halt.sh
 
 
+# Focused Rust aliases for the retired Python dispatch harness. The rust-full
+# job owns their complete CI coverage.
 test-run-step2-dispatch:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_implement_dispatch.py -q -k 'not (step2_dispatch or codex_launcher or cursor_launcher or commit_main)'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch implement_step2_commands::commands_tests::run_dispatch
 
 test-step2-dispatch:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_implement_dispatch.py -q -k step2_dispatch
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test implement_step2_dispatch_parity
 
 # test-stall-recovery-report runs the Rust contract-lint test and focused Rust
 # core/adapter suites. The aggregate and Rust aliases are standalone carve-outs;

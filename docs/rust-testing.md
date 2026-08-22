@@ -363,6 +363,8 @@ followed by its table command; it has no other recipe lines.
 | `test-check-clean-tree` | `cargo test --locked --package larch-cli --test cli clean_tree_reports_clean_and_tracked_or_untracked_dirty_state` | `cli` |
 | `test-check-scope-reduction-marker` | `cargo test --locked --package larch-cli --test dirty_tree scope_` | `dirty_tree` |
 | `test-phantom-probe-with-warn` | `cargo test --locked --package larch-cli --test cli phantom_probe` | `cli` |
+| `test-run-step2-dispatch` | `cargo test --locked --package larch-cli --bin larch implement_step2_commands::commands_tests::run_dispatch` | `larch` binary unit tests |
+| `test-step2-dispatch` | `cargo test --locked --package larch-cli --test implement_step2_dispatch_parity` | `implement_step2_dispatch_parity` |
 | `test-git-commit-only` | `cargo test --locked -p larch-cli --test git_commands nul_pathspec_only_commit_preserves_unrelated_staged_content` | `git_commands` |
 | `test-dispatch-code-voters` | `cargo test --locked --package larch-cli --test voter_dispatch_commands` | `voter_dispatch_commands` |
 | `test-check-mid-run-dirty-tree` | `cargo test --locked --package larch-cli --test dirty_tree` | `dirty_tree` |

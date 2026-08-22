@@ -9,11 +9,8 @@ if TYPE_CHECKING:
     import pytest
 
 from larch.agents import agents
-from larch.implement import ci_monitor
-from larch.core import external_defaults
+from larch.core import config, external_defaults
 from larch.git import rebase
-
-from larch.core import config
 
 
 def _tool_order_probe(monkeypatch: pytest.MonkeyPatch, module: Any, expected_role: str, order: tuple[str, ...]) -> list[str]:
@@ -57,13 +54,6 @@ def test_rebase_conflict_loop_uses_rebase_conflict_fixer_role(monkeypatch: pytes
 
     assert seen == ["implement.rebase_conflict_fixer"]
     assert launch_calls == ["cursor"]
-
-
-def test_ci_monitor_available_tiers_uses_ci_recovery_role(monkeypatch: pytest.MonkeyPatch) -> None:
-    seen = _tool_order_probe(monkeypatch, ci_monitor, "implement.ci_recovery_fixer", ("codex", "claude"))
-
-    assert ci_monitor._available_tiers() == ("codex", "claude")
-    assert seen == ["implement.ci_recovery_fixer"]
 
 
 def test_debate_roles_do_not_alter_existing_panels() -> None:

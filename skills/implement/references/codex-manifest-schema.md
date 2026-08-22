@@ -164,4 +164,4 @@ Any change to this schema MUST be paired with edits in:
 - `skills/implement/prompts/codex-implementer.md` — Codex prompt's manifest-writing instructions.
 - `skills/implement/prompts/cursor-implementer.md` — Cursor prompt's manifest-writing instructions.
 - `skills/implement/SKILL.md` — Step 4 (commit verification), Step 9a (PR `## Summary`), Step 9a.1 (OOS pipeline) consumption blocks. Phase 1 (#3364) retired `/implement` Step 8a release notes; manifest `summary_bullets` feed PR summary / OOS only until `/release` owns release notes updates.
-- `python/test_implement_dispatch.py` — golden manifest fixtures.
+- `crates/larch-cli/tests/implement_step2_dispatch_parity.rs` and the inline Rust Step 2 command tests: dispatcher and manifest fixtures.
