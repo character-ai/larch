@@ -218,15 +218,20 @@ def test_whole_leaf_loop_bgjob_binds_one_durable_session_owner() -> None:
     assert "wait lease" in wait_contract
 
 
-def test_top_level_rehydrates_the_durable_run_pointer_before_start() -> None:
+def test_top_level_uses_one_call_bootstrap_before_start() -> None:
     skill = (REPO_ROOT / "skills" / "complete-umbrella" / "SKILL.md").read_text(
         encoding="utf-8"
     )
-    resume = skill.index("complete-umbrella resume")
-    setup = skill.index("session setup", resume)
-    start = skill.index("complete-umbrella start", setup)
-    assert resume < setup < start
-    assert '--claude-pid "$COMPLETE_UMBRELLA_OWNER_PID"' in skill
+    step_zero = skill.split("## Step 0:", 1)[1].split("## Step 1:", 1)[0]
+    assert step_zero.count("```bash") == 1
+    assert "complete-umbrella bootstrap" in step_zero
+    assert "The bootstrap calls `resume` before session setup or `start`." in step_zero
+    assert "complete-umbrella resume" not in step_zero
+    assert "complete-umbrella start" not in step_zero
+    assert "session setup \\" not in step_zero
+    assert "kv get" not in skill
+    assert "Do not redirect bootstrap stdout." in step_zero
+    assert "COMPLETE_UMBRELLA_OWNER_PID" in step_zero
     assert "RESUME_ACTION=wait" in skill
     assert "RESUME_ACTION=reselect" in skill
     assert "without truncating a file or starting another bgjob" in skill

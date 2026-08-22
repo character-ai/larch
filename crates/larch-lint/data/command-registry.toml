@@ -1859,6 +1859,18 @@ clean_install_test = "clean-install-combine-issues-prose-audit"
 
 [[commands]]
 domain = "complete-umbrella"
+verb = "bootstrap"
+python_module = "larch.complete_umbrella"
+python_function = "bootstrap_main"
+machine_stdout = true
+owner = "python"
+implementation_parity = "pending"
+consumer_cutover = "pending"
+python_removal = "pending"
+planning_issue = 8651
+
+[[commands]]
+domain = "complete-umbrella"
 verb = "ship-leaf"
 python_module = "larch.implement.complete_umbrella_ship"
 python_function = "main"
@@ -9278,6 +9290,12 @@ python = []
 rust = ["agent parse-codex-usage", "run-log append-failure", "timing record-vendor-task", "token record-vendor", "token record-vendor-sidecar"]
 
 [[callers]]
+path = "python/larch/complete_umbrella.py"
+kind = "python-runtime"
+python = []
+rust = ["agent read-claude-model", "gh resolve-repo", "run-log lifecycle-start", "session setup"]
+
+[[callers]]
 path = "python/larch/core/redact.py"
 kind = "python-runtime"
 python = ["redact scrub-log-secrets", "redact secrets"]
@@ -9448,8 +9466,8 @@ rust = ["block-issue add-blocked-by", "combine-issues apply", "combine-issues cl
 [[callers]]
 path = "skills/complete-umbrella/SKILL.md"
 kind = "skill"
-python = []
-rust = ["agent read-claude-model", "bgjob start", "bgjob wait", "gh resolve-repo", "kv get", "session cleanup-tmpdir", "session setup"]
+python = ["complete-umbrella bootstrap"]
+rust = ["bgjob start", "bgjob wait", "complete-umbrella file-gap", "session cleanup-tmpdir"]
 
 [[callers]]
 path = "skills/complete-umbrella/references/adversarial-review.md"
