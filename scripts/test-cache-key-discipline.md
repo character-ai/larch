@@ -1,6 +1,6 @@
 # test-cache-key-discipline.sh
 
-**Purpose**: Structural regression guard for prompt cache-key discipline. It catches obvious non-stable shell content in prompt-bearing files and requires legitimate dynamic prompt inputs to be annotated with `# intentionally non-stable:`.
+**Purpose**: Structural regression guard for prompt cache-key discipline. It catches obvious non-stable content in prompt-bearing files and requires legitimate dynamic prompt inputs to carry a nearby language-appropriate `intentionally non-stable:` comment.
 
 **Patterns checked**:
 - `$(date`
@@ -9,7 +9,7 @@
 - bare `$$`
 - `$RANDOM`
 - per-session prompt path variables in implementer launcher `PROMPT` blocks
-- per-session diff/scope paths rendered by `python/cli.py render specialist`
+- per-session diff/scope paths rendered by the Rust `scripts/larch.sh render specialist`
 - review prompt construction delegated through the Rust review dispatcher and launcher/render helpers
 - unstable shell-style tokens in prompt construction surfaces:
   - `crates/larch-core/src/implement/checks_lint_fix.rs`

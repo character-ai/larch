@@ -3,14 +3,12 @@
 
 from __future__ import annotations
 
-import argparse
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from larch.core import proc
 from larch.rendering import findings_ledger
 from larch.core import logging_util
 from larch.rendering import rendering
@@ -47,13 +45,6 @@ def _write_voter_calibration_stats(*, path: Path, stats: list[voting.VoterCalibr
 def _reset_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
     logging_util.reset_quiet_state()
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
-
-
-def _stub_rust_diff_classifier(monkeypatch: pytest.MonkeyPatch, *, mode: str = "generic") -> None:
-    def fake_run(argv: list[str], **_kwargs: object) -> proc.CommandResult:
-        return proc.CommandResult(tuple(argv), 0, f"DIFF_MODE={mode}\n", "", 0.0)
-
-    monkeypatch.setattr(rendering.proc, "run", fake_run)
 
 
 def _patch_architectural_guidelines(
@@ -247,30 +238,6 @@ def test_architectural_knowledge_review_section_non_trivial_or_invalid_includes_
     assert "### G-test-1: Guideline" in section
 
 
-def test_render_specialist_missing_agent_exit_2(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    rc = rendering.render_specialist_main(["--agent-file", "/no/such/agent.md", "--mode", "diff"])
-    captured = capsys.readouterr()
-    assert rc == 2
-    assert "agent file not found" in captured.err
-
-
-def test_render_specialist_cache_hit(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    cache_dir = tmp_path / "render-cache"
-    monkeypatch.setenv("LARCH_RENDER_CACHE_DIR", str(cache_dir))
-    agent = REPO_ROOT / "agents" / "reviewer-structure.md"
-    args = ["--agent-file", str(agent), "--mode", "diff"]
-    assert rendering.render_specialist_main(args) == 0
-    first = capsys.readouterr().out
-    assert "Structure, KISS, and Maintainability" in first
-    cache_files = list(cache_dir.glob("r-*"))
-    assert len(cache_files) == 1
-    _ = cache_files[0].write_text("CACHE HIT SENTINEL\n", encoding="utf-8")
-    assert rendering.render_specialist_main(args) == 0
-    assert capsys.readouterr().out == "CACHE HIT SENTINEL\n"
-
-
 def test_write_payload_bytes_sidecar_clamps_negative_payload_bytes(tmp_path: Path) -> None:
     sidecar = tmp_path / "payload.txt"
 
@@ -347,173 +314,6 @@ def test_write_payload_bytes_sidecar_swallows_unlink_permission_errors(
     assert not sidecar.exists()
 
 
-def test_render_specialist_places_reviewer_body_before_dynamic_context(tmp_path: Path) -> None:
-    diff_file = tmp_path / "changes.diff"
-    feature_file = tmp_path / "feature.md"
-    plan_file = tmp_path / "plan.md"
-    _ = diff_file.write_text("diff --git a/example.py b/example.py\n", encoding="utf-8")
-    _ = feature_file.write_text("UNIQUE_FEATURE_MARKER\n", encoding="utf-8")
-    _ = plan_file.write_text("UNIQUE_PLAN_MARKER\n", encoding="utf-8")
-    text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
-        argparse.Namespace(
-            agent_file=str(REPO_ROOT / "agents" / "reviewer-structure.md"),
-            mode="diff",
-            description_text="",
-            scope_files="",
-            competition_notice=False,
-            competition_notice_file="",
-            diff_file=str(diff_file),
-            diff_mode="generic",
-            commit_count="1",
-            plan_file=str(plan_file),
-            feature_file=str(feature_file),
-            findings_ledger_file="",
-            session_env_path="",
-        ),
-    )
-
-    body_index = text.index("You are a specialist code reviewer")
-    task_index = text.index("Review all code changes on the current branch vs main.")
-    feature_index = text.index("UNIQUE_FEATURE_MARKER")
-    plan_index = text.index("UNIQUE_PLAN_MARKER")
-    assert body_index < task_index
-    assert body_index < feature_index
-    assert body_index < plan_index
-    assert str(diff_file) in text
-    assert "<feature_description" in text
-    assert "<implementation_plan" in text
-
-
-def test_render_specialist_payload_sidecar_counts_inline_diff_context(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_architectural_guidelines(monkeypatch, "absent", "")
-    _stub_rust_diff_classifier(monkeypatch)
-    agent = _specialist_agent(tmp_path)
-    plan = tmp_path / "plan.md"
-    feature = tmp_path / "feature.md"
-    diff = tmp_path / "diff.txt"
-    sidecar = tmp_path / "payload.txt"
-    plan.write_text("PLAN PAYLOAD\n", encoding="utf-8")
-    feature.write_text("FEATURE PAYLOAD\n", encoding="utf-8")
-    diff.write_text("diff --git a/a b/a\n", encoding="utf-8")
-
-    base_args = [
-        "--agent-file",
-        str(agent),
-        "--mode",
-        "diff",
-        "--diff-file",
-        str(diff),
-        "--plan-file",
-        str(plan),
-        "--feature-file",
-        str(feature),
-        "--payload-bytes-output",
-        str(sidecar),
-    ]
-
-    assert rendering.render_specialist_main(base_args) == 0
-    _ = capsys.readouterr()
-    assert sidecar.read_text(encoding="utf-8") == f"{len(plan.read_bytes()) + len(feature.read_bytes())}\n"
-
-    sidecar.write_text("stale\n", encoding="utf-8")
-    assert rendering.render_specialist_main([*base_args, "--diff-mode", "test-only"]) == 0
-    _ = capsys.readouterr()
-    assert sidecar.read_text(encoding="utf-8") == "0\n"
-
-
-@pytest.mark.parametrize(
-    ("mode", "diff_mode"),
-    [
-        ("description", ""),
-        ("diff", "generic"),
-        ("diff", "docs-only"),
-    ],
-)
-def test_render_plan_fidelity_includes_plan_context_for_all_review_modes(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-    mode: str,
-    diff_mode: str,
-) -> None:
-    _patch_architectural_guidelines(monkeypatch, "absent", "")
-    agent = REPO_ROOT / "agents" / "reviewer-plan-fidelity.md"
-    plan = tmp_path / "plan.md"
-    feature = tmp_path / "feature.md"
-    diff = tmp_path / "diff.txt"
-    sidecar = tmp_path / "payload.txt"
-    plan.write_text("PLAN FIDELITY PAYLOAD\n", encoding="utf-8")
-    feature.write_text("FEATURE FIDELITY PAYLOAD\n", encoding="utf-8")
-    diff.write_text("diff --git a/docs/a.md b/docs/a.md\n", encoding="utf-8")
-    args = [
-        "--agent-file",
-        str(agent),
-        "--mode",
-        mode,
-        "--plan-file",
-        str(plan),
-        "--feature-file",
-        str(feature),
-        "--payload-bytes-output",
-        str(sidecar),
-    ]
-    if mode == "description":
-        args.extend(["--description-text", "review plan fidelity", "--scope-files", str(tmp_path / "scope.txt")])
-        (tmp_path / "scope.txt").write_text("docs/a.md\n", encoding="utf-8")
-    else:
-        args.extend(["--diff-file", str(diff), "--diff-mode", diff_mode])
-
-    assert rendering.render_specialist_main(args) == 0
-    out = capsys.readouterr().out
-    assert "<implementation_plan" in out
-    assert "<feature_description" in out
-    assert "PLAN FIDELITY PAYLOAD" in out
-    assert "FEATURE FIDELITY PAYLOAD" in out
-    description_bytes = len(b"review plan fidelity") if mode == "description" else 0
-    assert sidecar.read_text(encoding="utf-8") == f"{description_bytes + len(plan.read_bytes()) + len(feature.read_bytes())}\n"
-
-
-def test_render_specialist_payload_sidecar_counts_competition_notice_only_when_rendered(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_architectural_guidelines(monkeypatch, "absent", "")
-    _stub_rust_diff_classifier(monkeypatch)
-    agent = _specialist_agent(tmp_path)
-    diff = tmp_path / "diff.txt"
-    notice = tmp_path / "notice.md"
-    sidecar = tmp_path / "payload.txt"
-    diff.write_text("diff --git a/a b/a\n", encoding="utf-8")
-    notice.write_text("NOTICE PAYLOAD ☕\n", encoding="utf-8")
-
-    base_args = [
-        "--agent-file",
-        str(agent),
-        "--mode",
-        "diff",
-        "--diff-file",
-        str(diff),
-        "--competition-notice-file",
-        str(notice),
-        "--payload-bytes-output",
-        str(sidecar),
-    ]
-
-    assert rendering.render_specialist_main([*base_args, "--competition-notice"]) == 0
-    _ = capsys.readouterr()
-    assert sidecar.read_text(encoding="utf-8") == f"{len(notice.read_bytes())}\n"
-
-    sidecar.write_text("stale\n", encoding="utf-8")
-    assert rendering.render_specialist_main(base_args) == 0
-    _ = capsys.readouterr()
-    assert sidecar.read_text(encoding="utf-8") == "0\n"
-
-
 def test_render_voter_calibration_feedback_contributes_payload_bytes(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -564,111 +364,6 @@ def test_render_voter_calibration_feedback_contributes_payload_bytes(
     expected = rendering._voter_calibration_feedback_block(stats_file=str(stats), voter_tool="codex")  # pyright: ignore[reportPrivateUsage]
     assert expected in out
     assert sidecar.read_text(encoding="utf-8") == f"{len(expected.encode('utf-8'))}\n"
-
-
-def test_render_specialist_cache_setup_failure_falls_back_uncached(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _reset_quiet(monkeypatch)
-    blocker = tmp_path / "cache-blocker"
-    _ = blocker.write_text("not a directory\n", encoding="utf-8")
-    monkeypatch.setenv("LARCH_RENDER_CACHE_DIR", str(blocker / "render-cache"))
-    agent = REPO_ROOT / "agents" / "reviewer-structure.md"
-    rc = rendering.render_specialist_main(["--agent-file", str(agent), "--mode", "diff"])
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "Structure, KISS, and Maintainability" in out
-
-
-
-def test_render_ordinary_specialist_omits_architectural_knowledge(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _reset_quiet(monkeypatch)
-    _patch_architectural_guidelines(
-        monkeypatch,
-        "present",
-        "### G-test-1: Keep seams",
-        invariant_status="present",
-        invariant_content="### I-test-1: Keep hard seams",
-    )
-
-    rc = rendering.render_specialist_main(
-        ["--agent-file", str(REPO_ROOT / "agents" / "reviewer-correctness.md"), "--mode", "diff"],
-    )
-
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "## Architectural knowledge (untrusted documented policy)" not in out
-    assert "### I-test-1: Keep hard seams" not in out
-    assert "### G-test-1: Keep seams" not in out
-
-
-
-
-
-
-def test_render_specialist_injects_findings_ledger_and_cache_keys_content(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _reset_quiet(monkeypatch)
-    cache_dir = tmp_path / "cache"
-    ledger_root = tmp_path / "review"
-    findings_ledger.write_round(
-        ledger_root,
-        1,
-        [{"finding_id": "FINDING_1", "title": "Prior duplicate", "outcome": "rejected"}],
-    )
-    monkeypatch.setenv("LARCH_RENDER_CACHE_DIR", str(cache_dir))
-    agent = REPO_ROOT / "agents" / "reviewer-structure.md"
-    args = [
-        "--agent-file",
-        str(agent),
-        "--mode",
-        "diff",
-        "--findings-ledger-file",
-        str(ledger_root / "findings-ledger.tsv"),
-    ]
-    assert rendering.render_specialist_main(args) == 0
-    first = capsys.readouterr().out
-    assert "Prior-round findings ledger" in first
-    assert "duplicates a `rejected`, `neutral`, or `oos` entry" in first
-    assert len(list(cache_dir.glob("r-*"))) == 1
-
-    findings_ledger.write_round(
-        ledger_root,
-        2,
-        [{"finding_id": "FINDING_2", "title": "Another prior", "outcome": "oos"}],
-    )
-    assert rendering.render_specialist_main(args) == 0
-    second = capsys.readouterr().out
-    assert "Another prior" in second
-    assert len(list(cache_dir.glob("r-*"))) == 2
-
-
-def test_render_specialist_default_ledger_path_from_implement_tmpdir(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _reset_quiet(monkeypatch)
-    findings_ledger.write_round(
-        tmp_path,
-        1,
-        [{"finding_id": "FINDING_1", "title": "Default path duplicate", "outcome": "rejected"}],
-    )
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    rc = rendering.render_specialist_main(
-        ["--agent-file", str(REPO_ROOT / "agents" / "reviewer-structure.md"), "--mode", "diff"]
-    )
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "Default path duplicate" in out
 
 
 def test_mermaid_rejects_pipe_in_node_label(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
@@ -898,33 +593,6 @@ def test_render_plan_review_tsv_contract_hardening(
         "the plan must name the offline harness or test case that replays the failure, "
         "or include an explicit one-line no-repro justification"
     ) in out
-
-
-def test_specialist_tagging_includes_oos_proposal_cap() -> None:
-    text = rendering._specialist_tagging(diff_mode="generic", mode="diff")  # pyright: ignore[reportPrivateUsage]
-    assert "Report at most 3 `out_of_scope` / `[OUT_OF_SCOPE]` proposals per reviewer" in text
-    assert "skills/shared/oos-acceptance-rubric.md" in text
-
-
-def test_specialist_tagging_includes_bug_class_or_instance_instruction() -> None:
-    text = rendering._specialist_tagging(diff_mode="generic", mode="diff")  # pyright: ignore[reportPrivateUsage]
-    assert (
-        "For `[BUG]` fixes: classify whether the change addresses the class or only an instance; "
-        "name sibling sites checked, or state that a grep for the defect pattern found none."
-    ) in text
-    docs_only = rendering._specialist_tagging(diff_mode="docs-only", mode="diff")  # pyright: ignore[reportPrivateUsage]
-    assert "For `[BUG]` fixes:" not in docs_only
-
-
-def test_specialist_tagging_preserves_output_anchors() -> None:
-    text = rendering._specialist_tagging(diff_mode="generic", mode="diff")  # pyright: ignore[reportPrivateUsage]
-    assert "### In-Scope Findings" in text
-    assert "### Out-of-Scope Observations" in text
-    assert "NO_ISSUES_FOUND" in text
-    assert (
-        "- **<focus-area>** `<path>:<line-range>` — <one-paragraph issue text>. **Suggested fix:** <one-paragraph suggested fix text>."
-        in text
-    )
 
 
 def test_render_plan_review_injects_architectural_guidelines_separate_from_scope_anchor(
@@ -1237,98 +905,6 @@ def test_render_voter_injects_judge_ledger_rules(
     assert "Prior judge duplicate" in out
     assert "vote NO" in out
     assert "Do not down-vote an `accepted` duplicate" in out
-
-
-def _specialist_agent(tmp_path: Path) -> Path:
-    agent = tmp_path / "reviewer-temp.md"
-    agent.write_text("---\nname: temp\ndescription: temp\n---\n# Body\n", encoding="utf-8")
-    return agent
-
-
-def _render_diff(tmp_path: Path, line: str) -> Path:
-    diff = tmp_path / "diff.txt"
-    diff.write_text(line, encoding="utf-8")
-    return diff
-
-
-def test_render_specialist_competition_notice_provisional_oos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    _stub_rust_diff_classifier(monkeypatch)
-    text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
-        rendering._parse_specialist(  # pyright: ignore[reportPrivateUsage]
-            ["--agent-file", str(_specialist_agent(tmp_path)), "--mode", "diff", "--competition-notice", "--diff-file", str(_render_diff(tmp_path, "diff --git a/a b/a\n"))]
-        )
-    )
-    assert "**Competition notice**" in text
-    assert "Review Acceptance Rubric" in text
-    assert "OOS files only when accepted" in text
-    assert "non-fileable OOS is logged only" in text
-
-
-def test_render_specialist_uses_rust_docs_diff_classifier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    calls: list[list[str]] = []
-
-    def fake_run(argv: list[str], **_kwargs: object) -> proc.CommandResult:
-        calls.append(argv)
-        return proc.CommandResult(tuple(argv), 0, "DIFF_MODE=docs-only\n", "", 0.0)
-
-    monkeypatch.setattr(rendering.proc, "run", fake_run)
-    text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
-        rendering._parse_specialist(  # pyright: ignore[reportPrivateUsage]
-            ["--agent-file", str(_specialist_agent(tmp_path)), "--mode", "diff", "--diff-file", str(_render_diff(tmp_path, "diff --git a/docs/a.md b/docs/a.md\n"))]
-        )
-    )
-    assert "Review this docs-only diff" in text
-    assert calls[0][1:3] == ["agent", "classify-diff"]
-
-
-def test_render_specialist_rejects_a_failed_rust_diff_classifier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-
-    def failed_run(argv: list[str], **_kwargs: object) -> proc.CommandResult:
-        return proc.CommandResult(tuple(argv), 1, "", "manifest malformed", 0.0)
-
-    monkeypatch.setattr(rendering.proc, "run", failed_run)
-    with pytest.raises(rendering.RenderError, match="diff classification failed"):
-        _ = rendering._classify_diff_mode(str(_render_diff(tmp_path, "diff --git a/docs/a.md b/docs/a.md\n")))  # pyright: ignore[reportPrivateUsage]
-
-
-def test_render_specialist_uses_rust_test_and_generated_classifiers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    def fake_run(argv: list[str], **_kwargs: object) -> proc.CommandResult:
-        diff = Path(argv[-1]).read_text(encoding="utf-8")
-        mode = "test-only" if "scripts/test-a.sh" in diff else "generated-only"
-        return proc.CommandResult(tuple(argv), 0, f"DIFF_MODE={mode}\n", "", 0.0)
-
-    monkeypatch.setattr(rendering.proc, "run", fake_run)
-    agent = _specialist_agent(tmp_path)
-    test_text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
-        rendering._parse_specialist(  # pyright: ignore[reportPrivateUsage]
-            ["--agent-file", str(agent), "--mode", "diff", "--diff-file", str(_render_diff(tmp_path, "diff --git a/scripts/test-a.sh b/scripts/test-a.sh\n"))]
-        )
-    )
-    generated_text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
-        rendering._parse_specialist(  # pyright: ignore[reportPrivateUsage]
-            ["--agent-file", str(agent), "--mode", "diff", "--diff-file", str(_render_diff(tmp_path, "diff --git a/agents/generated.md b/agents/generated.md\n"))]
-        )
-    )
-    assert "Review this test-only diff" in test_text
-    assert "Review this generated-only diff" in generated_text
-
-
-def test_render_specialist_diff_mode_override_skips_classifier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    def fail_classifier(*_args: object, **_kwargs: object) -> proc.CommandResult:
-        raise AssertionError("override should skip classifier")
-
-    monkeypatch.setattr(rendering.proc, "run", fail_classifier)
-    text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
-        rendering._parse_specialist(  # pyright: ignore[reportPrivateUsage]
-            ["--agent-file", str(_specialist_agent(tmp_path)), "--mode", "diff", "--diff-file", str(_render_diff(tmp_path, "diff --git a/docs/a.md b/docs/a.md\n")), "--diff-mode", "test-only"]
-        )
-    )
-    assert "Review this test-only diff" in text
 
 
 def test_scope_anchor_validate_design_and_render(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1670,35 +1246,6 @@ def test_render_voter_no_matching_tool_omits_calibration_block(tmp_path: Path, c
     )
     text = _render_voter_text(tmp_path, capsys, "--calibration-stats-file", str(stats), "--voter-tool", "cursor")
     assert "**Your recent calibration:**" not in text
-
-
-def test_render_specialist_payload_sidecar_counts_description_and_cache_hit(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _reset_quiet(monkeypatch)
-    _patch_architectural_guidelines(monkeypatch, "absent", "")
-    cache_dir = tmp_path / "render-cache"
-    monkeypatch.setenv("LARCH_RENDER_CACHE_DIR", str(cache_dir))
-    agent = REPO_ROOT / "agents" / "reviewer-structure.md"
-    sidecar = tmp_path / "payload.txt"
-    args = [
-        "--agent-file", str(agent),
-        "--mode", "description",
-        "--description-text", "payload description",
-        "--scope-files", str(tmp_path / "scope.txt"),
-        "--payload-bytes-output", str(sidecar),
-    ]
-    (tmp_path / "scope.txt").write_text("python/foo.py\n", encoding="utf-8")
-
-    assert rendering.render_specialist_main(args) == 0
-    _ = capsys.readouterr()
-    assert sidecar.read_text(encoding="utf-8") == f"{len(b'payload description')}\n"
-    sidecar.write_text("stale\n", encoding="utf-8")
-    assert rendering.render_specialist_main(args) == 0
-    _ = capsys.readouterr()
-    assert sidecar.read_text(encoding="utf-8") == f"{len(b'payload description')}\n"
 
 
 def test_render_plan_review_payload_sidecar_counts_cursor_plan_and_feature(

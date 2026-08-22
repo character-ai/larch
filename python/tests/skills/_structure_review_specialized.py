@@ -145,10 +145,10 @@ def run(repo_root: Path) -> list[str]:
     collection = file("crates/larch-core/src/review/collection.rs")
     if not all(token in read(review_commands) for token in ("collect(&options)", "SubstantiveValidation::ShortReviewer", '"1860"')):
         failures.append("(13) Rust review collect-findings no longer preserves the collector, short-reviewer validation, and 1860-second default contracts")
-    require(skill, "python/cli.py render specialist", "(14) SKILL.md does not reference 'python/cli.py render specialist' — specialist prompt rendering is not wired")
-    require(file("python/larch/rendering/rendering.py"), "--mode", "(14) python/rendering.py does not accept '--mode' — diff/description mode handling is missing")
-    renderer = file("python/larch/rendering/rendering.py")
-    if not renderer.is_file(): failures.append("(15) python/rendering.py does not exist — specialist prompt rendering is broken")
+    require(skill, "scripts/larch.sh render specialist", "(14) SKILL.md does not reference 'scripts/larch.sh render specialist' — specialist prompt rendering is not wired")
+    require(file("crates/larch-cli/src/rendering_commands.rs"), "--mode", "(14) Rust rendering_commands.rs does not accept '--mode' — diff/description mode handling is missing")
+    renderer = file("crates/larch-cli/src/rendering_commands.rs")
+    if not renderer.is_file(): failures.append("(15) Rust rendering_commands.rs does not exist — specialist prompt rendering is broken")
     for name in ("reviewer-structure", "reviewer-correctness", "reviewer-testing", "reviewer-security", "reviewer-edge-cases"):
         agent = file(f"agents/{name}.md")
         if not agent.is_file():

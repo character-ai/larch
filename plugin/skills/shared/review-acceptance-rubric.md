@@ -80,7 +80,7 @@ The following surfaces embed this rubric's necessity-gate language. When the rub
 - `agents/reviewer-testing.md` — hand-maintained specialist; edit directly, then run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate pre-rendered-reviewer-prompts`
 - `agents/pre-rendered/reviewer-*-body.txt` — generated from every specialist above (re-run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate pre-rendered-reviewer-prompts`)
 - `python/cli.py render plan-review` — plan-review external prompts
-- `python/cli.py render specialist` — code-review external prompts (competition notice)
+- `scripts/larch.sh render specialist` — code-review external prompts (competition notice)
 - `skills/design/references/plan-review-runtime.md` — structural plan-review contracts and artifact interpretation; runtime prompt bodies come from `python/cli.py render plan-review` and `python/cli.py render voter`
 - `skills/shared/voting-protocol.md` — voter prompt template YES definition
 - `skills/shared/oos-acceptance-rubric.md` — OOS legitimacy standard (separate concern: accepts genuine, concrete, non-duplicate OOS ballot items for filing)

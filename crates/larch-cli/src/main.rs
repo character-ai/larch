@@ -853,6 +853,9 @@ enum RenderCommand {
     /// Render the /research validation reviewer prompt.
     #[command(disable_help_flag = true)]
     Reviewer(RawCompatibilityArguments),
+    /// Render one code-review specialist prompt.
+    #[command(disable_help_flag = true)]
+    Specialist(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -4711,6 +4714,9 @@ fn dispatch_render(command: RenderCommand) -> ExitCode {
         }
         RenderCommand::Reviewer(arguments) => {
             rendering_commands::render_reviewer(&arguments.arguments)
+        }
+        RenderCommand::Specialist(arguments) => {
+            rendering_commands::render_specialist(&arguments.arguments)
         }
     }
 }

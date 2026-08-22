@@ -130,7 +130,7 @@ umbrella that owns their remaining consumers:
 | `redact secrets`, `tmpdir-paths`, `scrub-log-secrets`, `scrub-submodule-paths` | 4 | #7681 | Migrated by #8796. Live callers now enter through `scripts/larch.sh`; Python retains only its in-process compatibility library. |
 | `render reviewer`, `lane-status`, and `findings-view` | 3 | #7684 | Research and analytical presentation consumers. |
 | `render plan-review` | 1 | #7680 | The remaining consumer is the design workflow. |
-| `render specialist` | 1 | #7681 | The remaining consumer is implementation code review. |
+| `render specialist` | 1 | #7681 | Migrated by #8800 with in-process review callers, frozen parity, and clean-install coverage. |
 | `render voter` | 1 | #7686 | Shared design and implementation consumers make this a final-cutover surface. |
 | `render scope-anchor` | 1 | #7680 | Both callers are `/design` Step 3 scripts, and all four `scope-anchor` verbs already sit at #7680. |
 | `render run-summary` | 1 | #7680 | Recorded in the retained-surface table below as a bounded `/design` payload. |
@@ -308,8 +308,8 @@ The audit reassigned 42 pending rows according to their live consumers:
 
 - #7680 owns design assessment reads and persistence, plan-review identity and
   settlement, OOS serialization, and the plan-review prompt renderer.
-- #7681 owns implementation assessments, review-and-fix identity, and the code
-  specialist renderer.
+- #7681 owns implementation assessments and review-and-fix identity; #8800
+  completed its code-specialist renderer cutover.
 - #7684 owns research renderers, findings presentation, and `token
   claude-source`.
 - #7686 owns the shared voter renderer whose consumers span workflows.

@@ -919,6 +919,7 @@ test-wait-for-reviewers:
 
 test-classify-diff-mode:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test agent_commands classify_diff_covers_modes_mixed_changes_and_bad_manifests
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test rendering_migrated_parity specialist_classifies_a_docs_diff_in_process
 
 test-gather-branch-context:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test agent_commands gather_branch_context

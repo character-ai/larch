@@ -6,11 +6,12 @@
 //! process. This module owns only the review command composition.
 
 use crate::{
-    agent_commands::{AgentRawArguments, generated_paths},
+    agent_commands::AgentRawArguments,
     argparse_compat::split_inline_option,
     claude_commands::{panel_artifact_path, panel_slot_kind, parse_uint},
     dirty_tree_commands,
     external_agent::{ExternalAgentLaunch, ExternalAgentRouting, run_external_agent_launch},
+    rendering_commands::{SpecialistError, specialist_result},
     valid_meta_path,
 };
 use larch_adapters::{
@@ -34,13 +35,13 @@ use larch_core::{
     ExternalProcessRunner as _, ExternalProgram, LaunchFailureInputs, LauncherArtifact,
     LauncherArtifactKind, LauncherArtifactPaths, ModelTool, ProcessRequest, PythonVerbProgram,
     REVIEW_MAX_TRANSIENT_RETRIES, ResearchOutputValidator, SpecialistRenderPort,
-    VendorLaunchRequest, VendorProgram, classify_diff, codex_env_auth_from_key,
-    cursor_child_environment, cursor_launch_jitter_ms, cursor_normalize_no_issues,
-    effective_review_token_cap, emit_kv, external_auth_verdict, is_cursor_empty_result,
-    is_quota_failure, is_transient_infra_failure, json_usage_number,
-    plan_capture_cursor_dirty_baseline, plan_cursor_result_write, read_codex_prompt_sentinel,
-    render_cap_hit_artifacts, render_codex_prompt_sidecar, render_preflight_bundle,
-    render_unknown_dirty_tree, resolve_model_args, review_retry_delay_secs,
+    VendorLaunchRequest, VendorProgram, codex_env_auth_from_key, cursor_child_environment,
+    cursor_launch_jitter_ms, cursor_normalize_no_issues, effective_review_token_cap, emit_kv,
+    external_auth_verdict, is_cursor_empty_result, is_quota_failure, is_transient_infra_failure,
+    json_usage_number, plan_capture_cursor_dirty_baseline, plan_cursor_result_write,
+    read_codex_prompt_sentinel, render_cap_hit_artifacts, render_codex_prompt_sidecar,
+    render_preflight_bundle, render_unknown_dirty_tree, resolve_model_args,
+    review_retry_delay_secs,
 };
 use std::{
     collections::BTreeMap,
@@ -776,7 +777,7 @@ fn resolve_prompt(
         let text = String::from_utf8_lossy(&raw).into_owned();
         let payload_bytes = panel_payload_bytes();
         if tool == ReviewTool::Codex {
-            let renderer = PythonSpecialistRenderer { session };
+            let renderer = RustSpecialistRenderer;
             match read_codex_prompt_sentinel(&text, &renderer) {
                 CodexPromptSentinelRead::Ok { prompt } => return Ok((prompt, payload_bytes)),
                 CodexPromptSentinelRead::Failed { message } => return Err((1, message)),
@@ -791,57 +792,16 @@ fn resolve_prompt(
 fn render_specialist_prompt(
     args: &ReviewArguments,
     artifacts: &ReviewArtifacts,
-    session: &ReviewSession,
+    _session: &ReviewSession,
 ) -> Result<(String, u64), (u8, String)> {
-    let unique = PART_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let payload = artifacts.root.path().join(format!(
-        ".larch-render-payload.{}.{}",
-        std::process::id(),
-        unique
-    ));
-    let mut render_arguments = vec![OsString::from("render"), OsString::from("specialist")];
-    let mut normal_arguments = normal_specialist_render_args(args, artifacts);
-    if let Some(diff_mode) = specialist_diff_mode(&args.mode, &args.diff_file).map_err(|()| {
-        (
-            1,
-            "render-specialist-prompt.sh: diff classification failed".to_owned(),
-        )
-    })? {
-        normal_arguments.extend(["--diff-mode".to_owned(), diff_mode]);
+    let render_arguments = normal_specialist_render_args(args, artifacts)
+        .into_iter()
+        .map(OsString::from)
+        .collect::<Vec<_>>();
+    match specialist_result(&render_arguments) {
+        Ok(output) => Ok((output.prompt, output.payload_bytes)),
+        Err(error) => Err(specialist_error(&error)),
     }
-    render_arguments.extend(normal_arguments.into_iter().map(OsString::from));
-    render_arguments.extend([
-        OsString::from("--payload-bytes-output"),
-        payload.as_os_str().to_owned(),
-    ]);
-    let result = run_python(session, render_arguments).ok_or_else(|| {
-        (
-            1,
-            "agent launch-review: render specialist failed".to_owned(),
-        )
-    })?;
-    let payload_bytes = artifacts
-        .read(&payload)
-        .trim()
-        .parse::<u64>()
-        .ok()
-        .unwrap_or(0);
-    artifacts.remove(&payload);
-    let stdout = String::from_utf8_lossy(result.stdout()).into_owned();
-    if !result.status().success() {
-        let stderr = String::from_utf8_lossy(result.stderr()).trim().to_owned();
-        return Err((
-            u8::try_from(result.status().code().unwrap_or(1)).unwrap_or(1),
-            if !stderr.is_empty() {
-                stderr
-            } else if !stdout.is_empty() {
-                stdout
-            } else {
-                "agent launch-review: render specialist failed".to_owned()
-            },
-        ));
-    }
-    Ok((stdout, payload_bytes))
 }
 
 fn normal_specialist_render_args(
@@ -889,58 +849,26 @@ fn normal_specialist_render_args(
     render
 }
 
-struct PythonSpecialistRenderer<'a> {
-    session: &'a ReviewSession,
-}
+struct RustSpecialistRenderer;
 
-impl SpecialistRenderPort for PythonSpecialistRenderer<'_> {
+impl SpecialistRenderPort for RustSpecialistRenderer {
     fn render_specialist(&self, sentinel: &BTreeMap<String, String>) -> (i32, String) {
-        let mut render_arguments = vec![OsString::from("render"), OsString::from("specialist")];
-        render_arguments.extend(
-            sentinel_specialist_render_args(sentinel)
-                .into_iter()
-                .map(OsString::from),
-        );
-        match specialist_diff_mode(
-            sentinel.get("MODE").map_or("", String::as_str),
-            sentinel.get("DIFF_FILE").map_or("", String::as_str),
-        ) {
-            Ok(Some(diff_mode)) => {
-                render_arguments.extend([OsString::from("--diff-mode"), diff_mode.into()]);
-            }
-            Ok(None) => {}
-            Err(()) => {
-                return (
-                    1,
-                    "render-specialist-prompt.sh: diff classification failed".to_owned(),
-                );
+        let render_arguments = sentinel_specialist_render_args(sentinel)
+            .into_iter()
+            .map(OsString::from)
+            .collect::<Vec<_>>();
+        match specialist_result(&render_arguments) {
+            Ok(output) => (0, output.prompt),
+            Err(error) => {
+                let (code, diagnostic) = specialist_error(&error);
+                (i32::from(code), diagnostic)
             }
         }
-        let Some(result) = run_python(self.session, render_arguments) else {
-            return (
-                1,
-                "agent launch-review: render specialist failed".to_owned(),
-            );
-        };
-        let rc = result.status().code().unwrap_or(1);
-        if rc == 0 {
-            return (0, String::from_utf8_lossy(result.stdout()).into_owned());
-        }
-        let stderr = String::from_utf8_lossy(result.stderr()).trim().to_owned();
-        let stdout = String::from_utf8_lossy(result.stdout()).into_owned();
-        (rc, if stderr.is_empty() { stdout } else { stderr })
     }
 }
 
-fn specialist_diff_mode(mode: &str, diff_file: &str) -> Result<Option<String>, ()> {
-    if mode != "diff" || diff_file.is_empty() {
-        return Ok(None);
-    }
-    let generated = generated_paths().map_err(|_| ())?;
-    let diff = read_optional_utf8_lossy(Path::new(diff_file))
-        .map_err(|_| ())?
-        .ok_or(())?;
-    Ok(Some(classify_diff(&diff, &generated).as_str().to_owned()))
+fn specialist_error(error: &SpecialistError) -> (u8, String) {
+    (error.exit_code(), error.diagnostic())
 }
 
 fn sentinel_specialist_render_args(sentinel: &BTreeMap<String, String>) -> Vec<String> {
