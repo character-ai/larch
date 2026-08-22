@@ -1231,7 +1231,7 @@ fn sync_main_and_delete(request: &Request, branch: &str) -> Result<(), String> {
         let runtime = git_runtime(request)?;
         let delete = PushRequest {
             remote: GitRemote::new("origin").map_err(|error| error.to_string())?,
-            refspec: GitRefspec::new(format!(":refs/heads/{branch}")).map_err(|error| error.to_string())?,
+            refspec: GitRefspec::deletion(&GitRef::new(format!("refs/heads/{branch}")).map_err(|error| error.to_string())?),
             force_with_lease: None,
             set_upstream: false,
         };
@@ -1510,10 +1510,14 @@ fn emit_budget(outcome: &RustBudget) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::github_service::with_test_github_service;
+    use crate::{
+        github_service::with_test_github_service,
+        implement_child_seam::{clear_hooks, install_larch, install_python},
+    };
     use larch_adapters::github::OctocrabGitHubService;
-    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
-    use serde_json::json;
+    use larch_core::{ProcessOutput, ProcessStatus};
+    use larch_test_support::{GitFixture, GitRepository, GitRepositoryBuilder, IssueServiceExchange, IssueServiceStub};
+    use serde_json::{Value, json};
     use std::sync::Arc;
 
     fn request(root: &Path) -> Request {
@@ -1525,6 +1529,125 @@ mod tests {
             umbrella: 40,
             leaf: 42,
         }
+    }
+
+    fn request_with(repo_root: &Path, handoff_root: &Path) -> Request {
+        Request {
+            repository: repository_ref("owner/repo").expect("repository"),
+            slug: "owner/repo".to_owned(),
+            repo_root: repo_root.to_path_buf(),
+            handoff_root: handoff_root.to_path_buf(),
+            umbrella: 40,
+            leaf: 42,
+        }
+    }
+
+    fn output(code: i32, stdout: &str) -> ProcessOutput {
+        ProcessOutput::new(
+            ProcessStatus::new(code == 0, Some(code)),
+            stdout.as_bytes().to_vec(),
+            Vec::new(),
+            false,
+            false,
+        )
+    }
+
+    fn service(
+        bodies: impl IntoIterator<Item = String>,
+    ) -> (Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync>, IssueServiceStub) {
+        let exchanges = bodies
+            .into_iter()
+            .map(|body| IssueServiceExchange::any_json(200, body.into_bytes()).expect("response"))
+            .collect::<Vec<_>>();
+        let server = IssueServiceStub::start(exchanges).expect("stub");
+        let base = server.base_url().to_owned();
+        (Arc::new(move || OctocrabGitHubService::with_test_base(&base)), server)
+    }
+
+    fn pull(number: u64, state: &str, merged: bool, head: &str) -> String {
+        json!({
+            "number": number,
+            "state": state,
+            "title": "Ship",
+            "body": "Summary\n\nCloses #42",
+            "head": {"ref": expected_branch(42), "label": "owner:complete-umbrella/leaf-42", "sha": head},
+            "base": {"ref": "main"},
+            "draft": false,
+            "merged": merged,
+            "merge_commit_sha": merged.then_some("2222222222222222222222222222222222222222"),
+        })
+        .to_string()
+    }
+
+    fn candidate(state: &str, merged: bool, head: &str) -> String {
+        json!({"state": state, "merged": merged, "head": {"sha": head}}).to_string()
+    }
+
+    fn clean_review() -> String {
+        json!({"data": {"repository": {"pullRequest": {
+            "reviewDecision": null,
+            "mergeStateStatus": "CLEAN",
+            "mergeable": "MERGEABLE",
+        }}}})
+        .to_string()
+    }
+
+    fn companion_issue(body: &str) -> String {
+        json!({"title": "Umbrella", "body": body, "labels": []}).to_string()
+    }
+
+    fn issue_at(title: &str, state: &str, updated_at: &str) -> String {
+        let mut value: Value = serde_json::from_str(include_str!("../../larch-adapters/fixtures/github_issue.json"))
+            .expect("issue fixture");
+        value["id"] = json!(420);
+        value["number"] = json!(42);
+        value["url"] = json!("https://api.github.com/repos/owner/repo/issues/42");
+        value["html_url"] = json!("https://github.com/owner/repo/issues/42");
+        value["title"] = json!(title);
+        value["body"] = json!("Body");
+        value["state"] = json!(state);
+        value["updated_at"] = json!(updated_at);
+        value["labels"] = json!([]);
+        value.to_string()
+    }
+
+    fn issue(title: &str, state: &str) -> String {
+        issue_at(title, state, "2026-08-21T00:00:00Z")
+    }
+
+    fn identity_state(request: &Request, status: &str) -> ShipState {
+        let mut state = ShipState::prepared(request);
+        state.set_status(status);
+        state.branch = expected_branch(request.leaf);
+        state.head_sha = "a".repeat(40);
+        state.pr_number = 7;
+        state.pr_url = expected_pr_url(request, 7);
+        state
+    }
+
+    fn command_arguments(mode: &str, repo_root: &Path, handoff_root: &Path) -> Vec<OsString> {
+        [
+            "--mode".into(), mode.into(),
+            "--repository".into(), "owner/repo".into(),
+            "--repo-root".into(), repo_root.as_os_str().to_owned(),
+            "--handoff-root".into(), handoff_root.as_os_str().to_owned(),
+            "--umbrella".into(), "40".into(),
+            "--leaf".into(), "42".into(),
+        ]
+        .into()
+    }
+
+    fn git_fixture() -> GitRepository {
+        let fixture = GitRepositoryBuilder::new(GitFixture::Refs).build().expect("git fixture");
+        let remote = fixture.workspace_root().join("remote.git");
+        assert!(fixture.git(["init", "--quiet", "--bare", remote.to_str().expect("remote")]).expect("init remote").success());
+        assert!(fixture.git(["remote", "add", "origin", remote.to_str().expect("remote")]).expect("add remote").success());
+        assert!(fixture.git(["push", "--quiet", "-u", "origin", "main"]).expect("push main").success());
+        assert!(fixture.git(["checkout", "--quiet", "-b", &expected_branch(42)]).expect("leaf branch").success());
+        fixture.write("leaf.txt", b"leaf\n").expect("leaf file");
+        assert!(fixture.git(["add", "--", "leaf.txt"]).expect("add leaf").success());
+        assert!(fixture.git(["commit", "--quiet", "-m", "Implement leaf"]).expect("commit leaf").success());
+        fixture
     }
 
     fn closed_pull_service() -> (Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync>, IssueServiceStub) {
@@ -1582,9 +1705,8 @@ mod tests {
         state.pr_url = expected_pr_url(&request, 7);
         write_state(&request, &state).expect("state");
         let (factory, server) = closed_pull_service();
-        let error = match with_test_github_service(factory, || ship(&request)) {
-            Ok(_) => panic!("closed PR must stop"),
-            Err(error) => error,
+        let Err(error) = with_test_github_service(factory, || ship(&request)) else {
+            panic!("closed PR must stop");
         };
         assert_eq!(error, "implementation PR is closed without a merge");
         server.join().expect("stub completed");
@@ -1593,7 +1715,7 @@ mod tests {
     #[test]
     fn fixed_poll_interval_is_exactly_five_minutes() {
         assert_eq!(CI_POLL, Duration::from_secs(300));
-        assert_eq!(CI_POLLS * CI_POLL.as_secs() as usize, 86_400);
+        assert_eq!(u64::try_from(CI_POLLS).expect("CI poll count fits u64") * CI_POLL.as_secs(), 86_400);
         assert!(MERGE_WAIT > Duration::from_secs(86_400));
     }
 
@@ -1601,6 +1723,505 @@ mod tests {
     fn chief_marker_requires_a_complete_nearby_issue_reference() {
         assert!(chief_umbrella_reference("#7687 owns [CHIEF UMBRELLA] work"));
         assert!(!chief_umbrella_reference(&format!("#7687{}[CHIEF UMBRELLA]", "x".repeat(161))));
+        assert!(!chief_umbrella_reference("[CHIEF UMBRELLA] without issue"));
+    }
+
+    #[test]
+    fn state_validation_covers_caps_partial_identity_and_scoped_artifacts() {
+        let temporary = tempfile::tempdir().expect("temporary");
+        let request = request(temporary.path());
+        let mut state = identity_state(&request, "monitoring");
+
+        let mut invalid = state.clone();
+        invalid.status = "unknown".to_owned();
+        assert_eq!(invalid.validate(&request).unwrap_err(), "invalid ship state status: unknown");
+        invalid = state.clone();
+        invalid.repository = "other/repo".to_owned();
+        assert!(invalid.validate(&request).unwrap_err().contains("identity"));
+        invalid = state.clone();
+        invalid.umbrella = 41;
+        assert!(invalid.validate(&request).unwrap_err().contains("identity"));
+        invalid = state.clone();
+        invalid.ci_fix_attempts = CI_FIX_CAP + 1;
+        assert!(invalid.validate(&request).unwrap_err().contains("CI fix"));
+        invalid = state.clone();
+        invalid.conflict_fix_attempts = CONFLICT_FIX_CAP + 1;
+        assert!(invalid.validate(&request).unwrap_err().contains("conflict fix"));
+        invalid = state.clone();
+        invalid.main_reconcile_attempts = RECONCILE_CAP + 1;
+        assert!(invalid.validate(&request).unwrap_err().contains("main-reconcile"));
+        invalid = state.clone();
+        invalid.branch = "main".to_owned();
+        assert!(invalid.validate(&request).unwrap_err().contains("branch"));
+        invalid = state.clone();
+        invalid.head_sha = "A".repeat(40);
+        assert!(invalid.validate(&request).unwrap_err().contains("head SHA"));
+        invalid = state.clone();
+        invalid.pr_url.clear();
+        assert!(invalid.validate(&request).unwrap_err().contains("PR URL"));
+        invalid = state.clone();
+        invalid.pr_url = expected_pr_url(&request, 8);
+        assert!(invalid.validate(&request).unwrap_err().contains("PR URL"));
+
+        let mut partial = ShipState::prepared(&request);
+        partial.branch = expected_branch(request.leaf);
+        assert!(partial.validate(&request).unwrap_err().contains("partial PR identity"));
+        partial.branch.clear();
+        partial.set_status("monitoring");
+        assert!(partial.validate(&request).unwrap_err().contains("advanced ship state"));
+
+        let ci_file = request.handoff_root.join("ci-errors-123.md");
+        fs::write(&ci_file, "failure\n").expect("CI file");
+        state.set_status("ci_failed");
+        state.ci_errors_file = ci_file.display().to_string();
+        assert!(state.validate(&request).is_ok());
+        invalid = state.clone();
+        invalid.ci_errors_file = request.handoff_root.join("other.md").display().to_string();
+        assert!(invalid.validate(&request).unwrap_err().contains("invalid CI errors"));
+        state.set_status("monitoring");
+        assert!(state.validate(&request).unwrap_err().contains("non-failed"));
+
+        state = identity_state(&request, "needs_conflict_fix");
+        state.pr_number = 0;
+        state.pr_url.clear();
+        state.conflict_files = "src/a.rs,docs/b.md".to_owned();
+        assert!(state.validate(&request).is_ok());
+        invalid = state.clone();
+        invalid.head_sha.clear();
+        assert!(invalid.validate(&request).unwrap_err().contains("lacks branch identity"));
+        invalid = state.clone();
+        invalid.conflict_files = "src/a.rs,src/a.rs".to_owned();
+        assert!(invalid.validate(&request).unwrap_err().contains("invalid conflict"));
+        state.pr_number = 7;
+        state.pr_url = expected_pr_url(&request, 7);
+        state.set_status("monitoring");
+        assert!(state.validate(&request).unwrap_err().contains("non-conflict"));
+
+        let prepared = ShipState::prepared(&request).render(&request).expect("prepared");
+        assert!(ShipState::parse(&request, &prepared.replace("SCHEMA=1", "SCHEMA=2")).unwrap_err().contains("schema"));
+        assert!(ShipState::parse(&request, &prepared.replace("UMBRELLA=40", "UMBRELLA=no")).unwrap_err().contains("non-numeric"));
+        assert!(ShipState::parse(&request, &prepared.replace("STATUS=prepared", "STATUS=prepared\r")).unwrap_err().contains("carriage"));
+        assert!(ShipState::parse(&request, &prepared.replace("STATUS=prepared\n", "BROKEN\n")).unwrap_err().contains("malformed"));
+    }
+
+    #[test]
+    fn argument_request_wire_and_value_helpers_fail_closed() {
+        let repo = tempfile::tempdir().expect("repo");
+        let handoff = tempfile::tempdir().expect("handoff");
+        for (mode, expected) in [
+            ("prepare", ShipMode::Prepare),
+            ("ship", ShipMode::Ship),
+            ("verify", ShipMode::Verify),
+            ("line-budget", ShipMode::LineBudget),
+        ] {
+            let parsed = parse_arguments(&command_arguments(mode, repo.path(), handoff.path())).expect("arguments");
+            assert_eq!(parsed.mode, expected);
+            assert_eq!(Request::load(&parsed).expect("request").leaf, 42);
+        }
+        let mut bad = command_arguments("other", repo.path(), handoff.path());
+        assert!(parse_arguments(&bad).is_err());
+        bad = command_arguments("ship", repo.path(), handoff.path());
+        let leaf = bad.iter().position(|value| value == "--leaf").expect("leaf") + 1;
+        bad[leaf] = "not-a-number".into();
+        assert!(parse_arguments(&bad).is_err());
+
+        let parsed = |repository: &str, umbrella: i64, leaf: i64| ParsedArguments {
+            mode: ShipMode::Ship,
+            repository: repository.to_owned(),
+            repo_root: repo.path().to_path_buf(),
+            handoff_root: handoff.path().to_path_buf(),
+            umbrella,
+            leaf,
+        };
+        assert!(Request::load(&parsed("bad", 40, 42)).err().expect("bad repository").contains("OWNER/REPO"));
+        assert!(Request::load(&parsed("owner/repo", 0, 42)).err().expect("zero umbrella").contains("positive"));
+        assert!(Request::load(&parsed("owner/repo", -1, 42)).err().expect("negative umbrella").contains("positive"));
+
+        let fields = output_fields(b"A=first\nA=last\n").expect("fields");
+        assert_eq!(fields.get("A").map(String::as_str), Some("last"));
+        assert!(output_fields(b"broken\n").expect("legacy fields").is_empty());
+        assert!(validate_conflicts("").is_ok());
+        assert!(validate_conflicts("src/a.rs,docs/b.md").is_ok());
+        assert!(validate_conflicts("/absolute").is_err());
+        assert!(validate_conflicts("same,same").is_err());
+        for branch in ["", "main", "/bad", "bad..name", "bad//name", "bad@{name", "bad/", "bad."] {
+            assert!(!valid_branch(branch), "{branch}");
+        }
+        assert!(valid_branch("complete-umbrella/leaf-42"));
+        assert!(valid_oid(&"a".repeat(40)) && valid_oid(&"b".repeat(64)));
+        assert!(!valid_oid(&"a".repeat(39)) && !valid_oid(&"A".repeat(40)));
+
+        let state = identity_state(&request(handoff.path()), "monitoring");
+        let outcome = ShipOutcome::from_state(&state, "monitoring");
+        assert_eq!(outcome.status, "monitoring");
+        emit_ship(&outcome);
+        emit_ship(&ShipOutcome::error("line\nbreak".to_owned()));
+        emit_budget(&RustBudget { status: "within-limit", base_sha: "a".repeat(40), head_sha: "b".repeat(40), added_lines: Some(2) });
+        emit_budget(&RustBudget { status: "not-managed", base_sha: String::new(), head_sha: String::new(), added_lines: None });
+    }
+
+    #[test]
+    fn prepare_mutates_exact_titles_and_missing_state_modes_refuse() {
+        let repo = tempfile::tempdir().expect("repo");
+        let handoff = tempfile::tempdir().expect("handoff");
+        let request = request_with(repo.path(), handoff.path());
+        assert_eq!(ship(&request).err().expect("missing state"), "leaf prepare phase has not initialized ship state");
+        assert_eq!(verify(&request).err().expect("incomplete state"), "leaf ship state is not complete");
+        assert!(read_state(&request).expect("missing state").is_none());
+
+        let initial = issue_at("[LEAF OF 40] Ship", "open", "2026-08-21T00:00:00Z");
+        let active = issue_at("[IMPLEMENTING] [LEAF OF 40] Ship", "open", "2026-08-21T00:00:01Z");
+        let (factory, server) = service([initial.clone(), initial, active.clone(), active]);
+        let outcome = with_test_github_service(factory, || prepare(&request)).expect("prepare");
+        assert_eq!(outcome.status, "prepared");
+        assert_eq!(read_state(&request).expect("state").expect("prepared").status, "prepared");
+        server.join().expect("stub completed");
+
+        let before = issue_at("[IMPLEMENTING] [LEAF OF 40] Ship", "closed", "2026-08-21T00:00:02Z");
+        let done = issue_at("[DONE] [LEAF OF 40] Ship", "closed", "2026-08-21T00:00:03Z");
+        let (factory, server) = service([before.clone(), before, done.clone(), done]);
+        with_test_github_service(factory, || mutate_leaf_title(&request, true)).expect("done title");
+        server.join().expect("stub completed");
+
+        let code = run(&ShipLeafArguments { arguments: command_arguments("verify", repo.path(), handoff.path()) });
+        assert_eq!(code, ExitCode::FAILURE);
+    }
+
+    #[test]
+    fn ci_status_wait_and_distillation_preserve_child_envelopes() {
+        let repo = tempfile::tempdir().expect("repo");
+        let handoff = tempfile::tempdir().expect("handoff");
+        let request = request_with(repo.path(), handoff.path());
+        install_larch(|_arguments, _environment| Ok(output(0, "CI_STATUS=pass\nFAILED_RUN_ID=\n")));
+        assert_eq!(wait_ci(&request, 7).expect("pass").0, "pass");
+        install_larch(|_arguments, _environment| Ok(output(0, "CI_STATUS=fail\nFAILED_RUN_ID=123\n")));
+        assert_eq!(wait_ci(&request, 7).expect("fail"), ("fail".to_owned(), "123".to_owned()));
+        install_larch(|_arguments, _environment| Ok(output(0, "CI_STATUS=surprise\n")));
+        assert!(wait_ci(&request, 7).unwrap_err().contains("unsupported"));
+
+        install_larch(|arguments, _environment| {
+            let index = arguments.iter().position(|value| value == "--output").expect("output option");
+            fs::write(PathBuf::from(&arguments[index + 1]), "# CI failure\n").expect("distilled file");
+            Ok(output(0, "STATUS=ok\n"))
+        });
+        assert_eq!(distill_failure(&request, "123").expect("distill"), handoff.path().join("ci-errors-123.md"));
+        assert!(distill_failure(&request, "not-numeric").unwrap_err().contains("numeric"));
+
+        install_larch(|_arguments, _environment| {
+            Ok(ProcessOutput::new(ProcessStatus::new(true, Some(0)), b"CI_STATUS=pass\n".to_vec(), Vec::new(), true, false))
+        });
+        assert_eq!(ci_status(&request, 7).unwrap_err(), "CI status command failed");
+        clear_hooks();
+    }
+
+    #[test]
+    fn managed_budget_counts_only_non_generated_rust_lines() {
+        let fixture = GitRepositoryBuilder::new(GitFixture::Refs).build().expect("git fixture");
+        fixture.write("live.rs", b"fn live() {}\nfn more() {}\n").expect("live Rust");
+        fixture.write("generated.rs", b"// @generated\nfn generated() {}\n").expect("generated Rust");
+        fixture.write("notes.txt", b"not Rust\n").expect("notes");
+        assert!(fixture.git(["add", "--", "live.rs", "generated.rs", "notes.txt"]).expect("add").success());
+        assert!(fixture.git(["commit", "--quiet", "-m", "Rust changes"]).expect("commit").success());
+        let handoff = tempfile::tempdir().expect("handoff");
+        let request = request_with(fixture.root(), handoff.path());
+        let head = repository(&request).expect("repository").resolve_revision(&Revision::new(b"HEAD")).expect("head").to_hex();
+        let managed = companion_issue("#7687 owns [CHIEF UMBRELLA] work");
+        let (factory, server) = service([managed.clone(), managed.clone(), managed]);
+        let budget = with_test_github_service(factory, || rust_budget_for_head(&request, &head)).expect("budget");
+        assert_eq!(budget.status, "within-limit");
+        assert_eq!(budget.added_lines, Some(2));
+        assert_eq!(with_test_github_service(
+            Arc::new({
+                let base = server.base_url().to_owned();
+                move || OctocrabGitHubService::with_test_base(&base)
+            }),
+            || rust_budget(&request),
+        ).expect("head budget").added_lines, Some(2));
+        assert!(with_test_github_service(
+            Arc::new({
+                let base = server.base_url().to_owned();
+                move || OctocrabGitHubService::with_test_base(&base)
+            }),
+            || rust_budget_for_head(&request, "invalid"),
+        ).err().expect("invalid head").contains("head SHA"));
+        server.join().expect("stub completed");
+    }
+
+    #[test]
+    fn pull_creation_and_merge_result_classification_are_bounded() {
+        let fixture = git_fixture();
+        let handoff = tempfile::tempdir().expect("handoff");
+        let request = request_with(fixture.root(), handoff.path());
+        let state = ShipState::prepared(&request);
+        let head = repository(&request).expect("repository").resolve_revision(&Revision::new(b"HEAD")).expect("head").to_hex();
+        let open = pull(7, "open", false, &head);
+        let (factory, server) = service(["[]".to_owned(), "[]".to_owned(), open.clone(), open.clone()]);
+        let created = with_test_github_service(factory, || ensure_pull(&request, &state, &expected_branch(42))).expect("created pull");
+        assert_eq!(created.number(), 7);
+        server.join().expect("stub completed");
+
+        let (factory, server) = service([format!("[{open},{open}]")]);
+        assert!(with_test_github_service(factory, || ensure_pull(&request, &state, &expected_branch(42))).unwrap_err().contains("multiple"));
+        server.join().expect("stub completed");
+
+        let merge_state = identity_state(&request, "monitoring");
+        install_larch(|_arguments, _environment| Ok(output(0, "CI_STATUS=pass\n")));
+        for (wire, expected) in [
+            ("MERGE_RESULT=queued\n", "queued"),
+            ("MERGE_RESULT=main_advanced\n", "reconcile"),
+            ("MERGE_RESULT=ci_not_ready\n", "retry-ci"),
+            ("MERGE_RESULT=review_required\n", "requires approving review"),
+            ("MERGE_RESULT=other\nERROR=custom failure\n", "custom failure"),
+        ] {
+            let (factory, server) = service([
+                candidate("open", false, &merge_state.head_sha),
+                clean_review(),
+                companion_issue("ordinary umbrella"),
+            ]);
+            let selected = wire.to_owned();
+            install_python(move |_arguments| Ok(output(0, &selected)));
+            let result = with_test_github_service(factory, || submit_merge(&request, &merge_state));
+            match expected {
+                "queued" => assert!(matches!(result, Ok(MergeResult::Queued))),
+                "reconcile" => assert!(matches!(result, Ok(MergeResult::Reconcile))),
+                "retry-ci" => assert!(matches!(result, Ok(MergeResult::RetryCi))),
+                detail => assert!(result.err().expect("merge refusal").contains(detail)),
+            }
+            server.join().expect("stub completed");
+        }
+        clear_hooks();
+    }
+
+    #[test]
+    fn pull_identity_review_and_closing_link_validation_fail_closed() {
+        let fixture = git_fixture();
+        let handoff = tempfile::tempdir().expect("handoff");
+        let request = request_with(fixture.root(), handoff.path());
+        let head = repository(&request).expect("repository").resolve_revision(&Revision::new(b"HEAD")).expect("head").to_hex();
+        let mut state = identity_state(&request, "monitoring");
+        state.head_sha.clone_from(&head);
+        let valid = pull(7, "open", false, &head);
+        let (factory, server) = service([valid.clone()]);
+        let valid_pull = with_test_github_service(factory, || ensure_pull(&request, &state, &expected_branch(42))).expect("valid pull");
+        server.join().expect("stub completed");
+
+        assert!(require_pull_identity(&request, &state, &valid_pull, &head).is_ok());
+        let mut changed = state.clone();
+        changed.pr_number = 8;
+        assert!(require_pull_identity(&request, &changed, &valid_pull, &head).unwrap_err().contains("branch identity"));
+        changed = state.clone();
+        changed.branch = "other".to_owned();
+        assert!(require_pull_identity(&request, &changed, &valid_pull, &head).unwrap_err().contains("branch identity"));
+        assert!(require_pull_identity(&request, &state, &valid_pull, &"b".repeat(40)).unwrap_err().contains("head changed"));
+        changed = state.clone();
+        changed.pr_url = "https://example.invalid/pull/7".to_owned();
+        assert!(require_pull_identity(&request, &changed, &valid_pull, &head).unwrap_err().contains("URL"));
+
+        let mut wrong_branch: Value = serde_json::from_str(&valid).expect("pull JSON");
+        wrong_branch["head"]["ref"] = json!("other");
+        let mut wrong_base: Value = serde_json::from_str(&valid).expect("pull JSON");
+        wrong_base["base"]["ref"] = json!("release");
+        let mut wrong_body: Value = serde_json::from_str(&valid).expect("pull JSON");
+        wrong_body["body"] = json!("Closes #42\n\nTrailing prose");
+        for (body, detail) in [
+            (pull(7, "closed", false, &head), "closed without a merge"),
+            (wrong_branch.to_string(), "branch or base"),
+            (wrong_base.to_string(), "branch or base"),
+            (wrong_body.to_string(), "closing link"),
+        ] {
+            let (factory, server) = service([body]);
+            let error = with_test_github_service(factory, || ensure_pull(&request, &state, &expected_branch(42)))
+                .expect_err("invalid pull");
+            assert!(error.contains(detail), "{error}");
+            server.join().expect("stub completed");
+        }
+
+        let (factory, server) = service([candidate("open", false, &"c".repeat(40))]);
+        assert!(with_test_github_service(factory, || pull_review_state(&request, 7, &head)).unwrap_err().contains("head changed"));
+        server.join().expect("stub completed");
+
+        let dirty = json!({"data": {"repository": {"pullRequest": {
+            "reviewDecision": null, "mergeStateStatus": "DIRTY", "mergeable": "CONFLICTING",
+        }}}})
+        .to_string();
+        let mut merge_state = identity_state(&request, "monitoring");
+        merge_state.head_sha.clone_from(&head);
+        let (factory, server) = service([candidate("open", false, &head), dirty]);
+        assert!(with_test_github_service(factory, || submit_merge(&request, &merge_state))
+            .err()
+            .expect("ineligible merge")
+            .contains("not admin-merge eligible"));
+        server.join().expect("stub completed");
+
+        let (factory, server) = service([candidate("open", false, &head), clean_review()]);
+        install_larch(|_arguments, _environment| Ok(output(0, "CI_STATUS=fail\n")));
+        assert!(with_test_github_service(factory, || submit_merge(&request, &merge_state))
+            .err()
+            .expect("changed CI")
+            .contains("CI changed"));
+        server.join().expect("stub completed");
+        clear_hooks();
+    }
+
+    #[test]
+    #[allow(clippy::cognitive_complexity)] // One real Git history keeps the clean and conflicting rebase phases causally linked.
+    fn git_reconcile_and_branch_helpers_cover_rebase_and_conflict() {
+        let fixture = git_fixture();
+        let handoff = tempfile::tempdir().expect("handoff");
+        let request = request_with(fixture.root(), handoff.path());
+        let branch = expected_branch(42);
+        let (_, original_head) = expected_branch_head(&request).expect("managed branch");
+        assert_eq!(current_branch(&request).expect("branch"), branch);
+        assert!(require_changed_head(&request, &original_head, "unchanged").unwrap_err().contains("unchanged"));
+        assert!(require_changed_head(&request, &"0".repeat(40), "changed").is_ok());
+        assert!(matches!(reconcile_main(&request), Ok(Reconcile::Clean { rebased: false })));
+
+        assert!(fixture.git(["checkout", "--quiet", "main"]).expect("checkout main").success());
+        fixture.write("upstream.txt", b"upstream\n").expect("upstream file");
+        assert!(fixture.git(["add", "--", "upstream.txt"]).expect("add upstream").success());
+        assert!(fixture.git(["commit", "--quiet", "-m", "Advance main"]).expect("commit upstream").success());
+        assert!(fixture.git(["push", "--quiet", "origin", "main"]).expect("push main").success());
+        assert!(fixture.git(["checkout", "--quiet", branch.as_str()]).expect("checkout leaf").success());
+        assert!(matches!(reconcile_main(&request), Ok(Reconcile::Clean { rebased: true })));
+
+        assert!(fixture.git(["checkout", "--quiet", "main"]).expect("checkout main").success());
+        fixture.write("conflict.txt", b"base\n").expect("base conflict file");
+        assert!(fixture.git(["add", "--", "conflict.txt"]).expect("add conflict base").success());
+        assert!(fixture.git(["commit", "--quiet", "-m", "Add conflict base"]).expect("commit conflict base").success());
+        assert!(fixture.git(["push", "--quiet", "origin", "main"]).expect("push conflict base").success());
+        assert!(fixture.git(["checkout", "--quiet", branch.as_str()]).expect("checkout leaf").success());
+        assert!(matches!(reconcile_main(&request), Ok(Reconcile::Clean { rebased: true })));
+        fixture.write("conflict.txt", b"leaf\n").expect("leaf conflict");
+        assert!(fixture.git(["add", "--", "conflict.txt"]).expect("add leaf conflict").success());
+        assert!(fixture.git(["commit", "--quiet", "-m", "Change conflict on leaf"]).expect("commit leaf conflict").success());
+
+        assert!(fixture.git(["checkout", "--quiet", "main"]).expect("checkout main").success());
+        fixture.write("conflict.txt", b"main\n").expect("main conflict");
+        assert!(fixture.git(["add", "--", "conflict.txt"]).expect("add main conflict").success());
+        assert!(fixture.git(["commit", "--quiet", "-m", "Change conflict on main"]).expect("commit main conflict").success());
+        assert!(fixture.git(["push", "--quiet", "origin", "main"]).expect("push main conflict").success());
+        assert!(fixture.git(["checkout", "--quiet", branch.as_str()]).expect("checkout leaf").success());
+        let Reconcile::Conflict { files, original_head: conflict_head } = reconcile_main(&request).expect("conflict") else {
+            panic!("expected conflict");
+        };
+        assert_eq!(files, "conflict.txt");
+        assert!(valid_oid(&conflict_head));
+        assert!(rebase_in_progress(&request).expect("rebase state"));
+        abort_rebase(&request).expect("abort conflict");
+        assert!(!rebase_in_progress(&request).expect("cleared rebase"));
+        abort_rebase(&request).expect("idempotent abort");
+
+        assert!(local_branch_exists(&request, &branch).expect("local branch"));
+        assert!(fixture.git(["push", "--quiet", "-u", "origin", branch.as_str()]).expect("push leaf").success());
+        assert!(remote_oid(&request, &branch).expect("remote branch").is_some());
+        assert!(pr_title(&request).expect("PR title").starts_with("Fixes #42: "));
+        assert!(require_main_equal(&request).unwrap_err().contains("does not match"));
+
+        assert!(fixture.git(["checkout", "--quiet", "main"]).expect("checkout main").success());
+        assert!(require_main_equal(&request).is_ok());
+        assert!(expected_branch_head(&request).unwrap_err().contains("exact managed branch"));
+        fixture.write("dirty.txt", b"dirty\n").expect("dirty file");
+        assert!(ensure_clean(&request).unwrap_err().contains("clean worktree"));
+    }
+
+    #[test]
+    fn premerge_reentry_and_conflict_handoff_caps_are_bounded() {
+        let fixture = git_fixture();
+        let handoff = tempfile::tempdir().expect("handoff");
+        let request = request_with(fixture.root(), handoff.path());
+        let (_, head) = expected_branch_head(&request).expect("managed head");
+
+        let mut state = identity_state(&request, "ci_failed");
+        state.head_sha.clone_from(&head);
+        assert!(run_premerge(&request, &mut state).err().expect("unchanged fixer").contains("no fixer commit"));
+        state.head_sha = "0".repeat(40);
+        state.ci_fix_attempts = CI_FIX_CAP;
+        assert!(run_premerge(&request, &mut state).err().expect("CI cap").contains("CI fix attempt cap"));
+
+        state = identity_state(&request, "needs_conflict_fix");
+        state.head_sha = "0".repeat(40);
+        state.conflict_fix_attempts = CONFLICT_FIX_CAP;
+        assert!(run_premerge(&request, &mut state).err().expect("conflict cap").contains("conflict fix attempt cap"));
+
+        state = ShipState::prepared(&request);
+        let outcome = conflict_handoff(&request, &mut state, "src/a.rs".to_owned(), head.clone()).expect("handoff");
+        assert_eq!(outcome.status, "needs_conflict_fix");
+        assert_eq!(read_state(&request).expect("state").expect("handoff state").conflict_files, "src/a.rs");
+        state.conflict_fix_attempts = CONFLICT_FIX_CAP;
+        assert!(conflict_handoff(&request, &mut state, "src/a.rs".to_owned(), head)
+            .err()
+            .expect("handoff cap")
+            .contains("conflict fix attempt cap"));
+    }
+
+    #[test]
+    fn ship_reentry_rejects_contradictory_live_pull_states() {
+        let handoff = tempfile::tempdir().expect("handoff");
+        let request = request(handoff.path());
+        for (status, live_pull, live_candidate, detail) in [
+            ("monitoring", pull(7, "closed", true, &"a".repeat(40)), candidate("open", false, &"a".repeat(40)), "contradicts"),
+            ("monitoring", pull(7, "open", false, &"a".repeat(40)), candidate("closed", true, &"a".repeat(40)), "contradicts"),
+            ("merged", pull(7, "open", false, &"a".repeat(40)), candidate("open", false, &"a".repeat(40)), "contradicts"),
+            ("monitoring", pull(7, "closed", false, &"a".repeat(40)), candidate("open", false, &"a".repeat(40)), "closed without a merge"),
+        ] {
+            let state = identity_state(&request, status);
+            write_state(&request, &state).expect("state");
+            let (factory, server) = service([live_pull, live_candidate]);
+            let error = with_test_github_service(factory, || ship(&request)).err().expect("reentry refusal");
+            assert!(error.contains(detail), "{error}");
+            server.join().expect("stub completed");
+        }
+    }
+
+    #[test]
+    fn ship_completes_the_green_direct_merge_and_postmerge_cleanup() {
+        let fixture = git_fixture();
+        let handoff = tempfile::tempdir().expect("handoff");
+        let request = request_with(fixture.root(), handoff.path());
+        write_state(&request, &ShipState::prepared(&request)).expect("prepared state");
+        let head = repository(&request)
+            .expect("repository")
+            .resolve_revision(&Revision::new(b"HEAD"))
+            .expect("head")
+            .to_hex();
+        let open = pull(7, "open", false, &head);
+        let merged = pull(7, "closed", true, &head);
+        let done = issue("[DONE] [LEAF OF 40] Ship", "closed");
+        let (factory, server) = service([
+            format!("[{open}]"),
+            candidate("open", false, &head),
+            clean_review(),
+            candidate("open", false, &head),
+            clean_review(),
+            companion_issue("ordinary umbrella"),
+            merged.clone(),
+            candidate("closed", true, &head),
+            done.clone(),
+            merged,
+            candidate("closed", true, &head),
+            done,
+        ]);
+        install_larch(|arguments, _environment| {
+            assert_eq!(arguments.first().and_then(|value| value.to_str()), Some("ci"));
+            assert_eq!(arguments.get(1).and_then(|value| value.to_str()), Some("status"));
+            Ok(output(0, "CI_STATUS=pass\nFAILED_RUN_ID=\n"))
+        });
+        install_python(|arguments| {
+            assert_eq!(arguments.first().and_then(|value| value.to_str()), Some("merge"));
+            assert_eq!(arguments.get(1).and_then(|value| value.to_str()), Some("pr"));
+            Ok(output(0, "MERGE_RESULT=merged\n"))
+        });
+
+        let outcome = with_test_github_service(factory, || ship(&request)).expect("ship completes");
+
+        assert_eq!(outcome.status, "complete");
+        assert_eq!(outcome.pr_number, 7);
+        assert_eq!(current_branch(&request).as_deref(), Ok("main"));
+        assert!(!local_branch_exists(&request, &expected_branch(42)).expect("local branch"));
+        assert!(remote_oid(&request, &expected_branch(42)).expect("remote branch").is_none());
+        assert_eq!(read_state(&request).expect("read state").expect("state").status, "complete");
+        server.join().expect("stub completed");
+        clear_hooks();
     }
 }
 

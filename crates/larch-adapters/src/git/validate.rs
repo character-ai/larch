@@ -211,6 +211,15 @@ impl GitRefspec {
         Ok(Self(value))
     }
 
+    /// Build Git's fixed empty-source refspec for deleting one validated
+    /// remote reference.
+    #[must_use]
+    pub fn deletion(destination: &GitRef) -> Self {
+        let mut value = OsString::from(":");
+        value.push(destination.as_os_str());
+        Self(value)
+    }
+
     #[must_use]
     pub fn as_os_str(&self) -> &OsStr {
         &self.0

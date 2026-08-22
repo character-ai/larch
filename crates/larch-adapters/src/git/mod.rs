@@ -1228,6 +1228,15 @@ mod tests {
                 "HEAD:main",
             ],
         );
+        assert_argv(
+            &PushRequest {
+                remote: GitRemote::new("origin").unwrap(),
+                refspec: GitRefspec::deletion(&GitRef::new("refs/heads/topic").unwrap()),
+                force_with_lease: None,
+                set_upstream: false,
+            },
+            &["push", "origin", ":refs/heads/topic"],
+        );
     }
 
     #[test]
