@@ -12,7 +12,7 @@ import re
 import subprocess
 import sys
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -23,17 +23,13 @@ from larch.core import logging_util
 from larch.core.repo_roots import larch_entrypoint
 from larch.report import design_diagram_log
 from larch.git import gh
-from larch.git import git
-from larch.core import proc
 from larch.core import redact
-from larch.core import rust_runtime
 from larch.report import report_tokens_cost
 from larch.report import tokens
-from larch.report import storage_config
 from larch.issue import tracking_issue
 from larch.implement import scope_disposition
 from larch.errors import ShipError
-from larch.core.proc import CommandResult, Runner
+from larch.core.proc import Runner
 
 
 @dataclass(frozen=True)
@@ -46,14 +42,6 @@ class MermaidResult:
 @dataclass(frozen=True)
 class FinalReportResult:
     exit_code: int
-    comment_url: str
-    error: str
-
-
-@dataclass(frozen=True)
-class TrackingIssuePostResult:
-    exit_code: int
-    posted: bool
     comment_url: str
     error: str
 
@@ -79,7 +67,6 @@ _CODE_FLOW_DIAGRAM_TIMEOUT_SECONDS = 180
 _MAX_DIAGRAM_RETRIES = 4
 _DIAGRAM_RETRY_DELAY_SECONDS = 10
 _WARNING_TAIL_LIMIT = 500
-_PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
 _LAUNCHER_FAILURE_LABEL_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _IMPLEMENT_SUCCESS_OUTCOMES = frozenset({
     "merged",
@@ -175,17 +162,6 @@ def _launcher_failure_label(stdout: str) -> str:
     return f"{failure_class}/{failure_reason}"
 
 
-def _path_under_repo(*, repo_root: Path, rel_path: str) -> bool:
-    if "\x00" in rel_path or rel_path.startswith("/") or ".." in rel_path.split("/"):
-        return False
-    try:
-        resolved = (repo_root / rel_path).resolve()
-        _ = resolved.relative_to(repo_root.resolve())
-    except ValueError:
-        return False
-    return True
-
-
 def flowchart_rejects_pipe(line: str) -> bool:
     """Port sanitize-mermaid-fragment.sh flowchart_reject (depth + quote aware)."""
     depth = 0
@@ -224,72 +200,6 @@ def _first_non_blank_mermaid_fence(text: str) -> bool:
             match and re.match(r"^\s*mermaid\s*$", match.group(3) or ""),
         )
     return False
-
-
-def compose_summary_bullets(
-    runner: Runner,
-    *,
-    plan_goals_file: str,
-    cwd: str | None = None,
-) -> str:
-    """Render PR summary goal + test/cross-dir bullets."""
-    _ = runner
-    if cwd is None:
-        msg = f"plan-goals path escapes repo root: {plan_goals_file}"
-        raise ShipError(msg)
-    goals_path = Path(plan_goals_file)
-    repo_root = Path(cwd)
-    goals_file = (
-        goals_path.resolve()
-        if goals_path.is_absolute()
-        else (repo_root / goals_path).resolve()
-    )
-    try:
-        rel = goals_file.relative_to(repo_root.resolve())
-    except ValueError as exc:
-        msg = f"plan-goals path escapes repo root: {plan_goals_file}"
-        raise ShipError(msg) from exc
-    if not _path_under_repo(repo_root=repo_root, rel_path=str(rel)):
-        msg = f"plan-goals path escapes repo root: {plan_goals_file}"
-        raise ShipError(msg)
-    if not goals_file.is_file() or goals_file.stat().st_size == 0:
-        msg = f"plan-goals file missing or empty: {plan_goals_file}"
-        raise ShipError(msg)
-    text = goals_file.read_text(encoding="utf-8")
-    goal_line = ""
-    in_goal = False
-    for line in text.splitlines():
-        if line.startswith("## Goal"):
-            in_goal = True
-            continue
-        if in_goal and line.startswith("#"):
-            break
-        if in_goal and line.strip():
-            goal_line = line.strip()
-            break
-    if not goal_line:
-        msg = f"no Goal line found in {plan_goals_file}"
-        raise ShipError(msg)
-    bullets = [f"- {goal_line}"]
-    merge_base = git.try_merge_base(runner, "HEAD", "origin/main", cwd=cwd)
-    changed: tuple[str, ...] = ()
-    if merge_base:
-        result = git.diff_name_only(runner, merge_base, "HEAD", cwd=cwd)
-        if result.returncode == 0:
-            changed = tuple(
-                line for line in result.stdout.splitlines() if line
-            )
-    if changed:
-        test_count = sum(
-            1 for path in changed if re.search(r"(^|/)test-[^/]+\.sh$", path)
-        )
-        if test_count > 0:
-            bullets.append(f"- Added or updated {test_count} test file(s).")
-        dirs = sorted({path.split("/")[0] if "/" in path else "." for path in changed})
-        cross_dir_threshold = 2
-        if len(dirs) > cross_dir_threshold:
-            bullets.append(f"- Cross-cutting changes across: {','.join(dirs)}.")
-    return "\n".join(bullets) + "\n"
 
 
 def body_start_line(lines: list[str]) -> int:
@@ -888,164 +798,6 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
     if args.output_file:
         print(f"OUTPUT_FILE={args.output_file}", file=sys.stderr)
     return 0
-
-
-class _ProcRunner:
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,
-        cwd: str | None = None,
-        env: Mapping[str, str] | None = None,
-        check: bool = False,
-        stdout: int | None = None,
-        stderr: int | None = None,
-    ) -> CommandResult:
-        return proc.run(argv, timeout=timeout, cwd=cwd, env=env, check=check, stdout=stdout, stderr=stderr)
-
-
-def compose_pr_summary_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py pr compose-summary")
-    parser.add_argument("--plan-goals-file", required=True)
-    args = parser.parse_args(argv)
-    try:
-        sys.stdout.write(compose_summary_bullets(_ProcRunner(), plan_goals_file=args.plan_goals_file, cwd=str(Path.cwd())))
-    except Exception as exc:
-        print(f"ERROR={exc}", file=sys.stderr)
-        return 2
-    return 0
-
-
-def post_tracking_issue(
-    implement_tmpdir: Path,
-    *,
-    issue_number: str = "",
-    run_id: str = "",
-    adopted: str = "true",
-    force_requested: str = "false",
-) -> TrackingIssuePostResult:
-    if adopted not in {"true", "false"}:
-        return TrackingIssuePostResult(
-            exit_code=2,
-            posted=False,
-            comment_url="",
-            error="--adopted must be true or false",
-        )
-    if force_requested not in {"true", "false"}:
-        return TrackingIssuePostResult(
-            exit_code=2,
-            posted=False,
-            comment_url="",
-            error="--force-requested must be true or false",
-        )
-    parent = implement_tmpdir / "parent-issue.md"
-    session = implement_tmpdir / "session-env.sh"
-    flags = implement_tmpdir / "run-flags.sh"
-    issue = issue_number or _read_kv(path=parent, key="ISSUE_NUMBER")
-    run = run_id or _read_kv(path=parent, key="RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "") or _read_kv(path=session, key="LARCH_TOKEN_SESSION_ID")
-    if force_requested == "false" and _read_kv(path=flags, key="FORCE_REQUESTED") == "true":
-        force_requested = "true"
-    if not issue:
-        return TrackingIssuePostResult(
-            exit_code=1,
-            posted=False,
-            comment_url="",
-            error="ISSUE_NUMBER not found in parent-issue.md",
-        )
-    if not issue.isdigit():
-        return TrackingIssuePostResult(
-            exit_code=1,
-            posted=False,
-            comment_url="",
-            error="ISSUE_NUMBER must be numeric",
-        )
-    if not re.fullmatch(r"[A-Za-z0-9._-]+", run or ""):
-        return TrackingIssuePostResult(
-            exit_code=1,
-            posted=False,
-            comment_url="",
-            error="RUN_ID must match ^[A-Za-z0-9._-]+$",
-        )
-    version = _installed_plugin_version()
-    summary = implement_tmpdir / "summary-metadata.md"
-    repo_root_raw = _read_kv(path=session, key="REPO_ROOT")
-    log_reference = storage_config.run_log_reference(
-        repo_root=Path(repo_root_raw) if repo_root_raw else None,
-        skill="implement",
-        run_id=run,
-        lifecycle_manifest=(
-            implement_tmpdir / "larch-logs" / "implement" / run / "manifest.json"
-        ),
-    )
-    lines = [f"Run ID: `{run}`", f"Run log: {log_reference}", f"Tracking issue: #{issue}", f"Agent: `{_read_kv(path=session, key='AGENT', default='claude') or 'claude'}`", f"Coder: `{_read_kv(path=session, key='CODER', default='claude') or 'claude'}`"]
-    if force_requested == "true":
-        lines.append("Force: true")
-    lines.append(f"Larch version: `{version}`")
-    summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    repo = _read_kv(path=session, key="REPO") or None
-    try:
-        posted = rust_runtime.tracking_issue_upsert_summary(
-            proc,
-            issue=issue,
-            marker=f"<!-- larch:metadata v1 runid={run} -->",
-            content_file=str(summary),
-            repo=repo or "",
-            run_id=run,
-        )
-        if posted.failed:
-            raise OSError(posted.error or "tracking-issue upsert-summary failed")
-    except (OSError, ValueError) as exc:
-        err = " ".join(str(exc).split())[:500]
-        _warn(f"tracking-issue upsert-summary failed: {err}")
-    else:
-        if issue_number:
-            parent.write_text(f"ISSUE_NUMBER={issue}\nRUN_ID={run}\nADOPTED={adopted}\n", encoding="utf-8")
-        return TrackingIssuePostResult(
-            exit_code=0,
-            posted=True,
-            comment_url=posted.comment_url,
-            error="",
-        )
-    return TrackingIssuePostResult(
-        exit_code=1,
-        posted=False,
-        comment_url="",
-        error=err,
-    )
-
-
-def _installed_plugin_version() -> str:
-    try:
-        plugin_root = Path(__file__).resolve().parents[3]
-        metadata = json.loads((plugin_root / config.PLUGIN_JSON_PATH).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        _warn("plugin read-version failed")
-        return "unknown"
-    candidate = metadata.get("version")
-    return candidate if isinstance(candidate, str) and candidate else "unknown"
-
-
-def post_tracking_issue_main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cli.py tracking post-issue")
-    parser.add_argument("--implement-tmpdir", required=True)
-    parser.add_argument("--issue-number", default="")
-    parser.add_argument("--run-id", default="")
-    parser.add_argument("--adopted", default="true")
-    parser.add_argument("--force-requested", default="false")
-    args = parser.parse_args(argv)
-    result = post_tracking_issue(
-        Path(args.implement_tmpdir),
-        issue_number=args.issue_number,
-        run_id=args.run_id,
-        adopted=args.adopted,
-        force_requested=args.force_requested,
-    )
-    logging_util.emit_kv(key="POSTED", value=str(result.posted).lower())
-    logging_util.emit_kv(key="COMMENT_URL", value=result.comment_url)
-    if result.error:
-        logging_util.emit_kv(key="ERROR", value=result.error)
-    return result.exit_code
 
 
 def _diagram_failure_capture(*, returncode: int, stderr: str) -> tuple[str, str]:

@@ -24,19 +24,25 @@
 //! is the Python contract and callers branch on it.
 
 use crate::{
-    argparse_compat::{ParsedCommandLine, parse, read_stdin},
+    argparse_compat::{ParsedCommandLine, parse, parse_required_with_help, read_stdin},
+    bootstrap_support::{valid_run_id, write_session_text},
     github_repository_resolution::{ambient_repo, repository_ref, validate_repo_slug},
     github_service::{ServiceFailure, with_github_service},
     issue_mutation_support::{authorization_request, create_with_rollback},
+    run_log_commands::run_log_reference,
+    run_log_entry_commands::plugin_version,
 };
 use larch_adapters::{
+    PathIntent, TemporaryRoot,
     github::{IssueMutationOwner, OctocrabGitHubService},
+    read_utf8_lossy,
     runtime::Cancellation,
 };
 use larch_core::{
-    GitHubService, IMPLEMENTING_PREFIX, ImplementationLease, IssueCreateRequest,
+    CrStrip, GitHubService, IMPLEMENTING_PREFIX, ImplementationLease, IssueCreateRequest,
     IssueMutationField, IssueMutationLease, IssueMutationRequest, IssueMutationSnapshot,
-    LIFECYCLE_PREFIXES, PLAN_MARKER, cleanup_cache_sessions_root, detect_lifecycle_prefix, emit_kv,
+    KvDocument, LIFECYCLE_PREFIXES, PLAN_MARKER, ParseOptions, TrackingMetadata,
+    cleanup_cache_sessions_root, compose_tracking_metadata, detect_lifecycle_prefix, emit_kv,
     implementation_lease_is_expired, insert_signal_marker, parse_implementation_lease,
     parse_named_block, parse_receipt, receipt_marker_present, redact_run_log_payload,
     strip_lifecycle_prefix, upsert_implementation_lease,
@@ -1380,6 +1386,340 @@ fn mark_false_positive_with(
 }
 
 // ---------------------------------------------------------------------------
+// `tracking post-issue`
+// ---------------------------------------------------------------------------
+
+const POST_ISSUE_PROGRAM: &str = "cli.py tracking post-issue";
+const POST_ISSUE_USAGE: &str = "usage: cli.py tracking post-issue [-h] --implement-tmpdir IMPLEMENT_TMPDIR\n                                  [--issue-number ISSUE_NUMBER]\n                                  [--run-id RUN_ID] [--adopted ADOPTED]\n                                  [--force-requested FORCE_REQUESTED]";
+const POST_ISSUE_HELP: &str = "usage: cli.py tracking post-issue [-h] --implement-tmpdir IMPLEMENT_TMPDIR\n                                  [--issue-number ISSUE_NUMBER]\n                                  [--run-id RUN_ID] [--adopted ADOPTED]\n                                  [--force-requested FORCE_REQUESTED]\n\noptions:\n  -h, --help            show this help message and exit\n  --implement-tmpdir IMPLEMENT_TMPDIR\n  --issue-number ISSUE_NUMBER\n  --run-id RUN_ID\n  --adopted ADOPTED\n  --force-requested FORCE_REQUESTED\n";
+
+#[derive(Debug, Eq, PartialEq)]
+struct PostIssueResult {
+    exit_code: u8,
+    posted: bool,
+    deferred: bool,
+    comment_url: String,
+    error: String,
+}
+
+struct PostIssueArguments {
+    implement_tmpdir: String,
+    issue_number: String,
+    run_id: String,
+    adopted: String,
+    force_requested: String,
+    persist_explicit_issue: bool,
+}
+
+/// Compose and publish the implementation metadata tracking comment.
+pub fn post_issue(arguments: &[OsString]) -> ExitCode {
+    let parsed = match parse_required_with_help(
+        arguments,
+        POST_ISSUE_PROGRAM,
+        POST_ISSUE_USAGE,
+        POST_ISSUE_HELP,
+        &[
+            "--implement-tmpdir",
+            "--issue-number",
+            "--run-id",
+            "--adopted",
+            "--force-requested",
+        ],
+        &[],
+        &["--implement-tmpdir"],
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let options = PostIssueArguments {
+        implement_tmpdir: text(&parsed, "--implement-tmpdir"),
+        issue_number: optional(&parsed, "--issue-number").unwrap_or_default(),
+        run_id: optional(&parsed, "--run-id").unwrap_or_default(),
+        adopted: optional(&parsed, "--adopted").unwrap_or_else(|| "true".to_owned()),
+        force_requested: optional(&parsed, "--force-requested")
+            .unwrap_or_else(|| "false".to_owned()),
+        persist_explicit_issue: true,
+    };
+    let result = post_issue_with(&LiveEffects, &options, &plugin_version());
+    emit_kv("POSTED", flag(result.posted).as_str());
+    emit_kv("COMMENT_URL", &kv_safe(&result.comment_url));
+    if !result.error.is_empty() {
+        emit_kv("ERROR", &kv_safe(&result.error));
+    }
+    ExitCode::from(result.exit_code)
+}
+
+/// Publish through the same owner without writing the public command envelope.
+pub fn post_issue_in_process(
+    implement_tmpdir: &str,
+    issue_number: &str,
+    run_id: &str,
+    force_requested: &str,
+    persist_explicit_issue: bool,
+) -> Result<bool, String> {
+    let result = post_issue_with(
+        &LiveEffects,
+        &PostIssueArguments {
+            implement_tmpdir: implement_tmpdir.to_owned(),
+            issue_number: issue_number.to_owned(),
+            run_id: run_id.to_owned(),
+            adopted: "true".to_owned(),
+            force_requested: force_requested.to_owned(),
+            persist_explicit_issue,
+        },
+        &plugin_version(),
+    );
+    if result.posted {
+        Ok(true)
+    } else if result.deferred {
+        Ok(false)
+    } else {
+        Err(result.error)
+    }
+}
+
+fn post_issue_with(
+    effects: &impl TrackingEffects,
+    options: &PostIssueArguments,
+    version: &str,
+) -> PostIssueResult {
+    let PostIssueContext {
+        root,
+        session,
+        issue,
+        run,
+        force_requested,
+    } = match resolve_post_issue_context(options) {
+        Ok(context) => context,
+        Err(result) => return result,
+    };
+
+    let repo_root = first_kv(&session, "REPO_ROOT");
+    let manifest = root
+        .path()
+        .join("larch-logs")
+        .join("implement")
+        .join(&run)
+        .join("manifest.json");
+    let run_log = run_log_reference(
+        "implement",
+        (!repo_root.is_empty()).then(|| Path::new(&repo_root)),
+        &run,
+        &manifest,
+    );
+    let content = compose_tracking_metadata(&TrackingMetadata {
+        run_id: &run,
+        run_log: &run_log,
+        issue: &issue,
+        agent: &first_kv(&session, "AGENT"),
+        coder: &first_kv(&session, "CODER"),
+        force_requested,
+        plugin_version: version,
+    });
+    if let Err(error) = write_session_text(
+        &options.implement_tmpdir,
+        "summary-metadata.md",
+        &content,
+        0o600,
+    ) {
+        return post_issue_failure(1, &collapse_error(&error));
+    }
+    let repository = first_kv(&session, "REPO");
+    let marker = format!("<!-- larch:metadata v1 runid={run} -->");
+    let rows = match upsert_summary_content_with(
+        effects,
+        &issue,
+        &marker,
+        &content,
+        (!repository.is_empty()).then_some(repository.as_str()),
+        None,
+        false,
+        &run,
+    ) {
+        Ok(rows) => rows,
+        Err(refusal) => {
+            let error = collapse_error(&refusal.envelope().0);
+            post_issue_warning(&format!("tracking-issue upsert-summary failed: {error}"));
+            return post_issue_deferred(&error);
+        }
+    };
+    if options.persist_explicit_issue
+        && !options.issue_number.is_empty()
+        && let Err(error) = write_session_text(
+            &options.implement_tmpdir,
+            "parent-issue.md",
+            &format!(
+                "ISSUE_NUMBER={issue}\nRUN_ID={run}\nADOPTED={}\n",
+                options.adopted
+            ),
+            0o600,
+        )
+    {
+        return post_issue_failure(1, &collapse_error(&error));
+    }
+    let comment_url = rows
+        .iter()
+        .find_map(|(key, value)| (*key == "COMMENT_URL").then(|| value.clone()))
+        .unwrap_or_default();
+    PostIssueResult {
+        exit_code: 0,
+        posted: true,
+        deferred: false,
+        comment_url,
+        error: String::new(),
+    }
+}
+
+struct PostIssueContext {
+    root: TemporaryRoot,
+    session: String,
+    issue: String,
+    run: String,
+    force_requested: bool,
+}
+
+fn resolve_post_issue_context(
+    options: &PostIssueArguments,
+) -> Result<PostIssueContext, PostIssueResult> {
+    if !matches!(options.adopted.as_str(), "true" | "false") {
+        return Err(post_issue_failure(2, "--adopted must be true or false"));
+    }
+    if !matches!(options.force_requested.as_str(), "true" | "false") {
+        return Err(post_issue_failure(
+            2,
+            "--force-requested must be true or false",
+        ));
+    }
+    let root = match TemporaryRoot::resolve(Some(Path::new(&options.implement_tmpdir))) {
+        Ok(root) => root,
+        Err(error) => {
+            let detail = collapse_error(&error.to_string());
+            return Err(post_issue_failure(
+                1,
+                &format!("implement tmpdir unavailable: {detail}"),
+            ));
+        }
+    };
+    let parent = tracking_file(&root, "parent-issue.md");
+    let session = tracking_file(&root, "session-env.sh");
+    let flags = tracking_file(&root, "run-flags.sh");
+    let issue = if options.issue_number.is_empty() {
+        first_kv(&parent, "ISSUE_NUMBER")
+    } else {
+        options.issue_number.clone()
+    };
+    let run = if options.run_id.is_empty() {
+        let parent_run = first_kv(&parent, "RUN_ID");
+        if parent_run.is_empty() {
+            let session_id = tracking_file(&root, "session-id").trim().to_owned();
+            if session_id.is_empty() {
+                first_kv(&session, "LARCH_TOKEN_SESSION_ID")
+            } else {
+                session_id
+            }
+        } else {
+            parent_run
+        }
+    } else {
+        options.run_id.clone()
+    };
+    let force_requested = options.force_requested == "true"
+        || (options.force_requested == "false" && first_kv(&flags, "FORCE_REQUESTED") == "true");
+    if issue.is_empty() {
+        return Err(post_issue_failure(
+            1,
+            "ISSUE_NUMBER not found in parent-issue.md",
+        ));
+    }
+    if !issue.chars().all(|character| character.is_ascii_digit()) {
+        return Err(post_issue_failure(1, "ISSUE_NUMBER must be numeric"));
+    }
+    if !valid_run_id(&run) {
+        return Err(post_issue_failure(1, "RUN_ID must match ^[A-Za-z0-9._-]+$"));
+    }
+    Ok(PostIssueContext {
+        root,
+        session,
+        issue,
+        run,
+        force_requested,
+    })
+}
+
+fn tracking_file(root: &TemporaryRoot, name: &str) -> String {
+    root.confine(root.path().join(name), PathIntent::Read)
+        .ok()
+        .and_then(|path| read_utf8_lossy(&path).ok())
+        .unwrap_or_default()
+}
+
+fn first_kv(document: &str, key: &str) -> String {
+    KvDocument::parse(
+        document,
+        ParseOptions {
+            cr_strip: CrStrip::Both,
+            ..ParseOptions::legacy()
+        },
+    )
+    .ok()
+    .and_then(|document| {
+        document
+            .rows()
+            .iter()
+            .find_map(|row| (row.key() == key).then(|| row.value().to_owned()))
+    })
+    .unwrap_or_default()
+}
+
+fn post_issue_failure(exit_code: u8, error: &str) -> PostIssueResult {
+    PostIssueResult {
+        exit_code,
+        posted: false,
+        deferred: false,
+        comment_url: String::new(),
+        error: error.to_owned(),
+    }
+}
+
+fn post_issue_deferred(error: &str) -> PostIssueResult {
+    PostIssueResult {
+        exit_code: 1,
+        posted: false,
+        deferred: true,
+        comment_url: String::new(),
+        error: error.to_owned(),
+    }
+}
+
+fn collapse_error(error: &str) -> String {
+    redact_run_log_payload(error)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(ERROR_LIMIT)
+        .collect()
+}
+
+fn post_issue_warning(message: &str) {
+    let detail = message.split_whitespace().collect::<Vec<_>>().join(" ");
+    let bounded = if detail.chars().count() > ERROR_LIMIT {
+        let tail: String = detail
+            .chars()
+            .rev()
+            .take(ERROR_LIMIT - 3)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect();
+        format!("...{tail}")
+    } else {
+        detail
+    };
+    diagnostic(&format!("pr_body: {bounded}"));
+}
+
+// ---------------------------------------------------------------------------
 // `tracking-issue upsert-summary`
 // ---------------------------------------------------------------------------
 
@@ -1522,6 +1862,30 @@ fn upsert_summary_with(
     delete_if_empty: bool,
     current_run: &str,
 ) -> Result<Vec<(&'static str, String)>, Refusal> {
+    let content = read_text_file(content_file, "content", false)?;
+    upsert_summary_content_with(
+        effects,
+        issue,
+        marker,
+        &content,
+        repository,
+        comment_id,
+        delete_if_empty,
+        current_run,
+    )
+}
+
+#[allow(clippy::too_many_arguments)] // Mirrors the public upsert option surface at the effects seam.
+fn upsert_summary_content_with(
+    effects: &impl TrackingEffects,
+    issue: &str,
+    marker: &str,
+    content: &str,
+    repository: Option<&str>,
+    comment_id: Option<&str>,
+    delete_if_empty: bool,
+    current_run: &str,
+) -> Result<Vec<(&'static str, String)>, Refusal> {
     require_numeric_issue(issue)?;
     validate_marker_shape(marker)?;
     let declared = match comment_id {
@@ -1539,7 +1903,6 @@ fn upsert_summary_with(
         }
         None => None,
     };
-    let content = read_text_file(content_file, "content", false)?;
     let body = redact_compose(&format!("{marker}\n\n{content}"), "tracking-issue summary")?;
     let resolved = resolve_repo(effects, repository)?;
     let discovered = summary_comment_ids(effects, issue, marker, &resolved)?;
@@ -2207,12 +2570,12 @@ fn optional(parsed: &ParsedCommandLine, option: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        LeaseInitializationRequest, LeaseRequest, ReadArguments, Refusal, TrackingComment,
-        TrackingEffects, TrackingSnapshot, append_comment_with, comment_anchor, create_issue_with,
-        initial_lease_mutation, is_machine_comment, kv_safe, mark_false_positive_with,
-        marker_run_id, read_sentinel, read_with, rename_with, sha256_text, snap_truncate,
-        truncate_with_prefix, upsert_summary_with, validate_lifecycle_marker,
-        validate_marker_shape,
+        LeaseInitializationRequest, LeaseRequest, PostIssueArguments, ReadArguments, Refusal,
+        TrackingComment, TrackingEffects, TrackingSnapshot, append_comment_with, comment_anchor,
+        create_issue_with, first_kv, initial_lease_mutation, is_machine_comment, kv_safe,
+        mark_false_positive_with, marker_run_id, post_issue_with, read_sentinel, read_with,
+        rename_with, sha256_text, snap_truncate, truncate_with_prefix, upsert_summary_with,
+        validate_lifecycle_marker, validate_marker_shape,
     };
     use larch_core::{
         DONE_PREFIX, IMPLEMENTING_PREFIX, ImplementationLease, LIFECYCLE_PREFIXES,
@@ -2382,6 +2745,137 @@ mod tests {
         let path = directory.join(name);
         fs::write(&path, contents).expect("fixture write");
         path.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn post_issue_composes_metadata_and_uses_the_shared_upsert_owner() {
+        let fixture = TempDir::new().expect("fixture");
+        write(
+            fixture.path(),
+            "parent-issue.md",
+            "ISSUE_NUMBER=7\nRUN_ID=run-z\n",
+        );
+        write(
+            fixture.path(),
+            "session-env.sh",
+            "REPO=owner/repo\nAGENT=codex\nCODER=cursor\n",
+        );
+        write(fixture.path(), "run-flags.sh", "FORCE_REQUESTED=true\n");
+        let effects = FakeEffects::with_repo();
+        let result = post_issue_with(
+            &effects,
+            &PostIssueArguments {
+                implement_tmpdir: fixture.path().to_string_lossy().into_owned(),
+                issue_number: String::new(),
+                run_id: String::new(),
+                adopted: "true".to_owned(),
+                force_requested: "false".to_owned(),
+                persist_explicit_issue: true,
+            },
+            "57.0.7",
+        );
+
+        assert_eq!(result.exit_code, 0);
+        assert!(result.posted);
+        assert_eq!(
+            result.comment_url,
+            "https://github.com/owner/repo/issues/7#issuecomment-11"
+        );
+        let metadata =
+            fs::read_to_string(fixture.path().join("summary-metadata.md")).expect("metadata read");
+        assert_eq!(
+            metadata,
+            concat!(
+                "Run ID: `run-z`\n",
+                "Run log: provider `unknown`, skill `implement`, run ID `run-z`\n",
+                "Tracking issue: #7\n",
+                "Agent: `codex`\n",
+                "Coder: `cursor`\n",
+                "Force: true\n",
+                "Larch version: `57.0.7`\n"
+            )
+        );
+        assert!(
+            effects.writes.borrow().iter().any(|write| {
+                write.starts_with("comment:<!-- larch:metadata v1 runid=run-z -->")
+            })
+        );
+    }
+
+    #[test]
+    fn post_issue_kv_reads_match_the_legacy_first_value_and_cr_strip() {
+        assert_eq!(
+            first_kv("RUN_ID=\rfirst\r\nRUN_ID=second\n", "RUN_ID"),
+            "first"
+        );
+    }
+
+    #[test]
+    fn post_issue_with_explicit_issue_writes_the_adoption_sentinel_after_publication() {
+        let fixture = TempDir::new().expect("fixture");
+        write(
+            fixture.path(),
+            "session-env.sh",
+            "REPO=owner/repo\nLARCH_TOKEN_SESSION_ID=session-3\n",
+        );
+        let result = post_issue_with(
+            &FakeEffects::with_repo(),
+            &PostIssueArguments {
+                implement_tmpdir: fixture.path().to_string_lossy().into_owned(),
+                issue_number: "7".to_owned(),
+                run_id: String::new(),
+                adopted: "false".to_owned(),
+                force_requested: "false".to_owned(),
+                persist_explicit_issue: true,
+            },
+            "unknown",
+        );
+
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(
+            fs::read_to_string(fixture.path().join("parent-issue.md")).expect("sentinel read"),
+            "ISSUE_NUMBER=7\nRUN_ID=session-3\nADOPTED=false\n"
+        );
+    }
+
+    #[test]
+    fn post_issue_separates_internal_file_failures_from_publication_deferral() {
+        let internal = TempDir::new().expect("internal fixture");
+        write(
+            internal.path(),
+            "parent-issue.md",
+            "ISSUE_NUMBER=7\nRUN_ID=run-internal\n",
+        );
+        fs::create_dir(internal.path().join("summary-metadata.md")).expect("blocking directory");
+        let options = |root: &Path| PostIssueArguments {
+            implement_tmpdir: root.to_string_lossy().into_owned(),
+            issue_number: String::new(),
+            run_id: String::new(),
+            adopted: "true".to_owned(),
+            force_requested: "false".to_owned(),
+            persist_explicit_issue: false,
+        };
+        let result = post_issue_with(
+            &FakeEffects::with_repo(),
+            &options(internal.path()),
+            "unknown",
+        );
+        assert_eq!(result.exit_code, 1);
+        assert!(!result.deferred);
+
+        let deferred = TempDir::new().expect("deferred fixture");
+        write(
+            deferred.path(),
+            "parent-issue.md",
+            "ISSUE_NUMBER=7\nRUN_ID=run-deferred\n",
+        );
+        let effects = FakeEffects {
+            fail: Some("offline".to_owned()),
+            ..FakeEffects::with_repo()
+        };
+        let result = post_issue_with(&effects, &options(deferred.path()), "unknown");
+        assert_eq!(result.exit_code, 1);
+        assert!(result.deferred);
     }
 
     #[test]

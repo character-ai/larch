@@ -77,14 +77,25 @@ pub fn compose_ship_pr_body(input: &ShipPrBody<'_>) -> Result<String, String> {
     );
     validate_mermaid(&body, true)
         .map_err(|reasons| format!("mermaid in PR body rejected: {}", reasons.join(",")))?;
-    body = redact_outbound(&body);
-    if body.contains("[content truncated") {
-        return Err("redaction failed for PR body".to_owned());
-    }
+    body = redact_pr_body(&body)?;
     if body.len() > MAX_PR_BODY_BYTES {
         return Err("PR body exceeds the outbound size limit".to_owned());
     }
     Ok(format!("{}\n", body.trim_end_matches('\n')))
+}
+
+/// Redact an outbound PR body and refuse any safety truncation.
+///
+/// # Errors
+///
+/// Returns when redaction had to drop an unterminated sensitive tail.
+pub fn redact_pr_body(body: &str) -> Result<String, String> {
+    let redacted = redact_outbound(body);
+    if redacted.contains("[content truncated") {
+        Err("redaction failed for PR body".to_owned())
+    } else {
+        Ok(redacted)
+    }
 }
 
 /// Derive the frozen issue-prefixed PR title.
@@ -278,7 +289,7 @@ fn flowchart_rejects_pipe(line: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{ShipPrBody, compose_ship_pr_body, ship_pr_title};
+    use super::{ShipPrBody, compose_ship_pr_body, redact_pr_body, ship_pr_title};
 
     fn input(mermaid: &str) -> ShipPrBody<'_> {
         ShipPrBody {
@@ -310,6 +321,16 @@ mod tests {
             compose_ship_pr_body(&redacted)
                 .expect("redacted")
                 .contains("<REDACTED-TOKEN>")
+        );
+    }
+
+    #[test]
+    fn body_redaction_helper_is_reusable_and_fails_closed() {
+        let secret = ["ghp", "_123456789012345678901234567890"].concat();
+        assert_eq!(redact_pr_body(&secret), Ok("<REDACTED-TOKEN>".to_owned()));
+        assert_eq!(
+            redact_pr_body("-----BEGIN RSA PRIVATE KEY-----\nsecret"),
+            Err("redaction failed for PR body".to_owned())
         );
     }
 

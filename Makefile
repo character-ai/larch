@@ -661,7 +661,7 @@ test-step-8-oos-checkpoint:
 	$(HARNESS_MARK) --label $@ -- bash skills/implement/scripts/test-step-8-oos-checkpoint.sh
 
 test-post-tracking-issue:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k post_tracking
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch post_issue_
 
 test-commit-implementation:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test implement_commit_route_parity commit_

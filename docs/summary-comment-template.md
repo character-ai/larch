@@ -1,6 +1,6 @@
 # Summary Comment Template Contributor Notes
 
-**Purpose**: Contributor documentation for script-owned `/implement` tracking-issue publication surfaces that post slim marker-keyed comments through `scripts/larch.sh tracking-issue upsert-summary`.
+**Purpose**: Contributor documentation for `/implement` tracking-issue publication surfaces that post slim marker-keyed comments through the shared Rust tracking owner.
 
 **Contract**: Tracking issue comments use one marker per comment:
 
@@ -38,6 +38,9 @@ batch. `/design` owns the Architecture section and `/implement` owns the Code
 Flow section.
 
 The `larch:metadata` body may include `Force: true` when the run was started
-with `/implement --force`; the line is omitted when false.
+with `/implement --force`; the line is omitted when false. Rust
+`tracking post-issue` composes the private `summary-metadata.md` wire file and
+calls the marker-keyed upsert owner in process. `post-tracking-issue.sh` is only
+a verified-entrypoint compatibility delegate.
 
-**Edit when**: Update this docs page when changing script-owned tracking-issue publication surfaces: `post-tracking-issue.sh`, `scripts/larch.sh execution-issues refresh` (the Step 8+ `execution-issues refresh` fence), and `scripts/larch.sh final-report write` / Step 16-17 final-report paths. This page is not a runtime `/implement` reference.
+**Edit when**: Update this docs page when changing tracking-issue publication surfaces: `scripts/larch.sh tracking post-issue`, `scripts/larch.sh execution-issues refresh` (the Step 8+ `execution-issues refresh` fence), and `scripts/larch.sh final-report write` / Step 16-17 final-report paths. This page is not a runtime `/implement` reference.
