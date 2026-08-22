@@ -1062,6 +1062,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)] // One ordered mutation exchange verifies CAS, read-back, and refreshed evidence.
     fn refresh_mutates_only_the_plan_block_and_rewrites_preflight_evidence() {
         let repository = GitRepository::builder(GitFixture::Refs)
             .build()

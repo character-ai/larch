@@ -10125,6 +10125,12 @@ if [ -n "$bootstrap_session" ]; then
         exit 0
       fi
       ;;
+    issue:governance-gate)
+      if [ "$bootstrap_tracking" = true ]; then
+        printf '%s\n' 'GOVERNANCE_OK=true'
+        exit 0
+      fi
+      ;;
     dirty-tree:checkpoint)
       if [ "$bootstrap_repo_available" = true ]; then
         printf '%s\n' 'STATUS=clean'
