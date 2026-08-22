@@ -27,9 +27,11 @@ read_materialize_key() {
 
 BASE_REF=""
 DIFF_FINGERPRINT=""
+ASSESSED_HEAD_SHA=""
 if [ -f "$MATERIALIZE_ENV" ]; then
   BASE_REF="$(read_materialize_key BASE_REF)"
   DIFF_FINGERPRINT="$(read_materialize_key DIFF_FINGERPRINT)"
+  ASSESSED_HEAD_SHA="$(read_materialize_key HEAD_SHA)"
 fi
 
 if [ -n "$DIFF_FINGERPRINT" ] && ! [[ "$DIFF_FINGERPRINT" =~ ^[0-9a-fA-F]{64}$ ]]; then
@@ -38,17 +40,20 @@ fi
 if [ -n "$BASE_REF" ] && ! [[ "$BASE_REF" =~ ^[A-Za-z0-9._/-]+$ ]]; then
   BASE_REF=""
 fi
+if [ -n "$ASSESSED_HEAD_SHA" ] && ! [[ "$ASSESSED_HEAD_SHA" =~ ^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$ ]]; then
+  ASSESSED_HEAD_SHA=""
+fi
 
 DIFF_ARGS=()
 if [ -f "$DIFF_FILE" ]; then
   DIFF_ARGS=(--diff-file "$DIFF_FILE")
 fi
 
-exec python3 "$PLUGIN_ROOT/python/cli.py" architectural-guidelines write-staged-assessment \
+exec env CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/larch.sh" architectural-guidelines write-staged-assessment \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --assessment-file "$ASSESSMENT_FILE" \
   --outcome "$OUTCOME" \
-  --assessed-head-sha "$(git rev-parse HEAD)" \
+  --assessed-head-sha "${ASSESSED_HEAD_SHA:-}" \
   --diff-fingerprint "${DIFF_FINGERPRINT:-}" \
   --base-ref "${BASE_REF:-}" \
   "${DIFF_ARGS[@]}"

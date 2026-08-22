@@ -675,11 +675,13 @@ verb = "append-deviation-note"
 python_module = "larch.core.architectural_guidelines"
 python_function = "append_deviation_note_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8795
+clean_install_test = "clean-install-architectural-guidelines-append-deviation-note"
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -687,11 +689,13 @@ verb = "invalidate"
 python_module = "larch.core.architectural_guidelines"
 python_function = "invalidate_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8795
+clean_install_test = "clean-install-architectural-guidelines-invalidate"
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -725,11 +729,13 @@ verb = "pin-note-from-staged"
 python_module = "larch.core.architectural_guidelines"
 python_function = "pin_note_from_staged_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8795
+clean_install_test = "clean-install-architectural-guidelines-pin-note-from-staged"
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -789,11 +795,13 @@ verb = "write-compose-assessment"
 python_module = "larch.core.architectural_guidelines"
 python_function = "write_compose_assessment_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8795
+clean_install_test = "clean-install-architectural-guidelines-write-compose-assessment"
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -801,11 +809,13 @@ verb = "write-staged-assessment"
 python_module = "larch.core.architectural_guidelines"
 python_function = "write_staged_assessment_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8795
+clean_install_test = "clean-install-architectural-guidelines-write-staged-assessment"
 
 [[commands]]
 domain = "architectural-invariants"
@@ -813,11 +823,13 @@ verb = "append-deviation-note"
 python_module = "larch.core.architectural_guidelines"
 python_function = "invariants_append_deviation_note_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8795
+clean_install_test = "clean-install-architectural-invariants-append-deviation-note"
 
 [[commands]]
 domain = "architectural-invariants"
@@ -825,11 +837,13 @@ verb = "invalidate"
 python_module = "larch.core.architectural_guidelines"
 python_function = "invariants_invalidate_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8795
+clean_install_test = "clean-install-architectural-invariants-invalidate"
 
 [[commands]]
 domain = "architectural-invariants"
@@ -863,11 +877,13 @@ verb = "pin-note-from-staged"
 python_module = "larch.core.architectural_guidelines"
 python_function = "invariants_pin_note_from_staged_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8795
+clean_install_test = "clean-install-architectural-invariants-pin-note-from-staged"
 
 [[commands]]
 domain = "architectural-invariants"
@@ -927,11 +943,13 @@ verb = "write-compose-assessment"
 python_module = "larch.core.architectural_guidelines"
 python_function = "invariants_write_compose_assessment_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8795
+clean_install_test = "clean-install-architectural-invariants-write-compose-assessment"
 
 [[commands]]
 domain = "architectural-invariants"
@@ -939,11 +957,13 @@ verb = "write-staged-assessment"
 python_module = "larch.core.architectural_guidelines"
 python_function = "invariants_write_staged_assessment_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8795
+clean_install_test = "clean-install-architectural-invariants-write-staged-assessment"
 
 [[commands]]
 domain = "audit-runs"
@@ -10190,32 +10210,32 @@ rust = ["implement step-8-ship"]
 [[callers]]
 path = "skills/implement/scripts/step-architectural-guidelines-write-compose.md"
 kind = "skill"
-python = ["architectural-guidelines write-compose-assessment"]
-rust = []
+python = []
+rust = ["architectural-guidelines write-compose-assessment"]
 
 [[callers]]
 path = "skills/implement/scripts/step-architectural-guidelines-write-compose.sh"
 kind = "skill"
-python = ["architectural-guidelines write-compose-assessment"]
-rust = []
+python = []
+rust = ["architectural-guidelines write-compose-assessment"]
 
 [[callers]]
 path = "skills/implement/scripts/step-architectural-guidelines-write-staged.sh"
 kind = "skill"
-python = ["architectural-guidelines write-staged-assessment"]
-rust = ["kv get"]
+python = []
+rust = ["architectural-guidelines write-staged-assessment", "kv get"]
 
 [[callers]]
 path = "skills/implement/scripts/step-architectural-invariants-write-compose.md"
 kind = "skill"
-python = ["architectural-invariants write-compose-assessment"]
-rust = []
+python = []
+rust = ["architectural-invariants write-compose-assessment"]
 
 [[callers]]
 path = "skills/implement/scripts/step-architectural-invariants-write-compose.sh"
 kind = "skill"
-python = ["architectural-invariants write-compose-assessment"]
-rust = []
+python = []
+rust = ["architectural-invariants write-compose-assessment"]
 
 [[callers]]
 path = "skills/implement/scripts/write-final-report.md"

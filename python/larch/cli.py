@@ -22,52 +22,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         "invariants_present_note_main",
         True,
     ),
-    ("architectural-guidelines", "write-compose-assessment"): (
-        "larch.core.architectural_guidelines",
-        "write_compose_assessment_main",
-        True,
-    ),
-    ("architectural-invariants", "write-compose-assessment"): (
-        "larch.core.architectural_guidelines",
-        "invariants_write_compose_assessment_main",
-        True,
-    ),
-    ("architectural-guidelines", "append-deviation-note"): (
-        "larch.core.architectural_guidelines",
-        "append_deviation_note_main",
-        True,
-    ),
-    ("architectural-invariants", "append-deviation-note"): (
-        "larch.core.architectural_guidelines",
-        "invariants_append_deviation_note_main",
-        True,
-    ),
-    ("architectural-guidelines", "write-staged-assessment"): (
-        "larch.core.architectural_guidelines",
-        "write_staged_assessment_main",
-        True,
-    ),
-    ("architectural-invariants", "write-staged-assessment"): (
-        "larch.core.architectural_guidelines",
-        "invariants_write_staged_assessment_main",
-        True,
-    ),
-    ("architectural-guidelines", "pin-note-from-staged"): (
-        "larch.core.architectural_guidelines",
-        "pin_note_from_staged_main",
-        True,
-    ),
-    ("architectural-invariants", "pin-note-from-staged"): (
-        "larch.core.architectural_guidelines",
-        "invariants_pin_note_from_staged_main",
-        True,
-    ),
-    ("architectural-guidelines", "invalidate"): ("larch.core.architectural_guidelines", "invalidate_main", True),
-    ("architectural-invariants", "invalidate"): (
-        "larch.core.architectural_guidelines",
-        "invariants_invalidate_main",
-        True,
-    ),
     ("architectural-guidelines", "persist-design-assessment"): (
         "larch.core.architectural_guidelines",
         "persist_design_assessment_main",

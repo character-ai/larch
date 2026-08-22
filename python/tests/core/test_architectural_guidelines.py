@@ -4,12 +4,9 @@
 
 from __future__ import annotations
 
-import json
 import subprocess
 from dataclasses import fields
 from pathlib import Path
-from unittest.mock import Mock
-
 import pytest
 
 from larch.core import architectural_guidelines as ag
@@ -38,50 +35,43 @@ def _repo(tmp_path: Path) -> Path:
     return repo
 
 
-def _seed_compose_materialization(
-    repo: Path,
+def _seed_durable_note(
     implement_tmpdir: Path,
-    kind: AssessmentKind,
     *,
     head_sha: str,
+    diff_text: str = "diff",
+    kind: AssessmentKind = GUIDELINES,
+    base_ref: str = "origin/main",
 ) -> None:
-    """Seed the remaining Python assessment-write owner with Rust-era wire state."""
-    diff_text = ag.materialize_implementation_diff(
-        repo,
-        base_remote="origin",
-        base_ref="main",
-    )
+    """Seed Rust-owned durable state for retained Python read tests."""
     fingerprint = ag.diff_fingerprint(diff_text)
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
     diff_path = implement_tmpdir / kind.materialized_diff
     diff_path.write_text(diff_text, encoding="utf-8")
-    (implement_tmpdir / kind.materialize_env).write_text(
+    (implement_tmpdir / kind.durable_note).write_text(
+        kind.clean_presentation_note + "\n",
+        encoding="utf-8",
+    )
+    (implement_tmpdir / kind.durable_note_env).write_text(
         "\n".join(
             [
                 "STATUS=present",
-                f"HEAD_SHA={head_sha}",
-                f"ASSESSED_HEAD_SHA={head_sha}",
-                "BASE_REF=origin/main",
-                "NOTE_STATE=authored",
-                f"DIFF_FINGERPRINT={fingerprint}",
+                "NOTE_STATE=deterministic-clean",
                 f"AUTHORED_DIFF_FINGERPRINT={fingerprint}",
                 f"COVERED_DIFF_FINGERPRINT={fingerprint}",
+                f"HEAD_SHA={head_sha}",
+                f"ASSESSED_HEAD_SHA={head_sha}",
+                f"BASE_REF={base_ref}",
+                f"DIFF_FINGERPRINT={fingerprint}",
                 f"DIFF_SNAPSHOT={diff_path}",
                 f"{kind.status_env_key}=present",
-                f"{kind.path_env_key}={repo / kind.filename}",
-                "ASSESSMENT_KIND=",
+                "ASSESSMENT_KIND=clean",
                 "WRITTEN_AT=2026-08-21T00:00:00Z",
                 "",
             ]
         ),
         encoding="utf-8",
     )
-
-
-def _replace_staged_sidecar_value(tmpdir: Path, *, key: str, value: str) -> None:
-    sidecar = tmpdir / ag.STAGED_ASSESSMENT_ENV
-    lines = [f"{key}={value}" if line.startswith(f"{key}=") else line for line in sidecar.read_text(encoding="utf-8").splitlines()]
-    sidecar.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _valid_guideline_ship_outcome_record(**overrides: object) -> dict[str, object]:
@@ -1205,73 +1195,9 @@ def test_parse_guideline_entries_mixes_marked_and_unmarked_entries_in_order() ->
     )
 
 
-def test_pin_note_from_staged_rejects_fingerprint_mismatch(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value="mismatch",
-        base_ref="origin/main",
-        diff_text="implementation diff",
-    )
-    assert not ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main")
-    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
-
-
-def test_staged_assessment_present_requires_regular_present_artifacts(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint("diff"),
-        base_ref="origin/main",
-        diff_text="diff",
-    )
-    assert ag.staged_assessment_present(tmpdir)
-
-    missing = tmp_path / "missing"
-    assert not ag.staged_assessment_present(missing)
-
-    (tmpdir / ag.STAGED_ASSESSMENT_ENV).write_text("STATUS=absent\n", encoding="utf-8")
-    assert not ag.staged_assessment_present(tmpdir)
-
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint("diff"),
-        base_ref="origin/main",
-        diff_text="diff",
-    )
-    target = tmp_path / "staged-target.md"
-    target.write_text("note\n", encoding="utf-8")
-    (tmpdir / ag.STAGED_ASSESSMENT).unlink()
-    (tmpdir / ag.STAGED_ASSESSMENT).symlink_to(target)
-    assert not ag.staged_assessment_present(tmpdir)
-
-    (tmpdir / ag.STAGED_ASSESSMENT).unlink()
-    (tmpdir / ag.STAGED_ASSESSMENT).write_text("note\n", encoding="utf-8")
-    sidecar_target = tmp_path / "sidecar.env"
-    sidecar_target.write_text("STATUS=present\n", encoding="utf-8")
-    (tmpdir / ag.STAGED_ASSESSMENT_ENV).unlink()
-    (tmpdir / ag.STAGED_ASSESSMENT_ENV).symlink_to(sidecar_target)
-    assert not ag.staged_assessment_present(tmpdir)
-
-
 def test_durable_note_present_requires_regular_present_artifacts(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
-    ag.write_implement_note(
-        implement_tmpdir=tmpdir,
-        note_text="note\n",
-        head_sha="head",
-        metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
-        base_ref="origin/main",
-    )
+    _seed_durable_note(tmpdir, head_sha="head")
     assert ag.durable_note_present(tmpdir)
 
     (tmpdir / ag.DURABLE_NOTE_ENV).write_text("STATUS=absent\n", encoding="utf-8")
@@ -1287,26 +1213,14 @@ def test_durable_note_present_requires_regular_present_artifacts(tmp_path: Path)
 
 def test_note_readable_any_head_accepts_present_durable_note_with_mismatched_head(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
-    ag.write_implement_note(
-        implement_tmpdir=tmpdir,
-        note_text="note\n",
-        head_sha="other",
-        metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
-        base_ref="origin/main",
-    )
+    _seed_durable_note(tmpdir, head_sha="other")
 
     assert ag.note_readable_any_head(tmpdir)
 
 
 def test_note_readable_any_head_rejects_non_present_status(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
-    ag.write_implement_note(
-        implement_tmpdir=tmpdir,
-        note_text="note\n",
-        head_sha="head",
-        metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
-        base_ref="origin/main",
-    )
+    _seed_durable_note(tmpdir, head_sha="head")
 
     (tmpdir / ag.DURABLE_NOTE_ENV).write_text("STATUS=absent\nHEAD_SHA=other\n", encoding="utf-8")
 
@@ -1315,26 +1229,14 @@ def test_note_readable_any_head_rejects_non_present_status(tmp_path: Path) -> No
 
 def test_note_readable_any_head_rejects_symlinked_durable_artifacts(tmp_path: Path) -> None:
     note_tmpdir = tmp_path / "note"
-    ag.write_implement_note(
-        implement_tmpdir=note_tmpdir,
-        note_text="note\n",
-        head_sha="head",
-        metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
-        base_ref="origin/main",
-    )
+    _seed_durable_note(note_tmpdir, head_sha="head")
     note_target = tmp_path / "note-target.md"
     note_target.write_text("note\n", encoding="utf-8")
     (note_tmpdir / ag.DURABLE_NOTE).unlink()
     (note_tmpdir / ag.DURABLE_NOTE).symlink_to(note_target)
 
     meta_tmpdir = tmp_path / "meta"
-    ag.write_implement_note(
-        implement_tmpdir=meta_tmpdir,
-        note_text="note\n",
-        head_sha="head",
-        metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
-        base_ref="origin/main",
-    )
+    _seed_durable_note(meta_tmpdir, head_sha="head")
     meta_target = tmp_path / "meta-target.env"
     meta_target.write_text("STATUS=present\nHEAD_SHA=head\n", encoding="utf-8")
     (meta_tmpdir / ag.DURABLE_NOTE_ENV).unlink()
@@ -1344,507 +1246,13 @@ def test_note_readable_any_head_rejects_symlinked_durable_artifacts(tmp_path: Pa
     assert not ag.note_readable_any_head(meta_tmpdir)
 
 
-def test_dropped_notice_round_trips_and_clears_on_invalidation(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    assert ag.persist_dropped_note_notice(tmpdir, notice_text="dropped\n")
-    assert ag.read_dropped_note_notice(tmpdir) == "dropped"
-
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint("diff"),
-        base_ref="origin/main",
-        diff_text="diff",
-    )
-    assert ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main")
-    assert ag.durable_note_present(tmpdir)
-    assert ag.persist_dropped_note_notice(tmpdir, notice_text="dropped\n")
-    ag.invalidate_implement_note(tmpdir)
-    assert ag.read_dropped_note_notice(tmpdir) == ""
-    assert not (tmpdir / ag.STAGED_ASSESSMENT).exists()
-    assert not (tmpdir / ag.DURABLE_NOTE).exists()
-
-
-def test_dropped_notice_persist_rejects_unwritable_target_shape(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    (tmpdir / ag.DROPPED_NOTE_ARTIFACT).mkdir(parents=True)
-    assert not ag.persist_dropped_note_notice(tmpdir, notice_text="dropped\n")
-    assert ag.read_dropped_note_notice(tmpdir) == ""
-
-
-def test_dropped_notice_cleared_by_successful_pin(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    assert ag.persist_dropped_note_notice(tmpdir, notice_text="old marker\n")
-    diff_text = "implementation diff"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="fresh note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ag.diff_fingerprint(diff_text),
-        base_ref="origin/main",
-        diff_text=diff_text,
-    )
-    assert ag.pin_note_from_staged(tmpdir, head_sha="head", base_ref="origin/main")
-    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head")
-    assert ag.read_dropped_note_notice(tmpdir) == ""
-
-
-def test_dropped_notice_clear_failure_does_not_block_write(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tmpdir = tmp_path / "implement"
-    assert ag.persist_dropped_note_notice(tmpdir, notice_text="old marker\n")
-    original_unlink = Path.unlink
-
-    def fail_marker_unlink(self: Path, *args: object, **kwargs: object) -> None:
-        if self.name == ag.DROPPED_NOTE_ARTIFACT:
-            raise OSError("blocked")
-        original_unlink(self, *args, **kwargs)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(Path, "unlink", fail_marker_unlink)
-    ag.write_implement_note(
-        implement_tmpdir=tmpdir,
-        note_text="fresh note\n",
-        head_sha="head",
-        metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
-        base_ref="origin/main",
-    )
-    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head")
-    assert ag.read_dropped_note_notice(tmpdir) == "old marker"
-
-
-def test_maybe_persist_dropped_note_before_invalidate_paths(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
-
-    ag.write_implement_note(
-        implement_tmpdir=tmpdir,
-        note_text="note\n",
-        head_sha="head",
-        metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
-        base_ref="origin/main",
-    )
-    assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
-    assert ag.read_dropped_note_notice(tmpdir) == ""
-    assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda _text: "replacement")
-    assert ag.read_dropped_note_notice(tmpdir) == ""
-
-    ag.clear_dropped_note_notice(tmpdir)
-    ag.invalidate_implement_note(tmpdir)
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint("diff"),
-        base_ref="origin/main",
-        diff_text="diff",
-    )
-    assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
-
-
-def test_maybe_persist_dropped_notice_returns_false_on_persist_failure(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tmpdir = tmp_path / "implement"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint("diff"),
-        base_ref="origin/main",
-        diff_text="diff",
-    )
-
-    def fail_persist(_implement_tmpdir: Path, *, notice_text: str) -> bool:
-        del notice_text
-        return False
-
-    monkeypatch.setattr(ag, "persist_dropped_note_notice", fail_persist)
-    assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
-
-
-def test_staged_fingerprint_valid_uses_live_diff_when_repo_available(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tmpdir = tmp_path / "implement"
-    staged_diff = "stale staged diff"
-    live_diff = "current live diff"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint(staged_diff),
-        base_ref="origin/main",
-        diff_text=staged_diff,
-    )
-    repo = _repo(tmp_path / "git")
-
-    def fake_materialize(*_args: object, **_kwargs: object) -> str:
-        return live_diff
-
-    monkeypatch.setattr(ag, "materialize_implementation_diff", fake_materialize)
-    assert not ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main", repo_root=repo)
-
-
-def test_refresh_staged_assessment_for_current_head_updates_staged_metadata(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tmpdir = tmp_path / "implement"
-    live_diff = "current live diff"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint(live_diff),
-        base_ref="origin/main",
-        diff_text="stale staged diff",
-    )
-    repo = _repo(tmp_path / "git")
-
-    def fake_materialize(*_args: object, **_kwargs: object) -> str:
-        return live_diff
-
-    monkeypatch.setattr(ag, "materialize_implementation_diff", fake_materialize)
-
-    assert ag.refresh_staged_assessment_for_current_head(
-        tmpdir,
-        head_sha="head-b",
-        repo_root=repo,
-    )
-    assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == live_diff
-    sidecar = (tmpdir / ag.STAGED_ASSESSMENT_ENV).read_text(encoding="utf-8")
-    assert f"DIFF_FINGERPRINT={ag.diff_fingerprint(live_diff)}" in sidecar
-    assert "ASSESSED_HEAD_SHA=head-b" in sidecar
-    assert ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main", repo_root=repo)
-    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
-
-
-def test_refresh_staged_assessment_for_current_head_recovers_when_diff_changes(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tmpdir = tmp_path / "implement"
-    staged_diff = "stale staged diff"
-    live_diff = "current live diff"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint(staged_diff),
-        base_ref="origin/main",
-        diff_text=staged_diff,
-    )
-    repo = _repo(tmp_path / "git")
-
-    def fake_materialize(*_args: object, **_kwargs: object) -> str:
-        return live_diff
-
-    monkeypatch.setattr(ag, "materialize_implementation_diff", fake_materialize)
-
-    assert ag.refresh_staged_assessment_for_current_head(
-        tmpdir,
-        head_sha="head-b",
-        repo_root=repo,
-    )
-    assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == live_diff
-    sidecar = (tmpdir / ag.STAGED_ASSESSMENT_ENV).read_text(encoding="utf-8")
-    assert f"DIFF_FINGERPRINT={ag.diff_fingerprint(live_diff)}" in sidecar
-    assert "ASSESSED_HEAD_SHA=head-b" in sidecar
-    assert ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main", repo_root=repo)
-    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
-
-
-def test_pin_note_from_staged_for_current_head_refreshes_from_live_diff(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tmpdir = tmp_path / "implement"
-    staged_diff = "stale staged diff"
-    live_diff = "current live diff"
-    live_fingerprint = ag.diff_fingerprint(live_diff)
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint(staged_diff),
-        base_ref="origin/main",
-        diff_text=staged_diff,
-    )
-    repo = _repo(tmp_path / "git")
-    materialize_mock = Mock(return_value=live_diff)
-    monkeypatch.setattr(ag, "materialize_implementation_diff", materialize_mock)
-
-    assert ag.pin_note_from_staged_for_current_head(
-        tmpdir,
-        head_sha="head-b",
-        base_ref="origin/main",
-        repo_root=repo,
-    )
-
-    materialize_mock.assert_called_once_with(repo, base_remote="origin", base_ref="main")
-    assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == live_diff
-    assert not (tmpdir / ag.STAGED_ASSESSMENT_ENV).exists()
-    durable_metadata = ag.durable_note_metadata(tmpdir)
-    assert durable_metadata["HEAD_SHA"] == "head-b"
-    assert durable_metadata["ASSESSED_HEAD_SHA"] == "head-b"
-    assert durable_metadata["DIFF_FINGERPRINT"] == live_fingerprint
-    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
-
-
-def test_pin_note_from_staged_for_current_head_empty_fingerprint_fails_after_live_materialize(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tmpdir = tmp_path / "implement"
-    staged_diff = "stale staged diff"
-    live_diff = "current live diff"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint(staged_diff),
-        base_ref="origin/main",
-        diff_text=staged_diff,
-    )
-    _replace_staged_sidecar_value(tmpdir, key="DIFF_FINGERPRINT", value="")
-    repo = _repo(tmp_path / "git")
-    materialize_mock = Mock(return_value=live_diff)
-    monkeypatch.setattr(ag, "materialize_implementation_diff", materialize_mock)
-
-    assert not ag.pin_note_from_staged_for_current_head(
-        tmpdir,
-        head_sha="head-b",
-        base_ref="origin/main",
-        repo_root=repo,
-    )
-
-    materialize_mock.assert_called_once_with(repo, base_remote="origin", base_ref="main")
-    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
-
-
-def test_pin_note_from_live_diff_refreshes_staged_and_durable_metadata(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    live_diff = "current live diff"
-    live_fingerprint = ag.diff_fingerprint(live_diff)
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint("stale staged diff"),
-        base_ref="origin/main",
-        diff_text="stale staged diff",
-    )
-
-    assert ag._pin_note_from_live_diff(
-        implement_tmpdir=tmpdir,
-        head_sha="head-b",
-        resolved_base="origin/main",
-        live_diff=(live_diff, live_fingerprint),
-    )
-
-    assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == live_diff
-    assert not (tmpdir / ag.STAGED_ASSESSMENT_ENV).exists()
-    durable_metadata = ag.durable_note_metadata(tmpdir)
-    assert durable_metadata["HEAD_SHA"] == "head-b"
-    assert durable_metadata["ASSESSED_HEAD_SHA"] == "head-b"
-    assert durable_metadata["DIFF_FINGERPRINT"] == live_fingerprint
-    assert durable_metadata["BASE_REF"] == "origin/main"
-
-
-def test_pin_note_from_live_diff_returns_false_on_durable_write_failure(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tmpdir = tmp_path / "implement"
-    live_diff = "current live diff"
-    live_fingerprint = ag.diff_fingerprint(live_diff)
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint("stale staged diff"),
-        base_ref="origin/main",
-        diff_text="stale staged diff",
-    )
-
-    def fail_write_note(**_kwargs: object) -> None:
-        raise OSError("durable write failed")
-
-    monkeypatch.setattr(ag, "write_implement_note", fail_write_note)
-
-    assert not ag._pin_note_from_live_diff(
-        implement_tmpdir=tmpdir,
-        head_sha="head-b",
-        resolved_base="origin/main",
-        live_diff=(live_diff, live_fingerprint),
-    )
-    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
-
-
-def test_pin_note_from_live_diff_returns_false_for_invalid_staged_outcome(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint("stale staged diff"),
-        base_ref="origin/main",
-        diff_text="stale staged diff",
-    )
-    sidecar = tmpdir / ag.STAGED_ASSESSMENT_ENV
-    sidecar.write_text(
-        sidecar.read_text(encoding="utf-8").replace("ASSESSMENT_KIND=clean", "ASSESSMENT_KIND="),
-        encoding="utf-8",
-    )
-
-    assert not ag._pin_note_from_live_diff(
-        implement_tmpdir=tmpdir,
-        head_sha="head-b",
-        resolved_base="origin/main",
-        live_diff=("current live diff", ag.diff_fingerprint("current live diff")),
-    )
-
-
-def test_materialize_live_diff_returns_none_on_os_error(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    repo = _repo(tmp_path / "git")
-
-    def fail_materialize(*_args: object, **_kwargs: object) -> str:
-        raise FileNotFoundError("repo root vanished")
-
-    monkeypatch.setattr(ag, "materialize_implementation_diff", fail_materialize)
-    assert ag._materialize_live_diff(repo_root=repo, resolved_base="origin/main") is None
-    assert "ARCHITECTURAL_GUIDELINES_WARNING=repo root vanished" in capsys.readouterr().err
-
-
-def test_refresh_staged_assessment_for_current_head_returns_false_when_missing_artifacts(tmp_path: Path) -> None:
-    repo = _repo(tmp_path / "git")
-    assert not ag.refresh_staged_assessment_for_current_head(
-        tmp_path / "missing",
-        head_sha="head-b",
-        base_ref="origin/main",
-        repo_root=repo,
-    )
-
-
-@pytest.mark.parametrize("outcome", ["", "unknown"])
-def test_refresh_staged_assessment_for_current_head_returns_false_for_invalid_outcome(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    outcome: str,
-) -> None:
-    tmpdir = tmp_path / "implement"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint("staged diff"),
-        base_ref="origin/main",
-        diff_text="staged diff",
-    )
-    sidecar = tmpdir / ag.STAGED_ASSESSMENT_ENV
-    sidecar.write_text(
-        sidecar.read_text(encoding="utf-8").replace("ASSESSMENT_KIND=clean", f"ASSESSMENT_KIND={outcome}"),
-        encoding="utf-8",
-    )
-    def materialize_live_diff(*, repo_root: Path, resolved_base: str) -> tuple[str, str]:
-        del repo_root, resolved_base
-        return "live diff", ag.diff_fingerprint("live diff")
-
-    monkeypatch.setattr(ag, "_materialize_live_diff", materialize_live_diff)
-
-    assert not ag.refresh_staged_assessment_for_current_head(
-        tmpdir,
-        head_sha="head-b",
-        base_ref="origin/main",
-        repo_root=_repo(tmp_path / "git"),
-    )
-
-
-def test_refresh_staged_assessment_for_current_head_returns_false_when_live_diff_unavailable(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tmpdir = tmp_path / "implement"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint("staged diff"),
-        base_ref="origin/main",
-        diff_text="staged diff",
-    )
-    repo = _repo(tmp_path / "git")
-
-    def fail_materialize(*_args: object, **_kwargs: object) -> str:
-        raise RuntimeError("missing remote ref")
-
-    monkeypatch.setattr(ag, "materialize_implementation_diff", fail_materialize)
-    assert not ag.refresh_staged_assessment_for_current_head(
-        tmpdir,
-        head_sha="head-b",
-        base_ref="origin/main",
-        repo_root=repo,
-    )
-
-
-def test_refresh_staged_assessment_for_current_head_returns_false_without_resolved_base(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint("staged diff"),
-        base_ref="",
-        diff_text="staged diff",
-    )
-    repo = _repo(tmp_path / "git")
-    assert not ag.refresh_staged_assessment_for_current_head(
-        tmpdir,
-        head_sha="head-b",
-        repo_root=repo,
-    )
-
-
 def test_note_fingerprint_stale_returns_true_when_git_diff_unavailable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     tmpdir = tmp_path / "implement"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text="note\n",
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint("diff"),
-        base_ref="origin/main",
-        diff_text="diff",
-    )
-    assert ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main")
+    _seed_durable_note(tmpdir, head_sha="head-b")
     (tmpdir / ag.MATERIALIZED_DIFF).unlink()
     repo = _repo(tmp_path / "git")
 
@@ -1872,18 +1280,7 @@ def test_note_fingerprint_stale_ignores_stale_snapshot_when_base_moves(
     ).stdout.strip()
     diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
     tmpdir = tmp_path / "implement"
-    ag.write_implement_note(
-        implement_tmpdir=tmpdir,
-        note_text="fresh note\n",
-        head_sha=head_sha,
-        metadata={
-            "ASSESSED_HEAD_SHA": head_sha,
-            "DIFF_FINGERPRINT": ag.diff_fingerprint(diff_text),
-            "BASE_REF": "origin/main",
-        },
-        base_ref="origin/main",
-    )
-    (tmpdir / ag.MATERIALIZED_DIFF).write_text(diff_text, encoding="utf-8")
+    _seed_durable_note(tmpdir, head_sha=head_sha, diff_text=diff_text)
     tree_sha = subprocess.run(
         ["git", "-C", str(repo), "rev-parse", "HEAD^{tree}"],
         text=True,
@@ -1901,89 +1298,6 @@ def test_note_fingerprint_stale_ignores_stale_snapshot_when_base_moves(
     _git(repo, "update-ref", "refs/remotes/upstream/main", moved_main)
 
     assert ag.note_fingerprint_stale(tmpdir, base_ref="origin/main", repo_root=repo)
-
-
-def test_write_compose_assessment_persists_durable_note(tmp_path: Path) -> None:
-    repo = _repo(tmp_path / "git")
-    (repo / ag.GUIDELINES_FILENAME).write_text(
-        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
-        encoding="utf-8",
-    )
-    (repo / "README.md").write_text("base\ncompose\n", encoding="utf-8")
-    _git(repo, "add", "README.md")
-    _git(repo, "commit", "-m", "compose")
-    head_sha = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "HEAD"],
-        text=True,
-        capture_output=True,
-        check=False,
-    ).stdout.strip()
-    tmpdir = tmp_path / "implement"
-
-    _seed_compose_materialization(repo, tmpdir, GUIDELINES, head_sha=head_sha)
-    ag.write_compose_assessment(implement_tmpdir=tmpdir, assessment_text="Compose assessment", repo_root=repo, outcome="clean")
-
-    assert (tmpdir / ag.DURABLE_NOTE).read_text(encoding="utf-8") == "Compose assessment\n"
-    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha=head_sha)
-
-
-def test_write_compose_assessment_rejects_head_drift(tmp_path: Path) -> None:
-    repo = _repo(tmp_path / "git")
-    (repo / ag.GUIDELINES_FILENAME).write_text(
-        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
-        encoding="utf-8",
-    )
-    (repo / "README.md").write_text("base\ncompose\n", encoding="utf-8")
-    _git(repo, "add", "README.md")
-    _git(repo, "commit", "-m", "compose")
-    head_sha = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "HEAD"],
-        text=True,
-        capture_output=True,
-        check=False,
-    ).stdout.strip()
-    tmpdir = tmp_path / "implement"
-
-    _seed_compose_materialization(repo, tmpdir, GUIDELINES, head_sha=head_sha)
-    (repo / "README.md").write_text("base\ncompose\nfollow-up\n", encoding="utf-8")
-    _git(repo, "add", "README.md")
-    _git(repo, "commit", "-m", "drift")
-
-    with pytest.raises(ValueError, match="HEAD changed after compose materialization"):
-        ag.write_compose_assessment(implement_tmpdir=tmpdir, assessment_text="Compose assessment", repo_root=repo, outcome="clean")
-
-
-@pytest.mark.parametrize(
-    ("kind", "main"),
-    [
-        (GUIDELINES, ag.write_compose_assessment_main),
-        (INVARIANTS, ag.invariants_write_compose_assessment_main),
-    ],
-)
-def test_write_compose_assessment_main_reads_absolute_assessment_file_verbatim(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    kind: AssessmentKind,
-    main: object,
-) -> None:
-    implement_tmpdir = tmp_path / "implement"
-    assessment_file = tmp_path / "assessment.md"
-    assessment_file.write_text("Assessment from direct caller\n", encoding="utf-8")
-    captured: dict[str, object] = {}
-
-    def fake_write_compose_assessment(**kwargs: object) -> None:
-        captured.update(kwargs)
-
-    monkeypatch.setattr(ag, "_write_compose_assessment", fake_write_compose_assessment)
-
-    assert callable(main)
-    assert main([
-        "--implement-tmpdir", str(implement_tmpdir),
-        "--assessment-file", str(assessment_file),
-    ]) == 0
-
-    assert captured["assessment_text"] == "Assessment from direct caller\n"
-    assert captured["kind"] is kind
 
 
 def test_cli_present_uses_untrusted_content_block(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -2160,212 +1474,6 @@ def test_materialize_diff_freezes_head_for_merge_base_and_diff(
     assert "HEAD" not in calls[2]
 
 
-def test_staged_pin_consumable_and_invalidate(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    body = "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.\n"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text=body,
-        assessed_head_sha="head-a",
-        diff_fingerprint_value=ag.diff_fingerprint("diff"),
-        base_ref="origin/main",
-        diff_text="diff",
-    )
-    assert (tmpdir / ag.STAGED_ASSESSMENT).read_text(encoding="utf-8") == body
-    assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == "diff"
-    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
-    assert ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main")
-    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
-    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-c")
-    assert (tmpdir / ag.DURABLE_NOTE).read_text(encoding="utf-8") == body
-    ag.invalidate_implement_note(tmpdir)
-    assert not (tmpdir / ag.STAGED_ASSESSMENT).exists()
-    assert not (tmpdir / ag.DURABLE_NOTE).exists()
-
-
-def test_pr_prep_log_only_head_advance_keeps_body_bytes(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    body = "Deviation warning body\n"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text=body,
-        assessed_head_sha="N",
-        diff_fingerprint_value=ag.diff_fingerprint("implementation diff"),
-        base_ref="origin/main",
-        diff_text="implementation diff",
-    )
-    assert ag.pin_note_from_staged(tmpdir, head_sha="N-plus-1", base_ref="origin/main")
-    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="N-plus-1")
-    assert (tmpdir / ag.DURABLE_NOTE).read_bytes() == body.encode("utf-8")
-
-
-def test_log_only_head_bump_pin_succeeds_with_repo_root(tmp_path: Path) -> None:
-    repo = _repo(tmp_path)
-    (repo / "impl.py").write_text("x = 1\n", encoding="utf-8")
-    _git(repo, "add", "impl.py")
-    _git(repo, "commit", "-m", "impl")
-    assessed_head = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "HEAD"],
-        text=True,
-        capture_output=True,
-        check=False,
-    ).stdout.strip()
-    diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
-    tmpdir = tmp_path / "implement"
-    body = "Deviation warning body\n"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text=body,
-        assessed_head_sha=assessed_head,
-        diff_fingerprint_value=ag.diff_fingerprint(diff_text),
-        base_ref="origin/main",
-        diff_text=diff_text,
-    )
-    log_dir = repo / "larch-logs" / "implement" / "run1"
-    log_dir.mkdir(parents=True)
-    (log_dir / "log.txt").write_text("log\n", encoding="utf-8")
-    _git(repo, "add", "larch-logs")
-    _git(repo, "commit", "-m", "logs only")
-    new_head = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "HEAD"],
-        text=True,
-        capture_output=True,
-        check=False,
-    ).stdout.strip()
-    assert ag.pin_note_from_staged(tmpdir, head_sha=new_head, base_ref="origin/main", repo_root=repo)
-    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha=new_head)
-
-
-def test_append_deviation_note_writes_warnings_not_tool_failures(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    tmpdir.mkdir()
-    (tmpdir / "execution-issues.md").write_text("### Tool Failures\n- existing tool failure\n", encoding="utf-8")
-
-    status = ag.append_deviation_note(tmpdir, "G-Py-4 deviation: Bash wrapper kept for hook compatibility.\n")
-
-    assert status == "ok"
-    text = (tmpdir / "execution-issues.md").read_text(encoding="utf-8")
-    assert "### Tool Failures\n- existing tool failure\n" in text
-    assert "### Warnings\n" in text
-    assert "- G-Py-4 deviation: Bash wrapper kept for hook compatibility." in text
-    assert text.index("- G-Py-4 deviation") > text.index("### Warnings")
-
-
-def test_append_deviation_note_is_idempotent_against_markdown_keys(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    note = "- G-Cfg-1 deviation: configuration stayed in prose for compatibility.\n"
-
-    assert ag.append_deviation_note(tmpdir, note) == "ok"
-    assert ag.append_deviation_note(tmpdir, note) == "duplicate"
-
-    text = (tmpdir / "execution-issues.md").read_text(encoding="utf-8")
-    assert text.count("G-Cfg-1 deviation") == 1
-
-
-def test_append_deviation_note_dedupes_against_ndjson_batch(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    run_id = "run-abc"
-    (tmpdir / "parent-issue.md").parent.mkdir(parents=True)
-    (tmpdir / "parent-issue.md").write_text(f"RUN_ID={run_id}\n", encoding="utf-8")
-    note = "- G-Py-4 deviation: helper stays prompt-authored for final diff evidence.\n"
-    issue_log = tmpdir / "execution-issues.md"
-    issue_log.write_text(f"### Warnings\n{note}", encoding="utf-8")
-    (tmpdir / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
-    batch_dir = tmpdir / "larch-logs" / "implement" / run_id
-    batch_dir.mkdir(parents=True)
-    batch = batch_dir / "execution-issues.ndjson"
-    _ = batch.write_text(
-        json.dumps(
-            {"category": "Warnings", "body": note, "phase": "implement", "step": "pre-push"},
-            separators=(",", ":"),
-            sort_keys=True,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    batch_rows = [
-        json.loads(line)
-        for line in batch.read_text(encoding="utf-8").splitlines()
-    ]
-    assert batch_rows[0]["category"] == "Warnings"
-    issue_log.write_text("", encoding="utf-8")
-
-    assert ag.append_deviation_note(tmpdir, note) == "duplicate"
-    assert issue_log.read_text(encoding="utf-8") == ""
-
-
-def test_append_deviation_note_preserves_new_chunks_when_one_chunk_matches(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    tmpdir.mkdir()
-    issue_log = tmpdir / "execution-issues.md"
-    issue_log.write_text(
-        "### Warnings\n- G-Py-4 deviation: helper stays prompt-authored for final diff evidence.\n",
-        encoding="utf-8",
-    )
-    note = (
-        "- G-Py-4 deviation: helper stays prompt-authored for final diff evidence.\n"
-        "- G-Cfg-1 deviation: configuration stayed in prose for compatibility.\n"
-    )
-
-    assert ag.append_deviation_note(tmpdir, note) == "ok"
-    text = issue_log.read_text(encoding="utf-8")
-    assert text.count("G-Py-4 deviation") == 1
-    assert text.count("G-Cfg-1 deviation") == 1
-    assert "- G-Cfg-1 deviation: configuration stayed in prose for compatibility." in text
-
-
-def test_append_deviation_note_main_rejects_empty_note(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmpdir = tmp_path / "implement"
-    tmpdir.mkdir()
-    note = tmp_path / "note.md"
-    note.write_text("  \n\t\n", encoding="utf-8")
-
-    rc = ag.append_deviation_note_main(["--implement-tmpdir", str(tmpdir), "--note-file", str(note)])
-
-    assert rc == 1
-    assert "ARCHITECTURAL_GUIDELINES_APPEND_STATUS=failed" in capsys.readouterr().out
-    assert not (tmpdir / "execution-issues.md").exists()
-
-
-def test_append_deviation_note_main_rejects_symlink_note_file(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tmpdir = tmp_path / "implement"
-    tmpdir.mkdir()
-    target = tmp_path / "target.md"
-    target.write_text("- deviation\n", encoding="utf-8")
-    note = tmp_path / "note.md"
-    note.symlink_to(target)
-
-    rc = ag.append_deviation_note_main(["--implement-tmpdir", str(tmpdir), "--note-file", str(note)])
-
-    assert rc == 1
-    assert "ARCHITECTURAL_GUIDELINES_APPEND_STATUS=failed" in capsys.readouterr().out
-    assert not (tmpdir / "execution-issues.md").exists()
-
-
-def test_append_deviation_note_main_missing_tmpdir_exits_two(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
-    note = tmp_path / "note.md"
-    note.write_text("- deviation\n", encoding="utf-8")
-
-    rc = ag.append_deviation_note_main(["--note-file", str(note)])
-
-    assert rc == 2
-    assert "ARCHITECTURAL_GUIDELINES_APPEND_STATUS=failed" in capsys.readouterr().out
-
-
 def test_log_only_head_advance_keeps_durable_note_consumable_without_repin(
     tmp_path: Path,
 ) -> None:
@@ -2381,17 +1489,7 @@ def test_log_only_head_advance_keeps_durable_note_consumable_without_repin(
     ).stdout.strip()
     diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
     tmpdir = tmp_path / "implement"
-    body = "Deviation warning body\n"
-    ag.write_staged_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text=body,
-        assessed_head_sha=assessed_head,
-        diff_fingerprint_value=ag.diff_fingerprint(diff_text),
-        base_ref="origin/main",
-        diff_text=diff_text,
-    )
-    assert ag.pin_note_from_staged(tmpdir, head_sha=assessed_head, base_ref="origin/main", repo_root=repo)
+    _seed_durable_note(tmpdir, head_sha=assessed_head, diff_text=diff_text)
 
     log_dir = repo / "larch-logs" / "implement" / "run1"
     log_dir.mkdir(parents=True)
@@ -2446,38 +1544,6 @@ def test_empty_design_persistence_remains_asymmetric_by_kind(tmp_path: Path) -> 
         design_tmpdir=str(design_tmpdir),
     ) == 0
     assert not invariant_path.exists()
-
-
-def test_invariant_compose_assessment_persists_durable_note(tmp_path: Path) -> None:
-    repo = _repo(tmp_path / "git")
-    (repo / ag.INVARIANTS_FILENAME).write_text(
-        "### I-Test-1: Keep tests direct\n- Why: invariant coverage.\n",
-        encoding="utf-8",
-    )
-    (repo / "README.md").write_text("base\ninvariant\n", encoding="utf-8")
-    _git(repo, "add", "README.md")
-    _git(repo, "commit", "-m", "invariant")
-    head_sha = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "HEAD"],
-        text=True,
-        capture_output=True,
-        check=False,
-    ).stdout.strip()
-    tmpdir = tmp_path / "implement"
-
-    _seed_compose_materialization(repo, tmpdir, INVARIANTS, head_sha=head_sha)
-    assert (tmpdir / ag.INVARIANT_MATERIALIZE_ENV).is_file()
-
-    ag.write_invariant_compose_assessment(
-        outcome="clean",
-        implement_tmpdir=tmpdir,
-        assessment_text=ag.CLEAN_INVARIANT_PRESENTATION_NOTE,
-        repo_root=repo,
-    )
-
-    assert (tmpdir / ag.INVARIANT_DURABLE_NOTE).read_text(encoding="utf-8") == ag.CLEAN_INVARIANT_PRESENTATION_NOTE + "\n"
-    assert ag.invariant_note_consumable(implement_tmpdir=tmpdir, head_sha=head_sha)
-    assert ag.invariant_durable_note_metadata(tmpdir)["ASSESSMENT_KIND"] == "clean"
 
 
 def test_validate_invariant_ship_outcome_record_accepts_violation() -> None:
@@ -2550,26 +1616,6 @@ def test_invariant_assessment_kind_tolerates_verbose_clean_notes(note: str, expe
 )
 def test_path_out_of_scope_is_conservative(path: str, expected: bool) -> None:
     assert ag._path_out_of_scope(path) is expected
-
-
-def test_deterministic_clean_note_records_distinct_identities(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    diff_text = "diff --git a/docs/a.md b/docs/a.md\n"
-
-    ag.write_deterministic_clean_note(
-        implement_tmpdir=tmpdir,
-        head_sha="head-a",
-        base_ref="origin/main",
-        diff_text=diff_text,
-    )
-
-    metadata = ag.durable_note_metadata(tmpdir)
-    fingerprint = ag.diff_fingerprint(diff_text)
-    assert metadata["NOTE_STATE"] == ag.config.NOTE_STATE_DETERMINISTIC_CLEAN
-    assert metadata["AUTHORED_DIFF_FINGERPRINT"] == fingerprint
-    assert metadata["COVERED_DIFF_FINGERPRINT"] == fingerprint
-    assert metadata["DIFF_FINGERPRINT"] == fingerprint
-    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-a")
 
 
 @pytest.mark.parametrize(
@@ -2726,7 +1772,7 @@ def test_coverage_advancement_docs_only_note_remains_consumable(tmp_path: Path) 
     h1 = _git_head(repo)
 
     diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
-    ag.write_deterministic_clean_note(
+    _seed_durable_note(
         implement_tmpdir=tmpdir,
         head_sha=h1,
         base_ref="origin/main",
@@ -2761,7 +1807,7 @@ def test_invariant_coverage_advancement_logs_only_reuses_compose_assessment(tmp_
     _git(repo, "add", ag.INVARIANTS_FILENAME, "python/impl.py")
     _git(repo, "commit", "-m", "add invariant and impl")
     h1 = _git_head(repo)
-    ag.write_deterministic_clean_note(
+    _seed_durable_note(
         implement_tmpdir=tmpdir,
         head_sha=h1,
         base_ref="origin/main",
@@ -2808,7 +1854,7 @@ def test_note_consumable_accepts_resolved_diff_snapshot_path_forms(tmp_path: Pat
     _git(repo, "commit", "-m", "add impl")
     head = _git_head(repo)
     diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
-    ag.write_deterministic_clean_note(
+    _seed_durable_note(
         implement_tmpdir=unresolved,
         head_sha=head,
         base_ref="origin/main",
@@ -2836,7 +1882,7 @@ def test_coverage_advancement_logs_only_survives_mixed_tmpdir_path_forms(tmp_pat
     _git(repo, "add", "python/impl.py")
     _git(repo, "commit", "-m", "add impl")
     h1 = _git_head(repo)
-    ag.write_deterministic_clean_note(
+    _seed_durable_note(
         implement_tmpdir=unresolved,
         head_sha=h1,
         base_ref="origin/main",
@@ -2868,7 +1914,7 @@ def test_coverage_advancement_rejects_snapshot_not_matching_stored_head(tmp_path
     _git(repo, "commit", "-m", "add impl")
     h1 = _git_head(repo)
     diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
-    ag.write_deterministic_clean_note(implement_tmpdir=tmpdir, head_sha=h1, base_ref="origin/main", diff_text=diff_text)
+    _seed_durable_note(implement_tmpdir=tmpdir, head_sha=h1, base_ref="origin/main", diff_text=diff_text)
 
     forged_snapshot = "forged snapshot\n"
     (tmpdir / ag.MATERIALIZED_DIFF).write_text(forged_snapshot, encoding="utf-8")
@@ -2902,7 +1948,7 @@ def test_coverage_advancement_metadata_failure_restores_prior_artifacts(
     _git(repo, "add", "python/impl.py")
     _git(repo, "commit", "-m", "add impl")
     h1 = _git_head(repo)
-    ag.write_deterministic_clean_note(
+    _seed_durable_note(
         implement_tmpdir=tmpdir,
         head_sha=h1,
         base_ref="origin/main",
@@ -2938,7 +1984,7 @@ def test_coverage_advancement_chained_advances_preserve_authored_fingerprint(tmp
     h1 = _git_head(repo)
 
     diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
-    ag.write_deterministic_clean_note(
+    _seed_durable_note(
         implement_tmpdir=tmpdir,
         head_sha=h1,
         base_ref="origin/main",
@@ -2975,7 +2021,7 @@ def test_coverage_advancement_code_commit_requires_reassessment(tmp_path: Path) 
     h1 = _git_head(repo)
 
     diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
-    ag.write_deterministic_clean_note(
+    _seed_durable_note(
         implement_tmpdir=tmpdir,
         head_sha=h1,
         base_ref="origin/main",
@@ -3013,7 +2059,7 @@ def test_consumption_rejects_note_with_no_covered_identity(tmp_path: Path) -> No
 def test_consumption_rejects_partial_new_format_metadata(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     diff_text = "diff --git a/docs/a.md b/docs/a.md\n"
-    ag.write_deterministic_clean_note(
+    _seed_durable_note(
         implement_tmpdir=tmpdir,
         head_sha="head-a",
         base_ref="origin/main",
@@ -3047,7 +2093,7 @@ def test_consumption_accepts_prior_format_metadata(tmp_path: Path) -> None:
 def test_consumption_rejects_fingerprint_mismatched_snapshot(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     diff_text = "diff --git a/docs/a.md b/docs/a.md\n"
-    ag.write_deterministic_clean_note(
+    _seed_durable_note(
         implement_tmpdir=tmpdir,
         head_sha="head-a",
         base_ref="origin/main",
@@ -3061,7 +2107,7 @@ def test_consumption_rejects_fingerprint_mismatched_snapshot(tmp_path: Path) -> 
 def test_consumption_rejects_symlinked_snapshot(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     diff_text = "diff --git a/docs/a.md b/docs/a.md\n"
-    ag.write_deterministic_clean_note(
+    _seed_durable_note(
         implement_tmpdir=tmpdir,
         head_sha="head-a",
         base_ref="origin/main",
@@ -3075,59 +2121,36 @@ def test_consumption_rejects_symlinked_snapshot(tmp_path: Path) -> None:
     assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-a")
 
 
-def test_explicit_outcome_allows_identifier_free_violation_and_rejects_clean_mismatch(tmp_path: Path) -> None:
-    violation_dir = tmp_path / "violation"
-    ag.write_invariant_staged_assessment(
-        implement_tmpdir=violation_dir,
-        assessment_text="The changed recovery path can mutate a closed PR.\n",
-        assessed_head_sha="head",
-        diff_fingerprint_value=ag.diff_fingerprint("diff"),
-        base_ref="origin/main",
+def test_explicit_outcome_allows_identifier_free_violation_and_rejects_clean_mismatch() -> None:
+    assert ag._validate_authored_outcome(
+        note="The changed recovery path can mutate a closed PR.\n",
         outcome="violation",
-        diff_text="diff",
-    )
-    assert ag._read_env(violation_dir / ag.INVARIANT_STAGED_ASSESSMENT_ENV)["ASSESSMENT_KIND"] == "violation"
+        kind=INVARIANTS,
+    ) == "violation"
 
-    mismatch_dir = tmp_path / "mismatch"
     with pytest.raises(ag.AssessmentReauthorRequired, match=ag.config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH):
-        ag.write_staged_assessment(
-            implement_tmpdir=mismatch_dir,
-            assessment_text="G-Py-4: the path swallows an error.\n",
-            assessed_head_sha="head",
-            diff_fingerprint_value=ag.diff_fingerprint("diff"),
-            base_ref="origin/main",
+        ag._validate_authored_outcome(
+            note="G-Py-4: the path swallows an error.\n",
             outcome="clean",
-            diff_text="diff",
+            kind=GUIDELINES,
         )
-    assert not (mismatch_dir / ag.STAGED_ASSESSMENT).exists()
-    assert not (mismatch_dir / ag.STAGED_ASSESSMENT_ENV).exists()
 
 
-def test_explicit_clean_accepts_canonical_lead_with_identifier_rationale(tmp_path: Path) -> None:
+def test_explicit_clean_accepts_canonical_lead_with_identifier_rationale() -> None:
     note = ag.CLEAN_PRESENTATION_NOTE + "\nThis implementation follows G-Py-4."
-    ag.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text=note,
-        assessed_head_sha="head",
-        diff_fingerprint_value=ag.diff_fingerprint("diff"),
-        base_ref="origin/main",
+    assert ag._validate_authored_outcome(
+        note=note,
         outcome="clean",
-        diff_text="diff",
-    )
-    assert ag._read_env(tmp_path / ag.STAGED_ASSESSMENT_ENV)["ASSESSMENT_KIND"] == "clean"
+        kind=GUIDELINES,
+    ) == "clean"
 
 
-def test_explicit_clean_accepts_inline_clean_lead_with_invariant_id(tmp_path: Path) -> None:
+def test_explicit_clean_accepts_inline_clean_lead_with_invariant_id() -> None:
     # Issue #6955: a clean verdict phrased inline with a supporting I-* reference must
     # not be rejected as a clean/prose mismatch and forced back into re-authoring.
     note = "No invariant violations identified. The change is consistent with I-Gate-1."
-    ag.write_invariant_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text=note,
-        assessed_head_sha="head",
-        diff_fingerprint_value=ag.diff_fingerprint("diff"),
-        base_ref="origin/main",
+    assert ag._validate_authored_outcome(
+        note=note,
         outcome="clean",
-        diff_text="diff",
-    )
-    assert ag._read_env(tmp_path / ag.INVARIANT_STAGED_ASSESSMENT_ENV)["ASSESSMENT_KIND"] == "clean"
+        kind=INVARIANTS,
+    ) == "clean"

@@ -1,4 +1,4 @@
-"""ARCHITECTURAL_GUIDELINES.md reader and implement note helpers."""
+"""Architectural knowledge reads and retained design assessment helpers."""
 # pyright: reportUnusedCallResult=false, reportPrivateUsage=false
 # pylint: disable=cyclic-import  # accepted: function-level run-log batch imports create mutual dependencies with top-level consumers; documented via lint-layering ok comments.
 
@@ -13,7 +13,6 @@ import shutil
 import stat
 import subprocess
 import sys
-from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -21,10 +20,8 @@ from functools import partial
 from pathlib import Path, PurePosixPath
 from typing import cast
 
-from larch import io as larch_io
 from larch.core import config
 from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS
-from larch.errors import ShipError
 from larch.core.repo_roots import consumer_repo_root
 
 _LOG = logging.getLogger(__name__)
@@ -51,8 +48,6 @@ DROPPED_NOTE_ARTIFACT = GUIDELINES.dropped_note_artifact
 INVARIANT_DROPPED_NOTE_ARTIFACT = INVARIANTS.dropped_note_artifact
 GUIDELINE_SHIP_OUTCOME_SIDECAR = GUIDELINES.ship_outcome_sidecar
 INVARIANT_SHIP_OUTCOME_SIDECAR = INVARIANTS.ship_outcome_sidecar
-LEGACY_WARNING = "architectural-guideline-warnings.md"
-LEGACY_WARNING_ENV = "architectural-guideline-warnings.meta.env"
 MATERIALIZE_ENV = GUIDELINES.materialize_env
 INVARIANT_MATERIALIZE_ENV = INVARIANTS.materialize_env
 _STATUS_VALUES = {"present", "absent", "invalid"}
@@ -66,13 +61,6 @@ NOTE_GUIDELINE_ID_RE = GUIDELINES.identifier_re
 # supporting I-*/G-* reference in that same sentence must not flip it to non-clean.
 # See issue #6955.
 _CLEAN_ASSESSMENT_LEAD_RE = re.compile(r"^\W*no\b[^.;\n]*\b(?:violation|deviation)s?\b", re.IGNORECASE)
-_RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
-_EXECUTION_WARNINGS_CATEGORY = "Warnings"
-_APPEND_DEVIATION_OK = "ok"
-_APPEND_DEVIATION_DUPLICATE = "duplicate"
-_APPEND_DEVIATION_FAILED = "failed"
-
-
 @dataclass(frozen=True)
 class ArchitecturalGuidelinesResult:
     """Result of reading the repo-local architectural guidelines file."""
@@ -388,14 +376,6 @@ def _regular_file(path: Path) -> bool:
     return path.is_file() and not path.is_symlink()
 
 
-def staged_assessment_present(implement_tmpdir: Path) -> bool:
-    staged = staged_assessment_path(implement_tmpdir)
-    sidecar = _artifact_path(implement_tmpdir, GUIDELINES, "staged_assessment_env")
-    if not _regular_file(staged) or not _regular_file(sidecar):
-        return False
-    return _read_env(sidecar).get("STATUS") == "present"
-
-
 def _durable_note_present(implement_tmpdir: Path, *, kind: AssessmentKind) -> bool:
     note = _artifact_path(implement_tmpdir, kind, "durable_note")
     meta = _artifact_path(implement_tmpdir, kind, "durable_note_env")
@@ -408,127 +388,6 @@ durable_note_present = partial(_durable_note_present, kind=GUIDELINES)
 invariant_durable_note_present = partial(_durable_note_present, kind=INVARIANTS)
 note_readable_any_head = durable_note_present
 invariant_note_readable_any_head = invariant_durable_note_present
-
-
-def dropped_note_message() -> str:
-    """Return legacy drop-note text.
-
-    Compose-time assessment no longer surfaces a fallback notice when HEAD
-    changes. Keep the function for temporary legacy callers, but make it inert.
-    """
-    return ""
-
-
-def persist_dropped_note_notice(implement_tmpdir: Path, *, notice_text: str) -> bool:
-    path = dropped_note_path(implement_tmpdir)
-    try:
-        if path.is_symlink():
-            return False
-        if path.exists() and not path.is_file():
-            return False
-        if path.is_file() and path.read_text(encoding="utf-8", errors="replace").strip():
-            return False
-        if path.with_name(path.name + ".tmp").is_symlink():
-            return False
-        _write_text_atomic(path=path, text=notice_text.strip() + "\n")
-    except OSError:
-        return False
-    return True
-
-
-def read_dropped_note_notice(implement_tmpdir: Path) -> str:
-    path = dropped_note_path(implement_tmpdir)
-    if not _regular_file(path):
-        return ""
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace").strip()
-    except OSError:
-        return ""
-    return text
-
-
-def clear_dropped_note_notice(implement_tmpdir: Path) -> None:
-    path = dropped_note_path(implement_tmpdir)
-    try:
-        if _regular_file(path):
-            path.unlink()
-    except OSError:
-        pass
-
-
-def maybe_persist_dropped_note_before_invalidate(implement_tmpdir: Path, *, redact_fn: Callable[[str], str]) -> bool:
-    _ = implement_tmpdir, redact_fn
-    return False
-
-
-def _clear_staged_and_dropped_artifacts(
-    implement_tmpdir: Path, *, kind: AssessmentKind
-) -> None:
-    names = [
-        kind.staged_assessment,
-        kind.staged_assessment_env,
-        kind.dropped_note_artifact,
-        kind.ship_outcome_sidecar,
-    ]
-    if kind is GUIDELINES:
-        names[:0] = [LEGACY_WARNING, LEGACY_WARNING_ENV]
-    for name in names:
-        path = implement_tmpdir / name
-        try:
-            if path.is_dir() and not path.is_symlink():
-                shutil.rmtree(path)
-            elif _artifact_still_present(path):
-                path.unlink()
-        except OSError:
-            pass
-
-
-clear_staged_and_dropped_artifacts = partial(
-    _clear_staged_and_dropped_artifacts, kind=GUIDELINES
-)
-clear_invariant_staged_and_dropped_artifacts = partial(
-    _clear_staged_and_dropped_artifacts, kind=INVARIANTS
-)
-
-
-def _write_staged_assessment(  # noqa: PLR0913 - cohesive artifact writer
-    *, implement_tmpdir: Path,
-    assessment_text: str,
-    assessed_head_sha: str,
-    diff_fingerprint_value: str,
-    base_ref: str,
-    outcome: str,
-    kind: AssessmentKind,
-    diff_text: str = "",
-) -> None:
-    validated_outcome = _validate_authored_outcome(note=assessment_text, outcome=outcome, kind=kind)
-    implement_tmpdir.mkdir(parents=True, exist_ok=True)
-    diff_path = _artifact_path(implement_tmpdir, kind, "materialized_diff")
-    _write_text_atomic(
-        path=_artifact_path(implement_tmpdir, kind, "staged_assessment"), text=assessment_text
-    )
-    _write_text_atomic(path=diff_path, text=diff_text)
-    written_at = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    sidecar = "\n".join(
-        [
-            "STATUS=present",
-            f"ASSESSED_HEAD_SHA={_env_escape(assessed_head_sha)}",
-            f"DIFF_FINGERPRINT={_env_escape(diff_fingerprint_value)}",
-            f"BASE_REF={_env_escape(base_ref)}",
-            f"DIFF_SNAPSHOT={_env_escape(str(diff_path))}",
-            *([f"{kind.status_env_key}=present"] if kind.is_invariant else []),
-            f"ASSESSMENT_KIND={_env_escape(validated_outcome)}",
-            f"WRITTEN_AT={written_at}",
-            "",
-        ]
-    )
-    _write_text_atomic(
-        path=_artifact_path(implement_tmpdir, kind, "staged_assessment_env"), text=sidecar
-    )
-
-
-write_staged_assessment = partial(_write_staged_assessment, kind=GUIDELINES)
-write_invariant_staged_assessment = partial(_write_staged_assessment, kind=INVARIANTS)
 
 
 def _note_identity(metadata: dict[str, str]) -> tuple[str, str, str] | None:
@@ -591,59 +450,6 @@ def _durable_metadata_text(
     return "\n".join(lines)
 
 
-def _write_implement_note(  # noqa: PLR0913 - compatibility writer carries the complete note identity
-    *, implement_tmpdir: Path, note_text: str, head_sha: str,
-    metadata: dict[str, str], base_ref: str, kind: AssessmentKind
-) -> None:
-    _write_text_atomic(path=_artifact_path(implement_tmpdir, kind, "durable_note"), text=note_text)
-    _write_text_atomic(
-        path=_artifact_path(implement_tmpdir, kind, "durable_note_env"),
-        text=_durable_metadata_text(
-            head_sha=head_sha,
-            metadata=metadata,
-            base_ref=base_ref,
-            status_key=kind.status_env_key,
-            status_default="present",
-        ),
-    )
-    _clear_staged_and_dropped_artifacts(implement_tmpdir, kind=kind)
-
-
-write_implement_note = partial(_write_implement_note, kind=GUIDELINES)
-write_invariant_implement_note = partial(_write_implement_note, kind=INVARIANTS)
-
-
-def write_deterministic_clean_note(
-    *,
-    implement_tmpdir: Path,
-    head_sha: str,
-    base_ref: str,
-    diff_text: str,
-    kind: AssessmentKind = GUIDELINES,
-) -> None:
-    """Persist a deterministic clean note backed by validated diff evidence."""
-    fingerprint = diff_fingerprint(diff_text)
-    diff_path = _artifact_path(implement_tmpdir, kind, "materialized_diff")
-    _write_text_atomic(path=diff_path, text=diff_text)
-    metadata = {
-        "NOTE_STATE": config.NOTE_STATE_DETERMINISTIC_CLEAN,
-        "ASSESSED_HEAD_SHA": head_sha,
-        "DIFF_FINGERPRINT": fingerprint,
-        "AUTHORED_DIFF_FINGERPRINT": fingerprint,
-        "COVERED_DIFF_FINGERPRINT": fingerprint,
-        "DIFF_SNAPSHOT": str(diff_path),
-        "ASSESSMENT_KIND": "clean",
-    }
-    _write_implement_note(
-        implement_tmpdir=implement_tmpdir,
-        note_text=kind.clean_presentation_note,
-        head_sha=head_sha,
-        metadata=metadata,
-        base_ref=base_ref,
-        kind=kind,
-    )
-
-
 def _materialize_live_diff(*, repo_root: Path | None, resolved_base: str) -> tuple[str, str] | None:
     """Materialize the live implementation diff and return diff text plus fingerprint."""
     if repo_root is None or not resolved_base:
@@ -665,238 +471,12 @@ def _live_fingerprint(*, repo_root: Path | None, resolved_base: str) -> str | No
     return live_diff[1]
 
 
-def _kind_staged_fingerprint_valid(
-    *, implement_tmpdir: Path,
-    metadata: dict[str, str],
-    base_ref: str,
-    kind: AssessmentKind,
-    repo_root: Path | None = None,
-) -> bool:
-    stored_fp = metadata.get("DIFF_FINGERPRINT", "")
-    if not stored_fp:
-        return False
-    resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
-    if repo_root is not None and resolved_base:
-        live_fp = _live_fingerprint(repo_root=repo_root, resolved_base=resolved_base)
-        if live_fp is not None:
-            return live_fp == stored_fp
-    diff_path = _artifact_path(implement_tmpdir, kind, "materialized_diff")
-    if diff_path.is_file() and not diff_path.is_symlink():
-        try:
-            snapshot_text = diff_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return False
-        return diff_fingerprint(snapshot_text) == stored_fp
-    return False
-
-
-def refresh_staged_assessment_for_current_head(  # noqa: PLR0911 - fail-closed artifact refresh has distinct validation exits
-    implement_tmpdir: Path,
-    *,
-    head_sha: str,
-    base_ref: str = "",
-    repo_root: str | Path | None = None,
-) -> bool:
-    """Refresh staged assessment metadata against the current live implementation diff."""
-    if repo_root is None or not head_sha.strip():
-        return False
-    staged = staged_assessment_path(implement_tmpdir)
-    sidecar = _artifact_path(implement_tmpdir, GUIDELINES, "staged_assessment_env")
-    if not _regular_file(staged) or not _regular_file(sidecar):
-        return False
-    metadata = _read_env(sidecar)
-    if metadata.get("STATUS") != "present":
-        return False
-    resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
-    if not resolved_base:
-        return False
-    try:
-        root = Path(repo_root).resolve()
-    except OSError:
-        return False
-    live_diff = _materialize_live_diff(repo_root=root, resolved_base=resolved_base)
-    if live_diff is None:
-        return False
-    diff_text, fingerprint = live_diff
-    stored_fp = metadata.get("DIFF_FINGERPRINT", "")
-    if not stored_fp:
-        return False
-    try:
-        assessment_text = _read_regular_text_no_follow(staged)
-        write_staged_assessment(
-            implement_tmpdir=implement_tmpdir,
-            assessment_text=assessment_text,
-            assessed_head_sha=head_sha,
-            diff_fingerprint_value=fingerprint,
-            base_ref=resolved_base,
-            outcome=metadata.get("ASSESSMENT_KIND", ""),
-            diff_text=diff_text,
-        )
-    except (OSError, UnicodeDecodeError, AssessmentReauthorRequired):
-        return False
-    return True
-
-
-def _pin_note_from_live_diff(
-    *,
-    implement_tmpdir: Path,
-    head_sha: str,
-    resolved_base: str,
-    live_diff: tuple[str, str],
-) -> bool:
-    pinned = False
-    staged = staged_assessment_path(implement_tmpdir)
-    sidecar = _artifact_path(implement_tmpdir, GUIDELINES, "staged_assessment_env")
-    try:
-        assessment_text = _read_regular_text_no_follow(staged)
-        diff_text, fingerprint = live_diff
-        write_staged_assessment(
-            implement_tmpdir=implement_tmpdir,
-            assessment_text=assessment_text,
-            assessed_head_sha=head_sha,
-            diff_fingerprint_value=fingerprint,
-            base_ref=resolved_base,
-            outcome=_read_env(sidecar).get("ASSESSMENT_KIND", ""),
-            diff_text=diff_text,
-        )
-        refreshed_metadata = _read_env(sidecar)
-        metadata_valid = refreshed_metadata.get("STATUS") == "present" and refreshed_metadata.get("DIFF_FINGERPRINT") == fingerprint
-        if metadata_valid:
-            write_implement_note(
-                implement_tmpdir=implement_tmpdir,
-                note_text=assessment_text,
-                head_sha=head_sha,
-                metadata=refreshed_metadata,
-                base_ref=resolved_base,
-            )
-            pinned = True
-    except (OSError, UnicodeDecodeError, AssessmentReauthorRequired):
-        pinned = False
-    return pinned
-
-
-def pin_note_from_staged_for_current_head(
-    implement_tmpdir: Path,
-    *,
-    head_sha: str,
-    base_ref: str = "",
-    repo_root: str | Path | None = None,
-) -> bool:
-    """Pin the staged assessment, using one live diff materialization when available."""
-    staged = staged_assessment_path(implement_tmpdir)
-    sidecar = _artifact_path(implement_tmpdir, GUIDELINES, "staged_assessment_env")
-    pinned = False
-    if _regular_file(staged) and _regular_file(sidecar):
-        metadata = _read_env(sidecar)
-        resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
-        if metadata.get("STATUS") == "present" and (repo_root is None or not resolved_base):
-            pinned = pin_note_from_staged(
-                implement_tmpdir,
-                head_sha=head_sha,
-                base_ref=base_ref,
-                repo_root=None,
-            )
-        elif metadata.get("STATUS") == "present" and repo_root is not None and resolved_base:
-            root: Path | None = None
-            with suppress(OSError):
-                root = Path(repo_root).resolve()
-            if root is not None:
-                live_diff = _materialize_live_diff(repo_root=root, resolved_base=resolved_base)
-                if live_diff is None:
-                    pinned = pin_note_from_staged(
-                        implement_tmpdir,
-                        head_sha=head_sha,
-                        base_ref=resolved_base,
-                        repo_root=None,
-                    )
-                elif metadata.get("DIFF_FINGERPRINT", ""):
-                    pinned = _pin_note_from_live_diff(
-                        implement_tmpdir=implement_tmpdir,
-                        head_sha=head_sha,
-                        resolved_base=resolved_base,
-                        live_diff=live_diff,
-                    )
-    return pinned
-
-
-def _pin_kind_note_from_staged(
-    implement_tmpdir: Path,
-    *,
-    head_sha: str,
-    kind: AssessmentKind,
-    base_ref: str = "",
-    repo_root: str | Path | None = None,
-) -> bool:
-    staged = _artifact_path(implement_tmpdir, kind, "staged_assessment")
-    sidecar = _artifact_path(implement_tmpdir, kind, "staged_assessment_env")
-    if not staged.is_file() or staged.is_symlink() or not sidecar.is_file() or sidecar.is_symlink():
-        return False
-    metadata = _read_env(sidecar)
-    if metadata.get("STATUS") != "present":
-        return False
-    if not _kind_staged_fingerprint_valid(
-        implement_tmpdir=implement_tmpdir,
-        metadata=metadata,
-        base_ref=base_ref,
-        kind=kind,
-        repo_root=Path(repo_root).resolve() if repo_root is not None else None,
-    ):
-        return False
-    try:
-        note_text = staged.read_text(encoding="utf-8")
-    except OSError:
-        return False
-    try:
-        _write_implement_note(
-            implement_tmpdir=implement_tmpdir, note_text=note_text, head_sha=head_sha,
-            metadata=metadata, base_ref=base_ref, kind=kind,
-        )
-    except OSError:
-        return False
-    return True
-
-
-pin_note_from_staged = partial(_pin_kind_note_from_staged, kind=GUIDELINES)
-
-
-def _invalidate_artifacts(kind: AssessmentKind) -> tuple[str, ...]:
-    common = (
-        kind.staged_assessment,
-        kind.staged_assessment_env,
-        kind.durable_note,
-        kind.durable_note_env,
-        kind.dropped_note_artifact,
-        kind.ship_outcome_sidecar,
-    )
-    return (LEGACY_WARNING, LEGACY_WARNING_ENV, *common) if kind is GUIDELINES else common
-
-
 def _artifact_still_present(path: Path) -> bool:
     try:
         path.lstat()
         return True
     except FileNotFoundError:
         return False
-
-
-def _invalidate_implement_note(implement_tmpdir: Path, *, kind: AssessmentKind) -> None:
-    artifacts = _invalidate_artifacts(kind)
-    for name in artifacts:
-        path = implement_tmpdir / name
-        try:
-            if path.is_dir() and not path.is_symlink():
-                shutil.rmtree(path)
-            elif _artifact_still_present(path):
-                path.unlink()
-        except FileNotFoundError:
-            pass
-    surviving = [name for name in artifacts if _artifact_still_present(implement_tmpdir / name)]
-    if surviving:
-        raise OSError("artifact(s) survived invalidation: " + ", ".join(surviving))
-
-
-invalidate_implement_note = partial(_invalidate_implement_note, kind=GUIDELINES)
-invalidate_invariant_implement_note = partial(_invalidate_implement_note, kind=INVARIANTS)
 
 
 def _durable_note_metadata(implement_tmpdir: Path, *, kind: AssessmentKind) -> dict[str, str]:
@@ -1358,134 +938,6 @@ def guideline_exception_valid(note: str) -> bool:
     return guideline_active_exception(note) is not None
 
 
-def _write_compose_assessment(
-    *,
-    implement_tmpdir: Path,
-    assessment_text: str,
-    outcome: str,
-    kind: AssessmentKind,
-    repo_root: str | Path | None = None,
-) -> None:
-    normalized = _normalize_assessment_text(assessment_text)
-    if not normalized.strip():
-        raise ValueError("assessment-file: content must not be empty")
-    validated_outcome: str = _validate_authored_outcome(
-        note=normalized, outcome=outcome, kind=kind
-    )
-    metadata = _read_env(_artifact_path(implement_tmpdir, kind, "materialize_env"))
-    materialized_head = metadata.get("HEAD_SHA", "")
-    if not materialized_head:
-        raise ValueError("compose materialization metadata is missing HEAD_SHA")
-    root = _resolve_repo_root(repo_root)
-    current_head = _current_head(root, verify_commit=True)
-    if current_head != materialized_head:
-        raise ValueError("HEAD changed after compose materialization; rerun Step 8")
-    if metadata.get("STATUS") != "present":
-        raise ValueError("compose materialization metadata is not present")
-    metadata = dict(metadata)
-    metadata["ASSESSMENT_KIND"] = validated_outcome
-    _write_implement_note(
-        implement_tmpdir=implement_tmpdir,
-        note_text=normalized,
-        head_sha=materialized_head,
-        metadata=metadata,
-        base_ref=metadata.get("BASE_REF", ""),
-        kind=kind,
-    )
-
-
-write_compose_assessment = partial(_write_compose_assessment, kind=GUIDELINES)
-write_invariant_compose_assessment = partial(_write_compose_assessment, kind=INVARIANTS)
-
-
-def _format_deviation_warning_entry(note: str) -> str:
-    lines: list[str] = []
-    for raw_line in note.splitlines():
-        stripped = raw_line.strip()
-        if not stripped:
-            continue
-        lines.append(stripped if stripped.startswith("- ") else f"- {stripped}")
-    if not lines:
-        raise ValueError("note-file: content must not be empty")
-    return "\n".join(lines)
-
-
-def _valid_run_id(run_id: str) -> bool:
-    return bool(run_id and ".." not in run_id and "/" not in run_id and "\\" not in run_id and _RUN_ID_RE.fullmatch(run_id))
-
-
-def _read_session_run_id(implement_tmpdir: Path) -> str:
-    run_id = larch_io.read_kv(
-        path=implement_tmpdir / "parent-issue.md",
-        key="RUN_ID",
-        default="",
-        first_match=True,
-        cr_strip="strip",
-        on_error_default=True,
-        reject_symlink=True,
-    ).strip()
-    if _valid_run_id(run_id):
-        return run_id
-    session_id = implement_tmpdir / "session-id"
-    if not session_id.is_file() or session_id.is_symlink():
-        return ""
-    try:
-        run_id = session_id.read_text(encoding="utf-8", errors="replace").strip()
-    except OSError:
-        return ""
-    return run_id if _valid_run_id(run_id) else ""
-
-
-def _execution_issue_batch_path(implement_tmpdir: Path) -> Path | None:
-    run_id = _read_session_run_id(implement_tmpdir)
-    if not run_id:
-        return None
-    return implement_tmpdir / "larch-logs" / "implement" / run_id / "execution-issues.ndjson"
-
-
-def append_deviation_note(implement_tmpdir: Path, note: str) -> str:
-    """Append a guideline deviation warning unless the run already has the same warning."""
-    from larch.core import proc, rust_runtime  # noqa: PLC0415  # lint-layering: typed Rust command facade avoids a core/report dependency cycle.
-    entry = _format_deviation_warning_entry(note)
-    issue_log = implement_tmpdir / "execution-issues.md"
-    batch_path = _execution_issue_batch_path(implement_tmpdir)
-    outcome = rust_runtime.execution_issues_append(
-        proc.ProcRunner(),
-        log=str(issue_log),
-        category=_EXECUTION_WARNINGS_CATEGORY,
-        entry=entry,
-        existing_batch=str(batch_path) if batch_path is not None else "",
-        redact_entry=True,
-    )
-    if outcome.failed:
-        return _APPEND_DEVIATION_FAILED
-    return (
-        _APPEND_DEVIATION_DUPLICATE
-        if outcome.status == "duplicate"
-        else _APPEND_DEVIATION_OK
-    )
-
-
-def _append_deviation_note_main(argv: list[str], *, kind: AssessmentKind) -> int:
-    parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} append-deviation-note")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
-    parser.add_argument("--note-file", required=True)
-    args = parser.parse_args(argv)
-    if not args.implement_tmpdir:
-        print(f"{kind.env_prefix}_APPEND_STATUS={_APPEND_DEVIATION_FAILED}")
-        print(f"{kind.env_prefix}_WARNING=missing implement tmpdir")
-        return 2
-    try:
-        note_text = _read_regular_text_no_follow(Path(args.note_file))
-        status = append_deviation_note(Path(args.implement_tmpdir), note_text)
-    except (OSError, UnicodeDecodeError, ValueError, ShipError) as exc:
-        print(f"{kind.env_prefix}_APPEND_STATUS={_APPEND_DEVIATION_FAILED}")
-        print(f"{kind.env_prefix}_WARNING={str(exc).replace(chr(10), ' ')}")
-        return 1
-    print(f"{kind.env_prefix}_APPEND_STATUS={status}")
-    return 1 if status == _APPEND_DEVIATION_FAILED else 0
-
-
 def _current_head(repo_root: Path | None = None, *, verify_commit: bool = False, error_out: list[str] | None = None) -> str:
     cmd = ["git"]
     if repo_root is not None:
@@ -1748,155 +1200,10 @@ def _present_note_main(argv: list[str], *, kind: AssessmentKind) -> int:
     return 0
 
 
-def _write_compose_assessment_main(argv: list[str], *, kind: AssessmentKind) -> int:
-    parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} write-compose-assessment")
-    parser.add_argument("--outcome", default="")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
-    parser.add_argument("--repo-root")
-    source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--assessment-file")
-    source.add_argument("--assessment-text")
-    args = parser.parse_args(argv)
-    if not args.implement_tmpdir:
-        print(f"{kind.env_prefix}_WRITE_STATUS=failed")
-        print(f"{kind.env_prefix}_WARNING=missing implement tmpdir")
-        return 2
-    try:
-        if args.assessment_file:
-            assessment_path = Path(args.assessment_file)
-            implement_tmpdir = Path(args.implement_tmpdir)
-            if not assessment_path.is_absolute():
-                assessment_path = implement_tmpdir / assessment_path
-            assessment_text = _read_regular_text_no_follow(assessment_path)
-        else:
-            assessment_text = str(args.assessment_text or "")
-        _write_compose_assessment(
-            implement_tmpdir=Path(args.implement_tmpdir),
-            assessment_text=assessment_text,
-            outcome=args.outcome,
-            repo_root=args.repo_root,
-            kind=kind,
-        )
-    except AssessmentReauthorRequired as exc:
-        print(f"{kind.env_prefix}_WRITE_STATUS={config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED}")
-        print(f"{kind.env_prefix}_WARNING={str(exc).replace(chr(10), ' ')}")
-        return config.EXIT_REAUTHOR_REQUIRED
-    except (OSError, UnicodeDecodeError, ValueError) as exc:
-        print(f"{kind.env_prefix}_WRITE_STATUS=failed")
-        print(f"{kind.env_prefix}_WARNING={str(exc).replace(chr(10), ' ')}")
-        return 1
-    print(f"{kind.env_prefix}_WRITE_STATUS=ok")
-    return 0
-
-
-def _write_staged_assessment_main(argv: list[str], *, kind: AssessmentKind) -> int:
-    parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} write-staged-assessment")
-    parser.add_argument("--outcome", default="")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
-    source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--assessment-file")
-    source.add_argument("--assessment-text")
-    parser.add_argument("--assessed-head-sha", default="")
-    parser.add_argument("--diff-fingerprint", default="")
-    parser.add_argument("--base-ref", default="")
-    parser.add_argument("--diff-file")
-    args = parser.parse_args(argv)
-    if not args.implement_tmpdir:
-        print(f"{kind.env_prefix}_WRITE_STATUS=failed")
-        print(f"{kind.env_prefix}_WARNING=missing implement tmpdir")
-        return 2
-    if args.assessment_file:
-        assessment_text = Path(args.assessment_file).read_text(encoding="utf-8")
-    else:
-        assessment_text = args.assessment_text
-    diff_text = ""
-    if args.diff_file:
-        diff_path = Path(args.diff_file)
-        if not diff_path.is_file() or diff_path.is_symlink():
-            print(f"{kind.env_prefix}_WRITE_STATUS=failed")
-            print(f"{kind.env_prefix}_WARNING=missing diff file")
-            return 1
-        try:
-            diff_text = diff_path.read_text(encoding="utf-8", errors="replace")
-        except OSError as exc:
-            print(f"{kind.env_prefix}_WRITE_STATUS=failed")
-            print(f"{kind.env_prefix}_WARNING=unreadable diff file ({exc})")
-            return 1
-    fingerprint = args.diff_fingerprint or diff_fingerprint(diff_text)
-    head_sha = args.assessed_head_sha or _current_head()
-    try:
-        _write_staged_assessment(
-            implement_tmpdir=Path(args.implement_tmpdir),
-            assessment_text=assessment_text,
-            assessed_head_sha=head_sha,
-            diff_fingerprint_value=fingerprint,
-            base_ref=args.base_ref,
-            outcome=args.outcome,
-            diff_text=diff_text,
-            kind=kind,
-        )
-    except AssessmentReauthorRequired as exc:
-        print(f"{kind.env_prefix}_WRITE_STATUS={config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED}")
-        print(f"{kind.env_prefix}_WARNING={str(exc).replace(chr(10), ' ')}")
-        return config.EXIT_REAUTHOR_REQUIRED
-    print(f"{kind.env_prefix}_WRITE_STATUS=ok")
-    return 0
-
-
-def _pin_note_from_staged_main(argv: list[str], *, kind: AssessmentKind) -> int:
-    parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} pin-note-from-staged")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
-    parser.add_argument("--head-sha", default="")
-    parser.add_argument("--base-ref", default="")
-    parser.add_argument("--repo-root")
-    args = parser.parse_args(argv)
-    if not args.implement_tmpdir:
-        print(f"{kind.env_prefix}_PIN_STATUS=failed")
-        print(f"{kind.env_prefix}_WARNING=missing implement tmpdir")
-        return 2
-    head_sha = args.head_sha or _current_head()
-    pin = pin_invariant_note_from_staged if kind.is_invariant else pin_note_from_staged
-    pinned = pin(
-        Path(args.implement_tmpdir),
-        head_sha=head_sha,
-        base_ref=args.base_ref,
-        repo_root=args.repo_root,
-    )
-    print(f"{kind.env_prefix}_PIN_STATUS={'ok' if pinned else 'skipped'}")
-    return 0
-
-
-pin_invariant_note_from_staged = partial(_pin_kind_note_from_staged, kind=INVARIANTS)
-
-
-def _invalidate_main(argv: list[str], *, kind: AssessmentKind) -> int:
-    parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} invalidate")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
-    args = parser.parse_args(argv)
-    if not args.implement_tmpdir:
-        print(f"{kind.env_prefix}_INVALIDATE_STATUS=failed")
-        print(f"{kind.env_prefix}_WARNING=missing implement tmpdir")
-        return 2
-    invalidate = invalidate_invariant_implement_note if kind.is_invariant else invalidate_implement_note
-    try:
-        invalidate(Path(args.implement_tmpdir))
-    except OSError as exc:
-        print(f"{kind.env_prefix}_INVALIDATE_STATUS=failed")
-        print(f"{kind.env_prefix}_WARNING={exc}")
-        return 2
-    print(f"{kind.env_prefix}_INVALIDATE_STATUS=ok")
-    return 0
-
-
 for _guideline_cli, _invariant_cli, _handler in (
-    ("append_deviation_note_main", "invariants_append_deviation_note_main", _append_deviation_note_main),
     ("persist_design_assessment_main", "invariants_persist_design_assessment_main", _persist_design_assessment_main),
     ("read_main", "invariants_read_main", _read_main),
     ("present_note_main", "invariants_present_note_main", _present_note_main),
-    ("write_compose_assessment_main", "invariants_write_compose_assessment_main", _write_compose_assessment_main),
-    ("write_staged_assessment_main", "invariants_write_staged_assessment_main", _write_staged_assessment_main),
-    ("pin_note_from_staged_main", "invariants_pin_note_from_staged_main", _pin_note_from_staged_main),
-    ("invalidate_main", "invariants_invalidate_main", _invalidate_main),
 ):
     globals()[_guideline_cli] = partial(_handler, kind=GUIDELINES)
     globals()[_invariant_cli] = partial(_handler, kind=INVARIANTS)

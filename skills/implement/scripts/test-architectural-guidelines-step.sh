@@ -149,6 +149,23 @@ IMPLEMENT_TMPDIR="$TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
   "$ROOT/skills/implement/scripts/step-architectural-invariants-write-compose.sh" "$INVARIANT_ASSESSMENT" clean >/dev/null
 cmp "$INVARIANT_ASSESSMENT" "$TMPDIR/architectural-invariant-note.md"
 
+STAGED_TMPDIR="$TMPDIR/staged-wrapper"
+mkdir -p "$STAGED_TMPDIR"
+printf 'No architectural guideline deviations were found.\n' > "$STAGED_TMPDIR/assessment.md"
+printf '' > "$STAGED_TMPDIR/architectural-guideline-materialized-diff.txt"
+cat > "$STAGED_TMPDIR/architectural-guideline-materialize.env" <<EOF
+STATUS=present
+HEAD_SHA=$HEAD_SHA
+BASE_REF=origin/main
+DIFF_FINGERPRINT=$(python3 -c "import hashlib; print(hashlib.sha256(b'').hexdigest())")
+EOF
+(
+  cd "$TMPDIR"
+  IMPLEMENT_TMPDIR="$STAGED_TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
+    "$ROOT/skills/implement/scripts/step-architectural-guidelines-write-staged.sh" assessment.md clean >/dev/null
+)
+grep -Fxq "ASSESSED_HEAD_SHA=$HEAD_SHA" "$STAGED_TMPDIR/architectural-guideline-staged-assessment.env"
+
 set +e
 IMPLEMENT_TMPDIR="$TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
   "$ROOT/skills/implement/scripts/step-architectural-guidelines-write-compose.sh" >/dev/null 2>&1
