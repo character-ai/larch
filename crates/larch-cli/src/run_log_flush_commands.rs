@@ -581,7 +581,7 @@ fn write_final_report(
         arguments.push(OsString::from("--skip-tracking-upsert"));
     } if strict_reconcile {
         arguments.push(OsString::from("--strict-stalled-summary"));
-    } let cost_overrides = token_cost_overrides(); if cost_overrides != "{}" {
+    } let cost_overrides = crate::final_report_commands::cost_overrides_from_environment(); if cost_overrides != "{}" {
         arguments.extend([OsString::from("--cost-overrides-json"), OsString::from(cost_overrides)]);
     } crate::final_report_commands::write_report(&arguments[2..])
 }
@@ -1143,13 +1143,6 @@ fn positive_number(value: &str) -> Option<u64> {
 fn one_line(value: &str, limit: usize) -> String {
     value
         .split_whitespace() .collect::<Vec<_>>() .join(" ") .chars() .take(limit) .collect()
-}
-
-fn token_cost_overrides() -> String {
-    const KEYS: &str = "LARCH_CLAUDE_INPUT_RATE_PER_M LARCH_CLAUDE_CACHE_READ_RATE_PER_M LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M LARCH_CLAUDE_OUTPUT_RATE_PER_M LARCH_CODEX_INPUT_RATE_PER_M LARCH_CODEX_CACHED_INPUT_RATE_PER_M LARCH_CODEX_OUTPUT_RATE_PER_M LARCH_CODEX_MINI_INPUT_RATE_PER_M LARCH_CODEX_MINI_CACHED_INPUT_RATE_PER_M LARCH_CODEX_MINI_OUTPUT_RATE_PER_M LARCH_CURSOR_INPUT_RATE_PER_M LARCH_CURSOR_CACHE_READ_RATE_PER_M LARCH_CURSOR_OUTPUT_RATE_PER_M LARCH_CLAUDE_RATE_PER_M LARCH_CODEX_RATE_PER_M LARCH_CURSOR_RATE_PER_M LARCH_CURSOR_GROK_INPUT_RATE_PER_M LARCH_CURSOR_GROK_CACHE_READ_RATE_PER_M LARCH_CURSOR_GROK_OUTPUT_RATE_PER_M LARCH_CURSOR_TEAMS_SURCHARGE_PER_M LARCH_TOKEN_RATE_PER_M LARCH_RATE_CLAUDE_INPUT LARCH_RATE_CLAUDE_CACHE_READ LARCH_RATE_CLAUDE_CACHE_CREATE LARCH_RATE_CLAUDE_CACHE_CREATE_5M LARCH_RATE_CLAUDE_CACHE_CREATE_1H LARCH_RATE_CLAUDE_OUTPUT LARCH_RATE_CLAUDE_AGGREGATE LARCH_RATE_CODEX_INPUT LARCH_RATE_CODEX_CACHE_READ LARCH_RATE_CODEX_CACHED_INPUT LARCH_RATE_CODEX_OUTPUT LARCH_RATE_CODEX_AGGREGATE LARCH_RATE_CODEX_MINI_INPUT LARCH_RATE_CODEX_MINI_CACHE_READ LARCH_RATE_CODEX_MINI_CACHED_INPUT LARCH_RATE_CODEX_MINI_OUTPUT LARCH_RATE_CURSOR_INPUT LARCH_RATE_CURSOR_CACHE_READ LARCH_RATE_CURSOR_OUTPUT LARCH_RATE_CURSOR_AGGREGATE";
-    serde_json::to_string(&KEYS.split_ascii_whitespace().filter_map(|key| {
-        env::var(key).ok().map(|value| (key, value))
-    }).collect::<BTreeMap<_, _>>()).unwrap_or_else(|_error| "{}".to_owned())
 }
 
 fn os(value: &str) -> OsString {

@@ -87,6 +87,29 @@ The `show` token documented for `checks self-edit-log` is dropped. The retired
 `argparse` parser declared no positional, so
 `checks self-edit-log show --tmpdir ...` always exited 2.
 
+### Implement Step 16 and Step 17 closeout cutover
+
+Issue #8791 moved `implement step-16`, `implement step-16-16a`,
+`implement step-16-17`, and `implement step-17` to Rust. All callers enter
+through `scripts/larch.sh`. The cutover removes the four Python registrations,
+`python/larch/state/closeout.py`, and its Python tests. The command-registry
+milestones are complete. The remaining `implement cleanup` command stays
+Python-owned under #8793.
+
+`crates/larch-cli/src/implement_closeout_commands.rs` owns the four command
+boundaries. It composes the existing Rust timing, rejected-findings, Slack,
+run-log failure, and final-report verbs through the verified bootstrap. It
+preserves the Step 16 best-effort policy, Step 17 stale-summary restoration,
+summary marker grammar, sentinels, exit codes, and the combined command's Step
+18 handoff.
+
+The black-box suite in
+`crates/larch-cli/tests/implement_closeout_parity.rs` runs both owners in
+isolated roots against a frozen Python reference. Reviewed goldens pin stdout,
+stderr, exit status, child argv, failure records, summaries, backups, and
+sentinels. The clean-install matrix covers every migrated selector without the
+retired Python owner.
+
 ### Rust clippy gate and rust-policy candidate cutover
 
 `checks rust-clippy`, `ci prepare-rust-integration-artifact`,

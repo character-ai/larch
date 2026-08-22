@@ -91,6 +91,7 @@ mod hook_commands;
 mod html;
 pub(crate) mod implement_bootstrap_continuation;
 mod implement_child_seam;
+mod implement_closeout_commands;
 mod implement_commands;
 mod implement_commit_route_commands;
 mod implement_dispatch_commands;
@@ -1102,6 +1103,18 @@ enum ImplementCommand {
     /// Route the OOS checkpoint result and persist successful bookkeeping.
     #[command(name = "step-8-oos-checkpoint", disable_help_flag = true)]
     Step8OosCheckpoint(RawCompatibilityArguments),
+    /// Replay rejected findings for the Step 16 closeout checkpoint.
+    #[command(name = "step-16", disable_help_flag = true)]
+    Step16(RawCompatibilityArguments),
+    /// Run Step 16 and its best-effort Step 16a Slack notification.
+    #[command(name = "step-16-16a", disable_help_flag = true)]
+    Step16_16a(RawCompatibilityArguments),
+    /// Run the Step 16 through Step 17 closeout composite.
+    #[command(name = "step-16-17", disable_help_flag = true)]
+    Step16_17(RawCompatibilityArguments),
+    /// Render the Step 17 final report.
+    #[command(name = "step-17", disable_help_flag = true)]
+    Step17(RawCompatibilityArguments),
     /// Run one Step 18 phase: the stall gate or the terminal logs flush.
     #[command(name = "step-18", disable_help_flag = true)]
     Step18(RawCompatibilityArguments),
@@ -2915,6 +2928,18 @@ fn run(
             }
             ImplementCommand::Step8OosCheckpoint(arguments) => {
                 implement_ship_commands::step8_oos_checkpoint(&arguments.arguments)
+            }
+            ImplementCommand::Step16(arguments) => {
+                implement_closeout_commands::step_16(&arguments.arguments)
+            }
+            ImplementCommand::Step16_16a(arguments) => {
+                implement_closeout_commands::step_16_16a(&arguments.arguments)
+            }
+            ImplementCommand::Step16_17(arguments) => {
+                implement_closeout_commands::step_16_17(&arguments.arguments)
+            }
+            ImplementCommand::Step17(arguments) => {
+                implement_closeout_commands::step_17(&arguments.arguments)
             }
             ImplementCommand::Step18(arguments) => {
                 implement_terminal_commands::step_18(&arguments.arguments)

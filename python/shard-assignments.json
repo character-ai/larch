@@ -189,7 +189,6 @@
   "tests/implement/test_ci.py::test_distill_log_programmatic_returns_outcome_without_emitting": 4,
   "tests/implement/test_ci.py::test_main_health_cli_emits_skip_for_missing_default_workflow": 4,
   "tests/implement/test_ci.py::test_main_health_cli_uses_bare_branch_for_upstream": 2,
-  "tests/implement/test_closeout.py::test_step_16_17_upsert_failure_without_prior_summary_emits_markers": 3,
   "tests/implement/test_finalize.py::test_implement_finalize_accepts_cache_root_state_file": 4,
   "tests/implement/test_finalize.py::test_implement_finalize_teardown_emits_issue_url_and_subcommand": 4,
   "tests/implement/test_finalize.py::test_implement_finalize_teardown_rejects_disallowed_state_file_root": 2,

@@ -471,6 +471,9 @@ rows, and redacts it from transport diagnostics before emission. Only `http` and
 validation and transport failures to exit 0 while still emitting
 `STATUS=failed`. The concrete HTTP client lives in
 `crates/larch-adapters/src/http_client.rs`; core owns planning and redaction only.
+The Rust Step 16/17 closeout composition forwards the webhook as a typed child
+environment override only to `slack issue-announce`; timing, report, run-log,
+and rejected-finding children do not receive it.
 
 ### Connectivity availability probe
 

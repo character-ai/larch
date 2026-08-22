@@ -1,4 +1,4 @@
-"""/implement Step 16/17 closeout helpers."""
+"""Frozen pre-cutover `/implement` Step 16/17 closeout helpers."""
 
 # pyright: reportUnusedCallResult=false
 

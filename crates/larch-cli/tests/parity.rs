@@ -2072,6 +2072,18 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "implement",
         "checks-result-identity",
     ),
+    CleanInstallCase::new("clean-install-implement-step-16", "implement", "step-16"),
+    CleanInstallCase::new(
+        "clean-install-implement-step-16-16a",
+        "implement",
+        "step-16-16a",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-step-16-17",
+        "implement",
+        "step-16-17",
+    ),
+    CleanInstallCase::new("clean-install-implement-step-17", "implement", "step-17"),
     CleanInstallCase::new("clean-install-implement-step-18", "implement", "step-18"),
     CleanInstallCase::new(
         "clean-install-implement-step-18-gate-logs-flush",

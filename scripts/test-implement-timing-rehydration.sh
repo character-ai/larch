@@ -66,21 +66,15 @@ import sys
 lines=Path('skills/implement/SKILL.md').read_text().splitlines()
 source_guard='[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"'
 tmpdir_export='export IMPLEMENT_TMPDIR'
-# The direct Step 16-17 Python CLI fence is a single self-contained call that
-# scripts/test-implement-fence-shape.sh accepts as a one-line new-shape fence,
-# so it cannot carry the multi-line guard/export. It runs after Step 0 exports
-# CLAUDE_PLUGIN_ROOT, so it is exempt from the early-fence source guard/export.
-step_16_17_call='python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17 --implement-tmpdir "$IMPLEMENT_TMPDIR"'
 in_fence=False; start=0; body=[]; errors=[]; guard_count=0; root_fallback_count=0
 for i,line in enumerate(lines,1):
     if line.lstrip().startswith('```bash'):
         in_fence=True; start=i; body=[]
     elif in_fence and line.lstrip().startswith('```'):
         text='\n'.join(body)
-        exempt=any(raw.strip()==step_16_17_call for raw in body)
-        if '${CLAUDE_PLUGIN_ROOT}' in text and source_guard not in text and not exempt:
+        if '${CLAUDE_PLUGIN_ROOT}' in text and source_guard not in text:
             errors.append(f'fence starting {start}: missing canonical plugin-root source guard')
-        if '${CLAUDE_PLUGIN_ROOT}' in text and '$IMPLEMENT_TMPDIR' in text and tmpdir_export not in text and not exempt:
+        if '${CLAUDE_PLUGIN_ROOT}' in text and '$IMPLEMENT_TMPDIR' in text and tmpdir_export not in text:
             errors.append(f'fence starting {start}: missing IMPLEMENT_TMPDIR export')
         guard_count += sum(1 for raw in body if raw.strip()==source_guard)
         root_fallback_count += sum(1 for raw in body if '--print-plugin-root' in raw)

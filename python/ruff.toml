@@ -271,13 +271,6 @@ ignore = [
     "C901",
     "PLR0911",
 ]
-"closeout.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "collect_results.py" = [
     "C901",
     "PLR0911",

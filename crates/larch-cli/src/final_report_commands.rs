@@ -103,6 +103,17 @@ const COST_OVERRIDE_ENV_NAMES: [&str; 43] = [
     "LARCH_RATE_CLAUDE_SUB_AGGREGATE",
 ];
 
+/// Serialize the configured token-rate overrides for a composed report child.
+pub fn cost_overrides_from_environment() -> String {
+    serde_json::to_string(
+        &COST_OVERRIDE_ENV_NAMES
+            .iter()
+            .filter_map(|key| env::var(key).ok().map(|value| (*key, value)))
+            .collect::<BTreeMap<_, _>>(),
+    )
+    .unwrap_or_else(|_error| "{}".to_owned())
+}
+
 /// One completed report render.
 struct ReportOutcome {
     code: i32,

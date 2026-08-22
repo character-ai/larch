@@ -4075,11 +4075,13 @@ verb = "step-16"
 python_module = "larch.state.closeout"
 python_function = "step_16_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8791
+clean_install_test = "clean-install-implement-step-16"
 
 [[commands]]
 domain = "implement"
@@ -4087,11 +4089,13 @@ verb = "step-16-16a"
 python_module = "larch.state.closeout"
 python_function = "step_16_16a_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8791
+clean_install_test = "clean-install-implement-step-16-16a"
 
 [[commands]]
 domain = "implement"
@@ -4099,11 +4103,13 @@ verb = "step-16-17"
 python_module = "larch.state.closeout"
 python_function = "step_16_17_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8791
+clean_install_test = "clean-install-implement-step-16-17"
 
 [[commands]]
 domain = "implement"
@@ -4111,11 +4117,13 @@ verb = "step-17"
 python_module = "larch.state.closeout"
 python_function = "step_17_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8791
+clean_install_test = "clean-install-implement-step-17"
 
 [[commands]]
 domain = "implement"
@@ -9380,12 +9388,6 @@ python = []
 rust = ["run-log write-round"]
 
 [[callers]]
-path = "python/larch/state/closeout.py"
-kind = "python-runtime"
-python = []
-rust = ["final-report write", "review-and-fix write-rejected", "run-log append-failure", "slack issue-announce", "timing telemetry-mark"]
-
-[[callers]]
 path = "python/larch/state/session_env.py"
 kind = "python-runtime"
 python = []
@@ -9778,8 +9780,8 @@ rust = ["fluff-analysis analyze"]
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["diagram code-flow", "diagrams upsert", "implement step-16-17", "implement step-17", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "tracking post-issue"]
-rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
+python = ["diagram code-flow", "diagrams upsert", "implement-finalize teardown", "merge pr", "plan-receipt refresh", "render run-summary", "tracking post-issue"]
+rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "oos file", "plan-block read", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "stall-recovery classify", "tracking-issue upsert-summary", "voting write-tally"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -9838,8 +9840,8 @@ rust = ["issue parse-input", "oos disposition-gate", "oos file", "oos file-confl
 [[callers]]
 path = "skills/implement/references/extracted-script-registry.md"
 kind = "skill"
-python = ["implement step-16-17", "implement-finalize teardown", "pr closes-issue", "pr compose-summary", "render run-summary"]
-rust = ["checks repair-loop", "implement checks-step5-resume", "implement step-6-entry"]
+python = ["implement-finalize teardown", "pr closes-issue", "pr compose-summary", "render run-summary"]
+rust = ["checks repair-loop", "implement checks-step5-resume", "implement step-16-17", "implement step-6-entry"]
 
 [[callers]]
 path = "skills/implement/references/oos-pipeline.md"
@@ -10342,8 +10344,8 @@ rust = ["agent collect-results", "agent degraded-tools-gate", "agent launch-clau
 [[callers]]
 path = "skills/shared/final-summary-emit.md"
 kind = "skill"
-python = ["implement step-16-17"]
-rust = ["implement step-18-gate-logs-flush"]
+python = []
+rust = ["implement step-16-17", "implement step-18-gate-logs-flush"]
 
 [[callers]]
 path = "skills/shared/mermaid-safe-content.md"

@@ -679,7 +679,7 @@ test-slack-issue-announce:
 	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k slack_issue_announce
 
 test-step-16-17:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_closeout.py -q
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test implement_closeout_parity
 
 test-write-final-report: write-final-report-py-harness write-final-report-bash-harness
 
