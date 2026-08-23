@@ -544,6 +544,7 @@ fn run_git(working_directory: &Path, operation: &PreflightGit) -> GitOutcome {
                             refspec: Some(refspec),
                             quiet: true,
                             no_tags: false,
+                            mode: larch_adapters::FetchMode::Standard,
                         },
                         &cancellation,
                     )

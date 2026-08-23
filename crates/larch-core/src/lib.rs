@@ -24,6 +24,7 @@ mod env_file;
 mod error;
 mod external_defaults;
 mod fluff_analysis;
+mod forked_repo;
 mod git;
 mod github;
 mod github_actions;
@@ -280,6 +281,10 @@ pub use external_defaults::{
 pub use fluff_analysis::{
     FluffOptions, PyTimestamp, fluff_analysis_report, parse_cutoff_text, parse_larch_version_tuple,
     parse_python_isoformat, sorted_paths_with_name_prefix,
+};
+pub use forked_repo::{
+    NormalizedGitHubUrl, RemoteClassification, RemoteDescription, classify_fork_remotes,
+    normalize_github_url,
 };
 pub use git::{
     Change, ChangeKind, ChangeSet, Commit, ConfigKey, ConfigScope, ConfigValue, ConflictKind,

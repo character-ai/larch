@@ -733,6 +733,7 @@ impl Git {
             refspec: Some(refspec),
             quiet: true,
             no_tags: false,
+            mode: larch_adapters::FetchMode::Standard,
         };
         outcome_of(
             self.runtime
@@ -789,7 +790,7 @@ impl Git {
             Err(error) => return GitOutcome::input_error(error.to_string()),
         };
         let request = LsRemoteRequest {
-            remote,
+            remote: larch_adapters::GitLsRemoteTarget::Configured(remote),
             patterns: vec![pattern],
             heads: true,
             exit_code: false,
@@ -823,10 +824,11 @@ impl Git {
             }
         };
         let request = PushRequest {
-            remote,
-            refspec,
+            remote: larch_adapters::GitPushTarget::Configured(remote),
+            refspecs: vec![refspec],
             force_with_lease: Some(force_with_lease),
             set_upstream: false,
+            prune: false,
         };
         outcome_of(
             self.runtime

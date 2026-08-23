@@ -150,6 +150,7 @@ git_op!(ExactDiffRequest, ExactDiff);
 pub enum ConfigMutationRequest {
     Set { key: GitConfigKey, value: OsString },
     Unset { key: GitConfigKey },
+    UnsetAll { key: GitConfigKey },
     Add { key: GitConfigKey, value: OsString },
 }
 impl ConfigMutationRequest {
@@ -163,6 +164,10 @@ impl ConfigMutationRequest {
             }
             Self::Unset { key } => {
                 a.push("--unset".into());
+                a.push(key.as_os_str().into());
+            }
+            Self::UnsetAll { key } => {
+                a.push("--unset-all".into());
                 a.push(key.as_os_str().into());
             }
             Self::Add { key, value } => {
@@ -734,10 +739,16 @@ git_op!(InitRequest, Init);
 pub struct CloneRequest {
     pub url: GitUrl,
     pub directory: Option<GitPath>,
+    /// Create a bare mirror containing all refs (`--mirror`).
+    pub mirror: bool,
 }
 impl CloneRequest {
     fn argv(&self) -> Result<Vec<OsString>, GitCliInputError> {
-        let mut a = vec![self.url.as_os_str().into()];
+        let mut a = Vec::new();
+        if self.mirror {
+            a.push("--mirror".into());
+        }
+        a.push(self.url.as_os_str().into());
         if let Some(directory) = &self.directory {
             a.push(directory.as_os_str().into());
         }
@@ -820,6 +831,7 @@ git_op!(RebaseRequest, Rebase);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MergeRequest {
     Commit { theirs: GitRef, no_edit: bool },
+    FastForward { target: GitRef },
     Abort,
 }
 impl MergeRequest {
@@ -832,6 +844,9 @@ impl MergeRequest {
                 }
                 a.push(theirs.as_os_str().into());
                 a
+            }
+            Self::FastForward { target } => {
+                vec!["--ff-only".into(), target.as_os_str().into()]
             }
             Self::Abort => vec!["--abort".into()],
         })
@@ -886,6 +901,12 @@ impl StashRequest {
 }
 git_op!(StashRequest, Stash);
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FetchMode {
+    Standard,
+    PruneTags,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FetchRequest {
     pub remote: GitRemote,
@@ -893,9 +914,16 @@ pub struct FetchRequest {
     pub quiet: bool,
     /// Skip the tag auto-follow a bounded single-object fetch does not want.
     pub no_tags: bool,
+    pub mode: FetchMode,
 }
 impl FetchRequest {
     fn argv(&self) -> Result<Vec<OsString>, GitCliInputError> {
+        if self.no_tags && self.mode == FetchMode::PruneTags {
+            return Err(err(
+                GitCliInputErrorKind::UnsupportedCombination,
+                "fetch cannot combine --no-tags and --tags",
+            ));
+        }
         let mut a = Vec::new();
         if self.no_tags {
             a.push("--no-tags".into());
@@ -904,6 +932,10 @@ impl FetchRequest {
             a.push("--quiet".into());
         }
         a.push(self.remote.as_os_str().into());
+        if self.mode == FetchMode::PruneTags {
+            a.push("--prune".into());
+            a.push("--tags".into());
+        }
         if let Some(refspec) = &self.refspec {
             a.push(refspec.as_os_str().into());
         }
@@ -925,17 +957,35 @@ pub enum ForceWithLease {
         reference: GitRef,
     },
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GitPushTarget {
+    Configured(GitRemote),
+    Url(GitUrl),
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PushRequest {
-    pub remote: GitRemote,
-    pub refspec: GitRefspec,
+    pub remote: GitPushTarget,
+    pub refspecs: Vec<GitRefspec>,
     pub force_with_lease: Option<ForceWithLease>,
     /// Set the upstream to the explicit destination after a successful push.
     pub set_upstream: bool,
+    /// Delete destination refs absent from the pushed source set (`--prune`).
+    pub prune: bool,
 }
 impl PushRequest {
     fn argv(&self) -> Result<Vec<OsString>, GitCliInputError> {
+        if self.refspecs.is_empty() {
+            return Err(err(
+                GitCliInputErrorKind::Empty,
+                "push requires at least one refspec",
+            ));
+        }
         let mut a = Vec::new();
+        if self.prune {
+            a.push("--prune".into());
+        }
         if self.set_upstream {
             a.push("--set-upstream".into());
         }
@@ -956,16 +1006,29 @@ impl PushRequest {
             }
             None => {}
         }
-        a.push(self.remote.as_os_str().into());
-        a.push(self.refspec.as_os_str().into());
+        a.push(match &self.remote {
+            GitPushTarget::Configured(remote) => remote.as_os_str().into(),
+            GitPushTarget::Url(url) => url.as_os_str().into(),
+        });
+        a.extend(
+            self.refspecs
+                .iter()
+                .map(|refspec| refspec.as_os_str().into()),
+        );
         Ok(a)
     }
 }
 git_op!(PushRequest, Push);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GitLsRemoteTarget {
+    Configured(GitRemote),
+    Url(GitUrl),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LsRemoteRequest {
-    pub remote: GitRemote,
+    pub remote: GitLsRemoteTarget,
     pub patterns: Vec<GitRef>,
     /// Restrict results to `refs/heads/*` (`--heads`).
     pub heads: bool,
@@ -981,7 +1044,10 @@ impl LsRemoteRequest {
         if self.heads {
             a.push("--heads".into());
         }
-        a.push(self.remote.as_os_str().into());
+        a.push(match &self.remote {
+            GitLsRemoteTarget::Configured(remote) => remote.as_os_str().into(),
+            GitLsRemoteTarget::Url(url) => url.as_os_str().into(),
+        });
         a.extend(self.patterns.iter().map(|p| p.as_os_str().into()));
         Ok(a)
     }

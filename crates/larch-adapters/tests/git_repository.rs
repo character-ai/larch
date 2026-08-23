@@ -28,6 +28,10 @@ fn repository_queries_match_installed_git_semantics() {
     fixture.write("ambiguous-b", b"ambiguous-272\n").unwrap();
     git_ok(&fixture, ["hash-object", "-w", "ambiguous-a"]);
     git_ok(&fixture, ["hash-object", "-w", "ambiguous-b"]);
+    let unrelated = git_id(
+        &fixture,
+        ["commit-tree", "HEAD^{tree}", "-m", "unrelated history"],
+    );
     let before = SemanticSnapshot::capture(&fixture, ExecutionSnapshot::success()).unwrap();
 
     let reader = GixRepository::discover(fixture.root().join("nested")).unwrap();
@@ -56,7 +60,7 @@ fn repository_queries_match_installed_git_semantics() {
     );
 
     assert_ref_and_object_queries(&reader, &fixture, &head);
-    assert_graph_queries(&reader, &fixture, &head);
+    assert_graph_queries(&reader, &fixture, &head, &unrelated);
     assert_revision_validation(&reader, &fixture);
 
     let after = SemanticSnapshot::capture(&fixture, ExecutionSnapshot::success()).unwrap();
@@ -89,7 +93,12 @@ fn assert_ref_and_object_queries(reader: &GixRepository, fixture: &GitRepository
     assert_eq!(reader.object(&missing).unwrap(), None);
 }
 
-fn assert_graph_queries(reader: &GixRepository, fixture: &GitRepository, head: &ObjectId) {
+fn assert_graph_queries(
+    reader: &GixRepository,
+    fixture: &GitRepository,
+    head: &ObjectId,
+    unrelated: &ObjectId,
+) {
     let expected_walk: Vec<_> = git_lines(fixture, ["rev-list", "HEAD"])
         .into_iter()
         .map(|hex| id_from_hex(&hex))
@@ -113,6 +122,8 @@ fn assert_graph_queries(reader: &GixRepository, fixture: &GitRepository, head: &
     );
     assert!(reader.is_ancestor(&topic, head).unwrap());
     assert!(!reader.is_ancestor(head, &topic).unwrap());
+    assert!(!reader.is_ancestor(head, unrelated).unwrap());
+    assert!(!reader.is_ancestor(unrelated, head).unwrap());
 }
 
 fn assert_revision_validation(reader: &GixRepository, fixture: &GitRepository) {

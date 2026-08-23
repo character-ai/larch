@@ -792,10 +792,11 @@ impl RepositoryRead for GixRepository {
         let repository = self.local()?;
         let ancestor = gix_id(ancestor, repository.object_hash())?;
         let descendant = gix_id(descendant, repository.object_hash())?;
-        repository
-            .merge_base(ancestor, descendant)
-            .map(|base| base.as_ref() == ancestor)
-            .map_err(|_| error(RepositoryErrorKind::RevisionNotFound))
+        match repository.merge_base(ancestor, descendant) {
+            Ok(base) => Ok(base.as_ref() == ancestor),
+            Err(gix::repository::merge_base::Error::NotFound { .. }) => Ok(false),
+            Err(_) => Err(error(RepositoryErrorKind::RevisionNotFound)),
+        }
     }
 
     fn worktrees(&self) -> Result<Vec<Worktree>, RepositoryError> {

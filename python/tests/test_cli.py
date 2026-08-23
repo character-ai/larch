@@ -78,6 +78,12 @@ def test_report_tokens_analyze_is_not_a_python_command() -> None:
     assert cli.main(["report-tokens", "analyze", "--skill", "implement"]) == 2
 
 
+def test_forked_repo_entrypoint_is_retired() -> None:
+    assert ("forked-repo", "setup") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert ("forked-repo", "setup") not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+    assert importlib.util.find_spec("larch.core.forked_repo") is None
+
+
 def test_architectural_assessment_entrypoint_is_retired() -> None:
     assert ("architectural-assessment", "materialize") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     assert ("architectural-assessment", "submit") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]

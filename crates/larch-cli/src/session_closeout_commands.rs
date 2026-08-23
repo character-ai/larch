@@ -201,6 +201,7 @@ fn run_git(cwd: &Path, operation: LocalCleanupGit<'_>) -> bool {
                         refspec: Some(refspec),
                         quiet: false,
                         no_tags: false,
+                        mode: larch_adapters::FetchMode::Standard,
                     },
                     &cancellation,
                 )

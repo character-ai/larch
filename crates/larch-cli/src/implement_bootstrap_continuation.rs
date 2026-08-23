@@ -1021,6 +1021,7 @@ fn create_feature_branch(
                 refspec: Some(refspec),
                 quiet: true,
                 no_tags: false,
+                mode: larch_adapters::FetchMode::Standard,
             },
             &cancellation,
         ))

@@ -2100,6 +2100,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "fluff-analysis",
         "analyze",
     ),
+    CleanInstallCase::new("clean-install-forked-repo-setup", "forked-repo", "setup"),
     CleanInstallCase::new(
         "clean-install-render-findings-view",
         "render",

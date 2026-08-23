@@ -518,6 +518,7 @@ fn fetch_base(cwd: &Path, base_remote: &str, base_ref: &str) -> Result<(), Strin
             refspec: Some(GitRefspec::new(base_ref.to_owned()).map_err(|error| error.to_string())?),
             quiet: true,
             no_tags: false,
+            mode: larch_adapters::FetchMode::Standard,
         };
         GitCli::new(&runner, policy)
             .fetch(request, &Cancellation::new())

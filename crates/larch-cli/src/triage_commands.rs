@@ -556,7 +556,9 @@ fn git_ls_remote(request: &InspectRequest) -> Result<String, ()> {
         Box::pin(async move {
             git.ls_remote(
                 larch_adapters::LsRemoteRequest {
-                    remote: GitRemote::new("origin").map_err(|_| ())?,
+                    remote: larch_adapters::GitLsRemoteTarget::Configured(
+                        GitRemote::new("origin").map_err(|_| ())?,
+                    ),
                     patterns: vec![reference],
                     heads: false,
                     exit_code: true,
@@ -580,6 +582,7 @@ fn git_fetch(request: &InspectRequest, refspec: &str) -> Result<String, ()> {
                     refspec: Some(refspec),
                     quiet: false,
                     no_tags: true,
+                    mode: larch_adapters::FetchMode::Standard,
                 },
                 cancellation,
             )

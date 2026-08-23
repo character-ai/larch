@@ -82,6 +82,7 @@ mod external_agent;
 mod external_defaults_commands;
 pub(crate) mod final_report_commands;
 mod fluff_analysis_commands;
+mod forked_repo_commands;
 mod git_command_runtime;
 mod git_commands;
 mod github_repository_resolution;
@@ -321,6 +322,9 @@ enum Domain {
     /// The `/fluff-analysis` review-fluff report.
     #[command(subcommand, name = "fluff-analysis")]
     FluffAnalysis(FluffAnalysisCommand),
+    /// Configure an upstream/fork open-source checkout.
+    #[command(subcommand, name = "forked-repo")]
+    ForkedRepo(ForkedRepoCommand),
     /// Local Git repository commands.
     #[command(subcommand)]
     Git(GitSubcommand),
@@ -2106,6 +2110,13 @@ enum DirtyTreeCommand {
     ScopeMarker(RawCompatibilityArguments),
 }
 
+#[derive(Subcommand)]
+enum ForkedRepoCommand {
+    /// Verify, mirror, and configure the current checkout.
+    #[command(disable_help_flag = true)]
+    Setup(RawCompatibilityArguments),
+}
+
 #[derive(Args)]
 #[command(trailing_var_arg = true)]
 struct RawCompatibilityArguments {
@@ -2893,6 +2904,9 @@ fn run(
         ),
         Domain::FluffAnalysis(FluffAnalysisCommand::Analyze(arguments)) => {
             Ok(fluff_analysis_commands::analyze(&arguments.arguments))
+        }
+        Domain::ForkedRepo(ForkedRepoCommand::Setup(arguments)) => {
+            Ok(forked_repo_commands::setup(&arguments.arguments))
         }
         Domain::Debate(command) => Ok(match command {
             DebateCommand::Init(arguments) => debate_commands::init(&arguments.arguments),

@@ -35,6 +35,7 @@ Commands:
   external-defaults         External tool default readers
   example                   Non-production commands that exercise dispatcher wiring
   fluff-analysis            The `/fluff-analysis` review-fluff report
+  forked-repo               Configure an upstream/fork open-source checkout
   git                       Local Git repository commands
   merge                     Pull-request merge and merge-queue commands
   hook                      Advisory Claude Code hook commands

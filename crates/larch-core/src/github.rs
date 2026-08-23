@@ -276,6 +276,8 @@ pub struct GitHubRepository {
     pub url: String,
     pub default_branch: String,
     pub private: bool,
+    /// The immediate parent when this repository is a fork.
+    pub parent: Option<GitHubRepositoryRef>,
 }
 
 /// One authenticated GitHub identity.

@@ -3310,11 +3310,13 @@ verb = "setup"
 python_module = "larch.core.forked_repo"
 python_function = "setup_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7681
+migration_issue = 8798
+clean_install_test = "clean-install-forked-repo-setup"
 
 [[commands]]
 domain = "gantt"
@@ -10366,8 +10368,8 @@ rust = ["review emit-tally"]
 [[callers]]
 path = "skills/set-up-forked-open-source-repo/SKILL.md"
 kind = "skill"
-python = ["forked-repo setup"]
-rust = []
+python = []
+rust = ["forked-repo setup"]
 
 [[callers]]
 path = "skills/shared/bgjob-wait.md"
