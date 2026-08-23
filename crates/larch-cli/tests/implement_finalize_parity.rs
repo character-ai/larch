@@ -33,6 +33,7 @@ const TMPDIR: &str = "{sandbox}/session";
 const POSTMERGE_ARGS: &[&str] = &["--state-file", STATE, "--final-bail-reason-file", BAIL];
 const TMPDIR_ARGS: &[&str] = &["--state-file", STATE, "--implement-tmpdir", TMPDIR];
 const POSTBUMP_STATE: &str = "BRANCH_NAME=feature\nISSUE_NUMBER=\nPR_TITLE=Title\nREPO=\nREPO_UNAVAILABLE=false\nFORKED_TARGET=false\nBUMP_TYPE=NONE\nNEW_VERSION=\n";
+const FINALIZE_PARTITION_COUNT: usize = 8;
 
 fn repository_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -300,12 +301,24 @@ fn finalize_git_cases() -> Vec<ParityCase> {
     ]
 }
 
-fn assert_cases(cases: Vec<ParityCase>) {
+fn assert_cases(cases: impl IntoIterator<Item = ParityCase>) {
     let goldens = repository_root().join("fixtures/rust-parity/goldens");
     for case in cases {
         assert_case(&case, &goldens.join(format!("{}.golden.json", case.name)))
             .unwrap_or_else(|error| panic!("{error}"));
     }
+}
+
+fn assert_finalize_partition(partition: usize) {
+    assert_cases(
+        finalize_state_cases()
+            .into_iter()
+            .chain(finalize_git_cases())
+            .enumerate()
+            .filter_map(|(index, case)| {
+                (index % FINALIZE_PARTITION_COUNT == partition).then_some(case)
+            }),
+    );
 }
 
 #[test]
@@ -314,7 +327,41 @@ fn cleanup_matches_the_frozen_python_owner() {
 }
 
 #[test]
-fn finalize_matches_the_frozen_python_owner() {
-    assert_cases(finalize_state_cases());
-    assert_cases(finalize_git_cases());
+fn finalize_partition_0_matches_the_frozen_python_owner() {
+    assert_finalize_partition(0);
+}
+
+#[test]
+fn finalize_partition_1_matches_the_frozen_python_owner() {
+    assert_finalize_partition(1);
+}
+
+#[test]
+fn finalize_partition_2_matches_the_frozen_python_owner() {
+    assert_finalize_partition(2);
+}
+
+#[test]
+fn finalize_partition_3_matches_the_frozen_python_owner() {
+    assert_finalize_partition(3);
+}
+
+#[test]
+fn finalize_partition_4_matches_the_frozen_python_owner() {
+    assert_finalize_partition(4);
+}
+
+#[test]
+fn finalize_partition_5_matches_the_frozen_python_owner() {
+    assert_finalize_partition(5);
+}
+
+#[test]
+fn finalize_partition_6_matches_the_frozen_python_owner() {
+    assert_finalize_partition(6);
+}
+
+#[test]
+fn finalize_partition_7_matches_the_frozen_python_owner() {
+    assert_finalize_partition(7);
 }
