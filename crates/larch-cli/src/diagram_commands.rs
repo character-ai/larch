@@ -28,8 +28,10 @@ use std::{
 
 use larch_adapters::GixRepository;
 use larch_core::{
-    DIAGRAMS_COMMENT_MARKER, ProcessOutput, RepositoryRead as _, Revision,
-    code_flow_reject_reason, design::extract_diagram_sections, emit_kv, mermaid::inspect_mermaid,
+    DIAGRAMS_COMMENT_MARKER, ProcessOutput, RepositoryRead as _, Revision, code_flow_reject_reason,
+    design::extract_diagram_sections,
+    emit_kv,
+    mermaid::inspect_mermaid,
     read_kv_from_text, redact,
     report::{sanitize_diagram_capture, strip_diagram_sections, write_bounded_diagram_failure_log},
 };
