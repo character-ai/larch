@@ -14,11 +14,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-from issue_support_loader import install_issue_support
-
 FROZEN = Path(__file__).resolve().parent / "voter_calibration_frozen"
-
-install_issue_support()
 
 
 def _load(name: str, path: Path):
@@ -29,6 +25,13 @@ def _load(name: str, path: Path):
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
+
+
+_issue_support = _load(
+    "_larch_issue_support_loader",
+    Path(__file__).resolve().with_name("issue_support_loader.py"),
+)
+_issue_support.install_issue_support()
 
 
 # Dependency order: _util has no frozen imports; _report and _oos import _util;

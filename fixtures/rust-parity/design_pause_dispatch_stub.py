@@ -16,7 +16,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from types import ModuleType
 
-from issue_support_loader import install_issue_support
 from larch.core.repo_roots import larch_entrypoint
 
 
@@ -118,6 +117,21 @@ def _install_issue_block_helpers() -> None:
     issue_wire.parse_named_block = module.parse_named_block
 
 
+def _install_issue_support() -> None:
+    """Load the shared issue-support installer by its absolute fixture path."""
+    name = "_larch_issue_support_loader"
+    module = sys.modules.get(name)
+    if module is None:
+        path = Path(__file__).resolve().with_name("issue_support_loader.py")
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"cannot load frozen module {path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    module.install_issue_support()
+
+
 def _install_issue_mutation_stub() -> None:
     """Keep retired OOS references importable without restoring an owner."""
     name = "larch.issue.issue_mutation"
@@ -152,7 +166,7 @@ def install_shared_retired_dependencies() -> None:
     _install_plan_grammar(package)
     _install_issue_block_helpers()
     _install_difficulty_helpers()
-    install_issue_support()
+    _install_issue_support()
     _install_issue_mutation_stub()
 
 
