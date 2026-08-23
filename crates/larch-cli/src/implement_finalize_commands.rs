@@ -18,9 +18,9 @@ use std::{
 
 use chrono::{SecondsFormat, Utc};
 use larch_adapters::{
-    BranchMutationRequest, CheckoutRequest, FetchRequest, GitCliError, GitCliResult, GitRef,
-    GitRefspec, GitRemote, GixRepository, LsRemoteRequest, PullRequest, RebaseRequest,
-    StashRequest, SystemProcessIdentityHost,
+    BranchMutationRequest, CheckoutRequest, FetchMode, FetchRequest, GitCliError, GitCliResult,
+    GitLsRemoteTarget, GitRef, GitRefspec, GitRemote, GixRepository, LsRemoteRequest, PullRequest,
+    RebaseRequest, StashRequest, SystemProcessIdentityHost,
     progress_state::{deactivate_run, progress_cache_home, progress_paths},
     remove_session_tmpdir, resolve_allow_missing, writer_target_allowed,
 };
@@ -1105,6 +1105,7 @@ impl Git {
             refspec: Some(git_input!(GitRefspec::new(reference))),
             quiet: true,
             no_tags: false,
+            mode: FetchMode::Standard,
         };
         git_call!(
             self,
@@ -1179,7 +1180,7 @@ impl Git {
 
     fn ls_remote(&self, remote: &str, branch: &str, exit_code: bool) -> GitOutcome {
         let request = LsRemoteRequest {
-            remote: git_input!(GitRemote::new(remote)),
+            remote: GitLsRemoteTarget::Configured(git_input!(GitRemote::new(remote))),
             patterns: vec![git_input!(GitRef::new(branch))],
             heads: true,
             exit_code,
