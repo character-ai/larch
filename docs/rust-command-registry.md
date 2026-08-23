@@ -129,7 +129,7 @@ umbrella that owns their remaining consumers:
 | `execution-issues append`, `flush`, `flush-safety-net`, `refresh` | 4 | #7682 | Migrated by #8176 and completed by corrective leaf #8347, which removed the retained Python mutation and caller paths. |
 | `redact secrets`, `tmpdir-paths`, `scrub-log-secrets`, `scrub-submodule-paths` | 4 | #7681 | Migrated by #8796. Live callers now enter through `scripts/larch.sh`; Python retains only its in-process compatibility library. |
 | `render reviewer`, `lane-status`, and `findings-view` | 3 | #7684 | Research and analytical presentation consumers. |
-| `render plan-review` | 1 | #7680 | The remaining consumer is the design workflow. |
+| `render plan-review` | 1 | #8837 | Migrated with its design caller, frozen parity, Python removal, and clean-install coverage. |
 | `render specialist` | 1 | #7681 | Migrated by #8800 with in-process review callers, frozen parity, and clean-install coverage. |
 | `render voter` | 1 | #7686 | Shared design and implementation consumers make this a final-cutover surface. |
 | `render scope-anchor` | 1 | #7680 | Migrated with all four `scope-anchor` verbs by #8836, including Step 3 caller cutover, in-process findings validation, frozen parity, and clean-install coverage. |

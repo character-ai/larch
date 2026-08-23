@@ -22,7 +22,7 @@ const BACKTICKED_FILES: &[&str] = &[
 ];
 const UNQUOTED_FILES: &[&str] = &[
     "skills/review/SKILL.md",
-    "python/larch/rendering/rendering.py",
+    "crates/larch-cli/src/plan_prompt_commands.rs",
     "skills/design/SKILL.md",
 ];
 

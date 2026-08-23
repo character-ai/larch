@@ -488,7 +488,7 @@ fn sanitize_diagram_candidate(runner: &dyn SiblingRunner, design_tmpdir: &Path) 
     if !candidate.is_file() || candidate.is_symlink() {
         return skip_diagram_candidate(design_tmpdir, "candidate-missing", "2");
     }
-    let sanitizer = runner.run_python(&osargs(&[
+    let sanitizer = runner.run_larch(&osargs(&[
         "mermaid",
         "sanitize",
         "--input",
@@ -1072,7 +1072,7 @@ fn upsert_architecture_diagram(
         );
         return;
     }
-    let upsert = runner.run_python(&args.iter().map(OsString::from).collect::<Vec<_>>());
+    let upsert = runner.run_larch(&args.iter().map(OsString::from).collect::<Vec<_>>());
     let stderr_file = design_tmpdir.join("diagrams-architecture-upsert.stderr");
     let _ = fs::write(&stderr_file, &upsert.stderr);
     let _ = fs::write(
@@ -1100,7 +1100,7 @@ fn upsert_architecture_diagram(
             "--site",
             "design Step 5c.5",
             "--tool",
-            "python/cli.py diagrams upsert architecture",
+            "scripts/larch.sh diagrams upsert architecture",
             "--exit-code",
             &upsert.rc.to_string(),
             "--category",

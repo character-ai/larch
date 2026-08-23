@@ -612,7 +612,7 @@ Print: `> **🔶 /implement 7a: pre-ship**`
 
 Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
-Step 7a composes no prompt-side public summary and never emits diagram fences. The helper owns silent `larch:diagrams` upsert through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" diagrams upsert`; the orchestrator parses only KVs and breadcrumbs.
+Step 7a composes no prompt-side public summary and never emits diagram fences. The helper owns silent `larch:diagrams` upsert through `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" diagrams upsert`; the orchestrator parses only KVs and breadcrumbs.
 
 `scripts/larch.sh implement step-7a` consolidates small/non-runtime classification, `python/cli.py diagram code-flow`, Code Flow section composition, shared `larch:diagrams` upsert, the 7a.r checkpoint, and a local execution-issues checkpoint. It emits a KV tail; do not duplicate those calls prompt-side.
 The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment only when `$IMPLEMENT_TMPDIR/code-flow-section.md` exists after successful generation. Contract: `skills/implement/scripts/step-7a.md`; `skills/implement/scripts/test-step-7a.sh` (`skills/implement/scripts/test-step-7a.md`).

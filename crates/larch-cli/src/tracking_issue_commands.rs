@@ -39,13 +39,13 @@ use larch_adapters::{
     runtime::Cancellation,
 };
 use larch_core::{
-    CrStrip, GitHubService, IMPLEMENTING_PREFIX, ImplementationLease, IssueCreateRequest,
-    IssueMutationField, IssueMutationLease, IssueMutationRequest, IssueMutationSnapshot,
-    LIFECYCLE_PREFIXES, PLAN_MARKER, TrackingMetadata, cleanup_cache_sessions_root,
-    compose_tracking_metadata, detect_lifecycle_prefix, emit_kv, implementation_lease_is_expired,
-    insert_signal_marker, parse_implementation_lease, parse_named_block, parse_receipt,
-    receipt_marker_present, redact_run_log_payload, strip_lifecycle_prefix,
-    upsert_implementation_lease,
+    CrStrip, DIAGRAMS_COMMENT_MARKER, GitHubService, IMPLEMENTING_PREFIX, ImplementationLease,
+    IssueCreateRequest, IssueMutationField, IssueMutationLease, IssueMutationRequest,
+    IssueMutationSnapshot, LIFECYCLE_PREFIXES, PLAN_MARKER, TrackingMetadata,
+    cleanup_cache_sessions_root, compose_tracking_metadata, detect_lifecycle_prefix, emit_kv,
+    implementation_lease_is_expired, insert_signal_marker, parse_implementation_lease,
+    parse_named_block, parse_receipt, receipt_marker_present, redact_run_log_payload,
+    strip_lifecycle_prefix, upsert_implementation_lease,
 };
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -1803,6 +1803,50 @@ pub fn upsert_summary_rows(
     .map_err(|refusal| refusal.envelope().0)
 }
 
+/// Read the exact marker-owned comment for an in-process Rust caller.
+///
+/// # Errors
+///
+/// Returns the same operator-facing refusal as `tracking-issue read` when the
+/// repository cannot be resolved, the service fails, or marker ownership is
+/// ambiguous.
+pub fn read_summary_content(
+    issue: &str,
+    marker: &str,
+    repository: Option<&str>,
+) -> Result<Option<String>, String> {
+    read_summary_content_with(&LiveEffects, issue, marker, repository)
+        .map_err(|refusal| refusal.envelope().0)
+}
+
+/// Upsert marker-owned content for an in-process Rust caller.
+///
+/// The typed GitHub owner performs authorization and exact mutation readback;
+/// this adapter only avoids a redundant temporary file and child process.
+///
+/// # Errors
+///
+/// Returns the operator-facing mutation refusal.
+pub fn upsert_summary_content_rows(
+    issue: &str,
+    marker: &str,
+    content: &str,
+    repository: Option<&str>,
+    delete_if_empty: bool,
+) -> Result<Vec<(&'static str, String)>, String> {
+    upsert_summary_content_with(
+        &LiveEffects,
+        issue,
+        marker,
+        content,
+        repository,
+        None,
+        delete_if_empty,
+        &env::var("RUN_ID").unwrap_or_default(),
+    )
+    .map_err(|refusal| refusal.envelope().0)
+}
+
 /// Accept only a single-line `<!-- larch:… -->` marker.
 fn validate_marker_shape(marker: &str) -> Result<(), Refusal> {
     let inner = marker
@@ -1821,13 +1865,19 @@ fn validate_marker_shape(marker: &str) -> Result<(), Refusal> {
     Ok(())
 }
 
+/// Return whether a marker has the exact shape accepted by the mutation owner.
+#[must_use]
+pub fn summary_marker_valid(marker: &str) -> bool {
+    validate_marker_shape(marker).is_ok()
+}
+
 /// Find every comment whose first line is exactly `marker`.
-fn summary_comment_ids(
+fn summary_comments(
     effects: &impl TrackingEffects,
     issue: &str,
     marker: &str,
     repository: &str,
-) -> Result<Vec<u64>, Refusal> {
+) -> Result<Vec<TrackingComment>, Refusal> {
     let comments = effects.list_comments(repository, issue).map_err(|error| {
         Refusal::failed(format!(
             "gh api comments fetch failed: {}",
@@ -1857,7 +1907,33 @@ fn summary_comment_ids(
     {
         return Err(Refusal::failed("comment-read-back-failed"));
     }
-    Ok(matching.into_iter().map(|comment| comment.id).collect())
+    Ok(matching)
+}
+
+fn read_summary_content_with(
+    effects: &impl TrackingEffects,
+    issue: &str,
+    marker: &str,
+    repository: Option<&str>,
+) -> Result<Option<String>, Refusal> {
+    require_numeric_issue(issue)?;
+    validate_marker_shape(marker)?;
+    let resolved = resolve_repo(effects, repository)?;
+    let matching = summary_comments(effects, issue, marker, &resolved)?;
+    if matching.len() > 1 {
+        return Err(Refusal::failed(format!(
+            "multiple summary comments found for marker (ids: {})",
+            matching
+                .iter()
+                .map(|comment| comment.id.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        )));
+    }
+    let Some(comment) = matching.into_iter().next() else {
+        return Ok(None);
+    };
+    Ok(Some(comment.body))
 }
 
 /// Publish or replace the one comment this marker owns.
@@ -1915,7 +1991,10 @@ fn upsert_summary_content_with(
     };
     let body = redact_compose(&format!("{marker}\n\n{content}"), "tracking-issue summary")?;
     let resolved = resolve_repo(effects, repository)?;
-    let discovered = summary_comment_ids(effects, issue, marker, &resolved)?;
+    let discovered = summary_comments(effects, issue, marker, &resolved)?
+        .into_iter()
+        .map(|comment| comment.id)
+        .collect::<Vec<_>>();
     if discovered.len() > 1 {
         let flat = discovered
             .iter()
@@ -2447,7 +2526,7 @@ fn is_machine_comment(body: &str) -> bool {
         .unwrap_or_default()
         .trim_start_matches('\u{feff}')
         .trim_end_matches('\r');
-    if first.starts_with(LIFECYCLE_MARKER_PREFIX) || first == "<!-- larch:diagrams v1 -->" {
+    if first.starts_with(LIFECYCLE_MARKER_PREFIX) || first == DIAGRAMS_COMMENT_MARKER {
         return true;
     }
     let versioned = [

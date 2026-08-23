@@ -584,7 +584,10 @@ The `larch:diagrams` publisher accepts source files from approved temporary
 roots unless the operator explicitly allows another path. It validates the
 repository identifier, sanitizes new Mermaid sections, preserves existing
 sections only under the documented joint-comment contract, and redacts the
-composed comment. Diagram labels should omit private paths, hosts, and
+composed comment. The Rust owner in
+`crates/larch-cli/src/diagram_commands.rs` authorizes the mutation through the
+typed GitHub service and verifies the exact comment after mutation. It has no
+`gh api` fallback. Diagram labels should omit private paths, hosts, and
 secret-adjacent identifiers. A public or stale marker comment can remain until
 a later full replacement, so the marker is not author provenance.
 
@@ -695,7 +698,7 @@ egress contract.
 | Residual Bash egress call sites | Thin scripts call the Rust redaction or run-log owner through `scripts/larch.sh` before forwarding untrusted content; plain shell error helpers are not independent redactors |
 | Tier B public-file validation | `crates/larch-core/src/stall_recovery.rs`, `crates/larch-adapters/src/stall_recovery.rs`, and `crates/larch-cli/src/stall_recovery_commands.rs` |
 | Stall classification, normalization, attempts, and escalation ledgers | `crates/larch-core/src/stall_recovery.rs`, `crates/larch-adapters/src/stall_recovery.rs`, and `crates/larch-cli/src/stall_recovery_commands.rs` |
-| Tracking, plan, PR, diagram, and public-report publication | Rust `tracking-issue upsert-summary` (#8346) owns marker-keyed comment mutation through the shared issue-mutation owner. Rust `tracking post-issue` (#8789) composes its confined private metadata file and calls that owner in process. Rust `pr create` and `pr body-update` (#8790) use `larch_core::redact_pr_body` before the typed GitHub mutation boundary; the latter verifies the returned body. Rust `final-report write` (#8090) owns `/implement` final-summary publication. On the supported Unix runtime, marker-comment and post-admission issue-body materialization write only below a canonical non-symlink process temporary root or larch session-cache root and use no-follow reads plus private atomic writes. `render run-summary` remains a #7680 `/design` payload renderer, and `diagram code-flow` retains its #7681 owner. Former in-process Python tracking and PR callers use the verified `scripts/larch.sh` entrypoint and contain no GitHub fallback; `final-report write` calls the same Rust owner in process to preserve its output envelope. |
+| Tracking, plan, PR, diagram, and public-report publication | Rust `tracking-issue upsert-summary` (#8346) owns marker-keyed comment mutation through the shared issue-mutation owner. Rust `diagrams upsert` (#8837) composes, redacts, authorizes, mutates, and exactly verifies the shared `larch:diagrams` comment through that typed owner. Rust `tracking post-issue` (#8789) composes its confined private metadata file and calls that owner in process. Rust `pr create` and `pr body-update` (#8790) use `larch_core::redact_pr_body` before the typed GitHub mutation boundary; the latter verifies the returned body. Rust `final-report write` (#8090) owns `/implement` final-summary publication. On the supported Unix runtime, marker-comment and post-admission issue-body materialization write only below a canonical non-symlink process temporary root or larch session-cache root and use no-follow reads plus private atomic writes. `render run-summary` remains a #7680 `/design` payload renderer, and `diagram code-flow` retains its #7681 owner. Former in-process Python tracking and PR callers use the verified `scripts/larch.sh` entrypoint and contain no GitHub fallback; `final-report write` calls the same Rust owner in process to preserve its output envelope. |
 | Runtime projection | `crates/larch-cli/src/release_plugin_runtime.rs` |
 
 Verification includes frozen Python-to-Rust process parity for all four

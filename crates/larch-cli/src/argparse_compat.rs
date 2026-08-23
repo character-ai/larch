@@ -347,24 +347,55 @@ pub fn parse_with_flags_and_exact(
             continue;
         }
         let (name, inline) = split_inline_option(&text);
-        if let Some(flag) = resolve_option(name, flags) {
-            if let Some(value) = inline {
-                parsed.error = Some(format!(
-                    "argument {flag}: ignored explicit argument '{value}'"
-                ));
-                return parsed;
-            }
-            parsed.flags.push(flag);
-            continue;
-        }
         let exact = exact_options
             .iter()
+            .chain(options)
             .find(|option| **option == name)
             .copied();
-        let Some(option) = exact.or_else(|| resolve_option(name, options)) else {
+        let exact_flag = flags.iter().find(|flag| **flag == name).copied();
+        let resolved = exact
+            .map(|option| (option, false))
+            .or_else(|| exact_flag.map(|flag| (flag, true)))
+            .or_else(|| {
+                let candidates = options
+                    .iter()
+                    .map(|option| (*option, false))
+                    .chain(flags.iter().map(|flag| (*flag, true)))
+                    .filter(|(candidate, _)| name.len() > 2 && candidate.starts_with(name))
+                    .collect::<Vec<_>>();
+                match candidates.as_slice() {
+                    [candidate] => Some(*candidate),
+                    [] => None,
+                    _ => {
+                        parsed.error = Some(format!(
+                            "ambiguous option: {text} could match {}",
+                            candidates
+                                .iter()
+                                .map(|(candidate, _)| *candidate)
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ));
+                        None
+                    }
+                }
+            });
+        let Some((option, is_flag)) = resolved else {
+            if parsed.error.is_some() {
+                return parsed;
+            }
             parsed.unrecognized.push(argument.clone());
             continue;
         };
+        if is_flag {
+            if let Some(value) = inline {
+                parsed.error = Some(format!(
+                    "argument {option}: ignored explicit argument '{value}'"
+                ));
+                return parsed;
+            }
+            parsed.flags.push(option);
+            continue;
+        }
         let value = if let Some(value) = inline {
             OsString::from(value)
         } else {

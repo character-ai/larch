@@ -32,6 +32,9 @@ mod triage;
 mod umbrella;
 mod untrusted;
 
+/// Stable marker for the shared Architecture and Code Flow comment.
+pub const DIAGRAMS_COMMENT_MARKER: &str = "<!-- larch:diagrams v1 -->";
+
 pub use body::{
     ALLOWED_NAMED_BLOCK_MARKERS, DESIGN_PAUSE_MARKER, MISSING_PLAN_BLOCK, MULTIPLE_PLAN_BLOCKS,
     NamedBlockDefect, NamedBlockError, NamedBlockSpan, NamedBlockWrite, NamedBlockWriteMode,

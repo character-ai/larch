@@ -152,10 +152,6 @@ mod design_publish_commands_tests {
         fn run_larch(&self, args: &[std::ffi::OsString]) -> CapturedRun {
             self.reply(args, true)
         }
-
-        fn run_python(&self, args: &[std::ffi::OsString]) -> CapturedRun {
-            self.reply(args, false)
-        }
     }
 
     /// One design tmpdir prepared to the state publish expects at entry.

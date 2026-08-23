@@ -73,42 +73,32 @@ mod clarify_orchestrator_tests {
 
     /// A scripted sibling runner recording calls and returning queued outputs.
     struct FakeRunner {
-        larch_calls: RefCell<Vec<Vec<String>>>,
-        python_calls: RefCell<Vec<Vec<String>>>,
-        larch_stdout: RefCell<Vec<String>>,
-        python_stdout: RefCell<Vec<String>>,
-        larch_failures: RefCell<BTreeMap<String, i32>>,
+        calls: RefCell<Vec<Vec<String>>>,
+        stdout: RefCell<Vec<String>>,
+        failures: RefCell<BTreeMap<String, i32>>,
     }
 
     impl FakeRunner {
         fn new() -> Self {
             Self {
-                larch_calls: RefCell::new(Vec::new()),
-                python_calls: RefCell::new(Vec::new()),
-                larch_stdout: RefCell::new(Vec::new()),
-                python_stdout: RefCell::new(Vec::new()),
-                larch_failures: RefCell::new(BTreeMap::new()),
+                calls: RefCell::new(Vec::new()),
+                stdout: RefCell::new(Vec::new()),
+                failures: RefCell::new(BTreeMap::new()),
             }
         }
 
         fn queue_larch(self, stdout: &[&str]) -> Self {
-            *self.larch_stdout.borrow_mut() = stdout.iter().map(|s| (*s).to_owned()).collect();
-            self
-        }
-
-        #[allow(dead_code)]
-        fn queue_python(self, stdout: &[&str]) -> Self {
-            *self.python_stdout.borrow_mut() = stdout.iter().map(|s| (*s).to_owned()).collect();
+            *self.stdout.borrow_mut() = stdout.iter().map(|s| (*s).to_owned()).collect();
             self
         }
 
         /// Answer the `"<verb> <subverb>"` call with a non-zero exit code.
         fn failing(self, verb: &str, rc: i32) -> Self {
-            let _prior = self.larch_failures.borrow_mut().insert(verb.to_owned(), rc);
+            let _prior = self.failures.borrow_mut().insert(verb.to_owned(), rc);
             self
         }
         fn larch_verbs(&self) -> Vec<(String, String)> {
-            self.larch_calls
+            self.calls
                 .borrow()
                 .iter()
                 .filter_map(|call| Some((call.first()?.clone(), call.get(1)?.clone())))
@@ -123,14 +113,14 @@ mod clarify_orchestrator_tests {
                 .map(|a| a.to_string_lossy().into_owned())
                 .collect();
             let verb = call.iter().take(2).cloned().collect::<Vec<_>>().join(" ");
-            self.larch_calls.borrow_mut().push(call);
-            let stdout = if self.larch_stdout.borrow().is_empty() {
+            self.calls.borrow_mut().push(call);
+            let stdout = if self.stdout.borrow().is_empty() {
                 String::new()
             } else {
-                self.larch_stdout.borrow_mut().remove(0)
+                self.stdout.borrow_mut().remove(0)
             };
             let rc = self
-                .larch_failures
+                .failures
                 .borrow()
                 .get(&verb)
                 .copied()
@@ -143,24 +133,6 @@ mod clarify_orchestrator_tests {
                 } else {
                     format!("{verb} failed\n")
                 },
-            }
-        }
-
-        fn run_python(&self, args: &[OsString]) -> CapturedRun {
-            let call = args
-                .iter()
-                .map(|arg| arg.to_string_lossy().into_owned())
-                .collect();
-            self.python_calls.borrow_mut().push(call);
-            let stdout = if self.python_stdout.borrow().is_empty() {
-                String::new()
-            } else {
-                self.python_stdout.borrow_mut().remove(0)
-            };
-            CapturedRun {
-                rc: 0,
-                stdout,
-                stderr: String::new(),
             }
         }
     }
@@ -333,7 +305,7 @@ mod clarify_orchestrator_tests {
                 .join(".design-clarify-publish-result.env")
                 .exists()
         );
-        assert!(runner.larch_calls.borrow().is_empty());
+        assert!(runner.calls.borrow().is_empty());
     }
 
     #[test]
@@ -529,7 +501,7 @@ mod clarify_orchestrator_tests {
         let result =
             fs::read_to_string(dir.path().join(".design-clarify-publish-result.env")).unwrap();
         assert!(result.contains("CLARIFY_PUBLISH_STATUS=missing-request-state\n"));
-        assert!(runner.larch_calls.borrow().is_empty());
+        assert!(runner.calls.borrow().is_empty());
     }
 
     #[test]
@@ -567,7 +539,7 @@ mod clarify_orchestrator_tests {
             fs::read_to_string(dir.path().join(".design-clarify-publish-result.env")).unwrap();
         assert!(result.contains("CLARIFY_PUBLISH_STATUS=difficulty-sidecar-invalid\n"));
         assert!(result.contains("SUMMARY_OUTCOME=failed-plan-write\n"));
-        assert!(runner.larch_calls.borrow().is_empty());
+        assert!(runner.calls.borrow().is_empty());
     }
 
     #[test]
@@ -582,7 +554,7 @@ mod clarify_orchestrator_tests {
         let result =
             fs::read_to_string(dir.path().join(".design-clarify-publish-result.env")).unwrap();
         assert!(result.contains("CLARIFY_PUBLISH_STATUS=missing-difficulty\n"));
-        assert!(runner.larch_calls.borrow().is_empty());
+        assert!(runner.calls.borrow().is_empty());
     }
 
     #[test]
@@ -729,7 +701,7 @@ mod clarify_orchestrator_tests {
         let runner = FakeRunner::new();
         let mut env = env_with_repo(dir.path());
         let _ = design_clarify_run(&effects, &runner, &args("publish"), &mut env, dir.path());
-        let larch = runner.larch_calls.borrow();
+        let larch = runner.calls.borrow();
         let pause = larch.first().expect("pause-save runs");
         assert_eq!(pause[0], "design");
         assert_eq!(pause[1], "pause-save");
@@ -775,7 +747,7 @@ mod clarify_orchestrator_tests {
             let _ = design_clarify_run(&effects, &runner, &args(phase), &mut env, dir.path());
         }
         // A usage refusal writes no phase result env and runs no sibling verb.
-        assert!(runner.larch_calls.borrow().is_empty());
+        assert!(runner.calls.borrow().is_empty());
         assert!(!dir.path().join(".design-clarify-fetch-result.env").exists());
         assert!(
             !dir.path()

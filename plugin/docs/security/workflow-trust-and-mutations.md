@@ -681,11 +681,13 @@ Issue text, feature text, plan text, findings, ballots, scout output,
 architectural guidance, and operator refinement text are untrusted evidence.
 Inline prompt renderers redact and escape these blocks. Path-only handoffs pass
 validated paths and never relay file bytes through `KEY=value` output. Rust
-`render specialist` composition lives in
-`crates/larch-cli/src/rendering_commands.rs` and reuses the canonical
+`render specialist` and `render plan-review` composition lives in
+`crates/larch-cli/src/rendering_commands.rs` and
+`crates/larch-cli/src/plan_prompt_commands.rs`. Both reuse the canonical
 `larch-core` untrusted-content wrapper. `python/larch/rendering/rendering.py`
-and `python/larch/issue/issue_wire.py` retain the remaining Python render and
-wrapper boundaries.
+retains only voter and scope-anchor rendering, while
+`python/larch/issue/issue_wire.py` retains the remaining Python wrapper
+boundary.
 
 The Step 1d.7 outline is binding only after operator approval. `--skip-approve`
 removes that human review for the outline and final plan. Use it only when issue

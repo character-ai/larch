@@ -1,0 +1,15 @@
+{
+  "exit_code": 1,
+  "files": {
+    "architecture.md": {
+      "text": "## Architecture Diagram\n\n```mermaid\nflowchart TD\n  A[unsafe|label] --> B\n```\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "UPSERT_STATUS=failed\nCOMMENT_URL=\nUPDATED=false\nARCHITECTURE_SOURCE=absent\nCODE_FLOW_SOURCE=absent\nERROR=mermaid sanitize rejected architecture section\n"
+  }
+}

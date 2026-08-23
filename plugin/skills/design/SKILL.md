@@ -589,7 +589,7 @@ Run after Gate C approval and Step 5b, before Step 5c.
 
 Print: `> **🔶 /design 5b.5: arch diagram**`
 
-Parse `DIAGRAM_REQUIRED=`. If false, the wrapper writes the skip artifact and completion marker; continue without diagram content. If true, quietly write only `architecture-diagram.candidate.md` per `finalize-step5.md`: no Claude-authored lead-in, safe-content reading, content/write/validation narration, success, or transition recap. Harness tool lines, including `Write(...)`, `Wrote N lines`, and command counts, are outside this contract. Keep required `🔶` breadcrumbs and generation-failure-only `⚠ 5b.5` warnings. Do not run `python3 python/cli.py mermaid sanitize` or another sanitizer; promote/reject, move/delete the candidate; or write `.completed/step-5b.5`, `architecture-diagram.md`, or `architecture-diagram.skipped`. Step 5c owns them and sanitizer-rejection logging.
+Parse `DIAGRAM_REQUIRED=`. If false, the wrapper writes the skip artifact and completion marker; continue without diagram content. If true, quietly write only `architecture-diagram.candidate.md` per `finalize-step5.md`: no Claude-authored lead-in, safe-content reading, content/write/validation narration, success, or transition recap. Harness tool lines, including `Write(...)`, `Wrote N lines`, and command counts, are outside this contract. Keep required `🔶` breadcrumbs and generation-failure-only `⚠ 5b.5` warnings. Do not run `scripts/larch.sh mermaid sanitize` or another sanitizer; promote/reject, move/delete the candidate; or write `.completed/step-5b.5`, `architecture-diagram.md`, or `architecture-diagram.skipped`. Step 5c owns them and sanitizer-rejection logging.
 
 > **Continue to Step 5c IMMEDIATELY.** No sanitizer pre-check or free-form recap.
 

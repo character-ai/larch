@@ -77,7 +77,7 @@ If `DIAGRAM_REQUIRED=true`, generate Mermaid from the approved plan under `${CLA
 
 On pre-write generation failure, print only `**⚠ 5b.5: arch diagram: generation failed, proceeding without diagram (<elapsed>)**`; an optional local failure capture is allowed. Log only a bounded generation warning through `design_diagram_log.write_bounded_diagram_failure_log`. Never log raw output or bodies. Step 5b.5 must not warn or log sanitizer rejection.
 
-Do not invoke `python3 python/cli.py mermaid sanitize` or another sanitizer; promote/reject, move/delete the candidate; or write `.completed/step-5b.5`, `architecture-diagram.md`, or `architecture-diagram.skipped`. Continue with `> **Continue to Step 5c IMMEDIATELY.**` without a pre-check or free-form recap.
+Do not invoke `scripts/larch.sh mermaid sanitize` or another sanitizer; promote/reject, move/delete the candidate; or write `.completed/step-5b.5`, `architecture-diagram.md`, or `architecture-diagram.skipped`. Continue with `> **Continue to Step 5c IMMEDIATELY.**` without a pre-check or free-form recap.
 
 Step 5c alone sanitizes the unchanged candidate, promotes or skips it, logs sanitizer rejection, and writes Step-5c-owned artifacts.
 

@@ -109,6 +109,9 @@ Issue #8789 moved `tracking post-issue` to Rust. It composes the implementation
 metadata locally, then calls the same in-process marker-keyed upsert owner. It
 therefore shares the bounded comment read, mutation, redaction, read-back, and
 lease-refresh contracts instead of introducing another GitHub client path.
+Issue #8837 moved `diagrams upsert` to Rust. It uses the typed comment list and
+the same marker-keyed mutation owner, including authorization and exact
+read-back, so it also shares the comment read and mutation rows.
 Comment create and edit operations use the same mutation owner and verify both
 their mutation echo and a same-surface comment-list read-back; deletion verifies
 absence from that list. Issue creation verifies its response with an exact
@@ -233,8 +236,8 @@ pull-request-ship-pr	crates/larch-adapters/src/github/operations.rs	rust	#7681,#
 pull-requests	crates/larch-adapters/src/github/operations.rs	rust	#7681,#8790	complete	complete	complete	pr body-update,pr checks,pr closes-issue,pr create,pr create-branch
 releases	crates/larch-adapters/src/github/release.rs	rust	#7674	complete	complete	complete	release *
 repository-metadata	crates/larch-adapters/src/github/mod.rs	rust	#7676,#7681,#8798	complete	complete	complete	forked-repo setup,gh remote-repo,gh resolve-repo,ship pre-fix-rebase
-tracking-issue-comment-reads	crates/larch-adapters/src/github_rest.rs	rust	#7681,#7682,#8789	complete	complete	complete	tracking post-issue,tracking-issue append-comment,tracking-issue read,tracking-issue upsert-summary
-tracking-issue-comment-mutations	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7681,#7682,#8789	complete	complete	complete	tracking post-issue,tracking-issue append-comment,tracking-issue upsert-summary
+tracking-issue-comment-reads	crates/larch-adapters/src/github_rest.rs	rust	#7680,#7681,#7682,#8789,#8837	complete	complete	complete	diagrams upsert,tracking post-issue,tracking-issue append-comment,tracking-issue read,tracking-issue upsert-summary
+tracking-issue-comment-mutations	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7680,#7681,#7682,#8789,#8837	complete	complete	complete	diagrams upsert,tracking post-issue,tracking-issue append-comment,tracking-issue upsert-summary
 tracking-issue-lifecycle	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7680,#7682	complete	complete	complete	design init-runparams,tracking-issue create-issue,tracking-issue mark-false-positive,tracking-issue rename
 umbrella-conversion	crates/larch-adapters/src/github/issue_mutation.rs	rust	#7682	complete	complete	complete	umbrella mutate
 ```

@@ -73,8 +73,9 @@ pub use publish::{
     AssessmentCompleteness, BLOCKED_REVIEW_STATUSES, PUBLISH_RESULT_ENV_ALLOW, ReviewProvenance,
     TERMINAL_STATUSES_REQUIRING_SENTINEL, blocked_review_reason,
     check_guideline_assessment_completeness, check_invariant_assessment_completeness,
-    count_missing_script_defects, guideline_exception_valid, is_publish_attempt_id, is_repo_slug,
-    persisted_note_publishable, review_provenance, sanitizer_reason_token, splice_plan_provenance,
+    count_missing_script_defects, extract_diagram_sections, guideline_exception_valid,
+    is_publish_attempt_id, is_repo_slug, persisted_note_publishable, review_provenance,
+    sanitizer_reason_token, splice_plan_provenance,
 };
 
 pub use plan_scout::{

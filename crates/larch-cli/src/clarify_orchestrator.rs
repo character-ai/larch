@@ -12,7 +12,6 @@ use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::Duration;
 
 use larch_core::{
     ChildEnvironment, DESIGN_RAW_RATING_BASENAME, DIFFICULTY_RECORD_BASENAME, DifficultyRating,
@@ -30,7 +29,7 @@ use crate::design_step0_commands::{
 };
 use crate::github_repository_resolution::validate_repo_slug;
 use crate::implement_dispatch_commands::{delegate_verified_larch, run_verified_larch_env_in};
-use crate::python_verb::{plugin_root_directory, run_python_verb};
+use crate::python_verb::plugin_root_directory;
 
 /// Environment keys the source-env merge carries into the driver.
 const CLARIFY_ENV_ALLOW: [&str; 5] = [
@@ -67,9 +66,6 @@ const CLARIFY_RESULT_ENV_ALLOW: [&str; 13] = [
     "STATE",
     "SUMMARY_OUTCOME",
 ];
-
-/// Timeout for a delegated sibling verb, matching the Python phase driver.
-const SIBLING_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The parsed `design clarify` argv.
 struct DesignClarifyArgs {
@@ -109,13 +105,11 @@ impl CapturedRun {
 pub trait SiblingRunner {
     /// Run one Rust-owned verb through the verified bootstrap.
     fn run_larch(&self, args: &[OsString]) -> CapturedRun;
-    /// Run one still-Python verb through the dispatcher.
-    fn run_python(&self, args: &[OsString]) -> CapturedRun;
 
     /// Run one Rust-owned verb with scoped environment additions.
     ///
     /// The default ignores the additions so an offline stub only has to answer
-    /// the two base methods; the live runner forwards them.
+    /// the base method; the live runner forwards them.
     fn run_larch_env(
         &self,
         args: &[OsString],
@@ -125,7 +119,7 @@ pub trait SiblingRunner {
     }
 }
 
-/// The live runner: verified bootstrap for Rust, cli.py for Python.
+/// The live runner for verified Rust sibling verbs.
 pub struct LiveRunner {
     cwd: PathBuf,
     root: PathBuf,
@@ -141,10 +135,6 @@ impl LiveRunner {
 impl SiblingRunner for LiveRunner {
     fn run_larch(&self, args: &[OsString]) -> CapturedRun {
         CapturedRun::from_output(delegate_verified_larch(&self.cwd, &self.root, args))
-    }
-
-    fn run_python(&self, args: &[OsString]) -> CapturedRun {
-        CapturedRun::from_output(run_python_verb(args.iter().cloned(), SIBLING_TIMEOUT))
     }
 
     fn run_larch_env(

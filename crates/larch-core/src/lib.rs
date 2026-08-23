@@ -35,6 +35,7 @@ mod issue;
 mod issue_mutation;
 mod logging_util;
 mod main_cache;
+pub mod mermaid;
 mod message_error;
 mod migration_audit;
 mod migration_governance;
@@ -361,17 +362,17 @@ pub use issue::{
 };
 pub use issue::{
     ALLOWED_NAMED_BLOCK_MARKERS, ARCHIVAL_JQ_FILTER, BUG_PREFIX, BUG_TITLE_LIFECYCLE_PREFIXES,
-    DESIGN_PAUSE_MARKER, DONE_PREFIX, IMPLEMENTING_PREFIX, LIFECYCLE_PREFIXES, MISSING_PLAN_BLOCK,
-    MULTIPLE_PLAN_BLOCKS, NamedBlockDefect, NamedBlockError, NamedBlockSpan, NamedBlockWrite,
-    NamedBlockWriteMode, OpenIssueRow, PLAN_MARKER, STALLED_PREFIX, UMBRELLA_PREFIX,
-    bug_title_match, classify_named_block, compose_named_block, detect_lifecycle_prefix,
-    insert_signal_marker, insert_tag_after_bug_prefix, is_valid_named_block_marker,
-    issue_plan_marker_defect, leading_square_bracket_prefix, named_block_marker_allowed,
-    neutralize_named_block_markers, normalize_title_prefix, open_issue_rows, parse_named_block,
-    parse_open_issue_row, plan_named_block_write, redact_untrusted_stream, strip_lifecycle_prefix,
-    strip_named_block, title_has_archival_report_prefix, title_is_archival,
-    title_lifecycle_reject_marker, title_starts_with_brainstorm, untrusted_content_block,
-    xml_escape_attr,
+    DESIGN_PAUSE_MARKER, DIAGRAMS_COMMENT_MARKER, DONE_PREFIX, IMPLEMENTING_PREFIX,
+    LIFECYCLE_PREFIXES, MISSING_PLAN_BLOCK, MULTIPLE_PLAN_BLOCKS, NamedBlockDefect,
+    NamedBlockError, NamedBlockSpan, NamedBlockWrite, NamedBlockWriteMode, OpenIssueRow,
+    PLAN_MARKER, STALLED_PREFIX, UMBRELLA_PREFIX, bug_title_match, classify_named_block,
+    compose_named_block, detect_lifecycle_prefix, insert_signal_marker,
+    insert_tag_after_bug_prefix, is_valid_named_block_marker, issue_plan_marker_defect,
+    leading_square_bracket_prefix, named_block_marker_allowed, neutralize_named_block_markers,
+    normalize_title_prefix, open_issue_rows, parse_named_block, parse_open_issue_row,
+    plan_named_block_write, redact_untrusted_stream, strip_lifecycle_prefix, strip_named_block,
+    title_has_archival_report_prefix, title_is_archival, title_lifecycle_reject_marker,
+    title_starts_with_brainstorm, untrusted_content_block, xml_escape_attr,
 };
 pub use issue::{
     AcceptedBlock, AcceptedSource, FiledIssue, LEGACY_PRIMARY_OOS_SOURCE, bare_oos_item_suffix,

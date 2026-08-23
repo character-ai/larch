@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: render plan-review [--archetype ARCHETYPE] [--vendor VENDOR] [--plan-file PLAN_FILE] [--design-tmpdir DESIGN_TMPDIR] [--readability-style-file READABILITY_STYLE_FILE] [--feature-file FEATURE_FILE] [--body-file BODY_FILE] [--findings-ledger-file FINDINGS_LEDGER_FILE] [--payload-bytes-output PAYLOAD_BYTES_OUTPUT] [--body-file-payload] [--difficulty DIFFICULTY]\nrender plan-review: error: unrecognized arguments: --help\nrender-plan-review-prompt.sh: 2\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

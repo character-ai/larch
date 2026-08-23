@@ -111,6 +111,64 @@ pub fn sanitizer_reason_token(output: &str) -> String {
         )
 }
 
+/// Recover the two diagram sections from the marker-owned comment body.
+///
+/// Headings inside code fences stay literal, and a malformed existing comment
+/// fails closed so an upsert cannot silently overwrite content it cannot parse.
+///
+/// # Errors
+///
+/// Returns the stable malformed-comment diagnostic for an unclosed fence.
+pub fn extract_diagram_sections(body: &str) -> Result<(String, String), &'static str> {
+    let mut current = "";
+    let mut architecture = Vec::new();
+    let mut code_flow = Vec::new();
+    let mut fence: Option<(char, usize)> = None;
+    for raw_line in body.lines() {
+        let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
+        let token = diagram_fence_token(line.trim());
+        if fence.is_none() {
+            if line == "## Architecture Diagram" {
+                current = "Architecture";
+            } else if line == "## Code Flow Diagram" {
+                current = "Code Flow";
+            }
+        }
+        match current {
+            "Architecture" => architecture.push(line),
+            "Code Flow" => code_flow.push(line),
+            _ => {}
+        }
+        if let Some((character, width)) = token {
+            match fence {
+                None => fence = Some((character, width)),
+                Some((opening, opening_width))
+                    if character == opening && width >= opening_width =>
+                {
+                    fence = None;
+                }
+                Some(_) => {}
+            }
+        }
+    }
+    if fence.is_some() {
+        return Err("existing diagrams comment is malformed: unclosed code fence");
+    }
+    Ok((architecture.join("\n"), code_flow.join("\n")))
+}
+
+fn diagram_fence_token(line: &str) -> Option<(char, usize)> {
+    let character = line.chars().next()?;
+    if !matches!(character, '`' | '~') {
+        return None;
+    }
+    let width = line
+        .chars()
+        .take_while(|candidate| *candidate == character)
+        .count();
+    (width >= 3).then_some((character, width))
+}
+
 /// Read a KEY=value document the way the retired Python reader did: CR-free
 /// lines, legacy tolerance for malformed rows, last value per key.
 fn read_last_kvs(path: &Path) -> Option<BTreeMap<String, String>> {

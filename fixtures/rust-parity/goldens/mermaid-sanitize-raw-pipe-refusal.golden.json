@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "STATUS=rejected\nREASON_TOKEN=pipe-in-node-label fence=1 line=2\nFENCE_COUNT=1\n"
+  }
+}

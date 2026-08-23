@@ -29,7 +29,7 @@ use crate::{
         write_json_lines_confined as write_manifest,
     },
     python_verb::run_python_verb,
-    runtime_entrypoint::run_verified_larch,
+    runtime_entrypoint::{run_verified_larch, run_verified_larch_with_timeout},
     voter_dispatch_commands::{
         VOTER_POLICIES, bool_text, completed, fresh_plan_calibration_snapshot, is_nonempty,
         launchable_tools, read_payload_bytes, record_prep_span, unix_seconds,
@@ -670,10 +670,13 @@ fn render_plan_prompt(
     if body_payload {
         arguments.push("--body-file-payload".into());
     }
-    let output = run_python_verb(arguments, PYTHON_TIMEOUT).map_err(|message| RenderFailure {
-        code: 1,
-        diagnostic: message,
-    })?;
+    let output =
+        run_verified_larch_with_timeout(&arguments, PYTHON_TIMEOUT).map_err(|message| {
+            RenderFailure {
+                code: 1,
+                diagnostic: message,
+            }
+        })?;
     if !output.status().success() || output.stdout_truncated() {
         let error = output.stderr();
         let diagnostic = error.first().map_or_else(|| output.stdout(), |_| error);
