@@ -1189,7 +1189,7 @@ const SPECIALIST_OPTIONS: &[&str] = &[
 ];
 const SPECIALIST_DIFF_MODES: &[&str] = &["generic", "docs-only", "test-only", "generated-only"];
 const SMALL_BRANCH_COMMIT_MAX: u64 = 5;
-const SPECIALIST_OOS_PROPOSAL: &str = r"OOS proposal cap:
+pub const OOS_PROPOSAL_INSTRUCTION: &str = r"OOS proposal cap:
 - Report every in-scope finding you identify; in-scope findings are uncapped.
 - Report at most 3 `out_of_scope` / `[OUT_OF_SCOPE]` proposals per reviewer.
 - If more than 3 OOS candidates exist, keep only the highest-legitimacy concrete items under `skills/shared/oos-acceptance-rubric.md`.
@@ -1536,7 +1536,7 @@ fn specialist_tagging(diff_mode: &str, mode: &str) -> String {
             r"Tag findings with focus area ({focus_values}). Canonical-list misses are OOS. Return two sections: '### In-Scope Findings' for canonical files and '### Out-of-Scope Observations' for non-canonical files. Each finding MUST be a single bullet matching this pattern exactly:
 - **<focus-area>** `<path>:<line-range>` — <one-paragraph issue text>. **Suggested fix:** <one-paragraph suggested fix text>.
 `<focus-area>` is one of {focus_values}. `<line-range>` is N, N-M, or omitted for whole-file findings. Use backticks around the file:lines token, not markdown links. For OOS text that references repo files, include repo-relative path:line tokens so /implement Step 9a.1 can emit serialization edges. If empty, output exactly NO_ISSUES_FOUND. Do NOT modify files.
-{SPECIALIST_OOS_PROPOSAL}"
+{OOS_PROPOSAL_INSTRUCTION}"
         );
     }
     let body = match diff_mode {
@@ -1554,11 +1554,11 @@ fn specialist_tagging(diff_mode: &str, mode: &str) -> String {
                 r"Tag findings with focus area ({focus_values}). Return two sections: '### In-Scope Findings' for issues introduced or amplified by the branch diff and '### Out-of-Scope Observations' for pre-existing issues. Each finding MUST be a single bullet matching this pattern exactly:
 - **<focus-area>** `<path>:<line-range>` — <one-paragraph issue text>. **Suggested fix:** <one-paragraph suggested fix text>.
 `<focus-area>` is one of {focus_values}. `<line-range>` is N, N-M, or omitted for whole-file findings. Use backticks around the file:lines token, not markdown links. If issue text references repo files, include repo-relative path:line tokens so /implement Step 9a.1 can emit serialization edges. For `[BUG]` fixes: classify whether the change addresses the class or only an instance; name sibling sites checked, or state that a grep for the defect pattern found none. If empty, output exactly NO_ISSUES_FOUND. Do NOT modify files.
-{SPECIALIST_OOS_PROPOSAL}"
+{OOS_PROPOSAL_INSTRUCTION}"
             );
         }
     };
-    format!("{body}\n{SPECIALIST_OOS_PROPOSAL}")
+    format!("{body}\n{OOS_PROPOSAL_INSTRUCTION}")
 }
 
 fn specialist_includes_context(args: &SpecialistArguments, diff_mode: &str) -> bool {
@@ -1701,7 +1701,7 @@ fn sha256_path(path: &Path) -> io::Result<String> {
     Ok(format!("{:x}", Sha256::digest(bytes)))
 }
 
-fn write_payload_bytes_sidecar(path: &str, payload_bytes: u64) {
+pub fn write_payload_bytes_sidecar(path: &str, payload_bytes: u64) {
     if path.is_empty() {
         return;
     }

@@ -1665,7 +1665,7 @@ def test_ci_bootstrap_consumers_restore_exact_trusted_rust_dependency_caches() -
         "agents/reviewer-code-robustness.md",
         "docs/review-agents.md",
         "skills/review/SKILL.md",
-        "python/larch/rendering/rendering.py",
+        "crates/larch-cli/src/plan_prompt_commands.rs",
         "skills/design/SKILL.md",
     ):
         assert f'"{path}",' in focus_area_rule

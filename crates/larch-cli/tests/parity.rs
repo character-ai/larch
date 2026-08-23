@@ -79,6 +79,7 @@ impl CleanInstallCase {
             // clean-install `--help` token reads as an invalid flag and the verb
             // reports its own breadcrumb refusal exit.
             | "clean-install-render-lane-status"
+            | "clean-install-diagrams-upsert"
             | "clean-install-session-local-cleanup"
             | "clean-install-ci-decide"
             | "clean-install-ci-wait"
@@ -229,6 +230,8 @@ impl CleanInstallCase {
             | "clean-install-scope-anchor-relay-allowed"
             | "clean-install-scope-anchor-retally-handoff"
             | "clean-install-scope-anchor-validate"
+            | "clean-install-render-plan-review"
+            | "clean-install-mermaid-sanitize"
             // Neither debate verb declares a `--help` action: the Rust owner
             // treats the clean-install `--help` token as an unknown flag and
             // emits its validation envelope with the argparse usage exit code.
@@ -2158,6 +2161,9 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "scope-anchor",
     ),
     CleanInstallCase::new("clean-install-render-specialist", "render", "specialist"),
+    CleanInstallCase::new("clean-install-render-plan-review", "render", "plan-review"),
+    CleanInstallCase::new("clean-install-mermaid-sanitize", "mermaid", "sanitize"),
+    CleanInstallCase::new("clean-install-diagrams-upsert", "diagrams", "upsert"),
     CleanInstallCase::new(
         "clean-install-scope-anchor-design-handoff",
         "scope-anchor",

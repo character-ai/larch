@@ -12,7 +12,7 @@ Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. Th
 - `larch/core/logging_util.py` — breadcrumbs + JSONL journal for surviving Python commands
 - `larch/core/redact.py`, `larch/core/retry.py`: in-process secret redaction and transient retry helpers. The four public `redact` commands are Rust-owned through `scripts/larch.sh`; this module is not their fallback.
 - The Rust `larch lint gitleaks` command owns checksum-pinned scanner bootstrap for local pre-commit. CI uses its separately verified workflow installer so the dedicated scanner gate does not build `larch-cli`.
-- `rendering.py` — prompt renderers, Mermaid sanitizer, diagrams upserter, and generated-artifact generators now exposed through `python/cli.py` (`render`, `mermaid`, `diagrams`, and `generate` domains).
+- `larch/rendering/rendering.py` - the remaining voter and scope-anchor prompt renderers exposed through `python/cli.py render`. Rust owns `render plan-review`, `mermaid sanitize`, and `diagrams upsert` through `scripts/larch.sh`.
 - `voting.py` — voting, tally, parse-rate, ballot parsing, scoreboard, and focus-area enum CLI surfaces.
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
 - `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py` — bounded helpers for remaining Python token analytics and the `render run-summary` compatibility payload. Token measurements are Rust-owned after #8508; Rust owns `token report`, `token cost`, and `token render-cost-line` after #8507 and the token-budget and PR line-count commands after #8797. These helpers do not own those commands, `/report-tokens`, or `final-report`, whose Python entrypoints retired in #8088 and #8090.

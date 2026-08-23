@@ -1,7 +1,7 @@
 # Plan Review Runtime Reference
 **Consumer**: `/design` Step 3 loads this reference for prompt-side contracts only: panel topology, static identity, round gates, Claude fallback archetype, semantic dedup, accepted/rejected/OOS templates, post-driver tally interpretation, and MainAgent 0-judge fallback. Scout, panel dispatch, collection, aggregation, ballot rebuild, voter dispatch, tally, and finalize writes are internal to the Rust plan-review owner.
 
-**Contract**: `python/rendering.py` owns runtime prompts from `python/cli.py render plan-review` and `python/cli.py render voter`. `crates/larch-cli/src/plan_review_commands.rs`, reached through `scripts/larch.sh plan-review panel-dispatch`, owns runtime slot manifests, including Step 2b scouts from `$DESIGN_TMPDIR/scout-plan-manifest.json`. The same Rust owner exposes `plan-review voter-dispatch` and owns the Codex-primary voter matrix plus its one-Claude degraded floor. Prompt-side loads stay limited to Consumer.
+**Contract**: `crates/larch-cli/src/plan_prompt_commands.rs` owns runtime prompts from `scripts/larch.sh render plan-review`; `python/larch/rendering/rendering.py` retains `python/cli.py render voter`. `crates/larch-cli/src/plan_review_commands.rs`, reached through `scripts/larch.sh plan-review panel-dispatch`, owns runtime slot manifests, including Step 2b scouts from `$DESIGN_TMPDIR/scout-plan-manifest.json`. The same Rust owner exposes `plan-review voter-dispatch` and owns the Codex-primary voter matrix plus its one-Claude degraded floor. Prompt-side loads stay limited to Consumer.
 
 **Topology anchor**: round-gated static plus dynamic panel; keep synced with `crates/larch-cli/src/plan_review_commands.rs`.
 
@@ -19,7 +19,7 @@ For a large plan, use the preview helper's parsed threshold, bounded outline, an
 
 ## Competition notice
 
-Reviewer prompts are rendered by `python/cli.py render plan-review`. Competition scoring lives in `skills/shared/voting-protocol.md`; this reference does not output competition notice text.
+Reviewer prompts are rendered by `scripts/larch.sh render plan-review`. Competition scoring lives in `skills/shared/voting-protocol.md`; this reference does not output competition notice text.
 
 Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`.
 
@@ -29,7 +29,7 @@ Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`.
 
 This file defines static archetype identity, matching `skills/shared/topology.tsv` rows `design.plan_review.cursor_archetypes` and `design.plan_review.codex_archetypes`.
 
-Static slugs and labels align with `python/larch/core/config.py` `design.plan_review_panel` and `python/rendering.py` `_PLAN_REVIEW_ROLES`:
+Static slugs and labels align with `python/larch/core/config.py` `design.plan_review_panel` and `crates/larch-cli/src/plan_prompt_commands.rs`:
 
 - `arch`: **Architecture/Standards**
 - `innovation`: **Innovation/Exploration**
@@ -48,7 +48,7 @@ Step 2b produces `$DESIGN_TMPDIR/scout-plan-manifest.json`, using `{"archetypes"
 
 1. **Drafter scout output (fail-open)**: the Step 2b drafter emits a compact scout block after the plan. The launcher validates it with `scripts/larch.sh scout filter-manifest`, filters reserved static slugs, and caps at one archetype. Missing or invalid output warns, writes an empty manifest when possible, and still runs the static Step 3 panel. Step 3 launches no separate plan-archetype scout.
 
-2. **Dispatch (Step 3 manifest consumption)**: `scripts/larch.sh plan-review panel-dispatch` renders static prompts first, then the dynamic tail via `python/cli.py render plan-review`. It emits rows from binary-derived attempt flags, not Step 0 health. Cursor rows emit when Cursor is available; Codex rows emit when Codex is available and use the default model role. Dynamic scout archetypes retain their paired Cursor and Codex rows so the shared waterfall classifies unavailable rows consistently. The command invokes the Rust waterfall owner in-process with **`--no-fallback`** for every reviewer panel, so failed or unavailable vendors drop rows instead of spawning cross-vendor or Claude reviewer backfill. It does not pass `--require-first-line-pattern`; collector terminal `NOT_SUBSTANTIVE` handles format and quality. `scripts/larch.sh plan-review voter-dispatch` uses the shared Codex-primary voter matrix. The panel command emits `PANEL_PATHS_FILE=<path>` on stdout so SKILL can pass `--paths-file` without re-parsing `ALL_OUTPUT_FILES_PATH`.
+2. **Dispatch (Step 3 manifest consumption)**: `scripts/larch.sh plan-review panel-dispatch` renders static prompts first, then the dynamic tail through the Rust `render plan-review` owner. It emits rows from binary-derived attempt flags, not Step 0 health. Cursor rows emit when Cursor is available; Codex rows emit when Codex is available and use the default model role. Dynamic scout archetypes retain their paired Cursor and Codex rows so the shared waterfall classifies unavailable rows consistently. The command invokes the Rust waterfall owner in-process with **`--no-fallback`** for every reviewer panel, so failed or unavailable vendors drop rows instead of spawning cross-vendor or Claude reviewer backfill. It does not pass `--require-first-line-pattern`; collector terminal `NOT_SUBSTANTIVE` handles format and quality. `scripts/larch.sh plan-review voter-dispatch` uses the shared Codex-primary voter matrix. The panel command emits `PANEL_PATHS_FILE=<path>` on stdout so SKILL can pass `--paths-file` without re-parsing `ALL_OUTPUT_FILES_PATH`.
 
 3. **Harness coverage**: `scripts/test-plan-review-dispatch.sh` runs the Rust commands against a confined launcher fixture and checks the manifest, prompt, failure, pruning, voter-order, and degraded-floor contracts.
 

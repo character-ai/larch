@@ -73,6 +73,7 @@ mod design_step1_commands;
 mod design_step2b_commands;
 mod design_terminal_commands;
 mod developer_tooling_commands;
+mod diagram_commands;
 mod difficulty_calibration_commands;
 mod difficulty_commands;
 mod dirty_tree_commands;
@@ -121,6 +122,7 @@ mod migration_governance_commands;
 mod net_commands;
 mod oos_commands;
 mod oos_file_commands;
+mod plan_prompt_commands;
 mod plan_quality_commands;
 mod plan_quality_revise_commands;
 mod plan_review_commands;
@@ -406,6 +408,12 @@ enum Domain {
     /// Validate and relay the `/design` plan-review scope anchor.
     #[command(subcommand, name = "scope-anchor")]
     ScopeAnchor(ScopeAnchorCommand),
+    /// Mermaid safety checks.
+    #[command(subcommand)]
+    Mermaid(MermaidCommand),
+    /// Shared issue-comment diagram publication.
+    #[command(subcommand)]
+    Diagrams(DiagramsCommand),
     /// Issue-backlog report rendering.
     #[command(subcommand, name = "analyze-issues")]
     AnalyzeIssues(AnalyzeIssuesCommand),
@@ -870,6 +878,9 @@ enum RenderCommand {
     /// Render the plan-review scope anchor as untrusted evidence.
     #[command(name = "scope-anchor", disable_help_flag = true)]
     ScopeAnchor(RawCompatibilityArguments),
+    /// Render one design plan-review prompt.
+    #[command(name = "plan-review", disable_help_flag = true)]
+    PlanReview(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -886,6 +897,20 @@ enum ScopeAnchorCommand {
     /// Validate one scope-anchor path for its consumer mode.
     #[command(disable_help_flag = true)]
     Validate(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum MermaidCommand {
+    /// Validate Mermaid content without rendering it.
+    #[command(disable_help_flag = true)]
+    Sanitize(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum DiagramsCommand {
+    /// Preserve or replace sections in the marker-owned diagrams comment.
+    #[command(disable_help_flag = true)]
+    Upsert(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -3529,6 +3554,12 @@ fn run(
         }
         Domain::Render(command) => Ok(dispatch_render(command)),
         Domain::ScopeAnchor(command) => Ok(dispatch_scope_anchor(command)),
+        Domain::Mermaid(MermaidCommand::Sanitize(arguments)) => {
+            Ok(diagram_commands::mermaid_sanitize(&arguments.arguments))
+        }
+        Domain::Diagrams(DiagramsCommand::Upsert(arguments)) => {
+            Ok(diagram_commands::diagrams_upsert(&arguments.arguments))
+        }
         Domain::AnalyzeIssues(command) => Ok(match command {
             AnalyzeIssuesCommand::Fetch(arguments) => {
                 analyze_issues_commands::fetch(&arguments.arguments)
@@ -4871,6 +4902,9 @@ fn dispatch_render(command: RenderCommand) -> ExitCode {
         }
         RenderCommand::ScopeAnchor(arguments) => {
             rendering_commands::render_scope_anchor(&arguments.arguments)
+        }
+        RenderCommand::PlanReview(arguments) => {
+            plan_prompt_commands::render_plan_review(&arguments.arguments)
         }
     }
 }

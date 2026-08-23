@@ -6,7 +6,7 @@
 
 **When to load**: only while editing or maintaining plan-review prompts, renderers, tests, or topology. Do not load during `/design` Steps 0 through 5.
 
-The runtime contracts, slot identities, returned-artifact interpretation, fallback adjudication, and panel tiers live in `plan-review-runtime.md`. Rust producer internals live in `crates/larch-cli/src/plan_review_commands.rs`; prompt bodies are rendered by `python/cli.py render plan-review` and `python/cli.py render voter`. Preserve the accepted finding and OOS templates in `plan-review-runtime.md` byte-for-byte when changing their producers or tests.
+The runtime contracts, slot identities, returned-artifact interpretation, fallback adjudication, and panel tiers live in `plan-review-runtime.md`. Rust producer internals live in `crates/larch-cli/src/plan_review_commands.rs`; prompt bodies are rendered by `scripts/larch.sh render plan-review` and `python/cli.py render voter`. Preserve the accepted finding and OOS templates in `plan-review-runtime.md` byte-for-byte when changing their producers or tests.
 
 Harness authorities include `skills/design/scripts/test-step3-orchestrator-fence.sh`, `skills/design/scripts/test-design-step3-mav.sh`, `skills/design/scripts/test-step3-review-cap.sh`, and `crates/larch-cli/tests/plan_review_loop_commands.rs`.
 

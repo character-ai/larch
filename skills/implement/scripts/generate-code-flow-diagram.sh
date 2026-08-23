@@ -101,7 +101,7 @@ cp "$raw" "$candidate" || {
     exit 1
 }
 
-if python3 "$PLUGIN_ROOT/python/cli.py" mermaid sanitize \
+if "$PLUGIN_ROOT/scripts/larch.sh" mermaid sanitize \
     --input "$candidate" \
     --from-md \
     --warnings-step "7a" >"$sanitize_log" 2>&1; then

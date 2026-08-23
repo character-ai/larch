@@ -2974,11 +2974,13 @@ verb = "upsert"
 python_module = "larch.rendering.rendering"
 python_function = "diagrams_upsert_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8837
+clean_install_test = "clean-install-diagrams-upsert"
 
 [[commands]]
 domain = "difficulty"
@@ -4837,11 +4839,13 @@ verb = "sanitize"
 python_module = "larch.rendering.rendering"
 python_function = "mermaid_sanitize_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8837
+clean_install_test = "clean-install-mermaid-sanitize"
 
 [[commands]]
 domain = "named-block"
@@ -6393,11 +6397,13 @@ verb = "plan-review"
 python_module = "larch.rendering.rendering"
 python_function = "render_plan_review_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8837
+clean_install_test = "clean-install-render-plan-review"
 
 [[commands]]
 domain = "render"
@@ -9438,12 +9444,6 @@ python = []
 rust = ["git rebase-skip", "git sync-local-main"]
 
 [[callers]]
-path = "python/larch/rendering/rendering.py"
-kind = "python-runtime"
-python = []
-rust = ["run-log append-entry"]
-
-[[callers]]
 path = "python/larch/report/exec_issue_detail.py"
 kind = "python-runtime"
 python = []
@@ -9608,8 +9608,8 @@ rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps 
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["mermaid sanitize"]
-rust = ["agent collect-results", "agent degraded-tools-gate", "architectural-guidelines read", "architectural-invariants read", "bgjob start", "bgjob wait", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
+python = []
+rust = ["agent collect-results", "agent degraded-tools-gate", "architectural-guidelines read", "architectural-invariants read", "bgjob start", "bgjob wait", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "dirty-tree checkpoint", "mermaid sanitize", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -9680,8 +9680,8 @@ rust = ["design failure-report", "design stage-terminal-state", "stall-recovery 
 [[callers]]
 path = "skills/design/references/finalize-step5.md"
 kind = "skill"
-python = ["mermaid sanitize"]
-rust = ["architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design file-oos-annotate", "design file-oos-prepare", "design read-result-env", "design render-final-summary", "design step5c", "issue add-blocked-by", "run-log append-failure"]
+python = []
+rust = ["architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design file-oos-annotate", "design file-oos-prepare", "design read-result-env", "design render-final-summary", "design step5c", "issue add-blocked-by", "mermaid sanitize", "run-log append-failure"]
 
 [[callers]]
 path = "skills/design/references/flags.md"
@@ -9698,14 +9698,14 @@ rust = ["design step5b-prepare"]
 [[callers]]
 path = "skills/design/references/plan-review-runtime.md"
 kind = "skill"
-python = ["render plan-review", "render voter"]
-rust = ["agent launch-claude-review", "bgjob wait", "decompose panel-dispatch", "plan-review panel-dispatch", "plan-review run", "plan-review step3-entry-preview", "plan-review voter-dispatch", "render specialist", "scout filter-manifest"]
+python = ["render voter"]
+rust = ["agent launch-claude-review", "bgjob wait", "decompose panel-dispatch", "plan-review panel-dispatch", "plan-review run", "plan-review step3-entry-preview", "plan-review voter-dispatch", "render plan-review", "render specialist", "scout filter-manifest"]
 
 [[callers]]
 path = "skills/design/references/plan-review.md"
 kind = "skill"
-python = ["render plan-review", "render voter"]
-rust = []
+python = ["render voter"]
+rust = ["render plan-review"]
 
 [[callers]]
 path = "skills/design/references/sentinel-host-table.md"
@@ -9866,8 +9866,8 @@ rust = ["fluff-analysis analyze"]
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["diagram code-flow", "diagrams upsert", "render run-summary"]
-rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos file", "plan-block read", "plan-receipt refresh", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
+python = ["diagram code-flow", "render run-summary"]
+rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos file", "plan-block read", "plan-receipt refresh", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
 
 [[callers]]
 path = "skills/implement/prompts/codex-implementer.md"
@@ -10034,14 +10034,14 @@ rust = ["execution-issues flush"]
 [[callers]]
 path = "skills/implement/scripts/generate-code-flow-diagram.md"
 kind = "skill"
-python = ["mermaid sanitize"]
-rust = []
+python = []
+rust = ["mermaid sanitize"]
 
 [[callers]]
 path = "skills/implement/scripts/generate-code-flow-diagram.sh"
 kind = "skill"
-python = ["mermaid sanitize"]
-rust = ["agent launch-claude-subprocess"]
+python = []
+rust = ["agent launch-claude-subprocess", "mermaid sanitize"]
 
 [[callers]]
 path = "skills/implement/scripts/hook-stop-fail-close.md"
@@ -10202,8 +10202,8 @@ rust = ["implement step-6-entry"]
 [[callers]]
 path = "skills/implement/scripts/step-7a.md"
 kind = "skill"
-python = ["diagrams upsert"]
-rust = ["tracking-issue upsert-summary"]
+python = []
+rust = ["diagrams upsert", "tracking-issue upsert-summary"]
 
 [[callers]]
 path = "skills/implement/scripts/step-7a.sh"
@@ -10430,8 +10430,8 @@ rust = ["implement step-16-17", "implement step-18-gate-logs-flush"]
 [[callers]]
 path = "skills/shared/mermaid-safe-content.md"
 kind = "skill"
-python = ["diagrams upsert", "mermaid sanitize"]
-rust = ["tracking-issue upsert-summary"]
+python = []
+rust = ["diagrams upsert", "mermaid sanitize"]
 
 [[callers]]
 path = "skills/shared/orchestrator-never.md"
@@ -10442,8 +10442,8 @@ rust = ["bgjob wait"]
 [[callers]]
 path = "skills/shared/review-acceptance-rubric.md"
 kind = "skill"
-python = ["render plan-review", "render voter"]
-rust = ["generate code-reviewer-agent", "generate pre-rendered-reviewer-prompts", "generate reviewer-code-robustness-agent", "generate reviewer-plan-fidelity-agent", "generate reviewer-security-structure-tests-agent", "render specialist"]
+python = ["render voter"]
+rust = ["generate code-reviewer-agent", "generate pre-rendered-reviewer-prompts", "generate reviewer-code-robustness-agent", "generate reviewer-plan-fidelity-agent", "generate reviewer-security-structure-tests-agent", "render plan-review", "render specialist"]
 
 [[callers]]
 path = "skills/shared/reviewer-templates.md"

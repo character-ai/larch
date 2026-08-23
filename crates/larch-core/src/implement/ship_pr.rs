@@ -4,13 +4,9 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::redact_outbound;
+use crate::{mermaid::inspect_mermaid, redact_outbound};
 
 const MAX_PR_BODY_BYTES: usize = 65_536;
-const PIPE_IN_NODE: &str = "pipe-in-node-label";
-const BR_IN_ALIAS: &str = "br-in-participant-alias";
-const DOLLAR_IN_ALIAS: &str = "dollar-in-participant-alias";
-const UNCLOSED_FRONTMATTER: &str = "unclosed-frontmatter";
 
 static FENCE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^(\s{0,3})(`{3,})([^`]*)$").expect("static fence expression"));
@@ -137,17 +133,10 @@ fn append_section(parts: &mut Vec<String>, heading: &str, body: &str) {
 
 fn validate_mermaid(text: &str, from_markdown: bool) -> Result<(), Vec<&'static str>> {
     let markdown = from_markdown || first_content_is_mermaid_fence(text);
-    let fences = if markdown {
-        mermaid_fences(text)
-    } else {
-        vec![text.to_owned()]
-    };
-    let mut reasons = Vec::new();
-    for fence in fences {
-        validate_fence(&fence, &mut reasons);
-    }
+    let (_fences, reasons) = inspect_mermaid(text, markdown);
     let mut unique = Vec::new();
     for reason in reasons {
+        let reason = reason.token;
         if !unique.contains(&reason) {
             unique.push(reason);
         }
@@ -167,124 +156,6 @@ fn first_content_is_mermaid_fence(text: &str) -> bool {
         })
         .and_then(|line| FENCE_RE.captures(line))
         .is_some_and(|captures| captures[3].trim() == "mermaid")
-}
-
-fn mermaid_fences(text: &str) -> Vec<String> {
-    let mut fences = Vec::new();
-    let mut current = Vec::new();
-    let mut outer: Option<(usize, bool)> = None;
-    for line in text.lines() {
-        if let Some(captures) = FENCE_RE.captures(line) {
-            let length = captures[2].len();
-            let rest = captures[3].trim();
-            match outer {
-                None => {
-                    outer = Some((length, rest == "mermaid"));
-                    current.clear();
-                }
-                Some((opening, mermaid)) if length >= opening && rest.is_empty() => {
-                    if mermaid && !current.is_empty() {
-                        fences.push(current.join("\n"));
-                    }
-                    current.clear();
-                    outer = None;
-                }
-                Some(_) => {}
-            }
-        } else if outer.is_some_and(|(_, mermaid)| mermaid) {
-            current.push(line);
-        }
-    }
-    if outer.is_some_and(|(_, mermaid)| mermaid) && !current.is_empty() {
-        fences.push(current.join("\n"));
-    }
-    fences
-}
-
-fn validate_fence(body: &str, reasons: &mut Vec<&'static str>) {
-    let mut frontmatter = false;
-    let mut frontmatter_started = false;
-    let mut first = None;
-    for (index, line) in body.lines().enumerate() {
-        let stripped = line.trim();
-        if stripped.is_empty() || stripped.starts_with("%%") {
-            continue;
-        }
-        if !frontmatter_started && stripped == "---" {
-            frontmatter = true;
-            frontmatter_started = true;
-            continue;
-        }
-        if frontmatter {
-            if stripped == "---" {
-                frontmatter = false;
-            }
-            continue;
-        }
-        first = Some(index);
-        break;
-    }
-    if frontmatter {
-        reasons.push(UNCLOSED_FRONTMATTER);
-        return;
-    }
-    let Some(start) = first else { return };
-    let first_line = body.lines().nth(start).unwrap_or_default().trim();
-    if first_line == "flowchart"
-        || first_line == "graph"
-        || first_line.starts_with("flowchart ")
-        || first_line.starts_with("graph ")
-    {
-        if body.lines().skip(start).any(flowchart_rejects_pipe) {
-            reasons.push(PIPE_IN_NODE);
-        }
-    } else if first_line == "sequenceDiagram" {
-        for line in body.lines().skip(start) {
-            let lower = line.trim().to_ascii_lowercase();
-            if !(lower.starts_with("participant ") || lower.starts_with("actor ")) {
-                continue;
-            }
-            let Some(index) = lower.find(" as ") else {
-                continue;
-            };
-            let alias = &line.trim()[index + 4..];
-            if alias.to_ascii_lowercase().contains("<br>")
-                || alias.to_ascii_lowercase().contains("<br/>")
-                || alias.to_ascii_lowercase().contains("<br />")
-            {
-                reasons.push(BR_IN_ALIAS);
-            }
-            if alias.contains('$') {
-                reasons.push(DOLLAR_IN_ALIAS);
-            }
-        }
-    }
-}
-
-fn flowchart_rejects_pipe(line: &str) -> bool {
-    let mut depth = 0_u32;
-    let mut quote = false;
-    let mut escape = false;
-    for character in line.chars() {
-        if depth > 0 && quote {
-            if escape {
-                escape = false;
-            } else if character == '\\' {
-                escape = true;
-            } else if character == '"' {
-                quote = false;
-            }
-        } else if depth > 0 && character == '"' {
-            quote = true;
-        } else if "[{(".contains(character) {
-            depth += 1;
-        } else if depth > 0 && "]})".contains(character) {
-            depth -= 1;
-        } else if depth > 0 && character == '|' {
-            return true;
-        }
-    }
-    false
 }
 
 #[cfg(test)]

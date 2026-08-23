@@ -752,7 +752,7 @@ test-scout-dynamic-archetypes:
 
 test-dispatch-plan-voters:
 	cargo build --locked --package larch-cli
-	$(HARNESS_MARK) --label $@ -- env LARCH_BINARY=target/debug/larch bash scripts/test-plan-review-dispatch.sh
+	$(HARNESS_MARK) --label $@ -- env LARCH_BINARY="$(CURDIR)/target/debug/larch" bash scripts/test-plan-review-dispatch.sh
 
 build-larch-cli:
 	cargo build --locked --package larch-cli

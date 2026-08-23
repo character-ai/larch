@@ -249,8 +249,8 @@ fn seed_skill_run_lifecycle_fixture(repository: &TempRepo) {
         );
     }
     repository.write(
-        "python/larch/rendering/rendering.py",
-        b"code-quality / risk-integration / correctness / architecture / security\n",
+        "crates/larch-cli/src/plan_prompt_commands.rs",
+        b"const FOCUS_AREAS: &str = \"code-quality / risk-integration / correctness / architecture / security\";\n",
     );
 }
 

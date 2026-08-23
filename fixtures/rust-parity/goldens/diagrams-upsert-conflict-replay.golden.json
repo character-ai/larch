@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "code.md": {
+      "text": "## Code Flow Diagram\n\n```mermaid\nflowchart LR\n  A[Start] --> B[Done]\n```\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "UPSERT_STATUS=failed\nCOMMENT_URL=\nUPDATED=false\nARCHITECTURE_SOURCE=absent\nCODE_FLOW_SOURCE=absent\nERROR=multiple summary comments found for marker (ids: 11,12)\n"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": "render-plan-review-prompt.sh: --archetype is required\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

@@ -13,7 +13,7 @@ The smoke tests only the wrapper contract:
 
 ## Behavioral authority
 
-`crates/larch-cli/src/implement_review_commands.rs` owns Step 7a behavior. It covers orchestration order, Code Flow generation and rejection/failure cleanup, diagram upsert gating, fork target selection, rebase exit propagation, the execution-issues checkpoint, terminal KVs, bgjob transport, and argument failures. Black-box parity coverage lives in `crates/larch-cli/tests/implement_review_parity.rs`. Shared diagrams-comment merge behavior is covered by `python/tests/rendering/test_rendering.py`.
+`crates/larch-cli/src/implement_review_commands.rs` owns Step 7a behavior. It covers orchestration order, Code Flow generation and rejection/failure cleanup, diagram upsert gating, fork target selection, rebase exit propagation, the execution-issues checkpoint, terminal KVs, bgjob transport, and argument failures. Black-box parity coverage lives in `crates/larch-cli/tests/implement_review_parity.rs`. Shared diagrams-comment merge behavior is covered by `crates/larch-cli/src/diagram_commands.rs` and `crates/larch-cli/tests/design_rendering_parity.rs`.
 
 ## Assertion parity
 
@@ -22,7 +22,7 @@ The smoke tests only the wrapper contract:
 | bgjob-launch relays the started envelope | `step7a_bgjob_launch_relays_started_envelope` |
 | Argv failure emits the 7-key bail envelope (exit 2) | `step7a_unknown_flag_emits_argv_bail_envelope` |
 | Missing `IMPLEMENT_TMPDIR` bails before work | `step7a_missing_tmpdir_bails_before_work` |
-| Architecture preservation and legacy diagram markers | `python/tests/rendering/test_rendering.py` diagrams-upsert tests |
+| Architecture preservation and legacy diagram markers | `crates/larch-cli/src/diagram_commands.rs` tests and `crates/larch-cli/tests/design_rendering_parity.rs` |
 | Wrapper root selection, routing, argv, streams, and exit status | this smoke |
 
 Run `make test-step-7a` for the smoke and `cargo test --package larch-cli --test implement_review_parity` for the Rust parity lane. Run `make agent-lint` and ShellCheck for the retained Bash smoke.

@@ -11,9 +11,14 @@ trap 'rm -rf -- "$tmpdir"' EXIT
 launcher="$tmpdir/plugin/scripts/larch.sh"
 mkdir -p "$(dirname "$launcher")"
 ln -s "$repo_root/python" "$tmpdir/plugin/python"
+ln -s "$repo_root/skills" "$tmpdir/plugin/skills"
 cat >"$launcher" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+
+if [[ "${1:-}" == render && "${2:-}" == plan-review ]]; then
+    exec "${LARCH_BINARY:?}" "$@"
+fi
 
 if [[ "${1:-}" == review && "${2:-}" == reviewer-prune ]]; then
     out=""
@@ -55,20 +60,18 @@ chmod +x "$launcher"
 fast_plugin="$tmpdir/fast-plugin"
 mkdir -p "$fast_plugin/scripts" "$fast_plugin/python"
 cp "$launcher" "$fast_plugin/scripts/larch.sh"
+ln -s "$repo_root/skills" "$fast_plugin/skills"
 cat >"$fast_plugin/python/cli.py" <<'PY'
 #!/usr/bin/env python3
 import pathlib
 import sys
 
 args = sys.argv[1:]
-if args[:2] not in (["render", "plan-review"], ["render", "voter"]):
+if args[:2] != ["render", "voter"]:
     raise SystemExit(0)
 sidecar = pathlib.Path(args[args.index("--payload-bytes-output") + 1])
 sidecar.write_text("17\n", encoding="utf-8")
-if args[1] == "voter":
-    print("Fast voter fixture.\nRead the ballot from this path: fixture")
-else:
-    print("Fast plan-review fixture.")
+print("Fast voter fixture.\nRead the ballot from this path: fixture")
 PY
 
 run_larch() {
@@ -120,7 +123,7 @@ assert all(row["resolved_model"] == "gpt-5.6-terra" for row in rows if row["tool
 assert all(row["payload_bytes"] > 0 for row in rows)
 PY
 env CLAUDE_PLUGIN_ROOT="$tmpdir/plugin" LARCH_VOTER_CALIBRATION_FEEDBACK=0 \
-    python3 "$tmpdir/plugin/python/cli.py" render plan-review \
+    "$binary" render plan-review \
     --archetype arch --vendor codex \
     --plan-file "$design/plan.txt" --design-tmpdir "$design" \
     --feature-file "$design/feature.md" \

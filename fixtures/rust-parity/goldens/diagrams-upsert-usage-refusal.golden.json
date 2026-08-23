@@ -1,0 +1,11 @@
+{
+  "exit_code": 1,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "UPSERT_STATUS=failed\nCOMMENT_URL=\nUPDATED=false\nARCHITECTURE_SOURCE=absent\nCODE_FLOW_SOURCE=absent\nERROR=invalid issue\n"
+  }
+}

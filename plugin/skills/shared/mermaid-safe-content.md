@@ -18,15 +18,15 @@ Anchor comments and PR bodies embed Mermaid diagrams that GitHub renders publicl
 
 ## Enforcement Layers
 
-- Write-time sanitizer: `/design` Step 3b, `/implement` Step 7a, and `/implement` Step 9a validate diagram candidates with `python/cli.py mermaid sanitize`. Rejected diagrams are dropped; callers either omit the publish section so prior issue content is preserved or fall back to an explicit placeholder when that surface requires one.
-- Tracking-issue redaction: `/design` Step 5c.5 and `/implement` Step 7a publish through `python/cli.py diagrams upsert`, which redacts secrets and tmpdir paths before delegating to `scripts/larch.sh tracking-issue upsert-summary`. `scripts/larch.sh tracking-issue upsert-summary` repeats the redaction chain as defense in depth.
+- Write-time sanitizer: `/design` Step 3b, `/implement` Step 7a, and `/implement` Step 9a validate diagram candidates with `scripts/larch.sh mermaid sanitize`. Rejected diagrams are dropped; callers either omit the publish section so prior issue content is preserved or fall back to an explicit placeholder when that surface requires one.
+- Tracking-issue redaction: `/design` Step 5c.5 and `/implement` Step 7a publish through `scripts/larch.sh diagrams upsert`. The Rust owner redacts secrets and temporary paths, authorizes the typed GitHub mutation, and verifies the exact comment after mutation.
 
 ## For Tool Authors
 
-Any new Mermaid emitter must write a candidate file, run `python/cli.py mermaid sanitize --from-md` when the candidate includes fence delimiters, and only promote the candidate to the public artifact on `STATUS=ok`. On `STATUS=rejected` or exit 2, drop the candidate, log a public-safe `REASON_TOKEN`, and proceed with a placeholder.
+Any new Mermaid emitter must write a candidate file, run `scripts/larch.sh mermaid sanitize --from-md` when the candidate includes fence delimiters, and only promote the candidate to the public artifact on `STATUS=ok`. On `STATUS=rejected` or exit 2, drop the candidate, log a public-safe `REASON_TOKEN`, and proceed with a placeholder.
 
 The authoritative tracking-issue surface for diagrams is the issue-scoped
-`larch:diagrams` comment managed by `python/cli.py diagrams upsert`.
+`larch:diagrams` comment managed by `scripts/larch.sh diagrams upsert`.
 `/design` owns the Architecture section at Step 5c.5; `/implement` owns the
 Code Flow section at Step 7a. The PR body still embeds the Code Flow diagram
 only, after Step 9a validation.
