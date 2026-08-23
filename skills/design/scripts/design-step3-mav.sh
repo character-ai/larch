@@ -232,7 +232,7 @@ run_pre_phase() {
     if [ -n "${SCOPE_ANCHOR_FILE:-}" ]; then
         emit '## MainAgent scope anchor evidence'
         set +e
-        _scope_render_out="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" render scope-anchor \
+        _scope_render_out="$("$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" render scope-anchor \
             --scope-anchor-file "$SCOPE_ANCHOR_FILE" \
             --design-tmpdir "$DESIGN_TMPDIR" 2>"$DESIGN_TMPDIR/step3-mav-scope-anchor.err")"
         _scope_render_rc=$?

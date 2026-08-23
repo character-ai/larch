@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "anchor.txt": {
+      "text": "scope\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "scope-anchor validate: --mode must be design, review, or voter\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}

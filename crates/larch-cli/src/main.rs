@@ -403,6 +403,9 @@ enum Domain {
     /// Rust-owned runtime prompt and view renderers.
     #[command(subcommand)]
     Render(RenderCommand),
+    /// Validate and relay the `/design` plan-review scope anchor.
+    #[command(subcommand, name = "scope-anchor")]
+    ScopeAnchor(ScopeAnchorCommand),
     /// Issue-backlog report rendering.
     #[command(subcommand, name = "analyze-issues")]
     AnalyzeIssues(AnalyzeIssuesCommand),
@@ -864,6 +867,25 @@ enum RenderCommand {
     /// Render one code-review specialist prompt.
     #[command(disable_help_flag = true)]
     Specialist(RawCompatibilityArguments),
+    /// Render the plan-review scope anchor as untrusted evidence.
+    #[command(name = "scope-anchor", disable_help_flag = true)]
+    ScopeAnchor(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum ScopeAnchorCommand {
+    /// Select the first valid design-owned handoff candidate.
+    #[command(name = "design-handoff", disable_help_flag = true)]
+    DesignHandoff(RawCompatibilityArguments),
+    /// Report whether the current review result may relay an anchor.
+    #[command(name = "relay-allowed", disable_help_flag = true)]
+    RelayAllowed(RawCompatibilityArguments),
+    /// Select the valid re-tally handoff candidate.
+    #[command(name = "retally-handoff", disable_help_flag = true)]
+    RetallyHandoff(RawCompatibilityArguments),
+    /// Validate one scope-anchor path for its consumer mode.
+    #[command(disable_help_flag = true)]
+    Validate(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -3506,6 +3528,7 @@ fn run(
             Ok(rendering_commands::gantt_render(&arguments.arguments))
         }
         Domain::Render(command) => Ok(dispatch_render(command)),
+        Domain::ScopeAnchor(command) => Ok(dispatch_scope_anchor(command)),
         Domain::AnalyzeIssues(command) => Ok(match command {
             AnalyzeIssuesCommand::Fetch(arguments) => {
                 analyze_issues_commands::fetch(&arguments.arguments)
@@ -4845,6 +4868,26 @@ fn dispatch_render(command: RenderCommand) -> ExitCode {
         }
         RenderCommand::Specialist(arguments) => {
             rendering_commands::render_specialist(&arguments.arguments)
+        }
+        RenderCommand::ScopeAnchor(arguments) => {
+            rendering_commands::render_scope_anchor(&arguments.arguments)
+        }
+    }
+}
+
+fn dispatch_scope_anchor(command: ScopeAnchorCommand) -> ExitCode {
+    match command {
+        ScopeAnchorCommand::DesignHandoff(arguments) => {
+            rendering_commands::scope_anchor_design_handoff(&arguments.arguments)
+        }
+        ScopeAnchorCommand::RelayAllowed(arguments) => {
+            rendering_commands::scope_anchor_relay_allowed(&arguments.arguments)
+        }
+        ScopeAnchorCommand::RetallyHandoff(arguments) => {
+            rendering_commands::scope_anchor_retally_handoff(&arguments.arguments)
+        }
+        ScopeAnchorCommand::Validate(arguments) => {
+            rendering_commands::scope_anchor_validate(&arguments.arguments)
         }
     }
 }

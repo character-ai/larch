@@ -360,7 +360,7 @@ if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
   exit 0
 fi
 
-if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" scope-anchor validate \
+if ! "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" scope-anchor validate \
   --mode design \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --path "$DESIGN_TMPDIR/plan-review-scope-anchor.txt" >/dev/null; then

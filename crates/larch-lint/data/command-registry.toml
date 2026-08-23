@@ -6431,11 +6431,13 @@ verb = "scope-anchor"
 python_module = "larch.rendering.rendering"
 python_function = "render_scope_anchor_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8836
+clean_install_test = "clean-install-render-scope-anchor"
 
 [[commands]]
 domain = "render"
@@ -7322,11 +7324,13 @@ verb = "design-handoff"
 python_module = "larch.rendering.rendering"
 python_function = "scope_anchor_design_handoff_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8836
+clean_install_test = "clean-install-scope-anchor-design-handoff"
 
 [[commands]]
 domain = "scope-anchor"
@@ -7334,11 +7338,13 @@ verb = "relay-allowed"
 python_module = "larch.rendering.rendering"
 python_function = "scope_anchor_relay_allowed_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8836
+clean_install_test = "clean-install-scope-anchor-relay-allowed"
 
 [[commands]]
 domain = "scope-anchor"
@@ -7346,11 +7352,13 @@ verb = "retally-handoff"
 python_module = "larch.rendering.rendering"
 python_function = "scope_anchor_retally_handoff_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8836
+clean_install_test = "clean-install-scope-anchor-retally-handoff"
 
 [[commands]]
 domain = "scope-anchor"
@@ -7358,11 +7366,13 @@ verb = "validate"
 python_module = "larch.rendering.rendering"
 python_function = "scope_anchor_validate_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8836
+clean_install_test = "clean-install-scope-anchor-validate"
 
 [[commands]]
 domain = "scout"
@@ -9760,20 +9770,20 @@ rust = ["plan-review step3-entry-preview", "plan-review step3-entry-state"]
 [[callers]]
 path = "skills/design/scripts/design-step3-entry.sh"
 kind = "skill"
-python = ["scope-anchor validate"]
-rust = ["plan-block strip-body", "plan-review prelaunch-failure", "plan-review snapshot-pre-review", "plan-review step3-entry-preview", "plan-review step3-entry-state", "session validate-design-tmpdir"]
+python = []
+rust = ["plan-block strip-body", "plan-review prelaunch-failure", "plan-review snapshot-pre-review", "plan-review step3-entry-preview", "plan-review step3-entry-state", "scope-anchor validate", "session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-mav.md"
 kind = "skill"
-python = ["render scope-anchor"]
-rust = ["design pause-save"]
+python = []
+rust = ["design pause-save", "render scope-anchor"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-mav.sh"
 kind = "skill"
-python = ["render scope-anchor"]
-rust = ["design pause-save", "kv get", "plan-review persist-retally-env", "run-log append-failure", "session require-plugin-root", "session validate-design-tmpdir", "timing record-round", "voting findings-classification-header"]
+python = []
+rust = ["design pause-save", "kv get", "plan-review persist-retally-env", "render scope-anchor", "run-log append-failure", "session require-plugin-root", "session validate-design-tmpdir", "timing record-round", "voting findings-classification-header"]
 
 [[callers]]
 path = "skills/design/scripts/design-step3-review.md"
@@ -9784,8 +9794,8 @@ rust = ["bgjob adapt"]
 [[callers]]
 path = "skills/design/scripts/design-step3-review.sh"
 kind = "skill"
-python = ["scope-anchor validate"]
-rust = ["bgjob adapt", "design pause-save", "plan-review normalize-status", "plan-review prelaunch-failure", "plan-review run", "session require-plugin-root", "session validate-design-tmpdir"]
+python = []
+rust = ["bgjob adapt", "design pause-save", "plan-review normalize-status", "plan-review prelaunch-failure", "plan-review run", "scope-anchor validate", "session require-plugin-root", "session validate-design-tmpdir"]
 
 [[callers]]
 path = "skills/design/scripts/design-step35.sh"

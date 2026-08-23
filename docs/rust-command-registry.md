@@ -132,7 +132,7 @@ umbrella that owns their remaining consumers:
 | `render plan-review` | 1 | #7680 | The remaining consumer is the design workflow. |
 | `render specialist` | 1 | #7681 | Migrated by #8800 with in-process review callers, frozen parity, and clean-install coverage. |
 | `render voter` | 1 | #7686 | Shared design and implementation consumers make this a final-cutover surface. |
-| `render scope-anchor` | 1 | #7680 | Both callers are `/design` Step 3 scripts, and all four `scope-anchor` verbs already sit at #7680. |
+| `render scope-anchor` | 1 | #7680 | Migrated with all four `scope-anchor` verbs by #8836, including Step 3 caller cutover, in-process findings validation, frozen parity, and clean-install coverage. |
 | `render run-summary` | 1 | #7680 | Recorded in the retained-surface table below as a bounded `/design` payload. |
 | `token check-budget`, `compute-pr-line-counts`, `compute-pr-lines` | 3 | #8797 | Rust CLI cutover with in-process callers, Python entrypoint removal, and clean-install coverage. |
 | `token claude-source` | 1 | #7684 | Read-only token-source analysis used by review reporting. |

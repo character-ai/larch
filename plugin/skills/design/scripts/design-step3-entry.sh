@@ -99,7 +99,7 @@ if [ ! -s "$_scope_body" ]; then
   _step3_entry_panel_init_failed_exit scope-anchor-empty
 fi
 mv "$_scope_body" "$_scope_anchor"
-if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" scope-anchor validate \
+if ! "$CLAUDE_PLUGIN_ROOT/scripts/larch.sh" scope-anchor validate \
   --mode design \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --path "$_scope_anchor" >/dev/null; then

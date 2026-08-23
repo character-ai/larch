@@ -124,6 +124,16 @@ impl SeedFile {
         }
     }
 
+    #[allow(dead_code)]
+    pub fn bytes(relative_path: &str, contents: &[u8]) -> Self {
+        Self {
+            relative_path: PathBuf::from(relative_path),
+            contents: contents.to_vec(),
+            executable: false,
+            expand_root: false,
+        }
+    }
+
     #[cfg(unix)]
     #[allow(dead_code)]
     pub fn executable_text(relative_path: &str, contents: &str) -> Self {

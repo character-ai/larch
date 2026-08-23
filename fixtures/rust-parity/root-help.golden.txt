@@ -62,6 +62,7 @@ Commands:
   generate                  Regenerate or verify committed developer artifacts
   gantt                     Generic ASCII Gantt rendering
   render                    Rust-owned runtime prompt and view renderers
+  scope-anchor              Validate and relay the `/design` plan-review scope anchor
   analyze-issues            Issue-backlog report rendering
   audit-runs                Run-log audit preflight, titles, advisory, mapping, scanning, and closure
   analyze-bugs              Bounded filed-bug evidence and verification commands

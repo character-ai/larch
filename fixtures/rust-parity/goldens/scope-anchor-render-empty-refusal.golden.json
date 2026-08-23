@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "design/empty.txt": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "render scope-anchor: scope anchor is invalid or outside DESIGN_TMPDIR\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}
