@@ -3016,7 +3016,7 @@ async fn graph_reads_more_than_one_hundred_direct_leaves() {
             issue_json(
                 *number,
                 *id,
-                &format!("[DONE] [LEAF OF 40] Existing leaf {number}"),
+                &format!("{DONE_PREFIX}[LEAF OF 40] Existing leaf {number}"),
                 &format!("{}\n\nDone.", umbrella_leaf_opening(UMBRELLA)),
                 "closed",
                 BEFORE,
