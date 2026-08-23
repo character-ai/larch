@@ -147,9 +147,7 @@ fn write_state(
     command.assert()
 }
 
-#[test]
-fn preparation_and_coverage_index_run_without_github_when_limit_is_zero() {
-    let fixture = Fixture::create();
+fn write_coverage_fixture(fixture: &Fixture) {
     fixture.write(
         "ARCHITECTURAL_GUIDELINES.md",
         "### G-Example-1: First guideline\n\n```markdown\n### G-Fake-1: fenced\n```\n",
@@ -160,8 +158,31 @@ fn preparation_and_coverage_index_run_without_github_when_limit_is_zero() {
     );
     fixture.write("python/larch/lint/lint_alpha.py", "# fixture\n");
     fixture.write("python/larch/lint/lint_zeta.py", "# fixture\n");
-    fixture.write("scripts/lint-zeta", "# fixture\n");
-    fixture.write("scripts/lint-alpha", "# fixture\n");
+    fixture.write(
+        "crates/larch-lint/src/rules/lifecycle_prefix.rs",
+        "//! Reject duplicated lifecycle prefixes.\ncrate::register_rule!(METADATA, RULE);\n",
+    );
+    fixture.write(
+        "crates/larch-lint/src/rules/markdown_heading_fence_state.rs",
+        "//! Require Markdown heading scans to track fences.\ncrate::register_rule!(METADATA, RULE);\n",
+    );
+    fixture.write("scripts/lint-zeta", "#!/bin/sh\n# fixture\n");
+    fixture.write(
+        "scripts/lint-alpha.py",
+        "#!/usr/bin/env python3\n# duplicate fixture\n",
+    );
+    fixture.write("scripts/lint-alpha", "#!/bin/sh\n# fixture\n");
+    fixture.write("scripts/lint-readability-preamble.tsv", "artifact\n");
+    fixture.write(
+        "scripts/lint-readability-preamble.tsv.md",
+        "artifact docs\n",
+    );
+}
+
+#[test]
+fn coverage_index_exposes_all_enforcement_categories() {
+    let fixture = Fixture::create();
+    write_coverage_fixture(&fixture);
     fs::create_dir_all(fixture.path("out")).expect("coverage output directory");
     let index_out = fixture.path("out/coverage.json");
     let root = fixture.root.to_str().expect("UTF-8 fixture root");
@@ -194,10 +215,27 @@ fn preparation_and_coverage_index_run_without_github_when_limit_is_zero() {
         serde_json::json!(["lint-alpha", "lint-zeta"])
     );
     assert_eq!(
+        payload["rust_lints"],
+        serde_json::json!([
+            ["lifecycle_prefix", "Reject duplicated lifecycle prefixes."],
+            [
+                "markdown_heading_fence_state",
+                "Require Markdown heading scans to track fences."
+            ]
+        ])
+    );
+    assert_eq!(
         fs::read_to_string(&index_out).expect("written coverage index"),
         stdout(&coverage)
     );
+}
 
+#[test]
+fn preparation_runs_without_github_when_limit_is_zero() {
+    let fixture = Fixture::create();
+    write_coverage_fixture(&fixture);
+    fs::create_dir_all(fixture.path("out")).expect("prepare output directory");
+    let root = fixture.root.to_str().expect("UTF-8 fixture root");
     let out = fixture.path("out/prepared");
     let mut prepare = fixture.command();
     prepare.args([
@@ -218,6 +256,7 @@ fn preparation_and_coverage_index_run_without_github_when_limit_is_zero() {
     assert!(prepared.contains("ISSUES_SELECTED=0\n"));
     assert!(prepared.contains("INCREMENTAL=false\n"));
     assert!(prepared.contains("GUIDELINES_INDEXED=1\n"));
+    assert!(prepared.contains("RUST_LINTS_INDEXED=2\n"));
     let digest_path = output_path(&prepared, "DIGEST_PATH");
     assert_eq!(fs::read_to_string(digest_path).expect("empty digest"), "");
     assert_eq!(

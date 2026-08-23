@@ -264,6 +264,8 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(C.7) Step 3 must preserve repeated root-cause headings in document order")
     if "Origin classification is best-effort" not in text:
         failures.append("(C.8) Step 3 must document best-effort origin status")
+    if "`python_lints`, `script_lints`, and `rust_lints`" not in text:
+        failures.append("(C.8b) Step 3 must name every lint coverage category")
     if "single-sourcing" not in text:
         failures.append("(C.9) duplicated-contract clusters must name single-sourcing")
     if "ORIGIN_HEADLINE_PATH" not in text:

@@ -77,21 +77,91 @@ fn empty_path_arguments_keep_python_path_dot_semantics() {
 }
 
 #[test]
-fn coverage_ignores_fenced_guideline_headings() {
+fn coverage_index_filters_sources_and_ignores_fenced_guidelines() {
     let directory = tempfile::tempdir().unwrap();
     fs::write(
         directory.path().join("ARCHITECTURAL_GUIDELINES.md"),
         "```markdown\n### G-Fake-1: ignored\n```\n### G-Real-1: used\n",
     )
     .unwrap();
-    fs::create_dir_all(directory.path().join("python/larch/lint/lint_nested.py")).unwrap();
+    fs::create_dir_all(directory.path().join("python/larch/lint")).unwrap();
+    fs::write(
+        directory.path().join("python/larch/lint/lint_nested.py"),
+        "# fixture\n",
+    )
+    .unwrap();
+    fs::create_dir_all(directory.path().join("python/larch/lint/lint_directory.py")).unwrap();
+    fs::create_dir_all(directory.path().join("scripts")).unwrap();
+    fs::write(
+        directory.path().join("scripts/lint-alpha"),
+        "#!/bin/sh\n# fixture\n",
+    )
+    .unwrap();
+    fs::write(
+        directory.path().join("scripts/lint-alpha.py"),
+        "#!/usr/bin/env python3\n# duplicate fixture\n",
+    )
+    .unwrap();
+    fs::write(
+        directory
+            .path()
+            .join("scripts/lint-readability-preamble.tsv"),
+        "artifact\n",
+    )
+    .unwrap();
+    fs::write(
+        directory
+            .path()
+            .join("scripts/lint-readability-preamble.tsv.md"),
+        "artifact docs\n",
+    )
+    .unwrap();
+    fs::write(
+        directory.path().join("scripts/lint-zeta.rb"),
+        "#!/usr/bin/env ruby\n# fixture\n",
+    )
+    .unwrap();
+    fs::create_dir_all(directory.path().join("crates/larch-lint/src/rules")).unwrap();
+    fs::write(
+        directory
+            .path()
+            .join("crates/larch-lint/src/rules/lifecycle_prefix.rs"),
+        "//! Reject duplicated lifecycle prefixes.\n//! Later detail.\ncrate::register_rule!(METADATA, RULE);\n",
+    )
+    .unwrap();
+    fs::write(
+        directory
+            .path()
+            .join("crates/larch-lint/src/rules/undocumented.rs"),
+        "const FIXTURE: &str = \"fixture\";\ncrate::register_rule!(METADATA, RULE);\n",
+    )
+    .unwrap();
+    fs::write(
+        directory
+            .path()
+            .join("crates/larch-lint/src/rules/helper.rs"),
+        "//! Shared helper, not a lint rule.\n",
+    )
+    .unwrap();
+    let coverage = coverage_index(directory.path());
     assert_eq!(
-        coverage_index(directory.path()).guidelines,
+        coverage.guidelines,
         vec![("G-Real-1".to_owned(), "used".to_owned())]
     );
+    assert_eq!(coverage.python_lints, vec!["lint_nested".to_owned()]);
     assert_eq!(
-        coverage_index(directory.path()).python_lints,
-        vec!["lint_nested".to_owned()]
+        coverage.script_lints,
+        vec!["lint-alpha".to_owned(), "lint-zeta".to_owned()]
+    );
+    assert_eq!(
+        coverage.rust_lints,
+        vec![
+            (
+                "lifecycle_prefix".to_owned(),
+                "Reject duplicated lifecycle prefixes.".to_owned(),
+            ),
+            ("undocumented".to_owned(), String::new()),
+        ]
     );
 }
 
@@ -481,6 +551,107 @@ fn origin_classification_handles_all_fallbacks() {
 }
 
 #[test]
+fn origin_classification_recognizes_corpus_prose() {
+    let cases = [
+        (
+            "This is a design gap, not a regression.",
+            ("spec-gap", None),
+        ),
+        ("This is not a larch defect.", ("spec-gap", None)),
+        (
+            "This is a Python-migration regression.",
+            ("regression", None),
+        ),
+        (
+            "This is a design gap, not a Python-migration regression.",
+            ("spec-gap", None),
+        ),
+        (
+            "The defect was introduced by #17.",
+            ("regression", Some(17)),
+        ),
+        (
+            "The defect was introduced by PR #18.",
+            ("regression", Some(18)),
+        ),
+        ("This is a residual of #19.", ("regression", Some(19))),
+        (
+            "This was the first live run of review synthesis.",
+            ("new-code", None),
+        ),
+        (
+            "The CLI contract has a contract underspecification.",
+            ("spec-gap", None),
+        ),
+        ("This is a skill contract gap.", ("spec-gap", None)),
+        ("This is a guidance gap.", ("spec-gap", None)),
+        ("This is an observability gap.", ("spec-gap", None)),
+        ("This is a child prompt gap.", ("spec-gap", None)),
+        (
+            "There is a gap in the leaf thin-orchestrator contract.",
+            ("spec-gap", None),
+        ),
+        ("The route is under-specified.", ("spec-gap", None)),
+        (
+            "This is intentional fail-closed behavior.",
+            ("spec-gap", None),
+        ),
+        ("This is not a bug inside larch.", ("spec-gap", None)),
+        ("There is a missing rollback path.", ("spec-gap", None)),
+        ("There is no bounded retry.", ("spec-gap", None)),
+        (
+            "The prompt has no fail-closed instruction.",
+            ("spec-gap", None),
+        ),
+        (
+            "The design assumes the branch stays clean.",
+            ("spec-gap", None),
+        ),
+        (
+            "Both conditions were introduced together by migration #20.",
+            ("regression", Some(20)),
+        ),
+        (
+            "The filter predates the freshness gate (#21).",
+            ("regression", Some(21)),
+        ),
+        (
+            "The commands were migrated without help handling.",
+            ("regression", None),
+        ),
+        ("Python 3.13 changed help formatting.", ("regression", None)),
+    ];
+    for (prose, expected) in cases {
+        let body = format!("## Root cause analysis\n\n{prose}");
+        let origin = classify_origin("[BUG] corpus fixture", &body, None);
+        assert_eq!((origin.kind, origin.reference), expected, "{prose}");
+    }
+
+    let summary_only = classify_origin(
+        "[BUG] summary fixture",
+        "## Summary\n\nThe design assumes the branch stays clean.\n\n## Root cause\n\nUnknown.",
+        None,
+    );
+    assert_eq!(
+        (summary_only.kind, summary_only.reference),
+        ("unknown", None)
+    );
+
+    let negated = classify_origin(
+        "[BUG] negated fixture",
+        "## Root cause\n\nThis is not a #8058 migration regression.",
+        None,
+    );
+    assert_eq!((negated.kind, negated.reference), ("unknown", None));
+    let mixed = classify_origin(
+        "[BUG] mixed fixture",
+        "## Root cause\n\nThis is not a migration regression. A later defect is a regression.",
+        None,
+    );
+    assert_eq!((mixed.kind, mixed.reference), ("regression", None));
+}
+
+#[test]
 fn digest_wire_escapes_and_includes_optional_fields() {
     assert_eq!(
         ascii_json_string("\"\\\u{08}\u{0c}\r\t\u{1f}"),
@@ -732,7 +903,7 @@ fn coverage_scanners_handle_missing_marked_unmarked_and_sorted_sources() {
     let directory = tempfile::tempdir().unwrap();
     assert!(scan_guidelines(&directory.path().join("missing.md")).is_empty());
     assert!(scan_marked(&directory.path().join("missing.md"), &INVARIANT_HEADING_RE).is_empty());
-    assert!(scan_lints(&directory.path().join("missing"), "lint_", ".py").is_empty());
+    assert!(scan_lints(&directory.path().join("missing"), "lint_", &[Some("py")]).is_empty());
     assert_eq!(
         coverage_index(directory.path()).guidelines_status,
         "missing"
@@ -783,7 +954,7 @@ fn coverage_scanners_handle_missing_marked_unmarked_and_sorted_sources() {
         fs::write(lints.join(name), "").unwrap();
     }
     assert_eq!(
-        scan_lints(&lints, "lint_", ".py"),
+        scan_lints(&lints, "lint_", &[Some("py")]),
         vec!["lint_alpha".to_owned(), "lint_zeta".to_owned()]
     );
 }
