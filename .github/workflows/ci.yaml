@@ -34,6 +34,7 @@ on:
   pull_request:
     branches:
       - main
+      - issue-8858-enforce-partial-rust-ci # Temporary live-path validation base.
     types: [opened, synchronize, reopened, labeled, unlabeled]
   # A merge queue validates an integration candidate on a temporary ref. Keep
   # this separate from pull_request so every required check reports on the
