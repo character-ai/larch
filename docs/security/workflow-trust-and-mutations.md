@@ -653,14 +653,13 @@ trusted base wrapper and uploads the verified handoff only for an effective
 `skip` decision. A cache miss or failed verification selects `full`; no
 pull-request-provided Rust binary is accepted for selection or `skip`.
 
-`RUST_CI_PARTIAL_ENFORCEMENT` remains `false` while the partial class is under
-observation. `RUST_CI_SKIP_ENFORCEMENT` is `true` only because its durable live
-record has three independent non-full proposals, successful full backstops, and
-zero false-safe results. A proposed `partial` is recorded with an
-observation-window effective `full` mode; an enforced `skip` still falls back
-to `full` if trusted-main policy validation fails. Only a reviewed workflow
-update may set a class-specific value to `true`. A candidate checkout, selector
-output, cache result, or pull-request label cannot promote a class.
+`RUST_CI_PARTIAL_ENFORCEMENT` and `RUST_CI_SKIP_ENFORCEMENT` are `true` only
+because each durable live record has at least three independent non-full
+proposals, successful full backstops, and zero false-safe results. Either class
+still falls back to `full` if trusted-main policy validation fails. Only a
+reviewed workflow update may set a class-specific value to `true`. A candidate
+checkout, selector output, cache result, or pull-request label cannot promote a
+class.
 
 Every dynamic JSON and summary string passes through the Rust core redaction
 boundary and a residual-secret rescan; redaction failure emits a static `full`

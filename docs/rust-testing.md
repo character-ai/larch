@@ -450,16 +450,13 @@ summary HTML-escapes the redacted data. The artifact preserves the classifier's
 and any `full-rust-ci` override; the summary shows both proposed and effective
 execution decisions.
 
-`RUST_CI_PARTIAL_ENFORCEMENT` remains `false` while the partial class collects
-its independent live evidence. `RUST_CI_SKIP_ENFORCEMENT` is `true` after the
-recorded three-pull-request skip window had successful full backstops and zero
-false-safe results. A proposed `partial` still records
-`partial-observation-window-open` as its effective full-mode reason. A
-proposed `skip` executes only when trusted-main policy verification succeeds;
-a cache miss or verification failure remains `full`.
+`RUST_CI_PARTIAL_ENFORCEMENT` and `RUST_CI_SKIP_ENFORCEMENT` are `true` after
+their recorded independent pull-request windows had successful full backstops
+and zero false-safe results. A proposed non-full mode executes only when
+trusted-main policy verification succeeds; a cache miss or verification
+failure remains `full`.
 
-After the live observation criteria below are met, the workflow supports these
-enforced modes:
+The workflow enforces these modes after both live observation windows completed:
 
 - `full` runs format, full Clippy, dependency policy, full coverage, doctests,
   repository policy, plugin projection validation, and the Linux artifact for

@@ -2061,7 +2061,7 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert "contents: read" in selector_job
     assert "runs-on: ubuntu-24.04" in selector_job
     assert "timeout-minutes: 10" in selector_job
-    assert 'RUST_CI_PARTIAL_ENFORCEMENT: "false"' in workflow
+    assert 'RUST_CI_PARTIAL_ENFORCEMENT: "true"' in workflow
     assert 'RUST_CI_SKIP_ENFORCEMENT: "true"' in workflow
     assert (
         "actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1"
@@ -2186,7 +2186,7 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "scrub failure emits a static",
         "full-rust-ci",
         "merge group is the per-merge full-run backstop",
-        "observation-window-open",
+        "independent pull-request windows",
         "Promotion is intentionally manual and class-specific",
     ):
         assert required_detail in rust_testing
@@ -2200,8 +2200,8 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "redaction failure emits a static",
         "trusted-main-rust-policy",
         "full history",
-        "`RUST_CI_PARTIAL_ENFORCEMENT` remains `false`",
-        "`RUST_CI_SKIP_ENFORCEMENT` is `true`",
+        "`RUST_CI_PARTIAL_ENFORCEMENT` and `RUST_CI_SKIP_ENFORCEMENT` are `true`",
+        "at least three independent non-full",
     ):
         assert required_detail in workflow_trust
     for required_detail in (
@@ -2222,10 +2222,14 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "Completed skip observation window",
         "#8247",
         "#8252",
-        "Partial promotion decision (2026-08-08)",
-        "one eligible partial observation",
+        "Completed partial observation window (2026-08-23)",
+        "four distinct ordinary pull requests",
         "#8281",
-        "Two more distinct, ordinary pull requests",
+        "#8287",
+        "#8302",
+        "#8380",
+        "partial window has zero\nobserved false-safe results",
+        "did not change the partial decision or weaken its trust contract",
         "345 seconds, 352 seconds, and 346 seconds",
         "75%) shorter on that measured Rust PR critical path",
         "does not change the classifier or its trusted-input\ncontract",
