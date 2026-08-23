@@ -9363,7 +9363,7 @@ fn hung_command_fails_at_the_case_boundary() {
     assert!(error.contains("timed out after 50ms"));
 }
 
-const CLEAN_INSTALL_PARTITION_COUNT: usize = 4;
+const CLEAN_INSTALL_PARTITION_COUNT: usize = 8;
 
 #[test]
 fn rust_owned_selector_matrix_partition_0_enters_through_verified_clean_install_script() {
@@ -9383,6 +9383,26 @@ fn rust_owned_selector_matrix_partition_2_enters_through_verified_clean_install_
 #[test]
 fn rust_owned_selector_matrix_partition_3_enters_through_verified_clean_install_script() {
     assert_clean_install_partition(3);
+}
+
+#[test]
+fn rust_owned_selector_matrix_partition_4_enters_through_verified_clean_install_script() {
+    assert_clean_install_partition(4);
+}
+
+#[test]
+fn rust_owned_selector_matrix_partition_5_enters_through_verified_clean_install_script() {
+    assert_clean_install_partition(5);
+}
+
+#[test]
+fn rust_owned_selector_matrix_partition_6_enters_through_verified_clean_install_script() {
+    assert_clean_install_partition(6);
+}
+
+#[test]
+fn rust_owned_selector_matrix_partition_7_enters_through_verified_clean_install_script() {
+    assert_clean_install_partition(7);
 }
 
 fn assert_clean_install_partition(partition: usize) {
