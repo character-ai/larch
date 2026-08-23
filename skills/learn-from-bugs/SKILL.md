@@ -33,7 +33,7 @@ The engine keeps this cheap. It never reads full issue bodies into context: `lea
 - Everything else in `$ARGUMENTS` is a **verbal description** of which issues to mine. Translate it into a `gh` search expression. With no description and no `--search`, mine `[BUG] in:title`.
 - With the default search, a durable marker for the resolved repository makes preparation incremental: exclude issue numbers through `HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED`. `--full` restores a full scan. An explicit search source, including `--search`, `--zones`, or verbal search text, is a custom slice and does not filter the prior window.
 - Report-only by default. Every repository or GitHub mutation is gated behind an explicit operator approval in Step 5, except automatic `/issue` filing under `--file` / `-s`. Mutable analyzer state persists locally after a successful report or create pass.
-- File issues only through `/issue` (never `gh issue create` directly).
+- File issues only through `/issue` (never `gh issue create` directly). Every created issue inherits `/issue`'s authenticated-user assignment and read-back check.
 - Cite issues in the prepared `REPO` by bare number, and cite any issue outside that `REPO` as `owner/repo#number`. Refer to code by symbol, not line number. Do not paste machine-local absolute paths or hardcode counts that will drift; read live counts from the prepared stats and coverage index.
 
 ### Durable proposal state

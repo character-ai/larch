@@ -119,7 +119,8 @@ pub use audit_umbrella::{
     mark_audit_graph_in_flight, mark_audit_leaf_in_flight, mark_audit_proposal_complete,
     parse_audit_ledger, parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved,
     render_audit_ledger, render_audit_proposal, render_audit_snapshot,
-    replace_audit_issue_fingerprints, validate_audit_ledger, validate_audit_proposal_binding,
+    replace_audit_issue_fingerprints, reset_audit_leaf_pending, validate_audit_ledger,
+    validate_audit_proposal_binding,
 };
 pub use bgjob::{
     BGJOB_COMPLETION_ENV_SUFFIX, BGJOB_COMPLETION_STAGE_SUFFIX, BGJOB_DAEMON_STATUS_SUFFIX,

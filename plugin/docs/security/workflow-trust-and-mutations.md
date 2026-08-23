@@ -253,11 +253,16 @@ mutations, and the operation-specific Python issue modules own the entry points
 that have not migrated yet. Unauthorized calls fail before any GitHub request,
 emit the documented refusal result, and do not retry through another route.
 `issue create-one` applies the check in the Rust owner before the create request
-is built. `/issue` also requests authenticated-user assignment on every create.
-The same owner resolves the authenticated GitHub login, includes it as the
-issue assignee, and requires the exact assignee on read-back. A missing login
-or dropped assignment fails closed; the existing create rollback closes an
-issue whose response cannot satisfy that postcondition.
+is built. `/issue`, including every `/learn-from-bugs` filing route, requests
+authenticated-user assignment on every create. `/audit-umbrella` requests the
+same assignment on every direct corrective-leaf create. The shared owner
+resolves the authenticated GitHub login, includes it as the issue assignee, and
+requires the exact assignee on read-back. A missing login or dropped assignment
+fails closed; the existing create rollback closes an issue whose response
+cannot satisfy that postcondition. When `/audit-umbrella` cannot resolve the
+login before a create begins, it restores and persists the corrective leaf as
+pending. Failures that cannot prove whether a create began stay in flight for
+exact-match recovery.
 `issue add-blocked-by`, `issue add-sub-issue`, and both `/block-issue`
 dependency mutations apply it in
 `crates/larch-cli/src/issue_dependency_commands.rs` before any lookup, and the
