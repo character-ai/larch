@@ -41,6 +41,132 @@ class DirtyTreeRequest:
     fallback: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ArchitecturalKnowledgeOutput:
+    """Validated read result from one Rust-owned architectural knowledge verb."""
+
+    status: str
+    path: str = ""
+    warning: str = ""
+    content_block: str = ""
+
+    @property
+    def has_entries(self) -> bool:
+        """Whether the Rust owner emitted parsed entries for the knowledge file."""
+        return bool(self.content_block)
+
+
+def _invalid_architectural_output(warning: str) -> ArchitecturalKnowledgeOutput:
+    return ArchitecturalKnowledgeOutput(status="invalid", warning=warning)
+
+
+def _architectural_content_split(*, stdout: str, tag: str) -> tuple[str, str, str]:
+    opening = f'<{tag} encoding="literal-redacted">\n'
+    closing = f"</{tag}>"
+    start = stdout.find(opening)
+    if start < 0:
+        return stdout, "", ""
+    end = stdout.find(closing, start + len(opening))
+    if end < 0:
+        return "", "", "architectural read emitted a malformed content block"
+    end += len(closing)
+    if stdout[end : end + 1] == "\n":
+        end += 1
+    if stdout[end:].strip():
+        return "", "", "architectural read emitted a malformed content block"
+    return stdout[:start], stdout[start:end], ""
+
+
+def _architectural_header_values(
+    *, header: str, prefix: str
+) -> dict[str, str] | None:
+    allowed_keys: frozenset[str] = frozenset(
+        {f"{prefix}_STATUS", f"{prefix}_PATH", f"{prefix}_WARNING"}
+    )
+    rows: list[str] = [line for line in header.splitlines() if line]
+    keys: list[str] = [line.partition("=")[0] for line in rows]
+    if (
+        any("=" not in line for line in rows)
+        or any(key not in allowed_keys for key in keys)
+        or len(keys) != len(set(keys))
+    ):
+        return None
+    return larch_io.parse_kv(
+        header,
+        skip_empty_key=True,
+        allowed_keys=allowed_keys,
+    )
+
+
+def _parse_architectural_output(*, stdout: str, kind: str) -> ArchitecturalKnowledgeOutput:
+    prefix: str = (
+        "ARCHITECTURAL_GUIDELINES"
+        if kind == config.ASSESSMENT_KIND_GUIDELINES
+        else "ARCHITECTURAL_INVARIANTS"
+    )
+    header, content_block, framing_error = _architectural_content_split(
+        stdout=stdout,
+        tag=f"architectural_{kind}",
+    )
+    if framing_error:
+        return _invalid_architectural_output(framing_error)
+    values = _architectural_header_values(header=header, prefix=prefix)
+    if values is None:
+        return _invalid_architectural_output(
+            "architectural read emitted a malformed envelope"
+        )
+    status = values.get(f"{prefix}_STATUS", "")
+    if status not in {"present", "absent", "invalid"}:
+        return _invalid_architectural_output(
+            "architectural read emitted no valid status"
+        )
+    path = values.get(f"{prefix}_PATH", "")
+    if status == "present" and not path:
+        return _invalid_architectural_output(
+            "architectural read emitted no path for present knowledge"
+        )
+    if status != "present" and (path or content_block):
+        return _invalid_architectural_output(
+            "architectural read emitted inconsistent status fields"
+        )
+    return ArchitecturalKnowledgeOutput(
+        status=status,
+        path=path,
+        warning=values.get(f"{prefix}_WARNING", ""),
+        content_block=content_block,
+    )
+
+
+def architectural_knowledge_read(
+    *,
+    kind: str,
+    repo_root: str | Path | None = None,
+    runner: Runner | None = None,
+) -> ArchitecturalKnowledgeOutput:
+    """Read guidelines or invariants through the existing Rust command owner."""
+    if kind not in {
+        config.ASSESSMENT_KIND_GUIDELINES,
+        config.ASSESSMENT_KIND_INVARIANTS,
+    }:
+        msg = f"unsupported architectural knowledge kind: {kind}"
+        raise ValueError(msg)
+    root = Path(__file__).resolve().parents[3]
+    if kind == config.ASSESSMENT_KIND_GUIDELINES:
+        argv = [str(larch_entrypoint(root)), "architectural-guidelines", "read"]
+    else:
+        argv = [str(larch_entrypoint(root)), "architectural-invariants", "read"]
+    if repo_root is not None:
+        argv.extend(["--repo-root", str(repo_root)])
+    active_runner: Runner = runner or ProcRunner()
+    result = active_runner.run(argv, env=larch_entrypoint_env(root))
+    if result.returncode != 0:
+        warning = " ".join(
+            (result.stderr or result.stdout or "architectural read failed").split()
+        )
+        return _invalid_architectural_output(warning)
+    return _parse_architectural_output(stdout=result.stdout, kind=kind)
+
+
 def write_ship_result_env(
     *,
     tmpdir: str,

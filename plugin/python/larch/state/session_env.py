@@ -5,9 +5,9 @@ commands to the Rust owner: ``setup``, ``require-plugin-root``,
 ``validate-design-tmpdir``, ``write-id``, ``resolve-implement-tmpdir``, and
 ``cleanup-tmpdir`` no longer register here.
 ``require_plugin_root``, ``validate_design_tmpdir``, and ``write_id`` survive as
-library helpers because Python-owned commands in ``larch.design`` still call
-them in process; their CLI entrypoints and the fully orphaned
-implement-tmpdir resolver are gone.
+library helpers; retained Python renderers still validate design temp paths in
+process. Their CLI entrypoints and the fully orphaned implement-tmpdir resolver
+are gone.
 
 Issue #8058 moved the eight session-env and run-flag writers — ``write-env``,
 ``write-design-env``, ``write-implement-env``, ``clear-implement-pointer``,

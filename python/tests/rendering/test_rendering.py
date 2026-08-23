@@ -55,24 +55,29 @@ def _patch_architectural_guidelines(
     invariant_status: str = "absent",
     invariant_content: str = "",
 ) -> None:
-    def read_guidelines() -> rendering.architectural_guidelines.ArchitecturalGuidelinesResult:
-        return rendering.architectural_guidelines.ArchitecturalGuidelinesResult(
-            status,
-            REPO_ROOT,
-            REPO_ROOT / "ARCHITECTURAL_GUIDELINES.md",
-            content,
+    def read(
+        *, kind: str, **_kwargs: object
+    ) -> rendering.rust_runtime.ArchitecturalKnowledgeOutput:
+        invariant = kind == rendering.config.ASSESSMENT_KIND_INVARIANTS
+        result_status = invariant_status if invariant else status
+        result_content = invariant_content if invariant else content
+        block = ""
+        if result_content:
+            block = rendering.issue_wire.emit_untrusted_content_block(
+                tag=f"architectural_{kind}", text=result_content
+            )
+        filename = (
+            "ARCHITECTURAL_INVARIANTS.md"
+            if invariant
+            else "ARCHITECTURAL_GUIDELINES.md"
+        )
+        return rendering.rust_runtime.ArchitecturalKnowledgeOutput(
+            status=result_status,
+            path=str(REPO_ROOT / filename) if result_status == "present" else "",
+            content_block=block,
         )
 
-    def read_invariants() -> rendering.architectural_guidelines.ArchitecturalGuidelinesResult:
-        return rendering.architectural_guidelines.ArchitecturalGuidelinesResult(
-            invariant_status,
-            REPO_ROOT,
-            REPO_ROOT / "ARCHITECTURAL_INVARIANTS.md",
-            invariant_content,
-        )
-
-    monkeypatch.setattr(rendering.architectural_guidelines, "read_guidelines", read_guidelines)
-    monkeypatch.setattr(rendering.architectural_guidelines, "read_invariants", read_invariants)
+    monkeypatch.setattr(rendering.rust_runtime, "architectural_knowledge_read", read)
 
 
 def test_mermaid_from_md_rejection_reports_heading(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:

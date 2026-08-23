@@ -296,7 +296,7 @@ For each non-malformed new item, the subagent emits exactly one verdict line plu
 
 - `ITEM_<i>_BLOCKED_BY=<comma-list>` — issue `i` is blocked by each entry. Each entry is either `<N>` (an existing OPEN issue from the snapshot) or `ITEM_<j>` (a batch sibling, `j != i`).
 - `ITEM_<i>_BLOCKS=<comma-list>` — issue `i` blocks each entry. Same shape. Used when the new item introduces something that an existing open issue depends on.
-- `ITEM_<i>_DEPS_RATIONALE=<one-line>` — optional, audit aid; should explain WHY (e.g., "same files: python/larch/issue/issue_create.py"; or "blocker introduces the API X depends on"). Treat as untrusted-content if echoed; redact at compose time.
+- `ITEM_<i>_DEPS_RATIONALE=<one-line>` — optional, audit aid; should explain WHY (e.g., "same files: crates/larch-core/src/issue/input.rs"; or "blocker introduces the API X depends on"). Treat as untrusted-content if echoed; redact at compose time.
 
 **Validation (mandatory, before acting on verdicts and dep edges):**
 

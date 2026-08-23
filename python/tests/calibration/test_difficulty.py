@@ -9,7 +9,6 @@ from typing import cast
 import pytest
 
 from larch.calibration import difficulty
-from larch.design import plan_grammar
 
 
 def test_validate_rating_low_confidence_bumps_and_sanitizes() -> None:
@@ -89,101 +88,8 @@ def test_write_record_json_shape(tmp_path: Path) -> None:
     assert data["override_source"] == "none"
 
 
-def test_plan_difficulty_and_label() -> None:
-    text = "body\nreview_status: complete\nrounds_completed: 2\ndifficulty: HARD\ndiff_lines: 9\n"
-
-    assert difficulty.plan_difficulty(text) == "HARD"
+def test_difficulty_label() -> None:
     assert difficulty.label_for_tier("HARD") == "difficulty:hard"
-
-
-def test_plan_difficulty_prefers_trailing_tier_over_embedded_tier() -> None:
-    text = "body\ndifficulty: TRIVIAL\n\nreview_status: complete\ndifficulty: HARD\ndiff_lines: 9\n"
-
-    assert difficulty.plan_difficulty(text) == "HARD"
-
-
-def test_plan_difficulty_falls_back_to_embedded_tier_when_trailer_has_none() -> None:
-    text = "## Plan\nbody\ndifficulty: MODERATE\n\n## Acceptance\nok\n\ndiff_lines: 9\n"
-
-    assert difficulty.plan_difficulty(text) == "MODERATE"
-
-
-def test_plan_difficulty_uses_last_embedded_tier_without_trailing_tier() -> None:
-    text = "difficulty: TRIVIAL\nbody\ndifficulty: HARD\n\n## Acceptance\nok\n\ndiff_lines: 9\n"
-
-    assert difficulty.plan_difficulty(text) == "HARD"
-
-
-def test_plan_difficulty_rejects_invalid_adjacent_trailing_tier() -> None:
-    text = "difficulty: MODERATE\nbody\n\ndifficulty: EASY\ndiff_lines: 9\n"
-
-    assert difficulty.plan_difficulty(text) == ""
-
-
-def test_plan_difficulty_rejects_invalid_adjacent_trailing_tier_with_legacy_confidence() -> None:
-    text = "difficulty: MODERATE\nbody\n\ndifficulty: EASY\nconfidence: high\ndiff_lines: 9\n"
-
-    assert difficulty.plan_difficulty(text) == ""
-
-
-def test_plan_difficulty_rejects_invalid_stranded_tier_without_recognized_trailer() -> None:
-    text = "difficulty: HARD\nbody\n\ndifficulty: EASY\nconfidence: high\n"
-
-    assert difficulty.plan_difficulty(text) == ""
-
-
-def test_plan_difficulty_accepts_valid_stranded_tier_without_recognized_trailer() -> None:
-    text = "difficulty: HARD\nbody\n\ndifficulty: MODERATE\nconfidence: high\n"
-
-    assert difficulty.plan_difficulty(text) == "MODERATE"
-
-
-def test_trailing_plan_difficulty_is_strict_trailing_only() -> None:
-    text = "difficulty: MODERATE\nbody\n\nreview_status: complete\ndiff_lines: 9\n"
-
-    assert difficulty.trailing_plan_difficulty(text) == ""
-
-
-def test_trailing_plan_metadata_lines_remains_contiguous_final_trailer_only() -> None:
-    text = "body\ndiff_added: 8\nnot trailer\ndifficulty: MODERATE\ndiff_lines: 9\n"
-
-    assert difficulty.trailing_plan_metadata_lines(text) == ("difficulty: MODERATE", "diff_lines: 9")
-
-
-def test_trailing_plan_metadata_lines_accepts_oversize_override() -> None:
-    text = "body\nreview_status: complete\nrounds_completed: 2\ndifficulty: MODERATE\noversize_override: operator\ndiff_lines: 9\n"
-
-    assert difficulty.trailing_plan_metadata_lines(text) == (
-        "review_status: complete",
-        "rounds_completed: 2",
-        "difficulty: MODERATE",
-        "oversize_override: operator",
-        "diff_lines: 9",
-    )
-
-
-def test_registry_driven_final_trailers_through_difficulty_lookup_and_rewrite() -> None:
-    values = {
-        "review_status": "complete",
-        "rounds_completed": 2,
-        "difficulty": "MODERATE",
-        "diff_added": 3,
-        "diff_deleted": 1,
-        "mechanical_churn": False,
-        "oversize_override": "operator",
-        "diff_lines": 11,
-    }
-    lines = plan_grammar.compose_trailer_lines(values)  # type: ignore[arg-type]
-    assert tuple(match.key for match in map(plan_grammar.match_trailer_line, lines) if match) == plan_grammar.TRAILER_KEYS
-    text = "body\n" + "\n".join(lines) + "\n"
-    trailers = plan_grammar.parse_final_trailers(text, require_diff_lines=True)
-    assert trailers.lines == lines
-    assert difficulty.plan_difficulty(text) == "MODERATE"
-    assert difficulty.trailing_plan_metadata_lines(text) == lines
-    rewritten = difficulty.rewrite_plan_difficulty(text, "HARD")
-    assert difficulty.plan_difficulty(rewritten) == "HARD"
-    assert "difficulty: HARD" in rewritten
-    assert rewritten.rstrip().endswith("diff_lines: 11")
 
 
 def test_operator_override_beats_floors_and_audit_can_upgrade(tmp_path: Path) -> None:

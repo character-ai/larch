@@ -27,8 +27,8 @@ use crate::{
     KvDocument, MalformedLinePolicy, ParseOptions, bgjob_daemon::redact_outbound,
     compose_execution_issue, execution_issue_body_keys, execution_issue_chunks,
     execution_issue_sections, existing_execution_issue_keys, implement::write_bytes_atomic,
-    logging_util::sanitize_diagnostic_line, read_architectural_knowledge, redact_batch_payload,
-    redaction::redact, validate_ship_outcome_record,
+    logging_util::sanitize_diagnostic_line, private_atomic_write, read_architectural_knowledge,
+    redact_batch_payload, redaction::redact, validate_ship_outcome_record,
 };
 
 /// Kind order preserved by [`normalize_kinds`].
@@ -900,6 +900,96 @@ const fn architectural_status(status: ArchitecturalStatus) -> &'static str {
         ArchitecturalStatus::Absent => "absent",
         ArchitecturalStatus::Invalid => "invalid",
     }
+}
+
+/// Persist or remove one Gate C design assessment through the architectural
+/// knowledge and artifact owners.
+///
+/// `clean` and `assessment_text` are prevalidated by the command layer. This
+/// function repeats the knowledge read immediately before mutation so a file
+/// state change cannot make the persisted artifact stale by construction.
+///
+/// # Errors
+/// Returns when a required source is missing, a stale artifact is not a regular
+/// file, or the assessment cannot be replaced atomically without following a
+/// symlink.
+pub fn persist_design_assessment(
+    repo_root: Option<&Path>,
+    design_tmpdir: &Path,
+    kind: AssessmentKind,
+    clean: bool,
+    assessment_text: Option<&str>,
+) -> Result<(), String> {
+    let knowledge = repo_root.map_or_else(crate::ArchitecturalKnowledge::absent, |root| {
+        read_architectural_knowledge(root, architectural_kind(kind))
+    });
+    let required = knowledge.status == ArchitecturalStatus::Present
+        && (!kind.is_invariant() || !knowledge.content.trim().is_empty());
+    let path = design_tmpdir.join(kind.design_assessment_filename());
+
+    if !required {
+        let remove_stale = knowledge.status != ArchitecturalStatus::Present || kind.is_invariant();
+        if remove_stale {
+            if path
+                .symlink_metadata()
+                .is_ok_and(|metadata| metadata.is_file() && !metadata.file_type().is_symlink())
+            {
+                fs::remove_file(&path).map_err(|error| error.to_string())?;
+            }
+            if path.symlink_metadata().is_ok() {
+                return Err(format!(
+                    "{}: stale entry could not be removed (not a regular file)",
+                    kind.design_assessment_filename()
+                ));
+            }
+        }
+        return Ok(());
+    }
+
+    let text = if clean {
+        format!("{}\n", kind.clean_presentation_note())
+    } else if let Some(assessment) = assessment_text {
+        format!("{}\n", assessment.trim_end_matches('\n'))
+    } else {
+        return Err(format!(
+            "present {} require exactly one assessment source",
+            kind.key()
+        ));
+    };
+
+    let directory = design_tmpdir
+        .symlink_metadata()
+        .map_err(|error| error.to_string())?;
+    if directory.file_type().is_symlink() || !directory.is_dir() {
+        return Err("design-tmpdir: path must name a non-symlink directory".to_owned());
+    }
+    checked_design_assessment_path(&path, kind.design_assessment_filename(), "target")?;
+    let temporary = path.with_file_name(format!("{}.tmp", kind.design_assessment_filename()));
+    checked_design_assessment_path(
+        &temporary,
+        temporary
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("assessment.tmp"),
+        "temp path",
+    )?;
+    if temporary.symlink_metadata().is_ok() {
+        fs::remove_file(&temporary).map_err(|error| error.to_string())?;
+    }
+    private_atomic_write(&path, &text, design_tmpdir).map_err(|error| error.to_string())
+}
+
+fn checked_design_assessment_path(path: &Path, label: &str, role: &str) -> Result<(), String> {
+    let Ok(metadata) = path.symlink_metadata() else {
+        return Ok(());
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(format!("{label}: {role} must not be a symlink"));
+    }
+    if !metadata.is_file() {
+        return Err(format!("{label}: {role} must be a regular file"));
+    }
+    Ok(())
 }
 
 fn compose_precheck(

@@ -248,9 +248,9 @@ allowlist: `/tmp`, `/private/tmp`, `/var/folders`, `/private/var/folders`, and
 the `XDG_CACHE_HOME` or `HOME` cache root. A caller-supplied `TMPDIR` does not
 widen that set. `python/larch/state/session_env.py` keeps an in-process copy of
 the same rule for the Python-owned commands that still call it directly.
-`crates/larch-adapters/src/github/issue_mutation.rs` owns the Rust issue
-mutations, and the operation-specific Python issue modules own the entry points
-that have not migrated yet. Unauthorized calls fail before any GitHub request,
+`crates/larch-adapters/src/github/issue_mutation.rs` owns every live issue
+mutation; retained Python issue modules contain no mutation owner. Unauthorized
+calls fail before any GitHub request,
 emit the documented refusal result, and do not retry through another route.
 `issue create-one` applies the check in the Rust owner before the create request
 is built. `/issue`, including every `/learn-from-bugs` filing route, requests
@@ -873,9 +873,11 @@ The main workflow does not author, repair, or inspect assessment prose on this
 path. Stale, malformed, incomplete, unavailable, or mismatched results do not
 clear the gate. A fresh assessor judges every repair. An invariant violation
 hard-stops after the bounded fix ladder; no waiver or operator override accepts
-it. Rust owns architectural preparation and implement assessment writes.
-Retained Python rows are limited to design-time knowledge reads, note
-presentation, and design-assessment persistence. The active Rust `ship pr` owner
+it. Rust owns architectural preparation, design-time knowledge reads, note
+presentation, design-assessment persistence, and implement assessment writes.
+Remaining Python render and run-log consumers reach the Rust `read` commands
+through the verified `scripts/larch.sh` entrypoint and do not parse the
+repo-root knowledge files. The active Rust `ship pr` owner
 consumes only identity-validated durable notes, follows the closed outcome
 grammar, binds fork assessments to `upstream/main`, and redacts note text before
 PR composition. The Rust Step 8 dispatcher carries

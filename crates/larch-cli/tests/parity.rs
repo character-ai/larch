@@ -652,6 +652,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "materialize-diff",
     ),
     CleanInstallCase::new(
+        "clean-install-architectural-guidelines-persist-design-assessment",
+        "architectural-guidelines",
+        "persist-design-assessment",
+    ),
+    CleanInstallCase::new(
         "clean-install-architectural-guidelines-prepare",
         "architectural-guidelines",
         "prepare",
@@ -677,6 +682,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "pin-note-from-staged",
     ),
     CleanInstallCase::new(
+        "clean-install-architectural-guidelines-present-note",
+        "architectural-guidelines",
+        "present-note",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-guidelines-read",
+        "architectural-guidelines",
+        "read",
+    ),
+    CleanInstallCase::new(
         "clean-install-architectural-guidelines-write-compose-assessment",
         "architectural-guidelines",
         "write-compose-assessment",
@@ -690,6 +705,11 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-architectural-invariants-materialize-diff",
         "architectural-invariants",
         "materialize-diff",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-invariants-persist-design-assessment",
+        "architectural-invariants",
+        "persist-design-assessment",
     ),
     CleanInstallCase::new(
         "clean-install-architectural-invariants-prepare",
@@ -715,6 +735,16 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "clean-install-architectural-invariants-pin-note-from-staged",
         "architectural-invariants",
         "pin-note-from-staged",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-invariants-present-note",
+        "architectural-invariants",
+        "present-note",
+    ),
+    CleanInstallCase::new(
+        "clean-install-architectural-invariants-read",
+        "architectural-invariants",
+        "read",
     ),
     CleanInstallCase::new(
         "clean-install-architectural-invariants-write-compose-assessment",

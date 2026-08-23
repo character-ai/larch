@@ -30,6 +30,7 @@ FROZEN = Path(__file__).resolve().parent / "design_terminal_frozen"
 CORE_FROZEN = Path(__file__).resolve().parent / "design_finalize_frozen" / "design_core.py"
 
 from larch.core import repo_roots as _repo_roots  # noqa: E402
+from design_pause_dispatch_stub import install as _install_design_package  # noqa: E402
 
 _ORIGINAL_ENTRYPOINT = _repo_roots.larch_entrypoint
 
@@ -43,6 +44,7 @@ def _entrypoint(root: Path) -> Path:
 # Patch before the frozen module runs its `from ... import larch_entrypoint`
 # so the by-name binding resolves to the harness-preferring entrypoint.
 _repo_roots.larch_entrypoint = _entrypoint  # type: ignore[assignment]
+_install_design_package()
 
 
 def _load(name: str, path: Path):

@@ -3,8 +3,7 @@ mod support;
 use predicates::prelude::*;
 use support::TempRepo;
 
-const OWNER_GUIDANCE: &str = "use larch.issue.issue_mutation";
-const RUST_OWNER_GUIDANCE: &str = "use larch_adapters::github::IssueMutationOwner";
+const OWNER_GUIDANCE: &str = "use larch_adapters::github::IssueMutationOwner";
 
 #[test]
 fn rejects_raw_python_helpers_aliases_multiline_calls_and_wrappers() {
@@ -127,10 +126,10 @@ use larch_core::GitHubService;
         .assert()
         .code(1)
         .stdout(predicate::str::contains(format!(
-            "crates/larch-cli/src/direct.rs:2: raw Rust issue field mutation edit_issue; {RUST_OWNER_GUIDANCE}"
+            "crates/larch-cli/src/direct.rs:2: raw Rust issue field mutation edit_issue; {OWNER_GUIDANCE}"
         )))
         .stdout(predicate::str::contains(format!(
-            "crates/larch-cli/src/direct.rs:3: raw Rust issue field mutation remove_label; {RUST_OWNER_GUIDANCE}"
+            "crates/larch-cli/src/direct.rs:3: raw Rust issue field mutation remove_label; {OWNER_GUIDANCE}"
         )))
         .stderr("");
 }
@@ -173,13 +172,12 @@ fn rejects_shell_markdown_and_hook_commands() {
 }
 
 #[test]
-fn allows_owner_fixture_roots_comments_strings_reads_and_unrelated_mutations() {
+fn allows_rust_owner_fixture_roots_comments_strings_reads_and_unrelated_mutations() {
     let repository = TempRepo::new();
     let fixture = br#"from larch.git import gh
 gh.issue_edit(runner, "7", repo="owner/repo", title="new")
 runner.run(["gh", "issue", "edit", "7"])
 "#;
-    repository.write("python/larch/issue/issue_mutation.py", fixture);
     repository.write(
         "crates/larch-adapters/src/github/issue_mutation.rs",
         b"use larch_core::GitHubService;\n\nfn owner(service: &impl GitHubService) {\n    service.edit_issue(request, cancellation);\n}\n",

@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import cast
 from larch import io as larch_io
 from larch.core import config
-from larch.design import plan_grammar
 
 TRIVIAL = config.DIFFICULTY_TIER_TRIVIAL
 MODERATE = config.DIFFICULTY_TIER_MODERATE
@@ -31,7 +30,6 @@ FLOOR_MANIFEST = Path(__file__).resolve().parents[3] / "docs" / "difficulty-floo
 
 _TIER_RANK = {tier: rank for rank, tier in enumerate(TIERS)}
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_PLAN_LEGACY_CONFIDENCE_RE = re.compile(r"^confidence: .+$")
 
 
 def blank_merge_args() -> argparse.Namespace:
@@ -544,68 +542,6 @@ def append_escalation(record_path: Path, round_num: int, from_tier: str, to_tier
     _write_record_data(record_path, data)
 
 
-def trailing_plan_difficulty(text: str) -> str:
-    for line in reversed(trailing_plan_metadata_lines(text)):
-        match = plan_grammar.match_trailer_line(line.strip())
-        if match is not None and match.key == "difficulty":
-            return match.value
-    return ""
-
-
-def _last_plan_difficulty_line(text: str) -> str:
-    for line in reversed(text.splitlines()):
-        match = plan_grammar.match_trailer_line(line.strip())
-        if match is not None and match.key == "difficulty":
-            return match.value
-    return ""
-
-
-def _adjacent_invalid_difficulty(text: str) -> bool:
-    lines = text.splitlines()
-    span = _trailing_metadata_span(lines)
-    idx = span[0] if span is not None else len(lines)
-    while idx > 0:
-        line = lines[idx - 1].strip()
-        if not line or plan_grammar.match_trailer_line(line) is not None or _PLAN_LEGACY_CONFIDENCE_RE.fullmatch(line):
-            idx -= 1
-            continue
-        if line.startswith("difficulty:"):
-            match = plan_grammar.match_trailer_line(line)
-            return match is None or match.key != "difficulty"
-        return False
-    return False
-
-
-def plan_difficulty(text: str) -> str:
-    trailing = trailing_plan_difficulty(text)
-    if trailing:
-        return trailing
-    if _adjacent_invalid_difficulty(text):
-        return ""
-    return _last_plan_difficulty_line(text)
-
-
-def rewrite_plan_difficulty(text: str, tier: str) -> str:
-    if not tier_valid(tier):
-        return text
-    lines = text.splitlines(keepends=True)
-    span = _trailing_metadata_span(text.splitlines())
-    if span is None:
-        return text
-    start, end = span
-    replacement = f"difficulty: {tier}\n"
-    for idx in range(start, end):
-        if lines[idx].startswith("difficulty:"):
-            newline = "\n" if lines[idx].endswith("\n") else ""
-            lines[idx] = f"difficulty: {tier}{newline}"
-            return "".join(lines)
-    insert_at = end
-    while insert_at > start and lines[insert_at - 1].startswith("diff_lines:"):
-        insert_at -= 1
-    lines.insert(insert_at, replacement)
-    return "".join(lines)
-
-
 def label_for_tier(tier: str) -> str:
     if not tier_valid(tier):
         raise ValueError(f"invalid difficulty tier: {tier}")
@@ -620,25 +556,6 @@ def _rating_from_tier(tier: str, *, rationale: str) -> DifficultyRating | None:
     if not tier_valid(tier):
         return None
     return DifficultyRating(predicted_tier=tier, confidence="medium", rationale=sanitize_rationale(rationale) or "wire metadata", adjusted_tier=tier)
-
-
-def _trailing_metadata_span(lines: list[str]) -> tuple[int, int] | None:
-    trailers = plan_grammar.parse_final_trailers("\n".join(lines))
-    if not trailers.matches:
-        return None
-    end = len(lines)
-    while end > 0 and not lines[end - 1].strip():
-        end -= 1
-    return trailers.start_line - 1, end
-
-
-def trailing_plan_metadata_lines(text: str) -> tuple[str, ...]:
-    lines = text.splitlines()
-    span = _trailing_metadata_span(lines)
-    if span is None:
-        return ()
-    start, end = span
-    return tuple(lines[start:end])
 
 
 def build_record(

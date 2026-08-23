@@ -50,7 +50,7 @@ const PYTHON_READER_OWNERS: &[&str] = &[
     "python/larch/core/env_file.py",
 ];
 const PYTHON_EMITTER_OWNER: &str = "python/larch/core/logging_util.py";
-const PYTHON_EMITTER_GUARDED: &[&str] = &["python/larch/issue/issue_create.py"];
+const PYTHON_EMITTER_GUARDED: &[&str] = &[];
 
 const OPTION_ITER_NAMES: &[&str] = &["args", "argv", "options", "tokens"];
 const OPTION_BINDING_NAMES: &[&str] = &["arg", "token", "opt", "option", "argv_item"];
@@ -839,8 +839,8 @@ mod tests {
                  async def async_parse(rows):\n    async for line in rows:\n        key, value = line.split('=', 1)\n",
             ),
             (
-                "python/larch/issue/issue_create.py",
-                "def emit_kv(key, value):\n    print(f'{key}={value}')\n    print(f'literal=value')\n",
+                "python/larch/example_emit.py",
+                "def emit_kv(key, value):\n    print(f'{key}={value}')\n",
             ),
             (
                 PYTHON_READER_OWNERS[0],
@@ -853,16 +853,10 @@ mod tests {
         ]);
         let findings = KvCodecRule.check(&fixture.repository).expect("check");
         let messages: Vec<_> = findings.findings().iter().map(ToString::to_string).collect();
-        assert_eq!(messages.len(), 6, "{messages:?}");
+        assert_eq!(messages.len(), 5, "{messages:?}");
         assert!(messages.iter().filter(|message| message.contains("KEY=value split")).count() == 4);
         assert!(messages.iter().any(|message| message.contains("KEY=value emitter")));
-        assert_eq!(
-            messages
-                .iter()
-                .filter(|message| message.contains("KEY=value print wrapper"))
-                .count(),
-            1
-        );
+        assert!(!messages.iter().any(|message| message.contains("KEY=value print wrapper")));
         assert!(messages.iter().all(|message| !message.contains(PYTHON_READER_OWNERS[0])));
         assert!(messages.iter().all(|message| !message.contains(PYTHON_EMITTER_OWNER)));
     }

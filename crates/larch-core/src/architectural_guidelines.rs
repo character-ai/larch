@@ -474,6 +474,15 @@ fn active_exception_lines(note: &str) -> Vec<String> {
     result
 }
 
+/// True when a note contains any active, non-fenced `Exception:` line.
+///
+/// This is intentionally broader than [`guideline_active_exception`]: callers
+/// use it to reject an undocumented exception even when the line is malformed.
+#[must_use]
+pub fn guideline_exception_present(note: &str) -> bool {
+    !active_exception_lines(note).is_empty()
+}
+
 /// Return the sole valid active documented-exception, or `None` (fail closed).
 ///
 /// Recognizes exactly one active `Exception:` line outside code fences with a

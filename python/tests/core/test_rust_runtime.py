@@ -20,6 +20,81 @@ from test_support import RecordingRunner
 from tests.support.foundation import make_run_context
 
 
+def test_architectural_knowledge_read_parses_the_rust_envelope() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("larch",),
+                0,
+                "ARCHITECTURAL_INVARIANTS_STATUS=present\n"
+                "ARCHITECTURAL_INVARIANTS_PATH=/repo/ARCHITECTURAL_INVARIANTS.md\n"
+                '<architectural_invariants encoding="literal-redacted">\n'
+                "### I-Test-1: Preserve parity\n"
+                "</architectural_invariants>\n\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    result = rust_runtime.architectural_knowledge_read(
+        kind="invariants", repo_root=Path("/repo"), runner=runner
+    )
+
+    assert result.status == "present"
+    assert result.path == "/repo/ARCHITECTURAL_INVARIANTS.md"
+    assert result.has_entries
+    assert result.content_block.endswith("</architectural_invariants>\n")
+    assert runner.calls[0][1:] == [
+        "architectural-invariants",
+        "read",
+        "--repo-root",
+        "/repo",
+    ]
+
+
+def test_architectural_knowledge_read_fails_closed_for_bad_output() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("larch",),
+                0,
+                "ARCHITECTURAL_GUIDELINES_STATUS=present\n"
+                "ARCHITECTURAL_GUIDELINES_PATH=/repo/ARCHITECTURAL_GUIDELINES.md\n"
+                '<architectural_guidelines encoding="literal-redacted">\nunterminated\n',
+                "",
+                0.01,
+            ),
+            CommandResult(("larch",), 2, "", "  read failed\nwith detail  ", 0.01),
+            CommandResult(
+                ("larch",),
+                0,
+                "ARCHITECTURAL_GUIDELINES_STATUS=absent\n"
+                "ARCHITECTURAL_GUIDELINES_PATH=/unexpected\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    malformed = rust_runtime.architectural_knowledge_read(
+        kind="guidelines", runner=runner
+    )
+    failed = rust_runtime.architectural_knowledge_read(
+        kind="guidelines", runner=runner
+    )
+    inconsistent = rust_runtime.architectural_knowledge_read(
+        kind="guidelines", runner=runner
+    )
+
+    assert malformed.status == "invalid"
+    assert malformed.warning == "architectural read emitted a malformed content block"
+    assert failed.status == "invalid"
+    assert failed.warning == "read failed with detail"
+    assert inconsistent.status == "invalid"
+    assert inconsistent.warning == "architectural read emitted inconsistent status fields"
+
+
 def test_phantom_probe_relays_validated_rust_envelope() -> None:
     runner = RecordingRunner(
         responses=[

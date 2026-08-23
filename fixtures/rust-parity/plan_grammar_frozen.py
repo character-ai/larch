@@ -1,9 +1,8 @@
-"""Normative plan heading and trailer grammar.
+"""Frozen Python plan grammar retained only for pre-cutover parity fixtures.
 
-This module owns plan heading and trailer syntax plus the executable-plan
-contract (M1 shape facets and M2 repository-scope path checks). Consumers retain
-policy and authority checks, such as deciding whether an operator-authored
-oversize override is trusted.
+The live owner is ``larch_core::design::plan_grammar``. This snapshot preserves
+historical Python behavior for Rust parity harnesses; production Python must not
+import it.
 """
 
 from __future__ import annotations

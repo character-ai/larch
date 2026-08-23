@@ -11,6 +11,12 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from design_pause_dispatch_stub import (
+    install_shared_retired_dependencies as _install_retired_dependencies,
+)
+
+_install_retired_dependencies()
+
 FROZEN = Path(__file__).resolve().parent / "design_router_frozen"
 
 

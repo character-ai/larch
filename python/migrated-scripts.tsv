@@ -1410,3 +1410,9 @@ python/tests/review/test_voting.py	#8452
 python/larch/git/pr.py	#8790
 python/larch/git/push.py	#8790
 python/tests/git/test_pr.py	#8790
+python/larch/design/__init__.py	#8786
+python/larch/issue/issue_blocks.py	#8786
+python/larch/issue/issue_mutation.py	#8786
+python/tests/design/test_design_cli_ports.py	#8786
+python/tests/design/test_plan_grammar.py	#8786
+python/tests/issue/test_issue_mutation.py	#8786

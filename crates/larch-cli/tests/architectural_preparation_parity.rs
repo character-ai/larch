@@ -98,6 +98,139 @@ fn help_matches_retired_argparse_for_each_domain_and_verb() {
 }
 
 #[test]
+fn gate_c_read_and_present_help_matches_retired_argparse() {
+    let root = TempDir::new().expect("temp");
+    for domain in ["architectural-guidelines", "architectural-invariants"] {
+        for verb in ["read", "present-note"] {
+            let assertion = larch(root.path())
+                .args([domain, verb, "--help"])
+                .assert()
+                .success();
+            let command = format!("{domain} {verb}");
+            let indent = " ".repeat(format!("usage: {command} ").len());
+            let expected = if verb == "read" {
+                format!(
+                    "usage: {command} [-h] [--repo-root REPO_ROOT]\n\n\
+                     options:\n  -h, --help            show this help message and exit\n  --repo-root REPO_ROOT\n"
+                )
+            } else {
+                format!(
+                    "usage: {command} [-h] [--repo-root REPO_ROOT]\n\
+                     {indent}[--assessment {{pending,clean}}]\n\n\
+                     options:\n  -h, --help            show this help message and exit\n  --repo-root REPO_ROOT\n  --assessment {{pending,clean}}\n"
+                )
+            };
+            assert_eq!(stdout(&assertion), expected, "{domain} {verb}");
+        }
+    }
+}
+
+#[test]
+fn gate_c_read_and_present_note_preserve_status_and_empty_asymmetry() {
+    let root = TempDir::new().expect("temp");
+    let repo = repository(root.path());
+
+    let absent = larch(root.path())
+        .args([
+            "architectural-guidelines",
+            "read",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+        ])
+        .assert()
+        .success();
+    assert_eq!(stdout(&absent), "ARCHITECTURAL_GUIDELINES_STATUS=absent\n");
+
+    fs::write(
+        repo.join("ARCHITECTURAL_GUIDELINES.md"),
+        "### G-Test-1: Escape <xml>\n- Why: parity\n- Deviate when: never\n",
+    )
+    .expect("guidelines");
+    let read = larch(root.path())
+        .args([
+            "architectural-guidelines",
+            "read",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+        ])
+        .assert()
+        .success();
+    let read_output = stdout(&read);
+    assert!(
+        read_output.starts_with(&format!(
+            "ARCHITECTURAL_GUIDELINES_STATUS=present\nARCHITECTURAL_GUIDELINES_PATH={}\n",
+            repo.join("ARCHITECTURAL_GUIDELINES.md").display()
+        )),
+        "{read_output}"
+    );
+    assert!(read_output.contains("### G-Test-1: Escape &lt;xml&gt;"));
+    assert!(read_output.contains("- Why: parity\n- Deviate when: never"));
+
+    let pending = larch(root.path())
+        .args([
+            "architectural-guidelines",
+            "present-note",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+        ])
+        .assert()
+        .success();
+    let pending_output = stdout(&pending);
+    assert!(pending_output.contains("GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true\n"));
+    assert!(pending_output.contains("<architectural_guidelines encoding=\"literal-redacted\">"));
+
+    let clean = larch(root.path())
+        .args([
+            "architectural-guidelines",
+            "present-note",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--assessment",
+            "clean",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        stdout(&clean),
+        "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.\n"
+    );
+
+    fs::write(
+        repo.join("ARCHITECTURAL_INVARIANTS.md"),
+        "# No parseable invariant entries\n",
+    )
+    .expect("invariants");
+    let empty_pending = larch(root.path())
+        .args([
+            "architectural-invariants",
+            "present-note",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        stdout(&empty_pending),
+        format!(
+            "ARCHITECTURAL_INVARIANTS_PATH={}\n",
+            repo.join("ARCHITECTURAL_INVARIANTS.md").display()
+        )
+    );
+    let empty_clean = larch(root.path())
+        .args([
+            "architectural-invariants",
+            "present-note",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--assessment",
+            "clean",
+        ])
+        .assert()
+        .success();
+    assert_eq!(stdout(&empty_clean), "");
+}
+
+#[test]
 fn prepare_guidelines_emits_redacted_knowledge_and_persists_diff() {
     let root = TempDir::new().expect("temp");
     let repo = repository(root.path());

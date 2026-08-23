@@ -3,6 +3,7 @@
 
 This is test-only compatibility code. Product dispatch no longer imports it.
 """
+# ruff: noqa: E402
 
 from __future__ import annotations
 
@@ -12,6 +13,12 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 from typing import cast
+
+from design_pause_dispatch_stub import (
+    install_shared_retired_dependencies as _install_retired_dependencies,
+)
+
+_install_retired_dependencies()
 
 from larch import io as larch_io
 from larch.calibration import difficulty

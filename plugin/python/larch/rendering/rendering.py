@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from larch.calibration import difficulty
-from larch.core import architectural_guidelines
+from larch.core import config
 from larch.rendering import findings_ledger
 from larch.issue import issue_wire
 from larch import io as larch_io
@@ -380,32 +380,48 @@ def _write_payload_bytes_sidecar(path_value: str, payload_bytes: int) -> None:
             target.unlink()
 
 
-def _architectural_entry_text(*, result: architectural_guidelines.ArchitecturalGuidelinesResult, kind: str) -> str:
-    if result.content.strip():
-        return result.content
-    filename = architectural_guidelines.INVARIANTS_FILENAME if kind == "invariant" else architectural_guidelines.GUIDELINES_FILENAME
-    noun = "invariant" if kind == "invariant" else "guideline"
-    return f"No parsed {noun} entries were present in {filename}."
+def _architectural_block(
+    *, result: rust_runtime.ArchitecturalKnowledgeOutput, kind: str
+) -> str:
+    if result.content_block:
+        return result.content_block.rstrip("\n")
+    invariant = kind == config.ASSESSMENT_KIND_INVARIANTS
+    noun = "invariant" if invariant else "guideline"
+    filename = (
+        "ARCHITECTURAL_INVARIANTS.md" if invariant else "ARCHITECTURAL_GUIDELINES.md"
+    )
+    return issue_wire.emit_untrusted_content_block(
+        tag=f"architectural_{kind}",
+        text=f"No parsed {noun} entries were present in {filename}.",
+    ).rstrip("\n")
 
 
 def _architectural_guidelines_review_section(*, difficulty_value: str = "") -> str:
-    invariants = architectural_guidelines.read_invariants()
-    include_guidelines = difficulty.normalize_tier(difficulty_value) != difficulty.TRIVIAL
-    guidelines = architectural_guidelines.read_guidelines() if include_guidelines else None
+    invariants = rust_runtime.architectural_knowledge_read(
+        kind=config.ASSESSMENT_KIND_INVARIANTS
+    )
+    include_guidelines = (
+        difficulty.normalize_tier(difficulty_value) != difficulty.TRIVIAL
+    )
+    guidelines = (
+        rust_runtime.architectural_knowledge_read(
+            kind=config.ASSESSMENT_KIND_GUIDELINES
+        )
+        if include_guidelines
+        else None
+    )
     blocks: list[str] = []
     if invariants.status == "present":
         blocks.append(
-            issue_wire.emit_untrusted_content_block(
-                tag="architectural_invariants",
-                text=_architectural_entry_text(result=invariants, kind="invariant"),
-            ).rstrip("\n"),
+            _architectural_block(
+                result=invariants, kind=config.ASSESSMENT_KIND_INVARIANTS
+            )
         )
     if guidelines is not None and guidelines.status == "present":
         blocks.append(
-            issue_wire.emit_untrusted_content_block(
-                tag="architectural_guidelines",
-                text=_architectural_entry_text(result=guidelines, kind="guideline"),
-            ).rstrip("\n"),
+            _architectural_block(
+                result=guidelines, kind=config.ASSESSMENT_KIND_GUIDELINES
+            )
         )
     if not blocks:
         return ""
