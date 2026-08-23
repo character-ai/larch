@@ -672,7 +672,7 @@ test-review-and-fix-commit-fixes:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_and_fix_commands self_review_snapshot_commits_only_its_delta
 
 test-generate-code-flow-diagram:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k generate_code_flow
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test diagram_code_flow_parity
 
 test-review-and-fix-write-rejected:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test review_and_fix_commands
@@ -686,7 +686,7 @@ test-step-16-17:
 test-write-final-report: write-final-report-py-harness write-final-report-bash-harness
 
 write-final-report-py-harness:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/git/test_pr_body.py -q -k 'render_run_summary or post_tracking or generate_code_flow'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test render_run_summary_parity
 
 # Delegation smoke for write-final-report.sh; behavior lives in write-final-report-py-harness.
 write-final-report-bash-harness:

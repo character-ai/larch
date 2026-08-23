@@ -233,7 +233,7 @@ const EXPECTED_COMMANDS: [ExpectedCommand; 98] = [
 ];
 
 /// Commands that are deliberately outside #7682's closed boundary.
-const HANDOFF_COMMANDS: [HandoffCommand; 12] = [
+const HANDOFF_COMMANDS: [HandoffCommand; 11] = [
     HandoffCommand::new("analyze-issues", "render-chart", 7683),
     HandoffCommand::new("clarify", "comment-fetch", 7680),
     HandoffCommand::new("clarify", "comment-post", 7680),
@@ -242,7 +242,6 @@ const HANDOFF_COMMANDS: [HandoffCommand; 12] = [
     HandoffCommand::new("issue", "migration-audit", 7685),
     HandoffCommand::new("rejected-analysis", "finalize", 7684),
     HandoffCommand::new("rejected-analysis", "record", 7684),
-    HandoffCommand::new("render", "run-summary", 7680),
     HandoffCommand::new("token", "cost", 7684),
     HandoffCommand::new("token", "render-cost-line", 7684),
     HandoffCommand::new("tracking", "post-issue", 7681),

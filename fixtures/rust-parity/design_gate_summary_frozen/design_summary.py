@@ -20,9 +20,31 @@ from larch.report import exec_issue_detail
 from larch.report import review_phase_detail
 from larch.report import storage_config
 from larch.design.design_core import review_provenance
-from larch.git.pr_body import _map_outcome_display  # pyright: ignore[reportPrivateUsage]
 from larch.core.repo_roots import larch_entrypoint, larch_entrypoint_env, plugin_root
 from larch.report.report_tokens_cost import CODEX_MINI_MODELS, CURSOR_GROK_MODELS
+
+
+# Inlined from the retired ``pr_body._map_outcome_display`` (#8839 removed it
+# when ``render run-summary`` moved to Rust); this frozen reference keeps the
+# byte-identical outcome display it snapshotted.
+_IMPLEMENT_SUCCESS_OUTCOMES = frozenset({
+    "merged",
+    "force-merged-externally",
+    "pr-created",
+    "pr-created-draft",
+    "design-only",
+    "forked-dry-run",
+})
+_DESIGN_SUCCESS_OUTCOMES = frozenset({"approved", "approved-partition"})
+_SUCCESS_OUTCOMES = _IMPLEMENT_SUCCESS_OUTCOMES | _DESIGN_SUCCESS_OUTCOMES
+
+
+def _map_outcome_display(outcome: str) -> str:
+    if outcome in _SUCCESS_OUTCOMES:
+        return "✅ DONE"
+    if outcome == "stalled":
+        return "❌ STALLED"
+    return outcome
 
 
 _VALID_OUTCOMES = frozenset({
@@ -421,7 +443,7 @@ def _write_enriched_post_publish_summary(
         return 1
 
 
-# Calls `python/cli.py render run-summary` with --claude-input-tokens for per-bucket cost detail.
+# Calls the Rust `render run-summary` owner (#8839) with --claude-input-tokens for per-bucket cost detail.
 def invoke_render(
     *, design_tmpdir: Path,
     outcome: str,
@@ -470,7 +492,7 @@ def invoke_render(
         "--output-file", str(out_file),
         *cost_args,
     ]
-    result = _run_cli(*rr_args)
+    result = _run_larch(*rr_args)
     return result.returncode
 
 

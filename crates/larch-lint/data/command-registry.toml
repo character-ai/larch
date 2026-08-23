@@ -2962,11 +2962,13 @@ verb = "code-flow"
 python_module = "larch.git.pr_body"
 python_function = "generate_code_flow_diagram_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8839
+clean_install_test = "clean-install-diagram-code-flow"
 
 [[commands]]
 domain = "diagrams"
@@ -6425,11 +6427,13 @@ verb = "run-summary"
 python_module = "larch.git.pr_body"
 python_function = "render_run_summary_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8839
+clean_install_test = "clean-install-render-run-summary"
 
 [[commands]]
 domain = "render"
@@ -9432,12 +9436,6 @@ python = []
 rust = ["architectural-guidelines read", "architectural-invariants read", "block-issue *", "ci distill-log", "ci main-health", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "ship write-result-env", "stall-recovery normalize-outcome", "timing *", "token append-record", "token dump", "token lane-report", "token lane-write", "token mark", "token record-vendor", "token record-vendor-sidecar", "tracking-issue *"]
 
 [[callers]]
-path = "python/larch/git/pr_body.py"
-kind = "python-runtime"
-python = []
-rust = ["agent launch-claude-subprocess"]
-
-[[callers]]
 path = "python/larch/git/rebase.py"
 kind = "python-runtime"
 python = []
@@ -9866,7 +9864,7 @@ rust = ["fluff-analysis analyze"]
 [[callers]]
 path = "skills/implement/SKILL.md"
 kind = "skill"
-python = ["diagram code-flow", "render run-summary"]
+python = []
 rust = ["admission fork-env", "admission gate", "architectural-assessment materialize", "architectural-assessment submit", "bgjob wait", "bootstrap invoke", "checks lint-fix", "checks run-relevant", "ci distill-log", "ci main-health", "ci status", "ci wait", "diagrams upsert", "difficulty render-rubric", "difficulty write-record", "dirty-tree scope-check", "execution-issues refresh", "final-report step18b", "final-report write", "implement commit", "implement normalize-coder-scout", "implement preflight", "implement recovery-paths", "implement run-dispatch", "implement scope-disposition", "implement step-16-17", "implement step-17", "implement step-18-gate-logs-flush", "implement step-7a", "implement step-8-oos-checkpoint", "implement-finalize teardown", "merge pr", "oos file", "plan-block read", "plan-receipt refresh", "push branch", "push checkpoint-probe", "push rebase", "run-log append", "run-log append-entry", "session persist-run-flags", "session read-key", "session restore-finalize-state", "session setup", "session write-env", "ship normalize-assessment-handoff", "ship pre-driver", "ship pre-fix-rebase", "ship route-exit", "stall-recovery classify", "tracking post-issue", "tracking-issue upsert-summary", "voting write-tally"]
 
 [[callers]]
@@ -9926,7 +9924,7 @@ rust = ["issue parse-input", "oos disposition-gate", "oos file", "oos file-confl
 [[callers]]
 path = "skills/implement/references/extracted-script-registry.md"
 kind = "skill"
-python = ["render run-summary"]
+python = []
 rust = ["checks repair-loop", "implement checks-step5-resume", "implement step-16-17", "implement step-6-entry", "implement-finalize teardown", "pr closes-issue", "pr compose-summary"]
 
 [[callers]]
@@ -10292,7 +10290,7 @@ rust = ["architectural-invariants write-compose-assessment"]
 [[callers]]
 path = "skills/implement/scripts/write-final-report.md"
 kind = "skill"
-python = ["render run-summary"]
+python = []
 rust = ["audit-runs scan-run", "final-report write", "oos file", "run-log verify-completeness", "stall-recovery normalize-outcome"]
 
 [[callers]]

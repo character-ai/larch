@@ -53,6 +53,7 @@ crates/larch-cli/src/design_log_publish_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/design_publish_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/design_pause_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/design_step1_commands.rs	gix-read	#7671	typed-read
+crates/larch-cli/src/diagram_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/dirty_tree_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/developer_tooling_commands.rs	gix-read	#7671	typed-read
 crates/larch-cli/src/eval_commands.rs	gix-read	#7671	typed-read
@@ -114,7 +115,6 @@ python/larch/core/coder_delta_guards.py	later-domain	#7686	config,diff,ls-files,
 python/larch/core/redact.py	later-domain	#7686	submodule
 python/larch/git/gh.py	later-domain	#7676	remote
 python/larch/git/git.py	later-domain	#7681	add,branch,checkout,commit,diff,diff-tree,fetch,log,ls-files,ls-remote,ls-tree,merge-base,push,rebase,reset,restore,rev-list,rev-parse,rm,show,show-ref,status,symbolic-ref
-python/larch/git/pr_body.py	later-domain	#7681	diff,merge-base,rev-parse
 python/larch/git/rebase.py	later-domain	#7681	checkout
 python/larch/report/storage_config.py	later-domain	#7683	dynamic
 scripts/block-submodule-edit.sh	later-domain	#7677	rev-parse

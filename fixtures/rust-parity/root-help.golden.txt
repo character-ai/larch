@@ -61,6 +61,7 @@ Commands:
   progress                  Clone-scoped progress breadcrumbs and the larch statusline
   generate                  Regenerate or verify committed developer artifacts
   gantt                     Generic ASCII Gantt rendering
+  diagram                   Generate the committed-diff Mermaid code-flow diagram
   render                    Rust-owned runtime prompt and view renderers
   scope-anchor              Validate and relay the `/design` plan-review scope anchor
   mermaid                   Mermaid safety checks

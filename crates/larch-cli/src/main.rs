@@ -402,6 +402,9 @@ enum Domain {
     /// Generic ASCII Gantt rendering.
     #[command(subcommand)]
     Gantt(GanttCommand),
+    /// Generate the committed-diff Mermaid code-flow diagram.
+    #[command(subcommand)]
+    Diagram(DiagramCommand),
     /// Rust-owned runtime prompt and view renderers.
     #[command(subcommand)]
     Render(RenderCommand),
@@ -862,6 +865,13 @@ enum GanttCommand {
 }
 
 #[derive(Subcommand)]
+enum DiagramCommand {
+    /// Generate the committed-diff Mermaid code-flow diagram.
+    #[command(name = "code-flow", disable_help_flag = true)]
+    CodeFlow(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
 enum RenderCommand {
     /// Render one filtered view of a run's review-findings JSONL.
     #[command(name = "findings-view", disable_help_flag = true)]
@@ -881,6 +891,9 @@ enum RenderCommand {
     /// Render one design plan-review prompt.
     #[command(name = "plan-review", disable_help_flag = true)]
     PlanReview(RawCompatibilityArguments),
+    /// Render the terminal `/implement` or `/design` run-summary block.
+    #[command(name = "run-summary", disable_help_flag = true)]
+    RunSummary(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -3552,6 +3565,9 @@ fn run(
         Domain::Gantt(GanttCommand::Render(arguments)) => {
             Ok(rendering_commands::gantt_render(&arguments.arguments))
         }
+        Domain::Diagram(DiagramCommand::CodeFlow(arguments)) => {
+            Ok(diagram_commands::code_flow(&arguments.arguments))
+        }
         Domain::Render(command) => Ok(dispatch_render(command)),
         Domain::ScopeAnchor(command) => Ok(dispatch_scope_anchor(command)),
         Domain::Mermaid(MermaidCommand::Sanitize(arguments)) => {
@@ -4906,6 +4922,9 @@ fn dispatch_render(command: RenderCommand) -> ExitCode {
         RenderCommand::PlanReview(arguments) => {
             plan_prompt_commands::render_plan_review(&arguments.arguments)
         }
+        RenderCommand::RunSummary(arguments) => ExitCode::from(
+            u8::try_from(rendering_commands::run_summary(&arguments.arguments)).unwrap_or(2),
+        ),
     }
 }
 

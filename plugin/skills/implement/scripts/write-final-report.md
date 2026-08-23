@@ -4,7 +4,7 @@
 
 Builds the **rich markdown** final run summary, writes the staged `final-summary.md` for terminal archive publication (unless `--comment-only`), upserts the tracking-issue `larch:final-summary` comment, and optionally mirrors the body to the renderer print stream via `--print-stdout`. Top-chat visibility is owned by the `/implement` orchestrator, which emits the persisted `summary-final.md` body verbatim after the Bash call per `skills/implement/SKILL.md`.
 
-The markdown body is produced by [`python/cli.py render run-summary`](../../../python/pr_body.py): a `## /<skill> run <run-id>: <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). The renderer always emits `- **Outcome**:` as the first bullet. Successful outcomes display as `✅ DONE`, `stalled` displays as `❌ STALLED`, and other outcomes display raw. It no longer emits `- **Mode**:`. It emits `- Force: true` when `run-flags.sh` has `FORCE_REQUESTED=true`, and omits `- **PR**:` when the normalized display would be `N/A`. Optional per-lane USD lines use [`python/larch/report/report_tokens_cost.py`](../../../python/larch/report/report_tokens_cost.py) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md). The cost line includes the spawned-process Claude lane (`Claude (subprocess)` / machine name `claude_sub`, issue #3637): this script reads `.claude_sub.totals.total` and `BUCKETS_claude_sub` from `token-report.json` and forwards `--claude-sub-*` token flags to the renderer.
+The markdown body is produced by the Rust `render run-summary` owner (`crates/larch-cli/src/rendering_commands.rs`): a `## /<skill> run <run-id>: <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). The renderer always emits `- **Outcome**:` as the first bullet. Successful outcomes display as `✅ DONE`, `stalled` displays as `❌ STALLED`, and other outcomes display raw. It no longer emits `- **Mode**:`. It emits `- Force: true` when `run-flags.sh` has `FORCE_REQUESTED=true`, and omits `- **PR**:` when the normalized display would be `N/A`. Optional per-lane USD lines use [`python/larch/report/report_tokens_cost.py`](../../../python/larch/report/report_tokens_cost.py) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md). The cost line includes the spawned-process Claude lane (`Claude (subprocess)` / machine name `claude_sub`, issue #3637): this script reads `.claude_sub.totals.total` and `BUCKETS_claude_sub` from `token-report.json` and forwards `--claude-sub-*` token flags to the renderer.
 
 ## Implement outcome enum (`--outcome` raw values)
 
@@ -92,7 +92,7 @@ four counters back into `ship-pr-state.sh` when writable (replacing prior
 repeated live GitHub file-list calls during `--comment-only` refreshes.
 
 When status is `ok` and all four counters are non-empty integers, the writer
-forwards them into `python/cli.py render run-summary`. Otherwise the renderer
+forwards them into the Rust `render run-summary` owner. Otherwise the renderer
 omits those values and the bullet shows `N/A`.
 
 ## Review phase detail (per-round, issue #3774)
@@ -140,7 +140,7 @@ absent, or every available token bucket is zero, the in-process writer passes
 ## Render failure behavior
 
 The wrapper delegates to `scripts/larch.sh final-report write`, which renders the
-summary in process via `python/cli.py render run-summary` helpers. There is no
+summary in process via the Rust `render run-summary` owner. There is no
 separate Bash self-composed renderer fallback. Tracking-comment failures still
 return `STATUS=failed` after writing `summary-final.md`; repo-unavailable runs
 skip the tracking upsert and return `STATUS=ok` with an empty `COMMENT_URL`.

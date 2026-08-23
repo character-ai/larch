@@ -318,7 +318,7 @@ pub use implement::{
     PrSummaryError, RecoveryParse, RecoveryPorcelainInputs, SHIP_STATE_ALLOWED_KEYS,
     STEP6_CHECKS_STEP, ShipOutcome, ShipPrBody, ShipResult, ShipResultError, ShipState,
     ShipStateError, StepChecksSite, TrackingMetadata, checks_step_for_site,
-    clear_external_scout_paths, compose_pr_summary, compose_ship_pr_body,
+    clear_external_scout_paths, code_flow_reject_reason, compose_pr_summary, compose_ship_pr_body,
     compose_tracking_metadata, compute_recovery_paths, load_digest_map,
     manifest_legacy_fingerprint, parse_porcelain_z, path_under_submodule, public_args_for_site,
     redact_pr_body, rel_under_tmp, resolve_step_and_budget, resolve_step_name, resolve_tmpdir_path,

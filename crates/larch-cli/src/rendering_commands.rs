@@ -24,8 +24,9 @@ use larch_core::{
     classify_diff, cleanup_cache_sessions_root, python_int, redact_outbound,
     redact_run_log_payload,
     report::{
+        RunSummaryCost, RunSummaryFields, RunSummaryIdentity,
         gantt::{self, MAX_WIDTH},
-        growth_chart,
+        growth_chart, render_run_summary,
     },
     review::{
         FOCUS_AREA_VALUES, ledger_path, ledger_root, prompt_section, python_str_of_json,
@@ -41,8 +42,8 @@ use tempfile::NamedTempFile;
 use crate::{
     agent_commands::generated_paths,
     argparse_compat::{
-        ParsedCommandLine, finish_parse, option_text, parse, parse_with_flags, python_io_error,
-        usage_error, write_stdout,
+        ParsedCommandLine, choice_error, finish_parse, option_text, parse, parse_with_flags,
+        python_io_error, usage_error, write_stdout,
     },
     python_verb::plugin_root_directory,
 };
@@ -2638,6 +2639,272 @@ fn read_strict_utf8(path: Option<&Path>) -> Result<String, String> {
 /// Read a file the way Python's `read_text(errors="replace")` does.
 fn read_text_replacing(path: &Path) -> io::Result<String> {
     Ok(String::from_utf8_lossy(&fs::read(path)?).into_owned())
+}
+
+// ---------------------------------------------------------------------------
+// render run-summary
+//
+// Rust owner for the terminal run-summary renderer, porting Python
+// `larch.git.pr_body.render_run_summary_main` (#8839): argv parse, run-identity
+// resolution, pricing through the already-Rust `report::TokenCounts` pipeline,
+// and the output-file / stdout / `STATUS=ok` framing. The rendering half is the
+// reused `report::render_run_summary` owner (I-Owner-1).
+// ---------------------------------------------------------------------------
+
+const RUN_SUMMARY_HELP: &str = "usage: cli.py render run-summary [-h] --skill {implement,design} --outcome OUTCOME --run-id RUN_ID [options]\n\nRender the terminal run-summary block.\n";
+
+/// Non-token string value options accepted by `render run-summary`.
+const RUN_SUMMARY_STRING_OPTIONS: &[&str] = &[
+    "--skill",
+    "--outcome",
+    "--run-id",
+    "--mode",
+    "--workflow-path",
+    "--duration",
+    "--issue-number",
+    "--issue-url",
+    "--pr-number",
+    "--pr-url",
+    "--plan-review-line",
+    "--plan-coverage-line",
+    "--difficulty-line",
+    "--dynamic-archetypes-line",
+    "--code-review-line",
+    "--code-added",
+    "--code-deleted",
+    "--logs-added",
+    "--logs-deleted",
+    "--oos-count",
+    "--oos-urls",
+    "--exec-issues",
+    "--warnings",
+    "--run-logs-path",
+    "--merge-downgraded",
+    "--manifest-path",
+    "--larch-version",
+    "--main-model",
+    "--effort",
+    "--force-requested",
+    "--output-file",
+    "--note-lines-file",
+];
+
+/// Token-count options, mirroring Python `_TOKEN_COST_ARGS` order (base list
+/// plus the spawned-Claude per-model sonnet/haiku/fable flags).
+const TOKEN_COST_FLAGS: &[&str] = &[
+    "--claude-tokens",
+    "--codex-tokens",
+    "--cursor-tokens",
+    "--claude-sub-tokens",
+    "--claude-input-tokens",
+    "--claude-cache-read-tokens",
+    "--claude-cache-write-5m-tokens",
+    "--claude-cache-write-1h-tokens",
+    "--claude-output-tokens",
+    "--codex-input-tokens",
+    "--codex-cached-input-tokens",
+    "--codex-output-tokens",
+    "--codex-mini-input-tokens",
+    "--codex-mini-cached-input-tokens",
+    "--codex-mini-output-tokens",
+    "--cursor-input-tokens",
+    "--cursor-cache-read-tokens",
+    "--cursor-output-tokens",
+    "--cursor-grok-input-tokens",
+    "--cursor-grok-cache-read-tokens",
+    "--cursor-grok-output-tokens",
+    "--claude-sub-input-tokens",
+    "--claude-sub-cache-read-tokens",
+    "--claude-sub-cache-write-5m-tokens",
+    "--claude-sub-cache-write-1h-tokens",
+    "--claude-sub-output-tokens",
+    "--claude-sub-sonnet-input-tokens",
+    "--claude-sub-sonnet-cache-read-tokens",
+    "--claude-sub-sonnet-cache-write-5m-tokens",
+    "--claude-sub-sonnet-cache-write-1h-tokens",
+    "--claude-sub-sonnet-output-tokens",
+    "--claude-sub-haiku-input-tokens",
+    "--claude-sub-haiku-cache-read-tokens",
+    "--claude-sub-haiku-cache-write-5m-tokens",
+    "--claude-sub-haiku-cache-write-1h-tokens",
+    "--claude-sub-haiku-output-tokens",
+    "--claude-sub-fable-input-tokens",
+    "--claude-sub-fable-cache-read-tokens",
+    "--claude-sub-fable-cache-write-5m-tokens",
+    "--claude-sub-fable-cache-write-1h-tokens",
+    "--claude-sub-fable-output-tokens",
+];
+
+/// `render run-summary` CLI handler. Emits the `STATUS=ok` / `OUTPUT_FILE=`
+/// stderr framing the Python entrypoint produced.
+pub fn run_summary(arguments: &[OsString]) -> i32 {
+    run_summary_impl(arguments, true)
+}
+
+/// In-process entry for callers that capture nothing on stderr (e.g. `design
+/// render-final-summary`). Suppresses the `STATUS=ok` / `OUTPUT_FILE=` framing so
+/// it does not leak onto the parent command's stderr, matching the pre-cutover
+/// path that captured the delegated child's stderr.
+pub fn run_summary_quiet(arguments: &[OsString]) -> i32 {
+    run_summary_impl(arguments, false)
+}
+
+/// Returns the process exit code (0 or 2), matching the Python `argparse`
+/// contract: a usage error exits 2 with no `STATUS=ok`.
+fn run_summary_impl(arguments: &[OsString], emit_status: bool) -> i32 {
+    let mut value_options: Vec<&'static str> = RUN_SUMMARY_STRING_OPTIONS.to_vec();
+    value_options.extend_from_slice(TOKEN_COST_FLAGS);
+    let flags: &[&'static str] = &["--print-stdout", "--cost-unavailable", "-h", "--help"];
+    let parsed = parse_with_flags(arguments, &value_options, flags, 0);
+    if parsed.flag("-h") || parsed.flag("--help") {
+        print!("{RUN_SUMMARY_HELP}");
+        return 0;
+    }
+    let choices: [(&str, &[&str]); 2] = [
+        ("--skill", &["implement", "design"]),
+        ("--force-requested", &["true", "false"]),
+    ];
+    let has_error = parsed.value_error().is_some()
+        || choice_error(arguments, &["--skill", "--force-requested"], &choices).is_some()
+        || ["--skill", "--outcome", "--run-id"]
+            .iter()
+            .any(|name| parsed.value(name).is_none())
+        || parsed.error().is_some();
+    if has_error {
+        eprintln!("render run-summary: invalid arguments");
+        return 2;
+    }
+
+    let manifest_path = summary_string(&parsed, "--manifest-path");
+    let identity = crate::final_report_commands::resolve_run_identity(
+        Path::new(&manifest_path),
+        &summary_string(&parsed, "--larch-version"),
+        &summary_string(&parsed, "--main-model"),
+        &summary_string(&parsed, "--effort"),
+    );
+    let cost = summary_cost(&parsed, &identity);
+    let note_lines = {
+        let path = summary_string(&parsed, "--note-lines-file");
+        if !path.is_empty() && Path::new(&path).is_file() {
+            fs::read_to_string(&path).unwrap_or_default()
+        } else {
+            String::new()
+        }
+    };
+    let fields = summary_fields(&parsed, identity, cost);
+    let mut body = render_run_summary(&fields);
+    if !note_lines.is_empty() {
+        // Python appends a blank line then the note block (trailing newlines
+        // trimmed) after the sentinel, keeping one trailing newline overall.
+        body = format!(
+            "{}\n\n{}\n",
+            body.trim_end_matches('\n'),
+            note_lines.trim_end_matches('\n')
+        );
+    }
+
+    let output_file = summary_string(&parsed, "--output-file");
+    if !output_file.is_empty() {
+        let path = Path::new(&output_file);
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(path, &body);
+    }
+    if parsed.flag("--print-stdout") || output_file.is_empty() {
+        let _ = write_stdout(&body);
+    }
+    if emit_status {
+        eprintln!("STATUS=ok");
+        if !output_file.is_empty() {
+            eprintln!("OUTPUT_FILE={output_file}");
+        }
+    }
+    0
+}
+
+/// Assemble the [`RunSummaryFields`] from the parsed argv plus the resolved
+/// identity and cost (mirrors the Python `render_run_summary(**kwargs)` field map).
+fn summary_fields(
+    parsed: &ParsedCommandLine,
+    identity: RunSummaryIdentity,
+    cost: RunSummaryCost,
+) -> RunSummaryFields {
+    RunSummaryFields {
+        skill: summary_string(parsed, "--skill"),
+        outcome: summary_string(parsed, "--outcome"),
+        run_id: summary_string(parsed, "--run-id"),
+        workflow_path: summary_string(parsed, "--workflow-path"),
+        duration: summary_string(parsed, "--duration"),
+        issue_number: summary_string(parsed, "--issue-number"),
+        issue_url: summary_string(parsed, "--issue-url"),
+        pr_number: summary_string(parsed, "--pr-number"),
+        pr_url: summary_string(parsed, "--pr-url"),
+        plan_review_line: summary_string(parsed, "--plan-review-line"),
+        plan_coverage_line: summary_string(parsed, "--plan-coverage-line"),
+        difficulty_line: summary_string(parsed, "--difficulty-line"),
+        dynamic_archetypes_line: summary_string(parsed, "--dynamic-archetypes-line"),
+        code_review_line: summary_string(parsed, "--code-review-line"),
+        code_added: summary_string(parsed, "--code-added"),
+        code_deleted: summary_string(parsed, "--code-deleted"),
+        logs_added: summary_string(parsed, "--logs-added"),
+        logs_deleted: summary_string(parsed, "--logs-deleted"),
+        oos_count: summary_string(parsed, "--oos-count"),
+        oos_urls: summary_string(parsed, "--oos-urls"),
+        exec_issues: summary_string(parsed, "--exec-issues")
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(0),
+        warnings: summary_string(parsed, "--warnings")
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(0),
+        run_logs_path: summary_string(parsed, "--run-logs-path"),
+        force_requested: summary_string(parsed, "--force-requested"),
+        merge_downgraded: summary_string(parsed, "--merge-downgraded"),
+        needs_user_reason: String::new(),
+        needs_user_next_action: String::new(),
+        identity,
+        cost,
+    }
+}
+
+/// Read one option as an owned string, defaulting to empty like `args.<name> or ""`.
+fn summary_string(parsed: &ParsedCommandLine, name: &str) -> String {
+    parsed
+        .value(name)
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// Build the pricing argv and price the run through the shared cost owner
+/// (Python `_summary_token_argv` + `report_tokens_cost.token_cost_from_args`).
+fn summary_cost(parsed: &ParsedCommandLine, identity: &RunSummaryIdentity) -> RunSummaryCost {
+    let unavailable = RunSummaryCost {
+        cost_unavailable: true,
+        ..RunSummaryCost::default()
+    };
+    if parsed.flag("--cost-unavailable") {
+        return unavailable;
+    }
+    let mut token_argv: Vec<String> = Vec::new();
+    if !identity.main_model.is_empty() && identity.main_model != "unknown" {
+        token_argv.push("--claude-model".to_owned());
+        token_argv.push(identity.main_model.clone());
+    }
+    for flag in TOKEN_COST_FLAGS {
+        let raw = summary_string(parsed, flag);
+        let value = if raw.is_empty() { "0".to_owned() } else { raw };
+        if value != "0" {
+            token_argv.push((*flag).to_owned());
+            token_argv.push(value);
+        }
+    }
+    crate::final_report_commands::price_run_cost(&token_argv, &BTreeMap::new())
+        .unwrap_or(unavailable)
 }
 
 #[cfg(test)]

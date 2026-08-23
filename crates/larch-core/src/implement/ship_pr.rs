@@ -131,6 +131,19 @@ fn append_section(parts: &mut Vec<String>, heading: &str, body: &str) {
     }
 }
 
+/// Sanitize a code-flow candidate the way Python `sanitize_fragment(text, from_md=True)`
+/// did, returning the first rejection reason token or `None` when the fragment is safe.
+///
+/// Reuses the byte-equivalent [`validate_mermaid`] owner so the code-flow port never
+/// re-implements the sanitizer (I-Owner-1). The returned token feeds the
+/// `diagram code-flow` `SKIP_REASON` contract.
+#[must_use]
+pub fn code_flow_reject_reason(text: &str) -> Option<&'static str> {
+    validate_mermaid(text, true)
+        .err()
+        .and_then(|reasons| reasons.into_iter().next())
+}
+
 fn validate_mermaid(text: &str, from_markdown: bool) -> Result<(), Vec<&'static str>> {
     let markdown = from_markdown || first_content_is_mermaid_fence(text);
     let (_fences, reasons) = inspect_mermaid(text, markdown);
