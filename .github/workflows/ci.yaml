@@ -57,10 +57,10 @@ env:
   # Per GitHub release notes 2025-09-19, Node 20 is removed from runners on
   # 2026-09-16; this env var becomes the default on 2026-06-02.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  # Partial stays in observation until independent pull-request evidence
-  # records zero false-safe decisions for that decision class. Skip completed
-  # its recorded window and still falls back to full on any trust failure.
-  RUST_CI_PARTIAL_ENFORCEMENT: "false"
+  # Partial and skip completed their independent pull-request observation
+  # windows with zero false-safe decisions. Both still fall back to full on
+  # any selector or trust failure.
+  RUST_CI_PARTIAL_ENFORCEMENT: "true"
   RUST_CI_SKIP_ENFORCEMENT: "true"
 
 jobs:

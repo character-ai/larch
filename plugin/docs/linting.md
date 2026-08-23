@@ -232,14 +232,12 @@ There are four pre-commit-driven paths:
 
   Pull requests run the `rust-selection` observation job before the Rust
   lanes. It runs the selector from the trusted pull-request base and publishes
-  a redacted proposed/effective decision artifact. Partial enforcement remains
-  `false`, so proposed `partial` results still run the full Rust backstop while
-  its independent-PR observation window is collected. The recorded skip window
-  promotes skip enforcement to `true`: `skip` keeps non-Rust owners and uses a
-  checksum-verified, input-keyed trusted-main policy executable. Missing trust
-  evidence falls back to `full`. After its own reviewed promotion, `partial`
-  retains selected package tests, Clippy, doctests, candidate-built repository
-  policy, plugin validation, and the Python artifact. The stable
+  a redacted proposed/effective decision artifact. The recorded independent
+  observation windows promote partial and skip enforcement to `true`.
+  `partial` retains selected package tests, Clippy, doctests, candidate-built
+  repository policy, plugin validation, and the Python artifact. `skip` keeps
+  non-Rust owners and uses a checksum-verified, input-keyed trusted-main policy
+  executable. Missing trust evidence falls back to `full`. The stable
   `rust-coverage` status aggregates the one effective execution path, while
   the merge queue remains the full per-merge backstop.
   See [Rust testing](rust-testing.md) for ownership, cache identity, the
