@@ -19,8 +19,8 @@ pub const AUDIT_LEDGER_VERSION: u8 = 1;
 pub const AUDIT_PROPOSAL_VERSION: u8 = 1;
 /// The largest complete issue/source snapshot the audit will accept.
 pub const MAX_AUDIT_SOURCES: usize = 128;
-/// The largest number of direct leaves the public umbrella convention admits.
-pub const MAX_AUDIT_LEAVES: usize = 30;
+/// Bound one model-authored corrective leaf batch before public mutation.
+pub const MAX_AUDIT_PROPOSAL_LEAVES: usize = 30;
 /// Bound model-authored ledger rows before they reach a durable file.
 pub const MAX_AUDIT_REQUIREMENTS: usize = 20_000;
 /// Bound one model-authored issue body before a public mutation.
@@ -258,10 +258,8 @@ pub enum AuditProposalViolation {
     UnexpectedLeaves,
     /// A gap ledger supplied no corrective leaves.
     MissingLeaves { gap_id: String },
-    /// The draft carried more than [`MAX_AUDIT_LEAVES`] leaves.
+    /// The draft carried more than [`MAX_AUDIT_PROPOSAL_LEAVES`] leaves.
     TooManyLeaves,
-    /// Historical and proposed leaves exceeded [`MAX_AUDIT_LEAVES`] together.
-    LeafCapacity,
     /// One leaf title did not start with the exact umbrella prefix.
     LeafTitlePrefix { leaf: usize, title: String },
     /// One leaf title was empty, multiline, untrimmed, or oversized.
@@ -336,7 +334,6 @@ impl AuditProposalViolation {
             Self::UnexpectedLeaves => "unexpected-leaves",
             Self::MissingLeaves { .. } => "missing-leaves",
             Self::TooManyLeaves => "too-many-leaves",
-            Self::LeafCapacity => "leaf-capacity",
             Self::LeafTitlePrefix { .. } => "leaf-title-prefix",
             Self::LeafTitleShape { .. } => "leaf-title-shape",
             Self::LeafBodyShape { .. } => "leaf-body-shape",
@@ -927,15 +924,8 @@ fn diagnose_proposal_leaves(
             gap_id: (*gap_id).to_owned(),
         });
     }
-    if draft.leaves.len() > MAX_AUDIT_LEAVES {
+    if draft.leaves.len() > MAX_AUDIT_PROPOSAL_LEAVES {
         return Err(AuditProposalViolation::TooManyLeaves);
-    }
-    if snapshot_direct_leaf_numbers(snapshot)
-        .len()
-        .saturating_add(draft.leaves.len())
-        > MAX_AUDIT_LEAVES
-    {
-        return Err(AuditProposalViolation::LeafCapacity);
     }
     let mut leaves = Vec::with_capacity(draft.leaves.len());
     let mut observed_gap_ids = BTreeSet::new();
@@ -1465,14 +1455,9 @@ fn validate_audit_proposal(
         || proposal
             .historical_leaf_numbers
             .contains(&proposal.umbrella)
-        || proposal.leaves.len() > MAX_AUDIT_LEAVES
+        || proposal.leaves.len() > MAX_AUDIT_PROPOSAL_LEAVES
         || normalized_numbers(&proposal.direct_leaf_numbers) != proposal.direct_leaf_numbers
         || proposal.direct_leaf_numbers != proposal.historical_leaf_numbers
-        || proposal
-            .direct_leaf_numbers
-            .len()
-            .saturating_add(proposal.leaves.len())
-            > MAX_AUDIT_LEAVES
     {
         return Err(INVALID_AUDIT_PROPOSAL);
     }
@@ -2107,7 +2092,6 @@ mod tests {
                 "missing-leaves",
             ),
             (AuditProposalViolation::TooManyLeaves, "too-many-leaves"),
-            (AuditProposalViolation::LeafCapacity, "leaf-capacity"),
             (
                 AuditProposalViolation::UncoveredGapId {
                     gap_id: "R-3".to_owned(),
@@ -2810,22 +2794,45 @@ mod tests {
         );
 
         let mut too_many = valid.clone();
-        too_many.leaves = vec![valid.leaves[0].clone(); MAX_AUDIT_LEAVES + 1];
+        too_many.leaves = vec![valid.leaves[0].clone(); MAX_AUDIT_PROPOSAL_LEAVES + 1];
         assert_eq!(
             diagnose_audit_proposal(&snapshot, &ledger, &too_many)
                 .expect_err("too many leaves")
                 .constraint(),
             "too-many-leaves"
         );
+    }
 
-        let mut at_capacity = valid.clone();
-        at_capacity.leaves = vec![valid.leaves[0].clone(); MAX_AUDIT_LEAVES];
+    #[test]
+    fn existing_leaves_do_not_consume_corrective_batch_capacity() {
+        let mut snapshot = snapshot();
+        let mut number = 43;
+        while snapshot.historical_leaf_numbers.len() < MAX_AUDIT_PROPOSAL_LEAVES {
+            snapshot.sources.push(AuditSource {
+                id: format!("leaf:{number}"),
+                roles: vec!["native".to_owned()],
+                issue: issue(
+                    number,
+                    &format!("[LEAF OF 40] Existing leaf {number}"),
+                    "This is a leaf of umbrella #40. Read the umbrella in full before acting.\n",
+                ),
+            });
+            snapshot.historical_leaf_numbers.push(number);
+            number += 1;
+        }
+        let mut ledger = ledger(&snapshot);
+        for entry in &mut ledger.entries[1..] {
+            entry.status = RequirementStatus::Satisfied;
+        }
+        let draft = gap_draft(&snapshot, &ledger);
+
+        let proposal = diagnose_audit_proposal(&snapshot, &ledger, &draft)
+            .expect("existing leaves do not reduce corrective batch capacity");
         assert_eq!(
-            diagnose_audit_proposal(&snapshot, &ledger, &at_capacity)
-                .expect_err("historical plus proposed leaf capacity")
-                .constraint(),
-            "leaf-capacity"
+            proposal.historical_leaf_numbers.len(),
+            MAX_AUDIT_PROPOSAL_LEAVES
         );
+        assert_eq!(proposal.leaves.len(), 1);
     }
 
     #[test]

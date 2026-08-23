@@ -62,7 +62,6 @@ use std::{
     time::Duration,
 };
 
-const MAX_DIRECT_LEAVES: usize = 100;
 const CHILD_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60);
 const CHILD_SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 const CHILD_OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
@@ -3588,11 +3587,6 @@ async fn read_graph(
         )
         .await
         .map_err(|error| net.record(&error))?;
-    if references.len() > MAX_DIRECT_LEAVES {
-        return Err(format!(
-            "umbrella has more than {MAX_DIRECT_LEAVES} direct leaves"
-        ));
-    }
     let open_orphan_blockers = read_open_orphan_blockers(
         service,
         cancellation,

@@ -33,8 +33,8 @@ use larch_core::{
     AuditIssueFingerprint, AuditLeafState, AuditLedger, AuditLedgerViolation, AuditProposal,
     AuditProposalDraft, AuditProposalViolation, AuditSnapshot, AuditSource, DONE_PREFIX,
     GitHubIssue, GitHubIssueState, GitHubRepositoryRef, GitHubService, GitHubTransportPolicy,
-    IMPLEMENTING_PREFIX, IssueCreateRequest, MAX_AUDIT_LEAVES, MAX_AUDIT_SOURCES, RepositoryRead,
-    Revision, audit_issue_fingerprint, audit_leaf_prefix, audit_proposal_existing_numbers,
+    IMPLEMENTING_PREFIX, IssueCreateRequest, MAX_AUDIT_SOURCES, RepositoryRead, Revision,
+    audit_issue_fingerprint, audit_leaf_prefix, audit_proposal_existing_numbers,
     audit_snapshot_sha256, diagnose_audit_ledger, diagnose_audit_proposal, emit_kv,
     has_umbrella_proposal, is_controlling_umbrella_title, mark_audit_graph_in_flight,
     mark_audit_leaf_in_flight, mark_audit_proposal_complete, parse_audit_ledger,
@@ -598,9 +598,6 @@ async fn collect_snapshot_remote(
         )
         .await
         .map_err(|_error| "cannot read direct native leaf graph".to_owned())?;
-    if direct.len() > MAX_AUDIT_LEAVES {
-        return Err("umbrella has too many direct leaves for one audit".to_owned());
-    }
     let mut direct_numbers = BTreeSet::new();
     for reference in direct {
         if !direct_numbers.insert(reference.issue_number()) {
@@ -2288,8 +2285,8 @@ mod tests {
         AuditGraphState, AuditIssue, AuditLeaf, AuditLeafDraft, AuditLeafState, AuditLedger,
         AuditLedgerEntry, AuditLedgerViolation, AuditProposal, AuditProposalDraft,
         AuditProposalViolation, AuditSnapshot, GitHubIssue, GitHubIssueState, GitHubLabel,
-        GitHubRepositoryRef, RequirementStatus, audit_issue_fingerprint, audit_leaf_identity,
-        audit_snapshot_sha256, audit_source_items, build_audit_proposal,
+        GitHubRepositoryRef, MAX_AUDIT_PROPOSAL_LEAVES, RequirementStatus, audit_issue_fingerprint,
+        audit_leaf_identity, audit_snapshot_sha256, audit_source_items, build_audit_proposal,
         mark_audit_graph_in_flight, mark_audit_leaf_in_flight, mark_audit_proposal_complete,
         record_audit_leaf_resolved, umbrella_leaf_opening,
     };
@@ -3147,6 +3144,54 @@ mod tests {
         .expect("remote snapshot");
 
         assert_eq!(snapshot, audit_snapshot());
+        assert_eq!(server.finish().expect("stub completed").len(), 4);
+    }
+
+    #[tokio::test]
+    async fn remote_snapshot_accepts_more_direct_leaves_than_one_proposal_batch() {
+        let parent = issue_json(
+            10,
+            110,
+            "[UMBRELLA] Large fixture",
+            "<!-- larch:umbrella-proposal v1 -->\n\n#### Leaf issues\n\n- Managed natively.\n",
+            "open",
+        );
+        let leaf_count = MAX_AUDIT_PROPOSAL_LEAVES + 1;
+        let references = (0..leaf_count)
+            .map(|offset| {
+                let number = 11 + u64::try_from(offset).expect("leaf number fits u64");
+                (number, number + 100, "open")
+            })
+            .collect::<Vec<_>>();
+        let mut history = vec![parent.clone()];
+        history.extend(references.iter().map(|(number, id, _state)| {
+            issue_json(
+                *number,
+                *id,
+                &format!("[LEAF OF 10] Existing leaf {number}"),
+                &format!("{}\n\nExisting scope.\n", umbrella_leaf_opening(10)),
+                "open",
+            )
+        }));
+        let (service, server) = service(vec![
+            response(200, repository_json("main")),
+            response(200, &parent),
+            response(200, refs(&references)),
+            response(200, format!("[{}]", history.join(","))),
+        ]);
+
+        let snapshot = collect_snapshot_remote(
+            &service,
+            &Cancellation::new(),
+            &repository(),
+            10,
+            "main",
+            &"a".repeat(40),
+        )
+        .await
+        .expect("direct leaf count does not consume proposal batch capacity");
+
+        assert_eq!(snapshot.historical_leaf_numbers.len(), leaf_count);
         assert_eq!(server.finish().expect("stub completed").len(), 4);
     }
 

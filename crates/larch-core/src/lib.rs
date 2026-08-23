@@ -112,7 +112,7 @@ pub use audit_umbrella::{
     AuditLedgerViolation, AuditProposal, AuditProposalDraft, AuditProposalViolation, AuditSnapshot,
     AuditSource, AuditSourceItem, AuditUmbrellaRefusal, INVALID_AUDIT_LEDGER,
     INVALID_AUDIT_PROPOSAL, INVALID_AUDIT_SNAPSHOT, MAX_AUDIT_ARTIFACT_BYTES,
-    MAX_AUDIT_LEAF_BODY_BYTES, MAX_AUDIT_LEAF_TITLE_BYTES, MAX_AUDIT_LEAVES,
+    MAX_AUDIT_LEAF_BODY_BYTES, MAX_AUDIT_LEAF_TITLE_BYTES, MAX_AUDIT_PROPOSAL_LEAVES,
     MAX_AUDIT_REQUIREMENTS, MAX_AUDIT_SOURCES, RequirementStatus, STALE_AUDIT_PROPOSAL,
     audit_issue_fingerprint, audit_leaf_identity, audit_leaf_prefix, audit_ledger_sha256,
     audit_proposal_existing_numbers, audit_snapshot_sha256, audit_source_items,
