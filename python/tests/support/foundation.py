@@ -15,11 +15,8 @@ from typing import TYPE_CHECKING, Any, Final, Self, TypeVar, cast
 if TYPE_CHECKING:
     import pytest
 
-from larch.core import config
 from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext
-from larch.errors import NeedsUserInput
-from larch.implement import scope_disposition
 
 from tests.support.repo_contract import ROOT, repo_root
 from tests.support.review_wire import (
@@ -61,7 +58,6 @@ __all__ = [
     "capture_start",
     "codex_usage_stdout",
     "completed",
-    "force_scope_disposition_refusal",
     "gh_pr_view",
     "gh_result",
     "install_larch_bgjob_adapter_capture",
@@ -550,21 +546,6 @@ def make_adverse_push_repo(tmp_path: Path) -> tuple[Path, Path, str, str]:
     _ = _fixture_git(repo, "add", "feature.txt")
     _ = _fixture_git(repo, "commit", "-q", "-m", "feature")
     return repo, origin, _fixture_git(repo, "rev-parse", "origin/feature-x"), _fixture_git(origin, "rev-parse", "refs/heads/main")
-
-
-def force_scope_disposition_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make the PR-mutation scope gate refuse, without spawning its Rust owner.
-
-    Coverage attribution and banding are owned by `implement scope-disposition`
-    in Rust, so PR-side tests assert only that a refusal blocks mutation.
-    """
-
-    def _refuse(**_kwargs: object) -> None:
-        raise NeedsUserInput(config.NEEDS_USER_SCOPE_DISPOSITION)
-
-    monkeypatch.setattr(
-        scope_disposition, "require_pr_mutation_scope_disposition", _refuse
-    )
 
 
 # Shared RunContext defaults for ship-pr unit tests; override fields via
