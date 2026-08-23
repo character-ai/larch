@@ -18,11 +18,13 @@
 mod parity_support;
 
 use std::{
-    env,
+    env, fs,
     path::{Path, PathBuf},
+    process::{Command, Stdio},
 };
 
 use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
+use tempfile::TempDir;
 
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -382,4 +384,103 @@ fn design_terminal_migrated_parity() {
             panic!("{error}");
         }
     }
+}
+
+fn git(repo: &Path, arguments: &[&str]) {
+    let status = Command::new("git")
+        .args(arguments)
+        .current_dir(repo)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("git should run");
+    assert!(status.success(), "git {arguments:?} failed");
+}
+
+#[test]
+fn terminal_log_publish_uses_real_dispatcher_and_reads_publish_ok() {
+    let temp = TempDir::new().expect("tempdir");
+    let consumer = temp.path().join("consumer");
+    let design = temp.path().join("design");
+    fs::create_dir(&consumer).expect("consumer repo");
+    fs::create_dir(&design).expect("design tmpdir");
+    fs::create_dir(design.join("final-summary.md")).expect("non-file summary blocks remote upsert");
+    git(&consumer, &["init", "-b", "main"]);
+    git(
+        &consumer,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/acme/client.git",
+        ],
+    );
+    let root = repository_root();
+    let run_id = "ABCDEF01-2345-6789-ABCD-EF0123456789";
+    let started = Command::new(env!("CARGO_BIN_EXE_larch"))
+        .args([
+            "run-log",
+            "lifecycle-start",
+            "--repo-root",
+            consumer.to_str().expect("consumer repo"),
+            "--skill",
+            "design",
+            "--run-id",
+            run_id,
+        ])
+        .current_dir(&consumer)
+        .env("HOME", temp.path().join("home"))
+        .env("XDG_CACHE_HOME", temp.path().join("cache"))
+        .env_remove("XDG_STATE_HOME")
+        .env_remove("LARCH_LOGS_URI")
+        .env_remove("LARCH_STORAGE_BASE_URI")
+        .output()
+        .expect("lifecycle should start");
+    assert!(
+        started.status.success(),
+        "{}",
+        String::from_utf8_lossy(&started.stderr)
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_larch"))
+        .args([
+            "design",
+            "step-final-summary",
+            "--plugin-root",
+            root.to_str().expect("plugin root"),
+            "--outcome",
+            "cancelled-operator",
+        ])
+        .current_dir(&consumer)
+        .env("CLAUDE_PLUGIN_ROOT", &root)
+        .env("LARCH_BINARY", env!("CARGO_BIN_EXE_larch"))
+        .env("LARCH_QUIET_DISABLE", "1")
+        .env("CLAUDE_PROJECT_DIR", &consumer)
+        .env("REPO_ROOT", &consumer)
+        .env("DESIGN_TMPDIR", &design)
+        .env("SESSION_ID", run_id)
+        .env("ISSUE_NUMBER", "42")
+        .env("HOME", temp.path().join("home"))
+        .env("XDG_CACHE_HOME", temp.path().join("cache"))
+        .env_remove("XDG_STATE_HOME")
+        .env_remove("LARCH_LOGS_URI")
+        .env_remove("LARCH_STORAGE_BASE_URI")
+        .output()
+        .expect("step-final-summary should run");
+    assert_eq!(output.status.code(), Some(1));
+    let publish_stdout = fs::read_to_string(design.join("design-log-publish.terminal.stdout.log"))
+        .expect("terminal publish stdout");
+    let publish_stderr = fs::read_to_string(design.join("design-log-publish.terminal.stderr.log"))
+        .expect("terminal publish stderr");
+    assert!(
+        publish_stdout.contains("PUBLISH_OK=true\n"),
+        "stdout:\n{publish_stdout}\nstderr:\n{publish_stderr}\nouter stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let issues = fs::read_to_string(design.join("execution-issues.md")).expect("issues");
+    assert!(
+        issues.contains("tracking-issue upsert-summary failed"),
+        "{issues}"
+    );
+    assert!(!issues.contains("design log publish failed"), "{issues}");
 }
