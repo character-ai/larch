@@ -1,0 +1,18 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    },
+    "design/.step3-loop-identity.json": {
+      "text": "{\n  \"command_signature\": \"/usr/bin/python3 /repo/python/cli.py plan-review run\",\n  \"expected_signature\": \"plan-review run\",\n  \"pgid\": 321,\n  \"pid\": 321,\n  \"start_time\": \"Fri Jul 3 17:01:02 2026\"\n}\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": ""
+  }
+}

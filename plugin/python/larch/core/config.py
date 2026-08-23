@@ -432,8 +432,6 @@ PROCESS_IDENTITY_PS_TIMEOUT_S: Final = 5.0
 ACTIVE_LEG_IDENTITY_FILE: Final = ".active-leg.json"
 ACTIVE_LEG_LEGACY_PGID_FILE: Final = ".active-leg-pgid"
 ENV_ACTIVE_LEG_OWNER_TOKEN: Final = "LARCH_ACTIVE_LEG_OWNER_TOKEN"
-DESIGN_STEP3_LOOP_IDENTITY_FILE: Final = ".step3-loop-identity.json"
-DESIGN_STEP3_WRAPPER_DETACHED_FILE: Final = ".step3-wrapper-detached"
 DESIGN_STEP3_REATTACH_ACTIVE_FILE: Final = ".step3-reattach-active"
 IMPLEMENT_STEP5_REATTACH_ACTIVE_FILE: Final = ".step5-reattach-active"
 DETACHED_REVIEW_ORPHAN_TIMEOUT_DEFAULT_S: Final = 7200
@@ -444,7 +442,6 @@ STEP3_ESCALATION_FAILURE_STATUSES: Final[tuple[str, ...]] = (
     "degraded-empty-collector",
 )
 ACTIVE_LEG_KILL_LOG_FILE: Final = "active-leg-kill.log.jsonl"
-DESIGN_STEP3_KILL_LOG_FILE: Final = "design-step3-kill.log.jsonl"
 FINALIZE_KILL_LOG_FILE: Final = "finalize-kill.log.jsonl"
 
 # Voter calibration prompt-feedback.

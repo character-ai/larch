@@ -1,0 +1,15 @@
+{
+  "exit_code": 2,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": "usage: cli.py plan-review teardown-loop-identity [-h] --design-tmpdir DESIGN_TMPDIR --pid PID\ncli.py plan-review teardown-loop-identity: error: the following arguments are required: --design-tmpdir, --pid\n"
+  },
+  "stdout": {
+    "text": ""
+  }
+}
