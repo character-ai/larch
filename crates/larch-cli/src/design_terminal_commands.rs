@@ -8,11 +8,10 @@
 //!
 //! The port follows the byte-frozen parity precedent of the sibling
 //! `design_step1_commands.rs` (#8579) and reuses the Step 0 wrapper library
-//! (`design_step0_commands.rs`) plus the `python_verb` seam for the still-Python
-//! `design log-publish` (#8592) neighbor. The Rust-owned `design
-//! render-final-summary` (#8581) is reached through the verified bootstrap. The
-//! Rust `stall-recovery` owners are reached in-process the same
-//! way the frozen Python module reached them: by re-invoking the larch
+//! (`design_step0_commands.rs`). The Rust-owned `design log-publish` (#8592)
+//! and `design render-final-summary` (#8581) neighbors are reached through the
+//! verified bootstrap. The Rust `stall-recovery` owners are reached in-process
+//! the same way the frozen Python module reached them: by re-invoking the larch
 //! entrypoint through the [`Step0Runner`] subprocess seam.
 
 use std::{
@@ -40,7 +39,7 @@ use crate::{
     design_step1_commands::append_failure_args,
     github_repository_resolution::repository_ref,
     github_service::with_github_service,
-    python_verb::run_python_verb,
+    runtime_entrypoint::run_verified_larch_with_timeout,
     voter_calibration_commands::resolve_like_python,
 };
 
@@ -65,7 +64,7 @@ const STEP3_ESCALATION_FAILURE_STATUSES: [&str; 4] = [
 ];
 const TERMINAL_PUBLISH_DIAGNOSTIC_BYTE_CAP: u64 = 4096;
 const TERMINAL_PUBLISH_DIAGNOSTIC_CHAR_CAP: usize = 500;
-const PYTHON_BRIDGE_TIMEOUT: Duration = Duration::from_secs(120);
+const LOG_PUBLISH_TIMEOUT: Duration = Duration::from_secs(120);
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -2371,9 +2370,9 @@ fn run_terminal_publish_final_summary(
     emit_and_complete_final_summary(design_tmpdir, &final_summary_path.display().to_string())
 }
 
-/// Port of `_publish_terminal_final_summary`: run `design log-publish` through
-/// the Python seam, capturing streams to the terminal logs, then read
-/// `PUBLISH_OK`/`RECOVERY_BRANCH` from its stdout.
+/// Port of `_publish_terminal_final_summary`: run the Rust-owned
+/// `design log-publish` through the verified bootstrap, capture both terminal
+/// logs, then read `PUBLISH_OK`/`RECOVERY_BRANCH` from its stdout.
 fn publish_terminal_final_summary(design_tmpdir: &Path, ctx: &SummaryCtx) -> (i32, bool) {
     let mut args: Vec<OsString> = vec![
         "design".into(),
@@ -2393,7 +2392,7 @@ fn publish_terminal_final_summary(design_tmpdir: &Path, ctx: &SummaryCtx) -> (i3
     }
     let stdout_log = design_tmpdir.join("design-log-publish.terminal.stdout.log");
     let stderr_log = design_tmpdir.join("design-log-publish.terminal.stderr.log");
-    match run_python_verb(args, PYTHON_BRIDGE_TIMEOUT) {
+    match run_verified_larch_with_timeout(&args, LOG_PUBLISH_TIMEOUT) {
         Ok(output) => {
             let _ = fs::write(&stdout_log, output.stdout());
             let _ = fs::write(&stderr_log, output.stderr());

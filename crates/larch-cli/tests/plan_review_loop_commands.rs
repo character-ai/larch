@@ -10,14 +10,37 @@ fn design(sandbox: &TempDir) -> PathBuf { let path=sandbox.path().join("design")
 fn run(root: Option<&Path>, verb: &str, extra: &[&str], envs: &[(&str, &Path)]) -> Output {
     let mut command=Command::new(env!("CARGO_BIN_EXE_larch")); command.args(["plan-review",verb]).env("LARCH_BINARY",env!("CARGO_BIN_EXE_larch"));
     if let Some(root)=root { command.arg("--design-tmpdir").arg(root); }
-    command.args(extra).env("CLAUDE_PLUGIN_ROOT",repo()).env("LARCH_QUIET_DISABLE","1");
+    command.args(extra).env("CLAUDE_PLUGIN_ROOT",repo()).env("LARCH_QUIET_DISABLE","1").env_remove("RUN_STEP3_POSTPLAN_EMIT_SH");
     for (key,value) in envs { command.env(key,value); }
     command.output().expect("run larch")
 }
 fn out(output:&Output)->String { String::from_utf8_lossy(&output.stdout).into_owned() }
 fn err(output:&Output)->String { String::from_utf8_lossy(&output.stderr).into_owned() }
 fn text(path:impl AsRef<Path>)->String { fs::read_to_string(path).expect("read text") }
+fn write_executable_plan(root:&Path) { fs::write(root.join("plan.txt"),"# Plan\n## Files to modify/create\n### UPDATED: README.md\n## Closed decisions and ownership\nKeep the existing owner.\n## Ordered implementation\n1. Apply the change.\n## Acceptance\nThe focused checks pass.\n## Breaking changes and migration\nNone.\n## Approach\nUse the existing command owner.\ndifficulty: TRIVIAL\ndiff_lines: 1\n").expect("plan"); }
 #[cfg(unix)] fn script(path:&Path, body:&str) { fs::write(path,format!("#!/usr/bin/env bash\nset -eu\n{body}\n")).expect("write script"); let mut mode=fs::metadata(path).expect("metadata").permissions(); mode.set_mode(0o755); fs::set_permissions(path,mode).expect("chmod"); }
+
+#[test]
+fn real_dispatcher_stages_panel_init_failure() {
+    let sandbox=TempDir::new().expect("sandbox"); let root=design(&sandbox);
+    let failed=run(Some(&root),"prelaunch-failure",&["--reason","launcher unavailable"],&[]); assert!(failed.status.success(),"{}",err(&failed));
+    let state=text(root.join("design-failure-terminal-state.env")); assert!(state.contains("FAILURE_OUTCOME=failed-judge-panel\n"),"{state}"); assert!(state.contains("TRIGGER=panel-init-failed\n"),"{state}"); assert!(state.contains("EVIDENCE_REF=prelaunch-launcher-unavailable\n"),"{state}");
+    assert!(root.join(".step3-panel-init-terminal-state.recorded").is_file()); assert!(text(root.join("step3-panel-init-terminal-state.stdout.log")).contains("STAGED=true\n"));
+}
+
+#[test]
+fn real_dispatcher_stages_postplan_failure() {
+    let sandbox=TempDir::new().expect("sandbox"); let root=design(&sandbox); fs::write(root.join(".step3-round-1.phase"),"awaiting-post-apply\n").expect("phase"); fs::write(root.join(".gate-b-postapply-ready-1"),"").expect("ready");
+    let failed=run(Some(&root),"run",&["--mode","loop","--starting-round","1","--no-preview"],&[]); assert!(failed.status.success(),"{}",err(&failed)); assert!(out(&failed).contains("POSTPLAN_RC=1\n"),"{}",out(&failed));
+    let state=text(root.join("design-failure-terminal-state.env")); assert!(state.contains("FAILURE_OUTCOME=failed-postplan\n"),"{state}"); assert!(state.contains("TRIGGER=postplan-failed\n"),"{state}"); assert!(state.contains("EXIT_CODE=1\n"),"{state}");
+    assert!(root.join(".step3-postplan-terminal-state.recorded").is_file()); assert!(text(root.join("step3-stage-terminal-state.stdout.log")).contains("STAGED=true\n"));
+}
+
+#[test]
+fn real_dispatcher_post_apply_reaches_awaiting_continuation() {
+    let sandbox=TempDir::new().expect("sandbox"); let root=design(&sandbox); write_executable_plan(&root); fs::write(root.join(".step3-round-1.phase"),"awaiting-post-apply\n").expect("phase"); fs::write(root.join(".gate-b-postapply-ready-1"),"").expect("ready");
+    let applied=run(Some(&root),"run",&["--mode","loop","--starting-round","1","--no-preview"],&[]); assert!(applied.status.success(),"{}",err(&applied)); assert_eq!(text(root.join(".step3-round-1.phase")),"awaiting-continuation\n"); let result=text(root.join(".design-postplan-emit-result.env")); assert!(result.contains("POSTPLAN_EMIT_STATUS=ok\n"),"{result}");
+}
 
 #[test]
 fn preview_and_finalize_bytes_are_frozen() {
