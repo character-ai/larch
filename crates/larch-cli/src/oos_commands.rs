@@ -82,8 +82,7 @@ const MATERIALIZE_USAGE: &str = "usage: cli.py oos materialize-manifest [-h] [--
 const ISSUE_CAP_USAGE: &str =
     "usage: cli.py oos issue-cap [-h] --input-file INPUT_FILE [--output OUTPUT]";
 const CHECKPOINT_USAGE: &str = "usage: cli.py oos disposition-checkpoint [-h] --implement-tmpdir IMPLEMENT_TMPDIR [--design-tmpdir DESIGN_TMPDIR]";
-const SERIALIZE_USAGE: &str =
-    "usage: cli.py oos serialize [-h] --findings-file FINDINGS_FILE --output-file OUTPUT_FILE [--session-env-path SESSION_ENV_PATH]";
+const SERIALIZE_USAGE: &str = "usage: cli.py oos serialize [-h] --findings-file FINDINGS_FILE --output-file OUTPUT_FILE [--session-env-path SESSION_ENV_PATH]";
 const NORMALIZE_HEADER_USAGE: &str =
     "usage: cli.py oos normalize-header [-h] --seq SEQ [--block-file BLOCK_FILE]";
 const GATE_USAGE: &str = concat!(
@@ -1104,7 +1103,11 @@ pub fn serialize(arguments: &[OsString]) -> ExitCode {
 pub fn normalize_header(arguments: &[OsString]) -> ExitCode {
     let parsed = parse_with_flags(arguments, &["--seq", "--block-file"], &[], 0);
     if let Some(error) = parsed.error() {
-        return usage_error(NORMALIZE_HEADER_USAGE, "cli.py oos normalize-header", &error);
+        return usage_error(
+            NORMALIZE_HEADER_USAGE,
+            "cli.py oos normalize-header",
+            &error,
+        );
     }
     let Some(seq_raw) = parsed.value("--seq") else {
         return usage_error(
@@ -1760,7 +1763,12 @@ mod tests {
             );
         }
         assert_eq!(
-            normalize_header(&arguments(["--seq", "1", "--block-file", "/nonexistent/block.md"])),
+            normalize_header(&arguments([
+                "--seq",
+                "1",
+                "--block-file",
+                "/nonexistent/block.md"
+            ])),
             ExitCode::from(2)
         );
     }
