@@ -69,11 +69,7 @@ fn design_seed() -> Vec<SeedFile> {
 
 #[allow(clippy::too_many_lines)] // One comment-free compatibility matrix is easier to audit.
 fn migrated_cases() -> Vec<ParityCase> {
-    let repository_directory = repository_root().display().to_string();
-    let repository_anchor = PathBuf::from(&repository_directory)
-        .join("README.md")
-        .display()
-        .to_string();
+    let repository_anchor = repository_root().join("README.md").display().to_string();
     vec![
         parity_case(
             "scope-anchor-render-no-args",
@@ -141,7 +137,7 @@ fn migrated_cases() -> Vec<ParityCase> {
                 "--scope-anchor-file",
                 &repository_anchor,
                 "--design-tmpdir",
-                &repository_directory,
+                "/Users/larch-parity-user/larch-parity-repo",
             ],
             Vec::new(),
         ),
