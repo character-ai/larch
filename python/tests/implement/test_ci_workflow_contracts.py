@@ -377,6 +377,24 @@ def test_main_cache_inventory_and_publication_contract() -> None:
         assert canonical_key_reference in validation
         assert canonical_key_reference in publication
     assert len(set(cache_class_ids)) == len(classes)
+    assert "rust-policy-source-root:" in key_action
+    assert 'default: "."' in key_action
+    assert "rust-policy-inputs-sha256:" in key_action
+    for trusted_input in (
+        "Cargo.lock",
+        "Cargo.toml",
+        "crates/**/Cargo.toml",
+        "rust-toolchain.toml",
+        "build.rs",
+        "crates/**/*.rs",
+        ".cargo/**",
+    ):
+        assert (
+            f"format('{{0}}/{trusted_input}', inputs.rust-policy-source-root)"
+            in key_action
+        )
+    assert "invalid Rust policy source root" in key_action
+    assert "printf 'rust-policy-inputs-sha256=%s\\n'" in key_action
 
     assert "actions/cache/save@" not in validation
     assert "cache: pip" not in validation
@@ -2042,6 +2060,9 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     evidence = (repo_root / "docs" / "rust-ci-selection-observation.md").read_text(
         encoding="utf-8"
     )
+    main_cache_keys = (
+        repo_root / ".github" / "actions" / "main-cache-keys" / "action.yaml"
+    ).read_text(encoding="utf-8")
     selector_job = workflow.split("\n  rust-selection:", 1)[1].split(
         "\n  rust-lint:", 1
     )[0]
@@ -2091,11 +2112,25 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
     assert "git merge-base" not in selector_job
     assert "git fetch" not in selector_job
     assert '--repo-root "$GITHUB_WORKSPACE"' in selector_job
-    assert "uses: ./.github/actions/main-cache-keys" in selector_job
+    assert (
+        "uses: ./.rust-ci-selector-base/.github/actions/main-cache-keys"
+        in selector_job
+    )
+    assert "rust-policy-source-root: .rust-ci-selector-base" in selector_job
     assert "key: ${{ steps.main-cache-keys.outputs.rust-policy }}" in selector_job
-    assert "'build.rs'" in selector_job
-    assert "'crates/**/*.rs'" in selector_job
-    assert "'**/*.rs'" not in selector_job
+    assert (
+        selector_job.count(
+            "steps.main-cache-keys.outputs.rust-policy-inputs-sha256"
+        )
+        == 2
+    )
+    assert "hashFiles(" not in selector_job
+    assert "format('{0}/build.rs', inputs.rust-policy-source-root)" in main_cache_keys
+    assert (
+        "format('{0}/crates/**/*.rs', inputs.rust-policy-source-root)"
+        in main_cache_keys
+    )
+    assert "format('{0}/**/*.rs', inputs.rust-policy-source-root)" not in main_cache_keys
     assert "sha256sum --check --strict larch.sha256" in selector_job
     assert "TRUSTED_POLICY_VALID" in selector_job
     assert "if: steps.proposed-selection.outputs.mode == 'skip'" not in selector_job
@@ -2187,6 +2222,7 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "full-rust-ci",
         "merge group is the per-merge full-run backstop",
         "independent pull-request windows",
+        "trusted base copy of the\ncache-key action",
         "Promotion is intentionally manual and class-specific",
     ):
         assert required_detail in rust_testing
@@ -2200,6 +2236,7 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "redaction failure emits a static",
         "trusted-main-rust-policy",
         "full history",
+        "trusted base cache-key action",
         "`RUST_CI_PARTIAL_ENFORCEMENT` and `RUST_CI_SKIP_ENFORCEMENT` are `true`",
         "at least three independent non-full",
     ):
@@ -2208,9 +2245,10 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "Only the trusted\npublisher may save it",
         "exact successful merge-group source",
         "exact key binds",
+        "isolated base checkout's trusted cache-key action",
         "trusted pull-request-base wrapper",
         "without compiling or executing pull-request code",
-        "The skip\nlane is the only consumer of an artifact handoff",
+        "skip lane is the only consumer of an artifact handoff",
         "Skip enforcement is enabled only after",
     ):
         assert required_detail in supply_chain
@@ -2229,7 +2267,13 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         "#8302",
         "#8380",
         "partial window has zero\nobserved false-safe results",
-        "did not change the partial decision or weaken its trust contract",
+        "did not weaken the partial decision or its trust contract",
+        "Post-promotion partial liveness correction (2026-08-23)",
+        "#8873",
+        "trusted-main-policy-unavailable-or-invalid",
+        "false-full liveness result",
+        "making partial selection unreachable",
+        "running that base's cache-key action",
         "345 seconds, 352 seconds, and 346 seconds",
         "75%) shorter on that measured Rust PR critical path",
         "does not change the classifier or its trusted-input\ncontract",

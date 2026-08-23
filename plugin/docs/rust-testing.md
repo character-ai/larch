@@ -424,18 +424,23 @@ full-policy timing evidence.
 
 `rust-selection` runs only for pull requests. The checkout action supplies the
 tested merge candidate with full history, and a second checkout action supplies
-the pull-request base in an isolated directory. Before selection, the job
-restores and validates the exact `trusted-main-rust-policy` cache entry. It
-invokes `ci rust-select` through the base's `scripts/larch.sh` wrapper with that
-validated executable. The base checkout therefore owns the command surface,
-while the executable has the cache's content-derived trusted-main identity. The
-typed command proves the base and candidate commit identities and ancestry
-before it reads the candidate diff. A missing trusted checkout, cache miss,
-invalid executable, malformed identity, unavailable history proof, or command
-failure selects `full`. A Rust-input change also changes the exact cache key and
-therefore selects `full`; selection never compiles or executes pull-request
-code. The first pull request carrying a new selector command can still fall
-back safely when its base predates that command.
+the pull-request base in an isolated directory. The trusted base copy of the
+cache-key action derives both the exact `trusted-main-rust-policy` key and its
+Rust-input digest from that isolated base, never from candidate files. The job
+restores and validates that exact entry, then invokes `ci rust-select` through
+the base's `scripts/larch.sh` wrapper with the validated executable. The base
+checkout therefore owns the command surface and expected content identity,
+while the candidate remains diff data. The typed command proves the base and
+candidate commit identities and ancestry before it reads that diff.
+
+A missing trusted checkout, empty base-input digest, cache miss, invalid
+executable, malformed identity, unavailable history proof, or command failure
+selects `full`. A candidate Rust-input change does not invent a cache key that
+only the unmerged candidate could publish; the trusted-base classifier decides
+whether that change is a global or package-scoped input. A new or unpublished
+trusted-base Rust-input identity still misses safely. The first pull request
+carrying a new selector command can likewise fall back when its base predates
+that command. Selection never compiles or executes pull-request code.
 
 The selector inspects the candidate checkout only as data. A pull request
 cannot change selector code and use that change to choose a narrower path;
@@ -495,8 +500,10 @@ For `skip`, the trusted main publisher promotes an immutable
 `rust-full` artifact whose SHA exactly became `main`. Its key and metadata bind
 the Linux binary to tracked crate Rust sources (never generated target output),
 root and crate manifests, root or crate build scripts, lockfile, toolchain,
-and `.cargo/` inputs. The cache has no broad fallback. The selection job
-verifies regular-file shape, content checksum, input identity,
+and `.cargo/` inputs. The cache has no broad fallback. For pull requests, both
+the lookup key and expected input digest come from the isolated trusted base;
+candidate Rust files cannot choose either value. The selection job verifies
+regular-file shape, content checksum, input identity,
 `refs/heads/main` provenance, source-SHA shape, and executable version before
 it permits an enforced `skip` or uses the executable to calculate any non-full
 proposal. The selection job uploads the verified handoff only when `skip`

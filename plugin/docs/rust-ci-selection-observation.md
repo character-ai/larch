@@ -125,12 +125,38 @@ mode resolution, and fail-closed ancestry proof. The Python-to-Rust cutover
 in #8368 proved parity and preserved the same decision contract. The
 executable reuse in #8381 retained the exact content-derived trusted-main
 identity and routes every restore or validation failure to `full`. These
-changes did not change the partial decision or weaken its trust contract, so
-they do not reset this class-specific window.
+changes did not weaken the partial decision or its trust contract, so they did
+not reset this class-specific safety window. No retained post-#8381 row had yet
+exercised the selected partial lane, however; the first enforced run exposed
+the false-full liveness defect below.
 
 The reviewed partial promotion is a global `full` input, so it cannot supply a
-selected partial duration. The first eligible pull request after promotion must
-record that measurement and the required-status results.
+selected partial duration. The post-promotion evidence below records the first
+eligible pull request and must include a succeeding selected-path measurement
+and required-status results before it is complete.
+
+### Post-promotion partial liveness correction (2026-08-23)
+
+The first eligible single-crate pull request, [#8873](https://github.com/character-ai/larch/pull/8873),
+initially exercised the safe fallback rather than the partial lane. Its
+[`rust-ci-selection` artifact](https://github.com/character-ai/larch/actions/runs/32672809881/job/97276118577)
+recorded `trusted-main-policy-unavailable-or-invalid`, proposed and effectively
+selected `full`, and omitted candidate-derived paths. The paired
+[`rust-full`, 716 s](https://github.com/character-ai/larch/actions/runs/32672809881/job/97276192814),
+[`rust-coverage`](https://github.com/character-ai/larch/actions/runs/32672809881/job/97277641082),
+and [`rust-gate`](https://github.com/character-ai/larch/actions/runs/32672809881/job/97277655959)
+jobs succeeded. This is a false-full liveness result, not a false-safe result.
+
+The cache action had derived the policy key and expected digest from the
+candidate Rust tree. Any Rust edit therefore named an exact key that only the
+unmerged candidate could have published, making partial selection unreachable.
+The corrective workflow derives both values from the isolated trusted base by
+running that base's cache-key action. It retains the same exact key schema,
+checksum, input digest, `refs/heads/main` provenance, source-SHA shape, version,
+and fail-to-full validation. Candidate files still cannot supply an executable
+or identity. This restores the intended trusted-base lookup without changing
+the classifier or weakening its trust contract. A succeeding rerun on #8873
+must provide the enforced partial measurement.
 
 ### Live-row collection
 
@@ -283,8 +309,9 @@ build.
 Issue [#8378](https://github.com/character-ai/larch/issues/8378) removes only
 the selector build. Selection restores and validates the existing exact
 `trusted-main-rust-policy` executable before invoking the pull-request-base
-wrapper. A miss, invalid artifact, or Rust-input change produces a static
-`full` decision. The producer dependency remains intentional: starting
+wrapper. A miss, invalid artifact, or unavailable trusted-base Rust-input
+identity produces a static `full` decision. The producer dependency remains
+intentional: starting
 `rust-full` before selection would either waste a full run on a selected
 `partial` or `skip` path, or weaken the exact-one-producer assertion in
 `rust-coverage`.

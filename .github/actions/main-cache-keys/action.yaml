@@ -2,6 +2,10 @@ name: Main cache keys
 description: Compute the canonical exact keys for CI reads and trusted main publication.
 
 inputs:
+  rust-policy-source-root:
+    description: Workspace-relative root whose Rust inputs identify the trusted policy binary.
+    required: false
+    default: "."
   cargo-llvm-cov-version:
     description: Pinned cargo-llvm-cov version included in the coverage target key.
     required: false
@@ -95,6 +99,9 @@ outputs:
   rust-policy:
     description: Exact trusted main Rust policy cache key.
     value: ${{ steps.keys.outputs.rust-policy }}
+  rust-policy-inputs-sha256:
+    description: Exact Rust-input digest used to validate the trusted policy binary.
+    value: ${{ steps.keys.outputs.rust-policy-inputs-sha256 }}
   site-python-test:
     description: Exact installed site-packages cache key for Python tests.
     value: ${{ steps.keys.outputs.site-python-test }}
@@ -121,9 +128,14 @@ runs:
         PIP_SHELLCHECK_HASH: ${{ hashFiles('.pre-commit-config.yaml') }}
         PIP_TEST_HARNESSES_HASH: ${{ hashFiles('.github/workflows/requirements-test-harnesses.txt') }}
         PRE_COMMIT_HASH: ${{ hashFiles('.pre-commit-config.yaml') }}
-        RUST_POLICY_HASH: ${{ hashFiles('Cargo.lock', 'Cargo.toml', 'crates/**/Cargo.toml', 'rust-toolchain.toml', 'build.rs', 'crates/**/*.rs', '.cargo/**') }}
+        RUST_POLICY_HASH: ${{ hashFiles(format('{0}/Cargo.lock', inputs.rust-policy-source-root), format('{0}/Cargo.toml', inputs.rust-policy-source-root), format('{0}/crates/**/Cargo.toml', inputs.rust-policy-source-root), format('{0}/rust-toolchain.toml', inputs.rust-policy-source-root), format('{0}/build.rs', inputs.rust-policy-source-root), format('{0}/crates/**/*.rs', inputs.rust-policy-source-root), format('{0}/.cargo/**', inputs.rust-policy-source-root)) }}
+        RUST_POLICY_SOURCE_ROOT: ${{ inputs.rust-policy-source-root }}
       run: |
         set -euo pipefail
+        case "$RUST_POLICY_SOURCE_ROOT" in
+          .|.rust-ci-selector-base) ;;
+          *) printf 'invalid Rust policy source root: %s\n' "$RUST_POLICY_SOURCE_ROOT" >&2; exit 1 ;;
+        esac
         for digest in \
           "$CARGO_INPUTS_HASH" \
           "$COVERAGE_TARGET_HASH" \
@@ -178,6 +190,7 @@ runs:
           printf 'python-version=3.11\n'
           printf 'rust-lint-deps=rust-lint-deps-v2-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$CARGO_INPUTS_HASH"
           printf 'rust-policy=trusted-main-rust-policy-v1-%s-%s-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$RUST_POLICY_HASH"
+          printf 'rust-policy-inputs-sha256=%s\n' "$RUST_POLICY_HASH"
           printf 'site-python-test=%s-%s-pip-site-py311-%s\n' "$RUNNER_OS" "$RUNNER_ARCH" "$PIP_PYTHON_TEST_HASH"
           printf 'site-test-harnesses=ubuntu-24.04-pip-site-py311-%s\n' "$PIP_TEST_HARNESSES_HASH"
         } >> "$GITHUB_OUTPUT"
