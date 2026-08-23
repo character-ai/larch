@@ -188,7 +188,7 @@ Persist the full proposal before its first public mutation:
   >"$AUDIT_TMPDIR/proposal.env"
 ```
 
-Use a Bash tool timeout of 600000 for this command: it reads the live proposal issues and the open issue history, which can take minutes in a large repository. persist-proposal performs no GitHub mutation, so a timeout-killed run leaves the graph untouched and is safe to re-run. It streams a start-of-phase line to stderr before each remote phase, so a killed run is diagnosable from the last line reached.
+Use a Bash tool timeout of 600000 for this command: it reads the live proposal issues and at most the 100 most recent open issues for exact-match deduplication. persist-proposal performs no GitHub mutation, so a timeout-killed run leaves the graph untouched and is safe to re-run. It streams a start-of-phase line to stderr before each remote phase, so a killed run is diagnosable from the last line reached.
 
 A rejected draft first prints one `proposal-violation` line with the failed `constraint` and, when applicable, its one-based `leaf`, bounded `title`, `section`, offending `gap_id`, or dependency index. Correct the named rule and rerun persist.
 

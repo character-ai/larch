@@ -102,8 +102,13 @@ comment_url_from_json() {
 
 lookup_open_issue() {
     local repo=$1 marker=$2 out=$3 err=$4
-    if ! gh api --paginate --jq '.[] | select(.pull_request|not) | {number: .number, body: (.body // "")} | @json' "repos/$repo/issues?state=open&per_page=100" >"$out" 2>"$err"; then
+    # One newest-first page keeps stall-report dedup within the shared
+    # ISSUE_DEDUP_LIMIT used by the typed GitHub clients.
+    if ! gh api --jq '.[] | {number: .number, body: (.body // ""), pull_request: (.pull_request // null)} | @json' "repos/$repo/issues?state=open&sort=created&direction=desc&per_page=100" >"$out" 2>"$err"; then
         return 2
+    fi
+    if [ "$(wc -l <"$out")" -ge 100 ]; then
+        printf '%s\n' 'WARN: stall-report dedup reached the 100-record recent-open cap; older issues, if any, were omitted' >&2
     fi
     python3 - "$marker" "$out" <<'PY'
 import json

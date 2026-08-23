@@ -95,7 +95,7 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#triage"><code>/triage</code></a></td>
       <td><code>&lt;issue-number&gt; [--repo OWNER/REPO] [--report-only]</code></td>
     </tr>
-    <tr><td colspan="2">Verify and root-cause an eligible non-security issue against an immutable main snapshot before <code>/design</code>. A verified verdict may update or close the issue; <code>--report-only</code> and inconclusive results never mutate GitHub.</td></tr>
+    <tr><td colspan="2">Verify and root-cause an eligible non-security issue against an immutable main snapshot before <code>/design</code>. Duplicate and dependency triage inspects open rows from at most the 100 newest issue records. A verified verdict may update or close the issue; <code>--report-only</code> and inconclusive results never mutate GitHub.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#cleanup"><code>/cleanup</code></a></td>
@@ -107,7 +107,7 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#combine-issues"><code>/combine-issues</code></a></td>
       <td><code>[--oos]</code></td>
     </tr>
-    <tr><td colspan="2">Combine related open issues into fewer broader ones (closing the sources) to reduce token spend. <code>--oos</code> operates only on <code>[OOS]</code>-prefixed issues, discards stale items, and proposes an aggressive combination scheme.</td></tr>
+    <tr><td colspan="2">Combine related issues from the 100 most recent open issues into fewer broader ones (closing the sources) to reduce token spend. <code>--oos</code> operates only on <code>[OOS]</code>-prefixed issues, discards stale items, and proposes an aggressive combination scheme.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#complete-umbrella"><code>/complete-umbrella</code></a></td>
@@ -119,7 +119,7 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#audit-umbrella"><code>/audit-umbrella</code></a></td>
       <td><code>&lt;umbrella-issue-N&gt;</code></td>
     </tr>
-    <tr><td colspan="2">Audit one open top-level managed umbrella at a fresh detached default-branch snapshot. It builds a complete evidence ledger inline, persists the full corrective batch before mutation, files only exact new leaves, assigns every created leaf to the GitHub user authenticated in <code>gh</code>, reconciles native sub-issue and blocked-by relations, and reads the final graph back. It never implements leaves, closes, or retitles the umbrella.</td></tr>
+    <tr><td colspan="2">Audit one open top-level managed umbrella at a fresh detached default-branch snapshot. It builds a complete evidence ledger inline, persists the full corrective batch before mutation, and limits exact leaf deduplication to the 100 most recent open issues. It files only exact new leaves, assigns every created leaf to the GitHub user authenticated in <code>gh</code>, reconciles native sub-issue and blocked-by relations, and reads the final graph back. It never implements leaves, closes, or retitles the umbrella.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#deps"><code>/deps</code></a></td>
@@ -161,13 +161,13 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#issue"><code>/issue</code></a></td>
       <td><code>[--input-file FILE] [--intra-batch-deps-file FILE] [--blocked-by-issue N] [--title-prefix PREFIX] [--label LABEL]... [--body-file FILE] [--dry-run] [--no-dedup] [--no-dep-llm] [--sentinel-file PATH] [&lt;issue description or title&gt;]</code></td>
     </tr>
-    <tr><td colspan="2">Create one or more GitHub issues with LLM-based semantic duplicate detection and always-on inter-issue blocker-dependency analysis. Every new issue is assigned to the GitHub user authenticated in <code>gh</code>. <code>--no-dedup</code> skips both passes; <code>--no-dep-llm</code> keeps dedup but skips the LLM dependency pass. Batch/wiring flags (<code>--input-file</code>, <code>--body-file</code>, <code>--blocked-by-issue</code>, <code>--intra-batch-deps-file</code>, <code>--sentinel-file</code>) are used mainly by calling skills.</td></tr>
+    <tr><td colspan="2">Create one or more GitHub issues with LLM-based semantic duplicate detection and inter-issue blocker-dependency analysis over at most the 100 newest issue records. Every new issue is assigned to the GitHub user authenticated in <code>gh</code>. <code>--no-dedup</code> skips both passes; <code>--no-dep-llm</code> keeps dedup but skips the LLM dependency pass. Batch/wiring flags (<code>--input-file</code>, <code>--body-file</code>, <code>--blocked-by-issue</code>, <code>--intra-batch-deps-file</code>, <code>--sentinel-file</code>) are used mainly by calling skills.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#umbrella"><code>/umbrella</code></a></td>
       <td><code>[--skip-approve|-s] [--no-dedup] &lt;issue-N | description&gt;</code></td>
     </tr>
-    <tr><td colspan="2">Create or resume a flat <code>[UMBRELLA]</code> issue whose direct leaves are durable native sub-issues that block it. Every new issue is assigned to the GitHub user authenticated in <code>gh</code>. One approval precedes all mutation; <code>--skip-approve</code>/<code>-s</code> follows the same proposal, sentinel, and graph-verification path. A record-less umbrella is adopted only after typed reads prove it has no direct sub-issues and no open blockers; closed blocker bodies are not read. A nested <code>/design</code> or <code>/implement</code> split may supply its already-approved exact batch and dependency graph; <code>/umbrella</code> persists that proposal, runs deduplicating <code>/issue</code> filing, converts the managed original atomically, and writes the parent completion sentinel only after verification. A resume reconciles only an exact title/body match before creating anything else, and never nests umbrellas.</td></tr>
+    <tr><td colspan="2">Create or resume a flat <code>[UMBRELLA]</code> issue whose direct leaves are durable native sub-issues that block it. Every new issue is assigned to the GitHub user authenticated in <code>gh</code>. One approval precedes all mutation; <code>--skip-approve</code>/<code>-s</code> follows the same proposal, sentinel, and graph-verification path. A record-less umbrella is adopted only after typed reads prove it has no direct sub-issues and no open blockers; closed blocker bodies are not read. A nested <code>/design</code> or <code>/implement</code> split may supply its already-approved exact batch and dependency graph; <code>/umbrella</code> persists that proposal, runs deduplicating <code>/issue</code> filing, converts the managed original atomically, and writes the parent completion sentinel only after verification. Deduplication and exact in-flight recovery inspect at most the 100 newest issue candidates. A resume reconciles only an exact title/body match before creating anything else, and never nests umbrellas.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#learn-from-bugs"><code>/learn-from-bugs</code></a></td>
@@ -185,7 +185,7 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#rejected-analysis"><code>/rejected-analysis</code></a></td>
       <td><code>--n DAYS</code></td>
     </tr>
-    <tr><td colspan="2">Recover verified real rejected code-review findings from the synchronized run-log cache and file issues by default. Security-sensitive findings are not public-filed, OOS-deferred findings are excluded, and the stable <code>finding_hash</code> uses file plus concern only, excluding run metadata and filesystem state.</td></tr>
+    <tr><td colspan="2">Recover verified real rejected code-review findings from the synchronized run-log cache and file issues by default. Open-issue overlap checks inspect at most the 100 most recent open issues. Security-sensitive findings are not public-filed, OOS-deferred findings are excluded, and the stable <code>finding_hash</code> uses file plus concern only, excluding run metadata and filesystem state.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#report-tokens"><code>/report-tokens</code></a></td>
@@ -274,7 +274,7 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
       <td><a href="docs/skills.md#audit-runs"><code>/audit-runs</code></a></td>
       <td><code>--skill &lt;design|implement&gt; [&lt;verbal-description&gt;] [--repo owner/name] [--allow-concurrent]</code></td>
     </tr>
-    <tr><td colspan="2">Audit recently-merged larch run logs for anomalies, file the chain-of-history audit-report issue, and propose bug-issue follow-ups that require explicit user direction before any filing.</td></tr>
+    <tr><td colspan="2">Audit recently-merged larch run logs for anomalies, file the chain-of-history audit-report issue, and propose bug-issue follow-ups that require explicit user direction before any filing. Proposal duplicate classification is capped at the 100 newest matching issues.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#larch-size"><code>/larch-size</code></a></td>

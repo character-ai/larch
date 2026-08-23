@@ -10495,7 +10495,7 @@ rust = ["status check"]
 path = "skills/triage/SKILL.md"
 kind = "skill"
 python = []
-rust = ["issue title-eligibility", "triage apply", "triage inspect", "triage probe", "untrusted file-block", "verify skill-called"]
+rust = ["issue list-issues", "issue title-eligibility", "triage apply", "triage inspect", "triage probe", "untrusted file-block", "verify skill-called"]
 
 [[callers]]
 path = "skills/umbrella/SKILL.md"

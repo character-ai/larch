@@ -30,13 +30,12 @@ use crate::{
 use chrono::{Days, NaiveDate, Utc};
 use larch_adapters::{PathIntent, TemporaryRoot, atomic_write_utf8, ensure_directory_chain};
 use larch_core::{
-    GitHubComment, GitHubIssue, GitHubIssueBodyMode, GitHubIssueList, GitHubIssueListMode,
-    GitHubIssueListResult, GitHubIssueState, GitHubOperationErrorKind, GitHubRepositoryRef,
-    GitHubService, GitHubTransportPolicy, ParsedItem, allocate_candidates as allocate, emit_kv,
-    parse_issue_input, title_is_archival, unsigned_integer,
+    GitHubComment, GitHubIssue, GitHubIssueBodyMode, GitHubIssueList, GitHubIssueListResult,
+    GitHubIssueState, GitHubOperationErrorKind, GitHubRepositoryRef, GitHubService,
+    ISSUE_DEDUP_LIMIT, ParsedItem, allocate_candidates as allocate, emit_kv, parse_issue_input,
+    title_is_archival, unsigned_integer,
 };
 use std::{
-    collections::HashSet,
     env,
     ffi::OsString,
     fmt::Write as _,
@@ -388,81 +387,27 @@ fn parse_list_arguments(arguments: &[OsString]) -> Result<(u64, Option<String>),
 
 /// Read the snapshot and shape one TSV row per admitted issue.
 ///
-/// The `/issue` data contract needs every open issue for dependency analysis and
-/// a recent-closed sample for deduplication, but a single newest-first
-/// `state=all` scan cannot both stay inside the reviewed transport bound and
-/// guarantee the whole open set. So this splits the query: open issues are
-/// fetched exhaustively (a truncated open corpus fails closed), and recent
-/// closed issues fill only the remaining output budget as a bounded-partial
-/// snapshot whose omitted tail is reported. Pull requests are filtered here
-/// because the REST list returns them alongside issues, where `gh issue list`
-/// did not.
+/// The `/issue` data contract admits open issues plus recently closed issues
+/// from the shared newest-first dedup snapshot. Pull requests are filtered by
+/// the typed GitHub boundary because the REST list returns them alongside
+/// issues, where `gh issue list` did not.
 fn snapshot_rows(repo: &str, closed_window: u64) -> Result<Vec<String>, String> {
     let cutoff = closed_window_cutoff(closed_window);
     let reference = repository_ref(repo).map_err(|()| "repository slug is invalid".to_owned())?;
-    let budget = GitHubTransportPolicy::github_com().limits().items();
-
-    // Open issues are exhaustive: dependency analysis promises coverage of every
-    // open issue, so an over-bound open corpus fails closed rather than dropping
-    // blockers. The dedup agent applies its own 500-row cap later.
-    let open = list_snapshot(
-        &reference,
-        GitHubIssueState::Open,
-        budget,
-        GitHubIssueListMode::Exhaustive,
-    )
-    .map_err(|failure| failure.warning(repo))?;
-
-    // Recent closed issues fill the remaining output budget as a bounded-partial
-    // snapshot: the transport bound never fails the command here, and an omitted
-    // older-closed tail is reported instead of silently narrowing dedup.
-    let remaining = budget.saturating_sub(open.issues.len());
-    let closed = if closed_window == 0 || remaining == 0 {
-        None
-    } else {
-        match list_snapshot(
-            &reference,
-            GitHubIssueState::Closed,
-            remaining,
-            GitHubIssueListMode::BoundedPartial,
-        ) {
-            Ok(result) => Some(result),
-            Err(failure) if failure.is_transport_limit() => {
-                eprintln!(
-                    "WARN: {}; recent-closed issue rows were omitted from deduplication",
-                    failure.warning(repo)
-                );
-                None
-            }
-            Err(failure) => return Err(failure.warning(repo)),
-        }
-    };
-
-    if closed.as_ref().is_some_and(|result| result.truncated) {
-        // Truncation here means the closed scan stopped before its feed ended,
-        // whether it hit GitHub's page/item ceiling or exhausted the output
-        // budget left after the open issues. Either way older eligible closed
-        // issues are absent, so the warning names that effect, not a mechanism.
+    let listed = list_snapshot(&reference).map_err(|failure| failure.warning(repo))?;
+    if listed.truncated {
         eprintln!(
-            "WARN: recent-closed snapshot for repo {repo} was truncated to fit the reviewed output budget; older eligible closed issues were omitted from deduplication"
+            "WARN: issue snapshot for repo {repo} was capped at the {ISSUE_DEDUP_LIMIT} most recent issues; older issues were omitted from deduplication and dependency analysis"
         );
     }
 
-    let empty: [GitHubIssue; 0] = [];
-    let closed_issues = closed
-        .as_ref()
-        .map_or(&empty[..], |result| result.issues.as_slice());
     let mut rows: Vec<(u64, String)> = Vec::new();
-    let mut seen: HashSet<u64> = HashSet::new();
-    for issue in open.issues.iter().chain(closed_issues) {
-        if !seen.insert(issue.number) {
-            continue;
-        }
+    for issue in &listed.issues {
         if let Some(row) = snapshot_row(issue, closed_window, &cutoff) {
             rows.push((issue.number, row));
         }
     }
-    // Deterministic newest-first ordering after the split query.
+    // Preserve deterministic newest-first issue order even in test fixtures.
     rows.sort_by(|left, right| right.0.cmp(&left.0));
     Ok(rows.into_iter().map(|(_, row)| row).collect())
 }
@@ -475,19 +420,14 @@ fn snapshot_rows(repo: &str, closed_window: u64) -> Result<Vec<String>, String> 
 /// credential or varying by run.
 fn list_snapshot(
     reference: &GitHubRepositoryRef,
-    state: GitHubIssueState,
-    limit: usize,
-    mode: GitHubIssueListMode,
 ) -> Result<GitHubIssueListResult, SnapshotFailure> {
     let outcome = with_github_service(async |service, cancellation| {
-        let request = GitHubIssueList {
-            repo: reference.clone(),
-            state,
-            labels: Vec::new(),
-            limit,
-            mode,
-            body_mode: GitHubIssueBodyMode::Omit,
-        };
+        let request = GitHubIssueList::for_dedup(
+            reference.clone(),
+            GitHubIssueState::All,
+            GitHubIssueBodyMode::Omit,
+            service.transport_policy(),
+        );
         Ok(service
             .list_issues(&request, cancellation)
             .await
@@ -512,11 +452,6 @@ enum SnapshotFailure {
 }
 
 impl SnapshotFailure {
-    /// Whether a bounded-partial closed scan can degrade without losing open coverage.
-    const fn is_transport_limit(&self) -> bool {
-        matches!(self, Self::Kind(GitHubOperationErrorKind::LimitExceeded))
-    }
-
     /// A stable, secret-free warning line for this class.
     fn warning(&self, repo: &str) -> String {
         use GitHubOperationErrorKind as Kind;
@@ -1110,18 +1045,15 @@ mod tests {
     fn snapshot_omits_oversized_closed_bodies_before_transport_string_validation() {
         let oversized_body =
             "x".repeat(GitHubTransportPolicy::github_com().limits().string_bytes() + 1);
-        let server = IssueServiceStub::start([
-            IssueServiceExchange::any_json(
-                200,
-                json!([remote_issue(1, "Open", "", "open")]).to_string(),
-            )
-            .expect("open issue response"),
-            IssueServiceExchange::any_json(
-                200,
-                json!([remote_issue(2, "Closed", &oversized_body, "closed")]).to_string(),
-            )
-            .expect("closed issue response"),
-        ])
+        let server = IssueServiceStub::start([IssueServiceExchange::any_json(
+            200,
+            json!([
+                remote_issue(2, "Closed", &oversized_body, "closed"),
+                remote_issue(1, "Open", "", "open")
+            ])
+            .to_string(),
+        )
+        .expect("issue response")])
         .expect("start issue service stub");
         let base_url = server.base_url().to_owned();
         let service: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
@@ -1138,45 +1070,41 @@ mod tests {
                 "1\tOpen\topen\thttps://github.com/o/r/issues/1".to_owned(),
             ]
         );
-        assert_eq!(server.finish().expect("requests").len(), 2);
+        assert_eq!(server.finish().expect("requests").len(), 1);
     }
 
     #[test]
-    fn snapshot_keeps_open_rows_when_closed_metadata_exceeds_transport_limit() {
-        let oversized_title =
-            "x".repeat(GitHubTransportPolicy::github_com().limits().string_bytes() + 1);
-        let server = IssueServiceStub::start([
-            IssueServiceExchange::any_json(
-                200,
-                json!([remote_issue(1, "Open", "", "open")]).to_string(),
-            )
-            .expect("open issue response"),
-            IssueServiceExchange::any_json(
-                200,
-                json!([remote_issue(2, &oversized_title, "", "closed")]).to_string(),
-            )
-            .expect("closed issue response"),
-        ])
+    fn snapshot_stops_after_the_shared_dedup_limit() {
+        let issues: Vec<Value> = (1..=101)
+            .rev()
+            .map(|number| remote_issue(number, &format!("Issue {number}"), "", "open"))
+            .collect();
+        let server = IssueServiceStub::start([IssueServiceExchange::any_json(
+            200,
+            json!(issues).to_string(),
+        )
+        .expect("issue response")])
         .expect("start issue service stub");
         let base_url = server.base_url().to_owned();
         let service: Arc<dyn Fn() -> OctocrabGitHubService + Send + Sync> =
             Arc::new(move || OctocrabGitHubService::with_test_base(&base_url));
 
-        let rows = with_test_github_service(service, || {
-            snapshot_rows("o/r", 90).expect("degraded metadata snapshot")
-        });
+        let rows =
+            with_test_github_service(service, || snapshot_rows("o/r", 90).expect("snapshot"));
 
-        assert_eq!(
-            rows,
-            vec!["1\tOpen\topen\thttps://github.com/o/r/issues/1".to_owned()]
-        );
-        assert_eq!(server.finish().expect("requests").len(), 2);
+        assert_eq!(rows.len(), larch_core::ISSUE_DEDUP_LIMIT);
+        assert!(rows[0].starts_with("101\tIssue 101\t"));
+        assert!(rows[99].starts_with("2\tIssue 2\t"));
+        assert!(rows.iter().all(|row| !row.starts_with("1\t")));
+        let requests = server.finish().expect("requests");
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].path.contains("sort=created"));
+        assert!(requests[0].path.contains("direction=desc"));
     }
 
     #[test]
     fn snapshot_limit_warning_names_the_typed_transport_class() {
         let failure = SnapshotFailure::Kind(GitHubOperationErrorKind::LimitExceeded);
-        assert!(failure.is_transport_limit());
         assert_eq!(
             failure.warning("o/r"),
             "issue snapshot for repo o/r exceeded a reviewed GitHub transport limit"

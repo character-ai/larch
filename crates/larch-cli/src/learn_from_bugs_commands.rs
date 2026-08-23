@@ -1312,6 +1312,7 @@ fn fetch_issues(
             repo: repo.clone(),
             query: query.clone(),
             limit: limit.min(service.transport_policy().limits().items()),
+            sort: larch_core::GitHubIssueSearchSort::BestMatch,
         };
         service
             .search_issues(&request, cancellation)

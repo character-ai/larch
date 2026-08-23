@@ -8,8 +8,7 @@ use crate::{
     git_command_runtime::GitCommandRuntime,
     github_repository_resolution::repository_ref,
     github_service::{
-        ServiceFailure, list_exhaustive_issues, list_exhaustive_issues_for_state,
-        with_github_service, with_github_service_policy,
+        ServiceFailure, list_exhaustive_issues, with_github_service, with_github_service_policy,
     },
     issue_mutation_support::create_with_rollback,
     session_artifact_support::{
@@ -32,15 +31,16 @@ use larch_core::{
     AUDIT_PROPOSAL_VERSION, AuditDependency, AuditDependencyNode, AuditGraphState, AuditIssue,
     AuditIssueFingerprint, AuditLeafState, AuditLedger, AuditLedgerViolation, AuditProposal,
     AuditProposalDraft, AuditProposalViolation, AuditSnapshot, AuditSource, DONE_PREFIX,
-    GitHubIssue, GitHubIssueState, GitHubRepositoryRef, GitHubService, GitHubTransportPolicy,
-    IMPLEMENTING_PREFIX, IssueCreateRequest, MAX_AUDIT_SOURCES, RepositoryRead, Revision,
-    audit_issue_fingerprint, audit_leaf_prefix, audit_proposal_existing_numbers,
-    audit_snapshot_sha256, diagnose_audit_ledger, diagnose_audit_proposal, emit_kv,
-    has_umbrella_proposal, is_controlling_umbrella_title, mark_audit_graph_in_flight,
-    mark_audit_leaf_in_flight, mark_audit_proposal_complete, parse_audit_ledger,
-    parse_audit_proposal, parse_audit_snapshot, record_audit_leaf_resolved, render_audit_proposal,
-    render_audit_snapshot, replace_audit_issue_fingerprints, reset_audit_leaf_pending,
-    umbrella_leaf_opening, validate_audit_proposal_binding,
+    GitHubIssue, GitHubIssueBodyMode, GitHubIssueList, GitHubIssueState, GitHubRepositoryRef,
+    GitHubService, GitHubTransportPolicy, IMPLEMENTING_PREFIX, ISSUE_DEDUP_LIMIT,
+    IssueCreateRequest, MAX_AUDIT_SOURCES, RepositoryRead, Revision, audit_issue_fingerprint,
+    audit_leaf_prefix, audit_proposal_existing_numbers, audit_snapshot_sha256,
+    diagnose_audit_ledger, diagnose_audit_proposal, emit_kv, has_umbrella_proposal,
+    is_controlling_umbrella_title, mark_audit_graph_in_flight, mark_audit_leaf_in_flight,
+    mark_audit_proposal_complete, parse_audit_ledger, parse_audit_proposal, parse_audit_snapshot,
+    record_audit_leaf_resolved, render_audit_proposal, render_audit_snapshot,
+    replace_audit_issue_fingerprints, reset_audit_leaf_pending, umbrella_leaf_opening,
+    validate_audit_proposal_binding,
 };
 use regex::Regex;
 use std::{
@@ -466,8 +466,8 @@ fn persist_proposal(arguments: &PersistProposalArguments) -> Result<(), String> 
             eprintln!("audit-umbrella: persist-proposal reading live proposal issues");
             let current =
                 read_live_proposal_issues(service, cancellation, &repository, &proposal).await?;
-            eprintln!("audit-umbrella: persist-proposal listing open issue history for dedup");
-            let history = list_all_issues(service, cancellation, &repository).await?;
+            eprintln!("audit-umbrella: persist-proposal listing recent open issues for dedup");
+            let history = list_recent_dedup_issues(service, cancellation, &repository).await?;
             Ok((current, history))
         },
     )
@@ -1211,7 +1211,8 @@ async fn reconcile_pending_leaf(
     proposal: &mut AuditProposal,
     leaf: &larch_core::AuditLeaf,
 ) -> Result<(), String> {
-    let listed = list_all_issues(context.service, context.cancellation, context.repository).await?;
+    let listed =
+        list_recent_dedup_issues(context.service, context.cancellation, context.repository).await?;
     let matching = exact_open_leaf_matches(&leaf.title, &leaf.body, &listed);
     if matching.len() > 1 {
         return Err("exact audit-leaf reuse is ambiguous after proposal persistence".to_owned());
@@ -1289,7 +1290,8 @@ async fn reconcile_in_flight_leaf(
     proposal: &mut AuditProposal,
     leaf: &larch_core::AuditLeaf,
 ) -> Result<(), String> {
-    let listed = list_all_issues(context.service, context.cancellation, context.repository).await?;
+    let listed =
+        list_recent_dedup_issues(context.service, context.cancellation, context.repository).await?;
     let matching = exact_open_leaf_matches(&leaf.title, &leaf.body, &listed);
     let [resolved] = matching.as_slice() else {
         return Err(
@@ -1349,14 +1351,27 @@ async fn verify_resolved_leaf(
     }
 }
 
-async fn list_all_issues(
+async fn list_recent_dedup_issues(
     service: &OctocrabGitHubService,
     cancellation: &Cancellation,
     repository: &GitHubRepositoryRef,
 ) -> Result<Vec<GitHubIssue>, String> {
-    list_exhaustive_issues_for_state(service, cancellation, repository, GitHubIssueState::Open)
+    let request = GitHubIssueList::for_dedup(
+        repository.clone(),
+        GitHubIssueState::Open,
+        GitHubIssueBodyMode::Include,
+        service.transport_policy(),
+    );
+    let listed = service
+        .list_issues(&request, cancellation)
         .await
-        .map_err(|error| format!("cannot reconcile open issue history: {error}"))
+        .map_err(|error| format!("cannot reconcile recent open issue window: {error}"))?;
+    if listed.truncated {
+        eprintln!(
+            "WARN: audit-umbrella dedup snapshot was capped at the {ISSUE_DEDUP_LIMIT} most recent open issues; older open issues were omitted"
+        );
+    }
+    Ok(listed.issues)
 }
 
 /// Count exact open matches without advancing durable transaction state.

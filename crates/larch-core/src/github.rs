@@ -369,6 +369,13 @@ pub enum GitHubIssueBodyMode {
     Omit,
 }
 
+/// Maximum number of GitHub issues any duplicate-detection pass may inspect.
+pub const ISSUE_DEDUP_LIMIT: usize = 100;
+
+fn issue_dedup_limit(policy: GitHubTransportPolicy) -> usize {
+    policy.limits().items().min(ISSUE_DEDUP_LIMIT)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GitHubIssueList {
     pub repo: GitHubRepositoryRef,
@@ -377,6 +384,30 @@ pub struct GitHubIssueList {
     pub limit: usize,
     pub mode: GitHubIssueListMode,
     pub body_mode: GitHubIssueBodyMode,
+}
+
+impl GitHubIssueList {
+    /// Build the newest-first bounded snapshot used by duplicate detection.
+    ///
+    /// The GitHub issues endpoint defaults to creation order descending. The
+    /// adapter makes that ordering explicit, while this constructor owns the
+    /// cross-workflow maximum and partial-snapshot semantics.
+    #[must_use]
+    pub fn for_dedup(
+        repo: GitHubRepositoryRef,
+        state: GitHubIssueState,
+        body_mode: GitHubIssueBodyMode,
+        policy: GitHubTransportPolicy,
+    ) -> Self {
+        Self {
+            repo,
+            state,
+            labels: Vec::new(),
+            limit: issue_dedup_limit(policy),
+            mode: GitHubIssueListMode::BoundedPartial,
+            body_mode,
+        }
+    }
 }
 
 /// The typed outcome of a bounded issue list.
@@ -524,6 +555,33 @@ pub struct GitHubIssueSearch {
     pub repo: GitHubRepositoryRef,
     pub query: String,
     pub limit: usize,
+    pub sort: GitHubIssueSearchSort,
+}
+
+/// Ordering for GitHub issue-search results.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GitHubIssueSearchSort {
+    /// Preserve GitHub's relevance-ranked default.
+    BestMatch,
+    /// Return matching issues by creation time, newest first.
+    CreatedDescending,
+}
+
+impl GitHubIssueSearch {
+    /// Build a duplicate-classification search capped by the shared policy.
+    #[must_use]
+    pub fn for_dedup(
+        repo: GitHubRepositoryRef,
+        query: String,
+        policy: GitHubTransportPolicy,
+    ) -> Self {
+        Self {
+            repo,
+            query,
+            limit: issue_dedup_limit(policy),
+            sort: GitHubIssueSearchSort::CreatedDescending,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1594,6 +1652,27 @@ mod tests {
         assert!(policy.limits().items() > 0);
         assert!(policy.limits().string_bytes() > 0);
         assert!(policy.limits().nesting_depth() > 0);
+    }
+
+    #[test]
+    fn dedup_requests_share_one_hundred_issue_maximum() {
+        let policy = GitHubTransportPolicy::migration_audit();
+        let repo = GitHubRepositoryRef::new("owner", "repo").expect("repository");
+        let list = GitHubIssueList::for_dedup(
+            repo.clone(),
+            GitHubIssueState::All,
+            GitHubIssueBodyMode::Omit,
+            policy,
+        );
+        assert_eq!(list.limit, ISSUE_DEDUP_LIMIT);
+        assert_eq!(list.mode, GitHubIssueListMode::BoundedPartial);
+        assert_eq!(list.state, GitHubIssueState::All);
+        assert_eq!(list.body_mode, GitHubIssueBodyMode::Omit);
+
+        let search = GitHubIssueSearch::for_dedup(repo, "keywords".to_owned(), policy);
+        assert_eq!(search.limit, ISSUE_DEDUP_LIMIT);
+        assert_eq!(search.query, "keywords");
+        assert_eq!(search.sort, GitHubIssueSearchSort::CreatedDescending);
     }
 
     #[test]

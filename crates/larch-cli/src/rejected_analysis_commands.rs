@@ -20,7 +20,8 @@ use std::{
 use chrono::{DateTime, Utc};
 use larch_adapters::GixRepository;
 use larch_core::{
-    GitHubIssueState, GitPath, Head, RepositoryRead, emit_kv,
+    GitHubIssueBodyMode, GitHubIssueList, GitHubIssueState, GitHubService as _, GitPath, Head,
+    ISSUE_DEDUP_LIMIT, RepositoryRead, emit_kv,
     rejected_analysis::{
         self, INGEST_STATUS_FILE, LEDGER_RELATIVE, OpenIssue, PrepareResult,
         VERDICT_SIDECAR_RELATIVE,
@@ -32,7 +33,7 @@ use crate::{
     analysis_state,
     argparse_compat::{ParsedCommandLine, absolute_path, missing, parse_with_flags, usage_error},
     github_repository_resolution::{ambient_repo, repository_ref},
-    github_service::{list_exhaustive_issues_for_state, with_github_service},
+    github_service::with_github_service,
     run_log_commands,
     run_log_publication_commands::synchronized_corpus_root,
 };
@@ -594,16 +595,24 @@ fn query_open_issues() -> Result<Vec<OpenIssue>, String> {
     let reference = repository_ref(&repository)
         .map_err(|()| "open issue snapshot failed: cannot resolve repository".to_owned())?;
     let result = with_github_service(async |service, cancellation| {
-        let issues = list_exhaustive_issues_for_state(
-            service,
-            cancellation,
-            &reference,
+        let request = GitHubIssueList::for_dedup(
+            reference.clone(),
             GitHubIssueState::Open,
-        )
-        .await
-        .map_err(|_| "open issue snapshot failed".to_owned())?;
+            GitHubIssueBodyMode::Include,
+            service.transport_policy(),
+        );
+        let listed = service
+            .list_issues(&request, cancellation)
+            .await
+            .map_err(|_| "open issue snapshot failed".to_owned())?;
+        if listed.truncated {
+            eprintln!(
+                "WARN: rejected-analysis overlap snapshot was capped at the {ISSUE_DEDUP_LIMIT} most recent open issues; older open issues were omitted"
+            );
+        }
         Ok::<_, String>(
-            issues
+            listed
+                .issues
                 .into_iter()
                 .filter(|issue| !issue.is_pull_request && issue.state == GitHubIssueState::Open)
                 .map(|issue| OpenIssue {

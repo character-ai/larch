@@ -333,8 +333,9 @@ process to preserve its own output envelope. Later Rust callers use
 `larch_adapters::github::IssueMutationOwner`, which applies the shared
 live-mutation gate before its first read, serializes through the shared GitHub
 runtime lock, redacts outbound titles, bodies, and comments, and proves a
-fresh exact read-back without a blind retry. The Rust-owned `/combine-issues`
-apply path reads every source's native blockers before creation, re-adds those
+fresh exact read-back without a blind retry. `/combine-issues` candidate
+discovery reads at most the 100 most recent open issues. Its Rust-owned apply
+path reads every selected source's native blockers before creation, re-adds those
 blockers to the combined issue, and verifies the full set before it can
 close a source. A partial transfer leaves sources open and reports the durable
 combined issue URL. Deferred source closure re-reads the combined host and each
@@ -358,7 +359,8 @@ issue-mutation owner, which authorizes, redacts outbound text, and proves the
 exact comment body by read-back. The remaining audit-runs helpers —
 `issue-search`, `label-check`, `fix-merge`'s issue-timing and merged-PR reads,
 and the local `version-window` Git-history walk — are read-only and perform no
-mutation.
+mutation. The proposal-classification `issue-search` is capped at the 100
+newest matching issues.
 
 ### Local mutation safety
 
@@ -807,6 +809,10 @@ security, repository-target, and immutable-main gates pass. Reproduction uses
 the named fixed probes from the triage contract. Issue-supplied commands,
 credentials, destinations, and mutations are forbidden.
 
+Duplicate and dependency triage reuses `/issue`'s newest-first snapshot helper,
+admits open rows from at most 100 issue records, and does not paginate into older
+history.
+
 Before every public mutation, triage rechecks security classification and
 freshness. Uncertain security classification routes to private disclosure and
 no public issue mutation. Allowed edits and closes pass the expected
@@ -820,14 +826,13 @@ pagination contract is canonical in
 [`supply-chain-credentials-and-services.md`](supply-chain-credentials-and-services.md#pull-request-review-and-dependency-operations).
 
 `/issue` treats fetched issue content as an untrusted corpus. Its delimiter
-wrappers are prompt-level defenses. Its candidate snapshot splits the query so
-the data contract holds within the reviewed transport bound: open issues are
-fetched exhaustively, so an over-bound open corpus fails closed rather than
-dropping blockers, while recent closed issues fill the remaining budget as a
-bounded-partial snapshot whose omitted older tail is reported instead of
-silently narrowing deduplication. A refused fetch names its real class,
-including the transport-limit case, and never mislabels the transport bound as a
-network, authentication, or rate-limit failure. Deduplication runs through a
+wrappers are prompt-level defenses. Its candidate snapshot is a mechanically
+bounded, newest-first list of at most 100 issue records. Open issues and closed
+issues inside the configured window are admitted from that list; a remaining
+older tail is explicitly reported as omitted from deduplication and dependency
+analysis. A refused fetch names its real class, including the transport-limit
+case, and never mislabels the transport bound as a network, authentication, or
+rate-limit failure. Deduplication runs through a
 read-only verdict agent that cannot mutate the repository or GitHub. Issue
 creation uses the scoped live-mutation gate and outbound redaction. Public issue
 text still requires prompt-level removal of internal URLs, PII, and sensitive
@@ -842,9 +847,9 @@ reduce prompt-injection risk but do not create a parser-enforced sandbox.
 ### Rejected analysis
 
 `/rejected-analysis` treats published findings and run-log prose as untrusted.
-Preparation reads the exhaustive open-issue snapshot through the typed GitHub
-service; a truncated or unavailable snapshot fails closed rather than silently
-narrowing overlap checks. It reads only contained regular run-log files and
+Preparation reads a newest-first snapshot of at most 100 open issues through
+the typed GitHub service and reports when older issues are omitted from overlap
+checks. An unavailable snapshot still fails closed. It reads only contained regular run-log files and
 bounds each input before parsing. Verifier prompts wrap the candidate, pin the
 expected file location, and demand the closed verdict format. Launchers use
 their read-only posture and dirty-tree backstop. Replies must bind to the
@@ -1018,7 +1023,7 @@ materialization, field variants, private routing, and checkpoint refusal.
 
 ## Umbrella
 
-`/umbrella` treats input issue text, draft records, agent output, and child `/issue` output as untrusted. It applies one explicit approval gate; `--skip-approve` changes only that presentation wait. The skill persists immutable leaf identities and in-flight state before filing, confirms the child sentinel and machine counters, performs live authorization and freshness checks for every mutation, redacts outbound public content, and reads back the final native graph. Ambiguous recovery, incomplete dependency analysis, failed redaction, or missing verification stops the run without a replacement create.
+`/umbrella` treats input issue text, draft records, agent output, and child `/issue` output as untrusted. It applies one explicit approval gate; `--skip-approve` changes only that presentation wait. Normal filing uses `/issue`'s shared snapshot of at most the 100 newest issues. In-flight recovery admits only the 100 newest open issue candidates and mechanically ignores any older rows before exact-match reconciliation. The skill persists immutable leaf identities and in-flight state before filing, confirms the child sentinel and machine counters, performs live authorization and freshness checks for every mutation, redacts outbound public content, and reads back the final native graph. Ambiguous recovery, incomplete dependency analysis, failed redaction, or missing verification stops the run without a replacement create.
 
 Nested `/design` and `/implement` partitions use a narrower prepared-artifact path. The child accepts it only with immutable parent lifecycle context, one numeric managed issue, `--skip-approve`, and the complete internal flag group. Input and dependency files must be contained regular files under the declared parent scratch root. `/umbrella` parses and bounds the exact generic batch, rejects malformed or cyclic dependency graphs, persists deterministic leaf identities and an atomic child-local dependency copy before any create, and keeps `/issue` duplicate detection enabled. Filing consumes that copy instead of rereading the parent TSV. The parent approval covers only those exact leaves and edges; the child cannot re-decompose them or ask a broader second question.
 
@@ -1050,7 +1055,7 @@ The inline final audit treats its snapshot as untrusted requirements data and ke
 
 `/audit-umbrella` is a standalone, inline audit that does not implement leaves or alter umbrella or leaf lifecycle fields. Its Rust owner resolves the repository default branch, fetches a detached immutable worktree, and records a bounded exhaustive GitHub source snapshot. Target validation rejects pull requests, closed umbrellas, ordinary issues, and nested umbrella trees whose direct native children carry `[UMBRELLA]` or `[CHIEF UMBRELLA]` titles. An umbrella may have a native parent, including the chief program umbrella; that parent relation alone is not nesting. Issue text, labels, repository files, ledger JSON, proposal JSON, and command output remain untrusted data.
 
-The Write hook recognizes the `audit-umbrella` token and permits Claude Write calls only under the active session root. The core contract rejects duplicate JSON keys, unconfined or oversized files, malformed hashes, incomplete source coverage, missing evidence, invalid identities, duplicate gap ownership, cycles, and unbound dependency endpoints. It does not classify umbrella title, body, labels, ledger text, or proposed leaf text with the shared security-keyword triage. Before the first mutation, the owner rechecks the audited default SHA, every source fingerprint, the top-level graph, and authorization. If the default SHA advanced while every proposal leaf and graph relation remains pending, persist or apply emits a SHA-bound re-baseline handoff and performs no public mutation. The inline owner then removes the old detached worktree and repeats the complete audit at the new SHA. It never treats model-authored path claims as proof that a changed commit was already examined, and it never rewrites stale SHA bindings in place. Once any exact leaf identity or graph batch is in flight or resolved, recovery retains the original persisted transaction to avoid orphaning or duplicating public leaves. The proposal persists pending/in-flight graph state alongside `pending`, `in_flight`, and resolved leaf identities, so recovery adopts only one exact open title/body match and never heuristic duplicates.
+The Write hook recognizes the `audit-umbrella` token and permits Claude Write calls only under the active session root. The core contract rejects duplicate JSON keys, unconfined or oversized files, malformed hashes, incomplete source coverage, missing evidence, invalid identities, duplicate gap ownership, cycles, and unbound dependency endpoints. It does not classify umbrella title, body, labels, ledger text, or proposed leaf text with the shared security-keyword triage. Before the first mutation, the owner rechecks the audited default SHA, every source fingerprint, the top-level graph, and authorization. If the default SHA advanced while every proposal leaf and graph relation remains pending, persist or apply emits a SHA-bound re-baseline handoff and performs no public mutation. The inline owner then removes the old detached worktree and repeats the complete audit at the new SHA. It never treats model-authored path claims as proof that a changed commit was already examined, and it never rewrites stale SHA bindings in place. Once any exact leaf identity or graph batch is in flight or resolved, recovery retains the original persisted transaction to avoid orphaning or duplicating public leaves. The proposal persists pending/in-flight graph state alongside `pending`, `in_flight`, and resolved leaf identities. Deduplication and recovery inspect at most the 100 most recent open issues, adopt only one exact open title/body match, and never reuse a heuristic duplicate.
 
 Every accepted create uses the shared redacting issue owner and orphan rollback. Native sub-issue and blocked-by operations use the shared live-mutation gate and relation read-back. Declared `umbrella <- direct-leaf` edges are owned by that native-graph attach phase and skipped from the declared-dependency mutator; final verification still requires every direct leaf as an umbrella blocker. Other declared dependency mutations that target the audited umbrella use the same trusted attach path (`expected_updated_at` unset), because a managed umbrella always carries a lifecycle title and larch HTML control marker that the operator-facing protected-target precondition would otherwise refuse on both fresh adds and idempotent resumes. Leaf-to-leaf declared edges keep the operator-facing freshness and protected-target checks. They use `DependencySecurityCheck::SkipKeywordTriage`, while every non-audit caller uses `DependencySecurityCheck::Enforce`, so the shared mutation safeguard remains intact outside this audit path. Refusal kinds surface as distinct errors rather than a generic read-back failure. Final verification requires the expected direct-child set, every direct leaf as an umbrella blocker, every declared added edge present in the correct direction, every declared removal absent, and no cycle in the persisted graph. Keyword matches alone never terminalize the audit. If model judgment identifies an actual vulnerability or live secret, the audit stops before a public proposal or graph mutation and follows `SECURITY.md` privately.
 

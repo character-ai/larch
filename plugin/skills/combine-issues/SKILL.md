@@ -48,7 +48,7 @@ Use `$COMBINE_TMPDIR/` for all body temp files. Never write to a hardcoded `/tmp
 CLAUDE_PLUGIN_ROOT="$CLAUDE_PLUGIN_ROOT" "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" combine-issues fetch
 ```
 
-Title-prefix filtering and its Rust parity coverage live in `crates/larch-cli/src/combine_issues_commands.rs`.
+The helper fetches at most the 100 most recent open issues before title-prefix filtering. This is the complete candidate window for both standard and OOS modes. Title-prefix filtering and its Rust parity coverage live in `crates/larch-cli/src/combine_issues_commands.rs`.
 
 Parse `ISSUES_FILE` and `COUNT` from stdout. If `COUNT=0`, print `No open issues eligible for combination.` and stop.
 
