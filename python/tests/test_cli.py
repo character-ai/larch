@@ -5,7 +5,6 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -160,22 +159,6 @@ def test_run_log_historical_maintenance_entrypoints_are_retired(verb: str) -> No
 def test_run_lifecycle_entrypoints_are_retired(verb: str) -> None:
     assert ("run-log", verb) not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     assert ("run-log", verb) not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
-
-
-def test_dispatch_oos_serialize() -> None:
-    mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.issue.oos": MagicMock(oos_serialize_main=mock_main)}):
-        rc = cli.main(["oos", "serialize", "--findings-file", "f", "--output-file", "o"])
-    mock_main.assert_called_once_with(["--findings-file", "f", "--output-file", "o"])
-    assert rc == 0
-
-
-def test_dispatch_oos_normalize_header() -> None:
-    mock_main = MagicMock(return_value=0)
-    with patch.dict("sys.modules", {"larch.issue.oos": MagicMock(oos_normalize_header_main=mock_main)}):
-        rc = cli.main(["oos", "normalize-header", "--seq", "1"])
-    mock_main.assert_called_once_with(["--seq", "1"])
-    assert rc == 0
 
 
 def test_lazy_import_top_level_only_argparse_importlib_sys() -> None:

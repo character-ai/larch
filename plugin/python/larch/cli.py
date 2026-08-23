@@ -30,8 +30,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
     ("diagrams", "upsert"): ("larch.rendering.rendering", "diagrams_upsert_main", False),
     ("diagram", "code-flow"): ("larch.git.pr_body", "generate_code_flow_diagram_main", True),
     ("render", "run-summary"): ("larch.git.pr_body", "render_run_summary_main", True),
-    ("oos", "serialize"): ("larch.issue.oos", "oos_serialize_main", False),
-    ("oos", "normalize-header"): ("larch.issue.oos", "oos_normalize_header_main", False),
 }
 
 # Compatibility view: keys whose registry row has machine_stdout=True.

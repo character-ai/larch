@@ -1,4 +1,4 @@
-//! The five `oos` verbs that compose, cap, order, and gate a run's OOS batch.
+//! The `oos` verbs that compose, cap, order, gate, and serialize a run's OOS batch.
 //!
 //! * `materialize-manifest` turns an external implementer's untrusted
 //!   `oos_observations[]` into canonical accepted-OOS blocks, routing anything
@@ -13,6 +13,10 @@
 //! * `disposition-checkpoint` resolves the gate's inputs from one session
 //!   directory and records what it found, so an interrupted run resumes without
 //!   refiling.
+//! * `serialize` renumbers the accepted non-security OOS records in a findings
+//!   file into a self-consistent batch, reporting how many were kept and held.
+//! * `normalize-header` rewrites only a block's first line to the canonical
+//!   `### OOS_<seq>:` id, leaving every other byte untouched.
 //!
 //! Everything that leaves this process goes through one seam. File composition
 //! is [`larch_core::issue`]; the only environmental reads are the repository
@@ -36,14 +40,17 @@ use larch_core::{
     ManifestObservation, ParseOptions, RepositoryRead as _, Revision, apply_issue_cap,
     count_filed_urls_strict_files, count_filed_urls_union_files, count_inline_triage_occurrences,
     count_non_security_oos_blocks, count_rejected_oos_markers_from_ndjson, existing_oos_titles,
-    next_oos_number, normalize_title, observation_is_security, parse_conflict_cap,
-    parse_issue_input, plan_file_conflict_deps, python_str, read_universal_newlines,
-    render_deps_tsv, universal_newlines,
+    next_oos_number, normalize_oos_block_header, normalize_title, observation_is_security,
+    parse_conflict_cap, parse_issue_input, plan_file_conflict_deps, python_str,
+    read_universal_newlines, render_deps_tsv, serialize_accepted_oos, universal_newlines,
 };
 use serde_json::Value;
 
 use crate::{
-    argparse_compat::{missing, parse_with_flags, usage_error as argparse_usage_error},
+    argparse_compat::{
+        ascii_digits, missing, parse_with_flags, python_io_error, read_stdin,
+        usage_error as argparse_usage_error, write_stdout,
+    },
     run_log_entry_commands::append_execution_issue,
 };
 
@@ -75,6 +82,10 @@ const MATERIALIZE_USAGE: &str = "usage: cli.py oos materialize-manifest [-h] [--
 const ISSUE_CAP_USAGE: &str =
     "usage: cli.py oos issue-cap [-h] --input-file INPUT_FILE [--output OUTPUT]";
 const CHECKPOINT_USAGE: &str = "usage: cli.py oos disposition-checkpoint [-h] --implement-tmpdir IMPLEMENT_TMPDIR [--design-tmpdir DESIGN_TMPDIR]";
+const SERIALIZE_USAGE: &str =
+    "usage: cli.py oos serialize [-h] --findings-file FINDINGS_FILE --output-file OUTPUT_FILE [--session-env-path SESSION_ENV_PATH]";
+const NORMALIZE_HEADER_USAGE: &str =
+    "usage: cli.py oos normalize-header [-h] --seq SEQ [--block-file BLOCK_FILE]";
 const GATE_USAGE: &str = concat!(
     "usage: cli.py oos disposition-gate [-h] [--fork-mode] [--repo-unavailable]\n",
     "                                   [--accepted-files ACCEPTED_FILES]\n",
@@ -1010,11 +1021,132 @@ pub fn checkpoint_with(tmpdir: &Path, design_tmpdir: Option<&Path>, git: &dyn Ga
     }
 }
 
+// ---------------------------------------------------------------------------
+// oos serialize
+// ---------------------------------------------------------------------------
+
+/// Run `oos serialize`.
+///
+/// Reads accepted review findings, keeps only the single-block non-security
+/// records the vote marked fileable, renumbers them from one, and writes the
+/// batch to `--output-file`. The findings file is read exactly as the Python
+/// owner's text-mode `read_text` was, so `\r\n` and `\r` fold to `\n` before the
+/// byte-stable core runs.
+#[must_use]
+pub fn serialize(arguments: &[OsString]) -> ExitCode {
+    let parsed = parse_with_flags(
+        arguments,
+        &["--findings-file", "--output-file", "--session-env-path"],
+        &[],
+        0,
+    );
+    if let Some(error) = parsed.error() {
+        return usage_error(SERIALIZE_USAGE, "cli.py oos serialize", &error);
+    }
+    let (Some(findings), Some(output)) = (
+        parsed.value("--findings-file"),
+        parsed.value("--output-file"),
+    ) else {
+        return usage_error(
+            SERIALIZE_USAGE,
+            "cli.py oos serialize",
+            &missing(&[
+                ("--findings-file", parsed.value("--findings-file").is_some()),
+                ("--output-file", parsed.value("--output-file").is_some()),
+            ]),
+        );
+    };
+    // `--session-env-path` is accepted for caller compatibility and ignored,
+    // exactly as the Python owner ignored it.
+    let findings_path = Path::new(findings);
+    if !findings_path.is_file() {
+        eprintln!("oos serialize: --findings-file must name a file");
+        return ExitCode::from(VALIDATION_FAILED_RC);
+    }
+    let raw = match fs::read(findings_path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            eprintln!("oos serialize: {}", python_io_error(&error, findings_path));
+            return ExitCode::from(VALIDATION_FAILED_RC);
+        }
+    };
+    let lossy = String::from_utf8_lossy(&raw);
+    let serialized = serialize_accepted_oos(&universal_newlines(&lossy));
+    let output_path = Path::new(output);
+    if let Some(parent) = output_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        && let Err(error) = fs::create_dir_all(parent)
+    {
+        eprintln!("oos serialize: {}", python_io_error(&error, parent));
+        return ExitCode::from(VALIDATION_FAILED_RC);
+    }
+    if let Err(error) = fs::write(output_path, &serialized.text) {
+        eprintln!("oos serialize: {}", python_io_error(&error, output_path));
+        return ExitCode::from(VALIDATION_FAILED_RC);
+    }
+    println!("OOS_ACCEPTED={}", serialized.accepted);
+    println!("OOS_HELD_SECURITY={}", serialized.held_security);
+    ExitCode::SUCCESS
+}
+
+// ---------------------------------------------------------------------------
+// oos normalize-header
+// ---------------------------------------------------------------------------
+
+/// Run `oos normalize-header`.
+///
+/// Rewrites only the first line of one block to the canonical `### OOS_<seq>:`
+/// id and writes the result to stdout with no added trailing newline. The block
+/// comes from `--block-file` or, absent it, from stdin; either is folded through
+/// universal newlines to match the Python owner's text-mode read.
+#[must_use]
+pub fn normalize_header(arguments: &[OsString]) -> ExitCode {
+    let parsed = parse_with_flags(arguments, &["--seq", "--block-file"], &[], 0);
+    if let Some(error) = parsed.error() {
+        return usage_error(NORMALIZE_HEADER_USAGE, "cli.py oos normalize-header", &error);
+    }
+    let Some(seq_raw) = parsed.value("--seq") else {
+        return usage_error(
+            NORMALIZE_HEADER_USAGE,
+            "cli.py oos normalize-header",
+            &missing(&[("--seq", false)]),
+        );
+    };
+    let Some(seq) = seq_raw.to_str().and_then(ascii_digits::<u64>) else {
+        eprintln!("oos normalize-header: --seq must be a non-negative integer");
+        return ExitCode::from(VALIDATION_FAILED_RC);
+    };
+    let block_text = match parsed.value("--block-file") {
+        Some(block_file) => {
+            let block_path = Path::new(block_file);
+            if !block_path.is_file() {
+                eprintln!("oos normalize-header: --block-file must name a file");
+                return ExitCode::from(VALIDATION_FAILED_RC);
+            }
+            match fs::read(block_path) {
+                Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+                Err(error) => {
+                    eprintln!(
+                        "oos normalize-header: {}",
+                        python_io_error(&error, block_path)
+                    );
+                    return ExitCode::from(VALIDATION_FAILED_RC);
+                }
+            }
+        }
+        None => read_stdin(),
+    };
+    let folded = universal_newlines(&block_text);
+    write_stdout(&normalize_oos_block_header(seq, &folded))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         GateGit, GateInputs, checkpoint_with, disposition_gate, file_conflict_deps, gate_counters,
-        issue_cap, materialize_manifest, read_state, resolve_run_id, run_issue_cap,
+        issue_cap, materialize_manifest, normalize_header, read_state, resolve_run_id,
+        run_issue_cap, serialize,
     };
     use std::ffi::OsString;
     use std::fs;
@@ -1594,6 +1726,41 @@ mod tests {
                 "--implement-tmpdir",
                 "/nonexistent/session",
             ])),
+            ExitCode::from(2)
+        );
+    }
+
+    #[test]
+    fn serialize_refuses_a_missing_required_flag_and_an_absent_findings_file() {
+        assert_eq!(serialize(&arguments([])), ExitCode::from(2));
+        assert_eq!(
+            serialize(&arguments(["--findings-file", "f"])),
+            ExitCode::from(2)
+        );
+        assert_eq!(serialize(&arguments(["--nope"])), ExitCode::from(2));
+        assert_eq!(
+            serialize(&arguments([
+                "--findings-file",
+                "/nonexistent/findings.md",
+                "--output-file",
+                "/tmp/ignored-oos-output.md",
+            ])),
+            ExitCode::from(2)
+        );
+    }
+
+    #[test]
+    fn normalize_header_refuses_a_missing_seq_and_every_non_digit_spelling() {
+        assert_eq!(normalize_header(&arguments([])), ExitCode::from(2));
+        for bad in ["-1", "+1", "1.0", "0x1", ""] {
+            assert_eq!(
+                normalize_header(&arguments(["--seq", bad])),
+                ExitCode::from(2),
+                "{bad}"
+            );
+        }
+        assert_eq!(
+            normalize_header(&arguments(["--seq", "1", "--block-file", "/nonexistent/block.md"])),
             ExitCode::from(2)
         );
     }

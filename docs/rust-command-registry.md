@@ -194,7 +194,7 @@ the next cutover and does not create a second implementation.
 | --- | --- |
 | #7678 | No `python/larch/issue/` command survives here. Vendor launch and lane-rendering surfaces remain in the vendor-orchestration umbrella. |
 | #7679 | No pending issue command remains after the #8452 review-boundary audit. |
-| #7680 | `oos serialize` and `oos normalize-header` stay in the design workflow. `render run-summary` and the retained issue wire, OOS, title, and mutation payload libraries serve that workflow. The `clarify` verbs and `design clarify` are Rust-owned as of #8587, and `design publish` as of #8591. |
+| #7680 | `render run-summary` and the retained issue wire, OOS, title, and mutation payload libraries serve the design workflow. The `clarify` verbs and `design clarify` are Rust-owned as of #8587, and `design publish` as of #8591. `oos serialize` and `oos normalize-header` are Rust-owned as of #8838. |
 | #7681 | `pr compose-summary` and `tracking post-issue` are Rust-owned after #8789; the token-budget and PR line-count commands after #8797; and `issue governance-gate` and `plan-receipt refresh` after #8799. The former `larch.issue.execution_issues` hand-off ended in #8347. |
 | #7683 | `analyze-issues render-chart` is Rust-owned but remains planned by its reporting leaf #8092; report, diagram, and chart rendering do not return to #7682. |
 | #7684 | Rejected-finding and merged-change analysis commands, the remaining `measure-*` token analytics, and their analytical issue helpers remain research-owned. |
@@ -553,11 +553,13 @@ command. `larch_core::issue` becomes the single Rust owner of the canonical
 `### OOS_<n>:` / `### FINDING_<n>:` block, so #8178 and #8179 consume it rather
 than defining a second record model.
 
-Two commands stay Python-owned deliberately. `oos serialize` and
-`oos normalize-header` serve the remaining design OOS workflow, so #8452 hands
-them to #7680. The Rust library parity they need is already present. Their
-compatibility `finding-heading` and `level-three-heading` block boundaries now
-live in `larch.core.findings` until final consumer cutover.
+`oos serialize` and `oos normalize-header` are Rust-owned as of #8838. #8452
+handed them to #7680 as a deliberate Python hand-off, and #8838 flipped both to
+`crates/larch-cli/src/oos_commands.rs`, which calls the `larch_core::issue`
+owners (`serialize_accepted_oos` and `normalize_oos_block_header`) rather than
+forking a second header-wire implementation. The Python module and its
+registrations are removed; `crates/larch-cli/tests/oos_wire_migrated_parity.rs`
+proves the stdout, stderr, exit, and wire bytes for both verbs.
 
 `larch_core::text::file_reference_alternatives` is the single owner of the
 reviewer file-reference grammar ported from `larch.calibration.voting`. The
