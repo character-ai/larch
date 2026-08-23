@@ -2976,6 +2976,72 @@ async fn finish_refuses_an_open_non_leaf_parent_blocker() {
 }
 
 #[tokio::test]
+async fn graph_reads_more_than_one_hundred_direct_leaves() {
+    let parent = issue_json(
+        UMBRELLA,
+        400,
+        "[IMPLEMENTING] [UMBRELLA] Ship it",
+        PROPOSAL_BODY,
+        "open",
+        BEFORE,
+    );
+    let references = (0_u64..101)
+        .map(|offset| {
+            let number = 100 + offset;
+            (number, number + 1_000, "closed")
+        })
+        .collect::<Vec<_>>();
+    let mut exchanges = vec![
+        response(200, &parent),
+        IssueServiceExchange::pagination(
+            "GET",
+            "/repos/o/r/issues/40/sub_issues",
+            200,
+            refs(&references[..100]),
+            "/repos/o/r/issues/40/sub_issues?page=2",
+        )
+        .expect("valid first sub-issue page"),
+        IssueServiceExchange::json(
+            "GET",
+            "/repos/o/r/issues/40/sub_issues?page=2",
+            200,
+            refs(&references[100..]),
+        )
+        .expect("valid second sub-issue page"),
+        response(200, refs(&references)),
+    ];
+    for (number, id, _state) in &references {
+        exchanges.push(response(
+            200,
+            issue_json(
+                *number,
+                *id,
+                &format!("[DONE] [LEAF OF 40] Existing leaf {number}"),
+                &format!("{}\n\nDone.", umbrella_leaf_opening(UMBRELLA)),
+                "closed",
+                BEFORE,
+            ),
+        ));
+        exchanges.push(response(200, "[]"));
+    }
+    let server = IssueServiceStub::start(exchanges).expect("start large graph stub");
+    let client = OctocrabGitHubService::with_test_base(server.base_url());
+
+    let graph = read_graph(
+        &client,
+        &Cancellation::new(),
+        &repository(),
+        UMBRELLA,
+        &NetSignal::new(),
+    )
+    .await
+    .expect("large direct leaf graph remains runnable");
+
+    assert_eq!(graph.leaves.len(), references.len());
+    server.join().expect("large graph stub completed");
+}
+
+#[tokio::test]
 async fn next_graph_reports_an_open_non_leaf_parent_blocker_separately() {
     let parent = issue_json(
         UMBRELLA,
