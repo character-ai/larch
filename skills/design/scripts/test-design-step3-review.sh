@@ -136,6 +136,7 @@ cat >"$dir/scripts/larch.sh" <<'LARCH'
 #!/usr/bin/env bash
 case "${1:-} ${2:-}" in
   "session require-plugin-root"|"session validate-design-tmpdir") exit 0 ;;
+  "scope-anchor validate") exec "${LARCH_BINARY:?}" "$@" ;;
   "plan-review run") exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" "$@" ;;
   "plan-review normalize-status"|"plan-review prelaunch-failure") exec "${LARCH_BINARY:?}" "$@" ;;
 esac

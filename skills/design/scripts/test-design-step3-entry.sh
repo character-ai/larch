@@ -32,6 +32,9 @@ if [[ "\${1:-}" == bootstrap && "\${2:-}" == self-check ]]; then
     printf '%s\n' '{"schema_version":1,"version":"$PLUGIN_VERSION","target":"$LARCH_TARGET"}'
     exit 0
 fi
+if [[ "\${1:-}" == scope-anchor && "\${2:-}" == validate ]]; then
+    exec "$ROOT/target/debug/larch" "\$@"
+fi
 if [[ "\${1:-}" == session ]]; then
     case "\${2:-}" in
         require-plugin-root|validate-design-tmpdir) exit 0 ;;

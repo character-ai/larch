@@ -527,7 +527,7 @@ fn aggregate_findings_preserves_the_merged_finding_wire() {
     let scope_anchor = review.join("scope-anchor.md");
     write(
         &scope_anchor,
-        "Scope evidence preserved through the Python-owned validation seam.\n",
+        "Scope evidence preserved through the Rust-owned in-process validation seam.\n",
     );
     write(
         &findings,
@@ -584,7 +584,9 @@ fn aggregate_findings_preserves_the_merged_finding_wire() {
     assert!(
         fs::read_to_string(review.join("aggregator-prompt.md"))
             .expect("aggregation prompt")
-            .contains("Scope evidence preserved through the Python-owned validation seam.")
+            .contains(
+                "Scope evidence preserved through the Rust-owned in-process validation seam."
+            )
     );
     assert_eq!(
         fs::read_to_string(review.join("aggregator-dispatch.env")).expect("dispatch envelope"),

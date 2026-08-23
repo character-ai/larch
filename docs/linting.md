@@ -603,7 +603,7 @@ The PR creation surface now lives in `scripts/larch.sh pr create`. Before cuttin
 | `make test-decompose-aggregator` | Run pytest coverage for design decomposition panel aggregation and waterfall failure handling. Exercises `python/test_decompose.py`. A `make lint` prerequisite via the `test-harnesses-N` shard partition. |
 | `make test-scout-plan-archetypes-wrapper` | Run cargo coverage for `/design` plan-review scout wrapper filtering, role-id forwarding, and retry behavior. Exercises the `plan_wrapper` cases in `crates/larch-cli/tests/scout_migrated_parity.rs`. A `make lint` prerequisite via the `test-harnesses-N` shard partition. |
 | `make test-scout-dynamic-archetypes` | Run cargo coverage for `/review` dynamic archetype scouting (`diff` and `description` modes, staged-context warnings, and launcher tiers). Exercises the `dynamic_` cases in `crates/larch-cli/tests/scout_migrated_parity.rs`. A `make lint` prerequisite via the `test-harnesses-N` shard partition. |
-| `make test-lib-scope-anchor-handoff` | Run pytest coverage for scope-anchor validate, render, relay, and handoff helpers. Exercises `python/test_rendering.py`. A `make lint` prerequisite via the `test-harnesses-N` shard partition. |
+| `make test-lib-scope-anchor-handoff` | Run frozen black-box parity coverage for the Rust-owned scope-anchor validate, render, relay, and handoff commands. Exercises `crates/larch-cli/tests/scope_anchor_migrated_parity.rs`. A `make lint` prerequisite via the `test-harnesses-N` shard partition. |
 
 ### Claude drafter and voter harnesses
 

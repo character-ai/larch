@@ -912,44 +912,6 @@ def test_render_voter_injects_judge_ledger_rules(
     assert "Do not down-vote an `accepted` duplicate" in out
 
 
-def test_scope_anchor_validate_design_and_render(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    anchor = tmp_path / "anchor.txt"
-    anchor.write_text("Scope <only> & token\n", encoding="utf-8")
-    rc = rendering.scope_anchor_validate_main(["--mode", "design", "--design-tmpdir", str(tmp_path), "--path", str(anchor)])
-    assert rc == 0
-    assert capsys.readouterr().out.strip() == str(anchor)
-    rc = rendering.render_scope_anchor_main(["--design-tmpdir", str(tmp_path), "--scope-anchor-file", str(anchor)])
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "Plan-review scope anchor" in out
-    assert "Scope &lt;only&gt; &amp; token" in out
-
-
-def test_scope_anchor_validate_rejects_unreadable_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    design = tmp_path / "design"
-    design.mkdir()
-    anchor = design / "anchor.txt"
-    anchor.write_text("scope", encoding="utf-8")
-    anchor.chmod(0o000)
-    try:
-        rc = rendering.scope_anchor_validate_main(["--mode", "design", "--design-tmpdir", str(design), "--path", str(anchor)])
-        assert rc == 1
-    finally:
-        anchor.chmod(0o644)
-
-
-def test_scope_anchor_validate_rejects_outside_design(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    design = tmp_path / "design"
-    outside = tmp_path / "outside.txt"
-    design.mkdir()
-    outside.write_text("scope", encoding="utf-8")
-    rc = rendering.scope_anchor_validate_main(["--mode", "design", "--design-tmpdir", str(design), "--path", str(outside)])
-    assert rc == 1
-
-
 def test_scope_anchor_common_shape_rejects_symlink(tmp_path: Path) -> None:
     target = tmp_path / "anchor.txt"
     link = tmp_path / "anchor-link.txt"
@@ -975,59 +937,6 @@ def test_scope_anchor_common_shape_rejects_crlf_path(tmp_path: Path) -> None:
     anchor.write_text("scope", encoding="utf-8")
     assert not rendering._scope_anchor_common_shape_ok(Path(str(anchor) + "\n"))  # pyright: ignore[reportPrivateUsage]
     assert not rendering._scope_anchor_common_shape_ok(Path(str(anchor) + "\r"))  # pyright: ignore[reportPrivateUsage]
-
-
-def test_scope_anchor_validate_review_accepts_tmp_allowlist(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    review = tmp_path / "review"
-    review.mkdir()
-    outside = tmp_path / "outside.txt"
-    outside.write_text("scope", encoding="utf-8")
-    rc = rendering.scope_anchor_validate_main(["--mode", "review", "--review-tmpdir", str(review), "--path", str(outside)])
-    assert rc == 0
-    assert capsys.readouterr().out.strip() == str(outside)
-
-
-def test_scope_anchor_relay_and_handoff_precedence(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    parsed = tmp_path / "parsed.txt"
-    loop = tmp_path / "loop.txt"
-    parsed.write_text("parsed", encoding="utf-8")
-    loop.write_text("loop", encoding="utf-8")
-    rc = rendering.scope_anchor_design_handoff_main([
-        "--design-tmpdir", str(tmp_path),
-        "--tally-plan-review-status", "ok",
-        "--loop-status", "complete",
-        "--candidate", str(parsed),
-        "--candidate", str(loop),
-    ])
-    assert rc == 0
-    assert capsys.readouterr().out == str(parsed)
-    rc = rendering.scope_anchor_design_handoff_main([
-        "--design-tmpdir", str(tmp_path),
-        "--tally-plan-review-status", "tally-error",
-        "--loop-status", "complete",
-        "--candidate", str(parsed),
-    ])
-    assert rc == 0
-    assert capsys.readouterr().out == ""
-
-
-def test_scope_anchor_retally_prefers_parsed(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
-    _reset_quiet(monkeypatch)
-    parsed = tmp_path / "parsed.txt"
-    retally = tmp_path / "retally.txt"
-    parsed.write_text("parsed", encoding="utf-8")
-    retally.write_text("retally", encoding="utf-8")
-    rc = rendering.scope_anchor_retally_handoff_main([
-        "--design-tmpdir", str(tmp_path),
-        "--tally-plan-review-status", "main-agent-vote-required",
-        "--loop-status", "main-agent-vote-required",
-        "--parsed-input", str(parsed),
-        "--retally-input-anchor", str(retally),
-    ])
-    assert rc == 0
-    assert capsys.readouterr().out == str(parsed)
 
 
 def _render_voter_text(

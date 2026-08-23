@@ -208,7 +208,7 @@ test-plan-review-scope-anchor:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test plan_review_loop_commands utility_and_persistence
 
 test-lib-scope-anchor-handoff:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/rendering/test_rendering.py -q
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test scope_anchor_migrated_parity
 
 test-check-stale-plugin:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-check-stale-plugin.sh

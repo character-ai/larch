@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "anchor.txt": {
+      "text": "voter scope\n"
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "<SANDBOX>/anchor.txt\n"
+  }
+}

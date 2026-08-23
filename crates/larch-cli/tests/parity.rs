@@ -222,6 +222,13 @@ impl CleanInstallCase {
             // contract, so the clean-install `--help` token is a usage error.
             | "clean-install-render-reviewer"
             | "clean-install-render-specialist"
+            // The five scope-anchor verbs also preserve `add_help=False`, so
+            // the clean-install token proves Rust dispatch through exit 2.
+            | "clean-install-render-scope-anchor"
+            | "clean-install-scope-anchor-design-handoff"
+            | "clean-install-scope-anchor-relay-allowed"
+            | "clean-install-scope-anchor-retally-handoff"
+            | "clean-install-scope-anchor-validate"
             // Neither debate verb declares a `--help` action: the Rust owner
             // treats the clean-install `--help` token as an unknown flag and
             // emits its validation envelope with the argparse usage exit code.
@@ -2145,7 +2152,32 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-render-lane-status", "render", "lane-status"),
     CleanInstallCase::new("clean-install-render-reviewer", "render", "reviewer"),
+    CleanInstallCase::new(
+        "clean-install-render-scope-anchor",
+        "render",
+        "scope-anchor",
+    ),
     CleanInstallCase::new("clean-install-render-specialist", "render", "specialist"),
+    CleanInstallCase::new(
+        "clean-install-scope-anchor-design-handoff",
+        "scope-anchor",
+        "design-handoff",
+    ),
+    CleanInstallCase::new(
+        "clean-install-scope-anchor-relay-allowed",
+        "scope-anchor",
+        "relay-allowed",
+    ),
+    CleanInstallCase::new(
+        "clean-install-scope-anchor-retally-handoff",
+        "scope-anchor",
+        "retally-handoff",
+    ),
+    CleanInstallCase::new(
+        "clean-install-scope-anchor-validate",
+        "scope-anchor",
+        "validate",
+    ),
     CleanInstallCase::new(
         "clean-install-dirty-tree-baseline",
         "dirty-tree",
