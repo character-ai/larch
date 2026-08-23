@@ -39,8 +39,8 @@ const HEADING_OWNERS: &[&str] = &[
     "crates/larch-core/src/architectural_guidelines.rs",
     "crates/larch-lint/src/rules/guideline_no_exception.rs",
 ];
-/// Future-state owner for bug-title and lifecycle-prefix helpers.
-const TITLE_OWNER: &str = "crates/larch-issue/src/title_match.rs";
+/// Canonical owner for bug-title and lifecycle-prefix helpers.
+const TITLE_OWNER: &str = "crates/larch-core/src/issue/title.rs";
 /// Future-state owner for FINDING/OOS block parsers.
 const REVIEW_OWNER: &str = "crates/larch-review/src/review_types.rs";
 const RULE_PATH: &str = "crates/larch-lint/src/rules/shared_convention_regex.rs";
@@ -103,10 +103,10 @@ impl ViolationKind {
                 "reviewer-item-heading-regex; use review_types::parse_blocks or review_types::parse_canonical_heading"
             }
             Self::BugTitleSelector => {
-                "bug-title-selector; use title_match::bug_title_match or title_match::BUG_PREFIX"
+                "bug-title-selector; use larch_core::bug_title_match or larch_core::BUG_PREFIX"
             }
             Self::LifecycleStripLoop => {
-                "lifecycle-prefix-strip-loop; use title_match::strip_lifecycle_prefix or title_match::detect_lifecycle_prefix"
+                "lifecycle-prefix-strip-loop; use larch_core::strip_lifecycle_prefix or larch_core::detect_lifecycle_prefix"
             }
         }
     }
@@ -531,7 +531,7 @@ mod tests {
             ),
             (
                 "crates/demo/src/lib.rs",
-                "use larch_issue::title_match::BUG_PREFIX;\nconst SEARCH: &str = \"clean\";\n",
+                "use larch_core::BUG_PREFIX;\nconst SEARCH: &str = \"clean\";\n",
             ),
         ]);
         assert!(

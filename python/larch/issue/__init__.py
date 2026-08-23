@@ -1,8 +1,6 @@
-"""larch.issue: issue management, OOS, and execution-tracking subsystem.
+"""Remaining Python issue helpers.
 
-Home for the issue pipeline:
-``issue_wire``, ``tracking_issue``, ``file_oos``, and ``oos``.
-``file_oos`` is a retained #7680 helper library;
-the six OOS commands migrated by #8178 and #8179, plus execution-issue
-workflows, are Rust-owned.
+Home for the remaining Python issue helpers: ``issue_wire`` supports the
+#7686 voter renderer, and ``tracking_issue`` keeps pure PR-footer helpers.
+Issue commands and OOS behavior are Rust-owned.
 """

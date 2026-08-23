@@ -46,8 +46,6 @@ External implementer `oos_observations[]` reach the main-agent artifact through 
 
 Security-routed observations remain in `$IMPLEMENT_TMPDIR/security-oos-observations.md`. They never enter public filing. A dedicated `- **focus-area**:` field whose value begins with `security`, including a suffix such as `security-hardening`, selects that route. Description prose that merely mentions `focus-area = security` does not. Private disposition follows `${CLAUDE_PLUGIN_ROOT}/docs/security/workflow-trust-and-mutations.md`.
 
-The retained `python/larch/issue/file_oos.py` parser mirrors part of this block grammar for distinct in-process design and compatibility consumers under receiving umbrella #7680. It is not a production OOS command owner.
-
 ### 2. Recover durable evidence
 
 Before creating anything, the driver reads `$IMPLEMENT_TMPDIR/oos-issues-created.md`, the run-scoped `oos-issues.ndjson`, and structured `- **Filed URL**:` fields in accepted blocks.

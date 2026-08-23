@@ -34,11 +34,9 @@ pub struct LifecyclePrefixRule;
 
 pub static RULE: LifecyclePrefixRule = LifecyclePrefixRule;
 
-/// Canonical lifecycle and bug title prefixes. Mirrors the Python owners
-/// `config.TRACKING_ISSUE_PREFIX_BY_STATE` values,
-/// `config.DEBATE_TITLE_PREFIX_BY_STATE` values, and `title_match.BUG_PREFIX`.
-/// Matching normalizes both sides, so the trailing space carried by the Python
-/// state prefixes is not repeated here.
+/// Canonical lifecycle and bug title prefixes. Mirrors the Rust owner in
+/// `crates/larch-core/src/issue/title.rs`. Matching normalizes both sides, so
+/// the trailing space carried by the lifecycle constants is not repeated here.
 pub const PREFIXES: &[&str] = &[
     "[DESIGNING]",
     "[DESIGNED]",
@@ -518,62 +516,60 @@ mod tests {
         assert!(findings[0].contains("[DONE] in comparison"));
     }
 
-    // The prefix set is owned by Python (`config.TRACKING_ISSUE_PREFIX_BY_STATE`
-    // + `config.DEBATE_TITLE_PREFIX_BY_STATE` + `title_match.BUG_PREFIX`) and
-    // cannot be imported across the process boundary, so it is embedded here.
-    // This guards against silent drift (G-Cfg-3) by re-deriving the owner set
-    // from the live Python source and comparing.
+    // The prefix set is owned by larch-core and cannot be imported without
+    // reversing the workspace dependency direction, so it is embedded here.
+    // Guard against silent drift (G-Cfg-3) by re-deriving the owner set from
+    // the live Rust source and comparing.
     #[test]
-    fn prefixes_match_the_python_owner_constants() {
-        use std::collections::BTreeSet;
+    fn prefixes_match_the_rust_owner_constants() {
+        use std::collections::{BTreeMap, BTreeSet};
         use std::path::Path;
 
-        let python = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../python/larch");
-        let config =
-            std::fs::read_to_string(python.join("core/config.py")).expect("read config.py");
-        let title = std::fs::read_to_string(python.join("issue/title_match.py"))
-            .expect("read title_match.py");
+        let title_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../larch-core/src/issue/title.rs");
+        let title = std::fs::read_to_string(title_path).expect("read Rust title owner");
         let literal = regex::Regex::new("\"([^\"]*)\"").expect("literal regex");
-
-        // Bracket-token values of the TRACKING_ISSUE_PREFIX_BY_STATE dict literal.
-        let (_, after_name) = config
-            .split_once("TRACKING_ISSUE_PREFIX_BY_STATE")
-            .expect("locate prefix dict");
-        let (_, after_open) = after_name.split_once('{').expect("locate dict open");
-        let (dict, _) = after_open.split_once('}').expect("locate dict close");
-        let mut owner: BTreeSet<String> = literal
-            .captures_iter(dict)
-            .map(|caps| caps[1].to_owned())
-            .filter(|value| value.starts_with('['))
-            .map(|value| super::normalize(&value))
+        let string_constant = regex::Regex::new(
+            r#"pub const ([A-Z_]+): &str = "([^"]*)";"#,
+        )
+        .expect("string constant regex");
+        let constants: BTreeMap<String, String> = string_constant
+            .captures_iter(&title)
+            .map(|captures| (captures[1].to_owned(), captures[2].to_owned()))
             .collect();
 
-        // DEBATE_TITLE_PREFIX_BY_STATE is derived from the bare DEBATE_TITLE_STATES
-        // tokens, so read that tuple and bracket each token to compare.
-        let (_, after_states) = config
-            .split_once("DEBATE_TITLE_STATES")
-            .expect("locate debate states");
-        let (_, after_tuple_open) = after_states.split_once('(').expect("locate tuple open");
-        let (tuple, _) = after_tuple_open.split_once(')').expect("locate tuple close");
-        owner.extend(
-            literal
-                .captures_iter(tuple)
-                .map(|caps| super::normalize(&format!("[{}]", &caps[1]))),
-        );
-
-        // The BUG_PREFIX constant value.
-        let bug_line = title
-            .lines()
-            .find(|line| line.trim_start().starts_with("BUG_PREFIX"))
-            .expect("locate BUG_PREFIX");
-        let bug = literal.captures(bug_line).expect("BUG_PREFIX value");
-        owner.insert(super::normalize(&bug[1]));
+        let (_, after_name) = title
+            .split_once("pub const LIFECYCLE_PREFIXES")
+            .expect("locate lifecycle prefix array");
+        let (_, after_open) = after_name.split_once("= [").expect("locate array open");
+        let (array, _) = after_open.split_once("];").expect("locate array close");
+        let items: Vec<&str> = array
+            .split(',')
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .collect();
+        assert!(items.len() >= 2, "lifecycle prefix array lost legacy tail");
+        let mut owner = BTreeSet::new();
+        // The Rust owner's array contract places its two admitted legacy
+        // tokens last. They are intentionally outside this lint rule's active
+        // prefix set, so compare only the managed prefix head.
+        for item in items.iter().take(items.len() - 2) {
+            let value = literal
+                .captures(item)
+                .map(|captures| captures[1].to_owned())
+                .or_else(|| constants.get(*item).cloned())
+                .unwrap_or_else(|| panic!("unresolved lifecycle prefix item {item}"));
+            owner.insert(super::normalize(&value));
+        }
+        owner.insert(super::normalize(
+            constants.get("BUG_PREFIX").expect("BUG_PREFIX value"),
+        ));
 
         let rust: BTreeSet<String> =
             super::PREFIXES.iter().map(|prefix| super::normalize(prefix)).collect();
         assert_eq!(
             rust, owner,
-            "Rust PREFIXES drifted from the Python lifecycle/bug prefix owners"
+            "lint PREFIXES drifted from the Rust lifecycle/bug prefix owner"
         );
     }
 }

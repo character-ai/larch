@@ -27,6 +27,13 @@ def _load(name: str, path: Path):
     return module
 
 
+_issue_support = _load(
+    "_larch_issue_support_loader",
+    Path(__file__).resolve().with_name("issue_support_loader.py"),
+)
+_issue_support.install_issue_support()
+
+
 # Dependency order: _util has no frozen imports; _report and _oos import _util;
 # _ground_truth imports all three; the analyzer imports _ground_truth, _oos,
 # and _util through the pre-registered names.

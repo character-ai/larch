@@ -158,8 +158,8 @@ const EXPECTED_COMMANDS: [ExpectedCommand; 79] = [
     ExpectedCommand::new("voting", "write-tally", 8438, 7679),
 ];
 
-/// Pending commands that the closeout audit assigned to their live consumer.
-const HANDOFF_COMMANDS: [HandoffCommand; 28] = [
+/// Commands assigned to receiving workflow owners outside #7679's boundary.
+const HANDOFF_COMMANDS: [HandoffCommand; 22] = [
     HandoffCommand::new("architectural-assessment", "final-report-sections", 7681),
     HandoffCommand::new("architectural-assessment", "materialize", 7681),
     HandoffCommand::new("architectural-assessment", "sanitize-detail", 7681),
@@ -167,23 +167,17 @@ const HANDOFF_COMMANDS: [HandoffCommand; 28] = [
     HandoffCommand::new("architectural-guidelines", "append-deviation-note", 7681),
     HandoffCommand::new("architectural-guidelines", "invalidate", 7681),
     HandoffCommand::new("architectural-guidelines", "materialize-diff", 7681),
-    HandoffCommand::new("architectural-guidelines", "persist-design-assessment", 7680),
     HandoffCommand::new("architectural-guidelines", "pin-note-from-staged", 7681),
     HandoffCommand::new("architectural-guidelines", "prepare", 7681),
     HandoffCommand::new("architectural-guidelines", "prepare-compose", 7681),
-    HandoffCommand::new("architectural-guidelines", "present-note", 7680),
-    HandoffCommand::new("architectural-guidelines", "read", 7680),
     HandoffCommand::new("architectural-guidelines", "write-compose-assessment", 7681),
     HandoffCommand::new("architectural-guidelines", "write-staged-assessment", 7681),
     HandoffCommand::new("architectural-invariants", "append-deviation-note", 7681),
     HandoffCommand::new("architectural-invariants", "invalidate", 7681),
     HandoffCommand::new("architectural-invariants", "materialize-diff", 7681),
-    HandoffCommand::new("architectural-invariants", "persist-design-assessment", 7680),
     HandoffCommand::new("architectural-invariants", "pin-note-from-staged", 7681),
     HandoffCommand::new("architectural-invariants", "prepare", 7681),
     HandoffCommand::new("architectural-invariants", "prepare-compose", 7681),
-    HandoffCommand::new("architectural-invariants", "present-note", 7680),
-    HandoffCommand::new("architectural-invariants", "read", 7680),
     HandoffCommand::new("architectural-invariants", "write-compose-assessment", 7681),
     HandoffCommand::new("architectural-invariants", "write-staged-assessment", 7681),
     HandoffCommand::new("render", "specialist", 7681),

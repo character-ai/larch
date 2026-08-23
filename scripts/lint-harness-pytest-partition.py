@@ -15,9 +15,9 @@ more already-sliced files (test_execution_issues/
 test_plan_review), plus the #4459 Bucket-1 full-file duplicate group
 (test_run_logs/test_redact/test_release/test_decompose),
 against regression. It does **not** yet enforce the
-invariant on the heavier `-k`-sliced files whose re-partition moves many
-tests between shards and needs wall-time re-measurement
-(test_pr_body.py, test_file_oos.py); those remain tracked #4459 follow-ups.
+invariant on the heavier `-k`-sliced `test_pr_body.py`, whose re-partition moves
+many tests between shards and needs wall-time re-measurement; that remains a
+tracked #4459 follow-up.
 To bring another file under the guard, slice its targets and add it to
 ENFORCED.
 

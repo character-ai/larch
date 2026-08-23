@@ -232,13 +232,9 @@ const EXPECTED_COMMANDS: [ExpectedCommand; 98] = [
     ExpectedCommand::new("untrusted", "xml-escape-attr", 8171, 7682, "larch.issue.issue_wire", "untrusted_xml_escape_attr_main"),
 ];
 
-/// Commands that are deliberately outside #7682's closed boundary.
-const HANDOFF_COMMANDS: [HandoffCommand; 11] = [
+/// Commands assigned to receiving workflow owners outside #7682's boundary.
+const HANDOFF_COMMANDS: [HandoffCommand; 7] = [
     HandoffCommand::new("analyze-issues", "render-chart", 7683),
-    HandoffCommand::new("clarify", "comment-fetch", 7680),
-    HandoffCommand::new("clarify", "comment-post", 7680),
-    HandoffCommand::new("clarify", "label", 7680),
-    HandoffCommand::new("clarify", "state", 7680),
     HandoffCommand::new("issue", "migration-audit", 7685),
     HandoffCommand::new("rejected-analysis", "finalize", 7684),
     HandoffCommand::new("rejected-analysis", "record", 7684),
@@ -247,19 +243,15 @@ const HANDOFF_COMMANDS: [HandoffCommand; 11] = [
     HandoffCommand::new("tracking", "post-issue", 7681),
 ];
 
-const DESIGN_LIBRARY: &str =
-    "issue wire or payload library retained for the design workflow umbrella";
+const VOTER_LIBRARY: &str =
+    "untrusted-content library retained for the Python render voter consumer";
 const IMPLEMENT_LIBRARY: &str =
     "pure pull-request footer library retained for the implementation workflow umbrella";
 /// The package initializer is structural. Every other issue module at any
 /// depth must name both its receiving umbrella and its behaviorally distinct
 /// reason for remaining in Python.
-const RETAINED_MODULES: [RetainedModule; 6] = [
-    RetainedModule::new("python/larch/issue/file_oos.py", 7680, DESIGN_LIBRARY),
-    RetainedModule::new("python/larch/issue/issue_wire.py", 7680, DESIGN_LIBRARY),
-    RetainedModule::new("python/larch/issue/oos_disposition.py", 7680, DESIGN_LIBRARY),
-    RetainedModule::new("python/larch/issue/oos_priority.py", 7680, DESIGN_LIBRARY),
-    RetainedModule::new("python/larch/issue/title_match.py", 7680, DESIGN_LIBRARY),
+const RETAINED_MODULES: [RetainedModule; 2] = [
+    RetainedModule::new("python/larch/issue/issue_wire.py", 7686, VOTER_LIBRARY),
     RetainedModule::new("python/larch/issue/tracking_issue.py", 7681, IMPLEMENT_LIBRARY),
 ];
 
@@ -704,9 +696,13 @@ mod tests {
         handoffs.dedup();
         assert_eq!(handoffs.len(), handoff_total);
         assert!(RETAINED_MODULES.iter().all(|module| {
-            matches!(module.planning_issue, 7679 | 7680 | 7681 | 7684 | 7685)
-                && !module.reason.trim().is_empty()
+            matches!(module.planning_issue, 7681 | 7686) && !module.reason.trim().is_empty()
         }));
+        assert_eq!(
+            retained_module_owner("python/larch/issue/issue_wire.py"),
+            Some(7686)
+        );
+        assert!(retained_module_paths_for_issue(7680).is_empty());
     }
 
     #[test]

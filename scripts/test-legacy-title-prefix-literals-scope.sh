@@ -23,14 +23,13 @@ ALLOW=(
   crates/larch-core/tests/issue_wire.rs
   crates/larch-cli/src/admission_commands.rs
   crates/larch-cli/src/combine_issues_commands.rs
+  fixtures/rust-parity/issue_support_frozen/title_match.py
   python/preflight.py
   python/issue_wire.py
-  python/larch/issue/title_match.py
   python/larch/issue/tracking_issue.py
   scripts/test-legacy-title-prefix-literals-scope.sh
   python/test_issue_wire.py
   python/tests/issue/test_tracking_issue.py
-  python/tests/issue/test_title_match.py
   skills/combine-issues/SKILL.md
   skills/deps/SKILL.md
 )

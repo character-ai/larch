@@ -1,2 +1,2 @@
 row_type	source_line	script_path	flag	flag_value	note	cmd_uid
-invocation	4	python3	issue	99		1
+invocation	4	scripts/larch.sh	issue	99		1

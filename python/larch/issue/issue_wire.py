@@ -1,5 +1,5 @@
 # pyright: reportUnusedCallResult=false
-"""Retained title and untrusted-content helpers for Python renderers."""
+"""Retained untrusted-content helpers for the #7686 Python voter renderer."""
 
 from __future__ import annotations
 
