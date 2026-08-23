@@ -62,5 +62,5 @@ logging, all in `crates/larch-cli/src/execution_issue_commands.rs`.
 Edit In Sync:
 
 - `crates/larch-cli/src/execution_issue_commands.rs`
-- `python3 python/cli.py implement-finalize`
+- `crates/larch-cli/src/implement_finalize_commands.rs`
 - `skills/implement/SKILL.md`

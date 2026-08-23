@@ -128,6 +128,9 @@ impl CleanInstallCase {
             // cannot use, and each write verb reports for its missing required
             // option.
             "clean-install-block-issue-add-blocked-by"
+            | "clean-install-implement-finalize-postbump"
+            | "clean-install-implement-finalize-postmerge"
+            | "clean-install-implement-finalize-teardown"
             // The four remaining CI failure verbs print their help and then
             // exit with the retired `argparse` usage code.
             | "clean-install-ci-behind-count"
@@ -1163,6 +1166,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "block-issue",
         "remove-blocked-by",
     ),
+    CleanInstallCase::new("clean-install-implement-cleanup", "implement", "cleanup"),
     CleanInstallCase::new("clean-install-implement-clone-tag", "implement", "clone-tag"),
     CleanInstallCase::new("clean-install-implement-commit", "implement", "commit"),
     CleanInstallCase::new(
@@ -2218,6 +2222,21 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "step-18-gate-logs-flush",
     ),
     CleanInstallCase::new("clean-install-implement-step-19", "implement", "step-19"),
+    CleanInstallCase::new(
+        "clean-install-implement-finalize-postbump",
+        "implement-finalize",
+        "postbump",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-finalize-postmerge",
+        "implement-finalize",
+        "postmerge",
+    ),
+    CleanInstallCase::new(
+        "clean-install-implement-finalize-teardown",
+        "implement-finalize",
+        "teardown",
+    ),
     CleanInstallCase::new("clean-install-checks-rust-clippy", "checks", "rust-clippy"),
     CleanInstallCase::new(
         "clean-install-checks-self-edit-log",

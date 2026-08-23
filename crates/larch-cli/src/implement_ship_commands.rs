@@ -2,9 +2,9 @@
 //!
 //! These commands own the retained Python dependency fence, durable input
 //! reconstruction, initial state, bgjob adapter, and post-OOS checkpoint
-//! bookkeeping. Rust owns ship and merge; the separately owned Python finalizer
-//! uses the reviewed migration seam. Rust subprocesses enter through the verified
-//! bootstrap.
+//! bookkeeping. Rust owns ship, merge, and finalization. Retained Python state
+//! serializers remain behind the reviewed migration seam. Rust subprocesses
+//! enter through the verified bootstrap.
 
 use std::{
     env,
@@ -108,7 +108,7 @@ const SEED_OPTIONS: [&str; 10] = [
     "--bail-reason",
     "--bail-failure-detail-log",
 ];
-/// Refuse a host whose `python3` cannot run retained merge/finalize verbs.
+/// Refuse a host whose `python3` cannot run retained state serializers.
 pub fn step8_python_guard(arguments: &[OsString]) -> ExitCode {
     if let Err(code) = parse_required_with_help(
         arguments,

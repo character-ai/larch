@@ -1,4 +1,4 @@
-"""Post-review finalize phases for the ship-pr Python driver."""
+"""Frozen pre-#8793 owner used only by black-box Rust parity tests."""
 
 from __future__ import annotations
 

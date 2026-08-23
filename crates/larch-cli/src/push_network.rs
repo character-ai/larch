@@ -78,61 +78,109 @@ pub fn branch(args: &[String]) -> ExitCode {
 }
 
 pub fn force(expected_remote_oid: Option<&str>) -> ExitCode {
-    let Some(branch) = current_branch() else {
-        let _ = writeln!(io::stderr(), "git-force-push.sh: not on a named branch");
-        emit_kv("PUSHED", "false");
-        emit_kv("STATUS", "detached_head");
-        return ExitCode::from(2);
-    };
-    emit_kv("BRANCH", &branch);
-    if original_branch_forbidden(&branch) {
-        emit_kv("PUSHED", "false");
-        emit_kv("STATUS", "branch_mismatch");
-        return ExitCode::from(2);
+    let result = force_recovery(None, expected_remote_oid);
+    if !result.branch.is_empty() {
+        emit_kv("BRANCH", &result.branch);
     }
-    if !clean_tree() {
-        emit_kv("PUSHED", "false");
-        emit_kv("STATUS", "dirty_worktree");
-        return ExitCode::from(1);
+    if !result.detail.is_empty() {
+        let _ = writeln!(
+            io::stderr(),
+            "{}",
+            SafeText::from_untrusted(&result.detail).as_str()
+        );
+    }
+    emit_kv("PUSHED", if result.pushed { "true" } else { "false" });
+    emit_kv("STATUS", result.status);
+    ExitCode::from(result.code)
+}
+
+/// Result from the shared clean-tree, exact-lease force-push recovery owner.
+pub struct ForcePushOutcome {
+    pub pushed: bool,
+    pub status: &'static str,
+    branch: String,
+    code: u8,
+    detail: String,
+}
+
+impl ForcePushOutcome {
+    const fn success(status: &'static str, branch: String) -> Self {
+        Self {
+            pushed: true,
+            status,
+            branch,
+            code: 0,
+            detail: String::new(),
+        }
     }
 
-    let expected = match expected_remote_oid {
-        Some(oid) => match GitRef::new(oid) {
-            Ok(oid) => Some(oid),
-            Err(error) => {
-                return force_failure("invalid_expected_remote_oid", 2, &error.to_string());
-            }
-        },
-        None => None,
+    const fn failure(status: &'static str, branch: String, code: u8, detail: String) -> Self {
+        Self {
+            pushed: false,
+            status,
+            branch,
+            code,
+            detail,
+        }
+    }
+}
+
+/// Run force-push recovery without emitting the public command envelope.
+pub fn force_recovery(
+    expected_branch: Option<&str>,
+    expected_remote_oid: Option<&str>,
+) -> ForcePushOutcome {
+    let Some(branch) = current_branch() else {
+        return ForcePushOutcome::failure(
+            "detached_head",
+            String::new(),
+            2,
+            "git-force-push.sh: not on a named branch".to_owned(),
+        );
+    };
+    if expected_branch.is_none() && original_branch_forbidden(&branch)
+        || expected_branch.is_some_and(|expected| expected != branch)
+    {
+        return ForcePushOutcome::failure("branch_mismatch", branch, 2, String::new());
+    }
+    if !clean_tree() {
+        return ForcePushOutcome::failure("dirty_worktree", branch, 1, String::new());
+    }
+    let expected = match expected_remote_oid.map(GitRef::new).transpose() {
+        Ok(expected) => expected,
+        Err(error) => {
+            return ForcePushOutcome::failure(
+                "invalid_expected_remote_oid",
+                branch,
+                2,
+                error.to_string(),
+            );
+        }
     };
     let request = match push_request(&branch, expected, false) {
         Ok(request) => request,
-        Err(error) => return force_failure("invalid_input", 2, &error),
+        Err(error) => return ForcePushOutcome::failure("invalid_input", branch, 2, error),
     };
     let _ = fetch_branch(&branch);
-    match run_push(request.clone()) {
-        Ok(()) => force_success("pushed"),
-        Err(first) => {
-            // A failed network write has an ambiguous outcome: read the remote
-            // before deciding whether a retry could overwrite a later tip.
-            if remote_matches_head(&branch) {
-                return force_success("noop_same_ref");
-            }
-            let _ = fetch_branch(&branch);
-            thread::sleep(Duration::from_secs(5));
-            match run_push(request) {
-                Ok(()) => force_success("pushed"),
-                Err(second) => {
-                    let detail = format!("{}\n{}", first.diagnostic, second.diagnostic);
-                    let _ = writeln!(
-                        io::stderr(),
-                        "{}",
-                        SafeText::from_untrusted(detail).as_str()
-                    );
-                    force_failure("diverged_retry_failed", 1, "")
-                }
-            }
-        }
+    let first = match run_push(request.clone()) {
+        Ok(()) => return ForcePushOutcome::success("pushed", branch),
+        Err(error) => error,
+    };
+    // A failed network write has an ambiguous outcome. Read the remote before
+    // deciding whether a retry could overwrite a later tip.
+    if remote_matches_head(&branch) {
+        return ForcePushOutcome::success("noop_same_ref", branch);
+    }
+    let _ = fetch_branch(&branch);
+    thread::sleep(Duration::from_secs(5));
+    match run_push(request) {
+        Ok(()) => ForcePushOutcome::success("pushed", branch),
+        Err(second) => ForcePushOutcome::failure(
+            "diverged_retry_failed",
+            branch,
+            1,
+            format!("{}\n{}", first.diagnostic, second.diagnostic),
+        ),
     }
 }
 
@@ -165,25 +213,6 @@ pub fn push_for_pr(branch: &str, recover_existing: bool) -> bool {
     }
     thread::sleep(Duration::from_secs(5));
     run_push(force_request).is_ok()
-}
-
-fn force_success(status: &str) -> ExitCode {
-    emit_kv("PUSHED", "true");
-    emit_kv("STATUS", status);
-    ExitCode::SUCCESS
-}
-
-fn force_failure(status: &str, code: u8, detail: &str) -> ExitCode {
-    if !detail.is_empty() {
-        let _ = writeln!(
-            io::stderr(),
-            "{}",
-            SafeText::from_untrusted(detail).as_str()
-        );
-    }
-    emit_kv("PUSHED", "false");
-    emit_kv("STATUS", status);
-    ExitCode::from(code)
 }
 
 fn push_request(

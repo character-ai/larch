@@ -4,8 +4,8 @@
 //! The stall gate, the terminal logs flush, run-log terminalization, and the
 //! teardown forward all keep their exact `KEY=value` grammars, exit codes, and
 //! wire files. Sibling Rust verbs stay child processes through the verified
-//! `scripts/larch.sh` bootstrap; `implement-finalize teardown` is still
-//! Python-owned and is reached through the one `python_verb` seam.
+//! `scripts/larch.sh` bootstrap; terminal teardown calls its Rust owner in
+//! process so the session can remove its own command artifacts safely.
 
 use std::{
     collections::BTreeMap,
@@ -15,7 +15,6 @@ use std::{
     io::Write as _,
     path::{Path, PathBuf},
     process::ExitCode,
-    time::Duration,
 };
 
 use larch_adapters::{
@@ -31,7 +30,6 @@ use crate::{
     argparse_compat::{choice_error, parse_required_with_help, usage_error},
     implement_child_seam::resolve_plugin_root,
     implement_dispatch_commands::{opt_string, rehydrate_session, run_verified_larch_env_in},
-    python_verb::run_python_verb,
     run_log_entry_commands::append_execution_issue,
 };
 
@@ -49,7 +47,6 @@ const STEP19_USAGE: &str =
 const STEP19_HELP: &str = "usage: cli.py implement step-19 [-h] [--implement-tmpdir IMPLEMENT_TMPDIR]\n\noptions:\n  -h, --help            show this help message and exit\n  --implement-tmpdir IMPLEMENT_TMPDIR\n";
 
 const EXIT_INTERNAL_ERROR: i32 = 1;
-const TEARDOWN_TIMEOUT: Duration = Duration::from_secs(900);
 const REFUSAL_REASON: &str = "step18-terminal-shipping-without-pr";
 const REFUSAL_ENTRY: &str = "- **Step 18 terminal gate**: refused terminal `shipping` without PR evidence; preserved the session for stall recovery.";
 const TRUTHY: &[&str] = &[
@@ -1041,31 +1038,23 @@ pub fn step_19(arguments: &[OsString]) -> ExitCode {
         &[],
     );
     let state_file = tmpdir.join("finalize-state.sh");
-    let teardown = run_python_verb(
-        [
-            OsString::from("implement-finalize"),
-            OsString::from("teardown"),
+    let teardown = crate::implement_finalize_commands::execute(
+        crate::implement_finalize_commands::FinalizePhase::Teardown,
+        &[
             OsString::from("--state-file"),
             OsString::from(state_file.as_os_str()),
             OsString::from("--implement-tmpdir"),
             OsString::from(tmpdir.as_os_str()),
         ],
-        TEARDOWN_TIMEOUT,
     );
-    match teardown {
-        Ok(output) => {
-            if !output.stdout().is_empty() {
-                let _ = std::io::stdout().write_all(output.stdout());
-                let _ = std::io::stdout().flush();
-            }
-            relay_stderr(&output);
-            exit_code(output.status().code().unwrap_or(EXIT_INTERNAL_ERROR))
-        }
-        Err(message) => {
-            eprintln!("{message}");
-            exit_code(EXIT_INTERNAL_ERROR)
-        }
+    if !teardown.stdout.is_empty() {
+        let _ = std::io::stdout().write_all(teardown.stdout.as_bytes());
+        let _ = std::io::stdout().flush();
     }
+    if !teardown.stderr.is_empty() {
+        let _ = std::io::stderr().write_all(teardown.stderr.as_bytes());
+    }
+    exit_code(i32::from(teardown.code))
 }
 
 fn current_parent_pid() -> String {

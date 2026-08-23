@@ -18,7 +18,7 @@ if [ -z "${LARCH_BINARY:-}" ]; then
         export LARCH_BINARY="$REPO_ROOT/target/debug/larch"
     fi
 fi
-FINALIZE=(python3 "$REPO_ROOT/python/cli.py" implement-finalize)
+FINALIZE=("$REPO_ROOT/scripts/larch.sh" implement-finalize)
 TOKEN_CLI=("$REPO_ROOT/scripts/larch.sh" token)
 
 PASS=0
@@ -70,7 +70,7 @@ mkdir -p "$FINALIZE_TARGET"
 write_state "$FINALIZE_TARGET"
 rc=0
 XDG_CACHE_HOME="$TMPROOT/cache" "${FINALIZE[@]}" teardown --state-file "$FINALIZE_TARGET/finalize-state.sh" --implement-tmpdir "$FINALIZE_TARGET" >/dev/null 2>&1 || rc=$?
-assert_rc "$rc" 0 "python implement-finalize accepts cache sessions root"
+assert_rc "$rc" 0 "Rust implement-finalize accepts cache sessions root"
 
 TOKEN_DIR="$CACHE_ROOT/larch-research-token-tally"
 rc=0

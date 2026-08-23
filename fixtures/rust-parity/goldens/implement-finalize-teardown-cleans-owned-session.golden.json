@@ -1,0 +1,11 @@
+{
+  "exit_code": 0,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "STATUS=cleaned\nOUTCOME=OK\nFINALIZE_WARNINGS=\nLOG_WRITE_STATUS=\nREBASE_STATUS=\nCONFLICT_FILES=\nFORCE_PUSH_STATUS=\nLOCAL_CLEANUP_STATUS=\nVERIFY_MAIN_STATUS=\nRENAME_BRANCH=C\nRENAME_STATUS=skipped\nISSUE_URL=\nSTASH_REF=\nSENTINEL_WRITTEN=false\nFINALIZE_SUBCOMMAND=teardown\n"
+  }
+}

@@ -57,7 +57,7 @@ unmigrated launcher commands); **R** = residual gap named below.
 | `skills/implement/scripts/step-7a.sh` | — | — | ✅ | **D** | Pre-ship flush of the vendor-failure batch. |
 | `scripts/larch.sh run-log checkpoint` | — | — | ✅ | **D** | Rust-owned mutable recovery checkpoint. |
 | `scripts/larch.sh run-log refresh` | — | — | ✅ | **D** | Rust-owned CI-retry / rebase pre-push flush. |
-| `python3 python/cli.py implement-finalize` (teardown) | — | — | ✅ | **D** | Safety-net flush routes through Rust `scripts/larch.sh execution-issues flush-safety-net` (F13). |
+| `scripts/larch.sh implement-finalize teardown` | — | — | ✅ | **D** | Step 18 publishes the final execution-issues tail before Rust teardown; teardown reuses the shared session-process kill log. |
 | `scripts/larch.sh agent launch-codex-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | Step 2 implementer routes through the approved external-process layer (carrier saved); the launch-failure record appends the diagnostic source to the durable batch. |
 | `scripts/larch.sh agent launch-cursor-implement` | ✅ inherit | ✅ backstop | ✅ batch | **I/D** | As codex implementer (launcher parity). |
 | `scripts/larch.sh agent launch-codex-ci` | ✅ inherit | ✅ backstop | R batch | **I/R** | CI-fix launcher uses the shared external-agent carrier. |

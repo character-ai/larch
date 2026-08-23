@@ -329,7 +329,12 @@ def run(repo_root: Path) -> list[str]:
         require("skills/implement/scripts/step-19.sh", 'implement step-19 "$@"', "step-19 wrapper delegates to larch")
         require(terminal_owner, "pub fn step_19", "step-19 Rust entry present")
         require(terminal_owner, "restore-finalize-state", "step-19 restore finalize argv in Rust")
-        require(terminal_owner, "implement-finalize", "step-19 teardown argv in Rust")
+        require_near(
+            terminal_owner,
+            "implement_finalize_commands::execute",
+            "FinalizePhase::Teardown",
+            "step-19 in-process teardown owner",
+        )
         forbid("skills/implement/scripts/step-18.sh", 'cleanup.sh" --help', "step-18 must not resurrect cleanup smoke")
         forbid("skills/implement/scripts/step-18.sh", "token report --full", "step-18 must not resurrect full token report")
         forbid("skills/implement/scripts/step-18.sh", "Step 18 — cleanup", "step-18 must not resurrect cleanup telemetry mark")
@@ -1155,7 +1160,7 @@ def run(repo_root: Path) -> list[str]:
         terminal_owner = "crates/larch-cli/src/implement_terminal_commands.rs"
         for needle in ["DesignTmpdir", "LarchTimingSkill"]:
             require(terminal_owner, needle, f"step-18 {needle}")
-        for needle in ["should_restore_finalize", "restore-finalize-state", "implement-finalize"]:
+        for needle in ["should_restore_finalize", "restore-finalize-state"]:
             require(terminal_owner, needle, f"step-19 {needle}")
         # Thin wrapper must not retain the old Bash finalize body.
         for needle in [

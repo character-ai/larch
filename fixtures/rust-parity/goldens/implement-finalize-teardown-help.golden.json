@@ -1,0 +1,11 @@
+{
+  "exit_code": 2,
+  "files": {},
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: cli.py implement-finalize teardown [-h] --state-file STATE_FILE --implement-tmpdir IMPLEMENT_TMPDIR [--final-bail-reason-file FINAL_BAIL_REASON_FILE]\n\noptions:\n  -h, --help            show this help message and exit\n  --state-file STATE_FILE\n  --implement-tmpdir IMPLEMENT_TMPDIR\n  --final-bail-reason-file FINAL_BAIL_REASON_FILE\n"
+  }
+}

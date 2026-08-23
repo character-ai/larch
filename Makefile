@@ -221,7 +221,7 @@ test-cache-key-discipline:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-cache-key-discipline.sh
 
 test-finalize-sanity-check:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_finalize.py -q -k cleanup_target_ok
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test implement_finalize_parity cleanup
 
 
 test-audit-edit-write:
@@ -628,7 +628,7 @@ test-quick-mode-docs-sync:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-quick-mode-docs-sync.sh --self-test
 
 test-implement-finalize:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_finalize.py -q -k 'not cleanup'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test implement_finalize_parity finalize
 
 test-implement-bootstrap:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --bin larch implement_bootstrap_continuation::tests
@@ -702,7 +702,7 @@ test-render-cost-line:
 	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test token_commands cost_and_render_cost_line_preserve_cli_contracts
 
 test-implement-cleanup-script:
-	$(HARNESS_MARK) --label $@ -- python3 -m pytest python/tests/implement/test_finalize.py -q -k 'cleanup and not cleanup_target_ok'
+	$(HARNESS_MARK) --label $@ -- cargo test --locked --package larch-cli --test implement_finalize_parity cleanup
 
 test-harness-shards-coverage:
 	$(HARNESS_MARK) --label $@ -- bash scripts/test-harness-shards-coverage.sh

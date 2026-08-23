@@ -96,6 +96,7 @@ mod implement_closeout_commands;
 mod implement_commands;
 mod implement_commit_route_commands;
 mod implement_dispatch_commands;
+mod implement_finalize_commands;
 mod implement_launcher_commands;
 mod implement_leg_commands;
 mod implement_preflight_commands;
@@ -337,6 +338,9 @@ enum Domain {
     /// `/implement` bootstrap, preflight, scout, recovery, and step checks.
     #[command(subcommand)]
     Implement(ImplementCommand),
+    /// Post-ship rebase, push, local cleanup, and terminal teardown.
+    #[command(subcommand, name = "implement-finalize")]
+    ImplementFinalize(ImplementFinalizeCommand),
     /// Ship pre-driver routing, state, result, and rebase-repair commands.
     #[command(subcommand)]
     Ship(ShipCommand),
@@ -1064,6 +1068,9 @@ enum AdmissionCommand {
 
 #[derive(Subcommand)]
 enum ImplementCommand {
+    /// Remove one validated implementation session directory.
+    #[command(disable_help_flag = true)]
+    Cleanup(RawCompatibilityArguments),
     /// Compute, classify, or validate the checks bgjob input identity.
     #[command(name = "checks-result-identity", disable_help_flag = true)]
     ChecksResultIdentity(RawCompatibilityArguments),
@@ -1160,6 +1167,19 @@ enum ImplementCommand {
     /// Tear the session down after Step 18 recorded run-log terminalization.
     #[command(name = "step-19", disable_help_flag = true)]
     Step19(RawCompatibilityArguments),
+}
+
+#[derive(Subcommand)]
+enum ImplementFinalizeCommand {
+    /// Rebase and lease-force-push the feature branch before PR creation.
+    #[command(disable_help_flag = true)]
+    Postbump(RawCompatibilityArguments),
+    /// Synchronize main and delete the merged local feature branch.
+    #[command(disable_help_flag = true)]
+    Postmerge(RawCompatibilityArguments),
+    /// Rename terminal issue state and clean or preserve session artifacts.
+    #[command(disable_help_flag = true)]
+    Teardown(RawCompatibilityArguments),
 }
 
 #[derive(Subcommand)]
@@ -3052,6 +3072,9 @@ fn run(
             checks_run_relevant_commands::check_contains_pins(&arguments.arguments),
         ),
         Domain::Implement(command) => Ok(match command {
+            ImplementCommand::Cleanup(arguments) => {
+                implement_finalize_commands::cleanup(&arguments.arguments)
+            }
             ImplementCommand::ChecksResultIdentity(arguments) => {
                 checks_identity_commands::checks_result_identity(&arguments.arguments)
             }
@@ -3148,6 +3171,20 @@ fn run(
             ImplementCommand::Step19(arguments) => {
                 implement_terminal_commands::step_19(&arguments.arguments)
             }
+        }),
+        Domain::ImplementFinalize(command) => Ok(match command {
+            ImplementFinalizeCommand::Postbump(arguments) => implement_finalize_commands::command(
+                implement_finalize_commands::FinalizePhase::Postbump,
+                &arguments.arguments,
+            ),
+            ImplementFinalizeCommand::Postmerge(arguments) => implement_finalize_commands::command(
+                implement_finalize_commands::FinalizePhase::Postmerge,
+                &arguments.arguments,
+            ),
+            ImplementFinalizeCommand::Teardown(arguments) => implement_finalize_commands::command(
+                implement_finalize_commands::FinalizePhase::Teardown,
+                &arguments.arguments,
+            ),
         }),
         Domain::Ship(command) => Ok(match command {
             ShipCommand::Pr(arguments) => ship_pr_commands::pr(&arguments.arguments),

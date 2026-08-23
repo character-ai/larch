@@ -18,7 +18,7 @@ FAIL=0
 fail() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
 pass() { echo "PASS: $1"; PASS=$((PASS + 1)); }
 
-# Replicate read_state's awk extraction (same logic as implement-finalize::read_state)
+# Replicate the state-wire extraction consumed by the Rust finalizer.
 read_state_prefix() {
     local state_file=$1
     awk -F= -v k="EXPECTED_TMPDIR_BASENAME_PREFIX" '
@@ -31,7 +31,7 @@ read_state_prefix() {
     ' "$state_file"
 }
 
-# Replicate verify_cleanup_target's case-glob (same logic as implement-finalize::verify_cleanup_target)
+# Replicate implement_finalize_commands::cleanup_target_ok's prefix check.
 prefix_matches_basename() {
     local prefix=$1 basename=$2
     case "$basename" in

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # pyright: reportUnusedCallResult=false, reportUnknownVariableType=false
 import json
 from dataclasses import FrozenInstanceError
@@ -6,21 +7,78 @@ from pathlib import Path
 import pytest
 
 from larch.core import config
-from larch.state import finalize
+from larch.errors import ShipError
 from larch.state import session_env
 
-from test_support import make_design_tmpdir, seed_run_params, write_design_source_env
+from test_support import (
+    make_design_tmpdir,
+    make_run_context,
+    seed_run_params,
+    write_design_source_env,
+)
+
 
 def test_cache_sessions_root_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
     # `session cleanup-tmpdir` moved to the Rust owner in issue #8057; the shared
     # root derivation still backs the Python session writers that remain.
     monkeypatch.setenv("XDG_CACHE_HOME", "relative-cache")
     monkeypatch.setenv("HOME", "")
-    assert session_env.cleanup_cache_sessions_root() == Path("relative-cache/larch/sessions")
-    assert finalize.cache_sessions_root().is_absolute()
+    assert session_env.cleanup_cache_sessions_root() == Path(
+        "relative-cache/larch/sessions"
+    )
+    assert session_env.finalize_cache_sessions_root().is_absolute()
 
 
-def test_reap_pid_residuals_refuses_symlinked_ancestors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_finalize_cache_sessions_root_honors_only_absolute_xdg(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    assert session_env.finalize_cache_sessions_root() == tmp_path / "larch/sessions"
+    monkeypatch.setenv("XDG_CACHE_HOME", "relative-cache")
+    assert (
+        session_env.finalize_cache_sessions_root()
+        == Path.home() / ".cache/larch/sessions"
+    )
+
+
+def test_finalize_state_writer_preserves_wire_values(tmp_path: Path) -> None:
+    target = tmp_path / "finalize-state.sh"
+    context = make_run_context(
+        tmpdir=str(tmp_path),
+        pr_number=7,
+        pr_title="Implement $(echo inert)",
+        issue_number="1",
+    )
+    session_env.write_finalize_state(ctx=context, path=target)
+    text = target.read_text(encoding="utf-8")
+    assert text.startswith("BRANCH_NAME=")
+    assert "PR_TITLE=Implement $(echo inert)\n" in text
+    assert "PR_CLOSED=false\n" in text
+    assert "NO_LOGS_COMMIT=false\n" in text
+    assert (
+        session_env.read_finalize_state(target)["PR_TITLE"] == "Implement $(echo inert)"
+    )
+
+
+def test_finalize_state_merge_preserves_custom_keys_and_rejects_newlines(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "finalize-state.sh"
+    session_env.write_finalize_state_merged(
+        path=target,
+        data={"CUSTOM_PIN": "keep", "PR_TITLE": "Title 'quoted'"},
+    )
+    assert session_env.read_finalize_state(target) == {
+        "CUSTOM_PIN": "keep",
+        "PR_TITLE": "Title 'quoted'",
+    }
+    with pytest.raises(ShipError, match="newline"):
+        session_env.write_finalize_state_merged(path=target, data={"BAD": "x\ny"})
+
+
+def test_reap_pid_residuals_refuses_symlinked_ancestors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     home = tmp_path / "home"
     redirect = tmp_path / "redirect"
     home.mkdir()
@@ -65,14 +123,18 @@ def test_reap_pid_residuals_removes_leaf_design_symlink_and_residuals(
     assert not parsed_path.exists()
 
 
-def test_check_live_mutation_auth_test_deny_blocks_session_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_check_live_mutation_auth_test_deny_blocks_session_auth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Test-deny blocks session-backed auth but not operator-invoked."""
     monkeypatch.setenv(config.LIVE_MUTATION_TEST_DENY_KEY, "true")
     sessions_root = tmp_path / ".cache" / "larch" / "sessions"
     session_dir = sessions_root / "claude-implement-test"
     session_dir.mkdir(parents=True)
     ctx = session_dir / "session-env.sh"
-    ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
+    ctx.write_text(
+        f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8"
+    )
     authorized, reason = session_env.check_live_mutation_auth(
         context_file=ctx,
         operator_mode=False,
@@ -83,28 +145,38 @@ def test_check_live_mutation_auth_test_deny_blocks_session_auth(tmp_path: Path, 
     assert reason == "test-denied"
 
 
-def test_check_live_mutation_auth_operator_bypasses_test_deny(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_check_live_mutation_auth_operator_bypasses_test_deny(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Operator mode bypasses test-deny."""
     monkeypatch.setenv(config.LIVE_MUTATION_TEST_DENY_KEY, "true")
-    authorized, reason = session_env.check_live_mutation_auth(context_file=None, operator_mode=True)
+    authorized, reason = session_env.check_live_mutation_auth(
+        context_file=None, operator_mode=True
+    )
     assert authorized
     assert reason == config.LIVE_MUTATION_OPERATOR_MODE
 
 
 def test_check_live_mutation_auth_operator(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
-    authorized, reason = session_env.check_live_mutation_auth(context_file=None, operator_mode=True)
+    authorized, reason = session_env.check_live_mutation_auth(
+        context_file=None, operator_mode=True
+    )
     assert authorized
     assert reason == config.LIVE_MUTATION_OPERATOR_MODE
 
 
-def test_check_live_mutation_auth_session_valid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_check_live_mutation_auth_session_valid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     sessions_root = tmp_path / ".cache" / "larch" / "sessions"
     session_dir = sessions_root / "claude-implement-test"
     session_dir.mkdir(parents=True)
     ctx = session_dir / "session-env.sh"
-    ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
+    ctx.write_text(
+        f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8"
+    )
     authorized, reason = session_env.check_live_mutation_auth(
         context_file=ctx,
         operator_mode=False,
@@ -124,7 +196,9 @@ def test_check_live_mutation_auth_rejects_context_outside_trusted_root(
     trusted_root.mkdir()
     outside_root.mkdir()
     ctx = outside_root / "session-env.sh"
-    _ = ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
+    _ = ctx.write_text(
+        f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8"
+    )
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
 
     authorized, reason = session_env.check_live_mutation_auth(
@@ -140,12 +214,16 @@ def test_check_live_mutation_auth_rejects_context_outside_trusted_root(
 
 def test_check_live_mutation_auth_no_context(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
-    authorized, reason = session_env.check_live_mutation_auth(context_file=None, operator_mode=False)
+    authorized, reason = session_env.check_live_mutation_auth(
+        context_file=None, operator_mode=False
+    )
     assert not authorized
     assert reason == config.LIVE_MUTATION_REFUSAL_REASON
 
 
-def test_check_live_mutation_auth_symlink_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_check_live_mutation_auth_symlink_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     sessions_root = tmp_path / ".cache" / "larch" / "sessions"
     sessions_root.mkdir(parents=True)
@@ -153,17 +231,23 @@ def test_check_live_mutation_auth_symlink_refused(tmp_path: Path, monkeypatch: p
     real_file.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\n", encoding="utf-8")
     symlink = sessions_root / "session-env.sh"
     symlink.symlink_to(real_file)
-    authorized, _ = session_env.check_live_mutation_auth(context_file=symlink, operator_mode=False)
+    authorized, _ = session_env.check_live_mutation_auth(
+        context_file=symlink, operator_mode=False
+    )
     assert not authorized
 
 
-def test_check_live_mutation_auth_missing_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_check_live_mutation_auth_missing_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     sessions_root = tmp_path / ".cache" / "larch" / "sessions"
     sessions_root.mkdir(parents=True)
     ctx = sessions_root / "session-env.sh"
     ctx.write_text("LARCH_RUN_ID=run-1\n", encoding="utf-8")
-    authorized, _ = session_env.check_live_mutation_auth(context_file=ctx, operator_mode=False)
+    authorized, _ = session_env.check_live_mutation_auth(
+        context_file=ctx, operator_mode=False
+    )
     assert not authorized
 
 
