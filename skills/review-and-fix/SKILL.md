@@ -31,7 +31,7 @@ Run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" review-and-fix apply-findings --fi
 
 Contracts and harnesses: `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" review-and-fix apply-findings`, `step5`, `check-changes`, `commit-fixes`, and `write-rejected` are implemented in `crates/larch-cli/src/review_and_fix_commands.rs` and covered by `crates/larch-cli/tests/review_and_fix_commands.rs`. Review-round timing enters through `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh timing record-round`, the Rust-owned ledger writer. `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh review compose-findings` owns findings JSONL composition. Submodule scrubbing is covered by `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh redact scrub-submodule-paths`, `crates/larch-cli/tests/redact_parity.rs`, and `${CLAUDE_PLUGIN_ROOT}/python/tests/core/test_redact.py` for the retained in-process library.
 
-Validation: after edits, run `cargo test --locked -p larch-cli --test review_and_fix_commands` and `make test-redact`; callers then run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" checks run-relevant --site review-step3e --tmpdir "$REVIEW_TMPDIR"`.
+Validation: after edits, run `cargo test --locked -p larch-cli --test integration review_and_fix_commands::` and `make test-redact`; callers then run `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" checks run-relevant --site review-step3e --tmpdir "$REVIEW_TMPDIR"`.
 
 End by emitting:
 

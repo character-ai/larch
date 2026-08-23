@@ -1,6 +1,6 @@
 //! Regression coverage for the completed #7677 Python ownership boundary.
 
-mod support;
+use crate::support;
 
 use predicates::prelude::*;
 use support::TempRepo;

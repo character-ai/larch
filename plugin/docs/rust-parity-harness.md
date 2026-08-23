@@ -63,7 +63,7 @@ Review a contract change before updating its golden. After Python and Rust
 match, refresh goldens with:
 
 ```bash
-LARCH_UPDATE_PARITY_GOLDENS=1 cargo test --locked --package larch-cli --test parity
+LARCH_UPDATE_PARITY_GOLDENS=1 cargo nextest run --locked --package larch-cli --test integration -E 'test(/^parity::/)'
 ```
 
 Inspect and commit the resulting `*.golden.json` diff. CI never sets the

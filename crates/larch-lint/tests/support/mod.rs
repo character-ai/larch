@@ -22,7 +22,6 @@ pub struct LintTestCommand {
 }
 
 impl LintTestCommand {
-    #[allow(dead_code)] // Each integration target compiles only the shared methods it uses.
     pub fn arg(&mut self, argument: impl Into<OsString>) -> &mut Self {
         self.arguments.push(argument.into());
         self
