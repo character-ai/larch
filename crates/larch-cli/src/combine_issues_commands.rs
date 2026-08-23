@@ -20,9 +20,9 @@ use larch_adapters::github::{
 };
 use larch_core::{
     GitHubCloseReason, GitHubIssue, GitHubIssueBodyMode, GitHubIssueList, GitHubIssueListMode,
-    GitHubIssueState, GitHubRepositoryRef, GitHubService as _, IssueCreateRequest,
-    deps_compact_json, deps_flat_error, json_positive_integer, parse_prose_blockers,
-    parse_prose_blocks, positive_integer,
+    GitHubIssueState, GitHubRepositoryRef, GitHubService as _, ISSUE_DEDUP_LIMIT,
+    IssueCreateRequest, deps_compact_json, deps_flat_error, json_positive_integer,
+    parse_prose_blockers, parse_prose_blocks, positive_integer,
 };
 use serde_json::{Map, Value, json};
 use tempfile::NamedTempFile;
@@ -429,16 +429,12 @@ fn fetch(arguments: &[OsString]) -> ExitCode {
     };
     let oos = command.flag("--oos");
     let listed = with_github_service(async |service, cancellation| {
-        let request = GitHubIssueList {
-            repo: reference,
-            state: GitHubIssueState::Open,
-            labels: Vec::new(),
-            limit: service.transport_policy().limits().items().min(200),
-            // The combine candidate list is bounded to 200 by design, so a
-            // transport-bound tail is an acceptable partial snapshot.
-            mode: GitHubIssueListMode::BoundedPartial,
-            body_mode: GitHubIssueBodyMode::Include,
-        };
+        let request = GitHubIssueList::for_dedup(
+            reference,
+            GitHubIssueState::Open,
+            GitHubIssueBodyMode::Include,
+            service.transport_policy(),
+        );
         service
             .list_issues(&request, cancellation)
             .await
@@ -447,6 +443,11 @@ fn fetch(arguments: &[OsString]) -> ExitCode {
     let Ok(listed) = listed else {
         return failure(format!("Failed to fetch issues from {repo}"));
     };
+    if listed.truncated {
+        eprintln!(
+            "WARN: combine-issues candidate snapshot was capped at the {ISSUE_DEDUP_LIMIT} most recent open issues; older open issues were omitted"
+        );
+    }
     let filtered: Vec<Value> = listed
         .issues
         .into_iter()

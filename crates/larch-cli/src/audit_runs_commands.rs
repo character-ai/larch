@@ -46,10 +46,10 @@ use larch_adapters::{
 };
 use larch_core::{
     AssessmentKind, BUG_PREFIX, CompletenessOutcome, GitHubCloseReason, GitHubIssue,
-    GitHubIssueBodyMode, GitHubIssueList, GitHubIssueListMode, GitHubIssueSearch, GitHubIssueState,
-    GitHubOperationErrorKind, GitHubService, GitPath, Head, ReachabilityContext, RepositoryRead,
-    Revision, RunLogCorpus, bug_title_match, glob_matches, scan_required_files, single_line,
-    validate_ship_outcome_record,
+    GitHubIssueBodyMode, GitHubIssueList, GitHubIssueListMode, GitHubIssueSearch,
+    GitHubIssueSearchSort, GitHubIssueState, GitHubOperationErrorKind, GitHubService, GitPath,
+    Head, ISSUE_DEDUP_LIMIT, ReachabilityContext, RepositoryRead, Revision, RunLogCorpus,
+    bug_title_match, glob_matches, scan_required_files, single_line, validate_ship_outcome_record,
 };
 use regex::Regex;
 use serde_json::{Value, json};
@@ -426,6 +426,7 @@ async fn bugs_backlog_nudge_count_remote(
         repo: repository.clone(),
         query: format!("{BUG_PREFIX} in:title closed:>{boundary_text}"),
         limit: service.transport_policy().limits().items(),
+        sort: GitHubIssueSearchSort::BestMatch,
     };
     let rows = service
         .search_issues(&request, cancellation)
@@ -750,15 +751,20 @@ async fn issue_search_remote<S: GitHubService + ?Sized>(
     repository: &larch_core::GitHubRepositoryRef,
     keywords: &str,
 ) -> Result<Vec<GitHubIssue>, String> {
-    let request = GitHubIssueSearch {
-        repo: repository.clone(),
-        query: keywords.to_owned(),
-        limit: service.transport_policy().limits().items(),
-    };
+    let request = GitHubIssueSearch::for_dedup(
+        repository.clone(),
+        keywords.to_owned(),
+        service.transport_policy(),
+    );
     let rows = service
         .search_issues(&request, cancellation)
         .await
         .map_err(|error| format!("gh issue list failed: {error}"))?;
+    if rows.len() == request.limit {
+        eprintln!(
+            "WARN: audit-runs proposal search reached the {ISSUE_DEDUP_LIMIT}-issue dedup cap; additional matches, if any, were omitted"
+        );
+    }
     // GitHub search is only a recall filter: the exclusion predicate is
     // re-applied locally so ranking or index drift cannot flip a
     // classification. Only audit-report family titles and pull-request rows

@@ -44,13 +44,13 @@ use larch_adapters::{
     runtime::Cancellation,
 };
 use larch_core::{
-    CandidateIssue, CompletionSentinel, GitHubIssueState, GitHubService, IssueMutationField,
-    IssueMutationRequest, ProposalRecord, RemoteLeaf, ResolvedLeaf, UMBRELLA_PROPOSAL_TOKEN,
-    UmbrellaSnapshot, check_leaf_cap, classify_umbrella_source, completion_sentinel_for_record,
-    emit_kv, expected_completion_sentinel, is_managed_partition_title, is_positive_decimal,
-    is_umbrella_title, mark_leaf_in_flight, parse_proposal, prepare_proposal_from_batch,
-    reconcile_in_flight, record_leaf_resolved, render_proposal, render_snapshot,
-    validate_final_umbrella, verify_graph_state,
+    CandidateIssue, CompletionSentinel, GitHubIssueState, GitHubService, ISSUE_DEDUP_LIMIT,
+    IssueMutationField, IssueMutationRequest, ProposalRecord, RemoteLeaf, ResolvedLeaf,
+    UMBRELLA_PROPOSAL_TOKEN, UmbrellaSnapshot, check_leaf_cap, classify_umbrella_source,
+    completion_sentinel_for_record, emit_kv, expected_completion_sentinel,
+    is_managed_partition_title, is_positive_decimal, is_umbrella_title, mark_leaf_in_flight,
+    parse_proposal, prepare_proposal_from_batch, reconcile_in_flight, record_leaf_resolved,
+    render_proposal, render_snapshot, validate_final_umbrella, verify_graph_state,
 };
 use serde_json::Value;
 use std::{
@@ -680,6 +680,9 @@ pub fn reconcile_in_flight_command(arguments: &[OsString]) -> ExitCode {
 }
 
 /// Recover one leaf from the candidate list and persist the binding.
+///
+/// The caller supplies newest-first rows. Only the shared dedup prefix is
+/// admitted, so an oversized or stale handoff cannot widen recovery.
 fn reconcile(
     proposal: &str,
     identity: &str,
@@ -688,8 +691,13 @@ fn reconcile(
     let text = fs::read_to_string(candidates).map_err(|_| "invalid-proposal-record")?;
     let value: Value = serde_json::from_str(&text).map_err(|_| "invalid-proposal-record")?;
     let rows = value.as_array().ok_or("ambiguous-in-flight-recovery")?;
-    let mut parsed = Vec::with_capacity(rows.len());
-    for row in rows {
+    if rows.len() > ISSUE_DEDUP_LIMIT {
+        eprintln!(
+            "WARN: umbrella in-flight reconciliation was capped at the first {ISSUE_DEDUP_LIMIT} candidate rows; remaining rows were omitted"
+        );
+    }
+    let mut parsed = Vec::with_capacity(rows.len().min(ISSUE_DEDUP_LIMIT));
+    for row in rows.iter().take(ISSUE_DEDUP_LIMIT) {
         parsed.push(candidate_issue(row).ok_or("ambiguous-in-flight-recovery")?);
     }
     let record = load_record(proposal)?;
@@ -1645,6 +1653,52 @@ mod tests {
                 .expect("row parses")
                 .number,
             None
+        );
+    }
+
+    #[test]
+    fn recovery_ignores_candidates_beyond_the_shared_dedup_limit() {
+        let directory = TempDir::new().expect("temporary directory");
+        let identity = record().leaves[0].identity.clone();
+        let marked = mark_leaf_in_flight(&record(), &identity).expect("marks in flight");
+        let leaf = marked.leaves[0].clone();
+        let path = write(
+            &root(&directory),
+            "proposal.json",
+            &render_proposal(&marked),
+        );
+        let mut rows: Vec<Value> = (1..=larch_core::ISSUE_DEDUP_LIMIT)
+            .map(|number| {
+                json!({
+                    "number": number,
+                    "url": format!("https://example.test/issues/{number}"),
+                    "id": number,
+                    "title": format!("unrelated {number}"),
+                    "body": "different",
+                })
+            })
+            .collect();
+        let omitted_number = larch_core::ISSUE_DEDUP_LIMIT + 1;
+        rows.push(json!({
+            "number": omitted_number,
+            "url": format!("https://example.test/issues/{omitted_number}"),
+            "id": omitted_number,
+            "title": leaf.title,
+            "body": leaf.body,
+        }));
+        let candidates = write(
+            &root(&directory),
+            "over-limit.json",
+            &serde_json::to_string(&rows).expect("candidate rows render"),
+        );
+
+        assert_eq!(
+            reconcile(&path, &identity, &candidates),
+            Err("ambiguous-in-flight-recovery")
+        );
+        assert_eq!(
+            load_record(&path).expect("record reloads").leaves[0].state,
+            LeafState::InFlight
         );
     }
 

@@ -8,9 +8,10 @@ use larch_core::{
     GitHubCloseReason, GitHubComment, GitHubFuture, GitHubIssue, GitHubIssueBodyMode,
     GitHubIssueCreate, GitHubIssueEdit, GitHubIssueList, GitHubIssueListMode,
     GitHubIssueListResult, GitHubIssueListTimeoutScope, GitHubIssueScan, GitHubIssueSearch,
-    GitHubIssueState, GitHubLabel, GitHubLabelCreate, GitHubListOutcome, GitHubListStop,
-    GitHubOperationError, GitHubOperationErrorKind, GitHubRepository, GitHubRepositoryRef,
-    GitHubService, GitHubTransportPolicy, GitHubUser, ProcessCancellation, resolve_issue_list,
+    GitHubIssueSearchSort, GitHubIssueState, GitHubLabel, GitHubLabelCreate, GitHubListOutcome,
+    GitHubListStop, GitHubOperationError, GitHubOperationErrorKind, GitHubRepository,
+    GitHubRepositoryRef, GitHubService, GitHubTransportPolicy, GitHubUser, ProcessCancellation,
+    resolve_issue_list,
 };
 use octocrab::{Page, models, params};
 use serde::Serialize;
@@ -125,6 +126,8 @@ impl GitHubService for OctocrabGitHubService {
                             .list()
                             .state(state)
                             .labels(&request.labels)
+                            .sort(params::issues::Sort::Created)
+                            .direction(params::Direction::Descending)
                             .per_page(PAGE_SIZE)
                             .send()
                             .await
@@ -158,19 +161,22 @@ impl GitHubService for OctocrabGitHubService {
                 validate_limit(request.limit, self.policy)?;
                 validate_string(&request.query, self.policy)?;
                 let query = format!(
-                    "{} repo:{}/{}",
+                    "{} repo:{}/{} is:issue",
                     request.query,
                     request.repo.owner(),
                     request.repo.name()
                 );
                 let first = self
                     .read_issue_page(cancellation, RateBucket::Search, || async {
-                        self.client
+                        let mut search = self
+                            .client
                             .search()
                             .issues_and_pull_requests(&query)
-                            .per_page(PAGE_SIZE)
-                            .send()
-                            .await
+                            .per_page(PAGE_SIZE);
+                        if request.sort == GitHubIssueSearchSort::CreatedDescending {
+                            search = search.sort("created").order("desc");
+                        }
+                        search.send().await
                     })
                     .await?;
                 self.collect_issues(
@@ -1247,6 +1253,7 @@ mod tests {
     use super::*;
     use crate::runtime::Cancellation;
     use http_body_util::Full;
+    use larch_test_support::{IssueServiceExchange, IssueServiceStub};
     use serde_json::json;
     use std::{
         convert::Infallible,
@@ -1480,6 +1487,7 @@ mod tests {
             repo: repo.clone(),
             query: String::from("parity"),
             limit: 1,
+            sort: GitHubIssueSearchSort::BestMatch,
         };
         let create = GitHubIssueCreate {
             repo: repo.clone(),
@@ -1638,6 +1646,36 @@ mod tests {
         assert_eq!(result.raw_rows_scanned, 2);
         assert!(!result.truncated);
         server.join().expect("stub completed");
+    }
+
+    #[tokio::test]
+    async fn dedup_search_requests_the_newest_one_hundred_matches() {
+        let server = IssueServiceStub::start([IssueServiceExchange::any_json(
+            200,
+            json!({"total_count": 0, "incomplete_results": false, "items": []}).to_string(),
+        )
+        .expect("search response")])
+        .expect("start issue service stub");
+        let service = OctocrabGitHubService::with_test_base(server.base_url());
+        let repository = GitHubRepositoryRef::new("o", "r").expect("valid repo");
+        let request = GitHubIssueSearch::for_dedup(
+            repository,
+            "matching words".to_owned(),
+            service.transport_policy(),
+        );
+
+        let rows = service
+            .search_issues(&request, &Cancellation::new())
+            .await
+            .expect("search succeeds");
+
+        assert!(rows.is_empty());
+        let requests = server.finish().expect("requests");
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].path.contains("sort=created"));
+        assert!(requests[0].path.contains("order=desc"));
+        assert!(requests[0].path.contains("per_page=100"));
+        assert!(requests[0].path.contains("is%3Aissue"));
     }
 
     #[tokio::test(start_paused = true)]

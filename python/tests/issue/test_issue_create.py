@@ -55,8 +55,10 @@ def test_skill_pins_blocked_by_issue_contract() -> None:
         "--blocked-by-issue must be a positive integer",
         'gh api "/repos/$REPO/issues/$BLOCKED_BY_ISSUE"',
         "pull_request != null",
+        "do not inject a synthetic row",
         "Caller-supplied --blocked-by-issue merge",
         "Carve-out for --blocked-by-issue",
+        "without adding it to the snapshot",
         "--blocker-id $BLOCKED_BY_ISSUE_ID",
     )
     for needle in needles:

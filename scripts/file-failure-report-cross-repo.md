@@ -31,7 +31,7 @@ The body must contain the exact marker:
 <!-- larch-stall:signature=<64-hex> -->
 ```
 
-The helper fetches all open issues with bodies from `--repo` using `gh api --paginate`, ignores pull requests, and exact-matches the marker from the approved body snapshot client-side.
+The helper fetches one newest-first page of at most 100 open GitHub issue-list records with bodies from `--repo`, ignores pull requests, and exact-matches the marker from the approved body snapshot client-side. It does not search older pages.
 
 ## Create and comment behavior
 

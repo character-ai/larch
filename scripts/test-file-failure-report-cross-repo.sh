@@ -200,7 +200,7 @@ EOF2
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >>"$GH_STUB_LOG"
-if [ "$1" = api ] && [ "${2:-}" = --paginate ]; then
+if [ "$1" = api ] && [ "${2:-}" = --jq ]; then
     case "${GH_STUB_CASE:-create}" in
         create)
             printf '%s\n' '{"number":1,"body":"different","pull_request":null}'
@@ -210,10 +210,16 @@ if [ "$1" = api ] && [ "${2:-}" = --paginate ]; then
             ;;
         page2)
             printf '%s\n' '{"number":1,"body":"different","pull_request":null}'
-            printf '{"number":9,"body":"page 2 <!-- larch-stall:signature=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef -->","pull_request":null}'
             ;;
         pr-ignore)
             printf '{"number":3,"body":"<!-- larch-stall:signature=%s -->","pull_request":{}}\n' "$GH_MARKER_HASH"
+            ;;
+        full-page-with-prs)
+            index=1
+            while [ "$index" -le 100 ]; do
+                printf '{"number":%s,"body":"different","pull_request":{}}\n' "$index"
+                index=$((index + 1))
+            done
             ;;
         lookup-fail)
             echo lookup failed >&2
@@ -416,11 +422,18 @@ not_contains "$dir/gh.log" 'issue create' "dedup: skips create"
 
 dir=$(make_case page2)
 GH_STUB_CASE=page2; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title'
-assert_eq dedup-comment "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "dedup: match after first page found"
+assert_eq filed "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "dedup: older pages are not searched"
+contains "$dir/gh.log" 'state=open&sort=created&direction=desc&per_page=100' "dedup: requests the newest 100 rows"
+not_contains "$dir/gh.log" '--paginate' "dedup: does not paginate beyond the cap"
 
 dir=$(make_case pr-ignore)
 GH_STUB_CASE=pr-ignore; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title'
 assert_eq filed "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "dedup: pull request marker ignored"
+
+dir=$(make_case full-page-with-prs)
+GH_STUB_CASE=full-page-with-prs; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title'
+assert_eq filed "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "dedup: full pull-request page has no issue match"
+contains "$dir/out.err" 'WARN: stall-report dedup reached the 100-record recent-open cap' "dedup: full raw page reports omitted history"
 
 dir=$(make_case no-match)
 GH_STUB_CASE=create; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --dedup-only

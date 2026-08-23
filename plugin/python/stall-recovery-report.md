@@ -151,7 +151,7 @@ Tier A places the marker immediately after the `###` title line so the helper de
 
 ## Filing and status normalization
 
-`scripts/file-failure-report-cross-repo.sh` fetches all open issues with bodies, ignores pull requests, exact-matches the public marker, and comments `+1 occurrence` on duplicates. Tier A and Tier B use the same helper for create and comment paths. Tier A calls `dedup-tier-a-report --create-after-dedup true`; a lookup failure proceeds to the same approved-descriptor create path, preserving the former fail-open-create outcome without reopening `issue-input`.
+`scripts/file-failure-report-cross-repo.sh` fetches one newest-first page of at most 100 open GitHub issue-list records with bodies, ignores pull requests, exact-matches the public marker, and comments `+1 occurrence` on duplicates. Older pages are outside the dedup window. Tier A and Tier B use the same helper for create and comment paths. Tier A calls `dedup-tier-a-report --create-after-dedup true`; a lookup failure proceeds to the same approved-descriptor create path, preserving the former fail-open-create outcome without reopening `issue-input`.
 Tier A and Tier B helper callers pass the authoritative session tmpdir with `--trusted-root`, the matching live run ID, and the mutation context file. The helper delegates canonical-root containment and run-identity validation to `session check-live-mutation-auth`. It snapshots approved public inputs into unlinked descriptors before deduplication or transport; a source that changes while it is snapshotted, or is missing, oversized, non-regular, or symlinked, reaches no GitHub mutation. Later source changes cannot alter the transport bytes.
 
 Helper output maps to canonical status:

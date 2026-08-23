@@ -34,8 +34,8 @@ Create one flat `[UMBRELLA]` issue from one open issue number or a verbal task. 
 - Every leaf title is `[LEAF OF N] <title>` and every leaf body starts exactly: `This is a leaf of umbrella #N. Read the umbrella in full before acting.`
 - `--skip-approve` bypasses only the question. It never bypasses proposal persistence, `/issue` counter parsing, sentinel verification, mutation authorization, or graph read-back.
 - In prepared-partition mode, `--skip-approve` consumes the parent's approval. Preserve the exact validated leaves and edges, then proceed without another question.
-- Default verbal input invokes `/issue` with normal deduplication. `--no-dedup` invokes `/issue` dependency-only mode: it suppresses duplicate reuse but still requires complete dependency analysis.
-- An existing compatible record-bearing `[UMBRELLA]` resumes only from its protected proposal record. Create only recorded missing leaves; reconcile an `in-flight` leaf only through `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella reconcile-in-flight`, which binds it only when exactly one remote issue matches its persisted title and complete fixed opening. Otherwise fail closed before another create.
+- Default verbal input invokes `/issue` with normal deduplication over its shared snapshot of at most the 100 newest issues. `--no-dedup` invokes `/issue` dependency-only mode: it suppresses duplicate reuse but still requires complete dependency analysis.
+- An existing compatible record-bearing `[UMBRELLA]` resumes only from its protected proposal record. Create only recorded missing leaves. For an `in-flight` leaf, write `$UMBRELLA_TMPDIR/reconcile-candidates.json` from exactly one `gh issue list --repo "$REPO" --state open --limit 100 --search "sort:created-desc" --json number,url,id,title,body` call; never fetch another page. Pass that newest-first file to `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" umbrella reconcile-in-flight`, which mechanically ignores any rows beyond 100 and binds the leaf only when exactly one admitted issue matches its persisted title and complete fixed opening. Otherwise fail closed before another create.
 
 ## Step 1 — Scratch and proposal
 

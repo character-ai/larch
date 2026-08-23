@@ -143,7 +143,7 @@ For each finding, classify it into one of these two lists using GitHub + repo hi
    "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" audit-runs issue-search \
      --repo "<repo>" --keywords "<finding keywords>"
    ```
-   Stdout is KV-shaped: `MATCH_COUNT=N`, then one `MATCH=<number>\t<state>\t<closedAt>\t<title>` row per surviving hit (empty `closedAt` for open issues). The helper drops pull-request rows and audit-report-family titles locally; `[IMPLEMENTING]` titles are always retained. On `ISSUE_SEARCH_FAILED=true`, surface `REASON=` and fail the classification loudly — do not classify from a partial search.
+   Stdout is KV-shaped: `MATCH_COUNT=N`, then one `MATCH=<number>\t<state>\t<closedAt>\t<title>` row per surviving hit (empty `closedAt` for open issues). The search is capped at the 100 newest matching issues. The helper drops pull-request rows and audit-report-family titles locally; `[IMPLEMENTING]` titles are always retained. On `ISSUE_SEARCH_FAILED=true`, surface `REASON=` and fail the classification loudly.
 2. **Open matches** (including `[IMPLEMENTING] …` titles): **`proposed_augmentations`**. In **`## Open issues snapshot`**, when an augmented issue’s title starts with `[IMPLEMENTING]`, note that the finding **recurred in this batch (pre-fix)** for that issue number.
 3. **Closed matches only** (no open match for this finding): apply the **version-window** check before proposing `proposed_new_issues`:
    - Resolve fix merge time:

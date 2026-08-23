@@ -30,7 +30,7 @@ If a path you are handed is missing or unreadable, emit nothing for the affected
 
 ## Call 1 — Tier-1 output grammar
 
-Count the open-state rows in the snapshot. If more than 500 open rows, retain only the 500 most-recent (highest-numbered open issues) and emit a single `NOTE: dep-triage capped at 500 most-recent open titles; <N> older issues skipped.` line before the CAND rows (the orchestrator surfaces this as a stderr warning). For each non-malformed new item `i`, walk every title in the (possibly capped) snapshot and emit dup-candidate and dep-candidate flags. When `dependency_only=true`, emit no duplicate candidates or duplicate verdicts; analyze only dependency edges and treat unreadable or incomplete required evidence as an explicit failed analysis result. Always ignore `excluded_issue` in both calls.
+The snapshot helper has already bounded the file to at most the 100 newest issue records. For each non-malformed new item `i`, walk every title in that snapshot and emit dup-candidate and dep-candidate flags. Apply no additional history cap. When `dependency_only=true`, emit no duplicate candidates or duplicate verdicts; analyze only dependency edges and treat unreadable or incomplete required evidence as an explicit failed analysis result. Always ignore `excluded_issue` in both calls.
 
 For each flag, emit one row in this exact syntax:
 
@@ -46,7 +46,7 @@ Rules:
 - **dep-candidates**: titles where running `i` and the existing issue in parallel would plausibly risk merge conflicts (same files, same module surface) OR where `i` clearly requires the existing issue to land first (or vice versa). **Open rows ONLY** — closed issues cannot meaningfully block. A closed-state row may NEVER carry a dep-candidate flag.
 - `confidence`: `high` when the title overlap is unambiguous (same feature/bug, near-identical wording); `medium` when there is plausible overlap but ambiguity; `low` when the flag is a hedge against false negatives.
 
-If no candidates look suspicious in either category for any item, emit zero CAND rows. End Call 1 after the last CAND row (or after the cap note when zero rows were emitted). Do not emit any other prose.
+If no candidates look suspicious in either category for any item, emit zero CAND rows. End Call 1 after the last CAND row. Do not emit any other prose.
 
 ## Call 2 — Phase 2 output grammar
 
