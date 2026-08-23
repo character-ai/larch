@@ -159,7 +159,7 @@ const EXPECTED_COMMANDS: [ExpectedCommand; 79] = [
 ];
 
 /// Pending commands that the closeout audit assigned to their live consumer.
-const HANDOFF_COMMANDS: [HandoffCommand; 34] = [
+const HANDOFF_COMMANDS: [HandoffCommand; 31] = [
     HandoffCommand::new("architectural-assessment", "final-report-sections", 7681),
     HandoffCommand::new("architectural-assessment", "materialize", 7681),
     HandoffCommand::new("architectural-assessment", "sanitize-detail", 7681),
@@ -188,9 +188,6 @@ const HANDOFF_COMMANDS: [HandoffCommand; 34] = [
     HandoffCommand::new("architectural-invariants", "write-staged-assessment", 7681),
     HandoffCommand::new("oos", "normalize-header", 7680),
     HandoffCommand::new("oos", "serialize", 7680),
-    HandoffCommand::new("plan-review", "await-loop-identity", 7680),
-    HandoffCommand::new("plan-review", "teardown-loop-identity", 7680),
-    HandoffCommand::new("plan-review", "write-loop-identity", 7680),
     HandoffCommand::new("render", "plan-review", 7680),
     HandoffCommand::new("render", "specialist", 7681),
     HandoffCommand::new("render", "voter", 7686),

@@ -54,6 +54,15 @@ type DynamicRenderFailures = Vec<(String, String, i32)>;
 /// Rust-owned plan-review dispatch commands.
 #[derive(Subcommand)]
 pub enum PlanReviewCommand {
+    /// Capture and persist the Step 3 loop process identity.
+    #[command(name = "write-loop-identity", disable_help_flag = true)]
+    WriteLoopIdentity(AgentRawArguments),
+    /// Wait for the persisted Step 3 loop process to exit.
+    #[command(name = "await-loop-identity", disable_help_flag = true)]
+    AwaitLoopIdentity(AgentRawArguments),
+    /// Terminate a still-matching Step 3 loop process group.
+    #[command(name = "teardown-loop-identity", disable_help_flag = true)]
+    TeardownLoopIdentity(AgentRawArguments),
     /// Run the bounded Step 3 plan-review loop.
     #[command(name = "run", disable_help_flag = true)]
     Run(AgentRawArguments),
@@ -157,6 +166,15 @@ pub enum PlanReviewCommand {
 /// Dispatch one Rust-owned plan-review command.
 pub fn run(command: PlanReviewCommand) -> ExitCode {
     match command {
+        PlanReviewCommand::WriteLoopIdentity(arguments) => {
+            crate::review_loop_identity_commands::write_plan_review(&arguments.arguments)
+        }
+        PlanReviewCommand::AwaitLoopIdentity(arguments) => {
+            crate::review_loop_identity_commands::await_plan_review(&arguments.arguments)
+        }
+        PlanReviewCommand::TeardownLoopIdentity(arguments) => {
+            crate::review_loop_identity_commands::teardown_plan_review(&arguments.arguments)
+        }
         PlanReviewCommand::Run(arguments) => loop_implementation::run(&arguments.arguments),
         PlanReviewCommand::Continuation(arguments) => {
             loop_implementation::continuation(&arguments.arguments)

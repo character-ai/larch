@@ -239,7 +239,7 @@ points plus their exclusive helpers are removed from
 `python/larch/implement/dispatch_commit_route.py`. That module stays for the
 still-Python `commit`, `commit-route`, and `checks-commit-route` family.
 
-### Review-and-fix loop-identity cutover
+### Loop-identity command cutovers
 
 Issue #8792 moved `review-and-fix write-loop-identity`,
 `review-and-fix await-loop-identity`, and
@@ -251,13 +251,24 @@ validated process-group termination, and reusable kill-log owner in
 `larch-core`; production entry remains `scripts/larch.sh`.
 
 The three Python registrations and their Step 5-only functions are removed.
-The still-Python `plan-review` loop-identity functions remain for #7680, and
-the shared Python process-identity helpers remain for consumers covered by the
-issue numbered #7681. The black-box suite in
+The black-box suite in
 `crates/larch-cli/tests/review_loop_identity_parity.rs` compares the Rust commands
 with the frozen pre-cutover facade and reviewed goldens. Core tests separately
 prove detached-marker polling, log-before-signal behavior, immediate identity
 revalidation, and sidecar retention until process-group absence is established.
+
+Issue #8835 moved the matching `plan-review write-loop-identity`,
+`plan-review await-loop-identity`, and
+`plan-review teardown-loop-identity` commands through the same Rust boundary.
+The cutover preserves the design Step 3 sidecars, detached marker, result-env
+freshness gate, grace period, validated termination, and kill-log bytes. It
+removes the final three Python registrations, their Step 3-only mains and
+configuration literals, and the retired Python command tests. The retained
+`python/larch/core/process_identity.py` module serves the #7681 background-job
+model, registry, and state-token readers. It no longer defines a loop-identity
+command. `crates/larch-cli/tests/plan_review_loop_identity_parity.rs` compares
+all three Rust commands with the frozen pre-cutover facade and reviewed
+goldens, including help, refusal, and identity-mismatch paths.
 
 ### Relevant-checks selection cutover
 
@@ -592,9 +603,9 @@ full-CLI build and emits separate cold-or-warm bootstrap timing diagnostics.
 One deliberate difference: the Rust report parses the ledger once, so a
 malformed row now warns once instead of once per internal read.
 
-- **G1 review pipeline port (#3692, #8445, #8451, #8452, #8792)**: `review gather-context`, `review dispatch-panel`, `review collect-findings`, `review check-reviewer-failure-threshold`, `review aggregate-findings`, `review prune-nit-findings`, `review reviewer-prune`, `review tally-code-votes`, `review emit-tally`, `review log-phase`, `review core`, `review compose-findings`, and the Rust-owned `review-and-fix` repair and loop-identity verbs are reached through `scripts/larch.sh`. The closeout audit pins all 79 commands migrated by #7679's executable leaves, removes their superseded Python pipeline, and rejects any live runtime reference to the retired review package. Pure compatibility readers moved to `larch.core.findings`, `larch.calibration.voting`, `larch.calibration.voter_calibration`, and `larch.rendering.findings_ledger`; their remaining consumers belong to #7680, #7681, #7684, or the final #7686 cutover. Plan-review loop identity and separately scoped rendering commands remain Python-owned under their receiving umbrellas.
+- **G1 review pipeline port (#3692, #8445, #8451, #8452, #8792)**: `review gather-context`, `review dispatch-panel`, `review collect-findings`, `review check-reviewer-failure-threshold`, `review aggregate-findings`, `review prune-nit-findings`, `review reviewer-prune`, `review tally-code-votes`, `review emit-tally`, `review log-phase`, `review core`, `review compose-findings`, and the Rust-owned `review-and-fix` repair and loop-identity verbs are reached through `scripts/larch.sh`. The closeout audit pins all 79 commands migrated by #7679's executable leaves, removes their superseded Python pipeline, and rejects any live runtime reference to the retired review package. Pure compatibility readers moved to `larch.core.findings`, `larch.calibration.voting`, `larch.calibration.voter_calibration`, and `larch.rendering.findings_ledger`; their remaining consumers belong to #7680, #7681, #7684, or the final #7686 cutover. Separately scoped rendering commands remain Python-owned under their receiving umbrellas.
 
-- **C3a1 plan-review CLI façade (#3680, #8446, #8448, #8449, #8585)**: `crates/larch-cli/src/plan_review_commands.rs` owns panel and voter dispatch, tally and audit commands, the Step 3 loop and continuation, finalize/preview, entry/state, normalization, persistence utilities, round-artifact filters, and `step35-settle`. Their Python registrations and superseded `plan_review.py` / `plan_review_loop.py` owners are removed. The loop-identity verbs remain in `larch.core.process_identity`. Operator docs use `scripts/larch.sh plan-review <verb>` for Rust-owned commands.
+- **C3a1 plan-review CLI façade (#3680, #8446, #8448, #8449, #8585, #8835)**: `crates/larch-cli/src/plan_review_commands.rs` owns panel and voter dispatch, tally and audit commands, the Step 3 loop and continuation, finalize/preview, entry/state, normalization, persistence utilities, round-artifact filters, `step35-settle`, and the loop-identity verbs. Their Python registrations and superseded `plan_review.py` / `plan_review_loop.py` owners and loop-identity mains are removed. Operator docs use `scripts/larch.sh plan-review <verb>` for Rust-owned commands.
 
 ## Per-domain migration recipe
 

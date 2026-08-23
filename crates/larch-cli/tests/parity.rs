@@ -1331,6 +1331,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "plan-review",
         "voter-dispatch",
     ),
+    CleanInstallCase::new("clean-install-plan-review-await-loop-identity", "plan-review", "await-loop-identity"),
     CleanInstallCase::new("clean-install-plan-review-continuation", "plan-review", "continuation"),
     CleanInstallCase::new("clean-install-plan-review-drift-baseline", "plan-review", "drift-baseline"),
     CleanInstallCase::new("clean-install-plan-review-emit", "plan-review", "emit"),
@@ -1361,6 +1362,8 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     CleanInstallCase::new("clean-install-plan-review-step35", "plan-review", "step35"),
     CleanInstallCase::new("clean-install-plan-review-step3b-tail", "plan-review", "step3b-tail"),
     CleanInstallCase::new("clean-install-plan-review-tally", "plan-review", "tally"),
+    CleanInstallCase::new("clean-install-plan-review-teardown-loop-identity", "plan-review", "teardown-loop-identity"),
+    CleanInstallCase::new("clean-install-plan-review-write-loop-identity", "plan-review", "write-loop-identity"),
     CleanInstallCase::new("clean-install-status-check", "status", "check"),
     CleanInstallCase::new("clean-install-plan-block-read", "plan-block", "read"),
     CleanInstallCase::new(

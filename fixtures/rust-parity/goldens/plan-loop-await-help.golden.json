@@ -1,0 +1,15 @@
+{
+  "exit_code": 0,
+  "files": {
+    "design/.keep": {
+      "text": ""
+    }
+  },
+  "side_effects": {},
+  "stderr": {
+    "text": ""
+  },
+  "stdout": {
+    "text": "usage: cli.py plan-review await-loop-identity [-h] --design-tmpdir DESIGN_TMPDIR --pid PID [--timeout-s TIMEOUT_S] [--reattach]\n\noptions:\n  -h, --help            show this help message and exit\n  --design-tmpdir DESIGN_TMPDIR\n  --pid PID\n  --timeout-s TIMEOUT_S\n  --reattach\n"
+  }
+}

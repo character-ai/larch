@@ -1339,12 +1339,9 @@ pub fn await_loop_identity(
     let Some(tmpdir) = validated_tmpdir(design_tmpdir) else {
         return 1;
     };
-    let Ok(timeout_s) = timeout_s.parse::<f64>() else {
+    let Some(timeout) = parse_loop_timeout(timeout_s) else {
         return 1;
     };
-    if timeout_s <= 0.0 {
-        return 1;
-    }
     let Some(pid) = parse_pid_argument(pid_raw) else {
         return 1;
     };
@@ -1362,14 +1359,7 @@ pub fn await_loop_identity(
     let Some(identity_mtime_ns) = host.file_mtime_ns(&sidecar).filter(|value| *value > 0) else {
         return 1;
     };
-    await_loop_poll(
-        host,
-        &recorded,
-        &tmpdir,
-        identity_mtime_ns,
-        Duration::from_secs_f64(timeout_s),
-        true,
-    )
+    await_loop_poll(host, &recorded, &tmpdir, identity_mtime_ns, timeout, true)
 }
 
 /// Tear down the design Step 3 loop identity after validated termination.
@@ -2355,6 +2345,7 @@ mod tests {
         assert_eq!(await_loop_identity(&host, "relative", "1", "1", false), 1);
         assert_eq!(await_loop_identity(&host, "/tmp/x", "abc", "1", false), 1);
         assert_eq!(await_loop_identity(&host, "/tmp/x", "1", "0", false), 1);
+        assert_eq!(await_loop_identity(&host, "/tmp/x", "1", "nan", false), 1);
         assert_eq!(TerminateSignal::Term.name(), "SIGTERM");
         assert_eq!(TerminateSignal::Kill.name(), "SIGKILL");
     }
