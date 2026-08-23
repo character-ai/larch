@@ -321,7 +321,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Ext-3: Treat GitHub search as a recall filter; re-apply the shared normalized predicate locally before consuming results
 - Why: GitHub search tokenizes bracketed terms, so `[BUG] in:title` also matches any title containing "bug", and prefix-only local matching missed retitled `[DONE] [BUG]` issues; both directions corrupted bug-mining selection (#6604, #6618).
-- Guidance: after any `gh` search or list call, filter the result set through `larch.issue.title_match`, or the surface's shared predicate, before spending tokens or verdicts on it; never treat the raw search result as the selection.
+- Guidance: after any `gh` search or list call, filter the result set through `larch_core::bug_title_match`, or the surface's shared predicate, before spending tokens or verdicts on it; never treat the raw search result as the selection.
 - Deviate when: the consumer tolerates recall noise by design and says so where the search is issued.
 
 ### G-Ext-4: Run every postcondition guard on the external-CLI success path that you run on the failure path

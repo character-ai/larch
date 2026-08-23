@@ -20,14 +20,14 @@ The `/implement` `larch:final-summary` body is rich markdown produced by Rust
 optional `- Force: true` when `/implement --force` was requested, then emits
 the `<!-- larch:run-summary v=1 -->` sentinel **before** any optional note
 lines from `--note-lines-file` (sentinel is the last line of the standardized
-block, not the first line of the file). The #7680 Python `render run-summary`
+block, not the first line of the file). The #7680 Rust `render run-summary`
 command remains a bounded `/design` payload renderer, not an `/implement`
 final-report owner.
 `/implement` and `/design` share the same `larch:final-summary` marker family; the
 `runid=` segment disambiguates concurrent runs on one tracking issue.
 `/implement` uses Rust `final-report write` for the published `final-summary.md`
 projection and the GitHub upsert payload (`summary-final.md` for implement;
-`python/cli.py design render-final-summary` owns the `/design` gather + upsert
+`scripts/larch.sh design render-final-summary` owns the `/design` gather + upsert
 path).
 
 Large runtime payloads are not embedded in these comments. Rust `run-log`

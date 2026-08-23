@@ -294,7 +294,7 @@ def renamed_mutation(*, issue_number: int) -> None:
         b"from larch.issue.tracking_issue import link_pr_closes as closes\n\nBODY = closes(body=\"PR\", issue_number=7)\n",
     );
     repository.write(
-        "python/larch/design/allowed_handoff.py",
+        "python/larch/rendering/allowed_handoff.py",
         b"from larch.issue import issue_wire\n\nVALUE = issue_wire.helper()\n",
     );
     repository.commit_all();
@@ -308,7 +308,7 @@ def renamed_mutation(*, issue_number: int) -> None:
                 "python-command-equivalent-still-owned tracking-issue *: python/larch/issue/tracking_issue.py",
             )
             .and(predicate::str::contains("python/larch/git/allowed_footer.py").not())
-            .and(predicate::str::contains("python/larch/design/allowed_handoff.py").not()),
+            .and(predicate::str::contains("python/larch/rendering/allowed_handoff.py").not()),
         );
 }
 

@@ -234,8 +234,7 @@ exclude = [
   "skills/implement/scripts/oos-disposition-checkpoint.sh",
   "skills/implement/scripts/oos-disposition-gate.sh",
   # Delegation smoke for oos-disposition-gate.sh; behavioral authority is
-  # python/tests/issue/test_file_oos.py -k disposition_gate
-  # (crates/larch-cli/src/oos_commands.rs).
+  # crates/larch-cli/src/oos_commands.rs.
   "skills/implement/scripts/test-oos-disposition-gate.sh",
   # Sibling .md contracts plus the step-8 OOS checkpoint pair for the
   # OOS/flush execution-issues family above. Their reachability anchors were
@@ -257,8 +256,6 @@ exclude = [
   # so a SKILL.md reference is prohibited; exclude both until the lane is wired.
   "skills/implement/scripts/step-8-ci-fixer.sh",
   "skills/implement/scripts/test-step-8-ci-fixer.sh",
-  "python/larch/issue/file_oos.py",
-  "python/test_file_oos.py",
   "scripts/test-implement-fence-shape.sh",
   "skills/implement/scripts/post-tracking-issue.sh",
   "skills/implement/scripts/generate-code-flow-diagram.sh",
@@ -280,7 +277,7 @@ exclude = [
   "skills/implement/scripts/step-8-ship.md",
   "skills/implement/scripts/run-step-checks.md",
   "skills/implement/scripts/step-6-entry.md",
-  "python/cli.py plan-block read",
+  "scripts/larch.sh plan-block read",
   "python/cli.py named-block write --marker plan",
   "python/larch/design/clarify.py",
   "python/cli.py clarify comment-post",

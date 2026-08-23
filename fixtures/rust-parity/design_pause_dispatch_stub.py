@@ -16,6 +16,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from types import ModuleType
 
+from issue_support_loader import install_issue_support
 from larch.core.repo_roots import larch_entrypoint
 
 
@@ -151,6 +152,7 @@ def install_shared_retired_dependencies() -> None:
     _install_plan_grammar(package)
     _install_issue_block_helpers()
     _install_difficulty_helpers()
+    install_issue_support()
     _install_issue_mutation_stub()
 
 

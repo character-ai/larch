@@ -29,8 +29,8 @@ subsets, final contiguous-block parsing, and canonical ordering. Its source is
 `crates/larch-core/src/design/plan_grammar.rs`.
 `crates/larch-core/src/issue/body.rs` owns the issue-body `larch:plan`
 marker grammar, and `crates/larch-cli/src/issue_wire_commands.rs` owns every
-command over it. `python/larch/issue/issue_wire.py` keeps only title and
-untrusted-content helpers still consumed by Python renderers.
+command over it. `python/larch/issue/issue_wire.py` keeps the untrusted-content
+helpers still consumed by the #7686 Python `render voter` owner.
 
 ### Executable-plan contract
 

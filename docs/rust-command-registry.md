@@ -584,11 +584,10 @@ conflict, and disposition owners in process, and creates and wires issues
 through the typed Rust mutation path without invoking `/issue`.
 `larch_core::issue::oos_filing` owns stable filing identities and durable
 records. The behavioral authority is `oos_file_commands::tests` plus the shared
-core OOS tests. The former `larch.issue.oos_filer` command owner is gone;
-retained #7680 `larch.issue.file_oos` keeps only its distinct in-process
-parsing, identity, workflow-routing, and post-checkpoint responsibilities.
-Issue #8622 retired `larch.implement.dispatch_ship`; #8672 retired
-`larch.issue._oos`.
+core OOS tests. The former `larch.issue.oos_filer` command owner is gone. Issue
+#8853 removes the production-dead `larch.issue.file_oos` compatibility library;
+frozen parity fixtures retain its retired behavior. Issue #8622 retired
+`larch.implement.dispatch_ship`; #8672 retired `larch.issue._oos`.
 
 Issue 8165 ports the named-block grammar, the `larch:plan` marker, title
 eligibility and matching, the open-issue row model, and the untrusted content
@@ -598,8 +597,9 @@ title verbs, and the four `untrusted` verbs — and adds `larch_core::plan_scope
 as the single owner of the `## Files to modify/create` grammar that
 `dirty-tree scope-check` and `plan scope-paths` both read. Issue 8786 removes the
 remaining Python owner-block, lease, executable-plan, and scope readers;
-`larch.issue.issue_wire` now retains only title and untrusted-content helpers
-for Python renderers. `larch_core::report::markdown_block` remains the Markdown
-block owner, and `larch_core::balanced_fence_line_indices` plus
+`larch.issue.issue_wire` now retains the untrusted-content helpers used by the
+#7686 Python `render voter` consumer.
+`larch_core::report::markdown_block` remains the Markdown block owner, and
+`larch_core::balanced_fence_line_indices` plus
 `larch_core::split_lines_keep_ends` are the shared owners the Rust plan grammar
 reuses instead of creating a second fence scanner.

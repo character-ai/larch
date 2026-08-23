@@ -14,7 +14,11 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from issue_support_loader import install_issue_support
+
 FROZEN = Path(__file__).resolve().parent / "voter_calibration_frozen"
+
+install_issue_support()
 
 
 def _load(name: str, path: Path):

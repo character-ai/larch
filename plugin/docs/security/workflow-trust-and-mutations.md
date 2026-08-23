@@ -685,9 +685,8 @@ validated paths and never relay file bytes through `KEY=value` output. Rust
 `crates/larch-cli/src/rendering_commands.rs` and
 `crates/larch-cli/src/plan_prompt_commands.rs`. Both reuse the canonical
 `larch-core` untrusted-content wrapper. `python/larch/rendering/rendering.py`
-retains only voter and scope-anchor rendering, while
-`python/larch/issue/issue_wire.py` retains the remaining Python wrapper
-boundary.
+retains only voter rendering, while `python/larch/issue/issue_wire.py` retains
+its #7686 untrusted-content wrapper boundary.
 
 The Step 1d.7 outline is binding only after operator approval. `--skip-approve`
 removes that human review for the outline and final plan. Use it only when issue
@@ -992,10 +991,9 @@ manifest stamping, run statistics, and the allowlisted atomic
 wire validation and private publication. The sibling pre-driver,
 pre-fix-rebase, route-exit, and assessment-handoff commands are Rust-owned by
 `crates/larch-cli/src/ship_pre_driver_commands.rs`, including confined
-result/handoff reads and shared-core ship-state patches. The surviving
-`python/larch/issue/file_oos.py` callers use in-process block parsing/counting
-and title normalization under receiving umbrella #7680; the module is not an
-OOS command owner or fallback. Rust tests in `implement_ship_parity.rs`,
+result/handoff reads and shared-core ship-state patches. Rust OOS owners provide
+block parsing, counting, title normalization, and post-checkpoint behavior. No
+production Python OOS helper remains. Rust tests in `implement_ship_parity.rs`,
 `ship_pre_driver_parity.rs`, `ship_state_parity.rs`,
 `design_oos_migrated_parity.rs`, `design_oos_commands.rs`, `oos_commands.rs`,
 `oos_file_commands.rs`, `oos_batch.rs`,

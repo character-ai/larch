@@ -16,7 +16,7 @@ shared-row citations. The harness pins Step 0b cancel routes to the file-only
 profile, the non-empty `FINAL_SUMMARY_PATH` gate, the retained
 `design-step-final-summary.sh` and `design-step5c.sh` source names, and the
 `/design` marker-first row cite at each emit site. It also pins the
-render-exit carve-out phrase **Not** gated on `python/cli.py design
+render-exit carve-out phrase **Not** gated on `scripts/larch.sh design
 render-final-summary` exit 0 in both the always-loaded preamble and Step 5c
 item 5.
 

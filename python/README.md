@@ -38,11 +38,9 @@ Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. Th
   documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `refresh_logs_checkpoint` skip parity.
   Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own
   `append-tool-failure.sh` calls on the live path.
-- `larch/issue/file_oos.py` is not a production OOS command owner. Its retained
-  in-process parsing, normalization, and compatibility helpers are assigned to
-  #7680; the #7681 Step 8 workflow consumes its run-id resolver for bookkeeping.
-  All six OOS commands migrated by #8178 and #8179 enter through
-  `scripts/larch.sh` and are Rust-owned.
+- `larch/issue/issue_wire.py` retains the untrusted-content helpers used by the
+  #7686 Python `render voter` consumer. All OOS commands and helpers are
+  Rust-owned; their retired Python references live only under `fixtures/`.
 - `larch/report/run_log_archive.py`, `run_lifecycle.py`, `storage_config.py`,
   and `run_log_publish.py` retain bounded Python compatibility readers, types,
   and Rust-command facades. Rust

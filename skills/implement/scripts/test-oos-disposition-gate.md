@@ -27,7 +27,7 @@ Delegation smoke for `oos-disposition-gate.sh` and `oos-disposition-checkpoint.s
 | Empty, forked, blocked, security-pending, ambiguous-run, and design-export checkpoints | `oos_commands::tests` from `a_checkpoint_with_nothing_accepted_clears` through `a_checkpoint_line_that_does_not_parse_still_records_where_it_failed` |
 | Wrapper plugin root, route, argv, exit, stdout, and stderr | `skills/implement/scripts/test-oos-disposition-gate.sh` |
 
-The former Python `test_disposition_gate_*` names were retired with #8178. Do not restore them as command-behavior authority; retained `python/tests/issue/test_file_oos.py` coverage exercises distinct in-process helpers under receiving umbrella #7680.
+The former Python `test_disposition_gate_*` names were retired with #8178. Do not restore them as command-behavior authority. Issue #8853 removes the last direct Python OOS helper tests.
 
 ## Commands
 
