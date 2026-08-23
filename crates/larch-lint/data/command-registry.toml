@@ -4961,11 +4961,12 @@ verb = "normalize-header"
 python_module = "larch.issue.oos"
 python_function = "oos_normalize_header_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8838
 
 [[commands]]
 domain = "oos"
@@ -4973,11 +4974,12 @@ verb = "serialize"
 python_module = "larch.issue.oos"
 python_function = "oos_serialize_main"
 machine_stdout = false
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8838
 
 [[commands]]
 domain = "plan"

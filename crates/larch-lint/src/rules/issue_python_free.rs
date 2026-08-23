@@ -233,15 +233,13 @@ const EXPECTED_COMMANDS: [ExpectedCommand; 98] = [
 ];
 
 /// Commands that are deliberately outside #7682's closed boundary.
-const HANDOFF_COMMANDS: [HandoffCommand; 14] = [
+const HANDOFF_COMMANDS: [HandoffCommand; 12] = [
     HandoffCommand::new("analyze-issues", "render-chart", 7683),
     HandoffCommand::new("clarify", "comment-fetch", 7680),
     HandoffCommand::new("clarify", "comment-post", 7680),
     HandoffCommand::new("clarify", "label", 7680),
     HandoffCommand::new("clarify", "state", 7680),
     HandoffCommand::new("issue", "migration-audit", 7685),
-    HandoffCommand::new("oos", "normalize-header", 7680),
-    HandoffCommand::new("oos", "serialize", 7680),
     HandoffCommand::new("rejected-analysis", "finalize", 7684),
     HandoffCommand::new("rejected-analysis", "record", 7684),
     HandoffCommand::new("render", "run-summary", 7680),
@@ -257,10 +255,9 @@ const IMPLEMENT_LIBRARY: &str =
 /// The package initializer is structural. Every other issue module at any
 /// depth must name both its receiving umbrella and its behaviorally distinct
 /// reason for remaining in Python.
-const RETAINED_MODULES: [RetainedModule; 7] = [
+const RETAINED_MODULES: [RetainedModule; 6] = [
     RetainedModule::new("python/larch/issue/file_oos.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/issue_wire.py", 7680, DESIGN_LIBRARY),
-    RetainedModule::new("python/larch/issue/oos.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/oos_disposition.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/oos_priority.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/title_match.py", 7680, DESIGN_LIBRARY),

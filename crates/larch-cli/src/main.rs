@@ -2057,6 +2057,12 @@ enum OosCommand {
     /// Resolve the gate's inputs from one session directory and record them.
     #[command(name = "disposition-checkpoint", disable_help_flag = true)]
     DispositionCheckpoint(RawCompatibilityArguments),
+    /// Renumber a findings file's accepted non-security OOS records into a batch.
+    #[command(name = "serialize", disable_help_flag = true)]
+    Serialize(RawCompatibilityArguments),
+    /// Rewrite one block's first line to the canonical `### OOS_<seq>:` id.
+    #[command(name = "normalize-header", disable_help_flag = true)]
+    NormalizeHeader(RawCompatibilityArguments),
     /// File the run's accepted out-of-scope observations as public issues.
     #[command(disable_help_flag = true)]
     File(RawCompatibilityArguments),
@@ -2961,6 +2967,10 @@ fn run(
             OosCommand::File(arguments) => oos_file_commands::file(&arguments.arguments),
             OosCommand::DispositionCheckpoint(arguments) => {
                 oos_commands::disposition_checkpoint(&arguments.arguments)
+            }
+            OosCommand::Serialize(arguments) => oos_commands::serialize(&arguments.arguments),
+            OosCommand::NormalizeHeader(arguments) => {
+                oos_commands::normalize_header(&arguments.arguments)
             }
         }),
         Domain::Difficulty(command) => Ok(command.run()),
