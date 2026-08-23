@@ -772,13 +772,17 @@ fn resume_stuck_title_reselects_and_reuses_the_original_handoff_root() {
 }
 
 #[test]
-fn resume_closed_leaf_reselects_through_the_real_command_path() {
+fn resume_empty_child_result_for_closed_leaf_reselects_through_the_real_command_path() {
     let pointer_root = tempfile::tempdir().expect("pointer root");
     let run_root = tempfile::tempdir().expect("run root");
     let store = RunPointerStore::at(pointer_root.path());
     store
         .create(run_pointer(run_root.path(), 123))
         .expect("create run pointer");
+    let child_root = run_root.path().join("complete-umbrella-run-leaves");
+    fs::create_dir(&child_root).expect("child result root");
+    fs::write(child_root.join(format!("child-{LEAF}.env")), "")
+        .expect("empty durable child result");
 
     let parent = issue_json(
         UMBRELLA,
@@ -1088,6 +1092,16 @@ fn durable_child_shapes_and_local_resume_guards_fail_closed() {
     let child_root = run_root.path().join("complete-umbrella-run-leaves");
     fs::create_dir(&child_root).expect("child result root");
     let child_path = child_root.join(format!("child-{LEAF}.env"));
+    fs::write(&child_path, "").expect("empty child result");
+    assert_eq!(
+        read_durable_child_result(run_root.path(), LEAF, 0).expect("empty child result"),
+        None
+    );
+    assert_eq!(
+        parse_durable_child_result("CHILD_STATUS=complete\n", LEAF, 0)
+            .expect("partial child result"),
+        None
+    );
     let complete_result = format!(
         "CHILD_STATUS=complete\nCHILD_ISSUE={LEAF}\nCHILD_ENVELOPE_COMPLETE=true\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\n"
     );
@@ -1799,6 +1813,17 @@ fn run_leaves_classifies_malformed_and_nonterminal_child_results() {
     ] {
         assert!(matches!(attempt, ChildAttempt::Failed(_)));
     }
+
+    assert_eq!(
+        classify_child_attempt(LEAF, 0, Ok(()), Ok(String::new())),
+        ChildAttempt::Failed("child result env is incomplete: missing CHILD_ISSUE".to_owned())
+    );
+    assert_eq!(
+        classify_child_attempt(LEAF, 0, Err("process failed".to_owned()), Ok(String::new()),),
+        ChildAttempt::Failed(
+            "process failed; child result env is incomplete: missing CHILD_ISSUE".to_owned()
+        )
+    );
 
     let wrong_leaf = format!(
         "CHILD_STATUS=complete\nCHILD_ISSUE={GAP}\nCHILD_ENVELOPE_COMPLETE=true\nCHILD_TRANSIENT_ATTEMPT_COUNT=0\n"
