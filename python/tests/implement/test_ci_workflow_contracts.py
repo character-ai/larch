@@ -1006,6 +1006,7 @@ def test_rust_ci_cache_tool_and_gate_contract() -> None:
     assert "coverage_target_cache_benchmark:" in workflow
     assert "coverage_target_cache_benchmark_max_bytes:" in workflow
     assert "large_ubuntu_4cpu" in workflow
+    assert "runs-on: large_ubuntu_4cpu" in rust_full_job
     assert (
         "CARGO_PROFILE_TEST_OPT_LEVEL: ${{ matrix.test_opt_level }}"
         in rust_coverage_benchmark

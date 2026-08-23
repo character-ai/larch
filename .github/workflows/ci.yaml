@@ -823,7 +823,7 @@ jobs:
     name: rust-full
     needs: [rust-selection]
     if: always() && (github.event_name != 'pull_request' || needs.rust-selection.result != 'success' || needs.rust-selection.outputs.mode == 'full')
-    runs-on: ubuntu-24.04
+    runs-on: large_ubuntu_4cpu
     timeout-minutes: 15
     env:
       CARGO_NEXTEST_VERSION: "0.9.137"
