@@ -7,12 +7,6 @@ allowed-tools: AskUserQuestion, Bash
 disable-model-invocation: true
 ---
 
-**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `release`.**
-
-This is a dev-only checkout skill. If `CLAUDE_PLUGIN_ROOT` is unset, substitute
-the repository root (`$PWD`) for that placeholder in the lifecycle command;
-the lifecycle start remains the first command.
-
 # Release
 
 **MANDATORY: READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
@@ -30,38 +24,75 @@ Parse from `$ARGUMENTS` before any Bash helper runs. All boolean flags default t
 | `--bump major\|minor\|patch` | Override the aggregate bump type from `release prepare` |
 | `--repo OWNER/REPO` | Hub repo for `gh` (default: `scripts/larch.sh gh resolve-repo`, falling back to `character-ai/larch`) |
 
-## Step 1 — Parse flags and guard
+## Pre-lifecycle bootstrap
 
-Guard (abort before prepare):
+This is a dev-only checkout skill. Before starting the shared lifecycle:
 
-- Current branch MUST be `main` (including when `--dry-run`).
-- Working tree MUST be clean (`git status --porcelain` empty), except `--dry-run` may run with a dirty tree only when the operator accepts inconsistent preview output.
+1. Parse and validate every flag from `$ARGUMENTS`. Reject retired or invalid
+   flags before running a command.
 
-On failure, print a clear operator-visible error and stop. Run this raw Git guard before building the working-tree Rust driver, so a refused invocation does not refresh ignored build artifacts.
+   ```bash
+   dry_run=false
+   skip_approve=false
+   retired_flag=false
+   for _release_arg in $ARGUMENTS; do
+     case "$_release_arg" in
+       --dry-run) dry_run=true ;;
+       --skip-approve|-s) skip_approve=true ;;
+       --approve|-a)
+         printf '%s\n' "**❌ /release: --approve and -a are retired. Use --skip-approve or -s.**" >&2
+         retired_flag=true
+         ;;
+     esac
+   done
+   unset _release_arg
+   if [ "$retired_flag" = "true" ]; then
+     exit 2
+   fi
+   unset retired_flag
+   ```
 
-After the guard passes, build the exact current checkout before its first Rust-backed release command. Always invoke that driver through `scripts/larch.sh`; the explicit environment supplies bootstrap identity without depending on an installed plugin root or a stale same-version binary. Resolve `REPO` through the verified driver when `--repo` was omitted.
+2. Check the current branch with `git branch --show-current` and the tree with
+   `git status --porcelain`. Stop if the branch is not `main`. Stop if the tree
+   is dirty, except that a `--dry-run` may continue only after the operator
+   accepts inconsistent preview output. These are raw Git guards, not calls
+   through the Rust driver.
+3. Build the exact current checkout, then immediately start the shared
+   lifecycle through that driver:
+
+   ```bash
+   set -euo pipefail
+   WORKTREE_LARCH="$PWD/target/release/larch"
+   cargo build --quiet --locked --release --package larch-cli
+   CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" run-log lifecycle-start \
+     --repo-root "${CLAUDE_PROJECT_DIR:-$PWD}" \
+     --skill "release"
+   ```
+
+Flag parsing, the raw guard, and the build are the only actions before lifecycle
+start. If the guard or build fails, stop without starting or terminalizing a
+lifecycle. The lifecycle start is the first Rust-backed command and the first
+release command.
+
+**MANDATORY: Follow the complete shared lifecycle contract in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-lifecycle.md` with declared skill `release`.** The fence above replaces only that contract's generic start command. Parse and validate its stdout as specified. Invoke the matching terminal command through `$PWD/scripts/larch.sh` with `CLAUDE_PLUGIN_ROOT="$PWD"` and the current `LARCH_BINARY="$PWD/target/release/larch"`; do not start a second lifecycle.
+
+## Step 1: Sync and resolve the repository
+
+The pre-lifecycle bootstrap already parsed the flags, passed the raw Git guard,
+built the working-tree driver, and started the lifecycle. Resolve `REPO` through
+that verified driver when `--repo` was omitted.
 
 **Sync with `origin/main`** (after branch + tree guards pass, non-dry-run only). On `--dry-run`, do not fetch or otherwise mutate local `main` or the worktree. On non-dry-run, fetch `origin/main` only: do not fast-forward local `main`. Tip movement during the run is expected; `release prepare` pins `RELEASE_SHA` from the fetched tip and Step 5 cuts the release branch from that SHA. Local `main` may lag `origin/main`.
 
 ```bash
 dry_run=false
-skip_approve=false
-retired_flag=false
 for _release_arg in $ARGUMENTS; do
   case "$_release_arg" in
     --dry-run) dry_run=true ;;
-    --skip-approve|-s) skip_approve=true ;;
-    --approve|-a)
-      printf '%s\n' "**❌ /release: --approve and -a are retired. Use --skip-approve or -s.**" >&2
-      retired_flag=true
-      ;;
   esac
 done
 unset _release_arg
-if [ "$retired_flag" = "true" ]; then
-  exit 2
-fi
-unset retired_flag
+WORKTREE_LARCH="$PWD/target/release/larch"
 if [ "$dry_run" != "true" ]; then
   set +e
   sync_out=$(git fetch origin main --quiet 2>&1)
@@ -75,8 +106,6 @@ else
   sync_rc=0
 fi
 if [ "$sync_rc" -eq 0 ]; then
-  WORKTREE_LARCH="$PWD/target/release/larch"
-  cargo build --quiet --locked --release --package larch-cli
   if [ -z "${REPO:-}" ]; then
     REPO=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" gh resolve-repo 2>/dev/null || echo "character-ai/larch")
   fi
@@ -87,7 +116,7 @@ Branch on `sync_rc`:
 - **Exit 0**: on non-dry-run, `origin/main` was fetched (parse `FETCHED_ORIGIN_MAIN=true`); on `--dry-run`, sync was deliberately skipped. Continue.
 - **Other non-zero**: print `**⚠ /release: sync with origin/main failed (exit <rc>). Check network/git state.**` and stop.
 
-On **`--dry-run`**: do not invoke `python/cli.py push rebase`; continue to Step 2.
+On **`--dry-run`**: do not invoke `scripts/larch.sh push rebase`; continue to Step 2.
 
 ## Step 2 — Prepare (read-only)
 
@@ -132,7 +161,17 @@ NOTES_FILE="$NOTES_DIR/notes.md"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 RECOVERY_NOTES_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/larch/release-notes"
 RECOVERY_NOTES_FILE="$RECOVERY_NOTES_DIR/v${NEW_VERSION}-notes.redacted.md"
-python3 "$PWD/python/cli.py" redact tmpdir-paths < "$NOTES_FILE" | python3 "$PWD/python/cli.py" redact secrets > "$REDACTED_NOTES_FILE"
+WORKTREE_LARCH="$PWD/target/release/larch"
+set -o pipefail
+if ! CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" redact tmpdir-paths < "$NOTES_FILE" |
+  CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" redact secrets > "$REDACTED_NOTES_FILE"; then
+  printf '%s\n' "**❌ /release: release-note redaction failed.**" >&2
+  exit 1
+fi
+if [ ! -s "$REDACTED_NOTES_FILE" ]; then
+  printf '%s\n' "**❌ /release: redacted release notes are empty.**" >&2
+  exit 1
+fi
 mkdir -p "$RECOVERY_NOTES_DIR"
 cp "$REDACTED_NOTES_FILE" "$RECOVERY_NOTES_FILE"
 ```
@@ -166,16 +205,20 @@ not change repository settings, rulesets, merge methods, or bypass actors.
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 WORKTREE_LARCH="$PWD/target/release/larch"
+if [ ! -s "$REDACTED_NOTES_FILE" ]; then
+  printf '%s\n' "**❌ /release: redacted release notes are empty.**" >&2
+  exit 1
+fi
 CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release ensure-policy --repo "$REPO"
 git checkout -b "release/v${NEW_VERSION}" "$RELEASE_SHA"
 CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release set-version "${NEW_VERSION}"
 cargo build --quiet --locked --release --package larch-cli
 git add .claude-plugin/plugin.json plugin/.claude-plugin/plugin.json Cargo.toml Cargo.lock
 git commit -m "Release v${NEW_VERSION}"
-python3 "$PWD/python/cli.py" pr create --title "Release v${NEW_VERSION}" --body-file "$REDACTED_NOTES_FILE" --repo "$REPO"
+CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" pr create --title "Release v${NEW_VERSION}" --body-file "$REDACTED_NOTES_FILE" --repo "$REPO"
 ```
 
-Record `PR_NUMBER` from `python/cli.py pr create` stdout. First wait for the
+Record `PR_NUMBER` from `scripts/larch.sh pr create` stdout. First wait for the
 candidate's ordinary PR checks. Then submit it through the normal merge queue;
 never pass `--admin`, a merge strategy, or a queue-bypass option. A release
 branch that sits behind `origin/main` is expected when other PRs merge mid-run:
@@ -239,6 +282,10 @@ NOTES_FILE="$NOTES_DIR/notes.md"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 RECOVERY_NOTES_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/larch/release-notes"
 RECOVERY_NOTES_FILE="$RECOVERY_NOTES_DIR/v${NEW_VERSION}-notes.redacted.md"
+if [ ! -s "$REDACTED_NOTES_FILE" ]; then
+  printf '%s\n' "**❌ /release: redacted release notes are empty.**" >&2
+  exit 1
+fi
 stage_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release stage \
   --version "$NEW_VERSION" \
   --notes-file "$REDACTED_NOTES_FILE" \
@@ -274,7 +321,16 @@ EOF
 if [ "${ADDED_PR_COUNT:-0}" -gt 0 ]; then
   # Orchestrator: read ADDED_PR_LIST_FILE, append paraphrased entries to NOTES_FILE,
   # then refresh redaction + recovery copies before re-staging the draft body.
-  python3 "$PWD/python/cli.py" redact tmpdir-paths < "$NOTES_FILE" | python3 "$PWD/python/cli.py" redact secrets > "$REDACTED_NOTES_FILE"
+  set -o pipefail
+  if ! CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" redact tmpdir-paths < "$NOTES_FILE" |
+    CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" redact secrets > "$REDACTED_NOTES_FILE"; then
+    printf '%s\n' "**❌ /release: release-note redaction failed.**" >&2
+    exit 1
+  fi
+  if [ ! -s "$REDACTED_NOTES_FILE" ]; then
+    printf '%s\n' "**❌ /release: redacted release notes are empty.**" >&2
+    exit 1
+  fi
   mkdir -p "$RECOVERY_NOTES_DIR"
   cp "$REDACTED_NOTES_FILE" "$RECOVERY_NOTES_FILE"
   stage_out=$(CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" "$PWD/scripts/larch.sh" release stage \
@@ -543,7 +599,7 @@ Runtime helpers:
 Repo-root helpers referenced from steps above:
 
 - `git fetch origin main` — Step 1 advisory fetch only; do not fast-forward local `main`. Prepare pins `RELEASE_SHA` from the fetched tip.
-- `scripts/larch.sh gh resolve-repo`, `python/cli.py redact tmpdir-paths`, `python/cli.py redact secrets`, `python/cli.py pr create`, `scripts/larch.sh ci wait`, `scripts/larch.sh merge {pr,wait}`, and `scripts/larch.sh bgjob {start,wait}`
+- `scripts/larch.sh gh resolve-repo`, `scripts/larch.sh redact {tmpdir-paths,secrets}`, `scripts/larch.sh pr create`, `scripts/larch.sh ci wait`, `scripts/larch.sh merge {pr,wait}`, and `scripts/larch.sh bgjob {start,wait}`
 - `scripts/larch.sh session local-cleanup` (Rust `session local-cleanup` contract) — post-merge local teardown
 
 Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):
