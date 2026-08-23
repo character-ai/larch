@@ -99,6 +99,24 @@ def _install_difficulty_helpers() -> None:
         setattr(difficulty, attribute, getattr(module, attribute))
 
 
+def _install_issue_block_helpers() -> None:
+    """Attach the frozen named-block reader needed by retired design code."""
+    name = "_larch_issue_blocks_frozen"
+    module = sys.modules.get(name)
+    if module is None:
+        path = Path(__file__).resolve().with_name("issue_blocks_frozen.py")
+        spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"cannot load frozen module {path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+
+    from larch.issue import issue_wire  # noqa: PLC0415 - fixture patch
+
+    issue_wire.parse_named_block = module.parse_named_block
+
+
 def _install_issue_mutation_stub() -> None:
     """Keep retired OOS references importable without restoring an owner."""
     name = "larch.issue.issue_mutation"
@@ -131,6 +149,7 @@ def install_shared_retired_dependencies() -> None:
     """Install retired imports shared by frozen parity processes."""
     package = _design_package()
     _install_plan_grammar(package)
+    _install_issue_block_helpers()
     _install_difficulty_helpers()
     _install_issue_mutation_stub()
 

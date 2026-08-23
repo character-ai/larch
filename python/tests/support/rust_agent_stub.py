@@ -43,7 +43,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from pathlib import PurePosixPath
-from typing import Literal, cast
+from typing import Literal, Protocol, cast
 
 ARG_PAIR_SIZE = 2
 DEGRADED_REASON_ARGUMENT_COUNT = 3
@@ -79,6 +79,30 @@ class _ArchiveRecord:
     sha256: str | None
     mode: int
     content: bytes | None
+
+
+class _ArchitecturalResult(Protocol):
+    """Typed projection of one dynamically loaded frozen read result."""
+
+    status: str
+    path: Path | None
+    content: str
+    warning: str
+
+
+class _ArchitecturalReader(Protocol):
+    """Callable shape exported by the frozen architectural reference."""
+
+    def __call__(
+        self, *, repo_root: str | Path | None = None
+    ) -> _ArchitecturalResult: ...
+
+
+class _ArchitecturalReference(Protocol):
+    """Typed projection of the dynamically loaded frozen module."""
+
+    read_guidelines: _ArchitecturalReader
+    read_invariants: _ArchitecturalReader
 
 
 def _plugin_root() -> Path:
@@ -537,12 +561,12 @@ def _flag(arguments: list[str], name: str, default: str = "") -> str:
     return default
 
 
-def _architectural_reference() -> object:
+def _architectural_reference() -> _ArchitecturalReference:
     """Load the single frozen architectural parser used by parity fixtures."""
     module_name = "_larch_architectural_guidelines_frozen"
     existing = sys.modules.get(module_name)
     if existing is not None:
-        return existing
+        return cast("_ArchitecturalReference", existing)
     installer_path = (
         _plugin_root() / "fixtures" / "rust-parity" / "design_pause_dispatch_stub.py"
     )
@@ -554,7 +578,7 @@ def _architectural_reference() -> object:
     installer = importlib.util.module_from_spec(installer_spec)
     installer_spec.loader.exec_module(installer)
     installer.install()  # type: ignore[attr-defined]
-    return sys.modules[module_name]
+    return cast("_ArchitecturalReference", sys.modules[module_name])
 
 
 def _architectural_read(arguments: list[str], *, kind: str) -> int:
@@ -564,9 +588,9 @@ def _architectural_read(arguments: list[str], *, kind: str) -> int:
 
     reference = _architectural_reference()
     reader = (
-        reference.read_guidelines  # type: ignore[attr-defined]
+        reference.read_guidelines
         if kind == "guidelines"
-        else reference.read_invariants  # type: ignore[attr-defined]
+        else reference.read_invariants
     )
     repo_root = _flag(arguments, "--repo-root") or None
     result = reader(repo_root=repo_root)
@@ -579,7 +603,7 @@ def _architectural_read(arguments: list[str], *, kind: str) -> int:
         return 0
     print(f"{prefix}_PATH={result.path}")
     if result.content:
-        sys.stdout.write(
+        _ = sys.stdout.write(
             issue_wire.emit_untrusted_content_block(
                 tag=f"architectural_{kind}", text=result.content
             )

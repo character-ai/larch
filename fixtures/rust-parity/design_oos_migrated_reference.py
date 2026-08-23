@@ -16,6 +16,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from design_pause_dispatch_stub import (
+    install_shared_retired_dependencies as _install_retired_dependencies,
+)
+
+_install_retired_dependencies()
+
 
 def _load_reference() -> Any:
     path = Path(__file__).with_name("design_oos_frozen.py")
