@@ -404,7 +404,7 @@ fn kv_value(text: &str, key: &str) -> String {
 ///
 /// Shared with the `render run-summary` owner so the identity resolution has one
 /// copy (mirrors Python `_resolve_run_identity.clean`).
-pub(crate) fn identity_clean(value: &str) -> String {
+pub fn identity_clean(value: &str) -> String {
     let text = value.trim();
     if matches!(text, "" | "unknown" | "None") {
         String::new()
@@ -419,7 +419,7 @@ pub(crate) fn identity_clean(value: &str) -> String {
 /// Passing empty overrides reproduces the manifest-only `/implement` behavior;
 /// the `render run-summary` owner passes its CLI overrides. Shared so both paths
 /// resolve identity identically (Python `_resolve_run_identity`).
-pub(crate) fn resolve_run_identity(
+pub fn resolve_run_identity(
     manifest: &Path,
     larch_version: &str,
     main_model: &str,
@@ -553,7 +553,7 @@ fn cost_fields(
 /// the pricing tail (`from_cost_argv` → `display_rates` → `price_counts` →
 /// `render_cost_kv` → field reads) has one copy. Callers apply their own
 /// unavailability policy on the result.
-pub(crate) fn price_run_cost(
+pub fn price_run_cost(
     argv: &[String],
     overrides: &BTreeMap<String, String>,
 ) -> Option<RunSummaryCost> {

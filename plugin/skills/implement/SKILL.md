@@ -614,7 +614,7 @@ Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
 Step 7a composes no prompt-side public summary and never emits diagram fences. The helper owns silent `larch:diagrams` upsert through `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" diagrams upsert`; the orchestrator parses only KVs and breadcrumbs.
 
-`scripts/larch.sh implement step-7a` consolidates small/non-runtime classification, `python/cli.py diagram code-flow`, Code Flow section composition, shared `larch:diagrams` upsert, the 7a.r checkpoint, and a local execution-issues checkpoint. It emits a KV tail; do not duplicate those calls prompt-side.
+`scripts/larch.sh implement step-7a` consolidates small/non-runtime classification, the Rust `diagram code-flow` owner, Code Flow section composition, shared `larch:diagrams` upsert, the 7a.r checkpoint, and a local execution-issues checkpoint. It emits a KV tail; do not duplicate those calls prompt-side.
 The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment only when `$IMPLEMENT_TMPDIR/code-flow-section.md` exists after successful generation. Contract: `skills/implement/scripts/step-7a.md`; `skills/implement/scripts/test-step-7a.sh` (`skills/implement/scripts/test-step-7a.md`).
 
 **⚠ Bgjob foreground launch required — do not use Claude background mode. Expected launcher stdout is exactly `BGJOB_STATUS=STARTED STEP=implement-step7a PGID=<n>`.**
@@ -811,7 +811,7 @@ Run the composed wrapper for rejected findings, best-effort Slack notification, 
 "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" scripts/larch.sh implement step-16-17 --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
-The markdown body comes from `${CLAUDE_PLUGIN_ROOT}/python/cli.py render run-summary`; optional per-lane USD comes from `${CLAUDE_PLUGIN_ROOT}/python/larch/report/report_tokens_cost.py`. The dollar-primary cost line lives in the `larch:final-summary` block written to `summary-final.md` by `final-report write` without `--print-stdout` on the active `scripts/larch.sh implement step-16-17` path.
+The markdown body comes from the Rust `render run-summary` owner rendered in process by `final-report write`; optional per-lane USD comes from `${CLAUDE_PLUGIN_ROOT}/python/larch/report/report_tokens_cost.py`. The dollar-primary cost line lives in the `larch:final-summary` block written to `summary-final.md` by `final-report write` without `--print-stdout` on the active `scripts/larch.sh implement step-16-17` path.
 
 After the combined Step 16-17 fence returns, follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` marker-first profile to cache, not emit. Binding: markers `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---`; source captured foreground `scripts/larch.sh implement step-16-17` Bash wrapper stdout already in context, not asynchronous notification output; in-context-only `true`; Read fallback `forbidden`; sidecar follow-on `forbidden`. When the shared profile caches a non-empty marker body, retain it as the Step 17 cache for deferred terminal emit. If markers are absent or body empty, cache no Step 17 body. Continue to Step 18 so Step 18b can decide via `EMIT_BODY`.
 

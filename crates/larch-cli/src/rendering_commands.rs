@@ -2791,43 +2791,7 @@ fn run_summary_impl(arguments: &[OsString], emit_status: bool) -> i32 {
             String::new()
         }
     };
-    let fields = RunSummaryFields {
-        skill: summary_string(&parsed, "--skill"),
-        outcome: summary_string(&parsed, "--outcome"),
-        run_id: summary_string(&parsed, "--run-id"),
-        workflow_path: summary_string(&parsed, "--workflow-path"),
-        duration: summary_string(&parsed, "--duration"),
-        issue_number: summary_string(&parsed, "--issue-number"),
-        issue_url: summary_string(&parsed, "--issue-url"),
-        pr_number: summary_string(&parsed, "--pr-number"),
-        pr_url: summary_string(&parsed, "--pr-url"),
-        plan_review_line: summary_string(&parsed, "--plan-review-line"),
-        plan_coverage_line: summary_string(&parsed, "--plan-coverage-line"),
-        difficulty_line: summary_string(&parsed, "--difficulty-line"),
-        dynamic_archetypes_line: summary_string(&parsed, "--dynamic-archetypes-line"),
-        code_review_line: summary_string(&parsed, "--code-review-line"),
-        code_added: summary_string(&parsed, "--code-added"),
-        code_deleted: summary_string(&parsed, "--code-deleted"),
-        logs_added: summary_string(&parsed, "--logs-added"),
-        logs_deleted: summary_string(&parsed, "--logs-deleted"),
-        oos_count: summary_string(&parsed, "--oos-count"),
-        oos_urls: summary_string(&parsed, "--oos-urls"),
-        exec_issues: summary_string(&parsed, "--exec-issues")
-            .trim()
-            .parse::<usize>()
-            .unwrap_or(0),
-        warnings: summary_string(&parsed, "--warnings")
-            .trim()
-            .parse::<usize>()
-            .unwrap_or(0),
-        run_logs_path: summary_string(&parsed, "--run-logs-path"),
-        force_requested: summary_string(&parsed, "--force-requested"),
-        merge_downgraded: summary_string(&parsed, "--merge-downgraded"),
-        needs_user_reason: String::new(),
-        needs_user_next_action: String::new(),
-        identity,
-        cost,
-    };
+    let fields = summary_fields(&parsed, identity, cost);
     let mut body = render_run_summary(&fields);
     if !note_lines.is_empty() {
         // Python appends a blank line then the note block (trailing newlines
@@ -2860,6 +2824,52 @@ fn run_summary_impl(arguments: &[OsString], emit_status: bool) -> i32 {
         }
     }
     0
+}
+
+/// Assemble the [`RunSummaryFields`] from the parsed argv plus the resolved
+/// identity and cost (mirrors the Python `render_run_summary(**kwargs)` field map).
+fn summary_fields(
+    parsed: &ParsedCommandLine,
+    identity: RunSummaryIdentity,
+    cost: RunSummaryCost,
+) -> RunSummaryFields {
+    RunSummaryFields {
+        skill: summary_string(parsed, "--skill"),
+        outcome: summary_string(parsed, "--outcome"),
+        run_id: summary_string(parsed, "--run-id"),
+        workflow_path: summary_string(parsed, "--workflow-path"),
+        duration: summary_string(parsed, "--duration"),
+        issue_number: summary_string(parsed, "--issue-number"),
+        issue_url: summary_string(parsed, "--issue-url"),
+        pr_number: summary_string(parsed, "--pr-number"),
+        pr_url: summary_string(parsed, "--pr-url"),
+        plan_review_line: summary_string(parsed, "--plan-review-line"),
+        plan_coverage_line: summary_string(parsed, "--plan-coverage-line"),
+        difficulty_line: summary_string(parsed, "--difficulty-line"),
+        dynamic_archetypes_line: summary_string(parsed, "--dynamic-archetypes-line"),
+        code_review_line: summary_string(parsed, "--code-review-line"),
+        code_added: summary_string(parsed, "--code-added"),
+        code_deleted: summary_string(parsed, "--code-deleted"),
+        logs_added: summary_string(parsed, "--logs-added"),
+        logs_deleted: summary_string(parsed, "--logs-deleted"),
+        oos_count: summary_string(parsed, "--oos-count"),
+        oos_urls: summary_string(parsed, "--oos-urls"),
+        exec_issues: summary_string(parsed, "--exec-issues")
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(0),
+        warnings: summary_string(parsed, "--warnings")
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(0),
+        run_logs_path: summary_string(parsed, "--run-logs-path"),
+        force_requested: summary_string(parsed, "--force-requested"),
+        merge_downgraded: summary_string(parsed, "--merge-downgraded"),
+        needs_user_reason: String::new(),
+        needs_user_next_action: String::new(),
+        identity,
+        cost,
+    }
 }
 
 /// Read one option as an owned string, defaulting to empty like `args.<name> or ""`.
