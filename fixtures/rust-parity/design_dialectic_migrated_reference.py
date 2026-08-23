@@ -5,7 +5,11 @@ import importlib.util
 import sys
 from pathlib import Path
 
+from design_pause_dispatch_stub import install as _install_design_package
+
 FROZEN = Path(__file__).resolve().parent / "design_dialectic_frozen" / "design_dialectic.py"
+
+_install_design_package()
 
 
 def _load():

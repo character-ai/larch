@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import argparse
 import hashlib
 import logging
 import os
@@ -14,7 +13,6 @@ import stat
 import subprocess
 import sys
 from contextlib import suppress
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path, PurePosixPath
@@ -22,7 +20,6 @@ from typing import cast
 
 from larch.core import config
 from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS
-from larch.core.repo_roots import consumer_repo_root
 
 _LOG = logging.getLogger(__name__)
 
@@ -61,20 +58,6 @@ NOTE_GUIDELINE_ID_RE = GUIDELINES.identifier_re
 # supporting I-*/G-* reference in that same sentence must not flip it to non-clean.
 # See issue #6955.
 _CLEAN_ASSESSMENT_LEAD_RE = re.compile(r"^\W*no\b[^.;\n]*\b(?:violation|deviation)s?\b", re.IGNORECASE)
-@dataclass(frozen=True)
-class ArchitecturalGuidelinesResult:
-    """Result of reading the repo-local architectural guidelines file."""
-
-    status: str
-    repo_root: Path | None
-    path: Path | None
-    content: str
-    warning: str = ""
-
-    def __post_init__(self) -> None:
-        if self.status not in _STATUS_VALUES:
-            msg = f"unsupported architectural guideline status: {self.status}"
-            raise ValueError(msg)
 
 
 def _validate_ship_outcome_record(  # noqa: C901, PLR0911, PLR0912 - validator preserves distinct schema diagnostics
@@ -152,78 +135,6 @@ validate_guideline_ship_outcome_record = partial(_validate_ship_outcome_record, 
 validate_invariant_ship_outcome_record = partial(_validate_ship_outcome_record, kind=INVARIANTS)
 
 
-def _run_git_toplevel(candidate: Path) -> Path | None:
-    return consumer_repo_root(candidate)
-
-
-def _resolve_repo_root(explicit_repo_root: str | Path | None = None) -> Path | None:
-    if explicit_repo_root is not None:
-        try:
-            return Path(explicit_repo_root).resolve()
-        except OSError:
-            return None
-    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
-    if project_dir:
-        root = _run_git_toplevel(Path(project_dir))
-        if root is not None:
-            return root
-    return _run_git_toplevel(Path.cwd())
-
-
-parse_guideline_entries = GUIDELINES.parse_entries
-parse_invariant_entries = INVARIANTS.parse_entries
-
-
-def _invalid(*, repo_root: Path | None, path: Path | None, warning: str) -> ArchitecturalGuidelinesResult:
-    return ArchitecturalGuidelinesResult("invalid", repo_root, path, "", warning)
-
-
-def _validate_architectural_file(*, root: Path, path: Path, filename: str) -> str | None:
-    """Return an invalid-reason for a present architecture path, or None when readable."""
-    if path.is_symlink():
-        return f"{filename} is invalid: symlinks are not read"
-    try:
-        resolved = path.resolve(strict=False)
-        _ = resolved.relative_to(root.resolve())
-    except (OSError, ValueError):
-        return f"{filename} is invalid: path escapes repo root"
-    if path.is_dir():
-        return f"{filename} is invalid: expected a regular file, found a directory"
-    if not path.is_file():
-        return f"{filename} is invalid: expected a regular file"
-    return None
-
-
-def _read_assessment_kind(
-    *, kind: AssessmentKind, repo_root: str | Path | None = None
-) -> ArchitecturalGuidelinesResult:
-    root = _resolve_repo_root(repo_root)
-    if root is None:
-        return ArchitecturalGuidelinesResult("absent", None, None, "")
-    path = root / kind.filename
-    if not path.exists() and not path.is_symlink():
-        return ArchitecturalGuidelinesResult("absent", root, path, "")
-    warning = _validate_architectural_file(root=root, path=path, filename=kind.filename)
-    if warning is not None:
-        return _invalid(repo_root=root, path=path, warning=warning)
-    try:
-        raw_text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        return _invalid(repo_root=root, path=path, warning=f"{kind.filename} is invalid: unreadable file ({exc})")
-    return ArchitecturalGuidelinesResult(
-        "present", root, path.resolve(strict=False), kind.parse_entries(raw_text), ""
-    )
-
-
-read_guidelines = partial(_read_assessment_kind, kind=GUIDELINES)
-read_invariants = partial(_read_assessment_kind, kind=INVARIANTS)
-
-
-def architectural_knowledge_required(repo_root: str | Path | None = None) -> bool:
-    """Return true when any valid architectural knowledge file is present."""
-    return read_invariants(repo_root=repo_root).status == "present" or read_guidelines(repo_root=repo_root).status == "present"
-
-
 def _materialize_implementation_diff_for_head(
     repo_root: Path,
     *,
@@ -292,16 +203,6 @@ guideline_ship_outcome_path = partial(_artifact_path, kind=GUIDELINES, attribute
 invariant_ship_outcome_path = partial(_artifact_path, kind=INVARIANTS, attribute="ship_outcome_sidecar")
 
 
-def _validate_design_tmpdir_arg(candidate: str) -> Path:
-    from larch.state import session_env  # noqa: PLC0415  # lint-layering: ok validate-design-tmpdir must stay co-located with arg-parsing logic.
-    ok, message = session_env.validate_design_tmpdir(candidate)
-    if not ok:
-        raise ValueError(message)
-    if Path(candidate).is_symlink():
-        raise ValueError("design-tmpdir: path must not be a symlink")
-    return Path(candidate).resolve(strict=False)
-
-
 def _env_escape(value: str) -> str:
     return value.replace("\n", " ").replace("\r", " ")
 
@@ -311,33 +212,6 @@ def _write_text_atomic(*, path: Path, text: str) -> None:
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(text, encoding="utf-8")
     tmp.replace(path)
-
-
-def _safe_unlink_assessment(path: Path) -> None:
-    if path.is_file() and not path.is_symlink():
-        path.unlink()
-
-
-def _write_kind_design_assessment_atomic(
-    *, design_tmpdir: Path, text: str, kind: AssessmentKind
-) -> None:
-    design_tmpdir.mkdir(parents=True, exist_ok=True)
-    path = _artifact_path(design_tmpdir, kind, "design_assessment")
-    tmp = path.with_name(path.name + ".tmp")
-    if path.is_symlink():
-        raise OSError(f"{kind.design_assessment}: target must not be a symlink")
-    if path.exists() and not path.is_file():
-        raise OSError(f"{kind.design_assessment}: target must be a regular file")
-    if tmp.is_symlink():
-        raise OSError(f"{tmp.name}: temp path must not be a symlink")
-    if tmp.exists() and not tmp.is_file():
-        raise OSError(f"{tmp.name}: temp path must be a regular file")
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(path)
-
-
-def _normalize_assessment_text(text: str) -> str:
-    return text.rstrip("\n") + "\n"
 
 
 def _read_regular_text_no_follow(path: Path) -> str:
@@ -860,84 +734,6 @@ def classify_note_for_kind(note: str, *, kind: AssessmentKind) -> str:
     )
 
 
-# A Gate C guideline deviation publishes only when its persisted assessment note
-# carries exactly one *active* documented-exception line: a top-level
-# `Exception:` line (outside every code fence) recording a non-empty rationale,
-# `author: main-agent`, and a real calendar date. Exception-looking text inside a
-# backtick or tilde fence has no authority, and duplicate active lines fail closed
-# (#7196.2; the /design mirror of the #7193 /implement ladder).
-_EXCEPTION_LEAD_RE = re.compile(r"^\s*Exception:")
-_DESIGN_EXCEPTION_RE = re.compile(
-    r"^\s*Exception:\s+(?P<rationale>\S[^\n]*?)\s+"
-    r"\(author:\s*main-agent,\s+date:\s*"
-    r"(?P<date>\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))\)\s*$"
-)
-
-
-@dataclass(frozen=True)
-class GuidelineException:
-    """A validated active documented-exception recovered from a deviation note."""
-
-    rationale: str
-    date: str
-    line: str
-
-
-def _exception_date_plausible(date_text: str) -> bool:
-    """True when ``date_text`` parses as a real calendar date (rejects Feb 30, etc.)."""
-    try:
-        year_text, month_text, day_text = date_text.split("-")
-        _ = datetime(int(year_text), int(month_text), int(day_text), tzinfo=UTC)
-    except ValueError:
-        return False
-    return True
-
-
-def _active_exception_lines(note: str) -> list[str]:
-    """Return the note's non-fenced lines that lead with ``Exception:``.
-
-    Lines inside a balanced code fence carry no authority (G-Md-3).
-    """
-    from larch.design import plan_grammar  # noqa: PLC0415 - deferred function-level import keeps larch.core import-time free of larch.design  # lint-layering: ok reuse the balanced fenced-code-block scanner (G-Md-3) instead of re-deriving fence state.
-    lines = note.splitlines()
-    fenced = plan_grammar.balanced_fence_line_indices(lines)
-    return [
-        line
-        for index, line in enumerate(lines)
-        if index not in fenced and _EXCEPTION_LEAD_RE.match(line) is not None
-    ]
-
-
-def guideline_active_exception(note: str) -> GuidelineException | None:
-    """Return the sole valid active documented-exception, or ``None`` (fail closed).
-
-    Recognizes exactly one active ``Exception:`` line outside code fences with a
-    non-empty rationale, ``author: main-agent``, and a real calendar date. Missing,
-    malformed, empty-rationale, wrong-author, impossible-date, duplicate, and
-    fenced-only notes return ``None``.
-    """
-    active = _active_exception_lines(note)
-    if len(active) != 1:
-        return None
-    match = _DESIGN_EXCEPTION_RE.match(active[0])
-    if match is None:
-        return None
-    rationale = match.group("rationale").strip()
-    if not rationale or not _exception_date_plausible(match.group("date")):
-        return None
-    return GuidelineException(rationale=rationale, date=match.group("date"), line=active[0].strip())
-
-
-def guideline_exception_present(note: str) -> bool:
-    """True when the note carries any active (non-fenced) ``Exception:`` line."""
-    return bool(_active_exception_lines(note))
-
-
-def guideline_exception_valid(note: str) -> bool:
-    """True when the note carries exactly one valid active documented-exception."""
-    return guideline_active_exception(note) is not None
-
-
 def _current_head(repo_root: Path | None = None, *, verify_commit: bool = False, error_out: list[str] | None = None) -> str:
     cmd = ["git"]
     if repo_root is not None:
@@ -953,260 +749,6 @@ def _current_head(repo_root: Path | None = None, *, verify_commit: bool = False,
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
-def _persist_design_assessment(
-    *,
-    repo_root: str | Path | None,
-    design_tmpdir: str,
-    kind: AssessmentKind,
-    assessment: str = "",
-    assessment_text: str | None = None,
-) -> int:
-    design_tmpdir_path = _validate_design_tmpdir_arg(design_tmpdir)
-    result = _read_assessment_kind(kind=kind, repo_root=repo_root)
-    path = _artifact_path(design_tmpdir_path, kind, "design_assessment")
-    requires_assessment = result.status == "present" and (
-        not kind.design_requires_nonempty or bool(result.content.strip())
-    )
-    if not requires_assessment:
-        remove_stale = result.status != "present" or kind.design_empty_removes
-        if remove_stale:
-            _safe_unlink_assessment(path)
-            if path.exists() or path.is_symlink():
-                raise OSError(
-                    f"{kind.design_assessment}: stale entry could not be removed (not a regular file)"
-                )
-        return 0
-    if assessment == config.ASSESSMENT_OUTCOME_CLEAN:
-        text = kind.clean_presentation_note + "\n"
-    elif assessment_text is not None:
-        text = _normalize_assessment_text(assessment_text)
-    else:
-        raise ValueError(f"present {kind.key} require exactly one assessment source")
-    _write_kind_design_assessment_atomic(design_tmpdir=design_tmpdir_path, text=text, kind=kind)
-    return 0
-
-
-persist_design_assessment = partial(_persist_design_assessment, kind=GUIDELINES)
-persist_invariant_design_assessment = partial(_persist_design_assessment, kind=INVARIANTS)
-
-
-def _emit_design_assessment_persist_result(
-    *,
-    guidelines_status: str,
-    persist_result: str,
-    reason: str,
-) -> None:
-    print("ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_ATTEMPTED=true")
-    print(f"ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_GUIDELINES_STATUS={guidelines_status}")
-    print(f"ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_RESULT={persist_result}")
-    print(f"ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_REASON={_env_escape(reason)}")
-    print(f"ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_ARTIFACT={DESIGN_ASSESSMENT}")
-
-
-def _design_assessment_flag_error(
-    *,
-    result: ArchitecturalGuidelinesResult,
-    has_clean: bool,
-    has_file: bool,
-    kind: AssessmentKind,
-) -> str | None:
-    requires_assessment = result.status == "present" and (
-        not kind.design_requires_nonempty or bool(result.content.strip())
-    )
-    if requires_assessment:
-        if has_clean == has_file:
-            return (
-                f"present architectural {kind.key} require exactly one of "
-                "--assessment clean or --assessment-file"
-            )
-        return None
-    if has_clean or has_file:
-        states = "absent, empty, or invalid" if kind.design_requires_nonempty else "absent or invalid"
-        return f"{states} architectural {kind.key} do not accept assessment source flags"
-    return None
-
-
-def _design_exception_flag_error(
-    *, note: str, allow_exception: bool, kind: AssessmentKind
-) -> tuple[str, str] | None:
-    """Validate a guideline deviation note's documented-exception state.
-
-    Without ``--allow-exception`` any active exception line fails closed. With the
-    flag, the note must carry exactly one valid active documented-exception.
-    """
-    if kind.is_invariant:
-        return None
-    if not allow_exception:
-        if guideline_exception_present(note):
-            return (
-                "unexpected-exception",
-                "guideline note carries a documented-exception line; pass "
-                "--allow-exception only to persist a Gate C decline",
-            )
-        return None
-    if not guideline_exception_valid(note):
-        return (
-            "invalid-exception",
-            "--allow-exception requires exactly one active documented-exception line "
-            "(Exception: <rationale> (author: main-agent, date: YYYY-MM-DD))",
-        )
-    return None
-
-
-def _emit_guideline_persist_result(
-    *, kind: AssessmentKind, status: str, result: str, reason: str
-) -> None:
-    if not kind.is_invariant:
-        _emit_design_assessment_persist_result(
-            guidelines_status=status, persist_result=result, reason=reason
-        )
-
-
-def _persist_prevalidate(  # noqa: PLR0911 - fail-closed persistence validates each flag, source, and exception boundary with a distinct machine reason
-    *,
-    args: argparse.Namespace,
-    result: ArchitecturalGuidelinesResult,
-    kind: AssessmentKind,
-) -> tuple[str | None, tuple[str, str] | None]:
-    """Validate persist flags and read/validate the assessment file.
-
-    Returns ``(assessment_text, None)`` on success, where ``assessment_text`` is
-    ``None`` (no source file) or the file text; or ``(None, (reason, message))``
-    on a rejected flag combination or exception state. An empty reason suppresses
-    the guideline machine line (the invariant path emits none).
-    """
-    has_clean = args.assessment == "clean"
-    has_file = bool(args.assessment_file)
-    if args.allow_exception and kind.is_invariant:
-        return None, ("", "--allow-exception is not valid for architectural invariants")
-    flag_error = _design_assessment_flag_error(result=result, has_clean=has_clean, has_file=has_file, kind=kind)
-    if flag_error is not None:
-        return None, ("invalid-flags", flag_error)
-    if args.allow_exception and not has_file:
-        return None, ("allow-exception-requires-file", "--allow-exception requires a guideline deviation --assessment-file")
-    if not has_file:
-        return None, None
-    try:
-        assessment_text = _read_regular_text_no_follow(Path(args.assessment_file))
-    except OSError as exc:
-        return None, ("assessment-file-unreadable", f"assessment-file: {exc}")
-    if not assessment_text.strip():
-        return None, ("assessment-file-empty", "assessment-file: content must not be empty")
-    exception_error = _design_exception_flag_error(note=assessment_text, allow_exception=args.allow_exception, kind=kind)
-    if exception_error is not None:
-        return None, exception_error
-    return assessment_text, None
-
-
-def _persist_design_assessment_main(argv: list[str], *, kind: AssessmentKind) -> int:
-    parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} persist-design-assessment")
-    parser.add_argument("--repo-root")
-    parser.add_argument("--design-tmpdir", default=os.environ.get(config.ENV_DESIGN_TMPDIR, ""))
-    parser.add_argument("--assessment", choices=("clean",))
-    parser.add_argument("--assessment-file")
-    parser.add_argument(
-        "--allow-exception", action="store_true",
-        help="permit a guideline deviation note carrying one documented-exception "
-        "block (Gate C decline persistence only)",
-    )
-    args = parser.parse_args(argv)
-    try:
-        design_tmpdir = _validate_design_tmpdir_arg(args.design_tmpdir)
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
-    result = _read_assessment_kind(kind=kind, repo_root=args.repo_root)
-    assessment_text, error = _persist_prevalidate(args=args, result=result, kind=kind)
-    if error is not None:
-        reason, message = error
-        if reason:
-            _emit_guideline_persist_result(kind=kind, status=result.status, result="failed", reason=reason)
-        print(message, file=sys.stderr)
-        return 1
-    try:
-        rc = _persist_design_assessment(
-            repo_root=args.repo_root,
-            design_tmpdir=str(design_tmpdir),
-            assessment=args.assessment or "",
-            assessment_text=assessment_text,
-            kind=kind,
-        )
-        reason = "not-required" if result.status in {"absent", "invalid"} else "persisted"
-        _emit_guideline_persist_result(
-            kind=kind, status=result.status, result="ok", reason=reason
-        )
-        return rc
-    except (OSError, ValueError) as exc:
-        _emit_guideline_persist_result(
-            kind=kind, status=result.status, result="failed", reason="persist-failed"
-        )
-        print(f"persist-design-assessment: {exc}", file=sys.stderr)
-        return 1
-
-
-def _read_main(argv: list[str], *, kind: AssessmentKind) -> int:
-    from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok content blocks must match issue-wire format.
-    parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} read")
-    parser.add_argument("--repo-root")
-    args = parser.parse_args(argv)
-    result = _read_assessment_kind(kind=kind, repo_root=args.repo_root)
-    print(f"{kind.env_prefix}_STATUS={result.status}")
-    if result.status == "present":
-        assert result.path is not None
-        print(f"{kind.env_prefix}_PATH={result.path}")
-        if result.content:
-            sys.stdout.write(
-                issue_wire.emit_untrusted_content_block(
-                    tag=f"architectural_{kind.key}", text=result.content
-                )
-            )
-    elif result.status == "invalid":
-        print(f"{kind.env_prefix}_WARNING={result.warning}")
-    return 0
-
-
-def _emit_present_assessment(
-    result: ArchitecturalGuidelinesResult, *, kind: AssessmentKind
-) -> None:
-    from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok content blocks must match issue-wire format.
-    assert result.path is not None
-    print(f"{kind.env_prefix}_PATH={result.path}")
-    if result.content:
-        sys.stdout.write(
-            issue_wire.emit_untrusted_content_block(
-                tag=f"architectural_{kind.key}", text=result.content
-            )
-        )
-
-
-def _present_note_main(argv: list[str], *, kind: AssessmentKind) -> int:
-    parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} present-note")
-    parser.add_argument("--repo-root")
-    parser.add_argument("--assessment", choices=("pending", "clean"), default="pending")
-    args = parser.parse_args(argv)
-    result = _read_assessment_kind(kind=kind, repo_root=args.repo_root)
-    if result.status == "absent":
-        return 0
-    if result.status == "invalid":
-        print(f"{kind.env_prefix}_WARNING={result.warning}")
-        return 0
-    if args.assessment == "clean":
-        if not kind.design_requires_nonempty or result.content.strip():
-            print(kind.clean_presentation_note)
-        return 0
-    _emit_present_assessment(result, kind=kind)
-    if not kind.design_requires_nonempty or result.content.strip():
-        print(kind.assessment_required_line)
-    return 0
-
-
-for _guideline_cli, _invariant_cli, _handler in (
-    ("persist_design_assessment_main", "invariants_persist_design_assessment_main", _persist_design_assessment_main),
-    ("read_main", "invariants_read_main", _read_main),
-    ("present_note_main", "invariants_present_note_main", _present_note_main),
-):
-    globals()[_guideline_cli] = partial(_handler, kind=GUIDELINES)
-    globals()[_invariant_cli] = partial(_handler, kind=INVARIANTS)
 # pyright: reportArgumentType=false
 # lint-env-via-config-constant: IMPLEMENT_TMPDIR is read in CLI entry points.
 # larch-lint: allow-subprocess-run

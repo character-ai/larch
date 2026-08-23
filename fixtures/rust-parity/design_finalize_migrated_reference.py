@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from larch.core import repo_roots as _repo_roots
+from design_pause_dispatch_stub import install as _install_design_package
 
 FROZEN = Path(__file__).resolve().parent / "design_finalize_frozen"
 _ORIGINAL_ENTRYPOINT = _repo_roots.larch_entrypoint
@@ -20,6 +21,7 @@ def _entrypoint(root: Path | None = None) -> Path:
 
 
 _repo_roots.larch_entrypoint = _entrypoint  # type: ignore[assignment]
+_install_design_package()
 
 
 def _load(name: str, path: Path):

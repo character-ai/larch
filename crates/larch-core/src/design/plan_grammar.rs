@@ -1069,7 +1069,7 @@ mod tests {
     #[test]
     fn valid_plan_contract_has_no_defects_with_injected_tracked_paths() {
         let root = TempDir::new().expect("temp");
-        let tracked_path = "python/larch/design/plan_grammar.py";
+        let tracked_path = "crates/larch-core/src/design/plan_grammar.rs";
         let full = root.path().join(tracked_path);
         fs::create_dir_all(full.parent().expect("parent")).expect("mkdir");
         fs::write(&full, b"x\n").expect("write");
@@ -1083,7 +1083,7 @@ mod tests {
     #[test]
     fn m2_empty_glob_missing_updated_existing_new_and_unsafe_paths() {
         let root = TempDir::new().expect("temp");
-        let tracked_path = "python/larch/design/plan_grammar.py";
+        let tracked_path = "crates/larch-core/src/design/plan_grammar.rs";
         let full = root.path().join(tracked_path);
         fs::create_dir_all(full.parent().expect("parent")).expect("mkdir");
         fs::write(&full, b"x\n").expect("write");
@@ -1126,7 +1126,7 @@ mod tests {
     #[test]
     fn tracked_glob_and_new_under_safe_parent() {
         let root = TempDir::new().expect("temp");
-        let tracked_path = "python/larch/design/plan_grammar.py";
+        let tracked_path = "crates/larch-core/src/design/plan_grammar.rs";
         let full = root.path().join(tracked_path);
         fs::create_dir_all(full.parent().expect("parent")).expect("mkdir");
         fs::write(&full, b"x\n").expect("write");
@@ -1134,12 +1134,12 @@ mod tests {
         tracked.insert(tracked_path.to_owned());
         let glob_plan = valid_plan(tracked_path).replace(
             &format!("### UPDATED: {tracked_path}\n"),
-            "### UPDATED: python/larch/design/plan_*.py\n",
+            "### UPDATED: crates/larch-core/src/design/plan_*.rs\n",
         );
         assert!(validate_plan_contract(&glob_plan, root.path(), &tracked).ok());
         let new_plan = valid_plan(tracked_path).replace(
             &format!("### UPDATED: {tracked_path}\n"),
-            "### NEW: python/larch/design/_issue_7780_new_only.py\n",
+            "### NEW: crates/larch-core/src/design/_issue_7780_new_only.rs\n",
         );
         assert!(validate_plan_contract(&new_plan, root.path(), &tracked).ok());
     }

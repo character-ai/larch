@@ -22,12 +22,10 @@ use crate::{
 
 const NAME: &str = "issue-mutation-owner";
 const DESCRIPTION: &str = "Reject raw GitHub issue field mutation outside the typed owner";
-const PYTHON_OWNER: &str = "python/larch/issue/issue_mutation.py";
 const RUST_OWNER: &str = "crates/larch-adapters/src/github/issue_mutation.rs";
 // The semantic `GitHubService` transport necessarily invokes Octocrab itself.
 const RUST_TRANSPORT_ADAPTER: &str = "crates/larch-adapters/src/github_rest.rs";
-const OWNER_GUIDANCE: &str = "use larch.issue.issue_mutation";
-const RUST_OWNER_GUIDANCE: &str = "use larch_adapters::github::IssueMutationOwner";
+const OWNER_GUIDANCE: &str = "use larch_adapters::github::IssueMutationOwner";
 
 const RAW_HELPERS: &[&str] = &[
     "issue_edit",
@@ -67,7 +65,7 @@ impl Rule for IssueMutationOwnerRule {
         let mut findings = Vec::new();
         for path in repository.paths() {
             let path_text = path.as_str();
-            if matches!(path_text, PYTHON_OWNER | RUST_OWNER | RUST_TRANSPORT_ADAPTER)
+            if matches!(path_text, RUST_OWNER | RUST_TRANSPORT_ADAPTER)
                 || is_fixture(path_text)
             {
                 continue;
@@ -164,7 +162,7 @@ impl MutationKind {
                 format!("raw issue mutation helper {name}; {OWNER_GUIDANCE}")
             }
             Self::Rust(name) => {
-                format!("raw Rust issue field mutation {name}; {RUST_OWNER_GUIDANCE}")
+                format!("raw Rust issue field mutation {name}; {OWNER_GUIDANCE}")
             }
             Self::Cli => format!("raw gh issue edit argv; {OWNER_GUIDANCE}"),
             Self::Rest => format!("raw issue REST PATCH; {OWNER_GUIDANCE}"),

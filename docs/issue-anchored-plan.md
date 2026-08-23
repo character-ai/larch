@@ -20,16 +20,17 @@ responses.
 
 ## Plan grammar ownership
 
-`python/larch/design/plan_grammar.py` owns plan heading and trailer syntax plus the
+`larch_core::design::plan_grammar` owns plan heading and trailer syntax plus the
 executable-plan contract (M1 shape facets and M2 repository-scope path checks).
 It accepts level-two and level-three colon or bracket headings for `NEW`,
 `UPDATED`, `REWRITTEN`, and `MAY_UPDATE`. Its fence-aware iterators ignore
 heading-like text inside Markdown fences. The module also owns trailer keys,
-subsets, final contiguous-block parsing, and canonical ordering.
+subsets, final contiguous-block parsing, and canonical ordering. Its source is
+`crates/larch-core/src/design/plan_grammar.rs`.
 `crates/larch-core/src/issue/body.rs` owns the issue-body `larch:plan`
 marker grammar, and `crates/larch-cli/src/issue_wire_commands.rs` owns every
-command over it. `python/larch/issue/issue_wire.py` keeps only the in-process
-readers Python callers still consume.
+command over it. `python/larch/issue/issue_wire.py` keeps only title and
+untrusted-content helpers still consumed by Python renderers.
 
 ### Executable-plan contract
 
@@ -200,8 +201,9 @@ Rules:
   deletes stale `composed-plan.md`, and lets Step 5c recompose from `plan.txt`.
 - The `## Plan` and `## Acceptance` sub-sections, plus closed-decisions,
   ordered-implementation, and breaking-changes/migration headings, are part of
-  the executable-plan contract enforced by `plan_grammar.validate_plan_contract`
-  / `issue_wire.validate_issue_plan` before `/design` publish and `/implement` Preflight.
+  the executable-plan contract enforced by
+  `larch_core::design::plan_grammar::validate_plan_contract` before `/design`
+  publish and `/implement` Preflight.
 - Malformed shapes are **rejected**: missing matching marker, multiple pairs,
   `start` without `end`, or `end` without `start`.
 

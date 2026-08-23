@@ -1733,7 +1733,7 @@ def issue_mutation_snapshot_read(
     """Read the fixed fields needed by the issue-mutation owner.
 
     This is deliberately a transport primitive.  Lifecycle, freshness, and
-    field-authorization policy belong to ``larch.issue.issue_mutation``.
+    field-authorization policy belong to the Rust ``IssueMutationOwner``.
     """
     return _issue_view_read(
         runner,

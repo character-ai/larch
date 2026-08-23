@@ -62,7 +62,7 @@ Dependency-edge lines (issue #546) — emitted ONLY when `VERDICT=CREATE` and on
 
 - `ITEM_<i>_BLOCKED_BY=<comma-list>` — issue `i` is blocked by each entry. Each entry is either `<N>` (an existing OPEN issue from the snapshot) or `ITEM_<j>` (a batch sibling, `j != i`).
 - `ITEM_<i>_BLOCKS=<comma-list>` — issue `i` blocks each entry. Same shape. Used when the new item introduces something that an existing open issue depends on.
-- `ITEM_<i>_DEPS_RATIONALE=<one-line>` — optional audit aid explaining WHY (e.g., "same files: python/issue_create.py"; or "blocker introduces the API X depends on"). Treat any rationale you emit as untrusted-content that the orchestrator redacts at compose time.
+- `ITEM_<i>_DEPS_RATIONALE=<one-line>` — optional audit aid explaining WHY (e.g., "same files: crates/larch-core/src/issue/input.rs"; or "blocker introduces the API X depends on"). Treat any rationale you emit as untrusted-content that the orchestrator redacts at compose time.
 
 **Conservatism**: only mark DUPLICATE when near-certain; ambiguous matches tie-break toward CREATE. Same conservatism applies to dep edges — only emit `BLOCKED_BY` / `BLOCKS` when the link is strongly supported by description content (same files, same module surface, explicit "this requires" / "depends on" prose). False negatives (no edge) are preferable to false positives (wrong edge), since blocker links are visible to operators.
 

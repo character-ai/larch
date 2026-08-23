@@ -14,24 +14,6 @@ import os
 import sys
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
-    ("architectural-guidelines", "read"): ("larch.core.architectural_guidelines", "read_main", True),
-    ("architectural-invariants", "read"): ("larch.core.architectural_guidelines", "invariants_read_main", True),
-    ("architectural-guidelines", "present-note"): ("larch.core.architectural_guidelines", "present_note_main", True),
-    ("architectural-invariants", "present-note"): (
-        "larch.core.architectural_guidelines",
-        "invariants_present_note_main",
-        True,
-    ),
-    ("architectural-guidelines", "persist-design-assessment"): (
-        "larch.core.architectural_guidelines",
-        "persist_design_assessment_main",
-        True,
-    ),
-    ("architectural-invariants", "persist-design-assessment"): (
-        "larch.core.architectural_guidelines",
-        "invariants_persist_design_assessment_main",
-        True,
-    ),
     ("complete-umbrella", "bootstrap"): (
         "larch.complete_umbrella",
         "bootstrap_main",

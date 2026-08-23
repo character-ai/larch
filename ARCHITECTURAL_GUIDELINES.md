@@ -356,7 +356,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Md-3: Track fenced-code-block state when parsing Markdown headings from splitlines
 - Why: a parser that matched heading regular expressions over Markdown splitlines, with no fence state, split items on `###` lines that appeared inside fenced code blocks, because heading-like text inside a fence was indistinguishable from a real heading (#6676).
-- Guidance: any parser that matches a `^#{1,6}\s` heading regular expression over `text.splitlines()` first computes the set of line indices inside balanced fenced code blocks and skips heading matches on those lines; reuse the `_balanced_fence_line_indices` helper in `python/larch/design/plan_grammar.py` rather than re-deriving fence state.
+- Guidance: any parser that matches a `^#{1,6}\s` heading regular expression over split Markdown lines first computes the set of line indices inside balanced fenced code blocks and skips heading matches on those lines; reuse `larch_core::balanced_fence_line_indices` rather than re-deriving fence state.
 - Deviate when: the parser documents that it intentionally reads headings inside fenced code blocks, which no current parser does.
 
 ### G-Md-4: File a bug report with structured Summary, Root cause analysis, and Suggested fix(es) sections

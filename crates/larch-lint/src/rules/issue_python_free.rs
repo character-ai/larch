@@ -257,11 +257,8 @@ const IMPLEMENT_LIBRARY: &str =
 /// The package initializer is structural. Every other issue module at any
 /// depth must name both its receiving umbrella and its behaviorally distinct
 /// reason for remaining in Python.
-const RETAINED_MODULES: [RetainedModule; 10] = [
+const RETAINED_MODULES: [RetainedModule; 7] = [
     RetainedModule::new("python/larch/issue/file_oos.py", 7680, DESIGN_LIBRARY),
-    RetainedModule::new("python/larch/issue/issue_blocks.py", 7680, DESIGN_LIBRARY),
-    RetainedModule::new("python/larch/issue/issue_create.py", 7680, DESIGN_LIBRARY),
-    RetainedModule::new("python/larch/issue/issue_mutation.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/issue_wire.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/oos.py", 7680, DESIGN_LIBRARY),
     RetainedModule::new("python/larch/issue/oos_disposition.py", 7680, DESIGN_LIBRARY),

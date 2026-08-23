@@ -12,14 +12,33 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal, get_args
 
-from larch.design.plan_grammar import HeadingKind, TrailerKey, compose_trailer_lines
 from larch.io import atomic_write, format_kvs
 from tests.support.session import run_params_text
 
 _KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 PlanHeadingKind = Literal["NEW", "UPDATED"]
-_PLAN_HEADING_KINDS: frozenset[HeadingKind] = frozenset(get_args(PlanHeadingKind))
+TrailerKey = Literal[
+    "review_status",
+    "rounds_completed",
+    "difficulty",
+    "diff_added",
+    "diff_deleted",
+    "mechanical_churn",
+    "oversize_override",
+    "diff_lines",
+]
+_PLAN_HEADING_KINDS: frozenset[PlanHeadingKind] = frozenset(get_args(PlanHeadingKind))
+_TRAILER_ORDER: tuple[TrailerKey, ...] = (
+    "review_status",
+    "rounds_completed",
+    "difficulty",
+    "diff_added",
+    "diff_deleted",
+    "mechanical_churn",
+    "oversize_override",
+    "diff_lines",
+)
 PlanSection = tuple[PlanHeadingKind, str]
 ResultEnvRows = Mapping[str, str] | Sequence[tuple[str, str]]
 
@@ -80,7 +99,11 @@ def diff_lines_trailer(  # noqa: PLR0913 - trailer fields map directly to the wi
         "oversize_override": oversize_override,
         "diff_lines": diff_lines,
     }
-    lines: tuple[str, ...] = compose_trailer_lines(values)
+    lines = tuple(
+        f"{key}: {str(values[key]).lower() if isinstance(values[key], bool) else values[key]}"
+        for key in _TRAILER_ORDER
+        if values.get(key) is not None
+    )
     return "\n".join(lines) + "\n"
 
 

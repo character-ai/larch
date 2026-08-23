@@ -289,6 +289,344 @@ fn help_matches_retired_argparse_for_each_domain_and_write_verb() {
 }
 
 #[test]
+fn persist_design_assessment_help_matches_retired_argparse() {
+    let root = TempDir::new().expect("temp");
+    for case in CASES {
+        let assertion = larch(root.path())
+            .args([case.domain, "persist-design-assessment", "--help"])
+            .assert()
+            .success();
+        let command = format!("{} persist-design-assessment", case.domain);
+        let indent = " ".repeat(format!("usage: {command} ").len());
+        assert_eq!(
+            stdout(&assertion),
+            format!(
+                "usage: {command} [-h]\n\
+                 {indent}[--repo-root REPO_ROOT]\n\
+                 {indent}[--design-tmpdir DESIGN_TMPDIR]\n\
+                 {indent}[--assessment {{clean}}]\n\
+                 {indent}[--assessment-file ASSESSMENT_FILE]\n\
+                 {indent}[--allow-exception]\n\n\
+                 options:\n  -h, --help            show this help message and exit\n  --repo-root REPO_ROOT\n  --design-tmpdir DESIGN_TMPDIR\n  --assessment {{clean}}\n  --assessment-file ASSESSMENT_FILE\n  --allow-exception     permit a guideline deviation note carrying one\n                        documented-exception block (Gate C decline persistence\n                        only)\n"
+            ),
+            "{}",
+            case.domain
+        );
+    }
+}
+
+#[test]
+fn persist_design_assessment_preserves_clean_exception_and_empty_contracts() {
+    let root = TempDir::new().expect("temp");
+    let repo = repository(root.path());
+    let design = root.path().join("design-session");
+    fs::create_dir(&design).expect("design tmpdir");
+    fs::write(
+        repo.join("ARCHITECTURAL_GUIDELINES.md"),
+        "### G-Test-1: Assess the design\n- Why: parity\n",
+    )
+    .expect("guidelines");
+
+    let clean = larch(root.path())
+        .args([
+            "architectural-guidelines",
+            "persist-design-assessment",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--design-tmpdir",
+            design.to_str().expect("utf8"),
+            "--assessment",
+            "clean",
+        ])
+        .assert()
+        .success();
+    assert_eq!(
+        stdout(&clean),
+        "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_ATTEMPTED=true\n\
+         ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_GUIDELINES_STATUS=present\n\
+         ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_RESULT=ok\n\
+         ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_REASON=persisted\n\
+         ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_ARTIFACT=architectural-guideline-assessment.md\n"
+    );
+    let artifact = design.join("architectural-guideline-assessment.md");
+    assert_eq!(
+        fs::read_to_string(&artifact).expect("assessment"),
+        "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.\n"
+    );
+
+    let note = root.path().join("deviation.md");
+    fs::write(
+        &note,
+        "Deviation is deliberate.\nException: retain compatibility (author: main-agent, date: 2026-08-22)\n",
+    )
+    .expect("note");
+    let rejected = larch(root.path())
+        .args([
+            "architectural-guidelines",
+            "persist-design-assessment",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--design-tmpdir",
+            design.to_str().expect("utf8"),
+            "--assessment-file",
+            note.to_str().expect("utf8"),
+        ])
+        .assert()
+        .code(1);
+    assert!(
+        stdout(&rejected)
+            .contains("ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_REASON=unexpected-exception\n")
+    );
+    assert!(stderr(&rejected).contains("pass --allow-exception"));
+
+    let accepted = larch(root.path())
+        .args([
+            "architectural-guidelines",
+            "persist-design-assessment",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--design-tmpdir",
+            design.to_str().expect("utf8"),
+            "--assessment-file",
+            note.to_str().expect("utf8"),
+            "--allow-exception",
+        ])
+        .assert()
+        .success();
+    assert!(stdout(&accepted).contains("ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_RESULT=ok\n"));
+    assert_eq!(
+        fs::read_to_string(&artifact).expect("assessment"),
+        fs::read_to_string(&note).expect("note")
+    );
+
+    fs::write(
+        repo.join("ARCHITECTURAL_INVARIANTS.md"),
+        "# No parseable invariant entries\n",
+    )
+    .expect("invariants");
+    let invariant_artifact = design.join("architectural-invariant-assessment.md");
+    fs::write(&invariant_artifact, "stale\n").expect("stale");
+    let empty = larch(root.path())
+        .args([
+            "architectural-invariants",
+            "persist-design-assessment",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--design-tmpdir",
+            design.to_str().expect("utf8"),
+        ])
+        .assert()
+        .success();
+    assert_eq!(stdout(&empty), "");
+    assert!(!invariant_artifact.exists());
+}
+
+#[test]
+fn persist_design_assessment_refuses_target_and_temp_symlinks() {
+    use std::os::unix::fs::symlink;
+
+    let root = TempDir::new().expect("temp");
+    let repo = repository(root.path());
+    let design = root.path().join("design-session");
+    fs::create_dir(&design).expect("design tmpdir");
+    fs::write(
+        repo.join("ARCHITECTURAL_GUIDELINES.md"),
+        "### G-Test-1: Assess the design\n- Why: parity\n",
+    )
+    .expect("guidelines");
+    let victim = root.path().join("victim.md");
+    fs::write(&victim, "preserve\n").expect("victim");
+    let artifact = design.join("architectural-guideline-assessment.md");
+    symlink(&victim, &artifact).expect("target symlink");
+
+    let target = larch(root.path())
+        .args([
+            "architectural-guidelines",
+            "persist-design-assessment",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--design-tmpdir",
+            design.to_str().expect("utf8"),
+            "--assessment",
+            "clean",
+        ])
+        .assert()
+        .code(1);
+    assert!(stderr(&target).contains("target must not be a symlink"));
+    assert_eq!(fs::read_to_string(&victim).expect("victim"), "preserve\n");
+
+    fs::remove_file(&artifact).expect("remove target symlink");
+    let temporary = design.join("architectural-guideline-assessment.md.tmp");
+    symlink(&victim, &temporary).expect("temp symlink");
+    let temp = larch(root.path())
+        .args([
+            "architectural-guidelines",
+            "persist-design-assessment",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--design-tmpdir",
+            design.to_str().expect("utf8"),
+            "--assessment",
+            "clean",
+        ])
+        .assert()
+        .code(1);
+    assert!(stderr(&temp).contains("temp path must not be a symlink"));
+    assert_eq!(fs::read_to_string(&victim).expect("victim"), "preserve\n");
+}
+
+#[test]
+fn persist_design_assessment_resolves_missing_tail_before_directory_creation() {
+    use std::os::unix::fs::symlink;
+
+    let root = TempDir::new().expect("temp");
+    let repo = repository(root.path());
+    fs::write(
+        repo.join("ARCHITECTURAL_GUIDELINES.md"),
+        "### G-Test-1: Assess the design\n- Why: parity\n",
+    )
+    .expect("guidelines");
+    let canonical_parent = root.path().join("canonical-parent");
+    fs::create_dir(&canonical_parent).expect("canonical parent");
+    let alias = root.path().join("session-alias");
+    symlink(&canonical_parent, &alias).expect("session alias");
+    let supplied = alias.join("missing-design-session");
+
+    let output = larch(root.path())
+        .args([
+            "architectural-guidelines",
+            "persist-design-assessment",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--design-tmpdir",
+            supplied.to_str().expect("utf8"),
+            "--assessment",
+            "clean",
+        ])
+        .assert()
+        .success();
+
+    assert!(stdout(&output).contains("PERSIST_RESULT=ok\n"));
+    assert_eq!(
+        fs::read_to_string(
+            canonical_parent.join("missing-design-session/architectural-guideline-assessment.md")
+        )
+        .expect("assessment"),
+        "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.\n"
+    );
+}
+
+#[test]
+fn persist_design_assessment_rejects_bad_source_combinations_and_cleans_stale() {
+    use std::os::unix::fs::symlink;
+
+    let root = TempDir::new().expect("temp");
+    let repo = repository(root.path());
+    let design = root.path().join("design-session");
+    fs::create_dir(&design).expect("design tmpdir");
+    let knowledge = repo.join("ARCHITECTURAL_GUIDELINES.md");
+    fs::write(
+        &knowledge,
+        "### G-Test-1: Assess the design\n- Why: parity\n",
+    )
+    .expect("guidelines");
+    let note = root.path().join("note.md");
+    fs::write(&note, "Ordinary deviation\n\n").expect("note");
+
+    for extra in [
+        Vec::<&str>::new(),
+        vec![
+            "--assessment",
+            "clean",
+            "--assessment-file",
+            note.to_str().expect("utf8"),
+        ],
+    ] {
+        let invalid = larch(root.path())
+            .args([
+                "architectural-guidelines",
+                "persist-design-assessment",
+                "--repo-root",
+                repo.to_str().expect("utf8"),
+                "--design-tmpdir",
+                design.to_str().expect("utf8"),
+            ])
+            .args(extra)
+            .assert()
+            .code(1);
+        assert!(stdout(&invalid).contains("PERSIST_REASON=invalid-flags\n"));
+    }
+
+    let allow_without_file = larch(root.path())
+        .args([
+            "architectural-guidelines",
+            "persist-design-assessment",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--design-tmpdir",
+            design.to_str().expect("utf8"),
+            "--assessment",
+            "clean",
+            "--allow-exception",
+        ])
+        .assert()
+        .code(1);
+    assert!(stdout(&allow_without_file).contains("PERSIST_REASON=allow-exception-requires-file\n"));
+
+    let persisted = larch(root.path())
+        .args([
+            "architectural-guidelines",
+            "persist-design-assessment",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--design-tmpdir",
+            design.to_str().expect("utf8"),
+            "--assessment-file",
+            note.to_str().expect("utf8"),
+        ])
+        .assert()
+        .success();
+    assert!(stdout(&persisted).contains("PERSIST_RESULT=ok\n"));
+    let artifact = design.join("architectural-guideline-assessment.md");
+    assert_eq!(
+        fs::read_to_string(&artifact).expect("assessment"),
+        "Ordinary deviation\n"
+    );
+
+    fs::remove_file(&knowledge).expect("remove guidelines");
+    let cleaned = larch(root.path())
+        .args([
+            "architectural-guidelines",
+            "persist-design-assessment",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--design-tmpdir",
+            design.to_str().expect("utf8"),
+        ])
+        .assert()
+        .success();
+    assert!(stdout(&cleaned).contains("PERSIST_REASON=not-required\n"));
+    assert!(!artifact.exists());
+
+    let victim = root.path().join("victim.md");
+    fs::write(&victim, "preserve\n").expect("victim");
+    symlink(&victim, &artifact).expect("stale symlink");
+    let unsafe_stale = larch(root.path())
+        .args([
+            "architectural-guidelines",
+            "persist-design-assessment",
+            "--repo-root",
+            repo.to_str().expect("utf8"),
+            "--design-tmpdir",
+            design.to_str().expect("utf8"),
+        ])
+        .assert()
+        .code(1);
+    assert!(stderr(&unsafe_stale).contains("stale entry could not be removed"));
+    assert_eq!(fs::read_to_string(&victim).expect("victim"), "preserve\n");
+}
+
+#[test]
 fn write_usage_status_and_reauthor_envelopes_match_python() {
     let root = TempDir::new().expect("temp");
     for case in CASES {

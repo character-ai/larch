@@ -163,9 +163,9 @@ POINT POINT_1 AGREE reason  with  spaces
 | Duplicate point IDs in one submission | `duplicate-point-id` |
 | Plan heading or whole-line `diff_lines:` trailer in the reason | `forbidden-plan-content` |
 
-Forbidden plan content is delegated to `larch.design.plan_grammar` through
-`reject_forbidden_plan_content`. Other trailer keys such as `difficulty:` are
-not rejected as trailers.
+Forbidden plan content is delegated to the Rust plan-grammar iterators through
+`larch_core::debate::reject_forbidden_plan_content`. Other trailer keys such as
+`difficulty:` are not rejected as trailers.
 
 ## Citations and concessions
 

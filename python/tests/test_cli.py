@@ -89,8 +89,35 @@ def test_architectural_assessment_entrypoint_is_retired() -> None:
     assert ("architectural-assessment", "submit") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     assert ("architectural-assessment", "sanitize-detail") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
     assert ("architectural-assessment", "final-report-sections") not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
-    assert ("architectural-assessment", "sanitize-detail") not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
-    assert cli.main(["architectural-assessment", "sanitize-detail", "--implement-tmpdir", "/tmp/x"]) == 2
+    assert (
+        "architectural-assessment",
+        "sanitize-detail",
+    ) not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+    assert (
+        cli.main(
+            [
+                "architectural-assessment",
+                "sanitize-detail",
+                "--implement-tmpdir",
+                "/tmp/x",
+            ]
+        )
+        == 2
+    )
+
+
+@pytest.mark.parametrize(
+    ("domain", "verb"),
+    [
+        (domain, verb)
+        for domain in ("architectural-guidelines", "architectural-invariants")
+        for verb in ("read", "present-note", "persist-design-assessment")
+    ],
+)
+def test_architectural_design_entrypoints_are_retired(domain: str, verb: str) -> None:
+    assert (domain, verb) not in cli._REGISTRY  # pyright: ignore[reportPrivateUsage]
+    assert (domain, verb) not in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+    assert cli.main([domain, verb]) == 2
 
 
 def test_run_log_validate_run_id_entrypoint_is_retired() -> None:

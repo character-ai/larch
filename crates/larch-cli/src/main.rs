@@ -2005,6 +2005,15 @@ enum ArchitecturalAssessmentCommand {
 
 #[derive(Subcommand)]
 enum ArchitecturalPreparationCommand {
+    /// Read and emit parsed architectural knowledge.
+    #[command(disable_help_flag = true)]
+    Read(RawCompatibilityArguments),
+    /// Present architectural knowledge or its clean acknowledgment at Gate C.
+    #[command(name = "present-note", disable_help_flag = true)]
+    PresentNote(RawCompatibilityArguments),
+    /// Persist the Gate C design assessment artifact.
+    #[command(name = "persist-design-assessment", disable_help_flag = true)]
+    PersistDesignAssessment(RawCompatibilityArguments),
     /// Materialize the implementation diff used by architectural assessment.
     #[command(name = "materialize-diff", disable_help_flag = true)]
     MaterializeDiff(RawCompatibilityArguments),
@@ -2782,6 +2791,24 @@ fn run(
             }
         }),
         Domain::ArchitecturalGuidelines(command) => Ok(match command {
+            ArchitecturalPreparationCommand::Read(arguments) => {
+                architectural_preparation_commands::read_command(
+                    larch_core::AssessmentKind::Guidelines,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::PresentNote(arguments) => {
+                architectural_preparation_commands::present_note_command(
+                    larch_core::AssessmentKind::Guidelines,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::PersistDesignAssessment(arguments) => {
+                architectural_preparation_commands::persist_design_assessment_command(
+                    larch_core::AssessmentKind::Guidelines,
+                    &arguments.arguments,
+                )
+            }
             ArchitecturalPreparationCommand::MaterializeDiff(arguments) => {
                 architectural_preparation_commands::materialize_diff_command(
                     larch_core::AssessmentKind::Guidelines,
@@ -2832,6 +2859,24 @@ fn run(
             }
         }),
         Domain::ArchitecturalInvariants(command) => Ok(match command {
+            ArchitecturalPreparationCommand::Read(arguments) => {
+                architectural_preparation_commands::read_command(
+                    larch_core::AssessmentKind::Invariants,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::PresentNote(arguments) => {
+                architectural_preparation_commands::present_note_command(
+                    larch_core::AssessmentKind::Invariants,
+                    &arguments.arguments,
+                )
+            }
+            ArchitecturalPreparationCommand::PersistDesignAssessment(arguments) => {
+                architectural_preparation_commands::persist_design_assessment_command(
+                    larch_core::AssessmentKind::Invariants,
+                    &arguments.arguments,
+                )
+            }
             ArchitecturalPreparationCommand::MaterializeDiff(arguments) => {
                 architectural_preparation_commands::materialize_diff_command(
                     larch_core::AssessmentKind::Invariants,

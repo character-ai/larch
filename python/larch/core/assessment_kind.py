@@ -3,93 +3,9 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
 from dataclasses import dataclass
-from functools import partial
 
 from larch.core import config
-
-EntryParser = Callable[[str], str]
-
-_MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+\S")  # lint-markdown-heading-fence-state: ok fenced-line indices are precomputed via plan_grammar.balanced_fence_line_indices and skipped before this check
-_WHY_RE = re.compile(r"^\s*-\s*Why:\s*(.+?)\s*$")
-_DEVIATE_RE = re.compile(r"^\s*-\s*Deviate when:\s*(.+?)\s*$")
-_MECHANIZED_RE = re.compile(r"^\s*-\s*Mechanized:\s*(.+?)\s*$")
-
-
-def _guideline_body(body: list[str]) -> list[str]:
-    details: list[str] = []
-    mechanized = ""
-    for line in body:
-        for pattern, label in (
-            (_MECHANIZED_RE, "Mechanized"), (_WHY_RE, "Why"), (_DEVIATE_RE, "Deviate when")
-        ):
-            if match := pattern.match(line):
-                normalized = f"- {label}: {match.group(1).strip()}"
-                if label == "Mechanized":
-                    mechanized = normalized
-                else:
-                    details.append(normalized)
-                break
-    return [mechanized] if mechanized else details
-
-
-def _parse_entries(  # noqa: C901 - per-line heading/fence classification plus entry-body assembly each need multiple branches
-    raw_text: str, *, heading_re: re.Pattern[str], preserve_body: bool
-) -> str:
-    from larch.design import plan_grammar  # noqa: PLC0415 - deferred function-level import keeps larch.core import-time free of larch.design  # lint-layering: ok reuse the balanced fenced-code-block scanner (G-Md-3) instead of re-deriving fence state.
-
-    entries: list[list[str]] = []
-    heading: str | None = None
-    body: list[str] = []
-
-    def append_entry() -> None:
-        nonlocal heading, body
-        if heading is None:
-            return
-        if preserve_body:
-            while body and not body[0].strip():
-                _ = body.pop(0)
-            while body and not body[-1].strip():
-                _ = body.pop()
-            entry_body = body
-        else:
-            entry_body = _guideline_body(body)
-        entries.append([heading, *entry_body])
-        heading = None
-        body = []
-
-    lines = raw_text.splitlines()
-    fenced_lines = plan_grammar.balanced_fence_line_indices(lines)
-    for index, raw_line in enumerate(lines):
-        if index in fenced_lines or plan_grammar.is_fence_marker(raw_line):
-            if heading is not None:
-                body.append(raw_line)
-            continue
-        match = heading_re.match(raw_line)
-        if match:
-            append_entry()
-            heading = f"### {match.group(1)}: {match.group(2).strip()}"
-            continue
-        if _MARKDOWN_HEADING_RE.match(raw_line):
-            append_entry()
-            continue
-        if heading is not None:
-            body.append(raw_line)
-    append_entry()
-    return "\n\n".join("\n".join(entry) for entry in entries).strip()
-
-
-_parse_guideline_entries = partial(
-    _parse_entries,
-    heading_re=re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$"),  # lint-shared-convention-regex: ok canonical definition; architectural_guidelines.GUIDELINE_HEADING_RE derives from this field
-    preserve_body=False,
-)
-_parse_invariant_entries = partial(
-    _parse_entries,
-    heading_re=re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$"),  # lint-shared-convention-regex: ok canonical definition; architectural_guidelines.INVARIANT_HEADING_RE derives from this field
-    preserve_body=True,
-)
 
 
 @dataclass(frozen=True)
@@ -116,7 +32,6 @@ class AssessmentKind:
     materialize_env: str
     heading_re: re.Pattern[str]
     identifier_re: re.Pattern[str]
-    parse_entries: EntryParser
     authored_outcomes: frozenset[str]
     non_clean_authored_outcome: str
     ship_outcomes: frozenset[str]
@@ -169,7 +84,6 @@ GUIDELINES = AssessmentKind(
     materialize_env="architectural-guideline-materialize.env",
     heading_re=re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$", re.MULTILINE),  # lint-shared-convention-regex: ok canonical definition; architectural_guidelines.GUIDELINE_HEADING_RE derives from this field
     identifier_re=re.compile(r"G-[A-Za-z0-9-]+-\d+"),
-    parse_entries=_parse_guideline_entries,
     authored_outcomes=config.GUIDELINE_ASSESSMENT_OUTCOMES,
     non_clean_authored_outcome=config.ASSESSMENT_OUTCOME_DEVIATION,
     ship_outcomes=frozenset({"pinned", "clean", "dropped"}),
@@ -206,7 +120,6 @@ INVARIANTS = AssessmentKind(
     materialize_env="architectural-invariant-materialize.env",
     heading_re=re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$", re.MULTILINE),  # lint-shared-convention-regex: ok canonical definition; architectural_guidelines.INVARIANT_HEADING_RE derives from this field
     identifier_re=re.compile(r"I-[A-Za-z0-9-]+-\d+"),
-    parse_entries=_parse_invariant_entries,
     authored_outcomes=config.INVARIANT_ASSESSMENT_OUTCOMES,
     non_clean_authored_outcome=config.ASSESSMENT_OUTCOME_VIOLATION,
     ship_outcomes=frozenset({"clean", "violation", "dropped"}),

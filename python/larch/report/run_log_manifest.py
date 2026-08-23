@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-from larch.core import architectural_guidelines, config
+from larch.core import architectural_guidelines, config, rust_runtime
 from larch.core.rust_runtime import RunLogRefreshOutput as RefreshSkip
 from larch.core.run_context import RunContext
 from larch.report import exec_issue_detail
@@ -489,8 +489,11 @@ def _invariant_assessment_required(*, run_dir: Path, repo_root: Path | None) -> 
     resolved_repo_root = repo_root or _derive_consumer_repo_root_from_run_dir(run_dir)
     if resolved_repo_root is None:
         return False
-    result = architectural_guidelines.read_invariants(repo_root=resolved_repo_root)
-    return result.status == "present" and bool(result.content.strip())
+    result = rust_runtime.architectural_knowledge_read(
+        kind=config.ASSESSMENT_KIND_INVARIANTS,
+        repo_root=resolved_repo_root,
+    )
+    return result.status == "present" and result.has_entries
 
 
 def _guideline_assessment_required(*, run_dir: Path, repo_root: Path | None) -> bool:
@@ -499,7 +502,13 @@ def _guideline_assessment_required(*, run_dir: Path, repo_root: Path | None) -> 
     resolved_repo_root = repo_root or _derive_consumer_repo_root_from_run_dir(run_dir)
     if resolved_repo_root is None:
         return False
-    return architectural_guidelines.read_guidelines(repo_root=resolved_repo_root).status == "present"
+    return (
+        rust_runtime.architectural_knowledge_read(
+            kind=config.ASSESSMENT_KIND_GUIDELINES,
+            repo_root=resolved_repo_root,
+        ).status
+        == "present"
+    )
 
 
 def _required_design_artifacts(run_dir: Path, *, repo_root: Path | None = None) -> list[RequiredArtifact]:

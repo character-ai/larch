@@ -90,15 +90,15 @@ pub use architectural_assessment::{
     append_deviation_note, authored_outcome_valid, classify_note_for_kind, current_ship_assessment,
     deterministic_out_of_scope, diff_fingerprint, durable_note_path, final_report_sections,
     invalidate_implement_note, materialize, materialize_preparation_diff, normalize_kinds,
-    note_consumable, persist_preparation_diff, pin_note_from_staged, prepare_compose, read_regular,
-    sanitize_detail, submit, validate_materialization, write_compose_assessment,
-    write_deterministic_clean_note, write_staged_assessment,
+    note_consumable, persist_design_assessment, persist_preparation_diff, pin_note_from_staged,
+    prepare_compose, read_regular, sanitize_detail, submit, validate_materialization,
+    write_compose_assessment, write_deterministic_clean_note, write_staged_assessment,
 };
 pub use architectural_guidelines::{
     ArchitecturalKind, ArchitecturalKnowledge, ArchitecturalStatus, DESIGN_ASSESSMENT,
     GUIDELINE_HEADING_RE, GUIDELINES_FILENAME, GuidelineException, INVARIANT_HEADING_RE,
-    INVARIANTS_FILENAME, entry_text, guideline_active_exception, knowledge_block, parse_entries,
-    read_architectural_knowledge,
+    INVARIANTS_FILENAME, entry_text, guideline_active_exception, guideline_exception_present,
+    knowledge_block, parse_entries, read_architectural_knowledge,
 };
 pub use attestation::{
     ArtifactAttestationRequest, AttestationInputError, AttestationInputErrorKind,

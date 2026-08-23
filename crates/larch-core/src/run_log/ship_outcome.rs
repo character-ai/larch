@@ -228,6 +228,15 @@ impl AssessmentKind {
         }
     }
 
+    /// Gate C marker emitted when the design requires an assessment.
+    #[must_use]
+    pub const fn design_assessment_required_line(self) -> &'static str {
+        match self {
+            Self::Guidelines => "GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true",
+            Self::Invariants => "INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true",
+        }
+    }
+
     /// The design-run assessment artifact filename for this kind.
     #[must_use]
     pub const fn design_assessment_filename(self) -> &'static str {

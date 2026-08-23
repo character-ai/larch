@@ -594,11 +594,10 @@ envelope. Issue 8171 then moves every command over that core — the three
 `plan-block` verbs, `named-block write`, `plan scope-paths`, the three `issue`
 title verbs, and the four `untrusted` verbs — and adds `larch_core::plan_scope`
 as the single owner of the `## Files to modify/create` grammar that
-`dirty-tree scope-check` and `plan scope-paths` both read. Three surfaces in
-`larch.issue.issue_wire` stay Python-owned because in-process callers still
-consume them: the canonical owner block, the implementation-lease marker, and
-`validate_issue_plan` plus the `extract_scope_paths` reader over
-`larch.design.plan_grammar`, which the design umbrella owns. `larch_core::report::markdown_block` remains the
-Markdown block owner, and `larch_core::balanced_fence_line_indices` plus
-`larch_core::split_lines_keep_ends` are the shared owners the `plan_grammar` port
+`dirty-tree scope-check` and `plan scope-paths` both read. Issue 8786 removes the
+remaining Python owner-block, lease, executable-plan, and scope readers;
+`larch.issue.issue_wire` now retains only title and untrusted-content helpers
+for Python renderers. `larch_core::report::markdown_block` remains the Markdown
+block owner, and `larch_core::balanced_fence_line_indices` plus
+`larch_core::split_lines_keep_ends` are the shared owners the Rust plan grammar
 reuses instead of creating a second fence scanner.

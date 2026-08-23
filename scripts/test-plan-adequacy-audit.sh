@@ -11,7 +11,7 @@ PREFLIGHT_AUDIT_REF="$REPO_ROOT/skills/implement/references/preflight-plan-audit
 FORCE_MODE_REF="$REPO_ROOT/skills/implement/references/force-mode.md"
 PREFLIGHT_HELPER="$REPO_ROOT/crates/larch-cli/src/implement_preflight_commands.rs"
 PREFLIGHT_HELPER_TEST="$REPO_ROOT/crates/larch-cli/tests/implement_admission_migrated_parity.rs"
-PLAN_GRAMMAR="$REPO_ROOT/python/larch/design/plan_grammar.py"
+PLAN_GRAMMAR="$REPO_ROOT/crates/larch-core/src/design/plan_grammar.rs"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 contains() {

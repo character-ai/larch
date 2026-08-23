@@ -537,6 +537,56 @@ def _flag(arguments: list[str], name: str, default: str = "") -> str:
     return default
 
 
+def _architectural_reference() -> object:
+    """Load the single frozen architectural parser used by parity fixtures."""
+    module_name = "_larch_architectural_guidelines_frozen"
+    existing = sys.modules.get(module_name)
+    if existing is not None:
+        return existing
+    installer_path = (
+        _plugin_root() / "fixtures" / "rust-parity" / "design_pause_dispatch_stub.py"
+    )
+    installer_spec = importlib.util.spec_from_file_location(
+        "_stub_design_package_installer", installer_path
+    )
+    if installer_spec is None or installer_spec.loader is None:
+        raise RuntimeError(f"frozen design installer missing: {installer_path}")
+    installer = importlib.util.module_from_spec(installer_spec)
+    installer_spec.loader.exec_module(installer)
+    installer.install()  # type: ignore[attr-defined]
+    return sys.modules[module_name]
+
+
+def _architectural_read(arguments: list[str], *, kind: str) -> int:
+    """Serve Rust-owned read to Python tests that intentionally skip a Rust build."""
+    _bind_larch_package()
+    from larch.issue import issue_wire  # noqa: PLC0415 - bootstrap-only test renderer
+
+    reference = _architectural_reference()
+    reader = (
+        reference.read_guidelines  # type: ignore[attr-defined]
+        if kind == "guidelines"
+        else reference.read_invariants  # type: ignore[attr-defined]
+    )
+    repo_root = _flag(arguments, "--repo-root") or None
+    result = reader(repo_root=repo_root)
+    prefix = f"ARCHITECTURAL_{kind.upper()}"
+    print(f"{prefix}_STATUS={result.status}")
+    if result.status == "invalid":
+        print(f"{prefix}_WARNING={result.warning}")
+        return 0
+    if result.status != "present":
+        return 0
+    print(f"{prefix}_PATH={result.path}")
+    if result.content:
+        sys.stdout.write(
+            issue_wire.emit_untrusted_content_block(
+                tag=f"architectural_{kind}", text=result.content
+            )
+        )
+    return 0
+
+
 def _prune_rows(path: Path) -> list[dict[str, object]]:
     return [
         value
@@ -2135,19 +2185,25 @@ def _issue_title_eligibility(arguments: list[str]) -> int:
     return 0
 
 
-def _plan_scope_paths(arguments: list[str]) -> int:
-    _bind_larch_package()
-    from larch.issue import issue_wire  # noqa: PLC0415 - bound above, not at module import
+def _issue_wire_reference() -> object:
+    """Load the frozen pre-cutover issue-wire owner for test-only commands."""
+    module_name = "_stub_issue_wire_reference"
+    existing = sys.modules.get(module_name)
+    if existing is not None:
+        return existing
+    reference = _plugin_root() / "fixtures" / "rust-parity" / "issue_wire_reference.py"
+    spec = importlib.util.spec_from_file_location(module_name, reference)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"frozen issue-wire reference missing: {reference}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
 
-    plan_file = _wire_option(arguments, "--plan-file")
-    plan = Path(plan_file) if plan_file else None
-    if plan is None or not plan.is_file():
-        print(f"extract-plan-scope-paths.sh: plan file not found: {plan_file}", file=sys.stderr)
-        return 2
-    separator = "\0" if ("-z" in arguments or "--null" in arguments) else "\n"
-    paths = issue_wire.extract_scope_paths(plan_text=plan.read_text(encoding="utf-8", errors="replace"))
-    _ = sys.stdout.write(separator.join(paths) + separator)
-    return 0
+
+def _plan_scope_paths(arguments: list[str]) -> int:
+    reference = _issue_wire_reference()
+    return int(reference.plan_scope_paths(arguments))  # type: ignore[attr-defined]
 
 
 def _implement_scope_disposition(arguments: list[str]) -> int:
@@ -2176,23 +2232,8 @@ def _implement_scope_disposition(arguments: list[str]) -> int:
 
 
 def _plan_block_strip_body(arguments: list[str]) -> int:
-    _bind_larch_package()
-    from larch.issue import issue_blocks  # noqa: PLC0415 - bound above, not at module import
-
-    source = _wire_option(arguments, "--file")
-    output = _wire_option(arguments, "--output")
-    body = Path(source).read_text(encoding="utf-8", errors="replace") if source else sys.stdin.read()
-    stripped, malformed = issue_blocks.strip_named_block(body=body, marker="plan")
-    if malformed:
-        if output:
-            _ = Path(output).write_text("", encoding="utf-8")
-        print(f"MALFORMED={malformed}")
-        return 1
-    if output:
-        _ = Path(output).write_text(stripped, encoding="utf-8")
-    else:
-        _ = sys.stdout.write(stripped)
-    return 0
+    reference = _issue_wire_reference()
+    return int(reference.plan_block_strip_body(arguments))  # type: ignore[attr-defined]
 
 
 def _plan_review_json_get_bool(arguments: list[str]) -> int:
@@ -2542,6 +2583,12 @@ def main(arguments: list[str]) -> int:
         result = 0
     else:
         handlers: dict[tuple[str, str], Callable[[list[str]], int]] = {
+            ("architectural-guidelines", "read"): functools.partial(
+                _architectural_read, kind="guidelines"
+            ),
+            ("architectural-invariants", "read"): functools.partial(
+                _architectural_read, kind="invariants"
+            ),
             ("design", "read-result-env"): functools.partial(_design_terminal_verb, verb="read-result-env"),
             ("design", "stage-terminal-state"): functools.partial(_design_terminal_verb, verb="stage-terminal-state"),
             ("design", "failure-report"): functools.partial(_design_terminal_verb, verb="failure-report"),

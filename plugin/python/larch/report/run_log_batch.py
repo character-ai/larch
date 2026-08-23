@@ -24,7 +24,6 @@ from larch.core.architectural_guidelines import (
     validate_invariant_ship_outcome_record,
 )
 from larch.core import redact
-from larch.design import plan_grammar
 from larch import io as larch_io
 from larch.errors import ShipError
 
@@ -244,19 +243,6 @@ def _validate_slug(*, label: str, value: str) -> None:
         raise ValueError(f"invalid {label}: {value}")
 
 
-def _validate_plan_goals_payload(path: Path) -> None:
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    try:
-        body = plan_grammar.implementation_plan_body(lines)
-    except ValueError as exc:
-        raise ValueError(f"plan-goals sanitizer rejected: {exc}") from exc
-    first = next(line.strip().lower() for line in body.splitlines() if line.strip())
-    if re.fullmatch(r"(see plan\.txt|see attached|see linked|tbd|todo)\.?", first):
-        raise ValueError(
-            "plan-goals sanitizer rejected: Implementation Plan body is a pointer-only placeholder",
-        )
-
-
 _JSON_OBJECT_VALIDATORS: dict[str, Callable[[object], str | None]] = {
     config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME: validate_guideline_ship_outcome_record,
     config.RUN_LOG_BATCH_INVARIANT_SHIP_OUTCOME: validate_invariant_ship_outcome_record,
@@ -283,7 +269,9 @@ def _batch_validate_payload(*, batch: str, path: Path) -> None:
     elif sanitizer == "none":
         return
     elif sanitizer == "plan-goals":
-        _validate_plan_goals_payload(path)
+        raise RuntimeError(
+            "plan-goals validation is available only through the Rust run-log owner"
+        )
     else:
         raise ValueError(f"unsupported sanitizer for batch {batch}: {sanitizer}")
 

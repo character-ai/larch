@@ -18,13 +18,17 @@ use std::{
     process::ExitCode,
 };
 
-use larch_adapters::GixRepository;
+use larch_adapters::{
+    GixRepository, ensure_directory_chain, resolve_allow_missing, validate_design_tmpdir,
+};
 use larch_core::{
     ArchitecturalKind, ArchitecturalKnowledge, ArchitecturalStatus, AssessmentGit, AssessmentKind,
     AssessmentWriteError, ComposePreparation, RepositoryRead, append_deviation_note,
-    diff_fingerprint, invalidate_implement_note, materialize_preparation_diff,
-    persist_preparation_diff, pin_note_from_staged, prepare_compose, read_architectural_knowledge,
-    untrusted_content_block, write_compose_assessment, write_staged_assessment,
+    cleanup_cache_sessions_root, diff_fingerprint, guideline_active_exception,
+    guideline_exception_present, invalidate_implement_note, materialize_preparation_diff,
+    persist_design_assessment, persist_preparation_diff, pin_note_from_staged, prepare_compose,
+    read_architectural_knowledge, untrusted_content_block, write_compose_assessment,
+    write_staged_assessment,
 };
 
 use crate::{
@@ -441,6 +445,373 @@ fn append_knowledge(
         ArchitecturalStatus::Absent => {}
     }
     knowledge
+}
+
+fn design_usage(kind: AssessmentKind, verb: &str) -> String {
+    let command = program(kind, verb);
+    let indent = " ".repeat(format!("usage: {command} ").len());
+    match verb {
+        "read" => format!("usage: {command} [-h] [--repo-root REPO_ROOT]"),
+        "present-note" => format!(
+            "usage: {command} [-h] [--repo-root REPO_ROOT]\n\
+             {indent}[--assessment {{pending,clean}}]"
+        ),
+        "persist-design-assessment" => format!(
+            "usage: {command} [-h]\n\
+             {indent}[--repo-root REPO_ROOT]\n\
+             {indent}[--design-tmpdir DESIGN_TMPDIR]\n\
+             {indent}[--assessment {{clean}}]\n\
+             {indent}[--assessment-file ASSESSMENT_FILE]\n\
+             {indent}[--allow-exception]"
+        ),
+        _ => unreachable!("known Gate C design verb"),
+    }
+}
+
+fn design_help(kind: AssessmentKind, verb: &str) -> String {
+    let usage = design_usage(kind, verb);
+    let options = match verb {
+        "read" => "  --repo-root REPO_ROOT\n",
+        "present-note" => "  --repo-root REPO_ROOT\n  --assessment {pending,clean}\n",
+        "persist-design-assessment" => {
+            "  --repo-root REPO_ROOT\n  --design-tmpdir DESIGN_TMPDIR\n  --assessment {clean}\n  --assessment-file ASSESSMENT_FILE\n  --allow-exception     permit a guideline deviation note carrying one\n                        documented-exception block (Gate C decline persistence\n                        only)\n"
+        }
+        _ => unreachable!("known Gate C design verb"),
+    };
+    format!(
+        "{usage}\n\noptions:\n  -h, --help            show this help message and exit\n{options}"
+    )
+}
+
+fn parse_design(
+    arguments: &[OsString],
+    kind: AssessmentKind,
+    verb: &str,
+) -> Result<ParsedCommandLine, ExitCode> {
+    let options: &[&str] = match verb {
+        "read" => &["--repo-root"],
+        "present-note" => &["--repo-root", "--assessment"],
+        "persist-design-assessment" => &[
+            "--repo-root",
+            "--design-tmpdir",
+            "--assessment",
+            "--assessment-file",
+        ],
+        _ => unreachable!("known Gate C design verb"),
+    };
+    let flags: &[&str] = if verb == "persist-design-assessment" {
+        &["-h", "--help", "--allow-exception"]
+    } else {
+        &["-h", "--help"]
+    };
+    let parsed = parse_with_flags(arguments, options, flags, 0);
+    if parsed.flag("-h") || parsed.flag("--help") {
+        return Err(write_stdout(&design_help(kind, verb)));
+    }
+    let usage = design_usage(kind, verb);
+    let program = program(kind, verb);
+    let parsed = finish_parse(parsed, &usage, &program, &[])?;
+    if let Some(assessment) = parsed.value("--assessment") {
+        let value = assessment.to_string_lossy();
+        let choices = if verb == "present-note" {
+            "'pending', 'clean'"
+        } else {
+            "'clean'"
+        };
+        let valid = value == "clean" || (verb == "present-note" && value == "pending");
+        if !valid {
+            return Err(usage_error(
+                &usage,
+                &program,
+                &format!(
+                    "argument --assessment: invalid choice: '{value}' (choose from {choices})"
+                ),
+                EXIT_USAGE,
+            ));
+        }
+    }
+    Ok(parsed)
+}
+
+fn assessment_required(kind: AssessmentKind, knowledge: &ArchitecturalKnowledge) -> bool {
+    knowledge.status == ArchitecturalStatus::Present
+        && (!kind.is_invariant() || !knowledge.content.trim().is_empty())
+}
+
+fn cache_sessions_root() -> PathBuf {
+    cleanup_cache_sessions_root(
+        env::var_os("XDG_CACHE_HOME").as_deref(),
+        env::var_os("HOME").as_deref(),
+    )
+}
+
+fn resolve_design_tmpdir(raw: &str) -> Result<PathBuf, String> {
+    validate_design_tmpdir(
+        raw,
+        env::var_os("TMPDIR").as_deref(),
+        &cache_sessions_root(),
+    )?;
+    let path = Path::new(raw);
+    if path
+        .symlink_metadata()
+        .is_ok_and(|metadata| metadata.file_type().is_symlink())
+    {
+        return Err("design-tmpdir: path must not be a symlink".to_owned());
+    }
+    resolve_allow_missing(path).map_err(|error| error.to_string())
+}
+
+/// Run `architectural-{guidelines,invariants} read`.
+pub fn read_command(kind: AssessmentKind, arguments: &[OsString]) -> ExitCode {
+    let parsed = match parse_design(arguments, kind, "read") {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let repo_root = resolve_repo_root(parsed.value("--repo-root"));
+    let mut output = String::new();
+    append_knowledge(&mut output, repo_root.as_deref(), kind);
+    write_stdout(&output)
+}
+
+/// Run `architectural-{guidelines,invariants} present-note`.
+pub fn present_note_command(kind: AssessmentKind, arguments: &[OsString]) -> ExitCode {
+    let parsed = match parse_design(arguments, kind, "present-note") {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let repo_root = resolve_repo_root(parsed.value("--repo-root"));
+    let knowledge = read_knowledge(repo_root.as_deref(), kind);
+    let prefix = env_prefix(kind);
+    let mut output = String::new();
+    match knowledge.status {
+        ArchitecturalStatus::Absent => {}
+        ArchitecturalStatus::Invalid => {
+            writeln!(output, "{prefix}_WARNING={}", knowledge.warning)
+                .expect("writing to a String cannot fail");
+        }
+        ArchitecturalStatus::Present => {
+            let clean = parsed
+                .value("--assessment")
+                .is_some_and(|value| value == "clean");
+            if clean {
+                if assessment_required(kind, &knowledge) {
+                    writeln!(output, "{}", kind.clean_presentation_note())
+                        .expect("writing to a String cannot fail");
+                }
+            } else {
+                if let Some(root) = repo_root.as_deref() {
+                    writeln!(
+                        output,
+                        "{prefix}_PATH={}",
+                        root.join(kind.knowledge_filename()).display()
+                    )
+                    .expect("writing to a String cannot fail");
+                }
+                if !knowledge.content.is_empty() {
+                    output.push_str(&untrusted_content_block(
+                        knowledge_kind(kind).tag(),
+                        &knowledge.content,
+                    ));
+                }
+                if assessment_required(kind, &knowledge) {
+                    writeln!(output, "{}", kind.design_assessment_required_line())
+                        .expect("writing to a String cannot fail");
+                }
+            }
+        }
+    }
+    write_stdout(&output)
+}
+
+fn emit_persist_result(
+    kind: AssessmentKind,
+    status: ArchitecturalStatus,
+    result: &str,
+    reason: &str,
+) -> ExitCode {
+    if kind.is_invariant() {
+        return ExitCode::SUCCESS;
+    }
+    write_stdout(&format!(
+        "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_ATTEMPTED=true\n\
+         ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_GUIDELINES_STATUS={}\n\
+         ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_RESULT={result}\n\
+         ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_REASON={}\n\
+         ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_ARTIFACT={}\n",
+        status_token(status),
+        flattened(reason),
+        kind.design_assessment_filename(),
+    ))
+}
+
+fn persist_rejected(
+    kind: AssessmentKind,
+    status: ArchitecturalStatus,
+    reason: &str,
+    message: &str,
+) -> ExitCode {
+    let write = if reason.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        emit_persist_result(kind, status, "failed", reason)
+    };
+    eprintln!("{message}");
+    if write == ExitCode::SUCCESS {
+        ExitCode::from(EXIT_FAILED)
+    } else {
+        write
+    }
+}
+
+/// Run `architectural-{guidelines,invariants} persist-design-assessment`.
+pub fn persist_design_assessment_command(kind: AssessmentKind, arguments: &[OsString]) -> ExitCode {
+    let parsed = match parse_design(arguments, kind, "persist-design-assessment") {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let raw_tmpdir = option_or_environment(&parsed, "--design-tmpdir", "DESIGN_TMPDIR");
+    let design_tmpdir = match resolve_design_tmpdir(&raw_tmpdir) {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::from(EXIT_FAILED);
+        }
+    };
+    let repo_root = resolve_repo_root(parsed.value("--repo-root"));
+    let knowledge = read_knowledge(repo_root.as_deref(), kind);
+    let required = assessment_required(kind, &knowledge);
+    let clean = parsed.value("--assessment").is_some();
+    let assessment_file = option_text(&parsed, "--assessment-file");
+    let has_file = !assessment_file.is_empty();
+    let allow_exception = parsed.flag("--allow-exception");
+
+    if allow_exception && kind.is_invariant() {
+        return persist_rejected(
+            kind,
+            knowledge.status,
+            "",
+            "--allow-exception is not valid for architectural invariants",
+        );
+    }
+    if required && clean == has_file {
+        return persist_rejected(
+            kind,
+            knowledge.status,
+            "invalid-flags",
+            &format!(
+                "present architectural {} require exactly one of --assessment clean or --assessment-file",
+                kind.key()
+            ),
+        );
+    }
+    if !required && (clean || has_file) {
+        let states = if kind.is_invariant() {
+            "absent, empty, or invalid"
+        } else {
+            "absent or invalid"
+        };
+        return persist_rejected(
+            kind,
+            knowledge.status,
+            "invalid-flags",
+            &format!(
+                "{states} architectural {} do not accept assessment source flags",
+                kind.key()
+            ),
+        );
+    }
+    if allow_exception && !has_file {
+        return persist_rejected(
+            kind,
+            knowledge.status,
+            "allow-exception-requires-file",
+            "--allow-exception requires a guideline deviation --assessment-file",
+        );
+    }
+
+    let assessment_text = if has_file {
+        match read_regular_no_follow(Path::new(&assessment_file)) {
+            Ok(text) if text.trim().is_empty() => {
+                return persist_rejected(
+                    kind,
+                    knowledge.status,
+                    "assessment-file-empty",
+                    "assessment-file: content must not be empty",
+                );
+            }
+            Ok(text) => Some(text),
+            Err(error) => {
+                return persist_rejected(
+                    kind,
+                    knowledge.status,
+                    "assessment-file-unreadable",
+                    &format!("assessment-file: {error}"),
+                );
+            }
+        }
+    } else {
+        None
+    };
+
+    if let Some(note) = assessment_text.as_deref()
+        && !kind.is_invariant()
+    {
+        if !allow_exception && guideline_exception_present(note) {
+            return persist_rejected(
+                kind,
+                knowledge.status,
+                "unexpected-exception",
+                "guideline note carries a documented-exception line; pass --allow-exception only to persist a Gate C decline",
+            );
+        }
+        if allow_exception && guideline_active_exception(note).is_none() {
+            return persist_rejected(
+                kind,
+                knowledge.status,
+                "invalid-exception",
+                "--allow-exception requires exactly one active documented-exception line (Exception: <rationale> (author: main-agent, date: YYYY-MM-DD))",
+            );
+        }
+    }
+
+    if required && let Err(error) = ensure_directory_chain(&design_tmpdir) {
+        let write = emit_persist_result(kind, knowledge.status, "failed", "persist-failed");
+        eprintln!("persist-design-assessment: {error}");
+        return if write == ExitCode::SUCCESS {
+            ExitCode::from(EXIT_FAILED)
+        } else {
+            write
+        };
+    }
+
+    match persist_design_assessment(
+        repo_root.as_deref(),
+        &design_tmpdir,
+        kind,
+        clean,
+        assessment_text.as_deref(),
+    ) {
+        Ok(()) => {
+            let reason = if matches!(
+                knowledge.status,
+                ArchitecturalStatus::Absent | ArchitecturalStatus::Invalid
+            ) {
+                "not-required"
+            } else {
+                "persisted"
+            };
+            emit_persist_result(kind, knowledge.status, "ok", reason)
+        }
+        Err(error) => {
+            let write = emit_persist_result(kind, knowledge.status, "failed", "persist-failed");
+            eprintln!("persist-design-assessment: {error}");
+            if write == ExitCode::SUCCESS {
+                ExitCode::from(EXIT_FAILED)
+            } else {
+                write
+            }
+        }
+    }
 }
 
 fn flattened(value: &str) -> String {

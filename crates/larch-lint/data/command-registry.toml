@@ -717,11 +717,13 @@ verb = "persist-design-assessment"
 python_module = "larch.core.architectural_guidelines"
 python_function = "persist_design_assessment_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8786
+clean_install_test = "clean-install-architectural-guidelines-persist-design-assessment"
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -771,11 +773,13 @@ verb = "present-note"
 python_module = "larch.core.architectural_guidelines"
 python_function = "present_note_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8786
+clean_install_test = "clean-install-architectural-guidelines-present-note"
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -783,11 +787,13 @@ verb = "read"
 python_module = "larch.core.architectural_guidelines"
 python_function = "read_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8786
+clean_install_test = "clean-install-architectural-guidelines-read"
 
 [[commands]]
 domain = "architectural-guidelines"
@@ -865,11 +871,13 @@ verb = "persist-design-assessment"
 python_module = "larch.core.architectural_guidelines"
 python_function = "invariants_persist_design_assessment_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8786
+clean_install_test = "clean-install-architectural-invariants-persist-design-assessment"
 
 [[commands]]
 domain = "architectural-invariants"
@@ -919,11 +927,13 @@ verb = "present-note"
 python_module = "larch.core.architectural_guidelines"
 python_function = "invariants_present_note_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8786
+clean_install_test = "clean-install-architectural-invariants-present-note"
 
 [[commands]]
 domain = "architectural-invariants"
@@ -931,11 +941,13 @@ verb = "read"
 python_module = "larch.core.architectural_guidelines"
 python_function = "invariants_read_main"
 machine_stdout = true
-owner = "python"
-implementation_parity = "pending"
-consumer_cutover = "pending"
-python_removal = "pending"
+owner = "rust"
+implementation_parity = "complete"
+consumer_cutover = "complete"
+python_removal = "complete"
 planning_issue = 7680
+migration_issue = 8786
+clean_install_test = "clean-install-architectural-invariants-read"
 
 [[commands]]
 domain = "architectural-invariants"
@@ -9393,7 +9405,7 @@ rust = ["agent read-claude-model", "gh resolve-repo", "run-log lifecycle-start",
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []
-rust = ["block-issue *", "ci distill-log", "ci main-health", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "ship write-result-env", "stall-recovery normalize-outcome", "timing *", "token append-record", "token dump", "token lane-report", "token lane-write", "token mark", "token record-vendor", "token record-vendor-sidecar", "tracking-issue *"]
+rust = ["architectural-guidelines read", "architectural-invariants read", "block-issue *", "ci distill-log", "ci main-health", "dirty-tree *", "execution-issues *", "final-report write", "git phantom-probe", "issue add-blocked-by", "issue cleanup-failed", "issue create-one", "issue info", "issue parse-input", "issue state", "progress *", "progress install-statusline", "progress render-phase-detail", "push branch", "push checkpoint-probe", "run-log refresh", "ship write-result-env", "stall-recovery normalize-outcome", "timing *", "token append-record", "token dump", "token lane-report", "token lane-write", "token mark", "token record-vendor", "token record-vendor-sidecar", "tracking-issue *"]
 
 [[callers]]
 path = "python/larch/git/pr_body.py"
@@ -9578,8 +9590,8 @@ rust = ["block-issue add-blocked-by", "deps apply", "deps explicit-refs", "deps 
 [[callers]]
 path = "skills/design/SKILL.md"
 kind = "skill"
-python = ["architectural-guidelines read", "architectural-invariants read", "mermaid sanitize"]
-rust = ["agent collect-results", "agent degraded-tools-gate", "bgjob start", "bgjob wait", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
+python = ["mermaid sanitize"]
+rust = ["agent collect-results", "agent degraded-tools-gate", "architectural-guidelines read", "architectural-invariants read", "bgjob start", "bgjob wait", "design dialectic-gatec", "design dialectic-write-candidates", "design driver", "design file-oos-prepare", "design init-runparams", "design log-publish", "design parse-flags", "design pause-load", "design postplan-emit", "design prelude", "design publish", "design read-result-env", "design render-final-summary", "design route", "design step0-session", "design step2b-drafter", "design step2b-postplan", "design step2b5", "design step3-continuation-entry", "design step35-settle", "design step3b-entry", "design step5c", "difficulty render-rubric", "dirty-tree checkpoint", "named-block write", "plan check-size", "plan parse-commands", "plan-review continuation", "plan-review emit", "plan-review filter-gate-b-skipped", "plan-review finalize", "plan-review gate-b-dedup", "plan-review normalize-status", "plan-review panel-dispatch", "plan-review persist-accepted-audit", "plan-review preview", "plan-review run", "plan-review snapshot-pre-review", "plan-review step3-gate-b-bypass", "plan-review step3-state", "plan-review tally", "review aggregate-findings", "run-log append-failure", "session write-run-params", "timing record-round"]
 
 [[callers]]
 path = "skills/design/references/approval-gates-explicit.md"
@@ -9602,8 +9614,8 @@ rust = ["design postplan-emit", "design render-gate", "design step2b-postplan", 
 [[callers]]
 path = "skills/design/references/approval-gates-gate-c.md"
 kind = "skill"
-python = ["architectural-guidelines persist-design-assessment", "architectural-guidelines present-note", "architectural-invariants persist-design-assessment", "architectural-invariants present-note"]
-rust = ["design dialectic-manual", "design read-result-env", "design render-gate", "design step35-settle", "plan-review filter-gate-b-skipped", "plan-review preview"]
+python = []
+rust = ["architectural-guidelines persist-design-assessment", "architectural-guidelines present-note", "architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design dialectic-manual", "design read-result-env", "design render-gate", "design step35-settle", "plan-review filter-gate-b-skipped", "plan-review preview"]
 
 [[callers]]
 path = "skills/design/references/approval-gates.md"
@@ -9626,8 +9638,8 @@ rust = ["decompose prepare", "umbrella verify-completion"]
 [[callers]]
 path = "skills/design/references/design-outline.md"
 kind = "skill"
-python = ["architectural-guidelines present-note", "architectural-invariants present-note", "architectural-invariants read"]
-rust = ["design render-final-summary"]
+python = []
+rust = ["architectural-guidelines present-note", "architectural-guidelines read", "architectural-invariants present-note", "architectural-invariants read", "design render-final-summary"]
 
 [[callers]]
 path = "skills/design/references/dialectic-clarifier.md"
@@ -9650,8 +9662,8 @@ rust = ["design failure-report", "design stage-terminal-state", "stall-recovery 
 [[callers]]
 path = "skills/design/references/finalize-step5.md"
 kind = "skill"
-python = ["architectural-invariants persist-design-assessment", "architectural-invariants present-note", "mermaid sanitize"]
-rust = ["design file-oos-annotate", "design file-oos-prepare", "design read-result-env", "design render-final-summary", "design step5c", "issue add-blocked-by", "run-log append-failure"]
+python = ["mermaid sanitize"]
+rust = ["architectural-invariants persist-design-assessment", "architectural-invariants present-note", "design file-oos-annotate", "design file-oos-prepare", "design read-result-env", "design render-final-summary", "design step5c", "issue add-blocked-by", "run-log append-failure"]
 
 [[callers]]
 path = "skills/design/references/flags.md"
