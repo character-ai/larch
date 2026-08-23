@@ -550,7 +550,9 @@ jobs:
             printf '%s\n' '## Rust CI selection'
             printf '%s\n' "Proposed mode: \`full\` because the trusted selector executable was unavailable."
           fi
-          test -n "$RUST_POLICY_INPUTS_SHA256"
+          if [ -z "$RUST_POLICY_INPUTS_SHA256" ]; then
+            printf '%s\n' '::warning::Trusted base cache-key action did not expose a Rust-input digest; the full fallback remains required.'
+          fi
           {
             printf 'RUST_SELECTION_HISTORY_MILLISECONDS=%s\n' "$selector_history_milliseconds"
             printf 'RUST_SELECTION_HISTORY_SOURCE=%s\n' "$selector_history_source"

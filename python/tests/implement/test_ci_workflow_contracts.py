@@ -2124,6 +2124,11 @@ def test_rust_ci_change_selection_rollout_contract() -> None:
         )
         == 2
     )
+    assert selector_job.count('test -n "$RUST_POLICY_INPUTS_SHA256"') == 1
+    assert (
+        "Trusted base cache-key action did not expose a Rust-input digest"
+        in selector_job
+    )
     assert "hashFiles(" not in selector_job
     assert "format('{0}/build.rs', inputs.rust-policy-source-root)" in main_cache_keys
     assert (
