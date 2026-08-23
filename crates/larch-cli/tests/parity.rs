@@ -2148,6 +2148,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
         "analyze",
     ),
     CleanInstallCase::new("clean-install-forked-repo-setup", "forked-repo", "setup"),
+    CleanInstallCase::new("clean-install-diagram-code-flow", "diagram", "code-flow"),
     CleanInstallCase::new(
         "clean-install-render-findings-view",
         "render",
@@ -2155,6 +2156,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-render-lane-status", "render", "lane-status"),
     CleanInstallCase::new("clean-install-render-reviewer", "render", "reviewer"),
+    CleanInstallCase::new("clean-install-render-run-summary", "render", "run-summary"),
     CleanInstallCase::new(
         "clean-install-render-scope-anchor",
         "render",

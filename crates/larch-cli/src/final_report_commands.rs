@@ -400,16 +400,31 @@ fn kv_value(text: &str, key: &str) -> String {
     read_kv_from_text(text, key).unwrap_or_default()
 }
 
+/// Clean a candidate identity value: trim, and treat placeholders as empty.
+///
+/// Shared with the `render run-summary` owner so the identity resolution has one
+/// copy (mirrors Python `_resolve_run_identity.clean`).
+pub(crate) fn identity_clean(value: &str) -> String {
+    let text = value.trim();
+    if matches!(text, "" | "unknown" | "None") {
+        String::new()
+    } else {
+        text.to_owned()
+    }
+}
+
 /// Resolve `(larch_version, main_model, effort)` for the summary identity rows.
-fn resolve_identity(manifest: &Path) -> RunSummaryIdentity {
-    let clean = |value: &str| -> String {
-        let text = value.trim();
-        if matches!(text, "" | "unknown" | "None") {
-            String::new()
-        } else {
-            text.to_owned()
-        }
-    };
+///
+/// Explicit overrides win, then the committed manifest, then live fallbacks.
+/// Passing empty overrides reproduces the manifest-only `/implement` behavior;
+/// the `render run-summary` owner passes its CLI overrides. Shared so both paths
+/// resolve identity identically (Python `_resolve_run_identity`).
+pub(crate) fn resolve_run_identity(
+    manifest: &Path,
+    larch_version: &str,
+    main_model: &str,
+    effort: &str,
+) -> RunSummaryIdentity {
     let manifest_authoritative = manifest.is_file();
     let data = report::json_object(manifest);
     let roster_model = data
@@ -419,7 +434,8 @@ fn resolve_identity(manifest: &Path) -> RunSummaryIdentity {
         .and_then(Value::as_str)
         .unwrap_or_default();
     let version = [
-        clean(
+        identity_clean(larch_version),
+        identity_clean(
             data.get("larch_version")
                 .and_then(Value::as_str)
                 .unwrap_or_default(),
@@ -429,18 +445,22 @@ fn resolve_identity(manifest: &Path) -> RunSummaryIdentity {
     .into_iter()
     .find(|value| !value.is_empty())
     .unwrap_or_else(|| "unknown".to_owned());
-    let mut model = clean(roster_model);
+    let mut model = [identity_clean(main_model), identity_clean(roster_model)]
+        .into_iter()
+        .find(|value| !value.is_empty())
+        .unwrap_or_default();
     if model.is_empty() && !manifest_authoritative {
         model = live_main_model();
     }
     let effort = [
-        clean(
+        identity_clean(effort),
+        identity_clean(
             data.get("effort")
                 .and_then(Value::as_str)
                 .unwrap_or_default(),
         ),
-        clean(&env::var("CLAUDE_CODE_EFFORT_LEVEL").unwrap_or_default()),
-        clean(&env::var("CLAUDE_EFFORT").unwrap_or_default()),
+        identity_clean(&env::var("CLAUDE_CODE_EFFORT_LEVEL").unwrap_or_default()),
+        identity_clean(&env::var("CLAUDE_EFFORT").unwrap_or_default()),
     ]
     .into_iter()
     .find(|value| !value.is_empty())
@@ -517,9 +537,27 @@ fn cost_fields(
     if !main_model.is_empty() {
         argv.splice(0..0, ["--claude-model".to_owned(), main_model]);
     }
-    let Ok((counts, claude_model)) = TokenCounts::from_cost_argv(&argv) else {
+    let Some(cost) = price_run_cost(&argv, overrides) else {
         return unavailable;
     };
+    if cost.total_cost == "N/A" {
+        return unavailable;
+    }
+    cost
+}
+
+/// Price one `token cost` argv through the reused pricing pipeline, returning the
+/// filled [`RunSummaryCost`] or `None` when the argv does not parse.
+///
+/// Shared by the `/implement` final report and the `render run-summary` owner so
+/// the pricing tail (`from_cost_argv` → `display_rates` → `price_counts` →
+/// `render_cost_kv` → field reads) has one copy. Callers apply their own
+/// unavailability policy on the result.
+pub(crate) fn price_run_cost(
+    argv: &[String],
+    overrides: &BTreeMap<String, String>,
+) -> Option<RunSummaryCost> {
+    let (counts, claude_model) = TokenCounts::from_cost_argv(argv).ok()?;
     let mut environment: BTreeMap<String, String> = env::vars().collect();
     environment.extend(
         overrides
@@ -538,17 +576,13 @@ fn cost_fields(
             value
         }
     };
-    let total_cost = read("TOTAL_COST");
-    if total_cost == "N/A" {
-        return unavailable;
-    }
     let optional = |key: &str| {
         let value = kv_value(&rendered, key);
         (!value.is_empty()).then_some(value)
     };
-    RunSummaryCost {
+    Some(RunSummaryCost {
         cost_unavailable: false,
-        total_cost,
+        total_cost: read("TOTAL_COST"),
         claude_cost: read("CLAUDE_COST"),
         codex_cost: read("CODEX_COST"),
         codex_gpt_5_5_cost: read("CODEX_GPT_5_5_COST"),
@@ -560,7 +594,7 @@ fn cost_fields(
         total_tokens: kv_value(&rendered, "TOTAL_TOKENS")
             .parse::<i64>()
             .unwrap_or(0),
-    }
+    })
 }
 
 /// Locate the rendered token report, generating one through the Rust owner.
@@ -969,7 +1003,7 @@ fn write_final_report(options: &WriteOptions) -> ReportOutcome {
             .unwrap_or_else(|| "false".to_owned()),
         needs_user_reason,
         needs_user_next_action,
-        identity: resolve_identity(&run_dir.join("manifest.json")),
+        identity: resolve_run_identity(&run_dir.join("manifest.json"), "", "", ""),
         cost,
     });
     let issue_detail = report::build_issue_detail_section(&load_result, |kind, details| {

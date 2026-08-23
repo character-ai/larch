@@ -1,4 +1,17 @@
-//! Rust-owned Mermaid sanitizer and marker-comment diagram upsert.
+//! Rust-owned diagram commands.
+//!
+//! Hosts the Mermaid sanitizer and marker-comment diagram upsert alongside the
+//! Rust owner for `diagram code-flow` (#8839).
+//!
+//! `diagram code-flow` ports Python `larch.git.pr_body.generate_code_flow_diagram` +
+//! `generate_code_flow_diagram_main`: resolve the committed diff, author the
+//! prompt, launch `agent launch-claude-subprocess` (honoring the
+//! `LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS` override), retry transient failures with
+//! the `code-flow-diagram.retried` sidecar, capture bounded failure logs through
+//! the reused `report::diagram_log` owner, sanitize the candidate with the reused
+//! `ship_pr` mermaid validator, and emit the `STATUS`/`DIAGRAM_FILE`/`SKIP_REASON`
+//! KV contract. The two callers (`/implement` Step 7a and the CLI verb) reach
+//! this in-process owner, satisfying I-Cutover-1 with no bridge.
 
 use std::{
     collections::BTreeSet,
@@ -7,15 +20,23 @@ use std::{
     fs,
     io::{self, Read as _},
     path::{Path, PathBuf},
-    process::ExitCode,
+    process::{Command, ExitCode, Stdio},
+    sync::LazyLock,
+    thread,
+    time::Duration,
 };
 
+use larch_adapters::GixRepository;
 use larch_core::{
-    DIAGRAMS_COMMENT_MARKER, design::extract_diagram_sections, mermaid::inspect_mermaid, redact,
+    DIAGRAMS_COMMENT_MARKER, ProcessOutput, RepositoryRead as _, Revision,
+    code_flow_reject_reason, design::extract_diagram_sections, emit_kv, mermaid::inspect_mermaid,
+    read_kv_from_text, redact,
+    report::{sanitize_diagram_capture, strip_diagram_sections, write_bounded_diagram_failure_log},
 };
+use regex::Regex;
 
 use crate::{
-    argparse_compat::{ParsedCommandLine, parse_with_flags},
+    argparse_compat::{ParsedCommandLine, parse_required_with_help, parse_with_flags},
     launcher_support::read_confined_bytes_checked,
     runtime_entrypoint::run_verified_larch,
     tracking_issue_commands::{
@@ -437,6 +458,454 @@ fn upsert_failure(message: &str, code: u8) -> ExitCode {
     emit_upsert_rows("failed", "", false, "absent", "absent");
     println!("ERROR={}", message.replace(['\n', '\r'], " "));
     ExitCode::from(code)
+}
+
+const CODE_FLOW_PROG: &str = "cli.py diagram code-flow";
+const CODE_FLOW_USAGE: &str = "usage: cli.py diagram code-flow [-h] --implement-tmpdir IMPLEMENT_TMPDIR\n                                [--model MODEL] [--base-remote BASE_REMOTE]\n                                [--base-ref BASE_REF]";
+const CODE_FLOW_HELP: &str = "usage: cli.py diagram code-flow [-h] --implement-tmpdir IMPLEMENT_TMPDIR\n                                [--model MODEL] [--base-remote BASE_REMOTE]\n                                [--base-ref BASE_REF]\n\noptions:\n  -h, --help            show this help message and exit\n  --implement-tmpdir IMPLEMENT_TMPDIR\n  --model MODEL\n  --base-remote BASE_REMOTE\n  --base-ref BASE_REF\n";
+
+const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
+const CODE_FLOW_DIAGRAM_TIMEOUT_SECONDS: u32 = 180;
+const MAX_DIAGRAM_RETRIES: usize = 4;
+const DIAGRAM_RETRY_DELAY_SECONDS: u64 = 10;
+const DIAGRAM_FAILURE_TAIL_LIMIT: usize = 200;
+const EXIT_TIMEOUT: i32 = 124;
+
+static LAUNCHER_FAILURE_LABEL_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_-]+$").expect("static launcher-label regex"));
+static WHITESPACE_RUN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\s+").expect("static whitespace-run regex"));
+
+/// The outcome of one code-flow generation attempt.
+pub struct CodeFlowDiagramResult {
+    /// Process exit code (`1` on generation-failed or empty-generation, else `0`).
+    pub exit_code: i32,
+    /// Contract status (`ok`, `skipped`, or `failed`).
+    pub status: String,
+    /// Path to the accepted diagram file, empty unless `status == "ok"`.
+    pub diagram_file: String,
+    /// Skip or failure reason token, empty on success.
+    pub reason: String,
+}
+
+#[cfg(test)]
+type DiagramHook =
+    std::sync::Arc<dyn Fn(&Path, &str, &str, &str) -> CodeFlowDiagramResult + Send + Sync>;
+
+#[cfg(test)]
+std::thread_local! {
+    static TEST_DIAGRAM: std::cell::RefCell<Option<DiagramHook>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Answer every `generate_code_flow_diagram` call from `hook` (test only).
+#[cfg(test)]
+pub fn install_test_diagram(
+    hook: impl Fn(&Path, &str, &str, &str) -> CodeFlowDiagramResult + Send + Sync + 'static,
+) {
+    TEST_DIAGRAM.with(|slot| *slot.borrow_mut() = Some(std::sync::Arc::new(hook)));
+}
+
+/// `diagram code-flow` CLI handler.
+pub fn code_flow(arguments: &[OsString]) -> ExitCode {
+    let parsed = match parse_required_with_help(
+        arguments,
+        CODE_FLOW_PROG,
+        CODE_FLOW_USAGE,
+        CODE_FLOW_HELP,
+        &[
+            "--implement-tmpdir",
+            "--model",
+            "--base-remote",
+            "--base-ref",
+        ],
+        &[],
+        &["--implement-tmpdir"],
+    ) {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let value = |name: &str, default: &str| -> String {
+        parsed
+            .value(name)
+            .map(|value| value.to_string_lossy().into_owned())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| default.to_owned())
+    };
+    let tmpdir = PathBuf::from(value("--implement-tmpdir", ""));
+    let model = value("--model", DEFAULT_MODEL);
+    let base_remote = value("--base-remote", "origin");
+    let base_ref = value("--base-ref", "main");
+    let result = generate_code_flow_diagram(&tmpdir, &model, &base_remote, &base_ref);
+    emit_kv("STATUS", &result.status);
+    emit_kv("DIAGRAM_FILE", &result.diagram_file);
+    emit_kv("SKIP_REASON", &result.reason);
+    ExitCode::from(u8::try_from(result.exit_code).unwrap_or(1))
+}
+
+/// Generate the committed-diff code-flow diagram (Python `generate_code_flow_diagram`).
+pub fn generate_code_flow_diagram(
+    tmpdir: &Path,
+    model: &str,
+    base_remote: &str,
+    base_ref: &str,
+) -> CodeFlowDiagramResult {
+    #[cfg(test)]
+    if let Some(hook) = TEST_DIAGRAM.with(|slot| slot.borrow().clone()) {
+        return hook(tmpdir, model, base_remote, base_ref);
+    }
+    let _ = fs::create_dir_all(tmpdir);
+    let raw = tmpdir.join("code-flow-diagram.raw.md");
+    let candidate = tmpdir.join("code-flow-diagram.candidate.md");
+    let diagram = tmpdir.join("code-flow-diagram.md");
+    let prompt_path = tmpdir.join("code-flow-prompt.md");
+    let failure_log = tmpdir.join("code-flow-diagram.failure.log");
+    let retry_sidecar = tmpdir.join("code-flow-diagram.retried");
+    let raw_failure = tmpdir.join("code-flow-diagram.raw-failure.log");
+
+    let changed = resolve_changed_files(base_remote, base_ref);
+    let mut prompt_lines = vec![
+        "Generate a concise Mermaid code-flow diagram for the committed implementation diff."
+            .to_owned(),
+        "Return markdown containing exactly one `## Code Flow Diagram` heading and one mermaid fence."
+            .to_owned(),
+        "Focus on runtime calls, data flow, and control flow. Avoid structural architecture duplication."
+            .to_owned(),
+        String::new(),
+        "Changed files:".to_owned(),
+    ];
+    prompt_lines.extend(changed);
+    prompt_lines.push(String::new());
+    let _ = fs::write(&prompt_path, prompt_lines.join("\n"));
+    let _ = fs::remove_file(&failure_log);
+
+    let launch = run_diagram_subprocess(model, &prompt_path, &raw, &retry_sidecar);
+    if launch.code != 0 {
+        return launch_failure_result(tmpdir, &failure_log, &raw_failure, &raw, &launch);
+    }
+    finalize_candidate(&raw, &candidate, &diagram, &failure_log, &raw_failure)
+}
+
+/// Compose the `generation-failed` result and write the bounded failure log
+/// (Python `generate_code_flow_diagram` non-zero branch).
+fn launch_failure_result(
+    tmpdir: &Path,
+    failure_log: &Path,
+    raw_failure: &Path,
+    raw: &Path,
+    launch: &LaunchOutcome,
+) -> CodeFlowDiagramResult {
+    let raw_capture_ok = fs::write(
+        raw_failure,
+        format!("stderr:\n{}\nstdout:\n{}\n", launch.stderr, launch.stdout),
+    )
+    .is_ok();
+    let stderr = diagram_stderr_from_sidecar(raw, &launch.stderr);
+    let (diagnostic, tail) = diagram_failure_capture(launch.code, &stderr);
+    let failure_label = launcher_failure_label(&launch.stdout);
+    let mut reason = if failure_label.is_empty() {
+        format!("generation-failed rc={} tail={tail}", launch.code)
+    } else {
+        format!(
+            "generation-failed {failure_label} rc={} tail={tail}",
+            launch.code
+        )
+    };
+    let write_result: std::io::Result<()> = (|| {
+        if raw_capture_ok {
+            let bounded = write_bounded_diagram_failure_log(
+                tmpdir,
+                "implement Step 7a",
+                &reason,
+                &launch.code.to_string(),
+                Some(raw_failure),
+            )?;
+            if bounded != *failure_log {
+                let body = fs::read_to_string(&bounded)?;
+                fs::write(failure_log, body)?;
+            }
+            let _ = fs::remove_file(raw_failure);
+            Ok(())
+        } else {
+            fs::write(failure_log, &diagnostic)
+        }
+    })();
+    if write_result.is_err() {
+        reason = format!("{reason} log-write-failed");
+    }
+    CodeFlowDiagramResult {
+        exit_code: 1,
+        status: "failed".to_owned(),
+        diagram_file: String::new(),
+        reason,
+    }
+}
+
+/// Sanitize the generated candidate and finalize the diagram (Python
+/// `generate_code_flow_diagram` success branch).
+fn finalize_candidate(
+    raw: &Path,
+    candidate: &Path,
+    diagram: &Path,
+    failure_log: &Path,
+    raw_failure: &Path,
+) -> CodeFlowDiagramResult {
+    let empty_generation = || CodeFlowDiagramResult {
+        exit_code: 1,
+        status: "failed".to_owned(),
+        diagram_file: String::new(),
+        reason: "empty-generation".to_owned(),
+    };
+    if !file_has_bytes(raw) {
+        return empty_generation();
+    }
+    let Ok(raw_bytes) = fs::read(raw) else {
+        return empty_generation();
+    };
+    let _ = fs::write(candidate, &raw_bytes);
+    let text = String::from_utf8_lossy(&raw_bytes);
+    code_flow_reject_reason(&text).map_or_else(
+        || {
+            let _ = fs::rename(candidate, diagram);
+            let _ = fs::remove_file(failure_log);
+            let _ = fs::remove_file(raw_failure);
+            CodeFlowDiagramResult {
+                exit_code: 0,
+                status: "ok".to_owned(),
+                diagram_file: diagram.display().to_string(),
+                reason: String::new(),
+            }
+        },
+        |reason| {
+            let _ = fs::remove_file(candidate);
+            CodeFlowDiagramResult {
+                exit_code: 0,
+                status: "skipped".to_owned(),
+                diagram_file: String::new(),
+                reason: reason.to_owned(),
+            }
+        },
+    )
+}
+
+/// One completed launch attempt: exit code and captured streams.
+struct LaunchOutcome {
+    code: i32,
+    stdout: String,
+    stderr: String,
+}
+
+/// Run the launcher, retrying transient failures (Python `_run_diagram_subprocess`).
+fn run_diagram_subprocess(
+    model: &str,
+    prompt_path: &Path,
+    raw: &Path,
+    retry_sidecar: &Path,
+) -> LaunchOutcome {
+    let mut outcome = launch_once(model, prompt_path, raw);
+    if !needs_diagram_retry(outcome.code, raw) {
+        return outcome;
+    }
+    let first_rc = outcome.code;
+    let mut retry_rcs: Vec<i32> = Vec::new();
+    for _ in 1..=MAX_DIAGRAM_RETRIES {
+        thread::sleep(Duration::from_secs(retry_delay_seconds()));
+        let _ = fs::remove_file(raw);
+        outcome = launch_once(model, prompt_path, raw);
+        retry_rcs.push(outcome.code);
+        if !needs_diagram_retry(outcome.code, raw) {
+            break;
+        }
+    }
+    let mut lines = vec![format!("FIRST_RC={first_rc}")];
+    for (index, rc) in retry_rcs.iter().enumerate() {
+        lines.push(format!("RETRY_{}_RC={rc}", index + 1));
+    }
+    lines.push(format!("RETRIES={}", retry_rcs.len()));
+    let _ = fs::write(retry_sidecar, lines.join("\n") + "\n");
+    outcome
+}
+
+/// Retry delay, overridable only in debug/test builds so parity tests stay fast.
+fn retry_delay_seconds() -> u64 {
+    #[cfg(debug_assertions)]
+    if let Ok(value) = env::var("LARCH_TEST_DIAGRAM_RETRY_DELAY_SECONDS")
+        && let Ok(seconds) = value.trim().parse::<u64>()
+    {
+        return seconds;
+    }
+    DIAGRAM_RETRY_DELAY_SECONDS
+}
+
+/// Whether the attempt warrants a retry (Python `_needs_diagram_retry`).
+fn needs_diagram_retry(code: i32, raw: &Path) -> bool {
+    code == EXIT_TIMEOUT
+        || fs::metadata(raw).is_ok_and(|metadata| metadata.is_file() && metadata.len() == 0)
+}
+
+/// Launch one code-flow subprocess (Python `_code_flow_launch_cmd` + `subprocess.run`).
+fn launch_once(model: &str, prompt_path: &Path, raw: &Path) -> LaunchOutcome {
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let tail: Vec<OsString> = vec![
+        OsString::from("--model"),
+        OsString::from(model),
+        OsString::from("--prompt-file"),
+        prompt_path.as_os_str().to_owned(),
+        OsString::from("--output-file"),
+        raw.as_os_str().to_owned(),
+        OsString::from("--timeout"),
+        OsString::from(CODE_FLOW_DIAGRAM_TIMEOUT_SECONDS.to_string()),
+        OsString::from("--allow-root"),
+        cwd.as_os_str().to_owned(),
+        OsString::from("--timing-task-kind"),
+        OsString::from("implement-code-flow"),
+    ];
+    if let Some(launcher) =
+        env::var_os("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS").filter(|value| !value.is_empty())
+    {
+        let output = Command::new(&launcher) // lint-subprocess-via-runner: ok the override names an operator-supplied launcher double, which has no typed first-party program
+            .args(&tail)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output();
+        return match output {
+            Ok(output) => LaunchOutcome {
+                code: output.status.code().unwrap_or(1),
+                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            },
+            Err(_error) => LaunchOutcome {
+                code: 1,
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+        };
+    }
+    let mut argv: Vec<OsString> = vec![
+        OsString::from("agent"),
+        OsString::from("launch-claude-subprocess"),
+    ];
+    argv.extend(tail);
+    launch_from_output(run_verified_larch(&argv))
+}
+
+/// Reduce a verified-larch result to a `LaunchOutcome`.
+fn launch_from_output(result: Result<ProcessOutput, String>) -> LaunchOutcome {
+    let Ok(output) = result else {
+        return LaunchOutcome {
+            code: 1,
+            stdout: String::new(),
+            stderr: String::new(),
+        };
+    };
+    let stdout = String::from_utf8_lossy(output.stdout()).into_owned();
+    let stderr = String::from_utf8_lossy(output.stderr()).into_owned();
+    let code = output.status().code().unwrap_or(1);
+    LaunchOutcome {
+        code,
+        stdout,
+        stderr,
+    }
+}
+
+/// Prefer the `.stderr` sidecar the launcher writes (Python `_diagram_stderr_from_sidecar`).
+fn diagram_stderr_from_sidecar(raw: &Path, fallback: &str) -> String {
+    let mut sidecar = raw.as_os_str().to_owned();
+    sidecar.push(".stderr");
+    let text = fs::read(PathBuf::from(sidecar))
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .unwrap_or_default();
+    if text.is_empty() {
+        fallback.to_owned()
+    } else {
+        text
+    }
+}
+
+/// Reduce launcher stderr to `(diagnostic, bounded-tail)` (Python `_diagram_failure_capture`).
+fn diagram_failure_capture(returncode: i32, stderr: &str) -> (String, String) {
+    let tail_source = format!("stderr:\n{stderr}\n");
+    let stripped = strip_diagram_sections(&tail_source);
+    let capture = redact(&stripped).text().to_owned();
+    let sanitized = sanitize_diagram_capture(&capture);
+    let collapsed = WHITESPACE_RUN.replace_all(&sanitized, " ");
+    let collapsed = collapsed.trim();
+    let mut collapsed = if collapsed.is_empty() {
+        "no-output".to_owned()
+    } else {
+        collapsed.to_owned()
+    };
+    if collapsed.chars().count() > DIAGRAM_FAILURE_TAIL_LIMIT {
+        let keep = DIAGRAM_FAILURE_TAIL_LIMIT - 3;
+        let tail: String = collapsed
+            .chars()
+            .skip(collapsed.chars().count() - keep)
+            .collect();
+        collapsed = format!("...{tail}");
+    }
+    (format!("returncode: {returncode}\n{sanitized}"), collapsed)
+}
+
+/// Compose the `LAUNCHER_FAILURE_CLASS/REASON` label (Python `_launcher_failure_label`).
+fn launcher_failure_label(stdout: &str) -> String {
+    let failure_class = read_kv_from_text(stdout, "LAUNCHER_FAILURE_CLASS").unwrap_or_default();
+    let failure_reason = read_kv_from_text(stdout, "LAUNCHER_FAILURE_REASON").unwrap_or_default();
+    let failure_class = failure_class.trim();
+    let failure_reason = failure_reason.trim();
+    if failure_class.is_empty()
+        || failure_reason.is_empty()
+        || !LAUNCHER_FAILURE_LABEL_RE.is_match(failure_class)
+        || !LAUNCHER_FAILURE_LABEL_RE.is_match(failure_reason)
+    {
+        return String::new();
+    }
+    format!("{failure_class}/{failure_reason}")
+}
+
+/// Whether a path is a regular file with a nonzero length.
+fn file_has_bytes(path: &Path) -> bool {
+    fs::metadata(path).is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
+}
+
+/// Resolve the committed changed-file list for the prompt (Python git merge-base + diff).
+fn resolve_changed_files(base_remote: &str, base_ref: &str) -> Vec<String> {
+    let Ok(cwd) = env::current_dir() else {
+        return Vec::new();
+    };
+    let Ok(repository) = GixRepository::discover(&cwd) else {
+        return Vec::new();
+    };
+    let head = repository.resolve_revision(&Revision::new(b"HEAD".to_vec()));
+    let base_target = format!("{base_remote}/{base_ref}");
+    let merge_ref = repository
+        .resolve_revision(&Revision::new(base_target.into_bytes()))
+        .ok()
+        .zip(head.as_ref().ok())
+        .and_then(|(base, head)| repository.merge_base(&base, head).ok())
+        .map(|oid| oid.to_hex())
+        .or_else(|| {
+            repository
+                .resolve_revision(&Revision::new(b"HEAD~1".to_vec()))
+                .ok()
+                .map(|oid| oid.to_hex())
+        })
+        .unwrap_or_else(|| "HEAD".to_owned());
+    diff_names(&repository, &merge_ref, "HEAD").unwrap_or_default()
+}
+
+/// Ported `git diff --name-only <base>..<head>` over resolved commit trees.
+fn diff_names(repository: &GixRepository, base: &str, head: &str) -> Result<Vec<String>, ()> {
+    let tree = |revision: &str| {
+        repository
+            .resolve_revision(&Revision::new(format!("{revision}^{{tree}}").into_bytes()))
+            .map_err(|_error| ())
+    };
+    let changes = repository
+        .tree_changes(&tree(base)?, &tree(head)?)
+        .map_err(|_error| ())?;
+    Ok(changes
+        .paths()
+        .map(|path| String::from_utf8_lossy(path.as_bytes()).into_owned())
+        .collect())
 }
 
 #[cfg(test)]

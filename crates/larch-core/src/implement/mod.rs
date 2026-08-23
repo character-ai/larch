@@ -88,7 +88,9 @@ pub use self_edit_log::{
     SELF_EDIT_LOG_NAME, SelfEditRecord, digest_paths, file_sha256, normalize_path, read_self_edits,
     record_self_edits, validate_session_tmpdir,
 };
-pub use ship_pr::{ShipPrBody, compose_ship_pr_body, redact_pr_body, ship_pr_title};
+pub use ship_pr::{
+    ShipPrBody, code_flow_reject_reason, compose_ship_pr_body, redact_pr_body, ship_pr_title,
+};
 pub use ship_result::{ShipOutcome, ShipResult, ShipResultError, validate_ship_result_env};
 pub use ship_state::{
     INITIAL_SHIP_STATE_KEYS, InitialShipState, SHIP_STATE_ALLOWED_KEYS, ShipState, ShipStateError,

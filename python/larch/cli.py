@@ -20,8 +20,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         True,
     ),
     ("render", "voter"): ("larch.rendering.rendering", "render_voter_main", False),
-    ("diagram", "code-flow"): ("larch.git.pr_body", "generate_code_flow_diagram_main", True),
-    ("render", "run-summary"): ("larch.git.pr_body", "render_run_summary_main", True),
 }
 
 # Compatibility view: keys whose registry row has machine_stdout=True.

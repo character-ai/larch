@@ -10,8 +10,8 @@
 //! `render-gate` is a pure KEY=value renderer that reproduces the Python
 //! `argparse` grammar (prog `cli.py`) byte-for-byte, including its usage and
 //! error strings. `render-final-summary` is orchestration only: it reuses the
-//! already-Rust report/difficulty/review-provenance owners, shells out to the
-//! still-Python `render run-summary` with an unchanged argument vector so the
+//! already-Rust report/difficulty/review-provenance owners, calls the in-process
+//! Rust `render run-summary` owner with an unchanged argument vector so the
 //! rendered body stays byte-identical, then applies the enrichment and prefix
 //! passes.
 
@@ -1368,7 +1368,7 @@ fn run_design_failure_report_gate(
     }
 }
 
-/// Port of `invoke_render`: shell out to the still-Python `render run-summary`
+/// Port of `invoke_render`: call the in-process Rust `render run-summary` owner
 /// with an unchanged argument vector so the rendered body stays byte-identical.
 #[allow(clippy::too_many_arguments)]
 fn invoke_render(
@@ -1406,8 +1406,6 @@ fn invoke_render(
         .to_string();
     let issue_number = if issue.is_empty() { "0" } else { issue };
     let mut args: Vec<OsString> = os_args(&[
-        "render",
-        "run-summary",
         "--skill",
         "design",
         "--outcome",
@@ -1452,10 +1450,7 @@ fn invoke_render(
     for value in cost_args {
         args.push(OsString::from(value));
     }
-    match run_python_verb(args, PYTHON_BRIDGE_TIMEOUT) {
-        Ok(output) => output.status().code().unwrap_or(1),
-        Err(_error) => 1,
-    }
+    crate::rendering_commands::run_summary_quiet(&args)
 }
 
 /// Port of `upsert_final_summary_from_disk`.

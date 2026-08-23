@@ -1031,28 +1031,16 @@ fn generate_code_flow_diagram(
     base_remote: &str,
     base_ref: &str,
 ) -> (String, String, String) {
-    let output = larch(&[
-        OsString::from("diagram"),
-        OsString::from("code-flow"),
-        OsString::from("--implement-tmpdir"),
-        tmpdir.as_os_str().to_owned(),
-        OsString::from("--base-remote"),
-        OsString::from(base_remote),
-        OsString::from("--base-ref"),
-        OsString::from(base_ref),
-    ]);
-    let (exit, stdout) = output.map_or_else(
-        |_| (1, String::new()),
-        |output| {
-            (
-                output.status().code().unwrap_or(1),
-                String::from_utf8_lossy(output.stdout()).into_owned(),
-            )
-        },
+    let result = crate::diagram_commands::generate_code_flow_diagram(
+        tmpdir,
+        "claude-sonnet-4-6",
+        base_remote,
+        base_ref,
     );
-    let status = first_line_value(&stdout, "STATUS").unwrap_or_default();
-    let diagram_file = first_line_value(&stdout, "DIAGRAM_FILE").unwrap_or_default();
-    let reason = first_line_value(&stdout, "SKIP_REASON").unwrap_or_default();
+    let exit = result.exit_code;
+    let status = result.status;
+    let diagram_file = result.diagram_file;
+    let reason = result.reason;
 
     let retry_sidecar = tmpdir.join("code-flow-diagram.retried");
     if retry_sidecar.is_file() {
@@ -2220,13 +2208,20 @@ mod tests {
                 .map(|a| a.to_string_lossy().into_owned())
                 .unwrap_or_default();
             let body = match (first.as_str(), second.as_str()) {
-                ("diagram", "code-flow") => "STATUS=ok\nDIAGRAM_FILE=/d/diagram.md\n",
                 ("diagrams", "upsert") => "UPSERT_STATUS=ok\nCOMMENT_URL=http://c\n",
                 ("push", "checkpoint-probe") => "REBASE_OUTCOME=rebased\n",
                 ("execution-issues", "flush") => "FLUSH_STATUS=ok\n",
                 _ => "",
             };
             Ok(out(0, body))
+        });
+        crate::diagram_commands::install_test_diagram(|_tmp, _model, _remote, _ref| {
+            crate::diagram_commands::CodeFlowDiagramResult {
+                exit_code: 0,
+                status: "ok".to_owned(),
+                diagram_file: "/d/diagram.md".to_owned(),
+                reason: String::new(),
+            }
         });
         let args = Step7aArgs {
             implement_tmpdir: tmp.path().to_string_lossy().into_owned(),
@@ -2259,10 +2254,16 @@ mod tests {
                 .unwrap_or_default();
             if first == "push" {
                 Ok(out(1, "REBASE_OUTCOME=conflict\n"))
-            } else if first == "diagram" {
-                Ok(out(0, "STATUS=skip\n"))
             } else {
                 Ok(out(0, ""))
+            }
+        });
+        crate::diagram_commands::install_test_diagram(|_tmp, _model, _remote, _ref| {
+            crate::diagram_commands::CodeFlowDiagramResult {
+                exit_code: 0,
+                status: "skipped".to_owned(),
+                diagram_file: String::new(),
+                reason: "sanitizer-rejected".to_owned(),
             }
         });
         let args = Step7aArgs {
@@ -2504,7 +2505,15 @@ mod tests {
     fn generate_diagram_failure_appends_warning() {
         let tmp = TempDir::new().unwrap();
         let _guard = arm_plugin_root(&tmp);
-        install_test_larch(|_c, _r, _a| Ok(out(1, "STATUS=failed\n")));
+        install_test_larch(|_c, _r, _a| Ok(out(0, "")));
+        crate::diagram_commands::install_test_diagram(|_tmp, _model, _remote, _ref| {
+            crate::diagram_commands::CodeFlowDiagramResult {
+                exit_code: 1,
+                status: "failed".to_owned(),
+                diagram_file: String::new(),
+                reason: "generation-failed rc=1 tail=boom".to_owned(),
+            }
+        });
         let (status, path, reason) = generate_code_flow_diagram(tmp.path(), "origin", "main");
         assert_eq!(status, "failed");
         assert!(path.is_empty());
@@ -2627,6 +2636,14 @@ mod tests {
         install_test_larch(|_c, _r, _a| {
             Ok(out(0, "DIAGRAM_STATUS=started\nREBASE_OUTCOME=skipped\n"))
         });
+        crate::diagram_commands::install_test_diagram(|_tmp, _model, _remote, _ref| {
+            crate::diagram_commands::CodeFlowDiagramResult {
+                exit_code: 0,
+                status: "skipped".to_owned(),
+                diagram_file: String::new(),
+                reason: "sanitizer-rejected".to_owned(),
+            }
+        });
         let tmpdir = canonical.to_string_lossy().into_owned();
         // bgjob-launch path.
         let _ = step7a(&os(&[
@@ -2670,7 +2687,15 @@ mod tests {
         let _guard = arm_plugin_root(&tmp);
         fs::write(tmp.path().join("code-flow-diagram.md"), "flow\n").unwrap();
         fs::write(tmp.path().join("code-flow-diagram.retried"), "FIRST_RC=1\n").unwrap();
-        install_test_larch(|_c, _r, _a| Ok(out(0, "STATUS=ok\nDIAGRAM_FILE=/d/f.md\n")));
+        install_test_larch(|_c, _r, _a| Ok(out(0, "")));
+        crate::diagram_commands::install_test_diagram(|_tmp, _model, _remote, _ref| {
+            crate::diagram_commands::CodeFlowDiagramResult {
+                exit_code: 0,
+                status: "ok".to_owned(),
+                diagram_file: "/d/f.md".to_owned(),
+                reason: String::new(),
+            }
+        });
         let (status, path, _reason) = generate_code_flow_diagram(tmp.path(), "origin", "main");
         assert_eq!(status, "ok");
         assert_eq!(path, "/d/f.md");
