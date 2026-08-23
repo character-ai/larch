@@ -12,12 +12,9 @@ need; the real command contracts live in Rust integration tests
 (``crates/larch-cli/tests/``).
 
 The entry-write ``run-log`` verbs delegate to the surviving
-`larch.report.run_log_batch` helpers. ``implement scope-disposition`` loads the
-frozen pre-cutover owner at
-``fixtures/rust-parity/implement_scope_disposition_reference.py``. The archive
-fixture and empty review composer below are test-only plumbing for Python
-callers; the production contracts and hostile-input coverage live in Rust
-integration tests.
+`larch.report.run_log_batch` helpers. The archive fixture and empty review
+composer below are test-only plumbing for Python callers; the production
+contracts and hostile-input coverage live in Rust integration tests.
 """
 
 from __future__ import annotations
@@ -2230,31 +2227,6 @@ def _plan_scope_paths(arguments: list[str]) -> int:
     return int(reference.plan_scope_paths(arguments))  # type: ignore[attr-defined]
 
 
-def _implement_scope_disposition(arguments: list[str]) -> int:
-    """Delegate to the frozen pre-cutover Python owner for hermetic unit tests."""
-    _bind_larch_package()
-    import importlib.util  # noqa: PLC0415 - load only when this verb is invoked
-
-    reference = _plugin_root() / "fixtures" / "rust-parity" / "implement_scope_disposition_reference.py"
-    module_name = "implement_scope_disposition_reference"
-    existing = sys.modules.get(module_name)
-    if existing is not None and hasattr(existing, "scope_disposition_main"):
-        return int(existing.scope_disposition_main(arguments))
-    spec = importlib.util.spec_from_file_location(module_name, reference)
-    if spec is None or spec.loader is None:
-        print(
-            f"implement scope-disposition: frozen reference missing: {reference}",
-            file=sys.stderr,
-        )
-        return 2
-    module = importlib.util.module_from_spec(spec)
-    # dataclasses look up the defining module in sys.modules during class
-    # creation; register before exec_module so frozen @dataclass types load.
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return int(module.scope_disposition_main(arguments))
-
-
 def _plan_block_strip_body(arguments: list[str]) -> int:
     reference = _issue_wire_reference()
     return int(reference.plan_block_strip_body(arguments))  # type: ignore[attr-defined]
@@ -2649,7 +2621,6 @@ def main(arguments: list[str]) -> int:
             ("issue", "title-eligibility"): _issue_title_eligibility,
             ("named-block", "write"): _named_block_write,
             ("plan", "scope-paths"): _plan_scope_paths,
-            ("implement", "scope-disposition"): _implement_scope_disposition,
             ("plan-block", "strip-body"): _plan_block_strip_body,
             ("plan-review", "drift-baseline"): _plan_review_drift_baseline,
             ("plan-review", "json-get-bool"): _plan_review_json_get_bool,

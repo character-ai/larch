@@ -25,7 +25,7 @@ from larch.core import rust_runtime
 from larch.core.repo_roots import RepoRootProbeOptions, repo_root_probe
 from larch.report import run_log_manifest
 from larch.state import session_env
-from larch.implement import scope_disposition
+import implement_scope_disposition_reference as scope_disposition
 from larch.errors import NeedsUserInput, ShipError, Stalled, TransientNetworkError
 from larch.outcomes import Outcome
 from larch.core.proc import CommandResult, Runner
