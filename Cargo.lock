@@ -3073,6 +3073,7 @@ dependencies = [
 name = "larch-adapters"
 version = "57.0.10"
 dependencies = [
+ "automod",
  "aws-config",
  "aws-runtime",
  "aws-sdk-s3",
@@ -3119,6 +3120,7 @@ name = "larch-cli"
 version = "57.0.10"
 dependencies = [
  "assert_cmd",
+ "automod",
  "cargo_metadata",
  "chrono",
  "clap",
@@ -3152,6 +3154,7 @@ dependencies = [
 name = "larch-core"
 version = "57.0.10"
 dependencies = [
+ "automod",
  "chrono",
  "csv",
  "flate2",

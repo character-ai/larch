@@ -1,5 +1,6 @@
 [package]
 name = "larch-cli"
+autotests = false
 version.workspace = true
 description = "The released larch command-line executable"
 publish = false
@@ -11,6 +12,10 @@ rust-version.workspace = true
 [[bin]]
 name = "larch"
 path = "src/main.rs"
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"
 
 [dependencies]
 cargo_metadata.workspace = true
@@ -42,6 +47,7 @@ nix.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
+automod.workspace = true
 larch-adapters = { workspace = true, features = ["test-support"] }
 larch-test-support.workspace = true
 nix.workspace = true

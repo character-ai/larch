@@ -1,5 +1,6 @@
 [package]
 name = "larch-lint"
+autotests = false
 version.workspace = true
 description = "Repository policy lint library for larch"
 publish = false
@@ -7,6 +8,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"
 
 [dependencies]
 automod.workspace = true

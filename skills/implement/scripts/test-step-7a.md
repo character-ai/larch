@@ -25,7 +25,7 @@ The smoke tests only the wrapper contract:
 | Architecture preservation and legacy diagram markers | `crates/larch-cli/src/diagram_commands.rs` tests and `crates/larch-cli/tests/design_rendering_parity.rs` |
 | Wrapper root selection, routing, argv, streams, and exit status | this smoke |
 
-Run `make test-step-7a` for the smoke and `cargo test --package larch-cli --test implement_review_parity` for the Rust parity lane. Run `make agent-lint` and ShellCheck for the retained Bash smoke.
+Run `make test-step-7a` for the smoke and `cargo test --package larch-cli --test integration implement_review_parity::` for the Rust parity lane. Run `make agent-lint` and ShellCheck for the retained Bash smoke.
 
 ## Invariants
 

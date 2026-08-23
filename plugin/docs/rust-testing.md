@@ -105,7 +105,7 @@ macOS and Linux. Capability skips must name the missing feature and host error
 in test output.
 
 The final ownership gate runs in the same cross-platform Rust lane. Focused
-coverage is `cargo test --locked --package larch-lint --test git_ownership`.
+coverage is `cargo test --locked --package larch-lint --test integration git_ownership::`.
 It injects direct process creation, arbitrary Git arguments, `gix` bypasses,
 duplicate owners, a new CLI exception, non-atomic command state, and inventory
 drift. The adapter and CLI suites supply the SHA-1/SHA-256, case, path, filter,
@@ -264,6 +264,12 @@ debate_state`.
   part of the behavior; never use the ambient working directory.
 - Integration tests live directly under a crate's `tests/` directory. They
   cover the public crate boundary and may use owned filesystem fixtures.
+- `larch-cli`, `larch-lint`, `larch-core`, and `larch-adapters` each expose one
+  Cargo integration target named `integration`. Their `tests/main.rs` roots use
+  `automod` to compile every other top-level Rust file as a module. Add new test
+  modules beside the existing files. Run a whole module without suffix-name
+  collisions with `cargo nextest run --locked --package <package> --test
+  integration -E 'test(/^<module>::/)'`.
 - Golden tests compare complete user-facing or wire-format bytes under
   `fixtures/`. Update goldens only for an intentional, reviewed contract
   change. Keep the update switch opt-in and disabled in CI.
@@ -356,23 +362,23 @@ followed by its table command; it has no other recipe lines.
 
 | Focused local Make target | Complete Cargo recipe | `rust-full` nextest surface |
 | --- | --- | --- |
-| `test-collect-agent-results` | `cargo test --locked --package larch-cli --test collector_commands` | `collector_commands` |
+| `test-collect-agent-results` | `cargo test --locked --package larch-cli --test integration collector_commands::` | `collector_commands` |
 | `test-analyze` | `cargo test --locked --package larch-cli --bin larch analyze_issues_commands` | `analyze_issues_commands` |
 | `test-fetch-combinable-issues-filter` | `cargo test --locked --package larch-cli combine_issues_commands --bin larch` | `combine_issues_commands` |
 | `test-blocker` | `cargo test --locked --package larch-core --lib prose_blockers` | `prose_blockers` |
-| `test-check-clean-tree` | `cargo test --locked --package larch-cli --test cli clean_tree_reports_clean_and_tracked_or_untracked_dirty_state` | `cli` |
-| `test-check-scope-reduction-marker` | `cargo test --locked --package larch-cli --test dirty_tree scope_` | `dirty_tree` |
-| `test-phantom-probe-with-warn` | `cargo test --locked --package larch-cli --test cli phantom_probe` | `cli` |
+| `test-check-clean-tree` | `cargo test --locked --package larch-cli --test integration cli::clean_tree_reports_clean_and_tracked_or_untracked_dirty_state` | `cli` |
+| `test-check-scope-reduction-marker` | `cargo test --locked --package larch-cli --test integration dirty_tree::scope_` | `dirty_tree` |
+| `test-phantom-probe-with-warn` | `cargo test --locked --package larch-cli --test integration cli::phantom_probe` | `cli` |
 | `test-run-step2-dispatch` | `cargo test --locked --package larch-cli --bin larch implement_step2_commands::commands_tests::run_dispatch` | `larch` binary unit tests |
-| `test-step2-dispatch` | `cargo test --locked --package larch-cli --test implement_step2_dispatch_parity` | `implement_step2_dispatch_parity` |
-| `test-git-commit-only` | `cargo test --locked -p larch-cli --test git_commands nul_pathspec_only_commit_preserves_unrelated_staged_content` | `git_commands` |
-| `test-dispatch-code-voters` | `cargo test --locked --package larch-cli --test voter_dispatch_commands` | `voter_dispatch_commands` |
-| `test-check-mid-run-dirty-tree` | `cargo test --locked --package larch-cli --test dirty_tree` | `dirty_tree` |
-| `test-check-phantom-dirty` | `cargo test --locked --package larch-cli --test cli check_phantom_dirty` | `cli` |
-| `test-no-grouped-reuse-guard` | `cargo test --locked --package larch-cli --test waterfall_commands grouped_reuse` | `waterfall_commands` |
-| `test-launch-claude-subprocess` | `cargo test --locked --package larch-cli --test claude_commands -- subprocess_` | `claude_commands` |
-| `test-launch-claude-review` | `cargo test --locked --package larch-cli --test claude_commands -- review_` | `claude_commands` |
-| `test-dispatch-with-waterfall` | `cargo test --locked --package larch-cli --test waterfall_commands` | `waterfall_commands` |
+| `test-step2-dispatch` | `cargo test --locked --package larch-cli --test integration implement_step2_dispatch_parity::` | `implement_step2_dispatch_parity` |
+| `test-git-commit-only` | `cargo test --locked -p larch-cli --test integration git_commands::nul_pathspec_only_commit_preserves_unrelated_staged_content` | `git_commands` |
+| `test-dispatch-code-voters` | `cargo test --locked --package larch-cli --test integration voter_dispatch_commands::` | `voter_dispatch_commands` |
+| `test-check-mid-run-dirty-tree` | `cargo test --locked --package larch-cli --test integration dirty_tree::` | `dirty_tree` |
+| `test-check-phantom-dirty` | `cargo test --locked --package larch-cli --test integration cli::check_phantom_dirty` | `cli` |
+| `test-no-grouped-reuse-guard` | `cargo test --locked --package larch-cli --test integration waterfall_commands::dispatcher_carries_no_grouped_reuse_machinery` | `waterfall_commands` |
+| `test-launch-claude-subprocess` | `cargo test --locked --package larch-cli --test integration -- claude_commands::subprocess_` | `claude_commands` |
+| `test-launch-claude-review` | `cargo test --locked --package larch-cli --test integration -- claude_commands::review_` | `claude_commands` |
+| `test-dispatch-with-waterfall` | `cargo test --locked --package larch-cli --test integration waterfall_commands::` | `waterfall_commands` |
 
 The focused targets remain available for local debugging. They are not
 `test-harnesses-N` prerequisites, so a fresh Bash-harness runner does not

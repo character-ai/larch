@@ -1,5 +1,6 @@
 [package]
 name = "larch-adapters"
+autotests = false
 version.workspace = true
 description = "Concrete external-system adapters for larch"
 publish = false
@@ -7,6 +8,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"
 
 [features]
 test-support = []
@@ -53,6 +58,7 @@ nix.workspace = true
 libproc.workspace = true
 
 [dev-dependencies]
+automod.workspace = true
 aws-smithy-runtime-api.workspace = true
 google-cloud-gax.workspace = true
 http.workspace = true
