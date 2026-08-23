@@ -1767,7 +1767,13 @@ fn parse_durable_child_result(
         .map_err(|error| format!("durable child result is malformed: {error}"))?;
     let values = environment.values();
     let expected_leaf = leaf.to_string();
-    if values.get("CHILD_ISSUE") != Some(&expected_leaf) {
+    // The leaf driver clears this file before launch. A reaped daemon can
+    // leave that empty or partial placeholder behind, so let resume reconcile
+    // the pointer-bound leaf against GitHub when no result identity was written.
+    let Some(recorded_leaf) = values.get("CHILD_ISSUE") else {
+        return Ok(None);
+    };
+    if recorded_leaf != &expected_leaf {
         return Err("durable child result carries another leaf identity".to_owned());
     }
     let recorded_attempt = values
@@ -2552,7 +2558,14 @@ fn classify_child_attempt(
     };
     let values = environment.values();
     let expected_leaf = leaf.to_string();
-    if values.get("CHILD_ISSUE") != Some(&expected_leaf) {
+    let Some(recorded_leaf) = values.get("CHILD_ISSUE") else {
+        let reason = "child result env is incomplete: missing CHILD_ISSUE";
+        return ChildAttempt::Failed(execution_error.map_or_else(
+            || reason.to_owned(),
+            |process_error| format!("{process_error}; {reason}"),
+        ));
+    };
+    if recorded_leaf != &expected_leaf {
         return ChildAttempt::Failed("child result carries another leaf identity".to_owned());
     }
     let expected_attempt = transient_attempt_count.to_string();

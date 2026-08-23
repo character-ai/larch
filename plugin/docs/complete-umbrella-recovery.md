@@ -25,6 +25,10 @@ After the laptop wakes, run `/complete-umbrella <N>` once. The resume owner:
   or failure route, including `transient-api` and `incomplete-envelope-ship`
   (an incomplete child envelope that still left durable ship progress with a
   positive `PR_NUMBER`);
+- treats a present durable child result with no `CHILD_ISSUE` as an interrupted
+  write, then reconciles the pointer leaf against GitHub. A closed `[DONE]`
+  leaf advances selection. An open in-flight leaf follows the existing reset
+  and reselection route;
 - ignores the immediately prior transient result after its next-attempt
   checkpoint has already been persisted, so a wake cannot consume one retry
   twice;
