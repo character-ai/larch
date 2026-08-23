@@ -10,16 +10,39 @@ ROOT = Path(__file__).resolve().parents[3]
 def test_release_skill_rebuilds_worktree_driver_across_version_change() -> None:
     skill = (ROOT / ".claude/skills/release/SKILL.md").read_text(encoding="utf-8")
     build = "cargo build --quiet --locked --release --package larch-cli"
+    flag_parse = skill.index("for _release_arg in $ARGUMENTS")
+    branch_guard = skill.index("git branch --show-current")
+    tree_guard = skill.index("git status --porcelain")
     prepare = skill.index('"$PWD/scripts/larch.sh" release prepare')
     set_version = skill.index('"$PWD/scripts/larch.sh" release set-version')
     ensure_policy = skill.index('"$PWD/scripts/larch.sh" release ensure-policy')
 
     first_build = skill.index(build)
+    lifecycle_start = skill.index('"$PWD/scripts/larch.sh" run-log lifecycle-start')
+    bootstrap_strict_mode = skill.rfind("set -euo pipefail", 0, first_build)
+    dry_run_rehydrate = skill.index("dry_run=false", lifecycle_start)
     candidate_build = skill.index(build, first_build + len(build))
     sync_complete = skill.index('sync_out="DRY_RUN_SYNC_SKIPPED=true"')
     checkout = skill.index('git checkout -b "release/v${NEW_VERSION}" "$RELEASE_SHA"')
-    assert first_build < prepare < ensure_policy < checkout < set_version < candidate_build
-    assert sync_complete < first_build
+    assert (
+        flag_parse
+        < branch_guard
+        < tree_guard
+        < bootstrap_strict_mode
+        < first_build
+        < lifecycle_start
+        < dry_run_rehydrate
+        < sync_complete
+        < prepare
+        < ensure_policy
+        < checkout
+        < set_version
+        < candidate_build
+    )
+    assert (
+        'CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" '
+        '"$PWD/scripts/larch.sh" run-log lifecycle-start' in skill
+    )
 
     recovery = skill.index("If Step 6 fails after Step 5 merged the release PR")
     recovery_build = skill.index(build, recovery)
@@ -41,6 +64,26 @@ def test_release_skill_rebuilds_worktree_driver_across_version_change() -> None:
         "finish",
     ):
         assert f"{worktree_prefix}{verb}" in skill
+
+
+def test_release_skill_uses_rust_egress_commands_and_fails_closed() -> None:
+    skill = (ROOT / ".claude/skills/release/SKILL.md").read_text(encoding="utf-8")
+    driver_prefix = (
+        'CLAUDE_PLUGIN_ROOT="$PWD" LARCH_BINARY="$WORKTREE_LARCH" '
+        '"$PWD/scripts/larch.sh" '
+    )
+
+    assert "python/cli.py" not in skill
+    assert skill.count(f"{driver_prefix}redact tmpdir-paths") == 2
+    assert skill.count(f"{driver_prefix}redact secrets") == 2
+    assert skill.count(f"{driver_prefix}pr create") == 1
+    assert skill.count("set -o pipefail") == 2
+    assert skill.count('if [ ! -s "$REDACTED_NOTES_FILE" ]; then') == 4
+
+    candidate = skill.index("# lint-consecutive-bash: ok PR creation")
+    nonempty = skill.index('if [ ! -s "$REDACTED_NOTES_FILE" ]; then', candidate)
+    create = skill.index(f"{driver_prefix}pr create", candidate)
+    assert candidate < nonempty < create
 
 
 def test_release_skill_step5_candidate_fence_has_timeout_override() -> None:
