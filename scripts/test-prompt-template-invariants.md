@@ -7,7 +7,7 @@ Cross-cutting regression harness that asserts structural invariants in rendered 
 | Script | Required markers |
 |---|---|
 | `crates/larch-cli/src/review_dispatch_panel_prompt.md` | `### In-Scope Findings` literal; "Begin your response with the literal line" directive; acceptable-output example block; focus-directive framing; absence of removed checklist items 2 and 3 |
-| `python/cli.py render voter` | `Verify silently`; `Output ONLY vote lines`; no `*plan-voter-prompt-retry.txt` artifact; no Codex parse-retry stub branch |
+| `scripts/larch.sh render voter` | `Verify silently`; `Output ONLY vote lines`; no `*plan-voter-prompt-retry.txt` artifact; no Codex parse-retry stub branch |
 | `scripts/larch.sh review-and-fix apply-findings` | `Output ONLY result lines`; acceptable-output example; submodule-prohibition section |
 | `crates/larch-core/src/implement/checks_lint_fix.rs` (`compose_prompt` / `codex_lint_fix_prompt_appendix`) | Codex-combined prompt includes `FIXED:` / `UNFIXABLE:` result-shape spec, acceptable final-line shapes example, submodule prohibition, machine `site`, orchestrator-verification, edit-only, and no-`exec_command` markers; the shared prompt alone must not include Codex-only exec prohibitions. Pinned by the module's in-crate tests, not this Bash harness. |
 | `scripts/larch.sh render plan-review` | TSV header literal; filled-in TSV example; anti-preamble directive; no-issues sentinel instruction |

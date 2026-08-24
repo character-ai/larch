@@ -211,7 +211,7 @@ PY
 for voter_tool in codex cursor claude; do
     expected="$tmpdir/expected-plan-voter-$voter_tool.prompt"
     env CLAUDE_PLUGIN_ROOT="$tmpdir/plugin" LARCH_VOTER_CALIBRATION_FEEDBACK=0 \
-        python3 "$tmpdir/plugin/python/cli.py" render voter \
+        "$tmpdir/plugin/scripts/larch.sh" render voter \
         --ballot-file "$design/ballot.md" \
         --panel-role 'senior engineer on a voting panel deciding which proposed plan modifications should be accepted' \
         --id-grammar finding-oos --verification-context plan \

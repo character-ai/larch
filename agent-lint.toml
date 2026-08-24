@@ -468,10 +468,21 @@ exclude = [
   # dropped markdown views from review-findings-full.jsonl; no automated caller.
   "python/cli.py render findings-view",
   "python/rendering.py",
+<<<<<<< HEAD
   # scripts/test-python/cli.py render voter is the offline harness for
   # python/cli.py render voter (Makefile test-render-voter-prompt
   # target +  sibling contract).
   "scripts/test-python/cli.py render voter",
+=======
+  # python/test_agents.py is the regression harness for
+  # python/cli.py agent model-args's line-token argv contract. Referenced only
+  # from Makefile (test-agent-model-args target) and
+  # python/test_agents.py (sibling contract).
+  "python/test_agents.py",
+  # python/test_agents.py retains shared launcher helper coverage while the
+  # public agent run-external-agent command is covered in Rust.
+  "python/test_agents.py",
+>>>>>>> 16e26dee6 (Fixes #8896: port render voter to Rust)
   # python/cli.py push rebase (#856). It is referenced only from Makefile
   # (sibling contract), matching the same Makefile-only pattern as the other
   # test-* harnesses above.

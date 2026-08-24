@@ -257,7 +257,7 @@ After collection settles, surgically rewrite the `RESEARCH_*` slice of `$RESEARC
 | `TIMED_OUT` / `SENTINEL_TIMEOUT` | `fallback_runtime_timeout` | empty |
 | `FAILED` / `EMPTY_OUTPUT` / `NOT_SUBSTANTIVE` | `fallback_runtime_failed` | sanitized `FAILURE_REASON` |
 
-Preserve the `VALIDATION_*` slice unchanged. The token vocabulary is documented in `${CLAUDE_PLUGIN_ROOT}/python/larch/rendering/rendering.py`.
+Preserve the `VALIDATION_*` slice unchanged. The token vocabulary is documented in `crates/larch-cli/src/rendering_commands.rs`.
 
 ## 1.5 — Synthesis
 

@@ -51,7 +51,7 @@ different remedy when the underlying OOS observation is legitimate.
 
 Keep this rubric in sync with:
 
-- `python/larch/rendering/rendering.py`
+- `scripts/larch.sh render voter`
 - `skills/shared/reviewer-templates.md`
 - `python/larch/rendering/findings_ledger.py`
 - `skills/implement/SKILL.md`

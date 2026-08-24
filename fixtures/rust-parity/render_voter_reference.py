@@ -1,10 +1,16 @@
-"""Python-owned voter rendering."""
+"""Frozen Python reference for `render voter`.
+
+Reproduces the observable stdout/stderr/exit and payload-bytes sidecar
+contract of the retired `python/cli.py render voter` owner so the Rust
+command can be black-box parity tested after Python removal.
+"""
 # pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportUnusedImport=false
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import io
 import os
 import tempfile
 from pathlib import Path
@@ -15,7 +21,7 @@ from larch import io as larch_io
 from larch.core import logging_util
 from larch.calibration import voting
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
 
 _SCOPE_ANCHOR_MAX_BYTES = 65536
 
@@ -188,7 +194,10 @@ def _parse_voter(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--calibration-stats-file", default="")
     parser.add_argument("--voter-tool", choices=("claude", "codex", "cursor"), default="")
     parser.add_argument("--payload-bytes-output", default="")
-    args = parser.parse_args(argv)
+    # The retired owner routed argparse's usage line to a quiet log; a
+    # SystemExit here stringifies to the argparse exit code ("2").
+    with contextlib.redirect_stderr(io.StringIO()):
+        args = parser.parse_args(argv)
     for attr, flag in (("ballot_file", "--ballot-file"), ("panel_role", "--panel-role"), ("id_grammar", "--id-grammar"), ("verification_context", "--verification-context")):
         if not getattr(args, attr):
             raise UsageError(f"{flag} is required")
@@ -306,3 +315,9 @@ def render_voter_main(argv: list[str]) -> int:
     except (SystemExit, UsageError) as exc:
         _err(f"render-voter-prompt.sh: {exc}")
         return 2
+
+
+if __name__ == "__main__":
+    import sys
+
+    raise SystemExit(render_voter_main(sys.argv[1:]))

@@ -8,7 +8,7 @@ cd "$REPO_ROOT"
 
 PATTERN='Work at (your )?maximum reasoning effort level[.]'
 FILES=(
-  python/larch/rendering/rendering.py
+  crates/larch-cli/src/rendering_commands.rs
   skills/design/SKILL.md
   skills/design/references/plan-review.md
   skills/design/references/plan-review-runtime.md
@@ -16,6 +16,13 @@ FILES=(
   skills/review/SKILL.md
   skills/shared/voting-protocol.md
 )
+
+for path in "${FILES[@]}"; do
+  if [[ ! -e "$path" ]]; then
+    echo "FAIL: missing prompt source path: $path" >&2
+    exit 1
+  fi
+done
 
 if LC_ALL=C grep -nE "$PATTERN" "${FILES[@]}"; then
   echo "test-effort-prose.sh: hardcoded max-effort prose found in prompt sources" >&2

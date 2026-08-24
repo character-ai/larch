@@ -158,7 +158,7 @@ codex_plan_voter_prompt="$plan_voter_tmp/codex-validity-plan-voter-prompt-codex.
 cursor_plan_voter_prompt="$plan_voter_tmp/codex-validity-plan-voter-prompt-cursor.txt"
 for voter_tool in codex cursor; do
     prompt_path="$plan_voter_tmp/codex-validity-plan-voter-prompt-$voter_tool.txt"
-    PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_QUIET_DISABLE=1 python3 "$REPO_ROOT/python/cli.py" render voter \
+    PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_QUIET_DISABLE=1 $REPO_ROOT/scripts/larch.sh render voter \
         --ballot-file "$ballot_file" \
         --panel-role 'senior engineer on a voting panel deciding which proposed plan modifications should be accepted' \
         --id-grammar finding-oos \

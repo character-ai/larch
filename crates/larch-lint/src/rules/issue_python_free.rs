@@ -244,7 +244,7 @@ const HANDOFF_COMMANDS: [HandoffCommand; 7] = [
 ];
 
 const VOTER_LIBRARY: &str =
-    "untrusted-content library retained for the Python render voter consumer";
+    "untrusted-content library retained for rust-parity fixtures after render voter cutover";
 const IMPLEMENT_LIBRARY: &str =
     "pure pull-request footer library retained for the implementation workflow umbrella";
 /// The package initializer is structural. Every other issue module at any
