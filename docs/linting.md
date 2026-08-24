@@ -590,7 +590,7 @@ The PR creation surface now lives in `scripts/larch.sh pr create`. Before cuttin
 | `make test-run-step2-dispatch` | Run the focused Rust unit tests for `scripts/larch.sh implement run-dispatch`, including required arguments, telemetry, and result-env publication. A standalone alias; `rust-full` owns the complete Rust suite in CI. |
 | `make test-step2-dispatch` | Run the Rust black-box parity suite for `scripts/larch.sh implement step2-dispatch`, including argument validation, Claude fallback, post-dispatch routing, and active-leg termination. A standalone alias; `rust-full` owns the complete Rust suite in CI. |
 | `make test-commit-implementation` | Run the Rust black-box parity harness for `implement commit`: usage/HINT refusals, `--help`, and `COMMITTED`/`SHA`/`ERROR` envelopes. Exercises `crates/larch-cli/tests/implement_commit_route_parity.rs`. A `make lint` prerequisite via `test-harnesses-14`. |
-| `python/test_issue_wire.py` | Covers the retained Python issue-wire helpers used by the #7686 voter renderer. The Rust `larch_core::plan_scope` owner covers `## Files to modify/create` heading extraction, path de-duplication, legacy first-token fallback, optional-heading filtering, and empty-scope fallback; `plan scope-paths` command coverage lives in `crates/larch-cli/tests/parity.rs`. A `make py-test` prerequisite. |
+| `python/test_issue_wire.py` | Covers the retained Python issue-wire helpers used by rust-parity fixtures after the #8896 voter cutover. The Rust `larch_core::plan_scope` owner covers `## Files to modify/create` heading extraction, path de-duplication, legacy first-token fallback, optional-heading filtering, and empty-scope fallback; `plan scope-paths` command coverage lives in `crates/larch-cli/tests/parity.rs`. A `make py-test` prerequisite. |
 | `make test-git-commit-only` | Run Rust CLI coverage for `scripts/larch.sh git commit --only --pathspec-from-file`, proving NUL-delimited recovery pathspec commits include paths with spaces while leaving unrelated pre-staged content staged and uncommitted. Focused local target; required CI ownership is [rust-full](rust-testing.md#bash-shard-cargo-target-ownership). |
 | `make test-run-external-agent-args` | Run Rust CLI argument-validation coverage for `scripts/larch.sh agent run-external-agent`. Pins that unsafe output paths create no sidecars and `--timeout 0` exits 1 with `ERROR: --timeout must be a positive integer, got '0'`. A standalone Rust integration-test alias; the Rust CI suite covers it. |
 | `make test-reviewer-prune` | Run the offline harness for `scripts/larch.sh review reviewer-prune`, covering ledger recording, exact attribution, per-round replacement, fail-open filtering, the off switch, and all-pruned markers. A `make lint` prerequisite via `test-harnesses-8`. |
@@ -629,7 +629,9 @@ The PR creation surface now lives in `scripts/larch.sh pr create`. Before cuttin
 - `scripts/larch.sh plan-review preview` preserves small-plan and threshold-normalization behavior; `crates/larch-cli/tests/plan_review_loop_commands.rs` freezes its visible bytes.
 - Step 2b drafter postplan fallback is once-only via `$DESIGN_TMPDIR/.step2b-postplan-inline-retry-done`; repeated postplan failures route to the existing validator-failure / abort branches rather than looping back into inline drafting again.
 
-Remaining voter and scope-anchor renderer coverage lives in `python/tests/rendering/test_rendering.py`. Rust rendering, Mermaid, and diagram publication coverage lives in the focused `larch-cli` tests and frozen parity cases.
+`render voter` and scope-anchor renderer coverage lives in the focused `larch-cli`
+tests and frozen parity cases (`render_voter_parity.rs`, `scope_anchor_migrated_parity.rs`).
+Rust rendering, Mermaid, and diagram publication coverage lives in the same suite.
 
 ## /design auto-reporting harnesses
 

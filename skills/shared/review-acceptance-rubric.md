@@ -67,7 +67,7 @@ the spec is the originating issue scope (the staged scope anchor / feature descr
 
 The following surfaces embed this rubric's necessity-gate language. When the rubric changes, update all of them and run `make test-prompt-template-invariants`:
 
-- `python/cli.py render voter` — embeds rubric body verbatim for external voters
+- `scripts/larch.sh render voter` — embeds rubric body verbatim for external voters
 - `skills/shared/reviewer-templates.md` — Necessity gate subsection for reviewer self-filter
 - `agents/code-reviewer.md` — generated from reviewer-templates.md (re-run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate code-reviewer-agent`)
 - `agents/reviewer-plan-fidelity.md` — generated (re-run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate reviewer-plan-fidelity-agent`)
@@ -81,6 +81,6 @@ The following surfaces embed this rubric's necessity-gate language. When the rub
 - `agents/pre-rendered/reviewer-*-body.txt` — generated from every specialist above (re-run `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh generate pre-rendered-reviewer-prompts`)
 - `scripts/larch.sh render plan-review` — plan-review external prompts
 - `scripts/larch.sh render specialist` — code-review external prompts (competition notice)
-- `skills/design/references/plan-review-runtime.md` — structural plan-review contracts and artifact interpretation; runtime prompt bodies come from `scripts/larch.sh render plan-review` and `python/cli.py render voter`
+- `skills/design/references/plan-review-runtime.md` — structural plan-review contracts and artifact interpretation; runtime prompt bodies come from `scripts/larch.sh render plan-review` and `scripts/larch.sh render voter`
 - `skills/shared/voting-protocol.md` — voter prompt template YES definition
 - `skills/shared/oos-acceptance-rubric.md` — OOS legitimacy standard (separate concern: accepts genuine, concrete, non-duplicate OOS ballot items for filing)

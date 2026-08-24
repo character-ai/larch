@@ -885,6 +885,9 @@ enum RenderCommand {
     /// Render one code-review specialist prompt.
     #[command(disable_help_flag = true)]
     Specialist(RawCompatibilityArguments),
+    /// Render one panel-voter prompt.
+    #[command(disable_help_flag = true)]
+    Voter(RawCompatibilityArguments),
     /// Render the plan-review scope anchor as untrusted evidence.
     #[command(name = "scope-anchor", disable_help_flag = true)]
     ScopeAnchor(RawCompatibilityArguments),
@@ -4921,6 +4924,7 @@ fn dispatch_render(command: RenderCommand) -> ExitCode {
         RenderCommand::Specialist(arguments) => {
             rendering_commands::render_specialist(&arguments.arguments)
         }
+        RenderCommand::Voter(arguments) => rendering_commands::render_voter(&arguments.arguments),
         RenderCommand::ScopeAnchor(arguments) => {
             rendering_commands::render_scope_anchor(&arguments.arguments)
         }

@@ -231,6 +231,7 @@ impl CleanInstallCase {
             | "clean-install-scope-anchor-retally-handoff"
             | "clean-install-scope-anchor-validate"
             | "clean-install-render-plan-review"
+            | "clean-install-render-voter"
             | "clean-install-mermaid-sanitize"
             // Neither debate verb declares a `--help` action: the Rust owner
             // treats the clean-install `--help` token as an unknown flag and
@@ -2169,6 +2170,7 @@ const CLEAN_INSTALL_CASES: &[CleanInstallCase] = &[
     ),
     CleanInstallCase::new("clean-install-render-specialist", "render", "specialist"),
     CleanInstallCase::new("clean-install-render-plan-review", "render", "plan-review"),
+    CleanInstallCase::new("clean-install-render-voter", "render", "voter"),
     CleanInstallCase::new("clean-install-mermaid-sanitize", "mermaid", "sanitize"),
     CleanInstallCase::new("clean-install-diagrams-upsert", "diagrams", "upsert"),
     CleanInstallCase::new(

@@ -749,9 +749,10 @@ pub use vendor_usage::{
     parse_codex_usage,
 };
 pub use voter_calibration::{
-    EraBoundaryDisplay, VoterCalibrationCorpus, render_era_boundary_unavailable,
-    render_voter_calibration_era_report, render_voter_calibration_report,
-    voter_agreement_row_from_panel,
+    EraBoundaryDisplay, VoterCalibrationCorpus, VoterCalibrationStat,
+    normalize_voter_label_to_base_tool, read_voter_calibration_stats,
+    render_era_boundary_unavailable, render_voter_calibration_era_report,
+    render_voter_calibration_report, voter_agreement_row_from_panel,
 };
 
 /// Immutable metadata about the running larch build.

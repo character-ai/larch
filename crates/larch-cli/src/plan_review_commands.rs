@@ -28,7 +28,7 @@ use crate::{
         parse_presence, write_confined_required as write_required,
         write_json_lines_confined as write_manifest,
     },
-    python_verb::run_python_verb,
+    rendering_commands::voter_result,
     runtime_entrypoint::{run_verified_larch, run_verified_larch_with_timeout},
     voter_dispatch_commands::{
         VOTER_POLICIES, bool_text, completed, fresh_plan_calibration_snapshot, is_nonempty,
@@ -1203,43 +1203,42 @@ fn render_voter_prompt(
     let payload = payload_sidecar(prompt);
     let _removed = fs::remove_file(&payload);
     let mut arguments = vec![
-        "render".into(),
-        "voter".into(),
-        "--ballot-file".into(),
+        OsString::from("--ballot-file"),
         options.ballot_file.clone().into(),
-        "--panel-role".into(),
-        PLAN_VOTER_PANEL_ROLE.into(),
-        "--id-grammar".into(),
-        "finding-oos".into(),
-        "--verification-context".into(),
-        "plan".into(),
-        "--findings-ledger-file".into(),
+        OsString::from("--panel-role"),
+        OsString::from(PLAN_VOTER_PANEL_ROLE),
+        OsString::from("--id-grammar"),
+        OsString::from("finding-oos"),
+        OsString::from("--verification-context"),
+        OsString::from("plan"),
+        OsString::from("--findings-ledger-file"),
         options
             .design
             .join("findings-ledger.tsv")
             .as_os_str()
             .to_owned(),
-        "--payload-bytes-output".into(),
+        OsString::from("--payload-bytes-output"),
         payload.as_os_str().to_owned(),
     ];
     if !options.scope_anchor.is_empty() {
         arguments.extend([
-            "--scope-anchor-file".into(),
+            OsString::from("--scope-anchor-file"),
             options.scope_anchor.clone().into(),
         ]);
     }
-    arguments.extend(["--voter-tool".into(), tool.into()]);
+    arguments.extend([OsString::from("--voter-tool"), tool.into()]);
     if let Some(calibration) = calibration {
-        arguments.extend(["--calibration-stats-file".into(), calibration.into()]);
+        arguments.extend([
+            OsString::from("--calibration-stats-file"),
+            calibration.into(),
+        ]);
     }
-    let output = run_python_verb(arguments, PYTHON_TIMEOUT)
-        .map_err(|_| format!("render voter failed for {tool}"))?;
-    let text = String::from_utf8_lossy(output.stdout()).into_owned();
-    if !output.status().success() || output.stdout_truncated() || !text.contains(BALLOT_POINTER) {
+    let output = voter_result(&arguments).map_err(|_| format!("render voter failed for {tool}"))?;
+    if !output.prompt.contains(BALLOT_POINTER) {
         return Err(format!("render voter failed for {tool}"));
     }
-    write_required(prompt, &text)?;
-    Ok(read_payload_bytes(&payload))
+    write_required(prompt, &output.prompt)?;
+    Ok(i64::try_from(output.payload_bytes).unwrap_or_else(|_| read_payload_bytes(&payload)))
 }
 
 fn write_voter_manifest(

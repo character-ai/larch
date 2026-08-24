@@ -39,7 +39,7 @@ EOF
 mv "$LANE_STATUS_TMP" "$LANE_STATUS_FILE"
 ```
 
-Token vocabulary is documented in `${CLAUDE_PLUGIN_ROOT}/python/larch/rendering/rendering.py`.
+Token vocabulary is documented in `crates/larch-cli/src/rendering_commands.rs`.
 
 ## External Reviewer Setup (if `codex_binary_available` or `cursor_binary_available`)
 
@@ -301,7 +301,7 @@ EOF
 mv "$LANE_STATUS_TMP" "$LANE_STATUS_FILE"
 ```
 
-Token vocabulary is documented in `${CLAUDE_PLUGIN_ROOT}/python/larch/rendering/rendering.py`.
+Token vocabulary is documented in `crates/larch-cli/src/rendering_commands.rs`.
 
 ## Codex and Cursor Negotiation (in parallel)
 

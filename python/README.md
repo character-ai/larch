@@ -12,7 +12,7 @@ Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. Th
 - `larch/core/logging_util.py` — breadcrumbs + JSONL journal for surviving Python commands
 - `larch/core/redact.py`, `larch/core/retry.py`: in-process secret redaction and transient retry helpers. The four public `redact` commands are Rust-owned through `scripts/larch.sh`; this module is not their fallback.
 - The Rust `larch lint gitleaks` command owns checksum-pinned scanner bootstrap for local pre-commit. CI uses its separately verified workflow installer so the dedicated scanner gate does not build `larch-cli`.
-- `larch/rendering/rendering.py` - the remaining voter and scope-anchor prompt renderers exposed through `python/cli.py render`. Rust owns `render plan-review`, `mermaid sanitize`, and `diagrams upsert` through `scripts/larch.sh`.
+- Rust owns `render voter`, `render plan-review`, `render specialist`, Mermaid, and diagram verbs through `scripts/larch.sh`. `larch/rendering/` retains findings-ledger and chart helpers for residual Python/report consumers.
 - `voting.py` — voting, tally, parse-rate, ballot parsing, scoreboard, and focus-area enum CLI surfaces.
 - `larch/git/gh.py` and `larch/git/pr_body.py` — retained typed GitHub and PR-body compatibility surfaces. The vendor-agent package and external-default helpers retired in #8120; all vendor orchestration now enters the Rust runtime through `scripts/larch.sh`. `larch.git.git`, `larch.git.rebase`, and `larch.core.coder_delta_guards` retired in #8880 (Rust owns ship rebase; a frozen `git_frozen.py` remains for finalize parity only).
 - `report_tokens_models.py`, `report_tokens_scan.py`, `report_tokens_cost.py` — bounded helpers for remaining Python token analytics and the `render run-summary` compatibility payload. Token measurements are Rust-owned after #8508; Rust owns `token report`, `token cost`, and `token render-cost-line` after #8507 and the token-budget and PR line-count commands after #8797. These helpers do not own those commands, `/report-tokens`, or `final-report`, whose Python entrypoints retired in #8088 and #8090.
@@ -37,8 +37,8 @@ Mostly-flat `python/` tree for larch's remaining stdlib-only runtime modules. Th
   documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `refresh_logs_checkpoint` skip parity.
   Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own
   `append-tool-failure.sh` calls on the live path.
-- `larch/issue/issue_wire.py` retains the untrusted-content helpers used by the
-  #7686 Python `render voter` consumer. All OOS commands and helpers are
+- `larch/issue/issue_wire.py` retains the untrusted-content helpers used by
+  rust-parity fixtures after the #8896 `render voter` cutover. All OOS commands and helpers are
   Rust-owned; their retired Python references live only under `fixtures/`.
 - `larch/report/run_log_archive.py`, `run_lifecycle.py`, `storage_config.py`,
   and `run_log_publish.py` retain bounded Python compatibility readers, types,

@@ -19,7 +19,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str, bool]] = {
         "bootstrap_main",
         True,
     ),
-    ("render", "voter"): ("larch.rendering.rendering", "render_voter_main", False),
 }
 
 # Compatibility view: keys whose registry row has machine_stdout=True.

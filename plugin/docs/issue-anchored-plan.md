@@ -30,7 +30,7 @@ subsets, final contiguous-block parsing, and canonical ordering. Its source is
 `crates/larch-core/src/issue/body.rs` owns the issue-body `larch:plan`
 marker grammar, and `crates/larch-cli/src/issue_wire_commands.rs` owns every
 command over it. `python/larch/issue/issue_wire.py` keeps the untrusted-content
-helpers still consumed by the #7686 Python `render voter` owner.
+helpers retained for rust-parity fixtures after the #8896 `render voter` cutover.
 
 ### Executable-plan contract
 

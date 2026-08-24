@@ -11,6 +11,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
+use std::path::Path;
 
 use crate::review::code_review_classification_required_fields;
 
@@ -485,6 +486,146 @@ pub fn compute_voter_agreement(
             && rate.is_some_and(|value| value < outlier_threshold);
     }
     records
+}
+
+/// Snapshot TSV header written by `voter-calibration snapshot` and read by
+/// `render voter` feedback injection.
+pub const CALIBRATION_SNAPSHOT_HEADER: &[&str] = &[
+    "tool",
+    "yes_votes",
+    "valid_yes_severity_count",
+    "major",
+    "minor",
+    "nit",
+    "missing_severity",
+    "high_rate",
+    "calibration_score",
+    "uncalibrated",
+];
+
+/// One row from a voter-calibration snapshot TSV, keyed by base tool.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VoterCalibrationStat {
+    pub tool: String,
+    pub yes_votes: usize,
+    pub valid_yes_severity_count: usize,
+    pub major: usize,
+    pub minor: usize,
+    pub nit: usize,
+    pub missing_severity: usize,
+    pub high_rate: Option<f64>,
+    pub calibration_score: Option<f64>,
+    pub uncalibrated: bool,
+}
+
+/// Map a voter label from a snapshot row onto `claude` / `codex` / `cursor`.
+#[must_use]
+pub fn normalize_voter_label_to_base_tool(label: &str) -> Option<&'static str> {
+    let normalized = label.trim().to_ascii_lowercase();
+    if normalized == "claude" {
+        return Some("claude");
+    }
+    if normalized.starts_with("codex") {
+        return Some("codex");
+    }
+    if normalized.starts_with("cursor") || normalized == "v1" {
+        return Some("cursor");
+    }
+    if normalized == "v2" || normalized == "v3" {
+        return Some("codex");
+    }
+    None
+}
+
+/// Read a voter-calibration snapshot TSV into per-tool stats.
+///
+/// Fail-closed: missing, empty, symlink, wrong-header, or malformed rows yield
+/// an empty map (or omit that row). Matches Python
+/// `larch.calibration.voter_calibration.read_voter_calibration_stats`.
+#[must_use]
+pub fn read_voter_calibration_stats(path: &Path) -> BTreeMap<String, VoterCalibrationStat> {
+    use std::fs;
+
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return BTreeMap::new();
+    };
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() == 0 {
+        return BTreeMap::new();
+    }
+    let Ok(text) = fs::read_to_string(path) else {
+        return BTreeMap::new();
+    };
+    let mut reader = csv::ReaderBuilder::new()
+        .delimiter(b'\t')
+        .flexible(true)
+        .from_reader(text.as_bytes());
+    let Ok(headers) = reader.headers().cloned() else {
+        return BTreeMap::new();
+    };
+    if headers.iter().collect::<Vec<_>>() != CALIBRATION_SNAPSHOT_HEADER {
+        return BTreeMap::new();
+    }
+    let mut stats = BTreeMap::new();
+    for row in reader.records().flatten() {
+        let cell = |name: &str| -> String {
+            headers
+                .iter()
+                .position(|header| header == name)
+                .and_then(|index| row.get(index))
+                .unwrap_or("")
+                .trim()
+                .to_owned()
+        };
+        let Some(tool) = normalize_voter_label_to_base_tool(&cell("tool")) else {
+            continue;
+        };
+        let parse_usize = |name: &str| -> Option<usize> { cell(name).parse().ok() };
+        let Some(yes_votes) = parse_usize("yes_votes") else {
+            continue;
+        };
+        let Some(valid_yes_severity_count) = parse_usize("valid_yes_severity_count") else {
+            continue;
+        };
+        let Some(major) = parse_usize("major") else {
+            continue;
+        };
+        let Some(minor) = parse_usize("minor") else {
+            continue;
+        };
+        let Some(nit) = parse_usize("nit") else {
+            continue;
+        };
+        let Some(missing_severity) = parse_usize("missing_severity") else {
+            continue;
+        };
+        if valid_yes_severity_count == 0 {
+            continue;
+        }
+        let parse_f64 = |name: &str| -> Option<f64> {
+            let value = cell(name);
+            if value.is_empty() {
+                None
+            } else {
+                value.parse().ok()
+            }
+        };
+        stats.insert(
+            tool.to_owned(),
+            VoterCalibrationStat {
+                tool: tool.to_owned(),
+                yes_votes,
+                valid_yes_severity_count,
+                major,
+                minor,
+                nit,
+                missing_severity,
+                high_rate: parse_f64("high_rate"),
+                calibration_score: parse_f64("calibration_score"),
+                uncalibrated: cell("uncalibrated").eq_ignore_ascii_case("true"),
+            },
+        );
+    }
+    stats
 }
 
 /// Score threshold excess linearly: `1.0` at or below the threshold, falling
