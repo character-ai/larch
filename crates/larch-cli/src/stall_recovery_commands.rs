@@ -3,10 +3,12 @@ use crate::stall_recovery_reporting;
 use larch_adapters::GixRepository;
 use larch_adapters::stall_recovery::{
     AttemptRecord, ClassificationRequest, EscalationError, EscalationOutput, EscalationRequest,
-    StallRecoveryError, StateMutationError, classify, clear_stall, init_attempts,
-    is_larch_dev_clone, normalize_file_failure_report_env, normalize_issue_env, normalize_outcome,
-    record_attempt, record_escalation, seed_terminal_state, snapshot_public_fd_to_fd,
-    snapshot_public_file_to_fd, terminal_state_is_valid, tier_b_public_file_is_valid,
+    StallRecoveryError, StateMutationError, classify, clear_stall,
+    compose_public_comment_request_fd, file_failure_comment_url, find_open_stall_issue,
+    init_attempts, is_larch_dev_clone, normalize_file_failure_report_env, normalize_issue_env,
+    normalize_outcome, record_attempt, record_escalation, rewind_public_snapshot_fd,
+    seed_terminal_state, snapshot_public_fd_to_fd, snapshot_public_file_to_fd,
+    terminal_state_is_valid, tier_b_public_file_is_valid,
 };
 use larch_core::{
     IssueNormalization, RepositoryRead, artifact_prefix_valid, implementation_bail_tokens,
@@ -68,6 +70,10 @@ pub fn run(arguments: &[OsString]) -> ExitCode {
         "clear-stall" => clear(&globals, command_arguments),
         "init-attempts" => init_attempts_command(&globals, command_arguments),
         "normalize-file-failure-report-env" => normalize_file_report(&globals, command_arguments),
+        "comment-url-from-response" => comment_url_from_response(&globals, command_arguments),
+        "find-open-stall-issue" => find_open_issue(&globals, command_arguments),
+        "rewind-public-fd" => rewind_public_fd(command_arguments),
+        "compose-comment-request" => compose_comment_request(command_arguments),
         "normalize-issue-env" => normalize_issue(&globals, command_arguments),
         "normalize-outcome" => normalize_outcome_command(&globals, command_arguments),
         "record-attempt" => record_attempt_command(&globals, command_arguments),
@@ -451,6 +457,107 @@ fn normalize_file_report(globals: &Globals, arguments: &[String]) -> ExitCode {
         }
         Err(error) => adapter_error(error, false),
     }
+}
+
+fn comment_url_from_response(globals: &Globals, arguments: &[String]) -> ExitCode {
+    let options = command_options!(
+        arguments,
+        "comment-url-from-response",
+        &["--implement-tmpdir", "--response-file"]
+    );
+    if let Some(message) = required_options(&options, &["--response-file"]) {
+        return usage_error(&message);
+    }
+    match file_failure_comment_url(
+        &PathBuf::from(option_or_tmpdir(&options, globals)),
+        &PathBuf::from(value(&options, "--response-file")),
+    ) {
+        Ok(url) => {
+            if !url.is_empty() {
+                println!("{url}");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => adapter_error(error, false),
+    }
+}
+
+fn find_open_issue(globals: &Globals, arguments: &[String]) -> ExitCode {
+    let options = command_options!(
+        arguments,
+        "find-open-stall-issue",
+        &["--implement-tmpdir", "--issues-file", "--marker"]
+    );
+    if let Some(message) = required_options(&options, &["--issues-file", "--marker"]) {
+        return usage_error(&message);
+    }
+    let marker = value(&options, "--marker");
+    if marker.len() != 64
+        || !marker
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+    {
+        return usage_error("--marker must be 64 lowercase hexadecimal characters");
+    }
+    match find_open_stall_issue(
+        &PathBuf::from(option_or_tmpdir(&options, globals)),
+        &PathBuf::from(value(&options, "--issues-file")),
+        marker,
+    ) {
+        Ok(Some(number)) => {
+            println!("{number}");
+            ExitCode::SUCCESS
+        }
+        Ok(None) => ExitCode::from(1),
+        Err(error) => adapter_error(error, false),
+    }
+}
+
+fn rewind_public_fd(arguments: &[String]) -> ExitCode {
+    let options = command_options!(arguments, "rewind-public-fd", &["--public-fd"]);
+    let public_fd = match required_fd(&options, "--public-fd") {
+        Ok(fd) => fd,
+        Err(message) => return usage_error(&message),
+    };
+    if rewind_public_snapshot_fd(public_fd) {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn compose_comment_request(arguments: &[String]) -> ExitCode {
+    let options = command_options!(
+        arguments,
+        "compose-comment-request",
+        &["--public-fd", "--snapshot-fd"]
+    );
+    let public_fd = match required_fd(&options, "--public-fd") {
+        Ok(fd) => fd,
+        Err(message) => return usage_error(&message),
+    };
+    let snapshot_fd = match required_fd(&options, "--snapshot-fd") {
+        Ok(fd) => fd,
+        Err(message) => return usage_error(&message),
+    };
+    if compose_public_comment_request_fd(public_fd, snapshot_fd) {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn required_fd(options: &BTreeMap<String, String>, flag: &str) -> Result<i32, String> {
+    let raw = options
+        .get(flag)
+        .ok_or_else(|| format!("{flag} is required"))?;
+    let fd = raw
+        .parse::<i32>()
+        .map_err(|_| format!("{flag} must be an integer"))?;
+    if fd < 3 {
+        return Err(format!("{flag} must be at least 3"));
+    }
+    Ok(fd)
 }
 
 #[rustfmt::skip]

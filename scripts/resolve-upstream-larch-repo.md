@@ -1,6 +1,6 @@
 # resolve-upstream-larch-repo.sh
 
-`resolve-upstream-larch-repo.sh` reads `.claude-plugin/plugin.json` and emits the canonical upstream GitHub repository for public stall recovery filing.
+`resolve-upstream-larch-repo.sh` delegates to `scripts/larch.sh plugin resolve-repository`, which reads `.claude-plugin/plugin.json` and emits the canonical upstream GitHub repository for public stall recovery filing.
 
 ## Contract
 

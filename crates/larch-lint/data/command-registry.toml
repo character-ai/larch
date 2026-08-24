@@ -9477,7 +9477,7 @@ rust = ["agent check-reviewers", "agent collect-results", "agent model-args", "a
 path = "scripts/file-failure-report-cross-repo.sh"
 kind = "script"
 python = []
-rust = ["redact secrets", "session check-live-mutation-auth", "stall-recovery validate-tier-b-public-file"]
+rust = ["redact secrets", "session check-live-mutation-auth", "stall-recovery *"]
 
 [[callers]]
 path = "scripts/hook-anti-read-poll.sh"

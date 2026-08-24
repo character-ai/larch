@@ -115,6 +115,12 @@ static GIT_RE: LazyLock<Regex> = LazyLock::new(|| {
 static GITHUB_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+").expect("fixed regex")
 });
+static COMMENT_URL_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+#issuecomment-[0-9]+$",
+    )
+    .expect("fixed regex")
+});
 static HOST_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:^|[\s`(])/(?:Users|home|private|tmp|var|Volumes)/[^\s`)]+")
         .expect("fixed regex")
@@ -627,6 +633,92 @@ pub fn normalize_file_failure_report_env(tmpdir: &Path, env_file: &Path) -> Resu
     let env_file = validate_local_path(&root, env_file, false).map_err(|_| invalid)?;
     if !env_file.is_file() { return Err(invalid); }
     Ok(normalize_file_failure_report(&read_state_map(&env_file)))
+}
+
+/// Read and validate the URL returned by a cross-repository comment mutation.
+///
+/// # Errors
+/// Returns an error for an unconfined or unreadable response file.
+pub fn file_failure_comment_url(
+    tmpdir: &Path,
+    response_file: &Path,
+) -> Result<String, StallRecoveryError> {
+    let text = read_file_failure_helper_file(tmpdir, response_file, "--response-file invalid")?;
+    let url = serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("html_url")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        })
+        .filter(|url| COMMENT_URL_RE.is_match(url))
+        .unwrap_or_default();
+    Ok(url)
+}
+
+/// Find the first open issue whose body contains the exact stall signature.
+///
+/// # Errors
+/// Returns an error for an unconfined or unreadable issue snapshot.
+pub fn find_open_stall_issue(
+    tmpdir: &Path,
+    issues_file: &Path,
+    marker: &str,
+) -> Result<Option<String>, StallRecoveryError> {
+    let text = read_file_failure_helper_file(tmpdir, issues_file, "--issues-file invalid")?;
+    let marker = format!("<!-- larch-stall:signature={marker} -->");
+    for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+            return Ok(None);
+        };
+        if value
+            .get("pull_request")
+            .is_some_and(|pull_request| !pull_request.is_null())
+        {
+            continue;
+        }
+        if !value
+            .get("body")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|body| body.contains(&marker))
+        {
+            continue;
+        }
+        let number = value.get("number").and_then(|number| {
+            number
+                .as_u64()
+                .and_then(|number| (number != 0).then(|| number.to_string()))
+                .or_else(|| {
+                    number
+                        .as_str()
+                        .filter(|number| !number.is_empty())
+                        .map(str::to_owned)
+                })
+        });
+        return Ok(Some(number.unwrap_or_default()));
+    }
+    Ok(None)
+}
+
+fn read_file_failure_helper_file(
+    tmpdir: &Path,
+    path: &Path,
+    diagnostic: &'static str,
+) -> Result<String, StallRecoveryError> {
+    let tmpdir = absolute_path(tmpdir).map_err(|()| StallRecoveryError::Unsafe)?;
+    if !tmpdir.is_dir() {
+        return Err(StallRecoveryError::Diagnostic(
+            "--implement-tmpdir must exist",
+        ));
+    }
+    let root = TemporaryRoot::resolve(Some(&tmpdir)).map_err(|_| StallRecoveryError::Unsafe)?;
+    let path = validate_local_path(&root, path, false)
+        .map_err(|_| StallRecoveryError::Diagnostic(diagnostic))?;
+    if !path.is_file() {
+        return Err(StallRecoveryError::Diagnostic(diagnostic));
+    }
+    read_lossy(&path).map_err(|()| StallRecoveryError::Failed)
 }
 
 #[doc = "Append a sanitized, locked row.\n\n# Errors\nReturns an error when neither ledger can be written."]
@@ -1170,6 +1262,74 @@ pub fn snapshot_public_fd_to_fd(
     write_public_snapshot_fd(snapshot_fd, &payload, corpus.as_deref())
 }
 
+/// Rewind a caller-owned unlinked public descriptor after a shell reader.
+#[cfg(unix)]
+#[must_use]
+pub fn rewind_public_snapshot_fd(public_fd: i32) -> bool {
+    let Some(mut file) = open_public_snapshot_fd(public_fd) else {
+        return false;
+    };
+    file.metadata()
+        .is_ok_and(|metadata| metadata.is_file() && metadata.nlink() == 0)
+        && file.seek(SeekFrom::Start(0)).is_ok()
+}
+
+/// Wrap an approved comment descriptor in the GitHub request JSON envelope.
+#[cfg(unix)]
+#[must_use]
+pub fn compose_public_comment_request_fd(public_fd: i32, snapshot_fd: i32) -> bool {
+    if public_fd == snapshot_fd {
+        return false;
+    }
+    let Some(payload) = read_public_snapshot_fd(public_fd) else {
+        return false;
+    };
+    let request = python_json_comment_request(&payload);
+    write_verified_unlinked_fd(snapshot_fd, &request, |_| true)
+}
+
+fn python_json_comment_request(body: &str) -> String {
+    let mut request = String::with_capacity(body.len().saturating_mul(6).saturating_add(12));
+    request.push_str("{\"body\": ");
+    push_python_json_string(&mut request, body);
+    request.push('}');
+    request
+}
+
+fn push_python_json_string(output: &mut String, value: &str) {
+    output.push('"');
+    for character in value.chars() {
+        match character {
+            '"' => output.push_str("\\\""),
+            '\\' => output.push_str("\\\\"),
+            '\u{0008}' => output.push_str("\\b"),
+            '\u{000c}' => output.push_str("\\f"),
+            '\n' => output.push_str("\\n"),
+            '\r' => output.push_str("\\r"),
+            '\t' => output.push_str("\\t"),
+            character if character <= '\u{001f}' => {
+                push_json_hex_escape(output, character as u16);
+            }
+            character if character.is_ascii() => output.push(character),
+            character => {
+                let mut code_units = [0; 2];
+                for code_unit in character.encode_utf16(&mut code_units) {
+                    push_json_hex_escape(output, *code_unit);
+                }
+            }
+        }
+    }
+    output.push('"');
+}
+
+fn push_json_hex_escape(output: &mut String, value: u16) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    output.push_str("\\u");
+    for shift in [12, 8, 4, 0] {
+        output.push(char::from(HEX[usize::from((value >> shift) & 0x000f)]));
+    }
+}
+
 /// Non-Unix callers cannot safely hand an inherited unlinked descriptor to the
 /// shell transport helper.
 #[cfg(not(unix))]
@@ -1195,6 +1355,20 @@ pub fn snapshot_public_fd_to_fd(
     _artifact_prefix: &str,
     _snapshot_fd: i32,
 ) -> bool {
+    false
+}
+
+/// Non-Unix callers cannot safely seek an inherited unlinked descriptor.
+#[cfg(not(unix))]
+#[must_use]
+pub fn rewind_public_snapshot_fd(_public_fd: i32) -> bool {
+    false
+}
+
+/// Non-Unix callers cannot safely compose into an inherited descriptor.
+#[cfg(not(unix))]
+#[must_use]
+pub fn compose_public_comment_request_fd(_public_fd: i32, _snapshot_fd: i32) -> bool {
     false
 }
 
@@ -1248,7 +1422,24 @@ fn approved_public_fd_payload(
 
 #[cfg(unix)]
 fn write_public_snapshot_fd(snapshot_fd: i32, payload: &str, corpus: Option<&str>) -> bool {
+    if u64::try_from(payload.len()).map_or(true, |length| length > MAX_PUBLIC_FILE_BYTES) {
+        return false;
+    }
+    write_verified_unlinked_fd(snapshot_fd, payload, |written| {
+        public_snapshot_is_safe(written, corpus)
+    })
+}
+
+#[cfg(unix)]
+fn write_verified_unlinked_fd(
+    snapshot_fd: i32,
+    payload: &str,
+    approve: impl FnOnce(&str) -> bool,
+) -> bool {
     let Some(mut file) = open_public_snapshot_fd(snapshot_fd) else {
+        return false;
+    };
+    let Ok(expected_len) = u64::try_from(payload.len()) else {
         return false;
     };
     let Ok(metadata) = file.metadata() else {
@@ -1280,7 +1471,7 @@ fn write_public_snapshot_fd(snapshot_fd: i32, payload: &str, corpus: Option<&str
     }
     let mut bytes = Vec::with_capacity(payload.len());
     if Read::by_ref(&mut file)
-        .take(MAX_PUBLIC_FILE_BYTES + 1)
+        .take(expected_len.saturating_add(1))
         .read_to_end(&mut bytes)
         .is_err()
     {
@@ -1292,8 +1483,8 @@ fn write_public_snapshot_fd(snapshot_fd: i32, payload: &str, corpus: Option<&str
     if !same_public_file_snapshot(&before_read, &after_read) || after_read.nlink() != 0 {
         return false;
     }
-    let approved = String::from_utf8(bytes)
-        .is_ok_and(|written| written == payload && public_snapshot_is_safe(&written, corpus));
+    let approved =
+        String::from_utf8(bytes).is_ok_and(|written| written == payload && approve(&written));
     let _ = file.seek(SeekFrom::Start(0));
     approved
 }
@@ -2330,11 +2521,13 @@ mod tests {
         AttemptRecord, ClassificationRequest, EscalationError, EscalationOutput, EscalationRequest,
         FailureDetailLogError, MAX_DETAIL_FILE_BYTES, MAX_DETAIL_FILE_BYTES_USIZE,
         StallRecoveryError, StateMutationError, classify, classify_failure_detail_log, clear_stall,
-        clear_stall_inner, init_attempts, is_larch_dev_clone, latest_failure_detail_log_sidecar,
-        materialize_truncated_failure_detail_log, normalize_outcome,
+        clear_stall_inner, compose_public_comment_request_fd, file_failure_comment_url,
+        find_open_stall_issue, init_attempts, is_larch_dev_clone,
+        latest_failure_detail_log_sidecar, materialize_truncated_failure_detail_log,
+        normalize_outcome, python_json_comment_request,
         read_failure_detail_log_with_sidecar_fallback, read_validated_failure_detail_log,
-        record_attempt, record_escalation, seed_terminal_state, snapshot_public_fd_to_fd,
-        snapshot_public_file_to_fd, terminal_state_is_valid,
+        record_attempt, record_escalation, rewind_public_snapshot_fd, seed_terminal_state,
+        snapshot_public_fd_to_fd, snapshot_public_file_to_fd, terminal_state_is_valid,
     };
     use crate::TemporaryRoot;
     #[cfg(unix)]
@@ -2826,6 +3019,143 @@ mod tests {
             .read_to_string(&mut captured_text)
             .expect("read transport");
         assert_eq!(captured_text, "approved report\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_comment_request_rewinds_and_wraps_approved_bytes() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let mut public = tempfile::NamedTempFile::new_in(temporary.path()).expect("public file");
+        let request = tempfile::NamedTempFile::new_in(temporary.path()).expect("request file");
+        let payload = "approved \"comment\" \\ ☃ 😀\t\n";
+        public
+            .write_all(payload.as_bytes())
+            .expect("write public comment");
+        assert!(!rewind_public_snapshot_fd(public.as_raw_fd()));
+        assert!(!compose_public_comment_request_fd(
+            public.as_raw_fd(),
+            request.as_raw_fd(),
+        ));
+        fs::remove_file(public.path()).expect("unlink public file");
+        fs::remove_file(request.path()).expect("unlink request file");
+        public
+            .seek(SeekFrom::End(0))
+            .expect("position public descriptor at end");
+
+        assert!(rewind_public_snapshot_fd(public.as_raw_fd()));
+        assert!(compose_public_comment_request_fd(
+            public.as_raw_fd(),
+            request.as_raw_fd(),
+        ));
+        assert!(!compose_public_comment_request_fd(
+            public.as_raw_fd(),
+            public.as_raw_fd(),
+        ));
+
+        let mut captured = request.as_file().try_clone().expect("request duplicate");
+        captured.seek(SeekFrom::Start(0)).expect("rewind request");
+        let mut request_text = String::new();
+        captured
+            .read_to_string(&mut request_text)
+            .expect("read request");
+        assert_eq!(
+            request_text,
+            r#"{"body": "approved \"comment\" \\ \u2603 \ud83d\ude00\t\n"}"#
+        );
+    }
+
+    #[test]
+    fn comment_request_matches_legacy_python_json_dump_wire() {
+        assert_eq!(
+            python_json_comment_request("\u{0000}\u{0001}\u{0008}\u{000c}\n\r\t\"\\é"),
+            r#"{"body": "\u0000\u0001\b\f\n\r\t\"\\\u00e9"}"#
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn comment_request_preserves_legacy_escape_expansion_above_public_input_limit() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let mut public = tempfile::NamedTempFile::new_in(temporary.path()).expect("public file");
+        let request = tempfile::NamedTempFile::new_in(temporary.path()).expect("request file");
+        let payload = "é"
+            .repeat(usize::try_from(MAX_PUBLIC_FILE_BYTES / 2).expect("fixture length fits usize"));
+        public
+            .write_all(payload.as_bytes())
+            .expect("write public comment");
+        fs::remove_file(public.path()).expect("unlink public file");
+        fs::remove_file(request.path()).expect("unlink request file");
+
+        assert!(compose_public_comment_request_fd(
+            public.as_raw_fd(),
+            request.as_raw_fd(),
+        ));
+        assert!(
+            request
+                .as_file()
+                .metadata()
+                .expect("request metadata")
+                .len()
+                > MAX_PUBLIC_FILE_BYTES
+        );
+    }
+
+    #[test]
+    fn file_failure_helpers_validate_comment_urls_and_find_issue_markers() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let response = temporary.path().join("response.json");
+        let issues = temporary.path().join("issues.jsonl");
+        let marker = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        fs::write(
+            &response,
+            r#"{"html_url":"https://github.com/owner/repo/issues/7#issuecomment-99"}"#,
+        )
+        .expect("comment response");
+        fs::write(
+            &issues,
+            format!(
+                concat!(
+                    "{{\"number\":3,\"body\":\"<!-- larch-stall:signature={marker} -->\",\"pull_request\":{{}}}}\n",
+                    "{{\"number\":7,\"body\":\"contains <!-- larch-stall:signature={marker} -->\",\"pull_request\":null}}\n"
+                ),
+                marker = marker,
+            ),
+        )
+        .expect("issue response");
+
+        assert_eq!(
+            file_failure_comment_url(temporary.path(), &response),
+            Ok("https://github.com/owner/repo/issues/7#issuecomment-99".to_owned())
+        );
+        assert_eq!(
+            find_open_stall_issue(temporary.path(), &issues, marker),
+            Ok(Some("7".to_owned()))
+        );
+
+        fs::write(
+            &issues,
+            format!("{{\"number\":null,\"body\":\"<!-- larch-stall:signature={marker} -->\"}}\n"),
+        )
+        .expect("empty issue number response");
+        assert_eq!(
+            find_open_stall_issue(temporary.path(), &issues, marker),
+            Ok(Some(String::new()))
+        );
+
+        fs::write(
+            &response,
+            r#"{"html_url":"https://example.test/not-github"}"#,
+        )
+        .expect("invalid comment response");
+        fs::write(&issues, "not json\n").expect("invalid issue response");
+        assert_eq!(
+            file_failure_comment_url(temporary.path(), &response),
+            Ok(String::new())
+        );
+        assert_eq!(
+            find_open_stall_issue(temporary.path(), &issues, marker),
+            Ok(None)
+        );
     }
 
     #[cfg(unix)]
