@@ -102,7 +102,7 @@ _1 runs lacked a parseable started_at date._
 
 - Review the highest-cost runs above before optimizing lower-cost phases.
 - Cache-read tokens observed: 21,700; preserve prompt stability where cache hits are useful.
-- Treat dollar values as estimates; rows marked `fallback` used blended display rates because `python/larch/report/report_tokens_cost.py` used blended fallback pricing.
+- Treat dollar values as estimates; rows marked `fallback` used blended display rates because per-bucket token counts were unavailable.
 
 ## Rates used for display/fallback
 

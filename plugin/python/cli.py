@@ -1,9 +1,4 @@
-"""Entry-point shim; canonical dispatcher is larch.cli.
-
-Direct-call convention: consumers invoke
-    python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" <domain> <verb> [args...]
-No .sh shim files, ever. See docs/python-migration.md for the migration playbook.
-"""
+"""Temporary entry-point shim for the empty ``larch.cli`` dispatcher."""
 
 from __future__ import annotations
 

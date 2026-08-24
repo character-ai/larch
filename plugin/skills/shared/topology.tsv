@@ -25,7 +25,7 @@ implement.conflict_review.panel	ci-fixer	ci-fixer MODE conflict self-review only
 implement.conflict_review.rounds_max	2 total	resolution-review rounds	agents/ci-fixer.md
 research.lanes	four research lanes	architecture + edge cases + external comparisons + security	skills/research/references/research-phase.md
 research.validation_panel	3 reviewer lanes	Claude Code Reviewer subagent + Codex + Cursor	skills/research/references/validation-phase.md
-implement.review_and_fix.panel_hard	three specialists per vendor	correctness edge-cases testing	python/larch/core/config.py
+implement.review_and_fix.panel_hard	three specialists per vendor	correctness edge-cases testing	skills/review/SKILL.md
 deps.issue_audit	one approval gate	open-issue grouping + REGULAR refresh + explicit and latent dependency audit	skills/deps/SKILL.md
 runtime.residual_bash.inventory	residual-bash	hooks linters thin wrappers sleep helper G-track delegation fences and residual harnesses	crates/larch-harness-mark/src/residual_bash.rs
 runtime.pr_closes_issue	closes-issue	PR-body Closes issue extraction authority	crates/larch-cli/src/pr_commands.rs

@@ -1,10 +1,7 @@
 [project]
-name = "larch-ship-pr-python"
+name = "larch-python-tooling"
 version = "0.0.0"
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-markers = [
-    "commit_fixes: review-and-fix commit-fixes contract tests",
-]

@@ -1,25 +1,10 @@
 #!/usr/bin/env python3
-"""Strict-partition guard for multi-target pytest harness files (#4439 Trick A4).
+"""Strict-partition guard for multi-target pytest harness files.
 
-For an explicit allow-list of pytest source files that several
-`test-harnesses` Makefile targets slice with `-k` / node-ids, assert the
-targets' selections form a *strict partition*: every test in the file is
-covered by exactly one target (no test uncovered, no test covered twice).
-
-This locks in the per-target `-k` slicing landed for #4439 (Tricks A1/A2),
-the research-target de-duplication (Trick A3), the timing-blind-spot
-de-duplication of the remaining previously-untimed full-file pytest groups
-(test_tokens/test_report_tokens_cost/test_timing/test_clarify),
-and the #4459 follow-up batch that closed coverage gaps / overlaps in seven
-more already-sliced files (test_execution_issues/
-test_plan_review), plus the #4459 Bucket-1 full-file duplicate group
-(test_run_logs/test_redact/test_release/test_decompose),
-against regression. It does **not** yet enforce the
-invariant on the heavier `-k`-sliced `test_pr_body.py`, whose re-partition moves
-many tests between shards and needs wall-time re-measurement; that remains a
-tracked #4459 follow-up.
-To bring another file under the guard, slice its targets and add it to
-ENFORCED.
+For each explicit pytest source file sliced across several `test-harnesses`
+Makefile targets, assert that the selections form a strict partition. The
+Rust migration retired every previously sliced Python runtime test, so the
+enforced set is empty until a surviving development-tooling test is sliced.
 
 Invoked from scripts/test-harness-shards-coverage.sh (rides the
 `test-harness-shards-coverage` harness target, already in `make lint`).
@@ -36,26 +21,9 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 MAKEFILE = os.path.join(REPO_ROOT, "Makefile")
 
-# Source files whose harness targets MUST strictly partition the file.
-# Repo-relative paths. A single full-file target is a valid partition and
-# guards against a duplicate full-file target being reintroduced
-# (e.g. test_research.py after the Trick A3 de-duplication).
-ENFORCED = (
-    "python/tests/research/test_research.py",
-    "python/tests/report/test_tokens.py",
-    "python/tests/report/test_report_tokens_cost.py",
-    "python/tests/report/test_timing.py",
-    "python/tests/design/test_clarify.py",
-    # #4459 follow-up batch: already-`-k`-sliced files whose selections had
-    # coverage gaps / overlaps, closed into strict partitions with negligible
-    # shard-timing shift (each catch-all absorbs only a handful of tests).
-    # #4459 Bucket 1: files that previously paid full-file pytest runtime
-    # under several target names, now sliced into strict per-target partitions.
-    "python/tests/report/test_run_logs.py",
-    "python/tests/core/test_redact.py",
-    "python/tests/release/test_release.py",
-    "python/tests/design/test_decompose.py",
-)
+# Source files whose harness targets must strictly partition the file.
+# Add a repo-relative path when a surviving file is split across targets.
+ENFORCED: tuple[str, ...] = ()
 
 # Mirrors CARVE_OUTS in scripts/test-harness-shards-coverage.sh: targets that
 # are deliberately not part of the test-harnesses aggregate.

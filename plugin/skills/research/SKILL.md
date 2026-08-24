@@ -43,7 +43,7 @@ After flag parsing completes, validate that `RESEARCH_QUESTION` is non-empty AND
 
 ## Token telemetry (observability)
 
-Step 4 always renders a `## Token Spend` section (immediately before `cleanup-tmpdir.sh`) summarizing per-phase Claude subagent token totals. The renderer (`scripts/larch.sh token lane-write/lane-report report`) globs per-lane sidecar files written by the orchestrator after each `Agent`-tool return. Sidecar schema: `PHASE=research|validation`, `LANE=<stable slot name>`, `TOOL=claude`, `TOTAL_TOKENS=<integer or "unknown">`. See `${CLAUDE_PLUGIN_ROOT}/python/larch/report/tokens.py research lane docs` for the helper contract. Telemetry is observability-only: there is no budget enforcement.
+Step 4 always renders a `## Token Spend` section (immediately before `cleanup-tmpdir.sh`) summarizing per-phase Claude subagent token totals. The renderer (`scripts/larch.sh token lane-write/lane-report report`) globs per-lane sidecar files written by the orchestrator after each `Agent`-tool return. Sidecar schema: `PHASE=research|validation`, `LANE=<stable slot name>`, `TOOL=claude`, `TOTAL_TOKENS=<integer or "unknown">`. Rust token lane commands own the helper contract in `crates/larch-cli/src/token_commands.rs`. Telemetry is observability-only: there is no budget enforcement.
 
 ### Cost column (optional)
 
@@ -415,7 +415,7 @@ Render the `## Token Spend` section before `cleanup-tmpdir.sh` so sidecars under
 "${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" token lane-report --dir "$RESEARCH_TMPDIR"
 ```
 
-The script is a no-op-safe call: when no sidecars exist, it prints a `_(no measurements available)_` placeholder; if `$RESEARCH_TMPDIR` was already removed, it prints `_(token telemetry unavailable)_`. Either path exits 0. See `${CLAUDE_PLUGIN_ROOT}/python/larch/report/tokens.py research lane docs` for the full contract.
+The script is a no-op-safe call: when no sidecars exist, it prints a `_(no measurements available)_` placeholder; if `$RESEARCH_TMPDIR` was already removed, it prints `_(token telemetry unavailable)_`. Either path exits 0. See `crates/larch-cli/src/token_commands.rs` for the full contract.
 
 ### Cleanup tmpdir
 

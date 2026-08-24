@@ -1,10 +1,9 @@
 //! Differential parity tests for the `/report-tokens` analyzer and renderer.
 //!
 //! Every expectation under `tests/data/token_report` was recorded from the
-//! Python owner (`larch.report.report_tokens_render` and
-//! `larch.report.report_tokens_issue`) over the same three records before that
-//! code was deleted, so a drift in the Rust renderer shows up as a byte diff
-//! rather than a judgement call.
+//! retired Python implementation over the same three records before deletion,
+//! so a drift in the Rust renderer shows up as a byte diff rather than a
+//! judgement call.
 
 use std::{fs, path::PathBuf};
 
@@ -79,7 +78,7 @@ fn record(number: i64, started_at: &str, closed_at: &str) -> TokenRunRecord {
     }
 }
 
-/// The three recorded runs the Python fixtures were rendered from.
+/// The three recorded runs the compatibility fixtures were rendered from.
 fn runs() -> Vec<PricedRun> {
     let mut first = record(101, "2026-05-01T10:00:00Z", "2026-05-01T12:00:00Z");
     first.claude = totals(1000, 20_000, 500, 0, 3000);
@@ -179,7 +178,7 @@ fn render(
 }
 
 #[test]
-fn report_body_matches_the_python_owner() {
+fn report_body_matches_the_recorded_contract() {
     let runs = runs();
     for (skill, actual, include, name) in [
         ("design", None, false, "body-design-none-stdout.txt"),
@@ -216,7 +215,7 @@ fn detailed_cursor_split_adds_its_vendor_rows() {
 }
 
 #[test]
-fn issue_body_matches_the_python_owner() {
+fn issue_body_matches_the_recorded_contract() {
     let runs = runs();
     for (skill, actual, include, name) in [
         ("design", None, false, "issue-design-none-stdout.txt"),
@@ -237,12 +236,12 @@ fn issue_body_matches_the_python_owner() {
 }
 
 #[test]
-fn cache_rows_match_the_python_owner() {
+fn cache_rows_match_the_recorded_contract() {
     assert_eq!(cache_ndjson(&runs()), fixture("cache-rows.ndjson"));
 }
 
 #[test]
-fn daily_costs_match_the_python_owner() {
+fn daily_costs_match_the_recorded_contract() {
     // These are the points the retired `plot-input-{design,implement}.json`
     // fixtures carried for both skills; the chart is rendered in process now,
     // so the recorded numbers live with the aggregation they came from.
@@ -261,7 +260,7 @@ fn daily_costs_of_no_runs_are_empty() {
 }
 
 #[test]
-fn titles_match_the_python_owner() {
+fn titles_match_the_recorded_contract() {
     let expected = fixture("titles.txt");
     let rendered = format!(
         "{}\n{}\n{}\n",

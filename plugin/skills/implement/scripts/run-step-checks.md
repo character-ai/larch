@@ -9,7 +9,7 @@ The wrapper resolves persisted `REPO_ROOT`, computes a checks-input identity (`H
 
 ## Identity contract
 
-Persisted identity fields (also in `python/larch/core/config.py`):
+Persisted identity fields (owned by `crates/larch-core/src/implement/identity.rs`):
 
 - `CHECKS_INPUT_HEAD_SHA`
 - `CHECKS_INPUT_TREE_FP`

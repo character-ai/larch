@@ -84,37 +84,33 @@ EOF
 
 write_difficulty_record() {
     local dir="$1" tier="$2" escalations_json="$3"
-    PYTHONPATH="$ROOT/python" python3 - "$dir" "$tier" "$escalations_json" <<'PY'
+    local raw_rating="$dir/difficulty-rating.raw.json"
+    local record="$dir/difficulty-rating.json"
+    local escalated_round=false
+    printf '{"predicted_tier":"%s","confidence":"medium","rationale":"test difficulty seed"}\n' "$tier" >"$raw_rating"
+    if [[ "$escalations_json" != '[]' ]]; then
+        escalated_round=true
+    fi
+    CLAUDE_PLUGIN_ROOT="$ROOT" "$CLI" difficulty write-record \
+        --output "$record" \
+        --rater design \
+        --rater-tool harness \
+        --rater-model stub \
+        --raw-rating-file "$raw_rating" \
+        --panel-tier "$tier" \
+        --round-cap 2 \
+        --codex-model-role review \
+        --audit-evaluated false \
+        --escalated-round "$escalated_round" >/dev/null
+    python3 - "$record" "$escalations_json" <<'PY'
 import json
 import sys
 from pathlib import Path
 
-from larch.calibration import difficulty
-
-dest = Path(sys.argv[1])
-tier = difficulty.normalize_tier(sys.argv[2], difficulty.MODERATE)
-escalations = tuple(json.loads(sys.argv[3]))
-rating = difficulty.validate_rating_object(
-    {
-        "predicted_tier": tier,
-        "confidence": "medium",
-        "rationale": "test difficulty seed",
-    }
-)
-record = difficulty.build_record(
-    rater="test",
-    rater_tool="harness",
-    rater_model="stub",
-    design_rating=rating,
-    panel_tier=tier,
-    round_cap=difficulty.tier_ceiling(tier),
-    codex_model_role=difficulty.codex_review_model_role(tier),
-    audit_evaluated=False,
-    audit_upgrade=False,
-    escalations=escalations,
-    escalated_round=bool(escalations),
-)
-difficulty.write_record(dest / difficulty.DIFFICULTY_RECORD_BASENAME, record)
+path = Path(sys.argv[1])
+record = json.loads(path.read_text(encoding="utf-8"))
+record["escalations"] = json.loads(sys.argv[2])
+path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
 PY
 }
 

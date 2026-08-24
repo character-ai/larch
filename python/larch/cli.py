@@ -1,10 +1,4 @@
-"""Argparse-based subcommand dispatcher for larch Python runtime.
-
-Canonical location; python/cli.py is the entry-point shim.
-Direct-call convention: consumers invoke
-    python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" <domain> <verb> [args...]
-No .sh shim files, ever. See docs/python-migration.md for the migration playbook.
-"""
+"""Temporary empty dispatcher retained until release-artifact cleanup."""
 
 from __future__ import annotations
 

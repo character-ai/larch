@@ -13,7 +13,7 @@ The smoke tests only the wrapper contract:
 
 ## Behavioral authority
 
-`crates/larch-cli/tests/final_report.rs` owns final-report write behavior. It covers the outcome matrix, `--comment-only` preservation of tracked `final-summary.md`, manifest reconcile stamp and failure, upsert and missing-arg failures, token-cost unavailable variants, Claude-subprocess cost lines, force-flag rendering, PR line-count cache/recompute, review-phase live-dir mismatch (#3794), and the happy-path summary shape. Shared renderer and tracking surfaces also live under `python/tests/git/test_pr_body.py` (`render_run_summary`, `post_tracking`, `write_final_report`).
+`crates/larch-cli/tests/final_report.rs` owns final-report write behavior. It covers the outcome matrix, `--comment-only` preservation of tracked `final-summary.md`, manifest reconcile stamp and failure, upsert and missing-arg failures, token-cost unavailable variants, Claude-subprocess cost lines, force-flag rendering, PR line-count cache/recompute, review-phase live-dir mismatch (#3794), and the happy-path summary shape. Shared renderer and tracking coverage lives in `crates/larch-cli/src/rendering_commands.rs` and `crates/larch-cli/tests/tracking_issue_contract.rs`.
 
 ## Assertion parity
 

@@ -90,10 +90,6 @@ fn prepare(repository: &TempRepo) {
         b"_REGISTRY = {('other', 'run'): ('other', 'main', False)}\n",
     );
     repository.write(
-        "python/larch/issue/issue_wire.py",
-        b"def helper() -> None:\n    return None\n",
-    );
-    repository.write(
         "skills/implement/scripts/refresh-execution-issues.sh",
         b"exec \"$PLUGIN_ROOT/scripts/larch.sh\" execution-issues refresh \"$@\"\n",
     );
@@ -116,7 +112,7 @@ fn accepts_sample_rows_and_reports_only_missing_boundary_rows() {
                 .and(predicate::str::contains("non-final").not())
                 .and(predicate::str::contains("drift").not())
                 .and(predicate::str::contains("remains registered in Python").not())
-                .and(predicate::str::contains("unowned retained").not()),
+                .and(predicate::str::contains("retired issue-domain").not()),
         )
         .stderr("");
 }
@@ -187,7 +183,7 @@ fn rejects_non_final_rows_handoff_owner_drift_and_unclosed_rows() {
 }
 
 #[test]
-fn rejects_unowned_retained_issue_module() {
+fn rejects_restored_issue_module() {
     let repository = TempRepo::new();
     prepare(&repository);
     repository.write(
@@ -205,10 +201,10 @@ fn rejects_unowned_retained_issue_module() {
         .assert()
         .failure()
         .stdout(predicate::str::contains(
-            "python/larch/issue/nested/new_owner.py:1: unowned retained issue-domain Python module; name its receiving umbrella and reason",
+            "python/larch/issue/nested/new_owner.py:1: retired issue-domain Python module returned",
         ))
         .stdout(predicate::str::contains(
-            "python/larch/issue/nested/__init__.py:1: unowned retained issue-domain Python module; name its receiving umbrella and reason",
+            "python/larch/issue/nested/__init__.py:1: retired issue-domain Python module returned",
         ));
 }
 
@@ -275,7 +271,7 @@ fn rejects_restored_execution_issue_module_and_import_callers() {
 }
 
 #[test]
-fn rejects_renamed_tracking_behavior_but_allows_pure_helpers_and_handoffs() {
+fn rejects_restored_tracking_module_but_ignores_non_issue_helpers() {
     let repository = TempRepo::new();
     prepare(&repository);
     repository.write(
@@ -305,7 +301,7 @@ def renamed_mutation(*, issue_number: int) -> None:
         .failure()
         .stdout(
             predicate::str::contains(
-                "python-command-equivalent-still-owned tracking-issue *: python/larch/issue/tracking_issue.py",
+                "python/larch/issue/tracking_issue.py:1: retired issue-domain Python module returned",
             )
             .and(predicate::str::contains("python/larch/git/allowed_footer.py").not())
             .and(predicate::str::contains("python/larch/rendering/allowed_handoff.py").not()),

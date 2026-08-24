@@ -1,9 +1,8 @@
-# Review token propagation coverage (pytest)
+# Review token propagation coverage
 
 Offline coverage for token telemetry propagation across `/implement` Step 5's
 `review-and-fix` boundary lives in
-`python/tests/implement/test_implement_shell_scripts.py` (token-propagation
-node group).
+`crates/larch-cli/tests/review_and_fix_commands.rs`.
 
 ## Coverage
 

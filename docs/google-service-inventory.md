@@ -27,7 +27,7 @@ process launch. Other matches are controls or setup prose:
 
 | Service category | Current production operations | Production callers | Adapter parity | Consumer cutover | Python removal |
 | --- | --- | --- | --- | --- | --- |
-| Cloud Storage | Bucket-root list preflight; paginated object list; create-only upload; download; metadata | Rust `run-log storage-preflight`, lifecycle, and publication commands through `GoogleCloudStorage`. `python/larch/report/object_store.py` is a compatibility/test adapter that invokes Rust `object-store gcs` for its GCS path. | Complete: `GoogleCloudStorage` implements the larch-owned `ObjectStore` port with `google-cloud-storage` | Complete | Complete: Rust owns the production workflow and service client; the retained Python adapter has no production caller. |
+| Cloud Storage | Bucket-root list preflight; paginated object list; create-only upload; download; metadata | Rust `run-log storage-preflight`, lifecycle, and publication commands through `GoogleCloudStorage`. | Complete: `GoogleCloudStorage` implements the larch-owned `ObjectStore` port with `google-cloud-storage` | Complete | Complete: Rust owns the production workflow and service client. |
 | `gcloud` CLI | None | None | Not applicable | Not applicable | Not applicable |
 
 `crates/larch-adapters/src/google_auth.rs` remains the single Google credential

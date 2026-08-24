@@ -5,7 +5,7 @@
 //! module-level entrypoint survives in the Python module the ledger records.
 //! This module owns that evidence so sibling rules do not duplicate it.
 
-use std::sync::LazyLock;
+use std::{path::Path, sync::LazyLock};
 
 use regex::Regex;
 use toml::{Value, map::Map};
@@ -13,6 +13,14 @@ use toml::{Value, map::Map};
 use crate::{Finding, LintError, RepoPath, Repository};
 
 const PYTHON_REGISTRY_PATH: &str = "python/larch/cli.py";
+
+/// Return whether a path is a Python source in the production package.
+pub(super) fn is_python_runtime_path(path: &str) -> bool {
+    path.starts_with("python/larch/")
+        && Path::new(path)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("py"))
+}
 
 type RegistryTable = Map<String, Value>;
 

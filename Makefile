@@ -950,7 +950,7 @@ agnix:
 	pre-commit run agnix --all-files
 
 gitleaks:
-	pre-commit run gitleaks --all-files
+	pre-commit run --hook-stage manual gitleaks --all-files
 
 # Trufflehog is CI-only (not a pre-commit hook). This target runs the same
 # pinned Docker image as CI but in `filesystem` mode over the working tree;

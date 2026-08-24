@@ -1,10 +1,9 @@
 //! The `/report-tokens` analysis report: sections, cache rows, and plot series.
 //!
-//! Rust parity for Python `larch.report.report_tokens_render`,
-//! `larch.report.report_tokens_issue`, and the series half of
-//! `larch.report.report_tokens_plot`. Everything here is pure: the caller owns
-//! the corpus scan, the pricing pass, and every file the report advertises, so
-//! one rendered report is reproducible from its records alone.
+//! Preserves the recorded output contract of the retired Python report
+//! renderer. Everything here is pure: the caller owns the corpus scan, the
+//! pricing pass, and every file the report advertises, so one rendered report
+//! is reproducible from its records alone.
 //!
 //! One contract travels with the text. The NDJSON cache rows are machine-read,
 //! so they keep Python's key order, rounding, and `json.dumps` spacing. The
@@ -517,9 +516,9 @@ fn suggestions(runs: &[PricedRun]) -> String {
         .map(|run| run.record.claude.cache_read + run.record.cursor.cache_read)
         .sum();
     let pricing_line = if runs.iter().any(|run| !run.cost.priced_by_token_cost) {
-        "- Treat dollar values as estimates; rows marked `fallback` used blended display rates because `python/larch/report/report_tokens_cost.py` used blended fallback pricing."
+        "- Treat dollar values as estimates; rows marked `fallback` used blended display rates because per-bucket token counts were unavailable."
     } else {
-        "- Treat dollar values as estimates; `python/larch/report/report_tokens_cost.py` remains the pricing authority used for headline totals."
+        "- Treat dollar values as estimates; the built-in reviewed rate table is the pricing authority for headline totals."
     };
     [
         "## Cost-reduction suggestions",

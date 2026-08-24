@@ -97,10 +97,10 @@ fn rejects_python_dispatch_implementations_and_retired_tests() {
             "superseded #7677 Python module returned",
         ))
         .stdout(predicate::str::contains(
-            "unapproved Python state or background-job implementation",
+            "retired Python state or background-job implementation returned",
         ))
         .stdout(predicate::str::contains(
-            "python/larch/state/bootstrap.py:1: unapproved Python state or background-job implementation",
+            "python/larch/state/bootstrap.py:1: retired Python state or background-job implementation returned",
         ))
         .stdout(predicate::str::contains(
             "retired #7677 Python test surface returned",

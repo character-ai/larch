@@ -1,8 +1,8 @@
 //! Enforce the completed session and background-job ownership boundary.
 //!
 //! Umbrella #7677 closed the command rows that used to be implemented by the
-//! Python state and background-job packages. The remaining Python helpers are
-//! deliberately narrow libraries until #7681 ports their last callers.
+//! Python state and background-job packages. The final runtime retirement
+//! removes the compatibility helpers after their last callers reach Rust.
 
 use std::{collections::BTreeSet, path::Path};
 
@@ -37,17 +37,7 @@ const RETIRED_MODULES: &[&str] = &[
     "python/larch/core/kv_cli.py",
 ];
 
-/// The exact Python helpers whose remaining consumers are owned by #7681.
-const RETAINED_MODULES: &[&str] = &[
-    "python/larch/state/__init__.py",
-    "python/larch/state/_tokens.py",
-    "python/larch/state/_validate.py",
-    "python/larch/state/session_env.py",
-    "python/larch/bgjob/__init__.py",
-    "python/larch/bgjob/model.py",
-    "python/larch/bgjob/registry.py",
-    "python/larch/core/process_identity.py",
-];
+const RETAINED_MODULES: &[&str] = &[];
 
 type RegistryTable = Map<String, Value>;
 
@@ -206,7 +196,7 @@ fn check_retired_surface(repository: &Repository, findings: &mut Vec<Finding>) {
             findings.push(Finding::new(
                 relative,
                 1,
-                "unapproved Python state or background-job implementation; final removal is owned by #7681",
+                "retired Python state or background-job implementation returned",
             ));
         }
     }

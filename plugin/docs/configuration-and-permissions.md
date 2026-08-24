@@ -22,9 +22,8 @@ and editor behavior, keeps only the approved environment allowlist, and may
 launch user-configured hooks, filters, signing tools, SSH, credential helpers,
 askpass, merge drivers, or editors through installed Git. Treat those programs
 as approved operator configuration with untrusted output and failure behavior.
-Remaining Python-owned rows are listed in
-[`docs/git-operation-inventory.md`](git-operation-inventory.md) until their
-named domain issue cuts them over atomically.
+Residual non-Rust Git owners are listed in
+[`docs/git-operation-inventory.md`](git-operation-inventory.md).
 
 ```json
 "Skill(alias)",
@@ -532,7 +531,7 @@ Per-million-token cost rate (USD) used by `/research`'s Step 4 token report (`##
 **When not set:**
 - The `$` column is omitted; the report shows only token counts.
 
-**Scope**: Token telemetry covers Claude subagent (Agent-tool) invocations only. Claude inline (orchestrator) and external lanes (Cursor/Codex) are unmeasurable and excluded from both the totals and the cost column. The report labels itself "Claude tokens only; external lanes excluded" so operators see the coverage honestly. See [`python/larch/report/tokens.py research lane docs`](../python/larch/report/tokens.py) for the helper contract.
+**Scope**: Token telemetry covers Claude subagent (Agent-tool) invocations only. Claude inline (orchestrator) and external lanes (Cursor/Codex) are unmeasurable and excluded from both the totals and the cost column. The report labels itself "Claude tokens only; external lanes excluded" so operators see the coverage honestly. Rust token lane commands own the helper contract in `crates/larch-cli/src/token_commands.rs`.
 
 ### `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD`
 
@@ -549,11 +548,8 @@ Default `2` (positive integer). `/design` Step 2b.5 compares the current plan an
 #### Per-vendor rates (`/implement` final summary and `/report-tokens`)
 
 `larch_core::report::RATE_TABLE` owns the canonical `/implement` final-summary
-and `/report-tokens` USD estimates per lane. The retained
-[`python/larch/report/report_tokens_cost.py`](../python/larch/report/report_tokens_cost.py)
-helper consumes the same override names only for the #7680 `render run-summary`
-compatibility payload and the remaining #7684 analytics. Rust owns `token cost`
-and `token render-cost-line` after #8507:
+and `/report-tokens` USD estimates per lane. Rust `token cost` and
+`token render-cost-line` consume the same override names:
 
 - **Claude bucket env vars**: `LARCH_CLAUDE_INPUT_RATE_PER_M`, `LARCH_CLAUDE_CACHE_READ_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M`, and `LARCH_CLAUDE_OUTPUT_RATE_PER_M`.
 - **Codex bucket env vars** (`gpt-5.6-sol` default-bucket tokens): `LARCH_CODEX_INPUT_RATE_PER_M`, `LARCH_CODEX_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_OUTPUT_RATE_PER_M`.

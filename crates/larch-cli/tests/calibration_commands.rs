@@ -5,7 +5,7 @@ use std::{
 };
 use tempfile::TempDir;
 
-const FIXTURES: &str = "python/test_fixtures/plan-fidelity-calibration";
+const FIXTURES: &str = "fixtures/plan-fidelity-calibration";
 const RUNS: [(&str, u64, &str); 4] = [
     ("66A96EAD-3088-4750-AE3A-64A0E11EABBD", 2, "FINDING_10"),
     ("3ED15A95-C722-4ABE-904C-729E1A730C5D", 1, "FINDING_10"),

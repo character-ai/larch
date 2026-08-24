@@ -30,9 +30,9 @@ consumer's fail-closed check into a false stall or a fail-open pass. Evidence
 of violation: `--skip-approve` skipped the Gate C invariant present-note and
 assessment persistence, so Step 5c false-blocked (#7250); legacy `unavailable`
 durable notes passed the Step 8 merge gate with no live-fingerprint check
-(#7216). Mechanical backing: per-variant prompt-contract pins, such as the
-skip-approve Gate C pins in `python/tests/core/test_architectural_guidelines.py`;
-add an equivalent pin whenever a gate gains a new variant path.
+(#7216). Mechanical backing: per-variant prompt-contract pins in
+`skills/design/references/approval-gates-gate-c.md` and the Rust design publish
+tests; add an equivalent pin whenever a gate gains a new variant path.
 
 ### I-Pause-1: A pause snapshot contains every artifact a resume guard reads
 
@@ -50,7 +50,7 @@ extend them when the guard-read artifact set grows.
 - Why: Any step result persisted for later consumption, including a bgjob result env, staged or durable assessment, cached verdict, or completion sentinel with a payload, carries an identity of the inputs that produced it, such as a content hash, `HEAD` SHA, or diff fingerprint.
 - Why: Every consumer validates that identity against the live inputs before acting; on mismatch, the consumer re-runs the producing step or fails loudly. It never silently reuses the stale result.
 - Why: Evidence of violation: /design review re-entry rejoined a pre-edit bgjob result env after `plan.txt` changed (#6633); the /implement guideline note was repeatedly consumed after HEAD drift invalidated the diff it assessed (#5337, #5675, #5969, #6059, #6106).
-- Why: Mechanical backing: input fingerprints in persisted result envs plus consumer-side validation, mirroring `DIFF_FINGERPRINT` and `HEAD_SHA` checks in `python/larch/core/architectural_guidelines.py` (`note_consumable`, `_staged_fingerprint_valid`); extend the same pattern to bgjob result envs consumed on re-entry.
+- Why: Mechanical backing: input fingerprints in persisted result envs plus consumer-side validation, including the `DIFF_FINGERPRINT` and `HEAD_SHA` checks in `crates/larch-core/src/architectural_assessment.rs`; extend the same pattern to bgjob result envs consumed on re-entry.
 
 ### I-Mut-1: A refusal gate runs before the durable mutation it can strand
 
@@ -117,7 +117,7 @@ promotion succeed; `verify_release_pin` in `scripts/larch.sh` refuses an
 upgrade whose pinned commit differs from the release commit before any plugin
 state changes; regression coverage lives in the pin cases in
 `crates/larch-cli/src/release_publish.rs` and
-`python/tests/release/test_rust_bootstrap.py`.
+`crates/larch-cli/tests/release_assets.rs`.
 
 ### I-Cutover-1: A command changes owner atomically
 
@@ -157,9 +157,9 @@ allowed publication window. Evidence of violation: pre-terminal snapshots froze
 merged runs as bailed or stalled in durable logs, corrupting every downstream
 outcome census (#5646, #5676, #5970, #4900). Mechanical backing: `/implement`
 keeps refreshes mutable and publishes only from Step 18 after terminal
-reconciliation. Regression coverage lives in `crates/larch-cli/tests/run_log_flush.rs`,
-`python/tests/report/test_run_logs.py`, and
-`python/tests/implement/test_implement_shell_scripts.py`.
+reconciliation. Regression coverage lives in
+`crates/larch-cli/tests/run_log_flush.rs` and
+`crates/larch-adapters/tests/run_lifecycle.rs`.
 
 ## Panel integrity
 

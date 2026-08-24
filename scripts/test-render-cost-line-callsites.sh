@@ -23,10 +23,16 @@ while IFS= read -r rel; do
 done < <(git -C "$REPO" grep -rln 'render-cost-line\.sh' -- scripts 2>/dev/null || true)
 pass 'scripts/ render-cost-line references are allowlist-only'
 
-if grep -Fq '💰 Cost:' "$REPO/python/larch/report/tokens.py"; then
-    fail 'Python token-report helper must not contain 💰 Cost: literal (summary/markdown paths)'
+token_report="$REPO/crates/larch-core/src/report/token_report.rs"
+if grep -Fq '💰 Cost:' "$token_report"; then
+    fail 'token-report implementation must not contain 💰 Cost: literal (summary/markdown paths)'
 fi
 pass 'token report implementation has no 💰 Cost: literal'
+
+if grep -Fq 'python/larch/report/' "$token_report"; then
+    fail 'token-report implementation must not cite a retired Python pricing owner'
+fi
+pass 'token report names no retired Python pricing owner'
 
 f="$REPO/crates/larch-cli/src/design_gate_summary_commands.rs"
 grep -Fq 'render run-summary' "$f" || fail 'design_gate_summary_commands.rs must invoke render run-summary'

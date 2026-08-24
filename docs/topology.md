@@ -1,6 +1,6 @@
 # Topology Projection
 
-<!-- AUTO-GENERATED: Derived from skills/shared/topology.tsv. Do not edit. Regenerate via: python3 python/cli.py generate topology-docs -->
+<!-- AUTO-GENERATED: Derived from skills/shared/topology.tsv. Do not edit. Regenerate via: cargo run --quiet --locked --package larch-cli -- generate topology-docs -->
 
 This document is a consumer-doc projection of runtime authorities. The runtime authority listed for each row remains the source of truth; the projection exists so consumer docs can link to stable row anchors instead of repeating drift-prone counts.
 
@@ -35,7 +35,7 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="implement.conflict_review.rounds_max"></a>`implement.conflict_review.rounds_max` | 2 total | resolution-review rounds | `agents/ci-fixer.md` |
 | <a id="research.lanes"></a>`research.lanes` | four research lanes | architecture + edge cases + external comparisons + security | `skills/research/references/research-phase.md` |
 | <a id="research.validation_panel"></a>`research.validation_panel` | 3 reviewer lanes | Claude Code Reviewer subagent + Codex + Cursor | `skills/research/references/validation-phase.md` |
-| <a id="implement.review_and_fix.panel_hard"></a>`implement.review_and_fix.panel_hard` | three specialists per vendor | correctness edge-cases testing | `python/larch/core/config.py` |
+| <a id="implement.review_and_fix.panel_hard"></a>`implement.review_and_fix.panel_hard` | three specialists per vendor | correctness edge-cases testing | `skills/review/SKILL.md` |
 | <a id="deps.issue_audit"></a>`deps.issue_audit` | one approval gate | open-issue grouping + REGULAR refresh + explicit and latent dependency audit | `skills/deps/SKILL.md` |
 | <a id="runtime.residual_bash.inventory"></a>`runtime.residual_bash.inventory` | residual-bash | hooks linters thin wrappers sleep helper G-track delegation fences and residual harnesses | `crates/larch-harness-mark/src/residual_bash.rs` |
 | <a id="runtime.pr_closes_issue"></a>`runtime.pr_closes_issue` | closes-issue | PR-body Closes issue extraction authority | `crates/larch-cli/src/pr_commands.rs` |

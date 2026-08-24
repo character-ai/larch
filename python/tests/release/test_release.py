@@ -1,4 +1,4 @@
-"""Regression tests for remaining release-adjacent Python helpers."""
+"""Regression tests for the release workflow contract."""
 
 from __future__ import annotations
 
@@ -135,7 +135,7 @@ def test_release_skill_step7_upgrade_run_sets_the_driver_env_contract() -> None:
     # uncanonicalized parent fails the larch.sh symlink-ancestor walk during
     # the release preflight (#7926). A relative, missing, or inaccessible
     # TMPDIR leaves the parent empty, and the fence reports it instead of
-    # composing a misplaced staging path. test_rust_bootstrap.py runs the
+    # composing a misplaced staging path. The Rust release-asset tests run the
     # real guard against these compositions.
     assert 'PLUGIN_DATA_PARENT=""' in skill
     assert (

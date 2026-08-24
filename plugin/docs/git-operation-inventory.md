@@ -4,9 +4,8 @@ This matrix records every production source that reads local Git state or can
 execute installed Git. The `gix-read` owner means the typed `RepositoryRead`
 port implemented only by `crates/larch-adapters/src/git/repository.rs`.
 The `git-cli` owner means a closed method on `GitCli`; it never means arbitrary
-Git arguments. `later-domain` rows remain Python-owned until the named Rust
-migration issue atomically switches their command consumers and removes the
-Python implementation.
+Git arguments. `later-domain` rows identify residual non-Rust production
+surfaces.
 
 Issue #8629 reuses the closed `ExactDiffRequest` and `PushRequest` families for
 the standalone leaf driver's fixed `--numstat -z -M50%` measurement and remote
@@ -14,7 +13,7 @@ branch cleanup. `GitRefspec::deletion` constructs only the validated
 empty-source deletion form; these typed options admit no arbitrary arguments
 and add no Git request family.
 
-The rule `git-ownership` compares this block with live production Rust, Python,
+The rule `git-ownership` compares this block with live production Rust,
 skill, agent, hook, script, Makefile, and workflow surfaces. It also rejects
 direct installed-Git construction through aliases, qualified constructors, or
 constant and variable executable values. It pins the adapter's public methods
@@ -109,10 +108,6 @@ crates/larch-cli/src/triage_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-lint/src/repository.rs	bootstrap	#7736	repository-discovery,tracked-paths
 crates/larch-cli/src/agent_commands.rs	git-cli	#7671	typed-cli,typed-read
 crates/larch-cli/src/oos_commands.rs	gix-read	#7671	typed-read
-python/larch/core/architectural_guidelines.py	later-domain	#7686	diff,merge-base,rev-parse
-python/larch/core/redact.py	later-domain	#7686	submodule
-python/larch/git/gh.py	later-domain	#7676	remote
-python/larch/report/storage_config.py	later-domain	#7683	dynamic
 scripts/block-submodule-edit.sh	later-domain	#7677	rev-parse
 scripts/check-stale-plugin.sh	later-domain	#7674	rev-parse
 scripts/sessionstart-health.sh	later-domain	#7677	branch,rev-parse,sparse-checkout,stash,status

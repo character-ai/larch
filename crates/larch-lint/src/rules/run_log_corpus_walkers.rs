@@ -55,7 +55,6 @@ const RUST_SCOPE_INCLUDE: &str = "crates/*/src/**/*.rs";
 const LINTER_CRATE_EXCLUDE: &str = "crates/larch-lint/**";
 const OWNER_SUFFIX: &str = "report/run_log_corpus.rs";
 const PYTHON_SCOPE_INCLUDES: [&str; 1] = ["python/**/*.py"];
-const PYTHON_OWNER: &str = "python/larch/report/run_log_corpus.py";
 const PYTHON_EXEMPTIONS: [&str; 0] = [];
 const SUPPRESSION_TOKEN: &str = "lint-run-log-corpus-walkers";
 const CLASSIFICATION_MARKER: &str = "findings-classification";
@@ -132,7 +131,7 @@ fn is_owner(path: &RepoPath) -> bool {
 }
 
 fn is_python_owner_or_exempt(path: &RepoPath) -> bool {
-    path.as_str() == PYTHON_OWNER || PYTHON_EXEMPTIONS.contains(&path.as_str())
+    PYTHON_EXEMPTIONS.contains(&path.as_str())
 }
 
 fn is_excluded_python_path(path: &str) -> bool {
