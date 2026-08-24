@@ -113,14 +113,15 @@ manifests, and unsafe paths before committing. External process writes bypass
 Claude's `Edit` and `Write` hooks, so the normal pre-commit checks remain a
 required second line of defense.
 
-`ExternalProcessRunner` and the Python agent launchers own product argv,
-environment allowlists, timeouts, bounded capture, termination, and reaping for
-their respective current commands. Captured external output remains untrusted
-and may contain secrets. Keep raw streams in session-local state and use the
-owning redaction and publication boundary before egress. Rust Cursor isolation
-creates a private config directory and injects `CURSOR_CONFIG_DIR` only into the
-child `ProcessRequest` environment; it does not mutate the parent process
-environment, so parallel tests and parallel clones stay isolated.
+Rust vendor modules build product argv, and `ExternalProcessRunner` owns the
+environment allowlist, timeout, bounded capture, termination, and reaping for
+every larch-owned vendor child. There is no Python launcher or fallback.
+Captured external output remains untrusted and may contain secrets. Keep raw
+streams in session-local state and use the owning redaction and publication
+boundary before egress. Rust Cursor isolation creates a private config
+directory and injects `CURSOR_CONFIG_DIR` only into the child `ProcessRequest`
+environment; it does not mutate the parent process environment, so parallel
+tests and parallel clones stay isolated.
 
 `analyze-bugs runtime` uses closed `HostUtilityProgram` cases: `python3 -m
 pytest` only for Gix-discovered, live, repository-relative `python/tests/`

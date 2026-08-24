@@ -92,8 +92,9 @@ cat > "$RESEARCH_TMPDIR/cursor-validation-launch.sh" <<'LARCH_CURSOR_VALIDATION_
 set -euo pipefail
 
 # Cursor authenticates via the CURSOR_API_KEY environment variable (issue
-# #3375) — no `--api-key` argv element, so the key never reaches the cursor
-# command line, run-external-agent.sh `.meta` CMD_JSON, or `ps`. The call below
+# #3375) — no `--api-key` argv element, so the key never reaches argv, ordinary
+# command-line listings, or run-external-agent `.meta` CMD_JSON. Same-UID or
+# host-level process inspection can still expose a live child environment. The call below
 # is a Darwin preflight gate: it prints an actionable stderr message when
 # neither CURSOR_API_KEY nor a cursor keychain entry is available (cursor would
 # otherwise emit a cryptic keychain error) and prints no argv flags; its exit
@@ -137,7 +138,7 @@ export RESEARCH_TMPDIR CLAUDE_PLUGIN_ROOT
 The foreground launcher stdout must be exactly `BGJOB_STATUS=STARTED STEP=validation-cursor PGID=<n>`.
 Do not call `bgjob wait` unless the launch printed that exact marker; if it did not, route directly to the lane's existing launch-class failure branch instead of waiting.
 
-> **Diagnostic note**: this lane uses `scripts/larch.sh agent run-external-agent` directly and has no `/implement`-style flush path for the `vendor-failure-diagnostics` larch-log batch. Validation-lane failure diagnostics (`*.failure-diag` carriers) stay in `$RESEARCH_TMPDIR` and are removed at `/research` cleanup; they are not published in run logs.
+> **Process-boundary decision**: this lane deliberately assembles its validation-specific Cursor argv and passes it to the Rust `scripts/larch.sh agent run-external-agent` command instead of duplicating a dedicated launcher. The command validates the closed vendor program and uses `ExternalProcessRunner`, so timeout, cancellation, output bounds, credentials, and descendant cleanup remain shared. It has no `/implement`-style flush path for the `vendor-failure-diagnostics` larch-log batch. Validation-lane failure diagnostics (`*.failure-diag` carriers) stay in `$RESEARCH_TMPDIR` and are removed at `/research` cleanup; they are not published in run logs.
 
 **Cursor fallback** (if `cursor_binary_available` is false at lane-launch time): Launch 1 Claude Code Reviewer subagent via the Agent tool (`subagent_type: larch:code-reviewer`) using the unified Code Reviewer archetype with the research-validation variable bindings below. Attribute as `Cursor`.
 

@@ -36,10 +36,10 @@ pub const POINT_ID_MAX: u16 = 9999;
 
 /// Fixed debate panel slot order.
 ///
-/// Membership owner is Python `larch.core.external_defaults.VALID_TOOLS`; this
-/// module's purity constraint forbids depending on runtime configuration, and
-/// the ordered triple has no Rust owner. Update this array when that vendor
-/// set changes.
+/// Membership is fixed by the Rust external-default registry. This protocol
+/// module keeps its own ordered value because its purity constraint forbids a
+/// runtime-configuration dependency. Update it with
+/// `external_defaults::debate_panel_seating` when the vendor set changes.
 pub const SLOT_ORDER: [&str; 3] = ["cursor", "codex", "claude"];
 /// Live-panel floor; independent of `SLOT_ORDER` length (the maximum).
 pub const LIVE_PANEL_MINIMUM: usize = 2;

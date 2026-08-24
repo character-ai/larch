@@ -87,6 +87,9 @@ fn rules_lists_registered_rules_in_name_order() {
             "literal-counts\tReject drift-prone literal item counts in Markdown\n",
         ))
         .stdout(predicate::str::contains(
+            "agent-python-free\tEnforce final Rust vendor-agent ownership and retirement of Python agent surfaces\n",
+        ))
+        .stdout(predicate::str::contains(
             "bg-wait-coverage\tReject unallowlisted background-launch prose in skills\n",
         ))
         .stdout(predicate::str::contains(

@@ -26,10 +26,9 @@ const NAME: &str = "codex-exec-auth";
 const DESCRIPTION: &str = "Require shared auth wiring for raw Codex dispatches";
 const SUPPRESSION_TOKEN: &str = "lint-codex-exec-auth";
 const MESSAGE: &str =
-    "unwired Codex dispatch without auth wiring; use python3 python/cli.py agent launch-codex-exec";
+    "unwired Codex dispatch without auth wiring; use scripts/larch.sh agent launch-codex-exec";
 const PYTHON_MESSAGE: &str =
-    "unwired Python Codex dispatch without auth wiring; use python3 python/cli.py agent launch-codex-exec or # lint-codex-exec-auth: ok <reason>";
-const ALLOWED_PYTHON_FILE: &str = "python/larch/agents/agents.py";
+    "unwired Python Codex dispatch without auth wiring; use scripts/larch.sh agent launch-codex-exec or # lint-codex-exec-auth: ok <reason>";
 
 static CODEX_EXEC: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(^|[^A-Za-z0-9_])["'\\]?codex["'\\]?\s+exec"#)
@@ -210,9 +209,6 @@ fn check_rust(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
 }
 
 fn check_python(path: &str, source: &str) -> Result<Vec<Finding>, LintError> {
-    if path == ALLOWED_PYTHON_FILE {
-        return Ok(Vec::new());
-    }
     let mut findings = Vec::new();
     for (index, line) in source.lines().enumerate() {
         if line.trim_start().starts_with('#') {

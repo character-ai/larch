@@ -349,9 +349,8 @@ pub struct DebateSeat {
 
 /// Fixed `debate.panel` seating in protocol slot order.
 ///
-/// Mirrors the `config.py` `debate.panel` `RoleDefault.slots` (Cursor and Codex
-/// subprocess, Claude agent-tool) that Python `orchestrator._slots` consumed via
-/// `external_defaults.slot_defaults`.
+/// Canonical Rust-owned `debate.panel` seats: Cursor and Codex subprocesses,
+/// followed by the Claude agent-tool participant.
 #[must_use]
 pub const fn debate_panel_seating() -> [DebateSeat; 3] {
     [

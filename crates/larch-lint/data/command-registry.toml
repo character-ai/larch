@@ -9422,24 +9422,6 @@ python = []
 rust = ["review-and-fix write-pre-self-review-snapshot"]
 
 [[callers]]
-path = "python/larch/agents/_auth.py"
-kind = "python-runtime"
-python = []
-rust = ["agent check-reviewers", "agent degraded-tools-gate"]
-
-[[callers]]
-path = "python/larch/agents/_claude_runner.py"
-kind = "python-runtime"
-python = []
-rust = ["agent launch-claude-ci", "agent launch-codex-ci", "agent launch-cursor-ci", "token append-record", "token record-vendor", "token record-vendor-sidecar"]
-
-[[callers]]
-path = "python/larch/agents/_run_external.py"
-kind = "python-runtime"
-python = []
-rust = ["agent parse-codex-usage", "run-log append-failure", "timing record-vendor-task", "token record-vendor", "token record-vendor-sidecar"]
-
-[[callers]]
 path = "python/larch/core/rust_runtime.py"
 kind = "python-runtime"
 python = []

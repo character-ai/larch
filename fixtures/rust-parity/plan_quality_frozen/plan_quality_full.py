@@ -19,13 +19,12 @@ import shlex
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from larch import io as larch_io
 from collections.abc import Callable
 
-from larch.agents import agents
 from larch.core import config
-from larch.core import external_defaults
 from larch.calibration import difficulty
 from larch.core.ctx import Ctx
 from larch.design import design_pause, plan_grammar
@@ -36,6 +35,59 @@ from larch.core.repo_roots import consumer_repo_root, larch_entrypoint, larch_en
 from larch.issue.issue_wire import emit_untrusted_file_block
 from larch.state import session_env
 from larch.state.session_env import validate_design_tmpdir
+
+
+@dataclass(frozen=True)
+class _FrozenModelArgResult:
+    argv: tuple[str, ...]
+
+
+class _FrozenAgents:
+    """Minimal snapshot needed by this retired plan-quality parity fixture."""
+
+    @staticmethod
+    def resolve_model_args(tool: str, *, with_effort: bool = False) -> _FrozenModelArgResult:
+        del with_effort
+        if tool != "cursor":
+            raise ValueError(f"frozen fixture supports only cursor model args (got: {tool})")
+        if config.ENV_LARCH_CURSOR_MODEL in os.environ:
+            model = os.environ[config.ENV_LARCH_CURSOR_MODEL]
+            context = config.ENV_LARCH_CURSOR_MODEL
+        elif config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL in os.environ:
+            model = os.environ[config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL]
+            context = config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL
+        else:
+            model = config.CURSOR_DEFAULT_MODEL
+            context = "default model"
+        if not model.strip():
+            raise ValueError(f"{context} must not be blank or whitespace-only")
+        if any(ord(character) < 32 or ord(character) == 127 for character in model):
+            raise ValueError(f"{context} must not contain POSIX [[:cntrl:]] characters")
+        return _FrozenModelArgResult(("--model", model))
+
+    @staticmethod
+    def cursor_auth_export_env() -> None:
+        os.environ["NO_OPEN_BROWSER"] = "1"
+        raw_key = os.environ.get("CURSOR_API_KEY", "")
+        key = raw_key.strip()
+        if key and "\n" not in raw_key and "\r" not in raw_key:
+            os.environ["CURSOR_API_KEY"] = key
+        else:
+            os.environ.pop("CURSOR_API_KEY", None)
+
+
+class _FrozenExternalDefaults:
+    """Plan-revision order at the point this fixture was frozen."""
+
+    @staticmethod
+    def tool_order(role_id: str) -> tuple[str, ...]:
+        if role_id != "design.plan_revision":
+            raise ValueError(f"unknown frozen role: {role_id}")
+        return ("codex", "cursor", "claude")
+
+
+agents = _FrozenAgents()
+external_defaults = _FrozenExternalDefaults()
 
 
 def _binary_arg(*, value: str, binary: str) -> str:

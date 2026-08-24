@@ -355,7 +355,7 @@ Step 18a files public stall reports only for **terminal failures**. It does not 
 
 ### External Agent Model Configuration
 
-`python3 python/cli.py agent model-args` emits one argv token per stdout line. In-tree consumers read that stream into Bash arrays and expand the arrays directly; out-of-tree callers must not use command substitution plus shell word-splitting. Explicit blank / whitespace-only model values and values containing POSIX `[[:cntrl:]]` characters are rejected before an external CLI is launched. Human diagnostics and Codex effort warnings are stderr-only.
+`scripts/larch.sh agent model-args` emits one argv token per stdout line from the Rust vendor-model owner. In-tree consumers read that stream into Bash arrays and expand the arrays directly; out-of-tree callers must not use command substitution plus shell word-splitting. Explicit blank / whitespace-only model values and values containing POSIX `[[:cntrl:]]` characters are rejected before an external CLI is launched. Human diagnostics and Codex effort warnings are stderr-only.
 
 Model configuration is also available via plugin `userConfig` — environment variables take precedence if both are set.
 
@@ -366,7 +366,7 @@ The model name to pass to Cursor's `--model` flag (for example, `composer-2.5`).
 **When set:**
 - Cursor invocations use this model unless a reviewer-panel manifest row pins a per-slot `cursor_model`
 - This explicit environment or plugin configuration overrides the role default, including the Step 2 TRIVIAL and MODERATE default of `cursor-grok-4.6-high`
-- The model flag is injected by `python3 python/cli.py agent model-args` as line-token argv, then consumed through Bash arrays
+- The model flag is injected by `scripts/larch.sh agent model-args` as line-token argv, then consumed through Bash arrays
 
 **When not set:**
 - The global Cursor default is `composer-2.5` — Cursor's `cursor agent` CLI does not honor the model configured in `~/.cursor/cli-config.json`, so an explicit default is required to avoid falling back to a potentially rate-limited model
@@ -389,7 +389,7 @@ The model used by the always-on Claude voter when `scripts/larch.sh agent launch
 The vendor used by `/design` Step 2b's drafter subprocess.
 
 **When set:**
-- Accepted values: `codex`, `claude`. Step 2b dispatches to `python3 python/cli.py agent launch-codex-drafter` or `python3 python/cli.py agent launch-claude-drafter` accordingly. Any other value causes the drafter to skip and fall back to inline drafting.
+- Accepted values: `codex`, `claude`. Step 2b dispatches to `scripts/larch.sh agent launch-codex-drafter` or `scripts/larch.sh agent launch-claude-drafter` accordingly. Any other value causes the drafter to skip and fall back to inline drafting.
 
 **When not set:**
 - Defaults to `claude`. Set `LARCH_DESIGN_DRAFTER=codex` to use the Codex drafter.
@@ -399,7 +399,7 @@ The vendor used by `/design` Step 2b's drafter subprocess.
 The Claude model used by `/design` Step 2b's drafter subprocess on the default Claude path or when `LARCH_DESIGN_DRAFTER=claude`.
 
 **When set:**
-- Step 2b uses this model for the subprocess-first plan drafting path via `python3 python/cli.py agent launch-claude-drafter`. The launcher validates it as one non-empty token with no whitespace or control characters before invoking Claude.
+- Step 2b uses this model for the subprocess-first plan drafting path via `scripts/larch.sh agent launch-claude-drafter`. The launcher validates it as one non-empty token with no whitespace or control characters before invoking Claude.
 
 **When not set:**
 - Defaults to `claude-opus-4-8`. Empty values also use this default. Has no effect when `LARCH_DESIGN_DRAFTER=codex`.
@@ -408,7 +408,7 @@ Clean launcher, content, status, or delimiter failures fall back to inline Step 
 
 ### `OPENAI_API_KEY`
 
-When non-whitespace, the covered Codex paths (`scripts/larch.sh agent launch-review --tool codex`, `scripts/larch.sh agent launch-codex-ci`, `scripts/larch.sh agent launch-codex-implement`, the Codex health probe in `scripts/larch.sh agent check-reviewers`, `scripts/larch.sh review-and-fix apply-findings`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `scripts/larch.sh checks lint-fix`, and `python/cli.py agent run-negotiation-round`) authenticate with API-key billing via per-invocation `-c` provider overrides. Only the variable name `OPENAI_API_KEY` appears in argv or non-secret config references; the key value is read live by Codex from the child process environment, which can be visible to same-UID or host-level process inspection while Codex is running.
+When non-whitespace, the covered Codex paths (`scripts/larch.sh agent launch-review --tool codex`, `scripts/larch.sh agent launch-codex-ci`, `scripts/larch.sh agent launch-codex-implement`, the Codex health probe in `scripts/larch.sh agent check-reviewers`, `scripts/larch.sh review-and-fix apply-findings`, `scripts/larch.sh agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `scripts/larch.sh checks lint-fix`, and `scripts/larch.sh agent run-negotiation-round`) authenticate with API-key billing via per-invocation `-c` provider overrides. Only the variable name `OPENAI_API_KEY` appears in argv or non-secret config references; the key value is read live by Codex from the child process environment, which can be visible to same-UID or host-level process inspection while Codex is running.
 
 Bad or expired keys stay on the env-key path and fail loud / waterfall rather than silently reverting to ChatGPT login. When `OPENAI_API_KEY` is unset, empty, or whitespace-only, covered paths fall back to `codex login` / `~/.codex/auth.json`. The legacy top-level `env_key = "OPENAI_API_KEY"` config line is no longer the recommended setup path and is removed from copied larch temp configs; literal `api_key` / `openai_api_key` assignments are also stripped from those temp configs.
 
@@ -457,7 +457,7 @@ Darwin-only external CLI startup locking uses the shared path
 `/tmp/larch-external-startup-$USER.lock` for Codex and Cursor because both
 startup paths can contend for the same per-user macOS Keychain resource. The
 lock is a reliability mechanism, not an authorization boundary. Unset and empty
-`USER` both resolve to `larch` in Python and Bash. The release delay is
+`USER` both resolve to `larch` in the Rust runtime. The release delay is
 **`LARCH_EXTERNAL_STARTUP_LOCK_DELAY`** (default `0.5` seconds) via
 `external_startup_lock_release_after`. Other operator knobs are
 **`LARCH_EXTERNAL_STARTUP_LOCK_TTL`**, **`LARCH_EXTERNAL_STARTUP_LOCK_TRIES`**,
@@ -497,7 +497,7 @@ Codex reasoning effort applies at launch sites that pass `--with-effort` or use 
 **`launch-codex-exec` callers that omit `--with-effort`** (design Codex drafter, `/research` lanes, plan-command autofix, lint-fix) do not emit `model_reasoning_effort` and ignore `LARCH_CODEX_EFFORT` / `codex_effort`.
 
 **When set at effort-enabled launch sites (plan review, code review, conflict-resolution review, voting panel, review-fix, and the Codex reviewer health probe):**
-- `python3 python/cli.py agent model-args --with-effort` emits `-c` and `model_reasoning_effort="$LARCH_CODEX_EFFORT"` as separate line-token argv entries, raising Codex reasoning to the configured level.
+- `scripts/larch.sh agent model-args --with-effort` emits `-c` and `model_reasoning_effort="$LARCH_CODEX_EFFORT"` as separate line-token argv entries, raising Codex reasoning to the configured level.
 
 **When not set (or set to empty string):**
 - `--with-effort` falls back to the plugin userConfig value (`codex_effort`, default `high`).
@@ -518,7 +518,7 @@ On non-zero codex/cursor/claude subprocess exits in review/collector batches (an
 - **Collector dedup:** within one `scripts/larch.sh agent collect-results` batch, duplicate same-root-cause failures collapse to one suppression line; the first occurrence prints the full tail.
 - **Claude panel fallback:** `scripts/larch.sh agent launch-claude-review` clamps `--timeout` greater than **1800** to **1800** (subprocess cap in `scripts/larch.sh agent launch-claude-subprocess`).
 
-See `python/larch/agents/agents.py` and the canonical
+See `crates/larch-core/src/vendor_diagnostics.rs`, `crates/larch-cli/src/launcher_support.rs`, and the canonical
 [operator-diagnostic contract](security/artifacts-redaction-and-publication.md#operator-visible-diagnostics).
 
 ### `LARCH_TOKEN_RATE_PER_M`

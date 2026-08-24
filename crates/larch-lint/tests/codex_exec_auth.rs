@@ -107,5 +107,7 @@ fn codex_exec_auth_scans_python_dispatches() {
         .stdout(predicate::str::contains(
             "python/new_launcher.py:2: unwired Python Codex dispatch",
         ))
-        .stdout(predicate::str::contains("python/larch/agents/agents.py").not());
+        .stdout(predicate::str::contains(
+            "python/larch/agents/agents.py:1: unwired Python Codex dispatch",
+        ));
 }
