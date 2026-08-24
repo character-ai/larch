@@ -432,6 +432,32 @@ least-privilege scopes and IAM permissions. Offline tests use local fixtures.
 Live ADC tests are ignored by default, require explicit opt-in, and do not render
 credential headers.
 
+### Vendor process, descendant, and diagnostic boundary
+
+Every larch-owned Claude, Codex, and Cursor binary launch enters through
+`${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh` and a Rust command. `larch-core` builds
+a typed `ProcessRequest` from the closed `VendorProgram` enum and the
+`ExternalProcessRunner` port. `TokioProcessRunner` in
+`crates/larch-adapters/src/process.rs` is the sole production spawn owner.
+Skills, hooks, scripts, and Python modules do not construct vendor processes,
+and the retired Python agent package is not a fallback.
+
+The adapter clears the ambient child environment and restores only reviewed
+common keys. Vendor credentials never enter that common allowlist. A launch
+must add an approved typed `ChildEnvironment` override, such as
+`OpenAiApiKey` or `CursorApiKey`; argv and persisted replay metadata remain
+credential-free. Stdin, stdout, and stderr are bounded, and operator-facing
+failure diagnostics pass through the shared redaction and truncation carriers
+before rendering or publication.
+
+Each Unix child starts in its own process group. Cancellation and timeout send
+SIGTERM to the group, wait the configured grace period, escalate to SIGKILL,
+and reap the direct child. A final group kill also covers descendants that
+outlive an exited leader. Other platforms use Tokio's safest direct-child kill
+and reap path; the released runtime is Apple Silicon macOS. This lifecycle is
+shared by reviewer, implementer, drafter, probe, debate, and CI launches rather
+than reimplemented per command.
+
 ### Vendor credential preflight and the reviewer-probe cache
 
 `agent cursor-auth-preflight` runs in Rust through
@@ -936,5 +962,6 @@ boundaries above discoverable without duplicating their operation ledgers:
 | GitHub credentials and operations | `crates/larch-adapters/src/github/`, `crates/larch-adapters/src/github_actions.rs`, the [GitHub service inventory](../github-service-inventory.md), and the `service-ownership` rule and tests in `crates/larch-lint/` |
 | Connectivity availability | `crates/larch-core/src/connectivity.rs`, `crates/larch-adapters/src/http_client.rs`, `crates/larch-cli/src/net_commands.rs`, and their focused Rust tests |
 | Google ADC | `crates/larch-adapters/src/google_auth.rs`, the [Google service inventory](../google-service-inventory.md), and the `service-ownership` rule and tests in `crates/larch-lint/` |
+| Vendor processes, credentials, descendants, and diagnostics | `crates/larch-core/src/process.rs`, `crates/larch-core/src/vendor/`, `crates/larch-core/src/vendor_diagnostics.rs`, `crates/larch-adapters/src/process.rs`, `crates/larch-adapters/src/vendor_diagnostics.rs`, `crates/larch-cli/src/launcher_support.rs`, and the `agent-python-free`, `codex-exec-auth`, and `subprocess-via-runner` rules and tests in `crates/larch-lint/` |
 | Object storage | `crates/larch-core/src/object_store.rs`, `crates/larch-adapters/src/google_storage.rs`, `crates/larch-adapters/src/s3_storage.rs`, `crates/larch-adapters/src/run_lifecycle.rs`, `python/larch/report/object_store.py`, the [Google service inventory](../google-service-inventory.md), and their focused Rust and Python tests |
 | Repository reads and Git compatibility | `docs/git-operation-inventory.md`, `crates/larch-adapters/src/git/`, `crates/larch-adapters/tests/git_repository.rs`, `crates/larch-lint/src/rules/git_ownership.rs`, and the command registry clean-install cases |

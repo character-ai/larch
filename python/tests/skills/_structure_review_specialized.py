@@ -92,8 +92,8 @@ def run(repo_root: Path) -> list[str]:
     if aggregator.name.startswith("reviewer-"): failures.append("(1c) agents/orchestrator-aggregator.md unexpectedly matches reviewer-* glob")
     for name, label in (
         ("agents/reviewer-aggregator.md", "(1d) agents/reviewer-aggregator.md must not exist; use orchestrator-aggregator.md"),
-        ("agents/orchestrator-judge.md", "(1d) agents/orchestrator-judge.md must not exist; the code-review panel is launched by python/cli.py agent dispatch-voters"),
-        ("skills/review/references/voting.md", "(1d) skills/review/references/voting.md must not exist; code-review voting is now owned by python/cli.py agent dispatch-voters + python/cli.py review tally-code-votes"),
+        ("agents/orchestrator-judge.md", "(1d) agents/orchestrator-judge.md must not exist; the code-review panel is launched by scripts/larch.sh agent dispatch-voters"),
+        ("skills/review/references/voting.md", "(1d) skills/review/references/voting.md must not exist; code-review voting is now owned by scripts/larch.sh agent dispatch-voters + scripts/larch.sh review tally-code-votes"),
     ):
         if file(name).exists(): failures.append(label)
 
@@ -120,8 +120,8 @@ def run(repo_root: Path) -> list[str]:
     domain_pattern = re.compile(r"references/domain-rules\.md([^A-Za-z0-9._-]|$)")
     if not any("MANDATORY: READ ENTIRE FILE" in line and re.search(r"Step 3([^0-9A-Za-z]|$)", line) and domain_pattern.search(line) for line in lines):
         failures.append("(5a) no single SKILL.md line carries 'MANDATORY: READ ENTIRE FILE', 'Step 3' (boundary-anchored), and 'references/domain-rules.md' together — Step 3 entry callsite pin for domain-rules.md is broken")
-    require(skill, "agent dispatch-voters", "(5d) SKILL.md must reference python/cli.py agent dispatch-voters — code-review judge panel dispatch contract is broken")
-    require(skill, "review tally-code-votes", "(5d) SKILL.md must reference python/cli.py review tally-code-votes — code-review vote tally contract is broken")
+    require(skill, "agent dispatch-voters", "(5d) SKILL.md must reference scripts/larch.sh agent dispatch-voters — code-review judge panel dispatch contract is broken")
+    require(skill, "review tally-code-votes", "(5d) SKILL.md must reference scripts/larch.sh review tally-code-votes — code-review vote tally contract is broken")
 
     enum = "code-quality / risk-integration / correctness / architecture"
     enum_lines = [line for line in lines if enum in line]

@@ -320,12 +320,6 @@ exclude = [
   # Makefile-only harness for metadata summary publication. Runtime reachability
   # is through Step 0 helpers, not direct SKILL.md invocation.
   "python/test_pr_body.py",
-  # python/test_agents.py is the Makefile-only regression harness
-  # for python/cli.py agent degraded-tools-gate (issue #3207). The detector itself is
-  # runtime-referenced from /design, /implement, /review, /research Step 0; the
-  # harness is covered by the test-degraded-tools-gate target.
-  "python/test_agents.py",
-  "python/test_agents.py",
   # Stop-hook helpers are runtime-registered in hooks/hooks.json, not invoked
   # from skills/implement/SKILL.md.
   "skills/implement/scripts/hook-stop-fail-close.sh",
@@ -459,10 +453,6 @@ exclude = [
   # (test-generate-topology-docs target) and
   # (sibling contract).
   "scripts/test-python/cli.py generate topology-docs",
-  # python/test_launch_review.py is the unified regression harness for the
-  # Codex and Cursor review launcher paths. Referenced only from
-  # Makefile (test-launch-review target).
-  "python/test_launch_review.py",
   # skills/implement/references/rebase-checkpoint-routing.md is a lazy reference
   # target invoked only from skills/implement/SKILL.md foreground fences (G004
   # does not follow markdown invocations). The rebase checkpoint command itself
@@ -478,14 +468,6 @@ exclude = [
   # dropped markdown views from review-findings-full.jsonl; no automated caller.
   "python/cli.py render findings-view",
   "python/rendering.py",
-  # python/test_agents.py is the regression harness for
-  # python/cli.py agent model-args's line-token argv contract. Referenced only
-  # from Makefile (test-agent-model-args target) and
-  # python/test_agents.py (sibling contract).
-  "python/test_agents.py",
-  # python/test_agents.py retains shared launcher helper coverage while the
-  # public agent run-external-agent command is covered in Rust.
-  "python/test_agents.py",
   # scripts/test-python/cli.py render voter is the offline harness for
   # python/cli.py render voter (Makefile test-render-voter-prompt
   # target +  sibling contract).
@@ -513,12 +495,6 @@ exclude = [
   # (sibling contract).
   "python/test_pr_body.py",
   "python/test_pr_body.py",
-  # python/cli.py session persist-run-flags. Referenced from Makefile
-  # python/cli.py agent launch-codex-exec — markdown-fence + lint-fix-loop launcher-variable indirection.
-  "python/cli.py agent launch-codex-exec",
-  "python/agents.py",
-  "python/test_agents.py",
-  "python/test_agents.py",
   # scripts/test-legacy-title-prefix-literals-scope.sh — allow-listed git-grep
   # audit for legacy bracket literals (Makefile test-legacy-title-prefix-literals-scope).
   "scripts/test-legacy-title-prefix-literals-scope.sh",
@@ -694,9 +670,6 @@ exclude = [
   "scripts/test-hook-anti-read-poll.md",
   "scripts/hook-anti-read-poll.md",
   "scripts/sessionstart-statusline.md",
-  "python/agents.py",
-  "python/test_agents.py",
-  "python/test_agents.py",
   "python/session_env.py (session restore-finalize-state)",
   "scripts/test-triage-structure.md",
   "skills/design/scripts/test-findings-classification.md",
@@ -729,20 +702,8 @@ exclude = [
   # callers reach through shell variable indirection via larch_entrypoint().
   # agent-lint's G004/dead-script rule scans for literal-path references in
   # SKILL.md / hooks.json / settings.json and does not follow shell-variable
-  # indirection (same exclusion shape as python/cli.py agent launch-codex-implement
-  # above). Sibling contract: crates/larch-cli/src/github_repository_resolution.rs.
+  # indirection. Sibling contract: crates/larch-cli/src/github_repository_resolution.rs.
   "scripts/larch.sh gh remote-repo",
-  # The pr/gh/ci Python CLI regression tests for --repo threading, rerun,
-  # status, behind-count, and decide are Makefile-only pytest shards with no
-  # direct skill-prose invocation edge.
-  # python/cli.py checks lint-fix dispatch safety and helper-owned commit rollback.
-  # Referenced from Makefile (test-lint-fix-loop target), docs/linting.md,
-  "python/test_agents.py",
-  "python/test_agents.py",
-  "python/test_agents.py",
-  "python/test_agents.py",
-  "python/test_agents.py",
-  "python/test_agents.py",
   # scripts/larch.sh cleanup run. Not cited from SKILL.md by design
   # (contributors discover it by editing the sibling .sh).
   # python/test_pr_body.py is the retained PR-body, diagram, and run-summary

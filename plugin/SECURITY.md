@@ -45,6 +45,13 @@ hosts, operations, redirects, retries, response sizes, and diagnostics. See
 [Supply Chain, Credentials, and Services](docs/security/supply-chain-credentials-and-services.md)
 for the canonical technical contracts.
 
+Larch-owned Claude, Codex, and Cursor binary children use one typed Rust process
+boundary. Ambient child environments are cleared, vendor credentials require
+explicit typed overrides, output and diagnostics are bounded and redacted, and
+timeouts or cancellation terminate and reap the owned process group, including
+descendants on Unix. Skills, hooks, scripts, and Python modules do not provide
+an alternate vendor-launch path.
+
 Session artifacts, operator diagnostics, remotely archived run logs, and public
 GitHub content have distinct confidentiality rules. The universal skill
 lifecycle sanitizes every terminal outcome before create-only publication and

@@ -341,8 +341,8 @@ assert_contains "scout closing-sentence full anchor" \
 
 # ── agent collect-results NS_STRONG_HEADER static source assertions ───────
 
-COLLECT="$REPO_ROOT/python/larch/agents/_run_external.py"
-collect_out="$TMP/_run_external.py"
+COLLECT="$REPO_ROOT/crates/larch-core/src/vendor/review.rs"
+collect_out="$TMP/vendor-review.rs"
 cp "$COLLECT" "$collect_out"
 
 assert_contains "collect-results NS_STRONG_HEADER format-agnostic" \

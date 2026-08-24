@@ -16,18 +16,22 @@ startup lock unless `CURSOR_API_KEY` is already usable.
 
 **Degraded-tools gate (issue #3207).** Beyond the warning, every skill that uses external tools (`/design`, `/implement`, `/review`, `/research`) runs the **Degraded-tools gate** in Step 0 (`scripts/larch.sh agent degraded-tools-gate`; procedure in `skills/shared/external-reviewers.md`). Healthy probes proceed silently. When one tool is unavailable, the gate presents an explanation (what is down, why, binary-missing vs runtime-probe-failed, and the degradation to expect) and requires explicit **Continue** or **Abort** before proceeding; in non-interactive, CI, eval, autonomous-loop, and `/review --subagent` contexts, it emits a prompt-required envelope instead of auto-proceeding. If the Continue sentinel (`.degraded-tools-gate-prompted`) already exists from a prior operator choice, one-down runs proceed degraded in every mode, including non-interactive resume. When both tools are unavailable, the gate hard-fails in every mode, ignores stale sentinels, and does not ask Continue or Abort.
 
-**Codex auth scope.** Covered Codex paths prefer a live non-whitespace `OPENAI_API_KEY` through per-invocation `-c` provider overrides; unset, empty, or whitespace-only falls back to `codex login` / `~/.codex/auth.json`. The merged inventory is: `scripts/larch.sh agent launch-review --tool codex`, `scripts/larch.sh agent launch-codex-ci`, `scripts/larch.sh agent launch-codex-implement`, the Codex health probe in `scripts/larch.sh agent check-reviewers`, `scripts/larch.sh review-and-fix apply-findings`, `python/cli.py agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `scripts/larch.sh checks lint-fix`, and `python/cli.py agent run-negotiation-round`.
+**Codex auth scope.** Covered Codex paths prefer a live non-whitespace `OPENAI_API_KEY` through per-invocation `-c` provider overrides; unset, empty, or whitespace-only falls back to `codex login` / `~/.codex/auth.json`. The merged inventory is: `scripts/larch.sh agent launch-review --tool codex`, `scripts/larch.sh agent launch-codex-ci`, `scripts/larch.sh agent launch-codex-implement`, the Codex health probe in `scripts/larch.sh agent check-reviewers`, `scripts/larch.sh review-and-fix apply-findings`, `scripts/larch.sh agent launch-codex-exec`, `/research` Codex research lanes, `/research` validation lane, shared Codex voter/judge fences, `scripts/larch.sh checks lint-fix`, and `scripts/larch.sh agent run-negotiation-round`.
 
 ## Trust boundary (filesystem access)
 
-## Persistent vendor sessions (inactive until piece 2)
+Every external-reviewer command enters through `scripts/larch.sh` and is composed by the Rust CLI. Vendor argv is built from typed requests in `larch-core`; `TokioProcessRunner` in `larch-adapters` is the only production spawn owner. It clears ambient environment state, applies explicit credential overrides, bounds captured output, and terminates the child process group on cancellation or timeout. The removed Python agent package is not a fallback, and runtime skills, hooks, and scripts do not launch vendor binaries directly.
 
-Piece 1 of `/debate` lands read-only persistent-session transport helpers without a production caller.
+That process boundary is not an operating-system sandbox. Each review command selects the vendor's reviewed read-only or plan-mode argv and retains dirty-tree backstops, but a delegated same-user process can still have workspace authority supplied by its platform. The canonical limits are documented in [Workflow Trust, Mutation, and Private Findings](security/workflow-trust-and-mutations.md#permissions-tools-and-delegated-processes).
+
+## Persistent vendor sessions
+
+`/debate` uses the Rust persistent-session transport for its Cursor and Codex participants.
 
 - **Cursor**: `cursor agent create-chat` (option-free) returns a chat ID. Resume uses `cursor agent -p --resume <chatId> --mode plan --trust --output-format json --workspace <workdir> …`.
 - **Codex initial**: reuses the existing read-only `codex exec --sandbox read-only -C <workdir> … --json` builder.
 - **Codex resume**: `codex exec resume <UUID> … -c sandbox_mode="read-only" --json --output-last-message …`. Resume omits `--sandbox`, `-C`, and `--add-dir`; the caller must launch with `cwd=<workdir>`.
-- **UUID capture**: opt-in on `run_external_agent(..., capture_session_handle=True)`. It parses the Codex JSONL `stdout_path` for exactly one structured `thread.started` / `thread_id` event. Capture failure is fail-closed and terminal: exit code `_SESSION_CAPTURE_FAILED_RC` (`4`) with failure reason `session-capture-failed`, no auth retry, and no second subprocess.
+- **UUID capture**: the Rust session parser accepts exactly one structured Codex `thread.started` / `thread_id` event. Capture failure is fail-closed and terminal with `session-capture-failed`, no auth retry, and no second subprocess.
 - **`--last` is prohibited** by construction. Resume builders take an explicit validated handle only.
 
 ## Launching External Reviewers
@@ -37,8 +41,8 @@ External reviewers are launched via `scripts/larch.sh agent run-external-agent`,
 - **Timeout enforcement** — Kills the process after a configurable timeout
 - **Sentinel file creation** — Writes a `.done` file containing the exit code when the process completes
 - **Output capture** — two patterns, opt-in per invocation:
-  - **stdout capture under `--capture-stdout`** — when the reviewer writes its results to stdout, pass `--capture-stdout` and the wrapper redirects the tool's stdout/stderr to `--output`. Cursor pattern; canonical examples at `skills/review/SKILL.md:146-148, 177-179`.
-  - **tool-managed output path** — when the reviewer takes its own output-path argument (e.g., Codex's `--output-last-message`), omit `--capture-stdout`; the wrapper does not capture stdout and the reviewer writes results directly to the file. The `--output` flag still names the expected destination so downstream readers know where to look. Codex pattern; canonical examples at `skills/review/SKILL.md:160-163, 186-190`.
+  - **stdout capture under `--capture-stdout`** — when the reviewer writes its results to stdout, pass `--capture-stdout` and the Rust launcher redirects the tool's stdout/stderr to `--output`. Cursor pattern; canonical examples at `skills/review/SKILL.md:146-148, 177-179`.
+  - **tool-managed output path** — when the reviewer takes its own output-path argument (e.g., Codex's `--output-last-message`), omit `--capture-stdout`; the launcher does not capture stdout and the reviewer writes results directly to the file. The `--output` flag still names the expected destination so downstream readers know where to look. Codex pattern; canonical examples at `skills/review/SKILL.md:160-163, 186-190`.
 - **Elapsed time tracking** — Reports how long the review took
 
 During review and voting phases, reviewers are launched with `run_in_background: true` so they run concurrently with other work. (Negotiation rounds in `/research` run synchronously.)
@@ -55,7 +59,7 @@ All launches happen in a single message to ensure true parallel execution.
 
 ## Sentinel File Monitoring
 
-The wrapper script writes a `.done` sentinel file when the process completes. This is the only reliable way to detect completion:
+The Rust launcher writes a `.done` sentinel file when the process completes. This is the only reliable way to detect completion:
 
 - **Do not read output files until the sentinel exists** — Cursor buffers all stdout until exit, so its output file is empty until the process finishes
 - **Poll for sentinels** using `${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh agent wait-reviewers`, which checks every 5 seconds and prints compact progress dots
@@ -96,7 +100,7 @@ Authoritative flag documentation lives in the usage line and option grammar of `
 
 ## Timeout Handling
 
-- The process is killed by the wrapper script
+- The process group is terminated by the shared Rust process runner
 - The sentinel file records a non-zero exit code
 - A warning is printed and the skill proceeds without that reviewer
 
@@ -120,8 +124,8 @@ The **fallback taxonomy** (issue #3207 audit): **full waterfall** = the assigned
 | Brainstorm framing/scope | Generate optional ideation | `/design` | Registry roles `design.brainstorm_framing` and `design.brainstorm_scope` are consumed by Step 1d.5 through `external-defaults role`. Framing defaults Cursor→Codex→Claude; scope defaults Codex→Cursor→Claude. Pragmatic brainstorming is parent-session Claude and is not registry-backed. |
 | Decompose panel | Propose issue partitions | `/design` | Registry role `design.decompose_panel`: Cursor and Codex are allowed parallel tools, but only present vendors emit rows per archetype. The both-absent Claude generic path remains explicit dispatch logic. |
 | Decompose aggregator | Merge partition proposals | `/design` | Registry role `design.decompose_aggregator`: Codex-primary single slot. |
-| Debate panel | Argue a proposal in persistent vendor sessions | `/debate` | Registry role `debate.panel`. Fixed Cursor, Codex, and Claude slots with no silent substitution. Piece 2 activates launch and degraded-vendor accounting. The Claude slot is an in-session Agent-tool subagent; Cursor and Codex use subprocess transport. |
-| Debate synthesizer | Synthesize a converged debate into a proposal | `/debate` | Registry role `debate.synthesizer`: Codex-primary with fixed Codex, then Cursor, then Claude fallback order. Piece 2 activates this role. |
+| Debate panel | Argue a proposal in persistent vendor sessions | `/debate` | Registry role `debate.panel`. Fixed Cursor, Codex, and Claude slots with no silent substitution. The Claude slot is an in-session Agent-tool subagent; Cursor and Codex use the typed subprocess transport. |
+| Debate synthesizer | Synthesize a converged debate into a proposal | `/debate` | Registry role `debate.synthesizer`: Codex-primary with fixed Codex, then Cursor, then Claude fallback order. |
 | Findings aggregators | Merge review findings | `/design`, `/review`, `/implement` Step 5 | Registry roles `review.findings_aggregator` and `design.plan_findings_aggregator`: Codex-primary single slots through dispatch-waterfall, with Codex using the `review` model role before Cursor or Claude fallback. |
 | Negotiation | Multi-round dispute resolution | `/research` | Replacement-first |
 | Research lanes | Read-only investigation | `/research` | Replacement-first (Codex→Claude; Cursor deliberately excluded for diversity banner) |

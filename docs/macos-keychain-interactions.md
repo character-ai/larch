@@ -1,6 +1,6 @@
 # macOS keychain interaction
 
-When `CURSOR_API_KEY` is set in your environment, larch's launchers (`scripts/larch.sh agent launch-review --tool cursor`, `scripts/larch.sh agent launch-cursor-implement`, `python/cli.py agent run-negotiation-round`, plus the runtime markdown templates that emit `cursor agent` invocations) export the normalized `CURSOR_API_KEY` into the environment the `cursor agent` child inherits and pass **no** `--api-key` argv element (issue #3375, keeping the secret off the command line, `.meta` logs, and `ps`). `cursor agent` reads the key from the `CURSOR_API_KEY` environment variable, bypassing the macOS keychain entirely for that auth path. This is the recommended setup for larch.
+When `CURSOR_API_KEY` is set in your environment, larch's Rust launchers (`scripts/larch.sh agent launch-review --tool cursor`, `scripts/larch.sh agent launch-cursor-implement`, and `scripts/larch.sh agent run-negotiation-round`) pass the normalized credential as a typed child-environment override and no `--api-key` argv element. This keeps the secret out of argv, ordinary command-line listings, and `.meta` logs; same-UID or host-level process inspection can still expose a live child environment. `cursor agent` reads the key from its environment, bypassing the macOS keychain entirely for that auth path. This is the recommended setup for larch.
 
 When `CURSOR_API_KEY` is unset or empty on macOS, larch's shared Cursor launchers first pre-read the service that Cursor itself uses (`cursor-user` / `cursor-access-token`) and export the result as `CURSOR_API_KEY` for the child invocation. If that read succeeds, the Cursor child inherits `CURSOR_API_KEY` from the environment and does not perform its own keychain read. If the pre-read fails or returns empty, larch falls back to Cursor's default auth resolution, which may consult the keychain entry created by `cursor login`.
 
@@ -25,7 +25,7 @@ On Darwin only, larch's launchers run a read-only pre-launch check: if `CURSOR_A
 
 The standalone check is `"${CLAUDE_PLUGIN_ROOT}/scripts/larch.sh" agent cursor-auth-preflight`. It exits `0` when Cursor can authenticate and `2` with the actionable message when it cannot. For the credential-handling boundary it enforces, see [Vendor credential preflight and the reviewer-probe cache](security/supply-chain-credentials-and-services.md#vendor-credential-preflight-and-the-reviewer-probe-cache).
 
-For the at-rest secret-persistence tradeoff (the API key appears in `.meta`
-`CMD_JSON` sidecars under the session tmpdir because the collector's
-empty-output retry path relies on faithful argv reconstruction), see
+The credential is excluded from `.meta` `CMD_JSON` sidecars; retry metadata
+reconstructs approved argv separately from the typed environment overlay. For
+the remaining at-rest session-artifact boundary, see
 [Private Session State and Retention](security/artifacts-redaction-and-publication.md#private-session-state-and-retention).
