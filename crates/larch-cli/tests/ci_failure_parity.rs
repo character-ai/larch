@@ -4,7 +4,6 @@
 //! Live GitHub reads are covered at their typed adapter and domain boundaries;
 //! this suite pins the public argv, stdout, stderr, and exit envelopes without
 //! requiring credentials or a network.
-//! This no-op line exists only to validate the enforced partial CI path for #8858.
 
 use assert_cmd::Command;
 
