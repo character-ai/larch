@@ -19,7 +19,9 @@ mod parity_support;
 
 use std::{
     env,
+    fs,
     path::{Path, PathBuf},
+    process::Command,
 };
 
 use parity_support::{NormalizationRule, ParityCase, Program, SeedFile, assert_case};
@@ -99,6 +101,10 @@ fn args(values: &[&str]) -> Vec<String> {
 const DESIGN_RELATIVE: &str = "design";
 const MANIFEST_JSON: &str =
     "{\"main_model\": \"claude-opus-4-8\", \"larch_version\": \"57.0.7\", \"effort\": \"high\"}\n";
+const TOKEN_REPORT_LEDGER: &str =
+    include_str!("../../larch-core/tests/fixtures/token_scan/ledger.jsonl");
+const TOKEN_REPORT_TRANSCRIPT: &str =
+    include_str!("../../larch-core/tests/fixtures/token_scan/transcript.jsonl");
 
 fn design_dir_seed() -> Vec<SeedFile> {
     vec![SeedFile::text(&format!("{DESIGN_RELATIVE}/.keep"), "")]
@@ -353,4 +359,73 @@ fn design_gate_summary_migrated_parity() {
             panic!("{error}");
         }
     }
+}
+
+#[test]
+fn design_gate_summary_refreshes_token_report_and_consumes_buckets() {
+    let directory = tempfile::tempdir().expect("temporary root");
+    let root = directory.path().canonicalize().expect("canonical root");
+    let design_tmpdir = root.join(DESIGN_RELATIVE);
+    fs::create_dir(&design_tmpdir).expect("design tmpdir");
+    fs::write(design_tmpdir.join("manifest.json"), MANIFEST_JSON).expect("manifest");
+
+    let ledger = root.join("token-ledger.jsonl");
+    let transcript = root.join("transcript.jsonl");
+    let source = root.join("claude-source.env");
+    fs::write(&ledger, TOKEN_REPORT_LEDGER).expect("token ledger");
+    fs::write(&transcript, TOKEN_REPORT_TRANSCRIPT).expect("Claude transcript");
+    fs::write(
+        &source,
+        format!(
+            "TRANSCRIPT_PATH={}\nSESSION_DIR={}\nSESSION_UUID=fixture-session\n",
+            transcript.display(),
+            root.display()
+        ),
+    )
+    .expect("Claude source snapshot");
+
+    let binary = env!("CARGO_BIN_EXE_larch");
+    let output = Command::new(binary)
+        .current_dir(&root)
+        .env("CLAUDE_PLUGIN_ROOT", repository_root())
+        .env("LARCH_BINARY", binary)
+        .env("LARCH_CLAUDE_SOURCE_FILE", &source)
+        .env("LARCH_QUIET_DISABLE", "1")
+        .env("LARCH_TOKEN_LEDGER", &ledger)
+        .env("DESIGN_TMPDIR", &design_tmpdir)
+        .env("SESSION_ID", "design-token-refresh")
+        .env("TMPDIR", &root)
+        .args([
+            "design",
+            "render-final-summary",
+            "--design-tmpdir",
+            design_tmpdir.to_str().expect("design tmpdir UTF-8"),
+            "--outcome",
+            "approved",
+            "--mode",
+            "N/A",
+            "--pre-publish-only",
+            "--issue-number",
+            "0",
+        ])
+        .output()
+        .expect("render final summary");
+    assert!(
+        output.status.success(),
+        "stdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let report_path = design_tmpdir.join("token-report-final.json");
+    let report: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&report_path).expect("refreshed token report"),
+    )
+    .expect("token report JSON");
+    assert_eq!(report["BUCKETS_codex"]["input"], 1007);
+
+    let summary = fs::read_to_string(design_tmpdir.join("final-summary.md"))
+        .expect("rendered final summary");
+    assert!(summary.contains("Tokens: 2k"), "{summary}");
+    assert!(!summary.contains("- **Cost**: N/A"), "{summary}");
 }
