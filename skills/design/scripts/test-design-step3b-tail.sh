@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # test-design-step3b-tail.sh — offline adapter contract for the Step 4 tail.
-unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR PYTHONPATH
+unset IMPLEMENT_TMPDIR DESIGN_TMPDIR REVIEW_TMPDIR RESEARCH_TMPDIR SESSION_TMPDIR
+unset PYTHONPATH
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
